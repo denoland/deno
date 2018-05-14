@@ -13,17 +13,27 @@ const print = V8Worker2.print;
 _global["console"] = {
   // tslint:disable-next-line:no-any
   log(...args: any[]): void {
-    const out: string[] = [];
-    for (const a of args) {
-      if (typeof a === "string") {
-        out.push(a);
-      } else {
-        out.push(JSON.stringify(a));
-      }
-    }
-    print(out.join(" "));
+    print(stringifyArgs(args));
+  },
+
+  // tslint:disable-next-line:no-any
+  error(...args: any[]): void {
+    print("ERROR: " + stringifyArgs(args));
   }
 };
+
+// tslint:disable-next-line:no-any
+function stringifyArgs(args: any[]): string {
+  const out: string[] = [];
+  for (const a of args) {
+    if (typeof a === "string") {
+      out.push(a);
+    } else {
+      out.push(JSON.stringify(a));
+    }
+  }
+  return out.join(" ");
+}
 
 export function assert(cond: boolean, msg = "") {
   if (!cond) {

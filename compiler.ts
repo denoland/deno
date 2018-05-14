@@ -1,22 +1,31 @@
 import * as ts from "typescript";
 import { assert, globalEval } from "./util";
-import { readFileSync } from "./fs";
+import { exit, readFileSync } from "./os";
+import * as path from "path";
 
 export function compile(cwd: string, inputFn: string): void {
   const options: ts.CompilerOptions = {
-    "allowJs": true,
-    "outFile": "out.js",
+    allowJs: true,
+    outFile: "out.js"
   };
   const host = new CompilerHost(cwd);
 
-  let program = ts.createProgram([inputFn], options, host);
+  const inputExt = path.extname(inputFn);
+  if (!EXTENSIONS.includes(inputExt)) {
+    console.error(`Bad file name extension for input "${inputFn}"`);
+    exit(1);
+  }
+
+  const program = ts.createProgram([inputFn], options, host);
   //let sourceFiles = program.getSourceFiles();
   //console.log("rootFileNames", program.getRootFileNames());
 
-  let emitResult = program.emit();
+  const emitResult = program.emit();
   assert(!emitResult.emitSkipped);
   //console.log("emitResult", emitResult);
 }
+
+const EXTENSIONS = [".ts", ".js"];
 
 export class CompilerHost {
   constructor(public cwd: string) {}
@@ -101,9 +110,24 @@ export class CompilerHost {
     moduleNames: string[],
     containingFile: string,
     reusedNames?: string[]
-  ): (ts.ResolvedModule | undefined)[] {
-    console.log("resolveModuleNames", moduleNames);
-    return [];
+  ): Array<ts.ResolvedModule | undefined> {
+    console.log("resolveModuleNames", { moduleNames, reusedNames });
+    return moduleNames.map((name: string) => {
+      if (
+        name.startsWith("/") ||
+        name.startsWith("http://") ||
+        name.startsWith("https://")
+      ) {
+        throw Error("Non-relative imports not yet supported.");
+      } else {
+        // Relative import.
+        console.log("relative import", { containingFile, name });
+        const containingDir = path.dirname(containingFile);
+        const resolvedFileName = path.join(containingDir, name);
+        const isExternalLibraryImport = false;
+        return { resolvedFileName, isExternalLibraryImport };
+      }
+    });
   }
 
   fileExists(fileName: string): boolean {

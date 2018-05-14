@@ -31,9 +31,13 @@ func recv(buf []byte) []byte {
 	switch msg.Kind {
 	case Msg_READ_FILE_SYNC:
 		return ReadFileSync(msg.Path)
+	case Msg_EXIT:
+		os.Exit(int(msg.Code))
 	default:
 		panic("Unexpected message")
 	}
+
+	return nil
 }
 
 func loadAsset(w *v8worker2.Worker, path string) {

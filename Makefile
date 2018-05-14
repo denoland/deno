@@ -13,7 +13,7 @@ msg.pb.js: msg.proto node_modules
 msg.pb.d.ts: msg.pb.js node_modules
 	./node_modules/.bin/pbts -o msg.pb.d.ts msg.pb.js
 
-dist/main.js: main.ts compiler.ts fs.ts util.ts msg.pb.js msg.pb.d.ts node_modules
+dist/main.js: main.ts compiler.ts os.ts util.ts msg.pb.js msg.pb.d.ts node_modules
 	./node_modules/.bin/tsc --noEmit # Only for type checking.
 	./node_modules/.bin/parcel build --out-dir=dist/ --no-minify main.ts
 

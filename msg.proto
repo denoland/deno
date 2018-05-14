@@ -7,6 +7,7 @@ message Msg {
     START = 0;
     READ_FILE_SYNC = 1;
     DATA_RESPONSE = 2;
+    EXIT = 3;
   }
   MsgKind kind = 10;
 
@@ -20,4 +21,7 @@ message Msg {
   // DATA_RESPONSE
 	bytes data = 30;
   string error = 31;
+
+  // EXIT
+  int32 code = 40;
 }

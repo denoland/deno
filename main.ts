@@ -2,7 +2,6 @@ import { main as pb } from "./msg.pb";
 import "./util";
 import { compile } from "./compiler";
 
-
 function start(cwd: string, argv: string[]): void {
   // TODO parse arguments.
   const inputFn = argv[1];
