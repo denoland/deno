@@ -1,0 +1,13 @@
+syntax = "proto3";
+package main;
+
+
+message Msg {
+  enum MsgKind {
+    LOAD = 0;
+  }
+  MsgKind kind = 10;
+
+  // LOAD
+	repeated string argv = 11;
+}

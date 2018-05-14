@@ -3,3 +3,4 @@ node_modules/
 dist/
 deno
 assets.go
+msg.pb.go

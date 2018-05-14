@@ -1,11 +1,13 @@
-// To test: make && ./out/render test_input.js
 package main
 
+//go:generate protoc --go_out=. msg.proto
 //go:generate ./node_modules/.bin/parcel build --out-dir=dist/ --no-minify main.ts
 //go:generate go-bindata -pkg $GOPACKAGE -o assets.go dist/
 
 import (
+	"github.com/golang/protobuf/proto"
 	"github.com/ry/v8worker2"
+	"os"
 )
 
 func recv(msg []byte) []byte {
@@ -13,20 +15,32 @@ func recv(msg []byte) []byte {
 	return nil
 }
 
-func main() {
-	indexFn := "dist/main.js"
-	data, err := Asset(indexFn)
+func loadAsset(w *v8worker2.Worker, path string) {
+	data, err := Asset(path)
 	if err != nil {
 		panic("asset not found")
 	}
-	code := string(data)
-
-	worker := v8worker2.New(recv)
-
-	// Load up index.js code.
-	err = worker.Load(indexFn, code)
+	err = w.Load(path, string(data))
 	if err != nil {
-		println("Problem executing Javascript.")
 		panic(err)
 	}
+}
+
+func main() {
+	worker := v8worker2.New(recv)
+	loadAsset(worker, "dist/main.js")
+
+	loadMsg := &Msg{
+		Kind: Msg_LOAD,
+		Argv: os.Args,
+	}
+	out, err := proto.Marshal(loadMsg)
+	if err != nil {
+		panic(err)
+	}
+	err = worker.SendBytes(out)
+	if err != nil {
+		panic(err)
+	}
+
 }
