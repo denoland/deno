@@ -1,5 +1,5 @@
 import * as ts from "typescript";
-import { assert, globalEval } from "./util";
+import { log, assert, globalEval } from "./util";
 import { exit, readFileSync } from "./os";
 import * as path from "path";
 
@@ -18,11 +18,63 @@ export function compile(cwd: string, inputFn: string): void {
 
   const program = ts.createProgram([inputFn], options, host);
   //let sourceFiles = program.getSourceFiles();
-  //console.log("rootFileNames", program.getRootFileNames());
+  //log("rootFileNames", program.getRootFileNames());
+
+  // Print compilation errors, if any.
+  const diagnostics = getDiagnostics(program);
+  if (diagnostics.length > 0) {
+    const errorMessages = diagnostics.map(d => formatDiagnostic(d, cwd));
+    for (const msg of errorMessages) {
+      console.error(msg);
+    }
+    exit(2);
+  }
 
   const emitResult = program.emit();
   assert(!emitResult.emitSkipped);
-  //console.log("emitResult", emitResult);
+  log("emitResult", emitResult);
+}
+
+/**
+ * Format a diagnostic object into a string.
+ * Adapted from TS-Node https://github.com/TypeStrong/ts-node
+ * which uses the same MIT license as this file but is
+ * Copyright (c) 2014 Blake Embrey (hello@blakeembrey.com)
+ */
+export function formatDiagnostic(
+  diagnostic: ts.Diagnostic,
+  cwd: string,
+  lineOffset = 0
+): string {
+  const messageText = ts.flattenDiagnosticMessageText(
+    diagnostic.messageText,
+    "\n"
+  );
+  const { code } = diagnostic;
+  if (diagnostic.file) {
+    const fn = path.relative(cwd, diagnostic.file.fileName);
+    if (diagnostic.start) {
+      const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
+        diagnostic.start
+      );
+      const r = Number(line) + 1 + lineOffset;
+      const c = Number(character) + 1;
+      return `${fn} (${r},${c}): ${messageText} (${code})`;
+    }
+    return `${fn}: ${messageText} (${code})`;
+  }
+  return `${messageText} (${code})`;
+}
+
+function getDiagnostics(program: ts.Program): ReadonlyArray<ts.Diagnostic> {
+  return program
+    .getOptionsDiagnostics()
+    .concat(
+      program.getGlobalDiagnostics(),
+      program.getSyntacticDiagnostics(),
+      program.getSemanticDiagnostics(),
+      program.getDeclarationDiagnostics()
+    );
 }
 
 const EXTENSIONS = [".ts", ".js"];
@@ -36,7 +88,6 @@ export class CompilerHost {
     onError?: (message: string) => void,
     shouldCreateNewSourceFile?: boolean
   ): ts.SourceFile | undefined {
-    //console.log("getSourceFile", fileName);
     let sourceText: string;
     if (fileName === "lib.d.ts") {
       // TODO this should be compiled into the bindata.
@@ -45,8 +96,13 @@ export class CompilerHost {
       sourceText = readFileSync(fileName);
     }
     if (sourceText) {
+      log("getSourceFile", {
+        fileName
+        //sourceText,
+      });
       return ts.createSourceFile(fileName, sourceText, languageVersion);
     } else {
+      log("getSourceFile NOT FOUND", { fileName });
       return undefined;
     }
   }
@@ -71,7 +127,6 @@ export class CompilerHost {
     return "/blah/";
   }
 
-  outFileSource: string;
   writeFile(
     fileName: string,
     data: string,
@@ -79,18 +134,18 @@ export class CompilerHost {
     onError: ((message: string) => void) | undefined,
     sourceFiles: ReadonlyArray<ts.SourceFile>
   ): void {
-    //console.log("writeFile", fileName);
-    //console.log("writeFile source", data);
+    log("writeFile", fileName);
+    log("writeFile source", data);
     globalEval(data);
-    //this.outFileSource = data;
   }
 
   getCurrentDirectory(): string {
+    log("getCurrentDirectory", this.cwd);
     return this.cwd;
   }
 
   getDirectories(path: string): string[] {
-    console.log("getDirectories", path);
+    log("getDirectories", path);
     return [];
   }
 
@@ -111,7 +166,7 @@ export class CompilerHost {
     containingFile: string,
     reusedNames?: string[]
   ): Array<ts.ResolvedModule | undefined> {
-    console.log("resolveModuleNames", { moduleNames, reusedNames });
+    log("resolveModuleNames", { moduleNames, reusedNames });
     return moduleNames.map((name: string) => {
       if (
         name.startsWith("/") ||
@@ -121,9 +176,9 @@ export class CompilerHost {
         throw Error("Non-relative imports not yet supported.");
       } else {
         // Relative import.
-        console.log("relative import", { containingFile, name });
         const containingDir = path.dirname(containingFile);
         const resolvedFileName = path.join(containingDir, name);
+        log("relative import", { containingFile, name, resolvedFileName });
         const isExternalLibraryImport = false;
         return { resolvedFileName, isExternalLibraryImport };
       }
@@ -131,12 +186,12 @@ export class CompilerHost {
   }
 
   fileExists(fileName: string): boolean {
-    console.log("fileExists", fileName);
+    log("fileExists", fileName);
     return false;
   }
 
   readFile(fileName: string): string | undefined {
-    console.log("readFile", fileName);
+    log("readFile", fileName);
     return undefined;
   }
 

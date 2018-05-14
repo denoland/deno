@@ -10,6 +10,18 @@ const _global = globalEval("this");
 
 const print = V8Worker2.print;
 
+// To control internal logging output
+const debug = false;
+
+// Internal logging for deno. Use the "debug" variable above to control
+// output.
+// tslint:disable-next-line:no-any
+export function log(...args: any[]): void {
+  if (debug) {
+    console.log(...args);
+  }
+}
+
 _global["console"] = {
   // tslint:disable-next-line:no-any
   log(...args: any[]): void {
