@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "noImplicitAny": true,
+    "sourceMap": true,
+    "removeComments": true,
+    "preserveConstEnums": true,
+    "declaration": true,
+    "target": "es5",
+    "lib": ["es2015", "dom"],
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedParameters": false,
+    "pretty": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowUnreachableCode": false,
+    "experimentalDecorators": true
+  },
+  "include": ["*.ts"]
+}

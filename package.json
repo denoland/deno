@@ -1,0 +1,8 @@
+{
+  "name": "deno",
+  "dependencies": {},
+  "devDependencies": {
+    "parcel-bundler": "^1.8.1",
+    "typescript": "^2.8.3"
+  }
+}
