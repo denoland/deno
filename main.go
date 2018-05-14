@@ -50,11 +50,15 @@ func loadAsset(w *v8worker2.Worker, path string) {
 func main() {
 	worker := v8worker2.New(recv)
 	loadAsset(worker, "dist/main.js")
-	loadMsg := &Msg{
-		Kind: Msg_LOAD,
-		Argv: os.Args,
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
 	}
-	out, err := proto.Marshal(loadMsg)
+	out, err := proto.Marshal(&Msg{
+		Kind: Msg_START,
+		Cwd:  cwd,
+		Argv: os.Args,
+	})
 	if err != nil {
 		panic(err)
 	}

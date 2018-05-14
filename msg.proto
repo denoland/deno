@@ -4,19 +4,20 @@ package main;
 
 message Msg {
   enum MsgKind {
-    LOAD = 0;
+    START = 0;
     READ_FILE_SYNC = 1;
     DATA_RESPONSE = 2;
   }
   MsgKind kind = 10;
 
-  // LOAD
-	repeated string argv = 11;
+  // START
+	string cwd = 11;
+	repeated string argv = 12;
 
   // READ_FILE_SYNC
-	string path = 12;
+	string path = 20;
 
   // DATA_RESPONSE
-	bytes data = 13;
-  string error = 14;
+	bytes data = 30;
+  string error = 31;
 }

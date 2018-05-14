@@ -3,7 +3,7 @@
 // the local scope. This means, for instance, that function declarations create
 // global functions, and that the code being evaluated doesn't have access to
 // local variables within the scope where it's being called.
-const globalEval = eval;
+export const globalEval = eval;
 
 // A reference to the global object.
 const _global = globalEval("this");
@@ -24,3 +24,9 @@ _global["console"] = {
     print(out.join(" "));
   }
 };
+
+export function assert(cond: boolean, msg = "") {
+  if (!cond) {
+    throw Error("Assertion failed. " + msg);
+  }
+}
