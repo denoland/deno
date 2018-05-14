@@ -5,9 +5,18 @@ package main;
 message Msg {
   enum MsgKind {
     LOAD = 0;
+    READ_FILE_SYNC = 1;
+    DATA_RESPONSE = 2;
   }
   MsgKind kind = 10;
 
   // LOAD
 	repeated string argv = 11;
+
+  // READ_FILE_SYNC
+	string path = 12;
+
+  // DATA_RESPONSE
+	bytes data = 13;
+  string error = 14;
 }
