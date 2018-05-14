@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "allowJs": true,
     "module": "commonjs",
     "noImplicitAny": true,
     "sourceMap": true,
@@ -7,7 +8,7 @@
     "preserveConstEnums": true,
     "declaration": true,
     "target": "es5",
-    "lib": ["es2015", "dom"],
+    "lib": ["es2015"],
     "noEmit": true,
     "noUnusedLocals": true,
     "noImplicitReturns": true,
@@ -19,5 +20,5 @@
     "allowUnreachableCode": false,
     "experimentalDecorators": true
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "*.js"]
 }
