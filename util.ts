@@ -9,9 +9,10 @@ const globalEval = eval;
 const _global = globalEval("this");
 
 _global["console"] = {
+  // tslint:disable-next-line:no-any
   log(...args: any[]): void {
     const out: string[] = [];
-    for (let a of args) {
+    for (const a of args) {
       if (typeof(a) === "string") {
         out.push(a);
       } else {

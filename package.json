@@ -1,10 +1,14 @@
 {
   "name": "deno",
+  "scripts": {
+	  "lint": "tslint -p tsconfig.json"
+  },
   "devDependencies": {
     "@types/text-encoding": "^0.0.32",
     "parcel-bundler": "^1.8.1",
     "protobufjs": "^6.8.6",
     "text-encoding": "^0.6.4",
+    "tslint": "^5.10.0",
     "typescript": "^2.8.3"
   }
 }

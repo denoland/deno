@@ -1,5 +1,5 @@
 //import * as ts from "typescript";
-import { main as pb } from "./msg.pb"
+import { main as pb } from "./msg.pb";
 import "./util";
 import { TextDecoder } from "text-encoding";
 
@@ -16,14 +16,14 @@ function readFileSync(filename: string): string {
     throw Error(res.error);
   }
   const decoder = new TextDecoder("utf8");
-  return decoder.decode(res.data)
+  return decoder.decode(res.data);
 }
 
 function load(argv: string[]): void {
   console.log("Load argv", argv);
   const inputFn = argv[1];
   const source = readFileSync(inputFn);
-  console.log("source", source)
+  console.log("source", source);
 }
 
 V8Worker2.recv((ab: ArrayBuffer) => {

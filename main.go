@@ -50,7 +50,6 @@ func loadAsset(w *v8worker2.Worker, path string) {
 func main() {
 	worker := v8worker2.New(recv)
 	loadAsset(worker, "dist/main.js")
-
 	loadMsg := &Msg{
 		Kind: Msg_LOAD,
 		Argv: os.Args,
@@ -63,5 +62,4 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
 }

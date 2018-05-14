@@ -27,4 +27,8 @@ clean:
 distclean: clean
 	-rm -rf node_modules/
 
-.PHONY: clean distclean
+lint: node_modules
+	yarn lint
+	go vet
+
+.PHONY: lint clean distclean

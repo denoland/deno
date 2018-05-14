@@ -1,0 +1,10 @@
+language: go
+go:
+ - 1.9.2
+cache: ccache
+install:
+ - go get github.com/ry/v8worker2
+ - cd `go env GOPATH`/src/github.com/ry/v8worker2 && ./tools/build.py
+ - make
+script:
+ - make lint
