@@ -8,6 +8,8 @@ const globalEval = eval;
 // A reference to the global object.
 const _global = globalEval("this");
 
+const print = V8Worker2.print;
+
 _global["console"] = {
   // tslint:disable-next-line:no-any
   log(...args: any[]): void {
@@ -19,6 +21,6 @@ _global["console"] = {
         out.push(JSON.stringify(a));
       }
     }
-    V8Worker2.print(out.join(" "));
+    print(out.join(" "));
   }
 };

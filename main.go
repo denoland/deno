@@ -60,6 +60,7 @@ func main() {
 	}
 	err = worker.SendBytes(out)
 	if err != nil {
-		panic(err)
+		os.Stderr.WriteString(err.Error())
+		os.Exit(1)
 	}
 }

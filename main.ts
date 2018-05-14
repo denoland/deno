@@ -20,7 +20,6 @@ function readFileSync(filename: string): string {
 }
 
 function load(argv: string[]): void {
-  console.log("Load argv", argv);
   const inputFn = argv[1];
   const source = readFileSync(inputFn);
   console.log("source", source);
@@ -37,5 +36,3 @@ V8Worker2.recv((ab: ArrayBuffer) => {
         break;
   }
 });
-
-V8Worker2.print("Hello");
