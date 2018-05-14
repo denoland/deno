@@ -31,4 +31,8 @@ lint: node_modules
 	yarn lint
 	go vet
 
+fmt: node_modules
+	yarn fmt 
+	go fmt
+
 .PHONY: lint clean distclean

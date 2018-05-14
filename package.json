@@ -1,7 +1,8 @@
 {
   "name": "deno",
   "scripts": {
-	  "lint": "tslint -p tsconfig.json"
+    "lint": "tslint -p tsconfig.json",
+    "fmt": "prettier --write *.ts* *.js *.json"
   },
   "devDependencies": {
     "@types/text-encoding": "^0.0.32",

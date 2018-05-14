@@ -2,7 +2,8 @@
   "rules": {
     "array-type": [true, "array-simple"],
     "arrow-return-shorthand": true,
-    "ban": [true,
+    "ban": [
+      true,
       ["fit"],
       ["fdescribe"],
       ["xit"],
@@ -12,7 +13,8 @@
       ["fitFakeAsync"],
       ["xitFakeAsync"]
     ],
-    "ban-types": [true,
+    "ban-types": [
+      true,
       ["Object", "Use {} instead."],
       ["String", "Use 'string' instead."],
       ["Number", "Use 'number' instead."],
@@ -41,7 +43,11 @@
     "no-unused-variable": true,
     "no-var-keyword": true,
     "object-literal-shorthand": true,
-    "only-arrow-functions": [true, "allow-declarations", "allow-named-functions"],
+    "only-arrow-functions": [
+      true,
+      "allow-declarations",
+      "allow-named-functions"
+    ],
     "prefer-const": true,
     "quotemark": [true, "double"],
     "radix": true,

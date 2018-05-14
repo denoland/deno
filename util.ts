@@ -15,7 +15,7 @@ _global["console"] = {
   log(...args: any[]): void {
     const out: string[] = [];
     for (const a of args) {
-      if (typeof(a) === "string") {
+      if (typeof a === "string") {
         out.push(a);
       } else {
         out.push(JSON.stringify(a));
