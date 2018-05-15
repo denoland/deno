@@ -45,4 +45,7 @@ fmt: node_modules
 	go fmt
 	clang-format msg.proto -i
 
+test:
+	node test.js
+
 .PHONY: lint clean distclean
