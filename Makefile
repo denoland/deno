@@ -34,5 +34,6 @@ lint: node_modules
 fmt: node_modules
 	yarn fmt 
 	go fmt
+	clang-format msg.proto -i
 
 .PHONY: lint clean distclean

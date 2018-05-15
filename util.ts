@@ -11,7 +11,7 @@ const _global = globalEval("this");
 const print = V8Worker2.print;
 
 // To control internal logging output
-const debug = false;
+const debug = true;
 
 // Internal logging for deno. Use the "debug" variable above to control
 // output.

@@ -1,7 +1,6 @@
 syntax = "proto3";
 package main;
 
-
 message Msg {
   enum MsgKind {
     START = 0;
@@ -12,14 +11,14 @@ message Msg {
   MsgKind kind = 10;
 
   // START
-	string cwd = 11;
-	repeated string argv = 12;
+  string cwd = 11;
+  repeated string argv = 12;
 
   // READ_FILE_SYNC
-	string path = 20;
+  string path = 20;
 
   // DATA_RESPONSE
-	bytes data = 30;
+  bytes data = 30;
   string error = 31;
 
   // EXIT

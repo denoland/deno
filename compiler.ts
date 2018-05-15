@@ -6,7 +6,7 @@ import * as path from "path";
 export function compile(cwd: string, inputFn: string): void {
   const options: ts.CompilerOptions = {
     allowJs: true,
-    outFile: "out.js"
+    outDir: "_denoCache_/",
   };
   const host = new CompilerHost(cwd);
 
@@ -134,8 +134,7 @@ export class CompilerHost {
     onError: ((message: string) => void) | undefined,
     sourceFiles: ReadonlyArray<ts.SourceFile>
   ): void {
-    log("writeFile", fileName);
-    log("writeFile source", data);
+    log("writeFile", { fileName, data });
     globalEval(data);
   }
 
