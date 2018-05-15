@@ -52,6 +52,7 @@ func loadAsset(w *v8worker2.Worker, path string) {
 }
 
 func main() {
+	args := v8worker2.SetFlags(os.Args)
 	worker := v8worker2.New(recv)
 	loadAsset(worker, "dist/main.js")
 	cwd, err := os.Getwd()
@@ -61,7 +62,7 @@ func main() {
 	out, err := proto.Marshal(&Msg{
 		Kind: Msg_START,
 		Cwd:  cwd,
-		Argv: os.Args,
+		Argv: args,
 	})
 	if err != nil {
 		panic(err)
