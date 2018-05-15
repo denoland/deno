@@ -7,14 +7,16 @@ message Msg {
     READ_FILE_SYNC = 1;
     DATA_RESPONSE = 2;
     EXIT = 3;
+    COMPILE_OUTPUT = 4;
   }
   MsgKind kind = 10;
 
-  // START
-  string cwd = 11;
-  repeated string argv = 12;
+  oneof payload {
+    StartMsg start = 90;
+    CompileOutputMsg compile_output = 100;
+  }
 
-  // READ_FILE_SYNC
+  // READ_FILE_SYNC and MKDIRP
   string path = 20;
 
   // DATA_RESPONSE
@@ -23,4 +25,16 @@ message Msg {
 
   // EXIT
   int32 code = 40;
+}
+
+// START
+message StartMsg {
+  string cwd = 1;
+  repeated string argv = 2;
+}
+
+// WRITE_COMPILE_OUTPUT
+message CompileOutputMsg {
+  string source = 1;
+  string filename = 2;
 }

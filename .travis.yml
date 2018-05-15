@@ -1,8 +1,12 @@
 language: go
 go:
  - 1.9.2
-cache: ccache
+cache:
+  directories:
+   - $HOME/.ccache
+   - `go env GOPATH`/src/github.com/ry/v8worker2/out
 install:
+ - go get github.com/jteeuwen/go-bindata
  - go get -d github.com/ry/v8worker2
  - (cd `go env GOPATH`/src/github.com/ry/v8worker2 && ./tools/build.py)
  - make

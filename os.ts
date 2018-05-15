@@ -11,6 +11,13 @@ export function exit(code = 0): void {
   });
 }
 
+export function compileOutput(source: string, filename: string): void {
+  sendMsgFromObject({
+    kind: pb.Msg.MsgKind.COMPILE_OUTPUT,
+    compileOutput: { source, filename }
+  });
+}
+
 export function readFileSync(filename: string): string {
   const res = sendMsgFromObject({
     kind: pb.Msg.MsgKind.READ_FILE_SYNC,

@@ -1,19 +1,29 @@
 import * as ts from "typescript";
-import { log, assert, globalEval } from "./util";
-import { exit, readFileSync } from "./os";
+import { log, assert, globalEval, _global } from "./util";
+import * as os from "./os";
 import * as path from "path";
+import * as amd from "./amd";
+
+/*
+export function makeCacheDir(): string {
+  let cacheDir = path.join(env.HOME, ".deno/cache")
+  os.mkdirp(cacheDir);
+  return cacheDir
+}
+*/
 
 export function compile(cwd: string, inputFn: string): void {
   const options: ts.CompilerOptions = {
     allowJs: true,
-    outDir: "_denoCache_/",
+    module: ts.ModuleKind.AMD,
+    outDir: "/" // Will be placed in ~/.deno/compile
   };
-  const host = new CompilerHost(cwd);
+  const host = new CompilerHost();
 
   const inputExt = path.extname(inputFn);
   if (!EXTENSIONS.includes(inputExt)) {
     console.error(`Bad file name extension for input "${inputFn}"`);
-    exit(1);
+    os.exit(1);
   }
 
   const program = ts.createProgram([inputFn], options, host);
@@ -27,12 +37,14 @@ export function compile(cwd: string, inputFn: string): void {
     for (const msg of errorMessages) {
       console.error(msg);
     }
-    exit(2);
+    os.exit(2);
   }
 
   const emitResult = program.emit();
   assert(!emitResult.emitSkipped);
   log("emitResult", emitResult);
+
+  amd.executeQueueDrain();
 }
 
 /**
@@ -80,7 +92,7 @@ function getDiagnostics(program: ts.Program): ReadonlyArray<ts.Diagnostic> {
 const EXTENSIONS = [".ts", ".js"];
 
 export class CompilerHost {
-  constructor(public cwd: string) {}
+  constructor() {}
 
   getSourceFile(
     fileName: string,
@@ -90,16 +102,14 @@ export class CompilerHost {
   ): ts.SourceFile | undefined {
     let sourceText: string;
     if (fileName === "lib.d.ts") {
-      // TODO this should be compiled into the bindata.
-      sourceText = readFileSync("node_modules/typescript/lib/lib.d.ts");
+      // TODO This should be compiled into the bindata.
+      sourceText = os.readFileSync("node_modules/typescript/lib/lib.d.ts");
     } else {
-      sourceText = readFileSync(fileName);
+      sourceText = os.readFileSync(fileName);
     }
+    // fileName = fileName.replace(/\.\w+$/, ""); // Remove extension.
     if (sourceText) {
-      log("getSourceFile", {
-        fileName
-        //sourceText,
-      });
+      log("getSourceFile", { fileName });
       return ts.createSourceFile(fileName, sourceText, languageVersion);
     } else {
       log("getSourceFile NOT FOUND", { fileName });
@@ -134,13 +144,18 @@ export class CompilerHost {
     onError: ((message: string) => void) | undefined,
     sourceFiles: ReadonlyArray<ts.SourceFile>
   ): void {
-    log("writeFile", { fileName, data });
+    //log("writeFile", { fileName, data });
+
+    os.compileOutput(data, fileName);
+
+    _global["define"] = amd.makeDefine(fileName);
     globalEval(data);
+    _global["define"] = null;
   }
 
   getCurrentDirectory(): string {
-    log("getCurrentDirectory", this.cwd);
-    return this.cwd;
+    log("getCurrentDirectory", ".");
+    return ".";
   }
 
   getDirectories(path: string): string[] {
@@ -165,7 +180,7 @@ export class CompilerHost {
     containingFile: string,
     reusedNames?: string[]
   ): Array<ts.ResolvedModule | undefined> {
-    log("resolveModuleNames", { moduleNames, reusedNames });
+    //log("resolveModuleNames", { moduleNames, reusedNames });
     return moduleNames.map((name: string) => {
       if (
         name.startsWith("/") ||
@@ -177,7 +192,7 @@ export class CompilerHost {
         // Relative import.
         const containingDir = path.dirname(containingFile);
         const resolvedFileName = path.join(containingDir, name);
-        log("relative import", { containingFile, name, resolvedFileName });
+        //log("relative import", { containingFile, name, resolvedFileName });
         const isExternalLibraryImport = false;
         return { resolvedFileName, isExternalLibraryImport };
       }

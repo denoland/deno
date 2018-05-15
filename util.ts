@@ -6,12 +6,13 @@
 export const globalEval = eval;
 
 // A reference to the global object.
-const _global = globalEval("this");
+// TODO The underscore is because it's conflicting with @types/node.
+export const _global = globalEval("this");
 
 const print = V8Worker2.print;
 
 // To control internal logging output
-const debug = true;
+const debug = false;
 
 // Internal logging for deno. Use the "debug" variable above to control
 // output.
@@ -49,6 +50,6 @@ function stringifyArgs(args: any[]): string {
 
 export function assert(cond: boolean, msg = "") {
   if (!cond) {
-    throw Error("Assertion failed. " + msg);
+    throw Error("Assert fail. " + msg);
   }
 }

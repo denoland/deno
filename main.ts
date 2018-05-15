@@ -12,7 +12,7 @@ V8Worker2.recv((ab: ArrayBuffer) => {
   const msg = pb.Msg.decode(new Uint8Array(ab));
   switch (msg.kind) {
     case pb.Msg.MsgKind.START:
-      start(msg.cwd, msg.argv);
+      start(msg.start.cwd, msg.start.argv);
       break;
     default:
       console.log("Unknown message", msg);
