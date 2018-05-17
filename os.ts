@@ -11,11 +11,27 @@ export function exit(code = 0): void {
   });
 }
 
-export function compileOutput(source: string, filename: string): void {
-  sendMsgFromObject({
-    kind: pb.Msg.MsgKind.COMPILE_OUTPUT,
-    compileOutput: { source, filename }
+export function sourceCodeFetch(
+  filename: string
+): { sourceCode: string; outputCode: string } {
+  const res = sendMsgFromObject({
+    kind: pb.Msg.MsgKind.SOURCE_CODE_FETCH,
+    sourceCodeFetch: { filename }
   });
+  const { sourceCode, outputCode } = res.sourceCodeFetchRes;
+  return { sourceCode, outputCode };
+}
+
+export function sourceCodeCache(
+  filename: string,
+  sourceCode: string,
+  outputCode: string
+): void {
+  const res = sendMsgFromObject({
+    kind: pb.Msg.MsgKind.SOURCE_CODE_CACHE,
+    sourceCodeCache: { filename, sourceCode, outputCode }
+  });
+  throwOnError(res);
 }
 
 export function readFileSync(filename: string): string {
@@ -23,9 +39,6 @@ export function readFileSync(filename: string): string {
     kind: pb.Msg.MsgKind.READ_FILE_SYNC,
     path: filename
   });
-  if (res.error != null && res.error.length > 0) {
-    throw Error(res.error);
-  }
   const decoder = new TextDecoder("utf8");
   return decoder.decode(res.data);
 }
@@ -41,8 +54,16 @@ function sendMsgFromObject(obj: pb.IMsg): null | pb.Msg {
   const ab = typedArrayToArrayBuffer(ui8);
   const resBuf = V8Worker2.send(ab);
   if (resBuf != null && resBuf.byteLength > 0) {
-    return pb.Msg.decode(new Uint8Array(resBuf));
+    const res = pb.Msg.decode(new Uint8Array(resBuf));
+    throwOnError(res);
+    return res;
   } else {
     return null;
+  }
+}
+
+function throwOnError(res: pb.Msg) {
+  if (res != null && res.error != null && res.error.length > 0) {
+    throw Error(res.error);
   }
 }

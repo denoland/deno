@@ -1,29 +1,48 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"github.com/golang/protobuf/proto"
 	"github.com/ry/v8worker2"
 	"io/ioutil"
 	"os"
 	"path"
-	"path/filepath"
 	"runtime"
-	"strings"
 )
 
-func HandleCompileOutput(source string, filename string) []byte {
-	// println("compile output from golang", filename)
-	// Remove any ".." elements. This prevents hacking by trying to move up.
-	filename, err := filepath.Rel("/", filename)
-	check(err)
-	if strings.Contains(filename, "..") {
-		panic("Assertion error.")
+func SourceCodeHash(filename string, sourceCodeBuf []byte) string {
+	h := md5.New()
+	h.Write([]byte(filename))
+	h.Write(sourceCodeBuf)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func HandleSourceCodeFetch(filename string) []byte {
+	res := &Msg{Kind: Msg_SOURCE_CODE_FETCH_RES}
+	sourceCodeBuf, err := Asset("dist/" + filename)
+	if err != nil {
+		sourceCodeBuf, err = ioutil.ReadFile(filename)
 	}
-	filename = path.Join(CompileDir, filename)
-	err = os.MkdirAll(path.Dir(filename), 0700)
+	if err != nil {
+		res.Error = err.Error()
+	} else {
+		cacheKey := SourceCodeHash(filename, sourceCodeBuf)
+		println("cacheKey", filename, cacheKey)
+		// TODO For now don't do any cache lookups..
+		res.Payload = &Msg_SourceCodeFetchRes{
+			SourceCodeFetchRes: &SourceCodeFetchResMsg{
+				SourceCode: string(sourceCodeBuf),
+				OutputCode: "",
+			},
+		}
+	}
+	out, err := proto.Marshal(res)
 	check(err)
-	err = ioutil.WriteFile(filename, []byte(source), 0600)
-	check(err)
+	return out
+}
+
+func HandleSourceCodeCache(filename string, sourceCode string, outputCode string) []byte {
 	return nil
 }
 
@@ -87,9 +106,12 @@ func recv(buf []byte) []byte {
 		return ReadFileSync(msg.Path)
 	case Msg_EXIT:
 		os.Exit(int(msg.Code))
-	case Msg_COMPILE_OUTPUT:
-		payload := msg.GetCompileOutput()
-		return HandleCompileOutput(payload.Source, payload.Filename)
+	case Msg_SOURCE_CODE_FETCH:
+		payload := msg.GetSourceCodeFetch()
+		return HandleSourceCodeFetch(payload.Filename)
+	case Msg_SOURCE_CODE_CACHE:
+		payload := msg.GetSourceCodeCache()
+		return HandleSourceCodeCache(payload.Filename, payload.SourceCode, payload.OutputCode)
 	default:
 		panic("Unexpected message")
 	}

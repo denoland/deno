@@ -1,16 +1,16 @@
 TS_FILES = \
-	amd.ts \
 	main.ts \
+	msg.pb.d.ts \
 	msg.pb.js \
-  compiler.ts \
-  msg.pb.d.ts \
-  os.ts \
-  util.ts
+	os.ts \
+	runtime.ts \
+	util.ts
 
 deno: assets.go msg.pb.go main.go
 	go build -o deno
 
 assets.go: dist/main.js
+	cp node_modules/typescript/lib/lib.d.ts dist/
 	go-bindata -pkg main -o assets.go dist/
 
 msg.pb.go: msg.proto

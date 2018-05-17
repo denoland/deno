@@ -7,13 +7,18 @@ message Msg {
     READ_FILE_SYNC = 1;
     DATA_RESPONSE = 2;
     EXIT = 3;
-    COMPILE_OUTPUT = 4;
+
+    SOURCE_CODE_FETCH = 4;
+    SOURCE_CODE_FETCH_RES = 5;
+    SOURCE_CODE_CACHE = 6;
   }
   MsgKind kind = 10;
 
   oneof payload {
     StartMsg start = 90;
-    CompileOutputMsg compile_output = 100;
+    SourceCodeFetchMsg source_code_fetch = 91;
+    SourceCodeFetchResMsg source_code_fetch_res = 92;
+    SourceCodeCacheMsg source_code_cache = 93;
   }
 
   // READ_FILE_SYNC and MKDIRP
@@ -33,8 +38,15 @@ message StartMsg {
   repeated string argv = 2;
 }
 
-// WRITE_COMPILE_OUTPUT
-message CompileOutputMsg {
-  string source = 1;
-  string filename = 2;
+message SourceCodeFetchMsg { string filename = 1; }
+
+message SourceCodeFetchResMsg {
+  string source_code = 1;
+  string output_code = 2;
+}
+
+message SourceCodeCacheMsg {
+  string filename = 1;
+  string source_code = 2;
+  string output_code = 3;
 }
