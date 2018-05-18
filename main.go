@@ -18,6 +18,11 @@ func SourceCodeHash(filename string, sourceCodeBuf []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+func CacheFileName(filename string, sourceCodeBuf []byte) string {
+	cacheKey := SourceCodeHash(filename, sourceCodeBuf)
+	return path.Join(CompileDir, cacheKey+".js")
+}
+
 func HandleSourceCodeFetch(filename string) []byte {
 	res := &Msg{Kind: Msg_SOURCE_CODE_FETCH_RES}
 	sourceCodeBuf, err := Asset("dist/" + filename)
@@ -27,13 +32,21 @@ func HandleSourceCodeFetch(filename string) []byte {
 	if err != nil {
 		res.Error = err.Error()
 	} else {
-		cacheKey := SourceCodeHash(filename, sourceCodeBuf)
-		println("cacheKey", filename, cacheKey)
-		// TODO For now don't do any cache lookups..
+		cacheFn := CacheFileName(filename, sourceCodeBuf)
+		outputCodeBuf, err := ioutil.ReadFile(cacheFn)
+		var outputCode string
+		if os.IsNotExist(err) {
+			outputCode = ""
+		} else if err != nil {
+			res.Error = err.Error()
+		} else {
+			outputCode = string(outputCodeBuf)
+		}
+
 		res.Payload = &Msg_SourceCodeFetchRes{
 			SourceCodeFetchRes: &SourceCodeFetchResMsg{
 				SourceCode: string(sourceCodeBuf),
-				OutputCode: "",
+				OutputCode: outputCode,
 			},
 		}
 	}
@@ -42,8 +55,19 @@ func HandleSourceCodeFetch(filename string) []byte {
 	return out
 }
 
-func HandleSourceCodeCache(filename string, sourceCode string, outputCode string) []byte {
-	return nil
+func HandleSourceCodeCache(filename string, sourceCode string,
+	outputCode string) []byte {
+
+	fn := CacheFileName(filename, []byte(sourceCode))
+	outputCodeBuf := []byte(outputCode)
+	err := ioutil.WriteFile(fn, outputCodeBuf, 0600)
+	res := &Msg{Kind: Msg_DATA_RESPONSE}
+	if err != nil {
+		res.Error = err.Error()
+	}
+	out, err := proto.Marshal(res)
+	check(err)
+	return out
 }
 
 func ReadFileSync(filename string) []byte {
