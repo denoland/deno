@@ -13,8 +13,8 @@ function start(cwd: string, argv: string[]): void {
 
 V8Worker2.recv((ab: ArrayBuffer) => {
   const msg = pb.Msg.decode(new Uint8Array(ab));
-  switch (msg.kind) {
-    case pb.Msg.MsgKind.START:
+  switch (msg.payload) {
+    case "start":
       start(msg.start.cwd, msg.start.argv);
       break;
     default:

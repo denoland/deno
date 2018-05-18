@@ -2,34 +2,15 @@ syntax = "proto3";
 package main;
 
 message Msg {
-  enum MsgKind {
-    START = 0;
-    READ_FILE_SYNC = 1;
-    DATA_RESPONSE = 2;
-    EXIT = 3;
-
-    SOURCE_CODE_FETCH = 4;
-    SOURCE_CODE_FETCH_RES = 5;
-    SOURCE_CODE_CACHE = 6;
-  }
-  MsgKind kind = 10;
+  string error = 1;
 
   oneof payload {
-    StartMsg start = 90;
-    SourceCodeFetchMsg source_code_fetch = 91;
-    SourceCodeFetchResMsg source_code_fetch_res = 92;
-    SourceCodeCacheMsg source_code_cache = 93;
+    StartMsg start = 10;
+    SourceCodeFetchMsg source_code_fetch = 11;
+    SourceCodeFetchResMsg source_code_fetch_res = 12;
+    SourceCodeCacheMsg source_code_cache = 13;
+    ExitMsg exit = 14;
   }
-
-  // READ_FILE_SYNC and MKDIRP
-  string path = 20;
-
-  // DATA_RESPONSE
-  bytes data = 30;
-  string error = 31;
-
-  // EXIT
-  int32 code = 40;
 }
 
 // START
@@ -50,3 +31,5 @@ message SourceCodeCacheMsg {
   string source_code = 2;
   string output_code = 3;
 }
+
+message ExitMsg { int32 code = 1; }

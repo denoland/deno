@@ -24,7 +24,7 @@ func CacheFileName(filename string, sourceCodeBuf []byte) string {
 }
 
 func HandleSourceCodeFetch(filename string) []byte {
-	res := &Msg{Kind: Msg_SOURCE_CODE_FETCH_RES}
+	res := &Msg{}
 	sourceCodeBuf, err := Asset("dist/" + filename)
 	if err != nil {
 		sourceCodeBuf, err = ioutil.ReadFile(filename)
@@ -61,24 +61,11 @@ func HandleSourceCodeCache(filename string, sourceCode string,
 	fn := CacheFileName(filename, []byte(sourceCode))
 	outputCodeBuf := []byte(outputCode)
 	err := ioutil.WriteFile(fn, outputCodeBuf, 0600)
-	res := &Msg{Kind: Msg_DATA_RESPONSE}
+	res := &Msg{}
 	if err != nil {
 		res.Error = err.Error()
 	}
 	out, err := proto.Marshal(res)
-	check(err)
-	return out
-}
-
-func ReadFileSync(filename string) []byte {
-	buf, err := ioutil.ReadFile(filename)
-	msg := &Msg{Kind: Msg_DATA_RESPONSE}
-	if err != nil {
-		msg.Error = err.Error()
-	} else {
-		msg.Data = buf
-	}
-	out, err := proto.Marshal(msg)
 	check(err)
 	return out
 }
@@ -125,15 +112,14 @@ func recv(buf []byte) []byte {
 	msg := &Msg{}
 	err := proto.Unmarshal(buf, msg)
 	check(err)
-	switch msg.Kind {
-	case Msg_READ_FILE_SYNC:
-		return ReadFileSync(msg.Path)
-	case Msg_EXIT:
-		os.Exit(int(msg.Code))
-	case Msg_SOURCE_CODE_FETCH:
+	switch msg.Payload.(type) {
+	case *Msg_Exit:
+		payload := msg.GetExit()
+		os.Exit(int(payload.Code))
+	case *Msg_SourceCodeFetch:
 		payload := msg.GetSourceCodeFetch()
 		return HandleSourceCodeFetch(payload.Filename)
-	case Msg_SOURCE_CODE_CACHE:
+	case *Msg_SourceCodeCache:
 		payload := msg.GetSourceCodeCache()
 		return HandleSourceCodeCache(payload.Filename, payload.SourceCode, payload.OutputCode)
 	default:
@@ -152,7 +138,6 @@ func main() {
 	check(err)
 
 	out, err := proto.Marshal(&Msg{
-		Kind: Msg_START,
 		Payload: &Msg_Start{
 			Start: &StartMsg{
 				Cwd:  cwd,

@@ -1,13 +1,11 @@
 import { main as pb } from "./msg.pb";
-import { TextDecoder } from "text-encoding";
 
 // TODO move this to types.ts
 type TypedArray = Uint8Array | Float32Array | Int32Array;
 
 export function exit(code = 0): void {
   sendMsgFromObject({
-    kind: pb.Msg.MsgKind.EXIT,
-    code
+    exit: { code }
   });
 }
 
@@ -15,7 +13,6 @@ export function sourceCodeFetch(
   filename: string
 ): { sourceCode: string; outputCode: string } {
   const res = sendMsgFromObject({
-    kind: pb.Msg.MsgKind.SOURCE_CODE_FETCH,
     sourceCodeFetch: { filename }
   });
   const { sourceCode, outputCode } = res.sourceCodeFetchRes;
@@ -28,19 +25,9 @@ export function sourceCodeCache(
   outputCode: string
 ): void {
   const res = sendMsgFromObject({
-    kind: pb.Msg.MsgKind.SOURCE_CODE_CACHE,
     sourceCodeCache: { filename, sourceCode, outputCode }
   });
   throwOnError(res);
-}
-
-export function readFileSync(filename: string): string {
-  const res = sendMsgFromObject({
-    kind: pb.Msg.MsgKind.READ_FILE_SYNC,
-    path: filename
-  });
-  const decoder = new TextDecoder("utf8");
-  return decoder.decode(res.data);
 }
 
 function typedArrayToArrayBuffer(ta: TypedArray): ArrayBuffer {
