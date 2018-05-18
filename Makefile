@@ -4,6 +4,7 @@ TS_FILES = \
 	msg.pb.js \
 	os.ts \
 	runtime.ts \
+	timers.ts \
 	util.ts
 
 deno: assets.go msg.pb.go main.go

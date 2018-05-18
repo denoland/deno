@@ -9,7 +9,12 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"sync"
+	"time"
 )
+
+var wg sync.WaitGroup
+var resChan chan *Msg
 
 func SourceCodeHash(filename string, sourceCodeBuf []byte) string {
 	h := md5.New()
@@ -70,6 +75,22 @@ func HandleSourceCodeCache(filename string, sourceCode string,
 	return out
 }
 
+func HandleTimerStart(id int32, interval bool, duration int32) []byte {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(time.Duration(duration) * time.Millisecond)
+		resChan <- &Msg{
+			Payload: &Msg_TimerReady{
+				TimerReady: &TimerReadyMsg{
+					Id: id,
+				},
+			},
+		}
+	}()
+	return nil
+}
+
 func UserHomeDir() string {
 	if runtime.GOOS == "windows" {
 		home := os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH")
@@ -121,7 +142,11 @@ func recv(buf []byte) []byte {
 		return HandleSourceCodeFetch(payload.Filename)
 	case *Msg_SourceCodeCache:
 		payload := msg.GetSourceCodeCache()
-		return HandleSourceCodeCache(payload.Filename, payload.SourceCode, payload.OutputCode)
+		return HandleSourceCodeCache(payload.Filename, payload.SourceCode,
+			payload.OutputCode)
+	case *Msg_TimerStart:
+		payload := msg.GetTimerStart()
+		return HandleTimerStart(payload.Id, payload.Interval, payload.Duration)
 	default:
 		panic("Unexpected message")
 	}
@@ -137,6 +162,9 @@ func main() {
 	cwd, err := os.Getwd()
 	check(err)
 
+	resChan = make(chan *Msg)
+	doneChan := make(chan bool)
+
 	out, err := proto.Marshal(&Msg{
 		Payload: &Msg_Start{
 			Start: &StartMsg{
@@ -150,5 +178,24 @@ func main() {
 	if err != nil {
 		os.Stderr.WriteString(err.Error())
 		os.Exit(1)
+	}
+
+	// In a goroutine, we wait on for all goroutines to complete (for example
+	// timers). We use this to signal to the main thread to exit.
+	go func() {
+		wg.Wait()
+		doneChan <- true
+	}()
+
+	for {
+		select {
+		case msg := <-resChan:
+			out, err := proto.Marshal(msg)
+			err = worker.SendBytes(out)
+			check(err)
+		case <-doneChan:
+			// All goroutines have completed. Now we can exit main().
+			return
+		}
 	}
 }

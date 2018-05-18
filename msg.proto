@@ -10,6 +10,8 @@ message Msg {
     SourceCodeFetchResMsg source_code_fetch_res = 12;
     SourceCodeCacheMsg source_code_cache = 13;
     ExitMsg exit = 14;
+    TimerStartMsg timer_start = 15;
+    TimerReadyMsg timer_ready = 16;
   }
 }
 
@@ -33,3 +35,14 @@ message SourceCodeCacheMsg {
 }
 
 message ExitMsg { int32 code = 1; }
+
+message TimerStartMsg {
+  int32 id = 1;
+  bool interval = 2;
+  int32 duration = 3; // In milliseconds.
+}
+
+message TimerReadyMsg {
+  int32 id = 1;
+  bool done = 2;
+}

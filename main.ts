@@ -1,6 +1,7 @@
 import { main as pb } from "./msg.pb";
 import "./util";
 import * as runtime from "./runtime";
+import * as timers from "./timers";
 import * as path from "path";
 
 function start(cwd: string, argv: string[]): void {
@@ -16,6 +17,9 @@ V8Worker2.recv((ab: ArrayBuffer) => {
   switch (msg.payload) {
     case "start":
       start(msg.start.cwd, msg.start.argv);
+      break;
+    case "timerReady":
+      timers.timerReady(msg.timerReady.id, msg.timerReady.done);
       break;
     default:
       console.log("Unknown message", msg);

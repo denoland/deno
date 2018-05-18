@@ -35,7 +35,7 @@ function typedArrayToArrayBuffer(ta: TypedArray): ArrayBuffer {
   return ab as ArrayBuffer;
 }
 
-function sendMsgFromObject(obj: pb.IMsg): null | pb.Msg {
+export function sendMsgFromObject(obj: pb.IMsg): null | pb.Msg {
   const msg = pb.Msg.fromObject(obj);
   const ui8 = pb.Msg.encode(msg).finish();
   const ab = typedArrayToArrayBuffer(ui8);
