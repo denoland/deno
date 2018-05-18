@@ -10,6 +10,8 @@ import * as util from "./util";
 import { log } from "./util";
 import * as os from "./os";
 
+const EOL = "\n";
+
 // This class represents a module. We call it FileModule to make it explicit
 // that each module represents a single file.
 // Access to FileModule instances should only be done thru the static method
@@ -151,7 +153,12 @@ class Compiler {
       .concat(this.service.getSyntacticDiagnostics(fileName))
       .concat(this.service.getSemanticDiagnostics(fileName));
     if (diagnostics.length > 0) {
-      throw Error("diagnotics");
+      const errMsg = ts.formatDiagnosticsWithColorAndContext(
+        diagnostics,
+        formatDiagnosticsHost
+      );
+      console.log(errMsg);
+      os.exit(1);
     }
 
     util.log("compile output", output);
@@ -199,7 +206,6 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   }
 
   getNewLine() {
-    const EOL = "\n";
     return EOL;
   }
 
@@ -242,3 +248,15 @@ class TypeScriptHost implements ts.LanguageServiceHost {
     });
   }
 }
+
+const formatDiagnosticsHost: ts.FormatDiagnosticsHost = {
+  getCurrentDirectory(): string {
+    return ".";
+  },
+  getCanonicalFileName(fileName: string): string {
+    return fileName;
+  },
+  getNewLine(): string {
+    return EOL;
+  }
+};
