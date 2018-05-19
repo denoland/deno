@@ -4,7 +4,6 @@ go:
 cache:
   directories:
    - $HOME/.ccache
-   - $GOPATH/src/github.com/ry/v8worker2/out
 install:
  - go get github.com/jteeuwen/go-bindata
  - go get -d github.com/ry/v8worker2
