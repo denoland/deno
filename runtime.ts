@@ -1,11 +1,12 @@
 // Glossary
 // outputCode = generated javascript code
 // sourceCode = typescript code (or input javascript code)
-// fileName = an unresolved raw fileName.
 // moduleName = a resolved module name
+// fileName = an unresolved raw fileName.
+//            for http modules , its the path to the locally downloaded
+//            version.
 
 import * as ts from "typescript";
-import * as path from "path";
 import * as util from "./util";
 import { log } from "./util";
 import * as os from "./os";
@@ -16,29 +17,31 @@ const EOL = "\n";
 // This class represents a module. We call it FileModule to make it explicit
 // that each module represents a single file.
 // Access to FileModule instances should only be done thru the static method
-// FileModule.load(). FileModules are executed upon first load.
+// FileModule.load(). FileModules are NOT executed upon first load, only when
+// compileAndRun is called.
 export class FileModule {
   scriptVersion: string = undefined;
-  sourceCode: string;
-  outputCode: string;
   readonly exports = {};
 
   private static readonly map = new Map<string, FileModule>();
-  private constructor(readonly fileName: string) {
+  constructor(
+    readonly fileName: string,
+    readonly sourceCode = "",
+    public outputCode = ""
+  ) {
     FileModule.map.set(fileName, this);
-
-    // Load typescript code (sourceCode) and maybe load compiled javascript
-    // (outputCode) from cache. If cache is empty, outputCode will be null.
-    const { sourceCode, outputCode } = os.sourceCodeFetch(this.fileName);
-    this.sourceCode = sourceCode;
-    this.outputCode = outputCode;
-    this.scriptVersion = "1";
+    if (outputCode !== "") {
+      this.scriptVersion = "1";
+    }
   }
 
-  compileAndRun() {
+  compileAndRun(): void {
     if (!this.outputCode) {
       // If there is no cached outputCode, the compile the code.
-      util.assert(this.sourceCode && this.sourceCode.length > 0);
+      util.assert(
+        this.sourceCode != null && this.sourceCode.length > 0,
+        `Have no source code from ${this.fileName}`
+      );
       const compiler = Compiler.instance();
       this.outputCode = compiler.compile(this.fileName);
       os.sourceCodeCache(this.fileName, this.sourceCode, this.outputCode);
@@ -48,12 +51,7 @@ export class FileModule {
   }
 
   static load(fileName: string): FileModule {
-    let m = this.map.get(fileName);
-    if (m == null) {
-      m = new this(fileName);
-      util.assert(this.map.has(fileName));
-    }
-    return m;
+    return this.map.get(fileName);
   }
 
   static getScriptsWithSourceCode(): string[] {
@@ -97,26 +95,26 @@ export function makeDefine(fileName: string): AmdDefine {
   return localDefine;
 }
 
-function resolveModuleName(moduleName: string, containingFile: string): string {
-  if (isUrl(moduleName)) {
-    // Remove the "http://" from the start of the string.
-    const u = new URL(moduleName);
-    const withoutProtocol = u.toString().replace(u.protocol + "//", "");
-    const name2 = "/$remote$/" + withoutProtocol;
-    return name2;
-  } else if (moduleName.startsWith("/")) {
-    throw Error("Absolute paths not supported");
-  } else {
-    // Relative import.
-    const containingDir = path.dirname(containingFile);
-    const resolvedFileName = path.join(containingDir, moduleName);
-    util.log("relative import", {
-      containingFile,
-      moduleName,
-      resolvedFileName
-    });
-    return resolvedFileName;
-  }
+export function resolveModule(
+  moduleSpecifier: string,
+  containingFile: string
+): FileModule {
+  // We ask golang to sourceCodeFetch. It will load the sourceCode and if
+  // there is any outputCode cached, it will return that as well.
+  const { filename, sourceCode, outputCode } = os.sourceCodeFetch(
+    moduleSpecifier,
+    containingFile
+  );
+  util.log("resolveModule", { containingFile, moduleSpecifier, filename });
+  return new FileModule(filename, sourceCode, outputCode);
+}
+
+function resolveModuleName(
+  moduleSpecifier: string,
+  containingFile: string
+): string {
+  const mod = resolveModule(moduleSpecifier, containingFile);
+  return mod.fileName;
 }
 
 function execute(fileName: string, outputCode: string): void {
@@ -171,7 +169,6 @@ class Compiler {
       os.exit(1);
     }
 
-    util.log("compile output", output);
     util.assert(!output.emitSkipped);
 
     const outputCode = output.outputFiles[0].text;
@@ -199,15 +196,14 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   getScriptSnapshot(fileName: string): ts.IScriptSnapshot | undefined {
     util.log("getScriptSnapshot", fileName);
     const m = FileModule.load(fileName);
-    if (m.sourceCode) {
-      return ts.ScriptSnapshot.fromString(m.sourceCode);
-    } else {
-      return undefined;
-    }
+    util.assert(m != null);
+    util.assert(m.sourceCode.length > 0);
+    return ts.ScriptSnapshot.fromString(m.sourceCode);
   }
 
   fileExists(fileName: string): boolean {
-    throw Error("not implemented");
+    util.log("fileExist", fileName);
+    return true;
   }
 
   readFile(path: string, encoding?: string): string | undefined {
@@ -231,7 +227,9 @@ class TypeScriptHost implements ts.LanguageServiceHost {
 
   getDefaultLibFileName(options: ts.CompilerOptions): string {
     util.log("getDefaultLibFileName");
-    return ts.getDefaultLibFileName(options);
+    const fn = ts.getDefaultLibFileName(options);
+    const m = resolveModule(fn, "/$asset$/");
+    return m.fileName;
   }
 
   resolveModuleNames(
@@ -246,12 +244,6 @@ class TypeScriptHost implements ts.LanguageServiceHost {
       return { resolvedFileName, isExternalLibraryImport };
     });
   }
-}
-
-function isUrl(p: string): boolean {
-  return (
-    p.startsWith("//") || p.startsWith("http://") || p.startsWith("https://")
-  );
 }
 
 const formatDiagnosticsHost: ts.FormatDiagnosticsHost = {

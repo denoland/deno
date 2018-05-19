@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"github.com/golang/protobuf/proto"
 	"github.com/ry/v8worker2"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"runtime"
@@ -14,6 +16,10 @@ import (
 	"sync"
 	"time"
 )
+
+var DenoDir string
+var CompileDir string
+var SrcDir string
 
 var wg sync.WaitGroup
 var resChan chan *Msg
@@ -30,59 +36,126 @@ func CacheFileName(filename string, sourceCodeBuf []byte) string {
 	return path.Join(CompileDir, cacheKey+".js")
 }
 
-func IsRemotePath(filename string) bool {
-	return strings.HasPrefix(filename, "/$remote$/")
+func IsRemote(filename string) bool {
+	u, err := url.Parse(filename)
+	check(err)
+	return u.IsAbs()
 }
 
-func FetchRemoteSource(remotePath string) (buf []byte, err error) {
-	url := strings.Replace(remotePath, "/$remote$/", "http://", 1)
-	// println("FetchRemoteSource", url)
-	res, err := http.Get(url)
+// Fetches a remoteUrl but also caches it to the localFilename.
+func FetchRemoteSource(remoteUrl string, localFilename string) ([]byte, error) {
+	Assert(strings.HasPrefix(localFilename, SrcDir), localFilename)
+	var sourceReader io.Reader
+
+	file, err := os.Open(localFilename)
+	if os.IsNotExist(err) {
+		// Fetch from HTTP.
+		res, err := http.Get(remoteUrl)
+		if err != nil {
+			return nil, err
+		}
+		defer res.Body.Close()
+
+		err = os.MkdirAll(path.Dir(localFilename), 0700)
+		if err != nil {
+			return nil, err
+		}
+
+		// Write to to file. Need to reopen it for writing.
+		file, err = os.OpenFile(localFilename, os.O_RDWR|os.O_CREATE, 0700)
+		if err != nil {
+			return nil, err
+		}
+		sourceReader = io.TeeReader(res.Body, file) // Fancy!
+
+	} else if err != nil {
+		return nil, err
+	} else {
+		sourceReader = file
+	}
+	defer file.Close()
+	return ioutil.ReadAll(sourceReader)
+}
+
+func ResolveModule(moduleSpecifier string, containingFile string) (
+	moduleName string, filename string, err error) {
+	moduleUrl, err := url.Parse(moduleSpecifier)
 	if err != nil {
 		return
 	}
-	buf, err = ioutil.ReadAll(res.Body)
-	//println("FetchRemoteSource", err.Error())
-	res.Body.Close()
+	baseUrl, err := url.Parse(containingFile)
+	if err != nil {
+		return
+	}
+	resolved := baseUrl.ResolveReference(moduleUrl)
+	moduleName = resolved.String()
+	if moduleUrl.IsAbs() {
+		filename = path.Join(SrcDir, resolved.Host, resolved.Path)
+	} else {
+		filename = resolved.Path
+	}
 	return
 }
 
-func HandleSourceCodeFetch(filename string) []byte {
+const assetPrefix string = "/$asset$/"
+
+func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out []byte) {
 	res := &Msg{}
 	var sourceCodeBuf []byte
 	var err error
-	if IsRemotePath(filename) {
-		sourceCodeBuf, err = FetchRemoteSource(filename)
-	} else {
-		sourceCodeBuf, err = Asset("dist/" + filename)
+
+	defer func() {
 		if err != nil {
-			sourceCodeBuf, err = ioutil.ReadFile(filename)
+			res.Error = err.Error()
 		}
+		out, err = proto.Marshal(res)
+		check(err)
+	}()
+
+	moduleName, filename, err := ResolveModule(moduleSpecifier, containingFile)
+	if err != nil {
+		return
+	}
+
+	if IsRemote(moduleName) {
+		sourceCodeBuf, err = FetchRemoteSource(moduleName, filename)
+	} else if strings.HasPrefix(moduleName, assetPrefix) {
+		f := strings.TrimPrefix(moduleName, assetPrefix)
+		sourceCodeBuf, err = Asset("dist/" + f)
+	} else {
+		Assert(moduleName == filename,
+			"if a module isn't remote, it should have the same filename")
+		sourceCodeBuf, err = ioutil.ReadFile(moduleName)
 	}
 	if err != nil {
-		res.Error = err.Error()
-	} else {
-		cacheFn := CacheFileName(filename, sourceCodeBuf)
-		outputCodeBuf, err := ioutil.ReadFile(cacheFn)
-		var outputCode string
-		if os.IsNotExist(err) {
-			outputCode = ""
-		} else if err != nil {
-			res.Error = err.Error()
-		} else {
-			outputCode = string(outputCodeBuf)
-		}
-
-		res.Payload = &Msg_SourceCodeFetchRes{
-			SourceCodeFetchRes: &SourceCodeFetchResMsg{
-				SourceCode: string(sourceCodeBuf),
-				OutputCode: outputCode,
-			},
-		}
+		return
 	}
-	out, err := proto.Marshal(res)
-	check(err)
-	return out
+
+	outputCode, err := LoadOutputCodeCache(filename, sourceCodeBuf)
+	if err != nil {
+		return
+	}
+
+	res.Payload = &Msg_SourceCodeFetchRes{
+		SourceCodeFetchRes: &SourceCodeFetchResMsg{
+			ModuleName: moduleName,
+			Filename:   filename,
+			SourceCode: string(sourceCodeBuf),
+			OutputCode: outputCode,
+		},
+	}
+	return
+}
+
+func LoadOutputCodeCache(filename string, sourceCodeBuf []byte) (outputCode string, err error) {
+	cacheFn := CacheFileName(filename, sourceCodeBuf)
+	outputCodeBuf, err := ioutil.ReadFile(cacheFn)
+	if os.IsNotExist(err) {
+		err = nil // Ignore error if we can't load the cache.
+	} else if err != nil {
+		outputCode = string(outputCodeBuf)
+	}
+	return
 }
 
 func HandleSourceCodeCache(filename string, sourceCode string,
@@ -134,10 +207,6 @@ func loadAsset(w *v8worker2.Worker, path string) {
 	check(err)
 }
 
-var DenoDir string
-var CompileDir string
-var SrcDir string
-
 func createDirs() {
 	DenoDir = path.Join(UserHomeDir(), ".deno")
 	CompileDir = path.Join(DenoDir, "compile")
@@ -164,7 +233,7 @@ func recv(buf []byte) []byte {
 		os.Exit(int(payload.Code))
 	case *Msg_SourceCodeFetch:
 		payload := msg.GetSourceCodeFetch()
-		return HandleSourceCodeFetch(payload.Filename)
+		return HandleSourceCodeFetch(payload.ModuleSpecifier, payload.ContainingFile)
 	case *Msg_SourceCodeCache:
 		payload := msg.GetSourceCodeCache()
 		return HandleSourceCodeCache(payload.Filename, payload.SourceCode,

@@ -1,7 +1,5 @@
 import { main as pb } from "./msg.pb";
-
-// TODO move this to types.ts
-type TypedArray = Uint8Array | Float32Array | Int32Array;
+import { TypedArray, ModuleInfo } from "./types";
 
 export function exit(code = 0): void {
   sendMsgFromObject({
@@ -10,13 +8,13 @@ export function exit(code = 0): void {
 }
 
 export function sourceCodeFetch(
-  filename: string
-): { sourceCode: string; outputCode: string } {
+  moduleSpecifier: string,
+  containingFile: string
+): ModuleInfo {
   const res = sendMsgFromObject({
-    sourceCodeFetch: { filename }
+    sourceCodeFetch: { moduleSpecifier, containingFile }
   });
-  const { sourceCode, outputCode } = res.sourceCodeFetchRes;
-  return { sourceCode, outputCode };
+  return res.sourceCodeFetchRes;
 }
 
 export function sourceCodeCache(

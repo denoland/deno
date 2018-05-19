@@ -49,5 +49,6 @@ fmt: node_modules
 
 test: deno
 	node test.js
+	go test
 
 .PHONY: test lint clean distclean

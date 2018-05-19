@@ -2,14 +2,12 @@ import { main as pb } from "./msg.pb";
 import "./util";
 import * as runtime from "./runtime";
 import * as timers from "./timers";
-import * as path from "path";
 
 function start(cwd: string, argv: string[]): void {
   // TODO parse arguments.
   const inputFn = argv[1];
-  const fn = path.resolve(cwd, inputFn);
-  const m = runtime.FileModule.load(fn);
-  m.compileAndRun();
+  const mod = runtime.resolveModule(inputFn, cwd + "/");
+  mod.compileAndRun();
 }
 
 V8Worker2.recv((ab: ArrayBuffer) => {

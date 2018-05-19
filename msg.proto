@@ -3,7 +3,6 @@ package main;
 
 message Msg {
   string error = 1;
-
   oneof payload {
     StartMsg start = 10;
     SourceCodeFetchMsg source_code_fetch = 11;
@@ -15,17 +14,24 @@ message Msg {
   }
 }
 
-// START
 message StartMsg {
   string cwd = 1;
   repeated string argv = 2;
 }
 
-message SourceCodeFetchMsg { string filename = 1; }
+message SourceCodeFetchMsg {
+  string module_specifier = 1;
+  string containing_file = 2;
+}
 
 message SourceCodeFetchResMsg {
-  string source_code = 1;
-  string output_code = 2;
+  // If it's a non-http module, moduleName and filename will be the same.
+  // For http modules, moduleName is its resolved http URL, and filename
+  // is the location of the locally downloaded source code.
+  string moduleName = 1;
+  string filename = 2;
+  string source_code = 3;
+  string output_code = 4; // Non-empty only if cached.
 }
 
 message SourceCodeCacheMsg {
