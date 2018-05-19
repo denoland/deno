@@ -17,6 +17,7 @@ message Msg {
 message StartMsg {
   string cwd = 1;
   repeated string argv = 2;
+  bool debug_flag = 3;
 }
 
 message SourceCodeFetchMsg {

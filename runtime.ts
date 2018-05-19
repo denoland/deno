@@ -99,8 +99,10 @@ export function resolveModule(
   moduleSpecifier: string,
   containingFile: string
 ): FileModule {
+  util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
   // We ask golang to sourceCodeFetch. It will load the sourceCode and if
   // there is any outputCode cached, it will return that as well.
+  util.log("resolveModule", { moduleSpecifier, containingFile });
   const { filename, sourceCode, outputCode } = os.sourceCodeFetch(
     moduleSpecifier,
     containingFile

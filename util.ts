@@ -13,8 +13,7 @@ _global["window"] = _global; // Create a window object.
 
 const print = V8Worker2.print;
 
-// To control internal logging output
-const debug = false;
+import { debug } from "./main";
 
 // Internal logging for deno. Use the "debug" variable above to control
 // output.

@@ -3,6 +3,8 @@ package main
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"flag"
+	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/ry/v8worker2"
 	"io"
@@ -16,6 +18,10 @@ import (
 	"sync"
 	"time"
 )
+
+var flagReload = flag.Bool("reload", false, "Reload cached remote source code.")
+var flagV8Options = flag.Bool("v8-options", false, "Print V8 command line options.")
+var flagDebug = flag.Bool("debug", false, "Enable debug output.")
 
 var DenoDir string
 var CompileDir string
@@ -44,12 +50,14 @@ func IsRemote(filename string) bool {
 
 // Fetches a remoteUrl but also caches it to the localFilename.
 func FetchRemoteSource(remoteUrl string, localFilename string) ([]byte, error) {
+	//println("FetchRemoteSource", remoteUrl)
 	Assert(strings.HasPrefix(localFilename, SrcDir), localFilename)
 	var sourceReader io.Reader
 
 	file, err := os.Open(localFilename)
-	if os.IsNotExist(err) {
+	if *flagReload || os.IsNotExist(err) {
 		// Fetch from HTTP.
+		println("Downloading", remoteUrl)
 		res, err := http.Get(remoteUrl)
 		if err != nil {
 			return nil, err
@@ -100,6 +108,7 @@ func ResolveModule(moduleSpecifier string, containingFile string) (
 const assetPrefix string = "/$asset$/"
 
 func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out []byte) {
+	Assert(moduleSpecifier != "", "moduleSpecifier shouldn't be empty")
 	res := &Msg{}
 	var sourceCodeBuf []byte
 	var err error
@@ -116,6 +125,9 @@ func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out [
 	if err != nil {
 		return
 	}
+
+	//println("HandleSourceCodeFetch", "moduleSpecifier", moduleSpecifier,
+	//		"containingFile", containingFile, "filename", filename)
 
 	if IsRemote(moduleName) {
 		sourceCodeBuf, err = FetchRemoteSource(moduleName, filename)
@@ -249,7 +261,14 @@ func recv(buf []byte) []byte {
 }
 
 func main() {
-	args := v8worker2.SetFlags(os.Args)
+	flag.Parse()
+	args := flag.Args()
+	if *flagV8Options {
+		args = append(args, "--help")
+		fmt.Println(args)
+	}
+	args = v8worker2.SetFlags(args)
+
 	createDirs()
 	worker := v8worker2.New(recv)
 	loadAsset(worker, "dist/main.js")
@@ -262,8 +281,9 @@ func main() {
 	out, err := proto.Marshal(&Msg{
 		Payload: &Msg_Start{
 			Start: &StartMsg{
-				Cwd:  cwd,
-				Argv: args,
+				Cwd:       cwd,
+				Argv:      args,
+				DebugFlag: *flagDebug,
 			},
 		},
 	})
