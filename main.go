@@ -6,9 +6,11 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/ry/v8worker2"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -28,11 +30,34 @@ func CacheFileName(filename string, sourceCodeBuf []byte) string {
 	return path.Join(CompileDir, cacheKey+".js")
 }
 
+func IsRemotePath(filename string) bool {
+	return strings.HasPrefix(filename, "/$remote$/")
+}
+
+func FetchRemoteSource(remotePath string) (buf []byte, err error) {
+	url := strings.Replace(remotePath, "/$remote$/", "http://", 1)
+	// println("FetchRemoteSource", url)
+	res, err := http.Get(url)
+	if err != nil {
+		return
+	}
+	buf, err = ioutil.ReadAll(res.Body)
+	//println("FetchRemoteSource", err.Error())
+	res.Body.Close()
+	return
+}
+
 func HandleSourceCodeFetch(filename string) []byte {
 	res := &Msg{}
-	sourceCodeBuf, err := Asset("dist/" + filename)
-	if err != nil {
-		sourceCodeBuf, err = ioutil.ReadFile(filename)
+	var sourceCodeBuf []byte
+	var err error
+	if IsRemotePath(filename) {
+		sourceCodeBuf, err = FetchRemoteSource(filename)
+	} else {
+		sourceCodeBuf, err = Asset("dist/" + filename)
+		if err != nil {
+			sourceCodeBuf, err = ioutil.ReadFile(filename)
+		}
 	}
 	if err != nil {
 		res.Error = err.Error()

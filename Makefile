@@ -5,6 +5,7 @@ TS_FILES = \
 	os.ts \
 	runtime.ts \
 	timers.ts \
+	url.js \
 	util.ts
 
 deno: assets.go msg.pb.go main.go

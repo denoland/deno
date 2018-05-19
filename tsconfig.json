@@ -8,7 +8,7 @@
     "preserveConstEnums": true,
     "declaration": true,
     "target": "es2017",
-    "lib": ["es2017"],
+    "lib": ["es2017", "DOM"],
     "noEmit": true,
     "noUnusedLocals": true,
     "noImplicitReturns": true,

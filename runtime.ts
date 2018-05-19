@@ -9,6 +9,7 @@ import * as path from "path";
 import * as util from "./util";
 import { log } from "./util";
 import * as os from "./os";
+import "./url";
 
 const EOL = "\n";
 
@@ -25,8 +26,6 @@ export class FileModule {
   private static readonly map = new Map<string, FileModule>();
   private constructor(readonly fileName: string) {
     FileModule.map.set(fileName, this);
-
-    assertValidFileName(this.fileName);
 
     // Load typescript code (sourceCode) and maybe load compiled javascript
     // (outputCode) from cache. If cache is empty, outputCode will be null.
@@ -49,7 +48,6 @@ export class FileModule {
   }
 
   static load(fileName: string): FileModule {
-    assertValidFileName(fileName);
     let m = this.map.get(fileName);
     if (m == null) {
       m = new this(fileName);
@@ -67,12 +65,6 @@ export class FileModule {
       }
     }
     return out;
-  }
-}
-
-function assertValidFileName(fileName: string): void {
-  if (fileName !== "lib.d.ts") {
-    util.assert(fileName[0] === "/", `fileName must be absolute: ${fileName}`);
   }
 }
 
@@ -94,8 +86,8 @@ export function makeDefine(fileName: string): AmdDefine {
       } else if (dep === "exports") {
         return localExports;
       } else {
-        dep = resolveModuleName(dep, fileName);
-        const depModule = FileModule.load(dep);
+        const resolved = resolveModuleName(dep, fileName);
+        const depModule = FileModule.load(resolved);
         depModule.compileAndRun();
         return depModule.exports;
       }
@@ -105,8 +97,26 @@ export function makeDefine(fileName: string): AmdDefine {
   return localDefine;
 }
 
-function resolveModuleName(fileName: string, contextFileName: string): string {
-  return path.resolve(path.dirname(contextFileName), fileName);
+function resolveModuleName(moduleName: string, containingFile: string): string {
+  if (isUrl(moduleName)) {
+    // Remove the "http://" from the start of the string.
+    const u = new URL(moduleName);
+    const withoutProtocol = u.toString().replace(u.protocol + "//", "");
+    const name2 = "/$remote$/" + withoutProtocol;
+    return name2;
+  } else if (moduleName.startsWith("/")) {
+    throw Error("Absolute paths not supported");
+  } else {
+    // Relative import.
+    const containingDir = path.dirname(containingFile);
+    const resolvedFileName = path.join(containingDir, moduleName);
+    util.log("relative import", {
+      containingFile,
+      moduleName,
+      resolvedFileName
+    });
+    return resolvedFileName;
+  }
 }
 
 function execute(fileName: string, outputCode: string): void {
@@ -231,22 +241,17 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   ): Array<ts.ResolvedModule | undefined> {
     util.log("resolveModuleNames", { moduleNames, reusedNames });
     return moduleNames.map((name: string) => {
-      if (
-        name.startsWith("/") ||
-        name.startsWith("http://") ||
-        name.startsWith("https://")
-      ) {
-        throw Error("Non-relative imports not yet supported.");
-      } else {
-        // Relative import.
-        const containingDir = path.dirname(containingFile);
-        const resolvedFileName = path.join(containingDir, name);
-        util.log("relative import", { containingFile, name, resolvedFileName });
-        const isExternalLibraryImport = false;
-        return { resolvedFileName, isExternalLibraryImport };
-      }
+      const resolvedFileName = resolveModuleName(name, containingFile);
+      const isExternalLibraryImport = false;
+      return { resolvedFileName, isExternalLibraryImport };
     });
   }
+}
+
+function isUrl(p: string): boolean {
+  return (
+    p.startsWith("//") || p.startsWith("http://") || p.startsWith("https://")
+  );
 }
 
 const formatDiagnosticsHost: ts.FormatDiagnosticsHost = {

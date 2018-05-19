@@ -4,7 +4,22 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const { spawn, execFileSync } = require("child_process");
+
+// Some tests require an HTTP server. We start one here.
+// Because we process tests synchronously in this program we must run
+// the server as a subprocess.
+// Note that "localhost:4545" is hardcoded into the tests at the moment,
+// so if the server runs on a different port, it will fail.
+const httpServerArgs = ["node_modules/.bin/http-server", __dirname, "-p 4545"];
+const server = spawn(process.execPath, httpServerArgs, {
+  cwd: __dirname,
+  stdio: "inherit"
+});
+// TODO: For some reason the http-server doesn't exit properly
+// when this program dies. So we force it with the exit handler here.
+server.unref();
+process.on("exit", () => server.kill("SIGINT"));
 
 const testdataDir = path.join(__dirname, "testdata");
 const denoFn = path.join(__dirname, "deno");
@@ -33,3 +48,5 @@ ${outFileBuffer.toString()}
     `);
   }
 }
+
+console.log("Tests done");

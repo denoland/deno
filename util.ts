@@ -9,6 +9,8 @@ export const globalEval = eval;
 // TODO The underscore is because it's conflicting with @types/node.
 export const _global = globalEval("this");
 
+_global["window"] = _global; // Create a window object.
+
 const print = V8Worker2.print;
 
 // To control internal logging output
