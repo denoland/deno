@@ -4,13 +4,13 @@ import (
 	"net/url"
 )
 
-func Assert(cond bool, msg string) {
+func assert(cond bool, msg string) {
 	if !cond {
 		panic(msg)
 	}
 }
 
-func IsRemote(filename string) bool {
+func isRemote(filename string) bool {
 	u, err := url.Parse(filename)
 	check(err)
 	return u.IsAbs()

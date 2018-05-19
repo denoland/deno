@@ -36,7 +36,7 @@ func recv(buf []byte) []byte {
 }
 
 func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out []byte) {
-	Assert(moduleSpecifier != "", "moduleSpecifier shouldn't be empty")
+	assert(moduleSpecifier != "", "moduleSpecifier shouldn't be empty")
 	res := &Msg{}
 	var sourceCodeBuf []byte
 	var err error
@@ -57,13 +57,13 @@ func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out [
 	//println("HandleSourceCodeFetch", "moduleSpecifier", moduleSpecifier,
 	//		"containingFile", containingFile, "filename", filename)
 
-	if IsRemote(moduleName) {
+	if isRemote(moduleName) {
 		sourceCodeBuf, err = FetchRemoteSource(moduleName, filename)
 	} else if strings.HasPrefix(moduleName, assetPrefix) {
 		f := strings.TrimPrefix(moduleName, assetPrefix)
 		sourceCodeBuf, err = Asset("dist/" + f)
 	} else {
-		Assert(moduleName == filename,
+		assert(moduleName == filename,
 			"if a module isn't remote, it should have the same filename")
 		sourceCodeBuf, err = ioutil.ReadFile(moduleName)
 	}
