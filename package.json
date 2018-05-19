@@ -5,9 +5,11 @@
     "fmt": "prettier --write *.ts* *.js *.json"
   },
   "devDependencies": {
+    "@types/source-map-support": "^0.4.0",
     "http-server": "^0.11.1",
     "parcel-bundler": "^1.8.1",
     "protobufjs": "^6.8.6",
+    "source-map-support": "^0.5.6",
     "tslint": "^5.10.0",
     "typescript": "^2.8.3"
   },

@@ -14,6 +14,10 @@ import "./url";
 
 const EOL = "\n";
 
+// tslint:disable-next-line:no-any
+type AmdFactory = (...args: any[]) => undefined | object;
+type AmdDefine = (deps: string[], factory: AmdFactory) => void;
+
 // This class represents a module. We call it FileModule to make it explicit
 // that each module represents a single file.
 // Access to FileModule instances should only be done thru the static method
@@ -65,10 +69,6 @@ export class FileModule {
     return out;
   }
 }
-
-// tslint:disable-next-line:no-any
-type AmdFactory = (...args: any[]) => undefined | object;
-type AmdDefine = (deps: string[], factory: AmdFactory) => void;
 
 export function makeDefine(fileName: string): AmdDefine {
   const localDefine = (deps: string[], factory: AmdFactory): void => {
@@ -122,6 +122,7 @@ function resolveModuleName(
 function execute(fileName: string, outputCode: string): void {
   util.assert(outputCode && outputCode.length > 0);
   util._global["define"] = makeDefine(fileName);
+  outputCode += "\n//# sourceURL=" + fileName;
   util.globalEval(outputCode);
   util._global["define"] = null;
 }
@@ -131,12 +132,12 @@ class Compiler {
   options: ts.CompilerOptions = {
     allowJs: true,
     module: ts.ModuleKind.AMD,
-    outDir: "$deno$"
+    outDir: "$deno$",
+    inlineSourceMap: true,
+    inlineSources: true
   };
   /*
   allowJs: true,
-  inlineSourceMap: true,
-  inlineSources: true,
   module: ts.ModuleKind.AMD,
   noEmit: false,
   outDir: '$deno$',
