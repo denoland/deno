@@ -3,29 +3,6 @@ import "./util";
 import * as runtime from "./runtime";
 import * as timers from "./timers";
 import * as util from "./util";
-import * as sourceMap from "source-map-support";
-
-function retrieveFileForSourceMap(path: string): string {
-  util.log("retrieveFileForSourceMap", path);
-  throw Error("implemtn me");
-}
-
-function retrieveSourceMap(source: string): sourceMap.UrlAndMap {
-  util.log("retrieveSourceMap", source);
-  throw Error("implemtn me");
-  //return { url, map }
-}
-
-// TODO handleUncaughtExceptions
-sourceMap.install({
-  //handleUncaughtExceptions: true,
-  environment: "node",
-  retrieveFile: retrieveFileForSourceMap,
-  hookRequire: false,
-  overrideRetrieveSourceMap: true,
-  overrideRetrieveFile: true,
-  retrieveSourceMap
-});
 
 // To control internal logging output
 // Set with the -debug command-line flag.

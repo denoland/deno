@@ -6,7 +6,8 @@ TS_FILES = \
 	runtime.ts \
 	timers.ts \
 	url.js \
-	util.ts
+	util.ts \
+	v8_source_maps.ts
 
 deno: assets.go msg.pb.go main.go
 	go build -o deno

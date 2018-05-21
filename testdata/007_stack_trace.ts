@@ -6,6 +6,4 @@ function bar() {
   foo()
 }
 
-console.log("before");
 bar()
-console.log("after");
