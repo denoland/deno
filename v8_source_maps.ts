@@ -1,6 +1,8 @@
 import { SourceMapConsumer, MappedPosition } from "source-map";
 import * as base64 from "base64-js";
 
+const consumers = new Map<string, SourceMapConsumer>();
+
 interface Options {
   // A callback the returns generated file contents.
   getGeneratedContents: GetGeneratedContentsCallback;
@@ -60,20 +62,17 @@ export function wrapCallSite(frame: CallSite): CallSite {
   // passed to eval() ending in "//# sourceURL=..." will return the source file
   // from getScriptNameOrSourceURL() instead
   const source = frame.getFileName() || frame.getScriptNameOrSourceURL();
+
   if (source) {
     const line = frame.getLineNumber();
     const column = frame.getColumnNumber() - 1;
-
-    const position = mapSourcePosition({
-      source,
-      line,
-      column
-    });
+    const position = mapSourcePosition({ source, line, column });
     frame = cloneCallSite(frame);
     frame.getFileName = () => position.source;
     frame.getLineNumber = () => position.line;
     frame.getColumnNumber = () => Number(position.column) + 1;
     frame.getScriptNameOrSourceURL = () => position.source;
+    frame.toString = () => CallSiteToString(frame);
     return frame;
   }
 
@@ -96,12 +95,85 @@ function cloneCallSite(frame: CallSite): CallSite {
   const frame_ = frame as any;
   const props = Object.getOwnPropertyNames(Object.getPrototypeOf(frame));
   props.forEach(name => {
-    obj[name] = /^(?:is|get|toString)/.test(name)
+    obj[name] = /^(?:is|get)/.test(name)
       ? () => frame_[name].call(frame)
       : frame_[name];
   });
   return (obj as any) as CallSite;
   // tslint:enable:no-any
+}
+
+// Taken from source-map-support, original copied from V8's messages.js
+// MIT License. Copyright (c) 2014 Evan Wallace
+function CallSiteToString(frame: CallSite): string {
+  let fileName;
+  let fileLocation = "";
+  if (frame.isNative()) {
+    fileLocation = "native";
+  } else {
+    fileName = frame.getScriptNameOrSourceURL();
+    if (!fileName && frame.isEval()) {
+      fileLocation = frame.getEvalOrigin();
+      fileLocation += ", "; // Expecting source position to follow.
+    }
+
+    if (fileName) {
+      fileLocation += fileName;
+    } else {
+      // Source code does not originate from a file and is not native, but we
+      // can still get the source position inside the source string, e.g. in
+      // an eval string.
+      fileLocation += "<anonymous>";
+    }
+    const lineNumber = frame.getLineNumber();
+    if (lineNumber != null) {
+      fileLocation += ":" + String(lineNumber);
+      const columnNumber = frame.getColumnNumber();
+      if (columnNumber) {
+        fileLocation += ":" + String(columnNumber);
+      }
+    }
+  }
+
+  let line = "";
+  const functionName = frame.getFunctionName();
+  let addSuffix = true;
+  const isConstructor = frame.isConstructor();
+  const isMethodCall = !(frame.isToplevel() || isConstructor);
+  if (isMethodCall) {
+    let typeName = frame.getTypeName();
+    // Fixes shim to be backward compatable with Node v0 to v4
+    if (typeName === "[object Object]") {
+      typeName = "null";
+    }
+    const methodName = frame.getMethodName();
+    if (functionName) {
+      if (typeName && functionName.indexOf(typeName) !== 0) {
+        line += typeName + ".";
+      }
+      line += functionName;
+      if (
+        methodName &&
+        functionName.indexOf("." + methodName) !==
+          functionName.length - methodName.length - 1
+      ) {
+        line += " [as " + methodName + "]";
+      }
+    } else {
+      line += typeName + "." + (methodName || "<anonymous>");
+    }
+  } else if (isConstructor) {
+    line += "new " + (functionName || "<anonymous>");
+  } else if (functionName) {
+    line += functionName;
+  } else {
+    line += fileLocation;
+    addSuffix = false;
+  }
+  if (addSuffix) {
+    line += " (" + fileLocation + ")";
+  }
+  return line;
 }
 
 // Regex for detecting source maps
@@ -124,24 +196,22 @@ function loadConsumer(source: string): SourceMapConsumer {
     if (reSourceMap.test(sourceMappingURL)) {
       // Support source map URL as a data url
       const rawData = sourceMappingURL.slice(sourceMappingURL.indexOf(",") + 1);
-      //sourceMapData = bufferFrom(rawData, "base64").toString();
       const ui8 = base64.toByteArray(rawData);
       sourceMapData = arrayToStr(ui8);
       sourceMappingURL = source;
     } else {
       // Support source map URLs relative to the source URL
       //sourceMappingURL = supportRelativeURL(source, sourceMappingURL);
-      //sourceMapData = retrieveFile(sourceMappingURL);
+      sourceMapData = getGeneratedContents(sourceMappingURL);
     }
 
+    //console.log("sourceMapData", sourceMapData);
     const rawSourceMap = JSON.parse(sourceMapData);
     consumer = new SourceMapConsumer(rawSourceMap);
     consumers.set(source, consumer);
   }
   return consumer;
 }
-
-const consumers = new Map<string, SourceMapConsumer>();
 
 function retrieveSourceMapURL(fileData: string): string {
   // Get the URL of the source map

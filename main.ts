@@ -8,9 +8,17 @@ import * as util from "./util";
 // Set with the -debug command-line flag.
 export let debug = false;
 
-function start(cwd: string, argv: string[], debugFlag: boolean): void {
+function start(
+  cwd: string,
+  argv: string[],
+  debugFlag: boolean,
+  mainJs: string,
+  mainMap: string
+): void {
   debug = debugFlag;
   util.log("start", { cwd, argv, debugFlag });
+
+  runtime.setup(mainJs, mainMap);
 
   const inputFn = argv[0];
   const mod = runtime.resolveModule(inputFn, cwd + "/");
@@ -21,7 +29,13 @@ V8Worker2.recv((ab: ArrayBuffer) => {
   const msg = pb.Msg.decode(new Uint8Array(ab));
   switch (msg.payload) {
     case "start":
-      start(msg.start.cwd, msg.start.argv, msg.start.debugFlag);
+      start(
+        msg.start.cwd,
+        msg.start.argv,
+        msg.start.debugFlag,
+        msg.start.mainJs,
+        msg.start.mainMap
+      );
       break;
     case "timerReady":
       timers.timerReady(msg.timerReady.id, msg.timerReady.done);

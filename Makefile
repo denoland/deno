@@ -1,4 +1,5 @@
 TS_FILES = \
+	tsconfig.json \
 	main.ts \
 	msg.pb.d.ts \
 	msg.pb.js \

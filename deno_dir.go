@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"github.com/ry/v8worker2"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -82,13 +81,6 @@ func UserHomeDir() string {
 		return home
 	}
 	return os.Getenv("HOME")
-}
-
-func loadAsset(w *v8worker2.Worker, path string) {
-	data, err := Asset(path)
-	check(err)
-	err = w.Load(path, string(data))
-	check(err)
 }
 
 func createDirs() {

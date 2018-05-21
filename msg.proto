@@ -18,6 +18,8 @@ message StartMsg {
   string cwd = 1;
   repeated string argv = 2;
   bool debug_flag = 3;
+  string main_js = 4;  // The contents of dist/main.js
+  string main_map = 5; // The contents of dist/main.map
 }
 
 message SourceCodeFetchMsg {

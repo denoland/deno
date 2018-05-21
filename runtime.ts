@@ -19,16 +19,24 @@ const EOL = "\n";
 type AmdFactory = (...args: any[]) => undefined | object;
 type AmdDefine = (deps: string[], factory: AmdFactory) => void;
 
-sourceMaps.install({
-  installPrepareStackTrace: true,
-  getGeneratedContents: (filename: string): string => {
-    util.log("getGeneratedContents", filename);
-    if (filename === "dist/main.js") {
-      return null;
+export function setup(mainJs: string, mainMap: string): void {
+  sourceMaps.install({
+    installPrepareStackTrace: true,
+    getGeneratedContents: (filename: string): string => {
+      if (filename === "/main.js") {
+        return mainJs;
+      } else if (filename === "/main.map") {
+        return mainMap;
+      } else {
+        const mod = FileModule.load(filename);
+        if (!mod) {
+          console.error("getGeneratedContents cannot find", filename);
+        }
+        return mod.outputCode;
+      }
     }
-    return FileModule.load(filename).outputCode;
-  }
-});
+  });
+}
 
 // This class represents a module. We call it FileModule to make it explicit
 // that each module represents a single file.

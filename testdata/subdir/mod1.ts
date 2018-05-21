@@ -11,3 +11,7 @@ export function returnsFoo2(): string {
 export function printHello3(): void {
   printHello2();
 }
+
+export function throwsError(): void {
+  throw Error("exception from mod1");
+}

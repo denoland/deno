@@ -42,6 +42,12 @@ func ResolveModule(moduleSpecifier string, containingFile string) (
 	return
 }
 
+func stringAsset(path string) string {
+	data, err := Asset("dist/" + path)
+	check(err)
+	return string(data)
+}
+
 func main() {
 	flag.Parse()
 	args := flag.Args()
@@ -53,7 +59,11 @@ func main() {
 
 	createDirs()
 	worker := v8worker2.New(recv)
-	loadAsset(worker, "dist/main.js")
+
+	main_js := stringAsset("main.js")
+	check(worker.Load("/main.js", main_js))
+	main_map := stringAsset("main.map")
+
 	cwd, err := os.Getwd()
 	check(err)
 
@@ -66,6 +76,8 @@ func main() {
 				Cwd:       cwd,
 				Argv:      args,
 				DebugFlag: *flagDebug,
+				MainJs:    main_js,
+				MainMap:   main_map,
 			},
 		},
 	})
