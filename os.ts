@@ -1,5 +1,6 @@
 import { main as pb } from "./msg.pb";
-import { TypedArray, ModuleInfo } from "./types";
+import { ModuleInfo } from "./types";
+import { typedArrayToArrayBuffer } from "./util";
 
 export function exit(code = 0): void {
   sendMsgFromObject({
@@ -26,11 +27,6 @@ export function sourceCodeCache(
     sourceCodeCache: { filename, sourceCode, outputCode }
   });
   throwOnError(res);
-}
-
-function typedArrayToArrayBuffer(ta: TypedArray): ArrayBuffer {
-  const ab = ta.buffer.slice(ta.byteOffset, ta.byteOffset + ta.byteLength);
-  return ab as ArrayBuffer;
 }
 
 export function sendMsgFromObject(obj: pb.IMsg): null | pb.Msg {

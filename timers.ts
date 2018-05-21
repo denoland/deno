@@ -1,4 +1,3 @@
-import { _global } from "./util";
 import { sendMsgFromObject } from "./os";
 
 let nextTimerId = 1;
@@ -32,7 +31,6 @@ export function setTimeout(cb: TimerCallback, duration: number): number {
   });
   return timer.id;
 }
-_global["setTimeout"] = setTimeout;
 
 export function timerReady(id: number, done: boolean): void {
   const timer = timers.get(id);

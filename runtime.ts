@@ -10,8 +10,8 @@ import * as ts from "typescript";
 import * as util from "./util";
 import { log } from "./util";
 import * as os from "./os";
-import "./url";
 import * as sourceMaps from "./v8_source_maps";
+import { _global, globalEval } from "./globals";
 
 const EOL = "\n";
 
@@ -141,10 +141,10 @@ function resolveModuleName(
 
 function execute(fileName: string, outputCode: string): void {
   util.assert(outputCode && outputCode.length > 0);
-  util._global["define"] = makeDefine(fileName);
+  _global["define"] = makeDefine(fileName);
   outputCode += "\n//# sourceURL=" + fileName;
-  util.globalEval(outputCode);
-  util._global["define"] = null;
+  globalEval(outputCode);
+  _global["define"] = null;
 }
 
 // This is a singleton class. Use Compiler.instance() to access.
