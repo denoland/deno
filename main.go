@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/ry/v8worker2"
+	"log"
 	"net/url"
 	"os"
 	"path"
+	"runtime/pprof"
 )
 
 var flagReload = flag.Bool("reload", false, "Reload cached remote source code.")
 var flagV8Options = flag.Bool("v8-options", false, "Print V8 command line options.")
 var flagDebug = flag.Bool("debug", false, "Enable debug output.")
+var flagGoProf = flag.String("goprof", "", "Write golang cpu profile to file.")
 
 var DenoDir string
 var CompileDir string
@@ -52,6 +55,17 @@ func main() {
 		fmt.Println(args)
 	}
 	args = v8worker2.SetFlags(args)
+
+	// Maybe start Golang CPU profiler.
+	// Use --prof for profiling JS.
+	if *flagGoProf != "" {
+		f, err := os.Create(*flagGoProf)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 
 	createDirs()
 	createWorker()
