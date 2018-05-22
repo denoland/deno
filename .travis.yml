@@ -1,9 +1,9 @@
 language: go
 go:
  - 1.9.2
-cache:
-  directories:
-   - $HOME/.ccache
+before_cache:
+  - ccache -s
+cache: ccache
 install:
  - sudo apt-get install protobuf-compiler
  - go get -u github.com/jteeuwen/go-bindata/...
