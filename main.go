@@ -55,7 +55,9 @@ func main() {
 
 	createDirs()
 	createWorker()
-	InitHandlers()
+
+	InitOS()
+	InitTimers()
 
 	main_js := stringAsset("main.js")
 	check(worker.Load("/main.js", main_js))

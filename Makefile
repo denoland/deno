@@ -15,10 +15,11 @@ GO_FILES = \
 	assets.go \
 	deno_dir.go \
 	dispatch.go \
-	handlers.go \
 	main.go \
 	main_test.go \
 	msg.pb.go \
+	os.go \
+	timers.go \
 	util.go
 
 deno: $(GO_FILES)

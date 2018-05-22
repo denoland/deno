@@ -5,12 +5,11 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
-	"time"
 )
 
 const assetPrefix string = "/$asset$/"
 
-func InitHandlers() {
+func InitOS() {
 	Sub("os", func(buf []byte) []byte {
 		msg := &Msg{}
 		check(proto.Unmarshal(buf, msg))
@@ -29,18 +28,6 @@ func InitHandlers() {
 			panic("[os] Unexpected message " + string(buf))
 		}
 		return nil
-	})
-
-	Sub("timers", func(buf []byte) []byte {
-		msg := &Msg{}
-		check(proto.Unmarshal(buf, msg))
-		switch msg.Payload.(type) {
-		case *Msg_TimerStart:
-			payload := msg.GetTimerStart()
-			return HandleTimerStart(payload.Id, payload.Interval, payload.Duration)
-		default:
-			panic("[timers] Unexpected message " + string(buf))
-		}
 	})
 }
 
@@ -109,22 +96,4 @@ func HandleSourceCodeCache(filename string, sourceCode string,
 	out, err := proto.Marshal(res)
 	check(err)
 	return out
-}
-
-func HandleTimerStart(id int32, interval bool, duration int32) []byte {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		time.Sleep(time.Duration(duration) * time.Millisecond)
-		payload, err := proto.Marshal(&Msg{
-			Payload: &Msg_TimerReady{
-				TimerReady: &TimerReadyMsg{
-					Id: id,
-				},
-			},
-		})
-		check(err)
-		Pub("timers", payload)
-	}()
-	return nil
 }
