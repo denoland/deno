@@ -10,29 +10,38 @@ import (
 
 const assetPrefix string = "/$asset$/"
 
-func recv(buf []byte) []byte {
-	msg := &Msg{}
-	err := proto.Unmarshal(buf, msg)
-	check(err)
-	switch msg.Payload.(type) {
-	case *Msg_Exit:
-		payload := msg.GetExit()
-		os.Exit(int(payload.Code))
-	case *Msg_SourceCodeFetch:
-		payload := msg.GetSourceCodeFetch()
-		return HandleSourceCodeFetch(payload.ModuleSpecifier, payload.ContainingFile)
-	case *Msg_SourceCodeCache:
-		payload := msg.GetSourceCodeCache()
-		return HandleSourceCodeCache(payload.Filename, payload.SourceCode,
-			payload.OutputCode)
-	case *Msg_TimerStart:
-		payload := msg.GetTimerStart()
-		return HandleTimerStart(payload.Id, payload.Interval, payload.Duration)
-	default:
-		panic("Unexpected message")
-	}
+func InitHandlers() {
+	Sub("os", func(buf []byte) []byte {
+		msg := &Msg{}
+		check(proto.Unmarshal(buf, msg))
+		switch msg.Payload.(type) {
+		case *Msg_Exit:
+			payload := msg.GetExit()
+			os.Exit(int(payload.Code))
+		case *Msg_SourceCodeFetch:
+			payload := msg.GetSourceCodeFetch()
+			return HandleSourceCodeFetch(payload.ModuleSpecifier, payload.ContainingFile)
+		case *Msg_SourceCodeCache:
+			payload := msg.GetSourceCodeCache()
+			return HandleSourceCodeCache(payload.Filename, payload.SourceCode,
+				payload.OutputCode)
+		default:
+			panic("[os] Unexpected message " + string(buf))
+		}
+		return nil
+	})
 
-	return nil
+	Sub("timers", func(buf []byte) []byte {
+		msg := &Msg{}
+		check(proto.Unmarshal(buf, msg))
+		switch msg.Payload.(type) {
+		case *Msg_TimerStart:
+			payload := msg.GetTimerStart()
+			return HandleTimerStart(payload.Id, payload.Interval, payload.Duration)
+		default:
+			panic("[timers] Unexpected message " + string(buf))
+		}
+	})
 }
 
 func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out []byte) {
@@ -107,13 +116,15 @@ func HandleTimerStart(id int32, interval bool, duration int32) []byte {
 	go func() {
 		defer wg.Done()
 		time.Sleep(time.Duration(duration) * time.Millisecond)
-		resChan <- &Msg{
+		payload, err := proto.Marshal(&Msg{
 			Payload: &Msg_TimerReady{
 				TimerReady: &TimerReadyMsg{
 					Id: id,
 				},
 			},
-		}
+		})
+		check(err)
+		Pub("timers", payload)
 	}()
 	return nil
 }

@@ -1,5 +1,6 @@
 TS_FILES = \
 	tsconfig.json \
+	dispatch.ts \
 	main.ts \
 	msg.pb.d.ts \
 	msg.pb.js \
@@ -10,7 +11,17 @@ TS_FILES = \
 	util.ts \
 	v8_source_maps.ts
 
-deno: assets.go msg.pb.go main.go
+GO_FILES = \
+	assets.go \
+	deno_dir.go \
+	dispatch.go \
+	handlers.go \
+	main.go \
+	main_test.go \
+	msg.pb.go \
+	util.go
+
+deno: $(GO_FILES)
 	go build -o deno
 
 assets.go: dist/main.js

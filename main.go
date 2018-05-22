@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"sync"
 )
 
 var flagReload = flag.Bool("reload", false, "Reload cached remote source code.")
@@ -18,9 +17,6 @@ var flagDebug = flag.Bool("debug", false, "Enable debug output.")
 var DenoDir string
 var CompileDir string
 var SrcDir string
-
-var wg sync.WaitGroup
-var resChan chan *Msg
 
 func ResolveModule(moduleSpecifier string, containingFile string) (
 	moduleName string, filename string, err error) {
@@ -58,7 +54,8 @@ func main() {
 	args = v8worker2.SetFlags(args)
 
 	createDirs()
-	worker := v8worker2.New(recv)
+	createWorker()
+	InitHandlers()
 
 	main_js := stringAsset("main.js")
 	check(worker.Load("/main.js", main_js))
@@ -66,9 +63,6 @@ func main() {
 
 	cwd, err := os.Getwd()
 	check(err)
-
-	resChan = make(chan *Msg)
-	doneChan := make(chan bool)
 
 	out, err := proto.Marshal(&Msg{
 		Payload: &Msg_Start{
@@ -82,28 +76,7 @@ func main() {
 		},
 	})
 	check(err)
-	err = worker.SendBytes(out)
-	if err != nil {
-		os.Stderr.WriteString(err.Error())
-		os.Exit(1)
-	}
+	Pub("start", out)
 
-	// In a goroutine, we wait on for all goroutines to complete (for example
-	// timers). We use this to signal to the main thread to exit.
-	go func() {
-		wg.Wait()
-		doneChan <- true
-	}()
-
-	for {
-		select {
-		case msg := <-resChan:
-			out, err := proto.Marshal(msg)
-			err = worker.SendBytes(out)
-			check(err)
-		case <-doneChan:
-			// All goroutines have completed. Now we can exit main().
-			return
-		}
-	}
+	DispatchLoop()
 }

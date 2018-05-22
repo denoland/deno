@@ -1,47 +1,33 @@
+import * as dispatch from "./dispatch";
 import { main as pb } from "./msg.pb";
-import "./util";
+
 import * as runtime from "./runtime";
-import * as timers from "./timers";
 import * as util from "./util";
+
+// These have top-level functions that need to execute.
+import { initTimers } from "./timers";
 
 // To control internal logging output
 // Set with the -debug command-line flag.
 export let debug = false;
+let startCalled = false;
 
-function start(
-  cwd: string,
-  argv: string[],
-  debugFlag: boolean,
-  mainJs: string,
-  mainMap: string
-): void {
+dispatch.sub("start", (payload: Uint8Array) => {
+  if (startCalled) {
+    throw Error("start message received more than once!");
+  }
+  startCalled = true;
+
+  const msg = pb.Msg.decode(payload);
+  const { cwd, argv, debugFlag, mainJs, mainMap } = msg.start;
+
   debug = debugFlag;
   util.log("start", { cwd, argv, debugFlag });
 
+  initTimers();
   runtime.setup(mainJs, mainMap);
 
   const inputFn = argv[0];
   const mod = runtime.resolveModule(inputFn, cwd + "/");
   mod.compileAndRun();
-}
-
-V8Worker2.recv((ab: ArrayBuffer) => {
-  const msg = pb.Msg.decode(new Uint8Array(ab));
-  switch (msg.payload) {
-    case "start":
-      start(
-        msg.start.cwd,
-        msg.start.argv,
-        msg.start.debugFlag,
-        msg.start.mainJs,
-        msg.start.mainMap
-      );
-      break;
-    case "timerReady":
-      timers.timerReady(msg.timerReady.id, msg.timerReady.done);
-      break;
-    default:
-      console.log("Unknown message", msg);
-      break;
-  }
 });

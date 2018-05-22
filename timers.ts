@@ -1,4 +1,5 @@
-import { sendMsgFromObject } from "./os";
+import { main as pb } from "./msg.pb";
+import * as dispatch from "./dispatch";
 
 let nextTimerId = 1;
 
@@ -14,6 +15,20 @@ interface Timer {
 
 const timers = new Map<number, Timer>();
 
+export function initTimers() {
+  dispatch.sub("timers", onMessage);
+}
+
+function onMessage(payload: Uint8Array) {
+  const msg = pb.Msg.decode(payload);
+  const { id, done } = msg.timerReady;
+  const timer = timers.get(id);
+  timer.cb();
+  if (done) {
+    timers.delete(id);
+  }
+}
+
 export function setTimeout(cb: TimerCallback, duration: number): number {
   const timer = {
     id: nextTimerId++,
@@ -22,7 +37,7 @@ export function setTimeout(cb: TimerCallback, duration: number): number {
     cb
   };
   timers.set(timer.id, timer);
-  sendMsgFromObject({
+  dispatch.sendMsgFromObject("timers", {
     timerStart: {
       id: timer.id,
       interval: false,
@@ -30,12 +45,4 @@ export function setTimeout(cb: TimerCallback, duration: number): number {
     }
   });
   return timer.id;
-}
-
-export function timerReady(id: number, done: boolean): void {
-  const timer = timers.get(id);
-  timer.cb();
-  if (done) {
-    timers.delete(id);
-  }
 }
