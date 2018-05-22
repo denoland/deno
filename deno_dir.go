@@ -61,15 +61,17 @@ func FetchRemoteSource(remoteUrl string, localFilename string) ([]byte, error) {
 	return ioutil.ReadAll(sourceReader)
 }
 
-func LoadOutputCodeCache(filename string, sourceCodeBuf []byte) (outputCode string, err error) {
+func LoadOutputCodeCache(filename string, sourceCodeBuf []byte) (
+	outputCode string, err error) {
 	cacheFn := CacheFileName(filename, sourceCodeBuf)
 	outputCodeBuf, err := ioutil.ReadFile(cacheFn)
 	if os.IsNotExist(err) {
-		err = nil // Ignore error if we can't load the cache.
-	} else if err != nil {
+		// Ignore error if we can't find the cache file.
+		err = nil
+	} else if err == nil {
 		outputCode = string(outputCodeBuf)
 	}
-	return
+	return outputCode, err
 }
 
 func UserHomeDir() string {
