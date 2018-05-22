@@ -83,11 +83,11 @@ func main() {
 	out, err := proto.Marshal(&Msg{
 		Payload: &Msg_Start{
 			Start: &StartMsg{
-				Cwd:       cwd,
+				Cwd:       &cwd,
 				Argv:      args,
-				DebugFlag: *flagDebug,
-				MainJs:    main_js,
-				MainMap:   main_map,
+				DebugFlag: flagDebug,
+				MainJs:    &main_js,
+				MainMap:   &main_map,
 			},
 		},
 	})

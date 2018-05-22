@@ -23,9 +23,9 @@ func recv(buf []byte) (response []byte) {
 	msg := &BaseMsg{}
 	check(proto.Unmarshal(buf, msg))
 	assert(len(msg.Payload) > 0, "BaseMsg has empty payload.")
-	subscribers, ok := channels[msg.Channel]
+	subscribers, ok := channels[*msg.Channel]
 	if !ok {
-		panic("No subscribers for channel " + msg.Channel)
+		panic("No subscribers for channel " + *msg.Channel)
 	}
 	for i := 0; i < len(subscribers); i++ {
 		s := subscribers[i]
@@ -48,7 +48,7 @@ func Sub(channel string, cb Subscriber) {
 
 func Pub(channel string, payload []byte) {
 	resChan <- &BaseMsg{
-		Channel: channel,
+		Channel: &channel,
 		Payload: payload,
 	}
 }

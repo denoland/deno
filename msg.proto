@@ -1,13 +1,13 @@
-syntax = "proto3";
+syntax = "proto2";
 package main;
 
 message BaseMsg {
-  string channel = 1;
-  bytes payload = 2;
+  optional string channel = 1;
+  optional bytes payload = 2;
 }
 
 message Msg {
-  string error = 1;
+  optional string error = 1;
   oneof payload {
     StartMsg start = 10;
     SourceCodeFetchMsg source_code_fetch = 11;
@@ -20,43 +20,43 @@ message Msg {
 }
 
 message StartMsg {
-  string cwd = 1;
+  optional string cwd = 1;
   repeated string argv = 2;
-  bool debug_flag = 3;
-  string main_js = 4;  // The contents of dist/main.js
-  string main_map = 5; // The contents of dist/main.map
+  optional bool debug_flag = 3;
+  optional string main_js = 4;  // The contents of dist/main.js
+  optional string main_map = 5; // The contents of dist/main.map
 }
 
 message SourceCodeFetchMsg {
-  string module_specifier = 1;
-  string containing_file = 2;
+  optional string module_specifier = 1;
+  optional string containing_file = 2;
 }
 
 message SourceCodeFetchResMsg {
   // If it's a non-http module, moduleName and filename will be the same.
   // For http modules, moduleName is its resolved http URL, and filename
   // is the location of the locally downloaded source code.
-  string moduleName = 1;
-  string filename = 2;
-  string source_code = 3;
-  string output_code = 4; // Non-empty only if cached.
+  optional string moduleName = 1;
+  optional string filename = 2;
+  optional string source_code = 3;
+  optional string output_code = 4; // Non-empty only if cached.
 }
 
 message SourceCodeCacheMsg {
-  string filename = 1;
-  string source_code = 2;
-  string output_code = 3;
+  optional string filename = 1;
+  optional string source_code = 2;
+  optional string output_code = 3;
 }
 
-message ExitMsg { int32 code = 1; }
+message ExitMsg { optional int32 code = 1; }
 
 message TimerStartMsg {
-  int32 id = 1;
-  bool interval = 2;
-  int32 duration = 3; // In milliseconds.
+  optional int32 id = 1;
+  optional bool interval = 2;
+  optional int32 duration = 3; // In milliseconds.
 }
 
 message TimerReadyMsg {
-  int32 id = 1;
-  bool done = 2;
+  optional int32 id = 1;
+  optional bool done = 2;
 }

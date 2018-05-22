@@ -16,14 +16,14 @@ func InitOS() {
 		switch msg.Payload.(type) {
 		case *Msg_Exit:
 			payload := msg.GetExit()
-			os.Exit(int(payload.Code))
+			os.Exit(int(*payload.Code))
 		case *Msg_SourceCodeFetch:
 			payload := msg.GetSourceCodeFetch()
-			return HandleSourceCodeFetch(payload.ModuleSpecifier, payload.ContainingFile)
+			return HandleSourceCodeFetch(*payload.ModuleSpecifier, *payload.ContainingFile)
 		case *Msg_SourceCodeCache:
 			payload := msg.GetSourceCodeCache()
-			return HandleSourceCodeCache(payload.Filename, payload.SourceCode,
-				payload.OutputCode)
+			return HandleSourceCodeCache(*payload.Filename, *payload.SourceCode,
+				*payload.OutputCode)
 		default:
 			panic("[os] Unexpected message " + string(buf))
 		}
@@ -39,7 +39,8 @@ func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out [
 
 	defer func() {
 		if err != nil {
-			res.Error = err.Error()
+			var errStr = err.Error()
+			res.Error = &errStr
 		}
 		out, err = proto.Marshal(res)
 		check(err)
@@ -72,12 +73,13 @@ func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out [
 		return
 	}
 
+	var sourceCode = string(sourceCodeBuf)
 	res.Payload = &Msg_SourceCodeFetchRes{
 		SourceCodeFetchRes: &SourceCodeFetchResMsg{
-			ModuleName: moduleName,
-			Filename:   filename,
-			SourceCode: string(sourceCodeBuf),
-			OutputCode: outputCode,
+			ModuleName: &moduleName,
+			Filename:   &filename,
+			SourceCode: &sourceCode,
+			OutputCode: &outputCode,
 		},
 	}
 	return
@@ -91,7 +93,8 @@ func HandleSourceCodeCache(filename string, sourceCode string,
 	err := ioutil.WriteFile(fn, outputCodeBuf, 0600)
 	res := &Msg{}
 	if err != nil {
-		res.Error = err.Error()
+		var errStr = err.Error()
+		res.Error = &errStr
 	}
 	out, err := proto.Marshal(res)
 	check(err)

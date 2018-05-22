@@ -12,7 +12,8 @@ func InitTimers() {
 		switch msg.Payload.(type) {
 		case *Msg_TimerStart:
 			payload := msg.GetTimerStart()
-			return HandleTimerStart(payload.Id, payload.Interval, payload.Duration)
+			return HandleTimerStart(*payload.Id, *payload.Interval,
+				*payload.Duration)
 		default:
 			panic("[timers] Unexpected message " + string(buf))
 		}
@@ -27,7 +28,7 @@ func HandleTimerStart(id int32, interval bool, duration int32) []byte {
 		payload, err := proto.Marshal(&Msg{
 			Payload: &Msg_TimerReady{
 				TimerReady: &TimerReadyMsg{
-					Id: id,
+					Id: &id,
 				},
 			},
 		})
