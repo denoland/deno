@@ -37,7 +37,7 @@ export function setTimeout(cb: TimerCallback, duration: number): number {
     cb
   };
   timers.set(timer.id, timer);
-  dispatch.sendMsgFromObject("timers", {
+  dispatch.sendMsg("timers", {
     timerStart: {
       id: timer.id,
       interval: false,

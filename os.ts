@@ -1,15 +1,15 @@
 import { ModuleInfo } from "./types";
-import { sendMsgFromObject } from "./dispatch";
+import { sendMsg } from "./dispatch";
 
 export function exit(code = 0): void {
-  sendMsgFromObject("os", { exit: { code } });
+  sendMsg("os", { exit: { code } });
 }
 
 export function sourceCodeFetch(
   moduleSpecifier: string,
   containingFile: string
 ): ModuleInfo {
-  const res = sendMsgFromObject("os", {
+  const res = sendMsg("os", {
     sourceCodeFetch: { moduleSpecifier, containingFile }
   });
   return res.sourceCodeFetchRes;
@@ -20,7 +20,7 @@ export function sourceCodeCache(
   sourceCode: string,
   outputCode: string
 ): void {
-  sendMsgFromObject("os", {
+  sendMsg("os", {
     sourceCodeCache: { filename, sourceCode, outputCode }
   });
 }
