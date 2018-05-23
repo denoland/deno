@@ -1,4 +1,4 @@
-import { setTimeout } from "./timers";
+import * as timer from "./timers";
 
 // If you use the eval function indirectly, by invoking it via a reference
 // other than eval, as of ECMAScript 5 it works in the global scope rather than
@@ -14,7 +14,10 @@ export const _global = globalEval("this");
 _global["window"] = _global; // Create a window object.
 import "./url";
 
-_global["setTimeout"] = setTimeout;
+_global["setTimeout"] = timer.setTimeout;
+_global["setInterval"] = timer.setInterval;
+_global["clearTimeout"] = timer.clearTimer;
+_global["clearInterval"] = timer.clearTimer;
 
 const print = V8Worker2.print;
 
