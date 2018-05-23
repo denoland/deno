@@ -6,6 +6,10 @@ import (
 	"sync"
 )
 
+var resChan = make(chan *BaseMsg, 10)
+var doneChan = make(chan bool)
+var wg sync.WaitGroup
+
 // There is a single global worker for this process.
 // This file should be the only part of deno that directly access it, so that
 // all interaction with V8 can go through a single point.
@@ -53,9 +57,11 @@ func Pub(channel string, payload []byte) {
 	}
 }
 
-var resChan = make(chan *BaseMsg, 10)
-var doneChan = make(chan bool)
-var wg sync.WaitGroup
+func PubMsg(channel string, msg *Msg) {
+	payload, err := proto.Marshal(msg)
+	check(err)
+	Pub(channel, payload)
+}
 
 func DispatchLoop() {
 	wg.Add(1)

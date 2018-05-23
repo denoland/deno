@@ -61,7 +61,7 @@ func (t *Timer) StartTimer() {
 			if !t.Interval {
 				t.Done = true
 			}
-			pubMsg(&Msg{
+			PubMsg("timers", &Msg{
 				Payload: &Msg_TimerReady{
 					TimerReady: &TimerReadyMsg{
 						Id:   &t.Id,
@@ -74,10 +74,4 @@ func (t *Timer) StartTimer() {
 			}
 		}
 	}()
-}
-
-func pubMsg(msg *Msg) {
-	payload, err := proto.Marshal(msg)
-	check(err)
-	Pub("timers", payload)
 }

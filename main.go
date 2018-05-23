@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"github.com/ry/v8worker2"
 	"io/ioutil"
 	"log"
@@ -66,7 +65,7 @@ func main() {
 	cwd, err := os.Getwd()
 	check(err)
 
-	out, err := proto.Marshal(&Msg{
+	PubMsg("start", &Msg{
 		Payload: &Msg_Start{
 			Start: &StartMsg{
 				Cwd:       &cwd,
@@ -77,8 +76,6 @@ func main() {
 			},
 		},
 	})
-	check(err)
-	Pub("start", out)
 
 	DispatchLoop()
 }
