@@ -12,6 +12,7 @@
     "http-server": "^0.11.1",
     "jsdoc": "^3.5.5",
     "parcel-bundler": "^1.8.1",
+    "prettier": "^1.12.1",
     "protobufjs": "^6.8.6",
     "source-map": "0.6.0",
     "tmp": "0.0.33",

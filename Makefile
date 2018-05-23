@@ -47,7 +47,7 @@ node_modules:
 	yarn
 
 clean:
-	-rm -f deno assets.go msg.pb.go msg.pb.js msg.pb.d.ts 
+	-rm -f deno assets.go msg.pb.go msg.pb.js msg.pb.d.ts
 	-rm -rf dist/
 
 distclean: clean
@@ -58,7 +58,7 @@ lint: node_modules
 	go vet
 
 fmt: node_modules
-	yarn fmt 
+	yarn fmt
 	go fmt
 	clang-format msg.proto -i
 
