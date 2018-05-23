@@ -55,6 +55,7 @@ func main() {
 	createWorker()
 
 	InitOS()
+	InitEcho()
 	InitTimers()
 
 	main_js := stringAsset("main.js")

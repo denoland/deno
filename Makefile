@@ -1,20 +1,25 @@
 TS_FILES = \
-	tsconfig.json \
 	dispatch.ts \
+	globals.ts \
 	main.ts \
 	msg.pb.d.ts \
 	msg.pb.js \
 	os.ts \
 	runtime.ts \
+	test.js \
 	timers.ts \
+	tsconfig.json \
+	types.ts \
 	url.js \
 	util.ts \
-	v8_source_maps.ts
+	v8_source_maps.ts \
+	v8worker2.d.ts
 
 GO_FILES = \
 	assets.go \
 	deno_dir.go \
 	deno_dir_test.go \
+	echo.go \
 	dispatch.go \
 	main.go \
 	msg.pb.go \
@@ -23,11 +28,12 @@ GO_FILES = \
 	timers.go \
 	util.go
 
-deno: $(GO_FILES)
+deno: msg.pb.go $(GO_FILES)
 	go build -o deno
 
 assets.go: dist/main.js
 	cp node_modules/typescript/lib/lib.d.ts dist/
+	cp deno.d.ts dist/
 	go-bindata -pkg main -o assets.go dist/
 
 msg.pb.go: msg.proto

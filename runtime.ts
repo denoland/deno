@@ -10,10 +10,14 @@ import * as ts from "typescript";
 import * as util from "./util";
 import { log } from "./util";
 import * as os from "./os";
+import { pub, sub } from "./dispatch";
 import * as sourceMaps from "./v8_source_maps";
 import { _global, globalEval } from "./globals";
 
 const EOL = "\n";
+
+// Public deno module.
+const deno = { pub, sub };
 
 // tslint:disable-next-line:no-any
 type AmdFactory = (...args: any[]) => undefined | object;
@@ -103,6 +107,8 @@ export function makeDefine(fileName: string): AmdDefine {
         return localRequire;
       } else if (dep === "exports") {
         return localExports;
+      } else if (dep === "deno") {
+        return deno;
       } else {
         const resolved = resolveModuleName(dep, fileName);
         const depModule = FileModule.load(resolved);
@@ -262,7 +268,12 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   ): Array<ts.ResolvedModule | undefined> {
     util.log("resolveModuleNames", { moduleNames, reusedNames });
     return moduleNames.map((name: string) => {
-      const resolvedFileName = resolveModuleName(name, containingFile);
+      let resolvedFileName;
+      if (name === "deno") {
+        resolvedFileName = resolveModuleName("deno.d.ts", "/$asset$/");
+      } else {
+        resolvedFileName = resolveModuleName(name, containingFile);
+      }
       const isExternalLibraryImport = false;
       return { resolvedFileName, isExternalLibraryImport };
     });
