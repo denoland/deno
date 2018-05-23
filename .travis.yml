@@ -3,8 +3,12 @@ go:
  - 1.9.2
 before_cache:
   - ccache -s
-cache: ccache
+cache:
+  directories:
+    - $HOME/.ccache
 install:
+ - mkdir -p $HOME/.ccache
+ - export PATH=/usr/lib/ccache:$PATH
  - sudo apt-get install protobuf-compiler
  - go get -u github.com/jteeuwen/go-bindata/...
  - go get -d github.com/ry/v8worker2
