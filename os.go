@@ -3,7 +3,9 @@ package main
 import (
 	"github.com/golang/protobuf/proto"
 	"io/ioutil"
+	"net/url"
 	"os"
+	"path"
 	"strings"
 )
 
@@ -29,6 +31,26 @@ func InitOS() {
 		}
 		return nil
 	})
+}
+
+func ResolveModule(moduleSpecifier string, containingFile string) (
+	moduleName string, filename string, err error) {
+	moduleUrl, err := url.Parse(moduleSpecifier)
+	if err != nil {
+		return
+	}
+	baseUrl, err := url.Parse(containingFile)
+	if err != nil {
+		return
+	}
+	resolved := baseUrl.ResolveReference(moduleUrl)
+	moduleName = resolved.String()
+	if moduleUrl.IsAbs() {
+		filename = path.Join(SrcDir, resolved.Host, resolved.Path)
+	} else {
+		filename = resolved.Path
+	}
+	return
 }
 
 func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out []byte) {

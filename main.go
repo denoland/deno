@@ -6,9 +6,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/ry/v8worker2"
 	"log"
-	"net/url"
 	"os"
-	"path"
 	"runtime/pprof"
 )
 
@@ -20,26 +18,6 @@ var flagGoProf = flag.String("goprof", "", "Write golang cpu profile to file.")
 var DenoDir string
 var CompileDir string
 var SrcDir string
-
-func ResolveModule(moduleSpecifier string, containingFile string) (
-	moduleName string, filename string, err error) {
-	moduleUrl, err := url.Parse(moduleSpecifier)
-	if err != nil {
-		return
-	}
-	baseUrl, err := url.Parse(containingFile)
-	if err != nil {
-		return
-	}
-	resolved := baseUrl.ResolveReference(moduleUrl)
-	moduleName = resolved.String()
-	if moduleUrl.IsAbs() {
-		filename = path.Join(SrcDir, resolved.Host, resolved.Path)
-	} else {
-		filename = resolved.Path
-	}
-	return
-}
 
 func stringAsset(path string) string {
 	data, err := Asset("dist/" + path)
