@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/ry/v8worker2"
+	"io/ioutil"
 	"log"
 	"os"
 	"runtime/pprof"
@@ -33,6 +34,11 @@ func main() {
 		fmt.Println(args)
 	}
 	args = v8worker2.SetFlags(args)
+
+	// Unless the debug flag is specified, discard logs.
+	if !*flagDebug {
+		log.SetOutput(ioutil.Discard)
+	}
 
 	// Maybe start Golang CPU profiler.
 	// Use --prof for profiling JS.

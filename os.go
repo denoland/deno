@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/golang/protobuf/proto"
 	"io/ioutil"
+	"log"
 	"net/url"
 	"os"
 	"path"
@@ -35,6 +36,9 @@ func InitOS() {
 
 func ResolveModule(moduleSpecifier string, containingFile string) (
 	moduleName string, filename string, err error) {
+
+	log.Printf("ResolveModule %s %s", moduleSpecifier, containingFile)
+
 	moduleUrl, err := url.Parse(moduleSpecifier)
 	if err != nil {
 		return
