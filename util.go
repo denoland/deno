@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"os"
 )
 
 func assert(cond bool, msg string) {
@@ -19,5 +20,12 @@ func isRemote(filename string) bool {
 func check(e error) {
 	if e != nil {
 		panic(e)
+	}
+}
+
+func exitOnError(err error) {
+	if err != nil {
+		os.Stderr.WriteString(err.Error())
+		os.Exit(1)
 	}
 }

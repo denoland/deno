@@ -52,7 +52,8 @@ func main() {
 	InitTimers()
 
 	main_js := stringAsset("main.js")
-	check(worker.Load("/main.js", main_js))
+	err := worker.Load("/main.js", main_js)
+	exitOnError(err)
 	main_map := stringAsset("main.map")
 
 	cwd, err := os.Getwd()

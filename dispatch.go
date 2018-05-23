@@ -73,7 +73,7 @@ func DispatchLoop() {
 		case msg := <-resChan:
 			out, err := proto.Marshal(msg)
 			err = worker.SendBytes(out)
-			check(err)
+			exitOnError(err)
 		case <-doneChan:
 			// All goroutines have completed. Now we can exit main().
 			return

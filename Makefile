@@ -14,11 +14,12 @@ TS_FILES = \
 GO_FILES = \
 	assets.go \
 	deno_dir.go \
+	deno_dir_test.go \
 	dispatch.go \
 	main.go \
-	main_test.go \
 	msg.pb.go \
 	os.go \
+	os_test.go \
 	timers.go \
 	util.go
 
