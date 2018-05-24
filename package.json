@@ -9,7 +9,6 @@
     "@types/source-map-support": "^0.4.0",
     "base64-js": "^1.3.0",
     "espree": "^3.5.3",
-    "http-server": "^0.11.1",
     "jsdoc": "^3.5.5",
     "parcel-bundler": "^1.8.1",
     "prettier": "^1.12.1",

@@ -6,7 +6,6 @@ TS_FILES = \
 	msg.pb.js \
 	os.ts \
 	runtime.ts \
-	test.js \
 	timers.ts \
 	tsconfig.json \
 	types.ts \
@@ -69,7 +68,6 @@ fmt: node_modules
 	clang-format msg.proto -i
 
 test: deno
-	node test.js
-	go test
+	go test -v
 
 .PHONY: test lint clean distclean
