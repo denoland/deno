@@ -90,7 +90,11 @@ func UserHomeDir() string {
 }
 
 func createDirs() {
-	DenoDir = path.Join(UserHomeDir(), ".deno")
+	if *flagRoot == "" {
+		DenoDir = path.Join(UserHomeDir(), ".deno")
+	} else {
+		DenoDir = *flagRoot
+	}
 	CacheDir = path.Join(DenoDir, "cache")
 	err := os.MkdirAll(CacheDir, 0700)
 	check(err)

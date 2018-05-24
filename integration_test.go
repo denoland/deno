@@ -45,7 +45,7 @@ func listTestFiles() []string {
 	return out
 }
 
-func CheckOutput(t *testing.T, outFile string, denoFn string) {
+func checkOutput(t *testing.T, outFile string, denoFn string) {
 	outFile = path.Join("testdata", outFile)
 	jsFile := strings.TrimSuffix(outFile, ".out")
 
@@ -54,7 +54,12 @@ func CheckOutput(t *testing.T, outFile string, denoFn string) {
 		t.Fatal(err.Error())
 	}
 
-	cmd := exec.Command(denoFn, jsFile, "--reload")
+	dir, err := ioutil.TempDir("", "TestIntegration")
+	if err != nil {
+		panic(err)
+	}
+
+	cmd := exec.Command(denoFn, "--root="+dir, jsFile)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err = cmd.Run()
@@ -80,7 +85,7 @@ func TestIntegration(t *testing.T) {
 	outFiles := listTestFiles()
 	for _, outFile := range outFiles {
 		t.Run(outFile, func(t *testing.T) {
-			CheckOutput(t, outFile, denoFn)
+			checkOutput(t, outFile, denoFn)
 		})
 	}
 }
