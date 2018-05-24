@@ -14,12 +14,14 @@ env:
 before_install: |
   if [[ $TRAVIS_OS_NAME == 'linux' ]]; then
     # protoc
-    mkdir -p $PROTOBUF_ROOT
-    pushd $PROTOBUF_ROOT
-    wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
-    unzip protoc-3.1.0-linux-x86_64.zip
-    popd
-    export PATH=$PROTOBUF_ROOT/bin:$PATH
+    if [ -d $PROTOBUF_ROOT ]; then
+      mkdir -p $PROTOBUF_ROOT
+      pushd $PROTOBUF_ROOT
+      wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
+      unzip protoc-3.1.0-linux-x86_64.zip
+      popd
+      export PATH=$PROTOBUF_ROOT/bin:$PATH
+    fi
   fi
 install:
  - mkdir -p $HOME/.ccache
@@ -28,5 +30,6 @@ install:
  - go get -d github.com/ry/v8worker2
  - (cd $GOPATH/src/github.com/ry/v8worker2 && ./tools/build.py)
 script:
+ - yarn lint-version
  - make lint
  - make test

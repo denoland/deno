@@ -2,6 +2,7 @@
   "name": "deno",
   "scripts": {
     "lint": "tslint -p tsconfig.json",
+    "lint-version": "tslint --version",
     "fmt": "prettier --write *.ts* *.js *.json"
   },
   "devDependencies": {
@@ -15,7 +16,7 @@
     "protobufjs": "^6.8.6",
     "source-map": "0.6.0",
     "tmp": "0.0.33",
-    "tslint": "^5.10.0",
+    "tslint": "5.10.0",
     "typescript": "^2.8.3",
     "uglify-js": "^2.8.29"
   },
