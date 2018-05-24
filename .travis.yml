@@ -13,13 +13,13 @@ env:
     - PROTOBUF_ROOT=$HOME/protobuf
 before_install: |
   if [[ $TRAVIS_OS_NAME == 'linux' ]]; then
-		# protoc
+    # protoc
     mkdir -p $PROTOBUF_ROOT
-		pushd $PROTOBUF_ROOT
-		wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
-		unzip protoc-3.1.0-linux-x86_64.zip
-		popd
-		export PATH=$PROTOBUF_ROOT/bin:$PATH
+    pushd $PROTOBUF_ROOT
+    wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
+    unzip protoc-3.1.0-linux-x86_64.zip
+    popd
+    export PATH=$PROTOBUF_ROOT/bin:$PATH
   fi
 install:
  - mkdir -p $HOME/.ccache
