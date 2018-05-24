@@ -12,6 +12,10 @@ import (
 	"strings"
 )
 
+var DenoDir string
+var CacheDir string
+var SrcDir string
+
 func SourceCodeHash(filename string, sourceCodeBuf []byte) string {
 	h := md5.New()
 	h.Write([]byte(filename))
@@ -21,7 +25,7 @@ func SourceCodeHash(filename string, sourceCodeBuf []byte) string {
 
 func CacheFileName(filename string, sourceCodeBuf []byte) string {
 	cacheKey := SourceCodeHash(filename, sourceCodeBuf)
-	return path.Join(CompileDir, cacheKey+".js")
+	return path.Join(CacheDir, cacheKey+".js")
 }
 
 // Fetches a remoteUrl but also caches it to the localFilename.
@@ -87,8 +91,8 @@ func UserHomeDir() string {
 
 func createDirs() {
 	DenoDir = path.Join(UserHomeDir(), ".deno")
-	CompileDir = path.Join(DenoDir, "compile")
-	err := os.MkdirAll(CompileDir, 0700)
+	CacheDir = path.Join(DenoDir, "cache")
+	err := os.MkdirAll(CacheDir, 0700)
 	check(err)
 	SrcDir = path.Join(DenoDir, "src")
 	err = os.MkdirAll(SrcDir, 0700)

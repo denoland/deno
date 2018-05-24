@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/ry/v8worker2"
 	"io/ioutil"
 	"log"
@@ -15,22 +14,17 @@ var flagV8Options = flag.Bool("v8-options", false, "Print V8 command line option
 var flagDebug = flag.Bool("debug", false, "Enable debug output.")
 var flagGoProf = flag.String("goprof", "", "Write golang cpu profile to file.")
 
-var DenoDir string
-var CompileDir string
-var SrcDir string
-
 func stringAsset(path string) string {
 	data, err := Asset("dist/" + path)
 	check(err)
 	return string(data)
 }
 
-func main() {
+func FlagsParse() []string {
 	flag.Parse()
 	args := flag.Args()
 	if *flagV8Options {
 		args = append(args, "--help")
-		fmt.Println(args)
 	}
 	args = v8worker2.SetFlags(args)
 
@@ -38,6 +32,11 @@ func main() {
 	if !*flagDebug {
 		log.SetOutput(ioutil.Discard)
 	}
+	return args
+}
+
+func main() {
+	args := FlagsParse()
 
 	// Maybe start Golang CPU profiler.
 	// Use --prof for profiling JS.

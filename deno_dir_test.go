@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-func SetCompileDirForTest(prefix string) {
+func SetCacheDirForTest(prefix string) {
 	dir, err := ioutil.TempDir("", prefix)
 	if err != nil {
 		panic(err)
 	}
-	CompileDir = dir
+	CacheDir = dir
 }
 
 func TestLoadOutputCodeCache(t *testing.T) {
-	SetCompileDirForTest("TestLoadOutputCodeCache")
+	SetCacheDirForTest("TestLoadOutputCodeCache")
 
 	filename := "Hello.ts"
 	sourceCodeBuf := []byte("1+2")
