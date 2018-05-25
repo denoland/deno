@@ -19,7 +19,11 @@ dispatch.sub("start", (payload: Uint8Array) => {
   startCalled = true;
 
   const msg = pb.Msg.decode(payload);
-  const { cwd, argv, debugFlag, mainJs, mainMap } = msg.start;
+  const cwd = msg.startCwd;
+  const argv = msg.startArgv;
+  const debugFlag = msg.startDebugFlag;
+  const mainJs = msg.startMainJs;
+  const mainMap = msg.startMainMap;
 
   debug = debugFlag;
   util.log("start", { cwd, argv, debugFlag });

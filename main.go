@@ -58,16 +58,14 @@ func main() {
 	cwd, err := os.Getwd()
 	check(err)
 
+	var command = Msg_START // TODO use proto3
 	PubMsg("start", &Msg{
-		Payload: &Msg_Start{
-			Start: &StartMsg{
-				Cwd:       &cwd,
-				Argv:      args,
-				DebugFlag: flagDebug,
-				MainJs:    &main_js,
-				MainMap:   &main_map,
-			},
-		},
+		Command:        &command,
+		StartCwd:       &cwd,
+		StartArgv:      args,
+		StartDebugFlag: flagDebug,
+		StartMainJs:    &main_js,
+		StartMainMap:   &main_map,
 	})
 
 	DispatchLoop()

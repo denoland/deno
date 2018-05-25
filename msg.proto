@@ -8,39 +8,51 @@ message BaseMsg {
 
 message Msg {
   optional string error = 1;
-  oneof payload {
-    StartMsg start = 10;
-    SourceCodeFetchMsg source_code_fetch = 11;
-    SourceCodeFetchResMsg source_code_fetch_res = 12;
-    SourceCodeCacheMsg source_code_cache = 13;
-    ExitMsg exit = 14;
-    TimerStartMsg timer_start = 15;
-    TimerReadyMsg timer_ready = 16;
-    TimerClearMsg timer_clear = 17;
-  }
-}
 
-message StartMsg {
-  optional string cwd = 1;
-  repeated string argv = 2;
-  optional bool debug_flag = 3;
-  optional string main_js = 4;  // The contents of dist/main.js
-  optional string main_map = 5; // The contents of dist/main.map
+  enum Command {
+    ERROR = 1;
+    START = 2;
+    SOURCE_CODE_FETCH_RES = 3;
+    ONEOF = 100;
+  }
+  optional Command command = 2 [ default = ONEOF ];
+
+  // We avoid creating a message for each command (and use oneof or any types)
+  // In order to reduce code in the size of the generated javascript
+  // "msg.pb.js". It seems that each new message adds 20k and we want to
+  // potentially add many hundreds of commands. Therefore we just prefix command
+  // arguments by their name.
+
+  // Start
+  optional string start_cwd = 10;
+  repeated string start_argv = 11;
+  optional bool start_debug_flag = 12;
+  optional string start_main_js = 13;  // The contents of dist/main.js
+  optional string start_main_map = 14; // The contents of dist/main.map
+
+  // SOURCE_CODE_FETCH_RES
+  // If it's a non-http module, moduleName and filename will be the same.
+  // For http modules, moduleName is its resolved http URL, and filename
+  // is the location of the locally downloaded source code.
+  optional string source_code_fetch_res_module_name = 30;
+  optional string source_code_fetch_res_filename = 31;
+  optional string source_code_fetch_res_source_code = 32;
+  optional string source_code_fetch_res_output_code =
+      33; // Non-empty only if cached.
+
+  oneof payload {
+    SourceCodeFetchMsg source_code_fetch = 100;
+    SourceCodeCacheMsg source_code_cache = 102;
+    ExitMsg exit = 103;
+    TimerStartMsg timer_start = 104;
+    TimerReadyMsg timer_ready = 105;
+    TimerClearMsg timer_clear = 106;
+  }
 }
 
 message SourceCodeFetchMsg {
   optional string module_specifier = 1;
   optional string containing_file = 2;
-}
-
-message SourceCodeFetchResMsg {
-  // If it's a non-http module, moduleName and filename will be the same.
-  // For http modules, moduleName is its resolved http URL, and filename
-  // is the location of the locally downloaded source code.
-  optional string moduleName = 1;
-  optional string filename = 2;
-  optional string source_code = 3;
-  optional string output_code = 4; // Non-empty only if cached.
 }
 
 message SourceCodeCacheMsg {

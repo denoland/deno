@@ -99,13 +99,13 @@ func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out [
 	}
 
 	var sourceCode = string(sourceCodeBuf)
-	res.Payload = &Msg_SourceCodeFetchRes{
-		SourceCodeFetchRes: &SourceCodeFetchResMsg{
-			ModuleName: &moduleName,
-			Filename:   &filename,
-			SourceCode: &sourceCode,
-			OutputCode: &outputCode,
-		},
+	var command = Msg_SOURCE_CODE_FETCH_RES
+	res = &Msg{
+		Command: &command,
+		SourceCodeFetchResModuleName: &moduleName,
+		SourceCodeFetchResFilename:   &filename,
+		SourceCodeFetchResSourceCode: &sourceCode,
+		SourceCodeFetchResOutputCode: &outputCode,
 	}
 	return
 }
