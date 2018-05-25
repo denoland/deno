@@ -85,15 +85,17 @@ func deno(inputFn string) (actual []byte, cachedir string, err error) {
 }
 
 func integrationTestSetup() {
-	startServer()
-	cwd, err := os.Getwd()
-	if err != nil {
-		panic(err)
+	if denoFn == "" {
+		startServer()
+		cwd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+		denoFn = path.Join(cwd, "deno")
 	}
-	denoFn = path.Join(cwd, "deno")
 }
 
-func TestIntegration(t *testing.T) {
+func TestIntegrationFiles(t *testing.T) {
 	integrationTestSetup()
 	outFiles := listTestFiles()
 	for _, outFile := range outFiles {
@@ -103,7 +105,7 @@ func TestIntegration(t *testing.T) {
 	}
 }
 
-func TestUrlArgs(t *testing.T) {
+func TestIntegrationUrlArgs(t *testing.T) {
 	integrationTestSetup()
 
 	// Using good port 4545
