@@ -13,6 +13,18 @@ func logDebug(format string, v ...interface{}) {
 	}
 }
 
+// exists returns whether the given file or directory exists or not
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	panic(err)
+}
+
 func assert(cond bool, msg string) {
 	if !cond {
 		panic(msg)
