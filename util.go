@@ -1,9 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 )
+
+func logDebug(format string, v ...interface{}) {
+	// Unless the debug flag is specified, discard logs.
+	if *flagDebug {
+		fmt.Printf(format+"\n", v)
+	}
+}
 
 func assert(cond bool, msg string) {
 	if !cond {

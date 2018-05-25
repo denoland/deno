@@ -3,8 +3,6 @@ package main
 import (
 	"flag"
 	"github.com/ry/v8worker2"
-	"io/ioutil"
-	"log"
 	"os"
 	"runtime/pprof"
 )
@@ -28,10 +26,6 @@ func FlagsParse() []string {
 	}
 	args = v8worker2.SetFlags(args)
 
-	// Unless the debug flag is specified, discard logs.
-	if !*flagDebug {
-		log.SetOutput(ioutil.Discard)
-	}
 	return args
 }
 
@@ -43,7 +37,7 @@ func main() {
 	if *flagGoProf != "" {
 		f, err := os.Create(*flagGoProf)
 		if err != nil {
-			log.Fatal(err)
+			panic(err)
 		}
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
