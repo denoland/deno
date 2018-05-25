@@ -1,21 +1,21 @@
-syntax = "proto2";
+syntax = "proto3";
 package main;
 
 message BaseMsg {
-  optional string channel = 1;
-  optional bytes payload = 2;
+  string channel = 1;
+  bytes payload = 2;
 }
 
 message Msg {
-  optional string error = 1;
+  string error = 1;
 
   enum Command {
-    ERROR = 1;
-    START = 2;
-    SOURCE_CODE_FETCH_RES = 3;
+    ERROR = 0;
+    START = 1;
+    SOURCE_CODE_FETCH_RES = 2;
     ONEOF = 100;
   }
-  optional Command command = 2 [ default = ONEOF ];
+  Command command = 2;
 
   // We avoid creating a message for each command (and use oneof or any types)
   // In order to reduce code in the size of the generated javascript
@@ -24,21 +24,20 @@ message Msg {
   // arguments by their name.
 
   // Start
-  optional string start_cwd = 10;
+  string start_cwd = 10;
   repeated string start_argv = 11;
-  optional bool start_debug_flag = 12;
-  optional string start_main_js = 13;  // The contents of dist/main.js
-  optional string start_main_map = 14; // The contents of dist/main.map
+  bool start_debug_flag = 12;
+  string start_main_js = 13;  // The contents of dist/main.js
+  string start_main_map = 14; // The contents of dist/main.map
 
   // SOURCE_CODE_FETCH_RES
   // If it's a non-http module, moduleName and filename will be the same.
   // For http modules, moduleName is its resolved http URL, and filename
   // is the location of the locally downloaded source code.
-  optional string source_code_fetch_res_module_name = 30;
-  optional string source_code_fetch_res_filename = 31;
-  optional string source_code_fetch_res_source_code = 32;
-  optional string source_code_fetch_res_output_code =
-      33; // Non-empty only if cached.
+  string source_code_fetch_res_module_name = 30;
+  string source_code_fetch_res_filename = 31;
+  string source_code_fetch_res_source_code = 32;
+  string source_code_fetch_res_output_code = 33; // Non-empty only if cached.
 
   oneof payload {
     SourceCodeFetchMsg source_code_fetch = 100;
@@ -51,27 +50,27 @@ message Msg {
 }
 
 message SourceCodeFetchMsg {
-  optional string module_specifier = 1;
-  optional string containing_file = 2;
+  string module_specifier = 1;
+  string containing_file = 2;
 }
 
 message SourceCodeCacheMsg {
-  optional string filename = 1;
-  optional string source_code = 2;
-  optional string output_code = 3;
+  string filename = 1;
+  string source_code = 2;
+  string output_code = 3;
 }
 
-message ExitMsg { optional int32 code = 1; }
+message ExitMsg { int32 code = 1; }
 
 message TimerStartMsg {
-  optional int32 id = 1;
-  optional bool interval = 2;
-  optional int32 duration = 3; // In milliseconds.
+  int32 id = 1;
+  bool interval = 2;
+  int32 duration = 3; // In milliseconds.
 }
 
 message TimerReadyMsg {
-  optional int32 id = 1;
-  optional bool done = 2;
+  int32 id = 1;
+  bool done = 2;
 }
 
-message TimerClearMsg { optional int32 id = 1; }
+message TimerClearMsg { int32 id = 1; }

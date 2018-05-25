@@ -60,12 +60,12 @@ func main() {
 
 	var command = Msg_START // TODO use proto3
 	PubMsg("start", &Msg{
-		Command:        &command,
-		StartCwd:       &cwd,
+		Command:        command,
+		StartCwd:       cwd,
 		StartArgv:      args,
-		StartDebugFlag: flagDebug,
-		StartMainJs:    &main_js,
-		StartMainMap:   &main_map,
+		StartDebugFlag: *flagDebug,
+		StartMainJs:    main_js,
+		StartMainMap:   main_map,
 	})
 
 	DispatchLoop()

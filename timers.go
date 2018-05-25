@@ -22,19 +22,19 @@ func InitTimers() {
 		switch msg.Payload.(type) {
 		case *Msg_TimerStart:
 			payload := msg.GetTimerStart()
-			timers[*payload.Id] = &Timer{
-				Id:       *payload.Id,
+			timers[payload.Id] = &Timer{
+				Id:       payload.Id,
 				Done:     false,
-				Interval: *payload.Interval,
-				Duration: *payload.Duration,
+				Interval: payload.Interval,
+				Duration: payload.Duration,
 				Cleared:  false,
 			}
-			timers[*payload.Id].StartTimer()
+			timers[payload.Id].StartTimer()
 			return nil
 		case *Msg_TimerClear:
 			payload := msg.GetTimerClear()
 			// TODO maybe need mutex here.
-			timer := timers[*payload.Id]
+			timer := timers[payload.Id]
 			timer.Clear()
 			return nil
 		default:
@@ -64,8 +64,8 @@ func (t *Timer) StartTimer() {
 			PubMsg("timers", &Msg{
 				Payload: &Msg_TimerReady{
 					TimerReady: &TimerReadyMsg{
-						Id:   &t.Id,
-						Done: &t.Done,
+						Id:   t.Id,
+						Done: t.Done,
 					},
 				},
 			})
