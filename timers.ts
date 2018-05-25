@@ -1,5 +1,6 @@
 import { main as pb } from "./msg.pb";
 import * as dispatch from "./dispatch";
+import { assert } from "./util";
 
 let nextTimerId = 1;
 
@@ -23,7 +24,9 @@ export function initTimers() {
 
 function onMessage(payload: Uint8Array) {
   const msg = pb.Msg.decode(payload);
-  const { id, done } = msg.timerReady;
+  assert(msg.command === pb.Msg.Command.TIMER_READY);
+  const id = msg.timerReadyId;
+  const done = msg.timerReadyDone;
   const timer = timers.get(id);
   if (!timer) {
     return;
@@ -49,11 +52,10 @@ export function setTimeout(
   };
   timers.set(timer.id, timer);
   dispatch.sendMsg("timers", {
-    timerStart: {
-      id: timer.id,
-      interval: false,
-      duration
-    }
+    command: pb.Msg.Command.TIMER_START,
+    timerStartId: timer.id,
+    timerStartInterval: false,
+    timerStartDuration: duration
   });
   return timer.id;
 }
@@ -74,17 +76,17 @@ export function setInterval(
   };
   timers.set(timer.id, timer);
   dispatch.sendMsg("timers", {
-    timerStart: {
-      id: timer.id,
-      interval: true,
-      duration: repeat
-    }
+    command: pb.Msg.Command.TIMER_START,
+    timerStartId: timer.id,
+    timerStartInterval: true,
+    timerStartDuration: repeat
   });
   return timer.id;
 }
 
 export function clearTimer(id: number) {
   dispatch.sendMsg("timers", {
-    timerClear: { id }
+    command: pb.Msg.Command.TIMER_CLEAR,
+    timerClearId: id
   });
 }

@@ -15,18 +15,18 @@ func InitOS() {
 	Sub("os", func(buf []byte) []byte {
 		msg := &Msg{}
 		check(proto.Unmarshal(buf, msg))
-		switch msg.Payload.(type) {
-		case *Msg_Exit:
-			payload := msg.GetExit()
-			os.Exit(int(payload.Code))
-		case *Msg_SourceCodeFetch:
-			payload := msg.GetSourceCodeFetch()
-			return HandleSourceCodeFetch(payload.ModuleSpecifier,
-				payload.ContainingFile)
-		case *Msg_SourceCodeCache:
-			payload := msg.GetSourceCodeCache()
-			return HandleSourceCodeCache(payload.Filename, payload.SourceCode,
-				payload.OutputCode)
+		switch msg.Command {
+		case Msg_SOURCE_CODE_FETCH:
+			return HandleSourceCodeFetch(
+				msg.SourceCodeFetchModuleSpecifier,
+				msg.SourceCodeFetchContainingFile)
+		case Msg_SOURCE_CODE_CACHE:
+			return HandleSourceCodeCache(
+				msg.SourceCodeCacheFilename,
+				msg.SourceCodeCacheSourceCode,
+				msg.SourceCodeCacheOutputCode)
+		case Msg_EXIT:
+			os.Exit(int(msg.ExitCode))
 		default:
 			panic("[os] Unexpected message " + string(buf))
 		}

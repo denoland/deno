@@ -19,27 +19,27 @@ func InitTimers() {
 	Sub("timers", func(buf []byte) []byte {
 		msg := &Msg{}
 		check(proto.Unmarshal(buf, msg))
-		switch msg.Payload.(type) {
-		case *Msg_TimerStart:
-			payload := msg.GetTimerStart()
-			timers[payload.Id] = &Timer{
-				Id:       payload.Id,
+		switch msg.Command {
+		case Msg_TIMER_START:
+			id := msg.TimerStartId
+			t := &Timer{
+				Id:       id,
 				Done:     false,
-				Interval: payload.Interval,
-				Duration: payload.Duration,
+				Interval: msg.TimerStartInterval,
+				Duration: msg.TimerStartDuration,
 				Cleared:  false,
 			}
-			timers[payload.Id].StartTimer()
+			t.StartTimer()
+			timers[id] = t
 			return nil
-		case *Msg_TimerClear:
-			payload := msg.GetTimerClear()
+		case Msg_TIMER_CLEAR:
 			// TODO maybe need mutex here.
-			timer := timers[payload.Id]
+			timer := timers[msg.TimerClearId]
 			timer.Clear()
-			return nil
 		default:
 			panic("[timers] Unexpected message " + string(buf))
 		}
+		return nil
 	})
 }
 
@@ -62,12 +62,9 @@ func (t *Timer) StartTimer() {
 				t.Done = true
 			}
 			PubMsg("timers", &Msg{
-				Payload: &Msg_TimerReady{
-					TimerReady: &TimerReadyMsg{
-						Id:   t.Id,
-						Done: t.Done,
-					},
-				},
+				Command:        Msg_TIMER_READY,
+				TimerReadyId:   t.Id,
+				TimerReadyDone: t.Done,
 			})
 			if t.Done {
 				return

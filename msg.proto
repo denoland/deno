@@ -12,8 +12,13 @@ message Msg {
   enum Command {
     ERROR = 0;
     START = 1;
-    SOURCE_CODE_FETCH_RES = 2;
-    ONEOF = 100;
+    SOURCE_CODE_FETCH = 2;
+    SOURCE_CODE_FETCH_RES = 3;
+    SOURCE_CODE_CACHE = 4;
+    EXIT = 5;
+    TIMER_START = 6;
+    TIMER_READY = 7;
+    TIMER_CLEAR = 8;
   }
   Command command = 2;
 
@@ -23,12 +28,16 @@ message Msg {
   // potentially add many hundreds of commands. Therefore we just prefix command
   // arguments by their name.
 
-  // Start
+  // START
   string start_cwd = 10;
   repeated string start_argv = 11;
   bool start_debug_flag = 12;
   string start_main_js = 13;  // The contents of dist/main.js
   string start_main_map = 14; // The contents of dist/main.map
+
+  // SOURCE_CODE_FETCH
+  string source_code_fetch_module_specifier = 20;
+  string source_code_fetch_containing_file = 21;
 
   // SOURCE_CODE_FETCH_RES
   // If it's a non-http module, moduleName and filename will be the same.
@@ -39,38 +48,23 @@ message Msg {
   string source_code_fetch_res_source_code = 32;
   string source_code_fetch_res_output_code = 33; // Non-empty only if cached.
 
-  oneof payload {
-    SourceCodeFetchMsg source_code_fetch = 100;
-    SourceCodeCacheMsg source_code_cache = 102;
-    ExitMsg exit = 103;
-    TimerStartMsg timer_start = 104;
-    TimerReadyMsg timer_ready = 105;
-    TimerClearMsg timer_clear = 106;
-  }
+  // SOURCE_CODE_CACHE
+  string source_code_cache_filename = 41;
+  string source_code_cache_source_code = 42;
+  string source_code_cache_output_code = 43;
+
+  // EXIT
+  int32 exit_code = 50;
+
+  // TIMER_START
+  int32 timer_start_id = 60;
+  bool timer_start_interval = 61;
+  int32 timer_start_duration = 62; // In milliseconds.
+
+  // TIMER_READY
+  int32 timer_ready_id = 70;
+  bool timer_ready_done = 71;
+
+  // TIMER_CLEAR
+  int32 timer_clear_id = 80;
 }
-
-message SourceCodeFetchMsg {
-  string module_specifier = 1;
-  string containing_file = 2;
-}
-
-message SourceCodeCacheMsg {
-  string filename = 1;
-  string source_code = 2;
-  string output_code = 3;
-}
-
-message ExitMsg { int32 code = 1; }
-
-message TimerStartMsg {
-  int32 id = 1;
-  bool interval = 2;
-  int32 duration = 3; // In milliseconds.
-}
-
-message TimerReadyMsg {
-  int32 id = 1;
-  bool done = 2;
-}
-
-message TimerClearMsg { int32 id = 1; }

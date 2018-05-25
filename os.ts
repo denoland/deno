@@ -3,8 +3,11 @@ import { sendMsg } from "./dispatch";
 import { main as pb } from "./msg.pb";
 import { assert } from "./util";
 
-export function exit(code = 0): void {
-  sendMsg("os", { exit: { code } });
+export function exit(exitCode = 0): void {
+  sendMsg("os", {
+    command: pb.Msg.Command.EXIT,
+    exitCode
+  });
 }
 
 export function sourceCodeFetch(
@@ -12,7 +15,9 @@ export function sourceCodeFetch(
   containingFile: string
 ): ModuleInfo {
   const res = sendMsg("os", {
-    sourceCodeFetch: { moduleSpecifier, containingFile }
+    command: pb.Msg.Command.SOURCE_CODE_FETCH,
+    sourceCodeFetchModuleSpecifier: moduleSpecifier,
+    sourceCodeFetchContainingFile: containingFile
   });
   assert(res.command === pb.Msg.Command.SOURCE_CODE_FETCH_RES);
   return {
@@ -29,6 +34,9 @@ export function sourceCodeCache(
   outputCode: string
 ): void {
   sendMsg("os", {
-    sourceCodeCache: { filename, sourceCode, outputCode }
+    command: pb.Msg.Command.SOURCE_CODE_CACHE,
+    sourceCodeCacheFilename: filename,
+    sourceCodeCacheSourceCode: sourceCode,
+    sourceCodeCacheOutputCode: outputCode
   });
 }
