@@ -12,9 +12,9 @@ message Msg {
   enum Command {
     ERROR = 0;
     START = 1;
-    SOURCE_CODE_FETCH = 2;
-    SOURCE_CODE_FETCH_RES = 3;
-    SOURCE_CODE_CACHE = 4;
+    CODE_FETCH = 2;
+    CODE_FETCH_RES = 3;
+    CODE_CACHE = 4;
     EXIT = 5;
     TIMER_START = 6;
     TIMER_READY = 7;
@@ -35,23 +35,23 @@ message Msg {
   string start_main_js = 13;  // The contents of dist/main.js
   string start_main_map = 14; // The contents of dist/main.map
 
-  // SOURCE_CODE_FETCH
-  string source_code_fetch_module_specifier = 20;
-  string source_code_fetch_containing_file = 21;
+  // CODE_FETCH
+  string code_fetch_module_specifier = 20;
+  string code_fetch_containing_file = 21;
 
-  // SOURCE_CODE_FETCH_RES
+  // CODE_FETCH_RES
   // If it's a non-http module, moduleName and filename will be the same.
   // For http modules, moduleName is its resolved http URL, and filename
   // is the location of the locally downloaded source code.
-  string source_code_fetch_res_module_name = 30;
-  string source_code_fetch_res_filename = 31;
-  string source_code_fetch_res_source_code = 32;
-  string source_code_fetch_res_output_code = 33; // Non-empty only if cached.
+  string code_fetch_res_module_name = 30;
+  string code_fetch_res_filename = 31;
+  string code_fetch_res_source_code = 32;
+  string code_fetch_res_output_code = 33; // Non-empty only if cached.
 
-  // SOURCE_CODE_CACHE
-  string source_code_cache_filename = 41;
-  string source_code_cache_source_code = 42;
-  string source_code_cache_output_code = 43;
+  // CODE_CACHE
+  string code_cache_filename = 41;
+  string code_cache_source_code = 42;
+  string code_cache_output_code = 43;
 
   // EXIT
   int32 exit_code = 50;

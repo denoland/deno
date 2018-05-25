@@ -10,33 +10,33 @@ export function exit(exitCode = 0): void {
   });
 }
 
-export function sourceCodeFetch(
+export function codeFetch(
   moduleSpecifier: string,
   containingFile: string
 ): ModuleInfo {
   const res = sendMsg("os", {
-    command: pb.Msg.Command.SOURCE_CODE_FETCH,
-    sourceCodeFetchModuleSpecifier: moduleSpecifier,
-    sourceCodeFetchContainingFile: containingFile
+    command: pb.Msg.Command.CODE_FETCH,
+    codeFetchModuleSpecifier: moduleSpecifier,
+    codeFetchContainingFile: containingFile
   });
-  assert(res.command === pb.Msg.Command.SOURCE_CODE_FETCH_RES);
+  assert(res.command === pb.Msg.Command.CODE_FETCH_RES);
   return {
-    moduleName: res.sourceCodeFetchResModuleName,
-    filename: res.sourceCodeFetchResFilename,
-    sourceCode: res.sourceCodeFetchResSourceCode,
-    outputCode: res.sourceCodeFetchResOutputCode
+    moduleName: res.codeFetchResModuleName,
+    filename: res.codeFetchResFilename,
+    sourceCode: res.codeFetchResSourceCode,
+    outputCode: res.codeFetchResOutputCode
   };
 }
 
-export function sourceCodeCache(
+export function codeCache(
   filename: string,
   sourceCode: string,
   outputCode: string
 ): void {
   sendMsg("os", {
-    command: pb.Msg.Command.SOURCE_CODE_CACHE,
-    sourceCodeCacheFilename: filename,
-    sourceCodeCacheSourceCode: sourceCode,
-    sourceCodeCacheOutputCode: outputCode
+    command: pb.Msg.Command.CODE_CACHE,
+    codeCacheFilename: filename,
+    codeCacheSourceCode: sourceCode,
+    codeCacheOutputCode: outputCode
   });
 }

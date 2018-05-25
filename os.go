@@ -16,15 +16,15 @@ func InitOS() {
 		msg := &Msg{}
 		check(proto.Unmarshal(buf, msg))
 		switch msg.Command {
-		case Msg_SOURCE_CODE_FETCH:
-			return HandleSourceCodeFetch(
-				msg.SourceCodeFetchModuleSpecifier,
-				msg.SourceCodeFetchContainingFile)
-		case Msg_SOURCE_CODE_CACHE:
-			return HandleSourceCodeCache(
-				msg.SourceCodeCacheFilename,
-				msg.SourceCodeCacheSourceCode,
-				msg.SourceCodeCacheOutputCode)
+		case Msg_CODE_FETCH:
+			return HandleCodeFetch(
+				msg.CodeFetchModuleSpecifier,
+				msg.CodeFetchContainingFile)
+		case Msg_CODE_CACHE:
+			return HandleCodeCache(
+				msg.CodeCacheFilename,
+				msg.CodeCacheSourceCode,
+				msg.CodeCacheOutputCode)
 		case Msg_EXIT:
 			os.Exit(int(msg.ExitCode))
 		default:
@@ -57,7 +57,7 @@ func ResolveModule(moduleSpecifier string, containingFile string) (
 	return
 }
 
-func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out []byte) {
+func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte) {
 	assert(moduleSpecifier != "", "moduleSpecifier shouldn't be empty")
 	res := &Msg{}
 	var sourceCodeBuf []byte
@@ -76,7 +76,7 @@ func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out [
 		return
 	}
 
-	//println("HandleSourceCodeFetch", "moduleSpecifier", moduleSpecifier,
+	//println("HandleCodeFetch", "moduleSpecifier", moduleSpecifier,
 	//		"containingFile", containingFile, "filename", filename)
 
 	if isRemote(moduleName) {
@@ -99,18 +99,18 @@ func HandleSourceCodeFetch(moduleSpecifier string, containingFile string) (out [
 	}
 
 	var sourceCode = string(sourceCodeBuf)
-	var command = Msg_SOURCE_CODE_FETCH_RES
+	var command = Msg_CODE_FETCH_RES
 	res = &Msg{
-		Command: command,
-		SourceCodeFetchResModuleName: moduleName,
-		SourceCodeFetchResFilename:   filename,
-		SourceCodeFetchResSourceCode: sourceCode,
-		SourceCodeFetchResOutputCode: outputCode,
+		Command:                command,
+		CodeFetchResModuleName: moduleName,
+		CodeFetchResFilename:   filename,
+		CodeFetchResSourceCode: sourceCode,
+		CodeFetchResOutputCode: outputCode,
 	}
 	return
 }
 
-func HandleSourceCodeCache(filename string, sourceCode string,
+func HandleCodeCache(filename string, sourceCode string,
 	outputCode string) []byte {
 
 	fn := CacheFileName(filename, []byte(sourceCode))

@@ -72,7 +72,7 @@ export class FileModule {
       );
       const compiler = Compiler.instance();
       this.outputCode = compiler.compile(this.fileName);
-      os.sourceCodeCache(this.fileName, this.sourceCode, this.outputCode);
+      os.codeCache(this.fileName, this.sourceCode, this.outputCode);
     }
     util.log("compileAndRun", this.sourceCode);
     execute(this.fileName, this.outputCode);
@@ -129,7 +129,7 @@ export function resolveModule(
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
   // We ask golang to sourceCodeFetch. It will load the sourceCode and if
   // there is any outputCode cached, it will return that as well.
-  const { filename, sourceCode, outputCode } = os.sourceCodeFetch(
+  const { filename, sourceCode, outputCode } = os.codeFetch(
     moduleSpecifier,
     containingFile
   );
