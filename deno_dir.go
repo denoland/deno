@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"flag"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -11,6 +12,9 @@ import (
 	"runtime"
 	"strings"
 )
+
+var flagCacheDir = flag.String("cachedir", "",
+	"Where to cache compilation artifacts. Default: ~/.deno")
 
 var DenoDir string
 var CacheDir string
@@ -90,10 +94,10 @@ func UserHomeDir() string {
 }
 
 func createDirs() {
-	if *flagRoot == "" {
+	if *flagCacheDir == "" {
 		DenoDir = path.Join(UserHomeDir(), ".deno")
 	} else {
-		DenoDir = *flagRoot
+		DenoDir = *flagCacheDir
 	}
 	CacheDir = path.Join(DenoDir, "cache")
 	err := os.MkdirAll(CacheDir, 0700)

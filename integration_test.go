@@ -59,7 +59,7 @@ func checkOutput(t *testing.T, outFile string, denoFn string) {
 		panic(err)
 	}
 
-	cmd := exec.Command(denoFn, "--root="+dir, jsFile)
+	cmd := exec.Command(denoFn, "--cachedir="+dir, jsFile)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err = cmd.Run()

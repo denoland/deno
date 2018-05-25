@@ -13,8 +13,6 @@ var flagReload = flag.Bool("reload", false, "Reload cached remote source code.")
 var flagV8Options = flag.Bool("v8-options", false, "Print V8 command line options.")
 var flagDebug = flag.Bool("debug", false, "Enable debug output.")
 var flagGoProf = flag.String("goprof", "", "Write golang cpu profile to file.")
-var flagRoot = flag.String("root", "",
-	"Where to cache compilation artifacts. Default: ~/.deno")
 
 func stringAsset(path string) string {
 	data, err := Asset("dist/" + path)
