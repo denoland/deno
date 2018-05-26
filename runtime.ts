@@ -57,6 +57,10 @@ export class FileModule {
     readonly sourceCode = "",
     public outputCode = ""
   ) {
+    util.assert(
+      !FileModule.map.has(fileName),
+      `FileModule.map already has ${fileName}`
+    );
     FileModule.map.set(fileName, this);
     if (outputCode !== "") {
       this.scriptVersion = "1";
@@ -124,8 +128,8 @@ export function makeDefine(fileName: string): AmdDefine {
 export function resolveModule(
   moduleSpecifier: string,
   containingFile: string
-): FileModule {
-  util.log("resolveModule", { moduleSpecifier, containingFile });
+): null | FileModule {
+  //util.log("resolveModule", { moduleSpecifier, containingFile });
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
   // We ask golang to sourceCodeFetch. It will load the sourceCode and if
   // there is any outputCode cached, it will return that as well.
@@ -133,8 +137,16 @@ export function resolveModule(
     moduleSpecifier,
     containingFile
   );
-  util.log("resolveModule", { containingFile, moduleSpecifier, filename });
-  return new FileModule(filename, sourceCode, outputCode);
+  if (sourceCode.length == 0) {
+    return null;
+  }
+  util.log("resolveModule sourceCode length ", sourceCode.length);
+  let m = FileModule.load(filename);
+  if (m != null) {
+    return m;
+  } else {
+    return new FileModule(filename, sourceCode, outputCode);
+  }
 }
 
 function resolveModuleName(
@@ -160,7 +172,9 @@ class Compiler {
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
     inlineSourceMap: true,
-    inlineSources: true
+    lib: ["es2017"],
+    inlineSources: true,
+    target: ts.ScriptTarget.ES2017
   };
   /*
   allowJs: true,
@@ -224,15 +238,21 @@ class TypeScriptHost implements ts.LanguageServiceHost {
 
   getScriptSnapshot(fileName: string): ts.IScriptSnapshot | undefined {
     util.log("getScriptSnapshot", fileName);
-    const m = FileModule.load(fileName);
-    util.assert(m != null);
+    const m = resolveModule(fileName, ".");
+    if (m == null) {
+      util.log("getScriptSnapshot", fileName, "NOT FOUND");
+      return undefined;
+    }
+    //const m = resolveModule(fileName, ".");
     util.assert(m.sourceCode.length > 0);
     return ts.ScriptSnapshot.fromString(m.sourceCode);
   }
 
   fileExists(fileName: string): boolean {
-    util.log("fileExist", fileName);
-    return true;
+    const m = resolveModule(fileName, ".");
+    const exists = m != null;
+    util.log("fileExist", fileName, exists);
+    return exists;
   }
 
   readFile(path: string, encoding?: string): string | undefined {
@@ -255,8 +275,8 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   }
 
   getDefaultLibFileName(options: ts.CompilerOptions): string {
-    util.log("getDefaultLibFileName");
     const fn = ts.getDefaultLibFileName(options);
+    util.log("getDefaultLibFileName", fn);
     const m = resolveModule(fn, "/$asset$/");
     return m.fileName;
   }
@@ -266,7 +286,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
     containingFile: string,
     reusedNames?: string[]
   ): Array<ts.ResolvedModule | undefined> {
-    util.log("resolveModuleNames", { moduleNames, reusedNames });
+    //util.log("resolveModuleNames", { moduleNames, reusedNames });
     return moduleNames.map((name: string) => {
       let resolvedFileName;
       if (name === "deno") {

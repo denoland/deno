@@ -9,7 +9,7 @@ import (
 func logDebug(format string, v ...interface{}) {
 	// Unless the debug flag is specified, discard logs.
 	if *flagDebug {
-		fmt.Printf(format+"\n", v)
+		fmt.Printf(format+"\n", v...)
 	}
 }
 
