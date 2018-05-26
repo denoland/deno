@@ -15,8 +15,6 @@ import (
 var denoFn string
 
 // Some tests require an HTTP server. We start one here.
-// Because we process tests synchronously in this program we must run
-// the server as a subprocess.
 // Note that "localhost:4545" is hardcoded into the tests at the moment,
 // so if the server runs on a different port, it will fail.
 func startServer() {
