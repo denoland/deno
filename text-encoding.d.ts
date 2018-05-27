@@ -1,53 +1,55 @@
-
 // Type definitions for text-encoding
 // Project: https://github.com/inexorabletash/text-encoding
 // Definitions by: MIZUNE Pine <https://github.com/pine613>
 // Definitions: https://github.com/DefinitelyTyped/DefinitelyTyped
 
 declare namespace TextEncoding {
-    interface TextDecoderOptions {
-        fatal?: boolean;
-        ignoreBOM?: boolean;
-    }
+  interface TextDecoderOptions {
+    fatal?: boolean;
+    ignoreBOM?: boolean;
+  }
 
-    interface TextDecodeOptions {
-        stream?: boolean;
-    }
+  interface TextDecodeOptions {
+    stream?: boolean;
+  }
 
-    interface TextEncoderOptions {
-        NONSTANDARD_allowLegacyEncoding?: boolean;
-    }
+  interface TextEncoderOptions {
+    NONSTANDARD_allowLegacyEncoding?: boolean;
+  }
 
-    interface TextDecoder {
-        encoding: string;
-        fatal: boolean;
-        ignoreBOM: boolean;
-        decode(input?: ArrayBuffer | ArrayBufferView, options?: TextDecodeOptions): string;
-    }
+  interface TextDecoder {
+    encoding: string;
+    fatal: boolean;
+    ignoreBOM: boolean;
+    decode(
+      input?: ArrayBuffer | ArrayBufferView,
+      options?: TextDecodeOptions
+    ): string;
+  }
 
-    interface TextEncoder {
-        encoding: string;
-        encode(input?: string, options?: TextEncodeOptions): Uint8Array;
-    }
+  interface TextEncoder {
+    encoding: string;
+    encode(input?: string, options?: TextEncodeOptions): Uint8Array;
+  }
 
-    interface TextEncodeOptions {
-        stream?: boolean;
-    }
+  interface TextEncodeOptions {
+    stream?: boolean;
+  }
 
-    interface TextEncoderStatic {
-        (utfLabel?: string, options?: TextEncoderOptions): TextEncoder;
-        new (utfLabel?: string, options?: TextEncoderOptions): TextEncoder;
-    }
+  interface TextEncoderStatic {
+    (utfLabel?: string, options?: TextEncoderOptions): TextEncoder;
+    new (utfLabel?: string, options?: TextEncoderOptions): TextEncoder;
+  }
 
-    interface TextDecoderStatic {
-        (label?: string, options?: TextDecoderOptions): TextDecoder;
-        new (label?: string, options?: TextDecoderOptions): TextDecoder;
-    }
+  interface TextDecoderStatic {
+    (label?: string, options?: TextDecoderOptions): TextDecoder;
+    new (label?: string, options?: TextDecoderOptions): TextDecoder;
+  }
 
-    interface TextEncodingStatic {
-        TextEncoder: TextEncoderStatic;
-        TextDecoder: TextDecoderStatic;
-    }
+  interface TextEncodingStatic {
+    TextEncoder: TextEncoderStatic;
+    TextDecoder: TextDecoderStatic;
+  }
 }
 
 /* Removed following lines to workaround this bug:
@@ -63,5 +65,5 @@ declare namespace TextEncoding {
 declare var TextEncoding: TextEncoding.TextEncodingStatic;
 
 declare module "text-encoding" {
-    export = TextEncoding;
+  export = TextEncoding;
 }
