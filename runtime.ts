@@ -23,6 +23,12 @@ const deno = { pub, sub };
 type AmdFactory = (...args: any[]) => undefined | object;
 type AmdDefine = (deps: string[], factory: AmdFactory) => void;
 
+// Uncaught exceptions are sent to window.onerror by v8worker2.
+window.onerror = function(message, source, lineno, colno, error) {
+  console.log(error.message, error.stack);
+  os.exit(1);
+};
+
 export function setup(mainJs: string, mainMap: string): void {
   sourceMaps.install({
     installPrepareStackTrace: true,
