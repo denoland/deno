@@ -1,3 +1,6 @@
+// This allows us to have async/await in our code. It must be loaded first.
+import "babel-polyfill";
+
 import * as dispatch from "./dispatch";
 import { main as pb } from "./msg.pb";
 
