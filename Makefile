@@ -1,5 +1,6 @@
 TS_FILES = \
 	dispatch.ts \
+	fetch.ts \
 	globals.ts \
 	main.ts \
 	msg.pb.d.ts \
@@ -18,8 +19,9 @@ GO_FILES = \
 	assets.go \
 	deno_dir.go \
 	deno_dir_test.go \
-	echo.go \
 	dispatch.go \
+	echo.go \
+	fetch.go \
 	main.go \
 	msg.pb.go \
 	os.go \

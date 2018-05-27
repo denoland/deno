@@ -37,7 +37,7 @@ func InitOS() {
 func ResolveModule(moduleSpecifier string, containingFile string) (
 	moduleName string, filename string, err error) {
 
-	logDebug("ResolveModule %s %s", moduleSpecifier, containingFile)
+	logDebug("os.go ResolveModule moduleSpecifier %s containingFile %s", moduleSpecifier, containingFile)
 
 	moduleUrl, err := url.Parse(moduleSpecifier)
 	if err != nil {
@@ -76,7 +76,7 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 		return
 	}
 
-	logDebug("HandleCodeFetch moduleSpecifier %s containingFile %s filename %s",
+	logDebug("CodeFetch moduleSpecifier %s containingFile %s filename %s",
 		moduleSpecifier, containingFile, filename)
 
 	if isRemote(moduleName) {

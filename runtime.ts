@@ -24,7 +24,7 @@ type AmdFactory = (...args: any[]) => undefined | object;
 type AmdDefine = (deps: string[], factory: AmdFactory) => void;
 
 // Uncaught exceptions are sent to window.onerror by v8worker2.
-window.onerror = function(message, source, lineno, colno, error) {
+window.onerror = (message, source, lineno, colno, error) => {
   console.log(error.message, error.stack);
   os.exit(1);
 };
@@ -143,11 +143,11 @@ export function resolveModule(
     moduleSpecifier,
     containingFile
   );
-  if (sourceCode.length == 0) {
+  if (sourceCode.length === 0) {
     return null;
   }
   util.log("resolveModule sourceCode length ", sourceCode.length);
-  let m = FileModule.load(filename);
+  const m = FileModule.load(filename);
   if (m != null) {
     return m;
   } else {

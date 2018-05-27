@@ -7,8 +7,8 @@ import { main as pb } from "./msg.pb";
 import * as runtime from "./runtime";
 import * as util from "./util";
 
-// These have top-level functions that need to execute.
 import { initTimers } from "./timers";
+import { initFetch } from "./fetch";
 
 // To control internal logging output
 // Set with the -debug command-line flag.
@@ -32,6 +32,7 @@ dispatch.sub("start", (payload: Uint8Array) => {
   util.log("start", { cwd, argv, debugFlag });
 
   initTimers();
+  initFetch();
   runtime.setup(mainJs, mainMap);
 
   const inputFn = argv[0];

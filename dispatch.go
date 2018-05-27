@@ -66,6 +66,7 @@ func Sub(channel string, cb Subscriber) {
 }
 
 func Pub(channel string, payload []byte) {
+	wg.Add(1)
 	resChan <- &BaseMsg{
 		Channel: channel,
 		Payload: payload,
@@ -79,11 +80,14 @@ func PubMsg(channel string, msg *Msg) {
 }
 
 func DispatchLoop() {
+	// runtime.LockOSThread()
 	wg.Add(1)
 	first := true
 
 	// In a goroutine, we wait on for all goroutines to complete (for example
 	// timers). We use this to signal to the main thread to exit.
+	// wg.Add(1) basically translates to uv_ref, if this was Node.
+	// wg.Done() basically translates to uv_unref
 	go func() {
 		wg.Wait()
 		doneChan <- true
@@ -92,7 +96,11 @@ func DispatchLoop() {
 	for {
 		select {
 		case msg := <-resChan:
+			wg.Done()
 			out, err := proto.Marshal(msg)
+			if err != nil {
+				panic(err)
+			}
 			err = worker.SendBytes(out)
 			stats.v8workerSend++
 			stats.v8workerBytesSent += len(out)

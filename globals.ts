@@ -45,3 +45,10 @@ function stringifyArgs(args: any[]): string {
   }
   return out.join(" ");
 }
+
+import { fetch } from "./fetch";
+_global["fetch"] = fetch;
+
+import { TextEncoder, TextDecoder } from "text-encoding";
+_global["TextEncoder"] = TextEncoder;
+_global["TextDecoder"] = TextDecoder;

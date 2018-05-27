@@ -7,8 +7,6 @@ message BaseMsg {
 }
 
 message Msg {
-  string error = 1;
-
   enum Command {
     ERROR = 0;
     START = 1;
@@ -19,14 +17,19 @@ message Msg {
     TIMER_START = 6;
     TIMER_READY = 7;
     TIMER_CLEAR = 8;
+    FETCH_REQ = 9;
+    FETCH_RES = 10;
   }
-  Command command = 2;
+  Command command = 1;
 
   // We avoid creating a message for each command (and use oneof or any types)
   // In order to reduce code in the size of the generated javascript
   // "msg.pb.js". It seems that each new message adds 20k and we want to
   // potentially add many hundreds of commands. Therefore we just prefix command
   // arguments by their name.
+
+  // ERROR
+  string error = 2;
 
   // START
   string start_cwd = 10;
@@ -67,4 +70,15 @@ message Msg {
 
   // TIMER_CLEAR
   int32 timer_clear_id = 80;
+
+  // FETCH_REQ
+  int32 fetch_req_id = 90;
+  string fetch_req_url = 91;
+  // repeated string fetch_req_header_line = 91
+
+  // FETCH_RES
+  int32 fetch_res_id = 100;
+  int32 fetch_res_status = 101;
+  repeated string fetch_res_header_line = 102;
+  bytes fetch_res_body = 103;
 }

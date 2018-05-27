@@ -3,6 +3,7 @@ import { _global } from "./globals";
 import { main as pb } from "./msg.pb";
 
 type MessageCallback = (msg: Uint8Array) => void;
+//type MessageStructCallback = (msg: pb.IMsg) => void;
 
 const send = V8Worker2.send;
 const channels = new Map<string, MessageCallback[]>();
@@ -15,6 +16,19 @@ export function sub(channel: string, cb: MessageCallback): void {
   }
   subscribers.push(cb);
 }
+
+/*
+export function subMsg(channel: string, cb: MessageStructCallback): void {
+  sub(channel, (payload: Uint8Array) => {
+    const msg = pb.Msg.decode(payload);
+    if (msg.error != null) {
+      f.onError(new Error(msg.error));
+    } else {
+      cb(msg);
+    }
+  });
+}
+  */
 
 export function pub(channel: string, payload: Uint8Array): null | ArrayBuffer {
   const msg = pb.BaseMsg.fromObject({ channel, payload });

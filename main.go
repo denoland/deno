@@ -24,6 +24,7 @@ func FlagsParse() []string {
 	if *flagV8Options {
 		args = append(args, "--help")
 	}
+	args = append(args, "--abort-on-uncaught-exception")
 	args = v8worker2.SetFlags(args)
 
 	return args
@@ -49,6 +50,7 @@ func main() {
 	InitOS()
 	InitEcho()
 	InitTimers()
+	InitFetch()
 
 	main_js := stringAsset("main.js")
 	err := worker.Load("/main.js", main_js)

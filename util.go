@@ -49,3 +49,11 @@ func exitOnError(err error) {
 		os.Exit(1)
 	}
 }
+
+func async(cb func()) {
+	wg.Add(1)
+	go func() {
+		cb()
+		wg.Done()
+	}()
+}
