@@ -7,11 +7,18 @@ cache:
   directories:
     - $HOME/.ccache
     - $PROTOBUF_ROOT
+    - $GOPATH/src/github.com/ry/v8worker2/out
 env:
   global:
     - USE_CCACHE=1
     - PROTOBUF_ROOT=$HOME/protobuf
 before_install: |
+  # ccache
+  unset CCACHE_DISABLE
+  mkdir -p $HOME/.ccache
+  export PATH=/usr/lib/ccache:$PATH
+
+  # protobuf
   export PATH=$PROTOBUF_ROOT/bin:$PATH
   if ! [ -x $PROTOBUF_ROOT/bin/protoc ]; then
     rm -rf $PROTOBUF_ROOT
@@ -22,14 +29,14 @@ before_install: |
     popd
   fi
 install:
- - mkdir -p $HOME/.ccache
- - export PATH=/usr/lib/ccache:$PATH
+ - go get ./...
+ - go get -u github.com/spf13/afero
  - go get -u github.com/golang/protobuf/protoc-gen-go
  - go get -u github.com/jteeuwen/go-bindata/...
  - go get -d github.com/ry/v8worker2
+ - env
  - (cd $GOPATH/src/github.com/ry/v8worker2 && ./tools/build.py)
  - yarn
 script:
- - yarn lint-version
  - make lint
  - make test
