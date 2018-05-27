@@ -55,9 +55,8 @@ class FetchResponse implements Response {
 
   async text(): Promise<string> {
     const ab = await this.arrayBuffer();
-    const enc = new TextDecoder("utf-8");
-    // Maybe new Uint8Array(ab)
-    return enc.decode(ab);
+    const decoder = new TextDecoder("utf-8");
+    return decoder.decode(ab);
   }
 
   get ok(): boolean {
@@ -139,13 +138,3 @@ export function fetch(
     fetchReq.start();
   });
 }
-
-/*
-fetch('http://example.com/movies.json')
-  .then(function(response) {
-    return response.json();
-  })
-  .then(function(myJson) {
-    console.log(myJson);
-  });
-  */
