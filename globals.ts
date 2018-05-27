@@ -1,3 +1,4 @@
+/// <reference path="./text-encoding.d.ts" />
 import * as timer from "./timers";
 
 // If you use the eval function indirectly, by invoking it via a reference

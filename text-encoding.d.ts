@@ -1,3 +1,4 @@
+
 // Type definitions for text-encoding
 // Project: https://github.com/inexorabletash/text-encoding
 // Definitions by: MIZUNE Pine <https://github.com/pine613>
@@ -49,10 +50,16 @@ declare namespace TextEncoding {
     }
 }
 
-declare var TextDecoder: TextEncoding.TextDecoderStatic;
+/* Removed following lines to workaround this bug:
+  text-encoding.d.ts:52:13 - error TS2403: Subsequent variable declarations
+  must have the same type.  Variable 'TextDecoder' must be of type '{ new
+  (label?: string, options?: TextDecoderOptions): TextDecoder; prototype:
+  TextDecoder; }', but here has type 'TextDecoderStatic'.
 
-declare var TextEncoder: TextEncoding.TextEncoderStatic;
-
+  52 declare var TextDecoder: TextEncoding.TextDecoderStatic;
+ */
+// declare var TextDecoder: TextEncoding.TextDecoderStatic;
+// declare var TextEncoder: TextEncoding.TextEncoderStatic;
 declare var TextEncoding: TextEncoding.TextEncodingStatic;
 
 declare module "text-encoding" {
