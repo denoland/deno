@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/golang/protobuf/proto"
+	"github.com/spf13/afero"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -11,7 +12,11 @@ import (
 
 const assetPrefix string = "/$asset$/"
 
+var fs afero.Fs
+
 func InitOS() {
+	fs = afero.NewOsFs()
+
 	Sub("os", func(buf []byte) []byte {
 		msg := &Msg{}
 		check(proto.Unmarshal(buf, msg))
@@ -27,6 +32,8 @@ func InitOS() {
 				msg.CodeCacheOutputCode)
 		case Msg_EXIT:
 			os.Exit(int(msg.ExitCode))
+		case Msg_READ_FILE_SYNC:
+			return ReadFileSync(msg.ReadFileSyncFilename)
 		default:
 			panic("[os] Unexpected message " + string(buf))
 		}
@@ -123,6 +130,21 @@ func HandleCodeCache(filename string, sourceCode string,
 	res := &Msg{}
 	if err != nil {
 		res.Error = err.Error()
+	}
+	out, err := proto.Marshal(res)
+	check(err)
+	return out
+}
+
+func ReadFileSync(filename string) []byte {
+	data, err := afero.ReadFile(fs, filename)
+	res := &Msg{
+		Command: Msg_READ_FILE_SYNC_RES,
+	}
+	if err != nil {
+		res.Error = err.Error()
+	} else {
+		res.ReadFileSyncData = data
 	}
 	out, err := proto.Marshal(res)
 	check(err)

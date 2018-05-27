@@ -19,6 +19,8 @@ message Msg {
     TIMER_CLEAR = 8;
     FETCH_REQ = 9;
     FETCH_RES = 10;
+    READ_FILE_SYNC = 11;
+    READ_FILE_SYNC_RES = 12;
   }
   Command command = 1;
 
@@ -81,4 +83,10 @@ message Msg {
   int32 fetch_res_status = 101;
   repeated string fetch_res_header_line = 102;
   bytes fetch_res_body = 103;
+
+  // READ_FILE_SYNC
+  string read_file_sync_filename = 110;
+
+  // READ_FILE_SYNC_RES
+  bytes read_file_sync_data = 120;
 }

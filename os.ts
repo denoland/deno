@@ -40,3 +40,11 @@ export function codeCache(
     codeCacheOutputCode: outputCode
   });
 }
+
+export function readFileSync(filename: string): Uint8Array {
+  const res = sendMsg("os", {
+    command: pb.Msg.Command.READ_FILE_SYNC,
+    readFileSyncFilename: filename
+  });
+  return res.readFileSyncData;
+}

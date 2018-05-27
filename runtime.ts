@@ -17,7 +17,11 @@ import { _global, globalEval } from "./globals";
 const EOL = "\n";
 
 // Public deno module.
-const deno = { pub, sub };
+const deno = {
+  pub,
+  sub,
+  readFileSync: os.readFileSync
+};
 
 // tslint:disable-next-line:no-any
 type AmdFactory = (...args: any[]) => undefined | object;
