@@ -32,13 +32,13 @@ before_install: |
     popd
   fi
 install:
- - go get ./...
+ - env
+ - go get -d github.com/ry/v8worker2
+ - (cd $GOPATH/src/github.com/ry/v8worker2 && ./tools/build.py)
+ - go get -u github.com/golang/protobuf/proto
  - go get -u github.com/spf13/afero
  - go get -u github.com/golang/protobuf/protoc-gen-go
  - go get -u github.com/jteeuwen/go-bindata/...
- - go get -d github.com/ry/v8worker2
- - env
- - (cd $GOPATH/src/github.com/ry/v8worker2 && ./tools/build.py)
  - yarn
 script:
  - make lint
