@@ -130,3 +130,17 @@ func TestIntegrationUrlArgs(t *testing.T) {
 		t.Fatalf("Expected 404 at '%s'", cacheFn)
 	}
 }
+
+func TestErrors(t *testing.T) {
+	integrationTestSetup()
+
+	_, _, err := deno("testdata/013_async_throw.ts")
+	if err == nil {
+		t.Fatalf("Expected error.")
+	}
+
+	_, _, err = deno("testdata/007_stack_trace.ts")
+	if err == nil {
+		t.Fatalf("Expected error.")
+	}
+}
