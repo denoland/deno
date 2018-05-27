@@ -24,6 +24,7 @@ before_install: |
 install:
  - mkdir -p $HOME/.ccache
  - export PATH=/usr/lib/ccache:$PATH
+ - go get -u github.com/golang/protobuf/protoc-gen-go
  - go get -u github.com/jteeuwen/go-bindata/...
  - go get -d github.com/ry/v8worker2
  - (cd $GOPATH/src/github.com/ry/v8worker2 && ./tools/build.py)
