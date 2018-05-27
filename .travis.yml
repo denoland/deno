@@ -7,7 +7,10 @@ cache:
   directories:
     - $HOME/.ccache
     - $PROTOBUF_ROOT
-    - $GOPATH/src/github.com/ry/v8worker2/out
+    # Adding the following makes it fail with:
+    #  $ go get ./...
+    # dispatch.go:5:2: no Go files in /home/travis/gopath/src/github.com/ry/v8worker2
+    #- $GOPATH/src/github.com/ry/v8worker2/out
 env:
   global:
     - USE_CCACHE=1
