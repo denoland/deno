@@ -4,4 +4,9 @@ declare module "deno" {
   function pub(channel: string, payload: Uint8Array): null | ArrayBuffer;
 
   function readFileSync(filename: string): Uint8Array;
+  function writeFileSync(
+    filename: string,
+    data: Uint8Array,
+    perm: number
+  ): void;
 }

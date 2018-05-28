@@ -34,6 +34,9 @@ func InitOS() {
 			os.Exit(int(msg.ExitCode))
 		case Msg_READ_FILE_SYNC:
 			return ReadFileSync(msg.ReadFileSyncFilename)
+		case Msg_WRITE_FILE_SYNC:
+			return WriteFileSync(msg.WriteFileSyncFilename, msg.WriteFileSyncData,
+				msg.WriteFileSyncPerm)
 		default:
 			panic("[os] Unexpected message " + string(buf))
 		}
@@ -171,6 +174,17 @@ func ReadFileSync(filename string) []byte {
 		res.Error = err.Error()
 	} else {
 		res.ReadFileSyncData = data
+	}
+	out, err := proto.Marshal(res)
+	check(err)
+	return out
+}
+
+func WriteFileSync(filename string, data []byte, perm uint32) []byte {
+	err := afero.WriteFile(fs, filename, data, os.FileMode(perm))
+	res := &Msg{}
+	if err != nil {
+		res.Error = err.Error()
 	}
 	out, err := proto.Marshal(res)
 	check(err)

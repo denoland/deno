@@ -48,3 +48,16 @@ export function readFileSync(filename: string): Uint8Array {
   });
   return res.readFileSyncData;
 }
+
+export function writeFileSync(
+  filename: string,
+  data: Uint8Array,
+  perm: number
+): void {
+  sendMsg("os", {
+    command: pb.Msg.Command.WRITE_FILE_SYNC,
+    writeFileSyncFilename: filename,
+    writeFileSyncData: data,
+    writeFileSyncPerm: perm
+  });
+}

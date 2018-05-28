@@ -20,7 +20,8 @@ const EOL = "\n";
 const deno = {
   pub,
   sub,
-  readFileSync: os.readFileSync
+  readFileSync: os.readFileSync,
+  writeFileSync: os.writeFileSync
 };
 
 // tslint:disable-next-line:no-any
