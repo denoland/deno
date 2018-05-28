@@ -67,7 +67,7 @@ func TestResolveModule4(t *testing.T) {
 	AssertEqual(t, moduleName,
 		"http://unpkg.com/liltest@0.0.5/index.ts")
 	AssertEqual(t, filename,
-		"/Users/rld/.deno/src/unpkg.com/liltest@0.0.5/index.ts")
+		path.Join(SrcDir, "unpkg.com/liltest@0.0.5/index.ts"))
 }
 
 func TestResolveModule5(t *testing.T) {
