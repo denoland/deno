@@ -20,3 +20,9 @@ test(async function tests_readFileSync() {
   const pkg = JSON.parse(json);
   assertEqual(pkg.name, "deno");
 });
+
+test(async function tests_fetch() {
+  const response = await fetch('http://localhost:4545/package.json');
+  const json = await response.json();
+  assertEqual(json.name, "deno");
+});
