@@ -41,10 +41,36 @@ func InitOS() {
 	})
 }
 
+func SrcFileToUrl(filename string) string {
+	assert(len(SrcDir) > 0, "SrcDir shouldn't be empty")
+	if strings.HasPrefix(filename, SrcDir) {
+		rest := strings.TrimPrefix(filename, SrcDir)
+		if rest[0] == '/' {
+			rest = rest[1:]
+		}
+
+		return "http://" + rest
+	} else {
+		return filename
+	}
+}
+
 func ResolveModule(moduleSpecifier string, containingFile string) (
 	moduleName string, filename string, err error) {
 
-	logDebug("os.go ResolveModule moduleSpecifier %s containingFile %s", moduleSpecifier, containingFile)
+	logDebug("os.go ResolveModule moduleSpecifier %s containingFile %s",
+		moduleSpecifier, containingFile)
+
+	containingFile = SrcFileToUrl(containingFile)
+	moduleSpecifier = SrcFileToUrl(moduleSpecifier)
+
+	// Hack: If there is no extension, just add .ts
+	if path.Ext(moduleSpecifier) == "" {
+		moduleSpecifier = moduleSpecifier + ".ts"
+	}
+
+	logDebug("os.go ResolveModule after moduleSpecifier %s containingFile %s",
+		moduleSpecifier, containingFile)
 
 	moduleUrl, err := url.Parse(moduleSpecifier)
 	if err != nil {
@@ -56,7 +82,7 @@ func ResolveModule(moduleSpecifier string, containingFile string) (
 	}
 	resolved := baseUrl.ResolveReference(moduleUrl)
 	moduleName = resolved.String()
-	if moduleUrl.IsAbs() {
+	if resolved.IsAbs() {
 		filename = path.Join(SrcDir, resolved.Host, resolved.Path)
 	} else {
 		filename = resolved.Path
@@ -83,8 +109,8 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 		return
 	}
 
-	logDebug("CodeFetch moduleSpecifier %s containingFile %s filename %s",
-		moduleSpecifier, containingFile, filename)
+	logDebug("CodeFetch moduleName %s moduleSpecifier %s containingFile %s filename %s",
+		moduleName, moduleSpecifier, containingFile, filename)
 
 	if isRemote(moduleName) {
 		sourceCodeBuf, err = FetchRemoteSource(moduleName, filename)

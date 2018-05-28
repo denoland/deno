@@ -34,8 +34,9 @@ func CacheFileName(filename string, sourceCodeBuf []byte) string {
 
 // Fetches a remoteUrl but also caches it to the localFilename.
 func FetchRemoteSource(remoteUrl string, localFilename string) ([]byte, error) {
-	//println("FetchRemoteSource", remoteUrl)
-	assert(strings.HasPrefix(localFilename, SrcDir), localFilename)
+	logDebug("FetchRemoteSource %s %s", remoteUrl, localFilename)
+	assert(strings.HasPrefix(localFilename, SrcDir),
+		"Expected filename to start with SrcDir: "+localFilename)
 	var sourceReader io.Reader
 
 	file, err := os.Open(localFilename)
