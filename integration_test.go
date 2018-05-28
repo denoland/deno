@@ -144,3 +144,14 @@ func TestErrors(t *testing.T) {
 		t.Fatalf("Expected error.")
 	}
 }
+
+func TestTestsTs(t *testing.T) {
+	integrationTestSetup()
+	cmd := exec.Command(denoFn, "tests.ts")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+}

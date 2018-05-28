@@ -20,5 +20,6 @@
     "allowUnreachableCode": false,
     "experimentalDecorators": true
   },
-  "include": ["*.ts", "*.js"]
+  "include": ["*.ts", "*.js"],
+  "exclude": ["tests.ts"]
 }

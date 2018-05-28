@@ -29,6 +29,11 @@ type AmdDefine = (deps: string[], factory: AmdFactory) => void;
 
 // Uncaught exceptions are sent to window.onerror by v8worker2.
 window.onerror = (message, source, lineno, colno, error) => {
+  // TODO Currently there is a bug in v8_source_maps.ts that causes a segfault
+  // if it is used within window.onerror. To workaround we uninstall the
+  // Error.prepareStackTrace handler. Users will get unmapped stack traces on
+  // uncaught exceptions until this issue is fixed.
+  Error.prepareStackTrace = null;
   console.log(error.message, error.stack);
   os.exit(1);
 };
