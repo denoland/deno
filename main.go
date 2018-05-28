@@ -24,7 +24,9 @@ func FlagsParse() []string {
 	if *flagV8Options {
 		args = append(args, "--help")
 	}
-	args = append(args, "--abort-on-uncaught-exception")
+	// Adding this causes testdata/007_stack_trace.ts to fail without a
+	// stacktrace.
+	// args = append(args, "--abort-on-uncaught-exception")
 	args = v8worker2.SetFlags(args)
 
 	return args
