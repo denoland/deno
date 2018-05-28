@@ -1,0 +1,23 @@
+- Fix v8_source_maps.ts so that we don't get random segfaults.
+
+- Add wildcard support to testdata/*.out tests so that we can check
+  the stack trace output in testdata/007_stack_trace.ts and
+  testdata/013_async_throw.ts.
+
+- Remove text-encoding.d.ts because TS2.8 includes the declarations.
+  https://github.com/DefinitelyTyped/DefinitelyTyped/issues/24695
+
+- Add permissions that control which afero.Fs gets loaded. Should be read-only
+  by default. Also permissions for network access.
+
+- Add os.statSync and os.tempDir- both are needed for the writeFileSync test in
+  tests.ts
+
+- Top-level await.
+
+- Add ability to open TCP sockets and listen for connections.
+
+- Add ability to receive HTTP connections (using net/http to parse)
+  should try to use the same Request/Response types as fetch().
+
+- Publish deno_testing to npm as a standalone module.
