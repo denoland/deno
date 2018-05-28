@@ -1,11 +1,23 @@
 // This test is executed as part of integration_test.go
 // But it can also be run manually:
 //  ./deno tests.ts
+// There must also be a static file http server running on localhost:4545
+// serving the deno project directory. Try this:
+//   http-server -p 4545 --cors .
 import { test, assert, assertEqual } from "./deno_testing/testing.ts";
-import { readFileSync, writeFileSync } from "deno";
+import {
+  readFileSync,
+  writeFileSync
+} from "deno";
 
 test(async function tests_test() {
   assert(true);
+});
+
+test(async function tests_fetch() {
+  const response = await fetch('http://localhost:4545/package.json');
+  const json = await response.json();
+  assertEqual(json.name, "deno");
 });
 
 test(async function tests_readFileSync() {
@@ -33,8 +45,3 @@ test(async function tests_writeFileSync() {
   assertEqual("Hello", actual);
 });
 
-test(async function tests_fetch() {
-  const response = await fetch("http://localhost:4545/package.json");
-  const json = await response.json();
-  assertEqual(json.name, "deno");
-});

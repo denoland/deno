@@ -80,7 +80,6 @@ func PubMsg(channel string, msg *Msg) {
 }
 
 func DispatchLoop() {
-	// runtime.LockOSThread()
 	wg.Add(1)
 	first := true
 
@@ -96,7 +95,6 @@ func DispatchLoop() {
 	for {
 		select {
 		case msg := <-resChan:
-			wg.Done()
 			out, err := proto.Marshal(msg)
 			if err != nil {
 				panic(err)
@@ -105,6 +103,7 @@ func DispatchLoop() {
 			stats.v8workerSend++
 			stats.v8workerBytesSent += len(out)
 			exitOnError(err)
+			wg.Done() // Corresponds to the wg.Add(1) in Pub().
 		case <-doneChan:
 			// All goroutines have completed. Now we can exit main().
 			return
