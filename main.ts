@@ -36,6 +36,6 @@ dispatch.sub("start", (payload: Uint8Array) => {
   runtime.setup(mainJs, mainMap);
 
   const inputFn = argv[0];
-  const mod = runtime.resolveModule(inputFn, cwd + "/");
+  const mod = runtime.resolveModule(inputFn, `${cwd}/`);
   mod.compileAndRun();
 });
