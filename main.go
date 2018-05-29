@@ -64,6 +64,9 @@ func main() {
 	cwd, err := os.Getwd()
 	check(err)
 
+	err = worker.Load("deno_main.js", "denoMain()")
+	exitOnError(err)
+
 	var command = Msg_START // TODO use proto3
 	PubMsg("start", &Msg{
 		Command:        command,

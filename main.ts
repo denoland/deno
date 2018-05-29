@@ -17,27 +17,35 @@ import { initFetch } from "./fetch";
 export let debug = false;
 let startCalled = false;
 
-dispatch.sub("start", (payload: Uint8Array) => {
-  if (startCalled) {
-    throw Error("start message received more than once!");
-  }
-  startCalled = true;
-
-  const msg = pb.Msg.decode(payload);
-  const cwd = msg.startCwd;
-  const argv = msg.startArgv;
-  const debugFlag = msg.startDebugFlag;
-  const mainJs = msg.startMainJs;
-  const mainMap = msg.startMainMap;
-
-  debug = debugFlag;
-  util.log("start", { cwd, argv, debugFlag });
+// denoMain is needed to allow hooks into the system.
+// Also eventual snapshot support needs it.
+(window as any)["denoMain"] = () => {
+  delete (window as any)["denoMain"];
 
   initTimers();
   initFetch();
-  runtime.setup(mainJs, mainMap);
 
-  const inputFn = argv[0];
-  const mod = runtime.resolveModule(inputFn, `${cwd}/`);
-  mod.compileAndRun();
-});
+  dispatch.sub("start", (payload: Uint8Array) => {
+    if (startCalled) {
+      throw Error("start message received more than once!");
+    }
+    startCalled = true;
+
+    const msg = pb.Msg.decode(payload);
+    const cwd = msg.startCwd;
+    const argv = msg.startArgv;
+    const debugFlag = msg.startDebugFlag;
+    const mainJs = msg.startMainJs;
+    const mainMap = msg.startMainMap;
+
+    debug = debugFlag;
+    util.log("start", { cwd, argv, debugFlag });
+
+    runtime.setup(mainJs, mainMap);
+
+    const inputFn = argv[0];
+    const mod = runtime.resolveModule(inputFn, `${cwd}/`);
+    mod.compileAndRun();
+  });
+}
+
