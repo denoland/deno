@@ -1,10 +1,9 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-package main
+package deno
 
 import (
 	"github.com/golang/protobuf/proto"
-	"github.com/ry/v8worker2"
 	"sync"
 )
 
@@ -20,18 +19,9 @@ var stats struct {
 	v8workerBytesRecv int
 }
 
-// There is a single global worker for this process.
-// This file should be the only part of deno that directly access it, so that
-// all interaction with V8 can go through a single point.
-var worker *v8worker2.Worker
-
 var channels = make(map[string][]Subscriber)
 
 type Subscriber func(payload []byte) []byte
-
-func createWorker() {
-	worker = v8worker2.New(recv)
-}
 
 func recv(buf []byte) (response []byte) {
 	stats.v8workerRecv++

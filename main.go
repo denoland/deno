@@ -1,6 +1,6 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-package main
+package deno
 
 import (
 	"flag"
@@ -34,8 +34,16 @@ func FlagsParse() []string {
 	return args
 }
 
-func main() {
-	args := FlagsParse()
+// There is a single global worker for this process.
+// This file should be the only part of deno that directly access it, so that
+// all interaction with V8 can go through a single point.
+var worker *v8worker2.Worker
+var workerArgs []string
+var main_js string
+var main_map string
+
+func Init() {
+	workerArgs = FlagsParse()
 
 	// Maybe start Golang CPU profiler.
 	// Use --prof for profiling JS.
@@ -49,33 +57,36 @@ func main() {
 	}
 
 	createDirs()
-	createWorker()
-
 	InitOS()
 	InitEcho()
 	InitTimers()
 	InitFetch()
 
-	main_js := stringAsset("main.js")
+	worker = v8worker2.New(recv)
+
+	main_js = stringAsset("main.js")
 	err := worker.Load("/main.js", main_js)
 	exitOnError(err)
-	main_map := stringAsset("main.map")
+	main_map = stringAsset("main.map")
+}
 
+// It's up to library users to call
+// deno.Eval("deno_main.js", "denoMain()")
+func Eval(filename string, code string) {
+	err := worker.Load(filename, code)
+	exitOnError(err)
+}
+
+func Loop() {
 	cwd, err := os.Getwd()
 	check(err)
-
-	err = worker.Load("deno_main.js", "denoMain()")
-	exitOnError(err)
-
-	var command = Msg_START // TODO use proto3
 	PubMsg("start", &Msg{
-		Command:        command,
+		Command:        Msg_START,
 		StartCwd:       cwd,
-		StartArgv:      args,
+		StartArgv:      workerArgs,
 		StartDebugFlag: *flagDebug,
 		StartMainJs:    main_js,
 		StartMainMap:   main_map,
 	})
-
 	DispatchLoop()
 }

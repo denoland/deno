@@ -2,6 +2,7 @@
 // All rights reserved. MIT License.
 syntax = "proto3";
 package main;
+option go_package = "deno";
 
 message BaseMsg {
   string channel = 1;

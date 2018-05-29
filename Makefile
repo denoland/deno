@@ -18,6 +18,7 @@ TS_FILES = \
 	v8worker2.d.ts
 
 GO_FILES = \
+	cmd/main.go \
 	assets.go \
 	deno_dir.go \
 	deno_dir_test.go \
@@ -31,13 +32,14 @@ GO_FILES = \
 	timers.go \
 	util.go
 
+
 deno: msg.pb.go $(GO_FILES)
-	go build -o deno
+	go build -o deno ./cmd
 
 assets.go: dist/main.js
 	cp node_modules/typescript/lib/lib.*d.ts dist/
 	cp deno.d.ts dist/
-	go-bindata -pkg main -o assets.go dist/
+	go-bindata -pkg deno -o assets.go dist/
 
 msg.pb.go: msg.proto
 	protoc --go_out=. msg.proto

@@ -47,5 +47,4 @@ let startCalled = false;
     const mod = runtime.resolveModule(inputFn, `${cwd}/`);
     mod.compileAndRun();
   });
-}
-
+};
