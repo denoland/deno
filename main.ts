@@ -19,7 +19,9 @@ let startCalled = false;
 
 // denoMain is needed to allow hooks into the system.
 // Also eventual snapshot support needs it.
+// tslint:disable-next-line:no-any
 (window as any)["denoMain"] = () => {
+  // tslint:disable-next-line:no-any
   delete (window as any)["denoMain"];
 
   initTimers();
