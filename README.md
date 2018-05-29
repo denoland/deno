@@ -32,10 +32,20 @@ A JavaScript runtime using V8 6.8 and Go.
 		libgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f104f1a6000)
 		libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f104eddc000)
 		/lib64/ld-linux-x86-64.so.2 (0x00007f104fc64000)
-	>
 	```
 
-No docs yet. For the public API see
+* Always dies on on uncaught errors.
+
+* Supports top-level await.
+
+* Aims to be browser compatible.
+
+
+## Status
+
+Segfaulty.
+
+No docs yet. For some of the public API see
 https://github.com/ry/deno/blob/master/deno.d.ts
 
 And examples are around here:
