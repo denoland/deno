@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"bytes"
 )
 
 func logDebug(format string, v ...interface{}) {
@@ -58,4 +59,41 @@ func async(cb func()) {
 		cb()
 		wg.Done()
 	}()
+}
+
+var WILDCARD = []byte("[WILDCARD]")
+
+func wildcard(pattern []byte, text []byte) bool {
+	// Empty pattern only match empty text.
+	if len(pattern) == 0 {
+		return len(text) == 0
+	}
+	
+	if bytes.Equal(pattern, WILDCARD) {
+		return true
+	}
+
+	parts := bytes.Split(pattern, WILDCARD)
+	numParts := len(parts)
+
+	if numParts == 1 {
+		return bytes.Equal(pattern, text)
+	}
+
+	if bytes.HasPrefix(text, parts[0]) {
+		text = text[len(parts[0]):]
+	} else {
+		return false
+	}
+
+	// *parts[i]
+	for i := 1; i < numParts; i++ {
+		index := bytes.Index(text, parts[i])
+		if index < 0 {
+			return false
+		}
+		text = text[index + len(parts[i]):]
+	}
+
+	return len(text) == 0
 }

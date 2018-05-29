@@ -58,9 +58,13 @@ func checkOutput(t *testing.T, outFile string) {
 
 	actual, _, err := deno(jsFile)
 	if err != nil {
-		t.Fatal(err.Error())
+		// The program might exit with status code != 0
+		// and it's ok.
+		if _, nok := err.(*exec.ExitError); !nok {
+			t.Fatal(err.Error())
+		}
 	}
-	if bytes.Compare(actual, expected) != 0 {
+	if !wildcard(expected, actual) {
 		t.Fatalf(`Actual output does not match expected.
 -----Actual-------------------
 %s-----Expected-----------------

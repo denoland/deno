@@ -1,0 +1,8 @@
+hello
+before error
+error Error: error
+    at foo ([WILDCARD]testdata/013_async_throw.ts:4:11)
+    at eval ([WILDCARD]testdata/013_async_throw.ts:6:1)
+    at Object.eval [as globalEval] (<anonymous>)
+    at execute (/main.js:[WILDCARD])[WILDCARD]
+

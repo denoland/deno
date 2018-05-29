@@ -1,9 +1,5 @@
 - Fix v8_source_maps.ts so that we don't get random segfaults.
 
-- Add wildcard support to testdata/*.out tests so that we can check
-  the stack trace output in testdata/007_stack_trace.ts and
-  testdata/013_async_throw.ts.
-
 - Remove text-encoding.d.ts because TS2.8 includes the declarations.
   https://github.com/DefinitelyTyped/DefinitelyTyped/issues/24695
 
