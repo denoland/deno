@@ -32,7 +32,6 @@ GO_FILES = \
 	timers.go \
 	util.go
 
-
 deno: msg.pb.go $(GO_FILES)
 	go build -o deno ./cmd
 
@@ -42,7 +41,7 @@ assets.go: dist/main.js
 	go-bindata -pkg deno -o assets.go dist/
 
 msg.pb.go: msg.proto
-	protoc --go_out=. msg.proto
+	protolock status && protoc --go_out=. msg.proto
 
 msg.pb.js: msg.proto node_modules
 	./node_modules/.bin/pbjs -t static-module -w commonjs -o msg.pb.js msg.proto

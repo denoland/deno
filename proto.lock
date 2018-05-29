@@ -1,0 +1,203 @@
+{
+  "definitions": [
+    {
+      "protopath": "msg.proto",
+      "def": {
+        "messages": [
+          {
+            "name": "BaseMsg",
+            "fields": [
+              {
+                "id": 1,
+                "name": "channel",
+                "type": "string"
+              },
+              {
+                "id": 2,
+                "name": "payload",
+                "type": "bytes"
+              }
+            ]
+          },
+          {
+            "name": "Msg",
+            "fields": [
+              {
+                "id": 1,
+                "name": "command",
+                "type": "Command"
+              },
+              {
+                "id": 2,
+                "name": "error",
+                "type": "string"
+              },
+              {
+                "id": 10,
+                "name": "start_cwd",
+                "type": "string"
+              },
+              {
+                "id": 11,
+                "name": "start_argv",
+                "type": "string",
+                "is_repeated": true
+              },
+              {
+                "id": 12,
+                "name": "start_debug_flag",
+                "type": "bool"
+              },
+              {
+                "id": 13,
+                "name": "start_main_js",
+                "type": "string"
+              },
+              {
+                "id": 14,
+                "name": "start_main_map",
+                "type": "string"
+              },
+              {
+                "id": 20,
+                "name": "code_fetch_module_specifier",
+                "type": "string"
+              },
+              {
+                "id": 21,
+                "name": "code_fetch_containing_file",
+                "type": "string"
+              },
+              {
+                "id": 30,
+                "name": "code_fetch_res_module_name",
+                "type": "string"
+              },
+              {
+                "id": 31,
+                "name": "code_fetch_res_filename",
+                "type": "string"
+              },
+              {
+                "id": 32,
+                "name": "code_fetch_res_source_code",
+                "type": "string"
+              },
+              {
+                "id": 33,
+                "name": "code_fetch_res_output_code",
+                "type": "string"
+              },
+              {
+                "id": 41,
+                "name": "code_cache_filename",
+                "type": "string"
+              },
+              {
+                "id": 42,
+                "name": "code_cache_source_code",
+                "type": "string"
+              },
+              {
+                "id": 43,
+                "name": "code_cache_output_code",
+                "type": "string"
+              },
+              {
+                "id": 50,
+                "name": "exit_code",
+                "type": "int32"
+              },
+              {
+                "id": 60,
+                "name": "timer_start_id",
+                "type": "int32"
+              },
+              {
+                "id": 61,
+                "name": "timer_start_interval",
+                "type": "bool"
+              },
+              {
+                "id": 62,
+                "name": "timer_start_duration",
+                "type": "int32"
+              },
+              {
+                "id": 70,
+                "name": "timer_ready_id",
+                "type": "int32"
+              },
+              {
+                "id": 71,
+                "name": "timer_ready_done",
+                "type": "bool"
+              },
+              {
+                "id": 80,
+                "name": "timer_clear_id",
+                "type": "int32"
+              },
+              {
+                "id": 90,
+                "name": "fetch_req_id",
+                "type": "int32"
+              },
+              {
+                "id": 91,
+                "name": "fetch_req_url",
+                "type": "string"
+              },
+              {
+                "id": 100,
+                "name": "fetch_res_id",
+                "type": "int32"
+              },
+              {
+                "id": 101,
+                "name": "fetch_res_status",
+                "type": "int32"
+              },
+              {
+                "id": 102,
+                "name": "fetch_res_header_line",
+                "type": "string",
+                "is_repeated": true
+              },
+              {
+                "id": 103,
+                "name": "fetch_res_body",
+                "type": "bytes"
+              },
+              {
+                "id": 110,
+                "name": "read_file_sync_filename",
+                "type": "string"
+              },
+              {
+                "id": 120,
+                "name": "read_file_sync_data",
+                "type": "bytes"
+              },
+              {
+                "id": 130,
+                "name": "write_file_sync_filename",
+                "type": "string"
+              },
+              {
+                "id": 131,
+                "name": "write_file_sync_data",
+                "type": "bytes"
+              },
+              {
+                "id": 132,
+                "name": "write_file_sync_perm",
+                "type": "uint32"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
