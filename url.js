@@ -1,5 +1,3 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/
  * Forked from https://github.com/github/url-polyfill

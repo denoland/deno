@@ -1,5 +1,3 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
 // Type definitions for text-encoding
 // Project: https://github.com/inexorabletash/text-encoding
 // Definitions by: MIZUNE Pine <https://github.com/pine613>
