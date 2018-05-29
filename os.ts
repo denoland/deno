@@ -63,3 +63,12 @@ export function writeFileSync(
     writeFileSyncPerm: perm
   });
 }
+
+export function fileWrite(fd: number, data: Uint8Array): number {
+  const res = sendMsg("os", {
+    command: pb.Msg.Command.FILE_WRITE,
+    fileWriteFd: fd,
+    fileWriteData: data
+  });
+  return res.fileWriteResWrittenBytes;
+}

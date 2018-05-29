@@ -1,6 +1,8 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 import * as timer from "./timers";
+import { strToUint8Array } from "./util";
+import { fileWrite } from "./os";
 
 // If you use the eval function indirectly, by invoking it via a reference
 // other than eval, as of ECMAScript 5 it works in the global scope rather than
@@ -21,17 +23,17 @@ _global["setInterval"] = timer.setInterval;
 _global["clearTimeout"] = timer.clearTimer;
 _global["clearInterval"] = timer.clearTimer;
 
-const print = V8Worker2.print;
-
 _global["console"] = {
   // tslint:disable-next-line:no-any
   log(...args: any[]): void {
-    print(stringifyArgs(args));
+    const data = strToUint8Array(stringifyArgs(args) + "\n");
+    fileWrite(1, data);
   },
 
   // tslint:disable-next-line:no-any
   error(...args: any[]): void {
-    print("ERROR: " + stringifyArgs(args));
+    const data = strToUint8Array(stringifyArgs(args) + "\n");
+    fileWrite(2, data);
   }
 };
 

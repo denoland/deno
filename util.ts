@@ -47,3 +47,11 @@ export function createResolvable<T>(): Resolvable<T> {
   });
   return Object.assign(promise, methods) as Resolvable<T>;
 }
+
+export function strToUint8Array(str: string): Uint8Array {
+  const ab = new ArrayBuffer(str.length);
+  const ta = new Uint8Array(ab);
+  return ta.map((_, i) => {
+    return str.charCodeAt(i);
+  });
+}
