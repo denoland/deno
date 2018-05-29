@@ -17,7 +17,14 @@ const assetPrefix string = "/$asset$/"
 var fs afero.Fs
 
 func InitOS() {
-	fs = afero.NewOsFs()
+	if Perms.FsWrite {
+		assert(Perms.FsRead, "Write access requires read access.")
+		fs = afero.NewOsFs()
+	} else if Perms.FsRead {
+		fs = afero.NewReadOnlyFs(afero.NewOsFs())
+	} else {
+		panic("Not implemented.")
+	}
 
 	Sub("os", func(buf []byte) []byte {
 		msg := &Msg{}
