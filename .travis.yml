@@ -1,5 +1,9 @@
 language: c++
 cache: ccache
+cache:
+  directories:
+   - .cache/
+   - node_modules/
 env:
   global:
     - PROTOBUF_ROOT=$HOME/protobuf
