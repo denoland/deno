@@ -16,7 +16,7 @@ A JavaScript runtime using V8 6.8 and Go.
 
 * File system and network access can be controlled in order to run sandboxed
   code. Defaults to read-only file system access. Access between V8
-  (unprivlaged) and Golang (privlaged) is only done via serialized messages
+  (unprivileged) and Golang (privileged) is only done via serialized messages
   defined in this protobuf: https://github.com/ry/deno/blob/master/msg.proto
   This makes it easy to audit.
 
