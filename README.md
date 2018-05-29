@@ -1,6 +1,6 @@
 # deno
 
-[![Build Status](https://travis-ci.com/propelml/deno.svg?token=eWz4oGVxypBGsz78gdKp&branch=master)](https://travis-ci.com/propelml/deno)
+[![Build Status](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
 
 A JavaScript runtime using V8 6.8 and Go.
 
