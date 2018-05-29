@@ -108,6 +108,7 @@ func DispatchLoop() {
 			wg.Done() // Corresponds to the wg.Add(1) in Pub().
 		case <-doneChan:
 			// All goroutines have completed. Now we can exit main().
+			checkChanEmpty()
 			return
 		}
 
@@ -118,5 +119,20 @@ func DispatchLoop() {
 			wg.Done()
 		}
 		first = false
+	}
+}
+
+func checkChanEmpty() {
+	// We've received a done event. As a sanity check, make sure that resChan is
+	// empty.
+	select {
+	case _, ok := <-resChan:
+		if ok {
+			panic("Read a message from resChan after doneChan closed.")
+		} else {
+			panic("resChan closed. Unexpected.")
+		}
+	default:
+		// No value ready, moving on.
 	}
 }
