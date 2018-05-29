@@ -5,14 +5,10 @@ cache:
    - .cache/
    - node_modules/
    - $V8WORKER2_OUT_PATH
-before_script:
-  - mkdir -p $DENO_PATH
-  - cd $DENO_PATH
 env:
   global:
     - V8WORKER2_OUT_PATH=$HOME/v8worker2_out
     - PROTOBUF_ROOT=$HOME/protobuf
-    - DENO_PATH=/home/travis/gopath/src/github.com/ry/deno
 before_install: |
   # protobuf
   export PATH=$PROTOBUF_ROOT/bin:$PATH
@@ -25,6 +21,8 @@ before_install: |
     popd
   fi
 install:
+ - mkdir -p $GOPATH/src/github.com/ry
+ - ln -s `pwd` $GOPATH/src/github.com/ry/deno
  - env
  - go get -d github.com/ry/v8worker2
  - $GOPATH/src/github.com/ry/v8worker2/build.py --use_ccache --out_path $V8WORKER2_OUT_PATH
