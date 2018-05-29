@@ -4,6 +4,7 @@ package deno
 
 import (
 	"flag"
+	"fmt"
 	"github.com/ry/v8worker2"
 	"os"
 	"runtime/pprof"
@@ -68,6 +69,12 @@ var main_map string
 
 func Init() {
 	workerArgs = FlagsParse()
+
+	if len(workerArgs) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: %s file.ts\n", os.Args[0])
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
 
 	// Maybe start Golang CPU profiler.
 	// Use --prof for profiling JS.
