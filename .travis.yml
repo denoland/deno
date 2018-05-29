@@ -1,29 +1,9 @@
-language: go
-go:
- - 1.9.2
-before_cache:
-  - ccache -s
-  - mv $GOPATH/src/github.com/ry/v8worker2/out $V8WORKER2_OUT
-cache:
-  directories:
-    - $HOME/.ccache
-    - $PROTOBUF_ROOT
-    - $V8WORKER2_OUT
-    # Adding the following makes it fail with:
-    #  $ go get ./...
-    # dispatch.go:5:2: no Go files in /home/travis/gopath/src/github.com/ry/v8worker2
-    #- $GOPATH/src/github.com/ry/v8worker2/out
+language: c++
+cache: ccache
 env:
   global:
-    - USE_CCACHE=1
     - PROTOBUF_ROOT=$HOME/protobuf
-    - V8WORKER2_OUT=$HOME/v8worker2_out
 before_install: |
-  # ccache
-  unset CCACHE_DISABLE
-  mkdir -p $HOME/.ccache
-  export PATH=/usr/lib/ccache:$PATH
-
   # protobuf
   export PATH=$PROTOBUF_ROOT/bin:$PATH
   if ! [ -x $PROTOBUF_ROOT/bin/protoc ]; then
@@ -37,10 +17,6 @@ before_install: |
 install:
  - env
  - go get -d github.com/ry/v8worker2
- - |
-   if [ -d $V8WORKER2_OUT ]; then
-     mv $V8WORKER2_OUT $GOPATH/src/github.com/ry/v8worker2/out
-   fi
  - ( cd $GOPATH/src/github.com/ry/v8worker2 && ./build.py --use_ccache )
  - go get -u github.com/golang/protobuf/proto
  - go get -u github.com/spf13/afero
