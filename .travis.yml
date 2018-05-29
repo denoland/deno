@@ -1,12 +1,13 @@
 language: c++
 cache:
+  ccache: true
   directories:
    - .cache/
    - node_modules/
-   - $HOME/.ccache
-cache: ccache
+   - $V8WORKER2_OUT_PATH
 env:
   global:
+    - V8WORKER2_OUT_PATH=$HOME/v8worker2_out
     - PROTOBUF_ROOT=$HOME/protobuf
 before_install: |
   # protobuf
@@ -22,7 +23,8 @@ before_install: |
 install:
  - env
  - go get -d github.com/ry/v8worker2
- - ( cd $GOPATH/src/github.com/ry/v8worker2 && ./build.py --use_ccache )
+ - ( cd $GOPATH/src/github.com/ry/v8worker2 && \
+   ./build.py --use_ccache --out_path $V8WORKER2_OUT_PATH )
  - go get -u github.com/golang/protobuf/proto
  - go get -u github.com/spf13/afero
  - go get -u github.com/golang/protobuf/protoc-gen-go
