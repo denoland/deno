@@ -32,10 +32,6 @@ GO_FILES = \
 	timers.go \
 	util.go
 
-deps:
-	# install build dependencies
-	go get -u github.com/nilslice/protolock/...
-
 deno: msg.pb.go $(GO_FILES)
 	go build -o deno ./cmd
 

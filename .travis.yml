@@ -32,6 +32,7 @@ install:
  - go get -u github.com/spf13/afero
  - go get -u github.com/golang/protobuf/protoc-gen-go
  - go get -u github.com/jteeuwen/go-bindata/...
+ - go get -u github.com/nilslice/protolock/...
  - yarn
 script:
  - make lint
