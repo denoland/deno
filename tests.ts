@@ -1,3 +1,5 @@
+// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
+// All rights reserved. MIT License.
 // This test is executed as part of integration_test.go
 // But it can also be run manually:
 //  ./deno tests.ts

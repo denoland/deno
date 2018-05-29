@@ -1,3 +1,5 @@
+// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
+// All rights reserved. MIT License.
 // Glossary
 // outputCode = generated javascript code
 // sourceCode = typescript code (or input javascript code)

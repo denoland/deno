@@ -1,3 +1,5 @@
+// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
+// All rights reserved. MIT License.
 import { assert, log, createResolvable, Resolvable } from "./util";
 import * as util from "./util";
 import * as dispatch from "./dispatch";

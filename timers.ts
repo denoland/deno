@@ -1,3 +1,5 @@
+// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
+// All rights reserved. MIT License.
 import { main as pb } from "./msg.pb";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";

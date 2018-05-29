@@ -1,3 +1,7 @@
+// Copyright 2014 Evan Wallace
+// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
+// All rights reserved. MIT License.
+// Originated from source-map-support but has been heavily modified for deno.
 import { SourceMapConsumer, MappedPosition } from "source-map";
 import * as base64 from "base64-js";
 

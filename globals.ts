@@ -1,3 +1,5 @@
+// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
+// All rights reserved. MIT License.
 import * as timer from "./timers";
 
 // If you use the eval function indirectly, by invoking it via a reference

@@ -1,3 +1,5 @@
+// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
+// All rights reserved. MIT License.
 // This allows us to have async/await in our code. It must be loaded first.
 import "babel-polyfill";
 
