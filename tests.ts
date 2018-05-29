@@ -7,17 +7,14 @@
 // serving the deno project directory. Try this:
 //   http-server -p 4545 --cors .
 import { test, assert, assertEqual } from "./deno_testing/testing.ts";
-import {
-  readFileSync,
-  writeFileSync
-} from "deno";
+import { readFileSync, writeFileSync } from "deno";
 
 test(async function tests_test() {
   assert(true);
 });
 
 test(async function tests_fetch() {
-  const response = await fetch('http://localhost:4545/package.json');
+  const response = await fetch("http://localhost:4545/package.json");
   const json = await response.json();
   assertEqual(json.name, "deno");
 });
@@ -46,4 +43,3 @@ test(async function tests_writeFileSync() {
   const actual = dec.decode(dataRead);
   assertEqual("Hello", actual);
 });
-
