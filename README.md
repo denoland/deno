@@ -34,7 +34,7 @@ A JavaScript runtime using V8 6.8 and Go.
 		/lib64/ld-linux-x86-64.so.2 (0x00007f104fc64000)
 	```
 
-* Always dies on on uncaught errors.
+* Always dies on uncaught errors.
 
 * Supports top-level await.
 
