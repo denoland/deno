@@ -23,8 +23,7 @@ before_install: |
 install:
  - env
  - go get -d github.com/ry/v8worker2
- - ( cd $GOPATH/src/github.com/ry/v8worker2 && \
-   ./build.py --use_ccache --out_path $V8WORKER2_OUT_PATH )
+ - $GOPATH/src/github.com/ry/v8worker2/build.py --use_ccache --out_path $V8WORKER2_OUT_PATH
  - go get -u github.com/golang/protobuf/proto
  - go get -u github.com/spf13/afero
  - go get -u github.com/golang/protobuf/protoc-gen-go
