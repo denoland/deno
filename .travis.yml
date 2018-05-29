@@ -41,7 +41,7 @@ install:
    if [ -d $V8WORKER2_OUT ]; then
      mv $V8WORKER2_OUT $GOPATH/src/github.com/ry/v8worker2/out
    fi
- - (cd $GOPATH/src/github.com/ry/v8worker2 && ./tools/build.py)
+ - ( cd $GOPATH/src/github.com/ry/v8worker2 && ./build.py --use_ccache )
  - go get -u github.com/golang/protobuf/proto
  - go get -u github.com/spf13/afero
  - go get -u github.com/golang/protobuf/protoc-gen-go
