@@ -76,11 +76,6 @@ func ResolveModule(moduleSpecifier string, containingFile string) (
 	containingFile = SrcFileToUrl(containingFile)
 	moduleSpecifier = SrcFileToUrl(moduleSpecifier)
 
-	// Hack: If there is no extension, just add .ts
-	if path.Ext(moduleSpecifier) == "" {
-		moduleSpecifier = moduleSpecifier + ".ts"
-	}
-
 	logDebug("os.go ResolveModule after moduleSpecifier %s containingFile %s",
 		moduleSpecifier, containingFile)
 

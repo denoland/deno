@@ -13,9 +13,9 @@
    limitations under the License.
  */
 
-import { test } from "./index";
-import { assert } from "./util";
-import * as util from "./util";
+import { test } from "./index.ts";
+import { assert } from "./util.ts";
+import * as util from "./util.ts";
 
 test(async function util_equal() {
   assert(util.equal("world", "world"));

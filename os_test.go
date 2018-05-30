@@ -72,9 +72,8 @@ func TestResolveModule4(t *testing.T) {
 		path.Join(SrcDir, "unpkg.com/liltest@0.0.5/index.ts"))
 }
 
-func TestResolveModule5(t *testing.T) {
+func TestResolveModuleExtensionsAintSpecial(t *testing.T) {
 	createDirs()
-	// Files in SrcDir should resolve to URLs.
 	moduleName, filename, err := ResolveModule(
 		"./util",
 		path.Join(SrcDir, "unpkg.com/liltest@0.0.5/index.ts"))
@@ -82,7 +81,7 @@ func TestResolveModule5(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 	AssertEqual(t, moduleName,
-		"http://unpkg.com/liltest@0.0.5/util.ts")
+		"http://unpkg.com/liltest@0.0.5/util")
 	AssertEqual(t, filename,
-		path.Join(SrcDir, "unpkg.com/liltest@0.0.5/util.ts"))
+		path.Join(SrcDir, "unpkg.com/liltest@0.0.5/util"))
 }
