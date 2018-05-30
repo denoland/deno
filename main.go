@@ -15,27 +15,23 @@ var flagV8Options = flag.Bool("v8-options", false, "Print V8 command line option
 var flagDebug = flag.Bool("debug", false, "Enable debug output.")
 var flagGoProf = flag.String("goprof", "", "Write golang cpu profile to file.")
 
-var flagAllowWrite = flag.Bool("allow-write", false,
-	"Allow program to write to the fs.")
-var flagAllowConnect = flag.Bool("allow-connect", false,
-	"Allow program to connect to other network addresses.")
-var flagAllowAccept = flag.Bool("allow-accept", false,
-	"Allow program to accept connections.")
 var flagAllowRead = flag.Bool("allow-read", true,
 	"Allow program to read file system.")
+var flagAllowWrite = flag.Bool("allow-write", false,
+	"Allow program to write to the fs.")
+var flagAllowNet = flag.Bool("allow-net", false,
+	"Allow program to make network connection.")
 
 var Perms struct {
 	FsRead  bool
 	FsWrite bool
-	Connect bool
-	Accept  bool
+	Net     bool
 }
 
 func setPerms() {
 	Perms.FsRead = *flagAllowRead
 	Perms.FsWrite = *flagAllowWrite
-	Perms.Connect = *flagAllowConnect
-	Perms.Accept = *flagAllowAccept
+	Perms.Net = *flagAllowNet
 }
 
 func stringAsset(path string) string {

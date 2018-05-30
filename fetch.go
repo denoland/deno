@@ -31,8 +31,8 @@ func Fetch(id int32, targetUrl string) []byte {
 			FetchResId: id,
 		}
 
-		if !Perms.Connect {
-			resMsg.Error = "Permission to connect denied."
+		if !Perms.Net {
+			resMsg.Error = "Network access denied."
 			PubMsg("fetch", resMsg)
 			return
 		}
