@@ -130,6 +130,8 @@ export function makeDefine(fileName: string): AmdDefine {
         return localRequire;
       } else if (dep === "exports") {
         return localExports;
+      } else if (dep === "typescript") {
+        return ts;
       } else if (dep === "deno") {
         return deno;
       } else {
@@ -310,6 +312,8 @@ class TypeScriptHost implements ts.LanguageServiceHost {
       let resolvedFileName;
       if (name === "deno") {
         resolvedFileName = resolveModuleName("deno.d.ts", "/$asset$/");
+      } else if (name === "typescript") {
+        resolvedFileName = resolveModuleName("typescript.d.ts", "/$asset$/");
       } else {
         resolvedFileName = resolveModuleName(name, containingFile);
       }

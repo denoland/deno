@@ -39,7 +39,7 @@ deno: msg.pb.go $(GO_FILES)
 	go build -o deno ./cmd
 
 assets.go: dist/main.js
-	cp node_modules/typescript/lib/lib.*d.ts dist/
+	cp node_modules/typescript/lib/*d.ts dist/
 	cp deno.d.ts dist/
 	go-bindata -pkg deno -o assets.go dist/
 
