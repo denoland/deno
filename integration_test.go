@@ -138,7 +138,7 @@ func TestIntegrationUrlArgs(t *testing.T) {
 func TestTestsTs(t *testing.T) {
 	integrationTestSetup()
 	// TODO Need unit test for each of the permissions.
-	cmd := exec.Command(denoFn, "--allow-connect", "--allow-write", "tests.ts")
+	cmd := exec.Command(denoFn, "--allow-net", "--allow-write", "tests.ts")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
