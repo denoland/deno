@@ -16,5 +16,3 @@
 - Publish deno_testing to npm as a standalone module.
 
 - Use mksnapshot instead of go-bindata.
-
-- Use as library to build custom runtimes.
