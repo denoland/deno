@@ -2,23 +2,29 @@
 
 [![Build Status](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
 
-A JavaScript runtime using V8 6.8 and Go.
+A secure TypeScript runtime on V8
 
-* Supports TypeScript 2.8 out of the box.
+* Supports TypeScript 2.8 out of the box. Uses V8 6.8.275.3. That is, it's
+  very modern JavaScript.
 
-* No package.json, no npm. Not backwards compatible with Node.
+* No package.json, no npm. Not explicitly compatible with Node.
 
 * Imports reference source code URLs only.
 	```
   import { test } from "https://unpkg.com/deno_testing@0.0.5/testing.ts"
   import { log } from "./util.ts"
 	```
+  Remote code is fetched and cached on first execution, and never updated until
+  the code is run with the `--reload` flag. (So this will still work on an
+  airplane. See `~/.deno/src` for details on the cache.)
 
 * File system and network access can be controlled in order to run sandboxed
-  code. Defaults to read-only file system access. Access between V8
-  (unprivileged) and Golang (privileged) is only done via serialized messages
-  defined in this protobuf: https://github.com/ry/deno/blob/master/msg.proto
-  This makes it easy to audit.
+  code. Defaults to read-only file system access and no network access.
+	Access between V8 (unprivileged) and Golang (privileged) is only done via
+  serialized messages defined in this protobuf:
+  https://github.com/ry/deno/blob/master/msg.proto This makes it easy to audit.
+	To enable write access explicitly use `--allow-write` and `--allow-net` for
+  network access.
 
 * Single executable:
 	```
@@ -70,27 +76,27 @@ unzip protoc-3.1.0-linux-x86_64.zip
 export PATH=$HOME/bin:$PATH
 ```
 
-Then you need `protoc-gen-go` and `go-bindata` and other deps:
+Then you need `protoc-gen-go` and `go-bindata`:
 ```
 go get -u github.com/golang/protobuf/protoc-gen-go
 go get -u github.com/jteeuwen/go-bindata/...
-go get -u ./...
 ```
 
-Installing `v8worker2` is time consuming, because it requires building V8. It
-may take about 30 minutes:
+You need to get and build `v8worker2`. It takes about 30 minutes to build:
 ```
 go get -u github.com/ry/v8worker2
 cd $GOPATH/src/github.com/ry/v8worker2
 ./build.py --use_ccache
 ```
 
-You might also need Node and Yarn.
-
-Finally the dependencies are installed.
+Finally you can get `deno` and its other Go deps.
+```
+go get -u github.com/ry/deno/...
+```
 
 Now you can build deno and run it:
 ```
+> cd $GOPATH/src/github.com/ry/deno
 > make
 [redacted]
 > ./deno testdata/001_hello.js
