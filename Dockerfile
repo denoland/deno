@@ -2,6 +2,7 @@ FROM golang:1.10.2-stretch
 
 RUN apk add --update go
 RUN apk add --update git
+RUN apk add --update yarn
 
 RUN mkdir -p /go/src
 ENV GOPATH /go
