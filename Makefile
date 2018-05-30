@@ -30,7 +30,9 @@ GO_FILES = \
 	os.go \
 	os_test.go \
 	timers.go \
-	util.go
+	util.go \
+	util_test.go \
+	integration_test.go
 
 
 deno: msg.pb.go $(GO_FILES)

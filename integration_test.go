@@ -47,7 +47,7 @@ func listTestFiles() []string {
 	return out
 }
 
-func checkOutput(t *testing.T, outFile string) {
+func checkOutput(t *testing.T, outFile string, shouldSucceed bool) {
 	outFile = path.Join("testdata", outFile)
 	jsFile := strings.TrimSuffix(outFile, ".out")
 
@@ -57,10 +57,12 @@ func checkOutput(t *testing.T, outFile string) {
 	}
 
 	actual, _, err := deno(jsFile)
-	if err != nil {
-		t.Fatal(err.Error())
+	if shouldSucceed && err != nil {
+		t.Fatalf("Expected success %s", err.Error())
+	} else if !shouldSucceed && err == nil {
+		t.Fatalf("Expected failure but got success")
 	}
-	if bytes.Compare(actual, expected) != 0 {
+	if !patternMatch(string(expected), string(actual)) {
 		t.Fatalf(`Actual output does not match expected.
 -----Actual-------------------
 %s-----Expected-----------------
@@ -77,10 +79,9 @@ func deno(inputFn string) (actual []byte, cachedir string, err error) {
 	cmd := exec.Command(denoFn, "--cachedir="+cachedir, inputFn)
 	var out bytes.Buffer
 	cmd.Stdout = &out
+	cmd.Stderr = &out
 	err = cmd.Run()
-	if err == nil {
-		actual = out.Bytes()
-	}
+	actual = out.Bytes()
 	return
 }
 
@@ -100,7 +101,8 @@ func TestIntegrationFiles(t *testing.T) {
 	outFiles := listTestFiles()
 	for _, outFile := range outFiles {
 		t.Run(outFile, func(t *testing.T) {
-			checkOutput(t, outFile)
+			shouldSucceed := strings.Index(outFile, "error") < 0
+			checkOutput(t, outFile, shouldSucceed)
 		})
 	}
 }
@@ -130,20 +132,6 @@ func TestIntegrationUrlArgs(t *testing.T) {
 	println("bad cacheFn", cacheFn)
 	if exists(cacheFn) {
 		t.Fatalf("Expected 404 at '%s'", cacheFn)
-	}
-}
-
-func TestErrors(t *testing.T) {
-	integrationTestSetup()
-
-	_, _, err := deno("testdata/013_async_throw.ts")
-	if err == nil {
-		t.Fatalf("Expected error.")
-	}
-
-	_, _, err = deno("testdata/007_stack_trace.ts")
-	if err == nil {
-		t.Fatalf("Expected error.")
 	}
 }
 

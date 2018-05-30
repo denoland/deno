@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 )
 
 func logDebug(format string, v ...interface{}) {
@@ -58,4 +59,48 @@ func async(cb func()) {
 		cb()
 		wg.Done()
 	}()
+}
+
+const wildcard = "[WILDCARD]"
+
+// Matches the pattern string against the text string. The pattern can
+// contain "[WILDCARD]" substrings which will match one or more characters.
+// Returns true if matched.
+func patternMatch(pattern string, text string) bool {
+	// Empty pattern only match empty text.
+	if len(pattern) == 0 {
+		return len(text) == 0
+	}
+
+	if pattern == wildcard {
+		return true
+	}
+
+	parts := strings.Split(pattern, wildcard)
+
+	if len(parts) == 1 {
+		return pattern == text
+	}
+
+	if strings.HasPrefix(text, parts[0]) {
+		text = text[len(parts[0]):]
+	} else {
+		return false
+	}
+
+	for i := 1; i < len(parts); i++ {
+		// If the last part is empty, we match.
+		if i == len(parts)-1 {
+			if parts[i] == "" || parts[i] == "\n" {
+				return true
+			}
+		}
+		index := strings.Index(text, parts[i])
+		if index < 0 {
+			return false
+		}
+		text = text[index+len(parts[i]):]
+	}
+
+	return len(text) == 0
 }
