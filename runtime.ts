@@ -146,10 +146,14 @@ export function resolveModule(
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
   // We ask golang to sourceCodeFetch. It will load the sourceCode and if
   // there is any outputCode cached, it will return that as well.
-  const { filename, sourceCode, outputCode } = os.codeFetch(
-    moduleSpecifier,
-    containingFile
-  );
+  let fetchResponse;
+  try {
+    fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
+  } catch(e) {
+    // TODO Only catch "no such file or directory" errors. Need error codes.
+    return null;
+  }
+  const { filename, sourceCode, outputCode } = fetchResponse;
   if (sourceCode.length === 0) {
     return null;
   }
@@ -165,9 +169,13 @@ export function resolveModule(
 function resolveModuleName(
   moduleSpecifier: string,
   containingFile: string
-): string {
+): string | undefined {
   const mod = resolveModule(moduleSpecifier, containingFile);
-  return mod.fileName;
+  if (mod) {
+    return mod.fileName;
+  } else {
+    return undefined;
+  }
 }
 
 function execute(fileName: string, outputCode: string): void {
@@ -308,6 +316,9 @@ class TypeScriptHost implements ts.LanguageServiceHost {
         resolvedFileName = resolveModuleName("typescript.d.ts", "/$asset$/");
       } else {
         resolvedFileName = resolveModuleName(name, containingFile);
+        if (resolvedFileName == null) {
+          return undefined;
+        }
       }
       const isExternalLibraryImport = false;
       return { resolvedFileName, isExternalLibraryImport };
