@@ -1,4 +1,7 @@
+sudo: required
 language: c++
+services:
+  - docker
 cache:
   ccache: true
   directories:
@@ -32,5 +35,6 @@ install:
  - go get -u github.com/jteeuwen/go-bindata/...
  - yarn
 script:
+ - docker build .
  - make lint
  - make test
