@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"bytes"
+	"strings"
 )
 
 func logDebug(format string, v ...interface{}) {
@@ -61,38 +61,45 @@ func async(cb func()) {
 	}()
 }
 
-var WILDCARD = []byte("[WILDCARD]")
+const wildcard = "[WILDCARD]"
 
-func wildcard(pattern []byte, text []byte) bool {
+// Matches the pattern string against the text string. The pattern can
+// contain "[WILDCARD]" substrings which will match one or more characters.
+// Returns true if matched.
+func patternMatch(pattern string, text string) bool {
 	// Empty pattern only match empty text.
 	if len(pattern) == 0 {
 		return len(text) == 0
 	}
-	
-	if bytes.Equal(pattern, WILDCARD) {
+
+	if pattern == wildcard {
 		return true
 	}
 
-	parts := bytes.Split(pattern, WILDCARD)
-	numParts := len(parts)
+	parts := strings.Split(pattern, wildcard)
 
-	if numParts == 1 {
-		return bytes.Equal(pattern, text)
+	if len(parts) == 1 {
+		return pattern == text
 	}
 
-	if bytes.HasPrefix(text, parts[0]) {
+	if strings.HasPrefix(text, parts[0]) {
 		text = text[len(parts[0]):]
 	} else {
 		return false
 	}
 
-	// *parts[i]
-	for i := 1; i < numParts; i++ {
-		index := bytes.Index(text, parts[i])
+	for i := 1; i < len(parts); i++ {
+		// If the last part is empty, we match.
+		if i == len(parts)-1 {
+			if parts[i] == "" || parts[i] == "\n" {
+				return true
+			}
+		}
+		index := strings.Index(text, parts[i])
 		if index < 0 {
 			return false
 		}
-		text = text[index + len(parts[i]):]
+		text = text[index+len(parts[i]):]
 	}
 
 	return len(text) == 0
