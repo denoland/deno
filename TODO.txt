@@ -7,9 +7,6 @@
 - Remove text-encoding.d.ts because TS2.8 includes the declarations.
   https://github.com/DefinitelyTyped/DefinitelyTyped/issues/24695
 
-- Add permissions that control which afero.Fs gets loaded. Should be read-only
-  by default. Also permissions for network access.
-
 - Add os.statSync and os.tempDir- both are needed for the writeFileSync test in
   tests.ts
 
