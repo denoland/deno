@@ -54,7 +54,7 @@ msg.pb.d.ts: msg.pb.js node_modules
 
 dist/main.js: $(TS_FILES) node_modules
 	./node_modules/.bin/tsc --noEmit # Only for type checking.
-	./node_modules/.bin/parcel build --out-dir=dist/ --no-minify main.ts
+	./node_modules/.bin/parcel build --out-dir=dist/ --log-level=1 --no-minify main.ts
 
 node_modules:
 	yarn
