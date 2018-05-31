@@ -31,7 +31,6 @@ func InitTimers() {
 				Duration: msg.TimerStartDuration,
 				Cleared:  false,
 			}
-			// If this parameter is less than 10, a value of 10 is used
 			if t.Duration < 10 {
 				t.Duration = 10
 			}
