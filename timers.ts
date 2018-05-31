@@ -78,7 +78,7 @@ export function setInterval(
   // tslint:disable-next-line:no-any
   ...args: any[]
 ): number {
-  return setTimer(cb, duration, true, args);
+  return setTimer(cb, repeat, true, args);
 }
 
 export function clearTimer(id: number) {
@@ -87,4 +87,3 @@ export function clearTimer(id: number) {
     timerClearId: id
   });
 }
-
