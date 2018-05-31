@@ -88,4 +88,3 @@ export function clearTimer(id: number) {
   });
 }
 
-
