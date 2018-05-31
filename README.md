@@ -21,8 +21,9 @@ A secure TypeScript runtime on V8
 * File system and network access can be controlled in order to run sandboxed
   code. Defaults to read-only file system access and no network access.
 	Access between V8 (unprivileged) and Golang (privileged) is only done via
-  serialized messages defined in this protobuf:
-  https://github.com/ry/deno/blob/master/msg.proto This makes it easy to audit.
+  serialized messages defined in this
+  [protobuf](https://github.com/ry/deno/blob/master/msg.proto), this makes it 
+  easy to audit.
 	To enable write access explicitly use `--allow-write` and `--allow-net` for
   network access.
 
@@ -54,14 +55,11 @@ A secure TypeScript runtime on V8
 
 Segfaulty.
 
-No docs yet. For some of the public API see
-https://github.com/ry/deno/blob/master/deno.d.ts
+No docs yet. For some of the public API see: [deno.d.ts](https://github.com/ry/deno/blob/master/deno.d.ts).
 
-And examples are around here:
-https://github.com/ry/deno/blob/master/testdata/004_set_timeout.ts
+And examples are around here: [testdata/004_set_timeout.ts](https://github.com/ry/deno/blob/master/testdata/004_set_timeout.ts).
 
-Roadmap is here: https://github.com/ry/deno/blob/master/TODO.txt
-
+Roadmap is [here](https://github.com/ry/deno/blob/master/TODO.txt).
 
 ## Compile instructions
 
@@ -73,52 +71,57 @@ You will need [Go](https://golang.org/) with `$GOPATH` defined and
 [yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
 
 You need Protobuf 3. On Linux this might work:
-```
-> cd ~
-> wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
-> unzip protoc-3.1.0-linux-x86_64.zip
-> export PATH=$HOME/bin:$PATH
+
+``` bash
+cd ~
+wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
+unzip protoc-3.1.0-linux-x86_64.zip
+export PATH=$HOME/bin:$PATH
 ```
 
 On macOS, using [HomeBrew](https://brew.sh/):
-```
-> brew install protobuf
+
+``` bash
+brew install protobuf
 ```
 
-Then you need `protoc-gen-go` and `go-bindata`:
-```
-> go get -u github.com/golang/protobuf/protoc-gen-go
-> go get -u github.com/jteeuwen/go-bindata/...
+Then you need [protoc-gen-go](https://github.com/golang/protobuf/tree/master/protoc-gen-go) and [go-bindata](https://github.com/jteeuwen/go-bindata):
+
+``` bash
+go get -u github.com/golang/protobuf/protoc-gen-go
+go get -u github.com/jteeuwen/go-bindata/...
 ```
 
-You need to get and build `v8worker2`.  The package will not build with `go
+You need to get and build [v8worker2](https://github.com/ry/v8worker2).  The package will not build with `go
 get` and will log out an error, which can be ignored. It takes about 30 minutes
 to build:
-```
-> go get -u github.com/ry/v8worker2
-> cd $GOPATH/src/github.com/ry/v8worker2
-> ./build.py --use_ccache
+
+``` bash
+go get -u github.com/ry/v8worker2
+cd $GOPATH/src/github.com/ry/v8worker2
+./build.py --use_ccache
 ```
 
 Finally you can get `deno` and its other Go deps.
-```
+
+``` bash
 go get -u github.com/ry/deno/...
 ```
 
 Now you can build deno and run it:
-```
-> cd $GOPATH/src/github.com/ry/deno
-> make
-[redacted]
-> ./deno testdata/001_hello.js
-Hello World
->
+
+``` bash
+cd $GOPATH/src/github.com/ry/deno
+
+make # Wait for redacted
+
+./deno testdata/001_hello.js # Output: Hello World
 ```
 
 ## make commands
 
-```bash
-make deno # Builds the deno executable
+``` bash
+make deno # Builds the deno executable.
 
 make test # Runs the tests.
 
