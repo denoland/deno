@@ -68,25 +68,36 @@ Roadmap is here: https://github.com/ry/deno/blob/master/TODO.txt
 I will release binaries at some point but for now you have to build it
 yourself.
 
+You will need [Go](https://golang.org/) with `$GOPATH` defined and
+`$GOPATH/bin` in your `$PATH`.  You will also need
+[yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
+
 You need Protobuf 3. On Linux this might work:
 ```
-cd ~
-wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
-unzip protoc-3.1.0-linux-x86_64.zip
-export PATH=$HOME/bin:$PATH
+> cd ~
+> wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
+> unzip protoc-3.1.0-linux-x86_64.zip
+> export PATH=$HOME/bin:$PATH
+```
+
+On macOS, using [HomeBrew](https://brew.sh/):
+```
+> brew install protobuf
 ```
 
 Then you need `protoc-gen-go` and `go-bindata`:
 ```
-go get -u github.com/golang/protobuf/protoc-gen-go
-go get -u github.com/jteeuwen/go-bindata/...
+> go get -u github.com/golang/protobuf/protoc-gen-go
+> go get -u github.com/jteeuwen/go-bindata/...
 ```
 
-You need to get and build `v8worker2`. It takes about 30 minutes to build:
+You need to get and build `v8worker2`.  The package will not build with `go
+get` and will log out an error, which can be ignored. It takes about 30 minutes
+to build:
 ```
-go get -u github.com/ry/v8worker2
-cd $GOPATH/src/github.com/ry/v8worker2
-./build.py --use_ccache
+> go get -u github.com/ry/v8worker2
+> cd $GOPATH/src/github.com/ry/v8worker2
+> ./build.py --use_ccache
 ```
 
 Finally you can get `deno` and its other Go deps.
