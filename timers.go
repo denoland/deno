@@ -12,7 +12,7 @@ type Timer struct {
 	Done     bool
 	Cleared  bool
 	Interval bool
-	Duration int32 // In milliseconds
+	Delay    int32 // In milliseconds
 }
 
 var timers = make(map[int32]*Timer)
@@ -28,11 +28,11 @@ func InitTimers() {
 				Id:       id,
 				Done:     false,
 				Interval: msg.TimerStartInterval,
-				Duration: msg.TimerStartDuration,
+				Delay:    msg.TimerStartDelay,
 				Cleared:  false,
 			}
-			if t.Duration < 10 {
-				t.Duration = 10
+			if t.Delay < 10 {
+				t.Delay = 10
 			}
 			t.StartTimer()
 			timers[id] = t
@@ -62,7 +62,7 @@ func (t *Timer) StartTimer() {
 	go func() {
 		defer t.Clear()
 		for {
-			time.Sleep(time.Duration(t.Duration) * time.Millisecond)
+			time.Sleep(time.Duration(t.Delay) * time.Millisecond)
 			if !t.Interval {
 				t.Done = true
 			}

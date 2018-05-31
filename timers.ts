@@ -15,7 +15,7 @@ interface Timer {
   interval: boolean;
   // tslint:disable-next-line:no-any
   args: any[];
-  duration: number; // milliseconds
+  delay: number; // milliseconds
 }
 
 const timers = new Map<number, Timer>();
@@ -41,7 +41,7 @@ function onMessage(payload: Uint8Array) {
 
 function setTimer(
   cb: TimerCallback,
-  duration: number,
+  delay: number,
   interval: boolean,
   // tslint:disable-next-line:no-any
   args: any[]
@@ -49,7 +49,7 @@ function setTimer(
   const timer = {
     id: nextTimerId++,
     interval,
-    duration,
+    delay,
     args,
     cb
   };
@@ -57,28 +57,28 @@ function setTimer(
   dispatch.sendMsg("timers", {
     command: pb.Msg.Command.TIMER_START,
     timerStartId: timer.id,
-    timerStartInterval: interval,
-    timerStartDuration: duration
+    timerStartInterval: timer.interval,
+    timerStartDelay: timer.delay
   });
   return timer.id;
 }
 
 export function setTimeout(
   cb: TimerCallback,
-  duration: number,
+  delay: number,
   // tslint:disable-next-line:no-any
   ...args: any[]
 ): number {
-  return setTimer(cb, duration, false, args);
+  return setTimer(cb, delay, false, args);
 }
 
 export function setInterval(
   cb: TimerCallback,
-  repeat: number,
+  delay: number,
   // tslint:disable-next-line:no-any
   ...args: any[]
 ): number {
-  return setTimer(cb, repeat, true, args);
+  return setTimer(cb, delay, true, args);
 }
 
 export function clearTimer(id: number) {
