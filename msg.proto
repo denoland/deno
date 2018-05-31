@@ -68,7 +68,7 @@ message Msg {
   // TIMER_START
   int32 timer_start_id = 60;
   bool timer_start_interval = 61;
-  int32 timer_start_duration = 62; // In milliseconds.
+  int32 timer_start_delay = 62; // In milliseconds.
 
   // TIMER_READY
   int32 timer_ready_id = 70;
