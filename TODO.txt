@@ -1,8 +1,5 @@
 - Fix v8_source_maps.ts so that we don't get random segfaults.
 
-- Remove text-encoding.d.ts because TS2.8 includes the declarations.
-  https://github.com/DefinitelyTyped/DefinitelyTyped/issues/24695
-
 - Add os.statSync and os.tempDir- both are needed for the writeFileSync test in
   tests.ts
 
