@@ -4,6 +4,7 @@
 // Originated from source-map-support but has been heavily modified for deno.
 import { SourceMapConsumer, MappedPosition } from "source-map";
 import * as base64 from "base64-js";
+import { arrayToStr } from "./util";
 
 const consumers = new Map<string, SourceMapConsumer>();
 
@@ -269,9 +270,4 @@ function mapEvalOrigin(origin: string): string {
 
   // Make sure we still return useful information if we didn't find anything
   return origin;
-}
-
-// TODO move to util?
-function arrayToStr(ui8: Uint8Array): string {
-  return String.fromCharCode.apply(null, ui8);
 }
