@@ -99,6 +99,7 @@ to build:
 ``` bash
 go get -u github.com/ry/v8worker2
 cd $GOPATH/src/github.com/ry/v8worker2
+git submodule update --init
 ./build.py --use_ccache
 ```
 
