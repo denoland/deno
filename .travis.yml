@@ -1,36 +1,36 @@
-language: c++
-cache:
-  ccache: true
-  directories:
-   - .cache/
-   - node_modules/
-   - $V8WORKER2_OUT_PATH
+dist: trusty
+
+sudo: required
+
+services:
+- docker
+
+# Configure docker hub secure variables running:
+# travis encrypt DOCKER_USERNAME=XXXXXX --repo ry/deno --add env.global --no-interactive
+# travis encrypt DOCKER_PASSWORD=XXXXXX --repo ry/deno --add env.global --no-interactive
 env:
   global:
-    - V8WORKER2_OUT_PATH=$HOME/v8worker2_out
-    - PROTOBUF_ROOT=$HOME/protobuf
-before_install: |
-  # protobuf
-  export PATH=$PROTOBUF_ROOT/bin:$PATH
-  if ! [ -x $PROTOBUF_ROOT/bin/protoc ]; then
-    rm -rf $PROTOBUF_ROOT
-    mkdir -p $PROTOBUF_ROOT
-    pushd $PROTOBUF_ROOT
-    wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
-    unzip protoc-3.1.0-linux-x86_64.zip
-    popd
-  fi
-install:
- - mkdir -p $GOPATH/src/github.com/ry
- - ln -s `pwd` $GOPATH/src/github.com/ry/deno
- - env
- - go get -d github.com/ry/v8worker2
- - $GOPATH/src/github.com/ry/v8worker2/build.py --use_ccache --out_path $V8WORKER2_OUT_PATH
- - go get -u github.com/golang/protobuf/proto
- - go get -u github.com/spf13/afero
- - go get -u github.com/golang/protobuf/protoc-gen-go
- - go get -u github.com/jteeuwen/go-bindata/...
- - yarn
-script:
- - make lint
- - make test
+  - DOCKER_REGISTRY: aledbf/deno
+  - DOCKER_TAG: dev-0.1
+  - secure: W2Cr+EWC0czWox5caMp8Uqi7rlRtZgEanQXSCc3VDfNArdVAQ1kl8UI3CIkgq6YNOr81oR6ZKzStN4rlxwgItQwmlgdJWvPQr5mKIfpskG8uMd30FmF8CJ6DAiNknka6GTbY2qgzGk6yqh1oO31LZUTuxyu09bEPcida6axXcTpDyCTL5wt/ySjyFSAdZxYZJWiFuQBYetgTIGsz4+eq1AYdoDi4JDYrvWSDUNKrnphsRwvrmhZTXau2xDOsAikiBgjKss12esZJVR5cUxbOix3MXayQKlLTj1SRA3XsCnPqBLmVSry6ukO+D/8148Mn616vWfJro82bUcleVu1Yt7fUuM+io/iGNr1ak+gIck/4jm6TchkSdhZL4dq36KHile3JnkCgviAK7Ac7THlO7BYG6zXXTX6MEFg1BlBAxJH9bdkusEaLBE02sAqoIw/CalkbXJFrBecoTRQfcitEy8cKw5BzBtC80BHJ7WZmhPAqKWjGxSQNMpBuS1tRkgl6SHRhU5YCkRZwCDoaPl3qS91n3zEt/zkm6/4FDUnYXLTYb06Mgi9qo6bY6wr9sOaNT6SxolkKiBMkJBCX1nziM82JACRsI6lkvmheP6qrHnpEox8jNu9JfoJetU5+nfljjcjSTQjvvVLT11lENS1MwJMFpTMpfENTDDspvkQ++Hk=
+  - secure: oOCUJsliZy8k5NDME5shlGUOvdC0rkOlvuWuBJCJe5EwxLB12R6u6zxOh7eqkrIEIevDPjzXEpHc47aE1FnSJur1UL6qHiw23ImgSBAlu2LckTG+qh8JZtDx+kDEuCzaTj42hOu7PbIpvZXC+Rsm8pOgSLpWaOpJkmx22KqaC5q0MIKAn21T4NAn7nFwis80D2xlA2TyBUA/BuZTB6cf3LU0OqyMhW/B1X1AAigMJQQ4KNloQ8MdnohCTEsLchZKjBMXi5arLvieS2YPoY6YTess9c4CoW0MylT3TWLh0vcvELnwxA9QjkiRYaVzwMT/NdEWVRkqxk31s9T4wofnnLQQpWsMQaN/0EfekP1O3GtrDG15WO6buXZjOwTOZDf57HKXZc5Gs9CxLR5NZP/7OejTb//7weaPzegmxTG6ExoouVcbfJDgkDeWUgWWSE5HEH6d+HEsTvxLSGu5PgLg38kJuEMhI/c7nlgroE7gkq4pB43yjdbYRtf5xjLBJG/WqQ6dB+spwLFKesZ+LxTcdb/wPWjH46HgAYm6kean/uaNXRb6r/yqUjpy75o5HPeygaG6JDcGeW0kLdPOpWXjE21U+EDamX+OsimIR5KMQOTWyTtopqJvxR7dSYV9pS/KEij9KOp+xr8rWmJf2ww9hWnI3qzoHUYSSIo8MUSWjc4=
+
+jobs:
+  include:
+
+  - stage: Build docker image
+    # secure variables are not available in PRs
+    if: (NOT type IN (pull_request)) AND (branch = master)
+    script:
+    - |
+      echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin;
+      docker pull $DOCKER_REGISTRY:$DOCKER_TAG || true;
+      make build-image && make push-image
+
+  - stage: Lint
+    script:
+    - ./run-container.sh lint
+
+  - stage: Test
+    script:
+    - ./run-container.sh test
