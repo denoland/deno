@@ -68,6 +68,7 @@ distclean: clean
 
 lint: node_modules
 	yarn lint
+	yarn check-prettier
 	go vet
 
 fmt: node_modules
