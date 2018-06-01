@@ -149,7 +149,7 @@ export function resolveModule(
   let fetchResponse;
   try {
     fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
-  } catch(e) {
+  } catch (e) {
     // TODO Only catch "no such file or directory" errors. Need error codes.
     return null;
   }
