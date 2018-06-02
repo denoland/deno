@@ -18,7 +18,7 @@ before_install:
   - docker build -t deno-builder -f Dockerfile_builder .
   - mkdir -p ${CACHE_DIR}
 install:
-  - if [ -f ${CACHE_FILE_BUILDER} ]; then docker save deno-builder | gzip > ${CACHE_FILE_BUILDER}; fi
+  - if [ ! -f ${CACHE_FILE_BUILDER} ]; then docker save deno-builder | gzip > ${CACHE_FILE_BUILDER}; fi
 script:
   - docker run -it --rm -v ${PWD}:/root/go/src/github.com/ry/deno deno-builder make lint
   - docker run -it --rm -v ${PWD}:/root/go/src/github.com/ry/deno deno-builder make test
