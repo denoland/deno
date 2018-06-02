@@ -4,16 +4,25 @@ language: c++
 
 services:
   - docker
+
+env:
+  global:
+    - CACHE_DIR=$HOME/.cache/docker
+    - CACHE_FILE_BUILDER=$CACHE_DIR/builder.tar.gz
+    - CACHE_FILE_NODEMODULES=$CACHE_DIR/node_modules.tar.gz
 cache:
-  ccache: true
   directories:
-   - .cache/
-   - node_modules/
-   - $V8WORKER2_OUT_PATH
+  - $CACHE_DIR
 
 before_install:
+  - mkdir -p ./node_modules
+  - if [ -f ${CACHE_FILE_NODEMODULES} ]; then cd node_modules && tar -zxf ${CACHE_FILE_NODEMODULES} && cd ..; fi
+  - if [ -f ${CACHE_FILE_BUILDER} ]; then gunzip -c ${CACHE_FILE_BUILDER} | docker load; fi
   - docker build -t deno-builder -f Dockerfile_builder .
-
+install:
+  - if [ -f ${CACHE_FILE_BUILDER} ]; then docker save deno-builder | gzip > ${CACHE_FILE_BUILDER}; fi
+  - if [ ! -f ${CACHE_FILE_NODEMODULES} ]; then cd node_modules && tar -zcf ${CACHE_FILE_NODEMODULES} . && cd ..; fi
 script:
-  - docker run -it --rm -v ${PWD}:/root/go/src/github.com/ry/deno deno-builder
+  - docker run -it --rm -v ${PWD}:/root/go/src/github.com/ry/deno deno-builder lint
+  - docker run -it --rm -v ${PWD}:/root/go/src/github.com/ry/deno deno-builder test
 
