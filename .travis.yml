@@ -1,6 +1,9 @@
 sudo: required
 
 language: c++
+
+services:
+  - docker
 cache:
   ccache: true
   directories:
