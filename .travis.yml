@@ -12,5 +12,5 @@ before_install:
   - docker build -t deno-builder -f Dockerfile_builder .
 
 script:
- - docker run -it --rm -v ${PWD}:/root/go/src/github.com/ry/deno deno-builder
+  - docker run -it --rm -v ${PWD}:/root/go/src/github.com/ry/deno deno-builder
 
