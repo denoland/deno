@@ -14,6 +14,7 @@ cache:
     - $CACHE_DIR
 
 before_install:
+  - docker version
   - if [ -f ${CACHE_FILE_BUILDER} ]; then gunzip -c ${CACHE_FILE_BUILDER} | docker load; fi
   - docker images
   - docker build --cache-from -t deno-builder:latest deno-builder:latest -f Dockerfile_builder .
