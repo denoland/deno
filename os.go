@@ -143,9 +143,8 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 	}
 
 	var sourceCode = string(sourceCodeBuf)
-	var command = Msg_CODE_FETCH_RES
 	res = &Msg{
-		Command:                command,
+		Command:                Msg_CODE_FETCH_RES,
 		CodeFetchResModuleName: moduleName,
 		CodeFetchResFilename:   filename,
 		CodeFetchResSourceCode: sourceCode,
