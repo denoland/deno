@@ -197,7 +197,7 @@ func WriteFileSync(filename string, data []byte, perm uint32) []byte {
 }
 
 func StatSync(filename string) []byte {
-	info, err := os.Stat(filename)
+	info, err := fs.Stat(filename)
 	res := &Msg{
 		Command: Msg_FILE_STAT_SYNC_RES,
 	}
