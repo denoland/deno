@@ -16,7 +16,7 @@ cache:
 before_install:
   - if [ -f ${CACHE_FILE_BUILDER} ]; then gunzip -c ${CACHE_FILE_BUILDER} | docker load; fi
   - docker images
-  - docker build -t deno-builder -f Dockerfile_builder .
+  - docker build --cache-from -t deno-builder:latest deno-builder:latest -f Dockerfile_builder .
 
 script:
   - docker run -it --rm -v ${PWD}:/root/go/src/github.com/ry/deno deno-builder make lint
