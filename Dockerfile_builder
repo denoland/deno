@@ -38,5 +38,3 @@ RUN $GOPATH/src/github.com/ry/v8worker2/build.py --use_ccache --out_path $V8WORK
 
 ENV PATH ${GOPATH}/bin:/opt/go/bin:${PATH}
 WORKDIR $GOPATH/src/github.com/ry/deno
-
-ENTRYPOINT ["make"]
