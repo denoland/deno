@@ -15,6 +15,7 @@ cache:
 
 before_install:
   - if [ -f ${CACHE_FILE_BUILDER} ]; then gunzip -c ${CACHE_FILE_BUILDER} | docker load; fi
+  - docker images
   - docker build -t deno-builder -f Dockerfile_builder .
 
 script:
