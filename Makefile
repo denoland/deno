@@ -1,5 +1,6 @@
 TS_FILES = \
 	deno.d.ts \
+	deno.ts \
 	dispatch.ts \
 	fetch.ts \
 	globals.ts \
