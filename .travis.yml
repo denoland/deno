@@ -8,14 +8,15 @@ services:
 env:
   global:
     - CACHE_DIR=$HOME/.cache/docker
-    - CACHE_FILE_BUILDER=$CACHE_DIR/builder.tar.gz
+    - CACHE_FILE_BUILDER=$CACHE_DIR/docker-builder.tar.gz
 cache:
   directories:
-  - $CACHE_DIR
+    - $CACHE_DIR
 
 before_install:
   - if [ -f ${CACHE_FILE_BUILDER} ]; then gunzip -c ${CACHE_FILE_BUILDER} | docker load; fi
   - docker build -t deno-builder -f Dockerfile_builder .
+  - mkdir -p ${CACHE_DIR}
 install:
   - if [ -f ${CACHE_FILE_BUILDER} ]; then docker save deno-builder | gzip > ${CACHE_FILE_BUILDER}; fi
 script:
