@@ -47,7 +47,7 @@ func InitOS() {
 			return WriteFileSync(msg.WriteFileSyncFilename, msg.WriteFileSyncData,
 				msg.WriteFileSyncPerm)
 		case Msg_FILE_STAT_SYNC:
-			return statSync(msg.FileStateSyncFilename)
+			return StatSync(msg.FileStateSyncFilename)
 		default:
 			panic("[os] Unexpected message " + string(buf))
 		}
@@ -196,7 +196,7 @@ func WriteFileSync(filename string, data []byte, perm uint32) []byte {
 	return out
 }
 
-func statSync(filename string) []byte {
+func StatSync(filename string) []byte {
 	info, err := os.Stat(filename)
 	res := &Msg{
 		Command: Msg_FILE_STAT_SYNC,
