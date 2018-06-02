@@ -8,3 +8,11 @@ export interface ModuleInfo {
   sourceCode?: string;
   outputCode?: string;
 }
+
+export interface FileInfo {
+  filename?: string;
+  isDir?: boolean;
+  size?: number | Long;
+  modTime?: number | Long;
+  mode?: string;
+}

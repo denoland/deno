@@ -25,6 +25,8 @@ message Msg {
     READ_FILE_SYNC = 11;
     READ_FILE_SYNC_RES = 12;
     WRITE_FILE_SYNC = 13;
+    FILE_STAT_SYNC = 16;
+    FILE_STAT_SYNC_RES = 17;
   }
   Command command = 1;
 
@@ -99,4 +101,11 @@ message Msg {
   bytes write_file_sync_data = 131;
   uint32 write_file_sync_perm = 132;
   // write_file_sync_perm specified by https://godoc.org/os#FileMode
+
+  // FILE_STAT_SYNC_RES
+  bool file_state_sync_is_dir = 160;
+  string file_state_sync_filename = 161;
+  int64 file_state_sync_filesize = 162;
+  int64 file_state_sync_mod_time = 163;
+  string file_state_sync_mode = 164;
 }
