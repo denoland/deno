@@ -66,7 +66,7 @@ clean:
 distclean: clean
 	-rm -rf node_modules/
 
-lint: node_modules
+lint: node_modules deno
 	yarn lint
 	go vet
 
