@@ -4,7 +4,6 @@ import { assert, log, createResolvable, Resolvable } from "./util";
 import * as util from "./util";
 import * as dispatch from "./dispatch";
 import { main as pb } from "./msg.pb";
-import { TextDecoder } from "text-encoding";
 
 export function initFetch() {
   dispatch.sub("fetch", (payload: Uint8Array) => {

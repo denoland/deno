@@ -127,7 +127,7 @@ func TestIntegrationUrlArgs(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected 404. %s", err.Error())
 	}
-	// Check that cache dir is emtpy.
+	// Check that cache dir is empty.
 	cacheFn = path.Join(cachedir, "src/localhost:4546/testdata/001_hello.js")
 	println("bad cacheFn", cacheFn)
 	if exists(cacheFn) {
