@@ -37,4 +37,6 @@ RUN go get -d github.com/ry/v8worker2 \
 RUN $GOPATH/src/github.com/ry/v8worker2/build.py --use_ccache --out_path $V8WORKER2_OUT_PATH
 
 ENV PATH ${GOPATH}/bin:/opt/go/bin:${PATH}
+ENV PKG_CONFIG_PATH $GOPATH/src/github.com/ry/v8worker2
+ENV YARN_WRAP_OUTPUT true
 WORKDIR $GOPATH/src/github.com/ry/deno
