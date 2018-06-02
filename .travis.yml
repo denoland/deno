@@ -13,3 +13,4 @@ before_install:
 
 script:
  - docker run -it --rm -v ${PWD}:/root/go/src/github.com/ry/deno deno-builder
+
