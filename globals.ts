@@ -14,30 +14,27 @@ export const globalEval = eval;
 export const _global = globalEval("this");
 
 // Use the symbol classification management key
-const comm_window = Symbol.for("comm#window");
-const comm_console = Symbol.for("comm#console");
+const fetch = Symbol.for("net#fetch");
 
-const net_fetch = Symbol.for("net#fetch");
+const TextEncoder = Symbol.for("crypto#Textncoder");
+const TextDecoder = Symbol.for("crypto#TextDecoder");
 
-const crypto_TextEncoder = Symbol.for("crypto#Textncoder");
-const crypto_TextDecoder = Symbol.for("crypto#TextDecoder");
+const setTimeout = Symbol.for("time#setTimeout");
+const setInterval = Symbol.for("time#setInterval");
+const clearTimeout = Symbol.for("time#clearTimeout");
+const clearInterval = Symbol.for("time#clearInterval");
 
-const time_setTimeout = Symbol.for("time#setTimeout");
-const time_setInterval = Symbol.for("time#setInterval");
-const time_clearTimeout = Symbol.for("time#clearTimeout");
-const time_clearInterval = Symbol.for("time#clearInterval");
-
-_global[comm_window] = _global; // Create a window object.
+_global["window"] = _global; // Create a window object.
 import "./url";
 
-_global[time_setTimeout] = timer.setTimeout;
-_global[time_setInterval] = timer.setInterval;
-_global[time_clearTimeout] = timer.clearTimer;
-_global[time_clearInterval] = timer.clearTimer;
+_global[setTimeout] = timer.setTimeout;
+_global[setInterval] = timer.setInterval;
+_global[clearTimeout] = timer.clearTimer;
+_global[clearInterval] = timer.clearTimer;
 
 const print = V8Worker2.print;
 
-_global[comm_console] = {
+_global["console"] = {
   // tslint:disable-next-line:no-any
   log(...args: any[]): void {
     print(stringifyArgs(args));
@@ -62,9 +59,9 @@ function stringifyArgs(args: any[]): string {
   return out.join(" ");
 }
 
-import { fetch } from "./fetch";
-_global[net_fetch] = fetch;
+import { fetch as f } from "./fetch";
+_global[fetch] = f;
 
-import { TextEncoder, TextDecoder } from "text-encoding";
-_global[crypto_TextEncoder] = TextEncoder;
-_global[crypto_TextDecoder] = TextDecoder;
+import { TextEncoder as TEncode, TextDecoder as Tdecoder } from "text-encoding";
+_global[TextEncoder] = TEncode;
+_global[TextDecoder] = Tdecoder;
