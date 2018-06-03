@@ -2,8 +2,8 @@ language: c++
 cache:
   ccache: true
   directories:
-   - .cache/
-   - node_modules/
+   - $HOME/.ccache
+   - node_modules
    - $V8WORKER2_OUT_PATH
 env:
   global:
