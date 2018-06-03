@@ -13,13 +13,24 @@ export const globalEval = eval;
 // TODO The underscore is because it's conflicting with @types/node.
 export const _global = globalEval("this");
 
+// Use the symbol classification management key
+const fetch = Symbol.for("net#fetch");
+
+const TextEncoder = Symbol.for("crypto#Textncoder");
+const TextDecoder = Symbol.for("crypto#TextDecoder");
+
+const setTimeout = Symbol.for("time#setTimeout");
+const setInterval = Symbol.for("time#setInterval");
+const clearTimeout = Symbol.for("time#clearTimeout");
+const clearInterval = Symbol.for("time#clearInterval");
+
 _global["window"] = _global; // Create a window object.
 import "./url";
 
-_global["setTimeout"] = timer.setTimeout;
-_global["setInterval"] = timer.setInterval;
-_global["clearTimeout"] = timer.clearTimer;
-_global["clearInterval"] = timer.clearTimer;
+_global[setTimeout] = timer.setTimeout;
+_global[setInterval] = timer.setInterval;
+_global[clearTimeout] = timer.clearTimer;
+_global[clearInterval] = timer.clearTimer;
 
 const print = V8Worker2.print;
 
@@ -48,9 +59,9 @@ function stringifyArgs(args: any[]): string {
   return out.join(" ");
 }
 
-import { fetch } from "./fetch";
-_global["fetch"] = fetch;
+import { fetch as f } from "./fetch";
+_global[fetch] = f;
 
-import { TextEncoder, TextDecoder } from "text-encoding";
-_global["TextEncoder"] = TextEncoder;
-_global["TextDecoder"] = TextDecoder;
+import { TextEncoder as TEncode, TextDecoder as Tdecoder } from "text-encoding";
+_global[TextEncoder] = TEncode;
+_global[TextDecoder] = Tdecoder;
