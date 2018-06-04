@@ -20,7 +20,7 @@ test(async function tests_fetch() {
 });
 
 test(async function tests_readFileSync() {
-  let data = readFileSync("package.json");
+  const data = readFileSync("package.json");
   if (!data.byteLength) {
     throw Error(
       `Expected positive value for data.byteLength ${data.byteLength}`

@@ -61,6 +61,9 @@ And examples are around here: [testdata/004_set_timeout.ts](https://github.com/r
 
 Roadmap is [here](https://github.com/ry/deno/blob/master/TODO.txt).
 
+Also see this preentation http://tinyclouds.org/jsconf2018.pdf
+
+
 ## Compile instructions
 
 I will release binaries at some point but for now you have to build it
@@ -108,6 +111,7 @@ go get -u github.com/ry/v8worker2
 cd $GOPATH/src/github.com/ry/v8worker2
 ./build.py --use_ccache
 ```
+Maybe also run `git submodule update --init` in the v8worker2 dir.
 
 Finally you can get `deno` and its other Go deps.
 

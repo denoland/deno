@@ -23,6 +23,10 @@ export function typedArrayToArrayBuffer(ta: TypedArray): ArrayBuffer {
   return ab as ArrayBuffer;
 }
 
+export function arrayToStr(ui8: Uint8Array): string {
+  return String.fromCharCode(...ui8);
+}
+
 // A `Resolvable` is a Promise with the `reject` and `resolve` functions
 // placed as methods on the promise object itself. It allows you to do:
 //
