@@ -7,6 +7,26 @@
 (function(scope) {
   "use strict";
 
+  const STATE_SCHEME_START = Symbol("state scheme start");
+  const STATE_SCHEME = Symbol("state scheme");
+  const STATE_SCHEME_DATA = Symbol("state scheme data");
+  const STATE_NO_SCHEME = Symbol("state no scheme");
+  const STATE_RELATIVE_OR_AUTHORITY = Symbol("state relative or authority");
+  const STATE_RELATIVE = Symbol("state relative");
+  const STATE_RELATIVE_SLASH = Symbol("state relative slash");
+  const STATE_AUTHORITY_FIRST_SLASH = Symbol("state authority first slash");
+  const STATE_AUTHORITY_SECOND_SLASH = Symbol("state authority second slash");
+  const STATE_AUTHORITY_IGNORE_SLASHES = Symbol("state authority ignore slashes");
+  const STATE_AUTHORITY = Symbol("state authority");
+  const STATE_FILE_HOST = Symbol("state file host");
+  const STATE_HOST = Symbol("state host");
+  const STATE_HOSTNAME = Symbol("state hostname");
+  const STATE_PORT = Symbol("state port");
+  const STATE_RELATIVE_PATH_START = Symbol("state relative path start");
+  const STATE_RELATIVE_PATH = Symbol("state relative path");
+  const STATE_QUERY = Symbol("state query");
+  const STATE_FRAGMENT = Symbol("state fragment");
+
   // feature detect for URL constructor
   var hasWorkingUrl = false;
   if (!scope.forceJURL) {
@@ -89,7 +109,7 @@
       errors.push(message);
     }
 
-    var state = stateOverride || "scheme start",
+    var state = stateOverride || STATE_SCHEME_START,
       cursor = 0,
       buffer = "",
       seenAt = false,
@@ -102,13 +122,13 @@
     ) {
       var c = input[cursor];
       switch (state) {
-        case "scheme start":
+        case STATE_SCHEME_START:
           if (c && ALPHA.test(c)) {
             buffer += c.toLowerCase(); // ASCII-safe
-            state = "scheme";
+            state = STATE_SCHEME;
           } else if (!stateOverride) {
             buffer = "";
-            state = "no scheme";
+            state = STATE_NO_SCHEME;
             continue;
           } else {
             err("Invalid scheme.");
@@ -116,7 +136,7 @@
           }
           break;
 
-        case "scheme":
+        case STATE_SCHEME:
           if (c && ALPHANUMERIC.test(c)) {
             buffer += c.toLowerCase(); // ASCII-safe
           } else if (":" == c) {
@@ -129,22 +149,22 @@
               this._isRelative = true;
             }
             if ("file" == this._scheme) {
-              state = "relative";
+              state = STATE_RELATIVE;
             } else if (
               this._isRelative &&
               base &&
               base._scheme == this._scheme
             ) {
-              state = "relative or authority";
+              state = STATE_RELATIVE_OR_AUTHORITY;
             } else if (this._isRelative) {
-              state = "authority first slash";
+              state = STATE_AUTHORITY_FIRST_SLASH;
             } else {
-              state = "scheme data";
+              state = STATE_SCHEME_DATA;
             }
           } else if (!stateOverride) {
             buffer = "";
             cursor = 0;
-            state = "no scheme";
+            state = STATE_NO_SCHEME;
             continue;
           } else if (EOF == c) {
             break loop;
@@ -154,13 +174,13 @@
           }
           break;
 
-        case "scheme data":
+        case STATE_SCHEME_DATA:
           if ("?" == c) {
             query = "?";
-            state = "query";
+            state = STATE_QUERY;
           } else if ("#" == c) {
             this._fragment = "#";
-            state = "fragment";
+            state = STATE_FRAGMENT;
           } else {
             // XXX error handling
             if (EOF != c && "\t" != c && "\n" != c && "\r" != c) {
@@ -169,27 +189,27 @@
           }
           break;
 
-        case "no scheme":
+        case STATE_NO_SCHEME:
           if (!base || !isRelativeScheme(base._scheme)) {
             err("Missing scheme.");
             invalid.call(this);
           } else {
-            state = "relative";
+            state = STATE_RELATIVE;
             continue;
           }
           break;
 
-        case "relative or authority":
+        case STATE_RELATIVE_OR_AUTHORITY:
           if ("/" == c && "/" == input[cursor + 1]) {
-            state = "authority ignore slashes";
+            state = STATE_AUTHORITY_IGNORE_SLASHES;
           } else {
             err("Expected /, got: " + c);
-            state = "relative";
+            state = STATE_RELATIVE;
             continue;
           }
           break;
 
-        case "relative":
+        case STATE_RELATIVE:
           this._isRelative = true;
           if ("file" != this._scheme) this._scheme = base._scheme;
           if (EOF == c) {
@@ -202,7 +222,7 @@
             break loop;
           } else if ("/" == c || "\\" == c) {
             if ("\\" == c) err("\\ is an invalid code point.");
-            state = "relative slash";
+            state = STATE_RELATIVE_SLASH;
           } else if ("?" == c) {
             this._host = base._host;
             this._port = base._port;
@@ -210,7 +230,7 @@
             this._query = "?";
             this._username = base._username;
             this._password = base._password;
-            state = "query";
+            state = STATE_QUERY;
           } else if ("#" == c) {
             this._host = base._host;
             this._port = base._port;
@@ -219,7 +239,7 @@
             this._fragment = "#";
             this._username = base._username;
             this._password = base._password;
-            state = "fragment";
+            state = STATE_FRAGMENT;
           } else {
             var nextC = input[cursor + 1];
             var nextNextC = input[cursor + 2];
@@ -240,20 +260,20 @@
               this._path = base._path.slice();
               this._path.pop();
             }
-            state = "relative path";
+            state = STATE_RELATIVE_PATH;
             continue;
           }
           break;
 
-        case "relative slash":
+        case STATE_RELATIVE_SLASH:
           if ("/" == c || "\\" == c) {
             if ("\\" == c) {
               err("\\ is an invalid code point.");
             }
             if ("file" == this._scheme) {
-              state = "file host";
+              state = STATE_FILE_HOST;
             } else {
-              state = "authority ignore slashes";
+              state = STATE_AUTHORITY_IGNORE_SLASHES;
             }
           } else {
             if ("file" != this._scheme) {
@@ -262,39 +282,39 @@
               this._username = base._username;
               this._password = base._password;
             }
-            state = "relative path";
+            state = STATE_RELATIVE_PATH;
             continue;
           }
           break;
 
-        case "authority first slash":
+        case STATE_AUTHORITY_FIRST_SLASH:
           if ("/" == c) {
-            state = "authority second slash";
+            state = STATE_AUTHORITY_SECOND_SLASH;
           } else {
             err("Expected '/', got: " + c);
-            state = "authority ignore slashes";
+            state = STATE_AUTHORITY_IGNORE_SLASHES;
             continue;
           }
           break;
 
-        case "authority second slash":
-          state = "authority ignore slashes";
+        case STATE_AUTHORITY_SECOND_SLASH:
+          state = STATE_AUTHORITY_IGNORE_SLASHES;
           if ("/" != c) {
             err("Expected '/', got: " + c);
             continue;
           }
           break;
 
-        case "authority ignore slashes":
+        case STATE_AUTHORITY_IGNORE_SLASHES:
           if ("/" != c && "\\" != c) {
-            state = "authority";
+            state = STATE_AUTHORITY;
             continue;
           } else {
             err("Expected authority, got: " + c);
           }
           break;
 
-        case "authority":
+        case STATE_AUTHORITY:
           if ("@" == c) {
             if (seenAt) {
               err("@ already seen.");
@@ -327,27 +347,27 @@
           ) {
             cursor -= buffer.length;
             buffer = "";
-            state = "host";
+            state = STATE_HOST;
             continue;
           } else {
             buffer += c;
           }
           break;
 
-        case "file host":
+        case STATE_FILE_HOST:
           if (EOF == c || "/" == c || "\\" == c || "?" == c || "#" == c) {
             if (
               buffer.length == 2 &&
               ALPHA.test(buffer[0]) &&
               (buffer[1] == ":" || buffer[1] == "|")
             ) {
-              state = "relative path";
+              state = STATE_RELATIVE_PATH;
             } else if (buffer.length == 0) {
-              state = "relative path start";
+              state = STATE_RELATIVE_PATH_START;
             } else {
               this._host = IDNAToASCII.call(this, buffer);
               buffer = "";
-              state = "relative path start";
+              state = STATE_RELATIVE_PATH_START;
             }
             continue;
           } else if ("\t" == c || "\n" == c || "\r" == c) {
@@ -357,14 +377,14 @@
           }
           break;
 
-        case "host":
-        case "hostname":
+        case STATE_HOST:
+        case STATE_HOSTNAME:
           if (":" == c && !seenBracket) {
             // XXX host parsing
             this._host = IDNAToASCII.call(this, buffer);
             buffer = "";
-            state = "port";
-            if ("hostname" == stateOverride) {
+            state = STATE_PORT;
+            if (STATE_HOSTNAME == stateOverride) {
               break loop;
             }
           } else if (
@@ -376,7 +396,7 @@
           ) {
             this._host = IDNAToASCII.call(this, buffer);
             buffer = "";
-            state = "relative path start";
+            state = STATE_RELATIVE_PATH_START;
             if (stateOverride) {
               break loop;
             }
@@ -393,7 +413,7 @@
           }
           break;
 
-        case "port":
+        case STATE_PORT:
           if (/[0-9]/.test(c)) {
             buffer += c;
           } else if (
@@ -414,7 +434,7 @@
             if (stateOverride) {
               break loop;
             }
-            state = "relative path start";
+            state = STATE_RELATIVE_PATH_START;
             continue;
           } else if ("\t" == c || "\n" == c || "\r" == c) {
             err("Invalid code point in port: " + c);
@@ -423,15 +443,15 @@
           }
           break;
 
-        case "relative path start":
+        case STATE_RELATIVE_PATH_START:
           if ("\\" == c) err("'\\' not allowed in path.");
-          state = "relative path";
+          state = STATE_RELATIVE_PATH;
           if ("/" != c && "\\" != c) {
             continue;
           }
           break;
 
-        case "relative path":
+        case STATE_RELATIVE_PATH:
           if (
             EOF == c ||
             "/" == c ||
@@ -467,26 +487,26 @@
             buffer = "";
             if ("?" == c) {
               this._query = "?";
-              state = "query";
+              state = STATE_QUERY;
             } else if ("#" == c) {
               this._fragment = "#";
-              state = "fragment";
+              state = STATE_FRAGMENT;
             }
           } else if ("\t" != c && "\n" != c && "\r" != c) {
             buffer += percentEscape(c);
           }
           break;
 
-        case "query":
+        case STATE_QUERY:
           if (!stateOverride && "#" == c) {
             this._fragment = "#";
-            state = "fragment";
+            state = STATE_FRAGMENT;
           } else if (EOF != c && "\t" != c && "\n" != c && "\r" != c) {
             this._query += percentEscapeQuery(c);
           }
           break;
 
-        case "fragment":
+        case STATE_FRAGMENT:
           if (EOF != c && "\t" != c && "\n" != c && "\r" != c) {
             this._fragment += c;
           }
@@ -561,7 +581,7 @@
     },
     set protocol(protocol) {
       if (this._isInvalid) return;
-      parse.call(this, protocol + ":", "scheme start");
+      parse.call(this, protocol + ":", STATE_SCHEME_START);
     },
 
     get host() {
@@ -573,7 +593,7 @@
     },
     set host(host) {
       if (this._isInvalid || !this._isRelative) return;
-      parse.call(this, host, "host");
+      parse.call(this, host, STATE_HOST);
     },
 
     get hostname() {
@@ -581,7 +601,7 @@
     },
     set hostname(hostname) {
       if (this._isInvalid || !this._isRelative) return;
-      parse.call(this, hostname, "hostname");
+      parse.call(this, hostname, STATE_HOSTNAME);
     },
 
     get port() {
@@ -589,7 +609,7 @@
     },
     set port(port) {
       if (this._isInvalid || !this._isRelative) return;
-      parse.call(this, port, "port");
+      parse.call(this, port, STATE_PORT);
     },
 
     get pathname() {
@@ -602,7 +622,7 @@
     set pathname(pathname) {
       if (this._isInvalid || !this._isRelative) return;
       this._path = [];
-      parse.call(this, pathname, "relative path start");
+      parse.call(this, pathname, STATE_RELATIVE_PATH_START);
     },
 
     get search() {
@@ -614,7 +634,7 @@
       if (this._isInvalid || !this._isRelative) return;
       this._query = "?";
       if ("?" == search[0]) search = search.slice(1);
-      parse.call(this, search, "query");
+      parse.call(this, search, STATE_QUERY);
     },
 
     get hash() {
@@ -626,7 +646,7 @@
       if (this._isInvalid) return;
       this._fragment = "#";
       if ("#" == hash[0]) hash = hash.slice(1);
-      parse.call(this, hash, "fragment");
+      parse.call(this, hash, STATE_FRAGMENT);
     },
 
     get origin() {
