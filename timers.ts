@@ -27,15 +27,14 @@ export function initTimers() {
 function onMessage(payload: Uint8Array) {
   const msg = pb.Msg.decode(payload);
   assert(msg.command === pb.Msg.Command.TIMER_READY);
-  const id = msg.timerReadyId;
-  const done = msg.timerReadyDone;
-  const timer = timers.get(id);
+  const { timerReadyId, timerReadyDone } = msg;
+  const timer = timers.get(timerReadyId);
   if (!timer) {
     return;
   }
   timer.cb(...timer.args);
-  if (done) {
-    timers.delete(id);
+  if (timerReadyDone) {
+    timers.delete(timerReadyId);
   }
 }
 
