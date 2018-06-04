@@ -4,7 +4,7 @@ import { typedArrayToArrayBuffer } from "./util";
 import { _global } from "./globals";
 import { main as pb } from "./msg.pb";
 
-type MessageCallback = (msg: Uint8Array) => void;
+export type MessageCallback = (msg: Uint8Array) => void;
 //type MessageStructCallback = (msg: pb.IMsg) => void;
 
 const send = V8Worker2.send;
