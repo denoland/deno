@@ -51,7 +51,7 @@ export function readFileSync(filename: string): Uint8Array {
   return res.readFileSyncData;
 }
 
-export function fileStatSync(filename: string): FileInfo {
+export function statSync(filename: string): FileInfo {
   const res = sendMsg("os", {
     command: pb.Msg.Command.FILE_STAT_SYNC,
     fileStateSyncFilename: filename

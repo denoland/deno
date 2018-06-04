@@ -12,5 +12,5 @@ declare module "deno" {
     data: Uint8Array,
     perm: number
   ): void;
-  function fileStatSync(filename: string): FileInfo;
+  function statSync(filename: string): FileInfo;
 }
