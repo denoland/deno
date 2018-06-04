@@ -18,7 +18,7 @@
     "text-encoding": "^0.6.4",
     "tmp": "0.0.33",
     "tslint": "5.10.0",
-    "typescript": "^2.8.3",
+    "typescript": "kitsonk/TypeScript.git#test-301",
     "uglify-js": "^2.8.29"
   },
   "dependencies": {}
