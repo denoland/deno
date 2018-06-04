@@ -85,6 +85,12 @@ On macOS, using [HomeBrew](https://brew.sh/):
 brew install protobuf
 ```
 
+on Windows, using [vcpkg](https://github.com/Microsoft/vcpkg):
+
+```
+>vcpkg install protobuf protobuf:x64-windows
+```
+
 Then you need [protoc-gen-go](https://github.com/golang/protobuf/tree/master/protoc-gen-go) and [go-bindata](https://github.com/jteeuwen/go-bindata):
 
 ``` bash
