@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
 
-A secure TypeScript runtime on V8
+A secure TypeScript runtime on V8 and a solution to [design mistakes in Node.js](http://tinyclouds.org/jsconf2018.pdf)
 
 * Supports TypeScript 2.8 out of the box. Uses V8 6.8.275.3. That is, it's
   very modern JavaScript.
