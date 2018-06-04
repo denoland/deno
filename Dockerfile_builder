@@ -1,0 +1,42 @@
+FROM ubuntu:bionic
+
+ENV PROTOBUF_VERSION=3.5.1 \
+  GO_VERSION=1.10.2 \
+  GOPATH=/root/go \
+  PROJECT_DIR=$GOPATH/src/github.com/ry/deno \
+  PATH=$GOPATH/bin:/opt/go/bin:$PATH \
+  V8WORKER2_OUT_PATH=/root/v8worker2_out
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  curl file gcc g++ git make openssh-client libperl-dev libgtk2.0-dev \
+  autoconf automake libtool libcurl4-openssl-dev libssl-dev \
+  libelf-dev libdw-dev binutils-dev zlib1g-dev libiberty-dev wget \
+  xz-utils pkg-config python libsqlite3-dev sqlite3 unzip cmake
+
+RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - \
+  && echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list \
+  && apt-get update && apt-get install yarn -yqq
+
+RUN cd /opt \
+  && wget https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz \
+  && tar -xzf go${GO_VERSION}.linux-amd64.tar.gz
+
+RUN mkdir ~/temp && cd ~/temp \
+  && wget "https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protoc-$PROTOBUF_VERSION-linux-x86_64.zip" \
+  && unzip protoc-$PROTOBUF_VERSION-linux-x86_64.zip \
+  && mv include/* /usr/local/include/ \
+  && mv bin/* /usr/local/bin/ \
+  && cd ~/ && rm -rf ~/temp
+
+RUN go get -d github.com/ry/v8worker2 \
+  && go get -u github.com/golang/protobuf/proto \
+  && go get -u github.com/spf13/afero \
+  && go get -u github.com/golang/protobuf/protoc-gen-go \
+  && go get -u github.com/jteeuwen/go-bindata/...
+
+RUN $GOPATH/src/github.com/ry/v8worker2/build.py --use_ccache --out_path $V8WORKER2_OUT_PATH
+
+ENV PATH ${GOPATH}/bin:/opt/go/bin:${PATH}
+ENV PKG_CONFIG_PATH $GOPATH/src/github.com/ry/v8worker2
+ENV YARN_WRAP_OUTPUT true
+WORKDIR $GOPATH/src/github.com/ry/deno
