@@ -61,6 +61,9 @@ And examples are around here: [testdata/004_set_timeout.ts](https://github.com/r
 
 Roadmap is [here](https://github.com/ry/deno/blob/master/TODO.txt).
 
+Also see this preentation http://tinyclouds.org/jsconf2018.pdf
+
+
 ## Compile instructions
 
 I will release binaries at some point but for now you have to build it
