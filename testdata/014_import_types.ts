@@ -1,4 +1,4 @@
-function logThing(thing: import("./subdir/mod3").Thing) {
+function logThing(thing: import("./subdir/mod3.d.ts").Thing) {
     console.log(`a: ${thing.a}, b: ${thing.b}`);
 }
 
