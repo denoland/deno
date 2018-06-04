@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"syscall"
 )
 
 const assetPrefix string = "/$asset$/"
@@ -46,6 +47,8 @@ func InitOS() {
 		case Msg_WRITE_FILE_SYNC:
 			return WriteFileSync(msg.WriteFileSyncFilename, msg.WriteFileSyncData,
 				msg.WriteFileSyncPerm)
+		case Msg_FILE_WRITE:
+			return FileWrite(int(msg.FileWriteFd), msg.FileWriteData)
 		default:
 			panic("[os] Unexpected message " + string(buf))
 		}
@@ -189,6 +192,24 @@ func WriteFileSync(filename string, data []byte, perm uint32) []byte {
 	if err != nil {
 		res.Error = err.Error()
 	}
+	out, err := proto.Marshal(res)
+	check(err)
+	return out
+}
+
+func FileWrite(fd int, data []byte) []byte {
+	if fd < 1 && fd > 2 {
+		// TODO
+		panic("[os:stdio] Unexpected fd " + string(fd))
+	}
+	res := &Msg{
+		Command: Msg_FILE_WRITE_RES,
+	}
+	n, err := syscall.Write(fd, data)
+	if err != nil {
+		res.Error = err.Error()
+	}
+	res.FileWriteResWrittenBytes = int32(n)
 	out, err := proto.Marshal(res)
 	check(err)
 	return out
