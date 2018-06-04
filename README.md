@@ -22,7 +22,7 @@ A secure TypeScript runtime on V8
   code. Defaults to read-only file system access and no network access.
 	Access between V8 (unprivileged) and Golang (privileged) is only done via
   serialized messages defined in this
-  [protobuf](https://github.com/ry/deno/blob/master/msg.proto), this makes it 
+  [protobuf](https://github.com/ry/deno/blob/master/msg.proto), this makes it
   easy to audit.
 	To enable write access explicitly use `--allow-write` and `--allow-net` for
   network access.
@@ -95,9 +95,16 @@ go get -u github.com/golang/protobuf/protoc-gen-go
 go get -u github.com/jteeuwen/go-bindata/...
 ```
 
-You need to get and build [v8worker2](https://github.com/ry/v8worker2).  The package will not build with `go
-get` and will log out an error, which can be ignored. It takes about 30 minutes
-to build:
+You need to get and build [v8worker2](https://github.com/ry/v8worker2).  __The package will not build with `go
+get` and will log out an error ⚠__
+```bash
+# pkg-config --cflags v8.pc
+Failed to open 'v8.pc': No such file or directory
+No package 'v8.pc' found
+pkg-config: exit status 1
+```
+
+__which can be ignored__. It takes about 30 minutes to build:
 
 ``` bash
 go get -u github.com/ry/v8worker2
