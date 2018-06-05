@@ -54,7 +54,7 @@ function setTimer(
     cb
   };
   timers.set(timer.id, timer);
-  dispatch.sendMsg("timers", {
+  dispatch.pubInternal("timers", {
     command: pb.Msg.Command.TIMER_START,
     timerStartId: timer.id,
     timerStartInterval: timer.interval,
@@ -82,7 +82,7 @@ export function setInterval(
 }
 
 export function clearTimer(id: number) {
-  dispatch.sendMsg("timers", {
+  dispatch.pubInternal("timers", {
     command: pb.Msg.Command.TIMER_CLEAR,
     timerClearId: id
   });

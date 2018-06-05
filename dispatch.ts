@@ -3,6 +3,7 @@
 import { typedArrayToArrayBuffer } from "./util";
 import { _global } from "./globals";
 import { main as pb } from "./msg.pb";
+const { fromObject, encode, decode } = pb.Msg;
 
 export type MessageCallback = (msg: Uint8Array) => void;
 //type MessageStructCallback = (msg: pb.IMsg) => void;
@@ -33,21 +34,20 @@ export function subMsg(channel: string, cb: MessageStructCallback): void {
   */
 
 export function pub(channel: string, payload: Uint8Array): null | ArrayBuffer {
-  const msg = pb.BaseMsg.fromObject({ channel, payload });
-  const ui8 = pb.BaseMsg.encode(msg).finish();
+  const msg = fromObject({ channel, payload });
+  const ui8 = encode(msg).finish();
   const ab = typedArrayToArrayBuffer(ui8);
   return send(ab);
 }
 
 // Internal version of "pub".
 // TODO add internal version of "sub"
-// TODO rename to pubInternal()
-export function sendMsg(channel: string, obj: pb.IMsg): null | pb.Msg {
-  const msg = pb.Msg.fromObject(obj);
-  const ui8 = pb.Msg.encode(msg).finish();
+export function pubInternal(channel: string, obj: pb.IMsg): null | pb.Msg {
+  const msg = fromObject(obj);
+  const ui8 = encode(msg).finish();
   const resBuf = pub(channel, ui8);
   if (resBuf != null && resBuf.byteLength > 0) {
-    const res = pb.Msg.decode(new Uint8Array(resBuf));
+    const res = decode(new Uint8Array(resBuf));
     if (res != null && res.error != null && res.error.length > 0) {
       throw Error(res.error);
     }

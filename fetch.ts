@@ -111,7 +111,7 @@ class FetchRequest {
 
   start() {
     log("dispatch FETCH_REQ", this.id, this.url);
-    const res = dispatch.sendMsg("fetch", {
+    const res = dispatch.pubInternal("fetch", {
       command: pb.Msg.Command.FETCH_REQ,
       fetchReqId: this.id,
       fetchReqUrl: this.url
