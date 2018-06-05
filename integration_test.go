@@ -21,22 +21,17 @@ var denoFn string
 // so if the server runs on a different port, it will fail.
 func startServer() {
 	l, err := net.Listen("tcp", ":4545")
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 	rootHandler := http.FileServer(http.Dir("."))
 	go func() {
-		if err := http.Serve(l, rootHandler); err != nil {
-			panic(err)
-		}
+		err := http.Serve(l, rootHandler)
+		check(err)
 	}()
 }
 
 func listTestFiles() []string {
 	files, err := ioutil.ReadDir("testdata")
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 	out := make([]string, 0)
 	for _, file := range files {
 		fn := file.Name()
@@ -72,9 +67,7 @@ func checkOutput(t *testing.T, outFile string, shouldSucceed bool) {
 
 func deno(inputFn string) (actual []byte, cachedir string, err error) {
 	cachedir, err = ioutil.TempDir("", "TestIntegration")
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 
 	cmd := exec.Command(denoFn, "--cachedir="+cachedir, inputFn)
 	var out bytes.Buffer
@@ -89,9 +82,7 @@ func integrationTestSetup() {
 	if denoFn == "" {
 		startServer()
 		cwd, err := os.Getwd()
-		if err != nil {
-			panic(err)
-		}
+		check(err)
 		denoFn = path.Join(cwd, "deno")
 	}
 }
