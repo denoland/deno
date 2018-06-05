@@ -111,7 +111,13 @@ go get -u github.com/ry/v8worker2
 cd $GOPATH/src/github.com/ry/v8worker2
 ./build.py --use_ccache
 ```
-Maybe also run `git submodule update --init` in the v8worker2 dir.
+Build Fails,maybe also run 
+```
+`git submodule update --init` in the v8worker2 dir.
+`sudo apt-get install libgtk-3-dev pkg-config ccache` on ubuntu
+`sudo yum install libgtk-3-dev pkg-config ccache` on centos
+`sudo brew install libgtk-3-dev pkg-config ccache` on macOS
+```
 
 Finally you can get `deno` and its other Go deps.
 
