@@ -19,6 +19,18 @@ test(async function tests_fetch() {
   assertEqual(json.name, "deno");
 });
 
+test(function tests_console_assert() {
+  console.assert(true);
+
+  let hasThrown = false;
+  try {
+    console.assert(false);
+  } catch {
+    hasThrown = true;
+  }
+  assertEqual(hasThrown, true);
+});
+
 test(async function tests_readFileSync() {
   const data = readFileSync("package.json");
   if (!data.byteLength) {
