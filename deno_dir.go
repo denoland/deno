@@ -87,7 +87,7 @@ func LoadOutputCodeCache(filename string, sourceCodeBuf []byte) (
 
 func UserHomeDir() string {
 	if runtime.GOOS == "windows" {
-		home := os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH")
+		home := path.Join(os.Getenv("HOMEDRIVE"), os.Getenv("HOMEPATH"))
 		if home == "" {
 			home = os.Getenv("USERPROFILE")
 		}
