@@ -55,3 +55,48 @@ test(async function tests_writeFileSync() {
   const actual = dec.decode(dataRead);
   assertEqual("Hello", actual);
 });
+
+test(function tests_console_assert() {
+  console.assert(true);
+
+  let hasThrown = false;
+  try {
+    console.assert(false);
+  } catch {
+    hasThrown = true;
+  }
+  assertEqual(hasThrown, true);
+});
+
+test(function tests_console_stringify_circular() {
+  // tslint:disable-next-line:no-any
+  const nestedObj: any = {
+    num: 1,
+    bool: true,
+    str: "a",
+    method() {},
+    un: undefined,
+    nu: null,
+  };
+
+  const circularObj = {
+    num: 2,
+    bool: false,
+    str: "b",
+    method() {},
+    un: undefined,
+    nu: null,
+    nested: nestedObj,
+    emptyObj: {},
+  };
+
+  nestedObj.o = circularObj;
+
+  try {
+    console.log(nestedObj);
+  } catch {
+    throw new Error(
+      "Expected no crash on circular object"
+    );
+  }
+});

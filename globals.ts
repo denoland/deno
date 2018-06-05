@@ -21,8 +21,8 @@ _global["setInterval"] = timer.setInterval;
 _global["clearTimeout"] = timer.clearTimer;
 _global["clearInterval"] = timer.clearTimer;
 
-import { globalConsole } from "./console";
-_global["console"] = globalConsole;
+import { Console } from "./console";
+_global["console"] = new Console();
 
 import { fetch } from "./fetch";
 _global["fetch"] = fetch;
