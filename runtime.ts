@@ -150,8 +150,7 @@ export function resolveModule(
   try {
     fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
   } catch (e) {
-    // TODO Only catch "no such file or directory" errors. Need error codes.
-    return null;
+    throw Error(`Cannot find module '${containingFile}${moduleSpecifier}'`);
   }
   const { filename, sourceCode, outputCode } = fetchResponse;
   if (sourceCode.length === 0) {

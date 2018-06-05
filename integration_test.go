@@ -137,3 +137,12 @@ func TestTestsTs(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 }
+
+func TestErrorFilename(t *testing.T) {
+	integrationTestSetup()
+	cmd := exec.Command(denoFn, "*errorName.ts")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal(err.Error())
+	}
+}
