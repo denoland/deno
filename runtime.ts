@@ -54,7 +54,7 @@ export function setup(mainJs: string, mainMap: string): void {
 }
 
 // This class represents a module. We call it FileModule to make it explicit
-// that each module represents a single file. 
+// that each module represents a single file.
 // Access to FileModule instances should only be done thru the static method
 // FileModule.load(). FileModules are NOT executed upon first load, only when
 // compileAndRun is called.
