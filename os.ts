@@ -52,7 +52,7 @@ export function readFileSync(filename: string): Uint8Array {
 }
 
 export function statSync(filename: string): FileInfo {
-  const res = sendMsg("os", {
+  const res = pubInternal("os", {
     command: pb.Msg.Command.FILE_STAT_SYNC,
     fileStateSyncFilename: filename
   });

@@ -201,7 +201,7 @@ func StatSync(filename string) []byte {
 	res := &Msg{
 		Command: Msg_FILE_STAT_SYNC_RES,
 	}
-	if err != nil{
+	if err != nil {
 		res.Error = err.Error()
 	} else {
 		res.FileStateSyncFilename = info.Name()
