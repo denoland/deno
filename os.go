@@ -208,7 +208,7 @@ func ReadFile(filename string, id uint32) []byte {
 		} else {
 			res.ReadFileResData = data
 		}
-		PubMsg("readFileRes", res)
+		PubMsg("os", res)
 	})
 
 	return nil;
