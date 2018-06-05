@@ -54,7 +54,7 @@ export function setup(mainJs: string, mainMap: string): void {
 }
 
 // This class represents a module. We call it FileModule to make it explicit
-// that each module represents a single file.
+// that each module represents a single file. 
 // Access to FileModule instances should only be done thru the static method
 // FileModule.load(). FileModules are NOT executed upon first load, only when
 // compileAndRun is called.
@@ -138,6 +138,15 @@ export function makeDefine(fileName: string): AmdDefine {
   return localDefine;
 }
 
+export function makeJsonModule(sourceCode: string): string {
+  const [code, ...source] = sourceCode.split("\n//#");
+  return `define(["require", "exports"], function (require, exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.default = JSON.parse('${code}');
+  });\n//#${source.join("\n//#")}`;
+}
+
 export function resolveModule(
   moduleSpecifier: string,
   containingFile: string
@@ -181,6 +190,9 @@ function resolveModuleName(
 function execute(fileName: string, outputCode: string): void {
   util.assert(outputCode && outputCode.length > 0);
   _global["define"] = makeDefine(fileName);
+  if (fileName.match(/\.json$/i)) {
+    outputCode = makeJsonModule(outputCode);
+  }
   outputCode += "\n//# sourceURL=" + fileName;
   globalEval(outputCode);
   _global["define"] = null;
@@ -195,7 +207,9 @@ class Compiler {
     inlineSourceMap: true,
     lib: ["es2017"],
     inlineSources: true,
-    target: ts.ScriptTarget.ES2017
+    target: ts.ScriptTarget.ES2017,
+    moduleResolution: ts.ModuleResolutionKind.NodeJs,
+    resolveJsonModule: true
   };
   /*
   allowJs: true,
@@ -306,22 +320,41 @@ class TypeScriptHost implements ts.LanguageServiceHost {
     moduleNames: string[],
     containingFile: string,
     reusedNames?: string[]
-  ): Array<ts.ResolvedModule | undefined> {
+  ): Array<ts.ResolvedModuleFull | ts.ResolvedModule | undefined> {
     //util.log("resolveModuleNames", { moduleNames, reusedNames });
     return moduleNames.map((name: string) => {
-      let resolvedFileName;
+      let resolvedFileName: string | undefined;
+      let extension: ts.Extension | undefined;
       if (name === "deno") {
         resolvedFileName = resolveModuleName("deno.d.ts", "/$asset$/");
+        extension = ts.Extension.Dts;
       } else if (name === "typescript") {
         resolvedFileName = resolveModuleName("typescript.d.ts", "/$asset$/");
+        extension = ts.Extension.Dts;
       } else {
         resolvedFileName = resolveModuleName(name, containingFile);
         if (resolvedFileName == null) {
           return undefined;
         }
+        // intentionally not matching `.tsx` and `.jsx`
+        const [ , resolvedFileNameExtension = undefined ] = resolvedFileName
+          .match(/\.((?:d\.)?ts|js|json)$/i) || [];
+        switch (resolvedFileNameExtension) {
+          case "d.ts":
+            extension = ts.Extension.Dts;
+            break;
+          case "js":
+            extension = ts.Extension.Js;
+            break;
+          case "json":
+            extension = ts.Extension.Json;
+            break;
+          case "ts":
+            extension = ts.Extension.Ts;
+        }
       }
       const isExternalLibraryImport = false;
-      return { resolvedFileName, isExternalLibraryImport };
+      return { resolvedFileName, isExternalLibraryImport, extension };
     });
   }
 }
