@@ -17,6 +17,81 @@ export function initFetch() {
   });
 }
 
+export class Headers {
+  private map: Map<string, string>;
+
+  constructor(headers?: Headers | [string, string][] | { [name: string]: string }) {
+    if (!headers) {
+      this.map = new Map();
+    } else if (headers instanceof Headers) {
+      const arr = [];
+      for (let header of headers) {
+        arr.push(header);
+      }
+      this.map = new Map(arr);
+    } else if (Array.isArray(headers)) {
+      this.map = new Map(headers);
+    } else {
+      const self = this;
+      const names = Object.keys(headers);
+      names.forEach(function(name) {
+        self.map.set(name, headers[name]);
+      });
+    }
+  }
+
+  append(name: string, value: string): void {
+    if (this.map.has(name)) {
+      const oldValue = this.map.get(name);
+      this.map.set(name, oldValue + ", " + value);
+    } else {
+      this.map.set(name, value);
+    }
+  }
+  
+  delete(name: string): void {
+    this.map.delete(name);
+  }
+
+  entries(): IterableIterator<[string, string]> {
+    return this.map.entries();
+  }
+
+  get(name: string): string | null {
+    if (this.map.has(name)) {
+      return this.map.get(name).split(", ")[0];
+    }
+    return null;
+  }
+
+  getAll(name: string): Array<string> {
+    const value = this.map.get(name);
+    const arr = value? value.split(", ") : [];
+
+    return arr;
+  }
+
+  has(name: string): boolean {
+    return this.map.has(name);
+  }
+
+  keys(name: string): IterableIterator<string> {
+    return this.map.keys();
+  }
+
+  set(name: string, value: string): void {
+    this.map.set(name, value);
+  }
+
+  values(): IterableIterator<string> {
+    return this.map.values();
+  }
+
+  [Symbol.iterator](): IterableIterator<[string, string]> {
+    return this.map.entries();
+  }
+}
+
 const fetchRequests = new Map<number, FetchRequest>();
 
 class FetchResponse implements Response {
