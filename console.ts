@@ -1,6 +1,5 @@
-class ConsoleContext {
-  seen = new Set<{}>();
-}
+// tslint:disable-next-line:no-any
+type ConsoleContext = Set<any>;
 
 // tslint:disable-next-line:no-any
 function stringify(ctx: ConsoleContext, value: any): string {
@@ -17,11 +16,11 @@ function stringify(ctx: ConsoleContext, value: any): string {
       if (value === null) {
         return "null";
       }
-      if (ctx.seen.has(value)) {
+      if (ctx.has(value)) {
         return "[Circular]";
       }
 
-      ctx.seen.add(value);
+      ctx.add(value);
 
       const keys = Object.keys(value);
       const keyStrings = [];
@@ -29,7 +28,7 @@ function stringify(ctx: ConsoleContext, value: any): string {
         keyStrings.push(`${key}: ${stringify(ctx, value[key])}`);
       }
 
-      ctx.seen.delete(value);
+      ctx.delete(value);
 
       if (keyStrings.length === 0) {
         return "{}";
@@ -48,7 +47,8 @@ function stringifyArgs(args: any[]): string {
     if (typeof a === "string") {
       out.push(a);
     } else {
-      out.push(stringify(new ConsoleContext(), a));
+      // tslint:disable-next-line:no-any
+      out.push(stringify(new Set<any>(), a));
     }
   }
   return out.join(" ");
@@ -64,7 +64,6 @@ export class Console {
 
   debug = this.log;
   info = this.log;
-  dirxml = this.log;
 
   // tslint:disable-next-line:no-any
   warn(...args: any[]): void {
