@@ -76,9 +76,7 @@ func Init() {
 	// Use --prof for profiling JS.
 	if *flagGoProf != "" {
 		f, err := os.Create(*flagGoProf)
-		if err != nil {
-			panic(err)
-		}
+		check(err)
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
