@@ -19,8 +19,8 @@ import * as deno from "./deno";
 const EOL = "\n";
 
 // tslint:disable-next-line:no-any
-type AmdFactory = (...args: any[]) => undefined | object;
-type AmdDefine = (deps: string[], factory: AmdFactory) => void;
+export type AmdFactory = (...args: any[]) => undefined | object;
+export type AmdDefine = (deps: string[], factory: AmdFactory) => void;
 
 // Uncaught exceptions are sent to window.onerror by v8worker2.
 // https://git.io/vhOsf

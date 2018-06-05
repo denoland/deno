@@ -13,7 +13,7 @@
    limitations under the License.
  */
 
-import { test } from "./index.ts";
+import { test } from "./testing.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 

@@ -9,9 +9,7 @@ import (
 
 func SetCacheDirForTest(prefix string) {
 	dir, err := ioutil.TempDir("", prefix)
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 	CacheDir = dir
 }
 
