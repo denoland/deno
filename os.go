@@ -3,13 +3,14 @@
 package deno
 
 import (
-	"github.com/golang/protobuf/proto"
-	"github.com/spf13/afero"
 	"io/ioutil"
 	"net/url"
 	"os"
 	"path"
 	"strings"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/spf13/afero"
 )
 
 const assetPrefix string = "/$asset$/"
@@ -62,9 +63,8 @@ func SrcFileToUrl(filename string) string {
 		}
 
 		return "http://" + rest
-	} else {
-		return filename
 	}
+	return filename
 }
 
 func ResolveModule(moduleSpecifier string, containingFile string) (
@@ -79,15 +79,15 @@ func ResolveModule(moduleSpecifier string, containingFile string) (
 	logDebug("os.go ResolveModule after moduleSpecifier %s containingFile %s",
 		moduleSpecifier, containingFile)
 
-	moduleUrl, err := url.Parse(moduleSpecifier)
+	moduleURL, err := url.Parse(moduleSpecifier)
 	if err != nil {
 		return
 	}
-	baseUrl, err := url.Parse(containingFile)
+	baseURL, err := url.Parse(containingFile)
 	if err != nil {
 		return
 	}
-	resolved := baseUrl.ResolveReference(moduleUrl)
+	resolved := baseURL.ResolveReference(moduleURL)
 	moduleName = resolved.String()
 	if resolved.IsAbs() {
 		filename = path.Join(SrcDir, resolved.Host, resolved.Path)
