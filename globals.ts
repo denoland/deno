@@ -37,7 +37,7 @@ _global["console"] = {
   // tslint:disable-next-line:no-any
   assert(condition: boolean, ...args: any[]): void {
     if (!condition) {
-      print("Assertion failed: " + stringifyArgs(args));
+      throw new Error("Assertion failed: " + stringifyArgs(args));
     }
   }
 };
