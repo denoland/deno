@@ -2,11 +2,11 @@
 // All rights reserved. MIT License.
 import { assert, log, createResolvable, Resolvable } from "./util";
 import * as util from "./util";
-import * as dispatch from "./dispatch";
+import { pubInternal, sub } from "./dispatch";
 import { main as pb } from "./msg.pb";
 
 export function initFetch() {
-  dispatch.sub("fetch", (payload: Uint8Array) => {
+  sub("fetch", (payload: Uint8Array) => {
     const msg = pb.Msg.decode(payload);
     assert(msg.command === pb.Msg.Command.FETCH_RES);
     const id = msg.fetchResId;
@@ -111,7 +111,7 @@ class FetchRequest {
 
   start() {
     log("dispatch FETCH_REQ", this.id, this.url);
-    const res = dispatch.sendMsg("fetch", {
+    const res = pubInternal("fetch", {
       command: pb.Msg.Command.FETCH_REQ,
       fetchReqId: this.id,
       fetchReqUrl: this.url

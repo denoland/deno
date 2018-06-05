@@ -1,7 +1,7 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 import { main as pb } from "./msg.pb";
-import * as dispatch from "./dispatch";
+import { pubInternal, sub } from "./dispatch";
 import { assert } from "./util";
 
 let nextTimerId = 1;
@@ -21,7 +21,7 @@ interface Timer {
 const timers = new Map<number, Timer>();
 
 export function initTimers() {
-  dispatch.sub("timers", onMessage);
+  sub("timers", onMessage);
 }
 
 function onMessage(payload: Uint8Array) {
@@ -54,7 +54,7 @@ function setTimer(
     cb
   };
   timers.set(timer.id, timer);
-  dispatch.sendMsg("timers", {
+  pubInternal("timers", {
     command: pb.Msg.Command.TIMER_START,
     timerStartId: timer.id,
     timerStartInterval: timer.interval,
@@ -82,7 +82,7 @@ export function setInterval(
 }
 
 export function clearTimer(id: number) {
-  dispatch.sendMsg("timers", {
+  pubInternal("timers", {
     command: pb.Msg.Command.TIMER_CLEAR,
     timerClearId: id
   });
