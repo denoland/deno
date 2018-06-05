@@ -1,3 +1,7 @@
 import helloWorld from "./subdir/hello_world.json";
 
-console.log(helloWorld);
+function logHelloWorld(item: typeof helloWorld) {
+    console.log(helloWorld);
+}
+
+logHelloWorld(helloWorld);

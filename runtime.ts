@@ -209,7 +209,8 @@ class Compiler {
     inlineSources: true,
     target: ts.ScriptTarget.ES2017,
     moduleResolution: ts.ModuleResolutionKind.NodeJs,
-    resolveJsonModule: true
+    resolveJsonModule: true,
+    esModuleInterop: true
   };
   /*
   allowJs: true,
