@@ -76,7 +76,7 @@ fmt: node_modules
 	go fmt
 	clang-format msg.proto -i
 
-test: deno
+test: clean deno
 	go test -v
 
 .PHONY: test lint clean distclean
