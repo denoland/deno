@@ -21,39 +21,8 @@ _global["setInterval"] = timer.setInterval;
 _global["clearTimeout"] = timer.clearTimer;
 _global["clearInterval"] = timer.clearTimer;
 
-const print = V8Worker2.print;
-
-_global["console"] = {
-  // tslint:disable-next-line:no-any
-  log(...args: any[]): void {
-    print(stringifyArgs(args));
-  },
-
-  // tslint:disable-next-line:no-any
-  error(...args: any[]): void {
-    print(`ERROR: ${stringifyArgs(args)}`);
-  },
-
-  // tslint:disable-next-line:no-any
-  assert(condition: boolean, ...args: any[]): void {
-    if (!condition) {
-      throw new Error(`Assertion failed: ${stringifyArgs(args)}`);
-    }
-  }
-};
-
-// tslint:disable-next-line:no-any
-function stringifyArgs(args: any[]): string {
-  const out: string[] = [];
-  for (const a of args) {
-    if (typeof a === "string") {
-      out.push(a);
-    } else {
-      out.push(JSON.stringify(a));
-    }
-  }
-  return out.join(" ");
-}
+import { Console } from "./console";
+_global["console"] = new Console();
 
 import { fetch } from "./fetch";
 _global["fetch"] = fetch;
