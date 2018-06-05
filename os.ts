@@ -1,12 +1,12 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 import { ModuleInfo } from "./types";
-import { sendMsg } from "./dispatch";
+import { pubInternal } from "./dispatch";
 import { main as pb } from "./msg.pb";
 import { assert } from "./util";
 
 export function exit(exitCode = 0): void {
-  sendMsg("os", {
+  pubInternal("os", {
     command: pb.Msg.Command.EXIT,
     exitCode
   });
@@ -16,7 +16,7 @@ export function codeFetch(
   moduleSpecifier: string,
   containingFile: string
 ): ModuleInfo {
-  const res = sendMsg("os", {
+  const res = pubInternal("os", {
     command: pb.Msg.Command.CODE_FETCH,
     codeFetchModuleSpecifier: moduleSpecifier,
     codeFetchContainingFile: containingFile
@@ -35,7 +35,7 @@ export function codeCache(
   sourceCode: string,
   outputCode: string
 ): void {
-  sendMsg("os", {
+  pubInternal("os", {
     command: pb.Msg.Command.CODE_CACHE,
     codeCacheFilename: filename,
     codeCacheSourceCode: sourceCode,
@@ -44,7 +44,7 @@ export function codeCache(
 }
 
 export function readFileSync(filename: string): Uint8Array {
-  const res = sendMsg("os", {
+  const res = pubInternal("os", {
     command: pb.Msg.Command.READ_FILE_SYNC,
     readFileSyncFilename: filename
   });
@@ -56,7 +56,7 @@ export function writeFileSync(
   data: Uint8Array,
   perm: number
 ): void {
-  sendMsg("os", {
+  pubInternal("os", {
     command: pb.Msg.Command.WRITE_FILE_SYNC,
     writeFileSyncFilename: filename,
     writeFileSyncData: data,

@@ -41,8 +41,7 @@ export function pub(channel: string, payload: Uint8Array): null | ArrayBuffer {
 
 // Internal version of "pub".
 // TODO add internal version of "sub"
-// TODO rename to pubInternal()
-export function sendMsg(channel: string, obj: pb.IMsg): null | pb.Msg {
+export function pubInternal(channel: string, obj: pb.IMsg): null | pb.Msg {
   const msg = pb.Msg.fromObject(obj);
   const ui8 = pb.Msg.encode(msg).finish();
   const resBuf = pub(channel, ui8);
