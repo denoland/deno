@@ -11,4 +11,6 @@ declare module "deno" {
     data: Uint8Array,
     perm: number
   ): void;
+
+  function readFile(filename: string): Promise<Uint8Array>;
 }

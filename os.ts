@@ -1,9 +1,21 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 import { ModuleInfo } from "./types";
-import { pubInternal } from "./dispatch";
+import { pubInternal, sub } from "./dispatch";
 import { main as pb } from "./msg.pb";
 import { assert } from "./util";
+
+export function initOS(): void {
+  sub("os", (payload: Uint8Array) => {
+    const msg = pb.Msg.decode(payload);
+    assert(msg.command === pb.Msg.Command.READ_FILE_RES);
+    const id = msg.readFileResId;
+    const r = readFileRequests.get(id);
+    assert(r != null, `Couldn't find ReadFileRequest id ${id}`);
+
+    r.onMsg(msg);
+  });
+}
 
 export function exit(exitCode = 0): void {
   pubInternal("os", {
@@ -61,5 +73,66 @@ export function writeFileSync(
     writeFileSyncFilename: filename,
     writeFileSyncData: data,
     writeFileSyncPerm: perm
+  });
+}
+
+const readFileRequests = new Map<number, ReadFileRequest>();
+
+// TODO replace with bigint
+let nextReadFileRequestId = 0;
+
+class ReadFileRequest {
+  private readonly id: number;
+  response: ReadFileResponse;
+  constructor(public filename: string) {
+    this.id = nextReadFileRequestId++;
+    readFileRequests.set(this.id, this);
+    this.response = new ReadFileResponse();
+  }
+
+  onMsg(msg: pb.Msg) {
+    this.response.onMsg(msg);
+    this.destroy();
+  }
+
+  destroy() {
+    readFileRequests.delete(this.id);
+  }
+
+  start() {
+    pubInternal("os", {
+      command: pb.Msg.Command.READ_FILE,
+      readFileReqFilename: this.filename,
+      readFileReqId: this.id,
+    });
+  }
+}
+
+class ReadFileResponse {
+  onMsg(msg: pb.Msg) {
+    if (msg.error !== null && msg.error !== "") {
+      //throw new Error(msg.error)
+      this.onError(new Error(msg.error));
+      return;
+    }
+
+    this.onData(msg.readFileResData);
+  }
+
+  onError: (error: Error) => void;
+  onData: (data: Uint8Array) => void;
+}
+
+export function readFile(filename: string): Promise<Uint8Array> {
+  const request = new ReadFileRequest(filename);
+  const response = request.response;
+  return new Promise((resolve, reject) => {
+    response.onData = (data: Uint8Array) => {
+      resolve(data);
+    };
+    response.onError = (error: Error) => {
+      reject(error);
+    };
+    request.start();
   });
 }

@@ -46,6 +46,8 @@ func InitOS() {
 		case Msg_WRITE_FILE_SYNC:
 			return WriteFileSync(msg.WriteFileSyncFilename, msg.WriteFileSyncData,
 				msg.WriteFileSyncPerm)
+		case Msg_READ_FILE:
+			return ReadFile(msg.ReadFileReqFilename, msg.ReadFileReqId)
 		default:
 			panic("[os] Unexpected message " + string(buf))
 		}
@@ -192,4 +194,22 @@ func WriteFileSync(filename string, data []byte, perm uint32) []byte {
 	out, err := proto.Marshal(res)
 	check(err)
 	return out
+}
+
+func ReadFile(filename string, id uint32) []byte {
+	async(func() {
+		data, err := afero.ReadFile(fs, filename)
+		res := &Msg{
+			Command: Msg_READ_FILE_RES,
+			ReadFileResId: id,
+		}
+		if err != nil {
+			res.Error = err.Error()
+		} else {
+			res.ReadFileResData = data
+		}
+		PubMsg("readFileRes", res)
+	})
+
+	return nil;
 }

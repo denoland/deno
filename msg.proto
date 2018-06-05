@@ -25,6 +25,8 @@ message Msg {
     READ_FILE_SYNC = 11;
     READ_FILE_SYNC_RES = 12;
     WRITE_FILE_SYNC = 13;
+    READ_FILE = 14;
+    READ_FILE_RES = 15;
   }
   Command command = 1;
 
@@ -99,4 +101,12 @@ message Msg {
   bytes write_file_sync_data = 131;
   uint32 write_file_sync_perm = 132;
   // write_file_sync_perm specified by https://godoc.org/os#FileMode
+
+  // READ_FILE
+  string read_file_req_filename = 140;
+  uint32 read_file_req_id = 141;
+
+  // READ_FILE_RES
+  bytes read_file_res_data = 150;
+  uint32 read_file_res_id = 151;
 }

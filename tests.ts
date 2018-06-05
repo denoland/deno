@@ -7,7 +7,7 @@
 // serving the deno project directory. Try this:
 //   http-server -p 4545 --cors .
 import { test, assert, assertEqual } from "./testing/testing.ts";
-import { readFileSync, writeFileSync } from "deno";
+import { readFileSync, writeFileSync, readFile } from "deno";
 
 test(async function tests_test() {
   assert(true);
@@ -54,4 +54,21 @@ test(async function tests_writeFileSync() {
   const dec = new TextDecoder("utf-8");
   const actual = dec.decode(dataRead);
   assertEqual("Hello", actual);
+});
+
+test(async function tests_readFile() {
+  try {
+    const data = await readFile("package.json");
+    if (!data.byteLength) {
+      throw Error(
+        `Expected positive value for data.byteLength ${data.byteLength}`
+      );
+    }
+    const decoder = new TextDecoder("utf-8");
+    const json = decoder.decode(data);
+    const pkg = JSON.parse(json);
+    assertEqual(pkg.name, "deno");
+  } catch (e) {
+    throw e;
+  }
 });
