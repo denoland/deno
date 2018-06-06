@@ -86,6 +86,12 @@ On macOS, using [HomeBrew](https://brew.sh/):
 
 ``` bash
 brew install protobuf
+brew install pkg-config
+```
+On Ubuntu or other linux system:
+
+```
+sudo apt install ccache -y
 ```
 
 Then you need [protoc-gen-go](https://github.com/golang/protobuf/tree/master/protoc-gen-go) and [go-bindata](https://github.com/jteeuwen/go-bindata):
