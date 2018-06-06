@@ -53,15 +53,15 @@ A secure TypeScript runtime on V8
 
 ## Status
 
-Segfaulty.
+Segfaulty. No docs yet. Work in Progress.
 
-No docs yet. For some of the public API see: [deno.d.ts](https://github.com/ry/deno/blob/master/deno.d.ts).
+* Public API: [deno.d.ts](https://github.com/ry/deno/blob/master/deno.d.ts)
 
-And examples are around here: [testdata/004_set_timeout.ts](https://github.com/ry/deno/blob/master/testdata/004_set_timeout.ts).
+* Examples: [testdata/004_set_timeout.ts](https://github.com/ry/deno/blob/master/testdata/004_set_timeout.ts)
 
-Roadmap is [here](https://github.com/ry/deno/blob/master/TODO.txt).
+* Roadmap: [TODO.txt](https://github.com/ry/deno/blob/master/TODO.txt)
 
-Also see this preentation http://tinyclouds.org/jsconf2018.pdf
+* Presentation: [jsconf2018.pdf](http://tinyclouds.org/jsconf2018.pdf)
 
 
 ## Compile instructions
