@@ -1,6 +1,6 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-import { typedArrayToArrayBuffer } from "./util";
+import { typedArrayToArrayBuffer, once } from "./util";
 import { _global } from "./globals";
 import { main as pb } from "./msg.pb";
 
@@ -56,18 +56,20 @@ export function pubInternal(channel: string, obj: pb.IMsg): null | pb.Msg {
   }
 }
 
-V8Worker2.recv((ab: ArrayBuffer) => {
-  const msg = pb.BaseMsg.decode(new Uint8Array(ab));
-  const subscribers = channels.get(msg.channel);
-  if (subscribers == null) {
-    throw Error(`No subscribers for channel "${msg.channel}".`);
-  }
+export const recvMessage = once(() => {
+  V8Worker2.recv((ab: ArrayBuffer) => {
+    const msg = pb.BaseMsg.decode(new Uint8Array(ab));
+    const subscribers = channels.get(msg.channel);
+    if (subscribers == null) {
+      throw Error(`No subscribers for channel "${msg.channel}".`);
+    }
 
-  for (const subscriber of subscribers) {
-    subscriber(msg.payload);
-  }
+    for (const subscriber of subscribers) {
+      subscriber(msg.payload);
+    }
+  });
+
+  // Delete the V8Worker2 from the global object,
+  // so that no one else can receive messages.
+  _global["V8Worker2"] = null;
 });
-
-// Delete the V8Worker2 from the global object, so that no one else can receive
-// messages.
-_global["V8Worker2"] = null;

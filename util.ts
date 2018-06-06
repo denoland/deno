@@ -51,3 +51,19 @@ export function createResolvable<T>(): Resolvable<T> {
   });
   return Object.assign(promise, methods) as Resolvable<T>;
 }
+
+/* tslint:disable:no-any */
+export function once(fn: Function) {
+  let haveCalled = false;
+  let result: any;
+
+  return (...args: any[]) => {
+    if (haveCalled) {
+      throw Error("This function can only be called once");
+    }
+
+    haveCalled = true;
+    result = fn(...args);
+    return result;
+  };
+}
