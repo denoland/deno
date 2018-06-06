@@ -76,21 +76,28 @@ export function writeFileSync(
   });
 }
 
-const readFileRequests = new Map<number, ReadFileRequest>();
+const readFileRequests = new Map<number, ReadFileContext>();
 
-class ReadFileRequest {
+class ReadFileContext {
   private readonly id: number;
-  response: ReadFileResponse;
   constructor(public filename: string) {
     this.id = generateUniqueIdOnMap(readFileRequests);
     readFileRequests.set(this.id, this);
-    this.response = new ReadFileResponse();
   }
 
   onMsg(msg: pb.Msg) {
-    this.response.onMsg(msg);
+    if (msg.error !== null && msg.error !== "") {
+      //throw new Error(msg.error)
+      this.onError(new Error(msg.error));
+      return;
+    }
+    this.onData(msg.readFileResData);
+
     this.destroy();
   }
+
+  onError: (error: Error) => void;
+  onData: (data: Uint8Array) => void;
 
   destroy() {
     readFileRequests.delete(this.id);
@@ -105,31 +112,15 @@ class ReadFileRequest {
   }
 }
 
-class ReadFileResponse {
-  onMsg(msg: pb.Msg) {
-    if (msg.error !== null && msg.error !== "") {
-      //throw new Error(msg.error)
-      this.onError(new Error(msg.error));
-      return;
-    }
-
-    this.onData(msg.readFileResData);
-  }
-
-  onError: (error: Error) => void;
-  onData: (data: Uint8Array) => void;
-}
-
 export function readFile(filename: string): Promise<Uint8Array> {
-  const request = new ReadFileRequest(filename);
-  const response = request.response;
+  const ctx = new ReadFileContext(filename);
   return new Promise((resolve, reject) => {
-    response.onData = (data: Uint8Array) => {
+    ctx.onData = (data: Uint8Array) => {
       resolve(data);
     };
-    response.onError = (error: Error) => {
+    ctx.onError = (error: Error) => {
       reject(error);
     };
-    request.start();
+    ctx.start();
   });
 }
