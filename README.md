@@ -69,11 +69,20 @@ Also see this preentation http://tinyclouds.org/jsconf2018.pdf
 I will release binaries at some point but for now you have to build it
 yourself.
 
-You will need [Go](https://golang.org/) with `$GOPATH` defined and
-`$GOPATH/bin` in your `$PATH`.  You will also need
-[yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
+### 1.You will need [Go](https://golang.org/) 
 
-You need Protobuf 3. On Linux this might work:
+With `$GOPATH` defined and `$GOPATH/bin` in your `$PATH`.  
+
+Commands as followed:
+```bash
+export PATH=$PATH:$HOME/go/bin:$GOPATH/bin
+```
+
+### 2.You will also need [Yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
+
+
+### 3.You need Protobuf 3. 
+> On Linux this might work:
 
 ``` bash
 cd ~
@@ -82,21 +91,37 @@ unzip protoc-3.1.0-linux-x86_64.zip
 export PATH=$HOME/bin:$PATH
 ```
 
-On macOS, using [HomeBrew](https://brew.sh/):
+> On macOS, using [HomeBrew](https://brew.sh/):
 
 ``` bash
 brew install protobuf
 ```
 
-Then you need [protoc-gen-go](https://github.com/golang/protobuf/tree/master/protoc-gen-go) and [go-bindata](https://github.com/jteeuwen/go-bindata):
+But,when you run `Makefile`,some may log out an error⚠
+```bash
+protoc --go_out=. msg.proto
+make: protoc: No such file or directory
+make: *** [msg.pb.go] Error 1
+```
+That means `protoc` didn't install corretly.
+
+To solve this problem,alternately,run the following commands instead:
+```bash
+PROTOC_ZIP=protoc-3.1.0-osx-x86_64.zip
+curl -OL https://github.com/google/protobuf/releases/download/v3.1.0/$PROTOC_ZIP
+sudo unzip -o $PROTOC_ZIP -d /usr/local bin/protoc
+rm -f $PROTOC_ZIP
+```
+
+### 4.Then you need [protoc-gen-go](https://github.com/golang/protobuf/tree/master/protoc-gen-go) and [go-bindata](https://github.com/jteeuwen/go-bindata):
 
 ``` bash
 go get -u github.com/golang/protobuf/protoc-gen-go
 go get -u github.com/jteeuwen/go-bindata/...
 ```
 
-You need to get and build [v8worker2](https://github.com/ry/v8worker2).  __The package will not build with `go
-get` and will log out an error ⚠__
+### 5.You need to get and build [v8worker2](https://github.com/ry/v8worker2).
+__The package will not build with `go get` and will log out an error ⚠__
 ```bash
 # pkg-config --cflags v8.pc
 Failed to open 'v8.pc': No such file or directory
@@ -113,13 +138,13 @@ cd $GOPATH/src/github.com/ry/v8worker2
 ```
 Maybe also run `git submodule update --init` in the v8worker2 dir.
 
-Finally you can get `deno` and its other Go deps.
+### 6.Finally you can get `deno` and its other Go deps.
 
 ``` bash
 go get -u github.com/ry/deno/...
 ```
 
-Now you can build deno and run it:
+### 7.Now you can build deno and run it:
 
 ``` bash
 cd $GOPATH/src/github.com/ry/deno
