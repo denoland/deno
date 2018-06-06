@@ -196,7 +196,7 @@ func WriteFileSync(filename string, data []byte, perm uint32) []byte {
 	return out
 }
 
-func ReadFile(filename string, id uint32) []byte {
+func ReadFile(filename string, id int32) []byte {
 	async(func() {
 		data, err := afero.ReadFile(fs, filename)
 		res := &Msg{

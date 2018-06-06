@@ -104,9 +104,9 @@ message Msg {
 
   // READ_FILE
   string read_file_req_filename = 140;
-  uint32 read_file_req_id = 141;
+  int32 read_file_req_id = 141;
 
   // READ_FILE_RES
   bytes read_file_res_data = 150;
-  uint32 read_file_res_id = 151;
+  int32 read_file_res_id = 151;
 }

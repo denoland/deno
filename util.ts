@@ -51,3 +51,19 @@ export function createResolvable<T>(): Resolvable<T> {
   });
   return Object.assign(promise, methods) as Resolvable<T>;
 }
+
+const MAX_ID_AMOUNT = 0x7FFFFFFF;
+//tslint:disable-next-line:no-any
+export function generateUniqueIdOnMap(targetMap: Map<number, any>) {
+  if (targetMap.size >= MAX_ID_AMOUNT) {
+    throw new Error("Exceed max number limit");
+  }
+  let num;
+  while (true) {
+    num = Math.floor(Math.random() * (MAX_ID_AMOUNT + 1));
+    if (!targetMap.has(num)) {
+      break;
+    }
+  }
+  return num;
+}

@@ -3,7 +3,7 @@
 import { ModuleInfo } from "./types";
 import { pubInternal, sub } from "./dispatch";
 import { main as pb } from "./msg.pb";
-import { assert } from "./util";
+import { assert, generateUniqueIdOnMap } from "./util";
 
 export function initOS(): void {
   sub("os", (payload: Uint8Array) => {
@@ -78,14 +78,11 @@ export function writeFileSync(
 
 const readFileRequests = new Map<number, ReadFileRequest>();
 
-// TODO replace with bigint
-let nextReadFileRequestId = 0;
-
 class ReadFileRequest {
   private readonly id: number;
   response: ReadFileResponse;
   constructor(public filename: string) {
-    this.id = nextReadFileRequestId++;
+    this.id = generateUniqueIdOnMap(readFileRequests);
     readFileRequests.set(this.id, this);
     this.response = new ReadFileResponse();
   }
