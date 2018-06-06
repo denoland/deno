@@ -20,22 +20,24 @@ export function initFetch() {
 export class Headers {
   private map: Map<string, string>;
 
-  constructor(headers?: Headers | [string, string][] | { [name: string]: string }) {
+  constructor(
+    headers?: Headers | Array<[string, string]> | { [name: string]: string }
+  ) {
     if (!headers) {
       this.map = new Map();
     } else if (headers instanceof Headers) {
       const arr = [];
-      for (let header of headers) {
+      for (const header of headers) {
         arr.push(header);
       }
       this.map = new Map(arr);
     } else if (Array.isArray(headers)) {
       this.map = new Map(headers);
     } else {
-      const self = this;
+      this.map = new Map();
       const names = Object.keys(headers);
-      names.forEach(function(name) {
-        self.map.set(name, headers[name]);
+      names.forEach(name => {
+        this.map.set(name, headers[name]);
       });
     }
   }
@@ -48,7 +50,7 @@ export class Headers {
       this.map.set(name, value);
     }
   }
-  
+
   delete(name: string): void {
     this.map.delete(name);
   }
@@ -64,9 +66,9 @@ export class Headers {
     return null;
   }
 
-  getAll(name: string): Array<string> {
+  getAll(name: string): string[] {
     const value = this.map.get(name);
-    const arr = value? value.split(", ") : [];
+    const arr = value ? value.split(", ") : [];
 
     return arr;
   }
