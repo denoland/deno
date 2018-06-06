@@ -88,6 +88,7 @@ test(function tests_console_stringify_circular() {
     nu: null,
     nested: nestedObj,
     emptyObj: {},
+    arr: [1, "s", false, null, nestedObj],
   };
 
   nestedObj.o = circularObj;

@@ -16,25 +16,37 @@ function stringify(ctx: ConsoleContext, value: any): string {
       if (value === null) {
         return "null";
       }
+
       if (ctx.has(value)) {
         return "[Circular]";
       }
 
       ctx.add(value);
+      const valStrings = [];
 
-      const keys = Object.keys(value);
-      const keyStrings = [];
-      for (const key of keys) {
-        keyStrings.push(`${key}: ${stringify(ctx, value[key])}`);
+      if (Array.isArray(value)) {
+        for (const el of value) {
+          valStrings.push(stringify(ctx, el));
+        }
+        
+        ctx.delete(value);
+        
+        if (valStrings.length === 0) {
+          return "[]";
+        }
+        return `[${valStrings.join(", ")}]`;
+      } else {
+        for (const key of Object.keys(value)) {
+          valStrings.push(`${key}: ${stringify(ctx, value[key])}`);
+        }
+
+        ctx.delete(value);
+
+        if (valStrings.length === 0) {
+          return "{}";
+        }
+        return `{ ${valStrings.join(", ")} }`;
       }
-
-      ctx.delete(value);
-
-      if (keyStrings.length === 0) {
-        return "{}";
-      }
-
-      return `{ ${keyStrings.join(", ")} }`;
     default:
       return "[Not Implemented]";
   }
