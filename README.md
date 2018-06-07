@@ -61,7 +61,7 @@ And examples are around here: [testdata/004_set_timeout.ts](https://github.com/r
 
 Roadmap is [here](https://github.com/ry/deno/blob/master/TODO.txt).
 
-Also see this preentation http://tinyclouds.org/jsconf2018.pdf
+Also see this presentation http://tinyclouds.org/jsconf2018.pdf
 
 
 ## Compile instructions
@@ -140,4 +140,3 @@ make fmt # Formats the code.
 
 make clean # Cleans the build.
 ```
-
