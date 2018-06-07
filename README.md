@@ -2,6 +2,8 @@
 
 [![Build Status](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
 
+> *See Video* [10 Things I Regret About Node.js](https://www.youtube.com/watch?v=M3BM9TB-8yA), for some of the inspiration behind this project.
+
 A secure TypeScript runtime on V8
 
 * Supports TypeScript 2.8 out of the box. Uses V8 6.8.275.3. That is, it's
