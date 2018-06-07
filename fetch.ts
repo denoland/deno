@@ -32,7 +32,7 @@ class FetchResponse implements Response {
   private first = true;
 
   constructor(readonly req: FetchRequest) {
-    this.url = req.url;
+    this.url = "";
   }
 
   bodyWaiter: Resolvable<ArrayBuffer>;
@@ -90,12 +90,35 @@ class FetchResponse implements Response {
   }
 }
 
+export interface RequestOptions {
+  method?: string;
+  url?: string;
+  referrer?: string;
+  mode?: string;
+  credentials?: string;
+  redirect?: string;
+  integrity?: string;
+  cache?: string;
+}
+
+export class Request {
+  opts: RequestOptions;
+  constructor(url: string, opts: RequestOptions) {
+    if(opts == null) {
+      opts = {};
+    }
+    this.opts = opts;
+    this.opts.url = url;
+    // Object.assign(this.opts, opts);
+  }
+}
+
 let nextFetchId = 0;
-//TODO implements Request
 class FetchRequest {
   private readonly id: number;
   response: FetchResponse;
-  constructor(readonly url: string) {
+  request: Request;
+  constructor(readonly input: Request | string) {
     this.id = nextFetchId++;
     fetchRequests.set(this.id, this);
     this.response = new FetchResponse(this);
@@ -110,11 +133,16 @@ class FetchRequest {
   }
 
   start() {
-    log("dispatch FETCH_REQ", this.id, this.url);
+    if (typeof this.input === "string") {
+      this.request = new Request(this.input, {method: "GET"});
+    } else {
+      this.request = this.input;
+    }
+    log("dispatch FETCH_REQ", this.id, this.request);
     const res = pubInternal("fetch", {
       command: pb.Msg.Command.FETCH_REQ,
       fetchReqId: this.id,
-      fetchReqUrl: this.url
+      fetchReqUrl: JSON.stringify(this.request.opts)
     });
     assert(res == null);
   }
@@ -124,7 +152,7 @@ export function fetch(
   input?: Request | string,
   init?: RequestInit
 ): Promise<Response> {
-  const fetchReq = new FetchRequest(input as string);
+  const fetchReq = new FetchRequest(input);
   const response = fetchReq.response;
   return new Promise((resolve, reject) => {
     // tslint:disable-next-line:no-any

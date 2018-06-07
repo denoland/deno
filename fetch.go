@@ -3,10 +3,46 @@
 package deno
 
 import (
-	"github.com/golang/protobuf/proto"
+	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+
+	"github.com/golang/protobuf/proto"
 )
+
+type requestMode string
+type requestCredentials string
+type requestRedirect string
+type requestCache string
+
+const (
+	corsMode       = "cors"
+	nocorsMode     = "no-cors"
+	sameOriginMode = "same-origin"
+
+	omitCreds       = "omit"
+	sameOriginCreds = "same-origin"
+
+	followRedirect = "follow"
+	errorRedirect  = "error"
+	manualRedirect = "manual"
+
+	defaultCache = "default"
+	reloadCache  = "reload"
+	noCache      = "no-cache"
+)
+
+type request struct {
+	URL         string             `json:"url"`
+	Method      string             `json:"method"`
+	Referrer    string             `json:"referrer"`
+	Mode        requestMode        `json:"mode"`
+	Credentials requestCredentials `json:"credentials"`
+	Redirect    requestRedirect    `json:"redirect"`
+	Integrity   string             `json:"integrity"`
+	Cache       requestCache       `json:"cache"`
+}
 
 func InitFetch() {
 	Sub("fetch", func(buf []byte) []byte {
@@ -23,8 +59,60 @@ func InitFetch() {
 	})
 }
 
-func Fetch(id int32, targetUrl string) []byte {
-	logDebug("Fetch %d %s", id, targetUrl)
+func Fetch(id int32, requestJSON string) []byte {
+	logDebug("Fetch %d %s", id, requestJSON)
+	r := request{}
+	err := json.Unmarshal([]byte(requestJSON), &r)
+	if err != nil {
+		panic(err)
+	}
+
+	// Construct a http.Request with method:
+	req, err := http.NewRequest(r.Method, "", nil)
+	if err != nil {
+		panic(err)
+	}
+
+	// Parse and set the URL:
+	url, err := url.Parse(r.URL)
+	if err != nil {
+		panic(err)
+	}
+	req.URL = url
+
+	// Check referrer field:
+	if r.Referrer != "" {
+		req.Header.Set("Referer", r.Referrer)
+	}
+
+	// CORS mode?
+	switch r.Mode {
+	case corsMode:
+	case nocorsMode:
+	case sameOriginMode:
+	}
+
+	// Credentials?
+	switch r.Credentials {
+	case omitCreds:
+	case sameOriginCreds:
+	}
+
+	// Redirect policy:
+	switch r.Redirect {
+	case followRedirect:
+	case errorRedirect:
+	case manualRedirect:
+	}
+
+	// Integrity: r.Integrity
+	// Cache mode
+	switch r.Cache {
+	case defaultCache:
+	case reloadCache:
+	case noCache:
+	}
+
 	async(func() {
 		resMsg := &Msg{
 			Command:    Msg_FETCH_RES,
@@ -37,7 +125,7 @@ func Fetch(id int32, targetUrl string) []byte {
 			return
 		}
 
-		resp, err := http.Get(targetUrl)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			resMsg.Error = err.Error()
 			PubMsg("fetch", resMsg)
@@ -50,7 +138,7 @@ func Fetch(id int32, targetUrl string) []byte {
 		}
 
 		resMsg.FetchResStatus = int32(resp.StatusCode)
-		logDebug("fetch success %d %s", resMsg.FetchResStatus, targetUrl)
+		logDebug("fetch success %d %s", resMsg.FetchResStatus, req.URL.String())
 		PubMsg("fetch", resMsg)
 
 		// Now we read the body and send another message0
@@ -65,7 +153,6 @@ func Fetch(id int32, targetUrl string) []byte {
 
 		resMsg.FetchResBody = body
 		PubMsg("fetch", resMsg)
-
 		// TODO streaming.
 	})
 	return nil
