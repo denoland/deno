@@ -34,7 +34,7 @@ function stringify(ctx: ConsoleContext, value: any): string {
         if (valStrings.length === 0) {
           return "[]";
         }
-        return `[${valStrings.join(", ")}]`;
+        return `[ ${valStrings.join(", ")} ]`;
       } else {
         for (const key of Object.keys(value)) {
           valStrings.push(`${key}: ${stringify(ctx, value[key])}`);
@@ -79,7 +79,7 @@ export class Console {
 
   // tslint:disable-next-line:no-any
   warn(...args: any[]): void {
-    print("ERROR: " + stringifyArgs(args));
+    print(`ERROR: ${stringifyArgs(args)}`);
   }
 
   error = this.warn;
@@ -87,7 +87,7 @@ export class Console {
   // tslint:disable-next-line:no-any
   assert(condition: boolean, ...args: any[]): void {
     if (!condition) {
-      throw new Error("Assertion failed: " + stringifyArgs(args));
+      throw new Error(`Assertion failed: ${stringifyArgs(args)}`);
     }
   }
 }
