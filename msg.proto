@@ -25,6 +25,8 @@ message Msg {
     READ_FILE_SYNC = 11;
     READ_FILE_SYNC_RES = 12;
     WRITE_FILE_SYNC = 13;
+    OS_PROCESS = 20;
+    OS_PROCESS_RES = 21;
   }
   Command command = 1;
 
@@ -99,4 +101,9 @@ message Msg {
   bytes write_file_sync_data = 131;
   uint32 write_file_sync_perm = 132;
   // write_file_sync_perm specified by https://godoc.org/os#FileMode
+
+  // OS_PROCESS
+  string process_platform = 200;
+  string process_cwd = 201;
+  string process_tmp_dir = 202;
 }

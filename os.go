@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"runtime"
 )
 
 const assetPrefix string = "/$asset$/"
@@ -41,6 +42,8 @@ func InitOS() {
 				msg.CodeCacheOutputCode)
 		case Msg_EXIT:
 			os.Exit(int(msg.ExitCode))
+		case Msg_OS_PROCESS:
+			return Process()
 		case Msg_READ_FILE_SYNC:
 			return ReadFileSync(msg.ReadFileSyncFilename)
 		case Msg_WRITE_FILE_SYNC:
@@ -188,6 +191,24 @@ func WriteFileSync(filename string, data []byte, perm uint32) []byte {
 	res := &Msg{}
 	if err != nil {
 		res.Error = err.Error()
+	}
+	out, err := proto.Marshal(res)
+	check(err)
+	return out
+}
+
+func Process() []byte{
+	cwd, err := os.Getwd()
+	res := &Msg{}
+	if err != nil {
+		res.Error = err.Error()
+	}else{
+		res = &Msg{
+			Command: Msg_OS_PROCESS_RES,
+			ProcessCwd: cwd,
+			ProcessPlatform: runtime.GOOS,
+			ProcessTmpDir: os.TempDir(),
+		}
 	}
 	out, err := proto.Marshal(res)
 	check(err)
