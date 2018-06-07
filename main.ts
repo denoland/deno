@@ -7,7 +7,7 @@ import { sub, recvMessage } from "./dispatch";
 import { main as pb } from "./msg.pb";
 
 import * as runtime from "./runtime";
-import { log, once } from "./util";
+import { log, onceStrict } from "./util";
 
 import { initTimers } from "./timers";
 import { initFetch } from "./fetch";
@@ -27,7 +27,7 @@ export let debug = false;
   initFetch();
   recvMessage();
 
-  sub("start", once((payload: Uint8Array) => {
+  sub("start", onceStrict((payload: Uint8Array) => {
       const msg = pb.Msg.decode(payload);
       const {
         startCwd: cwd,

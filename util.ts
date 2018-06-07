@@ -2,6 +2,7 @@
 // All rights reserved. MIT License.
 import { debug } from "./main";
 import { TypedArray } from "./types";
+import { _global } from "globals";
 
 // Internal logging for deno. Use the "debug" variable above to control
 // output.
@@ -52,18 +53,19 @@ export function createResolvable<T>(): Resolvable<T> {
   return Object.assign(promise, methods) as Resolvable<T>;
 }
 
-/* tslint:disable:no-any */
-export function once(fn: Function) {
+/* tslint:disable: no-any */
+export function onceStrict(fn: Function, context?: any) {
   let haveCalled = false;
-  let result: any;
 
-  return (...args: any[]) => {
+  /* tslint:disable-next-line:only-arrow-functions */
+  return function (...args: any[]) {
     if (haveCalled) {
       throw Error("This function can only be called once");
     }
 
     haveCalled = true;
-    result = fn(...args);
-    return result;
+    // I cannot use fn.apply(context || this) 
+    // because the value of 'noImplicitThis" is true
+    return fn.apply(context || _global, args);
   };
 }

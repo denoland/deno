@@ -1,6 +1,6 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-import { typedArrayToArrayBuffer, once } from "./util";
+import { typedArrayToArrayBuffer, onceStrict } from "./util";
 import { _global } from "./globals";
 import { main as pb } from "./msg.pb";
 
@@ -56,7 +56,7 @@ export function pubInternal(channel: string, obj: pb.IMsg): null | pb.Msg {
   }
 }
 
-export const recvMessage = once(() => {
+export const recvMessage = onceStrict(() => {
   V8Worker2.recv((ab: ArrayBuffer) => {
     const msg = pb.BaseMsg.decode(new Uint8Array(ab));
     const subscribers = channels.get(msg.channel);
