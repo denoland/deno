@@ -2,6 +2,17 @@
 type ConsoleContext = Set<any>;
 
 // tslint:disable-next-line:no-any
+function getClassInstanceName(instance: any): string {
+  if (typeof instance !== "object") {
+    return "";
+  }
+  if (instance && instance.__proto__ && instance.__proto__.constructor) {
+    return instance.__proto__.constructor.name; // could be "Object" or "Array"
+  }
+  return "";
+}
+
+// tslint:disable-next-line:no-any
 function stringify(ctx: ConsoleContext, value: any): string {
   switch (typeof value) {
     case "string":
@@ -9,8 +20,12 @@ function stringify(ctx: ConsoleContext, value: any): string {
     case "number":
     case "boolean":
     case "undefined":
+    case "symbol":
       return String(value);
     case "function":
+      if (value.name && value.name !== "anonymous") { // from MDN spec
+        return `[Function: ${value.name}]`;
+      }
       return "[Function]";
     case "object":
       if (value === null) {
@@ -22,30 +37,45 @@ function stringify(ctx: ConsoleContext, value: any): string {
       }
 
       ctx.add(value);
-      const valStrings = [];
+      const entries: string[] = [];
 
       if (Array.isArray(value)) {
         for (const el of value) {
-          valStrings.push(stringify(ctx, el));
+          entries.push(stringify(ctx, el));
         }
         
         ctx.delete(value);
         
-        if (valStrings.length === 0) {
+        if (entries.length === 0) {
           return "[]";
         }
-        return `[ ${valStrings.join(", ")} ]`;
+        return `[ ${entries.join(", ")} ]`;
       } else {
+        let baseString = "";
+
+        const className = getClassInstanceName(value);
+        let shouldShowClassName = false;
+        if (className && className !== "Object" && className !== "anonymous") {
+          shouldShowClassName = true;
+        }
+
         for (const key of Object.keys(value)) {
-          valStrings.push(`${key}: ${stringify(ctx, value[key])}`);
+          entries.push(`${key}: ${stringify(ctx, value[key])}`);
         }
 
         ctx.delete(value);
 
-        if (valStrings.length === 0) {
-          return "{}";
+        if (entries.length === 0) {
+          baseString = "{}";
+        } else {
+          baseString = `{ ${entries.join(", ")} }`;
         }
-        return `{ ${valStrings.join(", ")} }`;
+
+        if (shouldShowClassName) {
+          baseString = `${className} ${baseString}`;
+        }
+
+        return baseString;
       }
     default:
       return "[Not Implemented]";
