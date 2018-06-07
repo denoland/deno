@@ -23,40 +23,40 @@ error Error: error
     at execute (/main.js:[WILDCARD]`
 
 func TestPatternMatch(t *testing.T) {
-	if patternMatch("aa", "a") != false {
+	if patternMatch("aa", "a") {
 		t.Fatalf("Wrong resullt (1).")
 	}
-	if patternMatch("aaa[WILDCARD]b", "aaaxsdfdb") != true {
+	if !patternMatch("aaa[WILDCARD]b", "aaaxsdfdb") {
 		t.Fatalf("Wrong resullt (2).")
 	}
-	if patternMatch("aab[WILDCARD]", "xsd") != false {
+	if patternMatch("aab[WILDCARD]", "xsd") {
 		t.Fatalf("Wrong resullt (3).")
 	}
-	if patternMatch("a[WILDCARD]b[WILDCARD]c", "abc") != true {
+	if !patternMatch("a[WILDCARD]b[WILDCARD]c", "abc") {
 		t.Fatalf("Wrong resullt (4).")
 	}
-	if patternMatch("a[WILDCARD]b[WILDCARD]c", "axbc") != true {
+	if !patternMatch("a[WILDCARD]b[WILDCARD]c", "axbc") {
 		t.Fatalf("Wrong resullt (5).")
 	}
-	if patternMatch("a[WILDCARD]b[WILDCARD]c", "abxc") != true {
+	if !patternMatch("a[WILDCARD]b[WILDCARD]c", "abxc") {
 		t.Fatalf("Wrong resullt (6).")
 	}
-	if patternMatch("a[WILDCARD]b[WILDCARD]c", "axbxc") != true {
+	if !patternMatch("a[WILDCARD]b[WILDCARD]c", "axbxc") {
 		t.Fatalf("Wrong resullt (7).")
 	}
-	if patternMatch("a[WILDCARD]b[WILDCARD]c", "abcx") != false {
+	if patternMatch("a[WILDCARD]b[WILDCARD]c", "abcx") {
 		t.Fatalf("Wrong resullt (8).")
 	}
-	if patternMatch("a[WILDCARD][WILDCARD]c", "abc") != true {
+	if !patternMatch("a[WILDCARD][WILDCARD]c", "abc") {
 		t.Fatalf("Wrong resullt (9).")
 	}
-	if patternMatch("a[WILDCARD][WILDCARD]c", "ac") != true {
+	if !patternMatch("a[WILDCARD][WILDCARD]c", "ac") {
 		t.Fatalf("Wrong resullt (10).")
 	}
 }
 
 func TestPatternMatchStackTrace(t *testing.T) {
-	if patternMatch(exStackTracePattern, exStackTrace) != true {
+	if !patternMatch(exStackTracePattern, exStackTrace) {
 		t.Fatalf("Wrong resullt (11).")
 	}
 }

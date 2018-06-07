@@ -92,7 +92,7 @@ func TestIntegrationFiles(t *testing.T) {
 	outFiles := listTestFiles()
 	for _, outFile := range outFiles {
 		t.Run(outFile, func(t *testing.T) {
-			shouldSucceed := strings.Index(outFile, "error") < 0
+			shouldSucceed := !strings.Contains(outFile, "error")
 			checkOutput(t, outFile, shouldSucceed)
 		})
 	}
