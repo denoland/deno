@@ -181,7 +181,7 @@ function resolveModuleName(
 function execute(fileName: string, outputCode: string): void {
   util.assert(outputCode && outputCode.length > 0);
   _global["define"] = makeDefine(fileName);
-  outputCode += "\n//# sourceURL=" + fileName;
+  outputCode += `\n//# sourceURL=${fileName}`;
   globalEval(outputCode);
   _global["define"] = null;
 }
