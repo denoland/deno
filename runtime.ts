@@ -59,7 +59,7 @@ export function setup(mainJs: string, mainMap: string): void {
 // FileModule.load(). FileModules are NOT executed upon first load, only when
 // compileAndRun is called.
 export class FileModule {
-  scriptVersion: string = undefined;
+  scriptVersion: string;
   readonly exports = {};
 
   private static readonly map = new Map<string, FileModule>();
@@ -80,7 +80,7 @@ export class FileModule {
 
   compileAndRun(): void {
     if (!this.outputCode) {
-      // If there is no cached outputCode, the compile the code.
+      // If there is no cached outputCode, then compile the code.
       util.assert(
         this.sourceCode != null && this.sourceCode.length > 0,
         `Have no source code from ${this.fileName}`
