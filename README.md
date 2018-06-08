@@ -2,12 +2,12 @@
 
 [![Build Status](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
 
-A secure TypeScript runtime on V8
+## A secure TypeScript runtime built on V8
 
 * Supports TypeScript 2.8 out of the box. Uses V8 6.8.275.3. That is, it's
   very modern JavaScript.
 
-* No package.json, no npm. Not explicitly compatible with Node.
+* No `package.json`. No npm. Not explicitly compatible with Node.
 
 * Imports reference source code URLs only.
 	```
@@ -15,14 +15,14 @@ A secure TypeScript runtime on V8
   import { log } from "./util.ts"
 	```
   Remote code is fetched and cached on first execution, and never updated until
-  the code is run with the `--reload` flag. (So this will still work on an
+  the code is run with the `--reload` flag. (So, this will still work on an
   airplane. See `~/.deno/src` for details on the cache.)
 
 * File system and network access can be controlled in order to run sandboxed
   code. Defaults to read-only file system access and no network access.
 	Access between V8 (unprivileged) and Golang (privileged) is only done via
   serialized messages defined in this
-  [protobuf](https://github.com/ry/deno/blob/master/msg.proto), this makes it
+  [protobuf](https://github.com/ry/deno/blob/master/msg.proto). This makes it
   easy to audit.
 	To enable write access explicitly use `--allow-write` and `--allow-net` for
   network access.
@@ -43,7 +43,7 @@ A secure TypeScript runtime on V8
 
 * Always dies on uncaught errors.
 
-* Supports top-level await.
+* Supports top-level `await`.
 
 * Aims to be browser compatible.
 
@@ -61,17 +61,18 @@ And examples are around here: [testdata/004_set_timeout.ts](https://github.com/r
 
 Roadmap is [here](https://github.com/ry/deno/blob/master/TODO.txt).
 
-Also see this preentation http://tinyclouds.org/jsconf2018.pdf
+Also see this presentation: http://tinyclouds.org/jsconf2018.pdf
 
 
 ## Compile instructions
 
-I will release binaries at some point but for now you have to build it
+I will release binaries at some point, but for now you have to build it
 yourself.
 
-You will need [Go](https://golang.org/) with `$GOPATH` defined and
-`$GOPATH/bin` in your `$PATH`.  You will also need
-[yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
+You will need [Go](https://golang.org) with `$GOPATH` defined and
+`$GOPATH/bin` in your `$PATH`.  
+
+You will also need [yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
 
 You need Protobuf 3. On Linux this might work:
 
@@ -111,9 +112,9 @@ go get -u github.com/ry/v8worker2
 cd $GOPATH/src/github.com/ry/v8worker2
 ./build.py --use_ccache
 ```
-Maybe also run `git submodule update --init` in the v8worker2 dir.
+Maybe also run `git submodule update --init` in the `v8worker2/` dir.
 
-Finally you can get `deno` and its other Go deps.
+Finally, you can get `deno` and its other Go deps.
 
 ``` bash
 go get -u github.com/ry/deno/...
@@ -129,7 +130,7 @@ make # Wait for redacted
 ./deno testdata/001_hello.js # Output: Hello World
 ```
 
-## make commands
+## `make` commands
 
 ``` bash
 make deno # Builds the deno executable.
