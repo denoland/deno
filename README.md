@@ -77,7 +77,7 @@ You need Protobuf 3. On Linux this might work:
 
 ``` bash
 cd ~
-wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
+wget https://github.com/google/protobuf/releases/download/v3.5.1/protoc-3.5.1-linux-x86_64.zip
 unzip protoc-3.1.0-linux-x86_64.zip
 export PATH=$HOME/bin:$PATH
 ```
