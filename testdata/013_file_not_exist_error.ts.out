@@ -1,0 +1,14 @@
+/main.js:[WILDCARD]
+                throw _iteratorError;
+                ^
+Error: can not find the module: testdata/import_relative_404.ts
+    at resolveModule (../runtime.ts:155:13)
+    at resolveModuleName (../runtime.ts:176:15)
+    at ../runtime.ts:321:28
+    at Array.map (<anonymous>)
+    at TypeScriptHost.resolveModuleNames (../runtime.ts:314:24)
+    at Object.compilerHost.resolveModuleNames (../node_modules/typescript/lib/typescript.js:103234:117)
+    at resolveModuleNamesWorker (../node_modules/typescript/lib/typescript.js:75782:106)
+    at resolveModuleNamesReusingOldState (../node_modules/typescript/lib/typescript.js:75941:24)
+    at processImportedModules (../node_modules/typescript/lib/typescript.js:77020:35)
+    at findSourceFile (../node_modules/typescript/lib/typescript.js:76931:17)

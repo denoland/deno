@@ -16,6 +16,9 @@ const assetPrefix string = "/$asset$/"
 
 var fs afero.Fs
 
+// ErrFileNotExist caused by file not found and http get failed
+var ErrFileNotFound = os.ErrNotExist
+
 func InitOS() {
 	if Perms.FsWrite {
 		assert(Perms.FsRead, "Write access requires read access.")
@@ -106,6 +109,9 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 	defer func() {
 		if err != nil {
 			res.Error = err.Error()
+			if err == ErrFileNotFound {
+				res.Command = Msg_CODE_FETCH_RES
+			}
 		}
 		out, err = proto.Marshal(res)
 		check(err)
@@ -132,6 +138,9 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 		assert(moduleName == filename,
 			"if a module isn't remote, it should have the same filename")
 		sourceCodeBuf, err = ioutil.ReadFile(moduleName)
+		if os.IsNotExist(err) {
+			err = ErrFileNotFound
+		}
 	}
 	if err != nil {
 		return
