@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 // This test is executed as part of integration_test.go
 // But it can also be run manually:
-//  ./deno tests.ts
+//  ./deno --allow-net --allow-write tests.ts
 // There must also be a static file http server running on localhost:4545
 // serving the deno project directory. Try this:
 //   http-server -p 4545 --cors .
