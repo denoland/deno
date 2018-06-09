@@ -51,9 +51,8 @@ export function pubInternal(channel: string, obj: pb.IMsg): null | pb.Msg {
       throw Error(res.error);
     }
     return res;
-  } else {
-    return null;
   }
+  return null;
 }
 
 V8Worker2.recv((ab: ArrayBuffer) => {
