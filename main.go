@@ -86,6 +86,7 @@ func Init() {
 	InitEcho()
 	InitTimers()
 	InitFetch()
+	InitHTTP()
 
 	worker = v8worker2.New(recv)
 

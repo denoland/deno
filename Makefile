@@ -4,6 +4,7 @@ TS_FILES = \
 	deno.ts \
 	dispatch.ts \
 	fetch.ts \
+	http.ts \
 	globals.ts \
 	main.ts \
 	msg.pb.d.ts \
@@ -27,6 +28,7 @@ GO_FILES = \
 	dispatch.go \
 	echo.go \
 	fetch.go \
+	http.go \
 	main.go \
 	msg.pb.go \
 	os.go \
