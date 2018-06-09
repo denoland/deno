@@ -81,6 +81,7 @@ export function setInterval(
 }
 
 export function clearTimer(id: number) {
+  timers.delete(id);
   pubInternal("timers", {
     command: pb.Msg.Command.TIMER_CLEAR,
     timerClearId: id
