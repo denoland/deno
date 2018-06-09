@@ -27,7 +27,7 @@ untenable. However, there's a lot of interest in Rust in the JS community and
 it seems like a reasonable choice. TBD.
 
 There are many people exploring the project, so care will be taken to keep the
-original code functional while this is developed. However, once it's ready this
+original code functional while this is developed. However, once it's ready
 the code in this deno2/ directory will be moved to the root.
 
 
@@ -45,7 +45,7 @@ For linux you need these prereqs:
 
 First install the javascript deps.
 
-   cd js; yarn install
+    cd js; yarn install
 
 TODO(ry) Remove the above step by a deps submodule.
 
