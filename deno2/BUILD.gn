@@ -1,0 +1,134 @@
+import("//third_party/protobuf/proto_library.gni")
+import("//v8/gni/v8.gni")
+import("//v8/snapshot_toolchain.gni")
+
+proto_library("msg_proto") {
+  sources = [
+    "msg.proto",
+  ]
+}
+
+action("run_parcel") {
+  sources = [
+    "js/main.ts",
+  ]
+  outputs = [
+    "$target_gen_dir/main.js",
+    "$target_gen_dir/main.map",
+  ]
+
+  # Our script imports this Python file so we want to rebuild if it changes.
+  # inputs = [ "helper_library.py" ]
+
+  # Note that we have to manually pass the sources to our script if the
+  # script needs them as inputs.
+  script = "js/run_node.py"
+  root = root_build_dir + "/../../js"
+  args = [
+           "./node_modules/.bin/parcel",
+           "build",
+           "--log-level=1",
+           "--no-minify",
+           "--out-dir=" + rebase_path(target_gen_dir, root),
+         ] + rebase_path(sources, root)
+}
+
+# Template to generate different V8 snapshots based on different runtime flags.
+# Can be invoked with run_mksnapshot(<name>). The target will resolve to
+# run_mksnapshot_<name>. If <name> is "default", no file suffixes will be used.
+# Otherwise files are suffixed, e.g. embedded_<name>.cc and
+# snapshot_blob_<name>.bin.
+#
+# The template exposes the variables:
+#   args: additional flags for mksnapshots
+#   embedded_suffix: a camel case suffix for method names in the embedded
+#       snapshot.
+template("create_snapshot") {
+  name = target_name
+  suffix = "_$name"
+  action("create_snapshot_" + name) {
+    visibility = [ ":*" ]  # Only targets in this file can depend on this.
+    deps = [ ":snapshot_creator" ] + invoker.deps
+    script = "v8/tools/run.py"
+    data = []
+    exe = rebase_path(get_label_info(":snapshot_creator", "root_out_dir") +
+                      "/snapshot_creator")
+    natives_in_bin = "$root_out_dir/natives_blob.bin"
+    snapshot_in_bin = "$root_out_dir/snapshot_blob.bin"
+    natives_out_cc = "$target_gen_dir/natives${suffix}.cc"
+    snapshot_out_cc = "$target_gen_dir/snapshot${suffix}.cc"
+    sources = [
+      invoker.js,
+    ]
+    outputs = [
+      natives_out_cc,
+      snapshot_out_cc,
+    ]
+    args = [
+      exe,
+      rebase_path(invoker.js, root_build_dir),
+      rebase_path(natives_in_bin, root_build_dir),
+      rebase_path(snapshot_in_bin, root_build_dir),
+      rebase_path(natives_out_cc, root_build_dir),
+      rebase_path(snapshot_out_cc, root_build_dir),
+    ]
+    data = [
+      invoker.js,
+    ]
+  }
+}
+
+# Generates $target_gen_dir/snapshot_bundle.cc
+create_snapshot("deno") {
+  js = "$target_gen_dir/main.js"
+  deps = [
+    ":run_parcel",
+  ]
+}
+
+v8_executable("snapshot_creator") {
+  sources = [
+    "deno.cc",
+    "deno.h",
+    "snapshot_creator.cc",
+  ]
+  configs = [ "v8:libplatform_config" ]
+  deps = [
+    "v8:v8",
+    "v8:v8_libbase",
+    "v8:v8_libplatform",
+    "v8:v8_libsampler",
+    "//build/config:exe_and_shlib_deps",
+    "//build/win:default_exe_manifest",
+  ]
+}
+
+v8_executable("deno") {
+  sources = [
+    "deno.cc",
+    "deno.h",
+    "main.cc",
+  ]
+  include_dirs = [ target_gen_dir ]
+  configs = [ "v8:libplatform_config" ]
+  deps = [
+    ":create_snapshot_deno",
+    ":msg_proto",
+    "v8:v8",
+    "v8:v8_libbase",
+    "v8:v8_libplatform",
+    "v8:v8_libsampler",
+    "//build/config:exe_and_shlib_deps",
+    "//build/win:default_exe_manifest",
+  ]
+}
+
+executable("deno_test") {
+  testonly = true
+  sources = [
+    "deno_test.cc",
+  ]
+  deps = [
+    "//testing/gtest:gtest",
+  ]
+}

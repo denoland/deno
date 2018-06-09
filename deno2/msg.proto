@@ -1,0 +1,102 @@
+// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
+// All rights reserved. MIT License.
+syntax = "proto3";
+package main;
+option go_package = "deno";
+
+message BaseMsg {
+  string channel = 1;
+  bytes payload = 2;
+}
+
+message Msg {
+  enum Command {
+    ERROR = 0;
+    START = 1;
+    CODE_FETCH = 2;
+    CODE_FETCH_RES = 3;
+    CODE_CACHE = 4;
+    EXIT = 5;
+    TIMER_START = 6;
+    TIMER_READY = 7;
+    TIMER_CLEAR = 8;
+    FETCH_REQ = 9;
+    FETCH_RES = 10;
+    READ_FILE_SYNC = 11;
+    READ_FILE_SYNC_RES = 12;
+    WRITE_FILE_SYNC = 13;
+  }
+  Command command = 1;
+
+  // We avoid creating a message for each command (and use oneof or any types)
+  // In order to reduce code in the size of the generated javascript
+  // "msg.pb.js". It seems that each new message adds 20k and we want to
+  // potentially add many hundreds of commands. Therefore we just prefix command
+  // arguments by their name.
+
+  // ERROR
+  string error = 2;
+
+  // START
+  string start_cwd = 10;
+  repeated string start_argv = 11;
+  bool start_debug_flag = 12;
+  string start_main_js = 13;  // The contents of dist/main.js
+  string start_main_map = 14; // The contents of dist/main.map
+
+  // CODE_FETCH
+  string code_fetch_module_specifier = 20;
+  string code_fetch_containing_file = 21;
+
+  // CODE_FETCH_RES
+  // If it's a non-http module, moduleName and filename will be the same.
+  // For http modules, moduleName is its resolved http URL, and filename
+  // is the location of the locally downloaded source code.
+  string code_fetch_res_module_name = 30;
+  string code_fetch_res_filename = 31;
+  string code_fetch_res_source_code = 32;
+  string code_fetch_res_output_code = 33; // Non-empty only if cached.
+
+  // CODE_CACHE
+  string code_cache_filename = 41;
+  string code_cache_source_code = 42;
+  string code_cache_output_code = 43;
+
+  // EXIT
+  int32 exit_code = 50;
+
+  // TIMER_START
+  int32 timer_start_id = 60;
+  bool timer_start_interval = 61;
+  int32 timer_start_duration = 62; // In milliseconds.
+
+  // TIMER_READY
+  int32 timer_ready_id = 70;
+  bool timer_ready_done = 71;
+
+  // TIMER_CLEAR
+  int32 timer_clear_id = 80;
+
+  // FETCH_REQ
+  int32 fetch_req_id = 90;
+  string fetch_req_url = 91;
+  // repeated string fetch_req_header_line = 91
+
+  // FETCH_RES
+  int32 fetch_res_id = 100;
+  int32 fetch_res_status = 101;
+  repeated string fetch_res_header_line = 102;
+  bytes fetch_res_body = 103;
+
+  // READ_FILE_SYNC
+  string read_file_sync_filename = 110;
+
+  // READ_FILE_SYNC_RES
+  bytes read_file_sync_data = 120;
+
+  // WRITE_FILE_SYNC
+  string write_file_sync_filename = 130;
+  bytes write_file_sync_data = 131;
+  uint32 write_file_sync_perm = 132;
+  // write_file_sync_perm specified by https://godoc.org/os#FileMode
+}
