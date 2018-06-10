@@ -32,6 +32,8 @@ IN THE SOFTWARE.
 
 #define CHECK(x) assert(x)  // TODO(ry) use V8's CHECK.
 
+namespace deno {
+
 // Extracts a C string from a v8::V8 Utf8Value.
 const char* ToCString(const v8::String::Utf8Value& value) {
   return *value ? *value : "<string conversion failed>";
@@ -354,3 +356,5 @@ void deno_dispose(Deno* d) {
 }
 
 void deno_terminate_execution(Deno* d) { d->isolate->TerminateExecution(); }
+
+}  // namespace deno

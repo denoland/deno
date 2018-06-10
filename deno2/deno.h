@@ -6,6 +6,8 @@
 #include <string>
 #include "v8/include/v8.h"
 
+namespace deno {
+
 // Data that gets transmitted.
 struct buf_s {
   void* data;
@@ -51,5 +53,7 @@ const char* deno_last_exception(Deno* d);
 
 void deno_dispose(Deno* d);
 void deno_terminate_execution(Deno* d);
+
+}  // namespace deno
 
 #endif  // DENO_H_
