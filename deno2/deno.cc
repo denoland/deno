@@ -98,20 +98,12 @@ void ExitOnPromiseRejectCallback(
 }
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  bool first = true;
+  assert(args.Length() == 1);
   auto* isolate = args.GetIsolate();
-  for (int i = 0; i < args.Length(); i++) {
-    v8::HandleScope handle_scope(isolate);
-    if (first) {
-      first = false;
-    } else {
-      printf(" ");
-    }
-    v8::String::Utf8Value str(isolate, args[i]);
-    const char* cstr = ToCString(str);
-    printf("%s", cstr);
-  }
-  printf("\n");
+  v8::HandleScope handle_scope(isolate);
+  v8::String::Utf8Value str(isolate, args[0]);
+  const char* cstr = ToCString(str);
+  printf("%s\n", cstr);
   fflush(stdout);
 }
 
