@@ -1,7 +1,7 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-#ifndef DENO_H_
-#define DENO_H_
+#ifndef INCLUDE_DENO_H_
+#define INCLUDE_DENO_H_
 
 #include <string>
 #include "v8/include/v8.h"
@@ -48,4 +48,4 @@ void deno_terminate_execution(Deno* d);
 
 }  // namespace deno
 
-#endif  // DENO_H_
+#endif  // INCLUDE_DENO_H_

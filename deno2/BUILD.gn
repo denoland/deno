@@ -88,31 +88,34 @@ create_snapshot("deno") {
 
 v8_executable("snapshot_creator") {
   sources = [
-    "deno.cc",
-    "deno.h",
     "snapshot_creator.cc",
   ]
   configs = [ "v8:libplatform_config" ]
   deps = [
-    "v8:v8",
-    "v8:v8_libbase",
-    "v8:v8_libplatform",
-    "v8:v8_libsampler",
-    "//build/config:exe_and_shlib_deps",
-    "//build/win:default_exe_manifest",
+    ":libdeno",
   ]
 }
 
 v8_executable("deno") {
   sources = [
-    "deno.cc",
-    "deno.h",
     "main.cc",
   ]
   include_dirs = [ target_gen_dir ]
   configs = [ "v8:libplatform_config" ]
   deps = [
     ":create_snapshot_deno",
+    ":libdeno",
+  ]
+}
+
+v8_component("libdeno") {
+  sources = [
+    "deno.cc",
+    "include/deno.h",
+  ]
+  include_dirs = [ "include/" ]
+  configs = [ "v8:libplatform_config" ]
+  deps = [
     ":msg_proto",
     "v8:v8",
     "v8:v8_libbase",
@@ -129,6 +132,7 @@ executable("deno_test") {
     "deno_test.cc",
   ]
   deps = [
+    ":libdeno",
     "//testing/gtest:gtest",
   ]
 }

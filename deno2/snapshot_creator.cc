@@ -9,7 +9,7 @@
 
 #include "v8/include/v8.h"
 
-#include "./deno.h"
+#include "include/deno.h"
 
 class StartupDataCppWriter {
  public:

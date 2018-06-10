@@ -28,7 +28,7 @@ IN THE SOFTWARE.
 #include "v8/include/libplatform/libplatform.h"
 #include "v8/include/v8.h"
 
-#include "./deno.h"
+#include "include/deno.h"
 
 #define CHECK(x) assert(x)  // TODO(ry) use V8's CHECK.
 

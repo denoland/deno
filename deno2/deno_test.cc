@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 #include "testing/gtest/include/gtest/gtest.h"
 
-#include "./deno.h"
+#include "include/deno.h"
 
 TEST(SnapshotTest, InitializesCorrectly) {
   EXPECT_TRUE(true);
