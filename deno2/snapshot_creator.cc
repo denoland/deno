@@ -125,16 +125,13 @@ int main(int argc, char** argv) {
   const char* natives_out_cc = argv[4];
   const char* snapshot_out_cc = argv[5];
 
-  deno::v8_init();
-
   auto js_data = ReadFile(js_fn);
   auto natives_blob = ReadFile(natives_in_bin);
   auto snapshot_in_blob = ReadFile(snapshot_in_bin);
 
-  v8::V8::SetNativesDataBlob(&natives_blob);
-  v8::V8::SetSnapshotDataBlob(&snapshot_in_blob);
-
-  auto snapshot_blob = deno::deno_make_snapshot(js_fn, js_data.data);
+  deno::v8_init();
+  auto snapshot_blob = deno::make_snapshot(&natives_blob, &snapshot_in_blob,
+                                           js_fn, js_data.data);
 
   StartupDataCppWriter nativesWriter("natives", natives_out_cc, natives_blob);
   nativesWriter.Write();

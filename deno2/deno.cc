@@ -295,8 +295,12 @@ void deno_add_isolate(Deno* d, v8::Isolate* isolate) {
   d->isolate->SetData(0, d);
 }
 
-v8::StartupData deno_make_snapshot(const char* js_filename,
-                                   const char* js_source) {
+v8::StartupData make_snapshot(v8::StartupData* prev_natives_blob,
+                              v8::StartupData* prev_snapshot_blob,
+                              const char* js_filename, const char* js_source) {
+  v8::V8::SetNativesDataBlob(prev_natives_blob);
+  v8::V8::SetSnapshotDataBlob(prev_snapshot_blob);
+
   auto creator = new v8::SnapshotCreator(external_references);
   auto* isolate = creator->GetIsolate();
 

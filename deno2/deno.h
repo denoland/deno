@@ -28,8 +28,9 @@ void v8_set_flags(int* argc, char** argv);
 // Constructors:
 Deno* deno_from_snapshot(v8::StartupData* blob, void* data, RecvCallback cb);
 
-v8::StartupData deno_make_snapshot(const char* js_filename,
-                                   const char* js_source);
+v8::StartupData make_snapshot(v8::StartupData* prev_natives_blob,
+                              v8::StartupData* prev_snapshot_blob,
+                              const char* js_filename, const char* js_source);
 
 void* deno_get_data();
 
