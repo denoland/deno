@@ -16,6 +16,10 @@ static intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
                                          reinterpret_cast<intptr_t>(Recv),
                                          reinterpret_cast<intptr_t>(Send), 0};
 
+v8::StartupData make_snapshot(v8::StartupData* prev_natives_blob,
+                              v8::StartupData* prev_snapshot_blob,
+                              const char* js_filename, const char* js_source);
+
 // deno_s = Wrapped Isolate.
 struct deno_s {
   v8::Isolate* isolate;

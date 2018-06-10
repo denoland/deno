@@ -10,6 +10,7 @@
 #include "v8/include/v8.h"
 
 #include "include/deno.h"
+#include "./deno_internal.h"
 
 class StartupDataCppWriter {
  public:

@@ -3,9 +3,6 @@
 #ifndef INCLUDE_DENO_H_
 #define INCLUDE_DENO_H_
 
-#include <string>
-#include "v8/include/v8.h"
-
 namespace deno {
 
 // Data that gets transmitted.
@@ -27,10 +24,6 @@ void v8_set_flags(int* argc, char** argv);
 
 // Constructors:
 Deno* from_snapshot(void* data, RecvCallback cb);
-
-v8::StartupData make_snapshot(v8::StartupData* prev_natives_blob,
-                              v8::StartupData* prev_snapshot_blob,
-                              const char* js_filename, const char* js_source);
 
 void* deno_get_data();
 
