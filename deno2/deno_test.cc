@@ -4,9 +4,11 @@
 
 #include "include/deno.h"
 
-TEST(SnapshotTest, InitializesCorrectly) {
-  EXPECT_TRUE(true);
-  // TODO(ry) add actual tests
+TEST(DenoTest, InitializesCorrectly) {
+  deno_init();
+  Deno* d = deno_new(NULL, NULL);
+  int r = deno_load(d, "a.js", "1 + 2");
+  EXPECT_EQ(r, 0);
 }
 
 int main(int argc, char** argv) {
