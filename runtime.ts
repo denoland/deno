@@ -9,6 +9,7 @@
 //            version.
 
 import * as ts from "typescript";
+import * as tslib from "tslib";
 import * as util from "./util";
 import { log } from "./util";
 import * as os from "./os";
@@ -124,6 +125,8 @@ export function makeDefine(fileName: string): AmdDefine {
         return localExports;
       } else if (dep === "typescript") {
         return ts;
+      } else if (dep === "tslib") {
+        return tslib;
       } else if (dep === "deno") {
         return deno;
       } else {
@@ -195,7 +198,9 @@ class Compiler {
     inlineSourceMap: true,
     lib: ["es2017"],
     inlineSources: true,
-    target: ts.ScriptTarget.ES2017
+    target: ts.ScriptTarget.ES2017,
+    experimentalDecorators: true,
+    importHelpers: true
   };
   /*
   allowJs: true,
@@ -314,6 +319,8 @@ class TypeScriptHost implements ts.LanguageServiceHost {
         resolvedFileName = resolveModuleName("deno.d.ts", "/$asset$/");
       } else if (name === "typescript") {
         resolvedFileName = resolveModuleName("typescript.d.ts", "/$asset$/");
+      } else if (name === "tslib") {
+        resolvedFileName = resolveModuleName("tslib.d.ts", "/$asset$/");
       } else {
         resolvedFileName = resolveModuleName(name, containingFile);
         if (resolvedFileName == null) {

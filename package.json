@@ -17,6 +17,7 @@
     "source-map": "0.6.0",
     "text-encoding": "^0.6.4",
     "tmp": "0.0.33",
+    "tslib": "1.9.2",
     "tslint": "5.10.0",
     "typescript": "^2.8.3",
     "uglify-js": "^2.8.29"

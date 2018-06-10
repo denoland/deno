@@ -18,7 +18,8 @@
     "pretty": true,
     "noFallthroughCasesInSwitch": true,
     "allowUnreachableCode": false,
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    "importHelpers": true
   },
   "include": ["*.ts", "*.js"],
   "exclude": ["tests.ts"]
