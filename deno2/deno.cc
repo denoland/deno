@@ -34,6 +34,18 @@ IN THE SOFTWARE.
 
 namespace deno {
 
+// deno_s = Wrapped Isolate.
+struct deno_s {
+  v8::Isolate* isolate;
+  std::string last_exception;
+  v8::Persistent<v8::Function> recv;
+  v8::Persistent<v8::Context> context;
+  RecvCallback cb;
+  void* data;
+};
+
+void deno_add_isolate(Deno* d, v8::Isolate* isolate);
+
 // Extracts a C string from a v8::V8 Utf8Value.
 const char* ToCString(const v8::String::Utf8Value& value) {
   return *value ? *value : "<string conversion failed>";
@@ -249,18 +261,6 @@ void v8_init() {
   v8::V8::Initialize();
 }
 
-Deno* deno_new(void* data, RecvCallback cb) {
-  Deno* d = new Deno;
-  d->cb = cb;
-  d->data = data;
-  v8::Isolate::CreateParams params;
-  params.array_buffer_allocator =
-      v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-  v8::Isolate* isolate = v8::Isolate::New(params);
-  deno_add_isolate(d, isolate);
-  return d;
-}
-
 Deno* deno_from_snapshot(v8::StartupData* blob, void* data, RecvCallback cb) {
   Deno* d = new Deno;
   d->cb = cb;
@@ -293,15 +293,6 @@ void deno_add_isolate(Deno* d, v8::Isolate* isolate) {
   // d->isolate->SetFatalErrorHandler(FatalErrorCallback2);
   d->isolate->SetPromiseRejectCallback(ExitOnPromiseRejectCallback);
   d->isolate->SetData(0, d);
-}
-
-v8::StartupData SerializeInternalField(v8::Local<v8::Object> holder, int index,
-                                       void* data) {
-  printf("SerializeInternalField %d\n", index);
-  v8::StartupData sd;
-  sd.data = "a";
-  sd.raw_size = 1;
-  return sd;
 }
 
 v8::StartupData deno_make_snapshot(const char* js_filename,

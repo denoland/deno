@@ -14,32 +14,23 @@ struct buf_s {
   size_t len;
 };
 typedef struct buf_s DenoBuf;
-// Deno = Wrapped Isolate.
+
 struct deno_s;
 typedef struct deno_s Deno;
+
 // The callback from V8 when data is sent.
 typedef DenoBuf (*RecvCallback)(Deno* d, DenoBuf buf);
-struct deno_s {
-  v8::Isolate* isolate;
-  std::string last_exception;
-  v8::Persistent<v8::Function> recv;
-  v8::Persistent<v8::Context> context;
-  RecvCallback cb;
-  void* data;
-};
 
 void v8_init();
 const char* v8_version();
 void v8_set_flags(int* argc, char** argv);
 
 // Constructors:
-Deno* deno_new(void* data, RecvCallback cb);
 Deno* deno_from_snapshot(v8::StartupData* blob, void* data, RecvCallback cb);
 
 v8::StartupData deno_make_snapshot(const char* js_filename,
                                    const char* js_source);
 
-void deno_add_isolate(Deno* d, v8::Isolate* isolate);
 void* deno_get_data();
 
 // Returns nonzero on error.
