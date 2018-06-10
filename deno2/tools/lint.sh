@@ -1,4 +1,4 @@
 #!/bin/sh
 cd `dirname "$0"`/..
-set -e
-cpplint *.cc *.h
+set -e -v
+cpplint --repository=.  *.cc *.h
