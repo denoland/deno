@@ -89,6 +89,11 @@ On macOS, using [HomeBrew](https://brew.sh/):
 brew install protobuf
 ```
 
+You may need to install [pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config/) on macOS. Use [HomeBrew](https://brew.sh/) to install it:
+```bash
+brew install pkg-config
+```
+
 Then you need [protoc-gen-go](https://github.com/golang/protobuf/tree/master/protoc-gen-go) and [go-bindata](https://github.com/jteeuwen/go-bindata):
 
 ``` bash
