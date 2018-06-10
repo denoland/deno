@@ -47,13 +47,14 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
 }
 
 // Exits the process.
-void HandleException(Deno* d, v8::Local<v8::Value> exception) {
-  v8::HandleScope handle_scope(d->isolate);
-  auto context = d->context.Get(d->isolate);
+void HandleException(v8::Local<v8::Context> context,
+                     v8::Local<v8::Value> exception) {
+  auto isolate = context->GetIsolate();
+  v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
-  auto message = v8::Exception::CreateMessage(d->isolate, exception);
-  auto onerrorStr = v8::String::NewFromUtf8(d->isolate, "onerror");
+  auto message = v8::Exception::CreateMessage(isolate, exception);
+  auto onerrorStr = v8::String::NewFromUtf8(isolate, "onerror");
   auto onerror = context->Global()->Get(onerrorStr);
 
   if (onerror->IsFunction()) {
@@ -68,9 +69,9 @@ void HandleException(Deno* d, v8::Local<v8::Value> exception) {
     func->Call(context->Global(), 5, args);
     /* message, source, lineno, colno, error */
   } else {
-    v8::String::Utf8Value exceptionStr(d->isolate, exception);
+    v8::String::Utf8Value exceptionStr(isolate, exception);
     printf("Unhandled Exception %s\n", ToCString(exceptionStr));
-    message->PrintCurrentStackTrace(d->isolate, stdout);
+    message->PrintCurrentStackTrace(isolate, stdout);
   }
 
   exit(1);
@@ -97,7 +98,8 @@ void ExitOnPromiseRejectCallback(
   assert(d->isolate == isolate);
   v8::HandleScope handle_scope(d->isolate);
   auto exception = promise_reject_message.GetValue();
-  HandleException(d, exception);
+  auto context = d->context.Get(d->isolate);
+  HandleException(context, exception);
 }
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -167,15 +169,15 @@ void v8_set_flags(int* argc, char** argv) {
 
 const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
 
-int deno_load(Deno* d, const char* name_s, const char* source_s) {
-  v8::Locker locker(d->isolate);
-  v8::Isolate::Scope isolate_scope(d->isolate);
-  v8::HandleScope handle_scope(d->isolate);
+bool load(v8::Local<v8::Context> context, const char* name_s,
+          const char* source_s) {
+  auto isolate = context->GetIsolate();
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
 
-  auto context = d->context.Get(d->isolate);
   v8::Context::Scope context_scope(context);
 
-  v8::TryCatch try_catch(d->isolate);
+  v8::TryCatch try_catch(isolate);
 
   auto name = v8_str(name_s);
   auto source = v8_str(source_s);
@@ -186,21 +188,30 @@ int deno_load(Deno* d, const char* name_s, const char* source_s) {
 
   if (script.IsEmpty()) {
     assert(try_catch.HasCaught());
-    HandleException(d, try_catch.Exception());
+    HandleException(context, try_catch.Exception());
     assert(false);
-    return 1;
+    return false;
   }
 
   auto result = script.ToLocalChecked()->Run(context);
 
   if (result.IsEmpty()) {
     assert(try_catch.HasCaught());
-    HandleException(d, try_catch.Exception());
+    HandleException(context, try_catch.Exception());
     assert(false);
-    return 2;
+    return false;
   }
 
-  return 0;
+  return true;
+}
+
+int deno_load(Deno* d, const char* name_s, const char* source_s) {
+  auto isolate = d->isolate;
+  v8::Locker locker(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
+  auto context = d->context.Get(d->isolate);
+  return load(context, name_s, source_s) ? 0 : 1;
 }
 
 // Called from golang. Must route message to javascript lang.
@@ -231,7 +242,7 @@ int deno_send(Deno* d, DenoBuf buf) {
   recv->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {
-    HandleException(d, try_catch.Exception());
+    HandleException(context, try_catch.Exception());
     return 2;
   }
 
@@ -266,18 +277,11 @@ v8::StartupData make_snapshot(v8::StartupData* prev_natives_blob,
 
   auto creator = new v8::SnapshotCreator(external_references);
   auto* isolate = creator->GetIsolate();
-
-  Deno* d = new Deno;
-  deno_add_isolate(d, isolate);
-
   v8::Isolate::Scope isolate_scope(isolate);
   {
     v8::HandleScope handle_scope(isolate);
-
-    v8::Local<v8::Context> context = v8::Context::New(d->isolate);
+    auto context = v8::Context::New(isolate);
     v8::Context::Scope context_scope(context);
-
-    d->context.Reset(d->isolate, context);
 
     auto global = context->Global();
 
@@ -293,14 +297,11 @@ v8::StartupData make_snapshot(v8::StartupData* prev_natives_blob,
     auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
     CHECK(global->Set(context, v8_str("deno_send"), send_val).FromJust());
 
+    bool r = load(context, js_filename, js_source);
+    assert(r);
+
     creator->SetDefaultContext(context);
   }
-
-  int r = deno_load(d, js_filename, js_source);
-  assert(r == 0);
-
-  d->context.Reset();  // Delete persistant handles.
-  d->recv.Reset();     // Delete persistant handles.
 
   auto snapshot_blob =
       creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kKeep);
