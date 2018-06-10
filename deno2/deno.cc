@@ -262,9 +262,9 @@ void deno_init() {
   v8::V8::Initialize();
 }
 
-const char* v8_version() { return v8::V8::GetVersion(); }
+const char* deno_v8_version() { return v8::V8::GetVersion(); }
 
-void v8_set_flags(int* argc, char** argv) {
+void deno_set_flags(int* argc, char** argv) {
   v8::V8::SetFlagsFromCommandLine(argc, argv, true);
 }
 

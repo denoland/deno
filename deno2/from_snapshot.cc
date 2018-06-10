@@ -18,10 +18,7 @@ namespace deno {
 
 Deno* NewFromSnapshot(void* data, RecvCallback cb) {
   auto natives_blob = *StartupBlob_natives();
-  printf("natives_blob %d bytes\n", natives_blob.raw_size);
-
   auto snapshot_blob = *StartupBlob_snapshot();
-  printf("snapshot_blob %d bytes\n", snapshot_blob.raw_size);
 
   v8::V8::SetNativesDataBlob(&natives_blob);
   v8::V8::SetSnapshotDataBlob(&snapshot_blob);

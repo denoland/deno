@@ -31,7 +31,7 @@ class StartupDataCppWriter {
       printf("Unable to open file \"%s\" for writing.\n", filename_);
       exit(1);
     }
-    printf("Wrote %s %d %s \n", name_, sd_.raw_size, filename_);
+    // printf("Wrote %s %d %s \n", name_, sd_.raw_size, filename_);
   }
 
  private:

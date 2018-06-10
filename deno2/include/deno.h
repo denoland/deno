@@ -21,13 +21,11 @@ typedef struct deno_s Deno;
 typedef deno_buf (*RecvCallback)(Deno* d, deno_buf buf);
 
 void deno_init();
-const char* v8_version();
-void v8_set_flags(int* argc, char** argv);
+const char* deno_v8_version();
+void deno_set_flags(int* argc, char** argv);
 
 // Constructor
 Deno* deno_new(void* data, RecvCallback cb);
-
-void* deno_get_data();
 
 // Returns nonzero on error.
 // Get error text with deno_last_exception().
