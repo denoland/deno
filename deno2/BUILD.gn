@@ -2,6 +2,68 @@ import("//third_party/protobuf/proto_library.gni")
 import("//v8/gni/v8.gni")
 import("//v8/snapshot_toolchain.gni")
 
+executable("deno") {
+  sources = [
+    "main.cc",
+  ]
+  deps = [
+    ":libdeno",
+  ]
+}
+
+executable("deno_test") {
+  testonly = true
+  sources = [
+    "deno_test.cc",
+  ]
+  deps = [
+    ":libdeno",
+    "//testing/gtest:gtest",
+  ]
+}
+
+component("libdeno") {
+  deps = [
+    ":deno_snapshot",
+  ]
+}
+
+source_set("deno_nosnapshot") {
+  sources = [
+    "deno.cc",
+    "deno_internal.h",
+    "include/deno.h",
+  ]
+  include_dirs = [ "include/" ]
+  deps = [
+    ":msg_proto",
+    "v8:v8",
+    "v8:v8_libbase",
+    "v8:v8_libplatform",
+    "v8:v8_libsampler",
+  ]
+}
+
+source_set("deno_snapshot") {
+  sources = [
+    "from_snapshot.cc",
+  ]
+  deps = [
+    ":create_snapshot_deno",
+    ":deno_nosnapshot",
+  ]
+  include_dirs = [ target_gen_dir ]
+}
+
+executable("snapshot_creator") {
+  sources = [
+    "snapshot_creator.cc",
+  ]
+  deps = [
+    ":deno_nosnapshot",
+  ]
+}
+
 proto_library("msg_proto") {
   sources = [
     "msg.proto",
@@ -83,72 +145,5 @@ create_snapshot("deno") {
   js = "$target_gen_dir/main.js"
   deps = [
     ":run_parcel",
-  ]
-}
-
-v8_executable("snapshot_creator") {
-  sources = [
-    "snapshot_creator.cc",
-  ]
-  configs = [ "v8:libplatform_config" ]
-  deps = [
-    ":deno_nosnapshot",
-  ]
-}
-
-v8_executable("deno") {
-  sources = [
-    "main.cc",
-  ]
-  configs = [ "v8:libplatform_config" ]
-  deps = [
-    ":libdeno",
-  ]
-}
-
-v8_component("libdeno") {
-  configs = [ "v8:libplatform_config" ]
-  deps = [
-    ":deno_snapshot",
-  ]
-}
-
-v8_source_set("deno_nosnapshot") {
-  sources = [
-    "deno.cc",
-    "deno_internal.h",
-    "include/deno.h",
-  ]
-  include_dirs = [ "include/" ]
-  configs = [ "v8:libplatform_config" ]
-  deps = [
-    ":msg_proto",
-    "v8:v8",
-    "v8:v8_libbase",
-    "v8:v8_libplatform",
-    "v8:v8_libsampler",
-  ]
-}
-
-v8_source_set("deno_snapshot") {
-  sources = [
-    "from_snapshot.cc",
-  ]
-  deps = [
-    ":create_snapshot_deno",
-    ":deno_nosnapshot",
-  ]
-  include_dirs = [ target_gen_dir ]
-  configs = [ "v8:libplatform_config" ]
-}
-
-executable("deno_test") {
-  testonly = true
-  sources = [
-    "deno_test.cc",
-  ]
-  deps = [
-    ":libdeno",
-    "//testing/gtest:gtest",
   ]
 }

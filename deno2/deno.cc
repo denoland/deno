@@ -49,7 +49,7 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
 // Exits the process.
 void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception) {
-  auto isolate = context->GetIsolate();
+  auto* isolate = context->GetIsolate();
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
@@ -163,7 +163,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
 bool Load(v8::Local<v8::Context> context, const char* name_s,
           const char* source_s) {
-  auto isolate = context->GetIsolate();
+  auto* isolate = context->GetIsolate();
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
 
@@ -203,7 +203,7 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
   v8::V8::SetNativesDataBlob(prev_natives_blob);
   v8::V8::SetSnapshotDataBlob(prev_snapshot_blob);
 
-  auto creator = new v8::SnapshotCreator(external_references);
+  auto* creator = new v8::SnapshotCreator(external_references);
   auto* isolate = creator->GetIsolate();
   v8::Isolate::Scope isolate_scope(isolate);
   {
@@ -257,7 +257,7 @@ extern "C" {
 void deno_init() {
   // v8::V8::InitializeICUDefaultLocation(argv[0]);
   // v8::V8::InitializeExternalStartupData(argv[0]);
-  auto p = v8::platform::CreateDefaultPlatform();
+  auto* p = v8::platform::CreateDefaultPlatform();
   v8::V8::InitializePlatform(p);
   v8::V8::Initialize();
 }
@@ -271,7 +271,7 @@ void v8_set_flags(int* argc, char** argv) {
 const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
 
 int deno_load(Deno* d, const char* name_s, const char* source_s) {
-  auto isolate = d->isolate;
+  auto* isolate = d->isolate;
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);

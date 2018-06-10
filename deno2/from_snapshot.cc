@@ -6,7 +6,6 @@
 #include <string.h>
 #include <string>
 
-#include "v8/include/libplatform/libplatform.h"
 #include "v8/include/v8.h"
 
 #include "./deno_internal.h"
