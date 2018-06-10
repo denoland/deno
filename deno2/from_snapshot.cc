@@ -17,7 +17,7 @@ namespace deno {
 #include "natives_deno.cc"
 #include "snapshot_deno.cc"
 
-Deno* from_snapshot(void* data, RecvCallback cb) {
+Deno* NewFromSnapshot(void* data, RecvCallback cb) {
   auto natives_blob = *StartupBlob_natives();
   printf("natives_blob %d bytes\n", natives_blob.raw_size);
 
@@ -35,7 +35,7 @@ Deno* from_snapshot(void* data, RecvCallback cb) {
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
   params.external_references = external_references;
   v8::Isolate* isolate = v8::Isolate::New(params);
-  deno_add_isolate(d, isolate);
+  AddIsolate(d, isolate);
 
   v8::Isolate::Scope isolate_scope(isolate);
   {
@@ -48,3 +48,10 @@ Deno* from_snapshot(void* data, RecvCallback cb) {
 }
 
 }  // namespace deno
+
+extern "C" {
+
+Deno* deno_new(void* data, RecvCallback cb) {
+  return deno::NewFromSnapshot(data, cb);
+}
+}

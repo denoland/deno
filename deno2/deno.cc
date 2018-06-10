@@ -28,7 +28,7 @@ IN THE SOFTWARE.
 #include "v8/include/libplatform/libplatform.h"
 #include "v8/include/v8.h"
 
-#include "deno_internal.h"
+#include "./deno_internal.h"
 #include "include/deno.h"
 
 #define CHECK(x) assert(x)  // TODO(ry) use V8's CHECK.
@@ -145,7 +145,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   void* buf = contents.Data();
   int buflen = static_cast<int>(contents.ByteLength());
 
-  auto retbuf = d->cb(d, DenoBuf{buf, buflen});
+  auto retbuf = d->cb(d, deno_buf{buf, buflen});
   if (retbuf.data) {
     auto ab = v8::ArrayBuffer::New(d->isolate, retbuf.data, retbuf.len,
                                    v8::ArrayBufferCreationMode::kInternalized);
@@ -161,15 +161,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
-const char* v8_version() { return v8::V8::GetVersion(); }
-
-void v8_set_flags(int* argc, char** argv) {
-  v8::V8::SetFlagsFromCommandLine(argc, argv, true);
-}
-
-const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
-
-bool load(v8::Local<v8::Context> context, const char* name_s,
+bool Load(v8::Local<v8::Context> context, const char* name_s,
           const char* source_s) {
   auto isolate = context->GetIsolate();
   v8::Isolate::Scope isolate_scope(isolate);
@@ -205,18 +197,91 @@ bool load(v8::Local<v8::Context> context, const char* name_s,
   return true;
 }
 
+v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
+                             v8::StartupData* prev_snapshot_blob,
+                             const char* js_filename, const char* js_source) {
+  v8::V8::SetNativesDataBlob(prev_natives_blob);
+  v8::V8::SetSnapshotDataBlob(prev_snapshot_blob);
+
+  auto creator = new v8::SnapshotCreator(external_references);
+  auto* isolate = creator->GetIsolate();
+  v8::Isolate::Scope isolate_scope(isolate);
+  {
+    v8::HandleScope handle_scope(isolate);
+    auto context = v8::Context::New(isolate);
+    v8::Context::Scope context_scope(context);
+
+    auto global = context->Global();
+
+    auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
+    auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
+    CHECK(
+        global->Set(context, deno::v8_str("deno_print"), print_val).FromJust());
+
+    auto recv_tmpl = v8::FunctionTemplate::New(isolate, Recv);
+    auto recv_val = recv_tmpl->GetFunction(context).ToLocalChecked();
+    CHECK(global->Set(context, deno::v8_str("deno_recv"), recv_val).FromJust());
+
+    auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
+    auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
+    CHECK(global->Set(context, deno::v8_str("deno_send"), send_val).FromJust());
+
+    bool r = Load(context, js_filename, js_source);
+    assert(r);
+
+    creator->SetDefaultContext(context);
+  }
+
+  auto snapshot_blob =
+      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kKeep);
+
+  return snapshot_blob;
+}
+
+void AddIsolate(Deno* d, v8::Isolate* isolate) {
+  d->isolate = isolate;
+  // Leaving this code here because it will probably be useful later on, but
+  // disabling it now as I haven't got tests for the desired behavior.
+  // d->isolate->SetCaptureStackTraceForUncaughtExceptions(true);
+  // d->isolate->SetAbortOnUncaughtExceptionCallback(AbortOnUncaughtExceptionCallback);
+  // d->isolate->AddMessageListener(MessageCallback2);
+  // d->isolate->SetFatalErrorHandler(FatalErrorCallback2);
+  d->isolate->SetPromiseRejectCallback(deno::ExitOnPromiseRejectCallback);
+  d->isolate->SetData(0, d);
+}
+
+}  // namespace deno
+
+extern "C" {
+
+void deno_init() {
+  // v8::V8::InitializeICUDefaultLocation(argv[0]);
+  // v8::V8::InitializeExternalStartupData(argv[0]);
+  auto p = v8::platform::CreateDefaultPlatform();
+  v8::V8::InitializePlatform(p);
+  v8::V8::Initialize();
+}
+
+const char* v8_version() { return v8::V8::GetVersion(); }
+
+void v8_set_flags(int* argc, char** argv) {
+  v8::V8::SetFlagsFromCommandLine(argc, argv, true);
+}
+
+const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
+
 int deno_load(Deno* d, const char* name_s, const char* source_s) {
   auto isolate = d->isolate;
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = d->context.Get(d->isolate);
-  return load(context, name_s, source_s) ? 0 : 1;
+  return deno::Load(context, name_s, source_s) ? 0 : 1;
 }
 
 // Called from golang. Must route message to javascript lang.
 // non-zero return value indicates error. check deno_last_exception().
-int deno_send(Deno* d, DenoBuf buf) {
+int deno_send(Deno* d, deno_buf buf) {
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);
@@ -242,71 +307,11 @@ int deno_send(Deno* d, DenoBuf buf) {
   recv->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {
-    HandleException(context, try_catch.Exception());
+    deno::HandleException(context, try_catch.Exception());
     return 2;
   }
 
   return 0;
-}
-
-void v8_init() {
-  // v8::V8::InitializeICUDefaultLocation(argv[0]);
-  // v8::V8::InitializeExternalStartupData(argv[0]);
-  auto p = v8::platform::CreateDefaultPlatform();
-  v8::V8::InitializePlatform(p);
-  v8::V8::Initialize();
-}
-
-void deno_add_isolate(Deno* d, v8::Isolate* isolate) {
-  d->isolate = isolate;
-  // Leaving this code here because it will probably be useful later on, but
-  // disabling it now as I haven't got tests for the desired behavior.
-  // d->isolate->SetCaptureStackTraceForUncaughtExceptions(true);
-  // d->isolate->SetAbortOnUncaughtExceptionCallback(AbortOnUncaughtExceptionCallback);
-  // d->isolate->AddMessageListener(MessageCallback2);
-  // d->isolate->SetFatalErrorHandler(FatalErrorCallback2);
-  d->isolate->SetPromiseRejectCallback(ExitOnPromiseRejectCallback);
-  d->isolate->SetData(0, d);
-}
-
-v8::StartupData make_snapshot(v8::StartupData* prev_natives_blob,
-                              v8::StartupData* prev_snapshot_blob,
-                              const char* js_filename, const char* js_source) {
-  v8::V8::SetNativesDataBlob(prev_natives_blob);
-  v8::V8::SetSnapshotDataBlob(prev_snapshot_blob);
-
-  auto creator = new v8::SnapshotCreator(external_references);
-  auto* isolate = creator->GetIsolate();
-  v8::Isolate::Scope isolate_scope(isolate);
-  {
-    v8::HandleScope handle_scope(isolate);
-    auto context = v8::Context::New(isolate);
-    v8::Context::Scope context_scope(context);
-
-    auto global = context->Global();
-
-    auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
-    auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, v8_str("deno_print"), print_val).FromJust());
-
-    auto recv_tmpl = v8::FunctionTemplate::New(isolate, Recv);
-    auto recv_val = recv_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, v8_str("deno_recv"), recv_val).FromJust());
-
-    auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
-    auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, v8_str("deno_send"), send_val).FromJust());
-
-    bool r = load(context, js_filename, js_source);
-    assert(r);
-
-    creator->SetDefaultContext(context);
-  }
-
-  auto snapshot_blob =
-      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kKeep);
-
-  return snapshot_blob;
 }
 
 void deno_dispose(Deno* d) {
@@ -316,4 +321,4 @@ void deno_dispose(Deno* d) {
 
 void deno_terminate_execution(Deno* d) { d->isolate->TerminateExecution(); }
 
-}  // namespace deno
+}  // extern "C"

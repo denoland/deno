@@ -9,8 +9,8 @@
 
 #include "v8/include/v8.h"
 
-#include "include/deno.h"
 #include "./deno_internal.h"
+#include "include/deno.h"
 
 class StartupDataCppWriter {
  public:
@@ -130,9 +130,9 @@ int main(int argc, char** argv) {
   auto natives_blob = ReadFile(natives_in_bin);
   auto snapshot_in_blob = ReadFile(snapshot_in_bin);
 
-  deno::v8_init();
-  auto snapshot_blob = deno::make_snapshot(&natives_blob, &snapshot_in_blob,
-                                           js_fn, js_data.data);
+  deno_init();
+  auto snapshot_blob =
+      deno::MakeSnapshot(&natives_blob, &snapshot_in_blob, js_fn, js_data.data);
 
   StartupDataCppWriter nativesWriter("natives", natives_out_cc, natives_blob);
   nativesWriter.Write();

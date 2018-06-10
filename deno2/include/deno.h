@@ -2,28 +2,30 @@
 // All rights reserved. MIT License.
 #ifndef INCLUDE_DENO_H_
 #define INCLUDE_DENO_H_
-
-namespace deno {
+// Neither Rust nor Go support calling directly into C++ functions, therefore
+// the public interface to libdeno is done in C.
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // Data that gets transmitted.
-struct buf_s {
+typedef struct {
   void* data;
   size_t len;
-};
-typedef struct buf_s DenoBuf;
+} deno_buf;
 
 struct deno_s;
 typedef struct deno_s Deno;
 
 // The callback from V8 when data is sent.
-typedef DenoBuf (*RecvCallback)(Deno* d, DenoBuf buf);
+typedef deno_buf (*RecvCallback)(Deno* d, deno_buf buf);
 
-void v8_init();
+void deno_init();
 const char* v8_version();
 void v8_set_flags(int* argc, char** argv);
 
-// Constructors:
-Deno* from_snapshot(void* data, RecvCallback cb);
+// Constructor
+Deno* deno_new(void* data, RecvCallback cb);
 
 void* deno_get_data();
 
@@ -32,13 +34,14 @@ void* deno_get_data();
 int deno_load(Deno* d, const char* name_s, const char* source_s);
 
 // Returns nonzero on error.
-int deno_send(Deno* d, DenoBuf buf);
+int deno_send(Deno* d, deno_buf buf);
 
 const char* deno_last_exception(Deno* d);
 
 void deno_dispose(Deno* d);
 void deno_terminate_execution(Deno* d);
 
-}  // namespace deno
-
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 #endif  // INCLUDE_DENO_H_
