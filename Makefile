@@ -8,6 +8,7 @@ TS_FILES = \
 	main.ts \
 	msg.pb.d.ts \
 	msg.pb.js \
+	net.ts \
 	os.ts \
 	runtime.ts \
 	text-encoding.d.ts \
@@ -28,6 +29,7 @@ GO_FILES = \
 	echo.go \
 	fetch.go \
 	main.go \
+	net.go \
 	msg.pb.go \
 	os.go \
 	os_test.go \

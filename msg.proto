@@ -25,6 +25,15 @@ message Msg {
     READ_FILE_SYNC = 11;
     READ_FILE_SYNC_RES = 12;
     WRITE_FILE_SYNC = 13;
+    NET_CONNECT = 14;
+    NET_CONNECT_OK = 15;
+    NET_READ = 16;
+    NET_WRITE = 17;
+    NET_SERVER_READ = 18;
+    NET_SERVER_WRITE = 19;
+    NET_SERVER_LISTEN = 20;
+    NET_SERVER_CONN = 21;
+    NET_SERVER_CLOSE = 22;
   }
   Command command = 1;
 
@@ -99,4 +108,11 @@ message Msg {
   bytes write_file_sync_data = 131;
   uint32 write_file_sync_perm = 132;
   // write_file_sync_perm specified by https://godoc.org/os#FileMode
+
+  int32 net_port = 133;
+  string net_addr = 134;
+  int32 net_socket_id = 135;
+  int32 net_server_id = 136;
+  int32 net_client_id = 137;
+  bytes net_data = 138;
 }
