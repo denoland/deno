@@ -3,31 +3,15 @@
 #include <assert.h>
 #include <stdio.h>
 
-#include "v8/include/v8.h"
-
 #include "include/deno.h"
-#include "natives_deno.cc"
-#include "snapshot_deno.cc"
 
 int main(int argc, char** argv) {
   deno::v8_init();
 
-  auto natives_blob = *StartupBlob_natives();
-  printf("natives_blob %d bytes\n", natives_blob.raw_size);
-
-  auto snapshot_blob = *StartupBlob_snapshot();
-  printf("snapshot_blob %d bytes\n", snapshot_blob.raw_size);
-
-  v8::V8::SetNativesDataBlob(&natives_blob);
-  v8::V8::SetSnapshotDataBlob(&snapshot_blob);
-
-  deno::Deno* d = deno::deno_from_snapshot(&snapshot_blob, NULL, NULL);
+  deno::Deno* d = deno::from_snapshot(NULL, NULL);
   int r = deno::deno_load(d, "main2.js", "foo();");
   if (r != 0) {
     printf("Error! %s\n", deno::deno_last_exception(d));
     exit(1);
   }
-
-  const char* v = v8::V8::GetVersion();
-  printf("Hello World. V8 version %s\n", v);
 }

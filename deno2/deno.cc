@@ -28,23 +28,12 @@ IN THE SOFTWARE.
 #include "v8/include/libplatform/libplatform.h"
 #include "v8/include/v8.h"
 
+#include "deno_internal.h"
 #include "include/deno.h"
 
 #define CHECK(x) assert(x)  // TODO(ry) use V8's CHECK.
 
 namespace deno {
-
-// deno_s = Wrapped Isolate.
-struct deno_s {
-  v8::Isolate* isolate;
-  std::string last_exception;
-  v8::Persistent<v8::Function> recv;
-  v8::Persistent<v8::Context> context;
-  RecvCallback cb;
-  void* data;
-};
-
-void deno_add_isolate(Deno* d, v8::Isolate* isolate);
 
 // Extracts a C string from a v8::V8 Utf8Value.
 const char* ToCString(const v8::String::Utf8Value& value) {
@@ -170,10 +159,6 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
-intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
-                                  reinterpret_cast<intptr_t>(Recv),
-                                  reinterpret_cast<intptr_t>(Send), 0};
-
 const char* v8_version() { return v8::V8::GetVersion(); }
 
 void v8_set_flags(int* argc, char** argv) {
@@ -259,28 +244,6 @@ void v8_init() {
   auto p = v8::platform::CreateDefaultPlatform();
   v8::V8::InitializePlatform(p);
   v8::V8::Initialize();
-}
-
-Deno* deno_from_snapshot(v8::StartupData* blob, void* data, RecvCallback cb) {
-  Deno* d = new Deno;
-  d->cb = cb;
-  d->data = data;
-  v8::Isolate::CreateParams params;
-  params.snapshot_blob = blob;
-  params.array_buffer_allocator =
-      v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-  params.external_references = external_references;
-  v8::Isolate* isolate = v8::Isolate::New(params);
-  deno_add_isolate(d, isolate);
-
-  v8::Isolate::Scope isolate_scope(isolate);
-  {
-    v8::HandleScope handle_scope(isolate);
-    auto context = v8::Context::New(isolate);
-    d->context.Reset(d->isolate, context);
-  }
-
-  return d;
 }
 
 void deno_add_isolate(Deno* d, v8::Isolate* isolate) {

@@ -26,7 +26,7 @@ const char* v8_version();
 void v8_set_flags(int* argc, char** argv);
 
 // Constructors:
-Deno* deno_from_snapshot(v8::StartupData* blob, void* data, RecvCallback cb);
+Deno* from_snapshot(void* data, RecvCallback cb);
 
 v8::StartupData make_snapshot(v8::StartupData* prev_natives_blob,
                               v8::StartupData* prev_snapshot_blob,
