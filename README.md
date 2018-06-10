@@ -113,6 +113,7 @@ cd $GOPATH/src/github.com/ry/v8worker2
 ./build.py --use_ccache
 ```
 Maybe also run `git submodule update --init` in the `v8worker2/` dir.
+If it doesn't build with an error about urlparse, try running it with python2 (also find a way to make `python` not default to python3, for me it was symlinking `/usr/bin/python` to `/bin/python2`, but this may break your system)
 
 Finally, you can get `deno` and its other Go deps.
 
