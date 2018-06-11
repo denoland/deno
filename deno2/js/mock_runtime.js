@@ -16,13 +16,15 @@ function CanCallFunction() {
 }
 
 function PubSuccess() {
-  deno_sub(msg => {
+  deno_sub((channel, msg) => {
+    assert(channel === "PubSuccess");
     deno_print("PubSuccess: ok");
   });
 }
 
 function PubByteLength() {
-  deno_sub(msg => {
+  deno_sub((channel, msg) => {
+    assert(channel === "PubByteLength");
     assert(msg instanceof ArrayBuffer);
     assert(msg.byteLength === 3);
   });
@@ -31,16 +33,16 @@ function PubByteLength() {
 function SubReturnEmpty() {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
-  let r = deno_pub(ab);
+  let r = deno_pub("SubReturnEmpty", ab);
   assert(r == null);
-  r = deno_pub(ab);
+  r = deno_pub("SubReturnEmpty", ab);
   assert(r == null);
 }
 
 function SubReturnBar() {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
-  const r = deno_pub(ab);
+  const r = deno_pub("SubReturnBar", ab);
   assert(r instanceof ArrayBuffer);
   assert(r.byteLength === 3);
   const rui8 = new Uint8Array(r);

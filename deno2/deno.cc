@@ -133,16 +133,22 @@ void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Locker locker(d->isolate);
   v8::EscapableHandleScope handle_scope(isolate);
 
-  v8::Local<v8::Value> v = args[0];
-  assert(v->IsArrayBuffer());
+  assert(args.Length() == 2);
+  v8::Local<v8::Value> channel_v = args[0];
+  assert(channel_v->IsString());
+  v8::String::Utf8Value channel_vstr(isolate, channel_v);
+  const char* channel = *channel_vstr;
 
-  auto ab = v8::Local<v8::ArrayBuffer>::Cast(v);
+  v8::Local<v8::Value> ab_v = args[1];
+  assert(ab_v->IsArrayBuffer());
+
+  auto ab = v8::Local<v8::ArrayBuffer>::Cast(ab_v);
   auto contents = ab->GetContents();
 
   void* buf = contents.Data();
   int buflen = static_cast<int>(contents.ByteLength());
 
-  auto retbuf = d->cb(d, deno_buf{buf, buflen});
+  auto retbuf = d->cb(d, channel, deno_buf{buf, buflen});
   if (retbuf.data) {
     // TODO(ry) Support zero-copy.
     auto ab = v8::ArrayBuffer::New(d->isolate, retbuf.len);
@@ -270,10 +276,7 @@ bool deno_execute(Deno* d, const char* js_filename, const char* js_source) {
   return deno::Execute(context, js_filename, js_source);
 }
 
-// Routes message to the javascript callback set with deno_sub().
-// False return value indicates error. Check deno_last_exception() for exception
-// text. Caller owns buf.
-bool deno_pub(Deno* d, deno_buf buf) {
+bool deno_pub(Deno* d, const char* channel, deno_buf buf) {
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);
@@ -293,10 +296,9 @@ bool deno_pub(Deno* d, deno_buf buf) {
   auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
   memcpy(ab->GetContents().Data(), buf.data, buf.len);
 
-  v8::Local<v8::Value> args[1];
-  args[0] = ab;
-  assert(!args[0].IsEmpty());
-  assert(!try_catch.HasCaught());
+  v8::Local<v8::Value> args[2];
+  args[0] = deno::v8_str(channel);
+  args[1] = ab;
 
   sub->Call(context->Global(), 1, args);
 

@@ -31,7 +31,7 @@ deno_buf strbuf(const char* str) {
 TEST(MockRuntimeTest, PubSuccess) {
   Deno* d = deno_new(NULL, NULL);
   EXPECT_TRUE(deno_execute(d, "a.js", "PubSuccess()"));
-  EXPECT_TRUE(deno_pub(d, strbuf("abc")));
+  EXPECT_TRUE(deno_pub(d, "PubSuccess", strbuf("abc")));
   deno_dispose(d);
 }
 
@@ -39,21 +39,22 @@ TEST(MockRuntimeTest, PubByteLength) {
   Deno* d = deno_new(NULL, NULL);
   EXPECT_TRUE(deno_execute(d, "a.js", "PubByteLength()"));
   // We pub the wrong sized message, it should throw.
-  EXPECT_FALSE(deno_pub(d, strbuf("abcd")));
+  EXPECT_FALSE(deno_pub(d, "PubByteLength", strbuf("abcd")));
   deno_dispose(d);
 }
 
 TEST(MockRuntimeTest, PubNoCallback) {
   Deno* d = deno_new(NULL, NULL);
   // We didn't call deno_sub(), pubing should fail.
-  EXPECT_FALSE(deno_pub(d, strbuf("abc")));
+  EXPECT_FALSE(deno_pub(d, "PubNoCallback", strbuf("abc")));
   deno_dispose(d);
 }
 
 TEST(MockRuntimeTest, SubReturnEmpty) {
   static int count = 0;
-  Deno* d = deno_new(NULL, [](Deno* _, deno_buf buf) {
+  Deno* d = deno_new(NULL, [](auto _, auto channel, auto buf) {
     count++;
+    EXPECT_STREQ(channel, "SubReturnEmpty");
     EXPECT_EQ(static_cast<size_t>(3), buf.len);
     // TODO(ry) buf.data should just be a char*.
     char* data = reinterpret_cast<char*>(buf.data);
@@ -69,8 +70,9 @@ TEST(MockRuntimeTest, SubReturnEmpty) {
 
 TEST(MockRuntimeTest, SubReturnBar) {
   static int count = 0;
-  Deno* d = deno_new(NULL, [](Deno* _, deno_buf buf) {
+  Deno* d = deno_new(NULL, [](auto _, auto channel, auto buf) {
     count++;
+    EXPECT_STREQ(channel, "SubReturnBar");
     EXPECT_EQ(static_cast<size_t>(3), buf.len);
     // TODO(ry) buf.data should just be a char*.
     char* data = reinterpret_cast<char*>(buf.data);

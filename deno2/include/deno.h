@@ -18,7 +18,7 @@ struct deno_s;
 typedef struct deno_s Deno;
 
 // The callback from V8 when data is sent.
-typedef deno_buf (*deno_sub_cb)(Deno* d, deno_buf buf);
+typedef deno_buf (*deno_sub_cb)(Deno* d, const char* channel, deno_buf buf);
 
 void deno_init();
 const char* deno_v8_version();
@@ -31,9 +31,9 @@ Deno* deno_new(void* data, deno_sub_cb cb);
 // Get error text with deno_last_exception().
 bool deno_execute(Deno* d, const char* js_filename, const char* js_source);
 
-// Returns false on error.
-// Get error text with deno_last_exception().
-bool deno_pub(Deno* d, deno_buf buf);
+// Routes message to the javascript callback set with deno_sub(). A false return
+// value indicates error. Check deno_last_exception() for exception text.
+bool deno_pub(Deno* d, const char* channel, deno_buf buf);
 
 const char* deno_last_exception(Deno* d);
 
