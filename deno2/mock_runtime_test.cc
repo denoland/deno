@@ -6,19 +6,19 @@
 
 TEST(MockRuntimeTest, InitializesCorrectly) {
   Deno* d = deno_new(NULL, NULL);
-  EXPECT_TRUE(deno_load(d, "a.js", "1 + 2"));
+  EXPECT_TRUE(deno_execute(d, "a.js", "1 + 2"));
   deno_dispose(d);
 }
 
 TEST(MockRuntimeTest, CanCallFoo) {
   Deno* d = deno_new(NULL, NULL);
-  EXPECT_TRUE(deno_load(d, "a.js", "if (foo() != 'foo') throw Error();"));
+  EXPECT_TRUE(deno_execute(d, "a.js", "if (foo() != 'foo') throw Error();"));
   deno_dispose(d);
 }
 
 TEST(MockRuntimeTest, ErrorsCorrectly) {
   Deno* d = deno_new(NULL, NULL);
-  EXPECT_FALSE(deno_load(d, "a.js", "throw Error()"));
+  EXPECT_FALSE(deno_execute(d, "a.js", "throw Error()"));
   deno_dispose(d);
 }
 
@@ -29,14 +29,14 @@ deno_buf strbuf(const char* str) {
 
 TEST(MockRuntimeTest, PubSuccess) {
   Deno* d = deno_new(NULL, NULL);
-  EXPECT_TRUE(deno_load(d, "a.js", "subabc();"));
+  EXPECT_TRUE(deno_execute(d, "a.js", "subabc();"));
   EXPECT_TRUE(deno_pub(d, strbuf("abc")));
   deno_dispose(d);
 }
 
 TEST(MockRuntimeTest, PubByteLength) {
   Deno* d = deno_new(NULL, NULL);
-  EXPECT_TRUE(deno_load(d, "a.js", "subabc();"));
+  EXPECT_TRUE(deno_execute(d, "a.js", "subabc();"));
   // We pub the wrong sized message, it should throw.
   EXPECT_FALSE(deno_pub(d, strbuf("abcd")));
   deno_dispose(d);
@@ -61,7 +61,7 @@ TEST(MockRuntimeTest, SubReturnEmpty) {
     EXPECT_EQ(data[2], 'c');
     return deno_buf{nullptr, 0};
   });
-  EXPECT_TRUE(deno_load(d, "a.js", "pubReturnEmpty()"));
+  EXPECT_TRUE(deno_execute(d, "a.js", "pubReturnEmpty()"));
   EXPECT_EQ(count, 2);
   deno_dispose(d);
 }
@@ -78,7 +78,7 @@ TEST(MockRuntimeTest, SubReturnBar) {
     EXPECT_EQ(data[2], 'c');
     return strbuf("bar");
   });
-  EXPECT_TRUE(deno_load(d, "a.js", "pubReturnBar()"));
+  EXPECT_TRUE(deno_execute(d, "a.js", "pubReturnBar()"));
   EXPECT_EQ(count, 1);
   deno_dispose(d);
 }

@@ -29,7 +29,7 @@ Deno* deno_new(void* data, deno_sub_cb cb);
 
 // Returns false on error.
 // Get error text with deno_last_exception().
-bool deno_load(Deno* d, const char* name_s, const char* source_s);
+bool deno_execute(Deno* d, const char* js_filename, const char* js_source);
 
 // Returns false on error.
 // Get error text with deno_last_exception().

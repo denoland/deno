@@ -153,8 +153,8 @@ void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
-bool Load(v8::Local<v8::Context> context, const char* name_s,
-          const char* source_s) {
+bool Execute(v8::Local<v8::Context> context, const char* js_filename,
+             const char* js_source) {
   auto* isolate = context->GetIsolate();
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
@@ -163,8 +163,8 @@ bool Load(v8::Local<v8::Context> context, const char* name_s,
 
   v8::TryCatch try_catch(isolate);
 
-  auto name = v8_str(name_s);
-  auto source = v8_str(source_s);
+  auto name = v8_str(js_filename);
+  auto source = v8_str(js_source);
 
   v8::ScriptOrigin origin(name);
 
@@ -217,7 +217,7 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
     auto pub_val = pub_tmpl->GetFunction(context).ToLocalChecked();
     CHECK(global->Set(context, deno::v8_str("deno_pub"), pub_val).FromJust());
 
-    bool r = Load(context, js_filename, js_source);
+    bool r = Execute(context, js_filename, js_source);
     assert(r);
 
     creator->SetDefaultContext(context);
@@ -261,13 +261,13 @@ void deno_set_flags(int* argc, char** argv) {
 
 const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
 
-bool deno_load(Deno* d, const char* name_s, const char* source_s) {
+bool deno_execute(Deno* d, const char* js_filename, const char* js_source) {
   auto* isolate = d->isolate;
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = d->context.Get(d->isolate);
-  return deno::Load(context, name_s, source_s);
+  return deno::Execute(context, js_filename, js_source);
 }
 
 // Routes message to the javascript callback set with deno_sub().
