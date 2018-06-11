@@ -2,7 +2,7 @@
   "name": "deno",
   "scripts": {
     "lint": "tslint -p tsconfig.json -c tslint.json",
-    "fmt": "prettier --write *.ts* *.js *.json"
+    "fmt": "prettier --write *.ts* *.js *.json samples/*.ts"
   },
   "devDependencies": {
     "@types/base64-js": "^1.2.5",

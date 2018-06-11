@@ -59,7 +59,7 @@ test(async function tests_writeFileSync() {
 
 test(async function tests_createHttpServer() {
   const server = createHttpServer((req: Request, res: Response) => {
-    const object = {name: "testdata"};
+    const object = { name: "testdata" };
     const objectString = JSON.stringify(object);
     const enc = new TextEncoder();
     const objectData = enc.encode(objectString);

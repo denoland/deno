@@ -29,12 +29,12 @@ declare module "deno" {
     method: string;
     path: string;
     body: any | string;
-    constructor(url: string, opts?: RequestOptions)
+    constructor(url: string, opts?: RequestOptions);
   }
 
   export class Response {
     channel: string;
-    constructor()
+    constructor();
     write(data: Uint8Array | string): void;
     status(code: number): void;
     end(): void;
@@ -51,5 +51,7 @@ declare module "deno" {
     onMsg(msg: pb.Msg): void;
   }
 
-  function createHttpServer(cb: (req: Request, res: Response) => void): HttpServer;
+  function createHttpServer(
+    cb: (req: Request, res: Response) => void
+  ): HttpServer;
 }

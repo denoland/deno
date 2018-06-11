@@ -32,7 +32,6 @@ message Msg {
     HTTP_RES_WRITE = 18;
     HTTP_RES_END = 19;
     HTTP_RES_STATUS = 20;
-
   }
   Command command = 1;
 
