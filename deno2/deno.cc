@@ -274,9 +274,10 @@ bool deno_load(Deno* d, const char* name_s, const char* source_s) {
   return deno::Load(context, name_s, source_s);
 }
 
-// Called from golang. Must route message to javascript lang.
-// non-zero return value indicates error. check deno_last_exception().
-int deno_send(Deno* d, deno_buf buf) {
+// Routes message to the javascript callback set with deno_recv().
+// False return value indicates error. Check deno_last_exception() for exception
+// text.
+bool deno_send(Deno* d, deno_buf buf) {
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);
@@ -289,8 +290,8 @@ int deno_send(Deno* d, deno_buf buf) {
   v8::Local<v8::Function> recv =
       v8::Local<v8::Function>::New(d->isolate, d->recv);
   if (recv.IsEmpty()) {
-    d->last_exception = "V8Deno2.recv has not been called.";
-    return 1;
+    d->last_exception = "deno_recv has not been called.";
+    return false;
   }
 
   v8::Local<v8::Value> args[1];
@@ -303,10 +304,10 @@ int deno_send(Deno* d, deno_buf buf) {
 
   if (try_catch.HasCaught()) {
     deno::HandleException(context, try_catch.Exception());
-    return 2;
+    return false;
   }
 
-  return 0;
+  return true;
 }
 
 void deno_dispose(Deno* d) {

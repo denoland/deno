@@ -7,3 +7,13 @@ window['foo'] = () => {
   return "foo";
 }
 
+function assert(cond) {
+  if (!cond) throw Error("assert failed");
+}
+
+function recvabc() {
+  deno_recv((msg) => {
+    assert(msg instanceof ArrayBuffer);
+    assert(msg.byteLength === 3);
+  });
+}
