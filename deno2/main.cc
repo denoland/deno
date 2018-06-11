@@ -9,9 +9,10 @@ int main(int argc, char** argv) {
   deno_init();
 
   Deno* d = deno_new(NULL, NULL);
-  int r = deno_load(d, "main2.js", "foo();");
-  if (r != 0) {
+  bool r = deno_execute(d, "deno_main.js", "denoMain();");
+  if (!r) {
     printf("Error! %s\n", deno_last_exception(d));
     exit(1);
   }
+  deno_dispose(d);
 }

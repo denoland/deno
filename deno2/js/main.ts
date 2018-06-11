@@ -1,6 +1,6 @@
 const globalEval = eval;
 const window = globalEval("this");
-window["foo"] = () => {
+window["denoMain"] = () => {
   deno_print("Hello world from foo");
   return "foo";
 };
