@@ -46,6 +46,8 @@ func InitOS() {
 		case Msg_WRITE_FILE_SYNC:
 			return WriteFileSync(msg.WriteFileSyncFilename, msg.WriteFileSyncData,
 				msg.WriteFileSyncPerm)
+		case Msg_FILE_STAT_SYNC:
+			return StatSync(msg.FileStateSyncFilename)
 		default:
 			panic("[os] Unexpected message " + string(buf))
 		}
@@ -188,6 +190,25 @@ func WriteFileSync(filename string, data []byte, perm uint32) []byte {
 	res := &Msg{}
 	if err != nil {
 		res.Error = err.Error()
+	}
+	out, err := proto.Marshal(res)
+	check(err)
+	return out
+}
+
+func StatSync(filename string) []byte {
+	info, err := fs.Stat(filename)
+	res := &Msg{
+		Command: Msg_FILE_STAT_SYNC_RES,
+	}
+	if err != nil {
+		res.Error = err.Error()
+	} else {
+		res.FileStateSyncFilename = info.Name()
+		res.FileStateSyncFilesize = info.Size()
+		res.FileStateSyncIsDir = info.IsDir()
+		res.FileStateSyncModTime = info.ModTime().Unix()
+		res.FileStateSyncMode = info.Mode().String()
 	}
 	out, err := proto.Marshal(res)
 	check(err)

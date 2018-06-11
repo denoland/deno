@@ -1,6 +1,6 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-import { ModuleInfo } from "./types";
+import { ModuleInfo, FileInfo } from "./types";
 import { pubInternal } from "./dispatch";
 import { main as pb } from "./msg.pb";
 import { assert } from "./util";
@@ -49,6 +49,20 @@ export function readFileSync(filename: string): Uint8Array {
     readFileSyncFilename: filename
   });
   return res.readFileSyncData;
+}
+
+export function statSync(filename: string): FileInfo {
+  const res = pubInternal("os", {
+    command: pb.Msg.Command.FILE_STAT_SYNC,
+    fileStateSyncFilename: filename
+  });
+  return {
+    filename: res.fileStateSyncFilename,
+    isDir: res.fileStateSyncIsDir,
+    size: res.fileStateSyncFilesize,
+    modTime: res.fileStateSyncModTime,
+    mode: res.fileStateSyncMode
+  };
 }
 
 export function writeFileSync(
