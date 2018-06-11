@@ -49,6 +49,40 @@ TEST(MockRuntimeTest, PubNoCallback) {
   deno_dispose(d);
 }
 
+TEST(MockRuntimeTest, SubReturnEmpty) {
+  static int count = 0;
+  Deno* d = deno_new(NULL, [](Deno* _, deno_buf buf) {
+    count++;
+    EXPECT_EQ(static_cast<size_t>(3), buf.len);
+    // TODO(ry) buf.data should just be a char*.
+    char* data = reinterpret_cast<char*>(buf.data);
+    EXPECT_EQ(data[0], 'a');
+    EXPECT_EQ(data[1], 'b');
+    EXPECT_EQ(data[2], 'c');
+    return deno_buf{nullptr, 0};
+  });
+  EXPECT_TRUE(deno_load(d, "a.js", "pubReturnEmpty()"));
+  EXPECT_EQ(count, 2);
+  deno_dispose(d);
+}
+
+TEST(MockRuntimeTest, SubReturnBar) {
+  static int count = 0;
+  Deno* d = deno_new(NULL, [](Deno* _, deno_buf buf) {
+    count++;
+    EXPECT_EQ(static_cast<size_t>(3), buf.len);
+    // TODO(ry) buf.data should just be a char*.
+    char* data = reinterpret_cast<char*>(buf.data);
+    EXPECT_EQ(data[0], 'a');
+    EXPECT_EQ(data[1], 'b');
+    EXPECT_EQ(data[2], 'c');
+    return strbuf("bar");
+  });
+  EXPECT_TRUE(deno_load(d, "a.js", "pubReturnBar()"));
+  EXPECT_EQ(count, 1);
+  deno_dispose(d);
+}
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   deno_init();

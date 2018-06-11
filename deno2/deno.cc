@@ -144,17 +144,12 @@ void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   auto retbuf = d->cb(d, deno_buf{buf, buflen});
   if (retbuf.data) {
-    auto ab = v8::ArrayBuffer::New(d->isolate, retbuf.data, retbuf.len,
-                                   v8::ArrayBufferCreationMode::kInternalized);
-    /*
-    // I'm slightly worried the above v8::ArrayBuffer construction leaks memory
-    // the following might be a safer way to do it.
+    // TODO(ry) Support zero-copy.
     auto ab = v8::ArrayBuffer::New(d->isolate, retbuf.len);
-    auto contents = ab->GetContents();
-    memcpy(contents.Data(), retbuf.data, retbuf.len);
-    free(retbuf.data);
-    */
+    memcpy(ab->GetContents().Data(), retbuf.data, retbuf.len);
     args.GetReturnValue().Set(handle_scope.Escape(ab));
+  } else {
+    args.GetReturnValue().Set(v8::Null(d->isolate));
   }
 }
 
@@ -207,7 +202,8 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
     v8::Context::Scope context_scope(context);
 
     auto global = context->Global();
-
+    // TODO(ry) Add a global namespace object "deno" and move print, sub, and
+    // pub inside that object.
     auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
     auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
     CHECK(
