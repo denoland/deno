@@ -276,7 +276,7 @@ bool deno_load(Deno* d, const char* name_s, const char* source_s) {
 
 // Routes message to the javascript callback set with deno_recv().
 // False return value indicates error. Check deno_last_exception() for exception
-// text.
+// text. Caller owns buf.
 bool deno_send(Deno* d, deno_buf buf) {
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
@@ -287,16 +287,18 @@ bool deno_send(Deno* d, deno_buf buf) {
 
   v8::TryCatch try_catch(d->isolate);
 
-  v8::Local<v8::Function> recv =
-      v8::Local<v8::Function>::New(d->isolate, d->recv);
+  auto recv = d->recv.Get(d->isolate);
   if (recv.IsEmpty()) {
     d->last_exception = "deno_recv has not been called.";
     return false;
   }
 
+  // TODO(ry) support zero copy.
+  auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
+  memcpy(ab->GetContents().Data(), buf.data, buf.len);
+
   v8::Local<v8::Value> args[1];
-  args[0] = v8::ArrayBuffer::New(d->isolate, buf.data, buf.len,
-                                 v8::ArrayBufferCreationMode::kInternalized);
+  args[0] = ab;
   assert(!args[0].IsEmpty());
   assert(!try_catch.HasCaught());
 

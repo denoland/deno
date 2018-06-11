@@ -7,16 +7,19 @@
 TEST(MockRuntimeTest, InitializesCorrectly) {
   Deno* d = deno_new(NULL, NULL);
   EXPECT_TRUE(deno_load(d, "a.js", "1 + 2"));
+  deno_dispose(d);
 }
 
 TEST(MockRuntimeTest, CanCallFoo) {
   Deno* d = deno_new(NULL, NULL);
   EXPECT_TRUE(deno_load(d, "a.js", "if (foo() != 'foo') throw Error();"));
+  deno_dispose(d);
 }
 
 TEST(MockRuntimeTest, ErrorsCorrectly) {
   Deno* d = deno_new(NULL, NULL);
   EXPECT_FALSE(deno_load(d, "a.js", "throw Error()"));
+  deno_dispose(d);
 }
 
 deno_buf strbuf(const char* str) {
@@ -28,6 +31,7 @@ TEST(MockRuntimeTest, SendSuccess) {
   Deno* d = deno_new(NULL, NULL);
   EXPECT_TRUE(deno_load(d, "a.js", "recvabc();"));
   EXPECT_TRUE(deno_send(d, strbuf("abc")));
+  deno_dispose(d);
 }
 
 TEST(MockRuntimeTest, SendByteLength) {
@@ -35,12 +39,14 @@ TEST(MockRuntimeTest, SendByteLength) {
   EXPECT_TRUE(deno_load(d, "a.js", "recvabc();"));
   // We send the wrong sized message, it should throw.
   EXPECT_FALSE(deno_send(d, strbuf("abcd")));
+  deno_dispose(d);
 }
 
 TEST(MockRuntimeTest, SendNoCallback) {
   Deno* d = deno_new(NULL, NULL);
   // We didn't call deno_recv(), sending should fail.
   EXPECT_FALSE(deno_send(d, strbuf("abc")));
+  deno_dispose(d);
 }
 
 int main(int argc, char** argv) {
