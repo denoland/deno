@@ -10,14 +10,16 @@ extern "C" {
 
 // Data that gets transmitted.
 typedef struct {
-  void* data;
+  const char* data;
   size_t len;
 } deno_buf;
 
 struct deno_s;
 typedef struct deno_s Deno;
 
-// The callback from V8 when data is sent.
+// A callback to receive a message from deno_pub javascript call.
+// buf is valid only for the lifetime of the call.
+// The returned deno_buf is returned from deno_pub in javascript.
 typedef deno_buf (*deno_sub_cb)(Deno* d, const char* channel, deno_buf buf);
 
 void deno_init();

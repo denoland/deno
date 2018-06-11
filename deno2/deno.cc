@@ -124,7 +124,6 @@ void Sub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   d->sub.Reset(isolate, func);
 }
 
-// Called from JavaScript, routes message to golang.
 void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   Deno* d = static_cast<Deno*>(isolate->GetData(0));
@@ -145,10 +144,12 @@ void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   auto ab = v8::Local<v8::ArrayBuffer>::Cast(ab_v);
   auto contents = ab->GetContents();
 
-  void* buf = contents.Data();
-  int buflen = static_cast<int>(contents.ByteLength());
+  // data is only a valid pointer until the end of this call.
+  const char* data =
+      const_cast<const char*>(reinterpret_cast<char*>(contents.Data()));
+  deno_buf buf{data, contents.ByteLength()};
 
-  auto retbuf = d->cb(d, channel, deno_buf{buf, buflen});
+  auto retbuf = d->cb(d, channel, buf);
   if (retbuf.data) {
     // TODO(ry) Support zero-copy.
     auto ab = v8::ArrayBuffer::New(d->isolate, retbuf.len);
@@ -292,7 +293,7 @@ bool deno_pub(Deno* d, const char* channel, deno_buf buf) {
     return false;
   }
 
-  // TODO(ry) support zero copy.
+  // TODO(ry) support zero-copy.
   auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
   memcpy(ab->GetContents().Data(), buf.data, buf.len);
 

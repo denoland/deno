@@ -23,10 +23,7 @@ TEST(MockRuntimeTest, ErrorsCorrectly) {
   deno_dispose(d);
 }
 
-deno_buf strbuf(const char* str) {
-  void* d = reinterpret_cast<void*>(const_cast<char*>(str));
-  return deno_buf{d, strlen(str)};
-}
+deno_buf strbuf(const char* str) { return deno_buf{str, strlen(str)}; }
 
 TEST(MockRuntimeTest, PubSuccess) {
   Deno* d = deno_new(NULL, NULL);
@@ -56,11 +53,9 @@ TEST(MockRuntimeTest, SubReturnEmpty) {
     count++;
     EXPECT_STREQ(channel, "SubReturnEmpty");
     EXPECT_EQ(static_cast<size_t>(3), buf.len);
-    // TODO(ry) buf.data should just be a char*.
-    char* data = reinterpret_cast<char*>(buf.data);
-    EXPECT_EQ(data[0], 'a');
-    EXPECT_EQ(data[1], 'b');
-    EXPECT_EQ(data[2], 'c');
+    EXPECT_EQ(buf.data[0], 'a');
+    EXPECT_EQ(buf.data[1], 'b');
+    EXPECT_EQ(buf.data[2], 'c');
     return deno_buf{nullptr, 0};
   });
   EXPECT_TRUE(deno_execute(d, "a.js", "SubReturnEmpty()"));
@@ -74,11 +69,9 @@ TEST(MockRuntimeTest, SubReturnBar) {
     count++;
     EXPECT_STREQ(channel, "SubReturnBar");
     EXPECT_EQ(static_cast<size_t>(3), buf.len);
-    // TODO(ry) buf.data should just be a char*.
-    char* data = reinterpret_cast<char*>(buf.data);
-    EXPECT_EQ(data[0], 'a');
-    EXPECT_EQ(data[1], 'b');
-    EXPECT_EQ(data[2], 'c');
+    EXPECT_EQ(buf.data[0], 'a');
+    EXPECT_EQ(buf.data[1], 'b');
+    EXPECT_EQ(buf.data[2], 'c');
     return strbuf("bar");
   });
   EXPECT_TRUE(deno_execute(d, "a.js", "SubReturnBar()"));
