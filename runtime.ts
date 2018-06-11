@@ -162,7 +162,14 @@ export function resolveModule(
   if (m != null) {
     return m;
   } else {
-    return new FileModule(filename, sourceCode, outputCode);
+    // TODO: keep imports/exports, functions & classes out out
+    // TODO: only wrap when await is used
+    // TODO; apply transform at compiler level
+    const wrappedSource = /await/g.test(sourceCode)
+      ? `(async () => {${sourceCode}})()`
+      : sourceCode;
+
+    return new FileModule(filename, wrappedSource, outputCode);
   }
 }
 
@@ -193,7 +200,7 @@ class Compiler {
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
     inlineSourceMap: true,
-    lib: ["es2017"],
+    lib: ["es2015", "es2017"],
     inlineSources: true,
     target: ts.ScriptTarget.ES2017
   };
