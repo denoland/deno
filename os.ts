@@ -1,6 +1,6 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-import { ModuleInfo } from "./types";
+import {ModuleInfo, ProcessInfo} from "./types";
 import { pubInternal } from "./dispatch";
 import { main as pb } from "./msg.pb";
 import { assert } from "./util";
@@ -62,4 +62,16 @@ export function writeFileSync(
     writeFileSyncData: data,
     writeFileSyncPerm: perm
   });
+}
+
+export function process(): ProcessInfo {
+  const res = pubInternal("os", {
+    command: pb.Msg.Command.OS_PROCESS,
+  });
+  assert(res.command === pb.Msg.Command.OS_PROCESS_RES);
+  return {
+      platform: res.processPlatform,
+      cwd: res.processCwd,
+      tmpDir: res.processTmpDir,
+  };
 }

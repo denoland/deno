@@ -1,5 +1,7 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
+import {ProcessInfo} from "./types";
+
 declare module "deno" {
   type MessageCallback = (msg: Uint8Array) => void;
   function sub(channel: string, cb: MessageCallback): void;
@@ -11,4 +13,6 @@ declare module "deno" {
     data: Uint8Array,
     perm: number
   ): void;
+
+  function process(): ProcessInfo;
 }

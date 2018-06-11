@@ -7,7 +7,7 @@
 // serving the deno project directory. Try this:
 //   http-server -p 4545 --cors .
 import { test, assert, assertEqual } from "./testing/testing.ts";
-import { readFileSync, writeFileSync } from "deno";
+import { readFileSync, writeFileSync, process } from "deno";
 
 test(async function tests_test() {
   assert(true);
@@ -47,11 +47,23 @@ test(async function tests_readFileSync() {
 test(async function tests_writeFileSync() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
-  // TODO need ability to get tmp dir.
-  const fn = "/tmp/test.txt";
-  writeFileSync("/tmp/test.txt", data, 0o666);
-  const dataRead = readFileSync("/tmp/test.txt");
+  const proc = process();
+  // TODO: not support windows yet
+  const fn = proc.tmpDir.endsWith("/")
+      ? proc.tmpDir + "text.txt"
+      : proc.tmpDir +"/text.txt";
+  writeFileSync(fn, data, 0o666);
+  const dataRead = readFileSync(fn);
   const dec = new TextDecoder("utf-8");
   const actual = dec.decode(dataRead);
   assertEqual("Hello", actual);
+});
+
+test(async function tests_process() {
+  const {platform, cwd, tmpDir} = process();
+  assert(
+      ["darwin", "freebsd", "linux"].includes(platform),
+      "platform not exists: " + platform);
+  assert(cwd.length > 0, "get cwd failed");
+  assert(tmpDir.length >0, "get tempdir failed");
 });

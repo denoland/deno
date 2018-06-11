@@ -8,3 +8,9 @@ export interface ModuleInfo {
   sourceCode?: string;
   outputCode?: string;
 }
+
+export interface ProcessInfo {
+    platform?: string;
+    cwd?: string;
+    tmpDir?: string;
+}
