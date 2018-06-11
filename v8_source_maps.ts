@@ -162,7 +162,7 @@ function CallSiteToString(frame: CallSite): string {
         functionName.indexOf("." + methodName) !==
           functionName.length - methodName.length - 1
       ) {
-        line += ` [as ${ methodName} ]`;
+        line += ` [as ${methodName} ]`;
       }
     } else {
       line += typeName + "." + (methodName || "<anonymous>");

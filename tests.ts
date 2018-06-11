@@ -90,7 +90,7 @@ test(function tests_console_stringify_circular() {
     arrowFunc: () => {},
     extendedClass: new Extended(),
     nFunc: new Function(),
-    extendedCstr: Extended,
+    extendedCstr: Extended
   };
 
   const circularObj = {
@@ -103,7 +103,7 @@ test(function tests_console_stringify_circular() {
     nested: nestedObj,
     emptyObj: {},
     arr: [1, "s", false, null, nestedObj],
-    baseClass: new Base(),
+    baseClass: new Base()
   };
 
   nestedObj.o = circularObj;
@@ -121,8 +121,6 @@ test(function tests_console_stringify_circular() {
     console.log(JSON);
     console.log(console);
   } catch {
-    throw new Error(
-      "Expected no crash on circular object"
-    );
+    throw new Error("Expected no crash on circular object");
   }
 });

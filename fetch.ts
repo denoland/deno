@@ -1,11 +1,11 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 import {
-    assert,
-    log,
-    createResolvable,
-    Resolvable,
-    typedArrayToArrayBuffer
+  assert,
+  log,
+  createResolvable,
+  Resolvable,
+  typedArrayToArrayBuffer
 } from "./util";
 import { pubInternal, sub } from "./dispatch";
 import { main as pb } from "./msg.pb";

@@ -25,7 +25,8 @@ function stringify(ctx: ConsoleContext, value: any): string {
     case "symbol":
       return String(value);
     case "function":
-      if (value.name && value.name !== "anonymous") { // from MDN spec
+      if (value.name && value.name !== "anonymous") {
+        // from MDN spec
         return `[Function: ${value.name}]`;
       }
       return "[Function]";
