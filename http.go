@@ -38,21 +38,22 @@ func InitHTTP() {
 
 var nextReqID int32
 
-func getReqID() (int32, string) {
+func createReqID() (int32, string) {
 	id := atomic.AddInt32(&nextReqID, 1)
 	return id, fmt.Sprintf("%s/%d", httpChan, id)
 }
 
-func buildHTTPHandler(serverID int32) func(w http.ResponseWriter, r *http.Request) {
+func buildHTTPHandler(serverID int32) func(w http.ResponseWriter,
+	r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Increment and get an ID for this request:
-		id, ch := getReqID()
+		// Increment and get an ID for this request.
+		id, channelName := createReqID()
 
 		// Used to signal end:
 		done := make(chan bool)
 
 		// Subscribe to this channel and handle stuff:
-		Sub(ch, func(buf []byte) []byte {
+		Sub(channelName, func(buf []byte) []byte {
 			msg := &Msg{}
 			proto.Unmarshal(buf, msg)
 			switch msg.Command {
@@ -67,16 +68,18 @@ func buildHTTPHandler(serverID int32) func(w http.ResponseWriter, r *http.Reques
 		})
 
 		// Prepare and publish request message:
+		// TODO stream body.
 		var body []byte
 		if r.Body != nil {
 			body, _ = ioutil.ReadAll(r.Body)
 		}
-		msg := &Msg{}
-		msg.HttpReqId = id
-		msg.HttpReqBody = body
-		msg.Command = Msg_HTTP_REQ
-		msg.HttpReqPath = r.URL.Path
-		msg.HttpReqMethod = r.Method
+		msg := &Msg{
+			Command:       Msg_HTTP_REQ,
+			HttpReqBody:   body,
+			HttpReqId:     id,
+			HttpReqMethod: r.Method,
+			HttpReqPath:   r.URL.Path,
+		}
 		go PubMsg(httpChan, msg)
 
 		w.Header().Set("Server", serverHeader)

@@ -14,7 +14,7 @@ declare module "deno" {
     perm: number
   ): void;
 
-  export interface RequestOptions {
+  interface RequestOptions {
     method?: string;
     url?: string;
     referrer?: string;
@@ -25,14 +25,20 @@ declare module "deno" {
     cache?: string;
   }
 
-  export class Request{
+  // deno.Request Is used for incoming HTTP server requests
+  // but ideally matches fetch's Request interface:
+  // https://developer.mozilla.org/en-US/docs/Web/API/Request
+  class Request {
     method: string;
     path: string;
     body: any | string;
     constructor(url: string, opts?: RequestOptions);
   }
 
-  export class Response {
+  // deno.Response Is used for outgoing HTTP server responses
+  // but ideally matches fetch's Response interface:
+  // https://developer.mozilla.org/en-US/docs/Web/API/Response
+  class Response {
     channel: string;
     constructor();
     write(data: Uint8Array | string): void;
@@ -40,7 +46,7 @@ declare module "deno" {
     end(): void;
   }
 
-  export class HttpServer{
+  class HttpServer {
     private readonly id: number;
     private port: number;
     private cb: (req: Request, res: Response) => void;

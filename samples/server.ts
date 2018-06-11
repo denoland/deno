@@ -15,4 +15,3 @@ const s = createHttpServer((req: Request, res: Response) => {
 });
 
 s.listen(5000);
-setTimeout(() => {}, 5000);
