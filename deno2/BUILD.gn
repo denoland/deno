@@ -11,21 +11,30 @@ executable("deno") {
   ]
 }
 
-executable("deno_test") {
+executable("mock_runtime_test") {
   testonly = true
   sources = [
-    "deno_test.cc",
+    "from_snapshot.cc",
+    "mock_runtime_test.cc",
   ]
   deps = [
-    ":libdeno",
+    ":create_snapshot_mock_runtime",
+    ":deno_nosnapshot",
     "//testing/gtest:gtest",
   ]
+  include_dirs = [ target_gen_dir ]
+  defines = [ "DENO_MOCK_RUNTIME" ]
 }
 
 component("libdeno") {
-  deps = [
-    ":deno_snapshot",
+  sources = [
+    "from_snapshot.cc",
   ]
+  deps = [
+    ":create_snapshot_deno",
+    ":deno_nosnapshot",
+  ]
+  include_dirs = [ target_gen_dir ]
 }
 
 source_set("deno_nosnapshot") {
@@ -42,17 +51,6 @@ source_set("deno_nosnapshot") {
     "v8:v8_libplatform",
     "v8:v8_libsampler",
   ]
-}
-
-source_set("deno_snapshot") {
-  sources = [
-    "from_snapshot.cc",
-  ]
-  deps = [
-    ":create_snapshot_deno",
-    ":deno_nosnapshot",
-  ]
-  include_dirs = [ target_gen_dir ]
 }
 
 executable("snapshot_creator") {
@@ -109,8 +107,13 @@ template("create_snapshot") {
   name = target_name
   suffix = "_$name"
   action("create_snapshot_" + name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "deps",
+                           ])
     visibility = [ ":*" ]  # Only targets in this file can depend on this.
-    deps = [ ":snapshot_creator" ] + invoker.deps
+    deps += [ ":snapshot_creator" ]
     script = "v8/tools/run.py"
     data = []
     exe = rebase_path(get_label_info(":snapshot_creator", "root_out_dir") +
@@ -140,10 +143,17 @@ template("create_snapshot") {
   }
 }
 
-# Generates $target_gen_dir/snapshot_bundle.cc
+# Generates $target_gen_dir/snapshot_deno.cc
 create_snapshot("deno") {
   js = "$target_gen_dir/main.js"
   deps = [
     ":run_parcel",
   ]
+}
+
+# Generates $target_gen_dir/snapshot_mock_runtime.cc
+create_snapshot("mock_runtime") {
+  testonly = true
+  js = "js/mock_runtime.js"
+  deps = []
 }

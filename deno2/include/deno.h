@@ -27,9 +27,9 @@ void deno_set_flags(int* argc, char** argv);
 // Constructor
 Deno* deno_new(void* data, deno_recv_cb cb);
 
-// Returns nonzero on error.
+// Returns false on error.
 // Get error text with deno_last_exception().
-int deno_load(Deno* d, const char* name_s, const char* source_s);
+bool deno_load(Deno* d, const char* name_s, const char* source_s);
 
 // Returns nonzero on error.
 int deno_send(Deno* d, deno_buf buf);

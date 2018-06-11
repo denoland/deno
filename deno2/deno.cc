@@ -46,7 +46,6 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
       .ToLocalChecked();
 }
 
-// Exits the process.
 void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception) {
   auto* isolate = context->GetIsolate();
@@ -73,8 +72,6 @@ void HandleException(v8::Local<v8::Context> context,
     printf("Unhandled Exception %s\n", ToCString(exceptionStr));
     message->PrintCurrentStackTrace(isolate, stdout);
   }
-
-  exit(1);
 }
 
 /*
@@ -181,7 +178,6 @@ bool Load(v8::Local<v8::Context> context, const char* name_s,
   if (script.IsEmpty()) {
     assert(try_catch.HasCaught());
     HandleException(context, try_catch.Exception());
-    assert(false);
     return false;
   }
 
@@ -190,7 +186,6 @@ bool Load(v8::Local<v8::Context> context, const char* name_s,
   if (result.IsEmpty()) {
     assert(try_catch.HasCaught());
     HandleException(context, try_catch.Exception());
-    assert(false);
     return false;
   }
 
@@ -270,13 +265,13 @@ void deno_set_flags(int* argc, char** argv) {
 
 const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
 
-int deno_load(Deno* d, const char* name_s, const char* source_s) {
+bool deno_load(Deno* d, const char* name_s, const char* source_s) {
   auto* isolate = d->isolate;
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = d->context.Get(d->isolate);
-  return deno::Load(context, name_s, source_s) ? 0 : 1;
+  return deno::Load(context, name_s, source_s);
 }
 
 // Called from golang. Must route message to javascript lang.

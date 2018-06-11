@@ -13,8 +13,13 @@
 
 namespace deno {
 
+#ifdef DENO_MOCK_RUNTIME
+#include "natives_mock_runtime.cc"
+#include "snapshot_mock_runtime.cc"
+#else
 #include "natives_deno.cc"
 #include "snapshot_deno.cc"
+#endif
 
 Deno* NewFromSnapshot(void* data, deno_recv_cb cb) {
   auto natives_blob = *StartupBlob_natives();
@@ -33,6 +38,7 @@ Deno* NewFromSnapshot(void* data, deno_recv_cb cb) {
   v8::Isolate* isolate = v8::Isolate::New(params);
   AddIsolate(d, isolate);
 
+  v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
   {
     v8::HandleScope handle_scope(isolate);
