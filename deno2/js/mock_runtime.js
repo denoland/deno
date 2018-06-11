@@ -1,27 +1,34 @@
 // A simple runtime that doesn't involve typescript or protobufs to test
-// libdeno.
+// libdeno. Invoked by mock_runtime_test.cc
 const window = eval("this");
-window["foo"] = () => {
-  deno_print("Hello world from foo");
-  return "foo";
-};
 
 function assert(cond) {
   if (!cond) throw Error("mock_runtime.js assert failed");
-}
-
-function subabc() {
-  deno_sub(msg => {
-    assert(msg instanceof ArrayBuffer);
-    assert(msg.byteLength === 3);
-  });
 }
 
 function typedArrayToArrayBuffer(ta) {
   return ta.buffer.slice(ta.byteOffset, ta.byteOffset + ta.byteLength);
 }
 
-function pubReturnEmpty() {
+function CanCallFunction() {
+  deno_print("Hello world from foo");
+  return "foo";
+}
+
+function PubSuccess() {
+  deno_sub(msg => {
+    deno_print("PubSuccess: ok");
+  });
+}
+
+function PubByteLength() {
+  deno_sub(msg => {
+    assert(msg instanceof ArrayBuffer);
+    assert(msg.byteLength === 3);
+  });
+}
+
+function SubReturnEmpty() {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
   let r = deno_pub(ab);
@@ -30,7 +37,7 @@ function pubReturnEmpty() {
   assert(r == null);
 }
 
-function pubReturnBar() {
+function SubReturnBar() {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
   const r = deno_pub(ab);
