@@ -65,7 +65,10 @@ Also see this presentation: http://tinyclouds.org/jsconf2018.pdf
 
 ### Github Noise
 
-I am excited about all the interest in this project. However, do understand that this is very much a non-functional prototype. There's a huge amount of heavy lifting to do. Unless you are participating in that, please maintain radio silence on github. This includes submitting trivial PRs (like improving README build instructions).
+I am excited about all the interest in this project. However, do understand that this
+is very much a non-functional prototype. There's a huge amount of heavy lifting to do.
+Unless you are participating in that, please maintain radio silence on github. This
+includes submitting trivial PRs (like improving README build instructions).
 
 ## Compile instructions
 
