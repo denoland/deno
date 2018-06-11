@@ -21,7 +21,7 @@ namespace deno {
 #include "snapshot_deno.cc"
 #endif
 
-Deno* NewFromSnapshot(void* data, deno_recv_cb cb) {
+Deno* NewFromSnapshot(void* data, deno_sub_cb cb) {
   auto natives_blob = *StartupBlob_natives();
   auto snapshot_blob = *StartupBlob_snapshot();
 
@@ -52,7 +52,7 @@ Deno* NewFromSnapshot(void* data, deno_recv_cb cb) {
 }  // namespace deno
 
 extern "C" {
-Deno* deno_new(void* data, deno_recv_cb cb) {
+Deno* deno_new(void* data, deno_sub_cb cb) {
   return deno::NewFromSnapshot(data, cb);
 }
 }

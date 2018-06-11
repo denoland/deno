@@ -109,8 +109,8 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   fflush(stdout);
 }
 
-// Sets the recv callback.
-void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
+// Sets the sub callback.
+void Sub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   Deno* d = reinterpret_cast<Deno*>(isolate->GetData(0));
   assert(d->isolate == isolate);
@@ -121,11 +121,11 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
   assert(v->IsFunction());
   v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
 
-  d->recv.Reset(isolate, func);
+  d->sub.Reset(isolate, func);
 }
 
 // Called from JavaScript, routes message to golang.
-void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
+void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   Deno* d = static_cast<Deno*>(isolate->GetData(0));
   assert(d->isolate == isolate);
@@ -213,13 +213,13 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
     CHECK(
         global->Set(context, deno::v8_str("deno_print"), print_val).FromJust());
 
-    auto recv_tmpl = v8::FunctionTemplate::New(isolate, Recv);
-    auto recv_val = recv_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, deno::v8_str("deno_recv"), recv_val).FromJust());
+    auto sub_tmpl = v8::FunctionTemplate::New(isolate, Sub);
+    auto sub_val = sub_tmpl->GetFunction(context).ToLocalChecked();
+    CHECK(global->Set(context, deno::v8_str("deno_sub"), sub_val).FromJust());
 
-    auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
-    auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, deno::v8_str("deno_send"), send_val).FromJust());
+    auto pub_tmpl = v8::FunctionTemplate::New(isolate, Pub);
+    auto pub_val = pub_tmpl->GetFunction(context).ToLocalChecked();
+    CHECK(global->Set(context, deno::v8_str("deno_pub"), pub_val).FromJust());
 
     bool r = Load(context, js_filename, js_source);
     assert(r);
@@ -274,10 +274,10 @@ bool deno_load(Deno* d, const char* name_s, const char* source_s) {
   return deno::Load(context, name_s, source_s);
 }
 
-// Routes message to the javascript callback set with deno_recv().
+// Routes message to the javascript callback set with deno_sub().
 // False return value indicates error. Check deno_last_exception() for exception
 // text. Caller owns buf.
-bool deno_send(Deno* d, deno_buf buf) {
+bool deno_pub(Deno* d, deno_buf buf) {
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);
@@ -287,9 +287,9 @@ bool deno_send(Deno* d, deno_buf buf) {
 
   v8::TryCatch try_catch(d->isolate);
 
-  auto recv = d->recv.Get(d->isolate);
-  if (recv.IsEmpty()) {
-    d->last_exception = "deno_recv has not been called.";
+  auto sub = d->sub.Get(d->isolate);
+  if (sub.IsEmpty()) {
+    d->last_exception = "deno_sub has not been called.";
     return false;
   }
 
@@ -302,7 +302,7 @@ bool deno_send(Deno* d, deno_buf buf) {
   assert(!args[0].IsEmpty());
   assert(!try_catch.HasCaught());
 
-  recv->Call(context->Global(), 1, args);
+  sub->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {
     deno::HandleException(context, try_catch.Exception());

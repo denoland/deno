@@ -18,14 +18,14 @@ struct deno_s;
 typedef struct deno_s Deno;
 
 // The callback from V8 when data is sent.
-typedef deno_buf (*deno_recv_cb)(Deno* d, deno_buf buf);
+typedef deno_buf (*deno_sub_cb)(Deno* d, deno_buf buf);
 
 void deno_init();
 const char* deno_v8_version();
 void deno_set_flags(int* argc, char** argv);
 
 // Constructor
-Deno* deno_new(void* data, deno_recv_cb cb);
+Deno* deno_new(void* data, deno_sub_cb cb);
 
 // Returns false on error.
 // Get error text with deno_last_exception().
@@ -33,7 +33,7 @@ bool deno_load(Deno* d, const char* name_s, const char* source_s);
 
 // Returns false on error.
 // Get error text with deno_last_exception().
-bool deno_send(Deno* d, deno_buf buf);
+bool deno_pub(Deno* d, deno_buf buf);
 
 const char* deno_last_exception(Deno* d);
 

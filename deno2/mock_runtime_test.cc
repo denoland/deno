@@ -27,25 +27,25 @@ deno_buf strbuf(const char* str) {
   return deno_buf{d, strlen(str)};
 }
 
-TEST(MockRuntimeTest, SendSuccess) {
+TEST(MockRuntimeTest, PubSuccess) {
   Deno* d = deno_new(NULL, NULL);
-  EXPECT_TRUE(deno_load(d, "a.js", "recvabc();"));
-  EXPECT_TRUE(deno_send(d, strbuf("abc")));
+  EXPECT_TRUE(deno_load(d, "a.js", "subabc();"));
+  EXPECT_TRUE(deno_pub(d, strbuf("abc")));
   deno_dispose(d);
 }
 
-TEST(MockRuntimeTest, SendByteLength) {
+TEST(MockRuntimeTest, PubByteLength) {
   Deno* d = deno_new(NULL, NULL);
-  EXPECT_TRUE(deno_load(d, "a.js", "recvabc();"));
-  // We send the wrong sized message, it should throw.
-  EXPECT_FALSE(deno_send(d, strbuf("abcd")));
+  EXPECT_TRUE(deno_load(d, "a.js", "subabc();"));
+  // We pub the wrong sized message, it should throw.
+  EXPECT_FALSE(deno_pub(d, strbuf("abcd")));
   deno_dispose(d);
 }
 
-TEST(MockRuntimeTest, SendNoCallback) {
+TEST(MockRuntimeTest, PubNoCallback) {
   Deno* d = deno_new(NULL, NULL);
-  // We didn't call deno_recv(), sending should fail.
-  EXPECT_FALSE(deno_send(d, strbuf("abc")));
+  // We didn't call deno_sub(), pubing should fail.
+  EXPECT_FALSE(deno_pub(d, strbuf("abc")));
   deno_dispose(d);
 }
 

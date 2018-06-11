@@ -10,8 +10,8 @@ function assert(cond) {
   if (!cond) throw Error("mock_runtime.js assert failed");
 }
 
-function recvabc() {
-  deno_recv((msg) => {
+function subabc() {
+  deno_sub((msg) => {
     assert(msg instanceof ArrayBuffer);
     assert(msg.byteLength === 3);
   });

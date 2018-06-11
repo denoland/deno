@@ -12,9 +12,9 @@ extern "C" {
 struct deno_s {
   v8::Isolate* isolate;
   std::string last_exception;
-  v8::Persistent<v8::Function> recv;
+  v8::Persistent<v8::Function> sub;
   v8::Persistent<v8::Context> context;
-  deno_recv_cb cb;
+  deno_sub_cb cb;
   void* data;
 };
 }
@@ -22,13 +22,13 @@ struct deno_s {
 namespace deno {
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
-void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
-void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
+void Sub(const v8::FunctionCallbackInfo<v8::Value>& args);
+void Pub(const v8::FunctionCallbackInfo<v8::Value>& args);
 static intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
-                                         reinterpret_cast<intptr_t>(Recv),
-                                         reinterpret_cast<intptr_t>(Send), 0};
+                                         reinterpret_cast<intptr_t>(Sub),
+                                         reinterpret_cast<intptr_t>(Pub), 0};
 
-Deno* NewFromSnapshot(void* data, deno_recv_cb cb);
+Deno* NewFromSnapshot(void* data, deno_sub_cb cb);
 
 v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
                              v8::StartupData* prev_snapshot_blob,
