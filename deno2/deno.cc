@@ -214,15 +214,15 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
     auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
     auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
     CHECK(
-        global->Set(context, deno::v8_str("deno_print"), print_val).FromJust());
+        global->Set(context, deno::v8_str("denoPrint"), print_val).FromJust());
 
     auto sub_tmpl = v8::FunctionTemplate::New(isolate, Sub);
     auto sub_val = sub_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, deno::v8_str("deno_sub"), sub_val).FromJust());
+    CHECK(global->Set(context, deno::v8_str("denoSub"), sub_val).FromJust());
 
     auto pub_tmpl = v8::FunctionTemplate::New(isolate, Pub);
     auto pub_val = pub_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, deno::v8_str("deno_pub"), pub_val).FromJust());
+    CHECK(global->Set(context, deno::v8_str("denoPub"), pub_val).FromJust());
 
     bool r = Execute(context, js_filename, js_source);
     assert(r);
