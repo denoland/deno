@@ -10,7 +10,7 @@
 * No `package.json`. No npm. Not explicitly compatible with Node.
 
 * Imports reference source code URLs only.
-	```
+	```js
   import { test } from "https://unpkg.com/deno_testing@0.0.5/testing.ts"
   import { log } from "./util.ts"
 	```
