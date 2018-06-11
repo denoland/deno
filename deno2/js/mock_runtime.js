@@ -49,3 +49,10 @@ function SubReturnBar() {
   const rstr = String.fromCharCode(...rui8);
   assert(rstr === "bar");
 }
+
+function DoubleSubFails() {
+  // denoSub is an internal function and should only be called once from the
+  // runtime.
+  denoSub((channel, msg) => assert(false));
+  denoSub((channel, msg) => assert(false));
+}

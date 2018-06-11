@@ -117,6 +117,11 @@ void Sub(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   v8::HandleScope handle_scope(isolate);
 
+  if (!d->sub.IsEmpty()) {
+    isolate->ThrowException(v8_str("denoSub already called."));
+    return;
+  }
+
   v8::Local<v8::Value> v = args[0];
   assert(v->IsFunction());
   v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);

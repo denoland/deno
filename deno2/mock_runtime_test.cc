@@ -79,6 +79,12 @@ TEST(MockRuntimeTest, SubReturnBar) {
   deno_delete(d);
 }
 
+TEST(MockRuntimeTest, DoubleSubFails) {
+  Deno* d = deno_new(NULL, NULL);
+  EXPECT_FALSE(deno_execute(d, "a.js", "DoubleSubFails()"));
+  deno_delete(d);
+}
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   deno_init();
