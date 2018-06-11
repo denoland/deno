@@ -18,14 +18,14 @@ struct deno_s;
 typedef struct deno_s Deno;
 
 // The callback from V8 when data is sent.
-typedef deno_buf (*RecvCallback)(Deno* d, deno_buf buf);
+typedef deno_buf (*deno_recv_cb)(Deno* d, deno_buf buf);
 
 void deno_init();
 const char* deno_v8_version();
 void deno_set_flags(int* argc, char** argv);
 
 // Constructor
-Deno* deno_new(void* data, RecvCallback cb);
+Deno* deno_new(void* data, deno_recv_cb cb);
 
 // Returns nonzero on error.
 // Get error text with deno_last_exception().

@@ -8,14 +8,13 @@
 #include "v8/include/v8.h"
 
 extern "C" {
-
 // deno_s = Wrapped Isolate.
 struct deno_s {
   v8::Isolate* isolate;
   std::string last_exception;
   v8::Persistent<v8::Function> recv;
   v8::Persistent<v8::Context> context;
-  RecvCallback cb;
+  deno_recv_cb cb;
   void* data;
 };
 }
@@ -29,7 +28,7 @@ static intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
                                          reinterpret_cast<intptr_t>(Recv),
                                          reinterpret_cast<intptr_t>(Send), 0};
 
-Deno* NewFromSnapshot(void* data, RecvCallback cb);
+Deno* NewFromSnapshot(void* data, deno_recv_cb cb);
 
 v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
                              v8::StartupData* prev_snapshot_blob,
