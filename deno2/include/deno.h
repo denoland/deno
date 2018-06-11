@@ -26,8 +26,8 @@ void deno_init();
 const char* deno_v8_version();
 void deno_set_flags(int* argc, char** argv);
 
-// Constructor
 Deno* deno_new(void* data, deno_sub_cb cb);
+void deno_delete(Deno* d);
 
 // Returns false on error.
 // Get error text with deno_last_exception().
@@ -39,7 +39,6 @@ bool deno_pub(Deno* d, const char* channel, deno_buf buf);
 
 const char* deno_last_exception(Deno* d);
 
-void deno_dispose(Deno* d);
 void deno_terminate_execution(Deno* d);
 
 #ifdef __cplusplus

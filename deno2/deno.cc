@@ -311,9 +311,9 @@ bool deno_pub(Deno* d, const char* channel, deno_buf buf) {
   return true;
 }
 
-void deno_dispose(Deno* d) {
+void deno_delete(Deno* d) {
   d->isolate->Dispose();
-  delete (d);
+  delete d;
 }
 
 void deno_terminate_execution(Deno* d) { d->isolate->TerminateExecution(); }

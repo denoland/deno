@@ -14,5 +14,5 @@ int main(int argc, char** argv) {
     printf("Error! %s\n", deno_last_exception(d));
     exit(1);
   }
-  deno_dispose(d);
+  deno_delete(d);
 }
