@@ -52,6 +52,7 @@ declare module "deno" {
     private cb: (req: Request, res: Response) => void;
     constructor(cb: (req: Request, res: Response) => void);
     listen(port: number): void;
+    close(): void;
     buildRequest(msg: pb.Msg): Request;
     buildResponse(msg: pb.Msg): Response;
     onMsg(msg: pb.Msg): void;

@@ -25,10 +25,10 @@ func InitHTTP() {
 		msg := &Msg{}
 		check(proto.Unmarshal(buf, msg))
 		switch msg.Command {
-		case Msg_HTTP_CREATE:
-			httpCreate(msg.HttpServerId)
 		case Msg_HTTP_LISTEN:
-			httpListen(msg.HttpServerId, msg.HttpListenPort)
+			httpListen(msg.HttpListenServerId, msg.HttpListenPort)
+		case Msg_HTTP_CLOSE:
+			httpClose(msg.HttpCloseServerId)
 		default:
 			panic("[http] Unexpected message " + string(buf))
 		}
@@ -58,9 +58,9 @@ func buildHTTPHandler(serverID int32) func(w http.ResponseWriter,
 			proto.Unmarshal(buf, msg)
 			switch msg.Command {
 			case Msg_HTTP_RES_WRITE:
-				w.Write(msg.HttpResBody)
-			case Msg_HTTP_RES_STATUS:
-				w.WriteHeader(int(msg.HttpResCode))
+				w.Write(msg.HttpResWriteBody)
+			case Msg_HTTP_RES_HEADER:
+				w.WriteHeader(int(msg.HttpResHeaderCode))
 			case Msg_HTTP_RES_END:
 				done <- true
 			}
@@ -89,21 +89,27 @@ func buildHTTPHandler(serverID int32) func(w http.ResponseWriter,
 	}
 }
 
-func httpCreate(serverID int32) {
-	if !Perms.Net {
-		panic("Network access denied")
-	}
-	httpServers[serverID] = &http.Server{}
-}
-
 func httpListen(serverID int32, port int32) {
 	if !Perms.Net {
 		panic("Network access denied")
 	}
-	s := httpServers[serverID]
+	s := &http.Server{}
+	httpServers[serverID] = s
 	listenAddr := fmt.Sprintf(":%d", port)
 	handler := buildHTTPHandler(serverID)
 	s.Addr = listenAddr
 	s.Handler = http.HandlerFunc(handler)
-	go s.ListenAndServe()
+	wg.Add(1)
+	go func() {
+		s.ListenAndServe()
+		wg.Done()
+	}()
+}
+
+func httpClose(serverID int32) {
+	s, ok := httpServers[serverID]
+	if !ok {
+		panic("[http] Server not found")
+	}
+	s.Close()
 }

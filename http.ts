@@ -10,7 +10,7 @@ const enc = new TextEncoder();
 export function initHttp() {
   sub("http", (payload: Uint8Array) => {
     const msg = pb.Msg.decode(payload);
-    const id = msg.httpServerId;
+    const id = msg.httpListenServerId;
     const s = servers.get(id);
     s.onMsg(msg);
   });
@@ -55,13 +55,13 @@ export class Response {
     }
     pubInternal(this.channel, {
       command: pb.Msg.Command.HTTP_RES_WRITE,
-      httpResBody: rawData
+      httpResWriteBody: rawData
     });
   }
   status(code: number) {
     pubInternal(this.channel, {
-      command: pb.Msg.Command.HTTP_RES_STATUS,
-      httpResCode: code
+      command: pb.Msg.Command.HTTP_RES_HEADER,
+      httpResHeaderCode: code
     });
   }
   end() {
@@ -74,23 +74,25 @@ export class Response {
 let nextServerId = 0;
 export class HttpServer {
   private readonly id: number;
-  private port: number;
   private cb: (req: Request, res: Response) => void;
   constructor(cb: (req: Request, res: Response) => void) {
     this.id = nextServerId++;
     this.cb = cb;
     servers.set(this.id, this);
-    pubInternal("http", {
-      command: pb.Msg.Command.HTTP_CREATE,
-      httpServerId: this.id
-    });
   }
   listen(port: number) {
     log("Starting server on", port);
     pubInternal("http", {
       command: pb.Msg.Command.HTTP_LISTEN,
-      httpServerId: this.port,
+      httpListenServerId: this.id,
       httpListenPort: port
+    });
+  }
+  close() {
+    log("Stopping server", this.id);
+    pubInternal("http", {
+      command: pb.Msg.Command.HTTP_CLOSE,
+      httpCloseServerId: this.id
     });
   }
   buildRequest(msg: pb.Msg) {
