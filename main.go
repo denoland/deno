@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path"
 	"runtime/pprof"
 
 	"github.com/ry/v8worker2"
@@ -38,8 +39,8 @@ func setPerms() {
 	Perms.Net = *flagAllowNet
 }
 
-func stringAsset(path string) string {
-	data, err := Asset("dist/" + path)
+func stringAsset(filename string) string {
+	data, err := Asset(path.Join("dist", filename))
 	check(err)
 	return string(data)
 }
