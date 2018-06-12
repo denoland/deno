@@ -68,29 +68,91 @@ proto_library("msg_proto") {
   ]
 }
 
-action("run_parcel") {
+template("run_node") {
+  action(target_name) {
+    forward_variables_from(invoker, "*")
+    script = "js/run_node.py"
+  }
+}
+
+run_node("bundle") {
+  main_source = "$target_gen_dir/tsc_dist/main.js"
+  main_output = "$target_gen_dir/bundle/main.js"
   sources = [
-    "js/main.ts",
+    main_source,
   ]
   outputs = [
-    "$target_gen_dir/main.js",
-    "$target_gen_dir/main.map",
+    main_output,
   ]
-
-  # Our script imports this Python file so we want to rebuild if it changes.
-  # inputs = [ "helper_library.py" ]
-
-  # Note that we have to manually pass the sources to our script if the
-  # script needs them as inputs.
-  script = "js/run_node.py"
-  root = root_build_dir + "/../../js"
+  deps = [
+    ":run_tsc",
+  ]
   args = [
-           "./node_modules/.bin/parcel",
-           "build",
-           "--log-level=1",
-           "--no-minify",
-           "--out-dir=" + rebase_path(target_gen_dir, root),
-         ] + rebase_path(sources, root)
+    "./node_modules/.bin/browserify",
+    rebase_path(main_source, root_build_dir),
+    "-o",
+    rebase_path(main_output, root_build_dir),
+  ]
+}
+
+run_node("run_tsc") {
+  main_source = "js/main.ts"
+  sources = [
+    "$target_gen_dir/node_modules/deno_pb/msg.pb.d.ts",
+    "$target_gen_dir/node_modules/deno_pb/msg.pb.js",
+    "js/tsconfig.json",
+    main_source,
+  ]
+  out_dir = "$target_gen_dir/tsc_dist"
+  outputs = [
+    out_dir + "/main.js",
+    out_dir + "/main.map",
+  ]
+  deps = [
+    ":run_pbjs",
+    ":run_pbts",
+  ]
+  args = [
+    "./node_modules/.bin/tsc",
+    "--baseUrl",
+    rebase_path(target_gen_dir + "/node_modules", root_build_dir),
+    "--outDir",
+    rebase_path(out_dir, root_build_dir),
+    rebase_path(main_source, root_build_dir),
+  ]
+}
+
+run_node("run_pbjs") {
+  sources = [
+    "msg.proto",
+  ]
+  outputs = [
+    "$target_gen_dir/node_modules/deno_pb/msg.pb.js",
+  ]
+  args = [
+    "./node_modules/.bin/pbjs",
+    "--target=static-module",
+    "--wraper=commonjs",
+    "--out=" + rebase_path(outputs[0], root_build_dir),
+    rebase_path(sources[0], root_build_dir),
+  ]
+}
+
+run_node("run_pbts") {
+  sources = [
+    "$target_gen_dir/node_modules/deno_pb/msg.pb.js",
+  ]
+  outputs = [
+    "$target_gen_dir/node_modules/deno_pb/msg.pb.d.ts",
+  ]
+  args = [
+    "./node_modules/.bin/pbts",
+    "--out=" + rebase_path(outputs[0], root_build_dir),
+    rebase_path(sources[0], root_build_dir),
+  ]
+  deps = [
+    ":run_pbjs",
+  ]
 }
 
 # Template to generate different V8 snapshots based on different runtime flags.
@@ -145,9 +207,9 @@ template("create_snapshot") {
 
 # Generates $target_gen_dir/snapshot_deno.cc
 create_snapshot("deno") {
-  js = "$target_gen_dir/main.js"
+  js = "$target_gen_dir/bundle/main.js"
   deps = [
-    ":run_parcel",
+    ":bundle",
   ]
 }
 
