@@ -1,4 +1,5 @@
 TS_FILES = \
+	console.ts \
 	deno.d.ts \
 	deno.ts \
 	dispatch.ts \
