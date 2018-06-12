@@ -14,30 +14,27 @@ export function initNet() {
     sub("net", (payload: Uint8Array) => {
         const msg = pb.Msg.decode(payload);
         switch (msg.command) {
-            case pb.Msg.Command.NET_CONNECT_OK: {
+            case pb.Msg.Command.NET_SOCKET_CONNECT_OK: {
                 const s = sockets.get(msg.netSocketId);
                 s.onMsg(msg);
                 break;
             }
-            case pb.Msg.Command.NET_READ: {
+            case pb.Msg.Command.NET_SOCKET_READ: {
                 const s = sockets.get(msg.netSocketId);
                 s.onMsg(msg);
                 break;
             }
-            case pb.Msg.Command.NET_SERVER_CONN: {
-                const s = servers.get(msg.netServerId);
+            case pb.Msg.Command.NET_SERVER_CLIENT_CONN: {
+                const s = servers.get(msg.netServerClientConnServerId);
                 s.onMsg(msg);
                 break;
             }
-            case pb.Msg.Command.NET_SERVER_READ: {
-                const s = clients.get(msg.netClientId);
+            case pb.Msg.Command.NET_SERVER_CLIENT_READ: {
+                const s = clients.get(msg.netServerClientId);
                 s.onMsg(msg);
                 break;
             }
             default: {
-                const s = clients.get(1);
-                s.onMsg(msg);
-                break;
             }
         }
     });
@@ -55,9 +52,9 @@ export class NetSocket {
     connect(port: number, address: string, cb: () => void) {
         this.connectCb = cb;
         pubInternal("net", {
-            command: pb.Msg.Command.NET_CONNECT,
-            netAddr: address,
-            netPort: port
+            command: pb.Msg.Command.NET_SOCKET_CONNECT,
+            netSocketAddr: address,
+            netSocketPort: port
         });
     }
     write(data: Uint8Array | string) {
@@ -65,19 +62,19 @@ export class NetSocket {
             data = enc.encode(data);   
         }
         pubInternal("net",{
-            command: pb.Msg.Command.NET_WRITE,
+            command: pb.Msg.Command.NET_SOCKET_WRITE,
             netSocketId: this.id,
-            netData: data
+            netSocketData: data
         });
     }
     onData(cb: DataCb) {
         this.onDataCb = cb;
     }
     onMsg(msg: pb.Msg) {
-        if (msg.command === pb.Msg.Command.NET_CONNECT_OK) {
+        if (msg.command === pb.Msg.Command.NET_SOCKET_CONNECT_OK) {
             this.connectCb();
-        } else if ( msg.command === pb.Msg.Command.NET_READ) {
-            this.onDataCb(msg.netData);
+        } else if ( msg.command === pb.Msg.Command.NET_SOCKET_READ) {
+            this.onDataCb(msg.netSocketData);
         }
     }
 }
@@ -97,23 +94,23 @@ export class NetServerConn {
             data = enc.encode(data);   
         }
         pubInternal("net",{
-            command: pb.Msg.Command.NET_SERVER_WRITE,
-            netData: data,
-            netClientId: this.id
+            command: pb.Msg.Command.NET_SERVER_CLIENT_WRITE,
+            netServerClientData: data,
+            netServerClientId: this.id
         });
     }
     close() {
         pubInternal("net",{
-            command: pb.Msg.Command.NET_SERVER_CLOSE,
-            netClientId: this.id
+            command: pb.Msg.Command.NET_SERVER_CLIENT_CLOSE,
+            netServerClientId: this.id
         });
     }
     onData(cb: DataCb) {
         this.onDataCb = cb;
     }
     onMsg(msg: pb.Msg) {
-        if ( msg.command === pb.Msg.Command.NET_SERVER_READ) {
-            this.onDataCb(msg.netData);
+        if ( msg.command === pb.Msg.Command.NET_SERVER_CLIENT_READ) {
+            this.onDataCb(msg.netServerClientData);
         }
     }
   }
@@ -130,12 +127,18 @@ export class NetServer {
         pubInternal("net", {
             command: pb.Msg.Command.NET_SERVER_LISTEN,
             netServerId: this.id,
-            netPort: port
+            netServerPort: port
+        });
+    }
+    close() {
+        pubInternal("net", {
+            command: pb.Msg.Command.NET_SERVER_CLOSE,
+            netServerCloseServerId: this.id,
         });
     }
     private buildConn(msg: pb.Msg): NetServerConn {
-        const conn = new NetServerConn(msg.netClientId);
-        clients.set(msg.netClientId, conn);
+        const conn = new NetServerConn(msg.netServerClientId);
+        clients.set(msg.netServerClientId, conn);
         return conn;
     }
     onMsg(msg: pb.Msg) {

@@ -41,6 +41,7 @@ declare module "deno" {
     private connectCb: (conn: NetServerConn) => void;
     constructor(cb: (conn: NetServerConn) => void);
     listen(port): void;
+    close(): void;
     private buildConn(): NetServerConn;
     onMsg(msg: pb.Msg): void;
   }

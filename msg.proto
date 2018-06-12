@@ -25,15 +25,16 @@ message Msg {
     READ_FILE_SYNC = 11;
     READ_FILE_SYNC_RES = 12;
     WRITE_FILE_SYNC = 13;
-    NET_CONNECT = 14;
-    NET_CONNECT_OK = 15;
-    NET_READ = 16;
-    NET_WRITE = 17;
-    NET_SERVER_READ = 18;
-    NET_SERVER_WRITE = 19;
-    NET_SERVER_LISTEN = 20;
-    NET_SERVER_CONN = 21;
-    NET_SERVER_CLOSE = 22;
+    NET_SOCKET_CONNECT = 14;
+    NET_SOCKET_CONNECT_OK = 15;
+    NET_SOCKET_READ = 16;
+    NET_SOCKET_WRITE = 17;
+    NET_SERVER_LISTEN = 18;
+    NET_SERVER_CLOSE = 19;
+    NET_SERVER_CLIENT_CONN = 20;
+    NET_SERVER_CLIENT_READ = 21;
+    NET_SERVER_CLIENT_WRITE = 22;
+    NET_SERVER_CLIENT_CLOSE = 23;
   }
   Command command = 1;
 
@@ -109,10 +110,24 @@ message Msg {
   uint32 write_file_sync_perm = 132;
   // write_file_sync_perm specified by https://godoc.org/os#FileMode
 
-  int32 net_port = 133;
-  string net_addr = 134;
-  int32 net_socket_id = 135;
-  int32 net_server_id = 136;
-  int32 net_client_id = 137;
-  bytes net_data = 138;
+  // NET_SOCKET_CONNECT, NET_SOCKET_CONNECT_OK
+  int32 net_socket_id = 140;
+  int32 net_socket_port = 141;
+  string net_socket_addr = 142;
+
+  // NET_SOCKET_READ, NET_SOCKET_WRITE
+  bytes net_socket_data = 150;
+
+  // NET_SERVER_LISTEN
+  int32 net_server_id = 160;
+  int32 net_server_port = 161;
+  string net_server_addr = 162;
+
+  // NET_SERVER_CLOSE
+  int32 net_server_close_server_id = 170;
+
+  // NET_SERVER_CLIENT_CONN, NET_SERVER_CLIENT_READ, NET_SERVER_CLIENT_WRITE
+  int32 net_server_client_id = 180;
+  int32 net_server_client_conn_server_id = 181;
+  bytes net_server_client_data = 182;
 }

@@ -14,5 +14,3 @@ const server = createServer((conn: NetServerConn) => {
     });
 });
 server.listen(5001);
-
-setTimeout(() => {}, 50000);

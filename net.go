@@ -39,27 +39,39 @@ func getClientID() int32 {
 func newServer(msg *Msg) (err error) {
 	s := &server{
 		id:   msg.NetServerId,
-		addr: fmt.Sprintf(":%d", msg.NetPort),
+		addr: fmt.Sprintf(":%d", msg.NetServerPort),
 	}
 	s.listener, err = net.Listen("tcp", s.addr)
 	if err != nil {
 		return err
 	}
 	servers[msg.NetServerId] = s
-	go s.handleServer()
+	wg.Add(1)
+	go func() {
+		s.handleServer()
+		wg.Done()
+	}()
 	return nil
 }
 
+func netServerClose(msg *Msg) {
+	// TODO: implement server close
+	_, ok := servers[msg.NetServerCloseServerId]
+	if !ok {
+		panic("[net] Server not found")
+	}
+}
+
 func netClientWrite(msg *Msg) {
-	client, ok := clients[msg.NetClientId]
+	client, ok := clients[msg.NetServerClientId]
 	if !ok {
 		panic("[net] Client not found")
 	}
-	client.Write(msg.NetData)
+	client.Write(msg.NetServerClientData)
 }
 
 func netClientClose(msg *Msg) {
-	client, ok := clients[msg.NetClientId]
+	client, ok := clients[msg.NetServerClientId]
 	if !ok {
 		panic("[net] Client not found")
 	}
@@ -75,9 +87,9 @@ func (s *server) handleServer() {
 		clients[id] = conn
 
 		incomingMsg := &Msg{
-			Command:     Msg_NET_SERVER_CONN,
-			NetServerId: s.id,
-			NetClientId: id,
+			Command:           Msg_NET_SERVER_CLIENT_CONN,
+			NetServerId:       s.id,
+			NetServerClientId: id,
 		}
 		PubMsg(netChan, incomingMsg)
 		go s.handleClient(conn, id)
@@ -92,9 +104,9 @@ func (s *server) handleClient(conn net.Conn, id int32) {
 			break
 		}
 		readMsg := &Msg{
-			Command:     Msg_NET_SERVER_READ,
-			NetClientId: id,
-			NetData:     data,
+			Command:             Msg_NET_SERVER_CLIENT_READ,
+			NetServerClientId:   id,
+			NetServerClientData: data,
 		}
 		PubMsg(netChan, readMsg)
 	}
@@ -108,15 +120,17 @@ func InitNet() {
 		msg := &Msg{}
 		check(proto.Unmarshal(buf, msg))
 		switch msg.Command {
-		case Msg_NET_CONNECT:
+		case Msg_NET_SOCKET_CONNECT:
 			netSocketConnect(msg)
-		case Msg_NET_WRITE:
+		case Msg_NET_SOCKET_WRITE:
 			netSocketWrite(msg)
 		case Msg_NET_SERVER_LISTEN:
 			check(newServer(msg))
-		case Msg_NET_SERVER_WRITE:
-			netClientWrite(msg)
 		case Msg_NET_SERVER_CLOSE:
+			netServerClose(msg)
+		case Msg_NET_SERVER_CLIENT_WRITE:
+			netClientWrite(msg)
+		case Msg_NET_SERVER_CLIENT_CLOSE:
 			netClientClose(msg)
 		default:
 			panic("[net] Unexpected message " + string(buf))
@@ -126,7 +140,7 @@ func InitNet() {
 }
 
 func netSocketConnect(msg *Msg) {
-	addr := fmt.Sprintf("%s:%d", msg.NetAddr, msg.NetPort)
+	addr := fmt.Sprintf("%s:%d", msg.NetSocketAddr, msg.NetSocketPort)
 
 	// Establish the connection:
 	conn, err := net.Dial("tcp", addr)
@@ -136,9 +150,9 @@ func netSocketConnect(msg *Msg) {
 	sockets[msg.NetSocketId] = conn
 	go netSocketRead(msg.NetSocketId, conn)
 
-	// Send NET_CONNECT_OK notification:
+	// Send NET_SOCKET_CONNECT_OK notification:
 	okMsg := &Msg{
-		Command:     Msg_NET_CONNECT_OK,
+		Command:     Msg_NET_SOCKET_CONNECT_OK,
 		NetSocketId: msg.NetSocketId,
 	}
 	PubMsg(netChan, okMsg)
@@ -152,9 +166,9 @@ func netSocketRead(id int32, conn net.Conn) {
 			break
 		}
 		readMsg := &Msg{
-			Command:     Msg_NET_READ,
-			NetSocketId: id,
-			NetData:     data,
+			Command:       Msg_NET_SOCKET_READ,
+			NetSocketId:   id,
+			NetSocketData: data,
 		}
 		PubMsg(netChan, readMsg)
 	}
@@ -165,5 +179,5 @@ func netSocketWrite(msg *Msg) {
 	if !ok {
 		panic("[net] Socket not found")
 	}
-	conn.Write(msg.NetData)
+	conn.Write(msg.NetSocketData)
 }
