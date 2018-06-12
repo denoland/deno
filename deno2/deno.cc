@@ -199,6 +199,19 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   return true;
 }
 
+v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
+                                        void* data) {
+  assert(data == nullptr);  // TODO(ry) pass Deno* object here.
+  InternalFieldData* embedder_field = static_cast<InternalFieldData*>(
+      holder->GetAlignedPointerFromInternalField(index));
+  if (embedder_field == nullptr) return {nullptr, 0};
+  int size = sizeof(*embedder_field);
+  char* payload = new char[size];
+  // We simply use memcpy to serialize the content.
+  memcpy(payload, embedder_field, size);
+  return {payload, size};
+}
+
 v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
                              v8::StartupData* prev_snapshot_blob,
                              const char* js_filename, const char* js_source) {
@@ -232,7 +245,8 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
     bool r = Execute(context, js_filename, js_source);
     assert(r);
 
-    creator->SetDefaultContext(context);
+    creator->SetDefaultContext(context, v8::SerializeInternalFieldsCallback(
+                                            SerializeInternalFields, nullptr));
   }
 
   auto snapshot_blob =

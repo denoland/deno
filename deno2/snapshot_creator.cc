@@ -1,5 +1,6 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
+// Hint: --trace_serializer is a useful debugging flag.
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -125,6 +126,8 @@ int main(int argc, char** argv) {
   const char* snapshot_in_bin = argv[3];
   const char* natives_out_cc = argv[4];
   const char* snapshot_out_cc = argv[5];
+
+  v8::V8::SetFlagsFromCommandLine(&argc, argv, true);
 
   auto js_data = ReadFile(js_fn);
   auto natives_blob = ReadFile(natives_in_bin);

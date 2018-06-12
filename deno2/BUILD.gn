@@ -98,7 +98,7 @@ run_node("bundle") {
 run_node("run_tsc") {
   main_source = "js/main.ts"
   sources = [
-    "js/msg.pb.d.ts",
+    #"js/msg.pb.d.ts",
     "js/msg.pb.js",
     "js/tsconfig.json",
     main_source,
@@ -178,6 +178,9 @@ template("create_snapshot") {
       rebase_path(natives_out_cc, root_build_dir),
       rebase_path(snapshot_out_cc, root_build_dir),
     ]
+
+    # To debug snapshotting problems:
+    #  args += ["--trace-serializer"]
     data = [
       invoker.js,
     ]

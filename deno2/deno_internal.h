@@ -21,6 +21,10 @@ struct deno_s {
 
 namespace deno {
 
+struct InternalFieldData {
+  uint32_t data;
+};
+
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Sub(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Pub(const v8::FunctionCallbackInfo<v8::Value>& args);

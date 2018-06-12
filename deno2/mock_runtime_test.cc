@@ -85,6 +85,12 @@ TEST(MockRuntimeTest, DoubleSubFails) {
   deno_delete(d);
 }
 
+TEST(MockRuntimeTest, TypedArraySnapshots) {
+  Deno* d = deno_new(NULL, NULL);
+  EXPECT_TRUE(deno_execute(d, "a.js", "TypedArraySnapshots()"));
+  deno_delete(d);
+}
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   deno_init();

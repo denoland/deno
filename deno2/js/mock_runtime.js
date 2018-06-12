@@ -15,6 +15,17 @@ function CanCallFunction() {
   return "foo";
 }
 
+// This object is created to test snapshotting.
+// See DeserializeInternalFieldsCallback and SerializeInternalFieldsCallback.
+const snapshotted = new Uint8Array([1, 3, 3, 7]);
+
+function TypedArraySnapshots() {
+  assert(snapshotted[0] === 1);
+  assert(snapshotted[1] === 3);
+  assert(snapshotted[2] === 3);
+  assert(snapshotted[3] === 7);
+}
+
 function PubSuccess() {
   denoSub((channel, msg) => {
     assert(channel === "PubSuccess");

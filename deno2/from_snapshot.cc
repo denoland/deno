@@ -21,12 +21,28 @@ namespace deno {
 #include "snapshot_deno.cc"
 #endif
 
+std::vector<InternalFieldData*> deserialized_data;
+
+void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
+                               v8::StartupData payload, void* data) {
+  assert(data == nullptr);  // TODO(ry) pass Deno* object here.
+  if (payload.raw_size == 0) {
+    holder->SetAlignedPointerInInternalField(index, nullptr);
+    return;
+  }
+  InternalFieldData* embedder_field = new InternalFieldData{0};
+  memcpy(embedder_field, payload.data, payload.raw_size);
+  holder->SetAlignedPointerInInternalField(index, embedder_field);
+  deserialized_data.push_back(embedder_field);
+}
+
 Deno* NewFromSnapshot(void* data, deno_sub_cb cb) {
   auto natives_blob = *StartupBlob_natives();
   auto snapshot_blob = *StartupBlob_snapshot();
 
   v8::V8::SetNativesDataBlob(&natives_blob);
   v8::V8::SetSnapshotDataBlob(&snapshot_blob);
+  v8::DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr);
 
   Deno* d = new Deno;
   d->cb = cb;
@@ -42,7 +58,11 @@ Deno* NewFromSnapshot(void* data, deno_sub_cb cb) {
   v8::Isolate::Scope isolate_scope(isolate);
   {
     v8::HandleScope handle_scope(isolate);
-    auto context = v8::Context::New(isolate);
+    auto context =
+        v8::Context::New(isolate, nullptr, v8::MaybeLocal<v8::ObjectTemplate>(),
+                         v8::MaybeLocal<v8::Value>(),
+                         v8::DeserializeInternalFieldsCallback(
+                             DeserializeInternalFields, nullptr));
     d->context.Reset(d->isolate, context);
   }
 
