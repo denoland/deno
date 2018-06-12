@@ -130,12 +130,14 @@ int main(int argc, char** argv) {
   v8::V8::SetFlagsFromCommandLine(&argc, argv, true);
 
   auto js_data = ReadFile(js_fn);
+  // Ensure js_source is null-terminated.
+  std::string js_source(js_data.data, js_data.raw_size);
   auto natives_blob = ReadFile(natives_in_bin);
   auto snapshot_in_blob = ReadFile(snapshot_in_bin);
 
   deno_init();
   auto snapshot_blob =
-      deno::MakeSnapshot(&natives_blob, &snapshot_in_blob, js_fn, js_data.data);
+      deno::MakeSnapshot(&natives_blob, &snapshot_in_blob, js_fn, js_source.c_str());
 
   StartupDataCppWriter nativesWriter("natives", natives_out_cc, natives_blob);
   nativesWriter.Write();

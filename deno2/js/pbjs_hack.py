@@ -11,9 +11,9 @@ import os
 
 js_path = os.path.dirname(os.path.realpath(__file__))
 #bin_path = os.path.join(js_path, "deno_protobufjs", "bin")
-bin_path = os.path.join(js_path, "node_modules", ".bin")
-pbjs_bin = os.path.join(bin_path, "pbjs")
-pbts_bin = os.path.join(bin_path, "pbts")
+pbjs_path = os.path.join(js_path, "node_modules", "protobufjs", "bin")
+pbjs_bin = os.path.join(pbjs_path, "pbjs")
+pbts_bin = os.path.join(pbjs_path, "pbts")
 msg_pbjs_out = os.path.join(js_path, "msg.pb.js")
 msg_pbts_out = os.path.join(js_path, "msg.pb.d.ts")
 assert os.path.exists(pbjs_bin)
@@ -29,10 +29,11 @@ def touch(fname):
     open(fname, 'a').close()
 
 subprocess.check_call([
+  "node",
   pbjs_bin,
   #"--dependency=./deno_protobufjs/minimal",
   "--target=static-module",
-  "--wraper=commonjs",
+  "--wrapper=commonjs",
   "--out=" + msg_pbjs_out,
   proto_in
 ])

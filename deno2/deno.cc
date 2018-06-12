@@ -243,7 +243,7 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
     CHECK(global->Set(context, deno::v8_str("denoPub"), pub_val).FromJust());
 
     bool r = Execute(context, js_filename, js_source);
-    assert(r);
+    CHECK(r);
 
     creator->SetDefaultContext(context, v8::SerializeInternalFieldsCallback(
                                             SerializeInternalFields, nullptr));

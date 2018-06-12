@@ -88,7 +88,7 @@ run_node("bundle") {
     ":run_tsc",
   ]
   args = [
-    "./node_modules/.bin/browserify",
+    "./node_modules/browserify/bin/cmd.js",
     rebase_path(main_source, root_build_dir),
     "-o",
     rebase_path(main_output, root_build_dir),
@@ -112,7 +112,7 @@ run_node("run_tsc") {
     ":pbjs_hack",
   ]
   args = [
-    "./node_modules/.bin/tsc",
+    "./node_modules/typescript/bin/tsc",
     "-p",
     rebase_path("js/tsconfig.json", root_build_dir),
     "--outDir",
