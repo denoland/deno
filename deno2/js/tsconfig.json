@@ -6,7 +6,6 @@
     "sourceMap": true,
     "removeComments": true,
     "preserveConstEnums": true,
-    "declaration": true,
     "target": "es2017",
     "noImplicitReturns": true,
     "pretty": true,
@@ -14,6 +13,6 @@
     "allowUnreachableCode": false,
     "experimentalDecorators": true
   },
-  "include": ["*.ts", "*.js"],
-  "exclude": ["tests.ts"]
+  "include": ["**/*.ts", "**/*.js"],
+  "exclude": ["mock_runtime.js", "node_modules"]
 }

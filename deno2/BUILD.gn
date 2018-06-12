@@ -114,11 +114,12 @@ run_node("run_tsc") {
   ]
   args = [
     "./node_modules/.bin/tsc",
+    "-p",
+    rebase_path("js/tsconfig.json", root_build_dir),
     "--baseUrl",
     rebase_path(target_gen_dir + "/node_modules", root_build_dir),
     "--outDir",
     rebase_path(out_dir, root_build_dir),
-    rebase_path(main_source, root_build_dir),
   ]
 }
 
