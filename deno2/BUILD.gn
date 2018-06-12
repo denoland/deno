@@ -98,8 +98,8 @@ run_node("bundle") {
 run_node("run_tsc") {
   main_source = "js/main.ts"
   sources = [
-    "$target_gen_dir/node_modules/deno_pb/msg.pb.d.ts",
-    "$target_gen_dir/node_modules/deno_pb/msg.pb.js",
+    "js/msg.pb.d.ts",
+    "js/msg.pb.js",
     "js/tsconfig.json",
     main_source,
   ]
@@ -109,50 +109,28 @@ run_node("run_tsc") {
     out_dir + "/main.map",
   ]
   deps = [
-    ":run_pbjs",
-    ":run_pbts",
+    ":pbjs_hack",
   ]
   args = [
     "./node_modules/.bin/tsc",
     "-p",
     rebase_path("js/tsconfig.json", root_build_dir),
-    "--baseUrl",
-    rebase_path(target_gen_dir + "/node_modules", root_build_dir),
     "--outDir",
     rebase_path(out_dir, root_build_dir),
   ]
 }
 
-run_node("run_pbjs") {
+action("pbjs_hack") {
+  script = "js/pbjs_hack.py"
   sources = [
     "msg.proto",
   ]
   outputs = [
-    "$target_gen_dir/node_modules/deno_pb/msg.pb.js",
+    "$target_gen_dir/pbjs_hack.stamp",
   ]
   args = [
-    "./node_modules/.bin/pbjs",
-    "--target=static-module",
-    "--wraper=commonjs",
-    "--out=" + rebase_path(outputs[0], root_build_dir),
     rebase_path(sources[0], root_build_dir),
-  ]
-}
-
-run_node("run_pbts") {
-  sources = [
-    "$target_gen_dir/node_modules/deno_pb/msg.pb.js",
-  ]
-  outputs = [
-    "$target_gen_dir/node_modules/deno_pb/msg.pb.d.ts",
-  ]
-  args = [
-    "./node_modules/.bin/pbts",
-    "--out=" + rebase_path(outputs[0], root_build_dir),
-    rebase_path(sources[0], root_build_dir),
-  ]
-  deps = [
-    ":run_pbjs",
+    rebase_path(outputs[0], root_build_dir),
   ]
 }
 
