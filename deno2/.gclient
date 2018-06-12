@@ -11,7 +11,6 @@ solutions = [{
         'v8/testing/gmock': None,
         'v8/tools/swarming_client': None,
         'v8/third_party/instrumented_libraries': None,
-        'v8/tools/gyp': None,
         'v8/third_party/android_tools': None,
         'v8/test/wasm-js': None,
         'v8/test/benchmarks/data': None,
