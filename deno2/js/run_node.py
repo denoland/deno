@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """
-gn can only run python scripts.
+gn can only run python scripts. This launches a subprocess Node process.
+The working dir of this program is out/Debug/ (AKA root_build_dir)
+Before running node, we symlink js/node_modules to out/Debug/node_modules.
 """
 import subprocess
 import sys
@@ -23,7 +25,6 @@ def symlink(target, name, target_is_dir=False):
 js_path = os.path.dirname(os.path.realpath(__file__))
 node_modules_path = os.path.join(js_path, "node_modules")
 
-# root_out_dir
 if not os.path.exists("node_modules"):
   symlink(node_modules_path, "node_modules", True)
 

@@ -1,16 +1,21 @@
 #!/usr/bin/env python
 """
 gn can only run python scripts.
-protobuf.js must generate some javascript files.
-it's very difficult to get this into the gn build sanely.
-therefore we write them into the source directory.
+
+Generates protobufjs code.
 """
 import subprocess
 import sys
 import os
+# TODO(ry) Ideally protobufjs output files should be written into
+# target_gen_dir, but its difficult to get this working in a way that parcel can
+# resolve their location. (Parcel does not support NODE_PATH.) Therefore this
+# hack: write the generated msg.pb.js and msg.pb.d.ts outputs into the js/
+# folder, and we check them into the repo. Hopefully this hack can be removed at
+# some point. If msg.proto is changed, commit changes to the generated JS
+# files.
 
 js_path = os.path.dirname(os.path.realpath(__file__))
-#bin_path = os.path.join(js_path, "deno_protobufjs", "bin")
 pbjs_path = os.path.join(js_path, "node_modules", "protobufjs", "bin")
 pbjs_bin = os.path.join(pbjs_path, "pbjs")
 pbts_bin = os.path.join(pbjs_path, "pbts")
@@ -31,7 +36,6 @@ def touch(fname):
 subprocess.check_call([
   "node",
   pbjs_bin,
-  #"--dependency=./deno_protobufjs/minimal",
   "--target=static-module",
   "--wrapper=commonjs",
   "--out=" + msg_pbjs_out,

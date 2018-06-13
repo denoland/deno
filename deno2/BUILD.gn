@@ -76,51 +76,64 @@ template("run_node") {
 }
 
 run_node("bundle") {
-  main_source = "$target_gen_dir/tsc_dist/main.js"
-  main_output = "$target_gen_dir/bundle/main.js"
+  out_dir = "$target_gen_dir/bundle/"
   sources = [
-    main_source,
+    "$target_gen_dir/tsc_dist/main.js",  # Not real input. See run_tsc comment.
+    "js/main.ts",
   ]
   outputs = [
-    main_output,
+    out_dir + "main.js",
   ]
   deps = [
     ":run_tsc",
   ]
   args = [
-    "./node_modules/browserify/bin/cmd.js",
-    rebase_path(main_source, root_build_dir),
-    "-o",
-    rebase_path(main_output, root_build_dir),
+    "./node_modules/parcel-bundler/bin/cli.js",
+    "build",
+    "--no-minify",
+    "--out-dir",
+    rebase_path(out_dir, root_build_dir),
+    rebase_path("js/main.ts", root_build_dir),
   ]
 }
 
+# Due to bugs in Parcel we must run TSC independently in order to catch errors.
+# https://github.com/parcel-bundler/parcel/issues/954
 run_node("run_tsc") {
-  main_source = "js/main.ts"
+  main = "js/main.ts"
+  tsconfig = "js/tsconfig.json"
+  out_dir = "$target_gen_dir/tsc_dist/"
   sources = [
-    #"js/msg.pb.d.ts",
+    "js/msg.pb.d.ts",
     "js/msg.pb.js",
-    "js/tsconfig.json",
-    main_source,
+    main,
+    tsconfig,
   ]
-  out_dir = "$target_gen_dir/tsc_dist"
   outputs = [
     out_dir + "/main.js",
     out_dir + "/main.map",
   ]
   deps = [
-    ":pbjs_hack",
+    ":protobufjs",
   ]
   args = [
     "./node_modules/typescript/bin/tsc",
-    "-p",
-    rebase_path("js/tsconfig.json", root_build_dir),
+    "--project",
+    rebase_path(tsconfig, root_build_dir),
     "--outDir",
     rebase_path(out_dir, root_build_dir),
   ]
 }
 
-action("pbjs_hack") {
+# Generates protobufjs code.
+# TODO(ry) Ideally protobufjs output files should be written into
+# target_gen_dir, but its difficult to get this working in a way that the
+# bundler can resolve their location. (The bundler does not support NODE_PATH?)
+# Therefore this hack: write the generated msg.pb.js and msg.pb.d.ts outputs
+# into the js/ folder, and we check them into the repo. Hopefully this hack can
+# be removed at some point. If msg.proto is changed, commit changes to the
+# generated JS files. The stamp file is just to make gn work.
+action("protobufjs") {
   script = "js/pbjs_hack.py"
   sources = [
     "msg.proto",
