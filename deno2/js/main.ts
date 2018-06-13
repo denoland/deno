@@ -20,7 +20,13 @@ window["denoMain"] = () => {
     startMainJs: mainJs,
     startMainMap: mainMap
   } = msg;
+
   denoPrint(`cwd: ${cwd}`);
+  denoPrint(`debugFlag: ${debugFlag}`);
+
+  for (let i = 0; i < argv.length; i++) {
+    denoPrint(`argv[${i}] ${argv[i]}`);
+  }
 };
 
 function typedArrayToArrayBuffer(ta: Uint8Array): ArrayBuffer {
