@@ -1,6 +1,6 @@
 /main.js:[WILDCARD]
-                throw _iteratorError;
-                ^
+                    throw _iteratorError;
+                    ^
 Error: bad
     at foo ([WILDCARD]testdata/error.ts:2:9)
     at bar ([WILDCARD]testdata/error.ts:6:3)
@@ -8,3 +8,5 @@ Error: bad
     at Object.eval [as globalEval] (<anonymous>)
     at execute (../runtime.ts:[WILDCARD])
     at FileModule.compileAndRun (../runtime.ts:[WILDCARD]
+    at ../main.ts:[WILDCARD]
+    at ../dispatch.ts:[WILDCARD]

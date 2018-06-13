@@ -3,11 +3,11 @@
 // This allows us to have async/await in our code. It must be loaded first.
 import "babel-polyfill";
 
-import * as dispatch from "./dispatch";
+import { sub, recvMessage } from "./dispatch";
 import { main as pb } from "./msg.pb";
 
 import * as runtime from "./runtime";
-import * as util from "./util";
+import { log, onceStrict } from "./util";
 
 import { initTimers } from "./timers";
 import { initFetch } from "./fetch";
@@ -15,7 +15,6 @@ import { initFetch } from "./fetch";
 // To control internal logging output
 // Set with the -debug command-line flag.
 export let debug = false;
-let startCalled = false;
 
 // denoMain is needed to allow hooks into the system.
 // Also eventual snapshot support needs it.
@@ -26,29 +25,26 @@ let startCalled = false;
 
   initTimers();
   initFetch();
+  recvMessage();
 
-  dispatch.sub("start", (payload: Uint8Array) => {
-    if (startCalled) {
-      throw Error("start message received more than once!");
-    }
-    startCalled = true;
+  sub("start", onceStrict((payload: Uint8Array) => {
+      const msg = pb.Msg.decode(payload);
+      const {
+        startCwd: cwd,
+        startArgv: argv,
+        startDebugFlag: debugFlag,
+        startMainJs: mainJs,
+        startMainMap: mainMap
+      } = msg;
 
-    const msg = pb.Msg.decode(payload);
-    const {
-      startCwd: cwd,
-      startArgv: argv,
-      startDebugFlag: debugFlag,
-      startMainJs: mainJs,
-      startMainMap: mainMap
-    } = msg;
+      debug = debugFlag;
+      log("start", { cwd, argv, debugFlag });
 
-    debug = debugFlag;
-    util.log("start", { cwd, argv, debugFlag });
+      runtime.setup(mainJs, mainMap);
 
-    runtime.setup(mainJs, mainMap);
-
-    const inputFn = argv[0];
-    const mod = runtime.resolveModule(inputFn, `${cwd}/`);
-    mod.compileAndRun();
-  });
+      const inputFn = argv[0];
+      const mod = runtime.resolveModule(inputFn, `${cwd}/`);
+      mod.compileAndRun();
+    })
+  );
 };
