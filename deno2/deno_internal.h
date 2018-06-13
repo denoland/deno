@@ -34,6 +34,9 @@ static intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
 
 Deno* NewFromSnapshot(void* data, deno_sub_cb cb);
 
+void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                       const char* js_filename, const char* js_source);
+
 v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
                              v8::StartupData* prev_snapshot_blob,
                              const char* js_filename, const char* js_source);
