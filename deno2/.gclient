@@ -1,8 +1,5 @@
 solutions = [{
     'url': 'https://chromium.googlesource.com/v8/v8.git@2530a044126ae6a1d3dff0d8c61999762847d9f0',
-    'custom_vars': {
-        'build_for_node': True
-    },
     'name': 'v8',
     'deps_file': 'DEPS',
     'custom_deps': {
@@ -23,7 +20,6 @@ solutions = [{
 }, {
     'url': 'https://github.com/ry/protobuf_chromium.git@e62249df45c2a0a9c38e4017e8ab604020b986c5',
     'name': 'third_party/protobuf',
-    'deps_file': 'DEPS'
 }, {
     'url':
     'https://chromium.googlesource.com/chromium/src/tools/protoc_wrapper@9af82fef8cb9ca3ccc13e2ed958f58f2c21f449b',
