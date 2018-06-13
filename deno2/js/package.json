@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "parcel-bundler": "^1.8.1",
+    "protobufjs": "^6.8.6",
+    "typescript": "^2.9.1"
+  }
+}

@@ -4,5 +4,5 @@ dist/
 deno
 assets.go
 msg.pb.go
-msg.pb.js
-msg.pb.d.ts
+/msg.pb.js
+/msg.pb.d.ts
