@@ -154,15 +154,12 @@ void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
       const_cast<const char*>(reinterpret_cast<char*>(contents.Data()));
   deno_buf buf{data, contents.ByteLength()};
 
-  auto retbuf = d->cb(d, channel, buf);
-  if (retbuf.data) {
-    // TODO(ry) Support zero-copy.
-    auto ab = v8::ArrayBuffer::New(d->isolate, retbuf.len);
-    memcpy(ab->GetContents().Data(), retbuf.data, retbuf.len);
-    args.GetReturnValue().Set(handle_scope.Escape(ab));
-  } else {
-    args.GetReturnValue().Set(v8::Null(d->isolate));
-  }
+  assert(d->currentArgs == nullptr);
+  d->currentArgs = &args;
+
+  d->cb(d, channel, buf);
+
+  d->currentArgs = nullptr;
 }
 
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
@@ -332,6 +329,13 @@ bool deno_pub(Deno* d, const char* channel, deno_buf buf) {
   }
 
   return true;
+}
+
+void deno_set_response(Deno* d, deno_buf buf) {
+  // TODO(ry) Support zero-copy.
+  auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
+  memcpy(ab->GetContents().Data(), buf.data, buf.len);
+  d->currentArgs->GetReturnValue().Set(ab);
 }
 
 void deno_delete(Deno* d) {

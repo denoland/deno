@@ -11,6 +11,7 @@ extern "C" {
 // deno_s = Wrapped Isolate.
 struct deno_s {
   v8::Isolate* isolate;
+  const v8::FunctionCallbackInfo<v8::Value>* currentArgs;
   std::string last_exception;
   v8::Persistent<v8::Function> sub;
   v8::Persistent<v8::Context> context;

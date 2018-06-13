@@ -8,6 +8,8 @@ executable("deno") {
   ]
   deps = [
     ":libdeno",
+    ":msg_proto",
+    "//third_party/protobuf:protoc_lib",
   ]
 }
 
@@ -45,7 +47,6 @@ source_set("deno_nosnapshot") {
   ]
   include_dirs = [ "include/" ]
   deps = [
-    ":msg_proto",
     "v8:v8",
     "v8:v8_libbase",
     "v8:v8_libplatform",
@@ -66,6 +67,7 @@ proto_library("msg_proto") {
   sources = [
     "msg.proto",
   ]
+  generate_python = false
 }
 
 template("run_node") {
@@ -78,13 +80,15 @@ template("run_node") {
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
-    "$target_gen_dir/tsc_dist/main.js",  # Not real input. See run_tsc comment.
     "js/main.ts",
+    "js/msg.pb.d.ts",
+    "js/msg.pb.js",
   ]
   outputs = [
     out_dir + "main.js",
   ]
   deps = [
+    ":protobufjs",
     ":run_tsc",
   ]
   args = [
@@ -111,7 +115,6 @@ run_node("run_tsc") {
   ]
   outputs = [
     out_dir + "/main.js",
-    out_dir + "/main.map",
   ]
   deps = [
     ":protobufjs",

@@ -136,8 +136,8 @@ int main(int argc, char** argv) {
   auto snapshot_in_blob = ReadFile(snapshot_in_bin);
 
   deno_init();
-  auto snapshot_blob =
-      deno::MakeSnapshot(&natives_blob, &snapshot_in_blob, js_fn, js_source.c_str());
+  auto snapshot_blob = deno::MakeSnapshot(&natives_blob, &snapshot_in_blob,
+                                          js_fn, js_source.c_str());
 
   StartupDataCppWriter nativesWriter("natives", natives_out_cc, natives_blob);
   nativesWriter.Write();
