@@ -19,8 +19,7 @@ typedef struct deno_s Deno;
 
 // A callback to receive a message from deno_pub javascript call.
 // buf is valid only for the lifetime of the call.
-// The returned deno_buf is returned from deno_pub in javascript.
-typedef deno_buf (*deno_sub_cb)(Deno* d, const char* channel, deno_buf buf);
+typedef void (*deno_sub_cb)(Deno* d, const char* channel, deno_buf buf);
 
 void deno_init();
 const char* deno_v8_version();
@@ -36,6 +35,11 @@ bool deno_execute(Deno* d, const char* js_filename, const char* js_source);
 // Routes message to the javascript callback set with deno_sub(). A false return
 // value indicates error. Check deno_last_exception() for exception text.
 bool deno_pub(Deno* d, const char* channel, deno_buf buf);
+
+// Call this inside a deno_sub_cb to respond synchronously to messages.
+// If this is not called during the life time of a deno_sub_cb callback
+// the denoPub() call in javascript will return null.
+void deno_set_response(Deno* d, deno_buf buf);
 
 const char* deno_last_exception(Deno* d);
 

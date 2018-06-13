@@ -45,6 +45,7 @@ Deno* NewFromSnapshot(void* data, deno_sub_cb cb) {
   v8::DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr);
 
   Deno* d = new Deno;
+  d->currentArgs = nullptr;
   d->cb = cb;
   d->data = data;
   v8::Isolate::CreateParams params;
