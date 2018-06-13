@@ -1,7 +1,7 @@
 import * as $protobuf from "protobufjs";
 
-/** Namespace main. */
-export namespace main {
+/** Namespace deno. */
+export namespace deno {
 
     /** Properties of a BaseMsg. */
     interface IBaseMsg {
@@ -20,7 +20,7 @@ export namespace main {
          * Constructs a new BaseMsg.
          * @param [properties] Properties to set
          */
-        constructor(properties?: main.IBaseMsg);
+        constructor(properties?: deno.IBaseMsg);
 
         /** BaseMsg channel. */
         public channel: string;
@@ -33,23 +33,23 @@ export namespace main {
          * @param [properties] Properties to set
          * @returns BaseMsg instance
          */
-        public static create(properties?: main.IBaseMsg): main.BaseMsg;
+        public static create(properties?: deno.IBaseMsg): deno.BaseMsg;
 
         /**
-         * Encodes the specified BaseMsg message. Does not implicitly {@link main.BaseMsg.verify|verify} messages.
+         * Encodes the specified BaseMsg message. Does not implicitly {@link deno.BaseMsg.verify|verify} messages.
          * @param message BaseMsg message or plain object to encode
          * @param [writer] Writer to encode to
          * @returns Writer
          */
-        public static encode(message: main.IBaseMsg, writer?: $protobuf.Writer): $protobuf.Writer;
+        public static encode(message: deno.IBaseMsg, writer?: $protobuf.Writer): $protobuf.Writer;
 
         /**
-         * Encodes the specified BaseMsg message, length delimited. Does not implicitly {@link main.BaseMsg.verify|verify} messages.
+         * Encodes the specified BaseMsg message, length delimited. Does not implicitly {@link deno.BaseMsg.verify|verify} messages.
          * @param message BaseMsg message or plain object to encode
          * @param [writer] Writer to encode to
          * @returns Writer
          */
-        public static encodeDelimited(message: main.IBaseMsg, writer?: $protobuf.Writer): $protobuf.Writer;
+        public static encodeDelimited(message: deno.IBaseMsg, writer?: $protobuf.Writer): $protobuf.Writer;
 
         /**
          * Decodes a BaseMsg message from the specified reader or buffer.
@@ -59,7 +59,7 @@ export namespace main {
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): main.BaseMsg;
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): deno.BaseMsg;
 
         /**
          * Decodes a BaseMsg message from the specified reader or buffer, length delimited.
@@ -68,7 +68,7 @@ export namespace main {
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): main.BaseMsg;
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): deno.BaseMsg;
 
         /**
          * Verifies a BaseMsg message.
@@ -82,7 +82,7 @@ export namespace main {
          * @param object Plain object
          * @returns BaseMsg
          */
-        public static fromObject(object: { [k: string]: any }): main.BaseMsg;
+        public static fromObject(object: { [k: string]: any }): deno.BaseMsg;
 
         /**
          * Creates a plain object from a BaseMsg message. Also converts values to other types if specified.
@@ -90,7 +90,7 @@ export namespace main {
          * @param [options] Conversion options
          * @returns Plain object
          */
-        public static toObject(message: main.BaseMsg, options?: $protobuf.IConversionOptions): { [k: string]: any };
+        public static toObject(message: deno.BaseMsg, options?: $protobuf.IConversionOptions): { [k: string]: any };
 
         /**
          * Converts this BaseMsg to JSON.
@@ -103,7 +103,7 @@ export namespace main {
     interface IMsg {
 
         /** Msg command */
-        command?: (main.Msg.Command|null);
+        command?: (deno.Msg.Command|null);
 
         /** Msg error */
         error?: (string|null);
@@ -212,10 +212,10 @@ export namespace main {
          * Constructs a new Msg.
          * @param [properties] Properties to set
          */
-        constructor(properties?: main.IMsg);
+        constructor(properties?: deno.IMsg);
 
         /** Msg command. */
-        public command: main.Msg.Command;
+        public command: deno.Msg.Command;
 
         /** Msg error. */
         public error: string;
@@ -321,23 +321,23 @@ export namespace main {
          * @param [properties] Properties to set
          * @returns Msg instance
          */
-        public static create(properties?: main.IMsg): main.Msg;
+        public static create(properties?: deno.IMsg): deno.Msg;
 
         /**
-         * Encodes the specified Msg message. Does not implicitly {@link main.Msg.verify|verify} messages.
+         * Encodes the specified Msg message. Does not implicitly {@link deno.Msg.verify|verify} messages.
          * @param message Msg message or plain object to encode
          * @param [writer] Writer to encode to
          * @returns Writer
          */
-        public static encode(message: main.IMsg, writer?: $protobuf.Writer): $protobuf.Writer;
+        public static encode(message: deno.IMsg, writer?: $protobuf.Writer): $protobuf.Writer;
 
         /**
-         * Encodes the specified Msg message, length delimited. Does not implicitly {@link main.Msg.verify|verify} messages.
+         * Encodes the specified Msg message, length delimited. Does not implicitly {@link deno.Msg.verify|verify} messages.
          * @param message Msg message or plain object to encode
          * @param [writer] Writer to encode to
          * @returns Writer
          */
-        public static encodeDelimited(message: main.IMsg, writer?: $protobuf.Writer): $protobuf.Writer;
+        public static encodeDelimited(message: deno.IMsg, writer?: $protobuf.Writer): $protobuf.Writer;
 
         /**
          * Decodes a Msg message from the specified reader or buffer.
@@ -347,7 +347,7 @@ export namespace main {
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): main.Msg;
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): deno.Msg;
 
         /**
          * Decodes a Msg message from the specified reader or buffer, length delimited.
@@ -356,7 +356,7 @@ export namespace main {
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): main.Msg;
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): deno.Msg;
 
         /**
          * Verifies a Msg message.
@@ -370,7 +370,7 @@ export namespace main {
          * @param object Plain object
          * @returns Msg
          */
-        public static fromObject(object: { [k: string]: any }): main.Msg;
+        public static fromObject(object: { [k: string]: any }): deno.Msg;
 
         /**
          * Creates a plain object from a Msg message. Also converts values to other types if specified.
@@ -378,7 +378,7 @@ export namespace main {
          * @param [options] Conversion options
          * @returns Plain object
          */
-        public static toObject(message: main.Msg, options?: $protobuf.IConversionOptions): { [k: string]: any };
+        public static toObject(message: deno.Msg, options?: $protobuf.IConversionOptions): { [k: string]: any };
 
         /**
          * Converts this Msg to JSON.

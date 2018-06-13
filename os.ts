@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 import { ModuleInfo } from "./types";
 import { pubInternal } from "./dispatch";
-import { main as pb } from "./msg.pb";
+import { deno as pb } from "./msg.pb";
 import { assert } from "./util";
 
 export function exit(exitCode = 0): void {

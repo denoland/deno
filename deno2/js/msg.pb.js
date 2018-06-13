@@ -16,20 +16,20 @@
     // Exported root namespace
     var $root = $protobuf.roots["default"] || ($protobuf.roots["default"] = {});
     
-    $root.main = (function() {
+    $root.deno = (function() {
     
         /**
-         * Namespace main.
-         * @exports main
+         * Namespace deno.
+         * @exports deno
          * @namespace
          */
-        var main = {};
+        var deno = {};
     
-        main.BaseMsg = (function() {
+        deno.BaseMsg = (function() {
     
             /**
              * Properties of a BaseMsg.
-             * @memberof main
+             * @memberof deno
              * @interface IBaseMsg
              * @property {string|null} [channel] BaseMsg channel
              * @property {Uint8Array|null} [payload] BaseMsg payload
@@ -37,11 +37,11 @@
     
             /**
              * Constructs a new BaseMsg.
-             * @memberof main
+             * @memberof deno
              * @classdesc Represents a BaseMsg.
              * @implements IBaseMsg
              * @constructor
-             * @param {main.IBaseMsg=} [properties] Properties to set
+             * @param {deno.IBaseMsg=} [properties] Properties to set
              */
             function BaseMsg(properties) {
                 if (properties)
@@ -53,7 +53,7 @@
             /**
              * BaseMsg channel.
              * @member {string} channel
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @instance
              */
             BaseMsg.prototype.channel = "";
@@ -61,7 +61,7 @@
             /**
              * BaseMsg payload.
              * @member {Uint8Array} payload
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @instance
              */
             BaseMsg.prototype.payload = $util.newBuffer([]);
@@ -69,21 +69,21 @@
             /**
              * Creates a new BaseMsg instance using the specified properties.
              * @function create
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @static
-             * @param {main.IBaseMsg=} [properties] Properties to set
-             * @returns {main.BaseMsg} BaseMsg instance
+             * @param {deno.IBaseMsg=} [properties] Properties to set
+             * @returns {deno.BaseMsg} BaseMsg instance
              */
             BaseMsg.create = function create(properties) {
                 return new BaseMsg(properties);
             };
     
             /**
-             * Encodes the specified BaseMsg message. Does not implicitly {@link main.BaseMsg.verify|verify} messages.
+             * Encodes the specified BaseMsg message. Does not implicitly {@link deno.BaseMsg.verify|verify} messages.
              * @function encode
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @static
-             * @param {main.IBaseMsg} message BaseMsg message or plain object to encode
+             * @param {deno.IBaseMsg} message BaseMsg message or plain object to encode
              * @param {$protobuf.Writer} [writer] Writer to encode to
              * @returns {$protobuf.Writer} Writer
              */
@@ -98,11 +98,11 @@
             };
     
             /**
-             * Encodes the specified BaseMsg message, length delimited. Does not implicitly {@link main.BaseMsg.verify|verify} messages.
+             * Encodes the specified BaseMsg message, length delimited. Does not implicitly {@link deno.BaseMsg.verify|verify} messages.
              * @function encodeDelimited
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @static
-             * @param {main.IBaseMsg} message BaseMsg message or plain object to encode
+             * @param {deno.IBaseMsg} message BaseMsg message or plain object to encode
              * @param {$protobuf.Writer} [writer] Writer to encode to
              * @returns {$protobuf.Writer} Writer
              */
@@ -113,18 +113,18 @@
             /**
              * Decodes a BaseMsg message from the specified reader or buffer.
              * @function decode
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @static
              * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
              * @param {number} [length] Message length if known beforehand
-             * @returns {main.BaseMsg} BaseMsg
+             * @returns {deno.BaseMsg} BaseMsg
              * @throws {Error} If the payload is not a reader or valid buffer
              * @throws {$protobuf.util.ProtocolError} If required fields are missing
              */
             BaseMsg.decode = function decode(reader, length) {
                 if (!(reader instanceof $Reader))
                     reader = $Reader.create(reader);
-                var end = length === undefined ? reader.len : reader.pos + length, message = new $root.main.BaseMsg();
+                var end = length === undefined ? reader.len : reader.pos + length, message = new $root.deno.BaseMsg();
                 while (reader.pos < end) {
                     var tag = reader.uint32();
                     switch (tag >>> 3) {
@@ -145,10 +145,10 @@
             /**
              * Decodes a BaseMsg message from the specified reader or buffer, length delimited.
              * @function decodeDelimited
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @static
              * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
-             * @returns {main.BaseMsg} BaseMsg
+             * @returns {deno.BaseMsg} BaseMsg
              * @throws {Error} If the payload is not a reader or valid buffer
              * @throws {$protobuf.util.ProtocolError} If required fields are missing
              */
@@ -161,7 +161,7 @@
             /**
              * Verifies a BaseMsg message.
              * @function verify
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @static
              * @param {Object.<string,*>} message Plain object to verify
              * @returns {string|null} `null` if valid, otherwise the reason why it is not
@@ -181,15 +181,15 @@
             /**
              * Creates a BaseMsg message from a plain object. Also converts values to their respective internal types.
              * @function fromObject
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @static
              * @param {Object.<string,*>} object Plain object
-             * @returns {main.BaseMsg} BaseMsg
+             * @returns {deno.BaseMsg} BaseMsg
              */
             BaseMsg.fromObject = function fromObject(object) {
-                if (object instanceof $root.main.BaseMsg)
+                if (object instanceof $root.deno.BaseMsg)
                     return object;
-                var message = new $root.main.BaseMsg();
+                var message = new $root.deno.BaseMsg();
                 if (object.channel != null)
                     message.channel = String(object.channel);
                 if (object.payload != null)
@@ -203,9 +203,9 @@
             /**
              * Creates a plain object from a BaseMsg message. Also converts values to other types if specified.
              * @function toObject
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @static
-             * @param {main.BaseMsg} message BaseMsg
+             * @param {deno.BaseMsg} message BaseMsg
              * @param {$protobuf.IConversionOptions} [options] Conversion options
              * @returns {Object.<string,*>} Plain object
              */
@@ -227,7 +227,7 @@
             /**
              * Converts this BaseMsg to JSON.
              * @function toJSON
-             * @memberof main.BaseMsg
+             * @memberof deno.BaseMsg
              * @instance
              * @returns {Object.<string,*>} JSON object
              */
@@ -238,13 +238,13 @@
             return BaseMsg;
         })();
     
-        main.Msg = (function() {
+        deno.Msg = (function() {
     
             /**
              * Properties of a Msg.
-             * @memberof main
+             * @memberof deno
              * @interface IMsg
-             * @property {main.Msg.Command|null} [command] Msg command
+             * @property {deno.Msg.Command|null} [command] Msg command
              * @property {string|null} [error] Msg error
              * @property {string|null} [startCwd] Msg startCwd
              * @property {Array.<string>|null} [startArgv] Msg startArgv
@@ -282,11 +282,11 @@
     
             /**
              * Constructs a new Msg.
-             * @memberof main
+             * @memberof deno
              * @classdesc Represents a Msg.
              * @implements IMsg
              * @constructor
-             * @param {main.IMsg=} [properties] Properties to set
+             * @param {deno.IMsg=} [properties] Properties to set
              */
             function Msg(properties) {
                 this.startArgv = [];
@@ -299,8 +299,8 @@
     
             /**
              * Msg command.
-             * @member {main.Msg.Command} command
-             * @memberof main.Msg
+             * @member {deno.Msg.Command} command
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.command = 0;
@@ -308,7 +308,7 @@
             /**
              * Msg error.
              * @member {string} error
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.error = "";
@@ -316,7 +316,7 @@
             /**
              * Msg startCwd.
              * @member {string} startCwd
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.startCwd = "";
@@ -324,7 +324,7 @@
             /**
              * Msg startArgv.
              * @member {Array.<string>} startArgv
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.startArgv = $util.emptyArray;
@@ -332,7 +332,7 @@
             /**
              * Msg startDebugFlag.
              * @member {boolean} startDebugFlag
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.startDebugFlag = false;
@@ -340,7 +340,7 @@
             /**
              * Msg startMainJs.
              * @member {string} startMainJs
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.startMainJs = "";
@@ -348,7 +348,7 @@
             /**
              * Msg startMainMap.
              * @member {string} startMainMap
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.startMainMap = "";
@@ -356,7 +356,7 @@
             /**
              * Msg codeFetchModuleSpecifier.
              * @member {string} codeFetchModuleSpecifier
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.codeFetchModuleSpecifier = "";
@@ -364,7 +364,7 @@
             /**
              * Msg codeFetchContainingFile.
              * @member {string} codeFetchContainingFile
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.codeFetchContainingFile = "";
@@ -372,7 +372,7 @@
             /**
              * Msg codeFetchResModuleName.
              * @member {string} codeFetchResModuleName
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.codeFetchResModuleName = "";
@@ -380,7 +380,7 @@
             /**
              * Msg codeFetchResFilename.
              * @member {string} codeFetchResFilename
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.codeFetchResFilename = "";
@@ -388,7 +388,7 @@
             /**
              * Msg codeFetchResSourceCode.
              * @member {string} codeFetchResSourceCode
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.codeFetchResSourceCode = "";
@@ -396,7 +396,7 @@
             /**
              * Msg codeFetchResOutputCode.
              * @member {string} codeFetchResOutputCode
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.codeFetchResOutputCode = "";
@@ -404,7 +404,7 @@
             /**
              * Msg codeCacheFilename.
              * @member {string} codeCacheFilename
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.codeCacheFilename = "";
@@ -412,7 +412,7 @@
             /**
              * Msg codeCacheSourceCode.
              * @member {string} codeCacheSourceCode
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.codeCacheSourceCode = "";
@@ -420,7 +420,7 @@
             /**
              * Msg codeCacheOutputCode.
              * @member {string} codeCacheOutputCode
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.codeCacheOutputCode = "";
@@ -428,7 +428,7 @@
             /**
              * Msg exitCode.
              * @member {number} exitCode
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.exitCode = 0;
@@ -436,7 +436,7 @@
             /**
              * Msg timerStartId.
              * @member {number} timerStartId
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.timerStartId = 0;
@@ -444,7 +444,7 @@
             /**
              * Msg timerStartInterval.
              * @member {boolean} timerStartInterval
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.timerStartInterval = false;
@@ -452,7 +452,7 @@
             /**
              * Msg timerStartDelay.
              * @member {number} timerStartDelay
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.timerStartDelay = 0;
@@ -460,7 +460,7 @@
             /**
              * Msg timerReadyId.
              * @member {number} timerReadyId
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.timerReadyId = 0;
@@ -468,7 +468,7 @@
             /**
              * Msg timerReadyDone.
              * @member {boolean} timerReadyDone
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.timerReadyDone = false;
@@ -476,7 +476,7 @@
             /**
              * Msg timerClearId.
              * @member {number} timerClearId
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.timerClearId = 0;
@@ -484,7 +484,7 @@
             /**
              * Msg fetchReqId.
              * @member {number} fetchReqId
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.fetchReqId = 0;
@@ -492,7 +492,7 @@
             /**
              * Msg fetchReqUrl.
              * @member {string} fetchReqUrl
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.fetchReqUrl = "";
@@ -500,7 +500,7 @@
             /**
              * Msg fetchResId.
              * @member {number} fetchResId
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.fetchResId = 0;
@@ -508,7 +508,7 @@
             /**
              * Msg fetchResStatus.
              * @member {number} fetchResStatus
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.fetchResStatus = 0;
@@ -516,7 +516,7 @@
             /**
              * Msg fetchResHeaderLine.
              * @member {Array.<string>} fetchResHeaderLine
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.fetchResHeaderLine = $util.emptyArray;
@@ -524,7 +524,7 @@
             /**
              * Msg fetchResBody.
              * @member {Uint8Array} fetchResBody
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.fetchResBody = $util.newBuffer([]);
@@ -532,7 +532,7 @@
             /**
              * Msg readFileSyncFilename.
              * @member {string} readFileSyncFilename
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.readFileSyncFilename = "";
@@ -540,7 +540,7 @@
             /**
              * Msg readFileSyncData.
              * @member {Uint8Array} readFileSyncData
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.readFileSyncData = $util.newBuffer([]);
@@ -548,7 +548,7 @@
             /**
              * Msg writeFileSyncFilename.
              * @member {string} writeFileSyncFilename
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.writeFileSyncFilename = "";
@@ -556,7 +556,7 @@
             /**
              * Msg writeFileSyncData.
              * @member {Uint8Array} writeFileSyncData
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.writeFileSyncData = $util.newBuffer([]);
@@ -564,7 +564,7 @@
             /**
              * Msg writeFileSyncPerm.
              * @member {number} writeFileSyncPerm
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              */
             Msg.prototype.writeFileSyncPerm = 0;
@@ -572,21 +572,21 @@
             /**
              * Creates a new Msg instance using the specified properties.
              * @function create
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @static
-             * @param {main.IMsg=} [properties] Properties to set
-             * @returns {main.Msg} Msg instance
+             * @param {deno.IMsg=} [properties] Properties to set
+             * @returns {deno.Msg} Msg instance
              */
             Msg.create = function create(properties) {
                 return new Msg(properties);
             };
     
             /**
-             * Encodes the specified Msg message. Does not implicitly {@link main.Msg.verify|verify} messages.
+             * Encodes the specified Msg message. Does not implicitly {@link deno.Msg.verify|verify} messages.
              * @function encode
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @static
-             * @param {main.IMsg} message Msg message or plain object to encode
+             * @param {deno.IMsg} message Msg message or plain object to encode
              * @param {$protobuf.Writer} [writer] Writer to encode to
              * @returns {$protobuf.Writer} Writer
              */
@@ -667,11 +667,11 @@
             };
     
             /**
-             * Encodes the specified Msg message, length delimited. Does not implicitly {@link main.Msg.verify|verify} messages.
+             * Encodes the specified Msg message, length delimited. Does not implicitly {@link deno.Msg.verify|verify} messages.
              * @function encodeDelimited
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @static
-             * @param {main.IMsg} message Msg message or plain object to encode
+             * @param {deno.IMsg} message Msg message or plain object to encode
              * @param {$protobuf.Writer} [writer] Writer to encode to
              * @returns {$protobuf.Writer} Writer
              */
@@ -682,18 +682,18 @@
             /**
              * Decodes a Msg message from the specified reader or buffer.
              * @function decode
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @static
              * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
              * @param {number} [length] Message length if known beforehand
-             * @returns {main.Msg} Msg
+             * @returns {deno.Msg} Msg
              * @throws {Error} If the payload is not a reader or valid buffer
              * @throws {$protobuf.util.ProtocolError} If required fields are missing
              */
             Msg.decode = function decode(reader, length) {
                 if (!(reader instanceof $Reader))
                     reader = $Reader.create(reader);
-                var end = length === undefined ? reader.len : reader.pos + length, message = new $root.main.Msg();
+                var end = length === undefined ? reader.len : reader.pos + length, message = new $root.deno.Msg();
                 while (reader.pos < end) {
                     var tag = reader.uint32();
                     switch (tag >>> 3) {
@@ -814,10 +814,10 @@
             /**
              * Decodes a Msg message from the specified reader or buffer, length delimited.
              * @function decodeDelimited
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @static
              * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
-             * @returns {main.Msg} Msg
+             * @returns {deno.Msg} Msg
              * @throws {Error} If the payload is not a reader or valid buffer
              * @throws {$protobuf.util.ProtocolError} If required fields are missing
              */
@@ -830,7 +830,7 @@
             /**
              * Verifies a Msg message.
              * @function verify
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @static
              * @param {Object.<string,*>} message Plain object to verify
              * @returns {string|null} `null` if valid, otherwise the reason why it is not
@@ -971,15 +971,15 @@
             /**
              * Creates a Msg message from a plain object. Also converts values to their respective internal types.
              * @function fromObject
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @static
              * @param {Object.<string,*>} object Plain object
-             * @returns {main.Msg} Msg
+             * @returns {deno.Msg} Msg
              */
             Msg.fromObject = function fromObject(object) {
-                if (object instanceof $root.main.Msg)
+                if (object instanceof $root.deno.Msg)
                     return object;
-                var message = new $root.main.Msg();
+                var message = new $root.deno.Msg();
                 switch (object.command) {
                 case "ERROR":
                 case 0:
@@ -1044,7 +1044,7 @@
                     message.startCwd = String(object.startCwd);
                 if (object.startArgv) {
                     if (!Array.isArray(object.startArgv))
-                        throw TypeError(".main.Msg.startArgv: array expected");
+                        throw TypeError(".deno.Msg.startArgv: array expected");
                     message.startArgv = [];
                     for (var i = 0; i < object.startArgv.length; ++i)
                         message.startArgv[i] = String(object.startArgv[i]);
@@ -1097,7 +1097,7 @@
                     message.fetchResStatus = object.fetchResStatus | 0;
                 if (object.fetchResHeaderLine) {
                     if (!Array.isArray(object.fetchResHeaderLine))
-                        throw TypeError(".main.Msg.fetchResHeaderLine: array expected");
+                        throw TypeError(".deno.Msg.fetchResHeaderLine: array expected");
                     message.fetchResHeaderLine = [];
                     for (var i = 0; i < object.fetchResHeaderLine.length; ++i)
                         message.fetchResHeaderLine[i] = String(object.fetchResHeaderLine[i]);
@@ -1129,9 +1129,9 @@
             /**
              * Creates a plain object from a Msg message. Also converts values to other types if specified.
              * @function toObject
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @static
-             * @param {main.Msg} message Msg
+             * @param {deno.Msg} message Msg
              * @param {$protobuf.IConversionOptions} [options] Conversion options
              * @returns {Object.<string,*>} Plain object
              */
@@ -1178,7 +1178,7 @@
                     object.writeFileSyncPerm = 0;
                 }
                 if (message.command != null && message.hasOwnProperty("command"))
-                    object.command = options.enums === String ? $root.main.Msg.Command[message.command] : message.command;
+                    object.command = options.enums === String ? $root.deno.Msg.Command[message.command] : message.command;
                 if (message.error != null && message.hasOwnProperty("error"))
                     object.error = message.error;
                 if (message.startCwd != null && message.hasOwnProperty("startCwd"))
@@ -1257,7 +1257,7 @@
             /**
              * Converts this Msg to JSON.
              * @function toJSON
-             * @memberof main.Msg
+             * @memberof deno.Msg
              * @instance
              * @returns {Object.<string,*>} JSON object
              */
@@ -1267,7 +1267,7 @@
     
             /**
              * Command enum.
-             * @name main.Msg.Command
+             * @name deno.Msg.Command
              * @enum {string}
              * @property {number} ERROR=0 ERROR value
              * @property {number} START=1 START value
@@ -1306,7 +1306,7 @@
             return Msg;
         })();
     
-        return main;
+        return deno;
     })();
 
     return $root;

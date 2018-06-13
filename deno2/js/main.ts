@@ -1,5 +1,5 @@
 /// <reference path="deno.d.ts" />
-import { main as pb } from "./msg.pb";
+import { deno as pb } from "./msg.pb";
 import * as ts from "typescript";
 
 const globalEval = eval;
