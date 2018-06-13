@@ -45,7 +45,7 @@ def main():
 
 
 def run(args):
-    print " ".join(args)
+    print(" ".join(args))
     env = os.environ.copy()
     subprocess.check_call(args, env=env)
 
