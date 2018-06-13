@@ -212,6 +212,30 @@ v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
   return {payload, size};
 }
 
+void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                       const char* js_filename, const char* js_source) {
+  v8::HandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+
+  auto global = context->Global();
+  // TODO(ry) Add a global namespace object "deno" and move print, sub, and
+  // pub inside that object.
+  auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
+  auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(global->Set(context, deno::v8_str("denoPrint"), print_val).FromJust());
+
+  auto sub_tmpl = v8::FunctionTemplate::New(isolate, Sub);
+  auto sub_val = sub_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(global->Set(context, deno::v8_str("denoSub"), sub_val).FromJust());
+
+  auto pub_tmpl = v8::FunctionTemplate::New(isolate, Pub);
+  auto pub_val = pub_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(global->Set(context, deno::v8_str("denoPub"), pub_val).FromJust());
+
+  bool r = Execute(context, js_filename, js_source);
+  CHECK(r);
+}
+
 v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
                              v8::StartupData* prev_snapshot_blob,
                              const char* js_filename, const char* js_source) {
@@ -224,27 +248,7 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
   {
     v8::HandleScope handle_scope(isolate);
     auto context = v8::Context::New(isolate);
-    v8::Context::Scope context_scope(context);
-
-    auto global = context->Global();
-    // TODO(ry) Add a global namespace object "deno" and move print, sub, and
-    // pub inside that object.
-    auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
-    auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(
-        global->Set(context, deno::v8_str("denoPrint"), print_val).FromJust());
-
-    auto sub_tmpl = v8::FunctionTemplate::New(isolate, Sub);
-    auto sub_val = sub_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, deno::v8_str("denoSub"), sub_val).FromJust());
-
-    auto pub_tmpl = v8::FunctionTemplate::New(isolate, Pub);
-    auto pub_val = pub_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, deno::v8_str("denoPub"), pub_val).FromJust());
-
-    bool r = Execute(context, js_filename, js_source);
-    CHECK(r);
-
+    InitializeContext(isolate, context, js_filename, js_source);
     creator->SetDefaultContext(context, v8::SerializeInternalFieldsCallback(
                                             SerializeInternalFields, nullptr));
   }
