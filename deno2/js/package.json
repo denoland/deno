@@ -5,6 +5,6 @@
     "browserify": "^16.2.2",
     "protobufjs": "^6.8.6",
     "source-map-support": "^0.5.6",
-    "typescript": "^2.9.1"
+    "typescript": "next"
   }
 }
