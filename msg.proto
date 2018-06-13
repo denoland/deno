@@ -1,7 +1,7 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 syntax = "proto3";
-package main;
+package deno;
 option go_package = "deno";
 
 message BaseMsg {
