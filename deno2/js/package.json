@@ -1,10 +1,7 @@
 {
   "devDependencies": {
-    "@types/base64-js": "^1.2.5",
-    "@types/source-map-support": "^0.4.1",
-    "browserify": "^16.2.2",
+    "parcel-bundler": "^1.8.1",
     "protobufjs": "^6.8.6",
-    "source-map-support": "^0.5.6",
     "typescript": "^2.9.1"
   }
 }
