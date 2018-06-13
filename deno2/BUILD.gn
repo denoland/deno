@@ -11,6 +11,7 @@ executable("deno") {
     ":msg_proto",
     "//third_party/protobuf:protoc_lib",
   ]
+  public_configs = [ ":public_v8_base_config" ]
 }
 
 executable("mock_runtime_test") {
@@ -51,6 +52,15 @@ source_set("deno_nosnapshot") {
     "v8:v8_libbase",
     "v8:v8_libplatform",
     "v8:v8_libsampler",
+  ]
+  public_configs = [ ":public_v8_base_config" ]
+}
+
+# This allows us to v8/src/base/ libraries.
+config("public_v8_base_config") {
+  include_dirs = [
+    "v8",
+    "$target_gen_dir/v8",
   ]
 }
 
