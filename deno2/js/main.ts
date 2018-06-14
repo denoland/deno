@@ -6,13 +6,13 @@ const globalEval = eval;
 const window = globalEval("this");
 
 window["denoMain"] = () => {
-  denoPrint(`ts.version: ${ts.version}`);
-  const res = denoPub("startDeno2", emptyArrayBuffer());
-  //denoPrint(`after`);
+  deno.print(`ts.version: ${ts.version}`);
+  const res = deno.pub("startDeno2", emptyArrayBuffer());
+  //deno.print(`after`);
   const resUi8 = new Uint8Array(res);
-  denoPrint(`before`);
+  deno.print(`before`);
   const msg = pb.Msg.decode(resUi8);
-  denoPrint(`after`);
+  deno.print(`after`);
   const {
     startCwd: cwd,
     startArgv: argv,
@@ -21,11 +21,11 @@ window["denoMain"] = () => {
     startMainMap: mainMap
   } = msg;
 
-  denoPrint(`cwd: ${cwd}`);
-  denoPrint(`debugFlag: ${debugFlag}`);
+  deno.print(`cwd: ${cwd}`);
+  deno.print(`debugFlag: ${debugFlag}`);
 
   for (let i = 0; i < argv.length; i++) {
-    denoPrint(`argv[${i}] ${argv[i]}`);
+    deno.print(`argv[${i}] ${argv[i]}`);
   }
 };
 
