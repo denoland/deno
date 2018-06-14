@@ -63,3 +63,12 @@ export function writeFileSync(
     writeFileSyncPerm: perm
   });
 }
+
+export function tempDir(parentPath = "", prefix = ""): string {
+  const res = sendMsg("os", {
+    command: pb.Msg.Command.Temp_Dir,
+    tempDirParentPath: parentPath,
+    tempDirPrefix: prefix,
+  });
+  return res.tempDirPath;
+}
