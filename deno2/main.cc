@@ -2,8 +2,13 @@
 // All rights reserved. MIT License.
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string>
+
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "./msg.pb.h"
 #include "include/deno.h"
@@ -19,6 +24,7 @@ void MessagesFromJS(Deno* d, const char* channel, deno_buf buf) {
   response.set_command(deno::Msg_Command_START);
 
   char cwdbuf[1024];
+  // TODO(piscisaureus): support unicode on windows.
   std::string cwd(getcwd(cwdbuf, sizeof(cwdbuf)));
   response.set_start_cwd(cwd);
 
