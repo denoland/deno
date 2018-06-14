@@ -44,6 +44,8 @@ source_set("deno_nosnapshot") {
   sources = [
     "deno.cc",
     "deno_internal.h",
+    "file_util.cc",
+    "file_util.h",
     "include/deno.h",
   ]
   include_dirs = [ "include/" ]
