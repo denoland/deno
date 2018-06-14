@@ -1,0 +1,8 @@
+out/
+js/.cache/
+js/node_modules/
+v8/
+tools/protoc_wrapper/
+third_party/protobuf/
+third_party/zlib/
+.gclient_entries

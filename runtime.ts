@@ -19,8 +19,8 @@ import * as deno from "./deno";
 const EOL = "\n";
 
 // tslint:disable-next-line:no-any
-type AmdFactory = (...args: any[]) => undefined | object;
-type AmdDefine = (deps: string[], factory: AmdFactory) => void;
+export type AmdFactory = (...args: any[]) => undefined | object;
+export type AmdDefine = (deps: string[], factory: AmdFactory) => void;
 
 // Uncaught exceptions are sent to window.onerror by v8worker2.
 // https://git.io/vhOsf
@@ -59,7 +59,7 @@ export function setup(mainJs: string, mainMap: string): void {
 // FileModule.load(). FileModules are NOT executed upon first load, only when
 // compileAndRun is called.
 export class FileModule {
-  scriptVersion: string = undefined;
+  scriptVersion: string;
   readonly exports = {};
 
   private static readonly map = new Map<string, FileModule>();
@@ -80,7 +80,7 @@ export class FileModule {
 
   compileAndRun(): void {
     if (!this.outputCode) {
-      // If there is no cached outputCode, the compile the code.
+      // If there is no cached outputCode, then compile the code.
       util.assert(
         this.sourceCode != null && this.sourceCode.length > 0,
         `Have no source code from ${this.fileName}`
@@ -146,10 +146,14 @@ export function resolveModule(
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
   // We ask golang to sourceCodeFetch. It will load the sourceCode and if
   // there is any outputCode cached, it will return that as well.
-  const { filename, sourceCode, outputCode } = os.codeFetch(
-    moduleSpecifier,
-    containingFile
-  );
+  let fetchResponse;
+  try {
+    fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
+  } catch (e) {
+    // TODO Only catch "no such file or directory" errors. Need error codes.
+    return null;
+  }
+  const { filename, sourceCode, outputCode } = fetchResponse;
   if (sourceCode.length === 0) {
     return null;
   }
@@ -165,15 +169,19 @@ export function resolveModule(
 function resolveModuleName(
   moduleSpecifier: string,
   containingFile: string
-): string {
+): string | undefined {
   const mod = resolveModule(moduleSpecifier, containingFile);
-  return mod.fileName;
+  if (mod) {
+    return mod.fileName;
+  } else {
+    return undefined;
+  }
 }
 
 function execute(fileName: string, outputCode: string): void {
   util.assert(outputCode && outputCode.length > 0);
   _global["define"] = makeDefine(fileName);
-  outputCode += "\n//# sourceURL=" + fileName;
+  outputCode += `\n//# sourceURL=${fileName}`;
   globalEval(outputCode);
   _global["define"] = null;
 }
@@ -308,6 +316,9 @@ class TypeScriptHost implements ts.LanguageServiceHost {
         resolvedFileName = resolveModuleName("typescript.d.ts", "/$asset$/");
       } else {
         resolvedFileName = resolveModuleName(name, containingFile);
+        if (resolvedFileName == null) {
+          return undefined;
+        }
       }
       const isExternalLibraryImport = false;
       return { resolvedFileName, isExternalLibraryImport };

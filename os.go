@@ -125,7 +125,7 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 		sourceCodeBuf, err = FetchRemoteSource(moduleName, filename)
 	} else if strings.HasPrefix(moduleName, assetPrefix) {
 		f := strings.TrimPrefix(moduleName, assetPrefix)
-		sourceCodeBuf, err = Asset("dist/" + f)
+		sourceCodeBuf, err = Asset(path.Join("dist", f))
 		if err != nil {
 			logDebug("%s Asset doesn't exist. Return without error", moduleName)
 			err = nil
@@ -145,9 +145,8 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 	}
 
 	var sourceCode = string(sourceCodeBuf)
-	var command = Msg_CODE_FETCH_RES
 	res = &Msg{
-		Command:                command,
+		Command:                Msg_CODE_FETCH_RES,
 		CodeFetchResModuleName: moduleName,
 		CodeFetchResFilename:   filename,
 		CodeFetchResSourceCode: sourceCode,

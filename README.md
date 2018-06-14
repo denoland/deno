@@ -2,12 +2,12 @@
 
 [![Build Status](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
 
-A secure TypeScript runtime on V8
+## A secure TypeScript runtime built on V8
 
 * Supports TypeScript 2.8 out of the box. Uses V8 6.8.275.3. That is, it's
   very modern JavaScript.
 
-* No package.json, no npm. Not explicitly compatible with Node.
+* No `package.json`. No npm. Not explicitly compatible with Node.
 
 * Imports reference source code URLs only.
 	```
@@ -15,14 +15,15 @@ A secure TypeScript runtime on V8
   import { log } from "./util.ts"
 	```
   Remote code is fetched and cached on first execution, and never updated until
-  the code is run with the `--reload` flag. (So this will still work on an
+  the code is run with the `--reload` flag. (So, this will still work on an
   airplane. See `~/.deno/src` for details on the cache.)
 
 * File system and network access can be controlled in order to run sandboxed
   code. Defaults to read-only file system access and no network access.
 	Access between V8 (unprivileged) and Golang (privileged) is only done via
-  serialized messages defined in this protobuf:
-  https://github.com/ry/deno/blob/master/msg.proto This makes it easy to audit.
+  serialized messages defined in this
+  [protobuf](https://github.com/ry/deno/blob/master/msg.proto). This makes it
+  easy to audit.
 	To enable write access explicitly use `--allow-write` and `--allow-net` for
   network access.
 
@@ -42,7 +43,7 @@ A secure TypeScript runtime on V8
 
 * Always dies on uncaught errors.
 
-* Supports top-level await.
+* Supports top-level `await`.
 
 * Aims to be browser compatible.
 
@@ -54,60 +55,91 @@ A secure TypeScript runtime on V8
 
 Segfaulty.
 
-No docs yet. For some of the public API see
-https://github.com/ry/deno/blob/master/deno.d.ts
+No docs yet. For some of the public API see: [deno.d.ts](https://github.com/ry/deno/blob/master/deno.d.ts).
 
-And examples are around here:
-https://github.com/ry/deno/blob/master/testdata/004_set_timeout.ts
+And examples are around here: [testdata/004_set_timeout.ts](https://github.com/ry/deno/blob/master/testdata/004_set_timeout.ts).
 
-Roadmap is here: https://github.com/ry/deno/blob/master/TODO.txt
+Roadmap is [here](https://github.com/ry/deno/blob/master/TODO.txt).
 
+Also see this presentation: http://tinyclouds.org/jsconf2018.pdf
+
+### Github Noise
+
+I am excited about all the interest in this project. However, do understand that this
+is very much a non-functional prototype. There's a huge amount of heavy lifting to do.
+Unless you are participating in that, please maintain radio silence on github. This
+includes submitting trivial PRs (like improving README build instructions).
 
 ## Compile instructions
 
-I will release binaries at some point but for now you have to build it
+I will release binaries at some point, but for now you have to build it
 yourself.
 
+You will need [Go](https://golang.org) with `$GOPATH` defined and
+`$GOPATH/bin` in your `$PATH`.  
+
+You will also need [yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
+
 You need Protobuf 3. On Linux this might work:
-```
+
+``` bash
 cd ~
 wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
 unzip protoc-3.1.0-linux-x86_64.zip
 export PATH=$HOME/bin:$PATH
 ```
 
-Then you need `protoc-gen-go` and `go-bindata`:
+On macOS, using [HomeBrew](https://brew.sh/):
+
+``` bash
+brew install protobuf
 ```
+
+Then you need [protoc-gen-go](https://github.com/golang/protobuf/tree/master/protoc-gen-go) and [go-bindata](https://github.com/jteeuwen/go-bindata):
+
+``` bash
 go get -u github.com/golang/protobuf/protoc-gen-go
 go get -u github.com/jteeuwen/go-bindata/...
 ```
 
-You need to get and build `v8worker2`. It takes about 30 minutes to build:
+You need to get and build [v8worker2](https://github.com/ry/v8worker2).  __The package will not build with `go
+get` and will log out an error ⚠__
+```bash
+# pkg-config --cflags v8.pc
+Failed to open 'v8.pc': No such file or directory
+No package 'v8.pc' found
+pkg-config: exit status 1
 ```
+
+__which can be ignored__. It takes about 30 minutes to build:
+
+``` bash
 go get -u github.com/ry/v8worker2
 cd $GOPATH/src/github.com/ry/v8worker2
 ./build.py --use_ccache
 ```
+Maybe also run `git submodule update --init` in the `v8worker2/` dir.
 
-Finally you can get `deno` and its other Go deps.
-```
+Finally, you can get `deno` and its other Go deps.
+
+``` bash
 go get -u github.com/ry/deno/...
 ```
 
 Now you can build deno and run it:
-```
-> cd $GOPATH/src/github.com/ry/deno
-> make
-[redacted]
-> ./deno testdata/001_hello.js
-Hello World
->
+
+``` bash
+cd $GOPATH/src/github.com/ry/deno
+
+make # Wait for redacted
+
+./deno testdata/001_hello.js # Output: Hello World
 ```
 
-## make commands
+## `make` commands
 
-```bash
-make deno # Builds the deno executable
+``` bash
+make deno # Builds the deno executable.
 
 make test # Runs the tests.
 

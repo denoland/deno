@@ -14,13 +14,17 @@ export function log(...args: any[]): void {
 
 export function assert(cond: boolean, msg = "") {
   if (!cond) {
-    throw Error("Assert fail. " + msg);
+    throw Error(`Assert fail. ${msg}`);
   }
 }
 
 export function typedArrayToArrayBuffer(ta: TypedArray): ArrayBuffer {
   const ab = ta.buffer.slice(ta.byteOffset, ta.byteOffset + ta.byteLength);
   return ab as ArrayBuffer;
+}
+
+export function arrayToStr(ui8: Uint8Array): string {
+  return String.fromCharCode(...ui8);
 }
 
 // A `Resolvable` is a Promise with the `reject` and `resolve` functions

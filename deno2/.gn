@@ -1,0 +1,38 @@
+# This file is used by the GN meta build system to find the root of the source
+# tree and to set startup options. For documentation on the values set in this
+# file, run "gn help dotfile" at the command line.
+
+# The location of the build configuration file.
+buildconfig = "//build/config/BUILDCONFIG.gn"
+
+# The secondary source root is a parallel directory tree where
+# GN build files are placed when they can not be placed directly
+# in the source tree, e.g. for third party source trees.
+secondary_source = "//v8/"
+
+# These are the targets to check headers for by default. The files in targets
+# matching these patterns (see "gn help label_pattern" for format) will have
+# their includes checked for proper dependencies when you run either
+# "gn check" or "gn gen --check".
+check_targets = []
+
+default_args = {
+  is_component_build = false
+  symbol_level = 1
+  treat_warnings_as_errors = false
+  v8_deprecation_warnings = false
+  v8_embedder_string = "deno-"
+  v8_enable_gdbjit = false
+  v8_enable_i18n_support = false
+  v8_enable_test_features = false
+  v8_experimental_extra_library_files = []
+  v8_extra_library_files = []
+  v8_imminent_deprecation_warnings = false
+  v8_monolithic = false
+  v8_untrusted_code_mitigations = false
+
+  # This tells V8 to write out/Default/gen/v8/snapshot.bin
+  # Which we can use to build our own snapshot.
+  v8_use_external_startup_data = true
+  v8_use_snapshot = true
+}

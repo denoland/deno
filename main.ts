@@ -4,7 +4,7 @@
 import "babel-polyfill";
 
 import * as dispatch from "./dispatch";
-import { main as pb } from "./msg.pb";
+import { deno as pb } from "./msg.pb";
 
 import * as runtime from "./runtime";
 import * as util from "./util";
@@ -34,11 +34,13 @@ let startCalled = false;
     startCalled = true;
 
     const msg = pb.Msg.decode(payload);
-    const cwd = msg.startCwd;
-    const argv = msg.startArgv;
-    const debugFlag = msg.startDebugFlag;
-    const mainJs = msg.startMainJs;
-    const mainMap = msg.startMainMap;
+    const {
+      startCwd: cwd,
+      startArgv: argv,
+      startDebugFlag: debugFlag,
+      startMainJs: mainJs,
+      startMainMap: mainMap
+    } = msg;
 
     debug = debugFlag;
     util.log("start", { cwd, argv, debugFlag });

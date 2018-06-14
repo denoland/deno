@@ -4,6 +4,7 @@
 // Originated from source-map-support but has been heavily modified for deno.
 import { SourceMapConsumer, MappedPosition } from "source-map";
 import * as base64 from "base64-js";
+import { arrayToStr } from "./util";
 
 const consumers = new Map<string, SourceMapConsumer>();
 
@@ -52,7 +53,7 @@ export function prepareStackTraceWrapper(
 
 export function prepareStackTrace(error: Error, stack: CallSite[]): string {
   const frames = stack.map(
-    (frame: CallSite) => "\n    at " + wrapCallSite(frame).toString()
+    (frame: CallSite) => `\n    at ${wrapCallSite(frame).toString()}`
   );
   return error.toString() + frames.join("");
 }
@@ -161,7 +162,7 @@ function CallSiteToString(frame: CallSite): string {
         functionName.indexOf("." + methodName) !==
           functionName.length - methodName.length - 1
       ) {
-        line += " [as " + methodName + "]";
+        line += ` [as ${methodName} ]`;
       }
     } else {
       line += typeName + "." + (methodName || "<anonymous>");
@@ -175,7 +176,7 @@ function CallSiteToString(frame: CallSite): string {
     addSuffix = false;
   }
   if (addSuffix) {
-    line += " (" + fileLocation + ")";
+    line += ` (${fileLocation})`;
   }
   return line;
 }
@@ -264,14 +265,9 @@ function mapEvalOrigin(origin: string): string {
   // Parse nested eval() calls using recursion
   match = /^eval at ([^(]+) \((.+)\)$/.exec(origin);
   if (match) {
-    return "eval at " + match[1] + " (" + mapEvalOrigin(match[2]) + ")";
+    return `eval at ${match[1]} (${mapEvalOrigin(match[2])})`;
   }
 
   // Make sure we still return useful information if we didn't find anything
   return origin;
-}
-
-// TODO move to util?
-function arrayToStr(ui8: Uint8Array): string {
-  return String.fromCharCode.apply(null, ui8);
 }
