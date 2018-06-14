@@ -2,10 +2,8 @@
 # tree and to set startup options. For documentation on the values set in this
 # file, run "gn help dotfile" at the command line.
 
-import("//v8/build/dotfile_settings.gni")
-
 # The location of the build configuration file.
-buildconfig = "//v8/build/config/BUILDCONFIG.gn"
+buildconfig = "//build/config/BUILDCONFIG.gn"
 
 # The secondary source root is a parallel directory tree where
 # GN build files are placed when they can not be placed directly
@@ -18,23 +16,12 @@ secondary_source = "//v8/"
 # "gn check" or "gn gen --check".
 check_targets = []
 
-# These are the list of GN files that run exec_script. This whitelist exists
-# to force additional review for new uses of exec_script, which is strongly
-# discouraged except for gypi_to_gn calls.
-exec_script_whitelist = build_dotfile_settings.exec_script_whitelist + []
-
 default_args = {
-  # Default to release builds for this project.
   is_component_build = false
-  is_debug = false
-  libcpp_is_static = false
   symbol_level = 1
   treat_warnings_as_errors = false
-  use_custom_libcxx = false
-  use_sysroot = false
   v8_deprecation_warnings = false
-
-  #v8_embedder_string = ""
+  v8_embedder_string = "deno-"
   v8_enable_gdbjit = false
   v8_enable_i18n_support = false
   v8_enable_test_features = false
@@ -42,20 +29,10 @@ default_args = {
   v8_extra_library_files = []
   v8_imminent_deprecation_warnings = false
   v8_monolithic = false
-  v8_static_library = false
-  v8_target_cpu = "x64"
   v8_untrusted_code_mitigations = false
 
   # This tells V8 to write out/Default/gen/v8/snapshot.bin
   # Which we can use to build our own snapshot.
   v8_use_external_startup_data = true
   v8_use_snapshot = true
-
-  # Snapshot the dist/main.js bundle into V8.
-  # Is ".gn" really the most appropriate place to specify this important
-  # value? This is how they do it in Chrome.
-  # https://cs.chromium.org/chromium/src/.gn?l=37&rcl=f1c8c3cf8bd4a63da6433ee67e2ff5ecbbdb4316
-
-  #  "$target_gen_dir/main.js"
-  #]
 }

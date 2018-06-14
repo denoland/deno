@@ -8,7 +8,7 @@ import {
   typedArrayToArrayBuffer
 } from "./util";
 import { pubInternal, sub } from "./dispatch";
-import { main as pb } from "./msg.pb";
+import { deno as pb } from "./msg.pb";
 
 export function initFetch() {
   sub("fetch", (payload: Uint8Array) => {

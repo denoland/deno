@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 import { typedArrayToArrayBuffer } from "./util";
 import { _global } from "./globals";
-import { main as pb } from "./msg.pb";
+import { deno as pb } from "./msg.pb";
 
 export type MessageCallback = (msg: Uint8Array) => void;
 //type MessageStructCallback = (msg: pb.IMsg) => void;

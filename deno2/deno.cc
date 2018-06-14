@@ -19,7 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 */
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,11 +26,10 @@ IN THE SOFTWARE.
 
 #include "v8/include/libplatform/libplatform.h"
 #include "v8/include/v8.h"
+#include "v8/src/base/logging.h"
 
 #include "./deno_internal.h"
 #include "include/deno.h"
-
-#define CHECK(x) assert(x)  // TODO(ry) use V8's CHECK.
 
 namespace deno {
 
@@ -92,7 +90,7 @@ void ExitOnPromiseRejectCallback(
     v8::PromiseRejectMessage promise_reject_message) {
   auto* isolate = v8::Isolate::GetCurrent();
   Deno* d = static_cast<Deno*>(isolate->GetData(0));
-  assert(d->isolate == isolate);
+  DCHECK_EQ(d->isolate, isolate);
   v8::HandleScope handle_scope(d->isolate);
   auto exception = promise_reject_message.GetValue();
   auto context = d->context.Get(d->isolate);
@@ -100,7 +98,7 @@ void ExitOnPromiseRejectCallback(
 }
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  assert(args.Length() == 1);
+  CHECK_EQ(args.Length(), 1);
   auto* isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value str(isolate, args[0]);
@@ -113,7 +111,7 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
 void Sub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   Deno* d = reinterpret_cast<Deno*>(isolate->GetData(0));
-  assert(d->isolate == isolate);
+  DCHECK_EQ(d->isolate, isolate);
 
   v8::HandleScope handle_scope(isolate);
 
@@ -123,7 +121,7 @@ void Sub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 
   v8::Local<v8::Value> v = args[0];
-  assert(v->IsFunction());
+  CHECK(v->IsFunction());
   v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
 
   d->sub.Reset(isolate, func);
@@ -132,19 +130,19 @@ void Sub(const v8::FunctionCallbackInfo<v8::Value>& args) {
 void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   Deno* d = static_cast<Deno*>(isolate->GetData(0));
-  assert(d->isolate == isolate);
+  DCHECK_EQ(d->isolate, isolate);
 
   v8::Locker locker(d->isolate);
   v8::EscapableHandleScope handle_scope(isolate);
 
-  assert(args.Length() == 2);
+  CHECK_EQ(args.Length(), 2);
   v8::Local<v8::Value> channel_v = args[0];
-  assert(channel_v->IsString());
+  CHECK(channel_v->IsString());
   v8::String::Utf8Value channel_vstr(isolate, channel_v);
   const char* channel = *channel_vstr;
 
   v8::Local<v8::Value> ab_v = args[1];
-  assert(ab_v->IsArrayBuffer());
+  CHECK(ab_v->IsArrayBuffer());
 
   auto ab = v8::Local<v8::ArrayBuffer>::Cast(ab_v);
   auto contents = ab->GetContents();
@@ -154,15 +152,12 @@ void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
       const_cast<const char*>(reinterpret_cast<char*>(contents.Data()));
   deno_buf buf{data, contents.ByteLength()};
 
-  auto retbuf = d->cb(d, channel, buf);
-  if (retbuf.data) {
-    // TODO(ry) Support zero-copy.
-    auto ab = v8::ArrayBuffer::New(d->isolate, retbuf.len);
-    memcpy(ab->GetContents().Data(), retbuf.data, retbuf.len);
-    args.GetReturnValue().Set(handle_scope.Escape(ab));
-  } else {
-    args.GetReturnValue().Set(v8::Null(d->isolate));
-  }
+  DCHECK_EQ(d->currentArgs, nullptr);
+  d->currentArgs = &args;
+
+  d->cb(d, channel, buf);
+
+  d->currentArgs = nullptr;
 }
 
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
@@ -183,7 +178,7 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   auto script = v8::Script::Compile(context, source, &origin);
 
   if (script.IsEmpty()) {
-    assert(try_catch.HasCaught());
+    DCHECK(try_catch.HasCaught());
     HandleException(context, try_catch.Exception());
     return false;
   }
@@ -191,7 +186,7 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   auto result = script.ToLocalChecked()->Run(context);
 
   if (result.IsEmpty()) {
-    assert(try_catch.HasCaught());
+    DCHECK(try_catch.HasCaught());
     HandleException(context, try_catch.Exception());
     return false;
   }
@@ -201,7 +196,7 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
 
 v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
                                         void* data) {
-  assert(data == nullptr);  // TODO(ry) pass Deno* object here.
+  DCHECK_EQ(data, nullptr);  // TODO(ry) pass Deno* object here.
   InternalFieldData* embedder_field = static_cast<InternalFieldData*>(
       holder->GetAlignedPointerFromInternalField(index));
   if (embedder_field == nullptr) return {nullptr, 0};
@@ -210,6 +205,32 @@ v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
   // We simply use memcpy to serialize the content.
   memcpy(payload, embedder_field, size);
   return {payload, size};
+}
+
+void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                       const char* js_filename, const char* js_source) {
+  v8::HandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+
+  auto global = context->Global();
+
+  auto deno_val = v8::Object::New(isolate);
+  CHECK(global->Set(context, deno::v8_str("deno"), deno_val).FromJust());
+
+  auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
+  auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("print"), print_val).FromJust());
+
+  auto sub_tmpl = v8::FunctionTemplate::New(isolate, Sub);
+  auto sub_val = sub_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("sub"), sub_val).FromJust());
+
+  auto pub_tmpl = v8::FunctionTemplate::New(isolate, Pub);
+  auto pub_val = pub_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("pub"), pub_val).FromJust());
+
+  bool r = Execute(context, js_filename, js_source);
+  CHECK(r);
 }
 
 v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
@@ -224,27 +245,7 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
   {
     v8::HandleScope handle_scope(isolate);
     auto context = v8::Context::New(isolate);
-    v8::Context::Scope context_scope(context);
-
-    auto global = context->Global();
-    // TODO(ry) Add a global namespace object "deno" and move print, sub, and
-    // pub inside that object.
-    auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
-    auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(
-        global->Set(context, deno::v8_str("denoPrint"), print_val).FromJust());
-
-    auto sub_tmpl = v8::FunctionTemplate::New(isolate, Sub);
-    auto sub_val = sub_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, deno::v8_str("denoSub"), sub_val).FromJust());
-
-    auto pub_tmpl = v8::FunctionTemplate::New(isolate, Pub);
-    auto pub_val = pub_tmpl->GetFunction(context).ToLocalChecked();
-    CHECK(global->Set(context, deno::v8_str("denoPub"), pub_val).FromJust());
-
-    bool r = Execute(context, js_filename, js_source);
-    CHECK(r);
-
+    InitializeContext(isolate, context, js_filename, js_source);
     creator->SetDefaultContext(context, v8::SerializeInternalFieldsCallback(
                                             SerializeInternalFields, nullptr));
   }
@@ -328,6 +329,13 @@ bool deno_pub(Deno* d, const char* channel, deno_buf buf) {
   }
 
   return true;
+}
+
+void deno_set_response(Deno* d, deno_buf buf) {
+  // TODO(ry) Support zero-copy.
+  auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
+  memcpy(ab->GetContents().Data(), buf.data, buf.len);
+  d->currentArgs->GetReturnValue().Set(ab);
 }
 
 void deno_delete(Deno* d) {

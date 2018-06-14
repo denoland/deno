@@ -11,6 +11,7 @@ extern "C" {
 // deno_s = Wrapped Isolate.
 struct deno_s {
   v8::Isolate* isolate;
+  const v8::FunctionCallbackInfo<v8::Value>* currentArgs;
   std::string last_exception;
   v8::Persistent<v8::Function> sub;
   v8::Persistent<v8::Context> context;
@@ -33,6 +34,9 @@ static intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
                                          reinterpret_cast<intptr_t>(Pub), 0};
 
 Deno* NewFromSnapshot(void* data, deno_sub_cb cb);
+
+void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                       const char* js_filename, const char* js_source);
 
 v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
                              v8::StartupData* prev_snapshot_blob,
