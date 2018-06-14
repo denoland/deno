@@ -200,7 +200,7 @@ func WriteFileSync(filename string, data []byte, perm uint32) []byte {
 func TempDir(dir string = "", prefix string = "") []byte {
 	tempDirPath, err := afero.TempDir(fs, dir, prefix)
 	res := &Msg{
-		Command: Temp_Dir_RES,
+		Command: Msg_Temp_Dir_RES,
 	}
 	if err != nil {
 		res.Error = err.Error()
