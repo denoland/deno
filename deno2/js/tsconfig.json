@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "module": "commonjs",
+    "noImplicitAny": true,
+    "sourceMap": true,
+    "removeComments": true,
+    "preserveConstEnums": true,
+    "target": "es2017",
+    "noImplicitReturns": true,
+    "pretty": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowUnreachableCode": false,
+    "experimentalDecorators": true
+  },
+  "include": ["**/*.ts", "**/*.js"],
+  "exclude": ["mock_runtime.js", "node_modules"]
+}

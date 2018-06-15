@@ -1,0 +1,231 @@
+import("//third_party/protobuf/proto_library.gni")
+import("//v8/gni/v8.gni")
+import("//v8/snapshot_toolchain.gni")
+
+executable("deno") {
+  sources = [
+    "main.cc",
+  ]
+  deps = [
+    ":libdeno",
+    ":msg_proto",
+    "//third_party/protobuf:protoc_lib",
+  ]
+  public_configs = [ ":public_v8_base_config" ]
+}
+
+executable("mock_runtime_test") {
+  testonly = true
+  sources = [
+    "from_snapshot.cc",
+    "mock_runtime_test.cc",
+  ]
+  deps = [
+    ":create_snapshot_mock_runtime",
+    ":deno_nosnapshot",
+    "//testing/gtest:gtest",
+  ]
+  include_dirs = [ target_gen_dir ]
+  defines = [ "DENO_MOCK_RUNTIME" ]
+}
+
+component("libdeno") {
+  sources = [
+    "from_snapshot.cc",
+  ]
+  deps = [
+    ":create_snapshot_deno",
+    ":deno_nosnapshot",
+  ]
+  include_dirs = [ target_gen_dir ]
+}
+
+source_set("deno_nosnapshot") {
+  sources = [
+    "deno.cc",
+    "deno_internal.h",
+    "file_util.cc",
+    "file_util.h",
+    "include/deno.h",
+  ]
+  include_dirs = [ "include/" ]
+  deps = [
+    "v8:v8",
+    "v8:v8_libbase",
+    "v8:v8_libplatform",
+    "v8:v8_libsampler",
+  ]
+  public_configs = [ ":public_v8_base_config" ]
+}
+
+# This allows us to v8/src/base/ libraries.
+config("public_v8_base_config") {
+  include_dirs = [
+    "v8",
+    "$target_gen_dir/v8",
+  ]
+}
+
+executable("snapshot_creator") {
+  sources = [
+    "snapshot_creator.cc",
+  ]
+  deps = [
+    ":deno_nosnapshot",
+  ]
+}
+
+proto_library("msg_proto") {
+  sources = [
+    "msg.proto",
+  ]
+  generate_python = false
+}
+
+template("run_node") {
+  action(target_name) {
+    forward_variables_from(invoker, "*")
+    script = "js/run_node.py"
+  }
+}
+
+run_node("bundle") {
+  out_dir = "$target_gen_dir/bundle/"
+  sources = [
+    "js/main.ts",
+    "js/msg.pb.d.ts",
+    "js/msg.pb.js",
+  ]
+  outputs = [
+    out_dir + "main.js",
+  ]
+  deps = [
+    ":protobufjs",
+    ":run_tsc",
+  ]
+  args = [
+    "./node_modules/parcel-bundler/bin/cli.js",
+    "build",
+    "--no-minify",
+    "--out-dir",
+    rebase_path(out_dir, root_build_dir),
+    rebase_path("js/main.ts", root_build_dir),
+  ]
+}
+
+# Due to bugs in Parcel we must run TSC independently in order to catch errors.
+# https://github.com/parcel-bundler/parcel/issues/954
+run_node("run_tsc") {
+  main = "js/main.ts"
+  tsconfig = "js/tsconfig.json"
+  out_dir = "$target_gen_dir/tsc_dist/"
+  sources = [
+    "js/msg.pb.d.ts",
+    "js/msg.pb.js",
+    main,
+    tsconfig,
+  ]
+  outputs = [
+    out_dir + "/main.js",
+  ]
+  deps = [
+    ":protobufjs",
+  ]
+  args = [
+    "./node_modules/typescript/bin/tsc",
+    "--project",
+    rebase_path(tsconfig, root_build_dir),
+    "--outDir",
+    rebase_path(out_dir, root_build_dir),
+  ]
+}
+
+# Generates protobufjs code.
+# TODO(ry) Ideally protobufjs output files should be written into
+# target_gen_dir, but its difficult to get this working in a way that the
+# bundler can resolve their location. (The bundler does not support NODE_PATH?)
+# Therefore this hack: write the generated msg.pb.js and msg.pb.d.ts outputs
+# into the js/ folder, and we check them into the repo. Hopefully this hack can
+# be removed at some point. If msg.proto is changed, commit changes to the
+# generated JS files. The stamp file is just to make gn work.
+action("protobufjs") {
+  script = "js/pbjs_hack.py"
+  sources = [
+    "msg.proto",
+  ]
+  outputs = [
+    "$target_gen_dir/pbjs_hack.stamp",
+  ]
+  args = [
+    rebase_path(sources[0], root_build_dir),
+    rebase_path(outputs[0], root_build_dir),
+  ]
+}
+
+# Template to generate different V8 snapshots based on different runtime flags.
+# Can be invoked with run_mksnapshot(<name>). The target will resolve to
+# run_mksnapshot_<name>. If <name> is "default", no file suffixes will be used.
+# Otherwise files are suffixed, e.g. embedded_<name>.cc and
+# snapshot_blob_<name>.bin.
+#
+# The template exposes the variables:
+#   args: additional flags for mksnapshots
+#   embedded_suffix: a camel case suffix for method names in the embedded
+#       snapshot.
+template("create_snapshot") {
+  name = target_name
+  suffix = "_$name"
+  action("create_snapshot_" + name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "deps",
+                           ])
+    visibility = [ ":*" ]  # Only targets in this file can depend on this.
+    deps += [ ":snapshot_creator" ]
+    script = "v8/tools/run.py"
+    data = []
+    exe = rebase_path(get_label_info(":snapshot_creator", "root_out_dir") +
+                      "/snapshot_creator")
+    natives_in_bin = "$root_out_dir/natives_blob.bin"
+    snapshot_in_bin = "$root_out_dir/snapshot_blob.bin"
+    natives_out_cc = "$target_gen_dir/natives${suffix}.cc"
+    snapshot_out_cc = "$target_gen_dir/snapshot${suffix}.cc"
+    sources = [
+      invoker.js,
+    ]
+    outputs = [
+      natives_out_cc,
+      snapshot_out_cc,
+    ]
+    args = [
+      exe,
+      rebase_path(invoker.js, root_build_dir),
+      rebase_path(natives_in_bin, root_build_dir),
+      rebase_path(snapshot_in_bin, root_build_dir),
+      rebase_path(natives_out_cc, root_build_dir),
+      rebase_path(snapshot_out_cc, root_build_dir),
+    ]
+
+    # To debug snapshotting problems:
+    #  args += ["--trace-serializer"]
+    data = [
+      invoker.js,
+    ]
+  }
+}
+
+# Generates $target_gen_dir/snapshot_deno.cc
+create_snapshot("deno") {
+  js = "$target_gen_dir/bundle/main.js"
+  deps = [
+    ":bundle",
+  ]
+}
+
+# Generates $target_gen_dir/snapshot_mock_runtime.cc
+create_snapshot("mock_runtime") {
+  testonly = true
+  js = "js/mock_runtime.js"
+  deps = []
+}

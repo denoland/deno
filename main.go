@@ -5,15 +5,18 @@ package deno
 import (
 	"flag"
 	"fmt"
-	"github.com/ry/v8worker2"
 	"os"
+	"path"
 	"runtime/pprof"
+
+	"github.com/ry/v8worker2"
 )
 
 var flagReload = flag.Bool("reload", false, "Reload cached remote source code.")
 var flagV8Options = flag.Bool("v8-options", false, "Print V8 command line options.")
 var flagDebug = flag.Bool("debug", false, "Enable debug output.")
-var flagGoProf = flag.String("goprof", "", "Write golang cpu profile to file.")
+var flagCPUProf = flag.String("cpuprof", "", "Write golang cpu profile to file.")
+var flagMemProf = flag.String("memprof", "", "Write golang memory profile to file.")
 
 var flagAllowRead = flag.Bool("allow-read", true,
 	"Allow program to read file system.")
@@ -21,6 +24,8 @@ var flagAllowWrite = flag.Bool("allow-write", false,
 	"Allow program to write to the fs.")
 var flagAllowNet = flag.Bool("allow-net", false,
 	"Allow program to make network connection.")
+
+var memProfile *os.File
 
 var Perms struct {
 	FsRead  bool
@@ -34,8 +39,8 @@ func setPerms() {
 	Perms.Net = *flagAllowNet
 }
 
-func stringAsset(path string) string {
-	data, err := Asset("dist/" + path)
+func stringAsset(filename string) string {
+	data, err := Asset(path.Join("dist", filename))
 	check(err)
 	return string(data)
 }
@@ -72,16 +77,9 @@ func Init() {
 		os.Exit(1)
 	}
 
-	// Maybe start Golang CPU profiler.
+	// Maybe start Golang profilers.
 	// Use --prof for profiling JS.
-	if *flagGoProf != "" {
-		f, err := os.Create(*flagGoProf)
-		if err != nil {
-			panic(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
+	StartProfiling()
 
 	createDirs()
 	InitOS()
@@ -95,6 +93,29 @@ func Init() {
 	err := worker.Load("/main.js", main_js)
 	exitOnError(err)
 	main_map = stringAsset("main.map")
+}
+
+func StartProfiling() {
+	if *flagCPUProf != "" {
+		cpuProfile, err := os.Create(*flagCPUProf)
+		check(err)
+		check(pprof.StartCPUProfile(cpuProfile))
+	}
+	if *flagMemProf != "" {
+		var err error
+		memProfile, err = os.Create(*flagMemProf)
+		check(err)
+		check(pprof.WriteHeapProfile(memProfile))
+	}
+}
+
+func stopProfiling() {
+	if *flagCPUProf != "" {
+		pprof.StopCPUProfile()
+	}
+	if *flagMemProf != "" {
+		check(memProfile.Close())
+	}
 }
 
 // It's up to library users to call
@@ -116,4 +137,5 @@ func Loop() {
 		StartMainMap:   main_map,
 	})
 	DispatchLoop()
+	stopProfiling()
 }

@@ -88,9 +88,7 @@ func DispatchLoop() {
 		select {
 		case msg := <-resChan:
 			out, err := proto.Marshal(msg)
-			if err != nil {
-				panic(err)
-			}
+			check(err)
 			err = worker.SendBytes(out)
 			stats.v8workerSend++
 			stats.v8workerBytesSent += len(out)

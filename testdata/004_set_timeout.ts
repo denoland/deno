@@ -1,10 +1,10 @@
-setTimeout(function() {
+setTimeout(() => {
   console.log("World");
 }, 10);
 
 console.log("Hello");
 
-const id = setTimeout(function() {
+const id = setTimeout(() => {
   console.log("Not printed");
 }, 10000);
 
