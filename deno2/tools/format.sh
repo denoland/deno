@@ -14,3 +14,5 @@ prettier --write \
 # Do not format these. 
 #  js/msg.pb.js
 #  js/msg.pb.d.ts
+
+rustfmt --write-mode overwrite *.rs

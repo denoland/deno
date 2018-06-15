@@ -30,4 +30,9 @@ solutions = [{
     'https://chromium.googlesource.com/chromium/src/third_party/zlib@39b4a6260702da4c089eca57136abf40a39667e9',
     'name':
     'third_party/zlib'
+}, {
+    'url':
+    'https://github.com/rust-lang/libc.git@8a85d662b90c14d458bc4ae9521a05564e20d7ae',
+    'name':
+    'third_party/rust_crates/libc'
 }]
