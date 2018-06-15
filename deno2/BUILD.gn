@@ -3,6 +3,22 @@ import("//v8/gni/v8.gni")
 import("//v8/snapshot_toolchain.gni")
 import("deno.gni")
 
+rust_executable("deno_rs") {
+  source_root = "main.rs"
+  rust_deps = [ ":libc" ]
+  deps = [
+    ":libdeno",
+  ]
+}
+
+rust_library("libc") {
+  source_root = "third_party/rust_crates/libc/src/lib.rs"
+  cfg = [
+    "feature=\"default\"",
+    "feature=\"use_std\"",
+  ]
+}
+
 executable("deno") {
   sources = [
     "main.cc",
@@ -39,6 +55,10 @@ static_library("libdeno") {
   deps = [
     ":create_snapshot_deno",
     ":deno_nosnapshot",
+  ]
+  public_configs = [
+    "v8:libplatform_config",
+    ":public_v8_base_config",
   ]
 }
 
