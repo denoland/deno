@@ -59,7 +59,7 @@ No docs yet. For some of the public API see: [deno.d.ts](https://github.com/ry/d
 
 And examples are around here: [testdata/004_set_timeout.ts](https://github.com/ry/deno/blob/master/testdata/004_set_timeout.ts).
 
-Roadmap is [here](https://github.com/ry/deno/blob/master/TODO.txt).
+Roadmap is [here](https://github.com/ry/deno/blob/master/Roadmap.md).
 
 Also see this presentation: http://tinyclouds.org/jsconf2018.pdf
 
