@@ -98,6 +98,7 @@ run_node("bundle") {
     "js/main.ts",
     "js/msg.pb.d.ts",
     "js/msg.pb.js",
+    "js/package.json", # `browserslist` field controls transform.
   ]
   outputs = [
     out_dir + "main.js",
