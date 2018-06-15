@@ -11,8 +11,11 @@ namespace deno {
 
 bool ReadFileToString(const char* fn, std::string* contents) {
   std::ifstream file(fn, std::ios::binary);
+  if (file.fail()) {
+    return false;
+  }
   contents->assign(std::istreambuf_iterator<char>{file}, {});
-  return !file.bad();
+  return !file.fail();
 }
 
 class StartupDataCppWriter {
