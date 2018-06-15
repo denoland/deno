@@ -46,7 +46,7 @@ func InitOS() {
 		case Msg_WRITE_FILE_SYNC:
 			return WriteFileSync(msg.WriteFileSyncFilename, msg.WriteFileSyncData,
 				msg.WriteFileSyncPerm)
-		case Msg_Temp_Dir:
+		case Msg_TEMP_DIR:
 			return TempDir(msg.TempDirParentPath, msg.TempDirPrefix)
 		default:
 			panic("[os] Unexpected message " + string(buf))
@@ -200,7 +200,7 @@ func WriteFileSync(filename string, data []byte, perm uint32) []byte {
 func TempDir(dir string = "", prefix string = "") []byte {
 	tempDirPath, err := afero.TempDir(fs, dir, prefix)
 	res := &Msg{
-		Command: Msg_Temp_Dir_RES,
+		Command: Msg_TEMP_DIR_RES,
 	}
 	if err != nil {
 		res.Error = err.Error()

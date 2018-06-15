@@ -25,8 +25,8 @@ message Msg {
     READ_FILE_SYNC = 11;
     READ_FILE_SYNC_RES = 12;
     WRITE_FILE_SYNC = 13;
-    Temp_Dir = 14;
-    Temp_Dir_RES = 15;
+    TEMP_DIR = 14;
+    TEMP_DIR_RES = 15;
   }
   Command command = 1;
 
@@ -102,10 +102,10 @@ message Msg {
   uint32 write_file_sync_perm = 132;
   // write_file_sync_perm specified by https://godoc.org/os#FileMode
 
-  // Temp_Dir
+  // TEMP_DIR
   string temp_dir_parent_path = 140;
   string temp_dir_prefix = 141;
 
-  // Temp_Dir_RES
+  // TEMP_DIR_RES
   stirng temp_dir_path = 150;
 }

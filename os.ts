@@ -66,7 +66,7 @@ export function writeFileSync(
 
 export function tempDir(parentPath = "", prefix = ""): string {
   const res = sendMsg("os", {
-    command: pb.Msg.Command.Temp_Dir,
+    command: pb.Msg.Command.TEMP_DIR,
     tempDirParentPath: parentPath,
     tempDirPrefix: prefix,
   });
