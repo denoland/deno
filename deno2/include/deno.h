@@ -30,11 +30,13 @@ void deno_delete(Deno* d);
 
 // Returns false on error.
 // Get error text with deno_last_exception().
-bool deno_execute(Deno* d, const char* js_filename, const char* js_source);
+// 0 = fail, 1 = success
+int deno_execute(Deno* d, const char* js_filename, const char* js_source);
 
 // Routes message to the javascript callback set with deno_sub(). A false return
 // value indicates error. Check deno_last_exception() for exception text.
-bool deno_pub(Deno* d, const char* channel, deno_buf buf);
+// 0 = fail, 1 = success
+int deno_pub(Deno* d, const char* channel, deno_buf buf);
 
 // Call this inside a deno_sub_cb to respond synchronously to messages.
 // If this is not called during the life time of a deno_sub_cb callback
