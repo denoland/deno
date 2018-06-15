@@ -1,6 +1,7 @@
 import("//third_party/protobuf/proto_library.gni")
 import("//v8/gni/v8.gni")
 import("//v8/snapshot_toolchain.gni")
+import("deno.gni")
 
 executable("deno") {
   sources = [
@@ -85,13 +86,6 @@ proto_library("msg_proto") {
   generate_python = false
 }
 
-template("run_node") {
-  action(target_name) {
-    forward_variables_from(invoker, "*")
-    script = "js/run_node.py"
-  }
-}
-
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
@@ -164,59 +158,6 @@ action("protobufjs") {
     rebase_path(sources[0], root_build_dir),
     rebase_path(outputs[0], root_build_dir),
   ]
-}
-
-# Template to generate different V8 snapshots based on different runtime flags.
-# Can be invoked with run_mksnapshot(<name>). The target will resolve to
-# run_mksnapshot_<name>. If <name> is "default", no file suffixes will be used.
-# Otherwise files are suffixed, e.g. embedded_<name>.cc and
-# snapshot_blob_<name>.bin.
-#
-# The template exposes the variables:
-#   args: additional flags for mksnapshots
-#   embedded_suffix: a camel case suffix for method names in the embedded
-#       snapshot.
-template("create_snapshot") {
-  name = target_name
-  suffix = "_$name"
-  action("create_snapshot_" + name) {
-    forward_variables_from(invoker,
-                           [
-                             "testonly",
-                             "deps",
-                           ])
-    visibility = [ ":*" ]  # Only targets in this file can depend on this.
-    deps += [ ":snapshot_creator" ]
-    script = "v8/tools/run.py"
-    data = []
-    exe = rebase_path(get_label_info(":snapshot_creator", "root_out_dir") +
-                      "/snapshot_creator")
-    natives_in_bin = "$root_out_dir/natives_blob.bin"
-    snapshot_in_bin = "$root_out_dir/snapshot_blob.bin"
-    natives_out_cc = "$target_gen_dir/natives${suffix}.cc"
-    snapshot_out_cc = "$target_gen_dir/snapshot${suffix}.cc"
-    sources = [
-      invoker.js,
-    ]
-    outputs = [
-      natives_out_cc,
-      snapshot_out_cc,
-    ]
-    args = [
-      exe,
-      rebase_path(invoker.js, root_build_dir),
-      rebase_path(natives_in_bin, root_build_dir),
-      rebase_path(snapshot_in_bin, root_build_dir),
-      rebase_path(natives_out_cc, root_build_dir),
-      rebase_path(snapshot_out_cc, root_build_dir),
-    ]
-
-    # To debug snapshotting problems:
-    #  args += ["--trace-serializer"]
-    data = [
-      invoker.js,
-    ]
-  }
 }
 
 # Generates $target_gen_dir/snapshot_deno.cc
