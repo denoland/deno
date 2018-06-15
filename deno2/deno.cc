@@ -213,19 +213,21 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   v8::Context::Scope context_scope(context);
 
   auto global = context->Global();
-  // TODO(ry) Add a global namespace object "deno" and move print, sub, and
-  // pub inside that object.
+
+  auto deno_val = v8::Object::New(isolate);
+  CHECK(global->Set(context, deno::v8_str("deno"), deno_val).FromJust());
+
   auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
   auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(global->Set(context, deno::v8_str("denoPrint"), print_val).FromJust());
+  CHECK(deno_val->Set(context, deno::v8_str("print"), print_val).FromJust());
 
   auto sub_tmpl = v8::FunctionTemplate::New(isolate, Sub);
   auto sub_val = sub_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(global->Set(context, deno::v8_str("denoSub"), sub_val).FromJust());
+  CHECK(deno_val->Set(context, deno::v8_str("sub"), sub_val).FromJust());
 
   auto pub_tmpl = v8::FunctionTemplate::New(isolate, Pub);
   auto pub_val = pub_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(global->Set(context, deno::v8_str("denoPub"), pub_val).FromJust());
+  CHECK(deno_val->Set(context, deno::v8_str("pub"), pub_val).FromJust());
 
   bool r = Execute(context, js_filename, js_source);
   CHECK(r);

@@ -11,7 +11,7 @@ function typedArrayToArrayBuffer(ta) {
 }
 
 function CanCallFunction() {
-  denoPrint("Hello world from foo");
+  deno.print("Hello world from foo");
   return "foo";
 }
 
@@ -27,14 +27,14 @@ function TypedArraySnapshots() {
 }
 
 function PubSuccess() {
-  denoSub((channel, msg) => {
+  deno.sub((channel, msg) => {
     assert(channel === "PubSuccess");
-    denoPrint("PubSuccess: ok");
+    deno.print("PubSuccess: ok");
   });
 }
 
 function PubByteLength() {
-  denoSub((channel, msg) => {
+  deno.sub((channel, msg) => {
     assert(channel === "PubByteLength");
     assert(msg instanceof ArrayBuffer);
     assert(msg.byteLength === 3);
@@ -44,16 +44,16 @@ function PubByteLength() {
 function SubReturnEmpty() {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
-  let r = denoPub("SubReturnEmpty", ab);
+  let r = deno.pub("SubReturnEmpty", ab);
   assert(r == null);
-  r = denoPub("SubReturnEmpty", ab);
+  r = deno.pub("SubReturnEmpty", ab);
   assert(r == null);
 }
 
 function SubReturnBar() {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
-  const r = denoPub("SubReturnBar", ab);
+  const r = deno.pub("SubReturnBar", ab);
   assert(r instanceof ArrayBuffer);
   assert(r.byteLength === 3);
   const rui8 = new Uint8Array(r);
@@ -62,8 +62,8 @@ function SubReturnBar() {
 }
 
 function DoubleSubFails() {
-  // denoSub is an internal function and should only be called once from the
+  // deno.sub is an internal function and should only be called once from the
   // runtime.
-  denoSub((channel, msg) => assert(false));
-  denoSub((channel, msg) => assert(false));
+  deno.sub((channel, msg) => assert(false));
+  deno.sub((channel, msg) => assert(false));
 }
