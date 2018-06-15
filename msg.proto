@@ -107,5 +107,5 @@ message Msg {
   string temp_dir_prefix = 141;
 
   // TEMP_DIR_RES
-  stirng temp_dir_path = 150;
+  string temp_dir_path = 150;
 }
