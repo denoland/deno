@@ -17,6 +17,7 @@ executable("deno") {
 executable("mock_runtime_test") {
   testonly = true
   sources = [
+    "file_util_test.cc",
     "from_snapshot.cc",
     "mock_runtime_test.cc",
   ]
