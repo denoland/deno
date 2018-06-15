@@ -288,16 +288,16 @@ void deno_set_flags(int* argc, char** argv) {
 
 const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
 
-bool deno_execute(Deno* d, const char* js_filename, const char* js_source) {
+int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
   auto* isolate = d->isolate;
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = d->context.Get(d->isolate);
-  return deno::Execute(context, js_filename, js_source);
+  return deno::Execute(context, js_filename, js_source) ? 1 : 0;
 }
 
-bool deno_pub(Deno* d, const char* channel, deno_buf buf) {
+int deno_pub(Deno* d, const char* channel, deno_buf buf) {
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);
@@ -310,7 +310,7 @@ bool deno_pub(Deno* d, const char* channel, deno_buf buf) {
   auto sub = d->sub.Get(d->isolate);
   if (sub.IsEmpty()) {
     d->last_exception = "deno_sub has not been called.";
-    return false;
+    return 0;
   }
 
   // TODO(ry) support zero-copy.
@@ -325,10 +325,10 @@ bool deno_pub(Deno* d, const char* channel, deno_buf buf) {
 
   if (try_catch.HasCaught()) {
     deno::HandleException(context, try_catch.Exception());
-    return false;
+    return 0;
   }
 
-  return true;
+  return 1;
 }
 
 void deno_set_response(Deno* d, deno_buf buf) {
