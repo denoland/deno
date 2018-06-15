@@ -14,7 +14,7 @@ export function log(...args: any[]): void {
 
 export function assert(cond: boolean, msg = "") {
   if (!cond) {
-    throw Error("Assert fail. " + msg);
+    throw Error(`Assert fail. ${msg}`);
   }
 }
 

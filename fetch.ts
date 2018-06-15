@@ -1,9 +1,14 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-import { assert, log, createResolvable, Resolvable } from "./util";
-import * as util from "./util";
+import {
+  assert,
+  log,
+  createResolvable,
+  Resolvable,
+  typedArrayToArrayBuffer
+} from "./util";
 import { pubInternal, sub } from "./dispatch";
-import { main as pb } from "./msg.pb";
+import { deno as pb } from "./msg.pb";
 
 export function initFetch() {
   sub("fetch", (payload: Uint8Array) => {
@@ -84,7 +89,7 @@ class FetchResponse implements Response {
       this.onHeader(this);
     } else {
       // Body message. Assuming it all comes in one message now.
-      const ab = util.typedArrayToArrayBuffer(msg.fetchResBody);
+      const ab = typedArrayToArrayBuffer(msg.fetchResBody);
       this.bodyWaiter.resolve(ab);
     }
   }

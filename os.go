@@ -123,7 +123,7 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 		sourceCodeBuf, err = FetchRemoteSource(moduleName, filename)
 	} else if strings.HasPrefix(moduleName, assetPrefix) {
 		f := strings.TrimPrefix(moduleName, assetPrefix)
-		sourceCodeBuf, err = Asset("dist/" + f)
+		sourceCodeBuf, err = Asset(path.Join("dist", f))
 		if err != nil {
 			logDebug("%s Asset doesn't exist. Return without error", moduleName)
 			err = nil

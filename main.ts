@@ -4,7 +4,7 @@
 import "babel-polyfill";
 
 import * as dispatch from "./dispatch";
-import { main as pb } from "./msg.pb";
+import { deno as pb } from "./msg.pb";
 
 import * as runtime from "./runtime";
 import * as util from "./util";
