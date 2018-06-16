@@ -98,7 +98,7 @@ run_node("bundle") {
     "js/main.ts",
     "js/msg.pb.d.ts",
     "js/msg.pb.js",
-    "js/package.json", # `browserslist` field controls transform.
+    "js/package.json",  # The `browserslist` field controls Babel behavior.
   ]
   outputs = [
     out_dir + "main.js",
