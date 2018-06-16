@@ -2,7 +2,7 @@
 
 ## Status
 
-This code is a rewrite of the unprivileged parts of Deno. It will soon become
+This code is a rewrite of the privileged parts of Deno. It will soon become
 the root of the project.
 
 There are several goals:
@@ -21,7 +21,7 @@ There are several goals:
 * Test the message passing and other functionality at that layer before
   involving higher level languages.
 
-The contenders for building the unprivileged part of Deno are Rust and C++.
+The contenders for building the privileged part of Deno are Rust and C++.
 Thanks to Chrome and gn, using C++ to link into high level libraries is not
 untenable. However, there's a lot of interest in Rust in the JS community and
 it seems like a reasonable choice. TBD.
