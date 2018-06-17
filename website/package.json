@@ -1,0 +1,14 @@
+{
+  "name": "deno-website",
+  "version": "0.0.1",
+  "description": "Deno website",
+  "main": "index.js",
+  "repository": "https://github.com/deno",
+  "author": "Ryan Dahl <ry@tinyclouds.org>",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "@types/node": "^10.3.3",
+    "typescript": "^2.9.2"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "allowUnreachableCode": false,
+    "alwaysStrict": true,
+    "declaration": false,
+    "diagnostics": false,
+    "jsx": "react",
+    "jsxFactory": "h",
+    "lib": ["es5", "dom", "es2017"],
+    "module": "commonjs",
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+    "preserveConstEnums": true,
+    "pretty": true,
+    "sourceMap": true,
+    "target": "es2017"
+  },
+  "exclude": ["node_modules"]
+}
+
