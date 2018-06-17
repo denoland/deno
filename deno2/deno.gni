@@ -59,15 +59,21 @@ template("create_snapshot") {
 }
 
 template("rust_crate") {
-  crate_type = invoker.crate_type
-  source_root = invoker.source_root
   action(target_name) {
-    script = "v8/tools/run.py"
-    depfile = "$target_gen_dir/$target_name.d"
+    forward_variables_from(invoker,
+                           [
+                             "cfg",
+                             "crate_type",
+                             "source_root",
+                             "deps",
+                             "rust_deps",
+                           ])
     sources = [
       source_root,
     ]
     outputs = []
+    depfile = "$target_gen_dir/$target_name.d"
+    script = "v8/tools/run.py"
 
     args = [
       "rustc",
@@ -84,24 +90,28 @@ template("rust_crate") {
       args += [ "--emit=link=" + rebase_path(staticlib, root_build_dir) ]
     }
 
-    if (crate_type == "lib" || crate_type == "bin") {
+    if (crate_type == "rlib" || crate_type == "bin") {
       obj = "$target_out_dir/$target_name.o"
       outputs += [ obj ]
       args += [ "--emit=obj=" + rebase_path(obj, root_build_dir) ]
     }
 
-    if (crate_type == "lib") {
+    if (crate_type == "rlib") {
       rlib = "$target_out_dir/$target_name.rlib"
       outputs += [ rlib ]
       args += [ "--emit=link=" + rebase_path(rlib, root_build_dir) ]
     }
 
-    if (defined(invoker.extra_flags)) {
-      args += invoker.extra_flags
+    if (is_debug) {
+      args += [ "-g" ]
     }
 
-    if (defined(invoker.cfg)) {
-      foreach(c, invoker.cfg) {
+    if (is_official_build) {
+      args += [ "-O" ]
+    }
+
+    if (defined(cfg)) {
+      foreach(c, cfg) {
         args += [
           "--cfg",
           c,
@@ -109,52 +119,38 @@ template("rust_crate") {
       }
     }
 
-    deps = []
+    if (!defined(deps)) {
+      deps = []
+    }
 
-    if (defined(invoker.rust_deps)) {
-      foreach(dep_label, invoker.rust_deps) {
+    if (defined(rust_deps)) {
+      deps += rust_deps
+      foreach(dep_label, rust_deps) {
         dep_name = get_label_info(dep_label, "name")
         dep_dir = get_label_info(dep_label, "target_out_dir")
         dep_rlib = "$dep_dir/$dep_name.rlib"
-        deps += [ dep_label ]
         args += [
           "--extern",
           "$dep_name=" + rebase_path(dep_rlib, root_build_dir),
         ]
       }
     }
-
-    if (is_debug) {
-      args += [ "-g" ]
-    }
-    if (is_official_build) {
-      args += [ "-O" ]
-    }
   }
 }
 
 template("rust_library") {
   rust_crate(target_name) {
-    crate_type = "lib"
+    crate_type = "rlib"
     forward_variables_from(invoker, "*")
   }
 }
 
 template("rust_executable") {
   bin_target = target_name + "_bin"
-  exe_deps = invoker.deps
-
   rust_crate(bin_target) {
     crate_type = "bin"
-    forward_variables_from(invoker,
-                           [
-                             "source_root",
-                             "cfg",
-                             "rust_deps",
-                           ])
     forward_variables_from(invoker, "*")
   }
-  exe_deps += [ ":" + bin_target ]
 
   # By compiling an empty file as crate-type=staticlib we get all the code
   # for the rust stdlib, which are not included in the object file outputs
@@ -164,34 +160,37 @@ template("rust_executable") {
     crate_type = "staticlib"
     source_root = "empty.rs"
   }
-  exe_deps += [ ":" + stdlib_target ]
-
-  if (defined(invoker.rust_deps)) {
-    rust_deps = invoker.rust_deps
-  } else {
-    rust_deps = []
-  }
-
-  rust_objs = []
-  rust_objs += get_target_outputs(":" + stdlib_target)
-  rust_objs += get_target_outputs(":" + bin_target)
-  foreach(dep_label, rust_deps) {
-    dep_name = get_label_info(dep_label, "name")
-    dep_dir = get_label_info(dep_label, "target_out_dir")
-    dep_obj = "$dep_dir/$dep_name.o"
-    exe_deps += [ dep_label ]
-    rust_objs += [ dep_obj ]
-  }
 
   executable(target_name) {
-    ldflags = rebase_path(rust_objs, root_build_dir)
+    forward_variables_from(invoker, "*")
+
+    if (!defined(deps)) {
+      deps = []
+    }
+
+    deps += [
+      ":" + bin_target,
+      ":" + stdlib_target,
+    ]
+
+    libs = get_target_outputs(":" + bin_target) +
+           get_target_outputs(":" + stdlib_target)
+
+    if (defined(rust_deps)) {
+      deps += rust_deps
+      foreach(dep_label, rust_deps) {
+        dep_name = get_label_info(dep_label, "name")
+        dep_dir = get_label_info(dep_label, "target_out_dir")
+        dep_obj = "$dep_dir/$dep_name.o"
+        libs += [ dep_obj ]
+      }
+    }
+
     if (current_os == "mac") {
-      ldflags += [ "-lresolv" ]
+      libs += [ "resolv" ]
     }
     if (current_os == "win") {
-      ldflags += [ "userenv.lib" ]
+      libs += [ "userenv.lib" ]
     }
-    inputs = rust_objs
-    deps = exe_deps
   }
 }
