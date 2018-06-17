@@ -90,6 +90,12 @@ TEST(MockRuntimeTest, TypedArraySnapshots) {
   deno_delete(d);
 }
 
+TEST(MockRuntimeTest, SnapshotBug) {
+  Deno* d = deno_new(nullptr, nullptr);
+  EXPECT_TRUE(deno_execute(d, "a.js", "SnapshotBug()"));
+  deno_delete(d);
+}
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   deno_init();
