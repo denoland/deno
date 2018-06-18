@@ -30,23 +30,16 @@ template("create_snapshot") {
     data = []
     exe = rebase_path(get_label_info(":snapshot_creator", "root_out_dir") +
                       "/snapshot_creator")
-    natives_in_bin = "$root_out_dir/natives_blob.bin"
-    snapshot_in_bin = "$root_out_dir/snapshot_blob.bin"
-    natives_out_cc = "$target_gen_dir/natives${suffix}.cc"
     snapshot_out_cc = "$target_gen_dir/snapshot${suffix}.cc"
     sources = [
       invoker.js,
     ]
     outputs = [
-      natives_out_cc,
       snapshot_out_cc,
     ]
     args = [
       exe,
       rebase_path(invoker.js, root_build_dir),
-      rebase_path(natives_in_bin, root_build_dir),
-      rebase_path(snapshot_in_bin, root_build_dir),
-      rebase_path(natives_out_cc, root_build_dir),
       rebase_path(snapshot_out_cc, root_build_dir),
     ]
 
