@@ -250,8 +250,10 @@ v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
                                             SerializeInternalFields, nullptr));
   }
 
+  // Note that using kKeep here will cause segfaults. This is demoed in the
+  // "SnapshotBug" test case.
   auto snapshot_blob =
-      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kKeep);
+      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kClear);
 
   return snapshot_blob;
 }
