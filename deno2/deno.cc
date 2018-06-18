@@ -194,19 +194,6 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   return true;
 }
 
-v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
-                                        void* data) {
-  DCHECK_EQ(data, nullptr);  // TODO(ry) pass Deno* object here.
-  InternalFieldData* embedder_field = static_cast<InternalFieldData*>(
-      holder->GetAlignedPointerFromInternalField(index));
-  if (embedder_field == nullptr) return {nullptr, 0};
-  int size = sizeof(*embedder_field);
-  char* payload = new char[size];
-  // We simply use memcpy to serialize the content.
-  memcpy(payload, embedder_field, size);
-  return {payload, size};
-}
-
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
                        const char* js_filename, const char* js_source) {
   v8::HandleScope handle_scope(isolate);
@@ -231,31 +218,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
 
   bool r = Execute(context, js_filename, js_source);
   CHECK(r);
-}
-
-v8::StartupData MakeSnapshot(v8::StartupData* prev_natives_blob,
-                             v8::StartupData* prev_snapshot_blob,
-                             const char* js_filename, const char* js_source) {
-  v8::V8::SetNativesDataBlob(prev_natives_blob);
-  v8::V8::SetSnapshotDataBlob(prev_snapshot_blob);
-
-  auto* creator = new v8::SnapshotCreator(external_references);
-  auto* isolate = creator->GetIsolate();
-  v8::Isolate::Scope isolate_scope(isolate);
-  {
-    v8::HandleScope handle_scope(isolate);
-    auto context = v8::Context::New(isolate);
-    InitializeContext(isolate, context, js_filename, js_source);
-    creator->SetDefaultContext(context, v8::SerializeInternalFieldsCallback(
-                                            SerializeInternalFields, nullptr));
-  }
-
-  // Note that using kKeep here will cause segfaults. This is demoed in the
-  // "SnapshotBug" test case.
-  auto snapshot_blob =
-      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kClear);
-
-  return snapshot_blob;
 }
 
 void AddIsolate(Deno* d, v8::Isolate* isolate) {
