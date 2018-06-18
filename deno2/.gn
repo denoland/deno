@@ -24,15 +24,12 @@ default_args = {
   v8_embedder_string = "-deno"
   v8_enable_gdbjit = false
   v8_enable_i18n_support = false
-  v8_enable_test_features = false
-  v8_experimental_extra_library_files = []
-  v8_extra_library_files = []
   v8_imminent_deprecation_warnings = false
   v8_monolithic = false
   v8_untrusted_code_mitigations = false
-
-  # This tells V8 to write out/Default/gen/v8/snapshot.bin
-  # Which we can use to build our own snapshot.
-  v8_use_external_startup_data = true
+  v8_use_multi_snapshots = false
+  v8_use_external_startup_data = false
   v8_use_snapshot = true
+  v8_experimental_extra_library_files = []
+  v8_extra_library_files = []
 }

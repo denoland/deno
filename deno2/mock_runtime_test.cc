@@ -99,5 +99,6 @@ TEST(MockRuntimeTest, SnapshotBug) {
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   deno_init();
+  deno_set_flags(&argc, argv);
   return RUN_ALL_TESTS();
 }
