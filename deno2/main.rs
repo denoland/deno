@@ -8,32 +8,53 @@ use std::ffi::CString;
 extern "C" {
     fn deno_v8_version() -> *const c_char;
     fn deno_init();
-
-    // Note: `deno_set_flags` actually takes `char**` as it's second argument,
-    // not `const char**`, so this is technically incorrect. However it doesn't
-    // actually modify the contents of the strings, so it's not unsafe.
-    // TODO: use the correct function signature.
-    fn deno_set_flags(argc: *mut c_int, argv: *mut *const c_char);
+    fn deno_set_flags(argc: *mut c_int, argv: *mut *mut c_char);
 }
 
-fn set_flags() {
-    // Create a vector of zero terminated c strings.
+// Pass the command line arguments to v8.
+// Returns a vector of command line arguments that v8 did not understand.
+fn set_flags() -> Vec<String> {
+    // deno_set_flags(int* argc, char** argv) mutates argc and argv to remove
+    // flags that v8 understands.
+    // Convert command line arguments to a vector of C strings.
     let mut argv = std::env::args()
-        .map(|arg| CString::new(arg).unwrap().as_ptr())
+        .map(|arg| CString::new(arg).unwrap().into_bytes_with_nul())
         .collect::<Vec<_>>();
-    let mut argc = argv.len() as c_int;
+    // Make a new array, that can be modified by V8::SetFlagsFromCommandLine(),
+    // containing mutable raw pointers to the individual command line args.
+    let mut c_argv = argv.iter_mut()
+        .map(|arg| arg.as_mut_ptr() as *mut i8)
+        .collect::<Vec<_>>();
+    // Store the length of the argv array in a local variable. We'll pass a
+    // pointer to this local variable to deno_set_flags(), which then
+    // updates its value.
+    let mut c_argc = argv.len() as c_int;
+    // Let v8 parse the arguments it recognizes and remove them from c_argv.
     unsafe {
-        // pass the pointer of the vector's internal buffer to a C function
-        deno_set_flags(&mut argc, argv.as_mut_ptr());
+        deno_set_flags(&mut c_argc, c_argv.as_mut_ptr());
     };
+    // If c_argc was updated we have to change the length of c_argv to match.
+    c_argv.truncate(c_argc as usize);
+    // Copy the modified arguments list into a proper rust vec and return it.
+    c_argv
+        .iter()
+        .map(|ptr| unsafe {
+            let cstr = CStr::from_ptr(*ptr as *const i8);
+            let slice = cstr.to_str().unwrap();
+            slice.to_string()
+        })
+        .collect::<Vec<_>>()
 }
 
 fn main() {
     println!("Hi");
-    set_flags();
+    let args = set_flags();
     unsafe { deno_init() };
     let v = unsafe { deno_v8_version() };
     let c_str = unsafe { CStr::from_ptr(v) };
     let version = c_str.to_str().unwrap();
     println!("version: {}", version);
+    for arg in args {
+        println!("arg: {}", arg);
+    }
 }
