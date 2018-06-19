@@ -5,11 +5,6 @@
 # The location of the build configuration file.
 buildconfig = "//build/config/BUILDCONFIG.gn"
 
-# The secondary source root is a parallel directory tree where
-# GN build files are placed when they can not be placed directly
-# in the source tree, e.g. for third party source trees.
-secondary_source = "//v8/"
-
 # These are the targets to check headers for by default. The files in targets
 # matching these patterns (see "gn help label_pattern" for format) will have
 # their includes checked for proper dependencies when you run either
@@ -17,19 +12,33 @@ secondary_source = "//v8/"
 check_targets = []
 
 default_args = {
+  # Various global chrome args that are unrelated to deno.
+  proprietary_codecs = false
+  safe_browsing_mode = 0
+  toolkit_views = false
+  use_aura = false
+  use_dbus = false
+  use_gio = false
+  use_glib = false
+  use_ozone = false
+  use_udev = false
+
   is_component_build = false
   symbol_level = 1
   treat_warnings_as_errors = false
+
+  # https://cs.chromium.org/chromium/src/docs/ccache_mac.md
+  clang_use_chrome_plugins = false
+
   v8_deprecation_warnings = false
   v8_embedder_string = "-deno"
   v8_enable_gdbjit = false
   v8_enable_i18n_support = false
-  v8_imminent_deprecation_warnings = false
-  v8_monolithic = false
-  v8_untrusted_code_mitigations = false
-  v8_use_multi_snapshots = false
-  v8_use_external_startup_data = false
-  v8_use_snapshot = true
   v8_experimental_extra_library_files = []
   v8_extra_library_files = []
+  v8_imminent_deprecation_warnings = false
+  v8_monolithic = true
+  v8_untrusted_code_mitigations = false
+  v8_use_external_startup_data = false
+  v8_use_snapshot = true
 }
