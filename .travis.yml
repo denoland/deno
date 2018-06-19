@@ -1,36 +1,51 @@
 language: c++
+branches:
+  only:
+  - master
 cache:
   ccache: true
   directories:
-   - .cache/
-   - node_modules/
-   - $V8WORKER2_OUT_PATH
+   - deno2/js/node_modules/
+   - $DEPOT_TOOLS_PATH
+   - $BUILD_PATH
 env:
   global:
-    - V8WORKER2_OUT_PATH=$HOME/v8worker2_out
-    - PROTOBUF_ROOT=$HOME/protobuf
+    - BUILD_PATH=$HOME/out/Default
+    - DEPOT_TOOLS_PATH=$HOME/depot_tools
 before_install: |
-  # protobuf
-  export PATH=$PROTOBUF_ROOT/bin:$PATH
-  if ! [ -x $PROTOBUF_ROOT/bin/protoc ]; then
-    rm -rf $PROTOBUF_ROOT
-    mkdir -p $PROTOBUF_ROOT
-    pushd $PROTOBUF_ROOT
-    wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
-    unzip protoc-3.1.0-linux-x86_64.zip
-    popd
+  if ! [ -x $DEPOT_TOOLS_PATH/gclient ]; then
+    rm -rf $DEPOT_TOOLS_PATH
+    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS_PATH
   fi
 install:
- - mkdir -p $GOPATH/src/github.com/ry
- - ln -s `pwd` $GOPATH/src/github.com/ry/deno
- - env
- - go get -d github.com/ry/v8worker2
- - $GOPATH/src/github.com/ry/v8worker2/build.py --use_ccache --out_path $V8WORKER2_OUT_PATH
- - go get -u github.com/golang/protobuf/proto
- - go get -u github.com/spf13/afero
- - go get -u github.com/golang/protobuf/protoc-gen-go
- - go get -u github.com/jteeuwen/go-bindata/...
- - yarn
+ - export PATH=$PATH:$DEPOT_TOOLS_PATH
+ - cd deno2
+ # Sync dependencies.
+ # TODO(ry) These sync steps are very terrible and only here temporarily.
+ # A single deno_deps git submodule should be created which contains V8,
+ # node_modules, depot_tools, rustc, and other deps.
+ # Building Deno *should not* depend on yarn, gclient, rustup, cargo, nor any
+ # internet connection.
+ - curl -sSf https://sh.rustup.rs | sh -s -- -y
+ - export PATH=$HOME/.cargo/bin:$PATH
+ - rustc --version
+ - (cd js; yarn)
+ - gclient sync -j2 --no-history
+ # ccache needs the custom LLVM to be in PATH and other variables.
+ - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
+ - export CCACHE_CPP2=yes
+ - export CCACHE_SLOPPINESS=time_macros
+ # In case gn gen args change, delete args.gn to avoid using cached values.
+ - rm -f $BUILD_PATH/args.gn
+ # is_debug, use_allocator, and ccache are used to speed travis.
+ # use_custom_libcxx=false and use_sysroot=false seem to be required to build on
+ # Ubuntu 14.04
+ - gn gen $BUILD_PATH --args='is_debug=false use_allocator="none" cc_wrapper="ccache" use_custom_libcxx=false use_sysroot=false'
+ - gn args $BUILD_PATH --list
+ - ccache -s
+ # Travis hangs without -j2 argument to ninja.
+ - ninja -j2 -C $BUILD_PATH mock_runtime_test deno deno_rs
 script:
- - make lint
- - make test
+ - $BUILD_PATH/mock_runtime_test
+ - $BUILD_PATH/deno foo bar
+ - $BUILD_PATH/deno_rs meow
