@@ -1,0 +1,4 @@
+# improve docker build performance excluding some directories
+
+.cache
+node_modules

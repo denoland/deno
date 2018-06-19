@@ -68,7 +68,7 @@ clean:
 distclean: clean
 	-rm -rf node_modules/
 
-lint: node_modules
+lint: node_modules deno
 	yarn lint
 	go vet
 
@@ -80,4 +80,15 @@ fmt: node_modules
 test: deno
 	go test -v
 
-.PHONY: test lint clean distclean
+# Use the dev-0.0 tag for local testing
+DOCKER_TAG ?= dev-0.1
+DOCKER_REGISTRY ?= ry/deno
+DOCKER_IMAGE ?= ${DOCKER_REGISTRY}:${DOCKER_TAG}
+
+build-image:
+	docker build -t ${DOCKER_IMAGE} .
+
+push-image:
+	docker push ${DOCKER_IMAGE}
+
+.PHONY: test lint clean distclean build-image push-image
