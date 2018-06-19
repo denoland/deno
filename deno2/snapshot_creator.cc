@@ -57,8 +57,25 @@ int main(int argc, char** argv) {
   std::string js_source;
   CHECK(deno::ReadFileToString(js_fn, &js_source));
 
+  // Wrap the js_source in an IIFE to work around a bug in the V8 snapshot
+  // serializer. Without it, CreateBlob() triggers the following assert:
+  //   Debug check failed : outer_scope_info()->IsScopeInfo() || is_toplevel().
+  //   ==== C stack trace ====
+  //   v8::internal::SharedFunctionInfo::FlushCompiled
+  //   v8::SnapshotCreator::CreateBlob
+  //   deno::MakeSnapshot
+  // Avoid misaligning the source map, and ensure that the sourceMappingUrl
+  // comment remains at the last line.
+  auto smu_offset = js_source.rfind("//#");
+  CHECK(smu_offset != std::string::npos);
+  auto wrapped_js_source = "(function() {" + js_source.substr(0, smu_offset) +
+                           "\n})();\n" + js_source.substr(smu_offset);
+  // Double check that the source mapping url comment is at the last line.
+  auto last_line = wrapped_js_source.substr(wrapped_js_source.rfind('\n'));
+  CHECK(last_line.find("sourceMappingURL") != std::string::npos);
+
   deno_init();
-  auto snapshot_blob = deno::MakeSnapshot(js_fn, js_source.c_str());
+  auto snapshot_blob = deno::MakeSnapshot(js_fn, wrapped_js_source.c_str());
   std::string snapshot_str(snapshot_blob.data, snapshot_blob.raw_size);
 
   CHECK(deno::WriteDataAsCpp("snapshot", snapshot_out_cc, snapshot_str));
