@@ -23,6 +23,9 @@ def main():
     os.chdir(root_path)
     buildName = "Debug" if args.debug else "Default"
     buildDir = os.path.join(root_path, "out", buildName)
+    # Default to non-Googler configuration.
+    if 'DEPOT_TOOLS_WIN_TOOLCHAIN' not in os.environ:
+        os.environ['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
     # Run sync if any of the dep dirs don't exist.
     # Or the user supplied the --sync flag.
     if args.sync or dirsMissing():
@@ -47,7 +50,7 @@ def main():
 def run(args):
     print " ".join(args)
     env = os.environ.copy()
-    subprocess.check_call(args, env=env)
+    subprocess.check_call(args, env=env, shell=True)
 
 
 def dirsMissing():

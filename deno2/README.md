@@ -45,17 +45,18 @@ For linux you need these prereqs:
 
 First install the javascript deps.
 
-    cd js; yarn install
+    cd js && yarn install
 
 TODO(ry) Remove the above step by a deps submodule.
 
 Wrapper around the gclient/gn/ninja for end users. Try this first:
 
-    ./tools/build.py --use_ccache --debug
+    python ./tools/build.py --use_ccache --debug
 
-If that doesn't work, or you need more control, try calling gn manually:
+If that doesn't work, or you need more control, try calling gn manually (you'll
+need to set `DEPOT_TOOLS_WIN_TOOLCHAIN` to `0` on Windows):
 
-    gn gen out/Debug --args='cc_wrapper="ccache" is_debug=true '
+    gn gen out/Debug --args="cc_wrapper=\"ccache\" is_debug=true "
 
 Then build with ninja:
 
