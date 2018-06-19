@@ -9,7 +9,6 @@ prettier --write \
 	js/deno.d.ts \
   js/main.ts \
   js/mock_runtime.js \
-  js/package.json \
   js/tsconfig.json
 # Do not format these. 
 #  js/msg.pb.js
