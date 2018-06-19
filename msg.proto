@@ -25,6 +25,8 @@ message Msg {
     READ_FILE_SYNC = 11;
     READ_FILE_SYNC_RES = 12;
     WRITE_FILE_SYNC = 13;
+    TEMP_DIR = 14;
+    TEMP_DIR_RES = 15;
   }
   Command command = 1;
 
@@ -99,4 +101,11 @@ message Msg {
   bytes write_file_sync_data = 131;
   uint32 write_file_sync_perm = 132;
   // write_file_sync_perm specified by https://godoc.org/os#FileMode
+
+  // TEMP_DIR
+  string temp_dir_parent_path = 140;
+  string temp_dir_prefix = 141;
+
+  // TEMP_DIR_RES
+  string temp_dir_path = 150;
 }
