@@ -1,4 +1,7 @@
 language: c++
+branches:
+  only:
+  - master
 cache:
   ccache: true
   directories:
