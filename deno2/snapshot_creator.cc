@@ -42,6 +42,30 @@ v8::StartupData MakeSnapshot(const char* js_filename, const char* js_source) {
   return snapshot_blob;
 }
 
+// Wrap the js_source in an IIFE to work around a bug in the V8 snapshot
+// serializer. Without it, CreateBlob() triggers the following assert:
+//   Debug check failed : outer_scope_info()->IsScopeInfo() || is_toplevel().
+//   ==== C stack trace ====
+//   v8::internal::SharedFunctionInfo::FlushCompiled
+//   v8::SnapshotCreator::CreateBlob
+//   deno::MakeSnapshot
+// Avoid misaligning the source map, and ensure that the sourceMappingUrl
+// comment remains at the last line.
+// Try removing this when this bug is fixed:
+// https://bugs.chromium.org/p/v8/issues/detail?id=7857
+std::string WrapSourceCode(const std::string& js_source) {
+  auto smu_offset = js_source.rfind("//# sourceMappingURL=");
+  std::string tail =
+      smu_offset == std::string::npos ? "" : js_source.substr(smu_offset);
+  auto wrapped_js_source =
+      "(function() {" + js_source.substr(0, smu_offset) + "\n})();\n" + tail;
+  // Double check that the source mapping url comment is at the last line.
+  auto last_line = wrapped_js_source.substr(wrapped_js_source.rfind('\n'));
+  CHECK(smu_offset == std::string::npos ||
+        last_line.find("sourceMappingURL") != std::string::npos);
+  return wrapped_js_source;
+}
+
 }  // namespace deno
 
 int main(int argc, char** argv) {
@@ -57,22 +81,7 @@ int main(int argc, char** argv) {
   std::string js_source;
   CHECK(deno::ReadFileToString(js_fn, &js_source));
 
-  // Wrap the js_source in an IIFE to work around a bug in the V8 snapshot
-  // serializer. Without it, CreateBlob() triggers the following assert:
-  //   Debug check failed : outer_scope_info()->IsScopeInfo() || is_toplevel().
-  //   ==== C stack trace ====
-  //   v8::internal::SharedFunctionInfo::FlushCompiled
-  //   v8::SnapshotCreator::CreateBlob
-  //   deno::MakeSnapshot
-  // Avoid misaligning the source map, and ensure that the sourceMappingUrl
-  // comment remains at the last line.
-  auto smu_offset = js_source.rfind("//#");
-  CHECK(smu_offset != std::string::npos);
-  auto wrapped_js_source = "(function() {" + js_source.substr(0, smu_offset) +
-                           "\n})();\n" + js_source.substr(smu_offset);
-  // Double check that the source mapping url comment is at the last line.
-  auto last_line = wrapped_js_source.substr(wrapped_js_source.rfind('\n'));
-  CHECK(last_line.find("sourceMappingURL") != std::string::npos);
+  auto wrapped_js_source = deno::WrapSourceCode(js_source);
 
   deno_init();
   auto snapshot_blob = deno::MakeSnapshot(js_fn, wrapped_js_source.c_str());
