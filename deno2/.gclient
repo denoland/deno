@@ -18,7 +18,7 @@ solutions = [{
         'v8/tools/luci-go': None
     }
 }, {
-    'url': 'https://github.com/ry/protobuf_chromium.git@e62249df45c2a0a9c38e4017e8ab604020b986c5',
+    'url': 'https://github.com/ry/protobuf_chromium.git',
     'name': 'third_party/protobuf',
 }, {
     'url':
