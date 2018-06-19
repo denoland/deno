@@ -8,6 +8,8 @@
 //   http-server -p 4545 --cors .
 import { test, assert, assertEqual } from "./testing/testing.ts";
 import { readFileSync, writeFileSync } from "deno";
+import { NetSocket, Socket } from "deno";
+import { NetServerConn, createServer } from "deno";
 
 test(async function tests_test() {
   assert(true);
@@ -54,6 +56,31 @@ test(async function tests_writeFileSync() {
   const dec = new TextDecoder("utf-8");
   const actual = dec.decode(dataRead);
   assertEqual("Hello", actual);
+});
+
+test(function test_createServer() {
+  const decoder = new TextDecoder("utf-8");
+  const server = createServer((conn: NetServerConn) => {
+    conn.onData((rawData: Uint8Array) => {
+        const data = decoder.decode(rawData);
+        if (data === "quit") {
+            conn.close();
+        }
+        conn.write(data);
+        conn.write("\n");
+    })
+  })
+  server.listen(5001);
+
+  const client = Socket();
+  client.connect(5001, "127.0.0.1", () => {
+    client.write("echo\n");
+    client.onData((rawData: Uint8Array) => {
+        const data = decoder.decode(rawData);
+        assertEqual(data, "echo");
+        client.write("quit\n");
+    })
+  })
 });
 
 test(function tests_console_assert() {
