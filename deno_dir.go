@@ -49,6 +49,9 @@ func FetchRemoteSource(remoteUrl string, localFilename string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if res.StatusCode == 404 {
+			return nil, ErrFileNotFound
+		}
 		defer res.Body.Close()
 
 		err = os.MkdirAll(path.Dir(localFilename), 0700)
