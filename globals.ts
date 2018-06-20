@@ -24,8 +24,9 @@ _global["clearInterval"] = timer.clearTimer;
 import { Console } from "./console";
 _global["console"] = new Console();
 
-import { fetch } from "./fetch";
+import { fetch, Request } from "./fetch";
 _global["fetch"] = fetch;
+_global["Request"] = Request;
 
 import { TextEncoder, TextDecoder } from "text-encoding";
 _global["TextEncoder"] = TextEncoder;
