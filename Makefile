@@ -43,6 +43,7 @@ deno: msg.pb.go $(GO_FILES)
 assets.go: dist/main.js
 	cp node_modules/typescript/lib/*d.ts dist/
 	cp deno.d.ts dist/
+	cp node_modules/tslib/tslib.d.ts dist/
 	go-bindata -pkg deno -o assets.go dist/
 
 msg.pb.go: msg.proto
