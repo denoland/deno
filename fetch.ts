@@ -16,7 +16,7 @@ export function initFetch() {
     assert(msg.command === pb.Msg.Command.FETCH_RES);
     const id = msg.fetchResId;
     const f = fetchRequests.get(id);
-    assert(f != null, `Couldn't find FetchRequest id ${id}`);
+    assert(f !== null, `Couldn't find FetchRequest id ${id}`);
 
     f.onMsg(msg);
   });
@@ -77,7 +77,7 @@ class FetchResponse implements Response {
   onError: (error: Error) => void;
 
   onMsg(msg: pb.Msg) {
-    if (msg.error !== null && msg.error !== "") {
+    if (msg.error) {
       //throw new Error(msg.error)
       this.onError(new Error(msg.error));
       return;
@@ -121,7 +121,7 @@ class FetchRequest {
       fetchReqId: this.id,
       fetchReqUrl: this.url
     });
-    assert(res == null);
+    assert(res === null);
   }
 }
 

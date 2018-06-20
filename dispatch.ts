@@ -45,21 +45,20 @@ export function pubInternal(channel: string, obj: pb.IMsg): null | pb.Msg {
   const msg = pb.Msg.fromObject(obj);
   const ui8 = pb.Msg.encode(msg).finish();
   const resBuf = pub(channel, ui8);
-  if (resBuf != null && resBuf.byteLength > 0) {
+  if (resBuf && resBuf.byteLength > 0) {
     const res = pb.Msg.decode(new Uint8Array(resBuf));
-    if (res != null && res.error != null && res.error.length > 0) {
+    if (res && res.error && res.error.length > 0) {
       throw Error(res.error);
     }
     return res;
-  } else {
-    return null;
   }
+  return null;
 }
 
 V8Worker2.recv((ab: ArrayBuffer) => {
   const msg = pb.BaseMsg.decode(new Uint8Array(ab));
   const subscribers = channels.get(msg.channel);
-  if (subscribers == null) {
+  if (subscribers === null) {
     throw Error(`No subscribers for channel "${msg.channel}".`);
   }
 
