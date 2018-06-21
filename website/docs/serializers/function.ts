@@ -23,6 +23,12 @@ define("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
   if (node.type) {
     visit.call(this, returnTypes, node.type);
   }
+  if (returnTypes.length === 0) {
+    returnTypes.push({});
+  }
+  // Return documentation
+  const retDocs = sig.getJsDocTags().filter(({ name }) => name === "return");
+  returnTypes[0].documentation = retDocs.map(({ text }) => text).join(" ");
 
   const typeParameters = [];
   if (node.typeParameters) {
