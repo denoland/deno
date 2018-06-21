@@ -1,6 +1,6 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-import { main as pb } from "./msg.pb";
+import { deno as pb } from "./msg.pb";
 import { pubInternal, sub } from "./dispatch";
 import { assert } from "./util";
 
@@ -81,6 +81,7 @@ export function setInterval(
 }
 
 export function clearTimer(id: number) {
+  timers.delete(id);
   pubInternal("timers", {
     command: pb.Msg.Command.TIMER_CLEAR,
     timerClearId: id

@@ -59,10 +59,16 @@ Segfaulty. No docs yet. Work in Progress.
 
 * Examples: [testdata/004_set_timeout.ts](https://github.com/ry/deno/blob/master/testdata/004_set_timeout.ts)
 
-* Roadmap: [TODO.txt](https://github.com/ry/deno/blob/master/TODO.txt)
+* Roadmap: [Roadmap.md](https://github.com/ry/deno/blob/master/Roadmap.md)
 
 * Presentation: [jsconf2018.pdf](http://tinyclouds.org/jsconf2018.pdf)
 
+### Github Noise
+
+I am excited about all the interest in this project. However, do understand that this
+is very much a non-functional prototype. There's a huge amount of heavy lifting to do.
+Unless you are participating in that, please maintain radio silence on github. This
+includes submitting trivial PRs (like improving README build instructions).
 
 ## Compile instructions
 

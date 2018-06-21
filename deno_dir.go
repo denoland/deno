@@ -56,7 +56,7 @@ func FetchRemoteSource(remoteUrl string, localFilename string) ([]byte, error) {
 			return nil, err
 		}
 
-		// Write to to file. Need to reopen it for writing.
+		// Write to local file. Need to reopen it for writing.
 		file, err = os.OpenFile(localFilename, os.O_RDWR|os.O_CREATE, 0700)
 		if err != nil {
 			return nil, err
@@ -87,7 +87,7 @@ func LoadOutputCodeCache(filename string, sourceCodeBuf []byte) (
 
 func UserHomeDir() string {
 	if runtime.GOOS == "windows" {
-		home := os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH")
+		home := path.Join(os.Getenv("HOMEDRIVE"), os.Getenv("HOMEPATH"))
 		if home == "" {
 			home = os.Getenv("USERPROFILE")
 		}
