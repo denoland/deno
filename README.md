@@ -69,21 +69,6 @@ Get [Depot Tools](http://commondatastorage.googleapis.com/chrome-infra-docs/flat
 
 You need [yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
 
-You need Protobuf 3. On Linux this might work:
-
-``` bash
-cd ~
-wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
-unzip protoc-3.1.0-linux-x86_64.zip
-export PATH=$HOME/bin:$PATH
-```
-
-On macOS, using [HomeBrew](https://brew.sh/):
-
-``` bash
-brew install protobuf
-```
-
 Go to `src/` folder:
 ``` bash
 cd src/
@@ -91,7 +76,7 @@ cd src/
 
 Fetch packages and v8:  
 ``` bash
-gclient sync -j2 --no-history
+gclient sync --no-history
 ```
 
 Install the javascript deps.
