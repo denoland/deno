@@ -72,79 +72,20 @@ includes submitting trivial PRs (like improving README build instructions).
 
 ## Compile instructions
 
-I will release binaries at some point, but for now you have to build it
-yourself.
+First install the javascript deps.
 
-You will need [Go](https://golang.org) with `$GOPATH` defined and
-`$GOPATH/bin` in your `$PATH`.  
+    cd deno2
 
-You will also need [yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
+    cd js; yarn install
 
-You need Protobuf 3. On Linux this might work:
+    gn gen out/Debug --args='cc_wrapper="ccache" is_debug=true '
 
-``` bash
-cd ~
-wget https://github.com/google/protobuf/releases/download/v3.1.0/protoc-3.1.0-linux-x86_64.zip
-unzip protoc-3.1.0-linux-x86_64.zip
-export PATH=$HOME/bin:$PATH
-```
+Then build with ninja:
 
-On macOS, using [HomeBrew](https://brew.sh/):
+    ninja -C out/Debug/ deno
 
-``` bash
-brew install protobuf
-```
+Other useful commands:
 
-Then you need [protoc-gen-go](https://github.com/golang/protobuf/tree/master/protoc-gen-go) and [go-bindata](https://github.com/jteeuwen/go-bindata):
-
-``` bash
-go get -u github.com/golang/protobuf/protoc-gen-go
-go get -u github.com/jteeuwen/go-bindata/...
-```
-
-You need to get and build [v8worker2](https://github.com/ry/v8worker2).  __The package will not build with `go
-get` and will log out an error ⚠__
-```bash
-# pkg-config --cflags v8.pc
-Failed to open 'v8.pc': No such file or directory
-No package 'v8.pc' found
-pkg-config: exit status 1
-```
-
-__which can be ignored__. It takes about 30 minutes to build:
-
-``` bash
-go get -u github.com/ry/v8worker2
-cd $GOPATH/src/github.com/ry/v8worker2
-./build.py --use_ccache
-```
-Maybe also run `git submodule update --init` in the `v8worker2/` dir.
-
-Finally, you can get `deno` and its other Go deps.
-
-``` bash
-go get -u github.com/ry/deno/...
-```
-
-Now you can build deno and run it:
-
-``` bash
-cd $GOPATH/src/github.com/ry/deno
-
-make # Wait for redacted
-
-./deno testdata/001_hello.js # Output: Hello World
-```
-
-## `make` commands
-
-``` bash
-make deno # Builds the deno executable.
-
-make test # Runs the tests.
-
-make fmt # Formats the code.
-
-make clean # Cleans the build.
-```
-
+    gn args out/Debug/ --list # List build args
+    gn args out/Debug/ # Modify args in $EDITOR
+    gn desc out/Debug/ :deno
