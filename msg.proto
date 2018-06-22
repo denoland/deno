@@ -25,6 +25,13 @@ message Msg {
     READ_FILE_SYNC = 11;
     READ_FILE_SYNC_RES = 12;
     WRITE_FILE_SYNC = 13;
+    HTTP_LISTEN = 14;
+    HTTP_CLOSE = 15;
+    HTTP_REQ = 16;
+    HTTP_RES = 17;
+    HTTP_RES_WRITE = 18;
+    HTTP_RES_END = 19;
+    HTTP_RES_HEADER = 20;
   }
   Command command = 1;
 
@@ -99,4 +106,24 @@ message Msg {
   bytes write_file_sync_data = 131;
   uint32 write_file_sync_perm = 132;
   // write_file_sync_perm specified by https://godoc.org/os#FileMode
+
+  // HTTP_LISTEN
+  int32 http_listen_server_id = 140;
+  int32 http_listen_port = 141;
+
+  // HTTP_CLOSE
+  int32 http_close_server_id = 150;
+
+  // HTTP_REQ
+  int32 http_req_id = 160;
+  string http_req_method = 161;
+  string http_req_path = 162;
+  bytes http_req_body = 163;
+
+  // HTTP_RES
+  int32 http_res_id = 170;
+  bytes http_res_write_body = 171;
+  int32 http_res_header_code = 172;
+  
+  repeated string http_res_headers = 173;
 }

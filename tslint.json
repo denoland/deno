@@ -23,6 +23,7 @@
     "class-name": true,
     "curly": true,
     "interface-name": [true, "never-prefix"],
+    "indent": [true, "spaces", 2],
     "jsdoc-format": true,
     "forin": false,
     "label-position": true,

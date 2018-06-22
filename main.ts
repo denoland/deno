@@ -11,6 +11,7 @@ import * as util from "./util";
 
 import { initTimers } from "./timers";
 import { initFetch } from "./fetch";
+import { initHttp } from "./http";
 
 // To control internal logging output
 // Set with the -debug command-line flag.
@@ -26,6 +27,7 @@ let startCalled = false;
 
   initTimers();
   initFetch();
+  initHttp();
 
   dispatch.sub("start", (payload: Uint8Array) => {
     if (startCalled) {
