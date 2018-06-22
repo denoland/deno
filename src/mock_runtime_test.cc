@@ -96,6 +96,19 @@ TEST(MockRuntimeTest, SnapshotBug) {
   deno_delete(d);
 }
 
+TEST(MockRuntimeTest, ErrorHandling) {
+  static int count = 0;
+  Deno* d = deno_new(nullptr, [](auto deno, auto channel, auto buf) {
+    count++;
+    EXPECT_STREQ(channel, "ErrorHandling");
+    EXPECT_EQ(static_cast<size_t>(1), buf.len);
+    EXPECT_EQ(buf.data[0], 42);
+  });
+  EXPECT_FALSE(deno_execute(d, "a.js", "ErrorHandling()"));
+  EXPECT_EQ(count, 1);
+  deno_delete(d);
+}
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   deno_init();
