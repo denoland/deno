@@ -75,3 +75,16 @@ global.DoubleSubFails = () => {
 global.SnapshotBug = () => {
   assert("1,2,3" === String([1, 2, 3]));
 };
+
+global.ErrorHandling = () => {
+  global.onerror = (message, source, line, col, error) => {
+    deno.print(`line ${line} col ${col}`);
+    assert("ReferenceError: notdefined is not defined" === message);
+    assert(source === "helloworld.js");
+    assert(line === 3);
+    assert(col === 1);
+    assert(error instanceof Error);
+    deno.pub("ErrorHandling", typedArrayToArrayBuffer(new Uint8Array([42])));
+  };
+  eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
+};
