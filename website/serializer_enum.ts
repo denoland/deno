@@ -24,6 +24,8 @@ VISITOR("EnumDeclaration", function(e, node: ts.EnumDeclaration) {
 });
 
 VISITOR("EnumMember", function(e, node: ts.EnumMember) {
+  const symbol = this.checker.getSymbolAtLocation(node.name);
+  const docs = symbol.getDocumentationComment(this.checker);
   const array = [];
   visit.call(this, array, node.initializer);
   const initializer = array[0];
@@ -32,6 +34,7 @@ VISITOR("EnumMember", function(e, node: ts.EnumMember) {
   const name = array[0]
   e.push({
     type: "EnumMember",
+    documentation: ts.displayPartsToString(docs),
     initializer,
     name
   });
