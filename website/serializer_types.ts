@@ -315,8 +315,18 @@ VISITOR("InferType", function(e, node: ts.InferTypeNode) {
 });
 
 VISITOR("FirstTypeNode", function(e, node: ts.TypePredicateNode) {
+  const array = [];
+  visit.call(this, array, node.parameterName);
+  const parameterName = array[0];
+  array.length = 0;
+  visit.call(this, array, node.type);
+  const dataType = array[0];
+  e.push({
+    type: "TypePredicate",
+    parameterName,
+    dataType
+  });
 });
 
 // TypeQuery,
 // ThisType,
-// TypeOperator,
