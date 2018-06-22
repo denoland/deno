@@ -4,7 +4,7 @@ clang-format -i -style Google *.cc *.h include/*.h
 gn format BUILD.gn
 gn format deno.gni
 gn format .gn
-yapf -i tools/*.py
+yapf -i tools/*.py js/*.py
 prettier --write \
 	js/deno.d.ts \
   js/main.ts \

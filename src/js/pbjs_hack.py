@@ -27,28 +27,22 @@ assert os.path.exists(pbts_bin)
 proto_in = sys.argv[1]
 stamp_file = sys.argv[2]
 
+
 def touch(fname):
-  if os.path.exists(fname):
-    os.utime(fname, None)
-  else:
-    open(fname, 'a').close()
+    if os.path.exists(fname):
+        os.utime(fname, None)
+    else:
+        open(fname, 'a').close()
+
 
 subprocess.check_call([
-  "node",
-  pbjs_bin,
-  "--target=static-module",
-  "--wrapper=commonjs",
-  "--out=" + msg_pbjs_out,
-  proto_in
+    "node", pbjs_bin, "--target=static-module", "--wrapper=commonjs",
+    "--out=" + msg_pbjs_out, proto_in
 ])
 assert os.path.exists(msg_pbjs_out)
 
-subprocess.check_call([
-  "node",
-  pbts_bin,
-  "--out=" + msg_pbts_out,
-  msg_pbjs_out
-])
+subprocess.check_call(
+    ["node", pbts_bin, "--out=" + msg_pbts_out, msg_pbjs_out])
 assert os.path.exists(msg_pbts_out)
 
 touch(stamp_file)
