@@ -31,6 +31,7 @@ GO_FILES = \
 	msg.pb.go \
 	os.go \
 	os_test.go \
+	typescript.go \
 	timers.go \
 	util.go \
 	util_test.go \

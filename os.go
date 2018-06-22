@@ -102,6 +102,7 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 	res := &Msg{}
 	var sourceCodeBuf []byte
 	var err error
+	var sourceCode string
 
 	defer func() {
 		if err != nil {
@@ -121,6 +122,7 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 
 	if isRemote(moduleName) {
 		sourceCodeBuf, err = FetchRemoteSource(moduleName, filename)
+		sourceCode = string(sourceCodeBuf)
 	} else if strings.HasPrefix(moduleName, assetPrefix) {
 		f := strings.TrimPrefix(moduleName, assetPrefix)
 		sourceCodeBuf, err = Asset(path.Join("dist", f))
@@ -128,10 +130,12 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 			logDebug("%s Asset doesn't exist. Return without error", moduleName)
 			err = nil
 		}
+		sourceCode = string(sourceCodeBuf)
 	} else {
 		assert(moduleName == filename,
 			"if a module isn't remote, it should have the same filename")
 		sourceCodeBuf, err = ioutil.ReadFile(moduleName)
+		sourceCode = TopLevelAwait(string(sourceCodeBuf))
 	}
 	if err != nil {
 		return
@@ -142,7 +146,6 @@ func HandleCodeFetch(moduleSpecifier string, containingFile string) (out []byte)
 		return
 	}
 
-	var sourceCode = string(sourceCodeBuf)
 	res = &Msg{
 		Command:                Msg_CODE_FETCH_RES,
 		CodeFetchResModuleName: moduleName,
