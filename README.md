@@ -22,7 +22,7 @@
   code. Defaults to read-only file system access and no network access.
 	Access between V8 (unprivileged) and Golang (privileged) is only done via
   serialized messages defined in this
-  [protobuf](https://github.com/ry/deno/blob/master/msg.proto). This makes it
+  [protobuf](https://github.com/ry/deno/blob/master/src/msg.proto). This makes it
   easy to audit.
 	To enable write access explicitly use `--allow-write` and `--allow-net` for
   network access.
@@ -47,17 +47,10 @@
 
 * Aims to be browser compatible.
 
-* Can be used as a library to easily build your own JavaScript runtime.
-	https://github.com/ry/deno/blob/master/cmd/main.go
-
 
 ## Status
 
-Segfaulty.
-
-No docs yet. For some of the public API see: [deno.d.ts](https://github.com/ry/deno/blob/master/deno.d.ts).
-
-And examples are around here: [testdata/004_set_timeout.ts](https://github.com/ry/deno/blob/master/testdata/004_set_timeout.ts).
+Segfaulty. Check back soon.
 
 Roadmap is [here](https://github.com/ry/deno/blob/master/Roadmap.md).
 
@@ -72,15 +65,27 @@ includes submitting trivial PRs (like improving README build instructions).
 
 ## Compile instructions
 
-First install the javascript deps.
+Get [Depot Tools](http://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/depot_tools_tutorial.html#_setting_up) and make sure it's in your path. 
 
-    cd src
+You need [yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
+
+Go to `src/` folder:
+``` bash
+cd src/
+```
+
+Fetch packages and v8:  
+``` bash
+gclient sync --no-history
+```
+
+Install the javascript deps.
 
     cd js; yarn install
 
     gn gen out/Debug --args='cc_wrapper="ccache" is_debug=true '
 
-Then build with ninja:
+Then build with ninja (will take a while to complete):
 
     ninja -C out/Debug/ deno
 
