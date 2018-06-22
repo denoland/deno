@@ -13,12 +13,19 @@ VISITOR("TypeAliasDeclaration", function(e, node: ts.TypeAliasDeclaration) {
   visit.call(this, types, node.type);
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
+  let parameters;
+  if (node.typeParameters) {
+    parameters = [];
+    for (const t of node.typeParameters) {
+      visit.call(this, parameters, t);
+    }
+  }
   e.push({
     type: "type",
     name: name.text,
     definition: types[0],
-    documentation: ts.displayPartsToString(docs)
-    // TODO type parameters
+    documentation: ts.displayPartsToString(docs),
+    parameters
   });
   // TODO It's a definition so we should set definition source of
   // private names in `this.privateNames`
@@ -26,10 +33,17 @@ VISITOR("TypeAliasDeclaration", function(e, node: ts.TypeAliasDeclaration) {
 
 VISITOR("TypeReference", function(e, node: ts.TypeReferenceNode) {
   const name = parseEntityName(this.sourceFile, node.typeName);
+  let typeArguments;
+  if (node.typeArguments) {
+    typeArguments = [];
+    for (const t of node.typeArguments) {
+      visit.call(this, typeArguments, t);
+    }
+  }
   const doc = {
     type: "TypeReference",
     name: name.text,
-    // TODO type arguments
+    arguments: typeArguments
     // This value will be filled in next iterations.
     // file: ?
   };
