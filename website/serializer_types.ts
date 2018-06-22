@@ -248,12 +248,75 @@ VISITOR("ConditionalType", function(e, node: ts.ConditionalTypeNode) {
   });
 });
 
+VISITOR("TypeParameter", function(e, node: ts.TypeParameterDeclaration) {
+  // constraint
+  const constraints = [];
+  if (node.constraint) {
+    visit.call(this, constraints, node.constraint);
+  }
+  const name = parseEntityName(this.sourceFile, node.name);
+  e.push({
+    type: "TypeParameter",
+    name: name.text,
+    constraint: constraints[0]
+  });
+});
+
+VISITOR("IndexedAccessType", function(e, node: ts.IndexedAccessTypeNode) {
+  const array = [];
+  visit.call(this, array, node.indexType);
+  const index = array[0];
+  array.length = 0;
+  visit.call(this, array, node.objectType);
+  const object = array[0];
+  e.push({
+    type: "IndexedAccessTypeNode",
+    index,
+    object
+  });
+});
+
+VISITOR("TypeOperator", function(e, node: ts.TypeOperatorNode) {
+  // tslint:disable-next-line:no-any
+  const operator = (ts as any).SyntaxKind[node.operator];
+  const types = [];
+  visit.call(this, types, node.type);
+  e.push({
+    type: "TypeOperator",
+    operator,
+    subjext: types[0]
+  });
+});
+
+VISITOR("MappedType", function(e, node: ts.MappedTypeNode) {
+  // TODO Support modifiers such as readonly, +, -
+  // See https://github.com/Microsoft/TypeScript/pull/12563
+  const array = [];
+  visit.call(this, array, node.typeParameter);
+  const parameter = array[0];
+  array.length = 0;
+  visit.call(this, array, node.type);
+  const dataType = array[0];
+  e.push({
+    type: "MappedType",
+    parameter,
+    dataType
+  });
+});
+
+VISITOR("InferType", function(e, node: ts.InferTypeNode) {
+  console.log("InferType", node);
+  const parameters = [];
+  visit.call(this, parameters, node.typeParameter);
+  e.push({
+    type: "InferType",
+    parameter: parameters[0]
+  });
+});
+
 VISITOR("FirstTypeNode", function(e, node: ts.TypePredicateNode) {
 });
 
 // TypeQuery,
-// InferType,
 // ThisType,
 // TypeOperator,
-// IndexedAccessType,
-// MappedType,

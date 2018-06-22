@@ -3,7 +3,6 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./core";
-import { parseEntityName } from "./util";
 
 // tslint:disable:only-arrow-functions
 
@@ -65,19 +64,5 @@ VISITOR("Parameter", function(e, node: ts.ParameterDeclaration) {
     type: types[0],
     documentation: ts.displayPartsToString(docs),
     optional: !!node.questionToken
-  });
-});
-
-VISITOR("TypeParameter", function(e, node: ts.TypeParameterDeclaration) {
-  // constraint
-  const constraints = [];
-  if (node.constraint) {
-    visit.call(this, constraints, node.constraint);
-  }
-  const name = parseEntityName(this.sourceFile, node.name);
-  e.push({
-    type: "TypeParameter",
-    name: name.text,
-    constraint: constraints[0]
   });
 });
