@@ -37,8 +37,8 @@ VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
   });
 });
 
-// tslint:disable-next-line:max-line-length
-VISITOR("ExpressionWithTypeArguments", function(e, node: ts.ExpressionWithTypeArguments) {
+VISITOR("ExpressionWithTypeArguments",
+  function(e, node: ts.ExpressionWithTypeArguments) {
   const expressions = [];
   visit.call(this, expressions, node.expression);
   const typeArguments = [];
