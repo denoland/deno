@@ -61,3 +61,7 @@ VISITOR("TrueKeyword", function(e) {
 VISITOR("FalseKeyword", function(e) {
   e.push({ type: "false" });
 });
+
+VISITOR("UndefinedKeyword", function(e) {
+  e.push({ type: "undefined" })
+});
