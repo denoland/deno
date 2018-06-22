@@ -25,6 +25,7 @@ export function VISITOR(name: string, visitor: types.Visitor) {
  * @internal
  */
 export function visit(this: types.TSKit, docEntries: any[], node: ts.Node) {
+  if (!node) return;
   // tslint:disable-next-line:no-any
   const kind = (ts as any).SyntaxKind[node.kind];
   if (!VISITORS.has(kind)){

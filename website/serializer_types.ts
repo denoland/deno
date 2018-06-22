@@ -328,5 +328,4 @@ VISITOR("FirstTypeNode", function(e, node: ts.TypePredicateNode) {
   });
 });
 
-// TypeQuery,
 // ThisType,
