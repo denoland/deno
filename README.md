@@ -50,11 +50,7 @@
 
 ## Status
 
-Segfaulty.
-
-No docs yet. Past (now removed) Go version's public API see: [deno.d.ts](https://github.com/ry/deno/blob/golang/deno.d.ts).
-
-And (now removed) examples are around here: [testdata/004_set_timeout.ts](https://github.com/ry/deno/blob/golang/testdata/004_set_timeout.ts).
+Segfaulty. Check back soon.
 
 Roadmap is [here](https://github.com/ry/deno/blob/master/Roadmap.md).
 
