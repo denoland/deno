@@ -29,6 +29,8 @@ js_path = os.path.dirname(os.path.realpath(__file__))
 node_modules_path = os.path.join(js_path, "node_modules")
 
 if not os.path.lexists("node_modules"):
+  if os.path.exists("node_modules"):
+    os.unlink("node_modules")
   symlink(node_modules_path, "node_modules", True)
 
 args = ["node"] + sys.argv[1:]
