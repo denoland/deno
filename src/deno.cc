@@ -57,11 +57,14 @@ void HandleException(v8::Local<v8::Context> context,
   if (onerror->IsFunction()) {
     auto func = v8::Local<v8::Function>::Cast(onerror);
     v8::Local<v8::Value> args[5];
-    auto origin = message->GetScriptOrigin();
+    auto line =
+        v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
+    auto column =
+        v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
     args[0] = exception->ToString();
     args[1] = message->GetScriptResourceName();
-    args[2] = origin.ResourceLineOffset();
-    args[3] = origin.ResourceColumnOffset();
+    args[2] = line;
+    args[3] = column;
     args[4] = exception;
     func->Call(context->Global(), 5, args);
     /* message, source, lineno, colno, error */
