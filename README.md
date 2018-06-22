@@ -74,7 +74,7 @@ includes submitting trivial PRs (like improving README build instructions).
 
 First install the javascript deps.
 
-    cd deno2
+    cd src
 
     cd js; yarn install
 
