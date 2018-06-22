@@ -5,7 +5,7 @@ branches:
 cache:
   ccache: true
   directories:
-   - deno2/js/node_modules/
+   - src/js/node_modules/
    - $DEPOT_TOOLS_PATH
    - $BUILD_PATH
 env:
@@ -19,7 +19,7 @@ before_install: |
   fi
 install:
  - export PATH=$PATH:$DEPOT_TOOLS_PATH
- - cd deno2
+ - cd src
  # Sync dependencies.
  # TODO(ry) These sync steps are very terrible and only here temporarily.
  # A single deno_deps git submodule should be created which contains V8,
