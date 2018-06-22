@@ -15,7 +15,7 @@ const VISITORS = new Map<string, types.Visitor>();
  * Defines a visitor which will be used later in visit function.
  * @internal
  */
-export function define(name: string, visitor: types.Visitor) {
+export function VISITOR(name: string, visitor: types.Visitor) {
   VISITORS.set(name, visitor);
 }
 
@@ -27,7 +27,7 @@ export function visit(this: types.TSKit, docEntries: any[], node: ts.Node) {
   // tslint:disable-next-line:no-any
   const kind = (ts as any).SyntaxKind[node.kind];
   if (!VISITORS.has(kind)){
-    console.log("[%s] Not found.", kind);
+    console.log("[%s] Not defined.", kind, node);
     return;
   }
   // We only visit each node once to prevent possible infinite loops.

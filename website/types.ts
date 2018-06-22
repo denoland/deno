@@ -2,7 +2,6 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { One2ManyMap } from "./util";
 
 export interface TSKit {
   sourceFile: ts.SourceFile;

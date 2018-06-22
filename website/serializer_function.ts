@@ -2,12 +2,12 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { define, visit } from "../core";
-import { parseEntityName } from "../util";
+import { VISITOR, visit } from "./core";
+import { parseEntityName } from "./util";
 
 // tslint:disable:only-arrow-functions
 
-define("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
+VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
   // Get signature of node so we can extract it's documentations comment.
   const sig = this.checker.getSignatureFromDeclaration(node);
   const docs = sig.getDocumentationComment(this.checker);
@@ -39,7 +39,7 @@ define("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
 
   // TODO
   // As we serialized parameters it means we might have some types in
-  // this.privateNames which are actually defined in node.parameterTypes
+  // this.privateNames which are actually VISITORd in node.parameterTypes
   // we must remove those objects from this.privateNames.
 
   e.push({
@@ -53,7 +53,7 @@ define("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
   });
 });
 
-define("Parameter", function(e, node: ts.ParameterDeclaration) {
+VISITOR("Parameter", function(e, node: ts.ParameterDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
 
@@ -68,7 +68,7 @@ define("Parameter", function(e, node: ts.ParameterDeclaration) {
   });
 });
 
-define("TypeParameter", function(e, node: ts.TypeParameterDeclaration) {
+VISITOR("TypeParameter", function(e, node: ts.TypeParameterDeclaration) {
   // constraint
   const constraints = [];
   if (node.constraint) {
