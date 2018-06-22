@@ -192,11 +192,7 @@ VISITOR("PropertySignature", function(e, node: ts.PropertySignature) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
   const names = [];
-  if (ts.isIdentifier(node.name)) {
-    names.push((node.name as ts.Identifier).text);
-  } else {
-    visit.call(this, names, node.name);
-  }
+  visit.call(this, names, node.name);
   e.push({
     types: "PropertySignature",
     name: names[0],

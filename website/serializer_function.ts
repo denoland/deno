@@ -76,6 +76,7 @@ VISITOR("TypeParameter", function(e, node: ts.TypeParameterDeclaration) {
   }
   const name = parseEntityName(this.sourceFile, node.name);
   e.push({
+    type: "TypeParameter",
     name: name.text,
     constraint: constraints[0]
   });

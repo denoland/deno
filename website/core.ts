@@ -22,6 +22,7 @@ export function VISITOR(name: string, visitor: types.Visitor) {
 /**
  * Call a visitor defined via `define()` based on given node's kind.
  * It can also be used to serialize a node.
+ * @internal
  */
 export function visit(this: types.TSKit, docEntries: any[], node: ts.Node) {
   // tslint:disable-next-line:no-any
