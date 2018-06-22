@@ -7,7 +7,7 @@ function assert(cond) {
   if (!cond) throw Error("mock_runtime.js assert failed");
 }
 
-global.typedArrayToArrayBuffer = (ta) => {
+global.typedArrayToArrayBuffer = ta => {
   return ta.buffer.slice(ta.byteOffset, ta.byteOffset + ta.byteLength);
 };
 

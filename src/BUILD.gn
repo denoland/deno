@@ -4,7 +4,7 @@ import("//v8/snapshot_toolchain.gni")
 import("deno.gni")
 
 config("deno_config") {
-  include_dirs = [ "v8" ] # This allows us to v8/src/base/ libraries.
+  include_dirs = [ "v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "v8:external_config" ]
 }
 
