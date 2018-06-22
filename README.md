@@ -47,8 +47,6 @@
 
 * Aims to be browser compatible.
 
-* Can be used as a library to easily build your own JavaScript runtime.
-
 
 ## Status
 
