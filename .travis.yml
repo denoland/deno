@@ -44,9 +44,9 @@ install:
  - gn args $BUILD_PATH --list
  - ccache -s
  # Travis hangs without -j2 argument to ninja.
- - ninja -j2 -C $BUILD_PATH mock_runtime_test deno
- - ninja -j2 -C $BUILD_PATH deno_rs
+ - ninja -j2 -C $BUILD_PATH mock_runtime_test mock_main
+ - ninja -j2 -C $BUILD_PATH deno
 script:
  - $BUILD_PATH/mock_runtime_test
- - $BUILD_PATH/deno foo bar
- - $BUILD_PATH/deno_rs meow
+ - $BUILD_PATH/mock_main foo bar
+ - $BUILD_PATH/deno meow
