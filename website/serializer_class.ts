@@ -15,6 +15,28 @@ VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
   for (const m of node.members) {
     visit.call(this, members, m);
   }
+
+  const typeParameters = [];
+  if (node.typeParameters) {
+    for (const t of node.typeParameters) {
+      visit.call(this, typeParameters, t);
+    }
+  }
+
+  const parents = [];
+  const implementsClauses = []
+  if (node.heritageClauses) {
+    for (const c of node.heritageClauses) {
+      for (const t of c.types) {
+        if (c.token === ts.SyntaxKind.ExtendsKeyword) {
+          visit.call(this, parents, t);
+        } else {
+          visit.call(this, implementsClauses, t);
+        }
+      }
+    }
+  }
+
   const modifierFlags = ts.getCombinedModifierFlags(node);
   let isAbstract;
   if ((modifierFlags & ts.ModifierFlags.Abstract) !== 0) {
@@ -28,7 +50,10 @@ VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
     // should be revisited when working on default exports.
     name: node.name.text,
     documentation: ts.displayPartsToString(docs),
+    parent: parents[0],
+    implementsClauses,
     members,
+    typeParameters,
     isAbstract
   });
 });

@@ -10,9 +10,11 @@ VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
   const heritageClauses = [];
-  if (node.heritageClauses && node.heritageClauses[0]) {
-    for (const t of node.heritageClauses[0].types) {
-      visit.call(this, heritageClauses, t);
+  if (node.heritageClauses) {
+    for (const c of node.heritageClauses) {
+      for (const t of c.types) {
+        visit.call(this, heritageClauses, t);
+      }
     }
   }
   const parameters = [];
