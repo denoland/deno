@@ -8,7 +8,7 @@ config("deno_config") {
   configs = [ "v8:external_config" ]
 }
 
-rust_executable("deno_rs") {
+rust_executable("deno") {
   source_root = "main.rs"
   rust_deps = [ ":libc" ]
   deps = [
@@ -24,9 +24,9 @@ rust_library("libc") {
   ]
 }
 
-executable("deno") {
+executable("mock_main") {
   sources = [
-    "main.cc",
+    "mock_main.cc",
   ]
   deps = [
     ":libdeno",
