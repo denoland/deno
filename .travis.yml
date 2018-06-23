@@ -35,8 +35,6 @@ install:
  - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
  - export CCACHE_CPP2=yes
  - export CCACHE_SLOPPINESS=time_macros
- # Re-symlink node_modules.
- - rm -f $BUILD_PATH/node_modules
  # In case gn gen args change, delete args.gn to avoid using cached values.
  - rm -f $BUILD_PATH/args.gn
  # is_debug, use_allocator, and ccache are used to speed travis.
