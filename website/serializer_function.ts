@@ -3,6 +3,7 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./core";
+import { getModifiers } from "./util";
 
 // tslint:disable:only-arrow-functions
 
@@ -59,10 +60,17 @@ VISITOR("Parameter", function(e, node: ts.ParameterDeclaration) {
   const types = [];
   visit.call(this, types, node.type);
 
-  e.push({
+  const data = {
     name: symbol.getName(),
     type: types[0],
     documentation: ts.displayPartsToString(docs),
-    optional: !!node.questionToken
-  });
+    optional: !!node.questionToken,
+  };
+
+  // If parent is a class constructor, include node's modifiers.
+  if (node.parent.kind === ts.SyntaxKind.Constructor) {
+    Object.assign(data, getModifiers(node));
+  }
+
+  e.push(data);
 });

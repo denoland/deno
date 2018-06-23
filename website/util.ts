@@ -105,3 +105,26 @@ export function removeSpaces(str: string) {
   }
   return ret;
 }
+
+export interface NodeModifier {
+  visibility?: "private" | "protected";
+  isStatic?: boolean;
+  isReadonly?: boolean;
+}
+
+export function getModifiers(node: ts.Node): NodeModifier {
+  const ret: NodeModifier = {};
+  const modifierFlags = ts.getCombinedModifierFlags(node);
+  if ((modifierFlags & ts.ModifierFlags.Private) !== 0) {
+    ret.visibility = "private";
+  } else if ((modifierFlags & ts.ModifierFlags.Protected) !== 0) {
+    ret.visibility = "protected";
+  }
+  if ((modifierFlags & ts.ModifierFlags.Static) !== 0) {
+    ret.isStatic = true;
+  }
+  if ((modifierFlags & ts.ModifierFlags.Readonly) !== 0) {
+    ret.isReadonly = true;
+  }
+  return ret;
+}
