@@ -9,13 +9,13 @@ import { isNodeExported, One2ManyMap } from "./util";
 // so let's turn this tslint rule off.
 // tslint:disable:curly
 
-const VISITORS = new Map<string, types.Visitor>();
+const VISITORS = new Map<string, types.Visitor | string>();
 
 /**
  * Defines a visitor which will be used later in visit function.
  * @internal
  */
-export function VISITOR(name: string, visitor: types.Visitor) {
+export function VISITOR(name: string, visitor: types.Visitor | string) {
   VISITORS.set(name, visitor);
 }
 
@@ -24,16 +24,17 @@ export function VISITOR(name: string, visitor: types.Visitor) {
  * It can also be used to serialize a node.
  * @internal
  */
-export function visit(this: types.TSKit, docEntries: any[], node: ts.Node) {
+export function visit(this: types.TSKit, docEntries: any[], node: ts.Node, alias = false) {
   if (!node) return;
   // tslint:disable-next-line:no-any
-  const kind = (ts as any).SyntaxKind[node.kind];
+  let kind = (ts as any).SyntaxKind[node.kind];
+  if (alias) kind = alias;
   if (!VISITORS.has(kind)){
     console.log("[%s] Not defined.", kind, node);
     return;
   }
   // We only visit each node once to prevent possible infinite loops.
-  if (this.visited.has(node)) return;
+  if (this.visited.has(node) && !alias) return;
   this.visited.set(node, true);
   const len = docEntries.length;
   // We don't return any value from this function
@@ -44,7 +45,12 @@ export function visit(this: types.TSKit, docEntries: any[], node: ts.Node) {
   //   ret[i];
   //
   // 1. We might want to do it because visitors are serializer functions.
-  VISITORS.get(kind).call(this, docEntries, node);
+  const cb = VISITORS.get(kind);
+  if (typeof cb === "string") {
+    visit.call(this, docEntries, node, cb);
+  } else {
+    cb.call(this, docEntries, node);
+  }
   if (docEntries.length === len) {
     console.log("[%s] Empty return.", kind);
   }

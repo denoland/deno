@@ -44,7 +44,7 @@ VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
 
   e.push({
     type: "function",
-    name: node.name.text,
+    name: node.name && node.name.text,
     documentation: ts.displayPartsToString(docs),
     parameters,
     returnType: returnTypes[0],
@@ -52,6 +52,9 @@ VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
     generator: !!node.asteriskToken
   });
 });
+
+// Alias
+VISITOR("FunctionExpression", "FunctionDeclaration");
 
 VISITOR("Parameter", function(e, node: ts.ParameterDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
