@@ -122,6 +122,9 @@ VISITOR("MethodDeclaration", function(e, node: ts.MethodDeclaration) {
   visit.call(this, array, node.name);
   const name = array[0];
   array.length = 0;
+  visit.call(this, array, node.type);
+  const returnType = array[0];
+  array.length = 0;
   for (const p of node.parameters) {
     visit.call(this, array, p);
   }
@@ -131,6 +134,7 @@ VISITOR("MethodDeclaration", function(e, node: ts.MethodDeclaration) {
     name,
     documentation: ts.displayPartsToString(docs),
     parameters: array,
+    returnType,
     ...getModifiers(node)
   });
 });
@@ -142,11 +146,15 @@ VISITOR("GetAccessor", function(e, node: ts.GetAccessorDeclaration) {
   const array = [];
   visit.call(this, array, node.name);
   const name = array[0];
+  array.length = 0;
+  visit.call(this, array, node.type);
+  const returnType = array[0];
 
   e.push({
     type: "GetAccessor",
     name,
     documentation: ts.displayPartsToString(docs),
+    returnType,
     ...getModifiers(node)
   });
 });

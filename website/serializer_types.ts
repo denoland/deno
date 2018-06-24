@@ -328,4 +328,10 @@ VISITOR("FirstTypeNode", function(e, node: ts.TypePredicateNode) {
   });
 });
 
-// ThisType,
+VISITOR("ThisType", function(e, node: ts.ThisTypeNode) {
+  // Based on how renderHTML() works it's better to not introduce a new type.
+  e.push({
+    type: "keyword",
+    name: "this"
+  });
+});
