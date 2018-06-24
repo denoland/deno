@@ -74,3 +74,32 @@ VISITOR("Parameter", function(e, node: ts.ParameterDeclaration) {
 
   e.push(data);
 });
+
+VISITOR("ArrowFunction", function(e, node: ts.ArrowFunction) {
+  const sig = this.checker.getSignatureFromDeclaration(node);
+  const docs = sig.getDocumentationComment(this.checker);
+
+  const array = [];
+  visit.call(this, array, node.type);
+  const returnType = array[0];
+  const parameters = [];
+  if (node.parameters) {
+    for (const p of node.parameters) {
+      visit.call(this, parameters, p);
+    }
+  }
+  const typeParameters = [];
+  if (node.typeParameters) {
+    for (const t of node.typeParameters) {
+      visit.call(this, typeParameters, t);
+    }
+  }
+
+  e.push({
+    type: "ArrowFunction",
+    documentation: ts.displayPartsToString(docs),
+    returnType,
+    parameters,
+    typeParameters
+  });
+});
