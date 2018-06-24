@@ -7,8 +7,7 @@ API and Feature requests should be submitted as PRs to this document.
 ETA: July 2018.
 
 Go is a garbage collected language and we are worried that combining it with
-V8's GC will lead to difficult contention problems down the road. This work
-is being done in the deno2 sub-directory.
+V8's GC will lead to difficult contention problems down the road.
 
 The V8Worker2 binding/concept is being ported to a new C++ library called
 libdeno. libdeno will include the entire JS runtime as a V8 snapshot. It still
