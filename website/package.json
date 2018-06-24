@@ -11,5 +11,8 @@
     "@types/node": "^10.3.3",
     "liltest": "^0.0.5",
     "typescript": "^2.9.2"
+  },
+  "devDependencies": {
+    "ts-node": "^7.0.0"
   }
 }

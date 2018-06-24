@@ -71,7 +71,6 @@ export function generateDoc(fileName: string, options: ts.CompilerOptions) {
     }
   }
   if (!finalSourceFile) return null;
-  console.log(finalSourceFile);
   const kit: types.TSKit = {
     sourceFile: finalSourceFile,
     checker,
@@ -87,6 +86,5 @@ export function generateDoc(fileName: string, options: ts.CompilerOptions) {
     }
   });
   // TODO visit while kit.privateNames is not empty
-  console.log(kit.privateNames);
   return docEntries;
 }
