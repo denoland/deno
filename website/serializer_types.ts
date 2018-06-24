@@ -284,7 +284,7 @@ VISITOR("TypeOperator", function(e, node: ts.TypeOperatorNode) {
   e.push({
     type: "TypeOperator",
     operator,
-    subjext: types[0]
+    subject: types[0]
   });
 });
 
