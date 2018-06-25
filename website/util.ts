@@ -84,24 +84,20 @@ export function isWhiteSpace(c: string) {
 export function removeSpaces(str: string) {
   let q = null;
   let ret = "";
+  let escaped = false;
   for (const c of str) {
-    if (c === q) {
-      q = null;
-      ret += c;
-      continue;
-    }
+    if (c === "\\") escaped = !escaped;
     if (c === "\"" || c === "'" || c === "`") {
-      q = c;
+      if (!escaped && q === c) {
+        q = null;
+      } else if (!escaped) {
+        q = c;
+      }
       ret += c;
-      continue;
+    } else if (q || !(q || isWhiteSpace(c))) {
+        ret += c;
     }
-    if (q) {
-      ret += c;
-      continue;
-    }
-    if (!isWhiteSpace(c)) {
-      ret += c;
-    }
+    if (c !== "\\") escaped = false;
   }
   return ret;
 }

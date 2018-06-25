@@ -3,6 +3,7 @@
 
 import { assertEqual, test } from "liltest";
 import { generateDoc } from "./core";
+import * as util from "./util";
 import "./serializer_function";
 import "./serializer_types";
 import "./serializer_keywords";
@@ -193,4 +194,15 @@ test(async function test_types() {
   assertEqual(T08.definition.dataType.types.length, 2);
   assertEqual(T08.definition.dataType.types[1].type, "keyword");
   assertEqual(T08.definition.dataType.types[1].name, "null");
+});
+
+test(async function test_removeSpaces() {
+  const f = util.removeSpaces;
+  assertEqual(f(""), "");
+  assertEqual(f("   "), "");
+  assertEqual(f(" \"  "), "\"  ");
+  assertEqual(f(`  "x x x"   "x"  `), `"x x x""x"`);
+  assertEqual(f(`  "x \\"x x"   "x"  `), `"x \\"x x""x"`);
+  assertEqual(f(`  "x \\"x x"   "x"  `), `"x \\"x x""x"`);
+  assertEqual(f(`  "x \\" y \\\\"   "x"  `), `"x \\" y \\\\""x"`);
 });
