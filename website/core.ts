@@ -3,7 +3,7 @@
 
 import * as ts from "typescript";
 import * as types from "./types";
-import { isNodeExported, One2ManyMap } from "./util";
+import { One2ManyMap } from "./util";
 
 // We would have lots of `if (...) return;` in this code.
 // so let's turn this tslint rule off.
@@ -78,13 +78,6 @@ export function generateDoc(fileName: string, options: ts.CompilerOptions) {
     privateNames: new One2ManyMap()
   };
   const docEntries = [];
-  // Only visit exported declarations in first round.
-  // TODO Iterate from bottom to top
-  ts.forEachChild(finalSourceFile, node => {
-    if (isNodeExported(node)) {
-      visit.call(kit, docEntries, node);
-    }
-  });
-  // TODO visit while kit.privateNames is not empty
+  visit.call(kit, docEntries, finalSourceFile);
   return docEntries;
 }

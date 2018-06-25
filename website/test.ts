@@ -9,6 +9,9 @@ import "./serializer_keywords";
 import "./serializer_interface";
 import "./serializer_enum";
 import "./serializer_class";
+import "./serializer_object";
+import "./serializer_declaration";
+import "./serializer_module";
 
 // tslint:disable-next-line:no-require-imports
 const options = require("./tsconfig.json");
