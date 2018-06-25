@@ -10,7 +10,6 @@ import { isNodeExported } from "./util";
 VISITOR("ModuleDeclaration", function(e, node: ts.ModuleDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
-  console.log("ModuleDeclaration", node);
   const array = [];
   visit.call(this, array, node.name);
   const name = array[0];
@@ -24,13 +23,15 @@ VISITOR("ModuleDeclaration", function(e, node: ts.ModuleDeclaration) {
   });
 });
 
-VISITOR("ModuleBlock", function(e, node: ts.ModuleBlock) {
-  if (!node.statements) return;
+VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
+  if (!block.statements) return;
   const array = [];
   // Only visit exported declarations in first round.
-  for (let i = node.statements.length - 1;i >= 0;--i) {
-    if (isNodeExported(node.statements[i])) {
-      visit.call(this, array, node.statements[i]);
+  for (let i = block.statements.length - 1;i >= 0;--i) {
+    const node = block.statements[i];
+    if (isNodeExported(node) ||
+        node.kind === ts.SyntaxKind.ExportDeclaration) {
+      visit.call(this, array, block.statements[i]);
     }
   }
   array.reverse();
@@ -39,3 +40,31 @@ VISITOR("ModuleBlock", function(e, node: ts.ModuleBlock) {
 });
 
 VISITOR("SourceFile", "ModuleBlock");
+
+VISITOR("ExportDeclaration", function(e, node: ts.ExportDeclaration) {
+  if (!node.exportClause) return;
+  // Just visit export specifiers
+  for (const s of node.exportClause.elements) {
+    visit.call(this, e, s);
+  }
+});
+
+VISITOR("ExportSpecifier", function(e, node: ts.ExportSpecifier) {
+  const array = [];
+  visit.call(this, array, node.name);
+  const name = array[0];
+  let propertyName = name;
+  if (node.propertyName) {
+    array.length = 0;
+    visit.call(this, array, node.propertyName);
+    propertyName = array[0];
+  }
+  const entity = {
+    type: "export",
+    name,
+    propertyName
+  };
+  e.push(entity);
+  // Search for propertyName
+  this.privateNames.add(propertyName, entity);
+});
