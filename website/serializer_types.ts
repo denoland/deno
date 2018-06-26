@@ -335,3 +335,12 @@ VISITOR("ThisType", function(e, node: ts.ThisTypeNode) {
     name: "this"
   });
 });
+
+VISITOR("TypeQuery", function(e, node: ts.TypeQueryNode) {
+  const array = [];
+  visit.call(this, array, node.exprName);
+  e.push({
+    type: "TypeQuery",
+    name: array[0]
+  });
+});
