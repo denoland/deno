@@ -14,6 +14,7 @@ VISITOR("TypeAliasDeclaration", function(e, node: ts.TypeAliasDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
   let parameters;
+  const len = this.typeParameters.length;
   if (node.typeParameters) {
     parameters = [];
     for (const t of node.typeParameters) {
@@ -27,6 +28,7 @@ VISITOR("TypeAliasDeclaration", function(e, node: ts.TypeAliasDeclaration) {
     documentation: ts.displayPartsToString(docs),
     parameters
   });
+  this.typeParameters.splice(len);
   // TODO It's a definition so we should set definition source of
   // private names in `this.privateNames`
 });
@@ -116,16 +118,12 @@ VISITOR("FunctionType", function(e, node: ts.FunctionTypeNode) {
   }
 
   const typeParameters = [];
+  const len = this.typeParameters.length;
   if (node.typeParameters) {
     for (const t of node.typeParameters) {
       visit.call(this, typeParameters, t);
     }
   }
-
-  // TODO
-  // As we serialized parameters it means we might have some types in
-  // this.privateNames which are actually VISITORd in node.parameterTypes
-  // we must remove those objects from this.privateNames.
 
   e.push({
     type: "FunctionType",
@@ -133,6 +131,7 @@ VISITOR("FunctionType", function(e, node: ts.FunctionTypeNode) {
     returnType: returnTypes[0],
     typeParameters
   });
+  this.typeParameters.splice(len);
 });
 
 VISITOR("TupleType", function(e, node: ts.TupleTypeNode) {
@@ -255,6 +254,7 @@ VISITOR("TypeParameter", function(e, node: ts.TypeParameterDeclaration) {
     visit.call(this, constraints, node.constraint);
   }
   const name = parseEntityName(this.sourceFile, node.name);
+  this.typeParameters.push(name.refName);
   e.push({
     type: "TypeParameter",
     name: name.text,
@@ -292,6 +292,7 @@ VISITOR("MappedType", function(e, node: ts.MappedTypeNode) {
   // TODO Support modifiers such as readonly, +, -
   // See https://github.com/Microsoft/TypeScript/pull/12563
   const array = [];
+  const len = this.typeParameters.length;
   visit.call(this, array, node.typeParameter);
   const parameter = array[0];
   array.length = 0;
@@ -302,16 +303,19 @@ VISITOR("MappedType", function(e, node: ts.MappedTypeNode) {
     parameter,
     dataType
   });
+  this.typeParameters.splice(len);
 });
 
 VISITOR("InferType", function(e, node: ts.InferTypeNode) {
   console.log("InferType", node);
   const parameters = [];
+  const len = this.typeParameters.length;
   visit.call(this, parameters, node.typeParameter);
   e.push({
     type: "InferType",
     parameter: parameters[0]
   });
+  this.typeParameters.splice(len);
 });
 
 VISITOR("FirstTypeNode", function(e, node: ts.TypePredicateNode) {

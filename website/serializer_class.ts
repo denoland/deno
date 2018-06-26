@@ -17,6 +17,7 @@ VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
   }
 
   const typeParameters = [];
+  const len = this.typeParameters.length;
   if (node.typeParameters) {
     for (const t of node.typeParameters) {
       visit.call(this, typeParameters, t);
@@ -56,6 +57,7 @@ VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
     typeParameters,
     isAbstract
   });
+  this.typeParameters.splice(len);
 });
 
 VISITOR("PropertyDeclaration", function(e, node: ts.PropertyDeclaration) {

@@ -18,6 +18,7 @@ VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
     }
   }
   const parameters = [];
+  const len = this.typeParameters.length;
   if (node.typeParameters) {
     for (const t of node.typeParameters) {
       visit.call(this, parameters, t);
@@ -37,6 +38,7 @@ VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
     heritageClauses,
     members
   });
+  this.typeParameters.splice(len);
 });
 
 VISITOR("ExpressionWithTypeArguments",

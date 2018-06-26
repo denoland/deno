@@ -31,16 +31,12 @@ VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
   returnTypes[0].documentation = retDocs.map(({ text }) => text).join(" ");
 
   const typeParameters = [];
+  const len = this.typeParameters.length;
   if (node.typeParameters) {
     for (const t of node.typeParameters) {
       visit.call(this, typeParameters, t);
     }
   }
-
-  // TODO
-  // As we serialized parameters it means we might have some types in
-  // this.privateNames which are actually VISITORd in node.parameterTypes
-  // we must remove those objects from this.privateNames.
 
   e.push({
     type: "function",
@@ -51,6 +47,7 @@ VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
     typeParameters,
     generator: !!node.asteriskToken
   });
+  this.typeParameters.splice(len);
 });
 
 // Alias
@@ -91,7 +88,9 @@ VISITOR("ArrowFunction", function(e, node: ts.ArrowFunction) {
       visit.call(this, parameters, p);
     }
   }
+
   const typeParameters = [];
+  const len = this.typeParameters.length;
   if (node.typeParameters) {
     for (const t of node.typeParameters) {
       visit.call(this, typeParameters, t);
@@ -105,4 +104,5 @@ VISITOR("ArrowFunction", function(e, node: ts.ArrowFunction) {
     parameters,
     typeParameters
   });
+  this.typeParameters.splice(len);
 });

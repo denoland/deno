@@ -29,7 +29,9 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
   // Only visit exported declarations in first round.
   for (let i = block.statements.length - 1;i >= 0;--i) {
     const node = block.statements[i];
-    if (isNodeExported(node) ||
+    // Visit all nodes if the given file is a declaration file.
+    if (this.sourceFile.isDeclarationFile ||
+        isNodeExported(node) ||
         node.kind === ts.SyntaxKind.ExportDeclaration) {
       visit.call(this, array, block.statements[i]);
     }

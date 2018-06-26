@@ -75,7 +75,8 @@ export function generateDoc(fileName: string, options: ts.CompilerOptions) {
     sourceFile: finalSourceFile,
     checker,
     visited: new Map(),
-    privateNames: new One2ManyMap()
+    privateNames: new One2ManyMap(),
+    typeParameters: []
   };
   const docEntries = [];
   visit.call(kit, docEntries, finalSourceFile);
