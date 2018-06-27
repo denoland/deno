@@ -1,0 +1,8 @@
+/src/out/
+node_modules
+/src/v8/
+/src/tools/protoc_wrapper/
+/src/third_party/protobuf/
+/src/third_party/zlib/
+/src/third_party/rust_crates/libc/
+/src/.gclient_entries
