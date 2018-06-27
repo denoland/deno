@@ -8,8 +8,18 @@ const mapSeparator = Symbol();
 
 export class One2ManyMap<KeyType, ValueType> {
   private data = new Map<KeyType, (ValueType | typeof mapSeparator)[]>();
+  private locked = false;
+
+  lock() {
+    this.locked = true;
+  }
+
+  unlock() {
+    this.locked = false;
+  }
 
   add(key: KeyType, value: ValueType) {
+    if (this.locked) return;
     if (!this.data.has(key)) {
       this.data.set(key, []);
     }
@@ -26,8 +36,7 @@ export class One2ManyMap<KeyType, ValueType> {
     if (!this.data.has(key)) return;
     const array = this.data.get(key);
     let index = array.lastIndexOf(mapSeparator);
-    if (index < 0) index = 0;
-    array.splice(index);
+    array.splice(index + 1);
     if (array.length === 0) this.data.delete(key);
   }
 
@@ -151,10 +160,27 @@ export function getModifiers(node: ts.Node): NodeModifier {
   return ret;
 }
 
-export function setFilename(kit: types.TSKit, name: string, filename = "#") {
+export function setFilename(kit: types.TSKit, name: string, filename?: string) {
   if (!kit.privateNames.has(name)) return;
+  if (!filename) {
+    filename = "#" + kit.currentNamespace.join(".");
+  }
   kit.privateNames.forEachAfterLastSeparator(name, e => {
     e.filename = filename;
   });
   kit.privateNames.clearKeyAfterLastSeparator(name);
+}
+
+export interface NamedDeclaration extends ts.Node {
+  name: ts.Identifier;
+}
+
+export function isNamedDeclaration(node): node is NamedDeclaration {
+  return ts.isIdentifier(node.name) && (
+    node.kind === ts.SyntaxKind.ClassDeclaration ||
+    node.kind === ts.SyntaxKind.FunctionDeclaration ||
+    node.kind === ts.SyntaxKind.TypeAliasDeclaration ||
+    node.kind === ts.SyntaxKind.InterfaceDeclaration ||
+    node.kind === ts.SyntaxKind.ModuleDeclaration ||
+    node.kind === ts.SyntaxKind.VariableDeclaration);
 }

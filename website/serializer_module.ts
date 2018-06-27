@@ -3,26 +3,35 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./core";
-import { isNodeExported, setFilename } from "./util";
+import { isNamedDeclaration, isNodeExported, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 
+const visited = new Map<ts.ModuleDeclaration, null>();
+
 VISITOR("ModuleDeclaration", function(e, node: ts.ModuleDeclaration) {
-  this.privateNames.addSeparator();
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
   const array = [];
   visit.call(this, array, node.name);
   const name = array[0];
+  this.currentNamespace.push(name);
   array.length = 0;
-  visit.call(this, array, node.body);
+  // Visit module child only once.
+  if (!visited.has(node)) {
+    this.privateNames.addSeparator();
+    visit.call(this, array, node.body);
+    this.privateNames.removeLastSeparator();
+  }
   e.push({
     type: "module",
     documentation: ts.displayPartsToString(docs),
     name,
     statements: array
   });
-  this.privateNames.removeLastSeparator();
+  setFilename(this, name);
+  this.currentNamespace.pop();
+  visited.set(node, null);
 });
 
 VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
@@ -36,9 +45,22 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
         isNodeExported(node) ||
         node.kind === ts.SyntaxKind.ImportDeclaration ||
         node.kind === ts.SyntaxKind.ExportDeclaration) {
-      visit.call(this, array, block.statements[i]);
+      visit.call(this, array, node);
+    } else if (isNamedDeclaration(node)) {
+      // TODO Maybe documentation should contain private declarations that
+      // are used in exported declarations.
+      this.privateNames.lock();
+      visit.call(this, [], node);
+      this.privateNames.unlock();
     }
   }
+  // Visit for second time this time top to bottom
+  // also do not push anything to e, just look for definitions.
+  this.privateNames.lock();
+  for (let i = 0;i < block.statements.length;++i) {
+    visit.call(this, [], block.statements[i]);
+  }
+  this.privateNames.unlock();
   array.reverse();
   e.push(...array);
   // TODO visit while this.privateNames is not empty

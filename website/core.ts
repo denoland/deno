@@ -33,9 +33,6 @@ export function visit(this: types.TSKit, docEntries: any[], node: ts.Node, alias
     console.log("[%s] Not defined.", kind, node);
     return;
   }
-  // We only visit each node once to prevent possible infinite loops.
-  if (this.visited.has(node) && !alias) return;
-  this.visited.set(node, true);
   const len = docEntries.length;
   // We don't return any value from this function
   // So whenever we need to get value from a visitor (1) we can just pass an
@@ -74,9 +71,9 @@ export function generateDoc(fileName: string, options: ts.CompilerOptions) {
   const kit: types.TSKit = {
     sourceFile: finalSourceFile,
     checker,
-    visited: new Map(),
     privateNames: new One2ManyMap(),
-    typeParameters: []
+    typeParameters: [],
+    currentNamespace: []
   };
   const docEntries = [];
   visit.call(kit, docEntries, finalSourceFile);
