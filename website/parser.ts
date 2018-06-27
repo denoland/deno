@@ -15,7 +15,7 @@ const VISITORS = new Map<string, types.Visitor | string>();
  * Defines a visitor which will be used later in visit function.
  * @internal
  */
-export function VISITOR(name: string, visitor: types.Visitor | string) {
+export function VISITOR(name: string, visitor: types.Visitor | string): void {
   VISITORS.set(name, visitor);
 }
 
@@ -24,7 +24,8 @@ export function VISITOR(name: string, visitor: types.Visitor | string) {
  * It can also be used to serialize a node.
  * @internal
  */
-export function visit(this: types.TSKit, docEntries: any[], node: ts.Node, alias = false) {
+export function visit(this: types.TSKit, docEntries: any[], node: ts.Node,
+  alias = false) {
   if (!node) return;
   // tslint:disable-next-line:no-any
   let kind = (ts as any).SyntaxKind[node.kind];

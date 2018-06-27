@@ -12,7 +12,8 @@ test(async function test_enum() {
   // Test enum
   assertEqual(docs[0].type, "enum");
   assertEqual(docs[0].name, "Operator");
-  assertEqual(docs[0].documentation, "Some values representing basic mathematical operations.");
+  assertEqual(docs[0].documentation,
+    "Some values representing basic mathematical operations.");
   // Test enum members
   assertEqual(docs[0].members.length, 4);
   assertEqual(docs[0].members[0].type, "EnumMember");

@@ -112,11 +112,11 @@ const SPACES = [
   "\u3000",   // IDEOGRAPHIC SPACE
 ];
   
-export function isWhiteSpace(c: string) {
+export function isWhiteSpace(c: string): boolean {
   return SPACES.indexOf(c) > -1;
 }
 
-export function removeSpaces(str: string) {
+export function removeSpaces(str: string): string {
   let q = null;
   let ret = "";
   let escaped = false;
@@ -160,7 +160,8 @@ export function getModifiers(node: ts.Node): NodeModifier {
   return ret;
 }
 
-export function setFilename(kit: types.TSKit, name: string, filename?: string) {
+export function setFilename(kit: types.TSKit, name: string, filename?: string)
+  : void {
   if (!kit.privateNames.has(name)) return;
   if (!filename) {
     filename = "#" + kit.currentNamespace.join(".");

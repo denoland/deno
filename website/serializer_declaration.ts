@@ -10,7 +10,8 @@ VISITOR("VariableStatement", function(e, node: ts.VariableStatement) {
   visit.call(this, e, node.declarationList);
 });
 
-VISITOR("VariableDeclarationList", function(e, node: ts.VariableDeclarationList) {
+VISITOR("VariableDeclarationList",
+  function(e, node: ts.VariableDeclarationList) {
   const declarations = [];
   for (const d of node.declarations) {
     visit.call(this, declarations, d);
