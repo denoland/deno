@@ -2,17 +2,8 @@
 // All rights reserved. MIT License.
 
 import { assertEqual, test } from "liltest";
-import { generateDoc } from "./core";
+import { generateDoc } from "./parser";
 import * as util from "./util";
-import "./serializer_function";
-import "./serializer_types";
-import "./serializer_keywords";
-import "./serializer_interface";
-import "./serializer_enum";
-import "./serializer_class";
-import "./serializer_object";
-import "./serializer_declaration";
-import "./serializer_module";
 
 // tslint:disable-next-line:no-require-imports
 const options = require("./tsconfig.json");

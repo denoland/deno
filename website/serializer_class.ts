@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { VISITOR, visit } from "./core";
+import { VISITOR, visit } from "./parser";
 import { getModifiers, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions

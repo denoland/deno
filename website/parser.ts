@@ -79,3 +79,14 @@ export function generateDoc(fileName: string, options: ts.CompilerOptions) {
   visit.call(kit, docEntries, finalSourceFile);
   return docEntries;
 }
+
+// Import serializers.
+import "./serializer_function";
+import "./serializer_types";
+import "./serializer_keywords";
+import "./serializer_interface";
+import "./serializer_enum";
+import "./serializer_class";
+import "./serializer_object";
+import "./serializer_declaration";
+import "./serializer_module";
