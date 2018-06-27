@@ -3,6 +3,7 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./core";
+import { setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 
@@ -39,6 +40,7 @@ VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
     members
   });
   this.typeParameters.splice(len);
+  setFilename(this, node.name.text);
 });
 
 VISITOR("ExpressionWithTypeArguments",

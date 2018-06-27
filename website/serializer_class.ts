@@ -3,7 +3,7 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./core";
-import { getModifiers } from "./util";
+import { getModifiers, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 
@@ -58,6 +58,7 @@ VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
     isAbstract
   });
   this.typeParameters.splice(len);
+  setFilename(this, node.name.text);
 });
 
 VISITOR("PropertyDeclaration", function(e, node: ts.PropertyDeclaration) {

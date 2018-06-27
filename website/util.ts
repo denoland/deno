@@ -2,6 +2,7 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
+import * as types from "./types";
 
 const mapSeparator = Symbol();
 
@@ -148,4 +149,12 @@ export function getModifiers(node: ts.Node): NodeModifier {
     ret.isReadonly = true;
   }
   return ret;
+}
+
+export function setFilename(kit: types.TSKit, name: string, filename = "#") {
+  if (!kit.privateNames.has(name)) return;
+  kit.privateNames.forEachAfterLastSeparator(name, e => {
+    e.filename = filename;
+  });
+  kit.privateNames.clearKeyAfterLastSeparator(name);
 }

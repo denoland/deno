@@ -3,7 +3,7 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./core";
-import { parseEntityName, removeSpaces } from "./util";
+import { setFilename, parseEntityName, removeSpaces } from "./util";
 
 // tslint:disable:only-arrow-functions
 
@@ -29,8 +29,7 @@ VISITOR("TypeAliasDeclaration", function(e, node: ts.TypeAliasDeclaration) {
     parameters
   });
   this.typeParameters.splice(len);
-  // TODO It's a definition so we should set definition source of
-  // private names in `this.privateNames`
+  setFilename(this, name.refName);
 });
 
 VISITOR("TypeReference", function(e, node: ts.TypeReferenceNode) {
@@ -46,12 +45,12 @@ VISITOR("TypeReference", function(e, node: ts.TypeReferenceNode) {
     type: "TypeReference",
     name: name.text,
     arguments: typeArguments
-    // This value will be filled in next iterations.
-    // file: ?
   };
   e.push(doc);
-  // Pushing to privateNames means we're looking for it's definition.
-  this.privateNames.add(name.refName, doc);
+  // If this node does not refer to a type parameter search for its definition.
+  if (this.typeParameters.indexOf(name.refName) < 0) {
+    this.privateNames.add(name.refName, doc);
+  }
 });
 
 VISITOR("UnionType", function(e, node: ts.UnionTypeNode) {
