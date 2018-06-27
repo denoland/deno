@@ -81,7 +81,7 @@ gclient sync --no-history
 
 Install the javascript deps.
 
-    cd js; yarn install
+    (cd js; yarn install)
 
     gn gen out/Debug --args='cc_wrapper="ccache" is_debug=true '
 
