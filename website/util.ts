@@ -9,38 +9,41 @@ const mapSeparator = Symbol();
 export class One2ManyMap<KeyType, ValueType> {
   private data = new Map<KeyType, (ValueType | typeof mapSeparator)[]>();
   private locked = false;
+  public changed = false;
 
-  lock() {
+  lock(): void {
     this.locked = true;
   }
 
-  unlock() {
+  unlock(): void{
     this.locked = false;
   }
 
-  add(key: KeyType, value: ValueType) {
+  add(key: KeyType, value: ValueType): void {
     if (this.locked) return;
     if (!this.data.has(key)) {
       this.data.set(key, []);
     }
     this.data.get(key).push(value);
+    this.changed = true;
   }
 
-  addSeparator() {
+  addSeparator(): void {
     this.data.forEach(array => {
       array.push(mapSeparator);
     });
   }
 
-  clearKeyAfterLastSeparator(key: KeyType) {
+  clearKeyAfterLastSeparator(key: KeyType): void{
     if (!this.data.has(key)) return;
     const array = this.data.get(key);
     let index = array.lastIndexOf(mapSeparator);
     array.splice(index + 1);
     if (array.length === 0) this.data.delete(key);
+    this.changed = true;
   }
 
-  forEachAfterLastSeparator(key: KeyType, cb: (v: ValueType) => void) {
+  forEachAfterLastSeparator(key: KeyType, cb: (v: ValueType) => void): void {
     if (!this.data.has(key)) return;
     const array = this.data.get(key);
     let i = array.length;
@@ -52,7 +55,7 @@ export class One2ManyMap<KeyType, ValueType> {
     }
   }
 
-  removeLastSeparator() {
+  removeLastSeparator(): void {
     this.data.forEach(array => {
       const index = array.lastIndexOf(mapSeparator);
       if (index < 0) return;
@@ -60,8 +63,22 @@ export class One2ManyMap<KeyType, ValueType> {
     });
   }
 
-  has(key: KeyType) {
-    return this.data.has(key);
+  has(key: KeyType): boolean {
+    if (!this.data.has(key)) return false;
+    const array = this.data.get(key);
+    let index = array.lastIndexOf(mapSeparator);
+    if (index < 0) return array.length > 0;
+    return array.length - 1 > index;
+  }
+
+  isEmpty(): boolean {
+    const keys = this.data.keys();
+    for (const key of keys) {
+      if (this.has(key)) {
+        return false;
+      }
+    }
+    return true;
   }
 }
 
@@ -162,7 +179,6 @@ export function getModifiers(node: ts.Node): NodeModifier {
 
 export function setFilename(kit: types.TSKit, name: string, filename?: string)
   : void {
-  if (!kit.privateNames.has(name)) return;
   if (!filename) {
     filename = "#" + kit.currentNamespace.join(".");
   }
@@ -174,14 +190,4 @@ export function setFilename(kit: types.TSKit, name: string, filename?: string)
 
 export interface NamedDeclaration extends ts.Node {
   name: ts.Identifier;
-}
-
-export function isNamedDeclaration(node): node is NamedDeclaration {
-  return ts.isIdentifier(node.name) && (
-    node.kind === ts.SyntaxKind.ClassDeclaration ||
-    node.kind === ts.SyntaxKind.FunctionDeclaration ||
-    node.kind === ts.SyntaxKind.TypeAliasDeclaration ||
-    node.kind === ts.SyntaxKind.InterfaceDeclaration ||
-    node.kind === ts.SyntaxKind.ModuleDeclaration ||
-    node.kind === ts.SyntaxKind.VariableDeclaration);
 }

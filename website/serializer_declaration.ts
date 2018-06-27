@@ -3,6 +3,7 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./parser";
+import { setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 
@@ -50,6 +51,7 @@ VISITOR("VariableDeclaration", function(e, node: ts.VariableDeclaration) {
     initializer,
     dataType
   });
+  setFilename(this, name);
 });
 
 VISITOR("ArrayLiteralExpression", function(e) {

@@ -37,6 +37,10 @@ VISITOR("ModuleDeclaration", function(e, node: ts.ModuleDeclaration) {
 VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
   if (!block.statements) return;
   const array = [];
+  const privateNodes = [];
+  // To track which nodes are included in array or privateNodes
+  // to prevent duplication.
+  const includedPrivateNodes = new Map<ts.Node, null>();
   // Only visit exported declarations in first round.
   for (let i = block.statements.length - 1;i >= 0;--i) {
     const node = block.statements[i];
@@ -46,24 +50,40 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
         node.kind === ts.SyntaxKind.ImportDeclaration ||
         node.kind === ts.SyntaxKind.ExportDeclaration) {
       visit.call(this, array, node);
-    } else if (isNamedDeclaration(node)) {
-      // TODO Maybe documentation should contain private declarations that
-      // are used in exported declarations.
-      this.privateNames.lock();
-      visit.call(this, [], node);
-      this.privateNames.unlock();
+      includedPrivateNodes.set(node, null);
+    } else {
+      this.privateNames.changed = false;
+      const tmp = [];
+      visit.call(this, tmp, node);
+      if (this.privateNames.changed) {
+        includedPrivateNodes.set(node, null);
+        privateNodes.push(...tmp);
+      }
     }
   }
   // Visit for second time this time top to bottom
   // also do not push anything to e, just look for definitions.
-  this.privateNames.lock();
-  for (let i = 0;i < block.statements.length;++i) {
-    visit.call(this, [], block.statements[i]);
+  if (!this.privateNames.isEmpty()) {
+    this.privateNames.lock();
+    for (let i = 0;i < block.statements.length;++i) {
+      const node = block.statements[i];
+      const tmp = [];
+      visit.call(this, tmp, node);
+      if (this.privateNames.changed &&
+          !includedPrivateNodes.has(node)) {
+        privateNodes.push(...tmp);
+      }
+    }
+    this.privateNames.unlock();
   }
-  this.privateNames.unlock();
   array.reverse();
   e.push(...array);
-  // TODO visit while this.privateNames is not empty
+  privateNodes.forEach(doc => {
+    if (typeof doc === "object") {
+      doc.isPrivate = true;
+    }
+  });
+  e.push(...privateNodes);
 });
 
 VISITOR("SourceFile", "ModuleBlock");
