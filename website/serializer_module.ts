@@ -41,7 +41,6 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
   }
   array.reverse();
   e.push(...array);
-  console.log(this.privateNames);
   // TODO visit while this.privateNames is not empty
 });
 

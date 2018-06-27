@@ -196,6 +196,29 @@ test(async function test_types() {
   assertEqual(T08.definition.dataType.types[1].name, "null");
 });
 
+test(async function test_findDefinition() {
+  const doc = generateDoc("testdata/import.ts", options);
+  const Y = doc[1];
+  assertEqual(Y.name, "Y");
+  const YF = Y.statements[0];
+  assertEqual(YF.name, "F");
+  assertEqual(YF.parameters[0].type.filename, "http://site.com/foo");
+  const YP = Y.statements[1];
+  assertEqual(YP.name, "P");
+  const YPT = YP.statements[0];
+  assertEqual(YPT.name, "T");
+  assertEqual(YPT.parameters[0].type.filename, "#Y.P");
+  const YPG = YP.statements[1];
+  assertEqual(YPG.name, "G");
+  assertEqual(YPG.parameters[0].type.filename, "#Y.P");
+  const YPF = YP.statements[2];
+  assertEqual(YPF.name, "F");
+  assertEqual(YPF.parameters[0].type.filename, "http://site.com/foo");
+  const YG = Y.statements[2]
+  assertEqual(YG.name, "G");
+  assertEqual(YG.parameters[0].type.filename, "http://site.com/bar");
+});
+
 test(async function test_removeSpaces() {
   const f = util.removeSpaces;
   assertEqual(f(""), "");
