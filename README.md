@@ -83,6 +83,8 @@ Install the javascript deps.
 
     cd js; yarn install
 
+    cd -
+
     gn gen out/Debug --args='cc_wrapper="ccache" is_debug=true '
 
 Then build with ninja (will take a while to complete):
