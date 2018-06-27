@@ -209,3 +209,14 @@ test(async function test_findDefinition() {
   assertEqual(YG.name, "G");
   assertEqual(YG.parameters[0].type.filename, "http://site.com/bar");
 });
+
+test(async function test_export() {
+  const doc = generateDoc("testdata/export.ts", options);
+  const Test = doc.filter(x => x.name === "Test")[0];
+  assertEqual(!!Test, true);
+  assertEqual(Test.isPrivate, true);
+  const X = doc.filter(x => x.type === "VariableDeclaration")[0];
+  assertEqual(!!X, true);
+  assertEqual(X.declarations[0].name, "X");
+  assertEqual(X.isPrivate, true);
+});

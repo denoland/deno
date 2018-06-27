@@ -3,7 +3,7 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./parser";
-import { isNamedDeclaration, isNodeExported, setFilename } from "./util";
+import { isNodeExported, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 
