@@ -16,11 +16,15 @@ VISITOR("EnumDeclaration", function(e, node: ts.EnumDeclaration) {
     visit.call(this, members, t);
   }
 
+  const modifierFlags = ts.getCombinedModifierFlags(node);
+  const isDefault = (modifierFlags & ts.ModifierFlags.Default) !== 0;
+
   e.push({
     type: "enum",
     name: node.name.text,
     documentation: ts.displayPartsToString(docs),
-    members
+    members,
+    isDefault
   });
   setFilename(this, node.name.text);
 });

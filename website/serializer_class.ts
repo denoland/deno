@@ -38,27 +38,27 @@ VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
     }
   }
 
+  // TODO Use util.getModifiers
   const modifierFlags = ts.getCombinedModifierFlags(node);
-  let isAbstract;
-  if ((modifierFlags & ts.ModifierFlags.Abstract) !== 0) {
-    isAbstract = true;
-  }
+  const isAbstract = (modifierFlags & ts.ModifierFlags.Abstract) !== 0;
+  const isDefault = (modifierFlags & ts.ModifierFlags.Default) !== 0;
 
   e.push({
     type: "class",
-    // Note (applies to function declaration as well)
-    // node.name might be empty when used in an anonymous default export.
-    // should be revisited when working on default exports.
-    name: node.name.text,
+    name: node.name && node.name.text,
     documentation: ts.displayPartsToString(docs),
     parent: parents[0],
     implementsClauses,
     members,
     typeParameters,
-    isAbstract
+    isAbstract,
+    isDefault
   });
+
   this.typeParameters.splice(len);
-  setFilename(this, node.name.text);
+  if (node.name) {
+    setFilename(this, node.name.text);
+  }
 });
 
 VISITOR("PropertyDeclaration", function(e, node: ts.PropertyDeclaration) {

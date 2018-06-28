@@ -38,6 +38,10 @@ VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
     }
   }
 
+  const modifierFlags = ts.getCombinedModifierFlags(node);
+  const isAsync = (modifierFlags & ts.ModifierFlags.Async) !== 0;
+  const isDefault = (modifierFlags & ts.ModifierFlags.Default) !== 0;
+
   e.push({
     type: "function",
     name: node.name && node.name.text,
@@ -45,8 +49,11 @@ VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
     parameters,
     returnType: returnTypes[0],
     typeParameters,
-    generator: !!node.asteriskToken
+    generator: !!node.asteriskToken,
+    isAsync,
+    isDefault
   });
+
   this.typeParameters.splice(len);
   if (node.name) {
     setFilename(this, node.name.text);
@@ -100,12 +107,16 @@ VISITOR("ArrowFunction", function(e, node: ts.ArrowFunction) {
     }
   }
 
+  const modifierFlags = ts.getCombinedModifierFlags(node);
+  const isAsync = (modifierFlags & ts.ModifierFlags.Async) !== 0;
+
   e.push({
     type: "ArrowFunction",
     documentation: ts.displayPartsToString(docs),
     returnType,
     parameters,
-    typeParameters
+    typeParameters,
+    isAsync
   });
   this.typeParameters.splice(len);
 });

@@ -31,13 +31,16 @@ VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
       visit.call(this, members, t);
     }
   }
+  const modifierFlags = ts.getCombinedModifierFlags(node);
+  const isDefault = (modifierFlags & ts.ModifierFlags.Default) !== 0;
   e.push({
     type: "interface",
     name: node.name.text,
     documentation: ts.displayPartsToString(docs),
     parameters,
     heritageClauses,
-    members
+    members,
+    isDefault
   });
   this.typeParameters.splice(len);
   setFilename(this, node.name.text);
