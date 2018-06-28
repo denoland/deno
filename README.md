@@ -1,6 +1,6 @@
 # deno
 
-[![Build Status](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
+[![Build Status](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno) [![Join the chat at https://gitter.im/denolife/Lobby](https://badges.gitter.im/denolife/Lobby.svg)](https://gitter.im/denolife/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 ## A secure TypeScript runtime built on V8
 
