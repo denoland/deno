@@ -36,6 +36,6 @@ VISITOR("EnumMember", function(e, node: ts.EnumMember) {
     type: "EnumMember",
     documentation: ts.displayPartsToString(docs),
     initializer,
-    name
+    name: name.text
   });
 });

@@ -15,7 +15,7 @@ VISITOR("ModuleDeclaration", function(e, node: ts.ModuleDeclaration) {
   const array = [];
   visit.call(this, array, node.name);
   const name = array[0];
-  this.currentNamespace.push(name);
+  this.currentNamespace.push(name.text);
   array.length = 0;
   // Visit module child only once.
   if (!visited.has(node)) {
@@ -26,10 +26,10 @@ VISITOR("ModuleDeclaration", function(e, node: ts.ModuleDeclaration) {
   e.push({
     type: "module",
     documentation: ts.displayPartsToString(docs),
-    name,
+    name: name.text,
     statements: array
   });
-  setFilename(this, name);
+  setFilename(this, name.refName);
   this.currentNamespace.pop();
   visited.set(node, null);
 });
@@ -108,12 +108,12 @@ VISITOR("ExportSpecifier", function(e, node: ts.ExportSpecifier) {
   }
   const entity = {
     type: "export",
-    name,
-    propertyName
+    name: name.text,
+    propertyName: propertyName.text
   };
   e.push(entity);
   // Search for propertyName
-  this.privateNames.add(propertyName, entity);
+  this.privateNames.add(propertyName.refName, entity);
 });
 
 VISITOR("ImportDeclaration", function(e, node: ts.ImportDeclaration) {

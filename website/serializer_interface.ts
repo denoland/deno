@@ -61,7 +61,11 @@ VISITOR("ExpressionWithTypeArguments",
 });
 
 VISITOR("Identifier", function(e, node: ts.Identifier) {
-  e.push(node.text);
+  e.push({
+    type: "name",
+    text: node.text,
+    refName: node.text
+  });
 });
 
 VISITOR("MethodSignature", function(e, node: ts.MethodSignature) {
@@ -77,7 +81,7 @@ VISITOR("MethodSignature", function(e, node: ts.MethodSignature) {
   visit.call(this, types, node.type);
   e.push({
     type: "MethodSignature",
-    name: names[0],
+    name: names[0].text,
     parameters,
     dataType: types[0],
     optional: !!node.questionToken

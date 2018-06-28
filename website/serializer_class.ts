@@ -94,7 +94,7 @@ VISITOR("PropertyDeclaration", function(e, node: ts.PropertyDeclaration) {
   e.push({
     type: "PropertyDeclaration",
     documentation: ts.displayPartsToString(docs),
-    name,
+    name: name.text,
     initializer,
     dataType,
     ...getModifiers(node)
@@ -134,7 +134,7 @@ VISITOR("MethodDeclaration", function(e, node: ts.MethodDeclaration) {
 
   e.push({
     type: "MethodDeclaration",
-    name,
+    name: name.text,
     documentation: ts.displayPartsToString(docs),
     parameters: array,
     returnType,
@@ -155,7 +155,7 @@ VISITOR("GetAccessor", function(e, node: ts.GetAccessorDeclaration) {
 
   e.push({
     type: "GetAccessor",
-    name,
+    name: name.text,
     documentation: ts.displayPartsToString(docs),
     returnType,
     ...getModifiers(node)
@@ -176,7 +176,7 @@ VISITOR("SetAccessor", function(e, node: ts.SetAccessorDeclaration) {
 
   e.push({
     type: "SetAccessor",
-    name,
+    name: name.text,
     documentation: ts.displayPartsToString(docs),
     parameter: array[0],
     ...getModifiers(node)

@@ -30,7 +30,7 @@ VISITOR("PropertyAssignment", function(e, node: ts.PropertyAssignment) {
   e.push({
     type: "PropertyAssignment",
     documentation: ts.displayPartsToString(docs),
-    name,
+    name: name.text,
     initializer
   });
 });

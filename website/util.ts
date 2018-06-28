@@ -86,21 +86,6 @@ export function isNodeExported(node: ts.Node): boolean {
   return (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0;
 }
 
-export function extractRefName(n: ts.EntityName): string {
-  if (n.kind === ts.SyntaxKind.QualifiedName) {
-    return extractRefName(n.left);
-  }
-  return n.text;
-}
-
-export function parseEntityName(source: ts.SourceFile, name: ts.EntityName) {
-  const text = source.text.substring(name.pos, name.end);
-  return {
-    text: removeSpaces(text),
-    refName: extractRefName(name)
-  };
-}
-
 // https://www.ecma-international.org/ecma-262/6.0/#sec-white-space
 const SPACES = [
   "\u0009",   // CHARACTER TABULATION
@@ -186,8 +171,4 @@ export function setFilename(kit: types.TSKit, name: string, filename?: string)
     e.filename = filename;
   });
   kit.privateNames.clearKeyAfterLastSeparator(name);
-}
-
-export interface NamedDeclaration extends ts.Node {
-  name: ts.Identifier;
 }

@@ -47,11 +47,11 @@ VISITOR("VariableDeclaration", function(e, node: ts.VariableDeclaration) {
   const dataType = array[0];
   e.push({
     type: "VariableDeclaration",
-    name,
+    name: name.text,
     initializer,
     dataType
   });
-  setFilename(this, name);
+  setFilename(this, name.refName);
 });
 
 VISITOR("ArrayLiteralExpression", function(e) {

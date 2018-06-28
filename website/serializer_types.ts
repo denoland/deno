@@ -3,12 +3,14 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./parser";
-import { setFilename, parseEntityName, removeSpaces } from "./util";
+import { setFilename, removeSpaces } from "./util";
 
 // tslint:disable:only-arrow-functions
 
 VISITOR("TypeAliasDeclaration", function(e, node: ts.TypeAliasDeclaration) {
-  const name = parseEntityName(this.sourceFile, node.name);
+  const names = [];
+  visit.call(this, names, node.name);
+  const name = names[0];
   const types = [];
   visit.call(this, types, node.type);
   const symbol = this.checker.getSymbolAtLocation(node.name);
@@ -33,7 +35,9 @@ VISITOR("TypeAliasDeclaration", function(e, node: ts.TypeAliasDeclaration) {
 });
 
 VISITOR("TypeReference", function(e, node: ts.TypeReferenceNode) {
-  const name = parseEntityName(this.sourceFile, node.typeName);
+  const names = [];
+  visit.call(this, names, node.typeName);
+  const name = names[0];
   let typeArguments;
   if (node.typeArguments) {
     typeArguments = [];
@@ -86,7 +90,6 @@ VISITOR("StringLiteral", function(e, node: ts.StringLiteral) {
   });
 });
 
-// TODO Need investigation.
 VISITOR("FirstLiteralToken", function(e, node: ts.NumericLiteral) {
   e.push({
     type: "number",
@@ -207,7 +210,7 @@ VISITOR("PropertySignature", function(e, node: ts.PropertySignature) {
   visit.call(this, names, node.name);
   e.push({
     types: "PropertySignature",
-    name: names[0],
+    name: names[0].text,
     optional: !!node.questionToken,
     dataType: types[0],
     documentation: ts.displayPartsToString(docs),
@@ -221,7 +224,15 @@ VISITOR("ComputedPropertyName", function(e, node: ts.ComputedPropertyName) {
 VISITOR("PropertyAccessExpression",
   function(e, node: ts.PropertyAccessExpression) {
   const code = this.sourceFile.text.substring(node.pos, node.end);
-  e.push(removeSpaces(code));
+  let identifierNode = node as any;
+  while (identifierNode && !ts.isIdentifier(identifierNode)) {
+    identifierNode = identifierNode.expression;
+  }
+  e.push({
+    type: "name",
+    text: removeSpaces(code),
+    refName: identifierNode.text
+  });
 });
 
 VISITOR("ConditionalType", function(e, node: ts.ConditionalTypeNode) {
@@ -252,7 +263,9 @@ VISITOR("TypeParameter", function(e, node: ts.TypeParameterDeclaration) {
   if (node.constraint) {
     visit.call(this, constraints, node.constraint);
   }
-  const name = parseEntityName(this.sourceFile, node.name);
+  const names = [];
+  visit.call(this, names, node.name);
+  const name = names[0];
   this.typeParameters.push(name.refName);
   e.push({
     type: "TypeParameter",
@@ -306,7 +319,6 @@ VISITOR("MappedType", function(e, node: ts.MappedTypeNode) {
 });
 
 VISITOR("InferType", function(e, node: ts.InferTypeNode) {
-  console.log("InferType", node);
   const parameters = [];
   const len = this.typeParameters.length;
   visit.call(this, parameters, node.typeParameter);
@@ -326,7 +338,7 @@ VISITOR("FirstTypeNode", function(e, node: ts.TypePredicateNode) {
   const dataType = array[0];
   e.push({
     type: "TypePredicate",
-    parameterName,
+    parameterName: parameterName.text,
     dataType
   });
 });
@@ -345,5 +357,18 @@ VISITOR("TypeQuery", function(e, node: ts.TypeQueryNode) {
   e.push({
     type: "TypeQuery",
     name: array[0]
+  });
+});
+
+VISITOR("FirstNode", function(e, node: ts.QualifiedName) {
+  const code = this.sourceFile.text.substring(node.pos, node.end);
+  let refNameNode = node as any;
+  while (refNameNode && !ts.isIdentifier(refNameNode)) {
+    refNameNode = refNameNode.left;
+  }
+  e.push({
+    type: "name",
+    text: removeSpaces(code),
+    refName: refNameNode.text
   });
 });
