@@ -3,7 +3,7 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./parser";
-import { getModifiers } from "./util";
+import { getModifiers, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 
@@ -48,6 +48,9 @@ VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
     generator: !!node.asteriskToken
   });
   this.typeParameters.splice(len);
+  if (node.name) {
+    setFilename(this, node.name.text);
+  }
 });
 
 // Alias

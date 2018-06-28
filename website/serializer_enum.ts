@@ -3,6 +3,7 @@
 
 import * as ts from "typescript";
 import { VISITOR, visit } from "./parser";
+import { setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 
@@ -21,6 +22,7 @@ VISITOR("EnumDeclaration", function(e, node: ts.EnumDeclaration) {
     documentation: ts.displayPartsToString(docs),
     members
   });
+  setFilename(this, node.name.text);
 });
 
 VISITOR("EnumMember", function(e, node: ts.EnumMember) {
