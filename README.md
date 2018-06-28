@@ -65,16 +65,18 @@ includes submitting trivial PRs (like improving README build instructions).
 
 ## Compile instructions
 
-Get [Depot Tools](http://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/depot_tools_tutorial.html#_setting_up) and make sure it's in your path. 
+Get [Depot Tools](http://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/depot_tools_tutorial.html#_setting_up) and make sure it's in your path.
 
 You need [yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
+
+You need [rust](https://www.rust-lang.org/en-US/install.html) installed.
 
 Go to `src/` folder:
 ``` bash
 cd src/
 ```
 
-Fetch packages and v8:  
+Fetch packages and v8:
 ``` bash
 gclient sync --no-history
 ```
