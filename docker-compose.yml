@@ -1,0 +1,27 @@
+version: '3'
+services:
+  base:
+    build:
+      context: .
+      dockerfile: ./base.dockerfile
+
+  dependency:
+    build:
+      context: .
+      dockerfile: ./dependency.dockerfile
+    depends_on:
+      - base
+
+  prebuild:
+    build:
+      context: .
+      dockerfile: ./prebuild.dockerfile
+    depends_on:
+      - dependency
+
+  build:
+    build:
+      context: .
+      dockerfile: ./build.dockerfile
+    depends_on:
+      - prebuild
