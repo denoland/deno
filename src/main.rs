@@ -94,13 +94,12 @@ impl Deno {
         let filename = CString::new(js_filename).unwrap();
         let source = CString::new(js_source).unwrap();
         let r = unsafe { deno_execute(self.ptr, filename.as_ptr(), source.as_ptr()) };
-        if r != 0 {
-            Ok(())
-        } else {
+        if r == 0 {
             let ptr = unsafe { deno_last_exception(self.ptr) };
             let cstr = unsafe { CStr::from_ptr(ptr) };
-            Err(cstr.to_str().unwrap())
+            return Err(cstr.to_str().unwrap());
         }
+        Ok(())
     }
 }
 
