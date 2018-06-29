@@ -2,6 +2,76 @@
 
 API and Feature requests should be submitted as PRs to this document.
 
+## Target Use Cases
+
+### Low-level, fast memory efficient sockets
+
+Example, non-final API for piping a socket to stdout:
+
+```javascript
+function nonblockingpipe(fd) {
+  let buf = new Uint8Array(1024); // Fixed 1k buffer.
+  for (;;) {
+    let code = await deno.pollNB(fd, deno.POLL_RD | deno.POLL_WR);
+    switch (code) {
+    case "READABLE":
+       let [nread, err] = deno.readNB(fd, buf, buf.byteSize);
+       if (err === "EAGAIN") continue;
+       if (err != null) break;
+       await deno.stdout.write(buf.slice(0, nread));
+       break;
+    case "ERROR":
+       throw Error("blah");
+    }
+  }
+}
+```
+
+### List deps
+
+```
+% deno --list-deps http://gist.com/blah.js
+http://gist.com/blah.js
+http://gist.com/dep.js
+https://github.com/ry/deno/master/testing.js
+%
+```
+
+## Security Model
+
+* We want to be secure by default; user should be able to run untrusted code,
+  like the web.
+* Threat model:
+  * Modifiying/deleting local files
+  * Leaking private information
+* By default:
+    * No network access
+    * No local write access
+    * No non-js extensions
+    * No subprocesses
+    * No env access
+    * Local read access.
+    * argv, stdout, stderr, stdin access always allowed.
+    * Optional: temp dir by default. But what if they create symlinks there?
+* (We could relax by saying, you can get network access first and read access
+  after that.)
+* The user gets prompted when the software tries to do something it doesn't have
+  the privilege for.
+* Have an option to get a stack trace when access is requested.
+* Worried that granting access per file will give a false sense of security due
+  to monkey patching techniques. Access should be granted per program (js
+  context).
+
+Program requests write access to "~/.ssh/id_rsa". Grant? [yNs]?
+http://gist.github.com/asdfasd.js requests network access to "www.facebook.com". Grant? [yNs]?
+Program requests access to environment variables. Grant? [yNs]?
+Program requests to spawn `rm -rf /`. Cool?
+
+* cli flags to grant access ahead of time --allow-all --allow-write --allow-net
+  --allow-env --allow-exec
+* in version two we will add ability to give finer grain access
+  --allow-net=facebook.com
+
 ## Milestone 1: Rust rewrite / V8 snapshot
 
 ETA: July 2018.
@@ -20,6 +90,41 @@ startup. This is already working.
 When the rewrite is at feature parity with the Go prototype, we will release
 binaries for people to try.
 
+## libdeno C API.
+
+Deno's privileged side will primarily be programmed in Rust. However there
+will be a small C API that wraps V8 to 1) define the low-level message passing
+semantics 2) provide a low-level test target 3) provide an ANSI C API binding
+interface for Rust. V8 plus this C API is called libdeno and the important bits
+of the API is specified here:
+
+```c
+// Data that gets transmitted.
+typedef struct {
+  const char* data;
+  size_t len;
+} deno_buf;
+
+typedef void (*deno_sub_cb)(Deno* d, const char* channel,
+                            deno_buf bufs[], size_t nbufs)
+void deno_set_callback(Deno* deno, deno_sub_cb cb);
+
+// Executes javascript source code.
+// Get error text with deno_last_exception().
+// 0 = success, non-zero = failure.
+// TODO(ry) Currently the return code has opposite semantics.
+int deno_execute(Deno* d, const char* js_filename, const char* js_source);
+
+// This call doesn't go into JS. This is thread-safe.
+// TODO(ry) Currently this is called deno_pub. It should be renamed.
+// deno_append is the desired name.
+void deno_append(deno_buf buf);
+
+// Should only be called at most once during the deno_sub_cb.
+void deno_set_response(Deno* deno, deno_buf bufs[], size_t nbufs);
+
+const char* deno_last_exception(Deno* d);
+```
 
 ## TypeScript API.
 
@@ -31,30 +136,41 @@ There are three layers of API to consider:
 
 ### L1
 
-https://github.com/ry/deno/blob/master/deno2/js/deno.d.ts
+```typescript
+function send(channel: string, ...ab: ArrayBuffer[]): ArrayBuffer[] | null;
+```
+Used to make calls outside of V8. Send an ArrayBuffer and synchronously receive
+an ArrayBuffer back. The channel parameter specifies the purpose of the message.
 
+```typescript
+function poll(): ArrayBuffer[];
 ```
-pub(channel: string, msg: ArrayBuffer): null | ArrayBuffer;
-```
-The only interface to make calls outside of V8. You can send an ArrayBuffer and
-synchronously receive an ArrayBuffer back. The channel parameter specifies the
-purpose of the message.
+Poll for new asynchronous events from the privileged side. This will be done
+as the main event loop.
 
-```
-type MessageCallback = (channel: string, msg: ArrayBuffer) => void;
-function sub(cb: MessageCallback): void;
-```
-A way to set a callback to receive messages asynchronously from the privileged
-side. Note that there is no way to respond to incoming async messages.
-`sub()` is not strictly necessary to implement deno. All communication could
-be done through `pub` if there was a message to poll the event loop. For this
-reason we should consider removing `sub`.
-
-```
+```typescript
 function print(x: string): void;
 ```
-A way to print to stdout. Although this could be easily implemented thru `pub()`
-this is an important debugging tool to avoid intermediate infrastructure.
+A way to print to stdout. Although this could be easily implemented thru
+`send()` this is an important debugging tool to avoid intermediate
+infrastructure.
+
+
+The current implementation is out of sync with this document:
+https://github.com/ry/deno/blob/master/src/js/deno.d.ts
+
+#### L1 Examples
+
+The main event loop of Deno should look something like this:
+```js
+function main() {
+   // Setup...
+   while (true) {
+      const messages = deno.poll();
+      processMessages(messages);
+   }
+}
+```
 
 
 ### L2
