@@ -48,10 +48,12 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
     if (this.sourceFile.isDeclarationFile ||
         isNodeExported(node) ||
         node.kind === ts.SyntaxKind.ImportDeclaration ||
-        node.kind === ts.SyntaxKind.ExportDeclaration) {
+        node.kind === ts.SyntaxKind.ExportDeclaration ||
+        node.kind === ts.SyntaxKind.ExportAssignment) {
       visit.call(this, array, node);
       includedPrivateNodes.set(node, null);
     } else {
+      this.privateNames.lock();
       this.privateNames.changed = false;
       const tmp = [];
       visit.call(this, tmp, node);
@@ -59,6 +61,7 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
         includedPrivateNodes.set(node, null);
         privateNodes.push(...tmp);
       }
+      this.privateNames.unlock();
     }
   }
   // Visit for second time this time top to bottom
@@ -114,6 +117,29 @@ VISITOR("ExportSpecifier", function(e, node: ts.ExportSpecifier) {
   e.push(entity);
   // Search for propertyName
   this.privateNames.add(propertyName.refName, entity);
+});
+
+VISITOR("ExportAssignment", function(e, node: ts.ExportAssignment) {
+  const expressions = [];
+  visit.call(this, expressions, node.expression);
+  const expression = expressions[0];
+  let docEntity;
+  if (expression.type === "name") {
+    docEntity = {
+      type: "export",
+      name: expression.text,
+      propertyName: expression.refName,
+      isDefault: true
+    };
+    this.privateNames.add(expression.refName, docEntity);
+  } else {
+    docEntity = {
+      type: "export",
+      expression: expression,
+      isDefault: true
+    };
+  }
+  e.push(docEntity);
 });
 
 VISITOR("ImportDeclaration", function(e, node: ts.ImportDeclaration) {

@@ -215,8 +215,14 @@ test(async function test_export() {
   const Test = doc.filter(x => x.name === "Test")[0];
   assertEqual(!!Test, true);
   assertEqual(Test.isPrivate, true);
-  const X = doc.filter(x => x.type === "VariableDeclaration")[0];
-  assertEqual(!!X, true);
-  assertEqual(X.declarations[0].name, "X");
-  assertEqual(X.isPrivate, true);
+  const X = doc.filter(x => x.type === "VariableDeclaration" &&
+                       x.declarations[0].name === "X");
+  assertEqual(X.length, 1);
+  assertEqual(X[0].declarations[0].name, "X");
+  assertEqual(X[0].isPrivate, true);
+  const P = doc.filter(p => p.type === "VariableDeclaration" &&
+                       p.declarations[0].name === "P");
+  assertEqual(P.length, 1);
+  assertEqual(P[0].declarations[0].name, "P");
+  assertEqual(P[0].isPrivate, true);
 });
