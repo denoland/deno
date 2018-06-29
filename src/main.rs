@@ -78,6 +78,8 @@ extern "C" fn on_message(_d: *const DenoC, channel_ptr: *const c_char, _buf: den
     println!("got message in rust {}", channel);
 }
 
+type DenoException<'a> = &'a str;
+
 struct Deno {
     ptr: *const DenoC,
 }
@@ -88,20 +90,21 @@ impl Deno {
         Deno { ptr: ptr }
     }
 
-    fn execute(&self, js_filename: &str, js_source: &str) -> bool {
+    fn execute(&mut self, js_filename: &str, js_source: &str) -> Result<(), DenoException> {
         let filename = CString::new(js_filename).unwrap();
         let source = CString::new(js_source).unwrap();
         let r = unsafe { deno_execute(self.ptr, filename.as_ptr(), source.as_ptr()) };
-        r != 0
+        if r == 0 {
+            let ptr = unsafe { deno_last_exception(self.ptr) };
+            let cstr = unsafe { CStr::from_ptr(ptr) };
+            return Err(cstr.to_str().unwrap());
+        }
+        Ok(())
     }
+}
 
-    fn last_exception(&self) -> &str {
-        let ptr = unsafe { deno_last_exception(self.ptr) };
-        let cstr = unsafe { CStr::from_ptr(ptr) };
-        cstr.to_str().unwrap()
-    }
-
-    fn destroy(self) {
+impl Drop for Deno {
+    fn drop(&mut self) {
         unsafe { deno_delete(self.ptr) }
     }
 }
@@ -118,14 +121,10 @@ fn main() {
     println!("version: {}", version);
     */
 
-    let d = Deno::new();
+    let mut d = Deno::new();
 
-    let ok = d.execute("deno_main.js", "denoMain();");
-    if !ok {
-        let e = d.last_exception();
-        println!("Error {}\n", e);
+    d.execute("deno_main.js", "denoMain();").unwrap_or_else(|err| {
+        println!("Error {}\n", err);
         std::process::exit(1);
-    }
-
-    d.destroy();
+    });
 }
