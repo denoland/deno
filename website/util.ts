@@ -140,7 +140,7 @@ export function removeSpaces(str: string): string {
 }
 
 export interface NodeModifier {
-  visibility?: "private" | "protected";
+  visibility?: "public" | "private" | "protected";
   isStatic?: boolean;
   isReadonly?: boolean;
 }
@@ -148,7 +148,9 @@ export interface NodeModifier {
 export function getModifiers(node: ts.Node): NodeModifier {
   const ret: NodeModifier = {};
   const modifierFlags = ts.getCombinedModifierFlags(node);
-  if ((modifierFlags & ts.ModifierFlags.Private) !== 0) {
+  if ((modifierFlags & ts.ModifierFlags.Public) !== 0) {
+    ret.visibility = "public";
+  } else if ((modifierFlags & ts.ModifierFlags.Private) !== 0) {
     ret.visibility = "private";
   } else if ((modifierFlags & ts.ModifierFlags.Protected) !== 0) {
     ret.visibility = "protected";

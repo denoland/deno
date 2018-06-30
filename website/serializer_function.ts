@@ -71,10 +71,11 @@ VISITOR("Parameter", function(e, node: ts.ParameterDeclaration) {
   visit.call(this, types, node.type);
 
   const data = {
+    type: "parameter",
     name: symbol && symbol.getName(),
-    type: types[0],
+    dataType: types[0],
     documentation: ts.displayPartsToString(docs),
-    optional: !!node.questionToken,
+    optional: !!node.questionToken
   };
 
   // If parent is a class constructor, include node's modifiers.

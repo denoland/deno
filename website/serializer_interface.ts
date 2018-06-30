@@ -50,17 +50,20 @@ VISITOR("ExpressionWithTypeArguments",
   function(e, node: ts.ExpressionWithTypeArguments) {
   const expressions = [];
   visit.call(this, expressions, node.expression);
+  const expression = expressions[0];
   const typeArguments = [];
   if (node.typeArguments) {
     for (const t of node.typeArguments) {
       visit.call(this, typeArguments, t);
     }
   }
-  e.push({
+  const doc = {
     type: "ExpressionWithTypeArguments",
-    expression: expressions[0],
+    expression: expression.text,
     arguments: typeArguments
-  });
+  };
+  e.push(doc);
+  this.privateNames.add(expression.refName, doc);
 });
 
 VISITOR("Identifier", function(e, node: ts.Identifier) {

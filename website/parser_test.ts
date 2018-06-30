@@ -192,21 +192,21 @@ test(async function test_findDefinition() {
   assertEqual(Y.name, "Y");
   const YF = Y.statements[0];
   assertEqual(YF.name, "F");
-  assertEqual(YF.parameters[0].type.filename, "http://site.com/foo");
+  assertEqual(YF.parameters[0].dataType.filename, "http://site.com/foo");
   const YP = Y.statements[1];
   assertEqual(YP.name, "P");
   const YPT = YP.statements[0];
   assertEqual(YPT.name, "T");
-  assertEqual(YPT.parameters[0].type.filename, "#Y.P");
+  assertEqual(YPT.parameters[0].dataType.filename, "#Y.P");
   const YPG = YP.statements[1];
   assertEqual(YPG.name, "G");
-  assertEqual(YPG.parameters[0].type.filename, "#Y.P");
+  assertEqual(YPG.parameters[0].dataType.filename, "#Y.P");
   const YPF = YP.statements[2];
   assertEqual(YPF.name, "F");
-  assertEqual(YPF.parameters[0].type.filename, "http://site.com/foo");
+  assertEqual(YPF.parameters[0].dataType.filename, "http://site.com/foo");
   const YG = Y.statements[2]
   assertEqual(YG.name, "G");
-  assertEqual(YG.parameters[0].type.filename, "http://site.com/bar");
+  assertEqual(YG.parameters[0].dataType.filename, "http://site.com/bar");
 });
 
 test(async function test_export() {
@@ -239,4 +239,38 @@ test(async function test_js() {
   const fn = doc.filter(x => x.type === "function" &&
                              x.name == "defaultExport");
   assertEqual(fn.length, 1);
+});
+
+
+test(async function test_class() {
+  const doc = generateDoc("testdata/class.ts", options);
+  assertEqual(doc.length, 1);
+  const C1 = doc[0];
+  assertEqual(C1.type, "class");
+  assertEqual(C1.name, "Point");
+  assertEqual(C1.isAbstract, false);
+  assertEqual(C1.implementsClauses.length, 1);
+  assertEqual(C1.implementsClauses[0].filename, "./point");
+  assertEqual(C1.members.length, 4);
+  // Test Constructor
+  assertEqual(C1.members[0].type, "Constructor");
+  assertEqual(C1.members[0].parameters.length, 3);
+  assertEqual(C1.members[0].parameters[0].name, "x");
+  assertEqual(C1.members[0].parameters[0].visibility, "public");
+  // Test distance()
+  assertEqual(C1.members[1].type, "MethodDeclaration");
+  assertEqual(C1.members[1].name, "distance");
+  assertEqual(C1.members[1].parameters.length, 1);
+  assertEqual(C1.members[1].parameters[0].dataType.name, "types.Point");
+  assertEqual(C1.members[1].parameters[0].dataType.filename, "./point");
+  assertEqual(C1.members[1].returnType.type, "keyword");
+  assertEqual(C1.members[1].returnType.name, "number");
+  // Test square()
+  assertEqual(C1.members[2].type, "MethodDeclaration");
+  assertEqual(C1.members[2].name, "square");
+  assertEqual(C1.members[2].visibility, "private");
+  // Test isUnderXAxis()
+  assertEqual(C1.members[3].type, "MethodDeclaration");
+  assertEqual(C1.members[3].name, "isUnderXAxis");
+  assertEqual(C1.members[3].isStatic, true);
 });
