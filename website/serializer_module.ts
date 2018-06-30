@@ -47,6 +47,7 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
     // Visit all nodes if the given file is a declaration file.
     if (this.sourceFile.isDeclarationFile ||
         isNodeExported(node) ||
+        (this.isJS && node.kind === ts.SyntaxKind.ExpressionStatement) ||
         node.kind === ts.SyntaxKind.ImportDeclaration ||
         node.kind === ts.SyntaxKind.ExportDeclaration ||
         node.kind === ts.SyntaxKind.ExportAssignment) {
@@ -127,7 +128,6 @@ VISITOR("ExportAssignment", function(e, node: ts.ExportAssignment) {
   if (expression.type === "name") {
     docEntity = {
       type: "export",
-      name: expression.text,
       propertyName: expression.refName,
       isDefault: true
     };
@@ -170,4 +170,90 @@ VISITOR("NamespaceImport", function(e, node: ts.NamespaceImport) {
   const moduleSpecifier = node.parent.parent.moduleSpecifier;
   const fileName = (moduleSpecifier as ts.StringLiteral).text;
   setFilename(this, node.name.text, fileName);
+});
+
+VISITOR("ExpressionStatement", function(e, node: ts.ExpressionStatement) {
+  // We don't aim to support CommonJS in a typescript file.
+   if (!this.isJS) return;
+  // We don't follow variable references atm.
+  // This codes are expected to work fine.
+  // module.exports = ... -> default export
+  // module.exports.name = ... -> named export
+  // module["exports"] = ... -> default export
+  // exports.name = ... -> named export
+  // But these are not going to work.
+  // const x = module
+  // x.exports = ...;
+  // const p = module.exports
+  // p.name = ...;
+  const expression = node.expression;
+  if (!ts.isBinaryExpression(expression)) return;
+  let names: (string | ts.StringLiteral | ts.NumericLiteral)[] = [];
+  let tmp = expression.left;
+  let depth = 0;
+  while (tmp) {
+    depth++;
+    if (depth === 4) return;
+    if (ts.isIdentifier(tmp)) {
+      names.push(tmp.text);
+      tmp = null;
+    } else if (ts.isPropertyAccessExpression(tmp)) {
+      names.push(tmp.name.text);
+      tmp = tmp.expression;
+    } else if (ts.isElementAccessExpression(tmp)) {
+      if (!ts.isStringLiteral(tmp.argumentExpression) &&
+      !ts.isNumericLiteral(tmp.argumentExpression)) {
+        // Uncommutable expression.
+        return;
+      }
+      names.push(tmp.argumentExpression);
+      tmp = tmp.expression;
+    } else {
+      // Unsupported expression.
+      return;
+    }
+  }
+  names.reverse();
+  let strNames = names.map(n => {
+    if (typeof n === "string") return n;
+    return n.text;
+  });
+
+  let isDefault, isExport;
+  if (strNames[0] === "module" && strNames[1] === "exports") {
+    isExport = true;
+    isDefault = names.length === 2;
+    names.splice(0, 2);
+  }
+  if (strNames[0] === "exports" && strNames.length > 1) {
+    isExport = true;
+    names.splice(0, 1);
+  }
+  if (!isExport) return;
+  // No support for `module.exports.x.y = ...`
+  if (names.length > 1) return;
+  if (!isDefault) {
+    for (const n of names) {
+      if (typeof n !== "string") return;
+    }
+  }
+  const name = !isDefault && names[0];
+  const expressions = [];
+  visit.call(this, expressions, expression.right);
+  const exportExpression = expressions[0];
+  let docEntity;
+  if (exportExpression.type === "name") {
+    docEntity = {
+      type: "export",
+      propertyName: exportExpression.text,
+    };
+    this.privateNames.add(exportExpression.refName, docEntity);
+  } else {
+    docEntity = {
+      type: "export",
+      expression: exportExpression,
+    };
+  }
+  Object.assign(docEntity, isDefault ? { isDefault } : { name });
+  e.push(docEntity);
 });

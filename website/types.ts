@@ -9,7 +9,8 @@ export interface TSKit {
   checker: ts.TypeChecker;
   privateNames: One2ManyMap<string, any>;
   typeParameters: string[];
-  currentNamespace: string[]
+  currentNamespace: string[];
+  isJS: boolean;
 }
 
 export type Visitor = (this: TSKit, docEntries: any[], node: ts.Node) => void;
