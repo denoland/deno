@@ -11,6 +11,7 @@ export interface TSKit {
   typeParameters: string[];
   currentNamespace: string[];
   isJS: boolean;
+  isDeclarationFile: boolean;
 }
 
 export type Visitor = (this: TSKit, docEntries: any[], node: ts.Node) => void;

@@ -65,13 +65,13 @@ VISITOR("FunctionExpression", "FunctionDeclaration");
 
 VISITOR("Parameter", function(e, node: ts.ParameterDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
-  const docs = symbol.getDocumentationComment(this.checker);
+  const docs = symbol && symbol.getDocumentationComment(this.checker);
 
   const types = [];
   visit.call(this, types, node.type);
 
   const data = {
-    name: symbol.getName(),
+    name: symbol && symbol.getName(),
     type: types[0],
     documentation: ts.displayPartsToString(docs),
     optional: !!node.questionToken,

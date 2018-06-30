@@ -45,7 +45,7 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
   for (let i = block.statements.length - 1;i >= 0;--i) {
     const node = block.statements[i];
     // Visit all nodes if the given file is a declaration file.
-    if (this.sourceFile.isDeclarationFile ||
+    if (this.isDeclarationFile ||
         isNodeExported(node) ||
         (this.isJS && node.kind === ts.SyntaxKind.ExpressionStatement) ||
         node.kind === ts.SyntaxKind.ImportDeclaration ||
