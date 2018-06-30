@@ -226,3 +226,18 @@ test(async function test_export() {
   assertEqual(P[0].declarations[0].name, "P");
   assertEqual(P[0].isPrivate, true);
 });
+
+test(async function test_js() {
+  const doc = generateDoc("testdata/file.js", options);
+  assertEqual(doc.length, 4);
+  const fooExport = doc.filter(x => x.name === "foo" && x.type === "export");
+  assertEqual(fooExport.length, 1);
+  const fooFn = doc.filter(x => x.name === "foo" && x.type === "function");
+  assertEqual(fooFn.length, 1);
+  const defaultExport = doc.filter(x => x.type === "export" && x.isDefault);
+  assertEqual(defaultExport.length, 1);
+  assertEqual(defaultExport[0].propertyName, "defaultExport");
+  const fn = doc.filter(x => x.type === "function" &&
+                             x.name == "defaultExport");
+  assertEqual(fn.length, 1);
+});
