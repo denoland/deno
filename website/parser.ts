@@ -1,6 +1,7 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 
+import * as fs from "fs";
 import * as ts from "typescript";
 import * as types from "./types";
 import { One2ManyMap } from "./util";
@@ -58,27 +59,75 @@ export function visit(this: types.TSKit, docEntries: any[], node: ts.Node,
  * Extract documentation from source code.
  */
 export function generateDoc(fileName: string, options: ts.CompilerOptions) {
-  const program = ts.createProgram([fileName], options);
+  const s = fs.readFileSync(fileName).toString();
+  const host = createCompilerHost(options, s)
+  const program = ts.createProgram(["file.ts"], options, host);
   const checker = program.getTypeChecker();
-  let finalSourceFile;
-  for (const sourceFile of program.getSourceFiles()) {
-    // TODO Compare file names, user might want to see doc for declaration file.
-    if (!sourceFile.isDeclarationFile) {
-      finalSourceFile = sourceFile;
+  let sourceFile;
+  for (const s of program.getSourceFiles()) {
+    if (s.fileName === "file.ts") {
+      sourceFile = s;
       break;
     }
   }
-  if (!finalSourceFile) return null;
   const kit: types.TSKit = {
-    sourceFile: finalSourceFile,
+    sourceFile,
     checker,
     privateNames: new One2ManyMap(),
     typeParameters: [],
-    currentNamespace: []
+    currentNamespace: [],
+    isJS: fileName.endsWith(".js")
   };
   const docEntries = [];
-  visit.call(kit, docEntries, finalSourceFile);
+  visit.call(kit, docEntries, sourceFile);
   return docEntries;
+}
+
+// TODO(qti3e) Needs to be rewritten.
+function createCompilerHost(options: ts.CompilerOptions, sourceCode: string)
+  : ts.CompilerHost {
+  return {
+    getSourceFile,
+    getDefaultLibFileName: () => "",
+    writeFile: nop,
+    getCurrentDirectory: nop,
+    getDirectories: nop,
+    getCanonicalFileName: fileName => fileName,
+    getNewLine: () => ts.sys.newLine,
+    useCaseSensitiveFileNames: () => true,
+    fileExists,
+    readFile,
+    resolveModuleNames
+  }
+
+  function nop(): any {}
+
+  function fileExists(fileName: string): boolean {
+    return fileName === "file.ts";
+  }
+
+  function readFile(fileName: string): string | undefined {
+    if (fileName !== "file.ts") {
+      throw new Error("File does not exsit.")
+    }
+    return sourceCode;
+  }
+
+  function getSourceFile(fileName: string, languageVersion: ts.ScriptTarget,
+    onError?: (message: string) => void) {
+    const sourceText = readFile(fileName);
+    return sourceText !== undefined ?
+      ts.createSourceFile(fileName, sourceText, languageVersion) : undefined;
+  }
+
+  function resolveModuleNames(moduleNames: string[], containingFile: string)
+      : ts.ResolvedModule[] {
+    const resolvedModules: ts.ResolvedModule[] = [];
+    for (const _ of moduleNames) {
+      resolvedModules.push(null);
+    }
+    return resolvedModules;
+  }
 }
 
 // Import serializers.
