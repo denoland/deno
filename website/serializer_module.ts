@@ -49,6 +49,7 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
         isNodeExported(node) ||
         (this.isJS && node.kind === ts.SyntaxKind.ExpressionStatement) ||
         node.kind === ts.SyntaxKind.ImportDeclaration ||
+        node.kind === ts.SyntaxKind.NamespaceImport ||
         node.kind === ts.SyntaxKind.ExportDeclaration ||
         node.kind === ts.SyntaxKind.ExportAssignment) {
       visit.call(this, array, node);
@@ -148,6 +149,11 @@ VISITOR("ImportDeclaration", function(e, node: ts.ImportDeclaration) {
   if (!ts.isStringLiteral(node.moduleSpecifier)) return;
   // ImportDeclaration must not push anything to e.
   visit.call(this, [], node.importClause.namedBindings);
+  // Default import
+  if (node.importClause.name && ts.isIdentifier(node.importClause.name)) {
+    const fileName = (node.moduleSpecifier as ts.StringLiteral).text;
+    setFilename(this, node.importClause.name.text, fileName);
+  }
 });
 
 VISITOR("NamedImports", function(e, node: ts.NamedImports) {

@@ -54,9 +54,8 @@ test(async function test_types() {
   assertEqual(point.definition.members[1].documentation, "comment 3");
   assertEqual(point.definition.members[1].dataType.type, "TypeReference");
   assertEqual(point.definition.members[1].dataType.name, "BigNumber.number");
-  // TODO
-  //assertEqual(point.definition.members[1].dataType.fileName,
-  //            "http://site.com/bignum/index.ts");
+  assertEqual(point.definition.members[1].dataType.filename,
+              "http://site.com/bignum/index.ts");
 
   // Test T01
   const T01 = docs[1];
