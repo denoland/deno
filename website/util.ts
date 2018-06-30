@@ -115,7 +115,7 @@ const SPACES = [
 ];
   
 export function isWhiteSpace(c: string): boolean {
-  return SPACES.indexOf(c) > -1;
+  return SPACES.indexOf(c) > -1 || c === "\n";
 }
 
 export function removeSpaces(str: string): string {
@@ -127,12 +127,12 @@ export function removeSpaces(str: string): string {
     if (c === "\"" || c === "'" || c === "`") {
       if (!escaped && q === c) {
         q = null;
-      } else if (!escaped) {
+      } else if (q === null && !escaped) {
         q = c;
       }
       ret += c;
     } else if (q || !(q || isWhiteSpace(c))) {
-        ret += c;
+      ret += c;
     }
     if (c !== "\\") escaped = false;
   }
