@@ -35,8 +35,6 @@ install:
  - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
  - export CCACHE_CPP2=yes
  - export CCACHE_SLOPPINESS=time_macros
- # Re-symlink node_modules.
- - rm -f $BUILD_PATH/node_modules
  # In case gn gen args change, delete args.gn to avoid using cached values.
  - rm -f $BUILD_PATH/args.gn
  # is_debug, use_allocator, and ccache are used to speed travis.
@@ -46,9 +44,9 @@ install:
  - gn args $BUILD_PATH --list
  - ccache -s
  # Travis hangs without -j2 argument to ninja.
- - ninja -j2 -C $BUILD_PATH mock_runtime_test deno
- - ninja -j2 -C $BUILD_PATH deno_rs
+ - ninja -j2 -C $BUILD_PATH mock_runtime_test mock_main
+ - ninja -j2 -C $BUILD_PATH deno
 script:
  - $BUILD_PATH/mock_runtime_test
- - $BUILD_PATH/deno foo bar
- - $BUILD_PATH/deno_rs meow
+ - $BUILD_PATH/mock_main foo bar
+ - $BUILD_PATH/deno meow
