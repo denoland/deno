@@ -17,7 +17,7 @@ struct DenoC {
     _unused: [u8; 0],
 }
 
-type DenoSubCb = extern "C" fn(d: *const DenoC, channel: *const c_char, buf: deno_buf);
+type DenoRecvCb = extern "C" fn(d: *const DenoC, channel: *const c_char, buf: deno_buf);
 
 #[link(name = "deno", kind = "static")]
 extern "C" {
@@ -26,7 +26,7 @@ extern "C" {
     fn deno_v8_version() -> *const c_char;
     fn deno_set_flags(argc: *mut c_int, argv: *mut *mut c_char);
 
-    fn deno_new(data: *const c_void, cb: DenoSubCb) -> *const DenoC;
+    fn deno_new(data: *const c_void, cb: DenoRecvCb) -> *const DenoC;
     fn deno_delete(d: *const DenoC);
     fn deno_last_exception(d: *const DenoC) -> *const c_char;
     #[allow(dead_code)]
@@ -123,8 +123,9 @@ fn main() {
 
     let mut d = Deno::new();
 
-    d.execute("deno_main.js", "denoMain();").unwrap_or_else(|err| {
-        println!("Error {}\n", err);
-        std::process::exit(1);
-    });
+    d.execute("deno_main.js", "denoMain();")
+        .unwrap_or_else(|err| {
+            println!("Error {}\n", err);
+            std::process::exit(1);
+        });
 }
