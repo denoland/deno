@@ -39,7 +39,7 @@ VISITOR("VariableDeclaration", function(e, node: ts.VariableDeclaration) {
   array.length = 0;
   visit.call(this, array, node.initializer);
   let initializer = array[0];
-  if (!initializer) {
+  if (!initializer && node.initializer) {
     initializer = {
       type: "value",
       text: "..."

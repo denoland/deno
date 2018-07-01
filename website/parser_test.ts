@@ -434,3 +434,26 @@ test(async function test_var() {
   assertEqual(TD.initializer.type, "value");
   assertEqual(TD.initializer.text, "...");
 });
+
+test(async function test_declarationFiles() {
+  // Test parser against some real-world declarations file.
+  // Test NodeJS - 396KB - 7918
+  let start = Date.now();
+  const node = generateDoc("node_modules/@types/node/index.d.ts", options);
+  console.log("Parsed node.d.ts in %d ms.", Date.now() - start);
+  assertEqual(node.length, 77);
+  start = Date.now();
+  // Test lib.d.ts - 816KB - 20500
+  const lib = generateDoc("node_modules/typescript/lib/lib.d.ts", options);
+  console.log("Parsed lib.d.ts in %d ms.", Date.now() - start);
+  assertEqual(lib.length, 2028);
+  // Test typescript.d.ts - 260KB - 5307
+  const ts = generateDoc(
+    "node_modules/typescript/lib/typescript.d.ts",
+    options
+  );
+  console.log("Parsed typescript.d.ts in %d ms.", Date.now() - start);
+  assertEqual(ts.length, 28);
+  // due to a bug in liltest otherwise it clear the last line.
+  console.log();
+});
