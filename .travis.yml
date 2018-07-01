@@ -49,3 +49,4 @@ script:
  - $BUILD_PATH/mock_runtime_test
  - $BUILD_PATH/mock_main foo bar
  - $BUILD_PATH/deno meow
+ - ./tools/lint.sh
