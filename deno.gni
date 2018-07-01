@@ -1,7 +1,7 @@
 template("run_node") {
   action(target_name) {
     forward_variables_from(invoker, "*")
-    script = "js/run_node.py"
+    script = "src/js/run_node.py"
   }
 }
 
@@ -151,7 +151,7 @@ template("rust_executable") {
   stdlib_target = target_name + "_stdlib"
   rust_crate(stdlib_target) {
     crate_type = "staticlib"
-    source_root = "empty.rs"
+    source_root = "src/empty.rs"
   }
 
   executable(target_name) {
