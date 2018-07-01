@@ -2,10 +2,11 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { VISITOR, visit } from "./parser";
+import { visit, VISITOR } from "./parser";
 import { setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
+// tslint:disable:object-literal-sort-keys
 
 VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
@@ -46,8 +47,10 @@ VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
   setFilename(this, node.name.text);
 });
 
-VISITOR("ExpressionWithTypeArguments",
-  function(e, node: ts.ExpressionWithTypeArguments) {
+VISITOR("ExpressionWithTypeArguments", function(
+  e,
+  node: ts.ExpressionWithTypeArguments
+) {
   const expressions = [];
   visit.call(this, expressions, node.expression);
   const expression = expressions[0];

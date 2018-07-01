@@ -2,10 +2,11 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { VISITOR, visit } from "./parser";
-import { setFilename, removeSpaces } from "./util";
+import { visit, VISITOR } from "./parser";
+import { removeSpaces, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
+// tslint:disable:object-literal-sort-keys
 
 VISITOR("TypeAliasDeclaration", function(e, node: ts.TypeAliasDeclaration) {
   const names = [];
@@ -180,7 +181,7 @@ VISITOR("IndexSignature", function(e, node: ts.IndexSignatureDeclaration) {
     type: "IndexSignature",
     parameters,
     returnType: types[0],
-    documentation: ts.displayPartsToString(docs),
+    documentation: ts.displayPartsToString(docs)
   });
 });
 
@@ -197,7 +198,7 @@ VISITOR("ConstructSignature", function(e, n: ts.ConstructSignatureDeclaration) {
     type: "ConstructSignature",
     parameters,
     returnType: types[0],
-    documentation: ts.displayPartsToString(docs),
+    documentation: ts.displayPartsToString(docs)
   });
 });
 
@@ -213,7 +214,7 @@ VISITOR("PropertySignature", function(e, node: ts.PropertySignature) {
     name: names[0].text,
     optional: !!node.questionToken,
     dataType: types[0],
-    documentation: ts.displayPartsToString(docs),
+    documentation: ts.displayPartsToString(docs)
   });
 });
 
@@ -221,8 +222,10 @@ VISITOR("ComputedPropertyName", function(e, node: ts.ComputedPropertyName) {
   visit.call(this, e, node.expression);
 });
 
-VISITOR("PropertyAccessExpression",
-  function(e, node: ts.PropertyAccessExpression) {
+VISITOR("PropertyAccessExpression", function(
+  e,
+  node: ts.PropertyAccessExpression
+) {
   const code = this.sourceFile.text.substring(node.pos, node.end);
   let identifierNode = node as any;
   while (identifierNode && !ts.isIdentifier(identifierNode)) {

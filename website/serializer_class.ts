@@ -2,10 +2,11 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { VISITOR, visit } from "./parser";
+import { visit, VISITOR } from "./parser";
 import { getModifiers, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
+// tslint:disable:object-literal-sort-keys
 
 VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
@@ -25,7 +26,7 @@ VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
   }
 
   const parents = [];
-  const implementsClauses = []
+  const implementsClauses = [];
   if (node.heritageClauses) {
     for (const c of node.heritageClauses) {
       for (const t of c.types) {
@@ -85,7 +86,7 @@ VISITOR("PropertyDeclaration", function(e, node: ts.PropertyDeclaration) {
   visit.call(this, array, node.name);
   const name = array[0];
   array.length = 0;
-  visit.call(this, array, node.initializer)
+  visit.call(this, array, node.initializer);
   const initializer = array[0];
   array.length = 0;
   visit.call(this, array, node.type);

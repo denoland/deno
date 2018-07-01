@@ -2,10 +2,11 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { VISITOR, visit } from "./parser";
+import { visit, VISITOR } from "./parser";
 import { isNodeExported, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
+// tslint:disable:object-literal-sort-keys
 
 const visited = new Map<ts.ModuleDeclaration, null>();
 
@@ -42,16 +43,18 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
   // to prevent duplication.
   const includedPrivateNodes = new Map<ts.Node, null>();
   // Only visit exported declarations in first round.
-  for (let i = block.statements.length - 1;i >= 0;--i) {
+  for (let i = block.statements.length - 1; i >= 0; --i) {
     const node = block.statements[i];
     // Visit all nodes if the given file is a declaration file.
-    if (this.isDeclarationFile ||
-        isNodeExported(node) ||
-        (this.isJS && node.kind === ts.SyntaxKind.ExpressionStatement) ||
-        node.kind === ts.SyntaxKind.ImportDeclaration ||
-        node.kind === ts.SyntaxKind.NamespaceImport ||
-        node.kind === ts.SyntaxKind.ExportDeclaration ||
-        node.kind === ts.SyntaxKind.ExportAssignment) {
+    if (
+      this.isDeclarationFile ||
+      isNodeExported(node) ||
+      (this.isJS && node.kind === ts.SyntaxKind.ExpressionStatement) ||
+      node.kind === ts.SyntaxKind.ImportDeclaration ||
+      node.kind === ts.SyntaxKind.NamespaceImport ||
+      node.kind === ts.SyntaxKind.ExportDeclaration ||
+      node.kind === ts.SyntaxKind.ExportAssignment
+    ) {
       visit.call(this, array, node);
       includedPrivateNodes.set(node, null);
     } else {
@@ -70,12 +73,11 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
   // also do not push anything to e, just look for definitions.
   if (!this.privateNames.isEmpty()) {
     this.privateNames.lock();
-    for (let i = 0;i < block.statements.length;++i) {
+    for (let i = 0; i < block.statements.length; ++i) {
       const node = block.statements[i];
       const tmp = [];
       visit.call(this, tmp, node);
-      if (this.privateNames.changed &&
-          !includedPrivateNodes.has(node)) {
+      if (this.privateNames.changed && !includedPrivateNodes.has(node)) {
         privateNodes.push(...tmp);
       }
     }
@@ -136,7 +138,7 @@ VISITOR("ExportAssignment", function(e, node: ts.ExportAssignment) {
   } else {
     docEntity = {
       type: "export",
-      expression: expression,
+      expression,
       isDefault: true
     };
   }
@@ -180,7 +182,7 @@ VISITOR("NamespaceImport", function(e, node: ts.NamespaceImport) {
 
 VISITOR("ExpressionStatement", function(e, node: ts.ExpressionStatement) {
   // We don't aim to support CommonJS in a typescript file.
-   if (!this.isJS) return;
+  if (!this.isJS) return;
   // We don't follow variable references atm.
   // This codes are expected to work fine.
   // module.exports = ... -> default export
@@ -194,7 +196,7 @@ VISITOR("ExpressionStatement", function(e, node: ts.ExpressionStatement) {
   // p.name = ...;
   const expression = node.expression;
   if (!ts.isBinaryExpression(expression)) return;
-  let names: (string | ts.StringLiteral | ts.NumericLiteral)[] = [];
+  const names: Array<string | ts.StringLiteral | ts.NumericLiteral> = [];
   let tmp = expression.left;
   let depth = 0;
   while (tmp) {
@@ -207,8 +209,10 @@ VISITOR("ExpressionStatement", function(e, node: ts.ExpressionStatement) {
       names.push(tmp.name.text);
       tmp = tmp.expression;
     } else if (ts.isElementAccessExpression(tmp)) {
-      if (!ts.isStringLiteral(tmp.argumentExpression) &&
-      !ts.isNumericLiteral(tmp.argumentExpression)) {
+      if (
+        !ts.isStringLiteral(tmp.argumentExpression) &&
+        !ts.isNumericLiteral(tmp.argumentExpression)
+      ) {
         // Uncommutable expression.
         return;
       }
@@ -220,7 +224,7 @@ VISITOR("ExpressionStatement", function(e, node: ts.ExpressionStatement) {
     }
   }
   names.reverse();
-  let strNames = names.map(n => {
+  const strNames = names.map(n => {
     if (typeof n === "string") return n;
     return n.text;
   });
@@ -251,13 +255,13 @@ VISITOR("ExpressionStatement", function(e, node: ts.ExpressionStatement) {
   if (exportExpression.type === "name") {
     docEntity = {
       type: "export",
-      propertyName: exportExpression.text,
+      propertyName: exportExpression.text
     };
     this.privateNames.add(exportExpression.refName, docEntity);
   } else {
     docEntity = {
       type: "export",
-      expression: exportExpression,
+      expression: exportExpression
     };
   }
   Object.assign(docEntity, isDefault ? { isDefault } : { name });

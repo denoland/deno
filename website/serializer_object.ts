@@ -2,12 +2,15 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { VISITOR, visit } from "./parser";
+import { visit, VISITOR } from "./parser";
 
 // tslint:disable:only-arrow-functions
+// tslint:disable:object-literal-sort-keys
 
-VISITOR("ObjectLiteralExpression",
-  function(e, node: ts.ObjectLiteralExpression) {
+VISITOR("ObjectLiteralExpression", function(
+  e,
+  node: ts.ObjectLiteralExpression
+) {
   const properties = [];
   for (const p of node.properties) {
     visit.call(this, properties, p);
@@ -35,8 +38,10 @@ VISITOR("PropertyAssignment", function(e, node: ts.PropertyAssignment) {
   });
 });
 
-VISITOR("ShorthandPropertyAssignment",
-  function(e, node: ts.ShorthandPropertyAssignment) {
+VISITOR("ShorthandPropertyAssignment", function(
+  e,
+  node: ts.ShorthandPropertyAssignment
+) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
   const docEntity = {

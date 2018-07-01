@@ -2,10 +2,11 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { VISITOR, visit } from "./parser";
+import { visit, VISITOR } from "./parser";
 import { setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
+// tslint:disable:object-literal-sort-keys
 
 VISITOR("EnumDeclaration", function(e, node: ts.EnumDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
@@ -37,7 +38,7 @@ VISITOR("EnumMember", function(e, node: ts.EnumMember) {
   const initializer = array[0];
   array.length = 0;
   visit.call(this, array, node.name);
-  const name = array[0]
+  const name = array[0];
   e.push({
     type: "EnumMember",
     documentation: ts.displayPartsToString(docs),

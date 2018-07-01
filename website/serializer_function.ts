@@ -2,10 +2,11 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { VISITOR, visit } from "./parser";
+import { visit, VISITOR } from "./parser";
 import { getModifiers, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
+// tslint:disable:object-literal-sort-keys
 
 VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
   // Get signature of node so we can extract it's documentations comment.

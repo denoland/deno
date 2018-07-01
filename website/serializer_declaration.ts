@@ -2,17 +2,20 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { VISITOR, visit } from "./parser";
+import { visit, VISITOR } from "./parser";
 import { setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
+// tslint:disable:object-literal-sort-keys
 
 VISITOR("VariableStatement", function(e, node: ts.VariableStatement) {
   visit.call(this, e, node.declarationList);
 });
 
-VISITOR("VariableDeclarationList",
-  function(e, node: ts.VariableDeclarationList) {
+VISITOR("VariableDeclarationList", function(
+  e,
+  node: ts.VariableDeclarationList
+) {
   const declarations = [];
   for (const d of node.declarations) {
     visit.call(this, declarations, d);

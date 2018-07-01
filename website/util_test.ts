@@ -8,7 +8,7 @@ test(async function test_removeSpaces() {
   const f = util.removeSpaces;
   assertEqual(f(""), "");
   assertEqual(f("   "), "");
-  assertEqual(f(" \"  "), "\"  ");
+  assertEqual(f(` "  `), `"  `);
   assertEqual(f(`  "x x x"   "x"  `), `"x x x""x"`);
   assertEqual(f(`  "x \\"x x"   "x"  `), `"x \\"x x""x"`);
   assertEqual(f(`  "x \\"x x"   "x"  `), `"x \\"x x""x"`);

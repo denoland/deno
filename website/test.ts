@@ -1,2 +1,2 @@
-import "./util_test";
 import "./parser_test";
+import "./util_test";

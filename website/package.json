@@ -13,6 +13,8 @@
     "typescript": "^2.9.2"
   },
   "devDependencies": {
-    "ts-node": "^7.0.0"
+    "ts-node": "^7.0.0",
+    "tslint": "^5.10.0",
+    "tslint-eslint-rules": "^5.3.1"
   }
 }

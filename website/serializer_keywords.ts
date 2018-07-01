@@ -4,6 +4,7 @@
 import { VISITOR } from "./parser";
 
 // tslint:disable:only-arrow-functions
+// tslint:disable:object-literal-sort-keys
 
 // Keyword Type Nodes
 VISITOR("AnyKeyword", function(e) {

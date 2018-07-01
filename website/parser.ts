@@ -26,8 +26,12 @@ export function VISITOR(name: string, visitor: types.Visitor | string): void {
  * It can also be used to serialize a node.
  * @internal
  */
-export function visit(this: types.TSKit, docEntries: any[], node: ts.Node,
-  alias = false) {
+export function visit(
+  this: types.TSKit,
+  docEntries: any[],
+  node: ts.Node,
+  alias = false
+) {
   if (!node) return;
   // tslint:disable-next-line:no-any
   let kind = (ts as any).SyntaxKind[node.kind];
@@ -80,12 +84,12 @@ export function generateDoc(fileName: string, options: ts.CompilerOptions) {
 }
 
 // Import serializers.
-import "./serializer_function";
-import "./serializer_types";
-import "./serializer_keywords";
-import "./serializer_interface";
-import "./serializer_enum";
 import "./serializer_class";
-import "./serializer_object";
 import "./serializer_declaration";
+import "./serializer_enum";
+import "./serializer_function";
+import "./serializer_interface";
+import "./serializer_keywords";
 import "./serializer_module";
+import "./serializer_object";
+import "./serializer_types";

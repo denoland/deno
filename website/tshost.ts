@@ -6,8 +6,11 @@ import * as ts from "typescript";
 export class CompilerHost implements ts.CompilerHost {
   constructor(private sourceText: string) {}
 
-  getSourceFile(fileName: string, languageVersion: ts.ScriptTarget,
-    onError?: (msg: string) => void) {
+  getSourceFile(
+    fileName: string,
+    languageVersion: ts.ScriptTarget,
+    onError?: (msg: string) => void
+  ) {
     const sourceText = this.readFile(fileName);
     if (sourceText === undefined) return undefined;
     return ts.createSourceFile(fileName, sourceText, languageVersion);
@@ -29,10 +32,22 @@ export class CompilerHost implements ts.CompilerHost {
   }
 
   writeFile() {}
-  getDefaultLibFileName() { return ""; }
-  getCurrentDirectory() { return ""; }
-  getDirectories() { return []; }
-  getCanonicalFileName(f) { return f; }
-  getNewLine() { return "\n"; }
-  useCaseSensitiveFileNames() { return true; }
+  getDefaultLibFileName() {
+    return "";
+  }
+  getCurrentDirectory() {
+    return "";
+  }
+  getDirectories() {
+    return [];
+  }
+  getCanonicalFileName(f) {
+    return f;
+  }
+  getNewLine() {
+    return "\n";
+  }
+  useCaseSensitiveFileNames() {
+    return true;
+  }
 }

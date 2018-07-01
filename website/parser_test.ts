@@ -4,6 +4,8 @@
 import { assertEqual, test } from "liltest";
 import { generateDoc } from "./parser";
 
+// tslint:disable:variable-name
+
 // tslint:disable-next-line:no-require-imports
 const options = require("./tsconfig.json");
 
@@ -12,8 +14,10 @@ test(async function test_enum() {
   // Test enum
   assertEqual(docs[0].type, "enum");
   assertEqual(docs[0].name, "Operator");
-  assertEqual(docs[0].documentation,
-    "Some values representing basic mathematical operations.");
+  assertEqual(
+    docs[0].documentation,
+    "Some values representing basic mathematical operations."
+  );
   // Test enum members
   assertEqual(docs[0].members.length, 4);
   assertEqual(docs[0].members[0].type, "EnumMember");
@@ -54,8 +58,10 @@ test(async function test_types() {
   assertEqual(point.definition.members[1].documentation, "comment 3");
   assertEqual(point.definition.members[1].dataType.type, "TypeReference");
   assertEqual(point.definition.members[1].dataType.name, "BigNumber.number");
-  assertEqual(point.definition.members[1].dataType.filename,
-              "http://site.com/bignum/index.ts");
+  assertEqual(
+    point.definition.members[1].dataType.filename,
+    "http://site.com/bignum/index.ts"
+  );
 
   // Test T01
   const T01 = docs[1];
@@ -204,7 +210,7 @@ test(async function test_findDefinition() {
   const YPF = YP.statements[2];
   assertEqual(YPF.name, "F");
   assertEqual(YPF.parameters[0].dataType.filename, "http://site.com/foo");
-  const YG = Y.statements[2]
+  const YG = Y.statements[2];
   assertEqual(YG.name, "G");
   assertEqual(YG.parameters[0].dataType.filename, "http://site.com/bar");
 });
@@ -214,13 +220,15 @@ test(async function test_export() {
   const Test = doc.filter(x => x.name === "Test")[0];
   assertEqual(!!Test, true);
   assertEqual(Test.isPrivate, true);
-  const X = doc.filter(x => x.type === "VariableDeclarationList" &&
-                       x.declarations[0].name === "X");
+  const X = doc.filter(
+    x => x.type === "VariableDeclarationList" && x.declarations[0].name === "X"
+  );
   assertEqual(X.length, 1);
   assertEqual(X[0].declarations[0].name, "X");
   assertEqual(X[0].isPrivate, true);
-  const P = doc.filter(p => p.type === "VariableDeclarationList" &&
-                       p.declarations[0].name === "P");
+  const P = doc.filter(
+    p => p.type === "VariableDeclarationList" && p.declarations[0].name === "P"
+  );
   assertEqual(P.length, 1);
   assertEqual(P[0].declarations[0].name, "P");
   assertEqual(P[0].isPrivate, true);
@@ -236,11 +244,11 @@ test(async function test_js() {
   const defaultExport = doc.filter(x => x.type === "export" && x.isDefault);
   assertEqual(defaultExport.length, 1);
   assertEqual(defaultExport[0].propertyName, "defaultExport");
-  const fn = doc.filter(x => x.type === "function" &&
-                             x.name == "defaultExport");
+  const fn = doc.filter(
+    x => x.type === "function" && x.name === "defaultExport"
+  );
   assertEqual(fn.length, 1);
 });
-
 
 test(async function test_class() {
   const doc = generateDoc("testdata/class.ts", options);
@@ -325,13 +333,14 @@ test(async function test_namespace() {
 test(async function test_var() {
   const doc = generateDoc("testdata/var.ts", options);
   // Run some tests on all exported members.
-  assertEqual(doc.filter(x => x.type === "VariableDeclarationList").length,
-              14);
+  assertEqual(doc.filter(x => x.type === "VariableDeclarationList").length, 14);
   // Note: One of the expressions is using `let` instead of `const`.
   assertEqual(doc.filter(x => x.isConstant).length, 13);
   assertEqual(doc.filter(x => x.declarations.length === 1).length, 14);
-  assertEqual(doc.filter(x => x.declarations[0].type ===
-    "VariableDeclaration").length, 14);
+  assertEqual(
+    doc.filter(x => x.declarations[0].type === "VariableDeclaration").length,
+    14
+  );
   // Test T0
   const T0 = doc[0].declarations[0];
   assertEqual(T0.name, "T0");
@@ -341,15 +350,15 @@ test(async function test_var() {
   const T1 = doc[1].declarations[0];
   assertEqual(T1.name, "T1");
   // TODO
-  //assertEqual(T1.initializer.type, "keyword");
-  //assertEqual(T1.initializer.name, "undefined");
+  // assertEqual(T1.initializer.type, "keyword");
+  // assertEqual(T1.initializer.name, "undefined");
   // Test T2
   const T2 = doc[2].declarations[0];
   assertEqual(T2.name, "T2");
   assertEqual(T2.initializer.type, "ArrowFunction");
   // Test arrow function
   const F = T2.initializer;
-  assertEqual(F.isAsync, true)
+  assertEqual(F.isAsync, true);
   assertEqual(F.parameters.length, 1);
   assertEqual(F.parameters[0].name, "a");
   assertEqual(F.parameters[0].dataType.type, "keyword");

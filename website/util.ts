@@ -7,15 +7,15 @@ import * as types from "./types";
 const mapSeparator = Symbol();
 
 export class One2ManyMap<KeyType, ValueType> {
-  private data = new Map<KeyType, (ValueType | typeof mapSeparator)[]>();
+  private data = new Map<KeyType, Array<ValueType | typeof mapSeparator>>();
   private locked = false;
-  public changed = false;
+  changed = false;
 
   lock(): void {
     this.locked = true;
   }
 
-  unlock(): void{
+  unlock(): void {
     this.locked = false;
   }
 
@@ -34,10 +34,10 @@ export class One2ManyMap<KeyType, ValueType> {
     });
   }
 
-  clearKeyAfterLastSeparator(key: KeyType): void{
+  clearKeyAfterLastSeparator(key: KeyType): void {
     if (!this.data.has(key)) return;
     const array = this.data.get(key);
-    let index = array.lastIndexOf(mapSeparator);
+    const index = array.lastIndexOf(mapSeparator);
     array.splice(index + 1);
     if (array.length === 0) this.data.delete(key);
     this.changed = true;
@@ -51,7 +51,7 @@ export class One2ManyMap<KeyType, ValueType> {
       const data = array[--i];
       if (data === mapSeparator) break;
       cb(data);
-      if (i == 0) break;
+      if (i === 0) break;
     }
   }
 
@@ -66,7 +66,7 @@ export class One2ManyMap<KeyType, ValueType> {
   has(key: KeyType): boolean {
     if (!this.data.has(key)) return false;
     const array = this.data.get(key);
-    let index = array.lastIndexOf(mapSeparator);
+    const index = array.lastIndexOf(mapSeparator);
     if (index < 0) return array.length > 0;
     return array.length - 1 > index;
   }
@@ -88,32 +88,32 @@ export function isNodeExported(node: ts.Node): boolean {
 
 // https://www.ecma-international.org/ecma-262/6.0/#sec-white-space
 const SPACES = [
-  "\u0009",   // CHARACTER TABULATION
-  "\u000b",   // LINE TABULATION
-  "\u000c",   // FORM FEED (FF)
-  "\u0020",   // SPACE
-  "\u00A0",   // NO-BREAK SPACE
-  "\uFEFF",   // ZERO WIDTH NO-BREAK SPACE
+  "\u0009", // CHARACTER TABULATION
+  "\u000b", // LINE TABULATION
+  "\u000c", // FORM FEED (FF)
+  "\u0020", // SPACE
+  "\u00A0", // NO-BREAK SPACE
+  "\uFEFF", // ZERO WIDTH NO-BREAK SPACE
   // Zs: category
-  "\u0020",   // SPACE
-  "\u00A0",   // NO-BREAK SPACE
-  "\u1680",   // OGHAM SPACE MARK
-  "\u2000",   // EN QUAD
-  "\u2001",   // EM QUAD
-  "\u2002",   // EN SPACE
-  "\u2003",   // EM SPACE
-  "\u2004",   // THREE-PER-EM SPACE
-  "\u2005",   // FOUR-PER-EM SPACE
-  "\u2006",   // SIX-PER-EM SPACE
-  "\u2007",   // FIGURE SPACE
-  "\u2008",   // PUNCTUATION SPACE
-  "\u2009",   // THIN SPACE
-  "\u200A",   // HAIR SPACE
-  "\u202F",   // NARROW NO-BREAK SPACE
-  "\u205F",   // NARROW NO-BREAK SPACE
-  "\u3000",   // IDEOGRAPHIC SPACE
+  "\u0020", // SPACE
+  "\u00A0", // NO-BREAK SPACE
+  "\u1680", // OGHAM SPACE MARK
+  "\u2000", // EN QUAD
+  "\u2001", // EM QUAD
+  "\u2002", // EN SPACE
+  "\u2003", // EM SPACE
+  "\u2004", // THREE-PER-EM SPACE
+  "\u2005", // FOUR-PER-EM SPACE
+  "\u2006", // SIX-PER-EM SPACE
+  "\u2007", // FIGURE SPACE
+  "\u2008", // PUNCTUATION SPACE
+  "\u2009", // THIN SPACE
+  "\u200A", // HAIR SPACE
+  "\u202F", // NARROW NO-BREAK SPACE
+  "\u205F", // NARROW NO-BREAK SPACE
+  "\u3000" // IDEOGRAPHIC SPACE
 ];
-  
+
 export function isWhiteSpace(c: string): boolean {
   return SPACES.indexOf(c) > -1 || c === "\n";
 }
@@ -164,8 +164,11 @@ export function getModifiers(node: ts.Node): NodeModifier {
   return ret;
 }
 
-export function setFilename(kit: types.TSKit, name: string, filename?: string)
-  : void {
+export function setFilename(
+  kit: types.TSKit,
+  name: string,
+  filename?: string
+): void {
   if (!filename) {
     filename = "#" + kit.currentNamespace.join(".");
   }
