@@ -5,7 +5,7 @@ branches:
 cache:
   ccache: true
   directories:
-   - src/js/node_modules/
+   - js/node_modules/
    - $DEPOT_TOOLS_PATH
    - $BUILD_PATH
 env:
@@ -28,7 +28,7 @@ install:
  - curl -sSf https://sh.rustup.rs | sh -s -- -y
  - export PATH=$HOME/.cargo/bin:$PATH
  - rustc --version
- - (cd src/js; yarn)
+ - (cd js; yarn)
  - gclient sync -j2 --no-history
  # ccache needs the custom LLVM to be in PATH and other variables.
  - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
