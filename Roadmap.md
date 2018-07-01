@@ -157,7 +157,7 @@ infrastructure.
 
 
 The current implementation is out of sync with this document:
-https://github.com/ry/deno/blob/master/src/js/deno.d.ts
+https://github.com/ry/deno/blob/master/js/deno.d.ts
 
 #### L1 Examples
 
