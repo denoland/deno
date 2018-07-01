@@ -1,23 +1,52 @@
-# https://docs.travis-ci.com/user/docker/
-sudo: required
-
+language: c++
+branches:
+  only:
+  - master
+cache:
+  ccache: true
+  directories:
+   - src/js/node_modules/
+   - $DEPOT_TOOLS_PATH
+   - $BUILD_PATH
 env:
-  - DOCKER_COMPOSE_VERSION=1.21.2
-
-services:
-  - docker
-
-before_install:
-  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-  - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-  - sudo apt-get update -y
-  - sudo apt-get -y install docker-ce
-  - sudo rm /usr/local/bin/docker-compose
-  - curl -L https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
-  - chmod +x docker-compose
-  - sudo mv docker-compose /usr/local/bin
-
+  global:
+    - BUILD_PATH=$HOME/out/Default
+    - DEPOT_TOOLS_PATH=$HOME/depot_tools
+before_install: |
+  if ! [ -x $DEPOT_TOOLS_PATH/gclient ]; then
+    rm -rf $DEPOT_TOOLS_PATH
+    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS_PATH
+  fi
+install:
+ - export PATH=$PATH:$DEPOT_TOOLS_PATH
+ - cd src
+ # Sync dependencies.
+ # TODO(ry) These sync steps are very terrible and only here temporarily.
+ # A single deno_deps git submodule should be created which contains V8,
+ # node_modules, depot_tools, rustc, and other deps.
+ # Building Deno *should not* depend on yarn, gclient, rustup, cargo, nor any
+ # internet connection.
+ - curl -sSf https://sh.rustup.rs | sh -s -- -y
+ - export PATH=$HOME/.cargo/bin:$PATH
+ - rustc --version
+ - (cd js; yarn)
+ - gclient sync -j2 --no-history
+ # ccache needs the custom LLVM to be in PATH and other variables.
+ - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
+ - export CCACHE_CPP2=yes
+ - export CCACHE_SLOPPINESS=time_macros
+ # In case gn gen args change, delete args.gn to avoid using cached values.
+ - rm -f $BUILD_PATH/args.gn
+ # is_debug, use_allocator, and ccache are used to speed travis.
+ # use_custom_libcxx=false and use_sysroot=false seem to be required to build on
+ # Ubuntu 14.04
+ - gn gen $BUILD_PATH --args='is_debug=false use_allocator="none" cc_wrapper="ccache" use_custom_libcxx=false use_sysroot=false'
+ - gn args $BUILD_PATH --list
+ - ccache -s
+ # Travis hangs without -j2 argument to ninja.
+ - ninja -j2 -C $BUILD_PATH mock_runtime_test mock_main
+ - ninja -j2 -C $BUILD_PATH deno
 script:
-  - docker --version
-  - docker-compose --version
-  - docker-compose build
+ - $BUILD_PATH/mock_runtime_test
+ - $BUILD_PATH/mock_main foo bar
+ - $BUILD_PATH/deno meow
