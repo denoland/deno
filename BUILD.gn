@@ -98,10 +98,10 @@ proto_library("msg_proto") {
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
-    "src/js/main.ts",
-    "src/js/msg.pb.d.ts",
-    "src/js/msg.pb.js",
-    "src/js/package.json",  # The `browserslist` field controls Babel behavior.
+    "js/main.ts",
+    "js/msg.pb.d.ts",
+    "js/msg.pb.js",
+    "js/package.json",  # The `browserslist` field controls Babel behavior.
   ]
   outputs = [
     out_dir + "main.js",
@@ -116,19 +116,19 @@ run_node("bundle") {
     "--no-minify",
     "--out-dir",
     rebase_path(out_dir, root_build_dir),
-    rebase_path("src/js/main.ts", root_build_dir),
+    rebase_path("js/main.ts", root_build_dir),
   ]
 }
 
 # Due to bugs in Parcel we must run TSC independently in order to catch errors.
 # https://github.com/parcel-bundler/parcel/issues/954
 run_node("run_tsc") {
-  main = "src/js/main.ts"
-  tsconfig = "src/js/tsconfig.json"
+  main = "js/main.ts"
+  tsconfig = "tsconfig.json"
   out_dir = "$target_gen_dir/tsc_dist/"
   sources = [
-    "src/js/msg.pb.d.ts",
-    "src/js/msg.pb.js",
+    "js/msg.pb.d.ts",
+    "js/msg.pb.js",
     main,
     tsconfig,
   ]
@@ -156,7 +156,7 @@ run_node("run_tsc") {
 # be removed at some point. If msg.proto is changed, commit changes to the
 # generated JS files. The stamp file is just to make gn work.
 action("protobufjs") {
-  script = "src/js/pbjs_hack.py"
+  script = "js/pbjs_hack.py"
   sources = [
     "src/msg.proto",
   ]
@@ -180,6 +180,6 @@ create_snapshot("deno") {
 # Generates $target_gen_dir/snapshot_mock_runtime.cc
 create_snapshot("mock_runtime") {
   testonly = true
-  js = "src/js/mock_runtime.js"
+  js = "js/mock_runtime.js"
   deps = []
 }

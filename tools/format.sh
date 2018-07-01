@@ -7,14 +7,14 @@ gn format BUILD.gn
 gn format deno.gni
 gn format .gn
 
-yapf -i src/js/*.py
+yapf -i js/*.py
 prettier --write \
-  src/js/deno.d.ts \
-  src/js/main.ts \
-  src/js/mock_runtime.js \
-  src/js/tsconfig.json
+  js/deno.d.ts \
+  js/main.ts \
+  js/mock_runtime.js \
+  tsconfig.json
 # Do not format these.
-#  src/js/msg.pb.js
-#  src/js/msg.pb.d.ts
+#  js/msg.pb.js
+#  js/msg.pb.d.ts
 
 rustfmt --write-mode overwrite src/*.rs
