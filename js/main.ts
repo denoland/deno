@@ -1,6 +1,7 @@
+// tslint:disable-next-line:no-reference
 /// <reference path="deno.d.ts" />
-import { deno as pb } from "./msg.pb";
 import * as ts from "typescript";
+import { deno as pb } from "./msg.pb";
 
 const globalEval = eval;
 const window = globalEval("this");
@@ -8,7 +9,7 @@ const window = globalEval("this");
 window["denoMain"] = () => {
   deno.print(`ts.version: ${ts.version}`);
   const res = deno.pub("startDeno2", emptyArrayBuffer());
-  //deno.print(`after`);
+  // deno.print(`after`);
   const resUi8 = new Uint8Array(res);
   deno.print(`before`);
   const msg = pb.Msg.decode(resUi8);
