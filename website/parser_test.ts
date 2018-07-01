@@ -305,3 +305,19 @@ test(async function test_interface() {
   assertEqual(V.parameters[0].name, "T");
   assertEqual(V.parameters[0].constraint.name, "Vec4");
 });
+
+test(async function test_namespace() {
+  const doc = generateDoc("testdata/import.ts", options);
+  const X = doc[0];
+  assertEqual(X.name, "X");
+  assertEqual(X.type, "module");
+  assertEqual(X.statements.length, 1);
+  const Y = doc[1];
+  assertEqual(Y.name, "Y");
+  assertEqual(Y.type, "module");
+  assertEqual(Y.statements.length, 3);
+  const YP = Y.statements[1];
+  assertEqual(YP.name, "P");
+  assertEqual(YP.type, "module");
+  assertEqual(YP.statements.length, 4);
+});
