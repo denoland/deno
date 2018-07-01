@@ -22,7 +22,7 @@ VISITOR("VariableDeclarationList",
   const docs = symbol.getDocumentationComment(this.checker);
 
   e.push({
-    type: "VariableDeclaration",
+    type: "VariableDeclarationList",
     isConstant: (node.flags & ts.NodeFlags.Const) !== 0,
     documentation: ts.displayPartsToString(docs),
     declarations

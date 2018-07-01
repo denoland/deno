@@ -214,12 +214,12 @@ test(async function test_export() {
   const Test = doc.filter(x => x.name === "Test")[0];
   assertEqual(!!Test, true);
   assertEqual(Test.isPrivate, true);
-  const X = doc.filter(x => x.type === "VariableDeclaration" &&
+  const X = doc.filter(x => x.type === "VariableDeclarationList" &&
                        x.declarations[0].name === "X");
   assertEqual(X.length, 1);
   assertEqual(X[0].declarations[0].name, "X");
   assertEqual(X[0].isPrivate, true);
-  const P = doc.filter(p => p.type === "VariableDeclaration" &&
+  const P = doc.filter(p => p.type === "VariableDeclarationList" &&
                        p.declarations[0].name === "P");
   assertEqual(P.length, 1);
   assertEqual(P[0].declarations[0].name, "P");
@@ -320,4 +320,108 @@ test(async function test_namespace() {
   assertEqual(YP.name, "P");
   assertEqual(YP.type, "module");
   assertEqual(YP.statements.length, 4);
+});
+
+test(async function test_var() {
+  const doc = generateDoc("testdata/var.ts", options);
+  // Run some tests on all exported members.
+  assertEqual(doc.filter(x => x.type === "VariableDeclarationList").length,
+              14);
+  // Note: One of the expressions is using `let` instead of `const`.
+  assertEqual(doc.filter(x => x.isConstant).length, 13);
+  assertEqual(doc.filter(x => x.declarations.length === 1).length, 14);
+  assertEqual(doc.filter(x => x.declarations[0].type ===
+    "VariableDeclaration").length, 14);
+  // Test T0
+  const T0 = doc[0].declarations[0];
+  assertEqual(T0.name, "T0");
+  assertEqual(T0.initializer.type, "keyword");
+  assertEqual(T0.initializer.name, "null");
+  // Test T1
+  const T1 = doc[1].declarations[0];
+  assertEqual(T1.name, "T1");
+  // TODO
+  //assertEqual(T1.initializer.type, "keyword");
+  //assertEqual(T1.initializer.name, "undefined");
+  // Test T2
+  const T2 = doc[2].declarations[0];
+  assertEqual(T2.name, "T2");
+  assertEqual(T2.initializer.type, "ArrowFunction");
+  // Test arrow function
+  const F = T2.initializer;
+  assertEqual(F.isAsync, true)
+  assertEqual(F.parameters.length, 1);
+  assertEqual(F.parameters[0].name, "a");
+  assertEqual(F.parameters[0].dataType.type, "keyword");
+  assertEqual(F.parameters[0].dataType.name, "number");
+  assertEqual(F.parameters[0].optional, true);
+  assertEqual(F.documentation, ":D");
+  // Test T3
+  const T3 = doc[3].declarations[0];
+  assertEqual(T3.name, "T3");
+  assertEqual(T3.initializer.type, "ObjectLiteralExpression");
+  // Test ObjectLiteralExpression
+  const O = T3.initializer;
+  assertEqual(O.properties.length, 3);
+  assertEqual(O.properties[0].type, "PropertyAssignment");
+  assertEqual(O.properties[0].name, "a");
+  assertEqual(O.properties[0].initializer.type, "number");
+  assertEqual(O.properties[0].initializer.text, "3");
+  assertEqual(O.properties[1].type, "ShorthandPropertyAssignment");
+  assertEqual(O.properties[1].name, "T2");
+  assertEqual(O.properties[1].filename, "#");
+  assertEqual(O.properties[2].type, "SpreadAssignment");
+  assertEqual(O.properties[2].expression.type, "value");
+  assertEqual(O.properties[2].expression.text, "X(...)");
+  // Test T4
+  const T4 = doc[4].declarations[0];
+  assertEqual(T4.name, "T4");
+  assertEqual(T4.initializer.type, "number");
+  assertEqual(T4.initializer.text, "2");
+  assertEqual(T4.dataType.type, "keyword");
+  assertEqual(T4.dataType.name, "number");
+  // Test T5
+  const T5 = doc[5].declarations[0];
+  assertEqual(T5.name, "T5");
+  assertEqual(T5.initializer.type, "string");
+  assertEqual(T5.initializer.text, "str");
+  // Test T6
+  const T6 = doc[6].declarations[0];
+  assertEqual(T6.name, "T6");
+  assertEqual(T6.initializer.type, "value");
+  assertEqual(T6.initializer.text, "f(...)");
+  // Test T7
+  const T7 = doc[7].declarations[0];
+  assertEqual(T7.initializer.type, "value");
+  assertEqual(T7.initializer.text, "new F(...)");
+  // Test T8
+  const T8 = doc[8].declarations[0];
+  assertEqual(T8.name, "T8");
+  assertEqual(T8.initializer.type, "value");
+  assertEqual(T8.initializer.text, "...");
+  // Test T9
+  const T9 = doc[9].declarations[0];
+  assertEqual(T9.name, "T9");
+  assertEqual(T9.initializer.type, "value");
+  assertEqual(T9.initializer.text, "...");
+  // Test TA
+  const TA = doc[10].declarations[0];
+  assertEqual(TA.name, "TA");
+  assertEqual(TA.initializer.type, "value");
+  assertEqual(TA.initializer.text, "...");
+  // Test TB
+  const TB = doc[11].declarations[0];
+  assertEqual(TB.name, "TB");
+  assertEqual(TB.initializer.type, "value");
+  assertEqual(TB.initializer.text, "...");
+  // Test TC
+  const TC = doc[12].declarations[0];
+  assertEqual(TC.name, "TC");
+  assertEqual(TC.initializer.type, "value");
+  assertEqual(TC.initializer.text, "...");
+  // Test TD
+  const TD = doc[13].declarations[0];
+  assertEqual(TD.name, "TD");
+  assertEqual(TD.initializer.type, "value");
+  assertEqual(TD.initializer.text, "...");
 });
