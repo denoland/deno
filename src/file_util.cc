@@ -1,5 +1,6 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
+#include <inttypes.h>
 #include <stdio.h>
 #include <fstream>
 #include <iterator>
@@ -77,8 +78,9 @@ class StartupDataCppWriter {
     file_ << buffer;
     WriteBinaryContentsAsCArray();
     file_ << "};\n";
-    snprintf(buffer, sizeof(buffer), "static const int %s_blob_size = %llu;\n",
-             name_, static_cast<unsigned long long>(data_.size()));
+    snprintf(buffer, sizeof(buffer),
+             "static const int %s_blob_size = %" PRId64 ";\n", name_,
+             static_cast<uint64_t>(data_.size()));
     file_ << buffer;
     snprintf(buffer, sizeof(buffer), "static v8::StartupData %s_blob =\n",
              name_);
