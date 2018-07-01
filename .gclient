@@ -32,6 +32,11 @@ solutions = [{
     'third_party/zlib'
 }, {
     'url':
+    'https://github.com/cpplint/cpplint.git@a33992f68f36fcaa6d0f531a25012a4c474d3542',
+    'name':
+    'third_party/cpplint'
+}, {
+    'url':
     'https://github.com/rust-lang/libc.git@8a85d662b90c14d458bc4ae9521a05564e20d7ae',
     'name':
     'third_party/rust_crates/libc'
