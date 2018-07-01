@@ -274,3 +274,34 @@ test(async function test_class() {
   assertEqual(C1.members[3].name, "isUnderXAxis");
   assertEqual(C1.members[3].isStatic, true);
 });
+
+test(async function test_interface() {
+  const doc = generateDoc("testdata/point.ts", options);
+  // Test Point
+  const Point = doc[0];
+  assertEqual(Point.name, "Point");
+  assertEqual(Point.type, "interface");
+  assertEqual(Point.documentation, "Represents a point in 3D space.");
+  assertEqual(Point.members.length, 3);
+  assertEqual(Point.parameters.length, 0);
+  assertEqual(Point.members[0].name, "x");
+  assertEqual(Point.members[0].dataType.type, "keyword");
+  assertEqual(Point.members[0].dataType.name, "number");
+  // Test Vec4
+  const Vec4 = doc[1];
+  assertEqual(Vec4.name, "Vec4");
+  assertEqual(Vec4.type, "interface");
+  assertEqual(Vec4.heritageClauses.length, 1);
+  assertEqual(Vec4.heritageClauses[0].filename, "#");
+  assertEqual(Vec4.heritageClauses[0].expression, "Point");
+  assertEqual(Vec4.members.length, 1);
+  // Test V
+  const V = doc[2];
+  assertEqual(V.name, "V");
+  assertEqual(V.type, "interface");
+  assertEqual(V.members.length, 2);
+  assertEqual(V.parameters.length, 1);
+  assertEqual(V.parameters[0].type, "TypeParameter");
+  assertEqual(V.parameters[0].name, "T");
+  assertEqual(V.parameters[0].constraint.name, "Vec4");
+});
