@@ -19,7 +19,6 @@ before_install: |
   fi
 install:
  - export PATH=$PATH:$DEPOT_TOOLS_PATH
- - cd src
  # Sync dependencies.
  # TODO(ry) These sync steps are very terrible and only here temporarily.
  # A single deno_deps git submodule should be created which contains V8,
@@ -29,7 +28,7 @@ install:
  - curl -sSf https://sh.rustup.rs | sh -s -- -y
  - export PATH=$HOME/.cargo/bin:$PATH
  - rustc --version
- - (cd js; yarn)
+ - (cd src/js; yarn)
  - gclient sync -j2 --no-history
  # ccache needs the custom LLVM to be in PATH and other variables.
  - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
