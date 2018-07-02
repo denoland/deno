@@ -45,15 +45,15 @@ https://github.com/ry/deno/master/testing.js
   * Modifiying/deleting local files
   * Leaking private information
 * Disallowed default:
-    * No network access
-    * No local write access
-    * No non-js extensions
-    * No subprocesses
-    * No env access
+    * Network access
+    * Local write access
+    * Non-JS extensions
+    * Subprocesses
+    * Env access
 * Allowed default:
     * Local read access.
     * argv, stdout, stderr, stdin access always allowed.
-    * Optional: temp dir by default. (But what if they create symlinks there?)
+    * Maybe: temp dir write access. (But what if they create symlinks there?)
 * The user gets prompted when the software tries to do something it doesn't have
   the privilege for.
 * Have an option to get a stack trace when access is requested.
