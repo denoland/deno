@@ -71,10 +71,7 @@ You need [yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
 
 You need [rust](https://www.rust-lang.org/en-US/install.html) installed.
 
-Go to `src/` folder:
-``` bash
-cd src/
-```
+You need [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache) installed.
 
 Fetch packages and v8:
 ``` bash
