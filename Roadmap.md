@@ -44,17 +44,16 @@ https://github.com/ry/deno/master/testing.js
 * Threat model:
   * Modifiying/deleting local files
   * Leaking private information
-* By default:
+* Disallowed default:
     * No network access
     * No local write access
     * No non-js extensions
     * No subprocesses
     * No env access
+* Allowed default:
     * Local read access.
     * argv, stdout, stderr, stdin access always allowed.
-    * Optional: temp dir by default. But what if they create symlinks there?
-* (We could relax by saying, you can get network access first and read access
-  after that.)
+    * Optional: temp dir by default. (But what if they create symlinks there?)
 * The user gets prompted when the software tries to do something it doesn't have
   the privilege for.
 * Have an option to get a stack trace when access is requested.
@@ -62,10 +61,13 @@ https://github.com/ry/deno/master/testing.js
   to monkey patching techniques. Access should be granted per program (js
   context).
 
-Program requests write access to "~/.ssh/id_rsa". Grant? [yNs]?
-http://gist.github.com/asdfasd.js requests network access to "www.facebook.com". Grant? [yNs]?
-Program requests access to environment variables. Grant? [yNs]?
-Program requests to spawn `rm -rf /`. Cool?
+Example security prompts. Options are: YES, NO, PRINT STACK
+```
+Program requests write access to "~/.ssh/id_rsa". Grant? [yNs]
+http://gist.github.com/asdfasd.js requests network access to "www.facebook.com". Grant? [yNs]
+Program requests access to environment variables. Grant? [yNs]
+Program requests to spawn `rm -rf /`. Grant? [yNs]
+```
 
 * cli flags to grant access ahead of time --allow-all --allow-write --allow-net
   --allow-env --allow-exec
