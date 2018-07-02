@@ -2,6 +2,7 @@ import("//third_party/protobuf/proto_library.gni")
 import("//third_party/v8/gni/v8.gni")
 import("//third_party/v8/snapshot_toolchain.gni")
 import("deno.gni")
+import("rust.gni")
 
 config("deno_config") {
   include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
