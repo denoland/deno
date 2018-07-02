@@ -6,6 +6,7 @@ cache:
   ccache: true
   directories:
    - js/node_modules/
+   - website/node_modules/
    - $DEPOT_TOOLS_PATH
    - $BUILD_PATH
 env:
@@ -29,6 +30,7 @@ install:
  - export PATH=$HOME/.cargo/bin:$PATH
  - rustc --version
  - (cd js; yarn)
+ - (cd website; yarn)
  - gclient sync -j2 --no-history
  # ccache needs the custom LLVM to be in PATH and other variables.
  - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
@@ -50,3 +52,5 @@ script:
  - $BUILD_PATH/mock_main foo bar
  - $BUILD_PATH/deno meow
  - ./tools/lint.sh
+ - (cd website; ./node_modules/.bin/ts-node test.ts)
+ - (cd website; ./node_modules/.bin/tslint -p .)
