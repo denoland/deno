@@ -8,12 +8,12 @@ export interface Point {
   x: number;
 
   /**
-   * Represents x value of a point.
+   * Represents y value of a point.
    */
   y: number;
 
   /**
-   * Represents x value of a point.
+   * Represents z value of a point.
    */
   z: number;
 }

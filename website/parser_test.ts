@@ -241,6 +241,7 @@ test(async function test_js() {
   assertEqual(fooExport.length, 1);
   const fooFn = doc.filter(x => x.name === "foo" && x.type === "function");
   assertEqual(fooFn.length, 1);
+  assertEqual(fooFn[0].documentation, "Some comments");
   const defaultExport = doc.filter(x => x.type === "export" && x.isDefault);
   assertEqual(defaultExport.length, 1);
   assertEqual(defaultExport[0].propertyName, "defaultExport");
@@ -248,6 +249,7 @@ test(async function test_js() {
     x => x.type === "function" && x.name === "defaultExport"
   );
   assertEqual(fn.length, 1);
+  assertEqual(fn[0].documentation, "nothing.");
 });
 
 test(async function test_class() {
@@ -260,6 +262,7 @@ test(async function test_class() {
   assertEqual(C1.implementsClauses.length, 1);
   assertEqual(C1.implementsClauses[0].filename, "./point");
   assertEqual(C1.members.length, 4);
+  assertEqual(C1.documentation, "Returns a new Point");
   // Test Constructor
   assertEqual(C1.members[0].type, "Constructor");
   assertEqual(C1.members[0].parameters.length, 3);
@@ -295,6 +298,7 @@ test(async function test_interface() {
   assertEqual(Point.members[0].name, "x");
   assertEqual(Point.members[0].dataType.type, "keyword");
   assertEqual(Point.members[0].dataType.name, "number");
+  assertEqual(Point.members[0].documentation, "Represents x value of a point.");
   // Test Vec4
   const Vec4 = doc[1];
   assertEqual(Vec4.name, "Vec4");
