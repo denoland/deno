@@ -349,9 +349,8 @@ test(async function test_var() {
   // Test T1
   const T1 = doc[1].declarations[0];
   assertEqual(T1.name, "T1");
-  // TODO
-  // assertEqual(T1.initializer.type, "keyword");
-  // assertEqual(T1.initializer.name, "undefined");
+  assertEqual(T1.initializer.type, "keyword");
+  assertEqual(T1.initializer.name, "undefined");
   // Test T2
   const T2 = doc[2].declarations[0];
   assertEqual(T2.name, "T2");

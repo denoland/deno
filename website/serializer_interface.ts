@@ -70,6 +70,13 @@ VISITOR("ExpressionWithTypeArguments", function(
 });
 
 VISITOR("Identifier", function(e, node: ts.Identifier) {
+  if (node.text === "undefined") {
+    e.push({
+      type: "keyword",
+      name: "undefined"
+    });
+    return;
+  }
   e.push({
     type: "name",
     text: node.text,
@@ -78,6 +85,9 @@ VISITOR("Identifier", function(e, node: ts.Identifier) {
 });
 
 VISITOR("MethodSignature", function(e, node: ts.MethodSignature) {
+  const symbol = this.checker.getSymbolAtLocation(node.name);
+  const docs = symbol && symbol.getDocumentationComment(this.checker);
+
   const names = [];
   visit.call(this, names, node.name);
   const parameters = [];
@@ -86,10 +96,12 @@ VISITOR("MethodSignature", function(e, node: ts.MethodSignature) {
       visit.call(this, parameters, t);
     }
   }
+
   const types = [];
   visit.call(this, types, node.type);
   e.push({
     type: "MethodSignature",
+    documentation: ts.displayPartsToString(docs),
     name: names[0].text,
     parameters,
     dataType: types[0],
