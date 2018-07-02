@@ -17,7 +17,10 @@ const VISITORS = new Map<string, types.Visitor | string>();
  * Defines a visitor which will be used later in visit function.
  * @internal
  */
-export function VISITOR(name: string, visitor: types.Visitor | string): void {
+export function defineVisitor(
+  name: string,
+  visitor: types.Visitor | string
+): void {
   VISITORS.set(name, visitor);
 }
 

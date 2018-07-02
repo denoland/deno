@@ -2,13 +2,13 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { visit, VISITOR } from "./parser";
+import { defineVisitor, visit } from "./parser";
 import { setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 // tslint:disable:object-literal-sort-keys
 
-VISITOR("EnumDeclaration", function(e, node: ts.EnumDeclaration) {
+defineVisitor("EnumDeclaration", function(e, node: ts.EnumDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
 
@@ -30,7 +30,7 @@ VISITOR("EnumDeclaration", function(e, node: ts.EnumDeclaration) {
   setFilename(this, node.name.text);
 });
 
-VISITOR("EnumMember", function(e, node: ts.EnumMember) {
+defineVisitor("EnumMember", function(e, node: ts.EnumMember) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
   const array = [];

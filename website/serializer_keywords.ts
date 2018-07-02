@@ -1,111 +1,111 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 
-import { VISITOR } from "./parser";
+import { defineVisitor } from "./parser";
 
 // tslint:disable:only-arrow-functions
 // tslint:disable:object-literal-sort-keys
 
 // Keyword Type Nodes
-VISITOR("AnyKeyword", function(e) {
+defineVisitor("AnyKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "any"
   });
 });
 
-VISITOR("UnknownKeyword", function(e) {
+defineVisitor("UnknownKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "<unknown>"
   });
 });
 
-VISITOR("NumberKeyword", function(e) {
+defineVisitor("NumberKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "number"
   });
 });
 
-VISITOR("ObjectKeyword", function(e) {
+defineVisitor("ObjectKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "object"
   });
 });
 
-VISITOR("BooleanKeyword", function(e) {
+defineVisitor("BooleanKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "boolean"
   });
 });
 
-VISITOR("StringKeyword", function(e) {
+defineVisitor("StringKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "string"
   });
 });
 
-VISITOR("SymbolKeyword", function(e) {
+defineVisitor("SymbolKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "symbol"
   });
 });
 
-VISITOR("ThisKeyword", function(e) {
+defineVisitor("ThisKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "this"
   });
 });
 
-VISITOR("VoidKeyword", function(e) {
+defineVisitor("VoidKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "void"
   });
 });
 
-VISITOR("UnVISITORdKeyword", function(e) {
+defineVisitor("UnVISITORdKeyword", function(e) {
   e.push({
     type: "keyword",
-    name: "unVISITORd"
+    name: "undefineVisitord"
   });
 });
 
-VISITOR("NullKeyword", function(e) {
+defineVisitor("NullKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "null"
   });
 });
 
-VISITOR("NeverKeyword", function(e) {
+defineVisitor("NeverKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "never"
   });
 });
 
-VISITOR("TrueKeyword", function(e) {
+defineVisitor("TrueKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "true"
   });
 });
 
-VISITOR("FalseKeyword", function(e) {
+defineVisitor("FalseKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "false"
   });
 });
 
-VISITOR("UndefinedKeyword", function(e) {
+defineVisitor("UndefinedKeyword", function(e) {
   e.push({
     type: "keyword",
     name: "undefined"

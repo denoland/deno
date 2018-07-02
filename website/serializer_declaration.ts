@@ -2,17 +2,17 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { visit, VISITOR } from "./parser";
+import { defineVisitor, visit } from "./parser";
 import { setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 // tslint:disable:object-literal-sort-keys
 
-VISITOR("VariableStatement", function(e, node: ts.VariableStatement) {
+defineVisitor("VariableStatement", function(e, node: ts.VariableStatement) {
   visit.call(this, e, node.declarationList);
 });
 
-VISITOR("VariableDeclarationList", function(
+defineVisitor("VariableDeclarationList", function(
   e,
   node: ts.VariableDeclarationList
 ) {
@@ -32,7 +32,7 @@ VISITOR("VariableDeclarationList", function(
   });
 });
 
-VISITOR("VariableDeclaration", function(e, node: ts.VariableDeclaration) {
+defineVisitor("VariableDeclaration", function(e, node: ts.VariableDeclaration) {
   const array = [];
   visit.call(this, array, node.name);
   const name = array[0];
@@ -57,14 +57,14 @@ VISITOR("VariableDeclaration", function(e, node: ts.VariableDeclaration) {
   setFilename(this, name.refName);
 });
 
-VISITOR("ArrayLiteralExpression", function(e) {
+defineVisitor("ArrayLiteralExpression", function(e) {
   e.push({
     type: "value",
     text: "[...]"
   });
 });
 
-VISITOR("CallExpression", function(e, node: ts.CallExpression) {
+defineVisitor("CallExpression", function(e, node: ts.CallExpression) {
   let text = "[FUNCTION CALL]";
   if (ts.isIdentifier(node.expression)) {
     text = `${node.expression.text}(...)`;
@@ -75,7 +75,7 @@ VISITOR("CallExpression", function(e, node: ts.CallExpression) {
   });
 });
 
-VISITOR("NewExpression", function(e, node: ts.NewExpression) {
+defineVisitor("NewExpression", function(e, node: ts.NewExpression) {
   let text = "new ?(...)";
   if (ts.isIdentifier(node.expression)) {
     text = `new ${node.expression.text}(...)`;

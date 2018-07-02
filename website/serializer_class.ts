@@ -2,13 +2,13 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { visit, VISITOR } from "./parser";
+import { defineVisitor, visit } from "./parser";
 import { getModifiers, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 // tslint:disable:object-literal-sort-keys
 
-VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
+defineVisitor("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
 
@@ -62,7 +62,7 @@ VISITOR("ClassDeclaration", function(e, node: ts.ClassDeclaration) {
   }
 });
 
-VISITOR("PropertyDeclaration", function(e, node: ts.PropertyDeclaration) {
+defineVisitor("PropertyDeclaration", function(e, node: ts.PropertyDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
 
@@ -102,7 +102,7 @@ VISITOR("PropertyDeclaration", function(e, node: ts.PropertyDeclaration) {
   });
 });
 
-VISITOR("Constructor", function(e, node: ts.ConstructorDeclaration) {
+defineVisitor("Constructor", function(e, node: ts.ConstructorDeclaration) {
   const sig = this.checker.getSignatureFromDeclaration(node);
   const docs = sig.getDocumentationComment(this.checker);
 
@@ -118,7 +118,7 @@ VISITOR("Constructor", function(e, node: ts.ConstructorDeclaration) {
   });
 });
 
-VISITOR("MethodDeclaration", function(e, node: ts.MethodDeclaration) {
+defineVisitor("MethodDeclaration", function(e, node: ts.MethodDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
 
@@ -143,7 +143,7 @@ VISITOR("MethodDeclaration", function(e, node: ts.MethodDeclaration) {
   });
 });
 
-VISITOR("GetAccessor", function(e, node: ts.GetAccessorDeclaration) {
+defineVisitor("GetAccessor", function(e, node: ts.GetAccessorDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
 
@@ -163,7 +163,7 @@ VISITOR("GetAccessor", function(e, node: ts.GetAccessorDeclaration) {
   });
 });
 
-VISITOR("SetAccessor", function(e, node: ts.SetAccessorDeclaration) {
+defineVisitor("SetAccessor", function(e, node: ts.SetAccessorDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
 

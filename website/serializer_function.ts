@@ -2,13 +2,13 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { visit, VISITOR } from "./parser";
+import { defineVisitor, visit } from "./parser";
 import { getModifiers, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 // tslint:disable:object-literal-sort-keys
 
-VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
+defineVisitor("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
   // Get signature of node so we can extract it's documentations comment.
   const sig = this.checker.getSignatureFromDeclaration(node);
   const docs = sig.getDocumentationComment(this.checker);
@@ -62,9 +62,9 @@ VISITOR("FunctionDeclaration", function(e, node: ts.FunctionDeclaration) {
 });
 
 // Alias
-VISITOR("FunctionExpression", "FunctionDeclaration");
+defineVisitor("FunctionExpression", "FunctionDeclaration");
 
-VISITOR("Parameter", function(e, node: ts.ParameterDeclaration) {
+defineVisitor("Parameter", function(e, node: ts.ParameterDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol && symbol.getDocumentationComment(this.checker);
 
@@ -87,7 +87,7 @@ VISITOR("Parameter", function(e, node: ts.ParameterDeclaration) {
   e.push(data);
 });
 
-VISITOR("ArrowFunction", function(e, node: ts.ArrowFunction) {
+defineVisitor("ArrowFunction", function(e, node: ts.ArrowFunction) {
   const sig = this.checker.getSignatureFromDeclaration(node);
   const docs = sig.getDocumentationComment(this.checker);
 

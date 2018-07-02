@@ -2,13 +2,16 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { visit, VISITOR } from "./parser";
+import { defineVisitor, visit } from "./parser";
 import { setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
 // tslint:disable:object-literal-sort-keys
 
-VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
+defineVisitor("InterfaceDeclaration", function(
+  e,
+  node: ts.InterfaceDeclaration
+) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
   const heritageClauses = [];
@@ -47,7 +50,7 @@ VISITOR("InterfaceDeclaration", function(e, node: ts.InterfaceDeclaration) {
   setFilename(this, node.name.text);
 });
 
-VISITOR("ExpressionWithTypeArguments", function(
+defineVisitor("ExpressionWithTypeArguments", function(
   e,
   node: ts.ExpressionWithTypeArguments
 ) {
@@ -69,7 +72,7 @@ VISITOR("ExpressionWithTypeArguments", function(
   this.privateNames.add(expression.refName, doc);
 });
 
-VISITOR("Identifier", function(e, node: ts.Identifier) {
+defineVisitor("Identifier", function(e, node: ts.Identifier) {
   if (node.text === "undefined") {
     e.push({
       type: "keyword",
@@ -84,7 +87,7 @@ VISITOR("Identifier", function(e, node: ts.Identifier) {
   });
 });
 
-VISITOR("MethodSignature", function(e, node: ts.MethodSignature) {
+defineVisitor("MethodSignature", function(e, node: ts.MethodSignature) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol && symbol.getDocumentationComment(this.checker);
 

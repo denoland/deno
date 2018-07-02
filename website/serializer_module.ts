@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 
 import * as ts from "typescript";
-import { visit, VISITOR } from "./parser";
+import { defineVisitor, visit } from "./parser";
 import { isNodeExported, setFilename } from "./util";
 
 // tslint:disable:only-arrow-functions
@@ -10,7 +10,7 @@ import { isNodeExported, setFilename } from "./util";
 
 const visited = new Map<ts.ModuleDeclaration, null>();
 
-VISITOR("ModuleDeclaration", function(e, node: ts.ModuleDeclaration) {
+defineVisitor("ModuleDeclaration", function(e, node: ts.ModuleDeclaration) {
   const symbol = this.checker.getSymbolAtLocation(node.name);
   const docs = symbol.getDocumentationComment(this.checker);
   const array = [];
@@ -35,7 +35,10 @@ VISITOR("ModuleDeclaration", function(e, node: ts.ModuleDeclaration) {
   visited.set(node, null);
 });
 
-VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
+defineVisitor("ModuleBlock", function(
+  e,
+  block: ts.ModuleBlock | ts.SourceFile
+) {
   if (!block.statements) return;
   const array = [];
   const privateNodes = [];
@@ -93,9 +96,9 @@ VISITOR("ModuleBlock", function(e, block: ts.ModuleBlock | ts.SourceFile) {
   e.push(...privateNodes);
 });
 
-VISITOR("SourceFile", "ModuleBlock");
+defineVisitor("SourceFile", "ModuleBlock");
 
-VISITOR("ExportDeclaration", function(e, node: ts.ExportDeclaration) {
+defineVisitor("ExportDeclaration", function(e, node: ts.ExportDeclaration) {
   if (!node.exportClause) return;
   // Just visit export specifiers
   for (const s of node.exportClause.elements) {
@@ -103,7 +106,7 @@ VISITOR("ExportDeclaration", function(e, node: ts.ExportDeclaration) {
   }
 });
 
-VISITOR("ExportSpecifier", function(e, node: ts.ExportSpecifier) {
+defineVisitor("ExportSpecifier", function(e, node: ts.ExportSpecifier) {
   const array = [];
   visit.call(this, array, node.name);
   const name = array[0];
@@ -123,7 +126,7 @@ VISITOR("ExportSpecifier", function(e, node: ts.ExportSpecifier) {
   this.privateNames.add(propertyName.refName, entity);
 });
 
-VISITOR("ExportAssignment", function(e, node: ts.ExportAssignment) {
+defineVisitor("ExportAssignment", function(e, node: ts.ExportAssignment) {
   const expressions = [];
   visit.call(this, expressions, node.expression);
   const expression = expressions[0];
@@ -145,7 +148,7 @@ VISITOR("ExportAssignment", function(e, node: ts.ExportAssignment) {
   e.push(docEntity);
 });
 
-VISITOR("ImportDeclaration", function(e, node: ts.ImportDeclaration) {
+defineVisitor("ImportDeclaration", function(e, node: ts.ImportDeclaration) {
   if (!node.importClause) return;
   // Only string literal is accepted.
   if (!ts.isStringLiteral(node.moduleSpecifier)) return;
@@ -158,13 +161,13 @@ VISITOR("ImportDeclaration", function(e, node: ts.ImportDeclaration) {
   }
 });
 
-VISITOR("NamedImports", function(e, node: ts.NamedImports) {
+defineVisitor("NamedImports", function(e, node: ts.NamedImports) {
   for (const s of node.elements) {
     visit.call(this, e, s);
   }
 });
 
-VISITOR("ImportSpecifier", function(e, node: ts.ImportSpecifier) {
+defineVisitor("ImportSpecifier", function(e, node: ts.ImportSpecifier) {
   const moduleSpecifier = node.parent.parent.parent.moduleSpecifier;
   let fileName = (moduleSpecifier as ts.StringLiteral).text;
   if (node.propertyName) {
@@ -174,13 +177,13 @@ VISITOR("ImportSpecifier", function(e, node: ts.ImportSpecifier) {
   setFilename(this, node.name.text, fileName);
 });
 
-VISITOR("NamespaceImport", function(e, node: ts.NamespaceImport) {
+defineVisitor("NamespaceImport", function(e, node: ts.NamespaceImport) {
   const moduleSpecifier = node.parent.parent.moduleSpecifier;
   const fileName = (moduleSpecifier as ts.StringLiteral).text;
   setFilename(this, node.name.text, fileName);
 });
 
-VISITOR("ExpressionStatement", function(e, node: ts.ExpressionStatement) {
+defineVisitor("ExpressionStatement", function(e, node: ts.ExpressionStatement) {
   // We don't aim to support CommonJS in a typescript file.
   if (!this.isJS) return;
   // We don't follow variable references atm.
