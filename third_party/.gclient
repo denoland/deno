@@ -1,1 +1,1 @@
-../.gclient
+../gclient_config.py
