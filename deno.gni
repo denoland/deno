@@ -26,7 +26,7 @@ template("create_snapshot") {
                            ])
     visibility = [ ":*" ]  # Only targets in this file can depend on this.
     deps += [ ":snapshot_creator" ]
-    script = "v8/tools/run.py"
+    script = "third_party/v8/tools/run.py"
     data = []
     exe = rebase_path(get_label_info(":snapshot_creator", "root_out_dir") +
                       "/snapshot_creator")
@@ -66,7 +66,7 @@ template("rust_crate") {
     ]
     outputs = []
     depfile = "$target_gen_dir/$target_name.d"
-    script = "v8/tools/run.py"
+    script = "third_party/v8/tools/run.py"
 
     args = [
       "rustc",

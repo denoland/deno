@@ -1,11 +1,11 @@
 import("//third_party/protobuf/proto_library.gni")
-import("//v8/gni/v8.gni")
-import("//v8/snapshot_toolchain.gni")
+import("//third_party/v8/gni/v8.gni")
+import("//third_party/v8/snapshot_toolchain.gni")
 import("deno.gni")
 
 config("deno_config") {
-  include_dirs = [ "v8" ]  # This allows us to v8/src/base/ libraries.
-  configs = [ "v8:external_config" ]
+  include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
+  configs = [ "third_party/v8:external_config" ]
 }
 
 rust_executable("deno") {
@@ -73,7 +73,7 @@ v8_source_set("deno_nosnapshot") {
     "src/include/deno.h",
   ]
   deps = [
-    "v8:v8_monolith",
+    "third_party/v8:v8_monolith",
   ]
   configs = [ ":deno_config" ]
 }
