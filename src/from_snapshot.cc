@@ -34,7 +34,7 @@ void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
   deserialized_data.push_back(embedder_field);
 }
 
-Deno* NewFromSnapshot(void* data, deno_sub_cb cb) {
+Deno* NewFromSnapshot(void* data, deno_recv_cb cb) {
   Deno* d = new Deno;
   d->currentArgs = nullptr;
   d->cb = cb;
@@ -65,7 +65,7 @@ Deno* NewFromSnapshot(void* data, deno_sub_cb cb) {
 }  // namespace deno
 
 extern "C" {
-Deno* deno_new(void* data, deno_sub_cb cb) {
+Deno* deno_new(void* data, deno_recv_cb cb) {
   return deno::NewFromSnapshot(data, cb);
 }
 }

@@ -25,62 +25,62 @@ TEST(MockRuntimeTest, ErrorsCorrectly) {
 
 deno_buf strbuf(const char* str) { return deno_buf{str, strlen(str)}; }
 
-TEST(MockRuntimeTest, PubSuccess) {
+TEST(MockRuntimeTest, SendSuccess) {
   Deno* d = deno_new(nullptr, nullptr);
-  EXPECT_TRUE(deno_execute(d, "a.js", "PubSuccess()"));
-  EXPECT_TRUE(deno_pub(d, "PubSuccess", strbuf("abc")));
+  EXPECT_TRUE(deno_execute(d, "a.js", "SendSuccess()"));
+  EXPECT_TRUE(deno_send(d, "SendSuccess", strbuf("abc")));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, PubByteLength) {
+TEST(MockRuntimeTest, SendByteLength) {
   Deno* d = deno_new(nullptr, nullptr);
-  EXPECT_TRUE(deno_execute(d, "a.js", "PubByteLength()"));
+  EXPECT_TRUE(deno_execute(d, "a.js", "SendByteLength()"));
   // We pub the wrong sized message, it should throw.
-  EXPECT_FALSE(deno_pub(d, "PubByteLength", strbuf("abcd")));
+  EXPECT_FALSE(deno_send(d, "SendByteLength", strbuf("abcd")));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, PubNoCallback) {
+TEST(MockRuntimeTest, SendNoCallback) {
   Deno* d = deno_new(nullptr, nullptr);
-  // We didn't call deno_sub(), pubing should fail.
-  EXPECT_FALSE(deno_pub(d, "PubNoCallback", strbuf("abc")));
+  // We didn't call deno.recv() in JS, should fail.
+  EXPECT_FALSE(deno_send(d, "SendNoCallback", strbuf("abc")));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, SubReturnEmpty) {
+TEST(MockRuntimeTest, RecvReturnEmpty) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto _, auto channel, auto buf) {
     count++;
-    EXPECT_STREQ(channel, "SubReturnEmpty");
+    EXPECT_STREQ(channel, "RecvReturnEmpty");
     EXPECT_EQ(static_cast<size_t>(3), buf.len);
     EXPECT_EQ(buf.data[0], 'a');
     EXPECT_EQ(buf.data[1], 'b');
     EXPECT_EQ(buf.data[2], 'c');
   });
-  EXPECT_TRUE(deno_execute(d, "a.js", "SubReturnEmpty()"));
+  EXPECT_TRUE(deno_execute(d, "a.js", "RecvReturnEmpty()"));
   EXPECT_EQ(count, 2);
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, SubReturnBar) {
+TEST(MockRuntimeTest, RecvReturnBar) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto deno, auto channel, auto buf) {
     count++;
-    EXPECT_STREQ(channel, "SubReturnBar");
+    EXPECT_STREQ(channel, "RecvReturnBar");
     EXPECT_EQ(static_cast<size_t>(3), buf.len);
     EXPECT_EQ(buf.data[0], 'a');
     EXPECT_EQ(buf.data[1], 'b');
     EXPECT_EQ(buf.data[2], 'c');
     deno_set_response(deno, strbuf("bar"));
   });
-  EXPECT_TRUE(deno_execute(d, "a.js", "SubReturnBar()"));
+  EXPECT_TRUE(deno_execute(d, "a.js", "RecvReturnBar()"));
   EXPECT_EQ(count, 1);
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, DoubleSubFails) {
+TEST(MockRuntimeTest, DoubleRecvFails) {
   Deno* d = deno_new(nullptr, nullptr);
-  EXPECT_FALSE(deno_execute(d, "a.js", "DoubleSubFails()"));
+  EXPECT_FALSE(deno_execute(d, "a.js", "DoubleRecvFails()"));
   deno_delete(d);
 }
 

@@ -27,34 +27,34 @@ global.TypedArraySnapshots = () => {
   assert(snapshotted[3] === 7);
 };
 
-global.PubSuccess = () => {
-  deno.sub((channel, msg) => {
-    assert(channel === "PubSuccess");
-    deno.print("PubSuccess: ok");
+global.SendSuccess = () => {
+  deno.recv((channel, msg) => {
+    assert(channel === "SendSuccess");
+    deno.print("SendSuccess: ok");
   });
 };
 
-global.PubByteLength = () => {
-  deno.sub((channel, msg) => {
-    assert(channel === "PubByteLength");
+global.SendByteLength = () => {
+  deno.recv((channel, msg) => {
+    assert(channel === "SendByteLength");
     assert(msg instanceof ArrayBuffer);
     assert(msg.byteLength === 3);
   });
 };
 
-global.SubReturnEmpty = () => {
+global.RecvReturnEmpty = () => {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
-  let r = deno.pub("SubReturnEmpty", ab);
+  let r = deno.send("RecvReturnEmpty", ab);
   assert(r == null);
-  r = deno.pub("SubReturnEmpty", ab);
+  r = deno.send("RecvReturnEmpty", ab);
   assert(r == null);
 };
 
-global.SubReturnBar = () => {
+global.RecvReturnBar = () => {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
-  const r = deno.pub("SubReturnBar", ab);
+  const r = deno.send("RecvReturnBar", ab);
   assert(r instanceof ArrayBuffer);
   assert(r.byteLength === 3);
   const rui8 = new Uint8Array(r);
@@ -62,11 +62,11 @@ global.SubReturnBar = () => {
   assert(rstr === "bar");
 };
 
-global.DoubleSubFails = () => {
-  // deno.sub is an internal function and should only be called once from the
+global.DoubleRecvFails = () => {
+  // deno.recv is an internal function and should only be called once from the
   // runtime.
-  deno.sub((channel, msg) => assert(false));
-  deno.sub((channel, msg) => assert(false));
+  deno.recv((channel, msg) => assert(false));
+  deno.recv((channel, msg) => assert(false));
 };
 
 // The following join has caused SnapshotBug to segfault when using kKeep.
@@ -84,7 +84,7 @@ global.ErrorHandling = () => {
     assert(line === 3);
     assert(col === 1);
     assert(error instanceof Error);
-    deno.pub("ErrorHandling", typedArrayToArrayBuffer(new Uint8Array([42])));
+    deno.send("ErrorHandling", typedArrayToArrayBuffer(new Uint8Array([42])));
   };
   eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
 };

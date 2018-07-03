@@ -2,12 +2,6 @@
 // All rights reserved. MIT License.
 syntax = "proto3";
 package deno;
-option go_package = "deno";
-
-message BaseMsg {
-  string channel = 1;
-  bytes payload = 2;
-}
 
 message Msg {
   enum Command {

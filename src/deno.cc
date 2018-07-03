@@ -110,16 +110,16 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   fflush(stdout);
 }
 
-// Sets the sub callback.
-void Sub(const v8::FunctionCallbackInfo<v8::Value>& args) {
+// Sets the recv callback.
+void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   Deno* d = reinterpret_cast<Deno*>(isolate->GetData(0));
   DCHECK_EQ(d->isolate, isolate);
 
   v8::HandleScope handle_scope(isolate);
 
-  if (!d->sub.IsEmpty()) {
-    isolate->ThrowException(v8_str("denoSub already called."));
+  if (!d->recv.IsEmpty()) {
+    isolate->ThrowException(v8_str("deno.recv already called."));
     return;
   }
 
@@ -127,10 +127,10 @@ void Sub(const v8::FunctionCallbackInfo<v8::Value>& args) {
   CHECK(v->IsFunction());
   v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
 
-  d->sub.Reset(isolate, func);
+  d->recv.Reset(isolate, func);
 }
 
-void Pub(const v8::FunctionCallbackInfo<v8::Value>& args) {
+void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   Deno* d = static_cast<Deno*>(isolate->GetData(0));
   DCHECK_EQ(d->isolate, isolate);
@@ -211,13 +211,13 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("print"), print_val).FromJust());
 
-  auto sub_tmpl = v8::FunctionTemplate::New(isolate, Sub);
-  auto sub_val = sub_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("sub"), sub_val).FromJust());
+  auto recv_tmpl = v8::FunctionTemplate::New(isolate, Recv);
+  auto recv_val = recv_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("recv"), recv_val).FromJust());
 
-  auto pub_tmpl = v8::FunctionTemplate::New(isolate, Pub);
-  auto pub_val = pub_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("pub"), pub_val).FromJust());
+  auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
+  auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
 
   bool r = Execute(context, js_filename, js_source);
   CHECK(r);
@@ -264,7 +264,7 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
 }
 
-int deno_pub(Deno* d, const char* channel, deno_buf buf) {
+int deno_send(Deno* d, const char* channel, deno_buf buf) {
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);
@@ -274,9 +274,9 @@ int deno_pub(Deno* d, const char* channel, deno_buf buf) {
 
   v8::TryCatch try_catch(d->isolate);
 
-  auto sub = d->sub.Get(d->isolate);
-  if (sub.IsEmpty()) {
-    d->last_exception = "deno_sub has not been called.";
+  auto recv = d->recv.Get(d->isolate);
+  if (recv.IsEmpty()) {
+    d->last_exception = "deno.recv has not been called.";
     return 0;
   }
 
@@ -288,7 +288,7 @@ int deno_pub(Deno* d, const char* channel, deno_buf buf) {
   args[0] = deno::v8_str(channel);
   args[1] = ab;
 
-  sub->Call(context->Global(), 1, args);
+  recv->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {
     deno::HandleException(context, try_catch.Exception());
