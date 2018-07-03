@@ -16,3 +16,5 @@ make run_build
 Note: to run this docker-compose setup, you need more than 4G memory allocated to Docker.
 
 ![Screenshot](screenshot.png)
+
+P.S. This version doesn't have caching yet. 
