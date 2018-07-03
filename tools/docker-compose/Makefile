@@ -15,6 +15,6 @@ run_prebuild:
 run_build: 
 	cd deno && docker run --rm -it deno_build
 
-test:
+test: build
 	cd deno && $(CLI) out/Debug/mock_runtime_test
 	cd deno && $(CLI) out/Debug/deno meow
