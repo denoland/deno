@@ -5,8 +5,8 @@
 #include <string.h>
 #include <string>
 
-#include "v8/include/v8.h"
-#include "v8/src/base/logging.h"
+#include "third_party/v8/include/v8.h"
+#include "third_party/v8/src/base/logging.h"
 
 #include "./deno_internal.h"
 #include "include/deno.h"

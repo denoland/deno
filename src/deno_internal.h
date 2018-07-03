@@ -5,7 +5,7 @@
 
 #include <string>
 #include "include/deno.h"
-#include "v8/include/v8.h"
+#include "third_party/v8/include/v8.h"
 
 extern "C" {
 // deno_s = Wrapped Isolate.
