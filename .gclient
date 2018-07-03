@@ -19,7 +19,7 @@ solutions = [{
     }
 }, {
     'url': 'https://github.com/ry/protobuf_chromium.git',
-    'name': 'third_party/protobuf',
+    'name': 'protobuf',
 }, {
     'url':
     'https://chromium.googlesource.com/chromium/src/tools/protoc_wrapper@9af82fef8cb9ca3ccc13e2ed958f58f2c21f449b',
@@ -29,15 +29,15 @@ solutions = [{
     'url':
     'https://chromium.googlesource.com/chromium/src/third_party/zlib@39b4a6260702da4c089eca57136abf40a39667e9',
     'name':
-    'third_party/zlib'
+    'zlib'
 }, {
     'url':
     'https://github.com/cpplint/cpplint.git@a33992f68f36fcaa6d0f531a25012a4c474d3542',
     'name':
-    'third_party/cpplint'
+    'cpplint'
 }, {
     'url':
     'https://github.com/rust-lang/libc.git@8a85d662b90c14d458bc4ae9521a05564e20d7ae',
     'name':
-    'third_party/rust_crates/libc'
+    'rust_crates/libc'
 }]
