@@ -13,7 +13,7 @@ import argparse
 
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 third_party_path = os.path.join(root_path, "third_party")
-script_name = "sync_third_party.py"
+script_name = "build_third_party.py"
 
 parser = argparse.ArgumentParser(description="""
 This script updates the third party dependencies of deno.
