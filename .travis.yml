@@ -5,7 +5,7 @@ branches:
 cache:
   ccache: true
   directories:
-   - js/node_modules/
+   - third_party/node_modules/
    - $DEPOT_TOOLS_PATH
    - $BUILD_PATH
 env:
