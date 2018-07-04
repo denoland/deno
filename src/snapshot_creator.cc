@@ -4,8 +4,8 @@
 #include "deno_internal.h"
 #include "file_util.h"
 #include "include/deno.h"
-#include "v8/include/v8.h"
-#include "v8/src/base/logging.h"
+#include "third_party/v8/include/v8.h"
+#include "third_party/v8/src/base/logging.h"
 
 namespace deno {
 
@@ -34,36 +34,10 @@ v8::StartupData MakeSnapshot(const char* js_filename, const char* js_source) {
                                             SerializeInternalFields, nullptr));
   }
 
-  // Note that using kKeep here will cause segfaults. This is demoed in the
-  // "SnapshotBug" test case.
   auto snapshot_blob =
-      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kClear);
+      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kKeep);
 
   return snapshot_blob;
-}
-
-// Wrap the js_source in an IIFE to work around a bug in the V8 snapshot
-// serializer. Without it, CreateBlob() triggers the following assert:
-//   Debug check failed : outer_scope_info()->IsScopeInfo() || is_toplevel().
-//   ==== C stack trace ====
-//   v8::internal::SharedFunctionInfo::FlushCompiled
-//   v8::SnapshotCreator::CreateBlob
-//   deno::MakeSnapshot
-// Avoid misaligning the source map, and ensure that the sourceMappingUrl
-// comment remains at the last line.
-// Try removing this when this bug is fixed:
-// https://bugs.chromium.org/p/v8/issues/detail?id=7857
-std::string WrapSourceCode(const std::string& js_source) {
-  auto smu_offset = js_source.rfind("//# sourceMappingURL=");
-  std::string tail =
-      smu_offset == std::string::npos ? "" : js_source.substr(smu_offset);
-  auto wrapped_js_source =
-      "(function() {" + js_source.substr(0, smu_offset) + "\n})();\n" + tail;
-  // Double check that the source mapping url comment is at the last line.
-  auto last_line = wrapped_js_source.substr(wrapped_js_source.rfind('\n'));
-  CHECK(smu_offset == std::string::npos ||
-        last_line.find("sourceMappingURL") != std::string::npos);
-  return wrapped_js_source;
 }
 
 }  // namespace deno
@@ -81,10 +55,8 @@ int main(int argc, char** argv) {
   std::string js_source;
   CHECK(deno::ReadFileToString(js_fn, &js_source));
 
-  auto wrapped_js_source = deno::WrapSourceCode(js_source);
-
   deno_init();
-  auto snapshot_blob = deno::MakeSnapshot(js_fn, wrapped_js_source.c_str());
+  auto snapshot_blob = deno::MakeSnapshot(js_fn, js_source.c_str());
   std::string snapshot_str(snapshot_blob.data, snapshot_blob.raw_size);
 
   CHECK(deno::WriteDataAsCpp("snapshot", snapshot_out_cc, snapshot_str));

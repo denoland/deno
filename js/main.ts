@@ -8,7 +8,7 @@ const window = globalEval("this");
 
 window["denoMain"] = () => {
   deno.print(`ts.version: ${ts.version}`);
-  const res = deno.pub("startDeno2", emptyArrayBuffer());
+  const res = deno.send("startDeno2", emptyArrayBuffer());
   // deno.print(`after`);
   const resUi8 = new Uint8Array(res);
   deno.print(`before`);
