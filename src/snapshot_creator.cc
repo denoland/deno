@@ -34,8 +34,6 @@ v8::StartupData MakeSnapshot(const char* js_filename, const char* js_source) {
                                             SerializeInternalFields, nullptr));
   }
 
-  // Note that using kKeep here will cause segfaults. This is demoed in the
-  // "SnapshotBug" test case.
   auto snapshot_blob =
       creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kKeep);
 
