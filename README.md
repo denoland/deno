@@ -77,7 +77,7 @@ Fetch the third party dependencies.
 
     ./tools/build_third_party.py
 
-Generate ninja configuration files.
+Generate ninja files.
 
     gn gen out/Debug --args='cc_wrapper="ccache" is_debug=true '
 

@@ -4,8 +4,8 @@
 #   http://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/depot_tools_tutorial.html#_setting_up
 # - You need yarn installed as well.
 #   https://yarnpkg.com/lang/en/docs/install/
-# Use gclient_config.py to modify the git deps.
-# Use js/package.json to modify the npm deps.
+# Use //gclient_config.py to modify the git deps.
+# Use //js/package.json to modify the npm deps.
 
 import os
 import subprocess
