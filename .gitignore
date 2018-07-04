@@ -2,7 +2,7 @@
 /out/
 
 # npm deps
-/third_party/node_modules
+node_modules
 
 # git deps
 /third_party/v8/
