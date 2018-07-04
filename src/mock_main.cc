@@ -10,8 +10,8 @@
 #include <unistd.h>
 #endif
 
-#include "./msg.pb.h"
 #include "include/deno.h"
+#include "src/msg.pb.h"
 #include "third_party/v8/src/base/logging.h"
 
 static char** global_argv;
