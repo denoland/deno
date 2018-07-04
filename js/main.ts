@@ -1,7 +1,9 @@
 // tslint:disable-next-line:no-reference
 /// <reference path="deno.d.ts" />
 import * as ts from "typescript";
-import { deno as pb } from "./msg.pb";
+
+import { flatbuffers } from "flatbuffers";
+import { deno as fbs } from "./msg_generated";
 
 const globalEval = eval;
 const window = globalEval("this");
@@ -11,22 +13,20 @@ window["denoMain"] = () => {
   const res = deno.send("startDeno2", emptyArrayBuffer());
   // deno.print(`after`);
   const resUi8 = new Uint8Array(res);
-  deno.print(`before`);
-  const msg = pb.Msg.decode(resUi8);
-  deno.print(`after`);
-  const {
-    startCwd: cwd,
-    startArgv: argv,
-    startDebugFlag: debugFlag,
-    startMainJs: mainJs,
-    startMainMap: mainMap
-  } = msg;
 
+  const bb = new flatbuffers.ByteBuffer(resUi8);
+  const msg = fbs.Msg.getRootAsMsg(bb);
+
+  // startDebugFlag: debugFlag,
+  // startMainJs: mainJs,
+  // startMainMap: mainMap
+  const cwd = msg.startCwd();
   deno.print(`cwd: ${cwd}`);
-  deno.print(`debugFlag: ${debugFlag}`);
 
-  for (let i = 0; i < argv.length; i++) {
-    deno.print(`argv[${i}] ${argv[i]}`);
+  const argv: string[] = [];
+  for (let i = 0; i < msg.startArgvLength(); i++) {
+    const arg = msg.startArgv(i);
+    deno.print(`argv[${i}] ${arg}`);
   }
 };
 

@@ -15,7 +15,7 @@ prettier --write \
   js/mock_runtime.js \
   tsconfig.json
 # Do not format these.
-#  js/msg.pb.js
-#  js/msg.pb.d.ts
+#  js/msg_generated.ts
+#  js/flatbuffers.js
 
 rustfmt --write-mode overwrite src/*.rs

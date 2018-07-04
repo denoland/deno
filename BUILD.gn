@@ -1,6 +1,7 @@
-import("//third_party/protobuf/proto_library.gni")
 import("//third_party/v8/gni/v8.gni")
 import("//third_party/v8/snapshot_toolchain.gni")
+import("//third_party/flatbuffers/flatbuffer.gni")
+import("//third_party/flatbuffers/ts_flatbuffer.gni")
 import("deno.gni")
 import("rust.gni")
 
@@ -30,9 +31,9 @@ executable("mock_main") {
     "src/mock_main.cc",
   ]
   deps = [
+    ":flatbufferjs",
     ":libdeno",
-    ":msg_proto",
-    "//third_party/protobuf:protoc_lib",
+    ":msg_cpp",
   ]
   configs += [ ":deno_config" ]
 }
@@ -89,26 +90,24 @@ executable("snapshot_creator") {
   configs += [ ":deno_config" ]
 }
 
-proto_library("msg_proto") {
+flatbuffer("msg_cpp") {
   sources = [
-    "src/msg.proto",
+    "src/msg.fbs",
   ]
-  generate_python = false
 }
 
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
     "js/main.ts",
-    "js/msg.pb.d.ts",
-    "js/msg.pb.js",
+    "js/msg_generated.ts",
     "js/package.json",  # The `browserslist` field controls Babel behavior.
   ]
   outputs = [
     out_dir + "main.js",
   ]
   deps = [
-    ":protobufjs",
+    ":flatbufferjs",
     ":run_tsc",
   ]
   args = [
@@ -128,8 +127,7 @@ run_node("run_tsc") {
   tsconfig = "tsconfig.json"
   out_dir = "$target_gen_dir/tsc_dist/"
   sources = [
-    "js/msg.pb.d.ts",
-    "js/msg.pb.js",
+    "js/msg_generated.ts",
     main,
     tsconfig,
   ]
@@ -137,7 +135,7 @@ run_node("run_tsc") {
     out_dir + "/main.js",
   ]
   deps = [
-    ":protobufjs",
+    ":flatbufferjs",
   ]
   args = [
     "./node_modules/typescript/bin/tsc",
@@ -148,25 +146,37 @@ run_node("run_tsc") {
   ]
 }
 
-# Generates protobufjs code.
-# TODO(ry) Ideally protobufjs output files should be written into
+# Generates flatbuffer TypeScript code.
+# TODO(ry) Ideally flatc output files should be written into
 # target_gen_dir, but its difficult to get this working in a way that the
 # bundler can resolve their location. (The bundler does not support NODE_PATH?)
-# Therefore this hack: write the generated msg.pb.js and msg.pb.d.ts outputs
-# into the js/ folder, and we check them into the repo. Hopefully this hack can
-# be removed at some point. If msg.proto is changed, commit changes to the
+# Therefore this hack: write the msg_generated.ts output
+# into the js/ folder, and we check it into the repo. Hopefully this hack can
+# be removed at some point. If msg.fps is changed, commit changes to the
 # generated JS files. The stamp file is just to make gn work.
-action("protobufjs") {
-  script = "js/pbjs_hack.py"
+action("flatbufferjs") {
+  script = "js/flatbufferjs_hack.py"
   sources = [
-    "src/msg.proto",
+    "src/msg.fbs",
   ]
   outputs = [
-    "$target_gen_dir/pbjs_hack.stamp",
+    "$target_gen_dir/flatbufferjs_hack.stamp",
   ]
+
   args = [
-    rebase_path(sources[0], root_build_dir),
+    rebase_path("$target_gen_dir/msg_generated.ts", root_build_dir),
+    rebase_path("js/msg_generated.ts", root_build_dir),
     rebase_path(outputs[0], root_build_dir),
+  ]
+
+  deps = [
+    ":msg_ts",
+  ]
+}
+
+ts_flatbuffer("msg_ts") {
+  sources = [
+    "src/msg.fbs",
   ]
 }
 

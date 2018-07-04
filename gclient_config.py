@@ -18,14 +18,6 @@ solutions = [{
         'v8/tools/luci-go': None
     }
 }, {
-    'url': 'https://github.com/ry/protobuf_chromium.git',
-    'name': 'protobuf',
-}, {
-    'url':
-    'https://chromium.googlesource.com/chromium/src/tools/protoc_wrapper@9af82fef8cb9ca3ccc13e2ed958f58f2c21f449b',
-    'name':
-    'tools/protoc_wrapper'
-}, {
     'url':
     'https://chromium.googlesource.com/chromium/src/third_party/zlib@39b4a6260702da4c089eca57136abf40a39667e9',
     'name':
@@ -35,6 +27,13 @@ solutions = [{
     'https://github.com/cpplint/cpplint.git@a33992f68f36fcaa6d0f531a25012a4c474d3542',
     'name':
     'cpplint'
+}, {
+    # Tracking a bleeding-edge branch that is nearing rust support.
+    # https://github.com/google/flatbuffers/pull/3894
+    'url':
+    'https://github.com/rw/flatbuffers.git@2018-02--rust',
+    'name':
+    'flatbuffers/src'
 }, {
     'url':
     'https://github.com/rust-lang/libc.git@8a85d662b90c14d458bc4ae9521a05564e20d7ae',
