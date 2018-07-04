@@ -6,11 +6,10 @@ node_modules
 
 # git deps
 /third_party/v8/
-/third_party/tools/protoc_wrapper/
 /third_party/cpplint/
-/third_party/protobuf/
 /third_party/zlib/
 /third_party/rust_crates/libc/
+/third_party/flatbuffers/src/
 
 # gclient files
 /third_party/.gclient_entries

@@ -8,4 +8,5 @@ cd `dirname "$0"`/..
   src/*.cc \
   src/*.h \
   src/include/*.h
-node ./js/node_modules/.bin/tslint -p .
+node third_party/node_modules/.bin/tslint -p . \
+  --exclude js/msg_generated.ts

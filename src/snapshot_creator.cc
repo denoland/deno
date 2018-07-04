@@ -35,7 +35,7 @@ v8::StartupData MakeSnapshot(const char* js_filename, const char* js_source) {
   }
 
   auto snapshot_blob =
-      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kKeep);
+      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kClear);
 
   return snapshot_blob;
 }

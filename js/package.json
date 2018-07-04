@@ -1,18 +1,14 @@
 {
   "devDependencies": {
     "@types/base64-js": "^1.2.5",
+    "@types/flatbuffers": "^1.9.0",
     "@types/source-map-support": "^0.4.1",
-    "espree": "^3.5.3",
-    "jsdoc": "^3.5.5",
-    "minimist": "^1.2.0",
+    "flatbuffers": "^1.9.0",
     "parcel-bundler": "^1.8.1",
-    "protobufjs": "^6.8.6",
-    "tmp": "0.0.33",
     "tslint": "^5.10.0",
     "tslint-eslint-rules": "^5.3.1",
     "tslint-no-circular-imports": "^0.5.0",
-    "typescript": "^2.9.1",
-    "uglify-js": "^2.8.29"
+    "typescript": "^2.9.1"
   },
   "browserslist": [
     "chrome 69"
