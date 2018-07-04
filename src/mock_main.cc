@@ -10,8 +10,9 @@
 #include <unistd.h>
 #endif
 
+#include "flatbuffers/flatbuffers.h"
 #include "include/deno.h"
-#include "src/msg.pb.h"
+#include "src/msg_generated.h"
 #include "third_party/v8/src/base/logging.h"
 
 static char** global_argv;
@@ -20,24 +21,29 @@ static int global_argc;
 void MessagesFromJS(Deno* d, const char* channel, deno_buf buf) {
   printf("MessagesFromJS %s\n", channel);
 
-  deno::Msg response;
-  response.set_command(deno::Msg_Command_START);
+  flatbuffers::FlatBufferBuilder builder;
 
   char cwdbuf[1024];
   // TODO(piscisaureus): support unicode on windows.
-  std::string cwd(getcwd(cwdbuf, sizeof(cwdbuf)));
-  response.set_start_cwd(cwd);
+  getcwd(cwdbuf, sizeof(cwdbuf));
+  auto start_cwd = builder.CreateString(cwdbuf);
 
+  std::vector<flatbuffers::Offset<flatbuffers::String>> args;
   for (int i = 0; i < global_argc; ++i) {
-    printf("arg %d %s\n", i, global_argv[i]);
-    response.add_start_argv(global_argv[i]);
+    args.push_back(builder.CreateString(global_argv[i]));
   }
-  printf("response.start_argv_size %d \n", response.start_argv_size());
+  auto start_argv = builder.CreateVector(args);
 
-  std::string output;
-  CHECK(response.SerializeToString(&output));
+  deno::MsgBuilder msg_builder(builder);
+  msg_builder.add_command(deno::Command_START);
+  msg_builder.add_start_cwd(start_cwd);
+  msg_builder.add_start_argv(start_argv);
 
-  deno_buf bufout{output.c_str(), output.length()};
+  auto response = msg_builder.Finish();
+  builder.Finish(response);
+
+  deno_buf bufout{reinterpret_cast<const char*>(builder.GetBufferPointer()),
+                  builder.GetSize()};
   deno_set_response(d, bufout);
 }
 

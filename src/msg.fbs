@@ -1,0 +1,12 @@
+namespace deno;
+
+enum Command: byte {
+  START = 0,
+}
+
+table Msg {
+  command: Command;
+  start_cwd: string;
+  start_argv: [string];
+}
+
