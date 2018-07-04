@@ -75,7 +75,7 @@ You need [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_gui
 
 Fetch packages and v8:
 ```bash
-(cd third_party; gclient sync --no-history)
+./tools/sync.sh
 ```
 
 Install the javascript deps.
