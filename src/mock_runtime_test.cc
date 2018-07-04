@@ -91,6 +91,8 @@ TEST(MockRuntimeTest, TypedArraySnapshots) {
 }
 
 TEST(MockRuntimeTest, SnapshotBug) {
+  // If you fail this test try gclient sync: ./tools/sync.sh
+  // https://bugs.chromium.org/p/v8/issues/detail?id=7857
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "SnapshotBug()"));
   deno_delete(d);
