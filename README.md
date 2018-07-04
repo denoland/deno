@@ -73,14 +73,11 @@ You need [rust](https://www.rust-lang.org/en-US/install.html) installed.
 
 You need [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache) installed.
 
-Fetch packages and v8:
-```bash
-(cd third_party; gclient sync --no-history)
-```
+Fetch the third party dependencies.
 
-Install the javascript deps.
+    ./tools/build_third_party.py
 
-    (cd js; yarn install)
+Generate ninja files.
 
     gn gen out/Debug --args='cc_wrapper="ccache" is_debug=true '
 
