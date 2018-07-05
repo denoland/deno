@@ -18,7 +18,7 @@ struct DenoC {
     _unused: [u8; 0],
 }
 
-type DenoRecvCb = extern "C" fn(d: *const DenoC, channel: *const c_char, buf: deno_buf);
+type DenoRecvCb = extern "C" fn(d: *const DenoC, buf: deno_buf);
 
 #[link(name = "deno", kind = "static")]
 extern "C" {
@@ -71,12 +71,8 @@ fn set_flags() -> Vec<String> {
         .collect::<Vec<_>>()
 }
 
-extern "C" fn on_message(_d: *const DenoC, channel_ptr: *const c_char, _buf: deno_buf) {
-    let channel: &str = unsafe {
-        let cstr = CStr::from_ptr(channel_ptr);
-        cstr.to_str().unwrap()
-    };
-    println!("got message in rust {}", channel);
+extern "C" fn on_message(_d: *const DenoC, _buf: deno_buf) {
+    println!("got message in rust");
 }
 
 type DenoException<'a> = &'a str;
