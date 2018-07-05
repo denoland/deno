@@ -26,9 +26,9 @@ rust_library("libc") {
   ]
 }
 
-executable("mock_main") {
+executable("deno_cc") {
   sources = [
-    "src/mock_main.cc",
+    "src/main.cc",
   ]
   deps = [
     ":flatbufferjs",
