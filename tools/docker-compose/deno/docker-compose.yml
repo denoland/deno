@@ -7,8 +7,8 @@ services:
 
   prebuild:
     build:
-      context: .
-      dockerfile: ./prebuild.dockerfile
+      context: ../../../
+      dockerfile: ./tools/docker-compose/deno/prebuild.dockerfile
     depends_on:
       - base
 

@@ -2,7 +2,7 @@ FROM deno_base
 
 # prebuild
 ENV BUILD_PATH=/deno/out/Debug
-RUN git clone https://github.com/ry/deno.git 
+COPY . /deno
 WORKDIR /deno
 RUN ./tools/build_third_party.py
 RUN gn gen $BUILD_PATH --args='is_debug=false use_allocator="none" cc_wrapper="ccache" use_custom_libcxx=false use_sysroot=false'
