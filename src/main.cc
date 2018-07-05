@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
   Deno* d = deno_new(NULL, MessagesFromJS);
   bool r = deno_execute(d, "deno_main.js", "denoMain();");
   if (!r) {
-    printf("Error! %s\n", deno_last_exception(d));
+    printf("%s\n", deno_last_exception(d));
     exit(1);
   }
   deno_delete(d);
