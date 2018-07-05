@@ -1,0 +1,148 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Compile a flatbuffer.
+#
+#   flatc_out_dir (optional)
+#       Specifies the path suffix that output files are generated under. This
+#       path will be appended to root_gen_dir.
+#
+#       Targets that depend on the flatbuffer target will be able to include
+#       the resulting FlatBuffers header with an include like:
+#         #include "dir/for/my_flatbuffer/buffer_generated.h"
+#       If undefined, this defaults to matchign the input directory for each
+#       .fbs file (you should almost always use the default mode).
+#
+#   flatc_include_dirs (optional)
+#       Specifies the directories which FlatBuffers compiler uses to find
+#       included .fbs files in. Almost always should be empty.
+#
+#       The list always has an implicit first item corresponding to the root of
+#       the source tree. This enables including .fbs files by absolute path.
+#
+#       The compiler will try the directories in the order given, and if all
+#       fail it will try to load relative to the directory of the schema file
+#       being parsed.
+#
+#   deps (optional)
+#       Additional dependencies.
+#
+# Parameters for compiling the generated code:
+#
+#   defines (optional)
+#       Defines to supply to the source set that compiles the generated source
+#       code.
+#
+#   extra_configs (optional)
+#       A list of config labels that will be appended to the configs applying
+#       to the source set.
+#
+#   testonly (optional)
+#       Boolean to indicate whether the generated source sets should be labeled
+#       as testonly.
+#
+# Example:
+#  flatbuffer("mylib") {
+#    sources = [
+#      "foo.fbs",
+#    ]
+#  }
+
+import("//build/compiled_action.gni")
+
+template("flatbuffer") {
+  assert(defined(invoker.sources), "Need sources for flatbuffers_library")
+
+  # Don't apply OS-specific sources filtering to the assignments later on.
+  # Platform files should have gotten filtered out in the sources assignment
+  # when this template was invoked. If they weren't, it was on purpose and
+  # this template shouldn't re-apply the filter.
+  set_sources_assignment_filter([])
+
+  action_name = "${target_name}_gen"
+  source_set_name = target_name
+  compiled_action_foreach(action_name) {
+    visibility = [ ":$source_set_name" ]
+
+    tool = "//third_party/flatbuffers:flatc"
+
+    sources = invoker.sources
+    deps = []
+
+    if (defined(invoker.flatc_out_dir)) {
+      out_dir = "$root_gen_dir/" + invoker.flatc_out_dir
+    } else {
+      out_dir = "{{source_gen_dir}}"
+    }
+
+    outputs = [
+      "$out_dir/{{source_name_part}}_generated.h",
+    ]
+
+    args = [
+      "-c",
+      "--keep-prefix",
+      "-o",
+      "$out_dir",
+      "-I",
+      rebase_path("//", root_build_dir),
+    ]
+
+    if (defined(invoker.flatc_include_dirs)) {
+      foreach(include_dir, invoker.flatc_include_dirs) {
+        args += [
+          "-I",
+          rebase_path(include_dir, root_build_dir),
+        ]
+      }
+    }
+
+    args += [ "{{source}}" ]
+
+    # The deps may have steps that have to run before running flatc.
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
+    }
+  }
+
+  source_set(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "visibility",
+                             "defines",
+                           ])
+
+    sources = get_target_outputs(":$action_name")
+
+    if (defined(invoker.extra_configs)) {
+      configs += invoker.extra_configs
+    }
+
+    if (defined(invoker.testonly)) {
+      testonly = invoker.testonly
+    }
+
+    public_configs = [ "//third_party/flatbuffers:flatbuffers_config" ]
+
+    public_deps = [
+      # The generated headers reference headers within FlatBuffers, so
+      # dependencies must be able to find those headers too.
+      "//third_party/flatbuffers",
+    ]
+    deps = [
+      ":$action_name",
+    ]
+
+    # This will link any libraries in the deps (the use of invoker.deps in the
+    # action won't link it).
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
+    }
+
+    # Same for public_deps.
+    if (defined(invoker.public_deps)) {
+      public_deps += invoker.public_deps
+    }
+  }
+}

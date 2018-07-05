@@ -5,6 +5,7 @@ clang-format -i -style Google src/*.cc src/*.h src/include/*.h
 
 gn format BUILD.gn
 gn format deno.gni
+gn format rust.gni
 gn format .gn
 
 yapf -i js/*.py
@@ -14,7 +15,7 @@ prettier --write \
   js/mock_runtime.js \
   tsconfig.json
 # Do not format these.
-#  js/msg.pb.js
-#  js/msg.pb.d.ts
+#  js/msg_generated.ts
+#  js/flatbuffers.js
 
 rustfmt --write-mode overwrite src/*.rs
