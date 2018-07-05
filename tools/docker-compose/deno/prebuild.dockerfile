@@ -4,8 +4,7 @@ FROM deno_base
 ENV BUILD_PATH=/deno/out/Debug
 RUN git clone https://github.com/ry/deno.git 
 WORKDIR /deno
-RUN cd third_party && gclient sync --no-history
-RUN cd js && yarn install
+RUN ./tools/build_third_party.py
 RUN gn gen $BUILD_PATH --args='is_debug=false use_allocator="none" cc_wrapper="ccache" use_custom_libcxx=false use_sysroot=false'
 RUN gn args $BUILD_PATH --list
 RUN gn desc $BUILD_PATH :deno
