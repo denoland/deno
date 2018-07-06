@@ -6,6 +6,6 @@ cd `dirname "$0"`/..
   --filter=-build/include_subdir \
   --repository=src  \
   src/*.cc \
-  src/*.h \
-  src/include/*.h
-node ./js/node_modules/.bin/tslint -p .
+  src/*.h
+node third_party/node_modules/.bin/tslint -p . \
+  --exclude js/msg_generated.ts

@@ -1,9 +1,9 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 // Hint: --trace_serializer is a useful debugging flag.
-#include "deno_internal.h"
+#include "internal.h"
 #include "file_util.h"
-#include "include/deno.h"
+#include "deno.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
 
@@ -35,7 +35,7 @@ v8::StartupData MakeSnapshot(const char* js_filename, const char* js_source) {
   }
 
   auto snapshot_blob =
-      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kKeep);
+      creator->CreateBlob(v8::SnapshotCreator::FunctionCodeHandling::kClear);
 
   return snapshot_blob;
 }

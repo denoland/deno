@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 #include "testing/gtest/include/gtest/gtest.h"
 
-#include "include/deno.h"
+#include "deno.h"
 
 TEST(MockRuntimeTest, InitializesCorrectly) {
   Deno* d = deno_new(nullptr, nullptr);
