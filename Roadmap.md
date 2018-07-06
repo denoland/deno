@@ -107,8 +107,7 @@ typedef struct {
   size_t len;
 } deno_buf;
 
-typedef void (*deno_sub_cb)(Deno* d, const char* channel,
-                            deno_buf bufs[], size_t nbufs)
+typedef void (*deno_sub_cb)(Deno* d, deno_buf bufs[], size_t nbufs)
 void deno_set_callback(Deno* deno, deno_sub_cb cb);
 
 // Executes javascript source code.
@@ -139,10 +138,10 @@ There are three layers of API to consider:
 ### L1
 
 ```typescript
-function send(channel: string, ...ab: ArrayBuffer[]): ArrayBuffer[] | null;
+function send(...ab: ArrayBuffer[]): ArrayBuffer[] | null;
 ```
 Used to make calls outside of V8. Send an ArrayBuffer and synchronously receive
-an ArrayBuffer back. The channel parameter specifies the purpose of the message.
+an ArrayBuffer back.
 
 ```typescript
 function poll(): ArrayBuffer[];
