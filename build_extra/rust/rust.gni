@@ -9,7 +9,7 @@ template("run_rustc") {
                              "crate_type",
                              "source_root",
                              "deps",
-                             "rust_deps",
+                             "extern",
                            ])
     if (defined(invoker.crate_name)) {
       crate_name = invoker.crate_name
@@ -72,15 +72,15 @@ template("run_rustc") {
       deps = []
     }
 
-    if (defined(rust_deps)) {
-      deps += rust_deps
-      foreach(dep_label, rust_deps) {
-        dep_name = get_label_info(dep_label, "name")
-        dep_dir = get_label_info(dep_label, "target_out_dir")
-        dep_rlib = "$dep_dir/lib$dep_name.rlib"
+    if (defined(extern)) {
+      deps += extern
+      foreach(label, extern) {
+        name = get_label_info(label, "name")
+        dir = get_label_info(label, "target_out_dir")
+        rlib = "$dir/lib$name.rlib"
         args += [
           "--extern",
-          "$dep_name=" + rebase_path(dep_rlib, root_build_dir),
+          "$name=" + rebase_path(rlib, root_build_dir),
         ]
       }
     }
@@ -96,7 +96,7 @@ template("rust_component") {
                            [
                              "crate_name",
                              "crate_type",
-                             "rust_deps",
+                             "extern",
                              "cfg",
                              "source_root",
                            ])
@@ -146,8 +146,8 @@ template("rust_executable") {
       stdlib_label,
     ]
 
-    if (defined(rust_deps)) {
-      deps += rust_deps
+    if (defined(extern)) {
+      deps += extern
     }
   }
 }
