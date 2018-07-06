@@ -10,8 +10,8 @@
 #include <unistd.h>
 #endif
 
-#include "flatbuffers/flatbuffers.h"
 #include "deno.h"
+#include "flatbuffers/flatbuffers.h"
 #include "src/msg_generated.h"
 #include "third_party/v8/src/base/logging.h"
 
