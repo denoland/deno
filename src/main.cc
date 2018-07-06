@@ -53,7 +53,7 @@ void HandleCodeFetch(Deno* d, const CodeFetch* msg) {
   handle_code_fetch(module_specifier, containing_file);
 }
 
-void MessagesFromJS(Deno* d, const char* channel, deno_buf buf) {
+void MessagesFromJS(Deno* d, deno_buf buf) {
   auto data = reinterpret_cast<const uint8_t*>(buf.data);
   flatbuffers::Verifier verifier(data, buf.len);
   DCHECK(verifier.VerifyBuffer<Base>());
@@ -61,8 +61,8 @@ void MessagesFromJS(Deno* d, const char* channel, deno_buf buf) {
   auto base = flatbuffers::GetRoot<Base>(buf.data);
   auto msg_type = base->msg_type();
   const char* msg_type_name = EnumNamesAny()[msg_type];
-  printf("MessagesFromJS channel %s, msg_type = %d, msg_type_name = %s\n",
-         channel, msg_type, msg_type_name);
+  printf("MessagesFromJS msg_type = %d, msg_type_name = %s\n", msg_type,
+         msg_type_name);
   switch (msg_type) {
     case Any_Start:
       HandleStart(d);
