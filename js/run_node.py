@@ -26,8 +26,9 @@ def symlink(target, name, target_is_dir=False):
         os.symlink(target, name)
 
 
-js_path = os.path.dirname(os.path.realpath(__file__))
-target_abs = os.path.join(js_path, "node_modules")
+root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+third_party_path = os.path.join(root_path, "third_party")
+target_abs = os.path.join(third_party_path, "node_modules")
 target_rel = os.path.relpath(target_abs)
 
 if not os.path.exists("node_modules"):
