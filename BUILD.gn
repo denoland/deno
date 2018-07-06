@@ -2,8 +2,8 @@ import("//third_party/v8/gni/v8.gni")
 import("//third_party/v8/snapshot_toolchain.gni")
 import("//third_party/flatbuffers/flatbuffer.gni")
 import("//third_party/flatbuffers/ts_flatbuffer.gni")
-import("deno.gni")
-import("rust.gni")
+import("//build_extra/deno.gni")
+import("//build_extra/rust/rust.gni")
 
 config("deno_config") {
   include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
@@ -18,7 +18,7 @@ rust_executable("deno") {
   ]
 }
 
-rust_library("libc") {
+rust_component("libc") {
   source_root = "third_party/rust_crates/libc/src/lib.rs"
   cfg = [
     "feature=\"default\"",
