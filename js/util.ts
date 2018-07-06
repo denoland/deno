@@ -1,6 +1,9 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-import { debug } from "./main";
+
+//import { debug } from "./main";
+const debug = true;
+
 import { TypedArray } from "./types";
 
 // Internal logging for deno. Use the "debug" variable above to control

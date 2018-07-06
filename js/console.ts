@@ -1,5 +1,3 @@
-const print = V8Worker2.print;
-
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
 
@@ -102,7 +100,7 @@ function stringifyArgs(args: any[]): string {
 export class Console {
   // tslint:disable-next-line:no-any
   log(...args: any[]): void {
-    print(stringifyArgs(args));
+    deno.print(stringifyArgs(args));
   }
 
   debug = this.log;
@@ -110,7 +108,7 @@ export class Console {
 
   // tslint:disable-next-line:no-any
   warn(...args: any[]): void {
-    print(`ERROR: ${stringifyArgs(args)}`);
+    deno.print(`ERROR: ${stringifyArgs(args)}`);
   }
 
   error = this.warn;

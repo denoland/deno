@@ -8,6 +8,9 @@ import("//build_extra/rust/rust.gni")
 config("deno_config") {
   include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "third_party/v8:external_config" ]
+  if (is_debug) {
+    defines = [ "DEBUG" ]
+  }
 }
 
 rust_executable("deno") {
@@ -26,14 +29,21 @@ rust_component("libc") {
   ]
 }
 
+rust_component("handlers") {
+  source_root = "src/handlers.rs"
+  extern = [ ":libc" ]
+}
+
 executable("deno_cc") {
   sources = [
     "src/main.cc",
   ]
   deps = [
     ":flatbufferjs",
+    ":handlers",
     ":libdeno",
     ":msg_cpp",
+    "//build_extra/rust:stdlib",
   ]
   configs += [ ":deno_config" ]
 }
@@ -99,8 +109,16 @@ flatbuffer("msg_cpp") {
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
+    "js/console.ts",
+    "js/deno.d.ts",
+    "js/dispatch.ts",
+    "js/globals.ts",
     "js/main.ts",
     "js/msg_generated.ts",
+    "js/os.ts",
+    "js/runtime.ts",
+    "js/types.ts",
+    "js/util.ts",
     "package.json",  # The `browserslist` field controls Babel behavior.
   ]
   outputs = [
