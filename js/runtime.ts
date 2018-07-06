@@ -12,9 +12,9 @@ import * as ts from "typescript";
 import * as util from "./util";
 import { log } from "./util";
 import * as os from "./os";
-import * as sourceMaps from "./v8_source_maps";
-import { _global, globalEval } from "./globals";
-import * as deno from "./deno";
+//import * as sourceMaps from "./v8_source_maps";
+import { window, globalEval } from "./globals";
+//import * as deno from "./deno";
 
 const EOL = "\n";
 
@@ -22,18 +22,20 @@ const EOL = "\n";
 export type AmdFactory = (...args: any[]) => undefined | object;
 export type AmdDefine = (deps: string[], factory: AmdFactory) => void;
 
-// Uncaught exceptions are sent to window.onerror by v8worker2.
-// https://git.io/vhOsf
+/*
+// Uncaught exceptions are sent to window.onerror by the privlaged binding.
 window.onerror = (message, source, lineno, colno, error) => {
   // TODO Currently there is a bug in v8_source_maps.ts that causes a segfault
   // if it is used within window.onerror. To workaround we uninstall the
   // Error.prepareStackTrace handler. Users will get unmapped stack traces on
   // uncaught exceptions until this issue is fixed.
-  Error.prepareStackTrace = null;
+  //Error.prepareStackTrace = null;
   console.log(error.message, error.stack);
   os.exit(1);
 };
+*/
 
+/*
 export function setup(mainJs: string, mainMap: string): void {
   sourceMaps.install({
     installPrepareStackTrace: true,
@@ -52,6 +54,7 @@ export function setup(mainJs: string, mainMap: string): void {
     }
   });
 }
+*/
 
 // This class represents a module. We call it FileModule to make it explicit
 // that each module represents a single file.
@@ -79,6 +82,7 @@ export class FileModule {
   }
 
   compileAndRun(): void {
+    util.log("compileAndRun", this.sourceCode);
     if (!this.outputCode) {
       // If there is no cached outputCode, then compile the code.
       util.assert(
@@ -89,7 +93,6 @@ export class FileModule {
       this.outputCode = compiler.compile(this.fileName);
       os.codeCache(this.fileName, this.sourceCode, this.outputCode);
     }
-    util.log("compileAndRun", this.sourceCode);
     execute(this.fileName, this.outputCode);
   }
 
@@ -142,17 +145,11 @@ export function resolveModule(
   moduleSpecifier: string,
   containingFile: string
 ): null | FileModule {
-  //util.log("resolveModule", { moduleSpecifier, containingFile });
+  util.log("resolveModule", { moduleSpecifier, containingFile });
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
   // We ask golang to sourceCodeFetch. It will load the sourceCode and if
   // there is any outputCode cached, it will return that as well.
-  let fetchResponse;
-  try {
-    fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
-  } catch (e) {
-    // TODO Only catch "no such file or directory" errors. Need error codes.
-    return null;
-  }
+	const fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
   const { filename, sourceCode, outputCode } = fetchResponse;
   if (sourceCode.length === 0) {
     return null;
@@ -180,10 +177,10 @@ function resolveModuleName(
 
 function execute(fileName: string, outputCode: string): void {
   util.assert(outputCode && outputCode.length > 0);
-  _global["define"] = makeDefine(fileName);
+  window["define"] = makeDefine(fileName);
   outputCode += `\n//# sourceURL=${fileName}`;
   globalEval(outputCode);
-  _global["define"] = null;
+  window["define"] = null;
 }
 
 // This is a singleton class. Use Compiler.instance() to access.

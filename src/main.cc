@@ -12,15 +12,17 @@
 
 #include "deno.h"
 #include "flatbuffers/flatbuffers.h"
+#include "src/handlers.h"
 #include "src/msg_generated.h"
 #include "third_party/v8/src/base/logging.h"
+
+namespace deno {
 
 static char** global_argv;
 static int global_argc;
 
-void MessagesFromJS(Deno* d, const char* channel, deno_buf buf) {
-  printf("MessagesFromJS %s\n", channel);
-
+// Sends StartRes message
+void HandleStart(Deno* d) {
   flatbuffers::FlatBufferBuilder builder;
 
   char cwdbuf[1024];
@@ -32,22 +34,56 @@ void MessagesFromJS(Deno* d, const char* channel, deno_buf buf) {
   for (int i = 0; i < global_argc; ++i) {
     args.push_back(builder.CreateString(global_argv[i]));
   }
+
   auto start_argv = builder.CreateVector(args);
-
-  deno::MsgBuilder msg_builder(builder);
-  msg_builder.add_command(deno::Command_START);
-  msg_builder.add_start_cwd(start_cwd);
-  msg_builder.add_start_argv(start_argv);
-
-  auto response = msg_builder.Finish();
-  builder.Finish(response);
-
+  auto start_msg = CreateStartRes(builder, start_cwd, start_argv);
+  auto base = CreateBase(builder, 0, Any_StartRes, start_msg.Union());
+  builder.Finish(base);
   deno_buf bufout{reinterpret_cast<const char*>(builder.GetBufferPointer()),
                   builder.GetSize()};
   deno_set_response(d, bufout);
 }
 
-int main(int argc, char** argv) {
+void HandleCodeFetch(Deno* d, const CodeFetch* msg) {
+  auto module_specifier = msg->module_specifier()->c_str();
+  auto containing_file = msg->containing_file()->c_str();
+  printf("HandleCodeFetch module_specifier = %s containing_file = %s\n",
+         module_specifier, containing_file);
+  // Call into rust.
+  handle_code_fetch(module_specifier, containing_file);
+}
+
+void MessagesFromJS(Deno* d, const char* channel, deno_buf buf) {
+  auto data = reinterpret_cast<const uint8_t*>(buf.data);
+  flatbuffers::Verifier verifier(data, buf.len);
+  DCHECK(verifier.VerifyBuffer<Base>());
+
+  auto base = flatbuffers::GetRoot<Base>(buf.data);
+  auto msg_type = base->msg_type();
+  const char* msg_type_name = EnumNamesAny()[msg_type];
+  printf("MessagesFromJS channel %s, msg_type = %d, msg_type_name = %s\n",
+         channel, msg_type, msg_type_name);
+  switch (msg_type) {
+    case Any_Start:
+      HandleStart(d);
+      break;
+
+    case Any_CodeFetch:
+      HandleCodeFetch(d, base->msg_as_CodeFetch());
+      break;
+
+    case Any_NONE:
+      CHECK(false && "Got message with msg_type == Any_NONE");
+      break;
+
+    default:
+      printf("Unhandled message %s\n", msg_type_name);
+      CHECK(false && "Unhandled message");
+      break;
+  }
+}
+
+int deno_main(int argc, char** argv) {
   deno_init();
 
   deno_set_flags(&argc, argv);
@@ -61,4 +97,9 @@ int main(int argc, char** argv) {
     exit(1);
   }
   deno_delete(d);
+  return 0;
 }
+
+}  // namespace deno
+
+int main(int argc, char** argv) { return deno::deno_main(argc, argv); }
