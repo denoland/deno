@@ -2,6 +2,7 @@
 // All rights reserved. MIT License.
 #ifndef DENO_H_
 #define DENO_H_
+#include <stddef.h>
 // Neither Rust nor Go support calling directly into C++ functions, therefore
 // the public interface to libdeno is done in C.
 #ifdef __cplusplus
