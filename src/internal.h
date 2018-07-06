@@ -1,7 +1,7 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-#ifndef DENO_INTERNAL_H_
-#define DENO_INTERNAL_H_
+#ifndef INTERNAL_H_
+#define INTERNAL_H_
 
 #include <string>
 #include "deno.h"
@@ -41,4 +41,4 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
 void AddIsolate(Deno* d, v8::Isolate* isolate);
 
 }  // namespace deno
-#endif  // DENO_INTERNAL_H_
+#endif  // INTERNAL_H_
