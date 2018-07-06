@@ -68,11 +68,11 @@ static_library("libdeno") {
 
 v8_source_set("deno_nosnapshot") {
   sources = [
-    "src/deno.cc",
-    "src/deno_internal.h",
+    "src/binding.cc",
+    "src/internal.h",
     "src/file_util.cc",
     "src/file_util.h",
-    "src/include/deno.h",
+    "src/deno.h",
   ]
   deps = [
     "third_party/v8:v8_monolith",

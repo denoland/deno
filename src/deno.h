@@ -1,7 +1,7 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
-#ifndef INCLUDE_DENO_H_
-#define INCLUDE_DENO_H_
+#ifndef DENO_H_
+#define DENO_H_
 // Neither Rust nor Go support calling directly into C++ functions, therefore
 // the public interface to libdeno is done in C.
 #ifdef __cplusplus
@@ -50,4 +50,4 @@ void deno_terminate_execution(Deno* d);
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-#endif  // INCLUDE_DENO_H_
+#endif  // DENO_H_
