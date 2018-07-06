@@ -4,7 +4,7 @@
 #define DENO_INTERNAL_H_
 
 #include <string>
-#include "include/deno.h"
+#include "deno.h"
 #include "third_party/v8/include/v8.h"
 
 extern "C" {

@@ -11,7 +11,7 @@
 #endif
 
 #include "flatbuffers/flatbuffers.h"
-#include "include/deno.h"
+#include "deno.h"
 #include "src/msg_generated.h"
 #include "third_party/v8/src/base/logging.h"
 

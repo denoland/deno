@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 cd `dirname "$0"`/..
-clang-format -i -style Google src/*.cc src/*.h src/include/*.h
+clang-format -i -style Google src/*.cc src/*.h
 
 gn format BUILD.gn
 gn format deno.gni

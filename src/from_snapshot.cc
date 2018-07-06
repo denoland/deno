@@ -9,7 +9,7 @@
 #include "third_party/v8/src/base/logging.h"
 
 #include "./deno_internal.h"
-#include "include/deno.h"
+#include "deno.h"
 
 #ifdef DENO_MOCK_RUNTIME
 #include "snapshot_mock_runtime.cc"
