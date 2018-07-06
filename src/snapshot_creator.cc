@@ -1,9 +1,9 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 // Hint: --trace_serializer is a useful debugging flag.
-#include "deno_internal.h"
+#include "internal.h"
 #include "file_util.h"
-#include "include/deno.h"
+#include "deno.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
 
