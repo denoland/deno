@@ -12,7 +12,7 @@ config("deno_config") {
 
 rust_executable("deno") {
   source_root = "src/main.rs"
-  rust_deps = [ ":libc" ]
+  extern = [ ":libc" ]
   deps = [
     ":libdeno",
   ]
