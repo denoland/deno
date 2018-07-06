@@ -71,7 +71,7 @@ You need [yarn](https://yarnpkg.com/lang/en/docs/install/) installed.
 
 You need [rust](https://www.rust-lang.org/en-US/install.html) installed.
 
-You need [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache) installed.
+You might want  [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache) installed.
 
 Fetch the third party dependencies.
 
@@ -79,6 +79,8 @@ Fetch the third party dependencies.
 
 Generate ninja files.
 
+    gn gen out/Default
+    gn gen out/Release --args='cc_wrapper="ccache" is_official_build=true'
     gn gen out/Debug --args='cc_wrapper="ccache" is_debug=true '
 
 Then build with ninja (will take a while to complete):
@@ -87,6 +89,8 @@ Then build with ninja (will take a while to complete):
 
 Other useful commands:
 
-    gn args out/Debug/ --list # List build args
-    gn args out/Debug/ # Modify args in $EDITOR
-    gn desc out/Debug/ :deno
+    gn args out/Debug/ --list
+    gn args out/Debug/
+    gn desc out/Debug/ deno
+    gn help
+
