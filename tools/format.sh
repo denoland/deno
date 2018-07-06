@@ -9,6 +9,8 @@ gn format rust.gni
 gn format .gn
 
 yapf -i js/*.py
+yapf -i tools/*.py
+
 prettier --write \
   js/deno.d.ts \
   js/main.ts \
