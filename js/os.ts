@@ -1,32 +1,54 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 import { ModuleInfo } from "./types";
-import { pubInternal } from "./dispatch";
-import { deno as pb } from "./msg.pb";
-import { assert } from "./util";
+import { deno as fbs } from "./msg_generated";
+import { assert, typedArrayToArrayBuffer  } from "./util";
+import { flatbuffers } from "flatbuffers";
 
 export function exit(exitCode = 0): void {
+  assert(false, "Not Implemented");
+  /*
   pubInternal("os", {
-    command: pb.Msg.Command.EXIT,
+    command: fbs.Command.EXIT,
     exitCode
   });
+  */
 }
 
 export function codeFetch(
   moduleSpecifier: string,
   containingFile: string
 ): ModuleInfo {
-  const res = pubInternal("os", {
-    command: pb.Msg.Command.CODE_FETCH,
-    codeFetchModuleSpecifier: moduleSpecifier,
-    codeFetchContainingFile: containingFile
-  });
-  assert(res.command === pb.Msg.Command.CODE_FETCH_RES);
+  console.log("Hello from codeFetch");
+
+  // Send CodeFetch message
+  const builder = new flatbuffers.Builder();
+  const moduleSpecifier_ = builder.createString(moduleSpecifier);
+  const containingFile_ = builder.createString(containingFile);
+  fbs.CodeFetch.startCodeFetch(builder);
+  fbs.CodeFetch.addModuleSpecifier(builder, moduleSpecifier_);
+  fbs.CodeFetch.addContainingFile(builder, containingFile_);
+  const msg = fbs.CodeFetch.endCodeFetch(builder);
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsgType(builder, fbs.Any.CodeFetch);
+  builder.finish(fbs.Base.endBase(builder));
+	const payload = typedArrayToArrayBuffer(builder.asUint8Array());
+  const resBuf = deno.send("x", payload);
+
+  console.log("CodeFetch sent");
+
+  // Process CodeFetchRes
+  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf));
+  const baseRes = fbs.Base.getRootAsBase(bb);
+  assert(fbs.Any.CodeFetchRes === baseRes.msgType());
+  const codeFetchRes = new fbs.CodeFetchRes();
+  assert(baseRes.msg(codeFetchRes) != null);
   return {
-    moduleName: res.codeFetchResModuleName,
-    filename: res.codeFetchResFilename,
-    sourceCode: res.codeFetchResSourceCode,
-    outputCode: res.codeFetchResOutputCode
+    moduleName: codeFetchRes.moduleName(),
+    filename: codeFetchRes.filename(),
+    sourceCode: codeFetchRes.sourceCode(),
+    outputCode: codeFetchRes.outputCode(),
   };
 }
 
@@ -35,20 +57,40 @@ export function codeCache(
   sourceCode: string,
   outputCode: string
 ): void {
-  pubInternal("os", {
-    command: pb.Msg.Command.CODE_CACHE,
-    codeCacheFilename: filename,
-    codeCacheSourceCode: sourceCode,
-    codeCacheOutputCode: outputCode
-  });
+  const builder = new flatbuffers.Builder();
+
+  const filename_ = builder.createString(filename);
+  const sourceCode_ = builder.createString(sourceCode);
+  const outputCode_ = builder.createString(outputCode);
+
+  fbs.CodeCache.startCodeCache(builder);
+  fbs.CodeCache.addFilename(builder, filename_);
+  fbs.CodeCache.addSourceCode(builder, sourceCode_);
+  fbs.CodeCache.addOutputCode(builder, outputCode_);
+  const msg = fbs.CodeCache.endCodeCache(builder);
+
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  builder.finish(fbs.Base.endBase(builder));
+
+  // Maybe need to do another step?
+  // Base.finishBaseBuffer(builder, base);
+
+	const payload = typedArrayToArrayBuffer(builder.asUint8Array());
+  const resBuf = deno.send("x", payload);
+  assert(resBuf === null);
 }
 
 export function readFileSync(filename: string): Uint8Array {
+  assert(false, "Not Implemented");
+  return null;
+	/*
   const res = pubInternal("os", {
-    command: pb.Msg.Command.READ_FILE_SYNC,
+    command: fbs.Command.READ_FILE_SYNC,
     readFileSyncFilename: filename
   });
   return res.readFileSyncData;
+	*/
 }
 
 export function writeFileSync(
@@ -56,10 +98,13 @@ export function writeFileSync(
   data: Uint8Array,
   perm: number
 ): void {
+  assert(false, "Not Implemented");
+	/*
   pubInternal("os", {
-    command: pb.Msg.Command.WRITE_FILE_SYNC,
+    command: fbs.Command.WRITE_FILE_SYNC,
     writeFileSyncFilename: filename,
     writeFileSyncData: data,
     writeFileSyncPerm: perm
   });
+  */
 }

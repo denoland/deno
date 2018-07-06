@@ -4,15 +4,29 @@
  * @enum
  */
 export namespace deno{
-export enum Command{
-  START= 0
+export enum Any{
+  NONE= 0,
+  Start= 1,
+  StartRes= 2,
+  CodeFetch= 3,
+  CodeFetchRes= 4,
+  CodeCache= 5,
+  Exit= 6,
+  TimerStart= 7,
+  TimerReady= 8,
+  TimerClear= 9,
+  FetchReq= 10,
+  FetchRes= 11,
+  ReadFileSync= 12,
+  ReadFileSyncRes= 13,
+  WriteFileSync= 14
 }};
 
 /**
  * @constructor
  */
 export namespace deno{
-export class Msg {
+export class Base {
   /**
    * @type {flatbuffers.ByteBuffer}
    */
@@ -25,9 +39,9 @@ export class Msg {
 /**
  * @param {number} i
  * @param {flatbuffers.ByteBuffer} bb
- * @returns {Msg}
+ * @returns {Base}
  */
-__init(i:number, bb:flatbuffers.ByteBuffer):Msg {
+__init(i:number, bb:flatbuffers.ByteBuffer):Base {
   this.bb_pos = i;
   this.bb = bb;
   return this;
@@ -35,27 +49,136 @@ __init(i:number, bb:flatbuffers.ByteBuffer):Msg {
 
 /**
  * @param {flatbuffers.ByteBuffer} bb
- * @param {Msg=} obj
- * @returns {Msg}
+ * @param {Base=} obj
+ * @returns {Base}
  */
-static getRootAsMsg(bb:flatbuffers.ByteBuffer, obj?:Msg):Msg {
-  return (obj || new Msg).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+static getRootAsBase(bb:flatbuffers.ByteBuffer, obj?:Base):Base {
+  return (obj || new Base).__init(bb.readInt32(bb.position()) + bb.position(), bb);
 };
 
 /**
- * @returns {deno.Command}
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
  */
-command():deno.Command {
+error():string|null
+error(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+error(optionalEncoding?:any):string|Uint8Array|null {
   var offset = this.bb!.__offset(this.bb_pos, 4);
-  return offset ? /** @type {deno.Command} */ (this.bb!.readInt8(this.bb_pos + offset)) : deno.Command.START;
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 };
 
 /**
- * @param {deno.Command} value
+ * @returns {deno.Any}
+ */
+msgType():deno.Any {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? /** @type {deno.Any} */ (this.bb!.readUint8(this.bb_pos + offset)) : deno.Any.NONE;
+};
+
+/**
+ * @param {deno.Any} value
  * @returns {boolean}
  */
-mutate_command(value:deno.Command):boolean {
-  var offset = this.bb!.__offset(this.bb_pos, 4);
+mutate_msg_type(value:deno.Any):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeUint8(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @param {flatbuffers.Table} obj
+ * @returns {?flatbuffers.Table}
+ */
+msg<T extends flatbuffers.Table>(obj:T):T|null {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? this.bb!.__union(obj, this.bb_pos + offset) : null;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ */
+static startBase(builder:flatbuffers.Builder) {
+  builder.startObject(3);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} errorOffset
+ */
+static addError(builder:flatbuffers.Builder, errorOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(0, errorOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {deno.Any} msgType
+ */
+static addMsgType(builder:flatbuffers.Builder, msgType:deno.Any) {
+  builder.addFieldInt8(1, msgType, deno.Any.NONE);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} msgOffset
+ */
+static addMsg(builder:flatbuffers.Builder, msgOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(2, msgOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @returns {flatbuffers.Offset}
+ */
+static endBase(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class Start {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {Start}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):Start {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @returns {number}
+ */
+unused():number {
+  return this.bb!.readInt8(this.bb_pos);
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_unused(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 0);
 
   if (offset === 0) {
     return false;
@@ -66,13 +189,60 @@ mutate_command(value:deno.Command):boolean {
 };
 
 /**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} unused
+ * @returns {flatbuffers.Offset}
+ */
+static createStart(builder:flatbuffers.Builder, unused: number):flatbuffers.Offset {
+  builder.prep(1, 1);
+  builder.writeInt8(unused);
+  return builder.offset();
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class StartRes {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {StartRes}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):StartRes {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {StartRes=} obj
+ * @returns {StartRes}
+ */
+static getRootAsStartRes(bb:flatbuffers.ByteBuffer, obj?:StartRes):StartRes {
+  return (obj || new StartRes).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
  * @param {flatbuffers.Encoding=} optionalEncoding
  * @returns {string|Uint8Array|null}
  */
-startCwd():string|null
-startCwd(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-startCwd(optionalEncoding?:any):string|Uint8Array|null {
-  var offset = this.bb!.__offset(this.bb_pos, 6);
+cwd():string|null
+cwd(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+cwd(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 };
 
@@ -81,50 +251,65 @@ startCwd(optionalEncoding?:any):string|Uint8Array|null {
  * @param {flatbuffers.Encoding=} optionalEncoding
  * @returns {string|Uint8Array}
  */
-startArgv(index: number):string
-startArgv(index: number,optionalEncoding:flatbuffers.Encoding):string|Uint8Array
-startArgv(index: number,optionalEncoding?:any):string|Uint8Array|null {
-  var offset = this.bb!.__offset(this.bb_pos, 8);
+argv(index: number):string
+argv(index: number,optionalEncoding:flatbuffers.Encoding):string|Uint8Array
+argv(index: number,optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? this.bb!.__string(this.bb!.__vector(this.bb_pos + offset) + index * 4, optionalEncoding) : null;
 };
 
 /**
  * @returns {number}
  */
-startArgvLength():number {
-  var offset = this.bb!.__offset(this.bb_pos, 8);
+argvLength():number {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @returns {boolean}
+ */
+debugFlag():boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+};
+
+/**
+ * @param {boolean} value
+ * @returns {boolean}
+ */
+mutate_debug_flag(value:boolean):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeInt8(this.bb_pos + offset, +value);
+  return true;
 };
 
 /**
  * @param {flatbuffers.Builder} builder
  */
-static startMsg(builder:flatbuffers.Builder) {
+static startStartRes(builder:flatbuffers.Builder) {
   builder.startObject(3);
 };
 
 /**
  * @param {flatbuffers.Builder} builder
- * @param {deno.Command} command
+ * @param {flatbuffers.Offset} cwdOffset
  */
-static addCommand(builder:flatbuffers.Builder, command:deno.Command) {
-  builder.addFieldInt8(0, command, deno.Command.START);
+static addCwd(builder:flatbuffers.Builder, cwdOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(0, cwdOffset, 0);
 };
 
 /**
  * @param {flatbuffers.Builder} builder
- * @param {flatbuffers.Offset} startCwdOffset
+ * @param {flatbuffers.Offset} argvOffset
  */
-static addStartCwd(builder:flatbuffers.Builder, startCwdOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(1, startCwdOffset, 0);
-};
-
-/**
- * @param {flatbuffers.Builder} builder
- * @param {flatbuffers.Offset} startArgvOffset
- */
-static addStartArgv(builder:flatbuffers.Builder, startArgvOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(2, startArgvOffset, 0);
+static addArgv(builder:flatbuffers.Builder, argvOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(1, argvOffset, 0);
 };
 
 /**
@@ -132,7 +317,7 @@ static addStartArgv(builder:flatbuffers.Builder, startArgvOffset:flatbuffers.Off
  * @param {Array.<flatbuffers.Offset>} data
  * @returns {flatbuffers.Offset}
  */
-static createStartArgvVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
+static createArgvVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
   builder.startVector(4, data.length, 4);
   for (var i = data.length - 1; i >= 0; i--) {
     builder.addOffset(data[i]);
@@ -144,15 +329,1316 @@ static createStartArgvVector(builder:flatbuffers.Builder, data:flatbuffers.Offse
  * @param {flatbuffers.Builder} builder
  * @param {number} numElems
  */
-static startStartArgvVector(builder:flatbuffers.Builder, numElems:number) {
+static startArgvVector(builder:flatbuffers.Builder, numElems:number) {
   builder.startVector(4, numElems, 4);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {boolean} debugFlag
+ */
+static addDebugFlag(builder:flatbuffers.Builder, debugFlag:boolean) {
+  builder.addFieldInt8(2, +debugFlag, +false);
 };
 
 /**
  * @param {flatbuffers.Builder} builder
  * @returns {flatbuffers.Offset}
  */
-static endMsg(builder:flatbuffers.Builder):flatbuffers.Offset {
+static endStartRes(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class CodeFetch {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {CodeFetch}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):CodeFetch {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {CodeFetch=} obj
+ * @returns {CodeFetch}
+ */
+static getRootAsCodeFetch(bb:flatbuffers.ByteBuffer, obj?:CodeFetch):CodeFetch {
+  return (obj || new CodeFetch).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+moduleSpecifier():string|null
+moduleSpecifier(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+moduleSpecifier(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+containingFile():string|null
+containingFile(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+containingFile(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ */
+static startCodeFetch(builder:flatbuffers.Builder) {
+  builder.startObject(2);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} moduleSpecifierOffset
+ */
+static addModuleSpecifier(builder:flatbuffers.Builder, moduleSpecifierOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(0, moduleSpecifierOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} containingFileOffset
+ */
+static addContainingFile(builder:flatbuffers.Builder, containingFileOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(1, containingFileOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @returns {flatbuffers.Offset}
+ */
+static endCodeFetch(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class CodeFetchRes {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {CodeFetchRes}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):CodeFetchRes {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {CodeFetchRes=} obj
+ * @returns {CodeFetchRes}
+ */
+static getRootAsCodeFetchRes(bb:flatbuffers.ByteBuffer, obj?:CodeFetchRes):CodeFetchRes {
+  return (obj || new CodeFetchRes).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+moduleName():string|null
+moduleName(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+moduleName(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+filename():string|null
+filename(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+filename(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+sourceCode():string|null
+sourceCode(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+sourceCode(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+outputCode():string|null
+outputCode(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+outputCode(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 10);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ */
+static startCodeFetchRes(builder:flatbuffers.Builder) {
+  builder.startObject(4);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} moduleNameOffset
+ */
+static addModuleName(builder:flatbuffers.Builder, moduleNameOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(0, moduleNameOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} filenameOffset
+ */
+static addFilename(builder:flatbuffers.Builder, filenameOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(1, filenameOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} sourceCodeOffset
+ */
+static addSourceCode(builder:flatbuffers.Builder, sourceCodeOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(2, sourceCodeOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} outputCodeOffset
+ */
+static addOutputCode(builder:flatbuffers.Builder, outputCodeOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(3, outputCodeOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @returns {flatbuffers.Offset}
+ */
+static endCodeFetchRes(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class CodeCache {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {CodeCache}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):CodeCache {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {CodeCache=} obj
+ * @returns {CodeCache}
+ */
+static getRootAsCodeCache(bb:flatbuffers.ByteBuffer, obj?:CodeCache):CodeCache {
+  return (obj || new CodeCache).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+filename():string|null
+filename(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+filename(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+sourceCode():string|null
+sourceCode(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+sourceCode(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+outputCode():string|null
+outputCode(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+outputCode(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ */
+static startCodeCache(builder:flatbuffers.Builder) {
+  builder.startObject(3);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} filenameOffset
+ */
+static addFilename(builder:flatbuffers.Builder, filenameOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(0, filenameOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} sourceCodeOffset
+ */
+static addSourceCode(builder:flatbuffers.Builder, sourceCodeOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(1, sourceCodeOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} outputCodeOffset
+ */
+static addOutputCode(builder:flatbuffers.Builder, outputCodeOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(2, outputCodeOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @returns {flatbuffers.Offset}
+ */
+static endCodeCache(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class Exit {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {Exit}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):Exit {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @returns {number}
+ */
+code():number {
+  return this.bb!.readInt32(this.bb_pos);
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_code(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 0);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeInt32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} code
+ * @returns {flatbuffers.Offset}
+ */
+static createExit(builder:flatbuffers.Builder, code: number):flatbuffers.Offset {
+  builder.prep(4, 4);
+  builder.writeInt32(code);
+  return builder.offset();
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class TimerStart {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {TimerStart}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):TimerStart {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @returns {number}
+ */
+id():number {
+  return this.bb!.readUint32(this.bb_pos);
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_id(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 0);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeUint32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @returns {boolean}
+ */
+interval():boolean {
+  return !!this.bb!.readInt8(this.bb_pos + 4);
+};
+
+/**
+ * @param {boolean} value
+ * @returns {boolean}
+ */
+mutate_interval(value:boolean):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeInt8(this.bb_pos + offset, +value);
+  return true;
+};
+
+/**
+ * @returns {number}
+ */
+delay():number {
+  return this.bb!.readInt32(this.bb_pos + 8);
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_delay(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeInt32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} id
+ * @param {boolean} interval
+ * @param {number} delay
+ * @returns {flatbuffers.Offset}
+ */
+static createTimerStart(builder:flatbuffers.Builder, id: number, interval: boolean, delay: number):flatbuffers.Offset {
+  builder.prep(4, 12);
+  builder.writeInt32(delay);
+  builder.pad(3);
+  builder.writeInt8(+interval);
+  builder.writeInt32(id);
+  return builder.offset();
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class TimerReady {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {TimerReady}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):TimerReady {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @returns {number}
+ */
+id():number {
+  return this.bb!.readUint32(this.bb_pos);
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_id(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 0);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeUint32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @returns {boolean}
+ */
+done():boolean {
+  return !!this.bb!.readInt8(this.bb_pos + 4);
+};
+
+/**
+ * @param {boolean} value
+ * @returns {boolean}
+ */
+mutate_done(value:boolean):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeInt8(this.bb_pos + offset, +value);
+  return true;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} id
+ * @param {boolean} done
+ * @returns {flatbuffers.Offset}
+ */
+static createTimerReady(builder:flatbuffers.Builder, id: number, done: boolean):flatbuffers.Offset {
+  builder.prep(4, 8);
+  builder.pad(3);
+  builder.writeInt8(+done);
+  builder.writeInt32(id);
+  return builder.offset();
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class TimerClear {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {TimerClear}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):TimerClear {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @returns {number}
+ */
+id():number {
+  return this.bb!.readUint32(this.bb_pos);
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_id(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 0);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeUint32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} id
+ * @returns {flatbuffers.Offset}
+ */
+static createTimerClear(builder:flatbuffers.Builder, id: number):flatbuffers.Offset {
+  builder.prep(4, 4);
+  builder.writeInt32(id);
+  return builder.offset();
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class FetchReq {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {FetchReq}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):FetchReq {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {FetchReq=} obj
+ * @returns {FetchReq}
+ */
+static getRootAsFetchReq(bb:flatbuffers.ByteBuffer, obj?:FetchReq):FetchReq {
+  return (obj || new FetchReq).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
+ * @returns {number}
+ */
+id():number {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_id(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeUint32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+url():string|null
+url(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+url(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ */
+static startFetchReq(builder:flatbuffers.Builder) {
+  builder.startObject(2);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} id
+ */
+static addId(builder:flatbuffers.Builder, id:number) {
+  builder.addFieldInt32(0, id, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} urlOffset
+ */
+static addUrl(builder:flatbuffers.Builder, urlOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(1, urlOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @returns {flatbuffers.Offset}
+ */
+static endFetchReq(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class FetchRes {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {FetchRes}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):FetchRes {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {FetchRes=} obj
+ * @returns {FetchRes}
+ */
+static getRootAsFetchRes(bb:flatbuffers.ByteBuffer, obj?:FetchRes):FetchRes {
+  return (obj || new FetchRes).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
+ * @returns {number}
+ */
+id():number {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_id(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeUint32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @returns {number}
+ */
+status():number {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_status(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeInt32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @param {number} index
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array}
+ */
+headerLine(index: number):string
+headerLine(index: number,optionalEncoding:flatbuffers.Encoding):string|Uint8Array
+headerLine(index: number,optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? this.bb!.__string(this.bb!.__vector(this.bb_pos + offset) + index * 4, optionalEncoding) : null;
+};
+
+/**
+ * @returns {number}
+ */
+headerLineLength():number {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @param {number} index
+ * @returns {number}
+ */
+body(index: number):number|null {
+  var offset = this.bb!.__offset(this.bb_pos, 10);
+  return offset ? this.bb!.readInt8(this.bb!.__vector(this.bb_pos + offset) + index) : 0;
+};
+
+/**
+ * @returns {number}
+ */
+bodyLength():number {
+  var offset = this.bb!.__offset(this.bb_pos, 10);
+  return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @returns {Int8Array}
+ */
+bodyArray():Int8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 10);
+  return offset ? new Int8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ */
+static startFetchRes(builder:flatbuffers.Builder) {
+  builder.startObject(4);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} id
+ */
+static addId(builder:flatbuffers.Builder, id:number) {
+  builder.addFieldInt32(0, id, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} status
+ */
+static addStatus(builder:flatbuffers.Builder, status:number) {
+  builder.addFieldInt32(1, status, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} headerLineOffset
+ */
+static addHeaderLine(builder:flatbuffers.Builder, headerLineOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(2, headerLineOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {Array.<flatbuffers.Offset>} data
+ * @returns {flatbuffers.Offset}
+ */
+static createHeaderLineVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
+  builder.startVector(4, data.length, 4);
+  for (var i = data.length - 1; i >= 0; i--) {
+    builder.addOffset(data[i]);
+  }
+  return builder.endVector();
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} numElems
+ */
+static startHeaderLineVector(builder:flatbuffers.Builder, numElems:number) {
+  builder.startVector(4, numElems, 4);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} bodyOffset
+ */
+static addBody(builder:flatbuffers.Builder, bodyOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(3, bodyOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {Array.<number>} data
+ * @returns {flatbuffers.Offset}
+ */
+static createBodyVector(builder:flatbuffers.Builder, data:number[] | Uint8Array):flatbuffers.Offset {
+  builder.startVector(1, data.length, 1);
+  for (var i = data.length - 1; i >= 0; i--) {
+    builder.addInt8(data[i]);
+  }
+  return builder.endVector();
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} numElems
+ */
+static startBodyVector(builder:flatbuffers.Builder, numElems:number) {
+  builder.startVector(1, numElems, 1);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @returns {flatbuffers.Offset}
+ */
+static endFetchRes(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class ReadFileSync {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {ReadFileSync}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):ReadFileSync {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {ReadFileSync=} obj
+ * @returns {ReadFileSync}
+ */
+static getRootAsReadFileSync(bb:flatbuffers.ByteBuffer, obj?:ReadFileSync):ReadFileSync {
+  return (obj || new ReadFileSync).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+filename():string|null
+filename(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+filename(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ */
+static startReadFileSync(builder:flatbuffers.Builder) {
+  builder.startObject(1);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} filenameOffset
+ */
+static addFilename(builder:flatbuffers.Builder, filenameOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(0, filenameOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @returns {flatbuffers.Offset}
+ */
+static endReadFileSync(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class ReadFileSyncRes {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {ReadFileSyncRes}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):ReadFileSyncRes {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {ReadFileSyncRes=} obj
+ * @returns {ReadFileSyncRes}
+ */
+static getRootAsReadFileSyncRes(bb:flatbuffers.ByteBuffer, obj?:ReadFileSyncRes):ReadFileSyncRes {
+  return (obj || new ReadFileSyncRes).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
+ * @param {number} index
+ * @returns {number}
+ */
+data(index: number):number|null {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.readInt8(this.bb!.__vector(this.bb_pos + offset) + index) : 0;
+};
+
+/**
+ * @returns {number}
+ */
+dataLength():number {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @returns {Int8Array}
+ */
+dataArray():Int8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? new Int8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ */
+static startReadFileSyncRes(builder:flatbuffers.Builder) {
+  builder.startObject(1);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} dataOffset
+ */
+static addData(builder:flatbuffers.Builder, dataOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(0, dataOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {Array.<number>} data
+ * @returns {flatbuffers.Offset}
+ */
+static createDataVector(builder:flatbuffers.Builder, data:number[] | Uint8Array):flatbuffers.Offset {
+  builder.startVector(1, data.length, 1);
+  for (var i = data.length - 1; i >= 0; i--) {
+    builder.addInt8(data[i]);
+  }
+  return builder.endVector();
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} numElems
+ */
+static startDataVector(builder:flatbuffers.Builder, numElems:number) {
+  builder.startVector(1, numElems, 1);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @returns {flatbuffers.Offset}
+ */
+static endReadFileSyncRes(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
+};
+
+}
+}
+/**
+ * @constructor
+ */
+export namespace deno{
+export class WriteFileSync {
+  /**
+   * @type {flatbuffers.ByteBuffer}
+   */
+  bb: flatbuffers.ByteBuffer|null = null;
+
+  /**
+   * @type {number}
+   */
+  bb_pos:number = 0;
+/**
+ * @param {number} i
+ * @param {flatbuffers.ByteBuffer} bb
+ * @returns {WriteFileSync}
+ */
+__init(i:number, bb:flatbuffers.ByteBuffer):WriteFileSync {
+  this.bb_pos = i;
+  this.bb = bb;
+  return this;
+};
+
+/**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {WriteFileSync=} obj
+ * @returns {WriteFileSync}
+ */
+static getRootAsWriteFileSync(bb:flatbuffers.ByteBuffer, obj?:WriteFileSync):WriteFileSync {
+  return (obj || new WriteFileSync).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
+ * @param {flatbuffers.Encoding=} optionalEncoding
+ * @returns {string|Uint8Array|null}
+ */
+filename():string|null
+filename(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+filename(optionalEncoding?:any):string|Uint8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+};
+
+/**
+ * @param {number} index
+ * @returns {number}
+ */
+data(index: number):number|null {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? this.bb!.readInt8(this.bb!.__vector(this.bb_pos + offset) + index) : 0;
+};
+
+/**
+ * @returns {number}
+ */
+dataLength():number {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @returns {Int8Array}
+ */
+dataArray():Int8Array|null {
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? new Int8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
+};
+
+/**
+ * @returns {number}
+ */
+perm():number {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_perm(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeUint32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ */
+static startWriteFileSync(builder:flatbuffers.Builder) {
+  builder.startObject(3);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} filenameOffset
+ */
+static addFilename(builder:flatbuffers.Builder, filenameOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(0, filenameOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {flatbuffers.Offset} dataOffset
+ */
+static addData(builder:flatbuffers.Builder, dataOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(1, dataOffset, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {Array.<number>} data
+ * @returns {flatbuffers.Offset}
+ */
+static createDataVector(builder:flatbuffers.Builder, data:number[] | Uint8Array):flatbuffers.Offset {
+  builder.startVector(1, data.length, 1);
+  for (var i = data.length - 1; i >= 0; i--) {
+    builder.addInt8(data[i]);
+  }
+  return builder.endVector();
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} numElems
+ */
+static startDataVector(builder:flatbuffers.Builder, numElems:number) {
+  builder.startVector(1, numElems, 1);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} perm
+ */
+static addPerm(builder:flatbuffers.Builder, perm:number) {
+  builder.addFieldInt32(2, perm, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @returns {flatbuffers.Offset}
+ */
+static endWriteFileSync(builder:flatbuffers.Builder):flatbuffers.Offset {
   var offset = builder.endObject();
   return offset;
 };

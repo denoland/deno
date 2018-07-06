@@ -1,12 +1,101 @@
 namespace deno;
 
-enum Command: byte {
-  START = 0,
+union Any { 
+  Start,
+  StartRes,
+  CodeFetch,
+  CodeFetchRes,
+  CodeCache,
+  Exit,
+  TimerStart,
+  TimerReady,
+  TimerClear,
+  FetchReq,
+  FetchRes,
+  ReadFileSync,
+  ReadFileSyncRes,
+  WriteFileSync,
 }
 
-table Msg {
-  command: Command;
-  start_cwd: string;
-  start_argv: [string];
+table Base {
+  error: string;
+  msg: Any;
 }
 
+struct Start {
+  unused: int8;
+}
+
+table StartRes {
+  cwd: string;
+  argv: [string];
+  debug_flag: bool;
+}
+
+table CodeFetch {
+  module_specifier: string;
+  containing_file: string;
+}
+
+table CodeFetchRes {
+  // If it's a non-http module, moduleName and filename will be the same.
+  // For http modules, moduleName is its resolved http URL, and filename
+  // is the location of the locally downloaded source code.
+  module_name: string;
+  filename: string;
+  source_code: string;
+  output_code: string; // Non-empty only if cached.
+}
+
+table CodeCache {
+  filename: string;
+  source_code: string;
+  output_code: string;
+}
+
+struct Exit {
+  code: int;
+}
+
+struct TimerStart {
+  id: uint;
+  interval: bool;
+  delay: int;
+}
+
+struct TimerReady {
+  id: uint;
+  done: bool;
+}
+
+struct TimerClear {
+  id: uint;
+}
+
+table FetchReq {
+  id: uint;
+  url: string;
+  // header_line: [string];
+}
+
+table FetchRes {
+  id: uint;
+  status: int;
+  header_line: [string];
+  body: [byte];
+}
+
+table ReadFileSync {
+  filename: string;
+}
+
+table ReadFileSyncRes {
+  data: [byte];
+}
+
+table WriteFileSync {
+  filename: string;
+  data: [byte];
+  perm: uint;
+  // perm specified by https://godoc.org/os#FileMode
+}
