@@ -1,5 +1,8 @@
-template("rust_crate") {
+stdlib_label = "//build_extra/rust:stdlib"
+
+template("run_rustc") {
   action(target_name) {
+    assert(defined(invoker.source_root), "Must specify source_root")
     forward_variables_from(invoker,
                            [
                              "cfg",
@@ -8,6 +11,12 @@ template("rust_crate") {
                              "deps",
                              "rust_deps",
                            ])
+    if (defined(invoker.crate_name)) {
+      crate_name = invoker.crate_name
+    } else {
+      crate_name = target_name
+    }
+
     sources = [
       source_root,
     ]
@@ -18,26 +27,26 @@ template("rust_crate") {
     args = [
       "rustc",
       rebase_path(source_root, root_build_dir),
-      "--crate-name=$target_name",
+      "--crate-name=$crate_name",
       "--crate-type=$crate_type",
       "--emit=dep-info=" + rebase_path(depfile, root_build_dir),
     ]
 
     # We only use staticlib for the special "empty" lib.
     if (crate_type == "staticlib") {
-      staticlib = "$target_out_dir/$target_name.a"
+      staticlib = "$target_out_dir/$crate_name.a"
       outputs += [ staticlib ]
       args += [ "--emit=link=" + rebase_path(staticlib, root_build_dir) ]
     }
 
     if (crate_type == "rlib" || crate_type == "bin") {
-      obj = "$target_out_dir/$target_name.o"
+      obj = "$target_out_dir/$crate_name.o"
       outputs += [ obj ]
       args += [ "--emit=obj=" + rebase_path(obj, root_build_dir) ]
     }
 
     if (crate_type == "rlib") {
-      rlib = "$target_out_dir/lib$target_name.rlib"
+      rlib = "$target_out_dir/lib$crate_name.rlib"
       outputs += [ rlib ]
       args += [ "--emit=link=" + rebase_path(rlib, root_build_dir) ]
     }
@@ -78,27 +87,51 @@ template("rust_crate") {
   }
 }
 
-template("rust_library") {
-  rust_crate(target_name) {
-    crate_type = "rlib"
-    forward_variables_from(invoker, "*")
+template("rust_component") {
+  rustc_name = target_name + "_rustc"
+  rustc_label = ":" + rustc_name
+  crate_name = target_name
+  run_rustc(rustc_name) {
+    forward_variables_from(invoker,
+                           [
+                             "crate_name",
+                             "crate_type",
+                             "rust_deps",
+                             "cfg",
+                             "source_root",
+                           ])
+    if (!defined(invoker.crate_type)) {
+      crate_type = "rlib"
+    }
+  }
+
+  crate_outputs = get_target_outputs(rustc_label)
+  crate_obj = crate_outputs[0]
+
+  component(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "libs",
+                             "deps",
+                           ])
+    if (!defined(deps)) {
+      deps = []
+    }
+    if (!defined(libs)) {
+      libs = []
+    }
+    libs += [ crate_obj ]
+    deps += [ rustc_label ]
   }
 }
 
 template("rust_executable") {
-  bin_target = target_name + "_bin"
-  rust_crate(bin_target) {
+  bin_name = target_name + "_bin"
+  bin_label = ":" + bin_name
+
+  rust_component(bin_name) {
     crate_type = "bin"
     forward_variables_from(invoker, "*")
-  }
-
-  # By compiling an empty file as crate-type=staticlib we get all the code
-  # for the rust stdlib, which are not included in the object file outputs
-  # of other libs.
-  stdlib_target = target_name + "_stdlib"
-  rust_crate(stdlib_target) {
-    crate_type = "staticlib"
-    source_root = "src/empty.rs"
   }
 
   executable(target_name) {
@@ -109,28 +142,12 @@ template("rust_executable") {
     }
 
     deps += [
-      ":" + bin_target,
-      ":" + stdlib_target,
+      bin_label,
+      stdlib_label,
     ]
-
-    libs = get_target_outputs(":" + bin_target) +
-           get_target_outputs(":" + stdlib_target)
 
     if (defined(rust_deps)) {
       deps += rust_deps
-      foreach(dep_label, rust_deps) {
-        dep_name = get_label_info(dep_label, "name")
-        dep_dir = get_label_info(dep_label, "target_out_dir")
-        dep_obj = "$dep_dir/$dep_name.o"
-        libs += [ dep_obj ]
-      }
-    }
-
-    if (current_os == "mac") {
-      libs += [ "resolv" ]
-    }
-    if (current_os == "win") {
-      libs += [ "userenv.lib" ]
     }
   }
 }
