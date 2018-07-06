@@ -25,9 +25,9 @@ window["denoMain"] = () => {
 
   const argv: string[] = [];
   for (let i = 0; i < msg.startArgvLength(); i++) {
-    const arg = msg.startArgv(i);
-    deno.print(`argv[${i}] ${arg}`);
+    argv.push(msg.startArgv(i));
   }
+  deno.print(`argv ${argv}`);
 };
 
 function typedArrayToArrayBuffer(ta: Uint8Array): ArrayBuffer {
