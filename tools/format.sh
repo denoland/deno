@@ -4,8 +4,9 @@ cd `dirname "$0"`/..
 clang-format -i -style Google src/*.cc src/*.h src/include/*.h
 
 gn format BUILD.gn
-gn format deno.gni
-gn format rust.gni
+gn format build_extra/deno.gni
+gn format build_extra/rust/rust.gni
+gn format build_extra/rust/BUILD.gn
 gn format .gn
 
 yapf -i js/*.py
