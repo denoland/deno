@@ -28,15 +28,13 @@ global.TypedArraySnapshots = () => {
 };
 
 global.SendSuccess = () => {
-  deno.recv((channel, msg) => {
-    assert(channel === "SendSuccess");
+  deno.recv(msg => {
     deno.print("SendSuccess: ok");
   });
 };
 
 global.SendByteLength = () => {
-  deno.recv((channel, msg) => {
-    assert(channel === "SendByteLength");
+  deno.recv(msg => {
     assert(msg instanceof ArrayBuffer);
     assert(msg.byteLength === 3);
   });
@@ -45,16 +43,16 @@ global.SendByteLength = () => {
 global.RecvReturnEmpty = () => {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
-  let r = deno.send("RecvReturnEmpty", ab);
+  let r = deno.send(ab);
   assert(r == null);
-  r = deno.send("RecvReturnEmpty", ab);
+  r = deno.send(ab);
   assert(r == null);
 };
 
 global.RecvReturnBar = () => {
   const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const ab = typedArrayToArrayBuffer(ui8);
-  const r = deno.send("RecvReturnBar", ab);
+  const r = deno.send(ab);
   assert(r instanceof ArrayBuffer);
   assert(r.byteLength === 3);
   const rui8 = new Uint8Array(r);
@@ -84,7 +82,7 @@ global.ErrorHandling = () => {
     assert(line === 3);
     assert(col === 1);
     assert(error instanceof Error);
-    deno.send("ErrorHandling", typedArrayToArrayBuffer(new Uint8Array([42])));
+    deno.send(typedArrayToArrayBuffer(new Uint8Array([42])));
   };
   eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
 };

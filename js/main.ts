@@ -27,7 +27,7 @@ window["denoMain"] = () => {
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
   // argv and other info.
-  const res = deno.send("start", startMsg());
+  const res = deno.send(startMsg());
 
   // TODO(ry) Remove this conditional once main.rs gets up to speed.
   if (res == null) {

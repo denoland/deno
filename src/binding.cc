@@ -167,15 +167,9 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Locker locker(d->isolate);
   v8::EscapableHandleScope handle_scope(isolate);
 
-  CHECK_EQ(args.Length(), 2);
-  v8::Local<v8::Value> channel_v = args[0];
-  CHECK(channel_v->IsString());
-  v8::String::Utf8Value channel_vstr(isolate, channel_v);
-  const char* channel = *channel_vstr;
-
-  v8::Local<v8::Value> ab_v = args[1];
+  CHECK_EQ(args.Length(), 1);
+  v8::Local<v8::Value> ab_v = args[0];
   CHECK(ab_v->IsArrayBuffer());
-
   auto ab = v8::Local<v8::ArrayBuffer>::Cast(ab_v);
   auto contents = ab->GetContents();
 
@@ -187,7 +181,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   DCHECK_EQ(d->currentArgs, nullptr);
   d->currentArgs = &args;
 
-  d->cb(d, channel, buf);
+  d->cb(d, buf);
 
   d->currentArgs = nullptr;
 }
@@ -293,7 +287,7 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
 }
 
-int deno_send(Deno* d, const char* channel, deno_buf buf) {
+int deno_send(Deno* d, deno_buf buf) {
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);
@@ -313,10 +307,8 @@ int deno_send(Deno* d, const char* channel, deno_buf buf) {
   auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
   memcpy(ab->GetContents().Data(), buf.data, buf.len);
 
-  v8::Local<v8::Value> args[2];
-  args[0] = deno::v8_str(channel);
-  args[1] = ab;
-
+  v8::Local<v8::Value> args[1];
+  args[0] = ab;
   recv->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {

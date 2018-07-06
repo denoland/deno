@@ -20,7 +20,7 @@ typedef struct deno_s Deno;
 
 // A callback to receive a message from deno.send javascript call.
 // buf is valid only for the lifetime of the call.
-typedef void (*deno_recv_cb)(Deno* d, const char* channel, deno_buf buf);
+typedef void (*deno_recv_cb)(Deno* d, deno_buf buf);
 
 void deno_init();
 const char* deno_v8_version();
@@ -37,7 +37,7 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source);
 // Routes message to the javascript callback set with deno.recv(). A false
 // return value indicates error. Check deno_last_exception() for exception text.
 // 0 = fail, 1 = success
-int deno_send(Deno* d, const char* channel, deno_buf buf);
+int deno_send(Deno* d, deno_buf buf);
 
 // Call this inside a deno_recv_cb to respond synchronously to messages.
 // If this is not called during the life time of a deno_recv_cb callback

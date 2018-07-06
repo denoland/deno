@@ -28,7 +28,7 @@ deno_buf strbuf(const char* str) { return deno_buf{str, strlen(str)}; }
 TEST(MockRuntimeTest, SendSuccess) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "SendSuccess()"));
-  EXPECT_TRUE(deno_send(d, "SendSuccess", strbuf("abc")));
+  EXPECT_TRUE(deno_send(d, strbuf("abc")));
   deno_delete(d);
 }
 
@@ -36,22 +36,21 @@ TEST(MockRuntimeTest, SendByteLength) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "SendByteLength()"));
   // We pub the wrong sized message, it should throw.
-  EXPECT_FALSE(deno_send(d, "SendByteLength", strbuf("abcd")));
+  EXPECT_FALSE(deno_send(d, strbuf("abcd")));
   deno_delete(d);
 }
 
 TEST(MockRuntimeTest, SendNoCallback) {
   Deno* d = deno_new(nullptr, nullptr);
   // We didn't call deno.recv() in JS, should fail.
-  EXPECT_FALSE(deno_send(d, "SendNoCallback", strbuf("abc")));
+  EXPECT_FALSE(deno_send(d, strbuf("abc")));
   deno_delete(d);
 }
 
 TEST(MockRuntimeTest, RecvReturnEmpty) {
   static int count = 0;
-  Deno* d = deno_new(nullptr, [](auto _, auto channel, auto buf) {
+  Deno* d = deno_new(nullptr, [](auto _, auto buf) {
     count++;
-    EXPECT_STREQ(channel, "RecvReturnEmpty");
     EXPECT_EQ(static_cast<size_t>(3), buf.len);
     EXPECT_EQ(buf.data[0], 'a');
     EXPECT_EQ(buf.data[1], 'b');
@@ -64,9 +63,8 @@ TEST(MockRuntimeTest, RecvReturnEmpty) {
 
 TEST(MockRuntimeTest, RecvReturnBar) {
   static int count = 0;
-  Deno* d = deno_new(nullptr, [](auto deno, auto channel, auto buf) {
+  Deno* d = deno_new(nullptr, [](auto deno, auto buf) {
     count++;
-    EXPECT_STREQ(channel, "RecvReturnBar");
     EXPECT_EQ(static_cast<size_t>(3), buf.len);
     EXPECT_EQ(buf.data[0], 'a');
     EXPECT_EQ(buf.data[1], 'b');
@@ -98,9 +96,8 @@ TEST(MockRuntimeTest, SnapshotBug) {
 
 TEST(MockRuntimeTest, ErrorHandling) {
   static int count = 0;
-  Deno* d = deno_new(nullptr, [](auto deno, auto channel, auto buf) {
+  Deno* d = deno_new(nullptr, [](auto deno, auto buf) {
     count++;
-    EXPECT_STREQ(channel, "ErrorHandling");
     EXPECT_EQ(static_cast<size_t>(1), buf.len);
     EXPECT_EQ(buf.data[0], 42);
   });
