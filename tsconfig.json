@@ -13,6 +13,6 @@
     "allowUnreachableCode": false,
     "experimentalDecorators": true
   },
-  "include": ["js/**/*.ts", "js/**/*.js"],
-  "exclude": ["js/mock_runtime.js", "js/node_modules"]
+  "include": [ "js/main.ts" ],
+  "exclude": [ "node_modules" ]
 }
