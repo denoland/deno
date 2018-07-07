@@ -91,6 +91,6 @@ Other useful commands:
 
     gn args out/Debug/ --list
     gn args out/Debug/
-    gn desc out/Debug/ deno
+    gn desc out/Debug/ :deno
     gn help
 
