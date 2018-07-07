@@ -9,7 +9,7 @@ node_modules
 /third_party/cpplint/
 /third_party/zlib/
 /third_party/rust_crates/libc/
-/third_party/flatbuffers/src/
+/third_party/flatbuffers/
 
 # gclient files
 /third_party/.gclient_entries

@@ -33,7 +33,7 @@ solutions = [{
     'url':
     'https://github.com/rw/flatbuffers.git@2018-02--rust',
     'name':
-    'flatbuffers/src'
+    'flatbuffers'
 }, {
     'url':
     'https://github.com/rust-lang/libc.git@8a85d662b90c14d458bc4ae9521a05564e20d7ae',
