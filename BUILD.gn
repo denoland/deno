@@ -34,6 +34,11 @@ rust_component("handlers") {
   extern = [ ":libc" ]
 }
 
+rust_test("handlers_test") {
+  source_root = "src/handlers.rs"
+  extern = [ ":libc" ]
+}
+
 executable("deno_cc") {
   sources = [
     "src/main.cc",

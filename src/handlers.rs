@@ -10,6 +10,11 @@ fn string_from_ptr(ptr: *const c_char) -> String {
     String::from(cstr.to_str().unwrap())
 }
 
+#[test]
+fn test_example() {
+    assert_eq!(2 + 2, 4);
+}
+
 #[no_mangle]
 pub extern "C" fn handle_code_fetch(
     module_specifier: *const c_char,
