@@ -13,3 +13,11 @@ rust_component("stdlib") {
     libs = [ "userenv.lib" ]
   }
 }
+
+rust_component("libc") {
+  source_root = "//third_party/rust_crates/libc/src/lib.rs"
+  cfg = [
+    "feature=\"default\"",
+    "feature=\"use_std\"",
+  ]
+}
