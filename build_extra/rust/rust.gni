@@ -1,5 +1,10 @@
 stdlib_label = "//build_extra/rust:stdlib"
 
+declare_args() {
+  # Absolute path of rust build files.
+  rust_build = "//build_extra/rust/"
+}
+
 template("run_rustc") {
   action(target_name) {
     assert(defined(invoker.source_root), "Must specify source_root")

@@ -14,28 +14,20 @@ config("deno_config") {
 
 rust_executable("deno") {
   source_root = "src/main.rs"
-  extern = [ ":libc" ]
+  extern = [ "$rust_build:libc" ]
   deps = [
     ":libdeno",
   ]
 }
 
-rust_component("libc") {
-  source_root = "third_party/rust_crates/libc/src/lib.rs"
-  cfg = [
-    "feature=\"default\"",
-    "feature=\"use_std\"",
-  ]
-}
-
 rust_component("handlers") {
   source_root = "src/handlers.rs"
-  extern = [ ":libc" ]
+  extern = [ "$rust_build:libc" ]
 }
 
 rust_test("handlers_test") {
   source_root = "src/handlers.rs"
-  extern = [ ":libc" ]
+  extern = [ "$rust_build:libc" ]
 }
 
 executable("deno_cc") {
