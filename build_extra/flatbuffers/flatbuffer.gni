@@ -4,6 +4,14 @@
 
 import("//build/compiled_action.gni")
 
+declare_args() {
+  # Location of flatbuffers source code.
+  flatbuffers_source_location = "//third_party/flatbuffers/"
+
+  # Absolute location flatbuffers BUILD.gn file.
+  flatbuffers_build_location = "//build_extra/flatbuffers/"
+}
+
 # Compile a flatbuffer for C++.
 #
 #   flatc_out_dir (optional)
@@ -64,7 +72,7 @@ template("flatbuffer") {
   compiled_action_foreach(action_name) {
     visibility = [ ":$source_set_name" ]
 
-    tool = "//third_party/flatbuffers:flatc"
+    tool = "$flatbuffers_build_location:flatc"
 
     sources = invoker.sources
     deps = []
@@ -122,12 +130,12 @@ template("flatbuffer") {
       testonly = invoker.testonly
     }
 
-    public_configs = [ "//third_party/flatbuffers:flatbuffers_config" ]
+    public_configs = [ "$flatbuffers_build_location:flatbuffers_config" ]
 
     public_deps = [
       # The generated headers reference headers within FlatBuffers, so
       # dependencies must be able to find those headers too.
-      "//third_party/flatbuffers",
+      flatbuffers_build_location,
     ]
     deps = [
       ":$action_name",
@@ -180,12 +188,12 @@ template("ts_flatbuffer") {
   copy_name = target_name + "_copy"
 
   copy(copy_name) {
-    sources = [ "//third_party/flatbuffers/src/js/flatbuffers.js" ]
+    sources = [ "$flatbuffers_source_location/js/flatbuffers.js" ]
     outputs = [ "$target_gen_dir/flatbuffers.js" ]
   }
 
   compiled_action_foreach(target_name) {
-    tool = "//third_party/flatbuffers:flatc"
+    tool = "$flatbuffers_build_location:flatc"
 
     sources = invoker.sources
     deps = [ ":" + copy_name ]
