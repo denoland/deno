@@ -10,7 +10,11 @@ template("run_rustc") {
                              "source_root",
                              "deps",
                              "extern",
+                             "is_test",
                            ])
+    if (defined(invoker.testonly)) {
+      testonly = invoker.testonly
+    }
     if (defined(invoker.crate_name)) {
       crate_name = invoker.crate_name
     } else {
@@ -21,7 +25,6 @@ template("run_rustc") {
       source_root,
     ]
     outputs = []
-    depfile = "$target_out_dir/$target_name.d"
     script = "//third_party/v8/tools/run.py"
 
     args = [
@@ -29,26 +32,41 @@ template("run_rustc") {
       rebase_path(source_root, root_build_dir),
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
-      "--emit=dep-info=" + rebase_path(depfile, root_build_dir),
     ]
 
-    # We only use staticlib for the special "empty" lib.
-    if (crate_type == "staticlib") {
-      staticlib = "$target_out_dir/$crate_name.a"
-      outputs += [ staticlib ]
-      args += [ "--emit=link=" + rebase_path(staticlib, root_build_dir) ]
-    }
+    if (defined(is_test) && is_test) {
+      # Test outputs are executables which should be in root_out_dir.
+      output = "$root_out_dir/$crate_name"
+      args += [
+        "--test",
+        "-o",
+        rebase_path(output, root_build_dir),
+      ]
+      outputs += [ output ]
+    } else {
+      # Non-test targets are handled differently.
 
-    if (crate_type == "rlib" || crate_type == "bin") {
-      obj = "$target_out_dir/$crate_name.o"
-      outputs += [ obj ]
-      args += [ "--emit=obj=" + rebase_path(obj, root_build_dir) ]
-    }
+      # For unknown reasons emitting a depfile on tests doesn't work.
+      depfile = "$target_out_dir/$target_name.d"
+      args += [ "--emit=dep-info=" + rebase_path(depfile, root_build_dir) ]
 
-    if (crate_type == "rlib") {
-      rlib = "$target_out_dir/lib$crate_name.rlib"
-      outputs += [ rlib ]
-      args += [ "--emit=link=" + rebase_path(rlib, root_build_dir) ]
+      if (crate_type == "staticlib") {
+        staticlib = "$target_out_dir/$crate_name.a"
+        outputs += [ staticlib ]
+        args += [ "--emit=link=" + rebase_path(staticlib, root_build_dir) ]
+      }
+
+      if (crate_type == "rlib" || crate_type == "bin") {
+        obj = "$target_out_dir/$crate_name.o"
+        outputs += [ obj ]
+        args += [ "--emit=obj=" + rebase_path(obj, root_build_dir) ]
+      }
+
+      if (crate_type == "rlib") {
+        rlib = "$target_out_dir/lib$crate_name.rlib"
+        outputs += [ rlib ]
+        args += [ "--emit=link=" + rebase_path(rlib, root_build_dir) ]
+      }
     }
 
     if (is_debug) {
@@ -99,6 +117,7 @@ template("rust_component") {
                              "extern",
                              "cfg",
                              "source_root",
+                             "testonly",
                            ])
     if (!defined(invoker.crate_type)) {
       crate_type = "rlib"
@@ -113,6 +132,7 @@ template("rust_component") {
                            [
                              "libs",
                              "deps",
+                             "testonly",
                            ])
     if (!defined(deps)) {
       deps = []
@@ -149,5 +169,20 @@ template("rust_executable") {
     if (defined(extern)) {
       deps += extern
     }
+  }
+}
+
+template("rust_test") {
+  run_rustc(target_name) {
+    crate_name = target_name
+    crate_type = "bin"
+    testonly = true
+    is_test = true
+    forward_variables_from(invoker,
+                           [
+                             "extern",
+                             "cfg",
+                             "source_root",
+                           ])
   }
 }
