@@ -1,7 +1,6 @@
 import("//third_party/v8/gni/v8.gni")
 import("//third_party/v8/snapshot_toolchain.gni")
 import("//third_party/flatbuffers/flatbuffer.gni")
-import("//third_party/flatbuffers/ts_flatbuffer.gni")
 import("//build_extra/deno.gni")
 import("//build_extra/rust/rust.gni")
 
