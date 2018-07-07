@@ -48,4 +48,4 @@ script:
  - $BUILD_PATH/handlers_test
  - $BUILD_PATH/deno_cc foo bar
  - $BUILD_PATH/deno meow
- - ./tools/lint.sh
+ - ./tools/lint.py
