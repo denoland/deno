@@ -25,10 +25,9 @@ template("run_rustc") {
       source_root,
     ]
     outputs = []
-    script = "//third_party/v8/tools/run.py"
+    script = "//tools/run_rustc.py"
 
     args = [
-      "rustc",
       rebase_path(source_root, root_build_dir),
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
@@ -36,37 +35,40 @@ template("run_rustc") {
 
     if (defined(is_test) && is_test) {
       # Test outputs are executables which should be in root_out_dir.
-      output = "$root_out_dir/$crate_name"
+      output_file = "$root_out_dir/$crate_name"
       args += [
         "--test",
         "-o",
-        rebase_path(output, root_build_dir),
+        rebase_path(output_file, root_build_dir),
       ]
-      outputs += [ output ]
+      outputs += [ output_file ]
     } else {
       # Non-test targets are handled differently.
 
-      # For unknown reasons emitting a depfile on tests doesn't work.
-      depfile = "$target_out_dir/$target_name.d"
-      args += [ "--emit=dep-info=" + rebase_path(depfile, root_build_dir) ]
-
       if (crate_type == "staticlib") {
-        staticlib = "$target_out_dir/$crate_name.a"
-        outputs += [ staticlib ]
-        args += [ "--emit=link=" + rebase_path(staticlib, root_build_dir) ]
+        output_file = "$target_out_dir/$crate_name.a"
+        emit_type = "link"
+      } else if (crate_type == "bin") {
+        output_file = "$target_out_dir/$crate_name.o"
+        emit_type = "obj"
+      } else if (crate_type == "rlib") {
+        output_file = "$target_out_dir/lib$crate_name.rlib"
+        emit_type = "link"
       }
+      outputs += [ output_file ]
+      output_file_rel = rebase_path(output_file, root_build_dir)
+      args += [ "--emit=$emit_type=$output_file_rel" ]
 
-      if (crate_type == "rlib" || crate_type == "bin") {
-        obj = "$target_out_dir/$crate_name.o"
-        outputs += [ obj ]
-        args += [ "--emit=obj=" + rebase_path(obj, root_build_dir) ]
-      }
+      # TODO(ry) For unknown reasons emitting a depfile on tests doesn't work.
+      depfile = "$target_out_dir/$crate_name.d"
+      args += [
+        "--emit=dep-info=" + rebase_path(depfile, root_build_dir),
 
-      if (crate_type == "rlib") {
-        rlib = "$target_out_dir/lib$crate_name.rlib"
-        outputs += [ rlib ]
-        args += [ "--emit=link=" + rebase_path(rlib, root_build_dir) ]
-      }
+        # The following two args are used by run_rustc.py to fix
+        # the depfile on the fly. They are not passed thru to rustc.
+        "--depfile=" + rebase_path(depfile, root_build_dir),
+        "--output_file=" + output_file_rel,
+      ]
     }
 
     if (is_debug) {
