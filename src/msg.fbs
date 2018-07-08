@@ -18,6 +18,7 @@ union Any {
 }
 
 table Base {
+  cmdId: uint32;
   error: string;
   msg: Any;
 }
