@@ -22,7 +22,7 @@ static char** global_argv;
 static int global_argc;
 
 // Sends StartRes message
-void HandleStart(Deno* d) {
+void HandleStart(Deno* d, uint32_t cmd_id) {
   flatbuffers::FlatBufferBuilder builder;
 
   char cwdbuf[1024];
@@ -37,20 +37,20 @@ void HandleStart(Deno* d) {
 
   auto start_argv = builder.CreateVector(args);
   auto start_msg = CreateStartRes(builder, start_cwd, start_argv);
-  auto base = CreateBase(builder, 0, Any_StartRes, start_msg.Union());
+  auto base = CreateBase(builder, cmd_id, 0, Any_StartRes, start_msg.Union());
   builder.Finish(base);
   deno_buf bufout{reinterpret_cast<const char*>(builder.GetBufferPointer()),
                   builder.GetSize()};
   deno_set_response(d, bufout);
 }
 
-void HandleCodeFetch(Deno* d, const CodeFetch* msg) {
+void HandleCodeFetch(Deno* d, uint32_t cmd_id, const CodeFetch* msg) {
   auto module_specifier = msg->module_specifier()->c_str();
   auto containing_file = msg->containing_file()->c_str();
   printf("HandleCodeFetch module_specifier = %s containing_file = %s\n",
          module_specifier, containing_file);
   // Call into rust.
-  handle_code_fetch(module_specifier, containing_file);
+  handle_code_fetch(cmd_id, module_specifier, containing_file);
 }
 
 void MessagesFromJS(Deno* d, deno_buf buf) {
@@ -59,17 +59,18 @@ void MessagesFromJS(Deno* d, deno_buf buf) {
   DCHECK(verifier.VerifyBuffer<Base>());
 
   auto base = flatbuffers::GetRoot<Base>(buf.data);
+  auto cmd_id = base->cmdId();
   auto msg_type = base->msg_type();
   const char* msg_type_name = EnumNamesAny()[msg_type];
-  printf("MessagesFromJS msg_type = %d, msg_type_name = %s\n", msg_type,
-         msg_type_name);
+  printf("MessagesFromJS cmd_id = %d, msg_type = %d, msg_type_name = %s\n",
+         cmd_id, msg_type, msg_type_name);
   switch (msg_type) {
     case Any_Start:
-      HandleStart(d);
+      HandleStart(d, base->cmdId());
       break;
 
     case Any_CodeFetch:
-      HandleCodeFetch(d, base->msg_as_CodeFetch());
+      HandleCodeFetch(d, base->cmdId(), base->msg_as_CodeFetch());
       break;
 
     case Any_NONE:

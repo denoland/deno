@@ -17,6 +17,7 @@ fn test_example() {
 
 #[no_mangle]
 pub extern "C" fn handle_code_fetch(
+    cmd_id: u32,
     module_specifier: *const c_char,
     containing_file: *const c_char,
 ) {
@@ -24,8 +25,10 @@ pub extern "C" fn handle_code_fetch(
     let containing_file = string_from_ptr(containing_file);
 
     println!(
-        "handle_code_fetch. module_specifier = {} containing_file = {}",
-        module_specifier, containing_file
+        "handle_code_fetch. cmd_id = {} module_specifier = {} containing_file = {}",
+        cmd_id,
+        module_specifier,
+        containing_file
     );
 
     unimplemented!();

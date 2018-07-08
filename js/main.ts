@@ -11,10 +11,19 @@ import { assert } from "./util";
 const globalEval = eval;
 const window = globalEval("this");
 
-function startMsg(): ArrayBuffer {
+let cmdIdCounter = 0;
+function assignCmdId(): number {
+  // TODO(piscisaureus) Safely re-use so they don't overflow.
+  const cmdId = ++cmdIdCounter;
+  assert(cmdId < 2 ** 32, "cmdId overflow");
+  return cmdId;
+}
+
+function startMsg(cmdId: number): ArrayBuffer {
   const builder = new flatbuffers.Builder();
   const msg = fbs.Start.createStart(builder, 0);
   fbs.Base.startBase(builder);
+  fbs.Base.addCmdId(builder, cmdId);
   fbs.Base.addMsg(builder, msg);
   fbs.Base.addMsgType(builder, fbs.Any.Start);
   builder.finish(fbs.Base.endBase(builder));
@@ -27,7 +36,8 @@ window["denoMain"] = () => {
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
   // argv and other info.
-  const res = deno.send(startMsg());
+  const cmdId = assignCmdId();
+  const res = deno.send(startMsg(cmdId));
 
   // TODO(ry) Remove this conditional once main.rs gets up to speed.
   if (res == null) {
@@ -39,6 +49,7 @@ window["denoMain"] = () => {
   // Deserialize res into startResMsg.
   const bb = new flatbuffers.ByteBuffer(new Uint8Array(res));
   const base = fbs.Base.getRootAsBase(bb);
+  assert(base.cmdId() === cmdId);
   assert(fbs.Any.StartRes === base.msgType());
   const startResMsg = new fbs.StartRes();
   assert(base.msg(startResMsg) != null);
