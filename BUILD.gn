@@ -22,12 +22,18 @@ rust_executable("deno") {
 
 rust_component("handlers") {
   source_root = "src/handlers.rs"
-  extern = [ "$rust_build:libc" ]
+  extern = [
+    "$rust_build:libc",
+    "$rust_build:url",
+  ]
 }
 
 rust_test("handlers_test") {
   source_root = "src/handlers.rs"
-  extern = [ "$rust_build:libc" ]
+  extern = [
+    "$rust_build:libc",
+    "$rust_build:url",
+  ]
 }
 
 executable("deno_cc") {

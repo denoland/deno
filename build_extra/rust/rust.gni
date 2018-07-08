@@ -108,6 +108,12 @@ template("run_rustc") {
           "--extern",
           "$name=" + rebase_path(rlib, root_build_dir),
         ]
+
+        # This is needed for transitive dependencies.
+        args += [
+          "-L",
+          "dependency=" + rebase_path(dir, root_build_dir),
+        ]
       }
     }
   }
