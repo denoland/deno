@@ -177,7 +177,7 @@ run_node("run_tsc") {
 # be removed at some point. If msg.fps is changed, commit changes to the
 # generated JS files. The stamp file is just to make gn work.
 action("flatbufferjs") {
-  script = "js/flatbufferjs_hack.py"
+  script = "//tools/flatbufferjs_hack.py"
   sources = [
     "src/msg.fbs",
   ]

@@ -100,7 +100,6 @@ flatbuffer("flatbuffers_samplebuffer") {
   ]
   flatc_include_dirs = [ "$fb_src/tests/include_test" ]
 }
-
 # test("flatbuffers_unittest") {
 #   sources = [
 #     "src/tests/test.cpp",
