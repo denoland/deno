@@ -44,8 +44,8 @@ install:
  # Travis hangs without -j2 argument to ninja.
  - ninja -j2 -C $BUILD_PATH mock_runtime_test handlers_test deno_cc deno
 script:
+ - ./tools/lint.py
  - $BUILD_PATH/mock_runtime_test
  - $BUILD_PATH/handlers_test
  - $BUILD_PATH/deno_cc foo bar
  - $BUILD_PATH/deno meow
- - ./tools/lint.py
