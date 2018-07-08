@@ -1,5 +1,11 @@
 import("rust.gni")
 
+# Dependencies between third party crates is mapped out here manually.  This is
+# not so difficult and having it be tedious to add dependencies might help us
+# avoid dependency hell later on.
+# Versioning for third party rust crates is controlled in //gclient_config.py
+# TODO(ry) Use Cargo for versioning?
+
 # By compiling an empty file as crate-type=staticlib we get all the code
 # for the rust stdlib, which are not included in the object file outputs
 # of other libs.
@@ -14,10 +20,44 @@ rust_component("stdlib") {
   }
 }
 
+crates = "//third_party/rust_crates"
+
 rust_component("libc") {
-  source_root = "//third_party/rust_crates/libc/src/lib.rs"
-  cfg = [
-    "feature=\"default\"",
-    "feature=\"use_std\"",
+  source_root = "$crates/libc/src/lib.rs"
+  cfg = [ "feature=\"use_std\"" ]
+}
+
+rust_component("url") {
+  source_root = "$crates/url/src/lib.rs"
+  extern = [
+    ":matches",
+    ":idna",
+    ":percent_encoding",
   ]
+}
+
+rust_component("percent_encoding") {
+  source_root = "$crates/url/percent_encoding/lib.rs"
+}
+
+rust_component("matches") {
+  source_root = "$crates/rust-std-candidates/matches/lib.rs"
+}
+
+rust_component("idna") {
+  source_root = "$crates/url/idna/src/lib.rs"
+  extern = [
+    ":matches",
+    ":unicode_bidi",
+    ":unicode_normalization",
+  ]
+}
+
+rust_component("unicode_bidi") {
+  source_root = "$crates/unicode-bidi/src/lib.rs"
+  extern = [ ":matches" ]
+}
+
+rust_component("unicode_normalization") {
+  source_root = "$crates/unicode-normalization/src/lib.rs"
 }
