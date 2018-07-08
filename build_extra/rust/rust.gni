@@ -30,6 +30,7 @@ template("run_rustc") {
     args = [
       "rustc",
       rebase_path(source_root, root_build_dir),
+      "--color=always",
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
     ]
