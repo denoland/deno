@@ -4,12 +4,5 @@
 # npm deps
 node_modules
 
-# git deps
-/third_party/v8/
-/third_party/cpplint/
-/third_party/zlib/
-/third_party/rust_crates/libc/
-/third_party/flatbuffers/
-
-# gclient files
-/third_party/.gclient_entries
+# third party deps
+/third_party/
