@@ -22,4 +22,4 @@ run([
 # Do not format these.
 #  js/msg_generated.ts
 #  js/flatbuffers.js
-run(["rustfmt", "--write-mode", "overwrite"] + glob("src/*.rs"))
+run(["rustfmt", "-f", "--write-mode", "overwrite"] + glob("src/*.rs"))
