@@ -188,15 +188,21 @@ template("ts_flatbuffer") {
   copy_name = target_name + "_copy"
 
   copy(copy_name) {
-    sources = [ "$flatbuffers_source_location/js/flatbuffers.js" ]
-    outputs = [ "$target_gen_dir/flatbuffers.js" ]
+    sources = [
+      "$flatbuffers_source_location/js/flatbuffers.js",
+    ]
+    outputs = [
+      "$target_gen_dir/flatbuffers.js",
+    ]
   }
 
   compiled_action_foreach(target_name) {
     tool = "$flatbuffers_build_location:flatc"
 
     sources = invoker.sources
-    deps = [ ":" + copy_name ]
+    deps = [
+      ":" + copy_name,
+    ]
 
     out_dir = target_gen_dir
 
