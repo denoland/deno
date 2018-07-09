@@ -58,7 +58,7 @@ executable("mock_runtime_test") {
   ]
   deps = [
     ":create_snapshot_mock_runtime",
-    ":deno_nosnapshot",
+    ":deno_bindings",
     "//testing/gtest:gtest",
   ]
   defines = [ "DENO_MOCK_RUNTIME" ]
@@ -72,12 +72,12 @@ static_library("libdeno") {
   ]
   deps = [
     ":create_snapshot_deno",
-    ":deno_nosnapshot",
+    ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
 }
 
-v8_source_set("deno_nosnapshot") {
+v8_source_set("deno_bindings") {
   sources = [
     "src/binding.cc",
     "src/deno.h",
@@ -96,7 +96,7 @@ executable("snapshot_creator") {
     "src/snapshot_creator.cc",
   ]
   deps = [
-    ":deno_nosnapshot",
+    ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
 }
