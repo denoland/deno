@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 import { ModuleInfo } from "./types";
 import { deno as fbs } from "./msg_generated";
-import { assert, typedArrayToArrayBuffer  } from "./util";
+import { assert, typedArrayToArrayBuffer } from "./util";
 import { flatbuffers } from "flatbuffers";
 
 export function exit(exitCode = 0): void {
@@ -33,7 +33,7 @@ export function codeFetch(
   fbs.Base.addMsg(builder, msg);
   fbs.Base.addMsgType(builder, fbs.Any.CodeFetch);
   builder.finish(fbs.Base.endBase(builder));
-	const payload = typedArrayToArrayBuffer(builder.asUint8Array());
+  const payload = typedArrayToArrayBuffer(builder.asUint8Array());
   const resBuf = deno.send("x", payload);
 
   console.log("CodeFetch sent");
@@ -48,7 +48,7 @@ export function codeFetch(
     moduleName: codeFetchRes.moduleName(),
     filename: codeFetchRes.filename(),
     sourceCode: codeFetchRes.sourceCode(),
-    outputCode: codeFetchRes.outputCode(),
+    outputCode: codeFetchRes.outputCode()
   };
 }
 
@@ -76,7 +76,7 @@ export function codeCache(
   // Maybe need to do another step?
   // Base.finishBaseBuffer(builder, base);
 
-	const payload = typedArrayToArrayBuffer(builder.asUint8Array());
+  const payload = typedArrayToArrayBuffer(builder.asUint8Array());
   const resBuf = deno.send("x", payload);
   assert(resBuf === null);
 }
@@ -84,7 +84,7 @@ export function codeCache(
 export function readFileSync(filename: string): Uint8Array {
   assert(false, "Not Implemented");
   return null;
-	/*
+  /*
   const res = pubInternal("os", {
     command: fbs.Command.READ_FILE_SYNC,
     readFileSyncFilename: filename
@@ -99,7 +99,7 @@ export function writeFileSync(
   perm: number
 ): void {
   assert(false, "Not Implemented");
-	/*
+  /*
   pubInternal("os", {
     command: fbs.Command.WRITE_FILE_SYNC,
     writeFileSyncFilename: filename,

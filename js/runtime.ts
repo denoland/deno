@@ -149,7 +149,7 @@ export function resolveModule(
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
   // We ask golang to sourceCodeFetch. It will load the sourceCode and if
   // there is any outputCode cached, it will return that as well.
-	const fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
+  const fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
   const { filename, sourceCode, outputCode } = fetchResponse;
   if (sourceCode.length === 0) {
     return null;
