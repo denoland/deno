@@ -57,13 +57,36 @@ static getRootAsBase(bb:flatbuffers.ByteBuffer, obj?:Base):Base {
 };
 
 /**
+ * @returns {number}
+ */
+cmdId():number {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
+};
+
+/**
+ * @param {number} value
+ * @returns {boolean}
+ */
+mutate_cmdId(value:number):boolean {
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+
+  if (offset === 0) {
+    return false;
+  }
+
+  this.bb!.writeUint32(this.bb_pos + offset, value);
+  return true;
+};
+
+/**
  * @param {flatbuffers.Encoding=} optionalEncoding
  * @returns {string|Uint8Array|null}
  */
 error():string|null
 error(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 error(optionalEncoding?:any):string|Uint8Array|null {
-  var offset = this.bb!.__offset(this.bb_pos, 4);
+  var offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 };
 
@@ -71,7 +94,7 @@ error(optionalEncoding?:any):string|Uint8Array|null {
  * @returns {deno.Any}
  */
 msgType():deno.Any {
-  var offset = this.bb!.__offset(this.bb_pos, 6);
+  var offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? /** @type {deno.Any} */ (this.bb!.readUint8(this.bb_pos + offset)) : deno.Any.NONE;
 };
 
@@ -80,7 +103,7 @@ msgType():deno.Any {
  * @returns {boolean}
  */
 mutate_msg_type(value:deno.Any):boolean {
-  var offset = this.bb!.__offset(this.bb_pos, 6);
+  var offset = this.bb!.__offset(this.bb_pos, 8);
 
   if (offset === 0) {
     return false;
@@ -95,7 +118,7 @@ mutate_msg_type(value:deno.Any):boolean {
  * @returns {?flatbuffers.Table}
  */
 msg<T extends flatbuffers.Table>(obj:T):T|null {
-  var offset = this.bb!.__offset(this.bb_pos, 8);
+  var offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.__union(obj, this.bb_pos + offset) : null;
 };
 
@@ -103,7 +126,15 @@ msg<T extends flatbuffers.Table>(obj:T):T|null {
  * @param {flatbuffers.Builder} builder
  */
 static startBase(builder:flatbuffers.Builder) {
-  builder.startObject(3);
+  builder.startObject(4);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
+ * @param {number} cmdId
+ */
+static addCmdId(builder:flatbuffers.Builder, cmdId:number) {
+  builder.addFieldInt32(0, cmdId, 0);
 };
 
 /**
@@ -111,7 +142,7 @@ static startBase(builder:flatbuffers.Builder) {
  * @param {flatbuffers.Offset} errorOffset
  */
 static addError(builder:flatbuffers.Builder, errorOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(0, errorOffset, 0);
+  builder.addFieldOffset(1, errorOffset, 0);
 };
 
 /**
@@ -119,7 +150,7 @@ static addError(builder:flatbuffers.Builder, errorOffset:flatbuffers.Offset) {
  * @param {deno.Any} msgType
  */
 static addMsgType(builder:flatbuffers.Builder, msgType:deno.Any) {
-  builder.addFieldInt8(1, msgType, deno.Any.NONE);
+  builder.addFieldInt8(2, msgType, deno.Any.NONE);
 };
 
 /**
@@ -127,7 +158,7 @@ static addMsgType(builder:flatbuffers.Builder, msgType:deno.Any) {
  * @param {flatbuffers.Offset} msgOffset
  */
 static addMsg(builder:flatbuffers.Builder, msgOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(2, msgOffset, 0);
+  builder.addFieldOffset(3, msgOffset, 0);
 };
 
 /**
