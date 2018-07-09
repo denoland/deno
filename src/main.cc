@@ -11,6 +11,7 @@
 #endif
 
 #include "deno.h"
+#include "flatbuffer_builder.h"
 #include "flatbuffers/flatbuffers.h"
 #include "src/handlers.h"
 #include "src/msg_generated.h"
@@ -23,7 +24,7 @@ static int global_argc;
 
 // Sends StartRes message
 void HandleStart(Deno* d, uint32_t cmd_id) {
-  flatbuffers::FlatBufferBuilder builder;
+  deno::FlatBufferBuilder builder;
 
   char cwdbuf[1024];
   // TODO(piscisaureus): support unicode on windows.
@@ -39,9 +40,7 @@ void HandleStart(Deno* d, uint32_t cmd_id) {
   auto start_msg = CreateStartRes(builder, start_cwd, start_argv);
   auto base = CreateBase(builder, cmd_id, 0, Any_StartRes, start_msg.Union());
   builder.Finish(base);
-  deno_buf bufout{reinterpret_cast<const char*>(builder.GetBufferPointer()),
-                  builder.GetSize()};
-  deno_set_response(d, bufout);
+  deno_set_response(d, builder.ExportBuf());
 }
 
 void HandleCodeFetch(Deno* d, uint32_t cmd_id, const CodeFetch* msg) {
@@ -54,11 +53,10 @@ void HandleCodeFetch(Deno* d, uint32_t cmd_id, const CodeFetch* msg) {
 }
 
 void MessagesFromJS(Deno* d, deno_buf buf) {
-  auto data = reinterpret_cast<const uint8_t*>(buf.data);
-  flatbuffers::Verifier verifier(data, buf.len);
+  flatbuffers::Verifier verifier(buf.data_ptr, buf.data_len);
   DCHECK(verifier.VerifyBuffer<Base>());
 
-  auto base = flatbuffers::GetRoot<Base>(buf.data);
+  auto base = flatbuffers::GetRoot<Base>(buf.data_ptr);
   auto cmd_id = base->cmdId();
   auto msg_type = base->msg_type();
   const char* msg_type_name = EnumNamesAny()[msg_type];

@@ -139,6 +139,34 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   fflush(stdout);
 }
 
+static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {
+  auto ab = v8::ArrayBuffer::New(
+      isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
+      v8::ArrayBufferCreationMode::kInternalized);
+  auto view =
+      v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
+  return view;
+}
+
+static deno_buf ExportBuf(v8::Isolate* isolate,
+                          v8::Local<v8::ArrayBufferView> view) {
+  auto ab = view->Buffer();
+  auto contents = ab->Externalize();
+
+  deno_buf buf;
+  buf.alloc_ptr = reinterpret_cast<uint8_t*>(contents.Data());
+  buf.alloc_len = contents.ByteLength();
+  buf.data_ptr = buf.alloc_ptr + view->ByteOffset();
+  buf.data_len = view->ByteLength();
+
+  // Prevent JS from modifying buffer contents after exporting.
+  ab->Neuter();
+
+  return buf;
+}
+
+static void FreeBuf(deno_buf buf) { free(buf.alloc_ptr); }
+
 // Sets the recv callback.
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
@@ -169,19 +197,20 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   CHECK_EQ(args.Length(), 1);
   v8::Local<v8::Value> ab_v = args[0];
-  CHECK(ab_v->IsArrayBuffer());
-  auto ab = v8::Local<v8::ArrayBuffer>::Cast(ab_v);
-  auto contents = ab->GetContents();
-
-  // data is only a valid pointer until the end of this call.
-  const char* data =
-      const_cast<const char*>(reinterpret_cast<char*>(contents.Data()));
-  deno_buf buf{data, contents.ByteLength()};
+  CHECK(ab_v->IsArrayBufferView());
+  auto buf = ExportBuf(isolate, v8::Local<v8::ArrayBufferView>::Cast(ab_v));
 
   DCHECK_EQ(d->currentArgs, nullptr);
   d->currentArgs = &args;
 
   d->cb(d, buf);
+
+  // Buffer is only valid until the end of the callback.
+  // TODO(piscisaureus):
+  //   It's possible that data in the buffer is needed after the callback
+  //   returns, e.g. when the handler offloads work to a thread pool, therefore
+  //   make the callback responsible for releasing the buffer.
+  FreeBuf(buf);
 
   d->currentArgs = nullptr;
 }
@@ -303,12 +332,8 @@ int deno_send(Deno* d, deno_buf buf) {
     return 0;
   }
 
-  // TODO(ry) support zero-copy.
-  auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
-  memcpy(ab->GetContents().Data(), buf.data, buf.len);
-
   v8::Local<v8::Value> args[1];
-  args[0] = ab;
+  args[0] = deno::ImportBuf(d->isolate, buf);
   recv->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {
@@ -320,9 +345,7 @@ int deno_send(Deno* d, deno_buf buf) {
 }
 
 void deno_set_response(Deno* d, deno_buf buf) {
-  // TODO(ry) Support zero-copy.
-  auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
-  memcpy(ab->GetContents().Data(), buf.data, buf.len);
+  auto ab = deno::ImportBuf(d->isolate, buf);
   d->currentArgs->GetReturnValue().Set(ab);
 }
 

@@ -9,8 +9,10 @@ use std::ptr;
 
 #[repr(C)]
 struct deno_buf {
-    data: *const c_char,
-    len: c_int, // TODO(ry) should be size_t.
+    alloc_ptr: *mut u8,
+    alloc_len: usize,
+    data_ptr: *mut u8,
+    data_len: usize,
 }
 
 #[repr(C)]
@@ -120,9 +122,10 @@ fn main() {
 
     let mut d = Deno::new();
 
-    d.execute("deno_main.js", "denoMain();")
-        .unwrap_or_else(|err| {
+    d.execute("deno_main.js", "denoMain();").unwrap_or_else(
+        |err| {
             println!("Error {}\n", err);
             std::process::exit(1);
-        });
+        },
+    );
 }
