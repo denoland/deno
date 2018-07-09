@@ -19,7 +19,7 @@ function assignCmdId(): number {
   return cmdId;
 }
 
-function startMsg(cmdId: number): ArrayBuffer {
+function startMsg(cmdId: number): Uint8Array {
   const builder = new flatbuffers.Builder();
   const msg = fbs.Start.createStart(builder, 0);
   fbs.Base.startBase(builder);
@@ -27,7 +27,7 @@ function startMsg(cmdId: number): ArrayBuffer {
   fbs.Base.addMsg(builder, msg);
   fbs.Base.addMsgType(builder, fbs.Any.Start);
   builder.finish(fbs.Base.endBase(builder));
-  return typedArrayToArrayBuffer(builder.asUint8Array());
+  return builder.asUint8Array();
 }
 
 window["denoMain"] = () => {
@@ -47,7 +47,7 @@ window["denoMain"] = () => {
   }
 
   // Deserialize res into startResMsg.
-  const bb = new flatbuffers.ByteBuffer(new Uint8Array(res));
+  const bb = new flatbuffers.ByteBuffer(res);
   const base = fbs.Base.getRootAsBase(bb);
   assert(base.cmdId() === cmdId);
   assert(fbs.Any.StartRes === base.msgType());
@@ -69,10 +69,3 @@ window["denoMain"] = () => {
   mod.compileAndRun();
   */
 };
-
-function typedArrayToArrayBuffer(ta: Uint8Array): ArrayBuffer {
-  return ta.buffer.slice(
-    ta.byteOffset,
-    ta.byteOffset + ta.byteLength
-  ) as ArrayBuffer;
-}

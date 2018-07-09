@@ -3,6 +3,7 @@
 #ifndef DENO_H_
 #define DENO_H_
 #include <stddef.h>
+#include <stdint.h>
 // Neither Rust nor Go support calling directly into C++ functions, therefore
 // the public interface to libdeno is done in C.
 #ifdef __cplusplus
@@ -11,8 +12,10 @@ extern "C" {
 
 // Data that gets transmitted.
 typedef struct {
-  const char* data;
-  size_t len;
+  uint8_t* alloc_ptr;  // Start of memory allocation (returned from `malloc()`).
+  size_t alloc_len;    // Length of the memory allocation.
+  uint8_t* data_ptr;   // Start of logical contents (within the allocation).
+  size_t data_len;     // Length of logical contents.
 } deno_buf;
 
 struct deno_s;
@@ -37,11 +40,17 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source);
 // Routes message to the javascript callback set with deno.recv(). A false
 // return value indicates error. Check deno_last_exception() for exception text.
 // 0 = fail, 1 = success
+// After calling deno_send(), the caller no longer owns `buf` and must not use
+// it; deno_send() is responsible for releasing it's memory.
+// TODO(piscisaureus) In C++ and/or Rust, use a smart pointer or similar to
+// enforce this rule.
 int deno_send(Deno* d, deno_buf buf);
 
 // Call this inside a deno_recv_cb to respond synchronously to messages.
 // If this is not called during the life time of a deno_recv_cb callback
 // the deno.send() call in javascript will return null.
+// After calling deno_set_response(), the caller no longer owns `buf` and must
+// not access it; deno_set_response() is responsible for releasing it's memory.
 void deno_set_response(Deno* d, deno_buf buf);
 
 const char* deno_last_exception(Deno* d);

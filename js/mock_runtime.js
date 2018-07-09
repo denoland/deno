@@ -7,10 +7,6 @@ function assert(cond) {
   if (!cond) throw Error("mock_runtime.js assert failed");
 }
 
-global.typedArrayToArrayBuffer = ta => {
-  return ta.buffer.slice(ta.byteOffset, ta.byteOffset + ta.byteLength);
-};
-
 global.CanCallFunction = () => {
   deno.print("Hello world from foo");
   return "foo";
@@ -41,22 +37,20 @@ global.SendByteLength = () => {
 };
 
 global.RecvReturnEmpty = () => {
-  const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
-  const ab = typedArrayToArrayBuffer(ui8);
-  let r = deno.send(ab);
-  assert(r == null);
-  r = deno.send(ab);
-  assert(r == null);
+  const m1 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
+  const m2 = m1.slice();
+  const r1 = deno.send(m1);
+  assert(r1 == null);
+  const r2 = deno.send(m2);
+  assert(r2 == null);
 };
 
 global.RecvReturnBar = () => {
-  const ui8 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
-  const ab = typedArrayToArrayBuffer(ui8);
-  const r = deno.send(ab);
-  assert(r instanceof ArrayBuffer);
+  const m = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
+  const r = deno.send(m);
+  assert(r instanceof Uint8Array);
   assert(r.byteLength === 3);
-  const rui8 = new Uint8Array(r);
-  const rstr = String.fromCharCode(...rui8);
+  const rstr = String.fromCharCode(...r);
   assert(rstr === "bar");
 };
 
@@ -65,6 +59,59 @@ global.DoubleRecvFails = () => {
   // runtime.
   deno.recv((channel, msg) => assert(false));
   deno.recv((channel, msg) => assert(false));
+};
+
+global.SendRecvSlice = () => {
+  const abLen = 1024;
+  let buf = new Uint8Array(abLen);
+  for (let i = 0; i < 5; i++) {
+    // Set first and last byte, for verification by the native side.
+    buf[0] = 100 + i;
+    buf[buf.length - 1] = 100 - i;
+    // On the native side, the slice is shortened by 19 bytes.
+    buf = deno.send(buf);
+    assert(buf.byteOffset === i * 11);
+    assert(buf.byteLength === abLen - i * 30 - 19);
+    assert(buf.buffer.byteLength == abLen);
+    // Look for values written by the backend.
+    assert(buf[0] === 200 + i);
+    assert(buf[buf.length - 1] === 200 - i);
+    // On the JS side, the start of the slice is moved up by 11 bytes.
+    buf = buf.subarray(11);
+    assert(buf.byteOffset === (i + 1) * 11);
+    assert(buf.byteLength === abLen - (i + 1) * 30);
+  }
+};
+
+global.JSSendArrayBufferViewTypes = () => {
+  // Test that ArrayBufferView slices are transferred correctly.
+  // Send Uint8Array.
+  const ab1 = new ArrayBuffer(4321);
+  const u8 = new Uint8Array(ab1, 2468, 1000);
+  u8[0] = 1;
+  deno.send(u8);
+  // Send Uint32Array.
+  const ab2 = new ArrayBuffer(4321);
+  const u32 = new Uint32Array(ab2, 2468, 1000 / Uint32Array.BYTES_PER_ELEMENT);
+  u32[0] = 0x02020202;
+  deno.send(u32);
+  // Send DataView.
+  const ab3 = new ArrayBuffer(4321);
+  const dv = new DataView(ab3, 2468, 1000);
+  dv.setUint8(0, 3);
+  deno.send(dv);
+};
+
+global.JSSendNeutersBuffer = () => {
+  // Buffer should be neutered after transferring it to the native side.
+  const u8 = new Uint8Array([42]);
+  assert(u8.byteLength === 1);
+  assert(u8.buffer.byteLength === 1);
+  assert(u8[0] === 42);
+  const r = deno.send(u8);
+  assert(u8.byteLength === 0);
+  assert(u8.buffer.byteLength === 0);
+  assert(u8[0] === undefined);
 };
 
 // The following join has caused SnapshotBug to segfault when using kKeep.
@@ -82,7 +129,7 @@ global.ErrorHandling = () => {
     assert(line === 3);
     assert(col === 1);
     assert(error instanceof Error);
-    deno.send(typedArrayToArrayBuffer(new Uint8Array([42])));
+    deno.send(new Uint8Array([42]));
   };
   eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
 };

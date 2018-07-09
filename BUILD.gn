@@ -76,6 +76,7 @@ executable("mock_runtime_test") {
   testonly = true
   sources = [
     "src/file_util_test.cc",
+    "src/flatbuffer_builder_test.cc",
     "src/from_snapshot.cc",
     "src/mock_runtime_test.cc",
   ]
@@ -106,10 +107,15 @@ v8_source_set("deno_bindings") {
     "src/deno.h",
     "src/file_util.cc",
     "src/file_util.h",
+    "src/flatbuffer_builder.cc",
+    "src/flatbuffer_builder.h",
     "src/internal.h",
   ]
   deps = [
     "third_party/v8:v8_monolith",
+  ]
+  public_deps = [
+    "build_extra/flatbuffers:flatbuffers",
   ]
   configs = [ ":deno_config" ]
 }
