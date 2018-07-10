@@ -5,6 +5,12 @@ declare_args() {
   rust_build = "//build_extra/rust/"
 }
 
+if (is_win) {
+  executable_suffix = ".exe"
+} else {
+  executable_suffix = ""
+}
+
 template("run_rustc") {
   action(target_name) {
     assert(defined(invoker.source_root), "Must specify source_root")
@@ -40,7 +46,7 @@ template("run_rustc") {
 
     if (defined(is_test) && is_test) {
       # Test outputs are executables which should be in root_out_dir.
-      output_file = "$root_out_dir/$crate_name"
+      output_file = "$root_out_dir/$crate_name" + executable_suffix
       args += [
         "--test",
         "-o",
