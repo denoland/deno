@@ -19,4 +19,10 @@ for fn in ["BUILD.gn", ".gn"] + glob("build_extra/**/*.gn*"):
 run(["yapf", "-i"] + glob("tools/*.py"))
 run(["node", prettier, "--write"] + glob("js/*.js") + glob("js/*.ts") +
     ["tsconfig.json"] + ["tslint.json"])
-run(["rustfmt", "-f", "--write-mode", "overwrite"] + glob("src/*.rs"))
+
+# Set RUSTFMT_FLAGS for extra flags.
+rustfmt_extra_args = []
+if 'RUSTFMT_FLAGS' in os.environ:
+    rustfmt_extra_args += os.environ['RUSTFMT_FLAGS'].split()
+run(["rustfmt", "--write-mode", "overwrite"] + rustfmt_extra_args +
+    glob("src/*.rs"))
