@@ -20,8 +20,7 @@ rust_executable("deno") {
   ]
 }
 
-rust_component("handlers") {
-  crate_type = "staticlib"
+rust_staticlib("handlers") {
   source_root = "src/handlers.rs"
   extern = [
     "$rust_build:libc",

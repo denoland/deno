@@ -9,15 +9,9 @@ import("rust.gni")
 # By compiling an empty file as crate-type=staticlib we get all the code
 # for the rust stdlib, which are not included in the object file outputs
 # of other libs.
-rust_component("stdlib") {
-  crate_type = "staticlib"
+# TODO(ry) This is not used and maybe should be removed along with empty.rs.
+rust_staticlib("stdlib") {
   source_root = "empty.rs"
-  if (current_os == "mac") {
-    libs = [ "resolv" ]
-  }
-  if (current_os == "win") {
-    libs = [ "userenv.lib" ]
-  }
 }
 
 crates = "//third_party/rust_crates"

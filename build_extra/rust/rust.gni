@@ -158,6 +158,26 @@ template("rust_component") {
   }
 }
 
+template("rust_staticlib") {
+  rust_component(target_name) {
+    crate_type = "staticlib"
+    forward_variables_from(invoker,
+                           [
+                             "crate_name",
+                             "extern",
+                             "cfg",
+                             "source_root",
+                             "testonly",
+                           ])
+    if (current_os == "mac") {
+      libs = [ "resolv" ]
+    }
+    if (current_os == "win") {
+      libs = [ "userenv.lib" ]
+    }
+  }
+}
+
 template("rust_executable") {
   bin_name = target_name + "_bin"
   bin_label = ":" + bin_name
