@@ -107,6 +107,12 @@ template("run_rustc") {
           "--extern",
           "$name=" + rebase_path(rlib, root_build_dir),
         ]
+
+        # This is needed for transitive dependencies.
+        args += [
+          "-L",
+          "dependency=" + rebase_path(dir, root_build_dir),
+        ]
       }
     }
   }
@@ -149,6 +155,26 @@ template("rust_component") {
     }
     libs += [ crate_obj ]
     deps += [ rustc_label ]
+  }
+}
+
+template("rust_staticlib") {
+  rust_component(target_name) {
+    crate_type = "staticlib"
+    forward_variables_from(invoker,
+                           [
+                             "crate_name",
+                             "extern",
+                             "cfg",
+                             "source_root",
+                             "testonly",
+                           ])
+    if (current_os == "mac") {
+      libs = [ "resolv" ]
+    }
+    if (current_os == "win") {
+      libs = [ "userenv.lib" ]
+    }
   }
 }
 

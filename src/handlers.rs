@@ -1,9 +1,11 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 extern crate libc;
+extern crate url;
 
 use libc::c_char;
 use std::ffi::CStr;
+use url::Url;
 
 fn string_from_ptr(ptr: *const c_char) -> String {
     let cstr = unsafe { CStr::from_ptr(ptr as *const i8) };
@@ -11,8 +13,9 @@ fn string_from_ptr(ptr: *const c_char) -> String {
 }
 
 #[test]
-fn test_example() {
-    assert_eq!(2 + 2, 4);
+fn test_url() {
+    let issue_list_url = Url::parse("https://github.com/rust-lang").unwrap();
+    assert!(issue_list_url.scheme() == "https");
 }
 
 #[no_mangle]
