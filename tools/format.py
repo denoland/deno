@@ -19,4 +19,4 @@ for fn in ["BUILD.gn", ".gn"] + glob("build_extra/**/*.gn*"):
 run(["yapf", "-i"] + glob("tools/*.py"))
 run(["node", prettier, "--write"] + glob("js/*.js") + glob("js/*.ts") +
     ["tsconfig.json"] + ["tslint.json"])
-run(["rustfmt", "-f", "--write-mode", "overwrite"] + glob("src/*.rs"))
+run(["rustfmt", "--write-mode", "overwrite"] + glob("src/*.rs"))
