@@ -15,9 +15,12 @@ config("deno_config") {
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = [ "$rust_build:libc" ]
-  deps = [
-    ":libdeno",
-  ]
+  deps = []
+  if (is_debug) {
+    deps += [ ":libdeno_nosnapshot" ]
+  } else {
+    deps += [ ":libdeno" ]
+  }
 }
 
 rust_staticlib("handlers") {
@@ -72,6 +75,17 @@ static_library("libdeno") {
   ]
   deps = [
     ":create_snapshot_deno",
+    ":deno_bindings",
+  ]
+  configs += [ ":deno_config" ]
+}
+
+source_set("libdeno_nosnapshot") {
+  sources = [
+    "src/from_filesystem.cc",
+  ]
+  deps = [
+    ":bundle",
     ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
