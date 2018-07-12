@@ -30,6 +30,8 @@ void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
 }
 
 Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
+  printf("Reading javascript runtime bundle from " BUNDLE_LOCATION "\n");
+
   std::string js_source;
   CHECK(deno::ReadFileToString(BUNDLE_LOCATION, &js_source));
 
