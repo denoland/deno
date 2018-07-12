@@ -27,7 +27,6 @@ Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-  params.external_references = external_references;
   v8::Isolate* isolate = v8::Isolate::New(params);
   AddIsolate(d, isolate);
 
