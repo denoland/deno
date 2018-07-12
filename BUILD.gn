@@ -59,7 +59,6 @@ executable("deno_cc") {
 # This target is for fast incremental development.
 # When modifying the javascript runtime, this target will not go through the
 # extra process of building a snapshot and instead load the bundle from disk.
-
 executable("deno_cc_nosnapshot") {
   sources = [
     "src/main.cc",
