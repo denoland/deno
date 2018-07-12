@@ -27,7 +27,9 @@ config("deno_config") {
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = [ "$rust_build:libc" ]
-  deps = [ ":libdeno" ]
+  deps = [
+    ":libdeno",
+  ]
 }
 
 # This target is for fast incremental development.
@@ -36,7 +38,9 @@ rust_executable("deno") {
 rust_executable("deno_nosnapshot") {
   source_root = "src/main.rs"
   extern = [ "$rust_build:libc" ]
-  deps = [ ":libdeno_nosnapshot" ]
+  deps = [
+    ":libdeno_nosnapshot",
+  ]
 }
 
 rust_staticlib("handlers") {
