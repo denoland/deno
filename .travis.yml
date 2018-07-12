@@ -42,10 +42,10 @@ install:
  - gn args $BUILD_PATH --list
  - ccache -s
  # Travis hangs without -j2 argument to ninja.
- - ninja -j2 -C $BUILD_PATH mock_runtime_test handlers_test deno_cc deno_cc_nosnapshot deno deno_nosnapshot
+ - ninja -j2 -C $BUILD_PATH test_cc handlers_test deno_cc deno_cc_nosnapshot deno deno_nosnapshot
 script:
  - ./tools/lint.py
- - $BUILD_PATH/mock_runtime_test
+ - $BUILD_PATH/test_cc
  - $BUILD_PATH/handlers_test
  - $BUILD_PATH/deno_cc foo bar
  - $BUILD_PATH/deno_cc_nosnapshot foo bar
