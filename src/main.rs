@@ -122,10 +122,9 @@ fn main() {
 
     let mut d = Deno::new();
 
-    d.execute("deno_main.js", "denoMain();").unwrap_or_else(
-        |err| {
+    d.execute("deno_main.js", "denoMain();")
+        .unwrap_or_else(|err| {
             println!("Error {}\n", err);
             std::process::exit(1);
-        },
-    );
+        });
 }

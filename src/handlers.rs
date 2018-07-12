@@ -29,9 +29,7 @@ pub extern "C" fn handle_code_fetch(
 
     println!(
         "handle_code_fetch. cmd_id = {} module_specifier = {} containing_file = {}",
-        cmd_id,
-        module_specifier,
-        containing_file
+        cmd_id, module_specifier, containing_file
     );
 
     unimplemented!();
