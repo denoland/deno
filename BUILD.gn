@@ -173,7 +173,7 @@ source_set("libdeno_nosnapshot") {
   configs += [ ":deno_config" ]
   bundle_outputs = get_target_outputs(":bundle")
   bundle_location = rebase_path(bundle_outputs[0])
-  defines = [ "BUNDLE_LOCATION=\"${bundle_location}\"" ]
+  defines = [ "BUNDLE_LOCATION=\"$bundle_location\"" ]
 }
 
 # Due to bugs in Parcel we must run TSC independently in order to catch errors.
