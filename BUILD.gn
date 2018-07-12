@@ -81,17 +81,6 @@ static_library("libdeno") {
   configs += [ ":deno_config" ]
 }
 
-source_set("libdeno_nosnapshot") {
-  sources = [
-    "src/from_filesystem.cc",
-  ]
-  deps = [
-    ":bundle",
-    ":deno_bindings",
-  ]
-  configs += [ ":deno_config" ]
-}
-
 v8_source_set("deno_bindings") {
   sources = [
     "src/binding.cc",
@@ -152,6 +141,20 @@ run_node("bundle") {
     rebase_path(out_dir, root_build_dir),
     rebase_path("js/main.ts", root_build_dir),
   ]
+}
+
+source_set("libdeno_nosnapshot") {
+  sources = [
+    "src/from_filesystem.cc",
+  ]
+  deps = [
+    ":bundle",
+    ":deno_bindings",
+  ]
+  configs += [ ":deno_config" ]
+  bt = get_target_outputs(":bundle")
+  bl = rebase_path(bt[0], root_build_dir)
+  defines = [ "BUNDLE_LOCATION=\"${bl}\"" ]
 }
 
 # Due to bugs in Parcel we must run TSC independently in order to catch errors.

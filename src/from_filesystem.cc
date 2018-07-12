@@ -30,10 +30,8 @@ void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
 }
 
 Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
-  // TODO(f-a-a) reference this dynamically somehow?
-  const char* js_filename = "./out/Debug/gen/bundle/main.js";
   std::string js_source;
-  CHECK(deno::ReadFileToString(js_filename, &js_source));
+  CHECK(deno::ReadFileToString(BUNDLE_LOCATION, &js_source));
 
   Deno* d = new Deno;
   d->currentArgs = nullptr;
@@ -55,7 +53,7 @@ Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
                          v8::MaybeLocal<v8::Value>(),
                          v8::DeserializeInternalFieldsCallback(
                              DeserializeInternalFields, nullptr));
-    InitializeContext(isolate, context, js_filename, js_source.c_str());
+    InitializeContext(isolate, context, BUNDLE_LOCATION, js_source.c_str());
     d->context.Reset(d->isolate, context);
   }
 
