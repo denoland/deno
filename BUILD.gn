@@ -18,6 +18,9 @@ rust_executable("deno") {
   deps = [ ":libdeno" ]
 }
 
+# This target is for fast incremental development.
+# When modifying the javascript runtime, this target will not go through the
+# extra process of building a snapshot and instead load the bundle from disk.
 rust_executable("deno_nosnapshot") {
   source_root = "src/main.rs"
   extern = [ "$rust_build:libc" ]
@@ -48,6 +51,23 @@ executable("deno_cc") {
     ":flatbufferjs",
     ":handlers",
     ":libdeno",
+    ":msg_cpp",
+  ]
+  configs += [ ":deno_config" ]
+}
+
+# This target is for fast incremental development.
+# When modifying the javascript runtime, this target will not go through the
+# extra process of building a snapshot and instead load the bundle from disk.
+
+executable("deno_cc_nosnapshot") {
+  sources = [
+    "src/main.cc",
+  ]
+  deps = [
+    ":flatbufferjs",
+    ":handlers",
+    ":libdeno_nosnapshot",
     ":msg_cpp",
   ]
   configs += [ ":deno_config" ]
