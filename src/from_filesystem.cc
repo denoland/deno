@@ -14,21 +14,6 @@
 
 namespace deno {
 
-std::vector<InternalFieldData*> deserialized_data;
-
-void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
-                               v8::StartupData payload, void* data) {
-  DCHECK_EQ(data, nullptr);
-  if (payload.raw_size == 0) {
-    holder->SetAlignedPointerInInternalField(index, nullptr);
-    return;
-  }
-  InternalFieldData* embedder_field = new InternalFieldData{0};
-  memcpy(embedder_field, payload.data, payload.raw_size);
-  holder->SetAlignedPointerInInternalField(index, embedder_field);
-  deserialized_data.push_back(embedder_field);
-}
-
 Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
   printf("Reading javascript runtime bundle from " BUNDLE_LOCATION "\n");
 
@@ -50,11 +35,7 @@ Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
   v8::Isolate::Scope isolate_scope(isolate);
   {
     v8::HandleScope handle_scope(isolate);
-    auto context =
-        v8::Context::New(isolate, nullptr, v8::MaybeLocal<v8::ObjectTemplate>(),
-                         v8::MaybeLocal<v8::Value>(),
-                         v8::DeserializeInternalFieldsCallback(
-                             DeserializeInternalFields, nullptr));
+    auto context = v8::Context::New(isolate);
     InitializeContext(isolate, context, BUNDLE_LOCATION, js_source.c_str());
     d->context.Reset(d->isolate, context);
   }
