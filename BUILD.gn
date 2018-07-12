@@ -4,6 +4,18 @@ import("//build_extra/flatbuffers/flatbuffer.gni")
 import("//build_extra/deno.gni")
 import("//build_extra/rust/rust.gni")
 
+group("all") {
+  testonly = true
+  deps = [
+    ":deno",
+    ":deno_cc",
+    ":deno_cc_nosnapshot",
+    ":deno_nosnapshot",
+    ":handlers_test",
+    ":test_cc",
+  ]
+}
+
 config("deno_config") {
   include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "third_party/v8:external_config" ]
