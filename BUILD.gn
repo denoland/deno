@@ -15,9 +15,16 @@ config("deno_config") {
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = [ "$rust_build:libc" ]
-  deps = [
-    ":libdeno",
-  ]
+  deps = [ ":libdeno" ]
+}
+
+# This target is for fast incremental development.
+# When modifying the javascript runtime, this target will not go through the
+# extra process of building a snapshot and instead load the bundle from disk.
+rust_executable("deno_nosnapshot") {
+  source_root = "src/main.rs"
+  extern = [ "$rust_build:libc" ]
+  deps = [ ":libdeno_nosnapshot" ]
 }
 
 rust_staticlib("handlers") {
@@ -49,6 +56,22 @@ executable("deno_cc") {
   configs += [ ":deno_config" ]
 }
 
+# This target is for fast incremental development.
+# When modifying the javascript runtime, this target will not go through the
+# extra process of building a snapshot and instead load the bundle from disk.
+executable("deno_cc_nosnapshot") {
+  sources = [
+    "src/main.cc",
+  ]
+  deps = [
+    ":flatbufferjs",
+    ":handlers",
+    ":libdeno_nosnapshot",
+    ":msg_cpp",
+  ]
+  configs += [ ":deno_config" ]
+}
+
 executable("mock_runtime_test") {
   testonly = true
   sources = [
@@ -58,7 +81,7 @@ executable("mock_runtime_test") {
   ]
   deps = [
     ":create_snapshot_mock_runtime",
-    ":deno_nosnapshot",
+    ":deno_bindings",
     "//testing/gtest:gtest",
   ]
   defines = [ "DENO_MOCK_RUNTIME" ]
@@ -72,12 +95,12 @@ static_library("libdeno") {
   ]
   deps = [
     ":create_snapshot_deno",
-    ":deno_nosnapshot",
+    ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
 }
 
-v8_source_set("deno_nosnapshot") {
+v8_source_set("deno_bindings") {
   sources = [
     "src/binding.cc",
     "src/deno.h",
@@ -96,7 +119,7 @@ executable("snapshot_creator") {
     "src/snapshot_creator.cc",
   ]
   deps = [
-    ":deno_nosnapshot",
+    ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
 }
@@ -137,6 +160,20 @@ run_node("bundle") {
     rebase_path(out_dir, root_build_dir),
     rebase_path("js/main.ts", root_build_dir),
   ]
+}
+
+source_set("libdeno_nosnapshot") {
+  sources = [
+    "src/from_filesystem.cc",
+  ]
+  deps = [
+    ":bundle",
+    ":deno_bindings",
+  ]
+  configs += [ ":deno_config" ]
+  bundle_outputs = get_target_outputs(":bundle")
+  bundle_location = rebase_path(bundle_outputs[0])
+  defines = [ "BUNDLE_LOCATION=\"$bundle_location\"" ]
 }
 
 # Due to bugs in Parcel we must run TSC independently in order to catch errors.
