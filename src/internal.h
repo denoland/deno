@@ -4,6 +4,7 @@
 
 #include <string>
 #include "deno.h"
+#include "mq.h"
 #include "third_party/v8/include/v8.h"
 
 extern "C" {
@@ -16,6 +17,10 @@ struct deno_s {
   v8::Persistent<v8::Context> context;
   deno_recv_cb cb;
   void* data;
+  deno::MessageQueue cmdQueue;      // JavaScript -> backend.
+  deno::MessageQueue resQueue;      // Backend -> JavaScript
+  deno::MessageQueue skipResQueue;  // Backend -> JavaScript.
+  bool using_threads;
 };
 // TODO(ry) Remove these when we call deno_reply_start from Rust.
 char** deno_argv();
@@ -35,6 +40,8 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
 static intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
                                          reinterpret_cast<intptr_t>(Recv),
                                          reinterpret_cast<intptr_t>(Send), 0};
+
+void Initialize(Deno* d, void* data, deno_recv_cb cb);
 
 Deno* NewFromSnapshot(void* data, deno_recv_cb cb);
 

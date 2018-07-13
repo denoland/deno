@@ -18,9 +18,8 @@ Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
   CHECK(deno::ReadFileToString(BUNDLE_LOCATION, &js_source));
 
   Deno* d = new Deno;
-  d->currentArgs = nullptr;
-  d->cb = cb;
-  d->data = data;
+  Initialize(d, data, cb);
+
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();

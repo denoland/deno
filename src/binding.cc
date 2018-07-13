@@ -15,6 +15,20 @@ namespace deno {
 
 static bool skip_onerror = false;
 
+void Initialize(Deno* d, void* data, deno_recv_cb cb) {
+  d->currentArgs = nullptr;
+  d->cb = cb;
+  d->data = data;
+
+  auto env_deno_threads = getenv("DENO_THREADS");
+  d->using_threads =
+      env_deno_threads != nullptr && strcmp(env_deno_threads, "1") == 0;
+
+  if (d->using_threads) {
+    printf("Deno: using threads\n");
+  }
+}
+
 Deno* FromIsolate(v8::Isolate* isolate) {
   return static_cast<Deno*>(isolate->GetData(0));
 }
@@ -336,6 +350,7 @@ void deno_init() {
 }
 
 void* deno_get_data(Deno* d) { return d->data; }
+bool deno_using_threads(Deno* d) { return d->using_threads; }
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 
@@ -367,6 +382,14 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
 }
 
 int deno_send(Deno* d, deno_buf buf) {
+  d->
+}
+
+int deno_send(Deno* d, deno_buf buf) {
+  if (d->using_threads) {
+    return deno_send_queue(d, buf);
+  }
+
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);
@@ -395,6 +418,10 @@ int deno_send(Deno* d, deno_buf buf) {
 }
 
 void deno_set_response(Deno* d, deno_buf buf) {
+  if (d->using_threads) {
+    return deno_send_queue(d, buf);
+  }
+
   auto ab = deno::ImportBuf(d->isolate, buf);
   d->currentArgs->GetReturnValue().Set(ab);
 }

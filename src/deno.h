@@ -33,6 +33,8 @@ void deno_delete(Deno* d);
 
 // Returns the void* data provided in deno_new.
 void* deno_get_data(Deno*);
+// Returns true if we're running the VM and backend in separate threads.
+bool deno_using_threads(Deno* d);
 
 // Returns false on error.
 // Get error text with deno_last_exception().
