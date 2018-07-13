@@ -1,15 +1,8 @@
 #!/usr/bin/env python
-# This script generates the third party dependencies of deno.
-# - Get Depot Tools and make sure it's in your path.
-#   http://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/depot_tools_tutorial.html#_setting_up
-# - You need yarn installed as well.
-#   https://yarnpkg.com/lang/en/docs/install/
-# Use //gclient_config.py to modify the git deps.
-# Use //js/package.json to modify the npm deps.
+# Only run this script if you are changing Deno's dependencies.
 
 import os
 from os.path import join
-import subprocess
 from util import run, remove_and_symlink
 
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -20,14 +13,23 @@ try:
 except:
     pass
 os.chdir(third_party_path)
-remove_and_symlink(join("..", "gclient_config.py"), ".gclient")
-remove_and_symlink(join("..", "package.json"), "package.json")
-remove_and_symlink(join("..", "yarn.lock"), "yarn.lock")
-remove_and_symlink(join("v8", "third_party", "googletest"), "googletest")
-remove_and_symlink(join("v8", "third_party", "jinja2"), "jinja2")
-remove_and_symlink(join("v8", "third_party", "llvm-build"), "llvm-build")
-remove_and_symlink(join("v8", "third_party", "markupsafe"), "markupsafe")
-run(["gclient", "sync", "--shallow", "--no-history"])
+
+# Run yarn to install JavaScript dependencies.
+remove_and_symlink("../package.json", "package.json")
+remove_and_symlink("../yarn.lock", "yarn.lock")
 run(["yarn"])
-run(["cargo", "fetch", "--manifest-path=../Cargo.toml"],
+# Run cargo to install Rust dependencies.
+run(["cargo", "fetch", "--manifest-path=" + root_path + "/Cargo.toml"],
     envs={'CARGO_HOME': third_party_path + '/rust_crates'})
+# Run gclient to install other dependencies.
+run(["gclient", "sync", "--reset", "--shallow", "--no-history", "--nohooks"],
+    envs={'GCLIENT_FILE': root_path + "/gclient_config.py"})
+# TODO(ry) Is it possible to remove these symlinks?
+remove_and_symlink("v8/third_party/googletest", "googletest")
+remove_and_symlink("v8/third_party/jinja2", "jinja2")
+remove_and_symlink("v8/third_party/llvm-build", "llvm-build")
+remove_and_symlink("v8/third_party/markupsafe", "markupsafe")
+
+# To update the deno_third_party git repo after running this, try the following:
+# cd third_party
+# find . -type f | grep -v "\.git" | xargs -I% git add -f --no-warn-embedded-repo "%"

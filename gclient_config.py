@@ -19,6 +19,11 @@ solutions = [{
     }
 }, {
     'url':
+    'https://chromium.googlesource.com/chromium/tools/depot_tools@40bacee96a94600ad2179d69a8025469d119960f',
+    'name':
+    'depot_tools'
+}, {
+    'url':
     'https://chromium.googlesource.com/chromium/src/third_party/zlib@39b4a6260702da4c089eca57136abf40a39667e9',
     'name':
     'zlib'
