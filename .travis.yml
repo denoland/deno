@@ -27,6 +27,8 @@ install:
  # internet connection.
  - curl -sSf https://sh.rustup.rs | sh -s -- -y
  - export PATH=$HOME/.cargo/bin:$PATH
+ # Install rustfmt
+ - rustup component add rustfmt-preview
  - rustc --version
  - ./tools/build_third_party.py
  # ccache needs the custom LLVM to be in PATH and other variables.
@@ -45,6 +47,9 @@ install:
  - ninja -j2 -C $BUILD_PATH mock_runtime_test handlers_test deno_cc deno_cc_nosnapshot deno deno_nosnapshot
 script:
  - ./tools/lint.py
+ - (./tools/format.py || echo "format failed, but we ignore error.")
+ # Fail if fmt changed something.
+ - git diff --exit-code &> /dev/null
  - $BUILD_PATH/mock_runtime_test
  - $BUILD_PATH/handlers_test
  - $BUILD_PATH/deno_cc foo bar
