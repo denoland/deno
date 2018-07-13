@@ -1,0 +1,5 @@
+# Auto-detect text files.
+* text=auto
+
+# Force Unix EOLs, to prevent Windows from breaking them.
+*.* text eol=lf
