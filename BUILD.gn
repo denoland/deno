@@ -4,6 +4,18 @@ import("//build_extra/flatbuffers/flatbuffer.gni")
 import("//build_extra/deno.gni")
 import("//build_extra/rust/rust.gni")
 
+group("all") {
+  testonly = true
+  deps = [
+    ":deno",
+    ":deno_cc",
+    ":deno_cc_nosnapshot",
+    ":deno_nosnapshot",
+    ":handlers_test",
+    ":test_cc",
+  ]
+}
+
 config("deno_config") {
   include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "third_party/v8:external_config" ]
@@ -15,7 +27,9 @@ config("deno_config") {
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = [ "$rust_build:libc" ]
-  deps = [ ":libdeno" ]
+  deps = [
+    ":libdeno",
+  ]
 }
 
 # This target is for fast incremental development.
@@ -24,7 +38,9 @@ rust_executable("deno") {
 rust_executable("deno_nosnapshot") {
   source_root = "src/main.rs"
   extern = [ "$rust_build:libc" ]
-  deps = [ ":libdeno_nosnapshot" ]
+  deps = [
+    ":libdeno_nosnapshot",
+  ]
 }
 
 rust_staticlib("handlers") {
@@ -72,13 +88,14 @@ executable("deno_cc_nosnapshot") {
   configs += [ ":deno_config" ]
 }
 
-executable("mock_runtime_test") {
+executable("test_cc") {
   testonly = true
   sources = [
     "src/file_util_test.cc",
     "src/flatbuffer_builder_test.cc",
     "src/from_snapshot.cc",
     "src/mock_runtime_test.cc",
+    "src/test.cc",
   ]
   deps = [
     ":create_snapshot_mock_runtime",

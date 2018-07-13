@@ -43,6 +43,9 @@ template("run_rustc") {
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
     ]
+    if (!is_win) {
+      args += [ "--color=always" ]
+    }
 
     if (defined(is_test) && is_test) {
       # Test outputs are executables which should be in root_out_dir.
