@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 
 //import { debug } from "./main";
-const debug = true;
+const debug = false;
 
 import { TypedArray } from "./types";
 

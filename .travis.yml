@@ -47,7 +47,7 @@ script:
  - ./tools/lint.py
  - $BUILD_PATH/test_cc
  - $BUILD_PATH/handlers_test
- - $BUILD_PATH/deno_cc foo bar
- - $BUILD_PATH/deno_cc_nosnapshot foo bar
- - $BUILD_PATH/deno meow
- - $BUILD_PATH/deno_nosnapshot meow
+ - $BUILD_PATH/deno ./testdata/001_hello.js
+ - $BUILD_PATH/deno ./testdata/002_hello.ts
+ - $BUILD_PATH/deno_nosnapshot ./testdata/001_hello.js
+ - $BUILD_PATH/deno_nosnapshot ./testdata/002_hello.ts

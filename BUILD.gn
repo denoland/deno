@@ -8,8 +8,6 @@ group("all") {
   testonly = true
   deps = [
     ":deno",
-    ":deno_cc",
-    ":deno_cc_nosnapshot",
     ":deno_nosnapshot",
     ":handlers_test",
     ":test_cc",
@@ -59,35 +57,6 @@ rust_test("handlers_test") {
     "$rust_build:url",
     "$rust_build:log",
   ]
-}
-
-executable("deno_cc") {
-  sources = [
-    "src/main.cc",
-  ]
-  deps = [
-    ":flatbufferjs",
-    ":handlers",
-    ":libdeno",
-    ":msg_cpp",
-  ]
-  configs += [ ":deno_config" ]
-}
-
-# This target is for fast incremental development.
-# When modifying the javascript runtime, this target will not go through the
-# extra process of building a snapshot and instead load the bundle from disk.
-executable("deno_cc_nosnapshot") {
-  sources = [
-    "src/main.cc",
-  ]
-  deps = [
-    ":flatbufferjs",
-    ":handlers",
-    ":libdeno_nosnapshot",
-    ":msg_cpp",
-  ]
-  configs += [ ":deno_config" ]
 }
 
 executable("test_cc") {
@@ -154,9 +123,12 @@ v8_source_set("deno_bindings") {
   sources = [
     "src/flatbuffer_builder.cc",
     "src/flatbuffer_builder.h",
+    "src/reply.cc",
+    "src/reply.h",
   ]
   deps = [
     ":deno_base",
+    ":handlers",
     ":msg_cpp",
   ]
   public_deps = [
@@ -184,6 +156,7 @@ flatbuffer("msg_cpp") {
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
+    "js/assets.ts",
     "js/console.ts",
     "js/deno.d.ts",
     "js/dispatch.ts",
