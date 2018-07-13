@@ -27,6 +27,8 @@ install:
  # internet connection.
  - curl -sSf https://sh.rustup.rs | sh -s -- -y
  - export PATH=$HOME/.cargo/bin:$PATH
+ # Install rustfmt
+ - rustup component add rustfmt-preview
  - rustc --version
  - ./tools/build_third_party.py
  # ccache needs the custom LLVM to be in PATH and other variables.
@@ -46,6 +48,7 @@ install:
 script:
  - ./tools/lint.py
  - ./tools/format.py
+ - ./tools/format.py || echo "format failed, but we ignore error."
  # Fail if fmt changed something.
  - git diff --exit-code &> /dev/null
  - $BUILD_PATH/mock_runtime_test
