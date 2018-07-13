@@ -1,0 +1,3 @@
+[submodule "third_party"]
+	path = third_party
+	url = https://github.com/ry/deno_third_party.git
