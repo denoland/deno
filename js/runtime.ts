@@ -11,6 +11,7 @@
 import * as ts from "typescript";
 import * as util from "./util";
 import { log } from "./util";
+import { assetSourceCode } from "./assets";
 import * as os from "./os";
 //import * as sourceMaps from "./v8_source_maps";
 import { window, globalEval } from "./globals";
@@ -22,9 +23,14 @@ const EOL = "\n";
 export type AmdFactory = (...args: any[]) => undefined | object;
 export type AmdDefine = (deps: string[], factory: AmdFactory) => void;
 
-/*
 // Uncaught exceptions are sent to window.onerror by the privlaged binding.
-window.onerror = (message, source, lineno, colno, error) => {
+window.onerror = (
+  message: string,
+  source: string,
+  lineno: number,
+  colno: number,
+  error: Error
+) => {
   // TODO Currently there is a bug in v8_source_maps.ts that causes a segfault
   // if it is used within window.onerror. To workaround we uninstall the
   // Error.prepareStackTrace handler. Users will get unmapped stack traces on
@@ -33,7 +39,6 @@ window.onerror = (message, source, lineno, colno, error) => {
   console.log(error.message, error.stack);
   os.exit(1);
 };
-*/
 
 /*
 export function setup(mainJs: string, mainMap: string): void {
@@ -147,11 +152,31 @@ export function resolveModule(
 ): null | FileModule {
   util.log("resolveModule", { moduleSpecifier, containingFile });
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
-  // We ask golang to sourceCodeFetch. It will load the sourceCode and if
-  // there is any outputCode cached, it will return that as well.
-  const fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
-  const { filename, sourceCode, outputCode } = fetchResponse;
-  if (sourceCode.length === 0) {
+  let filename: string, sourceCode: string, outputCode: string;
+  if (
+    moduleSpecifier.startsWith("/$asset$/") ||
+    containingFile.startsWith("/$asset$/")
+  ) {
+    // Assets are compiled into the runtime javascript bundle.
+    const assetName = moduleSpecifier.split("/").pop();
+    sourceCode = assetSourceCode[assetName];
+    filename = "/$asset$/" + assetName;
+  } else {
+    // We query Rust with a CodeFetch message. It will load the sourceCode, and
+    // if there is any outputCode cached, will return that as well.
+    let fetchResponse;
+    try {
+      fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
+    } catch (e) {
+      // TODO Only catch "no such file or directory" errors. Need error codes.
+      util.log("os.codeFetch error ignored", e.message);
+      return null;
+    }
+    filename = fetchResponse.filename;
+    sourceCode = fetchResponse.sourceCode;
+    outputCode = fetchResponse.outputCode;
+  }
+  if (sourceCode == null || sourceCode.length === 0) {
     return null;
   }
   util.log("resolveModule sourceCode length ", sourceCode.length);
@@ -293,7 +318,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   }
 
   getDefaultLibFileName(options: ts.CompilerOptions): string {
-    const fn = ts.getDefaultLibFileName(options);
+    const fn = "lib.d.ts"; // ts.getDefaultLibFileName(options);
     util.log("getDefaultLibFileName", fn);
     const m = resolveModule(fn, "/$asset$/");
     return m.fileName;
