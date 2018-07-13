@@ -20,7 +20,7 @@ struct DenoC {
     _unused: [u8; 0],
 }
 
-type DenoRecvCb = extern "C" fn(d: *const DenoC, buf: deno_buf);
+type DenoRecvCb = unsafe extern "C" fn(d: *const DenoC, buf: deno_buf);
 
 #[link(name = "deno", kind = "static")]
 extern "C" {
@@ -36,6 +36,8 @@ extern "C" {
     fn deno_set_response(d: *const DenoC, buf: deno_buf);
     fn deno_execute(d: *const DenoC, js_filename: *const c_char, js_source: *const c_char)
         -> c_int;
+
+    fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf);
 }
 
 // Pass the command line arguments to v8.
@@ -73,10 +75,6 @@ fn set_flags() -> Vec<String> {
         .collect::<Vec<_>>()
 }
 
-extern "C" fn on_message(_d: *const DenoC, _buf: deno_buf) {
-    println!("got message in rust");
-}
-
 type DenoException<'a> = &'a str;
 
 struct Deno {
@@ -85,7 +83,7 @@ struct Deno {
 
 impl Deno {
     fn new() -> Deno {
-        let ptr = unsafe { deno_new(ptr::null(), on_message) };
+        let ptr = unsafe { deno_new(ptr::null(), deno_handle_msg_from_js) };
         Deno { ptr: ptr }
     }
 
