@@ -176,7 +176,7 @@ run_node("bundle") {
   args = [
     "./node_modules/rollup/bin/rollup",
     "-c",
-    rebase_path("third_party/rollup.config.js", root_build_dir),
+    rebase_path("rollup.config.js", root_build_dir),
     "-i",
     rebase_path("js/main.ts", root_build_dir),
     "-o",

@@ -22,7 +22,6 @@ except:
 os.chdir(third_party_path)
 remove_and_symlink(join("..", "gclient_config.py"), ".gclient")
 remove_and_symlink(join("..", "package.json"), "package.json")
-remove_and_symlink(join("..", "rollup.config.js"), "rollup.config.js")
 remove_and_symlink(join("..", "yarn.lock"), "yarn.lock")
 remove_and_symlink(join("v8", "third_party", "googletest"), "googletest")
 remove_and_symlink(join("v8", "third_party", "jinja2"), "jinja2")
