@@ -1,0 +1,7 @@
+[package]
+name = "deno"
+version = "0.1.0"
+authors = "Ryan Dahl <ry@tinyclouds.org>"
+
+[dependencies]
+libc = "0.2.42"
