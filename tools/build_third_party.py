@@ -14,6 +14,7 @@ from util import run, remove_and_symlink
 
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 third_party_path = join(root_path, "third_party")
+tools_path = join(root_path, "tools")
 
 try:
     os.makedirs(third_party_path)
@@ -21,6 +22,7 @@ except:
     pass
 os.chdir(third_party_path)
 remove_and_symlink(join("..", "gclient_config.py"), ".gclient")
+remove_and_symlink(join("..", "Cargo.toml"), "Cargo.toml")
 remove_and_symlink(join("..", "package.json"), "package.json")
 remove_and_symlink(join("..", "yarn.lock"), "yarn.lock")
 remove_and_symlink(join("v8", "third_party", "googletest"), "googletest")
@@ -29,3 +31,4 @@ remove_and_symlink(join("v8", "third_party", "llvm-build"), "llvm-build")
 remove_and_symlink(join("v8", "third_party", "markupsafe"), "markupsafe")
 run(["gclient", "sync", "--shallow", "--no-history"])
 run(["yarn"])
+run(["python", join(tools_path, "fetch_cargo_crates.py")])
