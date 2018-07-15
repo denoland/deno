@@ -4,7 +4,7 @@
 
 ## A secure TypeScript runtime built on V8
 
-* Supports TypeScript 2.8 out of the box. Uses V8 6.8.275.3. That is, it's
+* Supports TypeScript 2.8 out of the box. Uses V8 6.9.297. That is, it's
   very modern JavaScript.
 
 * No `package.json`. No npm. Not explicitly compatible with Node.
