@@ -5,3 +5,7 @@ authors = "Ryan Dahl <ry@tinyclouds.org>"
 
 [dependencies]
 libc = "0.2.42"
+url = "1.7.1"
+matches = "0.1.6"
+unicode-bidi = "0.3.4"
+unicode-normalization = "0.1.7"
