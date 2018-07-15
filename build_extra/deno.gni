@@ -1,7 +1,7 @@
 template("run_node") {
   action(target_name) {
     forward_variables_from(invoker, "*")
-    script = "//js/run_node.py"
+    script = "//tools/run_node.py"
   }
 }
 

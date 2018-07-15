@@ -1,28 +1,61 @@
 import("//third_party/v8/gni/v8.gni")
 import("//third_party/v8/snapshot_toolchain.gni")
-import("//third_party/flatbuffers/flatbuffer.gni")
-import("//third_party/flatbuffers/ts_flatbuffer.gni")
-import("deno.gni")
-import("rust.gni")
+import("//build_extra/flatbuffers/flatbuffer.gni")
+import("//build_extra/deno.gni")
+import("//build_extra/rust/rust.gni")
+
+group("all") {
+  testonly = true
+  deps = [
+    ":deno",
+    ":deno_cc",
+    ":deno_cc_nosnapshot",
+    ":deno_nosnapshot",
+    ":handlers_test",
+    ":test_cc",
+  ]
+}
 
 config("deno_config") {
   include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "third_party/v8:external_config" ]
+  if (is_debug) {
+    defines = [ "DEBUG" ]
+  }
 }
 
 rust_executable("deno") {
   source_root = "src/main.rs"
-  rust_deps = [ ":libc" ]
+  extern = [ "$rust_build:libc" ]
   deps = [
     ":libdeno",
   ]
 }
 
-rust_library("libc") {
-  source_root = "third_party/rust_crates/libc/src/lib.rs"
-  cfg = [
-    "feature=\"default\"",
-    "feature=\"use_std\"",
+# This target is for fast incremental development.
+# When modifying the javascript runtime, this target will not go through the
+# extra process of building a snapshot and instead load the bundle from disk.
+rust_executable("deno_nosnapshot") {
+  source_root = "src/main.rs"
+  extern = [ "$rust_build:libc" ]
+  deps = [
+    ":libdeno_nosnapshot",
+  ]
+}
+
+rust_staticlib("handlers") {
+  source_root = "src/handlers.rs"
+  extern = [
+    "$rust_build:libc",
+    "$rust_build:url",
+  ]
+}
+
+rust_test("handlers_test") {
+  source_root = "src/handlers.rs"
+  extern = [
+    "$rust_build:libc",
+    "$rust_build:url",
   ]
 }
 
@@ -32,22 +65,41 @@ executable("deno_cc") {
   ]
   deps = [
     ":flatbufferjs",
+    ":handlers",
     ":libdeno",
     ":msg_cpp",
   ]
   configs += [ ":deno_config" ]
 }
 
-executable("mock_runtime_test") {
+# This target is for fast incremental development.
+# When modifying the javascript runtime, this target will not go through the
+# extra process of building a snapshot and instead load the bundle from disk.
+executable("deno_cc_nosnapshot") {
+  sources = [
+    "src/main.cc",
+  ]
+  deps = [
+    ":flatbufferjs",
+    ":handlers",
+    ":libdeno_nosnapshot",
+    ":msg_cpp",
+  ]
+  configs += [ ":deno_config" ]
+}
+
+executable("test_cc") {
   testonly = true
   sources = [
     "src/file_util_test.cc",
+    "src/flatbuffer_builder_test.cc",
     "src/from_snapshot.cc",
     "src/mock_runtime_test.cc",
+    "src/test.cc",
   ]
   deps = [
     ":create_snapshot_mock_runtime",
-    ":deno_nosnapshot",
+    ":deno_bindings",
     "//testing/gtest:gtest",
   ]
   defines = [ "DENO_MOCK_RUNTIME" ]
@@ -61,21 +113,26 @@ static_library("libdeno") {
   ]
   deps = [
     ":create_snapshot_deno",
-    ":deno_nosnapshot",
+    ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
 }
 
-v8_source_set("deno_nosnapshot") {
+v8_source_set("deno_bindings") {
   sources = [
     "src/binding.cc",
-    "src/internal.h",
+    "src/deno.h",
     "src/file_util.cc",
     "src/file_util.h",
-    "src/deno.h",
+    "src/flatbuffer_builder.cc",
+    "src/flatbuffer_builder.h",
+    "src/internal.h",
   ]
   deps = [
     "third_party/v8:v8_monolith",
+  ]
+  public_deps = [
+    "build_extra/flatbuffers:flatbuffers",
   ]
   configs = [ ":deno_config" ]
 }
@@ -85,7 +142,7 @@ executable("snapshot_creator") {
     "src/snapshot_creator.cc",
   ]
   deps = [
-    ":deno_nosnapshot",
+    ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
 }
@@ -99,8 +156,16 @@ flatbuffer("msg_cpp") {
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
+    "js/console.ts",
+    "js/deno.d.ts",
+    "js/dispatch.ts",
+    "js/globals.ts",
     "js/main.ts",
     "js/msg_generated.ts",
+    "js/os.ts",
+    "js/runtime.ts",
+    "js/types.ts",
+    "js/util.ts",
     "package.json",  # The `browserslist` field controls Babel behavior.
   ]
   outputs = [
@@ -118,6 +183,20 @@ run_node("bundle") {
     rebase_path(out_dir, root_build_dir),
     rebase_path("js/main.ts", root_build_dir),
   ]
+}
+
+source_set("libdeno_nosnapshot") {
+  sources = [
+    "src/from_filesystem.cc",
+  ]
+  deps = [
+    ":bundle",
+    ":deno_bindings",
+  ]
+  configs += [ ":deno_config" ]
+  bundle_outputs = get_target_outputs(":bundle")
+  bundle_location = rebase_path(bundle_outputs[0])
+  defines = [ "BUNDLE_LOCATION=\"$bundle_location\"" ]
 }
 
 # Due to bugs in Parcel we must run TSC independently in order to catch errors.
@@ -155,7 +234,7 @@ run_node("run_tsc") {
 # be removed at some point. If msg.fps is changed, commit changes to the
 # generated JS files. The stamp file is just to make gn work.
 action("flatbufferjs") {
-  script = "js/flatbufferjs_hack.py"
+  script = "//tools/flatbufferjs_hack.py"
   sources = [
     "src/msg.fbs",
   ]

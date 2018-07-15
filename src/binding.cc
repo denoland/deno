@@ -28,8 +28,8 @@ IN THE SOFTWARE.
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
 
-#include "internal.h"
 #include "deno.h"
+#include "internal.h"
 
 namespace deno {
 
@@ -47,20 +47,23 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
 void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception) {
   auto* isolate = context->GetIsolate();
+  Deno* d = static_cast<Deno*>(isolate->GetData(0));
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
   auto message = v8::Exception::CreateMessage(isolate, exception);
   auto onerrorStr = v8::String::NewFromUtf8(isolate, "onerror");
   auto onerror = context->Global()->Get(onerrorStr);
+  auto stack_trace = message->GetStackTrace();
+  auto line =
+      v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
+  auto column =
+      v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
 
   if (onerror->IsFunction()) {
+    // window.onerror is set so we try to handle the exception in javascript.
     auto func = v8::Local<v8::Function>::Cast(onerror);
     v8::Local<v8::Value> args[5];
-    auto line =
-        v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
-    auto column =
-        v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
     args[0] = exception->ToString();
     args[1] = message->GetScriptResourceName();
     args[2] = line;
@@ -68,10 +71,36 @@ void HandleException(v8::Local<v8::Context> context,
     args[4] = exception;
     func->Call(context->Global(), 5, args);
     /* message, source, lineno, colno, error */
-  } else {
+  } else if (!stack_trace.IsEmpty()) {
+    // No javascript onerror handler, but we do have a stack trace. Format it
+    // into a string and add to last_exception.
+    std::string msg;
     v8::String::Utf8Value exceptionStr(isolate, exception);
-    printf("Unhandled Exception %s\n", ToCString(exceptionStr));
-    message->PrintCurrentStackTrace(isolate, stdout);
+    msg += ToCString(exceptionStr);
+    msg += "\n";
+
+    for (int i = 0; i < stack_trace->GetFrameCount(); ++i) {
+      auto frame = stack_trace->GetFrame(i);
+      v8::String::Utf8Value script_name(isolate, frame->GetScriptName());
+      int l = frame->GetLineNumber();
+      int c = frame->GetColumn();
+      char buf[512];
+      snprintf(buf, sizeof(buf), "%s %d:%d\n", ToCString(script_name), l, c);
+      msg += buf;
+    }
+    d->last_exception = msg;
+  } else {
+    // No javascript onerror handler, no stack trace. Format the little info we
+    // have into a string and add to last_exception.
+    v8::String::Utf8Value exceptionStr(isolate, exception);
+    v8::String::Utf8Value script_name(isolate,
+                                      message->GetScriptResourceName());
+    v8::String::Utf8Value line_str(isolate, line);
+    v8::String::Utf8Value col_str(isolate, column);
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s\n%s %s:%s\n", ToCString(exceptionStr),
+             ToCString(script_name), ToCString(line_str), ToCString(col_str));
+    d->last_exception = std::string(buf);
   }
 }
 
@@ -110,6 +139,34 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   fflush(stdout);
 }
 
+static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {
+  auto ab = v8::ArrayBuffer::New(
+      isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
+      v8::ArrayBufferCreationMode::kInternalized);
+  auto view =
+      v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
+  return view;
+}
+
+static deno_buf ExportBuf(v8::Isolate* isolate,
+                          v8::Local<v8::ArrayBufferView> view) {
+  auto ab = view->Buffer();
+  auto contents = ab->Externalize();
+
+  deno_buf buf;
+  buf.alloc_ptr = reinterpret_cast<uint8_t*>(contents.Data());
+  buf.alloc_len = contents.ByteLength();
+  buf.data_ptr = buf.alloc_ptr + view->ByteOffset();
+  buf.data_len = view->ByteLength();
+
+  // Prevent JS from modifying buffer contents after exporting.
+  ab->Neuter();
+
+  return buf;
+}
+
+static void FreeBuf(deno_buf buf) { free(buf.alloc_ptr); }
+
 // Sets the recv callback.
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
@@ -138,27 +195,22 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Locker locker(d->isolate);
   v8::EscapableHandleScope handle_scope(isolate);
 
-  CHECK_EQ(args.Length(), 2);
-  v8::Local<v8::Value> channel_v = args[0];
-  CHECK(channel_v->IsString());
-  v8::String::Utf8Value channel_vstr(isolate, channel_v);
-  const char* channel = *channel_vstr;
-
-  v8::Local<v8::Value> ab_v = args[1];
-  CHECK(ab_v->IsArrayBuffer());
-
-  auto ab = v8::Local<v8::ArrayBuffer>::Cast(ab_v);
-  auto contents = ab->GetContents();
-
-  // data is only a valid pointer until the end of this call.
-  const char* data =
-      const_cast<const char*>(reinterpret_cast<char*>(contents.Data()));
-  deno_buf buf{data, contents.ByteLength()};
+  CHECK_EQ(args.Length(), 1);
+  v8::Local<v8::Value> ab_v = args[0];
+  CHECK(ab_v->IsArrayBufferView());
+  auto buf = ExportBuf(isolate, v8::Local<v8::ArrayBufferView>::Cast(ab_v));
 
   DCHECK_EQ(d->currentArgs, nullptr);
   d->currentArgs = &args;
 
-  d->cb(d, channel, buf);
+  d->cb(d, buf);
+
+  // Buffer is only valid until the end of the callback.
+  // TODO(piscisaureus):
+  //   It's possible that data in the buffer is needed after the callback
+  //   returns, e.g. when the handler offloads work to a thread pool, therefore
+  //   make the callback responsible for releasing the buffer.
+  FreeBuf(buf);
 
   d->currentArgs = nullptr;
 }
@@ -264,7 +316,7 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
 }
 
-int deno_send(Deno* d, const char* channel, deno_buf buf) {
+int deno_send(Deno* d, deno_buf buf) {
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);
@@ -280,14 +332,8 @@ int deno_send(Deno* d, const char* channel, deno_buf buf) {
     return 0;
   }
 
-  // TODO(ry) support zero-copy.
-  auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
-  memcpy(ab->GetContents().Data(), buf.data, buf.len);
-
-  v8::Local<v8::Value> args[2];
-  args[0] = deno::v8_str(channel);
-  args[1] = ab;
-
+  v8::Local<v8::Value> args[1];
+  args[0] = deno::ImportBuf(d->isolate, buf);
   recv->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {
@@ -299,9 +345,7 @@ int deno_send(Deno* d, const char* channel, deno_buf buf) {
 }
 
 void deno_set_response(Deno* d, deno_buf buf) {
-  // TODO(ry) Support zero-copy.
-  auto ab = v8::ArrayBuffer::New(d->isolate, buf.len);
-  memcpy(ab->GetContents().Data(), buf.data, buf.len);
+  auto ab = deno::ImportBuf(d->isolate, buf);
   d->currentArgs->GetReturnValue().Set(ab);
 }
 

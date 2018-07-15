@@ -8,6 +8,7 @@ import subprocess
 import sys
 import os
 import shutil
+import util
 
 # TODO(ry) Ideally flatc output files should be written into target_gen_dir, but
 # its difficult to get this working in a way that parcel can resolve their
@@ -22,12 +23,4 @@ stamp_file = sys.argv[3]
 
 shutil.copyfile(src, dst)
 
-
-def touch(fname):
-    if os.path.exists(fname):
-        os.utime(fname, None)
-    else:
-        open(fname, 'a').close()
-
-
-touch(stamp_file)
+util.touch(stamp_file)
