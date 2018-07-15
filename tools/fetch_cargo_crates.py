@@ -24,6 +24,9 @@ def run_command(args, env, cwd):
     return (job.returncode, stdout, stderr)
 
 def clone_crate(name, version):
+    rust_crates_path = join(third_party_path, "rust_crates")
+    if not os.path.exists(rust_crates_path):
+        os.makedirs(rust_crates_path)
     call_args = [
         "cargo", "clone",
         "%s:%s" % (name, version)
