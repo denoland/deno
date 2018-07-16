@@ -8,9 +8,6 @@ import { assert } from "./util";
 
 // import * as runtime from "./runtime";
 
-const globalEval = eval;
-const window = globalEval("this");
-
 let cmdIdCounter = 0;
 function assignCmdId(): number {
   // TODO(piscisaureus) Safely re-use so they don't overflow.
@@ -30,7 +27,8 @@ function startMsg(cmdId: number): Uint8Array {
   return builder.asUint8Array();
 }
 
-window["denoMain"] = () => {
+/* tslint:disable-next-line:no-default-export */
+export default function denoMain() {
   deno.print(`ts.version: ${ts.version}`);
 
   // First we send an empty "Start" message to let the privlaged side know we
@@ -68,4 +66,4 @@ window["denoMain"] = () => {
   const mod = runtime.resolveModule(inputFn, `${cwd}/`);
   mod.compileAndRun();
   */
-};
+}
