@@ -129,9 +129,9 @@ TEST(MockRuntimeTest, JSSendArrayBufferViewTypes) {
   Deno* d = deno_new(nullptr, [](auto _, auto buf) {
     count++;
     size_t data_offset = buf.data_ptr - buf.alloc_ptr;
-    EXPECT_EQ(data_offset, 2468);
-    EXPECT_EQ(buf.data_len, 1000);
-    EXPECT_EQ(buf.alloc_len, 4321);
+    EXPECT_EQ(data_offset, 2468u);
+    EXPECT_EQ(buf.data_len, 1000u);
+    EXPECT_EQ(buf.alloc_len, 4321u);
     EXPECT_EQ(buf.data_ptr[0], count);
   });
   EXPECT_TRUE(deno_execute(d, "a.js", "JSSendArrayBufferViewTypes()"));
@@ -143,7 +143,7 @@ TEST(MockRuntimeTest, JSSendNeutersBuffer) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto _, auto buf) {
     count++;
-    EXPECT_EQ(buf.data_len, 1);
+    EXPECT_EQ(buf.data_len, 1u);
     EXPECT_EQ(buf.data_ptr[0], 42);
   });
   EXPECT_TRUE(deno_execute(d, "a.js", "JSSendNeutersBuffer()"));
