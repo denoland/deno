@@ -7,6 +7,7 @@ export default {
     format: 'es',
     sourcemap: true
   },
+
   plugins: [
     nodeResolve({
       jsnext: true,
@@ -15,11 +16,16 @@ export default {
 
     commonjs({
       namedExports: {
-        'third_party/node_modules/typescript/lib/typescript.js': [ 'version' ]
+        '../../third_party/node_modules/typescript/lib/typescript.js': [ 'version' ]
       }
     }),
 
-    typescript()
+    typescript({
+      cacheRoot: `${require('os').tmpdir()}/.rpt2_cache`,
+      tsconfig: '../../tsconfig.json',
+      include: [ '*.ts+(|x)', '../../**/*.ts+(|x)' ],
+      exclude: [ '*.d.ts', '../../**/*.d.ts' ]
+    })
   ],
   external: [
     'fs',
