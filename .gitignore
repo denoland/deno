@@ -7,6 +7,3 @@ node_modules
 
 # third party deps
 /third_party/
-
-# Rollup TypeScript cache
-/.rpt2_cache/

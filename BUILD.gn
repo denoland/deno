@@ -165,7 +165,10 @@ run_node("bundle") {
     "js/os.ts",
     "js/runtime.ts",
     "js/types.ts",
-    "js/util.ts"
+    "js/util.ts",
+    "package.json",
+    "rollup.config.js",
+    "tsconfig.json"
   ]
   outputs = [
     out_dir + "main.js",

@@ -4,7 +4,8 @@ import commonjs from "rollup-plugin-commonjs";
 import nodeResolve from "rollup-plugin-node-resolve";
 import typescript from "rollup-plugin-typescript2";
 
-const mockPath = path.join(path.resolve("../../js/"), "mock_builtin");
+const mockPath = path.join(__dirname, "js", "mock_builtin");
+const tsconfig = path.join(__dirname, "tsconfig.json");
 
 export default {
   output: {
@@ -35,18 +36,15 @@ export default {
     }),
 
     typescript({
-      // Move the cache to the OS"s temporary directory
-      cacheRoot: `${require("os").tmpdir()}/.rpt2_cache`,
-
-      // The build script is invoked from `out/Target` and so config is located from the CWD
-      tsconfig: "../../tsconfig.json",
+      // The build script is invoked from `out/Target` and so config is located alongside this file
+      tsconfig,
 
       // By default, the include path only includes the cwd and below, need to include the root of the project
       // to be passed to this plugin.  This is different front tsconfig.json include
-      include: [ "*.ts+(|x)", "../../**/*.ts+(|x)" ],
+      include: [ "*.ts", `${__dirname}/**/*.ts` ],
 
       // d.ts files are not bundled and by default like include, it only includes the cwd and below
-      exclude: [ "*.d.ts", "../../**/*.d.ts" ]
+      exclude: [ "*.d.ts", `${__dirname}/**/*.d.ts` ]
     })
   ]
 }
