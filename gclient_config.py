@@ -62,4 +62,11 @@ solutions = [{
     'https://github.com/behnam/rust-unicode-normalization.git@3898e77b110246cb7243bf29b896c58d8975304a',
     'name':
     'rust_crates/unicode-normalization'
+}, {
+    'url': 'https://github.com/rust-lang-nursery/log.git@0.4.2',
+    'name': 'rust_crates/log'
+}, {
+    # Needed for log.
+    'url': 'https://github.com/alexcrichton/cfg-if.git@0.1.4',
+    'name': 'rust_crates/cfg_if'
 }]

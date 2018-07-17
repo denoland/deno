@@ -55,3 +55,12 @@ rust_component("unicode_bidi") {
 rust_component("unicode_normalization") {
   source_root = "$crates/unicode-normalization/src/lib.rs"
 }
+
+rust_component("log") {
+  source_root = "$crates/log/src/lib.rs"
+  extern = [ ":cfg_if" ]
+}
+
+rust_component("cfg_if") {
+  source_root = "$crates/cfg_if/src/lib.rs"
+}
