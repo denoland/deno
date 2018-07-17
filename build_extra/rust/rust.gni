@@ -1,5 +1,3 @@
-stdlib_label = "//build_extra/rust:stdlib"
-
 declare_args() {
   # Absolute path of rust build files.
   rust_build = "//build_extra/rust/"
@@ -11,25 +9,51 @@ if (is_win) {
   executable_suffix = ""
 }
 
+# The official way of building Rust executables is to to let rustc do the
+# linking. However, we'd prefer to leave it in the hands of gn/ninja:
+#   * It allows us to use source sets.
+#   * It allows us to use the bundled lld that Chromium and V8 use.
+#   * We have more control over build flags.
+#   * To sidestep rustc weirdness (e.g. on Windows, it always links with the
+#     release C runtime library, even for debug builds).
+#
+# The `get_rust_ldflags` tool outputs the linker flags that are needed to
+# successfully link rustc object code into an executable.
+# We generate two sets of ldflags:
+#   `rust_bin_ldflags`:  Used for rust_executable targets.
+#   `rust_test_ldflags`: Used for rust_test targets; includes the test harness.
+#
+# The tool works by compiling and linking something with rustc, and analyzing
+# the arguments it passes to the system linker. That's what dummy.rs is for.
+dummy_rs_path = rebase_path("dummy.rs", root_build_dir)
+rust_bin_ldflags =
+    exec_script("get_rust_ldflags.py", [ dummy_rs_path ], "list lines")
+rust_test_ldflags = exec_script("get_rust_ldflags.py",
+                                [
+                                  dummy_rs_path,
+                                  "--test",
+                                ],
+                                "list lines")
+
 template("run_rustc") {
   action(target_name) {
     assert(defined(invoker.source_root), "Must specify source_root")
     forward_variables_from(invoker,
                            [
                              "cfg",
+                             "crate_name",
                              "crate_type",
                              "source_root",
                              "deps",
                              "extern",
                              "is_test",
+                             "testonly",
                            ])
-    if (defined(invoker.testonly)) {
-      testonly = invoker.testonly
-    }
-    if (defined(invoker.crate_name)) {
-      crate_name = invoker.crate_name
-    } else {
+    if (!defined(crate_name)) {
       crate_name = target_name
+    }
+    if (!defined(is_test)) {
+      is_test = false
     }
 
     sources = [
@@ -47,43 +71,29 @@ template("run_rustc") {
       args += [ "--color=always" ]
     }
 
-    if (defined(is_test) && is_test) {
-      # Test outputs are executables which should be in root_out_dir.
-      output_file = "$root_out_dir/$crate_name" + executable_suffix
-      args += [
-        "--test",
-        "-o",
-        rebase_path(output_file, root_build_dir),
-      ]
-      outputs += [ output_file ]
-    } else {
-      # Non-test targets are handled differently.
-
-      if (crate_type == "staticlib") {
-        output_file = "$target_out_dir/$crate_name.a"
-        emit_type = "link"
-      } else if (crate_type == "bin") {
-        output_file = "$target_out_dir/$crate_name.o"
-        emit_type = "obj"
-      } else if (crate_type == "rlib") {
-        output_file = "$target_out_dir/lib$crate_name.rlib"
-        emit_type = "link"
-      }
-      outputs += [ output_file ]
-      output_file_rel = rebase_path(output_file, root_build_dir)
-      args += [ "--emit=$emit_type=$output_file_rel" ]
-
-      # TODO(ry) For unknown reasons emitting a depfile on tests doesn't work.
-      depfile = "$target_out_dir/$crate_name.d"
-      args += [
-        "--emit=dep-info=" + rebase_path(depfile, root_build_dir),
-
-        # The following two args are used by run_rustc.py to fix
-        # the depfile on the fly. They are not passed thru to rustc.
-        "--depfile=" + rebase_path(depfile, root_build_dir),
-        "--output_file=" + output_file_rel,
-      ]
+    if (crate_type == "staticlib") {
+      output_file = "$target_out_dir/$crate_name.a"
+      emit_type = "link"
+    } else if (crate_type == "bin") {
+      output_file = "$target_out_dir/$crate_name.o"
+      emit_type = "obj"
+    } else if (crate_type == "rlib") {
+      output_file = "$target_out_dir/lib$crate_name.rlib"
+      emit_type = "link"
     }
+    outputs += [ output_file ]
+    output_file_rel = rebase_path(output_file, root_build_dir)
+    args += [ "--emit=$emit_type=$output_file_rel" ]
+
+    depfile = "$target_out_dir/$crate_name.d"
+    args += [
+      "--emit=dep-info=" + rebase_path(depfile, root_build_dir),
+
+      # The following two args are used by run_rustc.py to fix
+      # the depfile on the fly. They are not passed thru to rustc.
+      "--depfile=" + rebase_path(depfile, root_build_dir),
+      "--output_file=" + output_file_rel,
+    ]
 
     if (is_debug) {
       args += [ "-g" ]
@@ -91,6 +101,10 @@ template("run_rustc") {
 
     if (is_official_build) {
       args += [ "-O" ]
+    }
+
+    if (is_test) {
+      args += [ "--test" ]
     }
 
     if (defined(cfg)) {
@@ -139,6 +153,7 @@ template("rust_component") {
                              "extern",
                              "cfg",
                              "source_root",
+                             "is_test",
                              "testonly",
                            ])
     if (!defined(invoker.crate_type)) {
@@ -169,7 +184,6 @@ template("rust_component") {
 
 template("rust_staticlib") {
   rust_component(target_name) {
-    crate_type = "staticlib"
     forward_variables_from(invoker,
                            [
                              "crate_name",
@@ -178,12 +192,7 @@ template("rust_staticlib") {
                              "source_root",
                              "testonly",
                            ])
-    if (current_os == "mac") {
-      libs = [ "resolv" ]
-    }
-    if (current_os == "win") {
-      libs = [ "userenv.lib" ]
-    }
+    crate_type = "staticlib"
   }
 }
 
@@ -199,14 +208,17 @@ template("rust_executable") {
   executable(target_name) {
     forward_variables_from(invoker, "*")
 
+    if (defined(is_test) && is_test) {
+      ldflags = rust_test_ldflags
+    } else {
+      ldflags = rust_bin_ldflags
+    }
+
     if (!defined(deps)) {
       deps = []
     }
 
-    deps += [
-      bin_label,
-      stdlib_label,
-    ]
+    deps += [ bin_label ]
 
     if (defined(extern)) {
       deps += extern
@@ -215,16 +227,9 @@ template("rust_executable") {
 }
 
 template("rust_test") {
-  run_rustc(target_name) {
-    crate_name = target_name
-    crate_type = "bin"
-    testonly = true
+  rust_executable(target_name) {
+    forward_variables_from(invoker, "*")
     is_test = true
-    forward_variables_from(invoker,
-                           [
-                             "extern",
-                             "cfg",
-                             "source_root",
-                           ])
+    testonly = true
   }
 }

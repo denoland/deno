@@ -6,14 +6,6 @@ import("rust.gni")
 # Versioning for third party rust crates is controlled in //gclient_config.py
 # TODO(ry) Use Cargo for versioning?
 
-# By compiling an empty file as crate-type=staticlib we get all the code
-# for the rust stdlib, which are not included in the object file outputs
-# of other libs.
-# TODO(ry) This is not used and maybe should be removed along with empty.rs.
-rust_staticlib("stdlib") {
-  source_root = "empty.rs"
-}
-
 crates = "//third_party/rust_crates"
 
 rust_component("libc") {

@@ -20,6 +20,16 @@ config("deno_config") {
   if (is_debug) {
     defines = [ "DEBUG" ]
   }
+
+  # Targets built with the `rust_executable()` template automatically pick up
+  # these dependencies, but those built with `executable()` need them when they
+  # have Rust inputs. Currently, there's only one such target, `test_cc`.
+  if (is_mac) {
+    libs = [ "resolv" ]
+  }
+  if (is_win) {
+    libs = [ "userenv.lib" ]
+  }
 }
 
 rust_executable("deno") {
@@ -63,6 +73,21 @@ rust_test("handlers_test") {
     "$rust_build:libc",
     "$rust_build:url",
     "$rust_build:log",
+
+    # Indirect rust depdendencies also need to be listed here:
+    # * Linking to `:handlers` or `:libdeno` isn't possible, because they
+    #   already contain some symbols exported by `handlers.rs`. These duplicate
+    #   symbols trip up the linker.
+    # * The `rust_test` and `rust_executable` templates only produce an object
+    #   file, and then invoke an external linker. Transitive rust depencenies
+    #   are not resolved in either step.
+    "$rust_build:idna",
+    "$rust_build:percent_encoding",
+    "$rust_build:unicode_bidi",
+    "$rust_build:unicode_normalization",
+  ]
+  deps = [
+    ":deno_bindings",
   ]
 }
 
@@ -75,6 +100,7 @@ executable("test_cc") {
   deps = [
     ":deno_base_test",
     ":deno_bindings",
+    ":handlers",
     "//testing/gtest:gtest",
   ]
   configs += [ ":deno_config" ]
@@ -88,6 +114,7 @@ static_library("libdeno") {
   deps = [
     ":create_snapshot_deno",
     ":deno_bindings",
+    ":handlers",
   ]
   configs += [ ":deno_config" ]
 }
@@ -135,7 +162,6 @@ v8_source_set("deno_bindings") {
   ]
   deps = [
     ":deno_base",
-    ":handlers",
     ":msg_cpp",
   ]
   public_deps = [
@@ -202,6 +228,7 @@ source_set("libdeno_nosnapshot") {
   deps = [
     ":bundle",
     ":deno_bindings",
+    ":handlers",
   ]
   configs += [ ":deno_config" ]
   bundle_outputs = get_target_outputs(":bundle")
