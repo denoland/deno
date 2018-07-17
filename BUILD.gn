@@ -93,18 +93,14 @@ executable("deno_cc_nosnapshot") {
 executable("test_cc") {
   testonly = true
   sources = [
-    "src/file_util_test.cc",
     "src/flatbuffer_builder_test.cc",
-    "src/from_snapshot.cc",
-    "src/mock_runtime_test.cc",
     "src/test.cc",
   ]
   deps = [
-    ":create_snapshot_mock_runtime",
+    ":deno_base_test",
     ":deno_bindings",
     "//testing/gtest:gtest",
   ]
-  defines = [ "DENO_MOCK_RUNTIME" ]
   configs += [ ":deno_config" ]
 }
 
@@ -120,18 +116,48 @@ static_library("libdeno") {
   configs += [ ":deno_config" ]
 }
 
-v8_source_set("deno_bindings") {
+# Only functionality needed for mock_runtime_test and snapshot_creator
+# In particular no flatbuffers, no assets, no rust, no msg handlers.
+# Because snapshots are slow, it's important that snapshot_creator's
+# dependencies are minimal.
+v8_source_set("deno_base") {
   sources = [
     "src/binding.cc",
     "src/deno.h",
     "src/file_util.cc",
     "src/file_util.h",
-    "src/flatbuffer_builder.cc",
-    "src/flatbuffer_builder.h",
     "src/internal.h",
   ]
-  deps = [
+  public_deps = [
     "third_party/v8:v8_monolith",
+  ]
+  configs = [ ":deno_config" ]
+}
+
+v8_source_set("deno_base_test") {
+  testonly = true
+  sources = [
+    "src/file_util_test.cc",
+    "src/from_snapshot.cc",
+    "src/mock_runtime_test.cc",
+  ]
+  deps = [
+    ":create_snapshot_mock_runtime",
+    ":deno_base",
+    "//testing/gtest:gtest",
+  ]
+  defines = [ "DENO_MOCK_RUNTIME" ]
+  configs = [ ":deno_config" ]
+}
+
+v8_source_set("deno_bindings") {
+  sources = [
+    "src/flatbuffer_builder.cc",
+    "src/flatbuffer_builder.h",
+  ]
+  deps = [
+    ":deno_base",
+    ":msg_cpp",
   ]
   public_deps = [
     "build_extra/flatbuffers:flatbuffers",
@@ -144,7 +170,7 @@ executable("snapshot_creator") {
     "src/snapshot_creator.cc",
   ]
   deps = [
-    ":deno_bindings",
+    ":deno_base",
   ]
   configs += [ ":deno_config" ]
 }
@@ -172,6 +198,7 @@ run_node("bundle") {
   ]
   outputs = [
     out_dir + "main.js",
+    out_dir + "main.map",
   ]
   deps = [
     ":flatbufferjs",
