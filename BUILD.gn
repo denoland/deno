@@ -24,7 +24,10 @@ config("deno_config") {
 
 rust_executable("deno") {
   source_root = "src/main.rs"
-  extern = [ "$rust_build:libc" ]
+  extern = [
+    "$rust_build:libc",
+    "$rust_build:log",
+  ]
   deps = [
     ":libdeno",
   ]
@@ -35,7 +38,10 @@ rust_executable("deno") {
 # extra process of building a snapshot and instead load the bundle from disk.
 rust_executable("deno_nosnapshot") {
   source_root = "src/main.rs"
-  extern = [ "$rust_build:libc" ]
+  extern = [
+    "$rust_build:libc",
+    "$rust_build:log",
+  ]
   deps = [
     ":libdeno_nosnapshot",
   ]

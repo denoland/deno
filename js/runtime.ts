@@ -36,7 +36,7 @@ window.onerror = (
   // Error.prepareStackTrace handler. Users will get unmapped stack traces on
   // uncaught exceptions until this issue is fixed.
   //Error.prepareStackTrace = null;
-  console.log(error.message, error.stack);
+  console.log(error.stack);
   os.exit(1);
 };
 
