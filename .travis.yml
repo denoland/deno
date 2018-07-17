@@ -49,5 +49,5 @@ script:
  - $BUILD_PATH/handlers_test
  - $BUILD_PATH/deno ./testdata/001_hello.js
  - $BUILD_PATH/deno ./testdata/002_hello.ts
- - $BUILD_PATH/deno_nosnapshot ./testdata/001_hello.js
- - $BUILD_PATH/deno_nosnapshot ./testdata/002_hello.ts
+ - $BUILD_PATH/deno_ns ./testdata/001_hello.js
+ - $BUILD_PATH/deno_ns ./testdata/002_hello.ts

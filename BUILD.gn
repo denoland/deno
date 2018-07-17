@@ -8,7 +8,7 @@ group("all") {
   testonly = true
   deps = [
     ":deno",
-    ":deno_nosnapshot",
+    ":deno_ns",
     ":handlers_test",
     ":test_cc",
   ]
@@ -36,7 +36,8 @@ rust_executable("deno") {
 # This target is for fast incremental development.
 # When modifying the javascript runtime, this target will not go through the
 # extra process of building a snapshot and instead load the bundle from disk.
-rust_executable("deno_nosnapshot") {
+# ns = no snapshot
+rust_executable("deno_ns") {
   source_root = "src/main.rs"
   extern = [
     "$rust_build:libc",
