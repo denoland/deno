@@ -16,7 +16,7 @@ run(["clang-format", "-i", "-style", "Google"] + glob("src/*.cc") +
 for fn in ["BUILD.gn", ".gn"] + glob("build_extra/**/*.gn*"):
     run(["gn", "format", fn])
 # TODO(ry) Install yapf in third_party.
-run(["yapf", "-i"] + glob("tools/*.py"))
+run(["yapf", "-i"] + glob("tools/*.py") + glob("build_extra/**/*.py"))
 run(["node", prettier, "--write"] + glob("js/*.js") + glob("js/*.ts") +
     ["tsconfig.json"] + ["tslint.json"])
 
