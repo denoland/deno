@@ -48,6 +48,7 @@ rust_staticlib("handlers") {
   extern = [
     "$rust_build:libc",
     "$rust_build:url",
+    "$rust_build:log",
   ]
 }
 
@@ -56,6 +57,7 @@ rust_test("handlers_test") {
   extern = [
     "$rust_build:libc",
     "$rust_build:url",
+    "$rust_build:log",
   ]
 }
 
