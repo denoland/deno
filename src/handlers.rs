@@ -177,9 +177,6 @@ pub extern "C" fn handle_code_fetch(
     module_specifier_: *const c_char,
     containing_file_: *const c_char,
 ) {
-    // TODO(ry) Move this to main.
-    log::set_max_level(log::LevelFilter::Debug);
-
     let module_specifier = string_from_ptr(module_specifier_);
     let containing_file = string_from_ptr(containing_file_);
 

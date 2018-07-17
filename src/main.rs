@@ -1,4 +1,6 @@
 extern crate libc;
+#[macro_use]
+extern crate log;
 
 use libc::c_char;
 use libc::c_int;
@@ -107,6 +109,8 @@ impl Drop for Deno {
 }
 
 fn main() {
+    log::set_max_level(log::LevelFilter::Debug);
+
     unsafe { deno_init() };
 
     set_flags();
@@ -122,7 +126,7 @@ fn main() {
 
     d.execute("deno_main.js", "denoMain();")
         .unwrap_or_else(|err| {
-            println!("Error {}\n", err);
+            error!("{}", err);
             std::process::exit(1);
         });
 }
