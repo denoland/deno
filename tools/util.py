@@ -4,8 +4,9 @@ import os
 import subprocess
 
 
-def run(args):
-    print " ".join(args)
+def run(args, quiet=False):
+    if not quiet:
+        print " ".join(args)
     env = os.environ.copy()
     if os.name == "nt":
         # Run through shell to make .bat/.cmd files work.
