@@ -178,6 +178,7 @@ run_node("bundle") {
   args = [
     "./node_modules/parcel-bundler/bin/cli.js",
     "build",
+    "--log-level=1",  # Only disply errors.
     "--no-minify",
     "--out-dir",
     rebase_path(out_dir, root_build_dir),
