@@ -7,7 +7,6 @@ import typescript from "rollup-plugin-typescript2";
 const mockPath = path.join(__dirname, "js", "mock_builtin");
 const tsconfig = path.join(__dirname, "tsconfig.json");
 const typescriptPath = `${process.env.BASEPATH}/node_modules/typescript/lib/typescript.js`;
-console.log(typescriptPath);
 
 export default {
   output: {
