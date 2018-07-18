@@ -1,11 +1,11 @@
+ # Dummy package info required by `cargo fetch`
+ # Called from tools/build_third_party.py
+ # Should not be called with `cargo build`
 [package]
-name = "dummy"
+name = "deno"
 version = "0.0.0"
 
-[lib]
-path = "empty.rs"
-
 [dependencies]
-url = {git = "https://github.com/servo/rust-url.git", rev = "fbe5e50316105482dcd53d2dabb148c445a5f4cd"}
-libc = {git = "https://github.com/rust-lang/libc.git", rev = "8a85d662b90c14d458bc4ae9521a05564e20d7ae"}
-log = {git = "https://github.com/rust-lang-nursery/log.git", rev = "7a6028666b6e21e8cd39203e1f1114afc44333ef"}
+url = "1.7.1"
+libc = "0.2.42"
+log = "0.4.3"
