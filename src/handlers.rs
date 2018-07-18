@@ -6,7 +6,6 @@ extern crate log;
 extern crate url;
 
 use libc::c_char;
-use libc::uint32_t;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs::File;
@@ -14,26 +13,8 @@ use std::io::Read;
 use std::path::Path;
 use url::Url;
 
-// TODO(ry) Share this with the def in src/main.rs.
-#[repr(C)]
-pub struct DenoC {
-    _unused: [u8; 0],
-}
-
-// TODO(ry) Share this extern block with those in main.rs.
-// See src/reply.h
-extern "C" {
-    pub fn deno_reply_error(d: *const DenoC, cmd_id: uint32_t, msg: *const c_char);
-    pub fn deno_reply_null(d: *const DenoC, cmd_id: uint32_t);
-    pub fn deno_reply_code_fetch(
-        d: *const DenoC,
-        cmd_id: uint32_t,
-        module_name: *const c_char,
-        filename: *const c_char,
-        source_code: *const c_char,
-        output_code: *const c_char,
-    );
-}
+mod binding;
+use binding::{deno_reply_code_fetch, deno_reply_error, DenoC};
 
 // TODO(ry) SRC_DIR is just a placeholder for future caching functionality.
 static SRC_DIR: &str = "/Users/rld/.deno/src/";

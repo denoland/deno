@@ -2,45 +2,14 @@ extern crate libc;
 #[macro_use]
 extern crate log;
 
-use libc::c_char;
 use libc::c_int;
-use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ptr;
 
-#[repr(C)]
-struct deno_buf {
-    alloc_ptr: *mut u8,
-    alloc_len: usize,
-    data_ptr: *mut u8,
-    data_len: usize,
-}
-
-#[repr(C)]
-struct DenoC {
-    _unused: [u8; 0],
-}
-
-type DenoRecvCb = unsafe extern "C" fn(d: *const DenoC, buf: deno_buf);
-
-#[link(name = "deno", kind = "static")]
-extern "C" {
-    fn deno_init();
-    #[allow(dead_code)]
-    fn deno_v8_version() -> *const c_char;
-    fn deno_set_flags(argc: *mut c_int, argv: *mut *mut c_char);
-
-    fn deno_new(data: *const c_void, cb: DenoRecvCb) -> *const DenoC;
-    fn deno_delete(d: *const DenoC);
-    fn deno_last_exception(d: *const DenoC) -> *const c_char;
-    #[allow(dead_code)]
-    fn deno_set_response(d: *const DenoC, buf: deno_buf);
-    fn deno_execute(d: *const DenoC, js_filename: *const c_char, js_source: *const c_char)
-        -> c_int;
-
-    fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf);
-}
+mod binding;
+use binding::{deno_delete, deno_execute, deno_handle_msg_from_js, deno_init, deno_last_exception,
+              deno_new, deno_set_flags, DenoC};
 
 // Pass the command line arguments to v8.
 // Returns a vector of command line arguments that v8 did not understand.
