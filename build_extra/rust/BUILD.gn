@@ -34,6 +34,11 @@ rust_component("url") {
 
 rust_component("percent_encoding") {
   source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/percent-encoding-1.0.1/lib.rs"
+  args = [
+    # suppress some warnings
+    "-Aunused-imports",
+    "-Adeprecated",
+  ]
 }
 
 rust_component("matches") {
