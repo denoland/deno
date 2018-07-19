@@ -246,29 +246,37 @@ fetch(input?: Request | string, init?: RequestInit): Promise<Response>;
 
 #### I/O
 
-There will be two API layers for I/O:
-1. A low-level abstraction. For sockets this will mean non-blocking read/writes
-   operating on FDs.
+Deno aims to provide fast, zero-copy I/O for sockets and files. Plus easy
+interfaces for managing streams of data.
+
+##### Low-level Non-blocking I/O
+
+A low-level abstraction. For sockets this will mean non-blocking read/writes
+operating on FDs.
+
 ```ts
 // The bytes read or written (n) during an I/O call and a boolean indicating
 // EOF.
-interface ReadWriteResult {
+interface ReadResult {
   n: number;
   eof: boolean;
 }
 
 // Low-level non-blocking, non-async read.
-function read(fd: number, p: Uint8Array, nbytes: number): ReadWriteResult;
+function read(fd: number, p: Uint8Array, nbytes: number): ReadResult;
 
 // Low-level non-blocking, non-async write.
-function write(fd: number, p: Uint8Array, nbytes: number): ReadWriteResult;
+function write(fd: number, p: Uint8Array, nbytes: number): number;
 
 // Low-level close.
 function close(fd: number): void;
 ```
 
-2. A high-level API that will closely follow Go's I/O interfaces. The tentative
-intrefaces are outlined below:
+##### High-level Go-inspired I/O interfaces
+
+Deno will not use Node's stream API. Instead The high-level API that will
+closely follow Go's I/O interfaces.
+
 ```ts
 
 // Reader is the interface that wraps the basic Read method.
@@ -297,7 +305,7 @@ interface Reader {
   // does not indicate EOF.
   //
   // Implementations must not retain p.
-  async read(p: Uint8Array): Promise<ReadWriteResult>;
+  async read(p: Uint8Array): Promise<ReadResult>;
 }
 
 // Writer is the interface that wraps the basic Write method.
@@ -310,7 +318,7 @@ interface Writer {
   // slice data, even temporarily.
   //
   // Implementations must not retain p.
-  async write(p: Uint8Array): Promise<ReadWriteResult>;
+  async write(p: Uint8Array): Promise<number>;
 }
 
 // https://golang.org/pkg/io/#Closer
