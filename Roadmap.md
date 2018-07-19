@@ -279,7 +279,7 @@ interface Reader {
   // does not indicate EOF.
   //
   // Implementations must not retain p.
-  async read(p: Uint8Array): [number, IOError];
+  async read(p: Uint8Array): Promise<[number, IOError]>;
 }
 
 // Writer is the interface that wraps the basic Write method.
@@ -292,7 +292,7 @@ interface Writer {
   // slice data, even temporarily.
   //
   // Implementations must not retain p.
-  async write(p: Uint8Array): [number, IOError];
+  async write(p: Uint8Array): Promise<[number, IOError]>;
 }
 
 // https://golang.org/pkg/io/#Closer
@@ -313,7 +313,7 @@ interface Seeker {
   // Seeking to an offset before the start of the file is an error. Seeking to
   // any positive offset is legal, but the behavior of subsequent I/O operations
   // on the underlying object is implementation-dependent.
-  async seek(offset: number, whence: number): [number, IOError];
+  async seek(offset: number, whence: number): Promise<[number, IOError]>;
 }
 
 // https://golang.org/pkg/io/#ReadCloser
@@ -346,7 +346,7 @@ functions that will be easy to port. Some example utilites:
 // be reported.
 //
 // https://golang.org/pkg/io/#Copy
-async copy(dst: Writer, src: Reader): [written: number, err: IOError];
+async function copy(dst: Writer, src: Reader): Promise<[written: number, err: IOError]>;
 
 // MultiWriter creates a writer that duplicates its writes to all the provided
 // writers, similar to the Unix tee(1) command.
