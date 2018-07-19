@@ -1,4 +1,5 @@
 import path from "path";
+import { createFilter } from 'rollup-pluginutils';
 import alias from "rollup-plugin-alias";
 import { plugin as analyze } from "rollup-plugin-analyzer";
 import commonjs from "rollup-plugin-commonjs";
@@ -9,6 +10,33 @@ import typescript from "rollup-plugin-typescript2";
 const mockPath = path.join(__dirname, "js", "mock_builtin");
 const tsconfig = path.join(__dirname, "tsconfig.json");
 const typescriptPath = `${process.env.BASEPATH}/node_modules/typescript/lib/typescript.js`;
+
+function strings({include, exclude} = {}) {
+  if (!include) {
+    throw new Error('include option must be passed');
+  }
+
+  const filter = createFilter(include, exclude);
+
+  return {
+    name: 'strings',
+
+    resolveId(importee) {
+      if (importee.endsWith('!string')) {
+        return path.resolve(path.join(process.env.BASEPATH, '..', importee.slice(0, importee.lastIndexOf('!string'))));
+      }
+		},
+
+    transform(code, id) {
+      if (filter(id)) {
+				return {
+					code: `export default ${JSON.stringify(code)};`,
+					map: { mappings: '' }
+				};
+			}
+    }
+  }
+}
 
 export default {
   output: {
@@ -34,7 +62,14 @@ export default {
 
     commonjs({
       namedExports: {
-        [typescriptPath]: [ "version" ]
+        [typescriptPath]: [
+          "createLanguageService",
+          "formatDiagnosticsWithColorAndContext",
+          "ModuleKind",
+          "ScriptSnapshot",
+          "ScriptTarget",
+          "version"
+        ]
       }
     }),
 
@@ -50,6 +85,10 @@ export default {
       exclude: [ "*.d.ts", `${__dirname}/**/*.d.ts` ]
     }),
 
+    strings({
+      include: [ "*.d.ts", `${__dirname}/**/*.d.ts` ]
+    }),
+
     // Provide some concise information about the bundle
     analyze({
       skipFormatted: true,
@@ -60,7 +99,7 @@ export default {
         console.log(`Module count: ${moduleCount}`);
       }
     }),
-
+  
     // source-map-support, which is required by TypeScript to support source maps, requires Node.js Buffer
     // implementation.  This needs to come at the end of the plugins because of the impact it has on
     // the existing runtime environment, which breaks other plugins and features of the bundler.
