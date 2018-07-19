@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "module": "es2015",
+    "module": "esnext",
     "noImplicitAny": true,
     "sourceMap": true,
     "removeComments": true,

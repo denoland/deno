@@ -2,6 +2,7 @@ import path from "path";
 import alias from "rollup-plugin-alias";
 import { plugin as analyze } from "rollup-plugin-analyzer";
 import commonjs from "rollup-plugin-commonjs";
+import globals from "rollup-plugin-node-globals";
 import nodeResolve from "rollup-plugin-node-resolve";
 import typescript from "rollup-plugin-typescript2";
 
@@ -49,6 +50,7 @@ export default {
       exclude: [ "*.d.ts", `${__dirname}/**/*.d.ts` ]
     }),
 
+    // Provide some concise information about the bundle
     analyze({
       skipFormatted: true,
       onAnalysis({bundleSize, bundleOrigSize, bundleReduction, moduleCount}) {
@@ -57,6 +59,11 @@ export default {
         console.log(`Reduction: ${bundleReduction}%`);
         console.log(`Module count: ${moduleCount}`);
       }
-    })
+    }),
+
+    // source-map-support, which is required by TypeScript to support source maps, requires Node.js Buffer
+    // implementation.  This needs to come at the end of the plugins because of the impact it has on
+    // the existing runtime environment, which breaks other plugins and features of the bundler.
+    globals()
   ]
 }
