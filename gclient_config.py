@@ -34,39 +34,4 @@ solutions = [{
     'https://github.com/rw/flatbuffers.git@2018-02--rust',
     'name':
     'flatbuffers'
-}, {
-    'url':
-    'https://github.com/rust-lang/libc.git@8a85d662b90c14d458bc4ae9521a05564e20d7ae',
-    'name':
-    'rust_crates/libc'
-}, {
-    'url':
-    'https://github.com/servo/rust-url.git@fbe5e50316105482dcd53d2dabb148c445a5f4cd',
-    'name':
-    'rust_crates/url'
-}, {
-    # Needed for url.
-    'url':
-    'https://github.com/SimonSapin/rust-std-candidates.git@88a017b79ea146d6fde389c96982fc7518ba98bf',
-    'name':
-    'rust_crates/rust-std-candidates'
-}, {
-    # Needed for url.
-    'url':
-    'https://github.com/servo/unicode-bidi.git@32c81729db0ac90289ebeca9e0d4886f264e724d',
-    'name':
-    'rust_crates/unicode-bidi'
-}, {
-    # Needed for url.
-    'url':
-    'https://github.com/behnam/rust-unicode-normalization.git@3898e77b110246cb7243bf29b896c58d8975304a',
-    'name':
-    'rust_crates/unicode-normalization'
-}, {
-    'url': 'https://github.com/rust-lang-nursery/log.git@0.4.2',
-    'name': 'rust_crates/log'
-}, {
-    # Needed for log.
-    'url': 'https://github.com/alexcrichton/cfg-if.git@0.1.4',
-    'name': 'rust_crates/cfg_if'
 }]
