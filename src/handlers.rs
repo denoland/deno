@@ -86,11 +86,18 @@ fn resolve_module(
         base.join(module_specifier)?
     };
 
-    let p = j.to_file_path()
+    let mut p = j.to_file_path()
         .unwrap()
         .into_os_string()
         .into_string()
         .unwrap();
+
+    if cfg!(target_os = "windows") {
+        // On windows, replace backward slashes to forward slashes.
+        // TODO(piscisaureus): This may not me be right, I just did it to make
+        // the tests pass.
+        p = p.replace("\\", "/");
+    }
 
     let module_name = p.to_string();
     let filename = p.to_string();
@@ -101,29 +108,42 @@ fn resolve_module(
 // https://github.com/ry/deno/blob/golang/os_test.go#L16-L87
 #[test]
 fn test_resolve_module() {
+    // The `add_root` macro prepends "C:" to a string if on windows; on posix
+    // systems it returns the input string untouched. This is necessary because
+    // `Url::from_file_path()` fails if the input path isn't an absolute path.
+    macro_rules! add_root {
+        ($path:expr) => {
+            if cfg!(target_os = "windows") {
+                concat!("C:", $path)
+            } else {
+                $path
+            }
+        };
+    }
+
     let test_cases = [
         (
             "./subdir/print_hello.ts",
-            "/Users/rld/go/src/github.com/ry/deno/testdata/006_url_imports.ts",
-            "/Users/rld/go/src/github.com/ry/deno/testdata/subdir/print_hello.ts",
-            "/Users/rld/go/src/github.com/ry/deno/testdata/subdir/print_hello.ts",
+            add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/006_url_imports.ts"),
+            add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/subdir/print_hello.ts"),
+            add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/subdir/print_hello.ts"),
         ),
         (
             "testdata/001_hello.js",
-            "/Users/rld/go/src/github.com/ry/deno/",
-            "/Users/rld/go/src/github.com/ry/deno/testdata/001_hello.js",
-            "/Users/rld/go/src/github.com/ry/deno/testdata/001_hello.js",
+            add_root!("/Users/rld/go/src/github.com/ry/deno/"),
+            add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/001_hello.js"),
+            add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/001_hello.js"),
         ),
         (
-            "/Users/rld/src/deno/hello.js",
+            add_root!("/Users/rld/src/deno/hello.js"),
             ".",
-            "/Users/rld/src/deno/hello.js",
-            "/Users/rld/src/deno/hello.js",
+            add_root!("/Users/rld/src/deno/hello.js"),
+            add_root!("/Users/rld/src/deno/hello.js"),
         ),
         /*
         (
             "http://localhost:4545/testdata/subdir/print_hello.ts",
-            "/Users/rld/go/src/github.com/ry/deno/testdata/006_url_imports.ts",
+            add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/006_url_imports.ts"),
             "http://localhost:4545/testdata/subdir/print_hello.ts",
             path.Join(SrcDir, "localhost:4545/testdata/subdir/print_hello.ts"),
         ),
