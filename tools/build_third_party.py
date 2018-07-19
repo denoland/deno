@@ -29,3 +29,5 @@ remove_and_symlink(join("v8", "third_party", "llvm-build"), "llvm-build")
 remove_and_symlink(join("v8", "third_party", "markupsafe"), "markupsafe")
 run(["gclient", "sync", "--shallow", "--no-history"])
 run(["yarn"])
+run(["cargo", "fetch", "--manifest-path=../Cargo.toml"],
+    envs={'CARGO_HOME': third_party_path + '/rust_crates'})
