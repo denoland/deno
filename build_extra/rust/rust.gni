@@ -42,11 +42,11 @@ template("run_rustc") {
       rebase_path(source_root, root_build_dir),
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
+
+      # TODO: apply this flag only when treat_warnings_as_errors is not false
+      "-Dwarnings",
     ]
 
-    if (defined(treat_warnings_as_errors) && treat_warnings_as_errors) {
-      args += [ "-Dwarnings" ]
-    }
     if (!is_win) {
       args += [ "--color=always" ]
     }

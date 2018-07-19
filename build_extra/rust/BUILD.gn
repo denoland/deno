@@ -37,6 +37,7 @@ rust_component("percent_encoding") {
   args = [
     # TODO: Suppress some warnings at this moment
     # This should be removed when it's fixed in servo/rust-url repository
+    # https://github.com/servo/rust-url/issues/455
     "-Aunused-imports",
     "-Adeprecated",
   ]
