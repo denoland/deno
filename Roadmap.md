@@ -253,9 +253,9 @@ on FDs. (Yet unspecified - but probably very similar to the unix syscalls.)
 2. A high-level API that will closely follow Go's I/O interfaces. The tentative
 intrefaces are outlined below:
 ```ts
-// The bytes written or read (n) during an I/O call and a boolean indicating
+// The bytes read or written (n) during an I/O call and a boolean indicating
 // EOF.
-interface IOResult {
+interface ReadWriteResult {
   n: number;
   eof: boolean;
 }
@@ -286,7 +286,7 @@ interface Reader {
   // does not indicate EOF.
   //
   // Implementations must not retain p.
-  async read(p: Uint8Array): Promise<IOResult>;
+  async read(p: Uint8Array): Promise<ReadWriteResult>;
 }
 
 // Writer is the interface that wraps the basic Write method.
@@ -299,7 +299,7 @@ interface Writer {
   // slice data, even temporarily.
   //
   // Implementations must not retain p.
-  async write(p: Uint8Array): Promise<IOResult>;
+  async write(p: Uint8Array): Promise<ReadWriteResult>;
 }
 
 // https://golang.org/pkg/io/#Closer
@@ -320,7 +320,7 @@ interface Seeker {
   // Seeking to an offset before the start of the file is an error. Seeking to
   // any positive offset is legal, but the behavior of subsequent I/O operations
   // on the underlying object is implementation-dependent.
-  async seek(offset: number, whence: number): Promise<IOResult>;
+  async seek(offset: number, whence: number): Promise<void>;
 }
 
 // https://golang.org/pkg/io/#ReadCloser
