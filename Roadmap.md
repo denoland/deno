@@ -253,6 +253,11 @@ on FDs. (Yet unspecified - but probably very similar to the unix syscalls.)
 2. A high-level API that will closely follow Go's I/O interfaces. The tentative
 intrefaces are outlined below:
 ```ts
+interface IOResult {
+  n: number;
+  eof: boolean;
+}
+
 // Reader is the interface that wraps the basic Read method.
 // https://golang.org/pkg/io/#Reader
 interface Reader {
@@ -279,7 +284,7 @@ interface Reader {
   // does not indicate EOF.
   //
   // Implementations must not retain p.
-  async read(p: Uint8Array): Promise<[number, IOError]>;
+  async read(p: Uint8Array): Promise<IOResult>;
 }
 
 // Writer is the interface that wraps the basic Write method.
@@ -292,14 +297,14 @@ interface Writer {
   // slice data, even temporarily.
   //
   // Implementations must not retain p.
-  async write(p: Uint8Array): Promise<[number, IOError]>;
+  async write(p: Uint8Array): Promise<IOResult>;
 }
 
 // https://golang.org/pkg/io/#Closer
 interface Closer {
   // The behavior of Close after the first call is undefined. Specific
   // implementations may document their own behavior.
-  close(): IOError;
+  close(): void;
 }
 
 // https://golang.org/pkg/io/#Seeker
@@ -313,7 +318,7 @@ interface Seeker {
   // Seeking to an offset before the start of the file is an error. Seeking to
   // any positive offset is legal, but the behavior of subsequent I/O operations
   // on the underlying object is implementation-dependent.
-  async seek(offset: number, whence: number): Promise<[number, IOError]>;
+  async seek(offset: number, whence: number): Promise<IOResult>;
 }
 
 // https://golang.org/pkg/io/#ReadCloser
@@ -346,7 +351,7 @@ functions that will be easy to port. Some example utilites:
 // be reported.
 //
 // https://golang.org/pkg/io/#Copy
-async function copy(dst: Writer, src: Reader): Promise<[number, IOError]>;
+async function copy(dst: Writer, src: Reader): Promise<IOResult>;
 
 // MultiWriter creates a writer that duplicates its writes to all the provided
 // writers, similar to the Unix tee(1) command.
