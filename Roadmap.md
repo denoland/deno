@@ -246,19 +246,19 @@ fetch(input?: Request | string, init?: RequestInit): Promise<Response>;
 
 #### I/O
 
-Deno aims to provide fast, zero-copy I/O for sockets and files. Plus easy
-interfaces for managing streams of data.
+I/O in Deno is split into two APIs. The low-level API is a syscall-like
+interface operating on file descriptors. The high-level API operates on
+Reader and Writer interfaces inspired by Golang.
 
 ##### Low-level Non-blocking I/O
 
-A low-level abstraction. For sockets this will mean non-blocking read/writes
-operating on FDs.
+Deno aims to provide fast, memory efficient, zero-copy I/O for sockets. Towards
+this the low-level I/O interface is inspired by non-blocking unix syscalls.
 
 ```ts
-// The bytes read or written (n) during an I/O call and a boolean indicating
-// EOF.
+// The bytes read during an I/O call and a boolean indicating EOF.
 interface ReadResult {
-  n: number;
+  nread: number;
   eof: boolean;
 }
 
