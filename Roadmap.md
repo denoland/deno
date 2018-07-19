@@ -247,11 +247,8 @@ fetch(input?: Request | string, init?: RequestInit): Promise<Response>;
 #### I/O
 
 There will be two API layers for I/O:
-1. A low-level abstraction with (for sockets) non-blocking read/writes operating
-on FDs. (Yet unspecified - but probably very similar to the unix syscalls.)
-
-2. A high-level API that will closely follow Go's I/O interfaces. The tentative
-intrefaces are outlined below:
+1. A low-level abstraction. For sockets this will mean non-blocking read/writes
+   operating on FDs.
 ```ts
 // The bytes read or written (n) during an I/O call and a boolean indicating
 // EOF.
@@ -259,6 +256,20 @@ interface ReadWriteResult {
   n: number;
   eof: boolean;
 }
+
+// Low-level non-blocking, non-async read.
+function read(fd: number, p: Uint8Array, nbytes: number): ReadWriteResult;
+
+// Low-level non-blocking, non-async write.
+function write(fd: number, p: Uint8Array, nbytes: number): ReadWriteResult;
+
+// Low-level close.
+function close(fd: number): void;
+```
+
+2. A high-level API that will closely follow Go's I/O interfaces. The tentative
+intrefaces are outlined below:
+```ts
 
 // Reader is the interface that wraps the basic Read method.
 // https://golang.org/pkg/io/#Reader
