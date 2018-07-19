@@ -253,9 +253,9 @@ on FDs. (Yet unspecified - but probably very similar to the unix syscalls.)
 2. A high-level API that will closely follow Go's I/O interfaces. The tentative
 intrefaces are outlined below:
 ```ts
+// Reader is the interface that wraps the basic Read method.
+// https://golang.org/pkg/io/#Reader
 interface Reader {
-  // Reader is the interface that wraps the basic Read method.
-  //
   // Read reads up to p.byteLength bytes into p. It returns the number of bytes
   // read (0 <= n <= p.byteLength) and any error encountered. Even if Read
   // returns n < p.byteLength, it may use all of p as scratch space during the
@@ -279,14 +279,12 @@ interface Reader {
   // does not indicate EOF.
   //
   // Implementations must not retain p.
-  //
-  // Copied from Go https://golang.org/pkg/io/#Reader
   async read(p: Uint8Array): [number, IOError];
 }
 
+// Writer is the interface that wraps the basic Write method.
+// https://golang.org/pkg/io/#Writer
 interface Writer {
-  // Writer is the interface that wraps the basic Write method.
-  //
   // Write writes p.byteLength bytes from p to the underlying data stream. It
   // returns the number of bytes written from p (0 <= n <= p.byteLength) and any
   // error encountered that caused the write to stop early. Write must return a
@@ -294,18 +292,17 @@ interface Writer {
   // slice data, even temporarily.
   //
   // Implementations must not retain p.
-  //
-  // Copied from Go https://golang.org/pkg/io/#Writer
   async write(p: Uint8Array): [number, IOError];
 }
 
+// https://golang.org/pkg/io/#Closer
 interface Closer {
   // The behavior of Close after the first call is undefined. Specific
   // implementations may document their own behavior.
-  // Copied from Go https://golang.org/pkg/io/#Closer
   close(): IOError;
 }
 
+// https://golang.org/pkg/io/#Seeker
 interface Seeker {
   // Seek sets the offset for the next Read or Write to offset, interpreted
   // according to whence: SeekStart means relative to the start of the file,
@@ -316,9 +313,7 @@ interface Seeker {
   // Seeking to an offset before the start of the file is an error. Seeking to
   // any positive offset is legal, but the behavior of subsequent I/O operations
   // on the underlying object is implementation-dependent.
-  //
-  // Copied from Go https://golang.org/pkg/io/#Seeker
-  seek(offset: number, whence: number): [number, IOError];
+  async seek(offset: number, whence: number): [number, IOError];
 }
 
 // https://golang.org/pkg/io/#ReadCloser
@@ -339,5 +334,27 @@ interface ReadWriteCloser extends Reader, Writer, Closer { }
 // https://golang.org/pkg/io/#ReadWriteSeeker
 interface ReadWriteSeeker extends Reader, Writer, Seeker { }
 ```
+These interfaces are well specified, simple, and have very nice utility
+functions that will be easy to port. Some example utilites:
+```ts
+// Copy copies from src to dst until either EOF is reached on src or an error
+// occurs. It returns the number of bytes copied and the first error encountered
+// while copying, if any.
+//
+// A successful Copy returns err == nil, not err == EOF. Because Copy is defined
+// to read from src until EOF, it does not treat an EOF from Read as an error to
+// be reported.
+//
+// https://golang.org/pkg/io/#Copy
+async copy(dst: Writer, src: Reader): [written: number, err: IOError];
 
-
+// MultiWriter creates a writer that duplicates its writes to all the provided
+// writers, similar to the Unix tee(1) command.
+//
+// Each write is written to each listed writer, one at a time. If a listed
+// writer returns an error, that overall write operation stops and returns the
+// error; it does not continue down the list.
+//
+// https://golang.org/pkg/io/#MultiWriter
+function multiWriter(writers: ...Writer): Writer;
+```
