@@ -253,6 +253,8 @@ on FDs. (Yet unspecified - but probably very similar to the unix syscalls.)
 2. A high-level API that will closely follow Go's I/O interfaces. The tentative
 intrefaces are outlined below:
 ```ts
+// The bytes written or read (n) during an I/O call and a boolean indicating
+// EOF.
 interface IOResult {
   n: number;
   eof: boolean;
@@ -346,12 +348,11 @@ functions that will be easy to port. Some example utilites:
 // occurs. It returns the number of bytes copied and the first error encountered
 // while copying, if any.
 //
-// A successful Copy returns err == nil, not err == EOF. Because Copy is defined
-// to read from src until EOF, it does not treat an EOF from Read as an error to
-// be reported.
+// Because Copy is defined to read from src until EOF, it does not treat an EOF
+// from Read as an error to be reported.
 //
 // https://golang.org/pkg/io/#Copy
-async function copy(dst: Writer, src: Reader): Promise<IOResult>;
+async function copy(dst: Writer, src: Reader): Promise<number>;
 
 // MultiWriter creates a writer that duplicates its writes to all the provided
 // writers, similar to the Unix tee(1) command.
