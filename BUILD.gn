@@ -174,7 +174,6 @@ run_node("bundle") {
     "js/runtime.ts",
     "js/types.ts",
     "js/util.ts",
-    "package.json",
     "rollup.config.js",
     "tsconfig.json"
   ]
@@ -194,7 +193,7 @@ run_node("bundle") {
     "-o",
     rebase_path(out_dir + "main.js", root_build_dir),
     "--environment",
-    "BASEPATH:" + rebase_path("third_party", root_build_dir)
+    "BASEPATH:" + rebase_path(".", root_build_dir)
   ]
 }
 

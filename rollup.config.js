@@ -9,7 +9,7 @@ import typescript from "rollup-plugin-typescript2";
 
 const mockPath = path.join(__dirname, "js", "mock_builtin");
 const tsconfig = path.join(__dirname, "tsconfig.json");
-const typescriptPath = `${process.env.BASEPATH}/node_modules/typescript/lib/typescript.js`;
+const typescriptPath = `${process.env.BASEPATH}/third_party/node_modules/typescript/lib/typescript.js`;
 
 function strings({include, exclude} = {}) {
   if (!include) {
@@ -23,7 +23,7 @@ function strings({include, exclude} = {}) {
 
     resolveId(importee) {
       if (importee.endsWith('!string')) {
-        return path.resolve(path.join(process.env.BASEPATH, '..', importee.slice(0, importee.lastIndexOf('!string'))));
+        return path.resolve(path.join(process.env.BASEPATH, importee.slice(0, importee.lastIndexOf('!string'))));
       }
 		},
 
