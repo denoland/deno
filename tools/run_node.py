@@ -16,4 +16,4 @@ target_abs = os.path.join(third_party_path, "node_modules")
 target_rel = os.path.relpath(target_abs)
 
 util.remove_and_symlink(target_rel, "node_modules", True)
-util.run(["node"] + sys.argv[1:])
+util.run(["node"] + sys.argv[1:], quiet=True)

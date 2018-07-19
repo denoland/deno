@@ -301,8 +301,20 @@ void deno_init() {
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 
+// TODO(ry) Remove these when we call deno_reply_start from Rust.
+static char** global_argv;
+static int global_argc;
+char** deno_argv() { return global_argv; }
+int deno_argc() { return global_argc; }
+
 void deno_set_flags(int* argc, char** argv) {
   v8::V8::SetFlagsFromCommandLine(argc, argv, true);
+  // TODO(ry) Remove these when we call deno_reply_start from Rust.
+  global_argc = *argc;
+  global_argv = reinterpret_cast<char**>(malloc(*argc * sizeof(char*)));
+  for (int i = 0; i < *argc; i++) {
+    global_argv[i] = strdup(argv[i]);
+  }
 }
 
 const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
