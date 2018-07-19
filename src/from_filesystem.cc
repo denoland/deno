@@ -15,8 +15,6 @@
 namespace deno {
 
 Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
-  printf("load bundle " BUNDLE_LOCATION "\n");
-
   std::string js_source;
   CHECK(deno::ReadFileToString(BUNDLE_LOCATION, &js_source));
 

@@ -47,9 +47,4 @@ install:
  - ninja -j2 -C $BUILD_PATH :all
 script:
  - ./tools/lint.py
- - $BUILD_PATH/test_cc
- - $BUILD_PATH/handlers_test
- - $BUILD_PATH/deno ./testdata/001_hello.js
- - $BUILD_PATH/deno ./testdata/002_hello.ts
- - $BUILD_PATH/deno_ns ./testdata/001_hello.js
- - $BUILD_PATH/deno_ns ./testdata/002_hello.ts
+ - ./tools/test.py $BUILD_PATH
