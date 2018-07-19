@@ -13,7 +13,10 @@ config("flatbuffers_config") {
     cflags = [
       "-Wno-exit-time-destructors",
       "-Wno-header-hygiene",
-      "-Wno-return-type", # TODO: rust branch of flatbuffers has this warning. this should be removed when the branch fixed.
+
+      # TODO: rust branch of flatbuffers has this warning.
+      # This should be removed when the branch fixed.
+      "-Wno-return-type",
     ]
   }
 }

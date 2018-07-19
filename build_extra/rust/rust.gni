@@ -40,10 +40,13 @@ template("run_rustc") {
 
     args = [
       rebase_path(source_root, root_build_dir),
-      "-Dwarnings",
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
     ]
+
+    if (defined(treat_warnings_as_errors) && treat_warnings_as_errors) {
+      args += [ "-Dwarnings" ]
+    }
     if (!is_win) {
       args += [ "--color=always" ]
     }
