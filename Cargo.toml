@@ -1,0 +1,11 @@
+ # Dummy package info required by `cargo fetch`
+ # Called from tools/build_third_party.py
+ # Should not be called with `cargo build`
+[package]
+name = "deno"
+version = "0.0.0"
+
+[dependencies]
+url = "1.7.1"
+libc = "0.2.42"
+log = "0.4.3"

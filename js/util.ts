@@ -2,7 +2,7 @@
 // All rights reserved. MIT License.
 
 //import { debug } from "./main";
-const debug = true;
+const debug = false;
 
 import { TypedArray } from "./types";
 
@@ -15,9 +15,9 @@ export function log(...args: any[]): void {
   }
 }
 
-export function assert(cond: boolean, msg = "") {
+export function assert(cond: boolean, msg = "assert") {
   if (!cond) {
-    throw Error(`Assert fail. ${msg}`);
+    throw Error(msg);
   }
 }
 

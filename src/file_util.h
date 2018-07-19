@@ -6,9 +6,9 @@
 #include <string>
 
 namespace deno {
-bool WriteDataAsCpp(const char* name, const char* filename,
-                    const std::string& data);
 bool ReadFileToString(const char* fn, std::string* contents);
+std::string Basename(std::string const& filename);
+std::string BinaryContentAsC(const char* name, const std::string& data);
 }  // namespace deno
 
 #endif  // FILE_UTIL_H_

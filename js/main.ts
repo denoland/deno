@@ -1,12 +1,9 @@
 // tslint:disable-next-line:no-reference
 /// <reference path="deno.d.ts" />
-import * as ts from "typescript";
-
 import { flatbuffers } from "flatbuffers";
 import { deno as fbs } from "./msg_generated";
-import { assert } from "./util";
-
-// import * as runtime from "./runtime";
+import { assert, log } from "./util";
+import * as runtime from "./runtime";
 
 const globalEval = eval;
 const window = globalEval("this");
@@ -31,8 +28,6 @@ function startMsg(cmdId: number): Uint8Array {
 }
 
 window["denoMain"] = () => {
-  deno.print(`ts.version: ${ts.version}`);
-
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
   // argv and other info.
@@ -55,17 +50,15 @@ window["denoMain"] = () => {
   assert(base.msg(startResMsg) != null);
 
   const cwd = startResMsg.cwd();
-  deno.print(`cwd: ${cwd}`);
+  log("cwd", cwd);
 
   const argv: string[] = [];
   for (let i = 0; i < startResMsg.argvLength(); i++) {
     argv.push(startResMsg.argv(i));
   }
-  deno.print(`argv ${argv}`);
+  log("argv", argv);
 
-  /* TODO(ry) Uncomment to test further message passing.
-  const inputFn = argv[0];
+  const inputFn = argv[1];
   const mod = runtime.resolveModule(inputFn, `${cwd}/`);
   mod.compileAndRun();
-  */
 };

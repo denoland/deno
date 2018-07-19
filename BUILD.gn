@@ -8,9 +8,7 @@ group("all") {
   testonly = true
   deps = [
     ":deno",
-    ":deno_cc",
-    ":deno_cc_nosnapshot",
-    ":deno_nosnapshot",
+    ":deno_ns",
     ":handlers_test",
     ":test_cc",
   ]
@@ -26,7 +24,10 @@ config("deno_config") {
 
 rust_executable("deno") {
   source_root = "src/main.rs"
-  extern = [ "$rust_build:libc" ]
+  extern = [
+    "$rust_build:libc",
+    "$rust_build:log",
+  ]
   deps = [
     ":libdeno",
   ]
@@ -35,9 +36,13 @@ rust_executable("deno") {
 # This target is for fast incremental development.
 # When modifying the javascript runtime, this target will not go through the
 # extra process of building a snapshot and instead load the bundle from disk.
-rust_executable("deno_nosnapshot") {
+# ns = no snapshot
+rust_executable("deno_ns") {
   source_root = "src/main.rs"
-  extern = [ "$rust_build:libc" ]
+  extern = [
+    "$rust_build:libc",
+    "$rust_build:log",
+  ]
   deps = [
     ":libdeno_nosnapshot",
   ]
@@ -48,6 +53,7 @@ rust_staticlib("handlers") {
   extern = [
     "$rust_build:libc",
     "$rust_build:url",
+    "$rust_build:log",
   ]
 }
 
@@ -56,53 +62,21 @@ rust_test("handlers_test") {
   extern = [
     "$rust_build:libc",
     "$rust_build:url",
+    "$rust_build:log",
   ]
-}
-
-executable("deno_cc") {
-  sources = [
-    "src/main.cc",
-  ]
-  deps = [
-    ":flatbufferjs",
-    ":handlers",
-    ":libdeno",
-    ":msg_cpp",
-  ]
-  configs += [ ":deno_config" ]
-}
-
-# This target is for fast incremental development.
-# When modifying the javascript runtime, this target will not go through the
-# extra process of building a snapshot and instead load the bundle from disk.
-executable("deno_cc_nosnapshot") {
-  sources = [
-    "src/main.cc",
-  ]
-  deps = [
-    ":flatbufferjs",
-    ":handlers",
-    ":libdeno_nosnapshot",
-    ":msg_cpp",
-  ]
-  configs += [ ":deno_config" ]
 }
 
 executable("test_cc") {
   testonly = true
   sources = [
-    "src/file_util_test.cc",
     "src/flatbuffer_builder_test.cc",
-    "src/from_snapshot.cc",
-    "src/mock_runtime_test.cc",
     "src/test.cc",
   ]
   deps = [
-    ":create_snapshot_mock_runtime",
+    ":deno_base_test",
     ":deno_bindings",
     "//testing/gtest:gtest",
   ]
-  defines = [ "DENO_MOCK_RUNTIME" ]
   configs += [ ":deno_config" ]
 }
 
@@ -118,18 +92,51 @@ static_library("libdeno") {
   configs += [ ":deno_config" ]
 }
 
-v8_source_set("deno_bindings") {
+# Only functionality needed for mock_runtime_test and snapshot_creator
+# In particular no flatbuffers, no assets, no rust, no msg handlers.
+# Because snapshots are slow, it's important that snapshot_creator's
+# dependencies are minimal.
+v8_source_set("deno_base") {
   sources = [
     "src/binding.cc",
     "src/deno.h",
     "src/file_util.cc",
     "src/file_util.h",
-    "src/flatbuffer_builder.cc",
-    "src/flatbuffer_builder.h",
     "src/internal.h",
   ]
-  deps = [
+  public_deps = [
     "third_party/v8:v8_monolith",
+  ]
+  configs = [ ":deno_config" ]
+}
+
+v8_source_set("deno_base_test") {
+  testonly = true
+  sources = [
+    "src/file_util_test.cc",
+    "src/from_snapshot.cc",
+    "src/mock_runtime_test.cc",
+  ]
+  deps = [
+    ":create_snapshot_mock_runtime",
+    ":deno_base",
+    "//testing/gtest:gtest",
+  ]
+  defines = [ "DENO_MOCK_RUNTIME" ]
+  configs = [ ":deno_config" ]
+}
+
+v8_source_set("deno_bindings") {
+  sources = [
+    "src/flatbuffer_builder.cc",
+    "src/flatbuffer_builder.h",
+    "src/reply.cc",
+    "src/reply.h",
+  ]
+  deps = [
+    ":deno_base",
+    ":handlers",
+    ":msg_cpp",
   ]
   public_deps = [
     "build_extra/flatbuffers:flatbuffers",
@@ -142,7 +149,7 @@ executable("snapshot_creator") {
     "src/snapshot_creator.cc",
   ]
   deps = [
-    ":deno_bindings",
+    ":deno_base",
   ]
   configs += [ ":deno_config" ]
 }
@@ -156,6 +163,7 @@ flatbuffer("msg_cpp") {
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
+    "js/assets.ts",
     "js/console.ts",
     "js/deno.d.ts",
     "js/dispatch.ts",
@@ -170,6 +178,7 @@ run_node("bundle") {
   ]
   outputs = [
     out_dir + "main.js",
+    out_dir + "main.map",
   ]
   deps = [
     ":flatbufferjs",
@@ -178,6 +187,7 @@ run_node("bundle") {
   args = [
     "./node_modules/parcel-bundler/bin/cli.js",
     "build",
+    "--log-level=1",  # Only disply errors.
     "--no-minify",
     "--out-dir",
     rebase_path(out_dir, root_build_dir),
