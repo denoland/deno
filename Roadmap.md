@@ -346,7 +346,7 @@ functions that will be easy to port. Some example utilites:
 // be reported.
 //
 // https://golang.org/pkg/io/#Copy
-async function copy(dst: Writer, src: Reader): Promise<[written: number, err: IOError]>;
+async function copy(dst: Writer, src: Reader): Promise<[number, IOError]>;
 
 // MultiWriter creates a writer that duplicates its writes to all the provided
 // writers, similar to the Unix tee(1) command.
