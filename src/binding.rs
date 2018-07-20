@@ -37,7 +37,11 @@ extern "C" {
         js_source: *const c_char,
     ) -> c_int;
     pub fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf);
-    pub fn deno_reply_error(d: *const DenoC, cmd_id: uint32_t, msg: *const c_char);
+    pub fn deno_reply_error(
+        d: *const DenoC,
+        cmd_id: uint32_t,
+        msg: *const c_char,
+    );
     pub fn deno_reply_null(d: *const DenoC, cmd_id: uint32_t);
     pub fn deno_reply_code_fetch(
         d: *const DenoC,

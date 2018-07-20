@@ -8,8 +8,10 @@ use std::ffi::CString;
 use std::ptr;
 
 mod binding;
-use binding::{deno_delete, deno_execute, deno_handle_msg_from_js, deno_init, deno_last_exception,
-              deno_new, deno_set_flags, DenoC};
+use binding::{
+    deno_delete, deno_execute, deno_handle_msg_from_js, deno_init,
+    deno_last_exception, deno_new, deno_set_flags, DenoC,
+};
 
 // Pass the command line arguments to v8.
 // Returns a vector of command line arguments that v8 did not understand.
@@ -58,10 +60,16 @@ impl Deno {
         Deno { ptr: ptr }
     }
 
-    fn execute(&mut self, js_filename: &str, js_source: &str) -> Result<(), DenoException> {
+    fn execute(
+        &mut self,
+        js_filename: &str,
+        js_source: &str,
+    ) -> Result<(), DenoException> {
         let filename = CString::new(js_filename).unwrap();
         let source = CString::new(js_source).unwrap();
-        let r = unsafe { deno_execute(self.ptr, filename.as_ptr(), source.as_ptr()) };
+        let r = unsafe {
+            deno_execute(self.ptr, filename.as_ptr(), source.as_ptr())
+        };
         if r == 0 {
             let ptr = unsafe { deno_last_exception(self.ptr) };
             let cstr = unsafe { CStr::from_ptr(ptr) };
