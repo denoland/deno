@@ -175,14 +175,14 @@ run_node("bundle") {
     "js/types.ts",
     "js/util.ts",
     "rollup.config.js",
-    "tsconfig.json"
+    "tsconfig.json",
   ]
   outputs = [
     out_dir + "main.js",
     out_dir + "main.js.map",
   ]
   deps = [
-    ":flatbufferjs"
+    ":flatbufferjs",
   ]
   args = [
     "./node_modules/rollup/bin/rollup",
@@ -192,8 +192,9 @@ run_node("bundle") {
     rebase_path("js/main.ts", root_build_dir),
     "-o",
     rebase_path(out_dir + "main.js", root_build_dir),
+    "--silent",
     "--environment",
-    "BASEPATH:" + rebase_path(".", root_build_dir)
+    "BASEPATH:" + rebase_path(".", root_build_dir),
   ]
 }
 

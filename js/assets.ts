@@ -1,6 +1,9 @@
 // Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 // All rights reserved. MIT License.
 
+// tslint:disable-next-line:no-reference
+/// <reference path="plugins.d.ts" />
+
 // There is a rollup plugin that will inline any module ending with `!string`
 // tslint:disable:max-line-length
 import denoDts from "/js/deno.d.ts!string";

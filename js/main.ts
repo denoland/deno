@@ -1,7 +1,5 @@
 // tslint:disable-next-line:no-reference
 /// <reference path="deno.d.ts" />
-// tslint:disable-next-line:no-reference
-/// <reference path="plugins.d.ts" />
 import { flatbuffers } from "flatbuffers";
 import { deno as fbs } from "./msg_generated";
 import { assert, log } from "./util";
