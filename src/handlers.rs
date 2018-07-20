@@ -164,7 +164,8 @@ fn test_resolve_module() {
     for &test in test_cases.iter() {
         let module_specifier = String::from(test.0);
         let containing_file = String::from(test.1);
-        let (module_name, filename) = resolve_module(&module_specifier, &containing_file).unwrap();
+        let (module_name, filename) =
+            resolve_module(&module_specifier, &containing_file).unwrap();
         assert_eq!(module_name, test.2);
         assert_eq!(filename, test.3);
     }
@@ -184,7 +185,8 @@ pub extern "C" fn handle_code_fetch(
     let result = resolve_module(&module_specifier, &containing_file);
     if result.is_err() {
         let err = result.unwrap_err();
-        let errmsg = format!("{} {} {}", err, module_specifier, containing_file);
+        let errmsg =
+            format!("{} {} {}", err, module_specifier, containing_file);
         let errmsg_c = as_cstring(&errmsg);
         unsafe { deno_reply_error(d, cmd_id, errmsg_c.as_ptr()) };
         return;
