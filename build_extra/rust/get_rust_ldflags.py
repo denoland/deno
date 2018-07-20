@@ -29,6 +29,7 @@
 import sys
 import os
 from os import path
+import re
 import subprocess
 import tempfile
 
@@ -77,10 +78,41 @@ def main():
     rustc_env["ARGSFILE_PATH"] = argsfile_path
 
     try:
-        # Spawn rustc, and make it use this very script as its "linker".
-        rustc_args = ["-Clinker=" + rustc_linker, "-Csave-temps"
-                      ] + sys.argv[1:]
-        subprocess.check_call(["rustc"] + rustc_args, env=rustc_env)
+        # Build the rustc command line.
+        #   * `-Clinker=` tells rustc to use our fake linker.
+        #   * `-Csave-temps` prevents rustc from deleting object files after
+        #     linking. We need to preserve the file `xx.crate.allocator.rcgu.o`.
+        rustc_cmd = [
+            "rustc",
+            "-Clinker=" + rustc_linker,
+            "-Csave-temps",
+        ] + sys.argv[1:]
+
+        # Spawn the rust compiler.
+        rustc_proc = subprocess.Popen(
+            rustc_cmd,
+            env=rustc_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+
+        # Forward rustc's output to stderr.
+        for line in rustc_proc.stdout:
+            # Suppress the warning:
+            #   `-C save-temps` might not produce all requested temporary
+            #   products when incremental compilation is enabled.
+            # It's pointless, because incremental compilation is disabled.
+            if re.match(r"^warning:.*save-temps.*incremental compilation",
+                        line):
+                continue
+            # Also, do not write completely blank lines to stderr.
+            if line.strip() == "":
+                continue
+            sys.stderr.write(line)
+
+        # The rustc process should return zero. If not, raise an exception.
+        rustc_retcode = rustc_proc.wait()
+        if rustc_retcode != 0:
+            raise subprocess.CalledProcessError(rustc_retcode, rustc_cmd)
 
         # Read captured linker arguments from argsfile.
         argsfile_size = os.fstat(argsfile_fd).st_size
