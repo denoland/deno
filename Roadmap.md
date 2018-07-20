@@ -371,7 +371,17 @@ functions that will be easy to port. Some example utilites:
 // from Read as an error to be reported.
 //
 // https://golang.org/pkg/io/#Copy
-async function copy(dst: Writer, src: Reader): Promise<number>;
+async function copy(dst: Writer, src: Reader): Promise<number> {
+  let n = 0;
+  const b = new Uint8Array(1024);
+  let got_eof = false;
+  while (got_eof === false) {
+     let result = await src.read(b);
+     if (result.eof) got_eof = true;
+     n += await dst.write(b.subarray(0, result.nread));
+  }
+  return n;
+}
 
 // MultiWriter creates a writer that duplicates its writes to all the provided
 // writers, similar to the Unix tee(1) command.
@@ -381,5 +391,14 @@ async function copy(dst: Writer, src: Reader): Promise<number>;
 // error; it does not continue down the list.
 //
 // https://golang.org/pkg/io/#MultiWriter
-function multiWriter(writers: ...Writer): Writer;
+function multiWriter(writers: ...Writer): Writer {
+  return {
+    write: async (p: Uint8Array) => Promise<number> {
+      let n;
+      let nwritten = await Promise.all(writers.map((w) => w.write(p)));
+      return nwritten[0];
+      // TODO unsure of proper semantics for return value..
+    }
+  };
+}
 ```
