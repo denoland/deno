@@ -1,12 +1,13 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "module": "commonjs",
+    "module": "esnext",
     "noImplicitAny": true,
     "sourceMap": true,
     "removeComments": true,
     "preserveConstEnums": true,
     "target": "es2017",
+    "moduleResolution": "node",
     "noImplicitReturns": true,
     "pretty": true,
     "noFallthroughCasesInSwitch": true,
