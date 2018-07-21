@@ -1,51 +1,17 @@
 import path from "path";
-import { createFilter } from "rollup-pluginutils";
 import alias from "rollup-plugin-alias";
 import { plugin as analyze } from "rollup-plugin-analyzer";
 import commonjs from "rollup-plugin-commonjs";
 import globals from "rollup-plugin-node-globals";
 import nodeResolve from "rollup-plugin-node-resolve";
 import typescript from "rollup-plugin-typescript2";
+import strings from "./js/rollup-plugin-strings";
 
 const mockPath = path.join(__dirname, "js", "mock_builtin");
 const tsconfig = path.join(__dirname, "tsconfig.json");
 const typescriptPath = `${
   process.env.BASEPATH
 }/third_party/node_modules/typescript/lib/typescript.js`;
-
-// this is a plugin which will look for imports ending with `!string` and resolve them with a module
-// that will inline the contents of the file as a string.
-function strings({ include, exclude } = {}) {
-  if (!include) {
-    throw new Error("include option must be passed");
-  }
-
-  const filter = createFilter(include, exclude);
-
-  return {
-    name: "strings",
-
-    resolveId(importee) {
-      if (importee.endsWith("!string")) {
-        return path.resolve(
-          path.join(
-            process.env.BASEPATH,
-            importee.slice(0, importee.lastIndexOf("!string"))
-          )
-        );
-      }
-    },
-
-    transform(code, id) {
-      if (filter(id)) {
-        return {
-          code: `export default ${JSON.stringify(code)};`,
-          map: { mappings: "" }
-        };
-      }
-    }
-  };
-}
 
 export default function makeConfig(commandOptions) {
   return {
