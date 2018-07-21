@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# Given a deno executable, this script execute several integration tests
+# with it. The tests are stored in //tests/ and each script has a corresponding
+# .out file which specifies what the stdout should be.
+#
 # Usage: check_output_test.py [path to deno executable]
 import os
 import sys
