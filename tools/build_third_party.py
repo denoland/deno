@@ -25,10 +25,10 @@ run(["cargo", "fetch", "--manifest-path=" + root_path + "/Cargo.toml"],
 run(["gclient", "sync", "--reset", "--shallow", "--no-history", "--nohooks"],
     envs={'GCLIENT_FILE': root_path + "/gclient_config.py"})
 # TODO(ry) Is it possible to remove these symlinks?
-remove_and_symlink("v8/third_party/googletest", "googletest")
-remove_and_symlink("v8/third_party/jinja2", "jinja2")
-remove_and_symlink("v8/third_party/llvm-build", "llvm-build")
-remove_and_symlink("v8/third_party/markupsafe", "markupsafe")
+remove_and_symlink("v8/third_party/googletest", "googletest", True)
+remove_and_symlink("v8/third_party/jinja2", "jinja2", True)
+remove_and_symlink("v8/third_party/llvm-build", "llvm-build", True)
+remove_and_symlink("v8/third_party/markupsafe", "markupsafe", True)
 
 # To update the deno_third_party git repo after running this, try the following:
 # cd third_party
