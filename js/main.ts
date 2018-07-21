@@ -5,9 +5,6 @@ import { deno as fbs } from "./msg_generated";
 import { assert, log } from "./util";
 import * as runtime from "./runtime";
 
-const globalEval = eval;
-const window = globalEval("this");
-
 let cmdIdCounter = 0;
 function assignCmdId(): number {
   // TODO(piscisaureus) Safely re-use so they don't overflow.
@@ -27,7 +24,8 @@ function startMsg(cmdId: number): Uint8Array {
   return builder.asUint8Array();
 }
 
-window["denoMain"] = () => {
+/* tslint:disable-next-line:no-default-export */
+export default function denoMain() {
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
   // argv and other info.
@@ -61,4 +59,4 @@ window["denoMain"] = () => {
   const inputFn = argv[1];
   const mod = runtime.resolveModule(inputFn, `${cwd}/`);
   mod.compileAndRun();
-};
+}
