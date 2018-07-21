@@ -20,11 +20,11 @@ def main(argv):
         sys.exit(1)
     build_dir = argv[1]
 
-    test_cc = os.path.join(build_dir, "test_cc")
+    test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
     check_exists(test_cc)
     run([test_cc])
 
-    handlers_test = os.path.join(build_dir, "handlers_test")
+    handlers_test = os.path.join(build_dir, "handlers_test" + executable_suffix)
     check_exists(handlers_test)
     run([handlers_test])
 
