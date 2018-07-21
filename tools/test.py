@@ -4,7 +4,7 @@
 import os
 import sys
 from check_output_test import check_output_test
-from util import run
+from util import executable_suffix, run
 
 
 def main(argv):
@@ -12,8 +12,8 @@ def main(argv):
     os.path.isdir(build_dir)
     run([os.path.join(build_dir, "test_cc")])
     run([os.path.join(build_dir, "handlers_test")])
-    check_output_test(os.path.join(build_dir, "deno"))
-    check_output_test(os.path.join(build_dir, "deno_ns"))
+    check_output_test(os.path.join(build_dir, "deno" + executable_suffix))
+    check_output_test(os.path.join(build_dir, "deno_ns" + executable_suffix))
 
 
 if __name__ == '__main__':
