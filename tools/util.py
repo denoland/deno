@@ -36,6 +36,10 @@ def symlink(target, name, target_is_dir=False):
         CreateSymbolicLinkW.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p,
                                         ctypes.c_uint32)
 
+        # Replace forward slashes by backward slashes.
+        # Strangely it seems that this is only necessary for symlinks to files.
+        # Forward slashes don't cause any issues when the target is a directory.
+        target = target.replace("/", "\\")
         flags = 0x02  # SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
         if (target_is_dir):
             flags |= 0x01  # SYMBOLIC_LINK_FLAG_DIRECTORY
