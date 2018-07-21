@@ -3,6 +3,8 @@
 import os
 import subprocess
 
+executable_suffix = ".exe" if os.name == "nt" else ""
+
 
 def run(args, quiet=False, envs={}):
     if not quiet:
@@ -10,10 +12,9 @@ def run(args, quiet=False, envs={}):
     env = os.environ.copy()
     for key in envs.keys():
         env[key] = envs[key]
-    if os.name == "nt":
-        # Run through shell to make .bat/.cmd files work.
-        args = ["cmd", "/c"] + args
-    subprocess.check_call(args, env=env)
+    args[0] = os.path.normpath(args[0])
+    shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
+    subprocess.check_call(args, env=env, shell=shell)
 
 
 def remove_and_symlink(target, name, target_is_dir=False):
