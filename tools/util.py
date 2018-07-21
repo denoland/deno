@@ -6,9 +6,9 @@ import subprocess
 
 def run(args, quiet=False, envs={}):
     if not quiet:
-        print " ".join(args)
+        print(" ".join(args))
     env = os.environ.copy()
-    for key in envs.keys():
+    for key in envs:
         env[key] = envs[key]
     if os.name == "nt":
         # Run through shell to make .bat/.cmd files work.
@@ -23,7 +23,7 @@ def remove_and_symlink(target, name, target_is_dir=False):
             os.rmdir(name)
         else:
             os.unlink(name)
-    except:
+    except Exception:
         pass
     symlink(target, name, target_is_dir)
 
