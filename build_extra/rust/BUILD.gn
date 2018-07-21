@@ -26,6 +26,13 @@ rust_component("url") {
 
 rust_component("percent_encoding") {
   source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/percent-encoding-1.0.1/lib.rs"
+  args = [
+    # TODO: Suppress some warnings at this moment
+    # This should be removed when it's fixed in servo/rust-url repository
+    # https://github.com/servo/rust-url/issues/455
+    "-Aunused-imports",
+    "-Adeprecated",
+  ]
 }
 
 rust_component("matches") {
