@@ -76,15 +76,16 @@ fn resolve_module(
   //let containing_file = src_file_to_url(containing_file);
   //let base_url = Url::parse(&containing_file)?;
 
-  let j: Url = if containing_file.as_str().ends_with("/") {
-    let base = Url::from_directory_path(&containing_file).unwrap();
-    base.join(module_specifier)?
-  } else if containing_file == "." {
-    Url::from_file_path(module_specifier).unwrap()
-  } else {
-    let base = Url::from_file_path(&containing_file).unwrap();
-    base.join(module_specifier)?
-  };
+  let j: Url =
+    if containing_file == "." || Path::new(module_specifier).is_absolute() {
+      Url::from_file_path(module_specifier).unwrap()
+    } else if containing_file.as_str().ends_with("/") {
+      let base = Url::from_directory_path(&containing_file).unwrap();
+      base.join(module_specifier)?
+    } else {
+      let base = Url::from_file_path(&containing_file).unwrap();
+      base.join(module_specifier)?
+    };
 
   let mut p = j.to_file_path()
     .unwrap()
@@ -145,6 +146,12 @@ fn test_resolve_module() {
       ".",
       add_root!("/Users/rld/src/deno/hello.js"),
       add_root!("/Users/rld/src/deno/hello.js"),
+    ),
+    (
+      add_root!("/this/module/got/imported.js"),
+      add_root!("/that/module/did/it.js"),
+      add_root!("/this/module/got/imported.js"),
+      add_root!("/this/module/got/imported.js"),
     ),
     /*
         (
