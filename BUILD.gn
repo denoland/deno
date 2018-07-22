@@ -200,24 +200,27 @@ run_node("bundle") {
     "js/runtime.ts",
     "js/types.ts",
     "js/util.ts",
-    "package.json",  # The `browserslist` field controls Babel behavior.
+    "rollup.config.js",
+    "tsconfig.json",
   ]
   outputs = [
     out_dir + "main.js",
-    out_dir + "main.map",
+    out_dir + "main.js.map",
   ]
   deps = [
     ":flatbufferjs",
-    ":run_tsc",
   ]
   args = [
-    "./node_modules/parcel-bundler/bin/cli.js",
-    "build",
-    "--log-level=1",  # Only disply errors.
-    "--no-minify",
-    "--out-dir",
-    rebase_path(out_dir, root_build_dir),
+    "./node_modules/rollup/bin/rollup",
+    "-c",
+    rebase_path("rollup.config.js", root_build_dir),
+    "-i",
     rebase_path("js/main.ts", root_build_dir),
+    "-o",
+    rebase_path(out_dir + "main.js", root_build_dir),
+    "--silent",
+    "--environment",
+    "BASEPATH:" + rebase_path(".", root_build_dir),
   ]
 }
 
@@ -234,32 +237,6 @@ source_set("libdeno_nosnapshot") {
   bundle_outputs = get_target_outputs(":bundle")
   bundle_location = rebase_path(bundle_outputs[0])
   defines = [ "BUNDLE_LOCATION=\"$bundle_location\"" ]
-}
-
-# Due to bugs in Parcel we must run TSC independently in order to catch errors.
-# https://github.com/parcel-bundler/parcel/issues/954
-run_node("run_tsc") {
-  main = "js/main.ts"
-  tsconfig = "tsconfig.json"
-  out_dir = "$target_gen_dir/tsc_dist/"
-  sources = [
-    "js/msg_generated.ts",
-    main,
-    tsconfig,
-  ]
-  outputs = [
-    out_dir + "/main.js",
-  ]
-  deps = [
-    ":flatbufferjs",
-  ]
-  args = [
-    "./node_modules/typescript/bin/tsc",
-    "--project",
-    rebase_path(tsconfig, root_build_dir),
-    "--outDir",
-    rebase_path(out_dir, root_build_dir),
-  ]
 }
 
 # Generates flatbuffer TypeScript code.
