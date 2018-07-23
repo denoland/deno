@@ -1,5 +1,4 @@
-// Copyright 2018 Bert Belder <bertbelder@gmail.com>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 #include <stddef.h>
 #include <stdint.h>

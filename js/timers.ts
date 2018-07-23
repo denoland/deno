@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { deno as pb } from "./msg.pb";
 import { pubInternal, sub } from "./dispatch";
 import { assert } from "./util";
