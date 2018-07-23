@@ -23,7 +23,7 @@ table Base {
   msg: Any;
 }
 
-struct Start {
+table Start {
   unused: int8;
 }
 
@@ -54,22 +54,22 @@ table CodeCache {
   output_code: string;
 }
 
-struct Exit {
+table Exit {
   code: int;
 }
 
-struct TimerStart {
+table TimerStart {
   id: uint;
   interval: bool;
   delay: int;
 }
 
-struct TimerReady {
+table TimerReady {
   id: uint;
   done: bool;
 }
 
-struct TimerClear {
+table TimerClear {
   id: uint;
 }
 

@@ -24,9 +24,9 @@ def main(argv):
     check_exists(test_cc)
     run([test_cc])
 
-    handlers_test = os.path.join(build_dir, "handlers_test" + executable_suffix)
-    check_exists(handlers_test)
-    run([handlers_test])
+    test_rs = os.path.join(build_dir, "test_rs" + executable_suffix)
+    check_exists(test_rs)
+    run([test_rs])
 
     deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
     check_exists(deno_exe)

@@ -1,12 +1,17 @@
 extern crate libc;
 #[macro_use]
 extern crate log;
+extern crate flatbuffers;
+extern crate msg_rs as msg_generated;
+extern crate url;
 
 use libc::c_int;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ptr;
 
+mod handlers;
+pub use handlers::*;
 mod binding;
 use binding::{
   deno_delete, deno_execute, deno_handle_msg_from_js, deno_init,
