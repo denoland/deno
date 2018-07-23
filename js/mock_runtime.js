@@ -134,3 +134,14 @@ global.ErrorHandling = () => {
   };
   eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
 };
+
+global.SendNullAllocPtr = () => {
+  deno.recv(msg => {
+    assert(msg instanceof Uint8Array);
+    assert(msg.byteLength === 4);
+    assert(msg[0] === "a".charCodeAt(0));
+    assert(msg[1] === "b".charCodeAt(0));
+    assert(msg[2] === "c".charCodeAt(0));
+    assert(msg[3] === "d".charCodeAt(0));
+  });
+};

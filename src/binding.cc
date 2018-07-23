@@ -120,12 +120,21 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
 }
 
 static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {
-  auto ab = v8::ArrayBuffer::New(
-      isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
-      v8::ArrayBufferCreationMode::kInternalized);
-  auto view =
-      v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
-  return view;
+  if (buf.alloc_ptr == nullptr) {
+    // If alloc_ptr isn't set, we memcpy.
+    // This is currently used for flatbuffers created in Rust.
+    auto ab = v8::ArrayBuffer::New(isolate, buf.data_len);
+    memcpy(ab->GetContents().Data(), buf.data_ptr, buf.data_len);
+    auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
+    return view;
+  } else {
+    auto ab = v8::ArrayBuffer::New(
+        isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
+        v8::ArrayBufferCreationMode::kInternalized);
+    auto view =
+        v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
+    return view;
+  }
 }
 
 static deno_buf ExportBuf(v8::Isolate* isolate,
