@@ -2,6 +2,7 @@
 import("//third_party/v8/gni/v8.gni")
 import("//third_party/v8/snapshot_toolchain.gni")
 import("//build_extra/flatbuffers/flatbuffer.gni")
+import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
 import("//build_extra/deno.gni")
 import("//build_extra/rust/rust.gni")
 
@@ -10,8 +11,8 @@ group("all") {
   deps = [
     ":deno",
     ":deno_ns",
-    ":handlers_test",
     ":test_cc",
+    ":test_rs",
   ]
 }
 
@@ -33,12 +34,29 @@ config("deno_config") {
   }
 }
 
+main_extern = [
+  "$rust_build:libc",
+  "$rust_build:log",
+  "$rust_build:url",
+  "//build_extra/flatbuffers/rust:flatbuffers",
+  ":msg_rs",
+
+  # Indirect rust depdendencies also need to be listed here:
+  # * Linking to `:handlers` or `:libdeno` isn't possible, because they
+  #   already contain some symbols exported by `handlers.rs`. These duplicate
+  #   symbols trip up the linker.
+  # * The `rust_test` and `rust_executable` templates only produce an object
+  #   file, and then invoke an external linker. Transitive rust depencenies
+  #   are not resolved in either step.
+  "$rust_build:idna",
+  "$rust_build:percent_encoding",
+  "$rust_build:unicode_bidi",
+  "$rust_build:unicode_normalization",
+]
+
 rust_executable("deno") {
   source_root = "src/main.rs"
-  extern = [
-    "$rust_build:libc",
-    "$rust_build:log",
-  ]
+  extern = main_extern
   deps = [
     ":libdeno",
   ]
@@ -50,43 +68,15 @@ rust_executable("deno") {
 # ns = no snapshot
 rust_executable("deno_ns") {
   source_root = "src/main.rs"
-  extern = [
-    "$rust_build:libc",
-    "$rust_build:log",
-  ]
+  extern = main_extern
   deps = [
     ":libdeno_nosnapshot",
   ]
 }
 
-rust_staticlib("handlers") {
-  source_root = "src/handlers.rs"
-  extern = [
-    "$rust_build:libc",
-    "$rust_build:url",
-    "$rust_build:log",
-  ]
-}
-
-rust_test("handlers_test") {
-  source_root = "src/handlers.rs"
-  extern = [
-    "$rust_build:libc",
-    "$rust_build:url",
-    "$rust_build:log",
-
-    # Indirect rust depdendencies also need to be listed here:
-    # * Linking to `:handlers` or `:libdeno` isn't possible, because they
-    #   already contain some symbols exported by `handlers.rs`. These duplicate
-    #   symbols trip up the linker.
-    # * The `rust_test` and `rust_executable` templates only produce an object
-    #   file, and then invoke an external linker. Transitive rust depencenies
-    #   are not resolved in either step.
-    "$rust_build:idna",
-    "$rust_build:percent_encoding",
-    "$rust_build:unicode_bidi",
-    "$rust_build:unicode_normalization",
-  ]
+rust_test("test_rs") {
+  source_root = "src/main.rs"
+  extern = main_extern
   deps = [
     ":deno_bindings",
   ]
@@ -100,8 +90,7 @@ executable("test_cc") {
   ]
   deps = [
     ":deno_base_test",
-    ":deno_bindings",
-    ":handlers",
+    ":deno_flatbuffer_builder",
     "//testing/gtest:gtest",
   ]
   configs += [ ":deno_config" ]
@@ -115,7 +104,6 @@ static_library("libdeno") {
   deps = [
     ":create_snapshot_deno",
     ":deno_bindings",
-    ":handlers",
   ]
   configs += [ ":deno_config" ]
 }
@@ -154,19 +142,29 @@ v8_source_set("deno_base_test") {
   configs = [ ":deno_config" ]
 }
 
-v8_source_set("deno_bindings") {
+v8_source_set("deno_flatbuffer_builder") {
   sources = [
     "src/flatbuffer_builder.cc",
     "src/flatbuffer_builder.h",
+  ]
+  deps = [
+    ":deno_base",
+  ]
+  public_deps = [
+    "build_extra/flatbuffers:flatbuffers",
+  ]
+  configs = [ ":deno_config" ]
+}
+
+v8_source_set("deno_bindings") {
+  sources = [
     "src/reply.cc",
     "src/reply.h",
   ]
   deps = [
     ":deno_base",
+    ":deno_flatbuffer_builder",
     ":msg_cpp",
-  ]
-  public_deps = [
-    "build_extra/flatbuffers:flatbuffers",
   ]
   configs = [ ":deno_config" ]
 }
@@ -232,7 +230,6 @@ source_set("libdeno_nosnapshot") {
   deps = [
     ":bundle",
     ":deno_bindings",
-    ":handlers",
   ]
   configs += [ ":deno_config" ]
   bundle_outputs = get_target_outputs(":bundle")
@@ -269,6 +266,12 @@ action("flatbufferjs") {
 }
 
 ts_flatbuffer("msg_ts") {
+  sources = [
+    "src/msg.fbs",
+  ]
+}
+
+rust_flatbuffer("msg_rs") {
   sources = [
     "src/msg.fbs",
   ]
