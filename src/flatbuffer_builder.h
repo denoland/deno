@@ -1,5 +1,4 @@
-// Copyright 2018 Bert Belder <bertbelder@gmail.com>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 #ifndef FLATBUFFER_BUILDER_H_
 #define FLATBUFFER_BUILDER_H_
 

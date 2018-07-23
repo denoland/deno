@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 #ifndef FILE_UTIL_H_
 #define FILE_UTIL_H_
 
