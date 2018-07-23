@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 // When Rust Flatbuffer support is complete this file should be ported
 // to Rust and removed: https://github.com/google/flatbuffers/pull/3894

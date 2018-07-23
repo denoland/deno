@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { ModuleInfo } from "./types";
 import { deno as fbs } from "./msg_generated";
 import { assert } from "./util";

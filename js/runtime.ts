@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 // Glossary
 // outputCode = generated javascript code
 // sourceCode = typescript code (or input javascript code)

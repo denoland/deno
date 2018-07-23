@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) This library handles parsing and sending Flatbuffers. It's written
 // in C++ because flatbuffer support for Rust is not quite there. However, once
