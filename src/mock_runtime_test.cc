@@ -34,6 +34,17 @@ deno_buf strbuf(const char* str) {
   return buf;
 }
 
+// Same as strbuf but with null alloc_ptr.
+deno_buf StrBufNullAllocPtr(const char* str) {
+  auto len = strlen(str);
+  deno_buf buf;
+  buf.alloc_ptr = nullptr;
+  buf.alloc_len = 0;
+  buf.data_ptr = reinterpret_cast<uint8_t*>(strdup(str));
+  buf.data_len = len;
+  return buf;
+}
+
 TEST(MockRuntimeTest, SendSuccess) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "SendSuccess()"));
@@ -174,5 +185,17 @@ TEST(MockRuntimeTest, ErrorHandling) {
   });
   EXPECT_FALSE(deno_execute(d, "a.js", "ErrorHandling()"));
   EXPECT_EQ(count, 1);
+  deno_delete(d);
+}
+
+TEST(MockRuntimeTest, SendNullAllocPtr) {
+  static int count = 0;
+  Deno* d = deno_new(nullptr, [](auto _, auto buf) { count++; });
+  EXPECT_TRUE(deno_execute(d, "a.js", "SendNullAllocPtr()"));
+  deno_buf buf = StrBufNullAllocPtr("abcd");
+  EXPECT_EQ(buf.alloc_ptr, nullptr);
+  EXPECT_EQ(buf.data_len, 4u);
+  EXPECT_TRUE(deno_send(d, buf));
+  EXPECT_EQ(count, 0);
   deno_delete(d);
 }
