@@ -246,14 +246,20 @@ fetch(input?: Request | string, init?: RequestInit): Promise<Response>;
 
 #### I/O
 
-I/O in Deno is split into two APIs. The low-level API is a syscall-like
-interface operating on file descriptors. The high-level API operates on
-Reader and Writer interfaces inspired by Golang.
+There are many OS constructs that perform I/O: files, sockets, pipes.
+Deno aims to provide a unified lowest common denominator interface to work with
+these objects. Deno needs to operate on all of these asynchronously in order
+to not block the event loop and it.
 
-##### Low-level Non-blocking I/O
+Sockets and pipes support non-blocking reads and write.  Generally file I/O is
+blocking but it can be done in a thread pool to avoid blocking the main thread.
+Although file I/O can be made asynchronous, it does not support the same
+non-blocking reads and writes that sockets and pipes do.
 
-Deno aims to provide fast, memory efficient, zero-copy I/O for sockets. Towards
-this the low-level I/O interface is inspired by non-blocking unix syscalls.
+The following interfaces support files, socket, and pipes and are heavily
+inspired by Go. The main difference in porting to JavaScript is that errors will
+be handled by exceptions, modulo EOF, which is returned as part of
+`ReadResult`.
 
 ```ts
 // The bytes read during an I/O call and a boolean indicating EOF.
@@ -261,23 +267,6 @@ interface ReadResult {
   nread: number;
   eof: boolean;
 }
-
-// Low-level non-blocking, non-async read.
-function read(fd: number, p: Uint8Array, nbytes: number): ReadResult;
-
-// Low-level non-blocking, non-async write.
-function write(fd: number, p: Uint8Array, nbytes: number): number;
-
-// Low-level close.
-function close(fd: number): void;
-```
-
-##### High-level Go-inspired I/O interfaces
-
-Deno will not use Node's stream API. Instead The high-level API that will
-closely follow Go's I/O interfaces.
-
-```ts
 
 // Reader is the interface that wraps the basic Read method.
 // https://golang.org/pkg/io/#Reader
