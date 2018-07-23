@@ -1,19 +1,15 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-extern crate libc;
-#[macro_use]
-extern crate log;
-extern crate url;
-
+use binding::{deno_buf, deno_set_response, DenoC};
+use flatbuffers;
 use libc::c_char;
+use libc::uint32_t;
+use msg_generated::deno as msg;
 use std::ffi::CStr;
-use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use url;
 use url::Url;
-
-mod binding;
-use binding::{deno_reply_code_fetch, deno_reply_error, DenoC};
 
 // TODO(ry) SRC_DIR is just a placeholder for future caching functionality.
 static SRC_DIR: &str = "/Users/rld/.deno/src/";
@@ -30,9 +26,14 @@ fn string_from_ptr(ptr: *const c_char) -> String {
   String::from(cstr.to_str().unwrap())
 }
 
-fn as_cstring(s: &String) -> CString {
-  CString::new(s.as_str()).unwrap()
+/*
+// reply_start partially implemented here https://gist.github.com/ry/297c83e0ac8722c045db1b097cdb6afc
+pub fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf) {
+    let s = std::slice::from_raw_parts(buf.data_ptr, buf.data_len);
+    buf.data_ptr
+    get_root()
 }
+*/
 
 // Prototype: https://github.com/ry/deno/blob/golang/os.go#L56-L68
 #[allow(dead_code)]
@@ -183,6 +184,68 @@ fn test_resolve_module() {
   }
 }
 
+pub fn reply_code_fetch(
+  d: *const DenoC,
+  cmd_id: uint32_t,
+  module_name: &String,
+  filename: &String,
+  source_code: &String,
+  output_code: &String,
+) {
+  let mut builder = flatbuffers::FlatBufferBuilder::new();
+  let msg_args = msg::CodeFetchResArgs {
+    module_name: builder.create_string(module_name),
+    filename: builder.create_string(filename),
+    source_code: builder.create_string(source_code),
+    output_code: builder.create_string(output_code),
+    ..Default::default()
+  };
+  let msg = msg::CreateCodeFetchRes(&mut builder, &msg_args);
+  builder.finish(msg);
+  let args = msg::BaseArgs {
+    cmdId: cmd_id,
+    msg: Some(msg.union()),
+    msg_type: msg::Any::CodeFetchRes,
+    ..Default::default()
+  };
+  set_response_base(d, &mut builder, &args)
+}
+
+fn reply_error(d: *const DenoC, cmd_id: u32, msg: &String) {
+  let mut builder = flatbuffers::FlatBufferBuilder::new();
+  // println!("reply_error{}", msg);
+  let args = msg::BaseArgs {
+    cmdId: cmd_id,
+    error: builder.create_string(msg),
+    ..Default::default()
+  };
+  set_response_base(d, &mut builder, &args)
+}
+
+fn set_response_base(
+  d: *const DenoC,
+  builder: &mut flatbuffers::FlatBufferBuilder,
+  args: &msg::BaseArgs,
+) {
+  let base = msg::CreateBase(builder, &args);
+  builder.finish(base);
+  let data = builder.get_active_buf_slice();
+  // println!("buf slice {} {} {} {} {}", data[0], data[1], data[2], data[3], data[4]);
+  let buf = deno_buf {
+    // TODO(ry)
+    // The deno_buf / ImportBuf / ExportBuf semantics should be such that we do not need to yield
+    // ownership. Temporarally there is a hack in ImportBuf that when alloc_ptr is null, it will
+    // memcpy the deno_buf into V8 instead of doing zero copy.
+    alloc_ptr: 0 as *mut u8,
+    alloc_len: 0,
+    data_ptr: data.as_ptr() as *mut u8,
+    data_len: data.len(),
+  };
+  // println!("data_ptr {:p}", data_ptr);
+  // println!("data_len {}", data.len());
+  unsafe { deno_set_response(d, buf) }
+}
+
 // https://github.com/ry/deno/blob/golang/os.go#L100-L154
 #[no_mangle]
 pub extern "C" fn handle_code_fetch(
@@ -198,8 +261,7 @@ pub extern "C" fn handle_code_fetch(
   if result.is_err() {
     let err = result.unwrap_err();
     let errmsg = format!("{} {} {}", err, module_specifier, containing_file);
-    let errmsg_c = as_cstring(&errmsg);
-    unsafe { deno_reply_error(d, cmd_id, errmsg_c.as_ptr()) };
+    reply_error(d, cmd_id, &errmsg);
     return;
   }
   let (module_name, filename) = result.unwrap();
@@ -224,8 +286,7 @@ pub extern "C" fn handle_code_fetch(
     if result.is_err() {
       let err = result.unwrap_err();
       let errmsg = format!("{} {}", err, filename);
-      let errmsg_c = as_cstring(&errmsg);
-      unsafe { deno_reply_error(d, cmd_id, errmsg_c.as_ptr()) };
+      reply_error(d, cmd_id, &errmsg);
       return;
     }
     let mut f = result.unwrap();
@@ -233,24 +294,21 @@ pub extern "C" fn handle_code_fetch(
     if result.is_err() {
       let err = result.unwrap_err();
       let errmsg = format!("{} {}", err, filename);
-      let errmsg_c = as_cstring(&errmsg);
-      unsafe { deno_reply_error(d, cmd_id, errmsg_c.as_ptr()) };
+      reply_error(d, cmd_id, &errmsg);
       return;
     }
   }
 
   let output_code = String::new(); //load_output_code_cache(filename, source_code);
 
-  unsafe {
-    deno_reply_code_fetch(
-      d,
-      cmd_id,
-      as_cstring(&module_name).as_ptr(),
-      as_cstring(&filename).as_ptr(),
-      as_cstring(&source_code).as_ptr(),
-      as_cstring(&output_code).as_ptr(),
-    )
-  }
+  reply_code_fetch(
+    d,
+    cmd_id,
+    &module_name,
+    &filename,
+    &source_code,
+    &output_code,
+  )
 }
 
 fn is_remote(_module_name: &String) -> bool {

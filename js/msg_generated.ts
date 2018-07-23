@@ -198,10 +198,20 @@ __init(i:number, bb:flatbuffers.ByteBuffer):Start {
 };
 
 /**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {Start=} obj
+ * @returns {Start}
+ */
+static getRootAsStart(bb:flatbuffers.ByteBuffer, obj?:Start):Start {
+  return (obj || new Start).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
  * @returns {number}
  */
 unused():number {
-  return this.bb!.readInt8(this.bb_pos);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.readInt8(this.bb_pos + offset) : 0;
 };
 
 /**
@@ -209,7 +219,7 @@ unused():number {
  * @returns {boolean}
  */
 mutate_unused(value:number):boolean {
-  var offset = this.bb!.__offset(this.bb_pos, 0);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
 
   if (offset === 0) {
     return false;
@@ -221,13 +231,26 @@ mutate_unused(value:number):boolean {
 
 /**
  * @param {flatbuffers.Builder} builder
+ */
+static startStart(builder:flatbuffers.Builder) {
+  builder.startObject(1);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @param {number} unused
+ */
+static addUnused(builder:flatbuffers.Builder, unused:number) {
+  builder.addFieldInt8(0, unused, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @returns {flatbuffers.Offset}
  */
-static createStart(builder:flatbuffers.Builder, unused: number):flatbuffers.Offset {
-  builder.prep(1, 1);
-  builder.writeInt8(unused);
-  return builder.offset();
+static endStart(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
 };
 
 }
@@ -736,10 +759,20 @@ __init(i:number, bb:flatbuffers.ByteBuffer):Exit {
 };
 
 /**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {Exit=} obj
+ * @returns {Exit}
+ */
+static getRootAsExit(bb:flatbuffers.ByteBuffer, obj?:Exit):Exit {
+  return (obj || new Exit).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
  * @returns {number}
  */
 code():number {
-  return this.bb!.readInt32(this.bb_pos);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 };
 
 /**
@@ -747,7 +780,7 @@ code():number {
  * @returns {boolean}
  */
 mutate_code(value:number):boolean {
-  var offset = this.bb!.__offset(this.bb_pos, 0);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
 
   if (offset === 0) {
     return false;
@@ -759,13 +792,26 @@ mutate_code(value:number):boolean {
 
 /**
  * @param {flatbuffers.Builder} builder
+ */
+static startExit(builder:flatbuffers.Builder) {
+  builder.startObject(1);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @param {number} code
+ */
+static addCode(builder:flatbuffers.Builder, code:number) {
+  builder.addFieldInt32(0, code, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @returns {flatbuffers.Offset}
  */
-static createExit(builder:flatbuffers.Builder, code: number):flatbuffers.Offset {
-  builder.prep(4, 4);
-  builder.writeInt32(code);
-  return builder.offset();
+static endExit(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
 };
 
 }
@@ -796,10 +842,20 @@ __init(i:number, bb:flatbuffers.ByteBuffer):TimerStart {
 };
 
 /**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {TimerStart=} obj
+ * @returns {TimerStart}
+ */
+static getRootAsTimerStart(bb:flatbuffers.ByteBuffer, obj?:TimerStart):TimerStart {
+  return (obj || new TimerStart).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
  * @returns {number}
  */
 id():number {
-  return this.bb!.readUint32(this.bb_pos);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 };
 
 /**
@@ -807,7 +863,7 @@ id():number {
  * @returns {boolean}
  */
 mutate_id(value:number):boolean {
-  var offset = this.bb!.__offset(this.bb_pos, 0);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
 
   if (offset === 0) {
     return false;
@@ -821,7 +877,8 @@ mutate_id(value:number):boolean {
  * @returns {boolean}
  */
 interval():boolean {
-  return !!this.bb!.readInt8(this.bb_pos + 4);
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 };
 
 /**
@@ -829,7 +886,7 @@ interval():boolean {
  * @returns {boolean}
  */
 mutate_interval(value:boolean):boolean {
-  var offset = this.bb!.__offset(this.bb_pos, 4);
+  var offset = this.bb!.__offset(this.bb_pos, 6);
 
   if (offset === 0) {
     return false;
@@ -843,7 +900,8 @@ mutate_interval(value:boolean):boolean {
  * @returns {number}
  */
 delay():number {
-  return this.bb!.readInt32(this.bb_pos + 8);
+  var offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? this.bb!.readInt32(this.bb_pos + offset) : 0;
 };
 
 /**
@@ -863,18 +921,42 @@ mutate_delay(value:number):boolean {
 
 /**
  * @param {flatbuffers.Builder} builder
+ */
+static startTimerStart(builder:flatbuffers.Builder) {
+  builder.startObject(3);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @param {number} id
+ */
+static addId(builder:flatbuffers.Builder, id:number) {
+  builder.addFieldInt32(0, id, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @param {boolean} interval
+ */
+static addInterval(builder:flatbuffers.Builder, interval:boolean) {
+  builder.addFieldInt8(1, +interval, +false);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @param {number} delay
+ */
+static addDelay(builder:flatbuffers.Builder, delay:number) {
+  builder.addFieldInt32(2, delay, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @returns {flatbuffers.Offset}
  */
-static createTimerStart(builder:flatbuffers.Builder, id: number, interval: boolean, delay: number):flatbuffers.Offset {
-  builder.prep(4, 12);
-  builder.writeInt32(delay);
-  builder.pad(3);
-  builder.writeInt8(+interval);
-  builder.writeInt32(id);
-  return builder.offset();
+static endTimerStart(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
 };
 
 }
@@ -905,10 +987,20 @@ __init(i:number, bb:flatbuffers.ByteBuffer):TimerReady {
 };
 
 /**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {TimerReady=} obj
+ * @returns {TimerReady}
+ */
+static getRootAsTimerReady(bb:flatbuffers.ByteBuffer, obj?:TimerReady):TimerReady {
+  return (obj || new TimerReady).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
  * @returns {number}
  */
 id():number {
-  return this.bb!.readUint32(this.bb_pos);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 };
 
 /**
@@ -916,7 +1008,7 @@ id():number {
  * @returns {boolean}
  */
 mutate_id(value:number):boolean {
-  var offset = this.bb!.__offset(this.bb_pos, 0);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
 
   if (offset === 0) {
     return false;
@@ -930,7 +1022,8 @@ mutate_id(value:number):boolean {
  * @returns {boolean}
  */
 done():boolean {
-  return !!this.bb!.readInt8(this.bb_pos + 4);
+  var offset = this.bb!.__offset(this.bb_pos, 6);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 };
 
 /**
@@ -938,7 +1031,7 @@ done():boolean {
  * @returns {boolean}
  */
 mutate_done(value:boolean):boolean {
-  var offset = this.bb!.__offset(this.bb_pos, 4);
+  var offset = this.bb!.__offset(this.bb_pos, 6);
 
   if (offset === 0) {
     return false;
@@ -950,16 +1043,34 @@ mutate_done(value:boolean):boolean {
 
 /**
  * @param {flatbuffers.Builder} builder
+ */
+static startTimerReady(builder:flatbuffers.Builder) {
+  builder.startObject(2);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @param {number} id
+ */
+static addId(builder:flatbuffers.Builder, id:number) {
+  builder.addFieldInt32(0, id, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @param {boolean} done
+ */
+static addDone(builder:flatbuffers.Builder, done:boolean) {
+  builder.addFieldInt8(1, +done, +false);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @returns {flatbuffers.Offset}
  */
-static createTimerReady(builder:flatbuffers.Builder, id: number, done: boolean):flatbuffers.Offset {
-  builder.prep(4, 8);
-  builder.pad(3);
-  builder.writeInt8(+done);
-  builder.writeInt32(id);
-  return builder.offset();
+static endTimerReady(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
 };
 
 }
@@ -990,10 +1101,20 @@ __init(i:number, bb:flatbuffers.ByteBuffer):TimerClear {
 };
 
 /**
+ * @param {flatbuffers.ByteBuffer} bb
+ * @param {TimerClear=} obj
+ * @returns {TimerClear}
+ */
+static getRootAsTimerClear(bb:flatbuffers.ByteBuffer, obj?:TimerClear):TimerClear {
+  return (obj || new TimerClear).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+};
+
+/**
  * @returns {number}
  */
 id():number {
-  return this.bb!.readUint32(this.bb_pos);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 };
 
 /**
@@ -1001,7 +1122,7 @@ id():number {
  * @returns {boolean}
  */
 mutate_id(value:number):boolean {
-  var offset = this.bb!.__offset(this.bb_pos, 0);
+  var offset = this.bb!.__offset(this.bb_pos, 4);
 
   if (offset === 0) {
     return false;
@@ -1013,13 +1134,26 @@ mutate_id(value:number):boolean {
 
 /**
  * @param {flatbuffers.Builder} builder
+ */
+static startTimerClear(builder:flatbuffers.Builder) {
+  builder.startObject(1);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @param {number} id
+ */
+static addId(builder:flatbuffers.Builder, id:number) {
+  builder.addFieldInt32(0, id, 0);
+};
+
+/**
+ * @param {flatbuffers.Builder} builder
  * @returns {flatbuffers.Offset}
  */
-static createTimerClear(builder:flatbuffers.Builder, id: number):flatbuffers.Offset {
-  builder.prep(4, 4);
-  builder.writeInt32(id);
-  return builder.offset();
+static endTimerClear(builder:flatbuffers.Builder):flatbuffers.Offset {
+  var offset = builder.endObject();
+  return offset;
 };
 
 }
