@@ -31,9 +31,8 @@ global.SendSuccess = () => {
   });
 };
 
-global.SendByteLength = () => {
+global.SendWrongByteLength = () => {
   deno.recv(msg => {
-    assert(msg instanceof ArrayBuffer);
     assert(msg.byteLength === 3);
   });
 };

@@ -41,11 +41,14 @@ TEST(MockRuntimeTest, SendSuccess) {
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, SendByteLength) {
+TEST(MockRuntimeTest, SendWrongByteLength) {
   Deno* d = deno_new(nullptr, nullptr);
-  EXPECT_TRUE(deno_execute(d, "a.js", "SendByteLength()"));
-  // We pub the wrong sized message, it should throw.
+  EXPECT_TRUE(deno_execute(d, "a.js", "SendWrongByteLength()"));
+  // deno_send the wrong sized message, it should throw.
   EXPECT_FALSE(deno_send(d, strbuf("abcd")));
+  std::string exception = deno_last_exception(d);
+  EXPECT_GT(exception.length(), 1);
+  EXPECT_NE(exception.find("assert"), std::string::npos);
   deno_delete(d);
 }
 
