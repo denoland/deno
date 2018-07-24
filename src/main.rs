@@ -6,8 +6,10 @@ extern crate msg_rs as msg_generated;
 extern crate url;
 
 use libc::c_int;
+use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::mem;
 use std::ptr;
 
 mod handlers;
@@ -18,15 +20,29 @@ use binding::{
   deno_last_exception, deno_new, deno_set_flags, DenoC,
 };
 
+fn parse_core_args() -> Vec<String> {
+  let mut args: Vec<String> = env::args().collect();
+
+  for idx in 0..args.len() {
+    if args[idx] == "--v8-options" {
+      mem::swap(args.get_mut(idx).unwrap(), &mut String::from("--help"));
+    }
+  }
+
+  args
+}
+
 // Pass the command line arguments to v8.
 // Returns a vector of command line arguments that v8 did not understand.
 fn set_flags() -> Vec<String> {
   // deno_set_flags(int* argc, char** argv) mutates argc and argv to remove
   // flags that v8 understands.
-  // Convert command line arguments to a vector of C strings.
-  let mut argv = std::env::args()
-    .map(|arg| CString::new(arg).unwrap().into_bytes_with_nul())
+  // First parse core args, then converto to a vector of C strings.
+  let mut argv = parse_core_args()
+    .iter()
+    .map(|arg| CString::new(arg.as_str()).unwrap().into_bytes_with_nul())
     .collect::<Vec<_>>();
+
   // Make a new array, that can be modified by V8::SetFlagsFromCommandLine(),
   // containing mutable raw pointers to the individual command line args.
   let mut c_argv = argv
