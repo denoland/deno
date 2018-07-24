@@ -22,6 +22,11 @@ depot_tools_path = join(third_party_path, "depot_tools")
 gn_path = join(depot_tools_path, "gn")
 ninja_path = join(depot_tools_path, "ninja")
 
+# Add third_party/depot_tools to PATH  because some google tools (e.g.
+# tool_wrapper, download_from_google_storage) use some google specific python
+# wrapper.
+os.environ["PATH"] = depot_tools_path + os.pathsep + os.environ["PATH"]
+
 os.chdir(root_path)
 
 if options.build_path:
