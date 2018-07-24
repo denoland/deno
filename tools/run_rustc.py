@@ -8,6 +8,7 @@ import sys
 import os
 import argparse
 import subprocess
+import util
 
 
 # Updates the path of the main target in the depfile to the relative path
@@ -34,8 +35,7 @@ def main():
         required=False)
     args, rest = parser.parse_known_args()
 
-    env = os.environ.copy()
-    subprocess.check_call(["rustc"] + rest, env=env)
+    util.run(["rustc"] + rest, quiet=True)
 
     if args.depfile and args.output_file:
         fix_depfile(args.depfile, os.getcwd(), args.output_file)

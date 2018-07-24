@@ -3,6 +3,7 @@
 import os
 import shutil
 import stat
+import sys
 import subprocess
 
 executable_suffix = ".exe" if os.name == "nt" else ""
@@ -24,7 +25,9 @@ def run(args, quiet=False, cwd=None, env=None, merge_env={}):
         print " ".join(args)
     env = make_env(env=env, merge_env=merge_env)
     shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
-    subprocess.check_call(args, cwd=cwd, env=env, shell=shell)
+    rc = subprocess.call(args, cwd=cwd, env=env, shell=shell)
+    if rc != 0:
+        sys.exit(rc)
 
 
 def remove_and_symlink(target, name, target_is_dir=False):
