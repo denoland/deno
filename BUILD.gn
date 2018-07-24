@@ -38,6 +38,10 @@ rust_executable("deno") {
   extern = [
     "$rust_build:libc",
     "$rust_build:log",
+    "$rust_build:clap",
+    "$rust_build:unicode_width",
+    "$rust_build:textwrap",
+    "$rust_build:bitflags",
   ]
   deps = [
     ":libdeno",

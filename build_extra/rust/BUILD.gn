@@ -69,3 +69,25 @@ rust_component("cfg_if") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/cfg-if-0.1.4/src/lib.rs"
 }
+
+rust_component("clap") {
+  source_root =
+      "$crates/registry/src/github.com-1ecc6299db9ec823/clap-2.32.0/src/lib.rs"
+  extern = [ ":unicode_width", ":textwrap", ":bitflags" ]
+}
+
+rust_component("unicode_width") {
+  source_root =
+      "$crates/registry/src/github.com-1ecc6299db9ec823/unicode-width-0.1.5/src/lib.rs"
+}
+
+rust_component("textwrap") {
+  source_root =
+      "$crates/registry/src/github.com-1ecc6299db9ec823/textwrap-0.10.0/src/lib.rs"
+  extern = [ ":unicode_width" ]
+}
+
+rust_component("bitflags") {
+  source_root =
+      "$crates/registry/src/github.com-1ecc6299db9ec823/bitflags-1.0.3/src/lib.rs"
+}
