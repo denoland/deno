@@ -14,7 +14,6 @@ env:
 before_install: |
   if ! [ -x $DEPOT_TOOLS_PATH/gclient ]; then
     rm -rf $DEPOT_TOOLS_PATH
-    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS_PATH
   fi
 install:
  - export PATH=$PATH:$DEPOT_TOOLS_PATH
