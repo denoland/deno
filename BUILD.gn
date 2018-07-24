@@ -37,6 +37,8 @@ config("deno_config") {
 main_extern = [
   "$rust_build:libc",
   "$rust_build:log",
+  "$rust_build:sha1",
+  "$rust_build:tempfile",
   "$rust_build:url",
   "//build_extra/flatbuffers/rust:flatbuffers",
   ":msg_rs",
@@ -52,6 +54,9 @@ main_extern = [
   "$rust_build:percent_encoding",
   "$rust_build:unicode_bidi",
   "$rust_build:unicode_normalization",
+  "$rust_build:rand",
+  "$rust_build:rand_core",
+  "$rust_build:remove_dir_all",
 ]
 
 rust_executable("deno") {

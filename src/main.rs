@@ -3,6 +3,8 @@ extern crate libc;
 extern crate log;
 extern crate flatbuffers;
 extern crate msg_rs as msg_generated;
+extern crate sha1;
+extern crate tempfile;
 extern crate url;
 
 use libc::c_int;
