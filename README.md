@@ -78,18 +78,25 @@ To build:
     cd deno
     ./tools/run_hooks.py
 
-    # Configure
-    ./third_party/depot_tools/gn gen out/default
-    ./third_party/depot_tools/gn gen out/release --args='cc_wrapper="ccache" is_official_build=true'
-    ./third_party/depot_tools/gn gen out/debug --args='cc_wrapper="ccache" is_debug=true '
-
     # Build
-    ./third_party/depot_tools/ninja -C out/default/ deno
+    ./tools/build.py
+
+    # Run
+    ./out/debug/deno tests/002_hello.ts
 
 Other useful commands:
 
-    ./third_party/depot_tools/gn args out/default/ --list
-    ./third_party/depot_tools/gn args out/default/
-    ./third_party/depot_tools/gn desc out/default/ :deno
+    # Call ninja manually.
+    ./third_party/depot_tools/ninja -C out/debug :all
+    # Build a release binary.
+    ./tools/build.py --mode=release :deno
+    # List executable targets.
+    ./third_party/depot_tools/gn ls out/debug //:* --as=output --type=executable
+    # List build configuation.
+    ./third_party/depot_tools/gn args out/debug/ --list
+    # Edit build configuration.
+    ./third_party/depot_tools/gn args out/debug/
+    # Describe a target.
+    ./third_party/depot_tools/gn desc out/debug/ :deno
     ./third_party/depot_tools/gn help
 

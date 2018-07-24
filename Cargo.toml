@@ -1,5 +1,5 @@
  # Dummy package info required by `cargo fetch`
- # Called from tools/build_third_party.py
+ # Called from tools/sync_third_party.py
  # Should not be called with `cargo build`
 [package]
 name = "deno"
