@@ -1,11 +1,14 @@
 extern crate libc;
 #[macro_use]
 extern crate log;
+extern crate clap;
 
 use libc::c_int;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ptr;
+use std::iter;
+use clap::{App, Arg};
 
 mod binding;
 use binding::{
@@ -15,11 +18,11 @@ use binding::{
 
 // Pass the command line arguments to v8.
 // Returns a vector of command line arguments that v8 did not understand.
-fn set_flags() -> Vec<String> {
+fn set_flags(args: Vec<String>) -> Vec<String> {
   // deno_set_flags(int* argc, char** argv) mutates argc and argv to remove
   // flags that v8 understands.
   // Convert command line arguments to a vector of C strings.
-  let mut argv = std::env::args()
+  let mut argv = iter::once(String::from("deno")).chain(args.into_iter())
     .map(|arg| CString::new(arg).unwrap().into_bytes_with_nul())
     .collect::<Vec<_>>();
   // Make a new array, that can be modified by V8::SetFlagsFromCommandLine(),
@@ -86,11 +89,26 @@ impl Drop for Deno {
 }
 
 fn main() {
-  log::set_max_level(log::LevelFilter::Debug);
+  let args = App::new("deno")
+    .version("0.0.0")
+    .about("A secure TypeScript runtime built on V8")
+    .author("Ryan D. <ry@tinyclouds.org>")
+    .arg(Arg::with_name("V8ARGS")
+      .required(true)
+      .multiple(true))
+    .arg(Arg::with_name("debug")
+      .short("d")
+      .long("debug")
+      .help("Sets the log level to max"))
+    .get_matches();
+
+  if args.is_present("debug") {
+    log::set_max_level(log::LevelFilter::Debug);
+  }
 
   unsafe { deno_init() };
 
-  set_flags();
+  set_flags(args.values_of_lossy("V8ARGS").unwrap());
 
   /*
     let v = unsafe { deno_v8_version() };
