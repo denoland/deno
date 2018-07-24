@@ -69,3 +69,41 @@ rust_component("cfg_if") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/cfg-if-0.1.4/src/lib.rs"
 }
+
+rust_component("sha1") {
+  source_root =
+      "$crates/registry/src/github.com-1ecc6299db9ec823/sha1-0.6.0/src/lib.rs"
+}
+
+rust_component("tempfile") {
+  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.3/src/lib.rs"
+  extern = [
+    ":libc",
+    ":rand",
+    ":remove_dir_all",
+  ]
+}
+
+rust_component("rand") {
+  source_root =
+      "$crates/registry/src/github.com-1ecc6299db9ec823/rand-0.5.4/src/lib.rs"
+  extern = [
+    ":libc",
+    ":rand_core",
+  ]
+  cfg = [
+    "feature=\"std\"",
+    "feature=\"alloc\"",
+  ]
+  if (is_mac) {
+    libs = [ "Security.framework" ]
+  }
+}
+
+rust_component("rand_core") {
+  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/rand_core-0.2.1/src/lib.rs"
+}
+
+rust_component("remove_dir_all") {
+  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/remove_dir_all-0.5.1/src/lib.rs"
+}
