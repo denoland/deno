@@ -20,31 +20,24 @@ install:
  - export PATH=$PATH:$DEPOT_TOOLS_PATH
  # Sync dependencies.
  # TODO(ry) These sync steps are very terrible and only here temporarily.
- # A single deno_deps git submodule should be created which contains V8,
- # node_modules, depot_tools, rustc, and other deps.
- # Building Deno *should not* depend on yarn, gclient, rustup, cargo, nor any
- # internet connection.
+ # rustc should be added to deno_third_party. Ultimately Deno *should not*
+ # depend on yarn, gclient, rustup, cargo, nor any internet connection.
  - curl -sSf https://sh.rustup.rs | sh -s -- -y
  - export PATH=$HOME/.cargo/bin:$PATH
  - rustc --version
  # TODO(ry) Do not depend on run_hooks because it calls
  # //third_party/depot_tools/download_from_google_storage.py
- # Use git lfs and combine run_hooks with build_third_party?
+ # Use git lfs and combine run_hooks with sync_third_party?
  - ./tools/run_hooks.py
  # ccache needs the custom LLVM to be in PATH and other variables.
  - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
  - export CCACHE_CPP2=yes
  - export CCACHE_SLOPPINESS=time_macros
- # In case gn gen args change, delete args.gn to avoid using cached values.
- - rm -f $BUILD_PATH/args.gn
+ - ccache -s
  # is_debug, use_allocator, and ccache are used to speed travis.
  # use_custom_libcxx=false and use_sysroot=false seem to be required to build on
  # Ubuntu 14.04
- - gn gen $BUILD_PATH --args='is_debug=false use_allocator="none" cc_wrapper="ccache" use_custom_libcxx=false use_sysroot=false'
- - gn args $BUILD_PATH --list
- - ccache -s
- # Travis hangs without -j2 argument to ninja.
- - ninja -j2 -C $BUILD_PATH :all
+ - ./tools/build.py --build_path=$BUILD_PATH --args='is_debug=false use_allocator="none" use_custom_libcxx=false use_sysroot=false'
 script:
  - ./tools/lint.py
  - ./tools/test.py $BUILD_PATH
