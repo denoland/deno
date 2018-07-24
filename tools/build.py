@@ -59,8 +59,9 @@ if not os.path.isdir(build_path):
 # This is to avoid quoting/escaping complications when passing overrides as
 # command-line arguments.
 args_filename = join(build_path, "args.gn")
-with open(args_filename, "w+") as f:
-    f.write("\n".join(gn_args) + "\n")
+if not os.path.exists(args_filename) or options.args:
+    with open(args_filename, "w+") as f:
+        f.write("\n".join(gn_args) + "\n")
 
 run([gn_path, "gen", build_path])
 
