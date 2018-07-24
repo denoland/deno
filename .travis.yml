@@ -5,23 +5,15 @@ branches:
 cache:
   ccache: true
   directories:
-   - $DEPOT_TOOLS_PATH
    - $BUILD_PATH
 env:
   global:
     - BUILD_PATH=$HOME/out/Default
-    - DEPOT_TOOLS_PATH=$HOME/depot_tools
-before_install: |
-  if ! [ -x $DEPOT_TOOLS_PATH/gclient ]; then
-    rm -rf $DEPOT_TOOLS_PATH
-    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS_PATH
-  fi
 install:
- - export PATH=$PATH:$DEPOT_TOOLS_PATH
  # Sync dependencies.
  # TODO(ry) These sync steps are very terrible and only here temporarily.
  # A single deno_deps git submodule should be created which contains V8,
- # node_modules, depot_tools, rustc, and other deps.
+ # node_modules, rustc, and other deps.
  # Building Deno *should not* depend on yarn, gclient, rustup, cargo, nor any
  # internet connection.
  - curl -sSf https://sh.rustup.rs | sh -s -- -y
