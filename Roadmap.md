@@ -294,7 +294,7 @@ interface Reader {
   // does not indicate EOF.
   //
   // Implementations must not retain p.
-  async read(p: Uint8Array): Promise<ReadResult>;
+  async read(p: ArrayBufferView): Promise<ReadResult>;
 }
 
 // Writer is the interface that wraps the basic Write method.
@@ -307,7 +307,7 @@ interface Writer {
   // slice data, even temporarily.
   //
   // Implementations must not retain p.
-  async write(p: Uint8Array): Promise<number>;
+  async write(p: ArrayBufferView): Promise<number>;
 }
 
 // https://golang.org/pkg/io/#Closer
@@ -362,7 +362,7 @@ functions that will be easy to port. Some example utilites:
 // https://golang.org/pkg/io/#Copy
 async function copy(dst: Writer, src: Reader): Promise<number> {
   let n = 0;
-  const b = new Uint8Array(1024);
+  const b = new ArrayBufferView(1024);
   let got_eof = false;
   while (got_eof === false) {
      let result = await src.read(b);
@@ -382,7 +382,7 @@ async function copy(dst: Writer, src: Reader): Promise<number> {
 // https://golang.org/pkg/io/#MultiWriter
 function multiWriter(writers: ...Writer): Writer {
   return {
-    write: async (p: Uint8Array) => Promise<number> {
+    write: async (p: ArrayBufferView) => Promise<number> {
       let n;
       let nwritten = await Promise.all(writers.map((w) => w.write(p)));
       return nwritten[0];
