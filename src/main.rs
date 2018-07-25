@@ -125,14 +125,15 @@ impl Drop for Deno {
 
 #[test]
 fn test_flag_parse_1() {
-  let js_args = set_flags(vec!["deno".to_string(), "--v8-options".to_string()]);
-  assert!(js_args == vec!["deno".to_string()]);
+  let js_args =
+    parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
+  assert!(js_args == (vec!["deno".to_string(), "--help".to_string()], vec![]));
 }
 
 #[test]
 fn test_flag_parse_2() {
-  let js_args = set_flags(vec!["deno".to_string(), "--help".to_string()]);
-  assert!(js_args == vec!["deno".to_string(), "--help".to_string()]);
+  let js_args = parse_core_args(vec!["deno".to_string(), "--help".to_string()]);
+  assert!(js_args == (vec!["deno".to_string()], vec!["--help".to_string()]));
 }
 
 fn main() {
@@ -140,7 +141,7 @@ fn main() {
 
   unsafe { deno_init() };
 
-  let js_args = set_flags(env::args().collect());
+  let _js_args = set_flags(env::args().collect());
 
   /*
     let v = unsafe { deno_v8_version() };
