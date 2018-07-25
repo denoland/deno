@@ -1,20 +1,30 @@
 # Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
 # All rights reserved. MIT License.
 import os
+import shutil
+import stat
 import subprocess
 
 executable_suffix = ".exe" if os.name == "nt" else ""
+root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 
-def run(args, quiet=False, envs={}):
+def make_env(merge_env={}, env=None):
+    if env is None:
+        env = os.environ
+    env = env.copy()
+    for key in merge_env.keys():
+        env[key] = merge_env[key]
+    return env
+
+
+def run(args, quiet=False, cwd=None, env=None, merge_env={}):
+    args[0] = os.path.normpath(args[0])
     if not quiet:
         print " ".join(args)
-    env = os.environ.copy()
-    for key in envs.keys():
-        env[key] = envs[key]
-    args[0] = os.path.normpath(args[0])
+    env = make_env(env=env, merge_env=merge_env)
     shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
-    subprocess.check_call(args, env=env, shell=shell)
+    subprocess.check_call(args, cwd=cwd, env=env, shell=shell)
 
 
 def remove_and_symlink(target, name, target_is_dir=False):
@@ -68,3 +78,14 @@ def find_exts(directory, *extensions):
                     matches.append(os.path.join(root, filename))
                     break
     return matches
+
+
+# The Python equivalent of `rm -rf`.
+def rmtree(directory):
+    # On Windows, shutil.rmtree() won't delete files that have a readonly bit.
+    # Git creates some files that do. The 'onerror' callback deals with those.
+    def rm_readonly(func, path, _):
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
+    shutil.rmtree(directory, onerror=rm_readonly)

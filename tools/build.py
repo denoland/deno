@@ -4,7 +4,8 @@ import argparse
 import os
 import sys
 from os.path import join
-from util import run
+from third_party import depot_tools_path, third_party_path, fix_symlinks, google_env
+from util import root_path, run
 import distutils.spawn
 
 parser = argparse.ArgumentParser(description='')
@@ -16,18 +17,12 @@ parser.add_argument(
     '--mode', default='debug', help='Build configuration: debug, release.')
 options, targets = parser.parse_known_args()
 
-root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-third_party_path = join(root_path, "third_party")
-depot_tools_path = join(third_party_path, "depot_tools")
-gn_path = join(depot_tools_path, "gn")
-ninja_path = join(depot_tools_path, "ninja")
-
-# Add third_party/depot_tools to PATH  because some google tools (e.g.
-# tool_wrapper, download_from_google_storage) use some google specific python
-# wrapper.
-os.environ["PATH"] = depot_tools_path + os.pathsep + os.environ["PATH"]
+fix_symlinks()
 
 os.chdir(root_path)
+
+gn_path = join(depot_tools_path, "gn")
+ninja_path = join(depot_tools_path, "ninja")
 
 if options.build_path:
     build_path = options.build_path
@@ -63,7 +58,7 @@ if not os.path.exists(args_filename) or options.args:
     with open(args_filename, "w+") as f:
         f.write("\n".join(gn_args) + "\n")
 
-run([gn_path, "gen", build_path])
+run([gn_path, "gen", build_path], env=google_env())
 
 target = " ".join(targets) if targets else ":all"
-run([ninja_path, "-C", build_path, target])
+run([ninja_path, "-C", build_path, target], env=google_env())
