@@ -194,11 +194,11 @@ run_node("bundle") {
     "js/dispatch.ts",
     "js/globals.ts",
     "js/main.ts",
-    "js/msg_generated.ts",
     "js/os.ts",
     "js/runtime.ts",
     "js/types.ts",
     "js/util.ts",
+    "src/msg.fbs",
     "rollup.config.js",
     "tsconfig.json",
   ]
@@ -207,7 +207,7 @@ run_node("bundle") {
     out_dir + "main.js.map",
   ]
   deps = [
-    ":flatbufferjs",
+    ":msg_ts",
   ]
   args = [
     "./node_modules/rollup/bin/rollup",
@@ -235,34 +235,6 @@ source_set("libdeno_nosnapshot") {
   bundle_outputs = get_target_outputs(":bundle")
   bundle_location = rebase_path(bundle_outputs[0])
   defines = [ "BUNDLE_LOCATION=\"$bundle_location\"" ]
-}
-
-# Generates flatbuffer TypeScript code.
-# TODO(ry) Ideally flatc output files should be written into
-# target_gen_dir, but its difficult to get this working in a way that the
-# bundler can resolve their location. (The bundler does not support NODE_PATH?)
-# Therefore this hack: write the msg_generated.ts output
-# into the js/ folder, and we check it into the repo. Hopefully this hack can
-# be removed at some point. If msg.fps is changed, commit changes to the
-# generated JS files. The stamp file is just to make gn work.
-action("flatbufferjs") {
-  script = "//tools/flatbufferjs_hack.py"
-  sources = [
-    "src/msg.fbs",
-  ]
-  outputs = [
-    "$target_gen_dir/flatbufferjs_hack.stamp",
-  ]
-
-  args = [
-    rebase_path("$target_gen_dir/msg_generated.ts", root_build_dir),
-    rebase_path("js/msg_generated.ts", root_build_dir),
-    rebase_path(outputs[0], root_build_dir),
-  ]
-
-  deps = [
-    ":msg_ts",
-  ]
 }
 
 ts_flatbuffer("msg_ts") {

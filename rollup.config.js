@@ -48,6 +48,20 @@ function strings({ include, exclude } = {}) {
   };
 }
 
+// This plugin resolves at bundle time the `msg_generated` module
+function resolveMsgGenerated() {
+  return {
+    name: "resolve-msg-generated",
+    resolveId(importee) {
+      if (importee === "msg_generated") {
+        return path.resolve(
+          path.join(process.cwd(), "gen", "msg_generated.ts")
+        );
+      }
+    }
+  };
+}
+
 export default function makeConfig(commandOptions) {
   return {
     output: {
@@ -69,6 +83,8 @@ export default function makeConfig(commandOptions) {
         buffer: mockPath,
         module: mockPath
       }),
+
+      resolveMsgGenerated(),
 
       // Allows rollup to resolve modules based on Node.js resolution
       nodeResolve({
