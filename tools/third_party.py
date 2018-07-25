@@ -1,0 +1,166 @@
+#!/usr/bin/env python
+# This script contains helper functions to work with the third_party subrepo.
+
+import os
+import sys
+from os import path
+from util import find_exts, make_env, remove_and_symlink, rmtree, root_path, run
+
+
+# Helper function that returns the full path to a subpath of the repo root.
+def root(*subpath_parts):
+    return path.normpath(path.join(root_path, *subpath_parts))
+
+
+# Helper function that returns the full path to a file/dir in third_party.
+def tp(*subpath_parts):
+    return root("third_party", *subpath_parts)
+
+
+third_party_path = tp()
+depot_tools_path = tp("depot_tools")
+rust_crates_path = tp("rust_crates")
+
+
+# This function creates or modifies an environment so that it matches the
+# expectations of various google tools (gn, gclient, etc).
+def google_env(env=None, merge_env={}, depot_tools_path=depot_tools_path):
+    env = make_env(env=env, merge_env=merge_env)
+    # Depot_tools to be in the PATH, before Python.
+    path_prefix = depot_tools_path + os.path.pathsep
+    if not env['PATH'].startswith(path_prefix):
+        env['PATH'] = path_prefix + env['PATH']
+    # We're not using Google's internal infrastructure.
+    if os.name == 'nt' and not 'DEPOT_TOOLS_WIN_TOOLCHAIN' in env:
+        env['DEPOT_TOOLS_WIN_TOOLCHAIN'] = "0"
+    return env
+
+
+def fix_symlinks():
+    # Ensure the third_party directory exists.
+    try:
+        os.makedirs(third_party_path)
+    except:
+        pass
+
+    # Make symlinks to Yarn metadata living in the root repo.
+    remove_and_symlink("../package.json", tp("package.json"))
+    remove_and_symlink("../yarn.lock", tp("yarn.lock"))
+
+    # TODO(ry) Is it possible to remove these symlinks?
+    remove_and_symlink("v8/third_party/googletest", tp("googletest"), True)
+    remove_and_symlink("v8/third_party/jinja2", tp("jinja2"), True)
+    remove_and_symlink("v8/third_party/llvm-build", tp("llvm-build"), True)
+    remove_and_symlink("v8/third_party/markupsafe", tp("markupsafe"), True)
+
+    # On Windows, git doesn't create the right type of symlink if the symlink
+    # and it's target are in different repos. Here we fix the symlinks that exist
+    # in the root repo while their target is in the third_party repo.
+    remove_and_symlink("third_party/node_modules", root("node_modules"), True)
+    remove_and_symlink("third_party/v8/build", root("build"), True)
+    remove_and_symlink("third_party/v8/buildtools", root("buildtools"), True)
+    remove_and_symlink("third_party/v8/build_overrides",
+                       root("build_overrides"), True)
+    remove_and_symlink("third_party/v8/testing", root("testing"), True)
+
+
+# Run Yarn to install JavaScript dependencies.
+def run_yarn():
+    run(["yarn"], cwd=third_party_path)
+
+
+# Run Cargo to install Rust dependencies.
+def run_cargo():
+    # Deletes the cargo index lockfile; it appears that cargo itself doesn't do it.
+    # If the lockfile ends up in the git repo, it'll make cargo hang for everyone
+    # else who tries to run sync_third_party.
+    def delete_lockfile():
+        lockfiles = find_exts(
+            path.join(rust_crates_path, "registry/index"), '.cargo-index-lock')
+        for lockfile in lockfiles:
+            os.remove(lockfile)
+
+    # Delete the index lockfile in case someone accidentally checked it in.
+    delete_lockfile()
+
+    run(["cargo", "fetch", "--manifest-path=" + root("Cargo.toml")],
+        cwd=third_party_path,
+        merge_env={'CARGO_HOME': rust_crates_path})
+
+    # Delete the lockfile again so it doesn't end up in the git repo.
+    delete_lockfile()
+
+
+# Run gclient to install other dependencies.
+def run_gclient_sync():
+    # Depot_tools will normally try to self-update, which will fail because
+    # it's not checked out from it's own git repository; gclient will then try
+    # to fix things up and not succeed, and and we'll end up with a huge mess.
+    # To work around this, we rename the `depot_tools` directory to
+    # `{root_path}/depot_tools_temp` first, and we set DEPOT_TOOLS_UPDATE=0 in
+    # the environment so depot_tools doesn't attempt to self-update.
+    # Since depot_tools is listed in .gclient_entries, gclient will install a
+    # fresh copy in `third_party/depot_tools`.
+    # If it all works out, we remove the depot_tools_temp directory afterwards.
+    depot_tools_temp_path = root("depot_tools_temp")
+
+    # Rename depot_tools to depot_tools_temp.
+    try:
+        os.rename(depot_tools_path, depot_tools_temp_path)
+    except:
+        # If renaming failed, and the depot_tools_temp directory already exists,
+        # assume that it's still there because a prior run_gclient_sync() call
+        # failed half-way, before we got the chance to remove the temp dir.
+        # We'll use whatever is in the temp dir that was already there.
+        # If not, the user can recover by removing the temp directory manually.
+        if path.isdir(depot_tools_temp_path):
+            pass
+        else:
+            raise
+
+    args = [
+        "gclient", "sync", "--reset", "--shallow", "--no-history", "--nohooks"
+    ]
+    envs = {
+        'DEPOT_TOOLS_UPDATE': "0",
+        'GCLIENT_FILE': root("gclient_config.py")
+    }
+    env = google_env(depot_tools_path=depot_tools_temp_path, merge_env=envs)
+    run(args, cwd=third_party_path, env=env)
+
+    # Delete the depot_tools_temp directory, but not before verifying that
+    # gclient did indeed install a fresh copy.
+    # Also check that `{depot_tools_temp_path}/gclient.py` exists, so a typo in
+    # this script won't accidentally blow out someone's home dir.
+    if (path.isdir(path.join(depot_tools_path, ".git"))
+            and path.isfile(path.join(depot_tools_path, "gclient.py"))
+            and path.isfile(path.join(depot_tools_temp_path, "gclient.py"))):
+        rmtree(depot_tools_temp_path)
+
+
+# Download gn from Google storage.
+def download_gn():
+    if sys.platform == 'win32':
+        sha1_file = "v8/buildtools/win/gn.exe.sha1"
+    elif sys.platform == 'darwin':
+        sha1_file = "v8/buildtools/mac/gn.sha1"
+    elif sys.platform.startswith('linux'):
+        sha1_file = "v8/buildtools/linux64/gn.sha1"
+
+    run([
+        "python",
+        tp('depot_tools/download_from_google_storage.py'),
+        '--platform=' + sys.platform,
+        '--no_auth',
+        '--bucket=chromium-gn',
+        '--sha1_file',
+        tp(sha1_file),
+    ],
+        env=google_env())
+
+
+# Download clang by calling the clang update script.
+def download_clang():
+    run(['python',
+         tp('v8/tools/clang/scripts/update.py'), '--if-needed'],
+        env=google_env())
