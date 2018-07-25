@@ -391,3 +391,14 @@ function multiWriter(writers: ...Writer): Writer {
   };
 }
 ```
+
+A utility function will be provided to make any `Reader` into an
+`AsyncIterator`, which has very similar semanatics.
+
+```ts
+function readerIterator(r: deno.Reader): AsyncIterator<ArrayBufferView>;
+// Example
+for await (let buf of readerIterator(socket)) {
+  console.log(`read ${buf.byteLength} from socket`);
+}
+```
