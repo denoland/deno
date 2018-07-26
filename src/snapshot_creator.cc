@@ -98,8 +98,8 @@ class StartupDataCppWriter {
 }  // namespace deno
 
 int main(int argc, char** argv) {
-  const char* js_fn = argv[1];
-  const char* snapshot_out_cc = argv[2];
+  const char* snapshot_out_cc = argv[1];
+  const char* js_fn = argv[2];
 
   v8::V8::SetFlagsFromCommandLine(&argc, argv, true);
 
