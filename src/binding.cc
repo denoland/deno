@@ -288,6 +288,8 @@ void deno_init() {
   v8::V8::Initialize();
 }
 
+void* deno_get_data(Deno* d) { return d->data; }
+
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 
 // TODO(ry) Remove these when we call deno_reply_start from Rust.

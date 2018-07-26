@@ -78,7 +78,7 @@ rust_test("test_rs") {
   source_root = "src/main.rs"
   extern = main_extern
   deps = [
-    ":deno_bindings",
+    ":libdeno",
   ]
 }
 
