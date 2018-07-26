@@ -71,7 +71,13 @@ export function codeCache(
   fbs.Base.addMsgType(builder, fbs.Any.CodeCache);
   builder.finish(fbs.Base.endBase(builder));
   const resBuf = deno.send(builder.asUint8Array());
-  assert(resBuf == null);
+  // Expect null or error.
+  if (resBuf != null) {
+    const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf));
+    const baseRes = fbs.Base.getRootAsBase(bb);
+    assert(fbs.Any.NONE === baseRes.msgType());
+    throw Error(baseRes.error());
+  }
 }
 
 export function readFileSync(filename: string): Uint8Array {
