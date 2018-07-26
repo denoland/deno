@@ -2,7 +2,7 @@
 // tslint:disable-next-line:no-reference
 /// <reference path="deno.d.ts" />
 import { flatbuffers } from "flatbuffers";
-import { deno as fbs } from "./msg_generated";
+import { deno as fbs } from "gen/msg_generated";
 import { assert, log } from "./util";
 import * as runtime from "./runtime";
 
