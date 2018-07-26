@@ -31,6 +31,9 @@ void deno_set_flags(int* argc, char** argv);
 Deno* deno_new(void* data, deno_recv_cb cb);
 void deno_delete(Deno* d);
 
+// Returns the void* data provided in deno_new.
+void* deno_get_data(Deno*);
+
 // Returns false on error.
 // Get error text with deno_last_exception().
 // 0 = fail, 1 = success
