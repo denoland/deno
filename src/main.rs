@@ -20,9 +20,7 @@ use std::ffi::CString;
 use std::mem;
 use std::ptr;
 
-mod handlers;
-pub use handlers::*;
-mod binding;
+use handlers::*;
 use binding::{
   deno_delete, deno_execute, deno_init,
   deno_last_exception, deno_new, deno_set_flags, DenoC,
