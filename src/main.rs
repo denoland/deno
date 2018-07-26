@@ -1,11 +1,16 @@
-extern crate libc;
-#[macro_use]
-extern crate log;
 extern crate flatbuffers;
+extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate sha1;
 extern crate tempfile;
 extern crate url;
+#[macro_use]
+extern crate log;
+
+mod binding;
+mod deno_dir;
+mod fs;
+pub mod handlers;
 
 use libc::c_int;
 use libc::c_void;
@@ -13,10 +18,6 @@ use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
-
-mod handlers;
-pub use handlers::*;
-mod binding;
 
 // Returns args passed to V8, followed by args passed to JS
 fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
@@ -89,6 +90,7 @@ type DenoException<'a> = &'a str;
 
 pub struct Deno {
   ptr: *const binding::DenoC,
+  dir: deno_dir::DenoDir,
 }
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
@@ -101,6 +103,7 @@ impl Deno {
 
     let deno_box = Box::new(Deno {
       ptr: 0 as *const binding::DenoC,
+      dir: deno_dir::DenoDir::new(None).unwrap(),
     });
     let deno: &'a mut Deno = Box::leak(deno_box);
     let external_ptr = deno as *mut _ as *const c_void;
@@ -161,6 +164,7 @@ fn test_c_to_rust() {
   let d = Deno::new();
   let d2 = from_c(d.ptr);
   assert!(d.ptr == d2.ptr);
+  assert!(d.dir.root.join("gen") == d.dir.gen, "Sanity check");
 }
 
 static LOGGER: Logger = Logger;
