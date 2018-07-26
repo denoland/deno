@@ -5,6 +5,13 @@ use from_c;
 use libc::c_char;
 use msg_generated::deno as msg;
 use std::ffi::CStr;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+use std::rc::Rc;
+use std::slice;
+use url;
+use url::Url;
 
 // Help. Is there a way to do this without macros?
 // Want: fn str_from_ptr(*const c_char) -> &str
@@ -15,14 +22,26 @@ macro_rules! str_from_ptr {
   }};
 }
 
-/*
+
 // reply_start partially implemented here https://gist.github.com/ry/297c83e0ac8722c045db1b097cdb6afc
 pub fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf) {
-    let s = std::slice::from_raw_parts(buf.data_ptr, buf.data_len);
-    buf.data_ptr
-    get_root()
+  //TODO(robbym) Do verifier stuff
+
+  let s = unsafe {slice::from_raw_parts(buf.data_ptr, buf.data_len)};
+  let base = flatbuffers::get_root::<msg::Base>(s);
+  match base.msg_type() {
+    msg::Any::NONE => {
+      panic!("Got message with msg_type == Any::NONE");
+    }
+    msg::Any::Start => {
+
+    }
+    x => {
+      panic!("Unhandled message {}", msg::EnumNameAny(x));
+    }
+  }
 }
-*/
+
 
 fn reply_error(d: *const DenoC, cmd_id: u32, msg: &String) {
   let mut builder = flatbuffers::FlatBufferBuilder::new();
