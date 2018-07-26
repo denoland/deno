@@ -6,8 +6,10 @@ extern crate msg_rs as msg_generated;
 extern crate url;
 
 use libc::c_int;
+use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::mem;
 use std::ptr;
 
 mod handlers;
@@ -18,15 +20,45 @@ use binding::{
   deno_last_exception, deno_new, deno_set_flags, DenoC,
 };
 
+// Returns args passed to V8, followed by args passed to JS
+fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
+  let mut rest = vec![];
+
+  // Filter out args that shouldn't be passed to V8
+  let mut args: Vec<String> = args
+    .into_iter()
+    .filter(|arg| {
+      if arg.as_str() == "--help" {
+        rest.push(arg.clone());
+        return false;
+      }
+
+      true
+    })
+    .collect();
+
+  // Replace args being sent to V8
+  for idx in 0..args.len() {
+    if args[idx] == "--v8-options" {
+      mem::swap(args.get_mut(idx).unwrap(), &mut String::from("--help"));
+    }
+  }
+
+  (args, rest)
+}
+
 // Pass the command line arguments to v8.
 // Returns a vector of command line arguments that v8 did not understand.
-fn set_flags() -> Vec<String> {
+fn set_flags(args: Vec<String>) -> Vec<String> {
   // deno_set_flags(int* argc, char** argv) mutates argc and argv to remove
   // flags that v8 understands.
-  // Convert command line arguments to a vector of C strings.
-  let mut argv = std::env::args()
-    .map(|arg| CString::new(arg).unwrap().into_bytes_with_nul())
+  // First parse core args, then converto to a vector of C strings.
+  let (argv, rest) = parse_core_args(args);
+  let mut argv = argv
+    .iter()
+    .map(|arg| CString::new(arg.as_str()).unwrap().into_bytes_with_nul())
     .collect::<Vec<_>>();
+
   // Make a new array, that can be modified by V8::SetFlagsFromCommandLine(),
   // containing mutable raw pointers to the individual command line args.
   let mut c_argv = argv
@@ -36,7 +68,7 @@ fn set_flags() -> Vec<String> {
   // Store the length of the argv array in a local variable. We'll pass a
   // pointer to this local variable to deno_set_flags(), which then
   // updates its value.
-  let mut c_argc = argv.len() as c_int;
+  let mut c_argc = c_argv.len() as c_int;
   // Let v8 parse the arguments it recognizes and remove them from c_argv.
   unsafe {
     deno_set_flags(&mut c_argc, c_argv.as_mut_ptr());
@@ -51,7 +83,8 @@ fn set_flags() -> Vec<String> {
       let slice = cstr.to_str().unwrap();
       slice.to_string()
     })
-    .collect::<Vec<_>>()
+    .chain(rest.into_iter())
+    .collect()
 }
 
 type DenoException<'a> = &'a str;
@@ -90,12 +123,25 @@ impl Drop for Deno {
   }
 }
 
+#[test]
+fn test_parse_core_args_1() {
+  let js_args =
+    parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
+  assert!(js_args == (vec!["deno".to_string(), "--help".to_string()], vec![]));
+}
+
+#[test]
+fn test_parse_core_args_2() {
+  let js_args = parse_core_args(vec!["deno".to_string(), "--help".to_string()]);
+  assert!(js_args == (vec!["deno".to_string()], vec!["--help".to_string()]));
+}
+
 fn main() {
   log::set_max_level(log::LevelFilter::Debug);
 
   unsafe { deno_init() };
 
-  set_flags();
+  let _js_args = set_flags(env::args().collect());
 
   /*
     let v = unsafe { deno_v8_version() };
