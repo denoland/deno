@@ -130,11 +130,11 @@ export default function makeConfig(commandOptions) {
         tsconfigOverride,
 
         // By default, the include path only includes the cwd and below, need to include the root of the project
-        // to be passed to this plugin.  This is different front tsconfig.json include
-        include: ["*.ts", `${__dirname}/**/*.ts`],
+        // and build path to be passed to this plugin.  This is different front tsconfig.json include
+        include: ["*.ts", `${__dirname}/**/*.ts`, `${process.cwd()}/**/*.ts`],
 
         // d.ts files are not bundled and by default like include, it only includes the cwd and below
-        exclude: ["*.d.ts", `${__dirname}/**/*.d.ts`]
+        exclude: ["*.d.ts", `${__dirname}/**/*.d.ts`, `${process.cwd()}/**/*.d.ts`]
       }),
 
       // Provides inlining of file contents for `js/assets.ts`
