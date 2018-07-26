@@ -20,11 +20,11 @@ use std::ffi::CString;
 use std::mem;
 use std::ptr;
 
-use handlers::*;
 use binding::{
-  deno_delete, deno_execute, deno_init,
-  deno_last_exception, deno_new, deno_set_flags, DenoC,
+  deno_delete, deno_execute, deno_init, deno_last_exception, deno_new,
+  deno_set_flags, DenoC,
 };
+use handlers::*;
 
 // Returns args passed to V8, followed by args passed to JS
 fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
@@ -105,24 +105,31 @@ pub struct Deno {
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
 impl Deno {
-  fn new<'a>(cwd: &str, args: Vec<String>) -> &'a mut Deno {
+  fn new(cwd: &str, args: Vec<String>) -> Box<Deno> {
     DENO_INIT.call_once(|| {
       unsafe { binding::deno_init() };
     });
 
-    let deno_box = Box::new(Deno {
+    let mut deno_box = Box::new(Deno {
       ptr: 0 as *const binding::DenoC,
       dir: deno_dir::DenoDir::new(None).unwrap(),
       cwd: cwd.to_string(),
-      args
+      args,
     });
-    let deno: &'a mut Deno = Box::leak(deno_box);
-    let external_ptr = deno as *mut _ as *const c_void;
-    let internal_deno_ptr = unsafe {
-      binding::deno_new(external_ptr, handlers::deno_handle_msg_from_js)
+    // let internal_deno_ptr = unsafe {
+    //   binding::deno_new(deno_box.as_ref() as *const _ as *const c_void, handlers::deno_handle_msg_from_js)
+    // };
+    (*deno_box).ptr = unsafe {
+      binding::deno_new(
+        deno_box.as_ref() as *const _ as *const c_void,
+        handlers::deno_handle_msg_from_js,
+      )
     };
-    deno.ptr = internal_deno_ptr;
-    deno
+    // let deno: &mut Deno = Box::leak(deno_box);
+    // let external_ptr = deno as *mut _ as *const c_void;
+
+    // deno.ptr = internal_deno_ptr;
+    deno_box
   }
 
   fn execute(
@@ -209,7 +216,7 @@ fn main() {
     */
 
   let cwd = env::current_dir().unwrap();
-  let d = Deno::new(cwd.to_str().unwrap(), js_args);
+  let mut d = Deno::new(cwd.to_str().unwrap(), js_args);
 
   d.execute("deno_main.js", "denoMain();")
     .unwrap_or_else(|err| {

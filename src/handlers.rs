@@ -25,9 +25,11 @@ pub fn deno_reply_start(d: *const DenoC, cmd_id: u32) {
   let deno = from_c(d);
   let mut builder = flatbuffers::FlatBufferBuilder::new();
 
-  let args = deno.args.iter().map(|x| {
-    builder.create_string(x)
-  }).collect::<Vec<flatbuffers::LabeledUOffsetT<flatbuffers::StringOffset>>>();
+  let args = deno
+    .args
+    .iter()
+    .map(|x| builder.create_string(x))
+    .collect::<Vec<flatbuffers::LabeledUOffsetT<flatbuffers::StringOffset>>>();
 
   let msg_args = msg::StartResArgs {
     cwd: builder.create_string(&deno.cwd),
@@ -49,7 +51,10 @@ pub fn deno_reply_start(d: *const DenoC, cmd_id: u32) {
 }
 
 // reply_start partially implemented here https://gist.github.com/ry/297c83e0ac8722c045db1b097cdb6afc
-pub unsafe extern "C" fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf) {
+pub unsafe extern "C" fn deno_handle_msg_from_js(
+  d: *const DenoC,
+  buf: deno_buf,
+) {
   //TODO(robbym) Do verifier stuff
 
   let s = slice::from_raw_parts(buf.data_ptr, buf.data_len);
@@ -66,7 +71,6 @@ pub unsafe extern "C" fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf)
     }
   }
 }
-
 
 fn reply_error(d: *const DenoC, cmd_id: u32, msg: &String) {
   let mut builder = flatbuffers::FlatBufferBuilder::new();
