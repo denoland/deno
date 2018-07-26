@@ -18,6 +18,15 @@ use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
+use std::ptr;
+
+mod handlers;
+pub use handlers::*;
+mod binding;
+use binding::{
+  deno_delete, deno_execute, deno_init,
+  deno_last_exception, deno_new, deno_set_flags, DenoC,
+};
 
 // Returns args passed to V8, followed by args passed to JS
 fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
@@ -108,7 +117,7 @@ impl Deno {
     let deno: &'a mut Deno = Box::leak(deno_box);
     let external_ptr = deno as *mut _ as *const c_void;
     let internal_deno_ptr = unsafe {
-      binding::deno_new(external_ptr, binding::deno_handle_msg_from_js)
+      binding::deno_new(external_ptr, handlers::deno_handle_msg_from_js)
     };
     deno.ptr = internal_deno_ptr;
     deno

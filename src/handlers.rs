@@ -8,7 +8,6 @@ use std::ffi::CStr;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use std::rc::Rc;
 use std::slice;
 use url;
 use url::Url;
@@ -25,22 +24,29 @@ macro_rules! str_from_ptr {
 pub fn deno_reply_start(d: *const DenoC, cmd_id: u32) {
   let mut builder = flatbuffers::FlatBufferBuilder::new();
   //TODO(robbym) Pass actual args
-  let start_msg = msg::CreateStartRes(&mut builder, &msg::StartResArgs::default());
+  let msg_args = msg::StartResArgs {
+    cwd: builder.create_string("get cwd from args"),
+    argv: builder.create_vector(&[]),
+    debug_flag: false,
+    ..Default::default()
+  };
+  let start_msg = msg::CreateStartRes(&mut builder, &msg_args);
   builder.finish(start_msg);
 
-  set_response_base(d, &mut builder, &msg::BaseArgs {
+  let args = msg::BaseArgs {
     cmdId: cmd_id,
-    msg_type: msg::Any::StartRes,
     msg: Some(start_msg.union()),
-    .. Default::default()
-  });
+    msg_type: msg::Any::StartRes,
+    ..Default::default()
+  };
+  set_response_base(d, &mut builder, &args)
 }
 
 // reply_start partially implemented here https://gist.github.com/ry/297c83e0ac8722c045db1b097cdb6afc
-pub fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf) {
+pub unsafe extern "C" fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf) {
   //TODO(robbym) Do verifier stuff
 
-  let s = unsafe {slice::from_raw_parts(buf.data_ptr, buf.data_len)};
+  let s = slice::from_raw_parts(buf.data_ptr, buf.data_len);
   let base = flatbuffers::get_root::<msg::Base>(s);
   match base.msg_type() {
     msg::Any::NONE => {
