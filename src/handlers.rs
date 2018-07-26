@@ -67,7 +67,7 @@ fn resolve_module(
   module_specifier: &String,
   containing_file: &String,
 ) -> Result<(String, String), url::ParseError> {
-  info!(
+  debug!(
     "resolve_module before module_specifier {} containing_file {}",
     module_specifier, containing_file
   );
