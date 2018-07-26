@@ -136,8 +136,27 @@ fn test_parse_core_args_2() {
   assert!(js_args == (vec!["deno".to_string()], vec!["--help".to_string()]));
 }
 
+
+static LOGGER: Logger = Logger;
+
+struct Logger;
+
+impl log::Log for Logger {
+  fn enabled(&self, metadata: &log::Metadata) -> bool {
+    metadata.level() <= log::Level::Info
+  }
+
+  fn log(&self, record: &log::Record) {
+    if self.enabled(record.metadata()) {
+      println!("{} - {}", record.level(), record.args());
+    }
+  }
+  fn flush(&self) {}
+}
+
 fn main() {
-  log::set_max_level(log::LevelFilter::Debug);
+  log::set_logger(&LOGGER).unwrap();
+  log::set_max_level(log::LevelFilter::Info);
 
   unsafe { deno_init() };
 
