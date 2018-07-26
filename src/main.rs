@@ -116,19 +116,14 @@ impl Deno {
       cwd: cwd.to_string(),
       args,
     });
-    // let internal_deno_ptr = unsafe {
-    //   binding::deno_new(deno_box.as_ref() as *const _ as *const c_void, handlers::deno_handle_msg_from_js)
-    // };
+    
     (*deno_box).ptr = unsafe {
       binding::deno_new(
         deno_box.as_ref() as *const _ as *const c_void,
         handlers::deno_handle_msg_from_js,
       )
     };
-    // let deno: &mut Deno = Box::leak(deno_box);
-    // let external_ptr = deno as *mut _ as *const c_void;
-
-    // deno.ptr = internal_deno_ptr;
+    
     deno_box
   }
 
