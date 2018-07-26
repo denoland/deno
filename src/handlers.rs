@@ -22,6 +22,19 @@ macro_rules! str_from_ptr {
   }};
 }
 
+pub fn deno_reply_start(d: *const DenoC, cmd_id: u32) {
+  let mut builder = flatbuffers::FlatBufferBuilder::new();
+  //TODO(robbym) Pass actual args
+  let start_msg = msg::CreateStartRes(&mut builder, &msg::StartResArgs::default());
+  builder.finish(start_msg);
+
+  set_response_base(d, &mut builder, &msg::BaseArgs {
+    cmdId: cmd_id,
+    msg_type: msg::Any::StartRes,
+    msg: Some(start_msg.union()),
+    .. Default::default()
+  });
+}
 
 // reply_start partially implemented here https://gist.github.com/ry/297c83e0ac8722c045db1b097cdb6afc
 pub fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf) {
@@ -34,7 +47,7 @@ pub fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf) {
       panic!("Got message with msg_type == Any::NONE");
     }
     msg::Any::Start => {
-
+      deno_reply_start(d, base.cmdId());
     }
     x => {
       panic!("Unhandled message {}", msg::EnumNameAny(x));
