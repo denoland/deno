@@ -22,15 +22,21 @@ macro_rules! str_from_ptr {
 }
 
 pub fn deno_reply_start(d: *const DenoC, cmd_id: u32) {
+  let deno = from_c(d);
   let mut builder = flatbuffers::FlatBufferBuilder::new();
-  //TODO(robbym) Pass actual args
+
+  let args = deno.args.iter().map(|x| {
+    builder.create_string(x)
+  }).collect::<Vec<flatbuffers::LabeledUOffsetT<flatbuffers::StringOffset>>>();
+
   let msg_args = msg::StartResArgs {
-    cwd: builder.create_string("get cwd from args"),
-    argv: builder.create_vector(&[]),
+    cwd: builder.create_string(&deno.cwd),
+    argv: builder.create_vector(&args),
     debug_flag: false,
     ..Default::default()
   };
   let start_msg = msg::CreateStartRes(&mut builder, &msg_args);
+
   builder.finish(start_msg);
 
   let args = msg::BaseArgs {

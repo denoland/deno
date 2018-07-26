@@ -98,12 +98,14 @@ type DenoException<'a> = &'a str;
 pub struct Deno {
   ptr: *const binding::DenoC,
   dir: deno_dir::DenoDir,
+  cwd: String,
+  args: Vec<String>,
 }
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
 impl Deno {
-  fn new<'a>() -> &'a mut Deno {
+  fn new<'a>(cwd: &str, args: Vec<String>) -> &'a mut Deno {
     DENO_INIT.call_once(|| {
       unsafe { binding::deno_init() };
     });
@@ -111,6 +113,8 @@ impl Deno {
     let deno_box = Box::new(Deno {
       ptr: 0 as *const binding::DenoC,
       dir: deno_dir::DenoDir::new(None).unwrap(),
+      cwd: cwd.to_string(),
+      args
     });
     let deno: &'a mut Deno = Box::leak(deno_box);
     let external_ptr = deno as *mut _ as *const c_void;
@@ -168,7 +172,7 @@ pub fn from_c<'a>(d: *const binding::DenoC) -> &'a mut Deno {
 
 #[test]
 fn test_c_to_rust() {
-  let d = Deno::new();
+  let d = Deno::new("", vec![]);
   let d2 = from_c(d.ptr);
   assert!(d.ptr == d2.ptr);
   assert!(d.dir.root.join("gen") == d.dir.gen, "Sanity check");
@@ -195,7 +199,7 @@ fn main() {
   log::set_logger(&LOGGER).unwrap();
   log::set_max_level(log::LevelFilter::Info);
 
-  let _js_args = set_flags(env::args().collect());
+  let js_args = set_flags(env::args().collect());
 
   /*
     let v = unsafe { deno_v8_version() };
@@ -204,7 +208,8 @@ fn main() {
     println!("version: {}", version);
     */
 
-  let d = Deno::new();
+  let cwd = env::current_dir().unwrap();
+  let d = Deno::new(cwd.to_str().unwrap(), js_args);
 
   d.execute("deno_main.js", "denoMain();")
     .unwrap_or_else(|err| {
