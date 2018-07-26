@@ -58,7 +58,7 @@ TEST(MockRuntimeTest, SendWrongByteLength) {
   // deno_send the wrong sized message, it should throw.
   EXPECT_FALSE(deno_send(d, strbuf("abcd")));
   std::string exception = deno_last_exception(d);
-  EXPECT_GT(exception.length(), 1);
+  EXPECT_GT(exception.length(), 1u);
   EXPECT_NE(exception.find("assert"), std::string::npos);
   deno_delete(d);
 }
