@@ -134,7 +134,11 @@ export default function makeConfig(commandOptions) {
         include: ["*.ts", `${__dirname}/**/*.ts`, `${process.cwd()}/**/*.ts`],
 
         // d.ts files are not bundled and by default like include, it only includes the cwd and below
-        exclude: ["*.d.ts", `${__dirname}/**/*.d.ts`, `${process.cwd()}/**/*.d.ts`]
+        exclude: [
+          "*.d.ts",
+          `${__dirname}/**/*.d.ts`,
+          `${process.cwd()}/**/*.d.ts`
+        ]
       }),
 
       // Provides inlining of file contents for `js/assets.ts`

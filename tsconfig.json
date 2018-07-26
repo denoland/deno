@@ -15,7 +15,7 @@
     "allowUnreachableCode": false,
     "experimentalDecorators": true,
     "paths": {
-      "*": [ "*", "out/debug/*", "out/default/*", "out/release/*" ]
+      "*": ["*", "out/debug/*", "out/default/*", "out/release/*"]
     }
   },
   "include": ["js/main.ts"],

@@ -198,8 +198,8 @@ run_node("bundle") {
     "js/runtime.ts",
     "js/types.ts",
     "js/util.ts",
-    "src/msg.fbs",
     "rollup.config.js",
+    "src/msg.fbs",
     "tsconfig.json",
   ]
   outputs = [
