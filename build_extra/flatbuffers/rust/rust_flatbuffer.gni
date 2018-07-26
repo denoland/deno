@@ -1,6 +1,6 @@
 import("//build_extra/rust/rust.gni")
 
-# TODO(ry) "flatbuffer.gni" should be "flatbuffers.gni" we should be consistant
+# TODO(ry) "flatbuffer.gni" should be "flatbuffers.gni" we should be consistent
 # in our pluralization.
 import("//build_extra/flatbuffers/flatbuffer.gni")
 
