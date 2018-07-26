@@ -23,7 +23,7 @@ run(["yapf", "-i"] + find_exts("tools/", ".py") +
     find_exts("build_extra", ".py"))
 
 run(["node", prettier, "--write"] + find_exts("js/", ".js", ".ts") +
-    ["tsconfig.json", "tslint.json"])
+    ["rollup.config.js", "tsconfig.json", "tslint.json"])
 
 # Set RUSTFMT_FLAGS for extra flags.
 rustfmt_extra_args = []

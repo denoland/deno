@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "allowJs": true,
+    "baseUrl": ".",
     "module": "esnext",
     "noImplicitAny": true,
     "sourceMap": true,
@@ -12,7 +13,10 @@
     "pretty": true,
     "noFallthroughCasesInSwitch": true,
     "allowUnreachableCode": false,
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    "paths": {
+      "*": [ "*", "out/debug/*", "out/default/*", "out/release/*" ]
+    }
   },
   "include": ["js/main.ts"],
   "exclude": ["node_modules"]

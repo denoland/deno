@@ -13,6 +13,16 @@ const typescriptPath = `${
   process.env.BASEPATH
 }/third_party/node_modules/typescript/lib/typescript.js`;
 
+// We will allow generated modules to be resolvable by TypeScript based on
+// the current build path
+const tsconfigOverride = {
+  compilerOptions: {
+    paths: {
+      "*": ["*", path.join(process.cwd(), "*")]
+    }
+  }
+};
+
 // this is a rollup plugin which will look for imports ending with `!string` and resolve
 // them with a module that will inline the contents of the file as a string.  Needed to
 // support `js/assets.ts`.
@@ -48,6 +58,23 @@ function strings({ include, exclude } = {}) {
   };
 }
 
+// This plugin resolves at bundle time any generated resources that are
+// in the build path under `gen` and specified with a MID starting with `gen/`.
+// The plugin assumes that the MID needs to have the `.ts` extension appended.
+function resolveGenerated() {
+  return {
+    name: "resolve-msg-generated",
+    resolveId(importee) {
+      if (importee.startsWith("gen/")) {
+        const resolved = path.resolve(
+          path.join(process.cwd(), `${importee}.ts`)
+        );
+        return resolved;
+      }
+    }
+  };
+}
+
 export default function makeConfig(commandOptions) {
   return {
     output: {
@@ -69,6 +96,9 @@ export default function makeConfig(commandOptions) {
         buffer: mockPath,
         module: mockPath
       }),
+
+      // Resolves any resources that have been generated at build time
+      resolveGenerated(),
 
       // Allows rollup to resolve modules based on Node.js resolution
       nodeResolve({
@@ -93,15 +123,18 @@ export default function makeConfig(commandOptions) {
       }),
 
       typescript({
-        // The build script is invoked from `out/Target` and so config is located alongside this file
+        // The build script is invoked from `out/:target` so passing an absolute file path is needed
         tsconfig,
 
+        // This provides any overrides to the `tsconfig.json` that are needed to bundle
+        tsconfigOverride,
+
         // By default, the include path only includes the cwd and below, need to include the root of the project
-        // to be passed to this plugin.  This is different front tsconfig.json include
-        include: ["*.ts", `${__dirname}/**/*.ts`],
+        // and build path to be passed to this plugin.  This is different front tsconfig.json include
+        include: ["*.ts", `${__dirname}/**/*.ts`, `${process.cwd()}/**/*.ts`],
 
         // d.ts files are not bundled and by default like include, it only includes the cwd and below
-        exclude: ["*.d.ts", `${__dirname}/**/*.d.ts`]
+        exclude: ["*.d.ts", `${__dirname}/**/*.d.ts`, `${process.cwd()}/**/*.d.ts`]
       }),
 
       // Provides inlining of file contents for `js/assets.ts`
