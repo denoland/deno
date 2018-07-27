@@ -20,6 +20,8 @@ def tp(*subpath_parts):
 third_party_path = tp()
 depot_tools_path = tp("depot_tools")
 rust_crates_path = tp("rust_crates")
+gn_path = tp(depot_tools_path, "gn")
+ninja_path = tp(depot_tools_path, "ninja")
 
 
 # This function creates or modifies an environment so that it matches the
