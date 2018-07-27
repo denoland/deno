@@ -28,15 +28,15 @@ template("create_snapshot") {
                            ])
     tool = ":snapshot_creator"
     visibility = [ ":*" ]  # Only targets in this file can depend on this.
-    snapshot_out_cc = "$target_gen_dir/snapshot_$name.cc"
+    snapshot_out_bin = "$target_gen_dir/snapshot_$name.bin"
     inputs = [
       invoker.js,
     ]
     outputs = [
-      snapshot_out_cc,
+      snapshot_out_bin,
     ]
     args = [
-      rebase_path(snapshot_out_cc, root_build_dir),
+      rebase_path(snapshot_out_bin, root_build_dir),
       rebase_path(invoker.js, root_build_dir),
     ]
 
