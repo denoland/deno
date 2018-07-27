@@ -1,64 +1,41 @@
 #!/usr/bin/env python
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import argparse
 import os
 import sys
 from os.path import join
-from third_party import depot_tools_path, third_party_path, fix_symlinks, google_env
-from util import root_path, run
-import distutils.spawn
+import third_party
+from util import root_path, run, run_output, build_path
 
-parser = argparse.ArgumentParser(description='')
-parser.add_argument(
-    '--build_path', default='', help='Directory to build into.')
-parser.add_argument(
-    '--args', default='', help='Specifies build arguments overrides.')
-parser.add_argument(
-    '--mode', default='debug', help='Build configuration: debug, release.')
-options, targets = parser.parse_known_args()
+third_party.fix_symlinks()
 
-fix_symlinks()
-
-os.chdir(root_path)
-
-gn_path = join(depot_tools_path, "gn")
-ninja_path = join(depot_tools_path, "ninja")
-
-if options.build_path:
-    build_path = options.build_path
-else:
-    build_path = join(root_path, "out", options.mode)
-
-gn_args = []
-if options.args:
-    gn_args += options.args.split()
-
-if options.mode == "release":
-    gn_args += ["is_official_build=true"]
-elif options.mode == "debug":
-    pass
-else:
-    print "Bad mode {}. Use 'release' or 'debug' (default)" % options.mode
+print "DENO_BUILD_PATH:", build_path()
+if not os.path.isdir(build_path()):
+    print "DENO_BUILD_PATH does not exist. Run tools/setup.py"
     sys.exit(1)
+os.chdir(build_path())
 
-# Check if ccache is in the path, and if so we cc_wrapper.
-ccache_path = distutils.spawn.find_executable("ccache")
-if ccache_path:
-    gn_args += [r'cc_wrapper="%s"' % ccache_path]
 
-# mkdir $build_path. We do this so we can write args.gn before running gn gen.
-if not os.path.isdir(build_path):
-    os.makedirs(build_path)
+def maybe_add_default_target(args):
+    lines = run_output(
+        [third_party.ninja_path, "-t", "targets"],
+        env=third_party.google_env(),
+        quiet=True).split("\n")
+    targets = [l.rsplit(":", 1)[0] for l in lines]
+    deno_targets = [target for target in targets if target.startswith(":")]
+    deno_targets += [target.lstrip(":") for target in deno_targets]
 
-# Rather than using gn gen --args we manually write the args.gn override file.
-# This is to avoid quoting/escaping complications when passing overrides as
-# command-line arguments.
-args_filename = join(build_path, "args.gn")
-if not os.path.exists(args_filename) or options.args:
-    with open(args_filename, "w+") as f:
-        f.write("\n".join(gn_args) + "\n")
+    target_specified = False
+    for a in args:
+        if a in deno_targets:
+            target_specified = True
+            break
+    if not target_specified:
+        args += [":all"]
+    return args
 
-run([gn_path, "gen", build_path], env=google_env())
 
-target = " ".join(targets) if targets else ":all"
-run([ninja_path, "-C", build_path, target], env=google_env())
+ninja_args = maybe_add_default_target(sys.argv[1:])
+
+run([third_party.ninja_path] + ninja_args,
+    env=third_party.google_env(),
+    quiet=True)
