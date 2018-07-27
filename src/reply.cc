@@ -63,16 +63,11 @@ void deno_handle_msg_from_js(Deno* d, deno_buf buf) {
     }
 
     case deno::Any_CodeCache: {
-      // TODO(ry) Call into rust.
-      /*
+      auto msg = base->msg_as_CodeCache();
       auto filename = msg->filename()->c_str();
       auto source_code = msg->source_code()->c_str();
       auto output_code = msg->output_code()->c_str();
-      printf(
-          "HandleCodeCache (not implemeneted) filename %s source_code %s "
-          "output_code %s\n",
-          filename, source_code, output_code);
-      */
+      handle_code_cache(d, cmd_id, filename, source_code, output_code);
       break;
     }
 
