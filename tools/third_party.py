@@ -166,3 +166,13 @@ def download_clang():
     run(['python',
          tp('v8/tools/clang/scripts/update.py'), '--if-needed'],
         env=google_env())
+
+
+def maybe_download_sysroot():
+    if sys.platform.startswith('linux'):
+        run([
+            'python',
+            tp('v8/build/linux/sysroot_scripts/install-sysroot.py'),
+            '--arch=amd64'
+        ],
+            env=google_env())
