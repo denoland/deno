@@ -30,6 +30,15 @@ def run(args, quiet=False, cwd=None, env=None, merge_env={}):
         sys.exit(rc)
 
 
+def run_output(args, quiet=False, cwd=None, env=None, merge_env={}):
+    args[0] = os.path.normpath(args[0])
+    if not quiet:
+        print " ".join(args)
+    env = make_env(env=env, merge_env=merge_env)
+    shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
+    return subprocess.check_output(args, cwd=cwd, env=env, shell=shell)
+
+
 def remove_and_symlink(target, name, target_is_dir=False):
     try:
         # On Windows, directory symlink can only be removed with rmdir().
@@ -92,3 +101,18 @@ def rmtree(directory):
         func(path)
 
     shutil.rmtree(directory, onerror=rm_readonly)
+
+
+def build_mode():
+    if "DENO_BUILD_MODE" in os.environ:
+        return os.environ["DENO_BUILD_MODE"]
+    else:
+        return "debug"
+
+
+# E.G. "out/debug"
+def build_path():
+    if "DENO_BUILD_PATH" in os.environ:
+        return os.environ["DENO_BUILD_PATH"]
+    else:
+        return os.path.join(root_path, "out", build_mode())
