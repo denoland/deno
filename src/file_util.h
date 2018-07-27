@@ -7,7 +7,6 @@
 namespace deno {
 bool ReadFileToString(const char* fn, std::string* contents);
 std::string Basename(std::string const& filename);
-std::string BinaryContentAsC(const char* name, const std::string& data);
 }  // namespace deno
 
 #endif  // FILE_UTIL_H_
