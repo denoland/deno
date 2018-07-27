@@ -199,6 +199,7 @@ run_node("bundle") {
     "js/deno.d.ts",
     "js/dispatch.ts",
     "js/globals.ts",
+    "js/lib.deno.d.ts",
     "js/main.ts",
     "js/os.ts",
     "js/runtime.ts",
