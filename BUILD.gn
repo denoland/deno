@@ -107,6 +107,12 @@ static_library("libdeno") {
   sources = [
     "src/from_snapshot.cc",
   ]
+  data = [
+    "$target_gen_dir/snapshot_deno.bin",
+  ]
+  data_deps = [
+    ":bundle",
+  ]
   deps = [
     ":create_snapshot_deno",
     ":deno_bindings",
@@ -138,6 +144,9 @@ v8_source_set("deno_base_test") {
     "src/file_util_test.cc",
     "src/from_snapshot.cc",
     "src/mock_runtime_test.cc",
+  ]
+  data = [
+    "$target_gen_dir/snapshot_mock_runtime.bin",
   ]
   deps = [
     ":create_snapshot_mock_runtime",
