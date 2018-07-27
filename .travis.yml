@@ -5,7 +5,6 @@ branches:
 cache:
   ccache: true
   directories:
-   - $DEPOT_TOOLS_PATH
    - $DENO_BUILD_PATH
 env:
   global:
@@ -16,14 +15,7 @@ env:
     - DENO_BUILD_ARGS="is_debug=false use_allocator=\"none\" use_custom_libcxx=false use_sysroot=false"
     - DENO_BUILD_PATH=$HOME/out/Default
     - DENO_BUILD_MODE=debug
-    - DEPOT_TOOLS_PATH=$HOME/depot_tools
-before_install: |
-  if ! [ -x $DEPOT_TOOLS_PATH/gclient ]; then
-    rm -rf $DEPOT_TOOLS_PATH
-    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS_PATH
-  fi
 install:
- - export PATH=$PATH:$DEPOT_TOOLS_PATH
  # Sync dependencies.
  # TODO(ry) These sync steps are very terrible and only here temporarily.
  # rustc should be added to deno_third_party. Ultimately Deno *should not*
