@@ -214,9 +214,8 @@ class Compiler {
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
     inlineSourceMap: true,
-    lib: ["es2017"],
     inlineSources: true,
-    target: ts.ScriptTarget.ES2017
+    target: ts.ScriptTarget.ESNext
   };
   /*
   allowJs: true,
@@ -317,7 +316,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   }
 
   getDefaultLibFileName(options: ts.CompilerOptions): string {
-    const fn = "lib.d.ts"; // ts.getDefaultLibFileName(options);
+    const fn = "lib.deno.d.ts"; // ts.getDefaultLibFileName(options);
     util.log("getDefaultLibFileName", fn);
     const m = resolveModule(fn, "/$asset$/");
     return m.fileName;

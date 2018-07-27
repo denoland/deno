@@ -7,7 +7,7 @@
     "sourceMap": true,
     "removeComments": true,
     "preserveConstEnums": true,
-    "target": "es2017",
+    "target": "esnext",
     "moduleResolution": "node",
     "noImplicitReturns": true,
     "pretty": true,

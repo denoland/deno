@@ -4,8 +4,9 @@ import { plugin as analyze } from "rollup-plugin-analyzer";
 import commonjs from "rollup-plugin-commonjs";
 import globals from "rollup-plugin-node-globals";
 import nodeResolve from "rollup-plugin-node-resolve";
-import typescript from "rollup-plugin-typescript2";
+import typescriptPlugin from "rollup-plugin-typescript2";
 import { createFilter } from "rollup-pluginutils";
+import typescript from "typescript";
 
 const mockPath = path.join(__dirname, "js", "mock_builtin");
 const tsconfig = path.join(__dirname, "tsconfig.json");
@@ -122,12 +123,16 @@ export default function makeConfig(commandOptions) {
         }
       }),
 
-      typescript({
+      typescriptPlugin({
         // The build script is invoked from `out/:target` so passing an absolute file path is needed
         tsconfig,
 
         // This provides any overrides to the `tsconfig.json` that are needed to bundle
         tsconfigOverride,
+
+        // This provides the locally configured version of TypeScript instead of the plugins
+        // default version
+        typescript,
 
         // By default, the include path only includes the cwd and below, need to include the root of the project
         // and build path to be passed to this plugin.  This is different front tsconfig.json include
