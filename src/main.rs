@@ -116,14 +116,14 @@ impl Deno {
       cwd: cwd.to_string(),
       args,
     });
-    
+
     (*deno_box).ptr = unsafe {
       binding::deno_new(
         deno_box.as_ref() as *const _ as *const c_void,
         handlers::deno_handle_msg_from_js,
       )
     };
-    
+
     deno_box
   }
 

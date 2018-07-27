@@ -31,9 +31,19 @@ pub fn deno_reply_start(d: *const DenoC, cmd_id: u32) {
     .map(|x| builder.create_string(x))
     .collect::<Vec<flatbuffers::LabeledUOffsetT<flatbuffers::StringOffset>>>();
 
+  builder.start_vector(
+    flatbuffers::SIZE_UOFFSET,
+    args.len(),
+    flatbuffers::SIZE_UOFFSET,
+  );
+  for &i in args.iter() {
+    builder.push_element_scalar(*i);
+  }
+  let vecOff = builder.end_vector(args.len());
+
   let msg_args = msg::StartResArgs {
     cwd: builder.create_string(&deno.cwd),
-    argv: builder.create_vector(&args),
+    argv: flatbuffers::LabeledUOffsetT::new(*vecOff),
     debug_flag: false,
     ..Default::default()
   };
@@ -59,13 +69,38 @@ pub unsafe extern "C" fn deno_handle_msg_from_js(
 
   let s = slice::from_raw_parts(buf.data_ptr, buf.data_len);
   let base = flatbuffers::get_root::<msg::Base>(s);
+  println!("MSG TYPE: {}", msg::EnumNameAny(base.msg_type()));
   match base.msg_type() {
+    msg::Any::Start => {
+      deno_reply_start(d, base.cmdId());
+      println!("STARTED");
+    }
+
+    msg::Any::CodeFetch => {
+      let fetch = msg::CodeFetch::init_from_table(base.msg().unwrap());
+      handle_code_fetch(
+        d,
+        base.cmdId(),
+        fetch.module_specifier().unwrap(),
+        fetch.containing_file().unwrap(),
+      );
+    }
+
+    msg::Any::CodeCache => {
+      let cache = msg::CodeCache::init_from_table(base.msg().unwrap());
+      handle_code_cache(
+        d,
+        base.cmdId(),
+        cache.filename().unwrap(),
+        cache.source_code().unwrap(),
+        cache.output_code().unwrap(),
+      );
+    }
+
     msg::Any::NONE => {
       panic!("Got message with msg_type == Any::NONE");
     }
-    msg::Any::Start => {
-      deno_reply_start(d, base.cmdId());
-    }
+
     x => {
       panic!("Unhandled message {}", msg::EnumNameAny(x));
     }
@@ -108,16 +143,12 @@ fn set_response_base(
 }
 
 // https://github.com/ry/deno/blob/golang/os.go#L100-L154
-#[no_mangle]
-pub extern "C" fn handle_code_fetch(
+fn handle_code_fetch(
   d: *const DenoC,
   cmd_id: u32,
-  module_specifier_: *const c_char,
-  containing_file_: *const c_char,
+  module_specifier: &str,
+  containing_file: &str,
 ) {
-  let module_specifier = str_from_ptr!(module_specifier_);
-  let containing_file = str_from_ptr!(containing_file_);
-
   let deno = from_c(d);
 
   assert!(deno.dir.root.join("gen") == deno.dir.gen, "Sanity check");
@@ -159,18 +190,14 @@ pub extern "C" fn handle_code_fetch(
 }
 
 // https://github.com/ry/deno/blob/golang/os.go#L156-L169
-#[no_mangle]
-pub extern "C" fn handle_code_cache(
+pub fn handle_code_cache(
   d: *const DenoC,
   cmd_id: u32,
-  filename_: *const c_char,
-  source_code_: *const c_char,
-  output_code_: *const c_char,
+  filename: &str,
+  source_code: &str,
+  output_code: &str,
 ) {
   let deno = from_c(d);
-  let filename = str_from_ptr!(filename_);
-  let source_code = str_from_ptr!(source_code_);
-  let output_code = str_from_ptr!(output_code_);
   let result = deno.dir.code_cache(filename, source_code, output_code);
   if result.is_err() {
     let err = result.unwrap_err();

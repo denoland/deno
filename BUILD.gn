@@ -162,10 +162,6 @@ v8_source_set("deno_flatbuffer_builder") {
 }
 
 v8_source_set("deno_bindings") {
-  sources = [
-    "src/reply.cc",
-    "src/reply.h",
-  ]
   deps = [
     ":deno_base",
     ":deno_flatbuffer_builder",
