@@ -57,6 +57,7 @@ main_extern = [
   "$rust_build:rand",
   "$rust_build:rand_core",
   "$rust_build:remove_dir_all",
+  "$rust_build:winapi",
 ]
 
 rust_executable("deno") {
