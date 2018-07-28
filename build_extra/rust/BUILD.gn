@@ -11,7 +11,7 @@ crates = "//third_party/rust_crates"
 rust_component("libc") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/libc-0.2.42/src/lib.rs"
-  cfg = [ "feature=\"use_std\"" ]
+  features = [ "use_std" ]
 }
 
 rust_component("url") {
@@ -91,9 +91,9 @@ rust_component("rand") {
     ":libc",
     ":rand_core",
   ]
-  cfg = [
-    "feature=\"std\"",
-    "feature=\"alloc\"",
+  features = [
+    "std",
+    "alloc",
   ]
   if (is_mac) {
     libs = [ "Security.framework" ]
