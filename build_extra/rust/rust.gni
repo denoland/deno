@@ -43,10 +43,11 @@ template("run_rustc") {
                              "cfg",
                              "crate_name",
                              "crate_type",
-                             "source_root",
                              "deps",
                              "extern",
+                             "features",
                              "is_test",
+                             "source_root",
                              "testonly",
                            ])
     if (!defined(crate_name)) {
@@ -119,6 +120,15 @@ template("run_rustc") {
       }
     }
 
+    if (defined(features)) {
+      foreach(f, features) {
+        args += [
+          "--cfg",
+          "feature=\"" + f + "\"",
+        ]
+      }
+    }
+
     if (defined(invoker.args)) {
       args += invoker.args
     }
@@ -155,15 +165,16 @@ template("rust_component") {
   run_rustc(rustc_name) {
     forward_variables_from(invoker,
                            [
+                             "args",
+                             "cfg",
                              "crate_name",
                              "crate_type",
-                             "extern",
-                             "cfg",
-                             "source_root",
-                             "is_test",
-                             "testonly",
-                             "args",
                              "deps",
+                             "extern",
+                             "features",
+                             "is_test",
+                             "source_root",
+                             "testonly",
                            ])
     if (!defined(invoker.crate_type)) {
       crate_type = "rlib"
@@ -176,8 +187,8 @@ template("rust_component") {
   component(target_name) {
     forward_variables_from(invoker,
                            [
-                             "libs",
                              "deps",
+                             "libs",
                              "testonly",
                            ])
     if (!defined(deps)) {
@@ -195,9 +206,10 @@ template("rust_staticlib") {
   rust_component(target_name) {
     forward_variables_from(invoker,
                            [
+                             "cfg",
                              "crate_name",
                              "extern",
-                             "cfg",
+                             "features",
                              "source_root",
                              "testonly",
                            ])
