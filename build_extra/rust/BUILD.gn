@@ -81,6 +81,7 @@ rust_component("tempfile") {
     ":libc",
     ":rand",
     ":remove_dir_all",
+    ":winapi",
   ]
 }
 
@@ -91,6 +92,9 @@ rust_component("rand") {
     ":libc",
     ":rand_core",
   ]
+  if (is_win) {
+    extern += [ ":winapi" ]
+  }
   features = [
     "std",
     "alloc",
@@ -106,4 +110,44 @@ rust_component("rand_core") {
 
 rust_component("remove_dir_all") {
   source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/remove_dir_all-0.5.1/src/lib.rs"
+  extern = []
+  if (is_win) {
+    extern += [ ":winapi" ]
+  }
+}
+
+rust_component("winapi") {
+  source_root =
+      "$crates/registry/src/github.com-1ecc6299db9ec823/winapi-0.3.5/src/lib.rs"
+  features = [
+    "basetsd",
+    "cfg",
+    "cfgmgr32",
+    "errhandlingapi",
+    "excpt",
+    "fileapi",
+    "guiddef",
+    "handleapi",
+    "ktmtypes",
+    "libloaderapi",
+    "lsalookup",
+    "minwinbase",
+    "minwindef",
+    "ntdef",
+    "ntsecapi",
+    "ntstatus",
+    "processthreadsapi",
+    "profileapi",
+    "sspi",
+    "std",
+    "subauth",
+    "vadefs",
+    "vcruntime",
+    "winbase",
+    "wincred",
+    "windef",
+    "winerror",
+    "winnt",
+    "winreg",
+  ]
 }
