@@ -37,7 +37,7 @@ rust_component("percent_encoding") {
 }
 
 rust_component("matches") {
-  source_root = "$registry_github/matches-0.1.6/lib.rs"
+  source_root = "$registry_github/matches-0.1.7/lib.rs"
 }
 
 rust_component("idna") {
@@ -143,5 +143,230 @@ rust_component("winapi") {
     "winerror",
     "winnt",
     "winreg",
+  ]
+}
+
+rust_component("futures") {
+  source_root = "$registry_github/futures-0.1.23/src/lib.rs"
+  cfg = [
+    "feature=\"use_std\"",
+    "feature=\"with-deprecated\"",
+  ]
+}
+
+rust_component("mio") {
+  source_root = "$registry_github/mio-0.6.15/src/lib.rs"
+  extern = [
+    ":iovec",
+    ":lazycell",
+    ":log",
+    ":net2",
+    ":slab",
+    ":libc",
+  ]
+  cfg = [ "feature=\"with-deprecated\"" ]
+}
+
+rust_component("iovec") {
+  source_root = "$registry_github/iovec-0.1.2/src/lib.rs"
+  extern = [ ":libc" ]
+}
+
+rust_component("lazycell") {
+  source_root = "$registry_github/lazycell-0.6.0/src/lib.rs"
+}
+
+rust_component("net2") {
+  source_root = "$registry_github/net2-0.2.33/src/lib.rs"
+  extern = [
+    ":cfg_if",
+    ":libc",
+  ]
+}
+
+rust_component("slab") {
+  source_root = "$registry_github/slab-0.4.0/src/lib.rs"
+}
+
+rust_component("bytes") {
+  source_root = "$registry_github/bytes-0.4.9/src/lib.rs"
+  extern = [
+    ":byteorder",
+    ":iovec",
+  ]
+}
+
+rust_component("byteorder") {
+  source_root = "$registry_github/byteorder-1.2.4/src/lib.rs"
+}
+
+rust_component("crossbeam_deque") {
+  source_root = "$registry_github/crossbeam-deque-0.5.1/src/lib.rs"
+  extern = [
+    ":crossbeam_epoch",
+    ":crossbeam_utils",
+  ]
+}
+
+rust_component("crossbeam_epoch") {
+  source_root = "$registry_github/crossbeam-epoch-0.5.1/src/lib.rs"
+  extern = [
+    ":arrayvec",
+    ":cfg_if",
+    ":crossbeam_utils",
+    ":lazy_static",
+    ":memoffset",
+    ":scopeguard",
+  ]
+  cfg = [ "feature=\"use_std\"" ]
+}
+
+rust_component("crossbeam_utils") {
+  source_root = "$registry_github/crossbeam-utils-0.4.1/src/lib.rs"
+  extern = [ ":cfg_if" ]
+  cfg = [ "feature=\"use_std\"" ]
+}
+
+rust_component("arrayvec") {
+  source_root = "$registry_github/arrayvec-0.4.7/src/lib.rs"
+  extern = [ ":nodrop" ]
+}
+
+rust_component("nodrop") {
+  source_root = "$registry_github/nodrop-0.1.12/src/lib.rs"
+}
+
+rust_component("lazy_static") {
+  source_root = "$registry_github/lazy_static-1.0.2/src/lib.rs"
+}
+
+rust_component("memoffset") {
+  source_root = "$registry_github/memoffset-0.2.1/src/lib.rs"
+}
+
+rust_component("scopeguard") {
+  source_root = "$registry_github/scopeguard-0.3.3/src/lib.rs"
+  cfg = [ "feature=\"use_std\"" ]
+}
+
+rust_component("num_cpus") {
+  source_root = "$registry_github/num_cpus-1.8.0/src/lib.rs"
+  extern = [ ":libc" ]
+}
+
+tokio_root = "$crates/git/checkouts/tokio-377c595163f99a10/5d0d2a2/"
+
+rust_component("tokio") {
+  source_root = "$tokio_root/src/lib.rs"
+  extern = [
+    ":futures",
+    ":mio",
+    ":tokio_executor",
+    ":tokio_fs",
+    ":tokio_io",
+    ":tokio_reactor",
+    ":tokio_tcp",
+    ":tokio_threadpool",
+    ":tokio_current_thread",
+    ":tokio_timer",
+    ":tokio_udp",
+  ]
+}
+
+rust_component("tokio_executor") {
+  source_root = "$tokio_root/tokio-executor/src/lib.rs"
+  extern = [ ":futures" ]
+}
+
+rust_component("tokio_current_thread") {
+  source_root = "$tokio_root/tokio-current-thread/src/lib.rs"
+  extern = [
+    ":tokio_executor",
+    ":futures",
+  ]
+}
+
+rust_component("tokio_fs") {
+  source_root = "$tokio_root//tokio-fs/src/lib.rs"
+  extern = [
+    ":futures",
+    ":tokio_io",
+    ":tokio_threadpool",
+  ]
+}
+
+rust_component("tokio_io") {
+  source_root = "$tokio_root/tokio-io/src/lib.rs"
+  extern = [
+    ":bytes",
+    ":futures",
+    ":log",
+  ]
+}
+
+rust_component("tokio_timer") {
+  source_root = "$tokio_root/tokio-timer/src/lib.rs"
+  extern = [
+    ":futures",
+    ":tokio_executor",
+  ]
+}
+
+rust_component("tokio_udp") {
+  source_root = "$tokio_root/tokio-udp/src/lib.rs"
+  extern = [
+    ":bytes",
+    ":futures",
+    ":log",
+    ":mio",
+    ":tokio_codec",
+    ":tokio_io",
+    ":tokio_reactor",
+  ]
+}
+
+rust_component("tokio_codec") {
+  source_root = "$tokio_root/tokio-codec/src/lib.rs"
+  extern = [
+    ":bytes",
+    ":futures",
+    ":tokio_io",
+  ]
+}
+
+rust_component("tokio_reactor") {
+  source_root = "$tokio_root/tokio-reactor/src/lib.rs"
+  extern = [
+    ":futures",
+    ":log",
+    ":mio",
+    ":slab",
+    ":tokio_executor",
+    ":tokio_io",
+  ]
+}
+
+rust_component("tokio_tcp") {
+  source_root = "$tokio_root/tokio-tcp/src/lib.rs"
+  extern = [
+    ":bytes",
+    ":futures",
+    ":iovec",
+    ":mio",
+    ":tokio_io",
+    ":tokio_reactor",
+  ]
+}
+
+rust_component("tokio_threadpool") {
+  source_root = "$tokio_root/tokio-threadpool/src/lib.rs"
+  extern = [
+    ":crossbeam_deque",
+    ":crossbeam_utils",
+    ":futures",
+    ":log",
+    ":num_cpus",
+    ":rand",
+    ":tokio_executor",
   ]
 }
