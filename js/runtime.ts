@@ -131,8 +131,8 @@ export function makeDefine(fileName: string): AmdDefine {
         return localExports;
       } else if (dep === "typescript") {
         return ts;
-      } else if (dep === "deno") {
-        return deno;
+      // } else if (dep === "deno") {
+      //   return deno;
       } else {
         const resolved = resolveModuleName(dep, fileName);
         const depModule = FileModule.load(resolved);
@@ -214,7 +214,6 @@ class Compiler {
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
     inlineSourceMap: true,
-    lib: ["esnext"],
     inlineSources: true,
     target: ts.ScriptTarget.ESNext
   };
@@ -317,7 +316,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   }
 
   getDefaultLibFileName(options: ts.CompilerOptions): string {
-    const fn = "lib.d.ts"; // ts.getDefaultLibFileName(options);
+    const fn = "lib.deno.d.ts"; // ts.getDefaultLibFileName(options);
     util.log("getDefaultLibFileName", fn);
     const m = resolveModule(fn, "/$asset$/");
     return m.fileName;
