@@ -7,6 +7,7 @@
 // tslint:disable:max-line-length
 import denoDts from "/js/deno.d.ts!string";
 import libDts from "/third_party/node_modules/typescript/lib/lib.d.ts!string";
+import libDom from "/third_party/node_modules/typescript/lib/lib.dom.d.ts!string";
 import libDomIterableDts from "/third_party/node_modules/typescript/lib/lib.dom.iterable.d.ts!string";
 import libEs2015CollectionDts from "/third_party/node_modules/typescript/lib/lib.es2015.collection.d.ts!string";
 import libEs2015CoreDts from "/third_party/node_modules/typescript/lib/lib.es2015.core.d.ts!string";
@@ -26,16 +27,19 @@ import libEs2017TypedarraysDts from "/third_party/node_modules/typescript/lib/li
 import libEs2018Dts from "/third_party/node_modules/typescript/lib/lib.es2018.d.ts!string";
 import libEs2018PromiseDts from "/third_party/node_modules/typescript/lib/lib.es2018.promise.d.ts!string";
 import libEs2018RegexpDts from "/third_party/node_modules/typescript/lib/lib.es2018.regexp.d.ts!string";
+import libEs5 from "/third_party/node_modules/typescript/lib/lib.es5.d.ts!string";
 import libEsnextArrayDts from "/third_party/node_modules/typescript/lib/lib.esnext.array.d.ts!string";
 import libEsnextAsynciterablesDts from "/third_party/node_modules/typescript/lib/lib.esnext.asynciterable.d.ts!string";
 import libEsnextDts from "/third_party/node_modules/typescript/lib/lib.esnext.d.ts!string";
+import libScripthost from "/third_party/node_modules/typescript/lib/lib.scripthost.d.ts!string";
+import libWebworkerImportscripts from "/third_party/node_modules/typescript/lib/lib.webworker.importscripts.d.ts!string";
 import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
 
 // prettier-ignore
 export const assetSourceCode: { [key: string]: string } = {
   "deno.d.ts": denoDts,
   "lib.d.ts": libDts,
-  //"lib.dom.d.ts": readFileSync(__dirname + "/../third_party/node_modules/typescript/lib/lib.dom.d.ts", "utf8"),
+  "lib.dom.d.ts": libDom,
   "lib.dom.iterable.d.ts": libDomIterableDts,
   "lib.es2015.collection.d.ts": libEs2015CollectionDts,
   "lib.es2015.core.d.ts": libEs2015CoreDts,
@@ -61,14 +65,15 @@ export const assetSourceCode: { [key: string]: string } = {
   //"lib.es2018.full.d.ts": readFileSync(__dirname + "/../third_party/node_modules/typescript/lib/lib.es2018.full.d.ts", "utf8"),
   "lib.es2018.promise.d.ts": libEs2018PromiseDts,
   "lib.es2018.regexp.d.ts": libEs2018RegexpDts,
-  //"lib.es5.d.ts": readFileSync(__dirname + "/../third_party/node_modules/typescript/lib/lib.es5.d.ts", "utf8"),
+  "lib.es5.d.ts": libEs5,
   //"lib.es6.d.ts": readFileSync(__dirname + "/../third_party/node_modules/typescript/lib/lib.es6.d.ts", "utf8"),
   "lib.esnext.array.d.ts": libEsnextArrayDts,
   "lib.esnext.asynciterable.d.ts": libEsnextAsynciterablesDts,
   "lib.esnext.d.ts": libEsnextDts,
   //"lib.esnext.full.d.ts": readFileSync(__dirname + "/../third_party/node_modules/typescript/lib/lib.esnext.full.d.ts", "utf8"),
-  //"lib.scripthost.d.ts": readFileSync(__dirname + "/../third_party/node_modules/typescript/lib/lib.scripthost.d.ts", "utf8"),
-  //"lib.webworker.d.ts": readFileSync(__dirname + "/../third_party/node_modules/typescript/lib/lib.webworker.d.ts", "utf8"),
+  "lib.scripthost.d.ts": libScripthost,
+  // "lib.webworker.d.ts": libWebworker,
+  "lib.webworker.importscripts.d.ts": libWebworkerImportscripts,
   //"protocol.d.ts": readFileSync(__dirname + "/../third_party/node_modules/typescript/lib/protocol.d.ts", "utf8"),
   //"tsserverlibrary.d.ts": readFileSync(__dirname + "/../third_party/node_modules/typescript/lib/tsserverlibrary.d.ts", "utf8"),
   "typescript.d.ts": typescriptDts,

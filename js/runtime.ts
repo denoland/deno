@@ -214,9 +214,9 @@ class Compiler {
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
     inlineSourceMap: true,
-    lib: ["es2017"],
+    lib: ["esnext"],
     inlineSources: true,
-    target: ts.ScriptTarget.ES2017
+    target: ts.ScriptTarget.ESNext
   };
   /*
   allowJs: true,
