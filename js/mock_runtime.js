@@ -1,3 +1,5 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
 // A simple runtime that doesn't involve typescript or protobufs to test
 // libdeno. Invoked by mock_runtime_test.cc
 
@@ -29,9 +31,8 @@ global.SendSuccess = () => {
   });
 };
 
-global.SendByteLength = () => {
+global.SendWrongByteLength = () => {
   deno.recv(msg => {
-    assert(msg instanceof ArrayBuffer);
     assert(msg.byteLength === 3);
   });
 };
@@ -132,4 +133,15 @@ global.ErrorHandling = () => {
     deno.send(new Uint8Array([42]));
   };
   eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
+};
+
+global.SendNullAllocPtr = () => {
+  deno.recv(msg => {
+    assert(msg instanceof Uint8Array);
+    assert(msg.byteLength === 4);
+    assert(msg[0] === "a".charCodeAt(0));
+    assert(msg[1] === "b".charCodeAt(0));
+    assert(msg[2] === "c".charCodeAt(0));
+    assert(msg[3] === "d".charCodeAt(0));
+  });
 };

@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 #ifndef HANDLERS_H_
 #define HANDLERS_H_
 
@@ -9,5 +8,7 @@
 extern "C" {
 void handle_code_fetch(Deno* d, uint32_t cmd_id, const char* module_specifier,
                        const char* containing_file);
+void handle_code_cache(Deno* d, uint32_t cmd_id, const char* filename,
+                       const char* source_code, const char* output_code);
 }  // extern "C"
 #endif  // HANDLERS_H_

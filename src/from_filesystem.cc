@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,8 +14,6 @@
 namespace deno {
 
 Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
-  printf("load bundle " BUNDLE_LOCATION "\n");
-
   std::string js_source;
   CHECK(deno::ReadFileToString(BUNDLE_LOCATION, &js_source));
 

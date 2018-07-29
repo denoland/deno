@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 #ifndef DENO_H_
 #define DENO_H_
 #include <stddef.h>
@@ -31,6 +30,9 @@ void deno_set_flags(int* argc, char** argv);
 
 Deno* deno_new(void* data, deno_recv_cb cb);
 void deno_delete(Deno* d);
+
+// Returns the void* data provided in deno_new.
+void* deno_get_data(Deno*);
 
 // Returns false on error.
 // Get error text with deno_last_exception().

@@ -1,24 +1,4 @@
-/*
-Copyright 2018 Ryan Dahl <ry@tinyclouds.org>. All rights reserved.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to
-deal in the Software without restriction, including without limitation the
-rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-sell copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-IN THE SOFTWARE.
-*/
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -140,12 +120,21 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
 }
 
 static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {
-  auto ab = v8::ArrayBuffer::New(
-      isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
-      v8::ArrayBufferCreationMode::kInternalized);
-  auto view =
-      v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
-  return view;
+  if (buf.alloc_ptr == nullptr) {
+    // If alloc_ptr isn't set, we memcpy.
+    // This is currently used for flatbuffers created in Rust.
+    auto ab = v8::ArrayBuffer::New(isolate, buf.data_len);
+    memcpy(ab->GetContents().Data(), buf.data_ptr, buf.data_len);
+    auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
+    return view;
+  } else {
+    auto ab = v8::ArrayBuffer::New(
+        isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
+        v8::ArrayBufferCreationMode::kInternalized);
+    auto view =
+        v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
+    return view;
+  }
 }
 
 static deno_buf ExportBuf(v8::Isolate* isolate,
@@ -298,6 +287,8 @@ void deno_init() {
   v8::V8::InitializePlatform(p);
   v8::V8::Initialize();
 }
+
+void* deno_get_data(Deno* d) { return d->data; }
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 

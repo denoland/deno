@@ -1,5 +1,4 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 // When Rust Flatbuffer support is complete this file should be ported
 // to Rust and removed: https://github.com/google/flatbuffers/pull/3894
@@ -21,35 +20,6 @@
 #include "third_party/v8/src/base/logging.h"
 
 extern "C" {
-
-void deno_reply_error(Deno* d, uint32_t cmd_id, const char* error_msg) {
-  // printf("deno_reply_error: %s\n", error_msg);
-  deno::FlatBufferBuilder builder;
-  auto error_msg_ = error_msg ? builder.CreateString(error_msg) : 0;
-  auto base = deno::CreateBase(builder, cmd_id, error_msg_);
-  builder.Finish(base);
-  deno_set_response(d, builder.ExportBuf());
-}
-
-void deno_reply_null(Deno* d, uint32_t cmd_id) {
-  deno_reply_error(d, cmd_id, nullptr);
-}
-
-void deno_reply_code_fetch(Deno* d, uint32_t cmd_id, const char* module_name,
-                           const char* filename, const char* source_code,
-                           const char* output_code) {
-  deno::FlatBufferBuilder builder;
-  auto module_name_ = builder.CreateString(module_name);
-  auto filename_ = builder.CreateString(filename);
-  auto source_code_ = builder.CreateString(source_code);
-  auto output_code_ = builder.CreateString(output_code);
-  auto code_fetch_res = deno::CreateCodeFetchRes(
-      builder, module_name_, filename_, source_code_, output_code_);
-  auto base = deno::CreateBase(builder, cmd_id, 0, deno::Any_CodeFetchRes,
-                               code_fetch_res.Union());
-  builder.Finish(base);
-  deno_set_response(d, builder.ExportBuf());
-}
 
 void deno_reply_start(Deno* d, uint32_t cmd_id, int argc, char* argv[],
                       char* cwd) {
@@ -93,16 +63,11 @@ void deno_handle_msg_from_js(Deno* d, deno_buf buf) {
     }
 
     case deno::Any_CodeCache: {
-      // TODO(ry) Call into rust.
-      /*
+      auto msg = base->msg_as_CodeCache();
       auto filename = msg->filename()->c_str();
       auto source_code = msg->source_code()->c_str();
       auto output_code = msg->output_code()->c_str();
-      printf(
-          "HandleCodeCache (not implemeneted) filename %s source_code %s "
-          "output_code %s\n",
-          filename, source_code, output_code);
-      */
+      handle_code_cache(d, cmd_id, filename, source_code, output_code);
       break;
     }
 

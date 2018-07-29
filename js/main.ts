@@ -1,12 +1,10 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 // tslint:disable-next-line:no-reference
 /// <reference path="deno.d.ts" />
 import { flatbuffers } from "flatbuffers";
-import { deno as fbs } from "./msg_generated";
+import { deno as fbs } from "gen/msg_generated";
 import { assert, log } from "./util";
 import * as runtime from "./runtime";
-
-const globalEval = eval;
-const window = globalEval("this");
 
 let cmdIdCounter = 0;
 function assignCmdId(): number {
@@ -18,16 +16,18 @@ function assignCmdId(): number {
 
 function startMsg(cmdId: number): Uint8Array {
   const builder = new flatbuffers.Builder();
-  const msg = fbs.Start.createStart(builder, 0);
+  fbs.Start.startStart(builder);
+  const startOffset = fbs.Start.endStart(builder);
   fbs.Base.startBase(builder);
   fbs.Base.addCmdId(builder, cmdId);
-  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsg(builder, startOffset);
   fbs.Base.addMsgType(builder, fbs.Any.Start);
   builder.finish(fbs.Base.endBase(builder));
   return builder.asUint8Array();
 }
 
-window["denoMain"] = () => {
+/* tslint:disable-next-line:no-default-export */
+export default function denoMain() {
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
   // argv and other info.
@@ -61,4 +61,4 @@ window["denoMain"] = () => {
   const inputFn = argv[1];
   const mod = runtime.resolveModule(inputFn, `${cwd}/`);
   mod.compileAndRun();
-};
+}

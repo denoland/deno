@@ -43,10 +43,11 @@ template("run_rustc") {
                              "cfg",
                              "crate_name",
                              "crate_type",
-                             "source_root",
                              "deps",
                              "extern",
+                             "features",
                              "is_test",
+                             "source_root",
                              "testonly",
                            ])
     if (!defined(crate_name)) {
@@ -62,11 +63,14 @@ template("run_rustc") {
     outputs = []
     script = "//tools/run_rustc.py"
 
+    # TODO: We want to apply "-Dwarnings" only when treat_warnings_as_errors is not false
+    # https://github.com/ry/deno/pull/379
     args = [
       rebase_path(source_root, root_build_dir),
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
     ]
+
     if (!is_win) {
       args += [ "--color=always" ]
     }
@@ -116,6 +120,19 @@ template("run_rustc") {
       }
     }
 
+    if (defined(features)) {
+      foreach(f, features) {
+        args += [
+          "--cfg",
+          "feature=\"" + f + "\"",
+        ]
+      }
+    }
+
+    if (defined(invoker.args)) {
+      args += invoker.args
+    }
+
     if (!defined(deps)) {
       deps = []
     }
@@ -148,12 +165,15 @@ template("rust_component") {
   run_rustc(rustc_name) {
     forward_variables_from(invoker,
                            [
+                             "args",
+                             "cfg",
                              "crate_name",
                              "crate_type",
+                             "deps",
                              "extern",
-                             "cfg",
-                             "source_root",
+                             "features",
                              "is_test",
+                             "source_root",
                              "testonly",
                            ])
     if (!defined(invoker.crate_type)) {
@@ -167,8 +187,8 @@ template("rust_component") {
   component(target_name) {
     forward_variables_from(invoker,
                            [
-                             "libs",
                              "deps",
+                             "libs",
                              "testonly",
                            ])
     if (!defined(deps)) {
@@ -186,9 +206,10 @@ template("rust_staticlib") {
   rust_component(target_name) {
     forward_variables_from(invoker,
                            [
+                             "cfg",
                              "crate_name",
                              "extern",
-                             "cfg",
+                             "features",
                              "source_root",
                              "testonly",
                            ])

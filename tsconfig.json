@@ -1,17 +1,22 @@
 {
   "compilerOptions": {
     "allowJs": true,
-    "module": "commonjs",
+    "baseUrl": ".",
+    "module": "esnext",
     "noImplicitAny": true,
     "sourceMap": true,
     "removeComments": true,
     "preserveConstEnums": true,
     "target": "es2017",
+    "moduleResolution": "node",
     "noImplicitReturns": true,
     "pretty": true,
     "noFallthroughCasesInSwitch": true,
     "allowUnreachableCode": false,
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    "paths": {
+      "*": ["*", "out/debug/*", "out/default/*", "out/release/*"]
+    }
   },
   "include": ["js/main.ts"],
   "exclude": ["node_modules"]

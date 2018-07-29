@@ -15,4 +15,4 @@ run([
     "python", cpplint, "--filter=-build/include_subdir", "--repository=src",
     "--extensions=cc,h", "--recursive", "src/."
 ])
-run(["node", tslint, "-p", ".", "--exclude", "js/msg_generated.ts"])
+run(["node", tslint, "-p", ".", "--exclude", "**/gen/**/*.ts"])

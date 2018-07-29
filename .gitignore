@@ -1,12 +1,9 @@
 # build
 /out/
 *.pyc
-
+gclient_config.py_entries
 # npm deps
 node_modules
-
-# third party deps
-/third_party/
 
 # RLS generated files
 /target/

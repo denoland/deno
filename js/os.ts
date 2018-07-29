@@ -1,7 +1,6 @@
-// Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-// All rights reserved. MIT License.
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { ModuleInfo } from "./types";
-import { deno as fbs } from "./msg_generated";
+import { deno as fbs } from "gen/msg_generated";
 import { assert } from "./util";
 import * as util from "./util";
 import { flatbuffers } from "flatbuffers";
@@ -72,7 +71,13 @@ export function codeCache(
   fbs.Base.addMsgType(builder, fbs.Any.CodeCache);
   builder.finish(fbs.Base.endBase(builder));
   const resBuf = deno.send(builder.asUint8Array());
-  assert(resBuf == null);
+  // Expect null or error.
+  if (resBuf != null) {
+    const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf));
+    const baseRes = fbs.Base.getRootAsBase(bb);
+    assert(fbs.Any.NONE === baseRes.msgType());
+    throw Error(baseRes.error());
+  }
 }
 
 export function readFileSync(filename: string): Uint8Array {

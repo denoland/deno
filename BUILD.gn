@@ -1,6 +1,8 @@
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import("//third_party/v8/gni/v8.gni")
 import("//third_party/v8/snapshot_toolchain.gni")
 import("//build_extra/flatbuffers/flatbuffer.gni")
+import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
 import("//build_extra/deno.gni")
 import("//build_extra/rust/rust.gni")
 
@@ -9,8 +11,8 @@ group("all") {
   deps = [
     ":deno",
     ":deno_ns",
-    ":handlers_test",
     ":test_cc",
+    ":test_rs",
   ]
 }
 
@@ -32,12 +34,35 @@ config("deno_config") {
   }
 }
 
+main_extern = [
+  "$rust_build:libc",
+  "$rust_build:log",
+  "$rust_build:sha1",
+  "$rust_build:tempfile",
+  "$rust_build:url",
+  "//build_extra/flatbuffers/rust:flatbuffers",
+  ":msg_rs",
+
+  # Indirect rust depdendencies also need to be listed here:
+  # * Linking to `:handlers` or `:libdeno` isn't possible, because they
+  #   already contain some symbols exported by `handlers.rs`. These duplicate
+  #   symbols trip up the linker.
+  # * The `rust_test` and `rust_executable` templates only produce an object
+  #   file, and then invoke an external linker. Transitive rust depencenies
+  #   are not resolved in either step.
+  "$rust_build:idna",
+  "$rust_build:percent_encoding",
+  "$rust_build:unicode_bidi",
+  "$rust_build:unicode_normalization",
+  "$rust_build:rand",
+  "$rust_build:rand_core",
+  "$rust_build:remove_dir_all",
+  "$rust_build:winapi",
+]
+
 rust_executable("deno") {
   source_root = "src/main.rs"
-  extern = [
-    "$rust_build:libc",
-    "$rust_build:log",
-  ]
+  extern = main_extern
   deps = [
     ":libdeno",
   ]
@@ -49,45 +74,17 @@ rust_executable("deno") {
 # ns = no snapshot
 rust_executable("deno_ns") {
   source_root = "src/main.rs"
-  extern = [
-    "$rust_build:libc",
-    "$rust_build:log",
-  ]
+  extern = main_extern
   deps = [
     ":libdeno_nosnapshot",
   ]
 }
 
-rust_staticlib("handlers") {
-  source_root = "src/handlers.rs"
-  extern = [
-    "$rust_build:libc",
-    "$rust_build:url",
-    "$rust_build:log",
-  ]
-}
-
-rust_test("handlers_test") {
-  source_root = "src/handlers.rs"
-  extern = [
-    "$rust_build:libc",
-    "$rust_build:url",
-    "$rust_build:log",
-
-    # Indirect rust depdendencies also need to be listed here:
-    # * Linking to `:handlers` or `:libdeno` isn't possible, because they
-    #   already contain some symbols exported by `handlers.rs`. These duplicate
-    #   symbols trip up the linker.
-    # * The `rust_test` and `rust_executable` templates only produce an object
-    #   file, and then invoke an external linker. Transitive rust depencenies
-    #   are not resolved in either step.
-    "$rust_build:idna",
-    "$rust_build:percent_encoding",
-    "$rust_build:unicode_bidi",
-    "$rust_build:unicode_normalization",
-  ]
+rust_test("test_rs") {
+  source_root = "src/main.rs"
+  extern = main_extern
   deps = [
-    ":deno_bindings",
+    ":libdeno",
   ]
 }
 
@@ -99,8 +96,7 @@ executable("test_cc") {
   ]
   deps = [
     ":deno_base_test",
-    ":deno_bindings",
-    ":handlers",
+    ":deno_flatbuffer_builder",
     "//testing/gtest:gtest",
   ]
   configs += [ ":deno_config" ]
@@ -114,7 +110,6 @@ static_library("libdeno") {
   deps = [
     ":create_snapshot_deno",
     ":deno_bindings",
-    ":handlers",
   ]
   configs += [ ":deno_config" ]
 }
@@ -153,19 +148,29 @@ v8_source_set("deno_base_test") {
   configs = [ ":deno_config" ]
 }
 
-v8_source_set("deno_bindings") {
+v8_source_set("deno_flatbuffer_builder") {
   sources = [
     "src/flatbuffer_builder.cc",
     "src/flatbuffer_builder.h",
+  ]
+  deps = [
+    ":deno_base",
+  ]
+  public_deps = [
+    "build_extra/flatbuffers:flatbuffers",
+  ]
+  configs = [ ":deno_config" ]
+}
+
+v8_source_set("deno_bindings") {
+  sources = [
     "src/reply.cc",
     "src/reply.h",
   ]
   deps = [
     ":deno_base",
+    ":deno_flatbuffer_builder",
     ":msg_cpp",
-  ]
-  public_deps = [
-    "build_extra/flatbuffers:flatbuffers",
   ]
   configs = [ ":deno_config" ]
 }
@@ -195,29 +200,32 @@ run_node("bundle") {
     "js/dispatch.ts",
     "js/globals.ts",
     "js/main.ts",
-    "js/msg_generated.ts",
     "js/os.ts",
     "js/runtime.ts",
     "js/types.ts",
     "js/util.ts",
-    "package.json",  # The `browserslist` field controls Babel behavior.
+    "rollup.config.js",
+    "src/msg.fbs",
+    "tsconfig.json",
   ]
   outputs = [
     out_dir + "main.js",
-    out_dir + "main.map",
+    out_dir + "main.js.map",
   ]
   deps = [
-    ":flatbufferjs",
-    ":run_tsc",
+    ":msg_ts",
   ]
   args = [
-    "./node_modules/parcel-bundler/bin/cli.js",
-    "build",
-    "--log-level=1",  # Only disply errors.
-    "--no-minify",
-    "--out-dir",
-    rebase_path(out_dir, root_build_dir),
+    "./node_modules/rollup/bin/rollup",
+    "-c",
+    rebase_path("rollup.config.js", root_build_dir),
+    "-i",
     rebase_path("js/main.ts", root_build_dir),
+    "-o",
+    rebase_path(out_dir + "main.js", root_build_dir),
+    "--silent",
+    "--environment",
+    "BASEPATH:" + rebase_path(".", root_build_dir),
   ]
 }
 
@@ -228,7 +236,6 @@ source_set("libdeno_nosnapshot") {
   deps = [
     ":bundle",
     ":deno_bindings",
-    ":handlers",
   ]
   configs += [ ":deno_config" ]
   bundle_outputs = get_target_outputs(":bundle")
@@ -236,61 +243,13 @@ source_set("libdeno_nosnapshot") {
   defines = [ "BUNDLE_LOCATION=\"$bundle_location\"" ]
 }
 
-# Due to bugs in Parcel we must run TSC independently in order to catch errors.
-# https://github.com/parcel-bundler/parcel/issues/954
-run_node("run_tsc") {
-  main = "js/main.ts"
-  tsconfig = "tsconfig.json"
-  out_dir = "$target_gen_dir/tsc_dist/"
-  sources = [
-    "js/msg_generated.ts",
-    main,
-    tsconfig,
-  ]
-  outputs = [
-    out_dir + "/main.js",
-  ]
-  deps = [
-    ":flatbufferjs",
-  ]
-  args = [
-    "./node_modules/typescript/bin/tsc",
-    "--project",
-    rebase_path(tsconfig, root_build_dir),
-    "--outDir",
-    rebase_path(out_dir, root_build_dir),
-  ]
-}
-
-# Generates flatbuffer TypeScript code.
-# TODO(ry) Ideally flatc output files should be written into
-# target_gen_dir, but its difficult to get this working in a way that the
-# bundler can resolve their location. (The bundler does not support NODE_PATH?)
-# Therefore this hack: write the msg_generated.ts output
-# into the js/ folder, and we check it into the repo. Hopefully this hack can
-# be removed at some point. If msg.fps is changed, commit changes to the
-# generated JS files. The stamp file is just to make gn work.
-action("flatbufferjs") {
-  script = "//tools/flatbufferjs_hack.py"
+ts_flatbuffer("msg_ts") {
   sources = [
     "src/msg.fbs",
   ]
-  outputs = [
-    "$target_gen_dir/flatbufferjs_hack.stamp",
-  ]
-
-  args = [
-    rebase_path("$target_gen_dir/msg_generated.ts", root_build_dir),
-    rebase_path("js/msg_generated.ts", root_build_dir),
-    rebase_path(outputs[0], root_build_dir),
-  ]
-
-  deps = [
-    ":msg_ts",
-  ]
 }
 
-ts_flatbuffer("msg_ts") {
+rust_flatbuffer("msg_rs") {
   sources = [
     "src/msg.fbs",
   ]
