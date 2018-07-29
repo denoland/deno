@@ -73,7 +73,18 @@ rust_component("cfg_if") {
 rust_component("tokio") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.7/src/lib.rs"
-  extern = [ ":futures", ":mio", ":tokio_executor", ":tokio_fs", ":tokio_io", ":tokio_reactor", ":tokio_tcp", ":tokio_threadpool", ":tokio_timer", ":tokio_udp" ]
+  extern = [
+    ":futures",
+    ":mio",
+    ":tokio_executor",
+    ":tokio_fs",
+    ":tokio_io",
+    ":tokio_reactor",
+    ":tokio_tcp",
+    ":tokio_threadpool",
+    ":tokio_timer",
+    ":tokio_udp"
+  ]
 }
 
 rust_component("futures") {
@@ -85,7 +96,14 @@ rust_component("futures") {
 rust_component("mio") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/mio-0.6.15/src/lib.rs"
-  extern = [ ":iovec", ":lazycell", ":log", ":net2", ":slab", ":libc" ]
+  extern = [
+    ":iovec",
+    ":lazycell",
+    ":log",
+    ":net2",
+    ":slab",
+    ":libc"
+  ]
   cfg = [ "feature=\"with-deprecated\"" ]
 }
 
@@ -120,13 +138,21 @@ rust_component("tokio_executor") {
 rust_component("tokio_fs") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/tokio-fs-0.1.2/src/lib.rs"
-  extern = [ ":futures", ":tokio_io", ":tokio_threadpool" ]
+  extern = [
+    ":futures",
+    ":tokio_io",
+    ":tokio_threadpool"
+  ]
 }
 
 rust_component("tokio_io") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/tokio-io-0.1.7/src/lib.rs"
-  extern = [ ":bytes", ":futures", ":log" ]
+  extern = [
+    ":bytes",
+    ":futures",
+    ":log"
+  ]
 }
 
 rust_component("bytes") {
@@ -143,19 +169,40 @@ rust_component("byteorder") {
 rust_component("tokio_reactor") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/tokio-reactor-0.1.2/src/lib.rs"
-  extern = [ ":futures", ":log", ":mio", ":slab", ":tokio_executor", ":tokio_io" ]
+  extern = [
+    ":futures",
+    ":log",
+    ":mio",
+    ":slab",
+    ":tokio_executor",
+    ":tokio_io"
+  ]
 }
 
 rust_component("tokio_tcp") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/tokio-tcp-0.1.0/src/lib.rs"
-  extern = [ ":bytes", ":futures", ":iovec", ":mio", ":tokio_io", ":tokio_reactor" ]
+  extern = [
+    ":bytes",
+    ":futures",
+    ":iovec",
+    ":mio",
+    ":tokio_io",
+    ":tokio_reactor"
+  ]
 }
 
 rust_component("tokio_threadpool") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/tokio-threadpool-0.1.5/src/lib.rs"
-  extern = [ ":crossbeam_deque", ":futures", ":log", ":num_cpus", ":rand", ":tokio_executor" ]
+  extern = [
+    ":crossbeam_deque",
+    ":futures",
+    ":log",
+    ":num_cpus",
+    ":rand",
+    ":tokio_executor"
+  ]
 }
 
 rust_component("crossbeam_deque") {
@@ -167,7 +214,14 @@ rust_component("crossbeam_deque") {
 rust_component("crossbeam_epoch") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/crossbeam-epoch-0.4.3/src/lib.rs"
-  extern = [ ":arrayvec", ":cfg_if", ":crossbeam_utils", ":lazy_static", ":memoffset", ":scopeguard" ]
+  extern = [
+    ":arrayvec",
+    ":cfg_if",
+    ":crossbeam_utils",
+    ":lazy_static",
+    ":memoffset",
+    ":scopeguard"
+  ]
   cfg = [ "feature=\"use_std\"" ]
 }
 
@@ -225,11 +279,23 @@ rust_component("tokio_timer") {
 rust_component("tokio_udp") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/tokio-udp-0.1.1/src/lib.rs"
-  extern = [ ":bytes", ":futures", ":log", ":mio", ":tokio_codec", ":tokio_io", ":tokio_reactor" ]
+  extern = [
+    ":bytes",
+    ":futures",
+    ":log",
+    ":mio",
+    ":tokio_codec",
+    ":tokio_io",
+    ":tokio_reactor"
+  ]
 }
 
 rust_component("tokio_codec") {
   source_root =
       "$crates/registry/src/github.com-1ecc6299db9ec823/tokio-codec-0.1.0/src/lib.rs"
-  extern = [ ":bytes", ":futures", ":tokio_io" ]
+  extern = [
+    ":bytes",
+    ":futures",
+    ":tokio_io"
+  ]
 }
