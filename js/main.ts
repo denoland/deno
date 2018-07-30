@@ -20,6 +20,8 @@ function startMsg(cmdId: number): Uint8Array {
 
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
+  runtime.setup();
+
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
   // argv and other info.

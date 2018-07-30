@@ -32,7 +32,7 @@ Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
   {
     v8::HandleScope handle_scope(isolate);
     auto context = v8::Context::New(isolate);
-    InitializeContext(isolate, context, BUNDLE_LOCATION, js_source.c_str());
+    InitializeContext(isolate, context, BUNDLE_LOCATION, js_source, nullptr);
     d->context.Reset(d->isolate, context);
   }
 
