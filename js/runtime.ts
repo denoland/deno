@@ -131,8 +131,8 @@ export function makeDefine(fileName: string): AmdDefine {
         return localExports;
       } else if (dep === "typescript") {
         return ts;
-      // } else if (dep === "deno") {
-      //   return deno;
+      } else if (dep === "deno") {
+        return deno;
       } else {
         const resolved = resolveModuleName(dep, fileName);
         const depModule = FileModule.load(resolved);
