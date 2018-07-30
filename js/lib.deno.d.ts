@@ -6,41 +6,25 @@
 
 /// <reference lib="esnext" />
 
-// This needs to be stripped down to what is supported by V8 without a DOM
-interface Console {
-  memory: any;
-  assert(condition?: boolean, message?: string, ...data: any[]): void;
-  clear(): void;
-  count(label?: string): void;
-  debug(message?: any, ...optionalParams: any[]): void;
-  dir(value?: any, ...optionalParams: any[]): void;
-  dirxml(value: any): void;
-  error(message?: any, ...optionalParams: any[]): void;
-  exception(message?: string, ...optionalParams: any[]): void;
-  group(groupTitle?: string, ...optionalParams: any[]): void;
-  groupCollapsed(groupTitle?: string, ...optionalParams: any[]): void;
-  groupEnd(): void;
-  info(message?: any, ...optionalParams: any[]): void;
-  log(message?: any, ...optionalParams: any[]): void;
-  markTimeline(label?: string): void;
-  // msIsIndependentlyComposed(element: Element): boolean;
-  profile(reportName?: string): void;
-  profileEnd(): void;
-  // select(element: Element): void;
-  table(...tabularData: any[]): void;
-  time(label?: string): void;
-  timeEnd(label?: string): void;
-  timeStamp(label?: string): void;
-  timeline(label?: string): void;
-  timelineEnd(label?: string): void;
-  trace(message?: any, ...optionalParams: any[]): void;
-  warn(message?: any, ...optionalParams: any[]): void;
-}
+// TODO generate `console.d.ts` and inline it in `assets.ts` and remove
+// declaration of `Console`
 
-declare var Console: {
-    prototype: Console;
-    new(): Console;
-};
+//import { Console } from 'gen/console';
+
+declare class Console {
+  // tslint:disable-next-line:no-any
+  log(...args: any[]): void;
+  // tslint:disable-next-line:no-any
+  debug(...args: any[]): void;
+  // tslint:disable-next-line:no-any
+  info(...args: any[]): void;
+  // tslint:disable-next-line:no-any
+  warn(...args: any[]): void;
+  // tslint:disable-next-line:no-any
+  error(...args: any[]): void;
+  // tslint:disable-next-line:no-any
+  assert(condition: boolean, ...args: any[]): void
+}
 
 interface Window {
   console: Console;
