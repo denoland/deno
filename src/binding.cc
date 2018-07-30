@@ -13,6 +13,12 @@
 
 namespace deno {
 
+static bool skip_onerror = false;
+
+Deno* FromIsolate(v8::Isolate* isolate) {
+  return static_cast<Deno*>(isolate->GetData(0));
+}
+
 // Extracts a C string from a v8::V8 Utf8Value.
 const char* ToCString(const v8::String::Utf8Value& value) {
   return *value ? *value : "<string conversion failed>";
@@ -24,10 +30,10 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
       .ToLocalChecked();
 }
 
-void HandleException(v8::Local<v8::Context> context,
-                     v8::Local<v8::Value> exception) {
+void HandleExceptionStr(v8::Local<v8::Context> context,
+                        v8::Local<v8::Value> exception,
+                        std::string* exception_str) {
   auto* isolate = context->GetIsolate();
-  Deno* d = static_cast<Deno*>(isolate->GetData(0));
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
@@ -40,18 +46,23 @@ void HandleException(v8::Local<v8::Context> context,
   auto column =
       v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
 
-  if (onerror->IsFunction()) {
-    // window.onerror is set so we try to handle the exception in javascript.
-    auto func = v8::Local<v8::Function>::Cast(onerror);
-    v8::Local<v8::Value> args[5];
-    args[0] = exception->ToString();
-    args[1] = message->GetScriptResourceName();
-    args[2] = line;
-    args[3] = column;
-    args[4] = exception;
-    func->Call(context->Global(), 5, args);
-    /* message, source, lineno, colno, error */
-  } else if (!stack_trace.IsEmpty()) {
+  if (skip_onerror == false) {
+    if (onerror->IsFunction()) {
+      // window.onerror is set so we try to handle the exception in javascript.
+      auto func = v8::Local<v8::Function>::Cast(onerror);
+      v8::Local<v8::Value> args[5];
+      args[0] = exception->ToString();
+      args[1] = message->GetScriptResourceName();
+      args[2] = line;
+      args[3] = column;
+      args[4] = exception;
+      func->Call(context->Global(), 5, args);
+      /* message, source, lineno, colno, error */
+    }
+  }
+
+  char buf[12 * 1024];
+  if (!stack_trace.IsEmpty()) {
     // No javascript onerror handler, but we do have a stack trace. Format it
     // into a string and add to last_exception.
     std::string msg;
@@ -64,11 +75,10 @@ void HandleException(v8::Local<v8::Context> context,
       v8::String::Utf8Value script_name(isolate, frame->GetScriptName());
       int l = frame->GetLineNumber();
       int c = frame->GetColumn();
-      char buf[512];
       snprintf(buf, sizeof(buf), "%s %d:%d\n", ToCString(script_name), l, c);
       msg += buf;
     }
-    d->last_exception = msg;
+    *exception_str += msg;
   } else {
     // No javascript onerror handler, no stack trace. Format the little info we
     // have into a string and add to last_exception.
@@ -77,10 +87,22 @@ void HandleException(v8::Local<v8::Context> context,
                                       message->GetScriptResourceName());
     v8::String::Utf8Value line_str(isolate, line);
     v8::String::Utf8Value col_str(isolate, column);
-    char buf[512];
     snprintf(buf, sizeof(buf), "%s\n%s %s:%s\n", ToCString(exceptionStr),
              ToCString(script_name), ToCString(line_str), ToCString(col_str));
-    d->last_exception = std::string(buf);
+    *exception_str += buf;
+  }
+}
+
+void HandleException(v8::Local<v8::Context> context,
+                     v8::Local<v8::Value> exception) {
+  v8::Isolate* isolate = context->GetIsolate();
+  Deno* d = FromIsolate(isolate);
+  std::string exception_str;
+  HandleExceptionStr(context, exception, &exception_str);
+  if (d != nullptr) {
+    d->last_exception = exception_str;
+  } else {
+    printf("Pre-Deno Exception %s\n", exception_str.c_str());
   }
 }
 
@@ -204,8 +226,9 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   d->currentArgs = nullptr;
 }
 
-bool Execute(v8::Local<v8::Context> context, const char* js_filename,
-             const char* js_source) {
+bool ExecuteV8StringSource(v8::Local<v8::Context> context,
+                           const char* js_filename,
+                           v8::Local<v8::String> source) {
   auto* isolate = context->GetIsolate();
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
@@ -215,7 +238,6 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   v8::TryCatch try_catch(isolate);
 
   auto name = v8_str(js_filename);
-  auto source = v8_str(js_source);
 
   v8::ScriptOrigin origin(name);
 
@@ -236,6 +258,15 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   }
 
   return true;
+}
+
+bool Execute(v8::Local<v8::Context> context, const char* js_filename,
+             const char* js_source) {
+  auto* isolate = context->GetIsolate();
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
+  auto source = v8_str(js_source);
+  return ExecuteV8StringSource(context, js_filename, source);
 }
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -260,8 +291,15 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
 
-  bool r = Execute(context, js_filename, js_source);
-  CHECK(r);
+  skip_onerror = true;
+  {
+    auto source = deno::v8_str(js_source);
+    CHECK(global->Set(context, deno::v8_str("mainSource"), source).FromJust());
+
+    bool r = deno::ExecuteV8StringSource(context, js_filename, source);
+    CHECK(r);
+  }
+  skip_onerror = false;
 }
 
 void AddIsolate(Deno* d, v8::Isolate* isolate) {
