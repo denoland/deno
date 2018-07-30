@@ -4,7 +4,7 @@
     "@types/flatbuffers": "^1.9.0",
     "@types/source-map-support": "^0.4.1",
     "flatbuffers": "^1.9.0",
-    "prettier": "^1.13.7",
+    "prettier": "^1.14.0",
     "rollup": "^0.63.2",
     "rollup-pluginutils": "^2.3.0",
     "rollup-plugin-alias": "^1.4.0",

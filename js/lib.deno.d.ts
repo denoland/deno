@@ -23,7 +23,7 @@ declare class Console {
   // tslint:disable-next-line:no-any
   error(...args: any[]): void;
   // tslint:disable-next-line:no-any
-  assert(condition: boolean, ...args: any[]): void
+  assert(condition: boolean, ...args: any[]): void;
 }
 
 interface Window {
