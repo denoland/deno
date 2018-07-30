@@ -32,13 +32,14 @@ template("create_snapshot") {
     inputs = [
       invoker.js,
     ]
+    if (defined(invoker.source_map)) {
+      inputs += [ invoker.source_map ]
+    }
     outputs = [
       snapshot_out_cc,
     ]
-    args = [
-      rebase_path(snapshot_out_cc, root_build_dir),
-      rebase_path(invoker.js, root_build_dir),
-    ]
+    args = rebase_path(outputs, root_build_dir) +
+           rebase_path(inputs, root_build_dir)
 
     # To debug snapshotting problems:
     #  args += ["--trace-serializer"]
