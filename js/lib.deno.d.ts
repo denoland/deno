@@ -27,8 +27,10 @@ declare class Console {
 
 interface Window {
   console: Console;
+  mainSource: string; // TODO(ry) This shouldn't be global.
 }
 
 // Globals in the runtime environment
 declare let console: Console;
+declare let mainSource: string; // TODO(ry) This shouldn't be global.
 declare const window: Window;
