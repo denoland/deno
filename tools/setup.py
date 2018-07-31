@@ -33,7 +33,7 @@ def get_gn_args():
 
 
 # gn gen.
-for mode in ["release", "debug"]:
+def gn_gen(mode):
     os.environ["DENO_BUILD_MODE"] = mode
 
     gn_args = get_gn_args()
@@ -52,3 +52,11 @@ for mode in ["release", "debug"]:
 
     run([third_party.gn_path, "gen", build_path()],
         env=third_party.google_env())
+
+
+mode = build_mode(default=None)
+if mode is not None:
+    gn_gen(mode)
+else:
+    gn_gen("release")
+    gn_gen("debug")
