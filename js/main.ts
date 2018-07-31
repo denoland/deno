@@ -5,6 +5,7 @@ import { flatbuffers } from "flatbuffers";
 import { deno as fbs } from "gen/msg_generated";
 import { assert, log, assignCmdId } from "./util";
 import * as runtime from "./runtime";
+import * as timers from "./timers";
 
 function startMsg(cmdId: number): Uint8Array {
   const builder = new flatbuffers.Builder();
@@ -18,8 +19,26 @@ function startMsg(cmdId: number): Uint8Array {
   return builder.asUint8Array();
 }
 
+function onMessage(ui8: Uint8Array) {
+  const bb = new flatbuffers.ByteBuffer(ui8);
+  const base = fbs.Base.getRootAsBase(bb);
+  switch (base.msgType()) {
+    case fbs.Any.TimerReady: {
+      const msg = new fbs.TimerReady();
+      assert(base.msg(msg) != null);
+      timers.onMessage(msg);
+      break;
+    }
+    default: {
+      assert(false, "Unhandled message type");
+      break;
+    }
+  }
+}
+
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
+  deno.recv(onMessage);
   runtime.setup();
 
   // First we send an empty "Start" message to let the privlaged side know we

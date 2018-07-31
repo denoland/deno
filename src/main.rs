@@ -1,9 +1,11 @@
 extern crate flatbuffers;
+extern crate futures;
 extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate sha1;
 extern crate tempfile;
 extern crate tokio;
+extern crate tokio_current_thread;
 extern crate url;
 #[macro_use]
 extern crate log;
@@ -15,13 +17,11 @@ pub mod handlers;
 
 use libc::c_int;
 use libc::c_void;
+use std::collections::HashMap;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
-use std::time::{Duration, Instant};
-use tokio::prelude::*;
-use tokio::timer::Delay;
 
 // Returns args passed to V8, followed by args passed to JS
 fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
@@ -95,6 +95,8 @@ type DenoException<'a> = &'a str;
 pub struct Deno {
   ptr: *const binding::DenoC,
   dir: deno_dir::DenoDir,
+  rt: tokio::runtime::current_thread::Runtime,
+  timers: HashMap<u32, futures::sync::oneshot::Sender<()>>,
 }
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
@@ -108,6 +110,8 @@ impl Deno {
     let deno_box = Box::new(Deno {
       ptr: 0 as *const binding::DenoC,
       dir: deno_dir::DenoDir::new(None).unwrap(),
+      rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
+      timers: HashMap::new(),
     });
     let deno: &'a mut Deno = Box::leak(deno_box);
     let external_ptr = deno as *mut _ as *const c_void;
@@ -209,19 +213,6 @@ fn main() {
       std::process::exit(1);
     });
 
-  // Now start Tokio event loop
-
-  let when = Instant::now() + Duration::from_millis(1000);
-  let mut runtime = tokio::runtime::current_thread::Runtime::new().unwrap();
-
-  runtime.spawn({
-    Delay::new(when)
-      .map_err(|e| panic!("timer failed; err={:?}", e))
-      .and_then(|_| {
-        println!("timer triggered");
-        Ok(())
-      })
-  });
-
-  runtime.run().expect("err");
+  // Start the Tokio event loop
+  d.rt.run().expect("err");
 }

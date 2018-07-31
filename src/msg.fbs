@@ -61,7 +61,7 @@ table Exit {
 table TimerStart {
   id: uint;
   interval: bool;
-  delay: int;
+  delay: uint;
 }
 
 table TimerReady {
