@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use binding;
 use binding::{deno_buf, deno_set_response, DenoC};
 use flatbuffers;
 use from_c;
@@ -57,6 +58,30 @@ fn set_response_base(
   // println!("data_ptr {:p}", data_ptr);
   // println!("data_len {}", data.len());
   unsafe { deno_set_response(d, buf) }
+}
+
+fn send_base(
+  d: *const DenoC,
+  builder: &mut flatbuffers::FlatBufferBuilder,
+  args: &msg::BaseArgs,
+) {
+  let base = msg::CreateBase(builder, &args);
+  builder.finish(base);
+  let data = builder.get_active_buf_slice();
+  // println!("buf slice {} {} {} {} {}", data[0], data[1], data[2], data[3], data[4]);
+  let buf = deno_buf {
+    // TODO(ry)
+    // The deno_buf / ImportBuf / ExportBuf semantics should be such that we do not need to yield
+    // ownership. Temporarally there is a hack in ImportBuf that when alloc_ptr is null, it will
+    // memcpy the deno_buf into V8 instead of doing zero copy.
+    alloc_ptr: 0 as *mut u8,
+    alloc_len: 0,
+    data_ptr: data.as_ptr() as *mut u8,
+    data_len: data.len(),
+  };
+  // println!("data_ptr {:p}", data_ptr);
+  // println!("data_len {}", data.len());
+  unsafe { binding::deno_send(d, buf) }
 }
 
 // https://github.com/ry/deno/blob/golang/os.go#L100-L154
@@ -130,4 +155,63 @@ pub extern "C" fn handle_code_cache(
     reply_error(d, cmd_id, &errmsg);
   }
   // null response indicates success.
+}
+
+use std::time::{Duration, Instant};
+use tokio::prelude::*;
+use tokio::timer::Delay;
+// Prototype: https://github.com/ry/deno/blob/golang/timers.go#L25-L39
+#[no_mangle]
+pub extern "C" fn handle_timer_start(
+  d: *const DenoC,
+  cmd_id: u32,
+  timer_id: u32,
+  interval: bool,
+  delay: u32,
+) {
+  debug!("handle_timer_start");
+  let deno = from_c(d);
+  let when = Instant::now() + Duration::from_millis(delay.into());
+  if interval {
+    unimplemented!();
+  }
+  deno.rt.spawn({
+    Delay::new(when)
+      .map_err(|e| panic!("timer failed; err={:?}", e))
+      .and_then(move |_| {
+        let mut builder = flatbuffers::FlatBufferBuilder::new();
+        let msg = msg::CreateTimerReady(
+          &mut builder,
+          &msg::TimerReadyArgs {
+            id: timer_id,
+            done: true,
+            ..Default::default()
+          },
+        );
+        builder.finish(msg);
+        send_base(
+          d,
+          &mut builder,
+          &msg::BaseArgs {
+            cmdId: cmd_id,
+            msg: Some(msg.union()),
+            msg_type: msg::Any::TimerReady,
+            ..Default::default()
+          },
+        );
+
+        Ok(())
+      })
+  });
+}
+
+// Prototype: https://github.com/ry/deno/blob/golang/timers.go#L40-L43
+#[no_mangle]
+pub extern "C" fn handle_timer_clear(
+  d: *const DenoC,
+  cmd_id: u32,
+  timer_id: u32,
+) {
+  debug!("handle_timer_clear");
+  let deno = from_c(d);
 }

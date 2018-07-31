@@ -238,6 +238,7 @@ run_node("bundle") {
     "js/main.ts",
     "js/os.ts",
     "js/runtime.ts",
+    "js/timers.ts",
     "js/types.ts",
     "js/util.ts",
     "rollup.config.js",
