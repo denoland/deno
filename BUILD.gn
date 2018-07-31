@@ -250,6 +250,7 @@ run_node("gen_declarations") {
     "js/deno.ts",
     "js/globals.ts",
     "js/os.ts",
+    "js/timers.ts",
     "js/tsconfig.generated.json",
     "js/util.ts",
   ]
@@ -258,6 +259,7 @@ run_node("gen_declarations") {
     out_dir + "/js/deno.d.ts",
     out_dir + "/js/globals.d.ts",
     out_dir + "/js/os.d.ts",
+    out_dir + "/js/timers.d.ts",
     out_dir + "/js/util.d.ts",
   ]
   deps = [
@@ -285,6 +287,7 @@ run_node("bundle") {
     "js/os.ts",
     "js/plugins.d.ts",
     "js/runtime.ts",
+    "js/timers.ts",
     "js/types.d.ts",
     "js/util.ts",
     "js/v8_source_maps.ts",

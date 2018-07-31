@@ -29,6 +29,7 @@ extern "C" {
   pub fn deno_last_exception(d: *const DenoC) -> *const c_char;
   pub fn deno_get_data(d: *const DenoC) -> *const c_void;
   pub fn deno_set_response(d: *const DenoC, buf: deno_buf);
+  pub fn deno_send(d: *const DenoC, buf: deno_buf);
   pub fn deno_execute(
     d: *const DenoC,
     js_filename: *const c_char,
