@@ -79,6 +79,7 @@ main_extern = [
   "$rust_build:tokio_reactor",
   "$rust_build:tokio_tcp",
   "$rust_build:tokio_threadpool",
+  "$rust_build:tokio_current_thread",
   "$rust_build:tokio_timer",
   "$rust_build:tokio_udp",
   "$rust_build:unicode_bidi",

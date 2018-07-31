@@ -3,6 +3,7 @@ extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate sha1;
 extern crate tempfile;
+extern crate tokio;
 extern crate url;
 #[macro_use]
 extern crate log;
@@ -18,6 +19,9 @@ use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
+use std::time::{Duration, Instant};
+use tokio::prelude::*;
+use tokio::timer::Delay;
 
 // Returns args passed to V8, followed by args passed to JS
 fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
@@ -204,4 +208,20 @@ fn main() {
       error!("{}", err);
       std::process::exit(1);
     });
+
+  // Now start Tokio event loop
+
+  let when = Instant::now() + Duration::from_millis(1000);
+  let mut runtime = tokio::runtime::current_thread::Runtime::new().unwrap();
+
+  runtime.spawn({
+    Delay::new(when)
+      .map_err(|e| panic!("timer failed; err={:?}", e))
+      .and_then(|_| {
+        println!("timer triggered");
+        Ok(())
+      })
+  });
+
+  runtime.run().expect("err");
 }
