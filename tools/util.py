@@ -103,11 +103,11 @@ def rmtree(directory):
     shutil.rmtree(directory, onerror=rm_readonly)
 
 
-def build_mode():
+def build_mode(default="debug"):
     if "DENO_BUILD_MODE" in os.environ:
         return os.environ["DENO_BUILD_MODE"]
     else:
-        return "debug"
+        return default
 
 
 # E.G. "out/debug"
