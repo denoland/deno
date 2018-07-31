@@ -8,7 +8,7 @@ import typescriptPlugin from "rollup-plugin-typescript2";
 import { createFilter } from "rollup-pluginutils";
 import typescript from "typescript";
 
-const mockPath = path.join(__dirname, "js", "mock_builtin");
+const mockPath = path.join(__dirname, "js", "mock_builtin.js");
 const tsconfig = path.join(__dirname, "tsconfig.json");
 const typescriptPath = `${
   process.env.BASEPATH
