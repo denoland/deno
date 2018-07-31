@@ -14,11 +14,11 @@ export const window = globalEval("this");
 window["window"] = window; // Create a window object.
 // import "./url";
 
-// import * as timer from "./timers";
-// window["setTimeout"] = timer.setTimeout;
-// window["setInterval"] = timer.setInterval;
-// window["clearTimeout"] = timer.clearTimer;
-// window["clearInterval"] = timer.clearTimer;
+import * as timer from "./timers";
+window["setTimeout"] = timer.setTimeout;
+window["setInterval"] = timer.setInterval;
+window["clearTimeout"] = timer.clearTimer;
+window["clearInterval"] = timer.clearTimer;
 
 import { Console } from "./console";
 window["console"] = new Console();
