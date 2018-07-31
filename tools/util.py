@@ -53,21 +53,38 @@ def remove_and_symlink(target, name, target_is_dir=False):
 
 def symlink(target, name, target_is_dir=False):
     if os.name == "nt":
-        import ctypes
-        CreateSymbolicLinkW = ctypes.windll.kernel32.CreateSymbolicLinkW
-        CreateSymbolicLinkW.restype = ctypes.c_ubyte
-        CreateSymbolicLinkW.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p,
-                                        ctypes.c_uint32)
+        from ctypes import WinDLL, WinError, GetLastError
+        from ctypes.wintypes import BOOLEAN, DWORD, LPCWSTR
 
-        # Replace forward slashes by backward slashes.
-        # Strangely it seems that this is only necessary for symlinks to files.
-        # Forward slashes don't cause any issues when the target is a directory.
-        target = target.replace("/", "\\")
-        flags = 0x02  # SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
-        if (target_is_dir):
-            flags |= 0x01  # SYMBOLIC_LINK_FLAG_DIRECTORY
-        if not CreateSymbolicLinkW(name, target, flags):
-            raise ctypes.WinError()
+        kernel32 = WinDLL('kernel32', use_last_error=False)
+        CreateSymbolicLinkW = kernel32.CreateSymbolicLinkW
+        CreateSymbolicLinkW.restype = BOOLEAN
+        CreateSymbolicLinkW.argtypes = (LPCWSTR, LPCWSTR, DWORD)
+
+        # File-type symlinks can only use backslashes as separators.
+        target = os.path.normpath(target)
+
+        # If the symlink points at a directory, it needs to have the appropriate
+        # flag set, otherwise the link will be created but it won't work.
+        if target_is_dir:
+            type_flag = 0x01  # SYMBOLIC_LINK_FLAG_DIRECTORY
+        else:
+            type_flag = 0
+
+        # Before Windows 10, creating symlinks requires admin privileges.
+        # As of Win 10, there is a flag that allows anyone to create them.
+        # Initially, try to use this flag.
+        unpriv_flag = 0x02  # SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+        r = CreateSymbolicLinkW(name, target, type_flag | unpriv_flag)
+
+        # If it failed with ERROR_INVALID_PARAMETER, try again without the
+        # 'allow unprivileged create' flag.
+        if not r and GetLastError() == 87:  # ERROR_INVALID_PARAMETER
+            r = CreateSymbolicLinkW(name, target, type_flag)
+
+        # Throw if unsuccessful even after the second attempt.
+        if not r:
+            raise WinError()
     else:
         os.symlink(target, name)
 
