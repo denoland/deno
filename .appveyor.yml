@@ -1,0 +1,171 @@
+version: '{build}.{branch}'
+
+skip_branch_with_pr: true
+
+clone_folder: c:\deno
+clone_depth: 1
+
+environment:
+  APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+  DENO_BUILD_MODE: debug
+  DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\debug
+  DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
+  CARGO_HOME: $(USERPROFILE)\.cargo
+  RUSTUP_HOME: $(USERPROFILE)\.rustup
+
+  # Appveyor uses 7zip to pack cache directories. We use these options:
+  #   -t7z  : Use '7z' format. The default is 'zip' which can't store symlinks.
+  #   -snl  : Store symlinks.
+  #   -mtc  : Use UTC timestamps. This is required for incremental builds.
+  #   -mx=1 : Fast compression.
+  APPVEYOR_CACHE_ENTRY_ZIP_ARGS: -t7z -snl -mtc -mx=1
+
+cache:
+  # Python packages installed with `pip --user` and Pip cache.
+  - $(APPDATA)\Python
+  - $(LOCALAPPDATA)\pip
+  # Rust stuff.
+  - $(CARGO_HOME)
+  - $(RUSTUP_HOME)
+  # Cache the third_party submodule to preserve binaries downloaded by setup.py,
+  # and to make incremental builds work.
+  - $(APPVEYOR_BUILD_FOLDER)\.git\modules\third_party
+  - $(APPVEYOR_BUILD_FOLDER)\third_party
+  # Build incrementally.
+  - $(DENO_BUILD_PATH)
+
+init:
+  # TODO: enable after this lands in master.
+  # Do no save the build cache for feature branches. Once we have multiple
+  # "official" branches, use a build matrix so each branch has it's own cache.
+  # - ps: |
+  #     if ($env:APPVEYOR_REPO_BRANCH -ne "master") {
+  #       $env:APPVEYOR_CACHE_SKIP_SAVE = "true"
+  #     }
+
+  # Make git check out symlinks (not placeholder text files).
+  - git config --global core.symlinks true
+
+install:
+  # `Exec` runs a regular executable. It looks at the process' exit code,
+  # rather than its stderr output, to tell if a command has failed
+  - ps: |
+      function Exec([ScriptBlock] $Command, [Switch] $NoNewLines) {
+        "$Command".TrimStart(" &") | Write-Host              # Echo command.
+        & $Command 2>&1 | Write-Host -NoNewLine:$NoNewLines  # Execute command.
+        if ($NoNewLine) { Write-Host }                       # Write newline.
+        if ($LastExitCode -ne 0) { throw "Failure. Exit code: $LastExitCode" }
+      }
+
+  # Clone the third_party submodule.
+  - ps: |
+      try {
+        Exec { & git submodule update --init --force --depth 1 }
+
+      } catch {
+        # Git will fail if the `third_party` directory was restored from cache,
+        # but the `.git/modules` directory wasn't. Rebuild it from scratch.
+        Remove-Item -Path $env:DENO_THIRD_PARTY_PATH `
+                    -Recurse -Force -ErrorAction Ignore
+        Exec -NoNewLines { & git submodule update --init --force --depth 1 }
+      }
+
+  # Prune and pack git objects. Thus when we upload `.git/modules/` to
+  # the Appveyor cache, it'll include only objects that were actually needed.
+  - ps: |
+      if ($env:APPVEYOR_CACHE_SKIP_SAVE -ne "true") {
+        Push-Location $env:DENO_THIRD_PARTY_PATH
+        Exec { & git repack -d -l }
+        Pop-Location
+      }
+
+  # Install a recent Node.js version.
+  - ps: Install-Product node 10 x64
+
+  # Make sure the right Python version is in PATH, and others are not.
+  - ps: |
+      # Remove the wrong Python version(s) from PATH.
+      $p = $env:PATH -split ";" | Where-Object {
+             -not (Test-Path -Path "$_\python.exe") -and
+             -not (Test-Path -Path "$_\pip.exe")
+           }
+      # Add binary dir for `pip --user` packages.
+      $p += "$env:APPDATA\Python\Scripts"
+      # Add python27-x64.
+      $p += "c:\Python27-x64"
+      $p += "c:\Python27-x64\Scripts"
+      $env:PATH = $p -join ";"
+
+  # Pip on Appveyor is too old. Install a recent version in our user dir.
+  - python -m pip install --upgrade --user pip
+
+  # Install Python packages.
+  - pip install --upgrade --user pywin32 yapf
+
+  # Add Rust/Cargo to PATH.
+  - ps: $env:PATH += ";$env:CARGO_HOME\bin"
+
+  # Install Rust via rustup-init, unless it was restored from cache.
+  # TODO: Ship Rust in the third_party repo. See issue #386.
+  - ps: |
+      if (-not (Test-Path -Path $env:CARGO_HOME)) {
+        Invoke-WebRequest -Uri "https://win.rustup.rs" `
+                          -OutFile "$env:TEMP\rustup-init.exe"
+        Exec -NoNewLines { & "$env:TEMP\rustup-init.exe" -y }
+      }
+
+  # Update Rust.
+  - rustup update
+
+  # The Rustup directory is very big with many files, which makes saving and
+  # restoring the Appveyor cache noticably slow. Remove unnecessary stuff.
+  # TODO: Use `rustup component remove docs` instead, when this issue
+  # is resolved: https://github.com/rust-lang-nursery/rustup.rs/issues/998.
+  - ps: |
+      Remove-Item -Recurse -Force -ErrorAction Ignore -Path @(
+        "$env:RUSTUP_HOME\downloads",
+        "$env:RUSTUP_HOME\tmp",
+        "$env:RUSTUP_HOME\toolchains\stable-x86_64-pc-windows-msvc\share\doc"
+      )
+      # If Remove-Item didn't find one of these dirs, don't stop the build.
+      $null
+
+  # Log installed Node.js version + processor architecture.
+  - node -p "`Node ${process.version} ${process.arch}`"
+
+  # Log installed Python version + processor architecture.
+  - ps: >-
+      @("from sys import version",
+        "print 'Python', version") -join "`n" | & python -
+
+  # Log some more versions.
+  - pip --version
+  - rustc --version
+  - cargo --version
+
+  # Log environment variables.
+  - ps: |
+      Get-ChildItem env:* | Select-Object -Property Name, @{
+        Name = "Value"
+        Expression = {
+          if ($_.Name -like "*PATH") { $_.Value -replace ";", ";`n" }
+          else { $_.Value }
+        }
+      } | Format-Table -AutoSize -Wrap
+
+before_build:
+  # Download clang and gn, generate ninja files.
+  - python tools\setup.py
+
+build_script:
+  - python tools\build.py
+
+after_build:
+  # The build completed successfully; make sure the cache gets saved even if
+  # some test fails.
+  - ps: $env:APPVEYOR_SAVE_CACHE_ON_ERROR = "true"
+
+test_script:
+  - python tools\lint.py
+  - ps: Exec { & python tools\test.py $env:DENO_BUILD_PATH }
+
