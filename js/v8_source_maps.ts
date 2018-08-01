@@ -1,6 +1,13 @@
 // Copyright 2014 Evan Wallace
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 // Originated from source-map-support but has been heavily modified for deno.
+
+// Because NodeJS.CallSite and Error.prepareStackTrace are used we add a
+// dependency on the Node types.
+// TODO(ry) Ideally this triple slash directive should be removed as we only
+// need CallSite and Error.prepareStackTrace but nothing else.
+/// <reference types="node" />
+
 import { SourceMapConsumer, MappedPosition } from "source-map";
 import { RawSourceMap } from "source-map";
 import * as base64 from "base64-js";
