@@ -3,6 +3,8 @@ use binding;
 use binding::{deno_buf, deno_set_response, DenoC};
 use flatbuffers;
 use from_c;
+use futures;
+use futures::sync::oneshot;
 use libc::c_char;
 use msg_generated::deno as msg;
 use std::ffi::CStr;
@@ -157,9 +159,84 @@ pub extern "C" fn handle_code_cache(
   // null response indicates success.
 }
 
+fn set_timeout<F>(
+  cb: F,
+  delay: u32,
+) -> (
+  impl Future<Item = (), Error = ()>,
+  futures::sync::oneshot::Sender<()>,
+)
+where
+  F: FnOnce() -> (),
+{
+  let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+  let when = Instant::now() + Duration::from_millis(delay.into());
+  let delay_task = Delay::new(when)
+    .map_err(|e| panic!("timer failed; err={:?}", e))
+    .and_then(|_| {
+      cb();
+      Ok(())
+    })
+    .select(cancel_rx)
+    .map(|_| ())
+    .map_err(|_| ());
+
+  (delay_task, cancel_tx)
+}
+
+fn set_interval<F>(
+  cb: F,
+  delay: u32,
+) -> (
+  impl Future<Item = (), Error = ()>,
+  futures::sync::oneshot::Sender<()>,
+)
+where
+  F: Fn() -> (),
+{
+  let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+  let when = Duration::from_millis(delay.into());
+  let interval_task = future::lazy(move || {
+    Interval::new(Instant::now() + when, when)
+      .for_each(move |_| {
+        cb();
+        future::ok(())
+      })
+      .into_future()
+      .map_err(|_| panic!())
+  }).select(cancel_rx)
+    .map(|_| ())
+    .map_err(|_| ());
+
+  (interval_task, cancel_tx)
+}
+
+fn send_timer_ready(d: *const DenoC, cmd_id: u32, timer_id: u32, done: bool) {
+  let mut builder = flatbuffers::FlatBufferBuilder::new();
+  let msg = msg::CreateTimerReady(
+    &mut builder,
+    &msg::TimerReadyArgs {
+      id: timer_id,
+      done,
+      ..Default::default()
+    },
+  );
+  builder.finish(msg);
+  send_base(
+    d,
+    &mut builder,
+    &msg::BaseArgs {
+      cmdId: cmd_id,
+      msg: Some(msg.union()),
+      msg_type: msg::Any::TimerReady,
+      ..Default::default()
+    },
+  );
+}
+
 use std::time::{Duration, Instant};
 use tokio::prelude::*;
-use tokio::timer::Delay;
+use tokio::timer::{Delay, Interval};
 // Prototype: https://github.com/ry/deno/blob/golang/timers.go#L25-L39
 #[no_mangle]
 pub extern "C" fn handle_timer_start(
@@ -171,38 +248,28 @@ pub extern "C" fn handle_timer_start(
 ) {
   debug!("handle_timer_start");
   let deno = from_c(d);
-  let when = Instant::now() + Duration::from_millis(delay.into());
-  if interval {
-    unimplemented!();
-  }
-  deno.rt.spawn({
-    Delay::new(when)
-      .map_err(|e| panic!("timer failed; err={:?}", e))
-      .and_then(move |_| {
-        let mut builder = flatbuffers::FlatBufferBuilder::new();
-        let msg = msg::CreateTimerReady(
-          &mut builder,
-          &msg::TimerReadyArgs {
-            id: timer_id,
-            done: true,
-            ..Default::default()
-          },
-        );
-        builder.finish(msg);
-        send_base(
-          d,
-          &mut builder,
-          &msg::BaseArgs {
-            cmdId: cmd_id,
-            msg: Some(msg.union()),
-            msg_type: msg::Any::TimerReady,
-            ..Default::default()
-          },
-        );
 
-        Ok(())
-      })
-  });
+  if interval {
+    let (interval_task, cancel_interval) = set_interval(
+      move || {
+        send_timer_ready(d, cmd_id, timer_id, false);
+      },
+      delay,
+    );
+
+    deno.timers.insert(timer_id, cancel_interval);
+    deno.rt.spawn(interval_task);
+  } else {
+    let (delay_task, cancel_delay) = set_timeout(
+      move || {
+        send_timer_ready(d, cmd_id, timer_id, true);
+      },
+      delay,
+    );
+
+    deno.timers.insert(timer_id, cancel_delay);
+    deno.rt.spawn(delay_task);
+  }
 }
 
 // Prototype: https://github.com/ry/deno/blob/golang/timers.go#L40-L43
@@ -214,4 +281,7 @@ pub extern "C" fn handle_timer_clear(
 ) {
   debug!("handle_timer_clear");
   let deno = from_c(d);
+  if let Some(timer) = deno.timers.remove(&timer_id) {
+    timer.send(());
+  }
 }
