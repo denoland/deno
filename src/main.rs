@@ -1,4 +1,5 @@
 extern crate flatbuffers;
+extern crate futures;
 extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate sha1;
@@ -16,6 +17,7 @@ pub mod handlers;
 
 use libc::c_int;
 use libc::c_void;
+use std::collections::HashMap;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -94,6 +96,7 @@ pub struct Deno {
   ptr: *const binding::DenoC,
   dir: deno_dir::DenoDir,
   rt: tokio::runtime::current_thread::Runtime,
+  timers: HashMap<u32, futures::sync::oneshot::Sender<()>>,
 }
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
@@ -108,6 +111,7 @@ impl Deno {
       ptr: 0 as *const binding::DenoC,
       dir: deno_dir::DenoDir::new(None).unwrap(),
       rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
+      timers: HashMap::new(),
     });
     let deno: &'a mut Deno = Box::leak(deno_box);
     let external_ptr = deno as *mut _ as *const c_void;

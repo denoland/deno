@@ -3,6 +3,7 @@ use binding;
 use binding::{deno_buf, deno_set_response, DenoC};
 use flatbuffers;
 use from_c;
+use futures::sync::oneshot;
 use libc::c_char;
 use msg_generated::deno as msg;
 use std::ffi::CStr;
@@ -171,38 +172,47 @@ pub extern "C" fn handle_timer_start(
 ) {
   debug!("handle_timer_start");
   let deno = from_c(d);
+
   let when = Instant::now() + Duration::from_millis(delay.into());
   if interval {
     unimplemented!();
   }
-  deno.rt.spawn({
-    Delay::new(when)
-      .map_err(|e| panic!("timer failed; err={:?}", e))
-      .and_then(move |_| {
-        let mut builder = flatbuffers::FlatBufferBuilder::new();
-        let msg = msg::CreateTimerReady(
-          &mut builder,
-          &msg::TimerReadyArgs {
-            id: timer_id,
-            done: true,
-            ..Default::default()
-          },
-        );
-        builder.finish(msg);
-        send_base(
-          d,
-          &mut builder,
-          &msg::BaseArgs {
-            cmdId: cmd_id,
-            msg: Some(msg.union()),
-            msg_type: msg::Any::TimerReady,
-            ..Default::default()
-          },
-        );
 
-        Ok(())
-      })
-  });
+  let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+
+  let delay = Delay::new(when)
+    .map_err(|e| panic!("timer failed; err={:?}", e))
+    .and_then(move |_| {
+      let mut builder = flatbuffers::FlatBufferBuilder::new();
+      let msg = msg::CreateTimerReady(
+        &mut builder,
+        &msg::TimerReadyArgs {
+          id: timer_id,
+          done: true,
+          ..Default::default()
+        },
+      );
+      builder.finish(msg);
+      send_base(
+        d,
+        &mut builder,
+        &msg::BaseArgs {
+          cmdId: cmd_id,
+          msg: Some(msg.union()),
+          msg_type: msg::Any::TimerReady,
+          ..Default::default()
+        },
+      );
+
+      Ok(())
+    })
+    .select(cancel_rx)
+    .map(|_| ())
+    .map_err(|_| ());
+
+  deno.timers.insert(timer_id, cancel_tx);
+
+  deno.rt.spawn(delay);
 }
 
 // Prototype: https://github.com/ry/deno/blob/golang/timers.go#L40-L43
@@ -214,4 +224,7 @@ pub extern "C" fn handle_timer_clear(
 ) {
   debug!("handle_timer_clear");
   let deno = from_c(d);
+  if let Some(timer) = deno.timers.remove(&timer_id) {
+    timer.send(()).unwrap();
+  }
 }
