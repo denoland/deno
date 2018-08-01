@@ -5,14 +5,17 @@ import { assert } from "./util";
 import * as util from "./util";
 import { flatbuffers } from "flatbuffers";
 
-export function exit(exitCode = 0): void {
-  assert(false, "Not Implemented");
-  /*
-  pubInternal("os", {
-    command: fbs.Command.EXIT,
-    exitCode
-  });
-  */
+export function exit(exitCode = 0): never {
+  const builder = new flatbuffers.Builder();
+  fbs.Exit.startExit(builder);
+  fbs.Exit.addCode(builder, exitCode);
+  const msg = fbs.Exit.endExit(builder);
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsgType(builder, fbs.Any.Exit);
+  builder.finish(fbs.Base.endBase(builder));
+  deno.send(builder.asUint8Array());
+  throw Error("Unreachable");
 }
 
 export function codeFetch(
