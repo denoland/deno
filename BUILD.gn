@@ -206,7 +206,6 @@ run_node("bundle") {
     "js/assets.ts",
     "js/console.ts",
     "js/deno.d.ts",
-    "js/dispatch.ts",
     "js/globals.ts",
     "js/lib.deno.d.ts",
     "js/main.ts",

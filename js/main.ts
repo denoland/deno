@@ -3,16 +3,8 @@
 /// <reference path="deno.d.ts" />
 import { flatbuffers } from "flatbuffers";
 import { deno as fbs } from "gen/msg_generated";
-import { assert, log } from "./util";
+import { assert, log, assignCmdId } from "./util";
 import * as runtime from "./runtime";
-
-let cmdIdCounter = 0;
-function assignCmdId(): number {
-  // TODO(piscisaureus) Safely re-use so they don't overflow.
-  const cmdId = ++cmdIdCounter;
-  assert(cmdId < 2 ** 32, "cmdId overflow");
-  return cmdId;
-}
 
 function startMsg(cmdId: number): Uint8Array {
   const builder = new flatbuffers.Builder();
