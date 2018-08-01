@@ -14,10 +14,10 @@ tests_path = os.path.join(root_path, "tests")
 
 def check_output_test(deno_exe_filename):
     assert os.path.isfile(deno_exe_filename)
-    outs = [
+    outs = sorted([
         filename for filename in os.listdir(tests_path)
         if filename.endswith(".out")
-    ]
+    ])
     assert len(outs) > 1
     tests = [(os.path.splitext(filename)[0], filename) for filename in outs]
     for (script, out_filename) in tests:
