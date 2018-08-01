@@ -6,8 +6,12 @@ cache:
   ccache: true
   directories:
    - $DENO_BUILD_PATH
+   - $CARGO_PATH
+   - $RUSTUP_PATH
 env:
   global:
+    - CARGO_PATH=$HOME/.cargo/
+    - RUSTUP_PATH=$HOME/.rustup/
     # is_debug, use_allocator, and ccache are used to speed travis.
     # use_custom_libcxx=false and use_sysroot=false seem to be required to build on
     # Ubuntu 14.04
@@ -15,14 +19,15 @@ env:
     - DENO_BUILD_ARGS="is_debug=false use_allocator=\"none\" use_custom_libcxx=false use_sysroot=false"
     - DENO_BUILD_PATH=$HOME/out/Default
     - DENO_BUILD_MODE=debug
+before_install: |
+  # Install Rust.
+  # TODO(ry) Include rustc in third_party https://github.com/ry/deno/issues/386
+  export PATH=$CARGO_PATH/bin:$PATH
+  rustc --version
+  if [ $? != 0 ]; then
+    curl -sSf https://sh.rustup.rs | sh -s -- -y
+  fi
 install:
- # Sync dependencies.
- # TODO(ry) These sync steps are very terrible and only here temporarily.
- # rustc should be added to deno_third_party. Ultimately Deno *should not*
- # depend on yarn, gclient, rustup, cargo, nor any internet connection.
- - curl -sSf https://sh.rustup.rs | sh -s -- -y
- - export PATH=$HOME/.cargo/bin:$PATH
- - rustc --version
  # ccache needs the custom LLVM to be in PATH and other variables.
  - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
  - export CCACHE_CPP2=yes
