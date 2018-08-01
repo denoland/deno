@@ -225,6 +225,6 @@ pub extern "C" fn handle_timer_clear(
   debug!("handle_timer_clear");
   let deno = from_c(d);
   if let Some(timer) = deno.timers.remove(&timer_id) {
-    timer.send(()).unwrap();
+    timer.send(());
   }
 }
