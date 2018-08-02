@@ -1,6 +1,8 @@
 # deno
 
-[![Build Status](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
+[![Linux](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
+[![Windows](https://ci.appveyor.com/api/projects/status/cc7nd82n34xo4nym/branch/master?svg=true)](https://ci.appveyor.com/project/ry91293/deno/branch/master)
+
 
 ## A secure TypeScript runtime built on V8
 
@@ -29,16 +31,15 @@
 
 * Single executable:
 	```
-	> ls -lh deno
-	-rwxrwxr-x 1 ryan ryan 55M May 28 23:46 deno
-	> ldd deno
-		linux-vdso.so.1 =>  (0x00007ffc6797a000)
-		libpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f104fa47000)
-		libstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007f104f6c5000)
-		libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f104f3bc000)
-		libgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f104f1a6000)
-		libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f104eddc000)
-		/lib64/ld-linux-x86-64.so.2 (0x00007f104fc64000)
+  > ls -lh out/release/deno
+  -rwxr-xr-x  1 rld  staff    48M Aug  2 13:24 out/release/deno
+  > otool -L out/release/deno
+  out/release/deno:
+    /usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1252.50.4)
+    /usr/lib/libresolv.9.dylib (compatibility version 1.0.0, current version 1.0.0)
+    /System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 58286.51.6)
+    /usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 400.9.0)
+  >
 	```
 
 * Always dies on uncaught errors.
@@ -50,16 +51,18 @@
 
 ## Status
 
-Segfaulty. Check back soon.
+Under development.
+
+The prototype golang implementation is
+[here](https://github.com/ry/deno/tree/golang). We are in the process of
+rewriting in C++/Rust to avoid future GC contention between Go and V8.
+
+Progress towards first release is tracked
+[here](https://github.com/ry/deno/issues?utf8=%E2%9C%93&q=is%3Aissue+milestone%3A%22v0.1+%28first+binary+release%29%22+).
 
 Roadmap is [here](https://github.com/ry/deno/blob/master/Roadmap.md).
+Also see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
 
-Also see this presentation: http://tinyclouds.org/jsconf2018.pdf
-
-I am excited about all the interest in this project. However, do understand that this
-is very much a non-functional prototype. There's a huge amount of heavy lifting to do.
-Unless you are participating in that, please maintain radio silence on github. This
-includes submitting trivial PRs (like improving README build instructions).
 
 ## Build instructions
 
