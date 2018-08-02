@@ -20,6 +20,7 @@ struct deno_s {
 // TODO(ry) Remove these when we call deno_reply_start from Rust.
 char** deno_argv();
 int deno_argc();
+struct deno_s* deno_from_isolate(v8::Isolate* isolate);
 }
 
 namespace deno {
@@ -38,7 +39,8 @@ static intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
 Deno* NewFromSnapshot(void* data, deno_recv_cb cb);
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                       const char* js_filename, const char* js_source);
+                       const char* js_filename, const std::string& js_source,
+                       const std::string* source_map);
 
 void AddIsolate(Deno* d, v8::Isolate* isolate);
 

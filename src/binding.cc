@@ -270,7 +270,8 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
 }
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                       const char* js_filename, const char* js_source) {
+                       const char* js_filename, const std::string& js_source,
+                       const std::string* source_map) {
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
@@ -293,11 +294,19 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
 
   skip_onerror = true;
   {
-    auto source = deno::v8_str(js_source);
+    auto source = deno::v8_str(js_source.c_str());
     CHECK(global->Set(context, deno::v8_str("mainSource"), source).FromJust());
 
     bool r = deno::ExecuteV8StringSource(context, js_filename, source);
     CHECK(r);
+
+    if (source_map != nullptr) {
+      CHECK_GT(source_map->length(), 1u);
+      std::string set_source_map = "setMainSourceMap( " + *source_map + " )";
+      CHECK_GT(set_source_map.length(), source_map->length());
+      r = deno::Execute(context, "set_source_map.js", set_source_map.c_str());
+      CHECK(r);
+    }
   }
   skip_onerror = false;
 }
