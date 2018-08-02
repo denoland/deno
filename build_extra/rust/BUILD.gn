@@ -122,6 +122,8 @@ rust_component("winapi") {
     "fileapi",
     "guiddef",
     "handleapi",
+    "inaddr",
+    "in6addr",
     "ktmtypes",
     "libloaderapi",
     "lsalookup",
@@ -132,6 +134,8 @@ rust_component("winapi") {
     "ntstatus",
     "processthreadsapi",
     "profileapi",
+    "qos",
+    "rpcndr",
     "sspi",
     "std",
     "subauth",
@@ -143,6 +147,11 @@ rust_component("winapi") {
     "winerror",
     "winnt",
     "winreg",
+    "winsock2",
+    "ws2def",
+    "ws2ipdef",
+    "wtypes",
+    "wtypesbase",
   ]
 }
 
@@ -172,6 +181,9 @@ rust_component("iovec") {
   source_root =
       "$registry_github/iovec-0.1.2/src/lib.rs"
   extern = [ ":libc" ]
+  if (is_win) {
+    extern += [ ":winapi" ]
+  }
 }
 
 rust_component("lazycell") {
@@ -185,6 +197,9 @@ rust_component("net2") {
     ":cfg_if",
     ":libc",
   ]
+  if (is_win) {
+    extern += [ ":winapi" ]
+  }
 }
 
 rust_component("slab") {
