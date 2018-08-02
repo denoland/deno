@@ -1,7 +1,7 @@
 # deno
 
-[![Linux](https://travis-ci.com/ry/deno.svg?branch=master)](https://travis-ci.com/ry/deno)
-[![Windows](https://ci.appveyor.com/api/projects/status/cc7nd82n34xo4nym/branch/master?svg=true)](https://ci.appveyor.com/project/ry91293/deno/branch/master)
+Linux [![Linux](https://travis-ci.com/denoland/deno.svg?branch=master)](https://travis-ci.com/denoland/deno)
+Window [![Windows](https://ci.appveyor.com/api/projects/status/cc7nd82n34xo4nym/branch/master?svg=true)](https://ci.appveyor.com/project/ry91293/deno/branch/master)
 
 
 ## A secure TypeScript runtime built on V8
@@ -24,7 +24,7 @@
   code. Defaults to read-only file system access and no network access.
 	Access between V8 (unprivileged) and Golang (privileged) is only done via
   serialized messages defined in this
-  [flatbuffer](https://github.com/ry/deno/blob/master/src/msg.fbs). This makes it
+  [flatbuffer](https://github.com/denoland/deno/blob/master/src/msg.fbs). This makes it
   easy to audit.
 	To enable write access explicitly use `--allow-write` and `--allow-net` for
   network access.
@@ -54,13 +54,13 @@
 Under development.
 
 The prototype golang implementation is
-[here](https://github.com/ry/deno/tree/golang). We are in the process of
+[here](https://github.com/denoland/deno/tree/golang). We are in the process of
 rewriting in C++/Rust to avoid future GC contention between Go and V8.
 
 Progress towards first release is tracked
-[here](https://github.com/ry/deno/issues?utf8=%E2%9C%93&q=is%3Aissue+milestone%3A%22v0.1+%28first+binary+release%29%22+).
+[here](https://github.com/denoland/deno/issues?utf8=%E2%9C%93&q=is%3Aissue+milestone%3A%22v0.1+%28first+binary+release%29%22+).
 
-Roadmap is [here](https://github.com/ry/deno/blob/master/Roadmap.md).
+Roadmap is [here](https://github.com/denoland/deno/blob/master/Roadmap.md).
 Also see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
 
 
@@ -77,7 +77,7 @@ installed too.
 To build:
 
     # Fetch deps.
-    git clone --recurse-submodules https://github.com/ry/deno.git
+    git clone --recurse-submodules https://github.com/denoland/deno.git
     cd deno
     ./tools/setup.py
 
