@@ -29,7 +29,7 @@ pub struct DenoDir {
 
 impl DenoDir {
   // Must be called before using any function from this module.
-  // https://github.com/ry/deno/blob/golang/deno_dir.go#L99-L111
+  // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
   pub fn new(custom_root: Option<&Path>) -> std::io::Result<DenoDir> {
     // Only setup once.
     let home_dir = std::env::home_dir().expect("Could not get home directory.");
@@ -53,7 +53,7 @@ impl DenoDir {
     Ok(deno_dir)
   }
 
-  // https://github.com/ry/deno/blob/golang/deno_dir.go#L32-L35
+  // https://github.com/denoland/deno/blob/golang/deno_dir.go#L32-L35
   pub fn cache_path(
     self: &DenoDir,
     filename: &str,
@@ -135,7 +135,7 @@ impl DenoDir {
     }
   }
 
-  // Prototype: https://github.com/ry/deno/blob/golang/os.go#L56-L68
+  // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
   #[allow(dead_code)]
   fn src_file_to_url<P: AsRef<Path>>(self: &DenoDir, filename: P) -> String {
     let filename = filename.as_ref().to_path_buf();
@@ -147,7 +147,7 @@ impl DenoDir {
     }
   }
 
-  // Prototype: https://github.com/ry/deno/blob/golang/os.go#L70-L98
+  // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L70-L98
   // Returns (module name, local filename)
   fn resolve_module(
     self: &DenoDir,
@@ -238,7 +238,7 @@ fn test_code_cache() {
   assert_eq!(output_code, fs::read_file_sync(&cache_path).unwrap());
 }
 
-// https://github.com/ry/deno/blob/golang/deno_dir.go#L25-L30
+// https://github.com/denoland/deno/blob/golang/deno_dir.go#L25-L30
 fn source_code_hash(filename: &str, source_code: &str) -> String {
   let mut m = sha1::Sha1::new();
   m.update(filename.as_bytes());
@@ -309,7 +309,7 @@ fn test_src_file_to_url() {
   assert_eq!("http://hello/world.txt", deno_dir.src_file_to_url(x));
 }
 
-// https://github.com/ry/deno/blob/golang/os_test.go#L16-L87
+// https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87
 #[test]
 fn test_resolve_module() {
   let (_temp_dir, deno_dir) = test_setup();
@@ -318,20 +318,20 @@ fn test_resolve_module() {
     (
       "./subdir/print_hello.ts",
       add_root!(
-        "/Users/rld/go/src/github.com/ry/deno/testdata/006_url_imports.ts"
+        "/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"
       ),
       add_root!(
-        "/Users/rld/go/src/github.com/ry/deno/testdata/subdir/print_hello.ts"
+        "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
       ),
       add_root!(
-        "/Users/rld/go/src/github.com/ry/deno/testdata/subdir/print_hello.ts"
+        "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
       ),
     ),
     (
       "testdata/001_hello.js",
-      add_root!("/Users/rld/go/src/github.com/ry/deno/"),
-      add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/001_hello.js"),
-      add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/001_hello.js"),
+      add_root!("/Users/rld/go/src/github.com/denoland/deno/"),
+      add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
+      add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
     ),
     (
       add_root!("/Users/rld/src/deno/hello.js"),
@@ -348,7 +348,7 @@ fn test_resolve_module() {
     /*
         (
             "http://localhost:4545/testdata/subdir/print_hello.ts",
-            add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/006_url_imports.ts"),
+            add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
             "http://localhost:4545/testdata/subdir/print_hello.ts",
             path.Join(SrcDir, "localhost:4545/testdata/subdir/print_hello.ts"),
         ),

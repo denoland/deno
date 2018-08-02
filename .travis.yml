@@ -21,7 +21,7 @@ env:
     - DENO_BUILD_MODE=debug
 before_install: |
   # Install Rust.
-  # TODO(ry) Include rustc in third_party https://github.com/ry/deno/issues/386
+  # TODO(ry) Include rustc in third_party https://github.com/denoland/deno/issues/386
   export PATH=$CARGO_PATH/bin:$PATH
   rustc --version
   if [ $? != 0 ]; then
