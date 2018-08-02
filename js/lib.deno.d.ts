@@ -27,10 +27,15 @@ declare class Console {
 
 interface Window {
   console: Console;
-  mainSource: string; // TODO(ry) This shouldn't be global.
+  // TODO(ry) These shouldn't be global.
+  mainSource: string;
+  setMainSourceMap(sm: string): void;
 }
 
 // Globals in the runtime environment
 declare let console: Console;
-declare let mainSource: string; // TODO(ry) This shouldn't be global.
 declare const window: Window;
+
+// TODO(ry) These shouldn't be global.
+declare let mainSource: string;
+declare function setMainSourceMap(sm: string): void;
