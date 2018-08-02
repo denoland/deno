@@ -107,11 +107,8 @@ static_library("libdeno") {
   sources = [
     "src/from_snapshot.cc",
   ]
-  data = [
+  inputs = [
     "$target_gen_dir/snapshot_deno.bin",
-  ]
-  data_deps = [
-    ":bundle",
   ]
   deps = [
     ":create_snapshot_deno",
@@ -276,5 +273,4 @@ create_snapshot("deno") {
 create_snapshot("mock_runtime") {
   testonly = true
   js = "js/mock_runtime.js"
-  deps = []
 }
