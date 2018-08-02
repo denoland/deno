@@ -59,7 +59,7 @@ fn set_response_base(
   unsafe { deno_set_response(d, buf) }
 }
 
-// https://github.com/ry/deno/blob/golang/os.go#L100-L154
+// https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 #[no_mangle]
 pub extern "C" fn handle_code_fetch(
   d: *const DenoC,
@@ -110,7 +110,7 @@ pub extern "C" fn handle_code_fetch(
   set_response_base(d, &mut builder, &args)
 }
 
-// https://github.com/ry/deno/blob/golang/os.go#L156-L169
+// https://github.com/denoland/deno/blob/golang/os.go#L156-L169
 #[no_mangle]
 pub extern "C" fn handle_code_cache(
   d: *const DenoC,

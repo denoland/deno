@@ -64,7 +64,7 @@ template("run_rustc") {
     script = "//tools/run_rustc.py"
 
     # TODO: We want to apply "-Dwarnings" only when treat_warnings_as_errors is not false
-    # https://github.com/ry/deno/pull/379
+    # https://github.com/denoland/deno/pull/379
     args = [
       rebase_path(source_root, root_build_dir),
       "--crate-name=$crate_name",

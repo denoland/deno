@@ -33,7 +33,7 @@ function nonblockingpipe(fd) {
 % deno --list-deps http://gist.com/blah.js
 http://gist.com/blah.js
 http://gist.com/dep.js
-https://github.com/ry/deno/master/testing.js
+https://github.com/denoland/deno/master/testing.js
 %
 ```
 
@@ -158,7 +158,7 @@ infrastructure.
 
 
 The current implementation is out of sync with this document:
-https://github.com/ry/deno/blob/master/js/deno.d.ts
+https://github.com/denoland/deno/blob/master/js/deno.d.ts
 
 #### L1 Examples
 
@@ -176,7 +176,7 @@ function main() {
 
 ### L2
 
-https://github.com/ry/deno/blob/master/msg.proto
+https://github.com/denoland/deno/blob/master/msg.proto
 
 ### L3
 
