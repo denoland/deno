@@ -1,7 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
-//import { debug } from "./main";
-const debug = false;
+let debug = false;
 
 import { TypedArray } from "./types";
 
@@ -12,6 +11,10 @@ export function log(...args: any[]): void {
   if (debug) {
     console.log(...args);
   }
+}
+
+export function setLogLevel(debug_: boolean): void {
+  debug = debug_;
 }
 
 export function assert(cond: boolean, msg = "assert") {

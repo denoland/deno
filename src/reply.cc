@@ -71,6 +71,13 @@ void deno_handle_msg_from_js(Deno* d, deno_buf buf) {
       break;
     }
 
+    case deno::Any_Exit: {
+      auto msg = base->msg_as_Exit();
+      uint32_t code = msg->code();
+      exit(code);
+      break;
+    }
+
     case deno::Any_NONE:
       CHECK(false && "Got message with msg_type == Any_NONE");
       break;
