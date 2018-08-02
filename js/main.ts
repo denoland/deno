@@ -3,8 +3,10 @@
 /// <reference path="deno.d.ts" />
 import { flatbuffers } from "flatbuffers";
 import { deno as fbs } from "gen/msg_generated";
-import { assert, log } from "./util";
+import { assert, log, setLogLevel } from "./util";
 import * as runtime from "./runtime";
+import * as os from "./os";
+import * as flags from "./flags";
 
 let cmdIdCounter = 0;
 function assignCmdId(): number {
@@ -58,7 +60,23 @@ export default function denoMain() {
   }
   log("argv", argv);
 
-  const inputFn = argv[1];
+  const parsed = flags.parse(argv);
+  if (parsed.v) {
+    setLogLevel(true);
+  }
+  log("parsed args", parsed);
+
+  if (parsed.version) {
+    console.log("version 0.9");
+    os.exit(1);
+  }
+
+  const inputFn = (parsed._ as string[])[1];
+  if (inputFn == null) {
+    console.log(`Usage: ${argv[0]} file.ts`);
+    os.exit(1);
+  }
+
   const mod = runtime.resolveModule(inputFn, `${cwd}/`);
   mod.compileAndRun();
 }
