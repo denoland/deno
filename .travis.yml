@@ -34,7 +34,8 @@ install:
  - export CCACHE_SLOPPINESS=time_macros
  - ccache -s
  - ./tools/setup.py
- - ./tools/build.py
+ # Travis hangs without -j2 argument to ninja.
+ - ./tools/build.py -j2
 script:
  - ./tools/lint.py
  - ./tools/test.py $DENO_BUILD_PATH
