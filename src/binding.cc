@@ -3,29 +3,31 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <thread>
 
 #include "third_party/v8/include/libplatform/libplatform.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
 
-#include "deno.h"
-#include "internal.h"
+#include "src/deno.h"
+#include "src/internal.h"
 
 namespace deno {
 
 static bool skip_onerror = false;
 
-void Initialize(Deno* d, void* data, deno_recv_cb cb) {
-  d->currentArgs = nullptr;
-  d->cb = cb;
+void InitializeCommon(Deno* d, void* data, deno_recv_cb recv_cb,
+                      deno_cmd_id_cb cmd_id_cb) {
+  d->current_args = nullptr;
+  d->current_cmd = nullptr;
+  d->recv_cb = recv_cb;
+  d->cmd_id_cb = cmd_id_cb;
   d->data = data;
 
-  auto env_deno_threads = getenv("DENO_THREADS");
-  d->using_threads =
-      env_deno_threads != nullptr && strcmp(env_deno_threads, "1") == 0;
-
-  if (d->using_threads) {
-    printf("Deno: using threads\n");
+  auto env_value = getenv("DENO_THREADS");
+  d->threads_enabled = env_value != nullptr && env_value == std::string("1");
+  if (d->threads_enabled) {
+    fprintf(stderr, "Deno: using threads\n");
   }
 }
 
@@ -151,46 +153,46 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value str(isolate, args[0]);
   const char* cstr = ToCString(str);
-  printf("%s\n", cstr);
-  fflush(stdout);
+  fprintf(stderr, "%s\n", cstr);
+  fflush(stderr);
 }
 
-static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {
-  if (buf.alloc_ptr == nullptr) {
+static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate,
+                                           deno_buf* buf) {
+  if (buf->alloc_ptr == nullptr) {
     // If alloc_ptr isn't set, we memcpy.
     // This is currently used for flatbuffers created in Rust.
-    auto ab = v8::ArrayBuffer::New(isolate, buf.data_len);
-    memcpy(ab->GetContents().Data(), buf.data_ptr, buf.data_len);
-    auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
+    auto ab = v8::ArrayBuffer::New(isolate, buf->data_len);
+    memcpy(ab->GetContents().Data(), buf->data_ptr, buf->data_len);
+    auto view = v8::Uint8Array::New(ab, 0, buf->data_len);
+    deno_buf_delete_raw(buf);
     return view;
   } else {
     auto ab = v8::ArrayBuffer::New(
-        isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
+        isolate, reinterpret_cast<void*>(buf->alloc_ptr), buf->alloc_len,
         v8::ArrayBufferCreationMode::kInternalized);
     auto view =
-        v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
+        v8::Uint8Array::New(ab, buf->data_ptr - buf->alloc_ptr, buf->data_len);
+    deno_buf_delete_raw(buf);
     return view;
   }
 }
 
-static deno_buf ExportBuf(v8::Isolate* isolate,
-                          v8::Local<v8::ArrayBufferView> view) {
+const deno_buf ExportBuf(v8::Isolate* isolate,
+                         v8::Local<v8::ArrayBufferView> view) {
   auto ab = view->Buffer();
   auto contents = ab->Externalize();
+  auto alloc_ptr = reinterpret_cast<uint8_t*>(contents.Data());
 
-  deno_buf buf;
-  buf.alloc_ptr = reinterpret_cast<uint8_t*>(contents.Data());
-  buf.alloc_len = contents.ByteLength();
-  buf.data_ptr = buf.alloc_ptr + view->ByteOffset();
-  buf.data_len = view->ByteLength();
+  const deno_buf buf =
+      deno_buf_new_raw(alloc_ptr, contents.ByteLength(),
+                       alloc_ptr + view->ByteOffset(), view->ByteLength());
 
   // Prevent JS from modifying buffer contents after exporting.
   ab->Neuter();
 
   return buf;
 }
-
-static void FreeBuf(deno_buf buf) { free(buf.alloc_ptr); }
 
 // Sets the recv callback.
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -223,21 +225,36 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   CHECK_EQ(args.Length(), 1);
   v8::Local<v8::Value> ab_v = args[0];
   CHECK(ab_v->IsArrayBufferView());
-  auto buf = ExportBuf(isolate, v8::Local<v8::ArrayBufferView>::Cast(ab_v));
+  auto cmd_buf = ExportBuf(isolate, v8::Local<v8::ArrayBufferView>::Cast(ab_v));
 
-  DCHECK_EQ(d->currentArgs, nullptr);
-  d->currentArgs = &args;
+  DCHECK_EQ(d->current_cmd, nullptr);
+  d->current_cmd = &cmd_buf;
 
-  d->cb(d, buf);
+  if (d->threads_enabled) {
+    auto cmd_id = d->cmd_id_cb(&cmd_buf);
+    d->cmd_queue.Send(&cmd_buf);
+    auto res_buf = DENO_BUF_INIT;
+    auto r = d->res_queue.RecvFilter(&res_buf, [&](const deno_buf& buf) {
+      return cmd_id == d->cmd_id_cb(&buf);
+    });
+    DCHECK(r);
+    auto ab = deno::ImportBuf(d->isolate, &res_buf);
+    args.GetReturnValue().Set(ab);
 
-  // Buffer is only valid until the end of the callback.
-  // TODO(piscisaureus):
-  //   It's possible that data in the buffer is needed after the callback
-  //   returns, e.g. when the handler offloads work to a thread pool, therefore
-  //   make the callback responsible for releasing the buffer.
-  FreeBuf(buf);
+  } else {
+    DCHECK_EQ(d->current_args, nullptr);
+    d->current_args = &args;
+    d->recv_cb(d, &cmd_buf);
 
-  d->currentArgs = nullptr;
+    // If the callback needs the keep the buffer around after the callback
+    // returns, it can take owenership of the buffer with `deno_buf_move()`.
+    deno_buf_delete(&cmd_buf);
+  }
+
+  d->current_cmd = nullptr;
+  if (!d->threads_enabled) {
+    d->current_args = nullptr;
+  }
 }
 
 bool ExecuteV8StringSource(v8::Local<v8::Context> context,
@@ -350,7 +367,7 @@ void deno_init() {
 }
 
 void* deno_get_data(Deno* d) { return d->data; }
-bool deno_using_threads(Deno* d) { return d->using_threads; }
+bool deno_threads_enabled(Deno* d) { return d->threads_enabled; }
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 
@@ -361,7 +378,7 @@ char** deno_argv() { return global_argv; }
 int deno_argc() { return global_argc; }
 
 void deno_set_flags(int* argc, char** argv) {
-  v8::V8::SetFlagsFromCommandLine(argc, argv, true);
+  // v8::V8::SetFlagsFromCommandLine(argc, argv, true);
   // TODO(ry) Remove these when we call deno_reply_start from Rust.
   global_argc = *argc;
   global_argv = reinterpret_cast<char**>(malloc(*argc * sizeof(char*)));
@@ -372,22 +389,43 @@ void deno_set_flags(int* argc, char** argv) {
 
 const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
 
-int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
+static int execute_js(Deno* d, const char* js_filename, const char* js_source) {
   auto* isolate = d->isolate;
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = d->context.Get(d->isolate);
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
+  // TODO: process incoming async messages.
 }
 
-int deno_send(Deno* d, deno_buf buf) {
-  d->
+static void backend_main(Deno* d) {
+  deno_buf msg = DENO_BUF_INIT;
+  while (d->cmd_queue.Recv(&msg)) {
+    d->recv_cb(d, &msg);
+    // If the callback needs the keep the buffer around after the callback
+    // returns, it can take owenership of the buffer with `deno_buf_move()`.
+    deno_buf_delete(&msg);
+  }
 }
 
-int deno_send(Deno* d, deno_buf buf) {
-  if (d->using_threads) {
-    return deno_send_queue(d, buf);
+int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
+  if (!d->threads_enabled) {
+    return execute_js(d, js_filename, js_source);
+  }
+
+  // Start backend worker thread.
+  // TODO: use multiple backend threads.
+  std::thread backend_thread(backend_main, d);
+  auto r = execute_js(d, js_filename, js_source);
+  // TODO: join the backend thread.
+  return r;
+}
+
+int deno_send(Deno* d, deno_buf* buf) {
+  if (d->threads_enabled) {
+    d->res_queue.Send(buf);
+    return 1;
   }
 
   v8::Locker locker(d->isolate);
@@ -417,13 +455,14 @@ int deno_send(Deno* d, deno_buf buf) {
   return 1;
 }
 
-void deno_set_response(Deno* d, deno_buf buf) {
-  if (d->using_threads) {
-    return deno_send_queue(d, buf);
+void deno_set_response(Deno* d, deno_buf* buf) {
+  if (d->threads_enabled) {
+    d->res_queue.Send(buf);
+    return;
   }
 
   auto ab = deno::ImportBuf(d->isolate, buf);
-  d->currentArgs->GetReturnValue().Set(ab);
+  d->current_args->GetReturnValue().Set(ab);
 }
 
 void deno_delete(Deno* d) {

@@ -34,14 +34,15 @@ void deno_reply_start(Deno* d, uint32_t cmd_id, int argc, char* argv[],
   auto base = deno::CreateBase(builder, cmd_id, 0, deno::Any_StartRes,
                                start_msg.Union());
   builder.Finish(base);
-  deno_set_response(d, builder.ExportBuf());
+  auto res_buf = builder.ExportBuf();
+  deno_set_response(d, &res_buf);
 }
 
-void deno_handle_msg_from_js(Deno* d, deno_buf buf) {
-  flatbuffers::Verifier verifier(buf.data_ptr, buf.data_len);
+void deno_handle_msg_from_js(Deno* d, deno_buf* buf) {
+  flatbuffers::Verifier verifier(buf->data_ptr, buf->data_len);
   DCHECK(verifier.VerifyBuffer<deno::Base>());
 
-  auto base = flatbuffers::GetRoot<deno::Base>(buf.data_ptr);
+  auto base = flatbuffers::GetRoot<deno::Base>(buf->data_ptr);
   auto cmd_id = base->cmdId();
   auto msg_type = base->msg_type();
   const char* msg_type_name = deno::EnumNamesAny()[msg_type];
@@ -87,6 +88,11 @@ void deno_handle_msg_from_js(Deno* d, deno_buf buf) {
       CHECK(false && "Unhandled message");
       break;
   }
+}
+
+uint32_t deno_cmd_id(const deno_buf* buf) {
+  auto base = flatbuffers::GetRoot<deno::Base>(buf->data_ptr);
+  return base->cmdId();
 }
 
 }  // extern "C"

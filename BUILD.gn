@@ -124,6 +124,7 @@ static_library("libdeno") {
 v8_source_set("deno_base") {
   sources = [
     "src/binding.cc",
+    "src/buf.cc",
     "src/deno.h",
     "src/file_util.cc",
     "src/file_util.h",

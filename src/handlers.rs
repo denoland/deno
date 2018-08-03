@@ -44,7 +44,7 @@ fn set_response_base(
   builder.finish(base);
   let data = builder.get_active_buf_slice();
   // println!("buf slice {} {} {} {} {}", data[0], data[1], data[2], data[3], data[4]);
-  let buf = deno_buf {
+  let mut buf = deno_buf {
     // TODO(ry)
     // The deno_buf / ImportBuf / ExportBuf semantics should be such that we do not need to yield
     // ownership. Temporarally there is a hack in ImportBuf that when alloc_ptr is null, it will
@@ -56,7 +56,7 @@ fn set_response_base(
   };
   // println!("data_ptr {:p}", data_ptr);
   // println!("data_len {}", data.len());
-  unsafe { deno_set_response(d, buf) }
+  unsafe { deno_set_response(d, &mut buf) }
 }
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154

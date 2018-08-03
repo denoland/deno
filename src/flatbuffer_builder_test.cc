@@ -15,22 +15,20 @@ constexpr std::size_t countof(T const (&)[N]) noexcept {
 TEST(FlatBufferBuilderTest, ExportBuf) {
   const uint32_t nums[] = {1, 2, 3};
   const char str[] = "hello mars";
-  deno_buf nums_buf;
-  deno_buf str_buf;
-  // Use scope so builder gets destroyed after building buffers.
-  {
-    deno::FlatBufferBuilder builder;
-    // Build first flatbuffer.
-    auto nums_fb = builder.CreateVector(nums, countof(nums));
-    builder.Finish(nums_fb);
-    nums_buf = builder.ExportBuf();
-    // Reset builder.
-    builder.Reset();
-    // Build second flatbuffer using the same builder.
-    auto str_fb = builder.CreateString(str);
-    builder.Finish(str_fb);
-    str_buf = builder.ExportBuf();
-  }
+  // Create builder.
+  auto& builder = *new deno::FlatBufferBuilder();
+  // Build first flatbuffer.
+  auto nums_fb = builder.CreateVector(nums, countof(nums));
+  builder.Finish(nums_fb);
+  auto nums_buf = builder.ExportBuf();
+  // Reset builder.
+  builder.Reset();
+  // Build second flatbuffer using the same builder.
+  auto str_fb = builder.CreateString(str);
+  builder.Finish(str_fb);
+  auto str_buf = builder.ExportBuf();
+  // Delete the builder. The exported buffers should survive this.
+  delete &builder;
   // Allocations should be different.
   EXPECT_NE(nums_buf.alloc_ptr, str_buf.alloc_ptr);
   // Logical buffer data should be contained inside their allocations.
@@ -51,6 +49,9 @@ TEST(FlatBufferBuilderTest, ExportBuf) {
   for (size_t i = 0; i < countof(str); i++) {
     EXPECT_EQ(str_data[i], str[i]);
   }
+  // Delete the buffers.
+  deno_buf_delete(&nums_buf);
+  deno_buf_delete(&str_buf);
 }
 
 TEST(FlatBufferBuilderTest, CanGrowBuffer) {
@@ -64,6 +65,8 @@ TEST(FlatBufferBuilderTest, CanGrowBuffer) {
     auto buf = builder.ExportBuf();
     // Exported buffer should have initial size.
     EXPECT_EQ(buf.alloc_len, kSmallInitialSize);
+    // Delete exported buffer.
+    deno_buf_delete(&buf);
   }
   {
     // Create buffer with small initial size.
@@ -73,5 +76,7 @@ TEST(FlatBufferBuilderTest, CanGrowBuffer) {
     auto buf = builder.ExportBuf();
     // Exported buffer have grown.
     EXPECT_GT(buf.alloc_len, kSmallInitialSize);
+    // Delete exported buffer.
+    deno_buf_delete(&buf);
   }
 }

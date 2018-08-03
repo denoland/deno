@@ -33,7 +33,7 @@ class FlatBufferBuilder : public flatbuffers::FlatBufferBuilder {
     size_t last_alloc_len_ = 0;
 
    public:
-    deno_buf GetAndKeepBuf(uint8_t* data_ptr, size_t data_len);
+    const deno_buf GetAndKeepBuf(uint8_t* data_ptr, size_t data_len);
 
    protected:
     virtual uint8_t* allocate(size_t size);
@@ -51,7 +51,7 @@ class FlatBufferBuilder : public flatbuffers::FlatBufferBuilder {
   // free().
   // Afer calling ExportBuf() the FlatBufferBuilder should no longer be used;
   // However it can be used again once it is reset with the Reset() method.
-  deno_buf ExportBuf();
+  const deno_buf ExportBuf();
 
   // Don't use these.
   flatbuffers::DetachedBuffer Release() = delete;

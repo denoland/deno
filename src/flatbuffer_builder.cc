@@ -7,17 +7,18 @@
 #include "deno.h"
 #include "flatbuffer_builder.h"
 #include "flatbuffers/flatbuffers.h"
+#include "internal.h"
 
 namespace deno {
 
-deno_buf FlatBufferBuilder::ExportBuf() {
+const deno_buf FlatBufferBuilder::ExportBuf() {
   uint8_t* data_ptr = GetBufferPointer();
   size_t data_len = GetSize();
   return allocator_.GetAndKeepBuf(data_ptr, data_len);
 }
 
-deno_buf FlatBufferBuilder::Allocator::GetAndKeepBuf(uint8_t* data_ptr,
-                                                     size_t data_len) {
+const deno_buf FlatBufferBuilder::Allocator::GetAndKeepBuf(uint8_t* data_ptr,
+                                                           size_t data_len) {
   // The builder will typically allocate one chunk of memory with some
   // default size. After that, it'll only call allocate() again if the
   // initial allocation wasn't big enough, which is then immediately
@@ -37,12 +38,7 @@ deno_buf FlatBufferBuilder::Allocator::GetAndKeepBuf(uint8_t* data_ptr,
 
   keep_alloc_ptr_ = last_alloc_ptr_;
 
-  deno_buf buf;
-  buf.alloc_ptr = last_alloc_ptr_;
-  buf.alloc_len = last_alloc_len_;
-  buf.data_ptr = data_ptr;
-  buf.data_len = data_len;
-  return buf;
+  return deno_buf_new_raw(last_alloc_ptr_, last_alloc_len_, data_ptr, data_len);
 }
 
 uint8_t* FlatBufferBuilder::Allocator::allocate(size_t size) {

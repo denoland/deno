@@ -13,6 +13,6 @@
 
 extern "C" {
 // Parse incoming messages with C++ Flatbuffers, call into rust handlers.
-void deno_handle_msg_from_js(Deno* d, deno_buf buf);
+void deno_handle_msg_from_js(Deno* d, deno_buf* buf);
 }
 #endif  // REPLY_H_

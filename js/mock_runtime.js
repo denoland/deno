@@ -37,14 +37,14 @@ global.SendWrongByteLength = () => {
   });
 };
 
-global.RecvReturnEmpty = () => {
-  const m1 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
-  const m2 = m1.slice();
-  const r1 = deno.send(m1);
-  assert(r1 == null);
-  const r2 = deno.send(m2);
-  assert(r2 == null);
-};
+//global.RecvReturnEmpty = () => {
+//  const m1 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
+//  const m2 = m1.slice();
+//  const r1 = deno.send(m1);
+//  assert(r1 == null);
+//  const r2 = deno.send(m2);
+//  assert(r2 == null);
+//};
 
 global.RecvReturnBar = () => {
   const m = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));

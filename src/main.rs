@@ -108,7 +108,11 @@ impl Deno {
     let deno: &'a mut Deno = Box::leak(deno_box);
     let external_ptr = deno as *mut _ as *const c_void;
     let internal_deno_ptr = unsafe {
-      binding::deno_new(external_ptr, binding::deno_handle_msg_from_js)
+      binding::deno_new(
+        external_ptr,
+        binding::deno_handle_msg_from_js,
+        binding::deno_cmd_id,
+      )
     };
     deno.ptr = internal_deno_ptr;
     deno

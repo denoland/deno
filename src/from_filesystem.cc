@@ -13,12 +13,9 @@
 
 namespace deno {
 
-Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
+void InitializeFromFileSystem(Deno* d) {
   std::string js_source;
   CHECK(deno::ReadFileToString(BUNDLE_LOCATION, &js_source));
-
-  Deno* d = new Deno;
-  Initialize(d, data, cb);
 
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator =
@@ -34,14 +31,15 @@ Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
     InitializeContext(isolate, context, BUNDLE_LOCATION, js_source, nullptr);
     d->context.Reset(d->isolate, context);
   }
-
-  return d;
 }
 
 }  // namespace deno
 
 extern "C" {
-Deno* deno_new(void* data, deno_recv_cb cb) {
-  return deno::NewFromFileSystem(data, cb);
+Deno* deno_new(void* data, deno_recv_cb recv_cb, deno_cmd_id_cb cmd_id_cb) {
+  auto d = new Deno;
+  deno::InitializeCommon(d, data, recv_cb, cmd_id_cb);
+  deno::InitializeFromFileSystem(d);
+  return d;
 }
 }

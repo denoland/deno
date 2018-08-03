@@ -10,7 +10,7 @@ namespace deno {
 
 class MessageQueue {
   struct Message {
-    deno_buf buf;
+    deno_buf buf = DENO_BUF_INIT;
     Message* next;
   };
 
@@ -31,9 +31,9 @@ class MessageQueue {
         cv_(),
         reader_is_blocked_(false) {}
 
-  void Send(const deno_buf& buf, bool nowake = false) {
+  void Send(deno_buf* buf, bool nowake = false) {
     auto m = new Message;
-    m->buf = buf;
+    deno_buf_move_into(&m->buf, buf);
 
     std::unique_lock<Mutex> lock(mutex_);
 
@@ -61,8 +61,8 @@ class MessageQueue {
       return false;
     }
 
-    reader_is_blocked_ = true;
     while (head_ == nullptr) {
+      reader_is_blocked_ = true;
       cv_.wait(lock);
     }
 
@@ -73,9 +73,45 @@ class MessageQueue {
       tail_ = nullptr;
     }
 
-    *buf_out = m->buf;
+    deno_buf_move_into(buf_out, &m->buf);
     delete m;
+    return true;
+  }
 
+  typedef std::function<bool(const deno_buf&)> FilterCallback;
+
+  bool RecvFilter(deno_buf* buf_out, const FilterCallback& filter) {
+    std::unique_lock<Mutex> lock(mutex_);
+
+    while (head_ == nullptr) {
+      reader_is_blocked_ = true;
+      cv_.wait(lock);
+    }
+
+    Message* m = head_;
+    Message* prev = nullptr;
+
+    while (!filter(m->buf)) {
+      prev = m;
+      while (m->next == nullptr) {
+        reader_is_blocked_ = true;
+        cv_.wait(lock);
+      }
+      m = m->next;
+    }
+
+    if (prev != nullptr) {
+      prev->next = m->next;
+    } else {
+      assert(m == head_);
+      head_ = m->next;
+    }
+    if (m == tail_) {
+      tail_ = prev;
+    }
+
+    deno_buf_move_into(buf_out, &m->buf);
+    delete m;
     return true;
   }
 };
