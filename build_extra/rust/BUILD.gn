@@ -1,22 +1,23 @@
-import("rust.gni")
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 # Dependencies between third party crates is mapped out here manually.  This is
 # not so difficult and having it be tedious to add dependencies might help us
-# avoid dependency hell later on.
-# Versioning for third party rust crates is controlled in //gclient_config.py
-# TODO(ry) Use Cargo for versioning?
+# avoid dependency hell later on. Always try to minimize dependencies.
+# Versioning for third party rust crates is controlled in //Cargo.toml
+# Use //tools/sync_third_party.py instead of running "cargo install".
+
+import("rust.gni")
 
 crates = "//third_party/rust_crates"
+registry_github = "$crates/registry/src/github.com-1ecc6299db9ec823/"
 
 rust_component("libc") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/libc-0.2.42/src/lib.rs"
+  source_root = "$registry_github/libc-0.2.42/src/lib.rs"
   features = [ "use_std" ]
 }
 
 rust_component("url") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/url-1.7.1/src/lib.rs"
+  source_root = "$registry_github/url-1.7.1/src/lib.rs"
   extern = [
     ":matches",
     ":idna",
@@ -25,7 +26,7 @@ rust_component("url") {
 }
 
 rust_component("percent_encoding") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/percent-encoding-1.0.1/lib.rs"
+  source_root = "$registry_github/percent-encoding-1.0.1/lib.rs"
   args = [
     # TODO: Suppress some warnings at this moment
     # This should be removed when it's fixed in servo/rust-url repository
@@ -36,13 +37,11 @@ rust_component("percent_encoding") {
 }
 
 rust_component("matches") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/matches-0.1.6/lib.rs"
+  source_root = "$registry_github/matches-0.1.6/lib.rs"
 }
 
 rust_component("idna") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/idna-0.1.5/src/lib.rs"
+  source_root = "$registry_github/idna-0.1.5/src/lib.rs"
   extern = [
     ":matches",
     ":unicode_bidi",
@@ -51,32 +50,29 @@ rust_component("idna") {
 }
 
 rust_component("unicode_bidi") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/unicode-bidi-0.3.4/src/lib.rs"
+  source_root = "$registry_github/unicode-bidi-0.3.4/src/lib.rs"
   extern = [ ":matches" ]
 }
 
 rust_component("unicode_normalization") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/unicode-normalization-0.1.7/src/lib.rs"
+  source_root = "$registry_github/unicode-normalization-0.1.7/src/lib.rs"
 }
 
 rust_component("log") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/log-0.4.3/src/lib.rs"
+  source_root = "$registry_github/log-0.4.3/src/lib.rs"
   extern = [ ":cfg_if" ]
 }
 
 rust_component("cfg_if") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/cfg-if-0.1.4/src/lib.rs"
+  source_root = "$registry_github/cfg-if-0.1.4/src/lib.rs"
 }
 
 rust_component("sha1") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/sha1-0.6.0/src/lib.rs"
+  source_root = "$registry_github/sha1-0.6.0/src/lib.rs"
 }
 
 rust_component("tempfile") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.3/src/lib.rs"
+  source_root = "$registry_github/tempfile-3.0.3/src/lib.rs"
   extern = [
     ":libc",
     ":rand",
@@ -86,8 +82,7 @@ rust_component("tempfile") {
 }
 
 rust_component("rand") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/rand-0.5.4/src/lib.rs"
+  source_root = "$registry_github/rand-0.5.4/src/lib.rs"
   extern = [
     ":libc",
     ":rand_core",
@@ -105,11 +100,11 @@ rust_component("rand") {
 }
 
 rust_component("rand_core") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/rand_core-0.2.1/src/lib.rs"
+  source_root = "$registry_github/rand_core-0.2.1/src/lib.rs"
 }
 
 rust_component("remove_dir_all") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/remove_dir_all-0.5.1/src/lib.rs"
+  source_root = "$registry_github/remove_dir_all-0.5.1/src/lib.rs"
   extern = []
   if (is_win) {
     extern += [ ":winapi" ]
@@ -117,8 +112,7 @@ rust_component("remove_dir_all") {
 }
 
 rust_component("winapi") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/winapi-0.3.5/src/lib.rs"
+  source_root = "$registry_github/winapi-0.3.5/src/lib.rs"
   features = [
     "basetsd",
     "cfg",
