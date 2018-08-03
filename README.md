@@ -22,7 +22,7 @@ Window [![Windows](https://ci.appveyor.com/api/projects/status/cc7nd82n34xo4nym/
 
 * File system and network access can be controlled in order to run sandboxed
   code. Defaults to read-only file system access and no network access.
-	Access between V8 (unprivileged) and Golang (privileged) is only done via
+	Access between V8 (unprivileged) and Rust (privileged) is only done via
   serialized messages defined in this
   [flatbuffer](https://github.com/denoland/deno/blob/master/src/msg.fbs). This makes it
   easy to audit.
