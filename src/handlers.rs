@@ -2,9 +2,11 @@
 use binding::{deno_buf, deno_set_response, DenoC};
 use flatbuffers;
 use from_c;
+use fs;
 use libc::c_char;
 use msg_generated::deno as msg;
 use std::ffi::CStr;
+use std::path::Path;
 
 // Help. Is there a way to do this without macros?
 // Want: fn str_from_ptr(*const c_char) -> &str
@@ -130,4 +132,24 @@ pub extern "C" fn handle_code_cache(
     reply_error(d, cmd_id, &errmsg);
   }
   // null response indicates success.
+}
+
+// Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
+#[no_mangle]
+pub extern "C" fn handle_read_file_sync(
+  d: *const DenoC,
+  cmd_id: u32,
+  filename: *const c_char,
+) {
+  let deno = from_c(d);
+  let filename = str_from_ptr!(filename);
+  println!("handle_read_file_sync {}", filename);
+  let result = fs::read_file_sync(Path::new(filename));
+  if result.is_err() {
+    let err = result.unwrap_err();
+    let errmsg = format!("{}", err);
+    reply_error(d, cmd_id, &errmsg);
+    return;
+  }
+  println!("handle_read_file_sync {}", result.is_err());
 }
