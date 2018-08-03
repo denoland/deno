@@ -1,7 +1,9 @@
 # deno
 
-Linux [![Linux](https://travis-ci.com/denoland/deno.svg?branch=master)](https://travis-ci.com/denoland/deno)
-Window [![Windows](https://ci.appveyor.com/api/projects/status/cc7nd82n34xo4nym/branch/master?svg=true)](https://ci.appveyor.com/project/ry91293/deno/branch/master)
+| **Linux** | **Windows** |
+|:---------------:|:-----------:|
+| [![Travis](https://travis-ci.com/denoland/deno.svg?branch=master)](https://travis-ci.com/denoland/deno) | [![Appveyor](https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true)](https://ci.appveyor.com/project/deno/deno) |
+
 
 
 ## A secure TypeScript runtime built on V8
@@ -62,6 +64,8 @@ Progress towards first release is tracked
 
 Roadmap is [here](https://github.com/denoland/deno/blob/master/Roadmap.md).
 Also see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
+
+[Chat room](https://gitter.im/denolife/Lobby).
 
 
 ## Build instructions
