@@ -35,6 +35,7 @@ config("deno_config") {
 }
 
 main_extern = [
+  "$rust_build:hyper",
   "$rust_build:futures",
   "$rust_build:libc",
   "$rust_build:log",
