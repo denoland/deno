@@ -135,6 +135,8 @@ rust_crate("winapi") {
     "sspi",
     "std",
     "subauth",
+    "sysinfoapi",
+    "timezoneapi",
     "vadefs",
     "vcruntime",
     "winbase",
@@ -340,6 +342,126 @@ rust_crate("scopeguard") {
 rust_crate("num_cpus") {
   source_root = "$registry_github/num_cpus-1.8.0/src/lib.rs"
   extern = [ ":libc" ]
+}
+
+rust_crate("hyper") {
+  source_root = "$registry_github/hyper-0.12.8/src/lib.rs"
+  features = [ "runtime" ]
+  extern = [
+    ":bytes",
+    ":futures",
+    ":futures_cpupool",
+    ":h2",
+    ":http",
+    ":httparse",
+    ":iovec",
+    ":itoa",
+    ":log",
+    ":net2",
+    ":time",
+    ":tokio",
+    ":tokio_executor",
+    ":tokio_io",
+    ":tokio_reactor",
+    ":tokio_tcp",
+    ":tokio_timer",
+    ":want",
+  ]
+}
+
+rust_crate("tokio_core") {
+  source_root = "$registry_github/tokio-core-0.1.17/src/lib.rs"
+  extern = [
+    ":mio",
+    ":futures",
+    ":tokio",
+    ":tokio_executor",
+    ":tokio_reactor",
+    ":tokio_timer",
+    ":tokio_io",
+    ":log",
+    ":iovec",
+    ":bytes",
+  ]
+}
+
+rust_crate("h2") {
+  source_root = "$registry_github/h2-0.1.12/src/lib.rs"
+  extern = [
+    ":byteorder",
+    ":bytes",
+    ":fnv",
+    ":futures",
+    ":http",
+    ":indexmap",
+    ":log",
+    ":slab",
+    ":string",
+    ":tokio_io",
+  ]
+}
+
+rust_crate("http") {
+  source_root = "$registry_github/http-0.1.10/src/lib.rs"
+  extern = [
+    ":bytes",
+    ":fnv",
+    ":itoa",
+  ]
+}
+
+rust_crate("httparse") {
+  source_root = "$registry_github/httparse-1.3.2/src/lib.rs"
+}
+
+rust_crate("fnv") {
+  source_root = "$registry_github/fnv-1.0.6/lib.rs"
+}
+
+rust_crate("futures_core") {
+  source_root = "$registry_github/futures-core-0.2.1/src/lib.rs"
+}
+
+rust_crate("futures_cpupool") {
+  source_root = "$registry_github/futures-cpupool-0.1.8/src/lib.rs"
+  extern = [
+    ":futures",
+    ":num_cpus",
+  ]
+}
+
+rust_crate("indexmap") {
+  source_root = "$registry_github/indexmap-1.0.1/src/lib.rs"
+}
+
+rust_crate("itoa") {
+  source_root = "$registry_github/itoa-0.4.2/src/lib.rs"
+  features = [ "std" ]
+}
+
+rust_crate("string") {
+  source_root = "$registry_github/string-0.1.1/src/lib.rs"
+}
+
+rust_crate("time") {
+  source_root = "$registry_github/time-0.1.40/src/lib.rs"
+  extern = [
+    ":libc",
+    ":winapi",
+  ]
+}
+
+rust_crate("try_lock") {
+  source_root = "$registry_github/try-lock-0.2.2/src/lib.rs"
+}
+
+rust_crate("want") {
+  source_root = "$registry_github/want-0.0.6/src/lib.rs"
+  extern = [
+    ":futures",
+    ":try_lock",
+    ":log",
+  ]
 }
 
 tokio_root = "$crates/git/checkouts/tokio-377c595163f99a10/5d0d2a2/"
