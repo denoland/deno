@@ -35,6 +35,7 @@ config("deno_config") {
 }
 
 main_extern = [
+  "$rust_build:hyper",
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:sha1",
@@ -58,10 +59,15 @@ main_extern = [
   "$rust_build:crossbeam_epoch",
   "$rust_build:crossbeam_utils",
   "$rust_build:futures",
+  "$rust_build:h2",
+  "$rust_build:http",
+  "$rust_build:httparse",
   "$rust_build:idna",
   "$rust_build:iovec",
+  "$rust_build:itoa",
   "$rust_build:lazy_static",
   "$rust_build:lazycell",
+  "$rust_build:log",
   "$rust_build:memoffset",
   "$rust_build:mio",
   "$rust_build:net2",
@@ -73,6 +79,7 @@ main_extern = [
   "$rust_build:remove_dir_all",
   "$rust_build:scopeguard",
   "$rust_build:slab",
+  "$rust_build:time",
   "$rust_build:tokio_executor",
   "$rust_build:tokio_fs",
   "$rust_build:tokio_io",
@@ -84,6 +91,7 @@ main_extern = [
   "$rust_build:tokio_udp",
   "$rust_build:unicode_bidi",
   "$rust_build:unicode_normalization",
+  "$rust_build:want",
   "$rust_build:winapi",
 ]
 

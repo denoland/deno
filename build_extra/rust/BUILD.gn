@@ -156,7 +156,7 @@ rust_component("winapi") {
 }
 
 rust_component("futures") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/futures-0.1.23/src/lib.rs"
+  source_root = "$registry_github/futures-0.1.23/src/lib.rs"
   cfg = [
     "feature=\"use_std\"",
     "feature=\"with-deprecated\"",
@@ -164,8 +164,7 @@ rust_component("futures") {
 }
 
 rust_component("mio") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/mio-0.6.15/src/lib.rs"
+  source_root = "$registry_github/mio-0.6.15/src/lib.rs"
   extern = [
     ":iovec",
     ":lazycell",
@@ -178,8 +177,7 @@ rust_component("mio") {
 }
 
 rust_component("iovec") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/iovec-0.1.2/src/lib.rs"
+  source_root = "$registry_github/iovec-0.1.2/src/lib.rs"
   extern = [ ":libc" ]
   if (is_win) {
     extern += [ ":winapi" ]
@@ -187,12 +185,11 @@ rust_component("iovec") {
 }
 
 rust_component("lazycell") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/lazycell-0.6.0/src/lib.rs"
+  source_root = "$registry_github/lazycell-0.6.0/src/lib.rs"
 }
 
 rust_component("net2") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/lib.rs"
+  source_root = "$registry_github/net2-0.2.33/src/lib.rs"
   extern = [
     ":cfg_if",
     ":libc",
@@ -203,13 +200,11 @@ rust_component("net2") {
 }
 
 rust_component("slab") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/slab-0.4.0/src/lib.rs"
+  source_root = "$registry_github/slab-0.4.0/src/lib.rs"
 }
 
 rust_component("bytes") {
-  source_root =
-      "$crates/registry/src/github.com-1ecc6299db9ec823/bytes-0.4.9/src/lib.rs"
+  source_root = "$registry_github/bytes-0.4.9/src/lib.rs"
   extern = [
     ":byteorder",
     ":iovec",
@@ -217,11 +212,11 @@ rust_component("bytes") {
 }
 
 rust_component("byteorder") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/byteorder-1.2.4/src/lib.rs"
+  source_root = "$registry_github/byteorder-1.2.4/src/lib.rs"
 }
 
 rust_component("crossbeam_deque") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/crossbeam-deque-0.5.1/src/lib.rs"
+  source_root = "$registry_github/crossbeam-deque-0.5.1/src/lib.rs"
   extern = [
     ":crossbeam_epoch",
     ":crossbeam_utils",
@@ -229,7 +224,7 @@ rust_component("crossbeam_deque") {
 }
 
 rust_component("crossbeam_epoch") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/crossbeam-epoch-0.5.1/src/lib.rs"
+  source_root = "$registry_github/crossbeam-epoch-0.5.1/src/lib.rs"
   extern = [
     ":arrayvec",
     ":cfg_if",
@@ -242,37 +237,121 @@ rust_component("crossbeam_epoch") {
 }
 
 rust_component("crossbeam_utils") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/crossbeam-utils-0.4.1/src/lib.rs"
+  source_root = "$registry_github/crossbeam-utils-0.4.1/src/lib.rs"
   extern = [ ":cfg_if" ]
   cfg = [ "feature=\"use_std\"" ]
 }
 
 rust_component("arrayvec") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.7/src/lib.rs"
+  source_root = "$registry_github/arrayvec-0.4.7/src/lib.rs"
   extern = [ ":nodrop" ]
 }
 
 rust_component("nodrop") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/nodrop-0.1.12/src/lib.rs"
+  source_root = "$registry_github/nodrop-0.1.12/src/lib.rs"
 }
 
 rust_component("lazy_static") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/lazy_static-1.0.2/src/lib.rs"
+  source_root = "$registry_github/lazy_static-1.0.2/src/lib.rs"
 }
 
 rust_component("memoffset") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/memoffset-0.2.1/src/lib.rs"
+  source_root = "$registry_github/memoffset-0.2.1/src/lib.rs"
 }
 
 rust_component("scopeguard") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/scopeguard-0.3.3/src/lib.rs"
+  source_root = "$registry_github/scopeguard-0.3.3/src/lib.rs"
   cfg = [ "feature=\"use_std\"" ]
 }
 
 rust_component("num_cpus") {
-  source_root = "$crates/registry/src/github.com-1ecc6299db9ec823/num_cpus-1.8.0/src/lib.rs"
+  source_root = "$registry_github/num_cpus-1.8.0/src/lib.rs"
   extern = [ ":libc" ]
 }
+
+rust_component("hyper") {
+  source_root = "$registry_github/hyper-0.12.7/src/lib.rs"
+  extern = [
+    ":bytes",
+    ":futures",
+    ":h2",
+    ":http",
+    ":httparse",
+    ":iovec",
+    ":itoa",
+    ":log",
+    ":time",
+    ":tokio_io",
+    ":want",
+  ]
+}
+
+rust_component("h2") {
+  source_root = "$registry_github/h2-0.1.11/src/lib.rs"
+  extern = [
+    ":byteorder",
+    ":bytes",
+    ":fnv",
+    ":futures",
+    ":http",
+    ":indexmap",
+    ":log",
+    ":slab",
+    ":string",
+    ":tokio_io",
+  ]
+}
+
+rust_component("http") {
+  source_root = "$registry_github/http-0.1.8/src/lib.rs"
+  extern = [
+    ":bytes",
+    ":fnv",
+    ":itoa",
+  ]
+}
+
+rust_component("httparse") {
+  source_root = "$registry_github/httparse-1.3.2/src/lib.rs"
+}
+
+rust_component("fnv") {
+  source_root = "$registry_github/fnv-1.0.6/lib.rs"
+}
+
+rust_component("indexmap") {
+  source_root = "$registry_github/indexmap-1.0.1/src/lib.rs"
+}
+
+rust_component("itoa") {
+  source_root = "$registry_github/itoa-0.4.2/src/lib.rs"
+  features = [ "std" ]
+}
+
+rust_component("string") {
+  source_root = "$registry_github/string-0.1.1/src/lib.rs"
+}
+
+rust_component("time") {
+  source_root = "$registry_github/time-0.1.40/src/lib.rs"
+  extern = [
+    ":libc",
+  ]
+}
+
+rust_component("try_lock") {
+  source_root = "$registry_github/try-lock-0.2.2/src/lib.rs"
+}
+
+rust_component("want") {
+  source_root = "$registry_github/want-0.0.6/src/lib.rs"
+  extern = [
+    ":futures",
+    ":try_lock",
+    ":log",
+  ]
+}
+
 
 tokio_root = "$crates/git/checkouts/tokio-377c595163f99a10/5d0d2a2/"
 
