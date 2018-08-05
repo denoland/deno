@@ -29,7 +29,6 @@ run(["node", prettier, "--write"] + find_exts("js/", ".js", ".ts") +
 rustfmt_extra_args = []
 if 'RUSTFMT_FLAGS' in os.environ:
     rustfmt_extra_args += os.environ['RUSTFMT_FLAGS'].split()
-run([
-    "rustfmt", "--config-path", rustfmt_config, "--error-on-unformatted",
-    "--write-mode", "overwrite"
-] + rustfmt_extra_args + find_exts("src/", ".rs"))
+# Requires rustfmt 0.8.2 (flags were different in previous versions)
+run(["rustfmt", "--config-path", rustfmt_config] + rustfmt_extra_args +
+    find_exts("src/", ".rs"))
