@@ -64,8 +64,8 @@ def fix_symlinks():
     remove_and_symlink("third_party/v8/build_overrides",
                        root("build_overrides"), True)
     remove_and_symlink("third_party/v8/testing", root("testing"), True)
-    remove_and_symlink("../third_party/v8/tools/clang",
-                       root("tools/clang"), True)
+    remove_and_symlink("../third_party/v8/tools/clang", root("tools/clang"),
+                       True)
 
 
 # Run Yarn to install JavaScript dependencies.

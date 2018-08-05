@@ -3,11 +3,13 @@ use binding;
 use binding::{deno_buf, deno_set_response, DenoC};
 use flatbuffers;
 use from_c;
+use fs;
 use futures;
 use futures::sync::oneshot;
 use libc::c_char;
 use msg_generated::deno as msg;
 use std::ffi::CStr;
+use std::path::Path;
 
 // Help. Is there a way to do this without macros?
 // Want: fn str_from_ptr(*const c_char) -> &str
@@ -78,7 +80,7 @@ fn send_base(
   unsafe { binding::deno_send(d, buf) }
 }
 
-// https://github.com/ry/deno/blob/golang/os.go#L100-L154
+// https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 #[no_mangle]
 pub extern "C" fn handle_code_fetch(
   d: *const DenoC,
@@ -129,7 +131,7 @@ pub extern "C" fn handle_code_fetch(
   set_response_base(d, &mut builder, &args)
 }
 
-// https://github.com/ry/deno/blob/golang/os.go#L156-L169
+// https://github.com/denoland/deno/blob/golang/os.go#L156-L169
 #[no_mangle]
 pub extern "C" fn handle_code_cache(
   d: *const DenoC,
@@ -282,4 +284,24 @@ pub extern "C" fn handle_timer_clear(
   assert!(cmd_id == 0);
   debug!("handle_timer_clear");
   remove_timer(d, timer_id);
+}
+
+// Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
+#[no_mangle]
+pub extern "C" fn handle_read_file_sync(
+  d: *const DenoC,
+  cmd_id: u32,
+  filename: *const c_char,
+) {
+  let deno = from_c(d);
+  let filename = str_from_ptr!(filename);
+  println!("handle_read_file_sync {}", filename);
+  let result = fs::read_file_sync(Path::new(filename));
+  if result.is_err() {
+    let err = result.unwrap_err();
+    let errmsg = format!("{}", err);
+    reply_error(d, cmd_id, &errmsg);
+    return;
+  }
+  println!("handle_read_file_sync {}", result.is_err());
 }
