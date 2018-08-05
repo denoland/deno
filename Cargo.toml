@@ -14,3 +14,7 @@ log = "0.4.3"
 sha1 = "0.6.0"
 tempfile = "3"
 tokio = {git = "https://github.com/tokio-rs/tokio.git", rev = "5d0d2a2e1214f856993df6965825c89bfcaa879e"}
+hyper-rustls = "0.14.0"
+crossbeam-deque = "= 0.5.1"
+crossbeam-epoch = "= 0.5.1"
+futures-core = "0.2.1"
