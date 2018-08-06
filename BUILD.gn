@@ -186,7 +186,7 @@ v8_source_set("deno_base_test") {
     "src/from_snapshot.cc",
     "src/mock_runtime_test.cc",
   ]
-  data = [
+  inputs = [
     "$target_gen_dir/snapshot_mock_runtime.bin",
   ]
   deps = [
