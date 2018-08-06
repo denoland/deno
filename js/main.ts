@@ -1,9 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-// tslint:disable-next-line:no-reference
 import { flatbuffers } from "flatbuffers";
 import { deno as fbs } from "gen/msg_generated";
 import { assert, log, assignCmdId } from "./util";
 import * as runtime from "./runtime";
+import { libdeno } from "./globals";
 
 function startMsg(cmdId: number): Uint8Array {
   const builder = new flatbuffers.Builder();
@@ -25,7 +25,7 @@ export default function denoMain() {
   // are ready. The response should be a "StartRes" message containing the CLI
   // argv and other info.
   const cmdId = assignCmdId();
-  const res = deno.send(startMsg(cmdId));
+  const res = libdeno.send(startMsg(cmdId));
 
   // TODO(ry) Remove this conditional once main.rs gets up to speed.
   if (res == null) {

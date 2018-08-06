@@ -103,6 +103,7 @@ void HandleException(v8::Local<v8::Context> context,
     d->last_exception = exception_str;
   } else {
     printf("Pre-Deno Exception %s\n", exception_str.c_str());
+    exit(1);
   }
 }
 
@@ -278,7 +279,7 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   auto global = context->Global();
 
   auto deno_val = v8::Object::New(isolate);
-  CHECK(global->Set(context, deno::v8_str("deno"), deno_val).FromJust());
+  CHECK(global->Set(context, deno::v8_str("libdeno"), deno_val).FromJust());
 
   auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
   auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
@@ -295,17 +296,34 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   skip_onerror = true;
   {
     auto source = deno::v8_str(js_source.c_str());
-    CHECK(global->Set(context, deno::v8_str("mainSource"), source).FromJust());
+    CHECK(
+        deno_val->Set(context, deno::v8_str("mainSource"), source).FromJust());
 
     bool r = deno::ExecuteV8StringSource(context, js_filename, source);
     CHECK(r);
 
     if (source_map != nullptr) {
       CHECK_GT(source_map->length(), 1u);
-      std::string set_source_map = "setMainSourceMap( " + *source_map + " )";
-      CHECK_GT(set_source_map.length(), source_map->length());
-      r = deno::Execute(context, "set_source_map.js", set_source_map.c_str());
-      CHECK(r);
+      v8::TryCatch try_catch(isolate);
+      v8::ScriptOrigin origin(v8_str("set_source_map.js"));
+      std::string source_map_parens = "(" + *source_map + ")";
+      auto source_map_v8_str = deno::v8_str(source_map_parens.c_str());
+      auto script = v8::Script::Compile(context, source_map_v8_str, &origin);
+      if (script.IsEmpty()) {
+        DCHECK(try_catch.HasCaught());
+        HandleException(context, try_catch.Exception());
+        return;
+      }
+      auto source_map_obj = script.ToLocalChecked()->Run(context);
+      if (source_map_obj.IsEmpty()) {
+        DCHECK(try_catch.HasCaught());
+        HandleException(context, try_catch.Exception());
+        return;
+      }
+      CHECK(deno_val
+                ->Set(context, deno::v8_str("mainSourceMap"),
+                      source_map_obj.ToLocalChecked())
+                .FromJust());
     }
   }
   skip_onerror = false;
