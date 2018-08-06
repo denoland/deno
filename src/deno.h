@@ -24,8 +24,8 @@ typedef struct deno_buf {
   // the user has to call deno_buf_delete() explicitly. However, if we are in
   // C++, use the destructor to catch bugs.
   ~deno_buf();
-  // Disallow pass-by-value.
-  deno_buf(deno_buf&) = delete;
+  // Pass-by-value is implicitly disabled by having const data members.
+  // Allow returning `const deno_buf`.
   deno_buf(const deno_buf&) = default;
 
 #endif
@@ -37,7 +37,7 @@ typedef struct deno_buf {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
 
-static const deno_buf DENO_BUF_INIT = {nullptr, 0, nullptr, 0};
+static const deno_buf DENO_BUF_NULL = {nullptr, 0, nullptr, 0};
 
 // Allocate a new buffer with backing storage.
 const deno_buf deno_buf_new(size_t len, bool zero_init);
@@ -94,21 +94,22 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source);
 // it; deno_send() is responsible for releasing it's memory.
 // TODO(piscisaureus) In C++ and/or Rust, use a smart pointer or similar to
 // enforce this rule.
-int deno_send(Deno* d, deno_buf* buf);
+int deno_send(Deno* d, deno_buf buf);
 
 // Call this inside a deno_recv_cb to respond synchronously to messages.
 // If this is not called during the life time of a deno_recv_cb callback
 // the deno.send() call in javascript will return null.
 // After calling deno_set_response(), the caller no longer owns `buf` and must
 // not access it; deno_set_response() is responsible for releasing it's memory.
-void deno_set_response(Deno* d, deno_buf* buf);
+void deno_set_response(Deno* d, deno_buf buf);
 
 // Receive a message from javascript.
 //   `buf`     : Pointer to a `struct deno_buf` which' properties will point
 //               at the message if this function succeeds.
 //   `timeout` : specifies how long deno_recv should block. -1 means never.
 //   returns   :  -1 on error, 0 on timeout, 1 when succesful.
-int deno_recv(Deno* d, deno_buf* buf, int64_t timeout);
+// TODO: Not implemented.
+// int deno_recv(Deno* d, deno_buf* buf, int64_t timeout);
 
 const char* deno_last_exception(Deno* d);
 

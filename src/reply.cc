@@ -34,8 +34,7 @@ void deno_reply_start(Deno* d, uint32_t cmd_id, int argc, char* argv[],
   auto base = deno::CreateBase(builder, cmd_id, 0, deno::Any_StartRes,
                                start_msg.Union());
   builder.Finish(base);
-  auto res_buf = builder.ExportBuf();
-  deno_set_response(d, &res_buf);
+  deno_set_response(d, builder.ExportBuf());
 }
 
 void deno_handle_msg_from_js(Deno* d, deno_buf* buf) {

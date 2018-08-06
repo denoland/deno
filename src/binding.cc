@@ -153,27 +153,26 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value str(isolate, args[0]);
   const char* cstr = ToCString(str);
-  fprintf(stderr, "%s\n", cstr);
+  printf("%s\n", cstr);
   fflush(stderr);
 }
 
-static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate,
-                                           deno_buf* buf) {
-  if (buf->alloc_ptr == nullptr) {
+static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {
+  if (buf.alloc_ptr == nullptr) {
     // If alloc_ptr isn't set, we memcpy.
     // This is currently used for flatbuffers created in Rust.
-    auto ab = v8::ArrayBuffer::New(isolate, buf->data_len);
-    memcpy(ab->GetContents().Data(), buf->data_ptr, buf->data_len);
-    auto view = v8::Uint8Array::New(ab, 0, buf->data_len);
-    deno_buf_delete_raw(buf);
+    auto ab = v8::ArrayBuffer::New(isolate, buf.data_len);
+    memcpy(ab->GetContents().Data(), buf.data_ptr, buf.data_len);
+    auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
+    deno_buf_delete_raw(&buf);
     return view;
   } else {
     auto ab = v8::ArrayBuffer::New(
-        isolate, reinterpret_cast<void*>(buf->alloc_ptr), buf->alloc_len,
+        isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
         v8::ArrayBufferCreationMode::kInternalized);
     auto view =
-        v8::Uint8Array::New(ab, buf->data_ptr - buf->alloc_ptr, buf->data_len);
-    deno_buf_delete_raw(buf);
+        v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
+    deno_buf_delete_raw(&buf);
     return view;
   }
 }
@@ -232,13 +231,13 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   if (d->threads_enabled) {
     auto cmd_id = d->cmd_id_cb(&cmd_buf);
-    d->cmd_queue.Send(&cmd_buf);
-    auto res_buf = DENO_BUF_INIT;
+    d->cmd_queue.Send(deno_buf_move(&cmd_buf));
+    auto res_buf = DENO_BUF_NULL;
     auto r = d->res_queue.RecvFilter(&res_buf, [&](const deno_buf& buf) {
       return cmd_id == d->cmd_id_cb(&buf);
     });
     DCHECK(r);
-    auto ab = deno::ImportBuf(d->isolate, &res_buf);
+    auto ab = deno::ImportBuf(d->isolate, deno_buf_move(&res_buf));
     args.GetReturnValue().Set(ab);
 
   } else {
@@ -400,7 +399,7 @@ static int execute_js(Deno* d, const char* js_filename, const char* js_source) {
 }
 
 static void backend_main(Deno* d) {
-  deno_buf msg = DENO_BUF_INIT;
+  deno_buf msg = DENO_BUF_NULL;
   while (d->cmd_queue.Recv(&msg)) {
     d->recv_cb(d, &msg);
     // If the callback needs the keep the buffer around after the callback
@@ -422,9 +421,9 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
   return r;
 }
 
-int deno_send(Deno* d, deno_buf* buf) {
+int deno_send(Deno* d, deno_buf buf) {
   if (d->threads_enabled) {
-    d->res_queue.Send(buf);
+    d->res_queue.Send(deno_buf_move(&buf));
     return 1;
   }
 
@@ -439,12 +438,13 @@ int deno_send(Deno* d, deno_buf* buf) {
 
   auto recv = d->recv.Get(d->isolate);
   if (recv.IsEmpty()) {
+    deno_buf_delete(&buf);
     d->last_exception = "deno.recv has not been called.";
     return 0;
   }
 
   v8::Local<v8::Value> args[1];
-  args[0] = deno::ImportBuf(d->isolate, buf);
+  args[0] = deno::ImportBuf(d->isolate, deno_buf_move(&buf));
   recv->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {
@@ -455,13 +455,13 @@ int deno_send(Deno* d, deno_buf* buf) {
   return 1;
 }
 
-void deno_set_response(Deno* d, deno_buf* buf) {
+void deno_set_response(Deno* d, deno_buf buf) {
   if (d->threads_enabled) {
-    d->res_queue.Send(buf);
+    d->res_queue.Send(deno_buf_move(&buf));
     return;
   }
 
-  auto ab = deno::ImportBuf(d->isolate, buf);
+  auto ab = deno::ImportBuf(d->isolate, deno_buf_move(&buf));
   d->current_args->GetReturnValue().Set(ab);
 }
 

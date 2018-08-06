@@ -10,7 +10,7 @@ namespace deno {
 
 class MessageQueue {
   struct Message {
-    deno_buf buf = DENO_BUF_INIT;
+    deno_buf buf = DENO_BUF_NULL;
     Message* next;
   };
 
@@ -31,9 +31,9 @@ class MessageQueue {
         cv_(),
         reader_is_blocked_(false) {}
 
-  void Send(deno_buf* buf, bool nowake = false) {
+  void Send(deno_buf buf, bool nowake = false) {
     auto m = new Message;
-    deno_buf_move_into(&m->buf, buf);
+    deno_buf_move_into(&m->buf, &buf);
 
     std::unique_lock<Mutex> lock(mutex_);
 
