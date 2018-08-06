@@ -13,8 +13,9 @@ import { log } from "./util";
 import { assetSourceCode } from "./assets";
 import * as os from "./os";
 import * as sourceMaps from "./v8_source_maps";
-import { window, globalEval } from "./globals";
-//import * as deno from "./deno";
+import { libdeno, window, globalEval } from "./globals";
+import * as deno from "./deno";
+import { RawSourceMap } from "./types";
 
 const EOL = "\n";
 const ASSETS = "/$asset$/";
@@ -40,26 +41,16 @@ window.onerror = (
   os.exit(1);
 };
 
-// This is called during snapshot creation with the contents of
-// out/debug/gen/bundle/main.js.map.
-import { RawSourceMap } from "source-map";
-let mainSourceMap: RawSourceMap = null;
-function setMainSourceMap(rawSourceMap: RawSourceMap) {
-  util.assert(Number(rawSourceMap.version) === 3);
-  mainSourceMap = rawSourceMap;
-}
-window["setMainSourceMap"] = setMainSourceMap;
-
 export function setup(): void {
   sourceMaps.install({
     installPrepareStackTrace: true,
     getGeneratedContents: (filename: string): string | RawSourceMap => {
       util.log("getGeneratedContents", filename);
       if (filename === "gen/bundle/main.js") {
-        util.assert(window["mainSource"].length > 0);
-        return window["mainSource"];
+        util.assert(libdeno.mainSource.length > 0);
+        return libdeno.mainSource;
       } else if (filename === "main.js.map") {
-        return mainSourceMap;
+        return libdeno.mainSourceMap;
       } else if (filename === "deno_main.js") {
         return "";
       } else {

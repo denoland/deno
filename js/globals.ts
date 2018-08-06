@@ -1,22 +1,14 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 import { Console } from "./console";
+import { RawSourceMap } from "./types";
 
 declare global {
-  type MessageCallback = (msg: Uint8Array) => void;
-
-  interface Deno {
-    print(text: string): void;
-    recv(cb: MessageCallback): void;
-    send(msg: ArrayBufferView): Uint8Array | null;
-  }
-
   interface Window {
     console: Console;
   }
 
   const console: Console;
-  const deno: Readonly<Deno>;
   const window: Window;
 }
 
@@ -28,10 +20,21 @@ declare global {
 export const globalEval = eval;
 
 // A reference to the global object.
-// TODO The underscore is because it's conflicting with @types/node.
 export const window = globalEval("this");
+window.window = window;
 
-window["window"] = window; // Create a window object.
+// The libdeno functions are moved so that users can't access them.
+type MessageCallback = (msg: Uint8Array) => void;
+interface Libdeno {
+  recv(cb: MessageCallback): void;
+  send(msg: ArrayBufferView): null | Uint8Array;
+  print(x: string): void;
+  mainSource: string;
+  mainSourceMap: RawSourceMap;
+}
+export const libdeno = window.libdeno as Libdeno;
+window.libdeno = null;
+
 // import "./url";
 
 // import * as timer from "./timers";
@@ -40,7 +43,7 @@ window["window"] = window; // Create a window object.
 // window["clearTimeout"] = timer.clearTimer;
 // window["clearInterval"] = timer.clearTimer;
 
-window["console"] = new Console();
+window.console = new Console(libdeno.print);
 
 // import { fetch } from "./fetch";
 // window["fetch"] = fetch;

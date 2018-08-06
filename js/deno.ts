@@ -2,4 +2,5 @@
 // Public deno module.
 // TODO get rid of deno.d.ts
 // export { pub, sub } from "./dispatch";
-export { readFileSync, writeFileSync } from "./os";
+export { readFileSync } from "./os";
+export { libdeno } from "./globals";
