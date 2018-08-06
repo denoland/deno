@@ -116,6 +116,19 @@ export interface CallSite {
   isConstructor(): boolean;
 }
 
+export interface StartOfSourceMap {
+  file?: string;
+  sourceRoot?: string;
+}
+
+export interface RawSourceMap extends StartOfSourceMap {
+  version: string;
+  sources: string[];
+  names: string[];
+  sourcesContent?: string[];
+  mappings: string;
+}
+
 declare global {
   // Declare "static" methods in Error
   interface ErrorConstructor {

@@ -97,10 +97,14 @@ function stringifyArgs(args: any[]): string {
   return out.join(" ");
 }
 
+type PrintFunc = (x: string) => void;
+
 export class Console {
+  constructor(private printFunc: PrintFunc) {}
+
   // tslint:disable-next-line:no-any
   log(...args: any[]): void {
-    deno.print(stringifyArgs(args));
+    this.printFunc(stringifyArgs(args));
   }
 
   debug = this.log;
@@ -108,7 +112,7 @@ export class Console {
 
   // tslint:disable-next-line:no-any
   warn(...args: any[]): void {
-    deno.print(`ERROR: ${stringifyArgs(args)}`);
+    this.printFunc(`ERROR: ${stringifyArgs(args)}`);
   }
 
   error = this.warn;

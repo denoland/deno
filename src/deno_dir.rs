@@ -189,7 +189,8 @@ impl DenoDir {
         base.join(module_specifier)?
       };
 
-    let mut p = j.to_file_path()
+    let mut p = j
+      .to_file_path()
       .unwrap()
       .into_os_string()
       .into_string()

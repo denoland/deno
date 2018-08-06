@@ -3,10 +3,9 @@
 // Originated from source-map-support but has been heavily modified for deno.
 
 import { SourceMapConsumer, MappedPosition } from "source-map";
-import { RawSourceMap } from "source-map";
 import * as base64 from "base64-js";
 import { arrayToStr } from "./util";
-import { CallSite } from "./types";
+import { CallSite, RawSourceMap } from "./types";
 
 const consumers = new Map<string, SourceMapConsumer>();
 
