@@ -15,3 +15,5 @@ sha1 = "0.6.0"
 tempfile = "3"
 tokio = {git = "https://github.com/tokio-rs/tokio.git", rev = "5d0d2a2e1214f856993df6965825c89bfcaa879e"}
 hyper = "0.12.7"
+hyper-rustls = "0.14.0"
+rustls = "0.13.0"
