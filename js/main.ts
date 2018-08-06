@@ -7,6 +7,8 @@ import { assert, log, assignCmdId } from "./util";
 import * as runtime from "./runtime";
 import * as timers from "./timers";
 
+declare var deno: any
+
 function startMsg(cmdId: number): Uint8Array {
   const builder = new flatbuffers.Builder();
   fbs.Start.startStart(builder);

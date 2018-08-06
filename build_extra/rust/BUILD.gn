@@ -299,6 +299,7 @@ rust_component("hyper_rustls") {
   extern = [
     ":ct_logs",
     ":futures",
+    ":futures_core",
     ":http",
     ":hyper",
     ":rustls",
@@ -330,6 +331,7 @@ rust_component("ring") {
   source_root = "$registry_github/ring-0.13.2/src/lib.rs"
   features = [ "use_heap", "rsa_signing" ]
   extern = [
+    ":libc",
     ":untrusted",
     ":lazy_static",
   ]
@@ -446,6 +448,10 @@ rust_component("httparse") {
 
 rust_component("fnv") {
   source_root = "$registry_github/fnv-1.0.6/lib.rs"
+}
+
+rust_component("futures_core") {
+  source_root = "$registry_github/futures-core-0.2.1/src/lib.rs"
 }
 
 rust_component("futures_cpupool") {

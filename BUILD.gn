@@ -36,7 +36,6 @@ config("deno_config") {
 
 main_extern = [
   "$rust_build:hyper",
-  "$rust_build:hyper_rustls",
   "$rust_build:rustls",
   "$rust_build:libc",
   "$rust_build:log",
@@ -64,6 +63,7 @@ main_extern = [
   "$rust_build:ct_logs",
   "$rust_build:fnv",
   "$rust_build:futures",
+  "$rust_build:futures_core",
   "$rust_build:futures_cpupool",
   "$rust_build:h2",
   "$rust_build:http",
