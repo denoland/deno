@@ -71,6 +71,30 @@ void deno_handle_msg_from_js(Deno* d, deno_buf buf) {
       break;
     }
 
+    case deno::Any_ReadFileSync: {
+      auto msg = base->msg_as_ReadFileSync();
+      auto filename = msg->filename()->c_str();
+      handle_read_file_sync(d, cmd_id, filename);
+      break;
+    }
+
+    case deno::Any_TimerStart: {
+      auto msg = base->msg_as_TimerStart();
+      handle_timer_start(d, cmd_id, msg->id(), msg->interval(), msg->delay());
+      break;
+    }
+
+    case deno::Any_TimerReady: {
+      CHECK(false && "Privileged side should not receive TimerReady message.");
+      break;
+    }
+
+    case deno::Any_TimerClear: {
+      auto msg = base->msg_as_TimerClear();
+      handle_timer_clear(d, cmd_id, msg->id());
+      break;
+    }
+
     case deno::Any_Exit: {
       auto msg = base->msg_as_Exit();
       uint32_t code = msg->code();

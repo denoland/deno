@@ -10,4 +10,4 @@ third_party.fix_symlinks()
 
 third_party.run_yarn()
 third_party.run_cargo()
-third_party.run_gclient_sync()
+# third_party.run_gclient_sync()

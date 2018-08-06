@@ -14,7 +14,7 @@ import { assetSourceCode } from "./assets";
 import * as os from "./os";
 import * as sourceMaps from "./v8_source_maps";
 import { window, globalEval } from "./globals";
-//import * as deno from "./deno";
+import * as deno from "./deno";
 
 const EOL = "\n";
 
@@ -145,6 +145,7 @@ export function makeDefine(fileName: string): AmdDefine {
       } else if (dep === "typescript") {
         return ts;
       } else if (dep === "deno") {
+        console.log("LOADING DENO");
         return deno;
       } else {
         const resolved = resolveModuleName(dep, fileName);
@@ -340,7 +341,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
     containingFile: string,
     reusedNames?: string[]
   ): Array<ts.ResolvedModule | undefined> {
-    //util.log("resolveModuleNames", { moduleNames, reusedNames });
+    util.log("resolveModuleNames", { moduleNames, reusedNames });
     return moduleNames.map((name: string) => {
       let resolvedFileName;
       if (name === "deno") {
