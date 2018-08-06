@@ -6,7 +6,7 @@
 const global = this;
 
 function assert(cond) {
-  if (!cond) throw Error("mock_runtime.js assert failed");
+  if (!cond) throw Error("mock_runtime.js assert failedv");
 }
 
 global.CanCallFunction = () => {
