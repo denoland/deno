@@ -3,13 +3,18 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-#[allow(dead_code)]
-pub fn read_file_sync(path: &Path) -> std::io::Result<String> {
+pub fn read_file_sync(path: &Path) -> std::io::Result<Vec<u8>> {
   File::open(path).and_then(|mut f| {
-    let mut contents = String::new();
-    f.read_to_string(&mut contents)?;
-    Ok(contents)
+    let mut buffer = Vec::new();
+    f.read_to_end(&mut buffer)?;
+    Ok(buffer)
   })
+}
+
+pub fn read_file_sync_string(path: &Path) -> std::io::Result<String> {
+  let vec = read_file_sync(path)?;
+  String::from_utf8(vec)
+    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
 }
 
 pub fn mkdir(path: &Path) -> std::io::Result<()> {
