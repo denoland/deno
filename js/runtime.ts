@@ -166,12 +166,11 @@ export function resolveModule(
   util.log("resolveModule", { moduleSpecifier, containingFile });
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
   let filename: string, sourceCode: string, outputCode: string;
-  if (
-    moduleSpecifier.startsWith(ASSETS) ||
-    containingFile.startsWith(ASSETS)
-  ) {
+  if (moduleSpecifier.startsWith(ASSETS) || containingFile.startsWith(ASSETS)) {
     // Assets are compiled into the runtime javascript bundle.
-    const assetName = moduleSpecifier.split("/").pop();
+    const moduleId = moduleSpecifier.split("/").pop();
+    const assetName = moduleId.includes(".") ? moduleId : `${moduleId}.d.ts`;
+    util.assert(assetName in assetSourceCode);
     sourceCode = assetSourceCode[assetName];
     filename = ASSETS + assetName;
   } else {
@@ -330,7 +329,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   }
 
   getDefaultLibFileName(options: ts.CompilerOptions): string {
-    const fn = "lib.deno.d.ts"; // ts.getDefaultLibFileName(options);
+    const fn = "lib.globals.d.ts"; // ts.getDefaultLibFileName(options);
     util.log("getDefaultLibFileName", fn);
     const m = resolveModule(fn, ASSETS);
     return m.fileName;
@@ -354,7 +353,9 @@ class TypeScriptHost implements ts.LanguageServiceHost {
           return undefined;
         }
       }
-      const isExternalLibraryImport = false;
+      // This flags to the compiler to not go looking to transpile functional
+      // code, anything that is in `/$asset$/` is just library code
+      const isExternalLibraryImport = resolvedFileName.startsWith(ASSETS);
       return { resolvedFileName, isExternalLibraryImport };
     });
   }
