@@ -17,6 +17,7 @@ import { window, globalEval } from "./globals";
 //import * as deno from "./deno";
 
 const EOL = "\n";
+const ASSETS = "/$asset$/";
 
 // tslint:disable-next-line:no-any
 export type AmdFactory = (...args: any[]) => undefined | object;
@@ -166,13 +167,13 @@ export function resolveModule(
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
   let filename: string, sourceCode: string, outputCode: string;
   if (
-    moduleSpecifier.startsWith("/$asset$/") ||
-    containingFile.startsWith("/$asset$/")
+    moduleSpecifier.startsWith(ASSETS) ||
+    containingFile.startsWith(ASSETS)
   ) {
     // Assets are compiled into the runtime javascript bundle.
     const assetName = moduleSpecifier.split("/").pop();
     sourceCode = assetSourceCode[assetName];
-    filename = "/$asset$/" + assetName;
+    filename = ASSETS + assetName;
   } else {
     // We query Rust with a CodeFetch message. It will load the sourceCode, and
     // if there is any outputCode cached, will return that as well.
@@ -331,7 +332,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   getDefaultLibFileName(options: ts.CompilerOptions): string {
     const fn = "lib.deno.d.ts"; // ts.getDefaultLibFileName(options);
     util.log("getDefaultLibFileName", fn);
-    const m = resolveModule(fn, "/$asset$/");
+    const m = resolveModule(fn, ASSETS);
     return m.fileName;
   }
 
@@ -344,9 +345,9 @@ class TypeScriptHost implements ts.LanguageServiceHost {
     return moduleNames.map((name: string) => {
       let resolvedFileName;
       if (name === "deno") {
-        resolvedFileName = resolveModuleName("deno.d.ts", "/$asset$/");
+        resolvedFileName = resolveModuleName("deno.d.ts", ASSETS);
       } else if (name === "typescript") {
-        resolvedFileName = resolveModuleName("typescript.d.ts", "/$asset$/");
+        resolvedFileName = resolveModuleName("typescript.d.ts", ASSETS);
       } else {
         resolvedFileName = resolveModuleName(name, containingFile);
         if (resolvedFileName == null) {
