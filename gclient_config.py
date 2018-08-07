@@ -9,6 +9,7 @@ solutions = [{
         'v8/tools/swarming_client': None,
         'v8/third_party/instrumented_libraries': None,
         'v8/third_party/android_tools': None,
+        'v8/third_party/depot_tools': None,
         'v8/test/wasm-js': None,
         'v8/test/benchmarks/data': None,
         'v8/test/mozilla/data': None,
