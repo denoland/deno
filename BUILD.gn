@@ -197,19 +197,53 @@ flatbuffer("msg_cpp") {
   ]
 }
 
+# Generates type declarations for files that need to be included
+# in the runtime bundle
+run_node("gen_declarations") {
+  out_dir = target_gen_dir
+  sources = [
+    "js/console.ts",
+    "js/deno.ts",
+    "js/globals.ts",
+    "js/os.ts",
+    "js/tsconfig.generated.json",
+    "js/util.ts",
+  ]
+  outputs = [
+    out_dir + "/js/console.d.ts",
+    out_dir + "/js/deno.d.ts",
+    out_dir + "/js/globals.d.ts",
+    out_dir + "/js/os.d.ts",
+    out_dir + "/js/util.d.ts",
+  ]
+  deps = [
+    ":msg_ts",
+  ]
+  args = [
+    "./node_modules/typescript/bin/tsc",
+    "-p",
+    rebase_path("js/tsconfig.generated.json", root_build_dir),
+    "--baseUrl",
+    rebase_path(root_build_dir),
+    "--outDir",
+    rebase_path(out_dir),
+  ]
+}
+
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
     "js/assets.ts",
     "js/console.ts",
-    "js/deno.d.ts",
     "js/globals.ts",
     "js/lib.globals.d.ts",
     "js/main.ts",
     "js/os.ts",
+    "js/plugins.d.ts",
     "js/runtime.ts",
-    "js/types.ts",
+    "js/types.d.ts",
     "js/util.ts",
+    "js/v8_source_maps.ts",
     "rollup.config.js",
     "src/msg.fbs",
     "tsconfig.json",
@@ -219,6 +253,7 @@ run_node("bundle") {
     out_dir + "main.js.map",
   ]
   deps = [
+    ":gen_declarations",
     ":msg_ts",
   ]
   args = [
