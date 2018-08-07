@@ -23,8 +23,8 @@ window["clearInterval"] = timer.clearTimer;
 import { Console } from "./console";
 window["console"] = new Console();
 
-// import { fetch } from "./fetch";
-// window["fetch"] = fetch;
+import { fetch } from "./fetch";
+window["fetch"] = fetch;
 
 // import { TextEncoder, TextDecoder } from "text-encoding";
 // window["TextEncoder"] = TextEncoder;

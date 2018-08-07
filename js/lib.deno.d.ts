@@ -49,6 +49,8 @@ declare function clearImmediate(handle: number): void;
 declare function setImmediate(handler: (...args: any[]) => void): number;
 declare function setImmediate(handler: any, ...args: any[]): number;
 
+declare function fetch(handler: any, ...args: any[]): any;
+
 interface WindowTimers extends WindowTimersExtension {
   clearInterval(handle?: number): void;
   clearTimeout(handle?: number): void;

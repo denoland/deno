@@ -6,6 +6,7 @@ import { deno as fbs } from "gen/msg_generated";
 import { assert, log, assignCmdId } from "./util";
 import * as runtime from "./runtime";
 import * as timers from "./timers";
+import { onFetchRes } from "./fetch";
 
 function startMsg(cmdId: number): Uint8Array {
   const builder = new flatbuffers.Builder();
@@ -23,6 +24,12 @@ function onMessage(ui8: Uint8Array) {
   const bb = new flatbuffers.ByteBuffer(ui8);
   const base = fbs.Base.getRootAsBase(bb);
   switch (base.msgType()) {
+    case fbs.Any.FetchRes: {
+      const msg = new fbs.FetchRes();
+      assert(base.msg(msg) != null);
+      onFetchRes(msg);
+      break;
+    }
     case fbs.Any.TimerReady: {
       const msg = new fbs.TimerReady();
       assert(base.msg(msg) != null);
