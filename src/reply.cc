@@ -71,6 +71,14 @@ void deno_handle_msg_from_js(Deno* d, deno_buf buf) {
       break;
     }
 
+    case deno::Any_FetchReq: {
+      auto msg = base->msg_as_FetchReq();
+      auto id = msg->id();
+      auto url = msg->url()->c_str();
+      handle_fetch_req(d, cmd_id, id, url);
+      break;
+    }
+
     case deno::Any_TimerStart: {
       auto msg = base->msg_as_TimerStart();
       handle_timer_start(d, cmd_id, msg->id(), msg->interval(), msg->delay());

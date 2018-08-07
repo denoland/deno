@@ -7,6 +7,7 @@ extern crate tempfile;
 extern crate tokio;
 extern crate tokio_current_thread;
 extern crate url;
+extern crate hyper;
 #[macro_use]
 extern crate log;
 
