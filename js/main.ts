@@ -1,6 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 // tslint:disable-next-line:no-reference
-/// <reference path="deno.d.ts" />
 import { flatbuffers } from "flatbuffers";
 import { deno as fbs } from "gen/msg_generated";
 import { assert, log, assignCmdId } from "./util";
