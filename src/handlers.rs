@@ -9,6 +9,10 @@ use futures::sync::oneshot;
 use msg_generated::deno as msg;
 use std;
 use std::path::Path;
+use tokio::prelude::future;
+use hyper;
+use hyper::Client;
+use hyper::rt::{self, Future, Stream};
 
 pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
   let bytes = unsafe { std::slice::from_raw_parts(buf.data_ptr, buf.data_len) };
@@ -210,6 +214,66 @@ fn handle_code_cache(
     reply_error(d, 0, &errmsg);
   }
   // null response indicates success.
+}
+
+// Fetch!
+#[no_mangle]
+pub extern "C" fn handle_fetch_req(
+  d: *const DenoC,
+  cmd_id: u32,
+  id: u32,
+  url_: *const c_char,
+) {
+  let req = fetch_url(d, cmd_id, id.clone(), url_);
+  rt::run(req);
+}
+
+fn fetch_url(
+  d: *const DenoC,
+  cmd_id: u32,
+  id: u32,
+  url_: *const c_char,
+) -> impl Future<Item=(), Error=()> {
+  let url = str_from_ptr!(url_).parse::<hyper::Uri>().unwrap();
+  let client = Client::new();
+
+  client
+    .get(url)
+    .map(|res| {
+      // Borrow problems ahead
+
+      // res.into_body().concat2()
+      //   .map(|body| {
+      //     let status = res.status().as_u16() as i32;
+      //     let headers = res.headers();
+      //     let b = String::from_utf8_lossy(&body).to_string();
+
+      //     let mut builder = flatbuffers::FlatBufferBuilder::new();
+      //     let msg = msg::CreateFetchRes(
+      //       &mut builder,
+      //       &msg::FetchResArgs {
+      //         id,
+      //         status,
+      //     //   &status,
+      //     //   &headers,
+      //     //   &body
+      //         ..Default::default()
+      //       },
+      //     );
+      //     builder.finish(msg);
+      //     // send_base(
+      //     //   d,
+      //     //   &mut builder,
+      //     //   &msg::BaseArgs {
+      //     //     msg: Some(msg.union()),
+      //     //     msg_type: msg::Any::FetchRes,
+      //     //     ..Default::default()
+      //     //   },
+      //     // );
+      //   });
+    })
+    .map_err(|err| {
+    })
 }
 
 fn set_timeout<F>(

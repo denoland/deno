@@ -6,19 +6,17 @@ import {
   Resolvable,
   typedArrayToArrayBuffer
 } from "./util";
-import { pubInternal, sub } from "./dispatch";
-import { deno as pb } from "./msg.pb";
+import { flatbuffers } from "flatbuffers";
+import { deno as fbs } from "gen/msg_generated";
 
-export function initFetch() {
-  sub("fetch", (payload: Uint8Array) => {
-    const msg = pb.Msg.decode(payload);
-    assert(msg.command === pb.Msg.Command.FETCH_RES);
-    const id = msg.fetchResId;
-    const f = fetchRequests.get(id);
-    assert(f != null, `Couldn't find FetchRequest id ${id}`);
+declare var deno: any;
 
-    f.onMsg(msg);
-  });
+export function onFetchRes(msg: fbs.FetchRes) {
+  const id = msg.id();
+  const f = fetchRequests.get(id);
+  assert(f != null, `Couldn't find FetchRequest id ${id}`);
+  f.onMsg(msg);
+  fetchRequests.delete(id);
 }
 
 const fetchRequests = new Map<number, FetchRequest>();
@@ -29,6 +27,7 @@ class FetchResponse implements Response {
   bodyUsed = false; // TODO
   status: number;
   statusText = "FIXME"; // TODO
+  trailer: null; // TODO
   readonly type = "basic"; // TODO
   redirected = false; // TODO
   headers: null; // TODO
@@ -75,7 +74,7 @@ class FetchResponse implements Response {
   onHeader: (res: Response) => void;
   onError: (error: Error) => void;
 
-  onMsg(msg: pb.Msg) {
+  onMsg(msg: any) {
     if (msg.error !== null && msg.error !== "") {
       //throw new Error(msg.error)
       this.onError(new Error(msg.error));
@@ -85,7 +84,7 @@ class FetchResponse implements Response {
     if (this.first) {
       this.first = false;
       this.status = msg.fetchResStatus;
-      this.onHeader(this);
+      //this.onHeader(this);
     } else {
       // Body message. Assuming it all comes in one message now.
       const ab = typedArrayToArrayBuffer(msg.fetchResBody);
@@ -105,7 +104,7 @@ class FetchRequest {
     this.response = new FetchResponse(this);
   }
 
-  onMsg(msg: pb.Msg) {
+  onMsg(msg: any) {
     this.response.onMsg(msg);
   }
 
@@ -115,12 +114,22 @@ class FetchRequest {
 
   start() {
     log("dispatch FETCH_REQ", this.id, this.url);
-    const res = pubInternal("fetch", {
-      command: pb.Msg.Command.FETCH_REQ,
-      fetchReqId: this.id,
-      fetchReqUrl: this.url
-    });
-    assert(res == null);
+
+    // Send FetchReq message
+    const builder = new flatbuffers.Builder();
+    const url = builder.createString(this.url);
+    fbs.FetchReq.startFetchReq(builder);
+    fbs.FetchReq.addId(builder, this.id);
+    fbs.FetchReq.addUrl(builder, url);
+    const msg = fbs.FetchReq.endFetchReq(builder);
+    fbs.Base.startBase(builder);
+    fbs.Base.addMsg(builder, msg);
+    fbs.Base.addMsgType(builder, fbs.Any.FetchReq);
+    builder.finish(fbs.Base.endBase(builder));
+    const resBuf = deno.send(builder.asUint8Array());
+
+    console.log("FetchReq sent", builder);
+
   }
 }
 
