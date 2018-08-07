@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # Runs the full test suite.
 # Usage: ./tools/test.py out/Debug
+from __future__ import print_function
 import os
 import sys
 from check_output_test import check_output_test
@@ -9,14 +10,14 @@ from util import executable_suffix, run
 
 def check_exists(filename):
     if not os.path.exists(filename):
-        print "Required target doesn't exist:", filename
-        print "Build target :all"
+        print("Required target doesn't exist:", filename)
+        print("Build target :all")
         sys.exit(1)
 
 
 def main(argv):
     if len(argv) != 2:
-        print "Usage: tools/test.py [build dir]"
+        print("Usage: tools/test.py [build dir]")
         sys.exit(1)
     build_dir = argv[1]
 
