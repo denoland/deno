@@ -173,7 +173,7 @@ struct Logger;
 
 impl log::Log for Logger {
   fn enabled(&self, metadata: &log::Metadata) -> bool {
-    metadata.level() <= log::Level::Info
+    metadata.level() <= log::max_level()
   }
 
   fn log(&self, record: &log::Record) {
