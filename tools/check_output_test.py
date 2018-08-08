@@ -27,7 +27,13 @@ def check_output_test(deno_exe_filename):
             expected_out = f.read()
         cmd = [deno_exe_filename, script_abs]
         print " ".join(cmd)
-        actual_out = subprocess.check_output(cmd, universal_newlines=True)
+        try:
+            actual_out = subprocess.check_output(cmd, universal_newlines=True)
+        except subprocess.CalledProcessError as e:
+            print "Got non-zero exit code. Output:"
+            print e.output
+            sys.exit(1)
+
         if expected_out != actual_out:
             print "Expected output does not match actual."
             print "Expected: " + expected_out
