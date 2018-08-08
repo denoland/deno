@@ -60,10 +60,12 @@ main_extern = [
   "$rust_build:futures",
   "$rust_build:idna",
   "$rust_build:iovec",
+  "$rust_build:kernel32",
   "$rust_build:lazy_static",
   "$rust_build:lazycell",
   "$rust_build:memoffset",
   "$rust_build:mio",
+  "$rust_build:miow",
   "$rust_build:net2",
   "$rust_build:nodrop",
   "$rust_build:num_cpus",
@@ -85,11 +87,24 @@ main_extern = [
   "$rust_build:unicode_bidi",
   "$rust_build:unicode_normalization",
   "$rust_build:winapi",
+  "$rust_build:ws2_32",
+]
+
+# Old version of the 'winapi' crate, required by 'mio', 'miow', and 'iovec'.
+# This exceptional! Generally we don't allow multiple versions of a crate.
+# TODO: Remove this dependency. https://github.com/denoland/deno/issues/484
+main_extern_version = [
+  {
+    label = "$rust_build:winapi-0.2"
+    crate_name = "winapi"
+    crate_version = "0.2"
+  },
 ]
 
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
+  extern_version = main_extern_version
   deps = [
     ":libdeno",
   ]
@@ -102,6 +117,7 @@ rust_executable("deno") {
 rust_executable("deno_ns") {
   source_root = "src/main.rs"
   extern = main_extern
+  extern_version = main_extern_version
   deps = [
     ":libdeno_nosnapshot",
   ]
@@ -110,6 +126,7 @@ rust_executable("deno_ns") {
 rust_test("test_rs") {
   source_root = "src/main.rs"
   extern = main_extern
+  extern_version = main_extern_version
   deps = [
     ":libdeno",
   ]
