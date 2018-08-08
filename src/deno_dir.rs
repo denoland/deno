@@ -165,12 +165,27 @@ impl DenoDir {
 
     let j: Url =
       if containing_file == "." || Path::new(module_specifier).is_absolute() {
-        Url::from_file_path(module_specifier).unwrap()
+        let r = Url::from_file_path(module_specifier);
+        // TODO(ry) Properly handle error.
+        if r.is_err() {
+          error!("Url::from_file_path error {}", module_specifier);
+        }
+        r.unwrap()
       } else if containing_file.ends_with("/") {
-        let base = Url::from_directory_path(&containing_file).unwrap();
+        let r = Url::from_directory_path(&containing_file);
+        // TODO(ry) Properly handle error.
+        if r.is_err() {
+          error!("Url::from_directory_path error {}", containing_file);
+        }
+        let base = r.unwrap();
         base.join(module_specifier)?
       } else {
-        let base = Url::from_file_path(&containing_file).unwrap();
+        let r = Url::from_file_path(&containing_file);
+        // TODO(ry) Properly handle error.
+        if r.is_err() {
+          error!("Url::from_file_path error {}", containing_file);
+        }
+        let base = r.unwrap();
         base.join(module_specifier)?
       };
 
