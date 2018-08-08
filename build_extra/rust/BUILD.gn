@@ -83,16 +83,14 @@ rust_component("tempfile") {
 
 rust_component("rand") {
   source_root = "$registry_github/rand-0.5.4/src/lib.rs"
-  extern = [
-    ":libc",
-    ":rand_core",
-  ]
-  if (is_win) {
-    extern += [ ":winapi" ]
-  }
   features = [
     "std",
     "alloc",
+  ]
+  extern = [
+    ":libc",
+    ":rand_core",
+    ":winapi",
   ]
   if (is_mac) {
     libs = [ "Security.framework" ]
@@ -105,10 +103,7 @@ rust_component("rand_core") {
 
 rust_component("remove_dir_all") {
   source_root = "$registry_github/remove_dir_all-0.5.1/src/lib.rs"
-  extern = []
-  if (is_win) {
-    extern += [ ":winapi" ]
-  }
+  extern = [ ":winapi" ]
 }
 
 rust_component("winapi") {
@@ -122,16 +117,21 @@ rust_component("winapi") {
     "fileapi",
     "guiddef",
     "handleapi",
+    "inaddr",
+    "in6addr",
     "ktmtypes",
     "libloaderapi",
     "lsalookup",
     "minwinbase",
     "minwindef",
+    "mstcpip",
     "ntdef",
     "ntsecapi",
     "ntstatus",
     "processthreadsapi",
     "profileapi",
+    "qos",
+    "rpcndr",
     "sspi",
     "std",
     "subauth",
@@ -143,6 +143,45 @@ rust_component("winapi") {
     "winerror",
     "winnt",
     "winreg",
+    "winsock2",
+    "ws2def",
+    "ws2ipdef",
+    "ws2tcpip",
+    "wtypes",
+    "wtypesbase",
+  ]
+}
+
+# Old version of the 'winapi' crate, required by 'mio', 'miow', and 'iovec'.
+# This exceptional! Generally we don't allow multiple versions of a crate.
+# TODO: Remove this dependency. https://github.com/denoland/deno/issues/484
+rust_component("winapi-0.2") {
+  crate_name = "winapi"
+  crate_version = "0.2"
+  source_root = "$registry_github/winapi-0.2.8/src/lib.rs"
+}
+
+# TODO: Remove this crate together with crate 'winapi-0.2'.
+rust_component("kernel32") {
+  source_root = "$registry_github/kernel32-sys-0.2.2/src/lib.rs"
+  extern_version = [
+    {
+      label = ":winapi-0.2"
+      crate_name = "winapi"
+      crate_version = "0.2"
+    },
+  ]
+}
+
+# TODO: Remove this crate together with crate 'winapi-0.2'.
+rust_component("ws2_32") {
+  source_root = "$registry_github/ws2_32-sys-0.2.1/src/lib.rs"
+  extern_version = [
+    {
+      label = ":winapi-0.2"
+      crate_name = "winapi"
+      crate_version = "0.2"
+    },
   ]
 }
 
@@ -156,20 +195,64 @@ rust_component("futures") {
 
 rust_component("mio") {
   source_root = "$registry_github/mio-0.6.15/src/lib.rs"
+  features = [
+    "default",
+    "with-deprecated",
+  ]
   extern = [
     ":iovec",
+    ":kernel32",
     ":lazycell",
+    ":libc",
     ":log",
+    ":miow",
     ":net2",
     ":slab",
-    ":libc",
   ]
-  cfg = [ "feature=\"with-deprecated\"" ]
+
+  # TODO: Upgrade to a current version of the 'winapi' crate.
+  # See https://github.com/denoland/deno/issues/484.
+  extern_version = [
+    {
+      label = ":winapi-0.2"
+      crate_name = "winapi"
+      crate_version = "0.2"
+    },
+  ]
+}
+
+rust_component("miow") {
+  source_root = "$registry_github/miow-0.2.1/src/lib.rs"
+  extern = [
+    ":kernel32",
+    ":net2",
+    ":ws2_32",
+  ]
+
+  # TODO: Upgrade to a current version of the 'winapi' crate.
+  # See https://github.com/denoland/deno/issues/484.
+  extern_version = [
+    {
+      label = ":winapi-0.2"
+      crate_name = "winapi"
+      crate_version = "0.2"
+    },
+  ]
 }
 
 rust_component("iovec") {
   source_root = "$registry_github/iovec-0.1.2/src/lib.rs"
   extern = [ ":libc" ]
+
+  # TODO: Upgrade to a current version of the 'winapi' crate.
+  # See https://github.com/denoland/deno/issues/484.
+  extern_version = [
+    {
+      label = ":winapi-0.2"
+      crate_name = "winapi"
+      crate_version = "0.2"
+    },
+  ]
 }
 
 rust_component("lazycell") {
@@ -178,9 +261,14 @@ rust_component("lazycell") {
 
 rust_component("net2") {
   source_root = "$registry_github/net2-0.2.33/src/lib.rs"
+  features = [
+    "default",
+    "duration",
+  ]
   extern = [
     ":cfg_if",
     ":libc",
+    ":winapi",
   ]
 }
 
