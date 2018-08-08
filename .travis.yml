@@ -17,9 +17,9 @@ env:
     # use_custom_libcxx=false and use_sysroot=false seem to be required to build on
     # Ubuntu 14.04
     # Help: How do you wrap long lines here?
-    - DENO_BUILD_ARGS="is_debug=false use_allocator=\"none\" use_custom_libcxx=false use_sysroot=false"
-    - DENO_BUILD_PATH=$HOME/out/Default
-    - DENO_BUILD_MODE=debug
+    - DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false"
+    - DENO_BUILD_PATH=$HOME/out/release
+    - DENO_BUILD_MODE=release
 before_install: |
   # Install Rust.
   # TODO(ry) Include rustc in third_party https://github.com/denoland/deno/issues/386
@@ -40,3 +40,9 @@ install:
 script:
  - ./tools/lint.py
  - ./tools/test.py $DENO_BUILD_PATH
+
+deploy:
+  provider: releases
+  api_key: "GITHUB OAUTH TOKEN"
+  file: "$DENO_BUILD_PATH/deno"
+  skip_cleanup: true
