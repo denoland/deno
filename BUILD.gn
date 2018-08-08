@@ -308,6 +308,8 @@ run_node("bundle") {
     rebase_path("js/main.ts", root_build_dir),
     "-o",
     rebase_path(out_dir + "main.js", root_build_dir),
+    "--sourcemapFile",
+    rebase_path("."),
     "--silent",
     "--environment",
     "BASEPATH:" + rebase_path(".", root_build_dir),
