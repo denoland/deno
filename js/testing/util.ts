@@ -13,6 +13,7 @@
    limitations under the License.
  */
 
+// TODO(ry) Use unknown here for parameters types.
 // tslint:disable-next-line:no-any
 export function assertEqual(actual: any, expected: any, msg?: string) {
   if (!msg) {
@@ -35,19 +36,12 @@ export function assert(expr: boolean, msg = "") {
   }
 }
 
+// TODO(ry) Use unknown here for parameters types.
 // tslint:disable-next-line:no-any
 export function equal(c: any, d: any): boolean {
   const seen = new Map();
   return (function compare(a, b) {
-    if (a === b) {
-      return true;
-    }
-    if (
-      typeof a === "number" &&
-      typeof b === "number" &&
-      isNaN(a) &&
-      isNaN(b)
-    ) {
+    if (Object.is(a, b)) {
       return true;
     }
     if (a && typeof a === "object" && b && typeof b === "object") {

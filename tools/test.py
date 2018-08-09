@@ -15,10 +15,11 @@ def check_exists(filename):
 
 
 def main(argv):
-    build_dir = build_path()
     if len(argv) == 2:
         build_dir = sys.argv[1]
-    elif len(argv) != 1:
+    elif len(argv) == 1:
+        build_dir = build_path()
+    else:
         print "Usage: tools/test.py [build_dir]"
         sys.exit(1)
 

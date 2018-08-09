@@ -2,9 +2,7 @@
 // This test is executed as part of integration_test.go
 // But it can also be run manually:
 //  ./deno tests.ts
-// There must also be a static file http server running on localhost:4545
-// serving the deno project directory. Try this:
-//   http-server -p 4545 --cors .
+
 import { test, assert, assertEqual } from "./testing/testing.ts";
 // import { readFileSync, writeFileSync } from "deno";
 
