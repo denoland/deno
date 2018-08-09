@@ -287,6 +287,7 @@ run_node("bundle") {
     "js/os.ts",
     "js/plugins.d.ts",
     "js/runtime.ts",
+    "js/text_encoding.ts",
     "js/timers.ts",
     "js/types.d.ts",
     "js/util.ts",

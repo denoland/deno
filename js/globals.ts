@@ -3,6 +3,7 @@
 import { Console } from "./console";
 import { RawSourceMap } from "./types";
 import * as timers from "./timers";
+import { TextEncoder, TextDecoder } from "./text_encoding";
 
 declare global {
   interface Window {
@@ -16,6 +17,11 @@ declare global {
 
   const console: Console;
   const window: Window;
+
+  // tslint:disable:variable-name
+  let TextEncoder: TextEncoder;
+  let TextDecoder: TextDecoder;
+  // tslint:enable:variable-name
 }
 
 // If you use the eval function indirectly, by invoking it via a reference
@@ -49,10 +55,8 @@ window.clearTimeout = timers.clearTimer;
 window.clearInterval = timers.clearTimer;
 
 window.console = new Console(libdeno.print);
+window.TextEncoder = TextEncoder;
+window.TextDecoder = TextDecoder;
 
 // import { fetch } from "./fetch";
 // window["fetch"] = fetch;
-
-// import { TextEncoder, TextDecoder } from "text-encoding";
-// window["TextEncoder"] = TextEncoder;
-// window["TextDecoder"] = TextDecoder;
