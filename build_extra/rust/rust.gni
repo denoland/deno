@@ -40,7 +40,6 @@ template("run_rustc") {
     assert(defined(invoker.source_root), "Must specify source_root")
     forward_variables_from(invoker,
                            [
-                             "cfg",
                              "crate_name",
                              "crate_type",
                              "crate_version",
@@ -123,15 +122,6 @@ template("run_rustc") {
       args += [ "--test" ]
     }
 
-    if (defined(cfg)) {
-      foreach(c, cfg) {
-        args += [
-          "--cfg",
-          c,
-        ]
-      }
-    }
-
     if (defined(features)) {
       foreach(f, features) {
         args += [
@@ -210,7 +200,6 @@ template("rust_component") {
     forward_variables_from(invoker,
                            [
                              "args",
-                             "cfg",
                              "crate_version",
                              "deps",
                              "extern",
