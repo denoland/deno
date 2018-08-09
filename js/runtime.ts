@@ -170,7 +170,7 @@ export function resolveModule(
     // Assets are compiled into the runtime javascript bundle.
     const moduleId = moduleSpecifier.split("/").pop();
     const assetName = moduleId.includes(".") ? moduleId : `${moduleId}.d.ts`;
-    util.assert(assetName in assetSourceCode);
+    util.assert(assetName in assetSourceCode, `No such asset "${assetName}"`);
     sourceCode = assetSourceCode[assetName];
     filename = ASSETS + assetName;
   } else {
