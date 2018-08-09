@@ -85,15 +85,34 @@ export function codeCache(
 }
 
 export function readFileSync(filename: string): Uint8Array {
-  assert(false, "Not Implemented");
-  return null;
-  /*
-  const res = pubInternal("os", {
+  /* Ideally we could write
+  const res = send({
     command: fbs.Command.READ_FILE_SYNC,
     readFileSyncFilename: filename
   });
   return res.readFileSyncData;
-	*/
+  */
+  const builder = new flatbuffers.Builder();
+  const filename_ = builder.createString(filename);
+  fbs.ReadFileSync.startReadFileSync(builder);
+  fbs.ReadFileSync.addFilename(builder, filename_);
+  const msg = fbs.ReadFileSync.endReadFileSync(builder);
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsgType(builder, fbs.Any.ReadFileSync);
+  builder.finish(fbs.Base.endBase(builder));
+  const resBuf = libdeno.send(builder.asUint8Array());
+  assert(resBuf != null);
+
+  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf));
+  const baseRes = fbs.Base.getRootAsBase(bb);
+  if (fbs.Any.NONE === baseRes.msgType()) {
+    throw Error(baseRes.error());
+  }
+  assert(fbs.Any.ReadFileSyncRes === baseRes.msgType());
+  const res = new fbs.ReadFileSyncRes();
+  assert(baseRes.msg(res) != null);
+  return new Uint8Array(res.dataArray());
 }
 
 export function writeFileSync(
