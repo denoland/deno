@@ -35,7 +35,7 @@ def main():
         required=False)
     args, rest = parser.parse_known_args()
 
-    util.run(["rustc"] + rest, quiet=True)
+    util.run(rest, quiet=True)
 
     if args.depfile and args.output_file:
         fix_depfile(args.depfile, os.getcwd(), args.output_file)

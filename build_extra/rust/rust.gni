@@ -25,11 +25,15 @@ if (is_win) {
 #
 # The tool works by compiling and linking something with rustc, and analyzing
 # the arguments it passes to the system linker. That's what dummy.rs is for.
+rustc_path = rebase_path("//third_party/rust_binaries/$host_os/rustc/bin/rustc", root_build_dir)
+rustlib_path = rebase_path("//third_party/rust_binaries/$host_os/rustlib", root_build_dir)
 dummy_rs_path = rebase_path("dummy.rs", root_build_dir)
 rust_bin_ldflags =
-    exec_script("get_rust_ldflags.py", [ dummy_rs_path ], "list lines")
+    exec_script("get_rust_ldflags.py", [ rustc_path, rustlib_path, dummy_rs_path ], "list lines")
 rust_test_ldflags = exec_script("get_rust_ldflags.py",
                                 [
+                                  rustc_path,
+                                  rustlib_path,
                                   dummy_rs_path,
                                   "--test",
                                 ],
@@ -67,6 +71,9 @@ template("run_rustc") {
     # TODO: We want to apply "-Dwarnings" only when treat_warnings_as_errors is not false
     # https://github.com/denoland/deno/pull/379
     args = [
+      rustc_path,
+      "-L",
+      rustlib_path,
       rebase_path(source_root, root_build_dir),
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",

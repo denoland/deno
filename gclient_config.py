@@ -40,4 +40,9 @@ solutions = [{
     'https://github.com/rw/flatbuffers.git@2018-02--rust',
     'name':
     'flatbuffers'
+}, {
+    'url':
+    'https://github.com/rust-lang/rust.git@9634041f0e8c0f3191d2867311276f19d0a42564',
+    'name':
+    'rust'
 }]
