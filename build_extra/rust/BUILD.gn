@@ -187,9 +187,9 @@ rust_component("ws2_32") {
 
 rust_component("futures") {
   source_root = "$registry_github/futures-0.1.23/src/lib.rs"
-  cfg = [
-    "feature=\"use_std\"",
-    "feature=\"with-deprecated\"",
+  features = [
+    "use_std",
+    "with-deprecated",
   ]
 }
 
@@ -298,6 +298,7 @@ rust_component("crossbeam_deque") {
 
 rust_component("crossbeam_epoch") {
   source_root = "$registry_github/crossbeam-epoch-0.5.1/src/lib.rs"
+  features = [ "use_std" ]
   extern = [
     ":arrayvec",
     ":cfg_if",
@@ -306,13 +307,12 @@ rust_component("crossbeam_epoch") {
     ":memoffset",
     ":scopeguard",
   ]
-  cfg = [ "feature=\"use_std\"" ]
 }
 
 rust_component("crossbeam_utils") {
   source_root = "$registry_github/crossbeam-utils-0.4.1/src/lib.rs"
+  features = [ "use_std" ]
   extern = [ ":cfg_if" ]
-  cfg = [ "feature=\"use_std\"" ]
 }
 
 rust_component("arrayvec") {
@@ -334,7 +334,7 @@ rust_component("memoffset") {
 
 rust_component("scopeguard") {
   source_root = "$registry_github/scopeguard-0.3.3/src/lib.rs"
-  cfg = [ "feature=\"use_std\"" ]
+  features = [ "use_std" ]
 }
 
 rust_component("num_cpus") {
