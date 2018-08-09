@@ -82,10 +82,12 @@ def main():
         #   * `-Csave-temps` prevents rustc from deleting object files after
         #     linking. We need to preserve the file `xx.crate.allocator.rcgu.o`.
         rustc_cmd = [
-            "rustc",
+            sys.argv[1],
+            "-L",
+            sys.argv[2],
             "-Clinker=" + rustc_linker,
             "-Csave-temps",
-        ] + sys.argv[1:]
+        ] + sys.argv[3:]
 
         # Spawn the rust compiler.
         rustc_proc = subprocess.Popen(
