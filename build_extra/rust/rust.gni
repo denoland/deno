@@ -83,10 +83,7 @@ template("run_rustc") {
       crate_name_and_version = "$crate_name-$crate_version"
     }
 
-    if (crate_type == "staticlib") {
-      output_file = "$target_out_dir/$crate_name_and_version.a"
-      emit_type = "link"
-    } else if (crate_type == "bin") {
+    if (crate_type == "bin") {
       output_file = "$target_out_dir/$crate_name_and_version.o"
       emit_type = "obj"
     } else if (crate_type == "rlib") {
@@ -243,23 +240,6 @@ template("rust_component") {
     }
     libs += [ crate_obj ]
     deps += [ rustc_label ]
-  }
-}
-
-template("rust_staticlib") {
-  rust_component(target_name) {
-    forward_variables_from(invoker,
-                           [
-                             "cfg",
-                             "crate_name",
-                             "crate_version",
-                             "extern",
-                             "extern_version",
-                             "features",
-                             "source_root",
-                             "testonly",
-                           ])
-    crate_type = "staticlib"
   }
 }
 
