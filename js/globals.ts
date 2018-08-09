@@ -2,11 +2,17 @@
 
 import { Console } from "./console";
 import { RawSourceMap } from "./types";
+import * as timers from "./timers";
 
 declare global {
   interface Window {
     console: Console;
   }
+
+  const clearTimeout: typeof timers.clearTimer;
+  const clearInterval: typeof timers.clearTimer;
+  const setTimeout: typeof timers.setTimeout;
+  const setInterval: typeof timers.setInterval;
 
   const console: Console;
   const window: Window;
@@ -37,11 +43,10 @@ window.libdeno = null;
 
 // import "./url";
 
-// import * as timer from "./timers";
-// window["setTimeout"] = timer.setTimeout;
-// window["setInterval"] = timer.setInterval;
-// window["clearTimeout"] = timer.clearTimer;
-// window["clearInterval"] = timer.clearTimer;
+window.setTimeout = timers.setTimeout;
+window.setInterval = timers.setInterval;
+window.clearTimeout = timers.clearTimer;
+window.clearInterval = timers.clearTimer;
 
 window.console = new Console(libdeno.print);
 

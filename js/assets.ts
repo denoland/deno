@@ -11,6 +11,7 @@ import consoleDts from "gen/js/console.d.ts!string";
 import denoDts from "gen/js/deno.d.ts!string";
 import globalsDts from "gen/js/globals.d.ts!string";
 import osDts from "gen/js/os.d.ts!string";
+import timersDts from "gen/js/timers.d.ts!string";
 import utilDts from "gen/js/util.d.ts!string";
 
 // Static libraries
@@ -56,6 +57,7 @@ export const assetSourceCode: { [key: string]: string } = {
   "deno.d.ts": denoDts,
   "globals.d.ts": globalsDts,
   "os.d.ts": osDts,
+  "timers.d.ts": timersDts,
   "util.d.ts": utilDts,
 
   // Static libraries
@@ -92,4 +94,7 @@ export const assetSourceCode: { [key: string]: string } = {
   // Static definitions
   "typescript.d.ts": typescriptDts,
   "types.d.ts": typesDts,
+
+  // TODO(ry) Remove the following when possible. It's a workaround.
+  "msg_generated.d.ts": "",
 };
