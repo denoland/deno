@@ -4,6 +4,7 @@
 # .out file which specifies what the stdout should be.
 #
 # Usage: check_output_test.py [path to deno executable]
+from __future__ import print_function
 import os
 import sys
 import subprocess
@@ -26,18 +27,18 @@ def check_output_test(deno_exe_filename):
         with open(out_abs, 'r') as f:
             expected_out = f.read()
         cmd = [deno_exe_filename, script_abs]
-        print " ".join(cmd)
+        print(" ".join(cmd))
         try:
             actual_out = subprocess.check_output(cmd, universal_newlines=True)
         except subprocess.CalledProcessError as e:
-            print "Got non-zero exit code. Output:"
-            print e.output
+            print("Got non-zero exit code. Output:")
+            print(e.output)
             sys.exit(1)
 
         if expected_out != actual_out:
-            print "Expected output does not match actual."
-            print "Expected: " + expected_out
-            print "Actual:   " + actual_out
+            print("Expected output does not match actual.")
+            print("Expected: " + expected_out)
+            print("Actual:   " + actual_out)
             sys.exit(1)
 
 

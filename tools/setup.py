@@ -1,8 +1,14 @@
 #!/usr/bin/env python
+from __future__ import print_function
 import third_party
 from util import run, build_path, build_mode
 import os
 import distutils.spawn
+import sys
+
+if sys.version_info[0] > 2:
+    print("Deno setup script requires python 2.")
+    sys.exit(1)
 
 third_party.fix_symlinks()
 third_party.download_gn()
@@ -17,7 +23,7 @@ def get_gn_args():
     elif build_mode() == "debug":
         pass
     else:
-        print "Bad mode {}. Use 'release' or 'debug' (default)" % build_mode()
+        print("Bad mode {}. Use 'release' or 'debug' (default)" % build_mode())
         sys.exit(1)
     if "DENO_BUILD_ARGS" in os.environ:
         out += os.environ["DENO_BUILD_ARGS"].split()
@@ -27,7 +33,7 @@ def get_gn_args():
     if ccache_path:
         out += [r'cc_wrapper="%s"' % ccache_path]
 
-    print "DENO_BUILD_ARGS:", out
+    print("DENO_BUILD_ARGS:", out)
 
     return out
 
