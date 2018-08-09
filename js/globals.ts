@@ -43,10 +43,10 @@ window.libdeno = null;
 
 // import "./url";
 
-window["setTimeout"] = timers.setTimeout;
-window["setInterval"] = timers.setInterval;
-window["clearTimeout"] = timers.clearTimer;
-window["clearInterval"] = timers.clearTimer;
+window.setTimeout = timers.setTimeout;
+window.setInterval = timers.setInterval;
+window.clearTimeout = timers.clearTimer;
+window.clearInterval = timers.clearTimer;
 
 window.console = new Console(libdeno.print);
 

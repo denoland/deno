@@ -187,9 +187,9 @@ where
   F: Fn() -> (),
 {
   let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-  let when = Duration::from_millis(delay.into());
+  let delay = Duration::from_millis(delay.into());
   let interval_task = future::lazy(move || {
-    Interval::new(Instant::now() + when, when)
+    Interval::new(Instant::now() + delay, delay)
       .for_each(move |_| {
         cb();
         future::ok(())
