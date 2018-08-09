@@ -16,7 +16,7 @@ import util
 def fix_depfile(depfile_path, base_path, build_output_path):
     with open(depfile_path, "r") as depfile:
         content = depfile.read()
-    content_split = content.split(': ', 1)
+    content_split = content.split(b': ', 1)
     target_path = os.path.relpath(build_output_path, start=base_path)
     new_content = "%s: %s" % (target_path, content_split[1])
     with open(depfile_path, "w") as depfile:

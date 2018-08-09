@@ -22,7 +22,7 @@ def make_env(merge_env={}, env=None):
 def run(args, quiet=False, cwd=None, env=None, merge_env={}):
     args[0] = os.path.normpath(args[0])
     if not quiet:
-        print " ".join(args)
+        print(" ".join(args))
     env = make_env(env=env, merge_env=merge_env)
     shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
     rc = subprocess.call(args, cwd=cwd, env=env, shell=shell)
@@ -33,7 +33,7 @@ def run(args, quiet=False, cwd=None, env=None, merge_env={}):
 def run_output(args, quiet=False, cwd=None, env=None, merge_env={}):
     args[0] = os.path.normpath(args[0])
     if not quiet:
-        print " ".join(args)
+        print(" ".join(args))
     env = make_env(env=env, merge_env=merge_env)
     shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
     return subprocess.check_output(args, cwd=cwd, env=env, shell=shell)
