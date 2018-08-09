@@ -168,7 +168,47 @@ def download_clang():
          tp('v8/tools/clang/scripts/update.py'), '--if-needed'],
         env=google_env())
 
+# Download rustc from Google storage.
+def download_rustc():
+    if sys.platform == 'win32':
+        sha1_file = "rust_binaries/win/rustc.tar.gz.sha1"
+    elif sys.platform == 'darwin':
+        sha1_file = "rust_binaries/mac/rustc.tar.gz.sha1"
+    elif sys.platform.startswith('linux'):
+        sha1_file = "rust_binaries/linux64/rustc.tar.gz.sha1"
 
+    run([
+        "python",
+        tp('depot_tools/download_from_google_storage.py'),
+        '--platform=' + sys.platform,
+        '-u',
+        '--no_auth',
+        '--bucket=deno-rust',
+        '--sha1_file',
+        tp(sha1_file),
+    ],
+        env=google_env())
+
+# Download rustlib from Google storage.
+def download_rustlib():
+    if sys.platform == 'win32':
+        sha1_file = "rust_binaries/win/rustlib.tar.gz.sha1"
+    elif sys.platform == 'darwin':
+        sha1_file = "rust_binaries/mac/rustlib.tar.gz.sha1"
+    elif sys.platform.startswith('linux'):
+        sha1_file = "rust_binaries/linux64/rustlib.tar.gz.sha1"
+
+    run([
+        "python",
+        tp('depot_tools/download_from_google_storage.py'),
+        '--platform=' + sys.platform,
+        '-u',
+        '--no_auth',
+        '--bucket=deno-rust',
+        '--sha1_file',
+        tp(sha1_file),
+    ],
+        env=google_env())
 def maybe_download_sysroot():
     if sys.platform.startswith('linux'):
         run([
