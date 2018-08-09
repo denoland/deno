@@ -25,10 +25,5 @@ run(["yapf", "-i"] + find_exts("tools/", ".py") +
 run(["node", prettier, "--write"] + find_exts("js/", ".js", ".ts") +
     ["rollup.config.js", "tsconfig.json", "tslint.json"])
 
-# Set RUSTFMT_FLAGS for extra flags.
-rustfmt_extra_args = []
-if 'RUSTFMT_FLAGS' in os.environ:
-    rustfmt_extra_args += os.environ['RUSTFMT_FLAGS'].split()
 # Requires rustfmt 0.8.2 (flags were different in previous versions)
-run(["rustfmt", "--config-path", rustfmt_config] + rustfmt_extra_args +
-    find_exts("src/", ".rs"))
+run(["rustfmt", "--config-path", rustfmt_config] + find_exts("src/", ".rs"))
