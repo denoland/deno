@@ -102,24 +102,26 @@ pub struct Deno {
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
 impl Deno {
-  fn new<'a>() -> &'a mut Deno {
+  fn new() -> Box<Deno> {
     DENO_INIT.call_once(|| {
       unsafe { binding::deno_init() };
     });
 
-    let deno_box = Box::new(Deno {
+    let mut deno_box = Box::new(Deno {
       ptr: 0 as *const binding::DenoC,
       dir: deno_dir::DenoDir::new(None).unwrap(),
       rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
       timers: HashMap::new(),
     });
-    let deno: &'a mut Deno = Box::leak(deno_box);
-    let external_ptr = deno as *mut _ as *const c_void;
-    let internal_deno_ptr = unsafe {
-      binding::deno_new(external_ptr, binding::deno_handle_msg_from_js)
+
+    (*deno_box).ptr = unsafe {
+      binding::deno_new(
+        deno_box.as_ref() as *const _ as *const c_void,
+        binding::deno_handle_msg_from_js,
+      )
     };
-    deno.ptr = internal_deno_ptr;
-    deno
+
+    deno_box
   }
 
   fn execute(
@@ -205,7 +207,7 @@ fn main() {
     println!("version: {}", version);
     */
 
-  let d = Deno::new();
+  let mut d = Deno::new();
 
   d.execute("deno_main.js", "denoMain();")
     .unwrap_or_else(|err| {
