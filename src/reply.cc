@@ -95,6 +95,13 @@ void deno_handle_msg_from_js(Deno* d, deno_buf buf) {
       break;
     }
 
+    case deno::Any_ReadFileSync: {
+      auto msg = base->msg_as_ReadFileSync();
+      auto filename = msg->filename()->c_str();
+      handle_read_file_sync(d, cmd_id, filename);
+      break;
+    }
+
     case deno::Any_NONE:
       CHECK(false && "Got message with msg_type == Any_NONE");
       break;

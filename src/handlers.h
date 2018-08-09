@@ -14,5 +14,6 @@ void handle_code_cache(Deno* d, uint32_t cmd_id, const char* filename,
 void handle_timer_start(Deno* d, uint32_t cmd_id, uint32_t timer_id,
                         bool interval, uint32_t delay);
 void handle_timer_clear(Deno* d, uint32_t cmd_id, uint32_t timer_id);
+void handle_read_file_sync(Deno* d, uint32_t cmd_id, const char* filename);
 }  // extern "C"
 #endif  // HANDLERS_H_
