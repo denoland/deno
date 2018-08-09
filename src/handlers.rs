@@ -2,12 +2,17 @@
 use binding;
 use binding::{deno_buf, deno_set_response, DenoC};
 use flatbuffers;
+use flatbuffers::ByteStringOffset;
+use flatbuffers::LabeledUOffsetT;
 use from_c;
+use fs;
 use futures;
 use futures::sync::oneshot;
 use libc::c_char;
+use mem;
 use msg_generated::deno as msg;
 use std::ffi::CStr;
+use std::path::Path;
 
 // Help. Is there a way to do this without macros?
 // Want: fn str_from_ptr(*const c_char) -> &str
@@ -221,6 +226,60 @@ fn send_timer_ready(d: *const DenoC, timer_id: u32, done: bool) {
     &msg::BaseArgs {
       msg: Some(msg.union()),
       msg_type: msg::Any::TimerReady,
+      ..Default::default()
+    },
+  );
+}
+
+// Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
+#[no_mangle]
+pub extern "C" fn handle_read_file_sync(
+  d: *const DenoC,
+  cmd_id: u32,
+  filename: *const c_char,
+) {
+  let filename = str_from_ptr!(filename);
+
+  debug!("handle_read_file_sync {}", filename);
+  let result = fs::read_file_sync(Path::new(filename));
+  if result.is_err() {
+    let err = result.unwrap_err();
+    let errmsg = format!("{}", err);
+    reply_error(d, cmd_id, &errmsg);
+    return;
+  }
+
+  // Build the response message. memcpy data into msg.
+  let mut builder = flatbuffers::FlatBufferBuilder::new();
+
+  let vec = result.unwrap();
+  //let data =
+  //  flatbuffers::LabeledUOffsetT::new(builder.push_bytes(vec.as_slice()));
+
+  let data_ = builder.create_byte_vector(vec.as_slice());
+
+  // TODO(ry) This is a hack that can be removed once builder.create_byte_vector
+  // works properly.
+  let data = unsafe {
+    mem::transmute::<LabeledUOffsetT<ByteStringOffset>, LabeledUOffsetT<&[i8]>>(
+      data_,
+    )
+  };
+
+  let msg = msg::CreateReadFileSyncRes(
+    &mut builder,
+    &msg::ReadFileSyncResArgs {
+      data,
+      ..Default::default()
+    },
+  );
+  builder.finish(msg);
+  set_response_base(
+    d,
+    &mut builder,
+    &msg::BaseArgs {
+      msg: Some(msg.union()),
+      msg_type: msg::Any::ReadFileSyncRes,
       ..Default::default()
     },
   );
