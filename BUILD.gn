@@ -168,6 +168,7 @@ static_library("libdeno") {
 v8_source_set("deno_base") {
   sources = [
     "src/binding.cc",
+    "src/buf.cc",
     "src/deno.h",
     "src/file_util.cc",
     "src/file_util.h",
@@ -186,7 +187,7 @@ v8_source_set("deno_base_test") {
     "src/from_snapshot.cc",
     "src/mock_runtime_test.cc",
   ]
-  data = [
+  inputs = [
     "$target_gen_dir/snapshot_mock_runtime.bin",
   ]
   deps = [
