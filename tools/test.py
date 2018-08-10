@@ -5,6 +5,7 @@ import os
 import sys
 from check_output_test import check_output_test
 from util import executable_suffix, run, build_path
+from util_test import util_test
 
 
 def check_exists(filename):
@@ -22,6 +23,9 @@ def main(argv):
     else:
         print "Usage: tools/test.py [build_dir]"
         sys.exit(1)
+
+    # Internal tools testing
+    util_test()
 
     test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
     check_exists(test_cc)
