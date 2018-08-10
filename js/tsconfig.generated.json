@@ -6,7 +6,6 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "declaration": true,
-    "declarationMap": true,
     "emitDeclarationOnly": true
   },
   "files": [
