@@ -4,14 +4,6 @@ branches:
   only:
   - master
 
-cache:
-  ccache: true
-  directories:
-   - $CARGO_PATH
-   - $RUSTUP_PATH
-   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
-   - third_party/v8/third_party/llvm-build/
-
 env:
   global:
     - CARGO_PATH=$HOME/.cargo/
@@ -23,6 +15,15 @@ env:
     - DENO_BUILD_ARGS="is_debug=false use_allocator=\"none\" use_custom_libcxx=false use_sysroot=false"
     - DENO_BUILD_PATH=$HOME/out/Default
     - DENO_BUILD_MODE=debug
+
+cache:
+  ccache: true
+  directories:
+   - $CARGO_PATH
+   - $RUSTUP_PATH
+   - $DENO_BUILD_PATH
+   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
+   - third_party/v8/third_party/llvm-build/
 
 jobs:
   include:
