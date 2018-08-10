@@ -12,9 +12,9 @@
 
 extern const char deno_snapshot_start asm("deno_snapshot_start");
 extern const char deno_snapshot_end asm("deno_snapshot_end");
-#ifdef DENO_MOCK_RUNTIME
+#ifdef LIBDENO_TEST
 asm(".data\n"
-    "deno_snapshot_start: .incbin \"gen/snapshot_mock_runtime.bin\"\n"
+    "deno_snapshot_start: .incbin \"gen/snapshot_libdeno_test.bin\"\n"
     "deno_snapshot_end:\n"
     ".globl deno_snapshot_start;\n"
     ".globl deno_snapshot_end;");
@@ -24,7 +24,7 @@ asm(".data\n"
     "deno_snapshot_end:\n"
     ".globl deno_snapshot_start;\n"
     ".globl deno_snapshot_end;");
-#endif  // DENO_MOCK_RUNTIME
+#endif  // LIBDENO_TEST
 
 namespace deno {
 
