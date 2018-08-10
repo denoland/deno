@@ -6,7 +6,7 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "declaration": true,
-    "declarationMap": true,
+    "emitDeclarationOnly": true
   },
   "files": [
     "../node_modules/typescript/lib/lib.esnext.d.ts",
