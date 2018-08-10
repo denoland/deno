@@ -130,7 +130,7 @@ export function makeDefine(fileName: string): AmdDefine {
     util.assert(currentModule != null);
     const localExports = currentModule!.exports;
     log("localDefine", fileName, deps, localExports);
-    const args = deps.map((dep) => {
+    const args = deps.map(dep => {
       if (dep === "require") {
         return localRequire;
       } else if (dep === "exports") {
@@ -289,7 +289,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   getScriptVersion(fileName: string): string {
     util.log("getScriptVersion", fileName);
     const m = FileModule.load(fileName);
-    return m && m.scriptVersion || "";
+    return (m && m.scriptVersion) || "";
   }
 
   getScriptSnapshot(fileName: string): ts.IScriptSnapshot | undefined {
@@ -344,23 +344,25 @@ class TypeScriptHost implements ts.LanguageServiceHost {
     containingFile: string
   ): ts.ResolvedModule[] {
     //util.log("resolveModuleNames", { moduleNames, reusedNames });
-    return moduleNames.map((name) => {
-      let resolvedFileName;
-      if (name === "deno") {
-        resolvedFileName = resolveModuleName("deno.d.ts", ASSETS);
-      } else if (name === "typescript") {
-        resolvedFileName = resolveModuleName("typescript.d.ts", ASSETS);
-      } else {
-        resolvedFileName = resolveModuleName(name, containingFile);
-      }
-      if (resolvedFileName == null) {
-        return undefined;
-      }
-      // This flags to the compiler to not go looking to transpile functional
-      // code, anything that is in `/$asset$/` is just library code
-      const isExternalLibraryImport = resolvedFileName.startsWith(ASSETS);
-      return { resolvedFileName, isExternalLibraryImport };
-    }).filter((mod) => mod != null) as ts.ResolvedModule[];
+    return moduleNames
+      .map(name => {
+        let resolvedFileName;
+        if (name === "deno") {
+          resolvedFileName = resolveModuleName("deno.d.ts", ASSETS);
+        } else if (name === "typescript") {
+          resolvedFileName = resolveModuleName("typescript.d.ts", ASSETS);
+        } else {
+          resolvedFileName = resolveModuleName(name, containingFile);
+        }
+        if (resolvedFileName == null) {
+          return undefined;
+        }
+        // This flags to the compiler to not go looking to transpile functional
+        // code, anything that is in `/$asset$/` is just library code
+        const isExternalLibraryImport = resolvedFileName.startsWith(ASSETS);
+        return { resolvedFileName, isExternalLibraryImport };
+      })
+      .filter(mod => mod != null) as ts.ResolvedModule[];
   }
 }
 

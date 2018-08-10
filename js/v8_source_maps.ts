@@ -79,7 +79,7 @@ export function wrapCallSite(frame: CallSite): CallSite {
   }
 
   // Code called using eval() needs special handling
-  let origin = frame.isEval() && frame.getEvalOrigin() || undefined;
+  let origin = (frame.isEval() && frame.getEvalOrigin()) || undefined;
   if (origin) {
     origin = mapEvalOrigin(origin);
     frame = cloneCallSite(frame);
@@ -162,7 +162,7 @@ function CallSiteToString(frame: CallSite): string {
         line += ` [as ${methodName} ]`;
       }
     } else {
-      line += typeName + "." + (methodName || "<anonymous>");
+      line += `${typeName}.${methodName || "<anonymous>"}`;
     }
   } else if (isConstructor) {
     line += "new " + (functionName || "<anonymous>");
