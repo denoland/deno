@@ -26,7 +26,7 @@ env:
 
 jobs:
   include:
-    - stage: precache and build
+    - stage: precache
       before_install: |
         # Install Rust.
         # TODO(ry) Include rustc in third_party https://github.com/denoland/deno/issues/386
@@ -42,13 +42,13 @@ jobs:
         - export CCACHE_SLOPPINESS=time_macros
         - ccache -s
         - ./tools/setup.py
-        # Travis hangs without -j2 argument to ninja.
-        - ./tools/build.py -j2
 
     - stage: lint
       script: ./tools/lint.py
 
     - stage: test
+      # Travis hangs without -j2 argument to ninja.
+      before_script: ./tools/build.py -j2
       script: ./tools/test.py $DENO_BUILD_PATH
 
     - stage: release
