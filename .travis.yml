@@ -15,6 +15,10 @@ env:
     - DENO_BUILD_ARGS="is_debug=false use_allocator=\"none\" use_custom_libcxx=false use_sysroot=false"
     - DENO_BUILD_PATH=$HOME/out/Default
     - DENO_BUILD_MODE=debug
+    # ccache needs the custom LLVM to be in PATH and other variables.
+    - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_PATH/bin:$PATH
+    - CCACHE_CPP2=yes
+    - CCACHE_SLOPPINESS=time_macros
 
 cache:
   ccache: true
@@ -30,16 +34,11 @@ jobs:
       before_script: |
         # Install Rust.
         # TODO(ry) Include rustc in third_party https://github.com/denoland/deno/issues/386
-        export PATH=$CARGO_PATH/bin:$PATH
         rustc --version
         if [ $? != 0 ]; then
           curl -sSf https://sh.rustup.rs | sh -s -- -y
         fi
       script:
-        # ccache needs the custom LLVM to be in PATH and other variables.
-        - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
-        - export CCACHE_CPP2=yes
-        - export CCACHE_SLOPPINESS=time_macros
         - ccache -s
         - ./tools/setup.py
 
