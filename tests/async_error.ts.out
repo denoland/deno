@@ -1,0 +1,10 @@
+hello
+before error
+Error: error
+    at foo ([WILDCARD]tests/async_error.ts:5:9)
+    at eval ([WILDCARD]tests/async_error.ts:8:1)
+    at eval (<anonymous>)
+    at execute (deno/js/runtime.ts:[WILDCARD])
+    at FileModule.compileAndRun (deno/js/runtime.ts:[WILDCARD])
+    at denoMain (deno/js/main.ts:[WILDCARD])
+    at deno_main.js:1:1
