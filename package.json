@@ -1,4 +1,5 @@
 {
+  "name": "deno",
   "devDependencies": {
     "@types/base64-js": "^1.2.5",
     "@types/flatbuffers": "^1.9.0",

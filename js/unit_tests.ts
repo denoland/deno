@@ -4,7 +4,7 @@
 //  ./deno tests.ts
 
 import { test, assert, assertEqual } from "./testing/testing.ts";
-// import { readFileSync, writeFileSync } from "deno";
+import { readFileSync } from "deno";
 
 test(async function tests_test() {
   assert(true);
@@ -79,13 +79,6 @@ test(function tests_console_stringify_circular() {
   }
 });
 
-/*
-test(async function tests_fetch() {
-  const response = await fetch("http://localhost:4545/package.json");
-  const json = await response.json();
-  assertEqual(json.name, "deno");
-});
-
 test(async function tests_readFileSync() {
   const data = readFileSync("package.json");
   if (!data.byteLength) {
@@ -97,6 +90,13 @@ test(async function tests_readFileSync() {
   const json = decoder.decode(data);
   const pkg = JSON.parse(json);
   assertEqual(pkg.name, "deno");
+});
+
+/*
+test(async function tests_fetch() {
+  const response = await fetch("http://localhost:4545/package.json");
+  const json = await response.json();
+  assertEqual(json.name, "deno");
 });
 
 test(async function tests_writeFileSync() {
