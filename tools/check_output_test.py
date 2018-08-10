@@ -7,6 +7,7 @@
 import os
 import sys
 import subprocess
+from util import pattern_match
 
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 tests_path = os.path.join(root_path, "tests")
@@ -26,15 +27,25 @@ def check_output_test(deno_exe_filename):
         with open(out_abs, 'r') as f:
             expected_out = f.read()
         cmd = [deno_exe_filename, script_abs]
+        should_succeed = "error" not in script
         print " ".join(cmd)
+        err = False
         try:
             actual_out = subprocess.check_output(cmd, universal_newlines=True)
         except subprocess.CalledProcessError as e:
-            print "Got non-zero exit code. Output:"
-            print e.output
+            err = True
+            actual_out = e.output
+            if should_succeed == True:
+                print "Expected success but got error. Output:"
+                print actual_out
+                sys.exit(1)
+
+        if should_succeed == False and err == False:
+            print "Expected an error but succeeded. Output:"
+            print actual_out
             sys.exit(1)
 
-        if expected_out != actual_out:
+        if pattern_match(expected_out, actual_out) != True:
             print "Expected output does not match actual."
             print "Expected: " + expected_out
             print "Actual:   " + actual_out
