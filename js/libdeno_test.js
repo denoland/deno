@@ -1,12 +1,12 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 // A simple runtime that doesn't involve typescript or protobufs to test
-// libdeno. Invoked by mock_runtime_test.cc
+// libdeno. Invoked by libdeno_test.cc
 
 const global = this;
 
 function assert(cond) {
-  if (!cond) throw Error("mock_runtime.js assert failed");
+  if (!cond) throw Error("libdeno_test.js assert failed");
 }
 
 global.CanCallFunction = () => {

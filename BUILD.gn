@@ -161,7 +161,7 @@ static_library("libdeno") {
   configs += [ ":deno_config" ]
 }
 
-# Only functionality needed for mock_runtime_test and snapshot_creator
+# Only functionality needed for libdeno_test and snapshot_creator
 # In particular no flatbuffers, no assets, no rust, no msg handlers.
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
@@ -184,17 +184,17 @@ v8_source_set("deno_base_test") {
   sources = [
     "src/file_util_test.cc",
     "src/from_snapshot.cc",
-    "src/mock_runtime_test.cc",
+    "src/libdeno_test.cc",
   ]
   inputs = [
-    "$target_gen_dir/snapshot_mock_runtime.bin",
+    "$target_gen_dir/snapshot_libdeno_test.bin",
   ]
   deps = [
-    ":create_snapshot_mock_runtime",
+    ":create_snapshot_libdeno_test",
     ":deno_base",
     "//testing/gtest:gtest",
   ]
-  defines = [ "DENO_MOCK_RUNTIME" ]
+  defines = [ "LIBDENO_TEST" ]
   configs = [ ":deno_config" ]
 }
 
@@ -353,7 +353,7 @@ rust_flatbuffer("msg_rs") {
   ]
 }
 
-# Generates $target_gen_dir/snapshot_deno.cc
+# Generates $target_gen_dir/snapshot_deno.bin
 create_snapshot("deno") {
   js = "$target_gen_dir/bundle/main.js"
   source_map = "$target_gen_dir/bundle/main.js.map"
@@ -362,8 +362,8 @@ create_snapshot("deno") {
   ]
 }
 
-# Generates $target_gen_dir/snapshot_mock_runtime.cc
-create_snapshot("mock_runtime") {
+# Generates $target_gen_dir/snapshot_libdeno_test.bin
+create_snapshot("libdeno_test") {
   testonly = true
-  js = "js/mock_runtime.js"
+  js = "js/libdeno_test.js"
 }
