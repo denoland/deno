@@ -2,10 +2,10 @@
 export type TypedArray = Uint8Array | Float32Array | Int32Array;
 
 export interface ModuleInfo {
-  moduleName?: string;
-  filename?: string;
-  sourceCode?: string;
-  outputCode?: string;
+  moduleName: string | null;
+  filename: string | null;
+  sourceCode: string | null;
+  outputCode: string | null;
 }
 
 // Following definitions adapted from:
