@@ -9,6 +9,11 @@ if (is_win) {
   executable_suffix = ""
 }
 
+# To simplify transitive dependency management with gn, we build all rust
+# crates into the same directory. We need to be careful not to have crates
+# with the same name.
+out_dir = "$root_out_dir/rust_crates"
+
 # The official way of building Rust executables is to to let rustc do the
 # linking. However, we'd prefer to leave it in the hands of gn/ninja:
 #   * It allows us to use source sets.
@@ -44,8 +49,7 @@ template("run_rustc") {
                              "crate_type",
                              "crate_version",
                              "deps",
-                             "extern",
-                             "extern_version",
+                             "extern_infos",
                              "features",
                              "is_test",
                              "source_root",
@@ -61,7 +65,6 @@ template("run_rustc") {
     sources = [
       source_root,
     ]
-    outputs = []
     script = "//tools/run_rustc.py"
 
     # TODO: We want to apply "-Dwarnings" only when treat_warnings_as_errors is not false
@@ -83,17 +86,19 @@ template("run_rustc") {
     }
 
     if (crate_type == "bin") {
-      output_file = "$target_out_dir/$crate_name_and_version.o"
+      output_file = "$out_dir/$crate_name_and_version.o"
       emit_type = "obj"
     } else if (crate_type == "rlib") {
-      output_file = "$target_out_dir/lib$crate_name_and_version.rlib"
+      output_file = "$out_dir/lib$crate_name_and_version.rlib"
       emit_type = "link"
     }
-    outputs += [ output_file ]
+    outputs = [
+      output_file,
+    ]
     output_file_rel = rebase_path(output_file, root_build_dir)
     args += [ "--emit=$emit_type=$output_file_rel" ]
 
-    depfile = "$target_out_dir/$crate_name_and_version.d"
+    depfile = "$out_dir/$crate_name_and_version.d"
     args += [
       "--emit=dep-info=" + rebase_path(depfile, root_build_dir),
 
@@ -101,6 +106,10 @@ template("run_rustc") {
       # the depfile on the fly. They are not passed thru to rustc.
       "--depfile=" + rebase_path(depfile, root_build_dir),
       "--output_file=" + output_file_rel,
+
+      # This is needed for transitive dependencies.
+      "-L",
+      "dependency=" + rebase_path(out_dir, root_build_dir),
     ]
 
     if (defined(crate_version)) {
@@ -139,41 +148,12 @@ template("run_rustc") {
       deps = []
     }
 
-    # Convert all 'extern' and 'extern_version' items to a single format.
-    extern_infos = []
-    if (defined(extern)) {
-      foreach(label, extern) {
-        extern_infos += [
-          {
-            label = label
-            crate_name = get_label_info(label, "name")
-            crate_name_and_version = crate_name
-          },
-        ]
-      }
-    }
-    if (defined(extern_version)) {
-      foreach(info, extern_version) {
-        extern_infos += [
-          {
-            forward_variables_from(info, "*")
-            crate_name_and_version = "$crate_name-$crate_version"
-          },
-        ]
-      }
-    }
-
     # Build the list of '--extern' arguments from the 'extern_infos' array.
     foreach(info, extern_infos) {
-      dir = get_label_info(info.label, "target_out_dir")
-      rlib = "$dir/lib${info.crate_name_and_version}.rlib"
+      rlib = "$out_dir/lib${info.crate_name_and_version}.rlib"
       args += [
         "--extern",
         info.crate_name + "=" + rebase_path(rlib, root_build_dir),
-
-        # This is needed for transitive dependencies.
-        "-L",
-        "dependency=" + rebase_path(dir, root_build_dir),
       ]
       deps += [ info.label ]
     }
@@ -183,6 +163,36 @@ template("run_rustc") {
 template("rust_crate") {
   rustc_name = target_name + "_rustc"
   rustc_label = ":" + rustc_name
+  config_name = target_name + "_config"
+
+  # Convert all 'extern' and 'extern_version' items to a single format.
+  extern_infos = []
+  if (defined(invoker.extern)) {
+    foreach(label, invoker.extern) {
+      extern_infos += [
+        {
+          label = label
+          crate_name = get_label_info(label, "name")
+          crate_name_and_version = crate_name
+        },
+      ]
+    }
+  }
+  if (defined(invoker.extern_version)) {
+    foreach(info, invoker.extern_version) {
+      extern_infos += [
+        {
+          forward_variables_from(info,
+                                 [
+                                   "label",
+                                   "crate_name",
+                                   "crate_version",
+                                 ])
+          crate_name_and_version = "$crate_name-$crate_version"
+        },
+      ]
+    }
+  }
 
   forward_variables_from(invoker,
                          [
@@ -202,8 +212,6 @@ template("rust_crate") {
                              "args",
                              "crate_version",
                              "deps",
-                             "extern",
-                             "extern_version",
                              "features",
                              "is_test",
                              "source_root",
@@ -213,6 +221,19 @@ template("rust_crate") {
 
   crate_outputs = get_target_outputs(rustc_label)
   crate_obj = crate_outputs[0]
+
+  config(config_name) {
+    lib_dirs = []
+    forward_variables_from(invoker, [ "libs" ])
+    if (!defined(libs)) {
+      libs = []
+    }
+    foreach(info, extern_infos) {
+      rlib = "$out_dir/lib${info.crate_name_and_version}.rlib"
+      libs += [ rlib ]
+    }
+    lib_dirs = [ out_dir ]
+  }
 
   source_set(target_name) {
     forward_variables_from(invoker,
@@ -229,6 +250,7 @@ template("rust_crate") {
     }
     libs += [ crate_obj ]
     deps += [ rustc_label ]
+    all_dependent_configs = [ ":" + config_name ]
   }
 }
 
