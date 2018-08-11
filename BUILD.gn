@@ -35,76 +35,21 @@ config("deno_config") {
 }
 
 main_extern = [
+  "$rust_build:futures",
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:sha1",
   "$rust_build:tempfile",
   "$rust_build:tokio",
+  "$rust_build:tokio_current_thread",
   "$rust_build:url",
   "//build_extra/flatbuffers/rust:flatbuffers",
   ":msg_rs",
-
-  # Indirect rust depdendencies also need to be listed here:
-  # * Linking to `:handlers` or `:libdeno` isn't possible, because they
-  #   already contain some symbols exported by `handlers.rs`. These duplicate
-  #   symbols trip up the linker.
-  # * The `rust_test` and `rust_executable` templates only produce an object
-  #   file, and then invoke an external linker. Transitive rust depencenies
-  #   are not resolved in either step.
-  "$rust_build:arrayvec",
-  "$rust_build:byteorder",
-  "$rust_build:bytes",
-  "$rust_build:crossbeam_deque",
-  "$rust_build:crossbeam_epoch",
-  "$rust_build:crossbeam_utils",
-  "$rust_build:futures",
-  "$rust_build:idna",
-  "$rust_build:iovec",
-  "$rust_build:kernel32",
-  "$rust_build:lazy_static",
-  "$rust_build:lazycell",
-  "$rust_build:memoffset",
-  "$rust_build:mio",
-  "$rust_build:miow",
-  "$rust_build:net2",
-  "$rust_build:nodrop",
-  "$rust_build:num_cpus",
-  "$rust_build:percent_encoding",
-  "$rust_build:rand",
-  "$rust_build:rand_core",
-  "$rust_build:remove_dir_all",
-  "$rust_build:scopeguard",
-  "$rust_build:slab",
-  "$rust_build:tokio_executor",
-  "$rust_build:tokio_fs",
-  "$rust_build:tokio_io",
-  "$rust_build:tokio_reactor",
-  "$rust_build:tokio_tcp",
-  "$rust_build:tokio_threadpool",
-  "$rust_build:tokio_current_thread",
-  "$rust_build:tokio_timer",
-  "$rust_build:tokio_udp",
-  "$rust_build:unicode_bidi",
-  "$rust_build:unicode_normalization",
-  "$rust_build:winapi",
-  "$rust_build:ws2_32",
-]
-
-# Old version of the 'winapi' crate, required by 'mio', 'miow', and 'iovec'.
-# This exceptional! Generally we don't allow multiple versions of a crate.
-# TODO: Remove this dependency. https://github.com/denoland/deno/issues/484
-main_extern_version = [
-  {
-    label = "$rust_build:winapi-0.2"
-    crate_name = "winapi"
-    crate_version = "0.2"
-  },
 ]
 
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
-  extern_version = main_extern_version
   deps = [
     ":libdeno",
   ]
@@ -117,7 +62,6 @@ rust_executable("deno") {
 rust_executable("deno_ns") {
   source_root = "src/main.rs"
   extern = main_extern
-  extern_version = main_extern_version
   deps = [
     ":libdeno_nosnapshot",
   ]
@@ -126,7 +70,6 @@ rust_executable("deno_ns") {
 rust_test("test_rs") {
   source_root = "src/main.rs"
   extern = main_extern
-  extern_version = main_extern_version
   deps = [
     ":libdeno",
   ]
