@@ -268,27 +268,27 @@ interface ReadResult {
   eof: boolean;
 }
 
-// Reader is the interface that wraps the basic Read method.
+// Reader is the interface that wraps the basic read() method.
 // https://golang.org/pkg/io/#Reader
 interface Reader {
-  // Read reads up to p.byteLength bytes into p. It returns the number of bytes
-  // read (0 <= n <= p.byteLength) and any error encountered. Even if Read
+  // read() reads up to p.byteLength bytes into p. It returns the number of bytes
+  // read (0 <= n <= p.byteLength) and any error encountered. Even if read()
   // returns n < p.byteLength, it may use all of p as scratch space during the
-  // call. If some data is available but not p.byteLength bytes, Read
+  // call. If some data is available but not p.byteLength bytes, read()
   // conventionally returns what is available instead of waiting for more.
   //
-  // When Read encounters an error or end-of-file condition after successfully
+  // When read() encounters an error or end-of-file condition after successfully
   // reading n > 0 bytes, it returns the number of bytes read. It may return the
   // (non-nil) error from the same call or return the error (and n == 0) from a
   // subsequent call. An instance of this general case is that a Reader
   // returning a non-zero number of bytes at the end of the input stream may
-  // return either err == EOF or err == nil. The next Read should return 0, EOF.
+  // return either err == EOF or err == nil. The next read() should return 0, EOF.
   //
   // Callers should always process the n > 0 bytes returned before considering
   // the error err. Doing so correctly handles I/O errors that happen after
   // reading some bytes and also both of the allowed EOF behaviors.
   //
-  // Implementations of Read are discouraged from returning a zero byte count
+  // Implementations of read() are discouraged from returning a zero byte count
   // with a nil error, except when p.byteLength == 0. Callers should treat a
   // return of 0 and nil as indicating that nothing happened; in particular it
   // does not indicate EOF.
@@ -297,13 +297,13 @@ interface Reader {
   async read(p: ArrayBufferView): Promise<ReadResult>;
 }
 
-// Writer is the interface that wraps the basic Write method.
+// Writer is the interface that wraps the basic write() method.
 // https://golang.org/pkg/io/#Writer
 interface Writer {
-  // Write writes p.byteLength bytes from p to the underlying data stream. It
+  // write() writes p.byteLength bytes from p to the underlying data stream. It
   // returns the number of bytes written from p (0 <= n <= p.byteLength) and any
-  // error encountered that caused the write to stop early. Write must return a
-  // non-nil error if it returns n < p.byteLength. Write must not modify the
+  // error encountered that caused the write to stop early. write() must return a
+  // non-nil error if it returns n < p.byteLength. write() must not modify the
   // slice data, even temporarily.
   //
   // Implementations must not retain p.
@@ -319,7 +319,7 @@ interface Closer {
 
 // https://golang.org/pkg/io/#Seeker
 interface Seeker {
-  // Seek sets the offset for the next Read or Write to offset, interpreted
+  // Seek sets the offset for the next read() or write() to offset, interpreted
   // according to whence: SeekStart means relative to the start of the file,
   // SeekCurrent means relative to the current offset, and SeekEnd means
   // relative to the end. Seek returns the new offset relative to the start of
@@ -352,12 +352,12 @@ interface ReadWriteSeeker extends Reader, Writer, Seeker { }
 These interfaces are well specified, simple, and have very nice utility
 functions that will be easy to port. Some example utilites:
 ```ts
-// Copy copies from src to dst until either EOF is reached on src or an error
+// copy() copies from src to dst until either EOF is reached on src or an error
 // occurs. It returns the number of bytes copied and the first error encountered
 // while copying, if any.
 //
-// Because Copy is defined to read from src until EOF, it does not treat an EOF
-// from Read as an error to be reported.
+// Because copy() is defined to read from src until EOF, it does not treat an EOF
+// from read() as an error to be reported.
 //
 // https://golang.org/pkg/io/#Copy
 async function copy(dst: Writer, src: Reader): Promise<number> {
@@ -387,7 +387,7 @@ function multiWriter(writers: ...Writer): Writer {
       let nwritten = await Promise.all(writers.map((w) => w.write(p)));
       return nwritten[0];
       // TODO unsure of proper semantics for return value..
-    }
+   }
   };
 }
 ```
