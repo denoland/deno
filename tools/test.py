@@ -24,6 +24,8 @@ def main(argv):
         print "Usage: tools/test.py [build_dir]"
         sys.exit(1)
 
+    run(["node", "tpbench.js"])
+
     # Internal tools testing
     util_test()
 
