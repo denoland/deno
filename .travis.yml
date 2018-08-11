@@ -54,11 +54,10 @@ jobs:
       script: true
       before_deploy: |
         env DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false" \
-          DENO_BUILD_PATH=$HOME/out/release \
           DENO_BUILD_MODE=release \
           ./tools/build.py -j2
       deploy:
         provider: releases
         skip_cleanup: true
         api_key: $GITHUB_RELEASE_KEY
-        file: "$HOME/out/release/deno"
+        file: "$DENO_BUILD_PATH/deno"
