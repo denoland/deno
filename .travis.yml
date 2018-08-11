@@ -58,3 +58,5 @@ jobs:
         skip_cleanup: true
         api_key: $GITHUB_RELEASE_KEY
         file: "$DENO_BUILD_PATH/deno"
+        on:
+          tags: true
