@@ -214,7 +214,7 @@ template("rust_crate") {
   crate_outputs = get_target_outputs(rustc_label)
   crate_obj = crate_outputs[0]
 
-  component(target_name) {
+  source_set(target_name) {
     forward_variables_from(invoker,
                            [
                              "deps",
