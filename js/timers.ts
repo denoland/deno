@@ -21,6 +21,7 @@ interface Timer {
 
 const timers = new Map<number, Timer>();
 
+/** @internal */
 export function onMessage(msg: fbs.TimerReady) {
   const timerReadyId = msg.id();
   const timerReadyDone = msg.done();
