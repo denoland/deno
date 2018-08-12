@@ -11,6 +11,8 @@ import consoleDts from "gen/js/console.d.ts!string";
 import denoDts from "gen/js/deno.d.ts!string";
 import globalsDts from "gen/js/globals.d.ts!string";
 import osDts from "gen/js/os.d.ts!string";
+import fetchDts from "gen/js/fetch.d.ts!string";
+import fetchTypesDts from "gen/js/fetch_types.d.ts!string";
 import timersDts from "gen/js/timers.d.ts!string";
 import utilDts from "gen/js/util.d.ts!string";
 
@@ -57,6 +59,8 @@ export const assetSourceCode: { [key: string]: string } = {
   "deno.d.ts": denoDts,
   "globals.d.ts": globalsDts,
   "os.d.ts": osDts,
+  "fetch.d.ts": fetchDts,
+  "fetch_types.d.ts": fetchTypesDts,
   "timers.d.ts": timersDts,
   "util.d.ts": utilDts,
 

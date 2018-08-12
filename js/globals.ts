@@ -4,7 +4,7 @@ import { Console } from "./console";
 import { RawSourceMap } from "./types";
 import * as timers from "./timers";
 import { TextEncoder, TextDecoder } from "./text_encoding";
-import { fetch } from "./fetch";
+import * as fetch_ from "./fetch";
 
 declare global {
   interface Window {
@@ -18,6 +18,8 @@ declare global {
 
   const console: Console;
   const window: Window;
+
+  const fetch: typeof fetch_.fetch;
 
   // tslint:disable:variable-name
   let TextEncoder: TextEncoder;
@@ -59,4 +61,4 @@ window.console = new Console(libdeno.print);
 window.TextEncoder = TextEncoder;
 window.TextDecoder = TextDecoder;
 
-window.fetch = fetch;
+window.fetch = fetch_.fetch;

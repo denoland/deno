@@ -395,14 +395,15 @@ rust_crate("base64") {
 
 rust_crate("ct_logs") {
   source_root = "$registry_github/ct-logs-0.4.0/src/lib.rs"
-  extern = [
-    ":sct",
-  ]
+  extern = [ ":sct" ]
 }
 
 rust_crate("ring") {
   source_root = "$registry_github/ring-0.13.2/src/lib.rs"
-  features = [ "use_heap", "rsa_signing" ]
+  features = [
+    "use_heap",
+    "rsa_signing",
+  ]
   extern = [
     ":libc",
     ":untrusted",
@@ -469,13 +470,15 @@ rust_crate("tokio_rustls") {
 
 rust_crate("untrusted") {
   source_root = "$registry_github/untrusted-0.6.2/src/untrusted.rs"
-  extern = [
-  ]
+  extern = []
 }
 
 rust_crate("webpki") {
   source_root = "$registry_github/webpki-0.18.1/src/webpki.rs"
-  features = [ "std", "trust_anchor_util" ]
+  features = [
+    "std",
+    "trust_anchor_util",
+  ]
   extern = [
     ":ring",
     ":untrusted",
@@ -550,9 +553,7 @@ rust_crate("string") {
 
 rust_crate("time") {
   source_root = "$registry_github/time-0.1.40/src/lib.rs"
-  extern = [
-    ":libc",
-  ]
+  extern = [ ":libc" ]
 }
 
 rust_crate("try_lock") {

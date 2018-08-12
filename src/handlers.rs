@@ -11,8 +11,9 @@ use std;
 use std::path::Path;
 use tokio::prelude::future;
 use hyper;
-use hyper::Client;
 use hyper::rt::{self, Future, Stream};
+use hyper::Client;
+use tokio::prelude::future;
 
 pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
   let bytes = unsafe { std::slice::from_raw_parts(buf.data_ptr, buf.data_len) };
@@ -233,7 +234,7 @@ fn fetch_url(
   cmd_id: u32,
   id: u32,
   url_: *const c_char,
-) -> impl Future<Item=(), Error=()> {
+) -> impl Future<Item = (), Error = ()> {
   let url = str_from_ptr!(url_).parse::<hyper::Uri>().unwrap();
   let client = Client::new();
 
@@ -272,8 +273,7 @@ fn fetch_url(
       //     // );
       //   });
     })
-    .map_err(|err| {
-    })
+    .map_err(|err| {})
 }
 
 fn set_timeout<F>(

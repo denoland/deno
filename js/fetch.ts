@@ -7,7 +7,10 @@ import {
   typedArrayToArrayBuffer
 } from "./util";
 import { flatbuffers } from "flatbuffers";
+import { libdeno } from "./globals";
 import { deno as fbs } from "gen/msg_generated";
+import "./fetch_types";
+import { TextDecoder } from "./text_encoding";
 
 declare var deno: any;
 
@@ -126,10 +129,9 @@ class FetchRequest {
     fbs.Base.addMsg(builder, msg);
     fbs.Base.addMsgType(builder, fbs.Any.FetchReq);
     builder.finish(fbs.Base.endBase(builder));
-    const resBuf = deno.send(builder.asUint8Array());
+    const resBuf = libdeno.send(builder.asUint8Array());
 
     console.log("FetchReq sent", builder);
-
   }
 }
 

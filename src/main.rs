@@ -1,5 +1,6 @@
 extern crate flatbuffers;
 extern crate futures;
+extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate sha1;
@@ -7,7 +8,6 @@ extern crate tempfile;
 extern crate tokio;
 extern crate tokio_current_thread;
 extern crate url;
-extern crate hyper;
 #[macro_use]
 extern crate log;
 
