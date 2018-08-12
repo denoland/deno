@@ -354,15 +354,20 @@ class TypeScriptHost implements ts.LanguageServiceHost {
         } else {
           resolvedFileName = resolveModuleName(name, containingFile);
         }
-        if (resolvedFileName == null) {
-          return undefined;
-        }
+        // According to the interface we shouldn't return `undefined` but if we 
+        // fail to return the same length of modules to those we cannot resolve
+        // then TypeScript fails on an assertion that the lengths can't be
+        // different, so we have to return an "empty" resolved module
+        // TODO: all this does is push the problem downstream, and TypeScript
+        // will complain it can't identify the type of the file and throw
+        // a runtime exception, so we need to handle missing modules better
+        resolvedFileName = resolvedFileName || "";
         // This flags to the compiler to not go looking to transpile functional
         // code, anything that is in `/$asset$/` is just library code
         const isExternalLibraryImport = resolvedFileName.startsWith(ASSETS);
+        // TODO: we should be returning a ts.ResolveModuleFull
         return { resolvedFileName, isExternalLibraryImport };
-      })
-      .filter(mod => mod != null) as ts.ResolvedModule[];
+      });
   }
 }
 
