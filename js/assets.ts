@@ -94,7 +94,4 @@ export const assetSourceCode: { [key: string]: string } = {
   // Static definitions
   "typescript.d.ts": typescriptDts,
   "types.d.ts": typesDts,
-
-  // TODO(ry) Remove the following when possible. It's a workaround.
-  "msg_generated.d.ts": "",
 };
