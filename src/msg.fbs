@@ -83,7 +83,7 @@ table FetchRes {
   id: uint;
   status: int;
   header_line: [string];
-  body: [byte];
+  body: [ubyte];
 }
 
 table ReadFileSync {
@@ -91,12 +91,12 @@ table ReadFileSync {
 }
 
 table ReadFileSyncRes {
-  data: [byte];
+  data: [ubyte];
 }
 
 table WriteFileSync {
   filename: string;
-  data: [byte];
+  data: [ubyte];
   perm: uint;
   // perm specified by https://godoc.org/os#FileMode
 }
