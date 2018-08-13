@@ -17,10 +17,6 @@ struct deno_s {
   deno_recv_cb cb;
   void* data;
 };
-// TODO(ry) Remove these when we call deno_reply_start from Rust.
-char** deno_argv();
-int deno_argc();
-struct deno_s* deno_from_isolate(v8::Isolate* isolate);
 }
 
 namespace deno {
