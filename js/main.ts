@@ -56,7 +56,6 @@ export default function denoMain() {
   // Deserialize res into startResMsg.
   const bb = new flatbuffers.ByteBuffer(res);
   const base = fbs.Base.getRootAsBase(bb);
-  assert(base.cmdId() === cmdId);
   assert(fbs.Any.StartRes === base.msgType());
   const startResMsg = new fbs.StartRes();
   assert(base.msg(startResMsg) != null);

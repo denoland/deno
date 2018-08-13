@@ -100,3 +100,5 @@ table WriteFileSync {
   perm: uint;
   // perm specified by https://godoc.org/os#FileMode
 }
+
+root_type Base;

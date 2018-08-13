@@ -97,12 +97,13 @@ pub struct Deno {
   dir: deno_dir::DenoDir,
   rt: tokio::runtime::current_thread::Runtime,
   timers: HashMap<u32, futures::sync::oneshot::Sender<()>>,
+  argv: Vec<String>,
 }
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
 impl Deno {
-  fn new() -> Box<Deno> {
+  fn new(argv: Vec<String>) -> Box<Deno> {
     DENO_INIT.call_once(|| {
       unsafe { binding::deno_init() };
     });
@@ -112,12 +113,13 @@ impl Deno {
       dir: deno_dir::DenoDir::new(None).unwrap(),
       rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
       timers: HashMap::new(),
+      argv,
     });
 
     (*deno_box).ptr = unsafe {
       binding::deno_new(
         deno_box.as_ref() as *const _ as *const c_void,
-        binding::deno_handle_msg_from_js,
+        handlers::msg_from_js,
       )
     };
 
@@ -171,7 +173,8 @@ pub fn from_c<'a>(d: *const binding::DenoC) -> &'a mut Deno {
 
 #[test]
 fn test_c_to_rust() {
-  let d = Deno::new();
+  let argv = vec![String::from("./deno"), String::from("hello.js")];
+  let d = Deno::new(argv);
   let d2 = from_c(d.ptr);
   assert!(d.ptr == d2.ptr);
   assert!(d.dir.root.join("gen") == d.dir.gen, "Sanity check");
@@ -198,7 +201,7 @@ fn main() {
   log::set_logger(&LOGGER).unwrap();
   log::set_max_level(log::LevelFilter::Info);
 
-  let _js_args = set_flags(env::args().collect());
+  let js_args = set_flags(env::args().collect());
 
   /*
     let v = unsafe { deno_v8_version() };
@@ -207,7 +210,7 @@ fn main() {
     println!("version: {}", version);
     */
 
-  let mut d = Deno::new();
+  let mut d = Deno::new(js_args);
 
   d.execute("deno_main.js", "denoMain();")
     .unwrap_or_else(|err| {
