@@ -1,6 +1,9 @@
 declare_args() {
   # Absolute path of rust build files.
   rust_build = "//build_extra/rust/"
+
+  # treat the warnings in rust files as errors
+  rust_treat_warnings_as_errors = true
 }
 
 if (is_win) {
@@ -67,13 +70,15 @@ template("run_rustc") {
     ]
     script = "//tools/run_rustc.py"
 
-    # TODO: We want to apply "-Dwarnings" only when treat_warnings_as_errors is not false
-    # https://github.com/denoland/deno/pull/379
     args = [
       rebase_path(source_root, root_build_dir),
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
     ]
+
+    if (rust_treat_warnings_as_errors) {
+      args += [ "-Dwarnings" ]
+    }
 
     if (!is_win) {
       args += [ "--color=always" ]
