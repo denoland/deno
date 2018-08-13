@@ -156,14 +156,9 @@ v8_source_set("deno_flatbuffer_builder") {
 }
 
 v8_source_set("deno_bindings") {
-  sources = [
-    "src/reply.cc",
-    "src/reply.h",
-  ]
   deps = [
     ":deno_base",
     ":deno_flatbuffer_builder",
-    ":msg_cpp",
   ]
   configs = [ ":deno_config" ]
 }
@@ -176,12 +171,6 @@ executable("snapshot_creator") {
     ":deno_base",
   ]
   configs += [ ":deno_config" ]
-}
-
-flatbuffer("msg_cpp") {
-  sources = [
-    "src/msg.fbs",
-  ]
 }
 
 # Generates type declarations for files that need to be included
