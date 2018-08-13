@@ -2,14 +2,11 @@
 use binding;
 use binding::{deno_buf, deno_set_response, DenoC};
 use flatbuffers;
-use flatbuffers::ByteStringOffset;
-use flatbuffers::LabeledUOffsetT;
 use from_c;
 use fs;
 use futures;
 use futures::sync::oneshot;
 use libc::c_char;
-use mem;
 use msg_generated::deno as msg;
 use std::ffi::CStr;
 use std::path::Path;
@@ -38,7 +35,7 @@ fn reply_error(d: *const DenoC, cmd_id: u32, msg: &String) {
   // println!("reply_error{}", msg);
   let args = msg::BaseArgs {
     cmdId: cmd_id,
-    error: builder.create_string(msg),
+    error: Some(builder.create_string(msg)),
     ..Default::default()
   };
   set_response_base(d, &mut builder, &args)
@@ -112,14 +109,14 @@ pub extern "C" fn handle_code_fetch(
   // reply_code_fetch
   let mut builder = flatbuffers::FlatBufferBuilder::new();
   let mut msg_args = msg::CodeFetchResArgs {
-    module_name: builder.create_string(&out.module_name),
-    filename: builder.create_string(&out.filename),
-    source_code: builder.create_string(&out.source_code),
+    module_name: Some(builder.create_string(&out.module_name)),
+    filename: Some(builder.create_string(&out.filename)),
+    source_code: Some(builder.create_string(&out.source_code)),
     ..Default::default()
   };
   match out.maybe_output_code {
     Some(ref output_code) => {
-      msg_args.output_code = builder.create_string(output_code);
+      msg_args.output_code = Some(builder.create_string(output_code));
     }
     _ => (),
   };
@@ -127,7 +124,7 @@ pub extern "C" fn handle_code_fetch(
   builder.finish(msg);
   let args = msg::BaseArgs {
     cmdId: cmd_id,
-    msg: Some(msg.union()),
+    msg: Some(flatbuffers::Offset::new(msg.value())),
     msg_type: msg::Any::CodeFetchRes,
     ..Default::default()
   };
@@ -224,7 +221,7 @@ fn send_timer_ready(d: *const DenoC, timer_id: u32, done: bool) {
     d,
     &mut builder,
     &msg::BaseArgs {
-      msg: Some(msg.union()),
+      msg: Some(flatbuffers::Offset::new(msg.value())),
       msg_type: msg::Any::TimerReady,
       ..Default::default()
     },
@@ -250,26 +247,14 @@ pub extern "C" fn handle_read_file_sync(
   }
 
   // Build the response message. memcpy data into msg.
+  // TODO(ry) zero-copy.
   let mut builder = flatbuffers::FlatBufferBuilder::new();
-
   let vec = result.unwrap();
-  //let data =
-  //  flatbuffers::LabeledUOffsetT::new(builder.push_bytes(vec.as_slice()));
-
-  let data_ = builder.create_byte_vector(vec.as_slice());
-
-  // TODO(ry) This is a hack that can be removed once builder.create_byte_vector
-  // works properly.
-  let data = unsafe {
-    mem::transmute::<LabeledUOffsetT<ByteStringOffset>, LabeledUOffsetT<&[i8]>>(
-      data_,
-    )
-  };
-
+  let data_off = builder.create_byte_vector(vec.as_slice());
   let msg = msg::CreateReadFileSyncRes(
     &mut builder,
     &msg::ReadFileSyncResArgs {
-      data,
+      data: Some(data_off),
       ..Default::default()
     },
   );
@@ -278,7 +263,7 @@ pub extern "C" fn handle_read_file_sync(
     d,
     &mut builder,
     &msg::BaseArgs {
-      msg: Some(msg.union()),
+      msg: Some(flatbuffers::Offset::new(msg.value())),
       msg_type: msg::Any::ReadFileSyncRes,
       ..Default::default()
     },
