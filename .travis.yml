@@ -48,6 +48,7 @@ jobs:
     - stage: test
 
     - stage: release
+      if: tag IS present
       script: true # skip script
       before_deploy: |
         env DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false" \
