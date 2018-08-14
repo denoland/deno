@@ -12,6 +12,7 @@ import { deno as fbs } from "gen/msg_generated";
 import { Request, Response, Blob, RequestInit, FormData } from "./fetch_types";
 import { TextDecoder } from "./text_encoding";
 
+/** @internal */
 export function onFetchRes(msg: fbs.FetchRes) {
   const id = msg.id();
   const f = fetchRequests.get(id);

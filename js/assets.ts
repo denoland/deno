@@ -98,4 +98,7 @@ export const assetSourceCode: { [key: string]: string } = {
   // Static definitions
   "typescript.d.ts": typescriptDts,
   "types.d.ts": typesDts,
+
+  // TODO Remove.
+  "msg_generated.d.ts": "",
 };
