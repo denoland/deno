@@ -26,7 +26,7 @@ def check_output_test(deno_exe_filename):
         out_abs = os.path.join(tests_path, out_filename)
         with open(out_abs, 'r') as f:
             expected_out = f.read()
-        cmd = [deno_exe_filename, script_abs]
+        cmd = [deno_exe_filename, script_abs, "--reload"]
         expected_code = parse_exit_code(script)
         print " ".join(cmd)
         actual_code = 0
