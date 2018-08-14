@@ -78,12 +78,10 @@ rust_test("test_rs") {
 v8_executable("test_cc") {
   testonly = true
   sources = [
-    "src/flatbuffer_builder_test.cc",
     "src/test.cc",
   ]
   deps = [
     ":deno_base_test",
-    ":deno_flatbuffer_builder",
     "//testing/gtest:gtest",
   ]
   configs = [ ":deno_config" ]
@@ -141,24 +139,9 @@ v8_source_set("deno_base_test") {
   configs = [ ":deno_config" ]
 }
 
-v8_source_set("deno_flatbuffer_builder") {
-  sources = [
-    "src/flatbuffer_builder.cc",
-    "src/flatbuffer_builder.h",
-  ]
-  deps = [
-    ":deno_base",
-  ]
-  public_deps = [
-    "build_extra/flatbuffers:flatbuffers",
-  ]
-  configs = [ ":deno_config" ]
-}
-
 v8_source_set("deno_bindings") {
   deps = [
     ":deno_base",
-    ":deno_flatbuffer_builder",
   ]
   configs = [ ":deno_config" ]
 }
