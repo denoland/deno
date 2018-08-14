@@ -75,7 +75,7 @@ rust_test("test_rs") {
   ]
 }
 
-executable("test_cc") {
+v8_executable("test_cc") {
   testonly = true
   sources = [
     "src/flatbuffer_builder_test.cc",
@@ -86,7 +86,7 @@ executable("test_cc") {
     ":deno_flatbuffer_builder",
     "//testing/gtest:gtest",
   ]
-  configs += [ ":deno_config" ]
+  configs = [ ":deno_config" ]
 }
 
 static_library("libdeno") {
