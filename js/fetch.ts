@@ -9,10 +9,8 @@ import {
 import { flatbuffers } from "flatbuffers";
 import { libdeno } from "./globals";
 import { deno as fbs } from "gen/msg_generated";
-import "./fetch_types";
+import { Request, Response, Blob, RequestInit, FormData } from "./fetch_types";
 import { TextDecoder } from "./text_encoding";
-
-declare var deno: any;
 
 export function onFetchRes(msg: fbs.FetchRes) {
   const id = msg.id();

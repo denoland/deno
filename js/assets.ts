@@ -12,7 +12,6 @@ import denoDts from "gen/js/deno.d.ts!string";
 import globalsDts from "gen/js/globals.d.ts!string";
 import osDts from "gen/js/os.d.ts!string";
 import fetchDts from "gen/js/fetch.d.ts!string";
-import fetchTypesDts from "gen/js/fetch_types.d.ts!string";
 import timersDts from "gen/js/timers.d.ts!string";
 import utilDts from "gen/js/util.d.ts!string";
 
@@ -50,6 +49,7 @@ import libGlobalsDts from "/js/lib.globals.d.ts!string";
 // Static definitions
 import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
 import typesDts from "/js/types.d.ts!string";
+import fetchTypesDts from "/js/fetch_types.d.ts!string";
 // tslint:enable:max-line-length
 
 // prettier-ignore

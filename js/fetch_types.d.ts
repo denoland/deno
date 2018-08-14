@@ -224,7 +224,7 @@ declare var FormData: {
   new (form?: HTMLFormElement): FormData;
 };
 
-interface Blob {
+export interface Blob {
   readonly size: number;
   readonly type: string;
   slice(start?: number, end?: number, contentType?: string): Blob;
@@ -299,7 +299,7 @@ type ResponseType =
   | "opaque"
   | "opaqueredirect";
 
-interface RequestInit {
+export interface RequestInit {
   body?: BodyInit | null;
   cache?: RequestCache;
   credentials?: RequestCredentials;
@@ -315,13 +315,13 @@ interface RequestInit {
   window?: any;
 }
 
-interface ResponseInit {
+export interface ResponseInit {
   headers?: HeadersInit;
   status?: number;
   statusText?: string;
 }
 
-interface Request extends Body {
+export interface Request extends Body {
   /**
    * Returns the cache mode associated with request, which is a string indicating
    * how the the request will interact with the browser's cache when fetching.
@@ -406,7 +406,7 @@ declare var Request: {
   new (input: RequestInfo, init?: RequestInit): Request;
 };
 
-interface Response extends Body {
+export interface Response extends Body {
   readonly headers: Headers;
   readonly ok: boolean;
   readonly redirected: boolean;
