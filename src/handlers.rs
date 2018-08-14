@@ -9,7 +9,6 @@ use futures::sync::oneshot;
 use msg_generated::deno as msg;
 use std;
 use std::path::Path;
-use tokio::prelude::future;
 use hyper;
 use hyper::rt::{self, Future, Stream};
 use hyper::Client;
@@ -37,6 +36,12 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let source_code = msg.source_code().unwrap();
       let output_code = msg.output_code().unwrap();
       handle_code_cache(d, filename, source_code, output_code);
+    }
+    msg::Any::FetchReq => {
+      // TODO base.msg_as_FetchReq();
+      let msg = msg::FetchReq::init_from_table(base.msg().unwrap());
+      let url = msg.url().unwrap();
+      handle_fetch_req(d, msg.id(), url);
     }
     msg::Any::TimerStart => {
       // TODO base.msg_as_TimerStart();
@@ -217,25 +222,21 @@ fn handle_code_cache(
   // null response indicates success.
 }
 
-// Fetch!
-#[no_mangle]
-pub extern "C" fn handle_fetch_req(
+fn handle_fetch_req(
   d: *const DenoC,
-  cmd_id: u32,
   id: u32,
-  url_: *const c_char,
+  url: &str,
 ) {
-  let req = fetch_url(d, cmd_id, id.clone(), url_);
+  let req = fetch_url(d, id.clone(), url);
   rt::run(req);
 }
 
 fn fetch_url(
   d: *const DenoC,
-  cmd_id: u32,
   id: u32,
-  url_: *const c_char,
+  url: &str,
 ) -> impl Future<Item = (), Error = ()> {
-  let url = str_from_ptr!(url_).parse::<hyper::Uri>().unwrap();
+  let url = url.parse::<hyper::Uri>().unwrap();
   let client = Client::new();
 
   client
