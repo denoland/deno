@@ -53,6 +53,14 @@ enum ErrorKind: byte {
   RelativeUrlWithCannotBeABaseBase,
   SetHostOnCannotBeABaseUrl,
   Overflow,
+
+  // hyper errors
+
+  HttpUser,
+  HttpClosed,
+  HttpCanceled,
+  HttpParse,
+  HttpOther,
 }
 
 table Base {

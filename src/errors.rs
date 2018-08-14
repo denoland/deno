@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use hyper;
 use msg_generated::deno as msg;
 use std;
 use std::fmt;
@@ -12,6 +13,14 @@ pub type DenoResult<T> = std::result::Result<T, DenoError>;
 #[derive(Debug)]
 pub struct DenoError {
   repr: Repr,
+}
+
+#[derive(Debug)]
+enum Repr {
+  // Simple(ErrorKind),
+  IoErr(io::Error),
+  UrlErr(url::ParseError),
+  HyperErr(hyper::Error),
 }
 
 impl DenoError {
@@ -59,15 +68,22 @@ impl DenoError {
           Overflow => ErrorKind::Overflow,
         }
       }
+      Repr::HyperErr(ref err) => {
+        // For some reason hyper::errors::Kind is private.
+        if err.is_parse() {
+          ErrorKind::HttpParse
+        } else if err.is_user() {
+          ErrorKind::HttpUser
+        } else if err.is_canceled() {
+          ErrorKind::HttpCanceled
+        } else if err.is_closed() {
+          ErrorKind::HttpClosed
+        } else {
+          ErrorKind::HttpOther
+        }
+      }
     }
   }
-}
-
-#[derive(Debug)]
-enum Repr {
-  // Simple(ErrorKind),
-  IoErr(io::Error),
-  UrlErr(url::ParseError),
 }
 
 impl fmt::Display for DenoError {
@@ -75,6 +91,7 @@ impl fmt::Display for DenoError {
     match self.repr {
       Repr::IoErr(ref err) => err.fmt(f),
       Repr::UrlErr(ref err) => err.fmt(f),
+      Repr::HyperErr(ref err) => err.fmt(f),
       // Repr::Simple(..) => Ok(()),
     }
   }
@@ -85,6 +102,7 @@ impl std::error::Error for DenoError {
     match self.repr {
       Repr::IoErr(ref err) => err.description(),
       Repr::UrlErr(ref err) => err.description(),
+      Repr::HyperErr(ref err) => err.description(),
       // Repr::Simple(..) => "FIXME",
     }
   }
@@ -93,6 +111,7 @@ impl std::error::Error for DenoError {
     match self.repr {
       Repr::IoErr(ref err) => Some(err),
       Repr::UrlErr(ref err) => Some(err),
+      Repr::HyperErr(ref err) => Some(err),
       // Repr::Simple(..) => None,
     }
   }
@@ -112,6 +131,15 @@ impl From<url::ParseError> for DenoError {
   fn from(err: url::ParseError) -> DenoError {
     DenoError {
       repr: Repr::UrlErr(err),
+    }
+  }
+}
+
+impl From<hyper::Error> for DenoError {
+  #[inline]
+  fn from(err: hyper::Error) -> DenoError {
+    DenoError {
+      repr: Repr::HyperErr(err),
     }
   }
 }
