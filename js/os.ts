@@ -120,8 +120,10 @@ export function readFileSync(filename: string): Uint8Array {
   assert(fbs.Any.ReadFileSyncRes === baseRes.msgType());
   const res = new fbs.ReadFileSyncRes();
   assert(baseRes.msg(res) != null);
+  const dataArray = res.dataArray();
+  assert(dataArray != null);
   // TypeScript cannot track assertion above, therefore not null assertion
-  return new Uint8Array(res.dataArray()!);
+  return new Uint8Array(dataArray!);
 }
 
 export function writeFileSync(
