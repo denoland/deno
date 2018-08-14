@@ -1,5 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use fs;
+use network;
 use sha1;
 use std;
 use std::error::Error;
@@ -10,6 +11,8 @@ use std::path::PathBuf;
 use std::result::Result;
 use url;
 use url::Url;
+
+use hyper;
 
 #[cfg(test)]
 use tempfile::TempDir;
@@ -154,6 +157,9 @@ impl DenoDir {
     module_specifier: &str,
     containing_file: &str,
   ) -> Result<(String, String), url::ParseError> {
+    let module_name; 
+    let filename; 
+
     debug!(
       "resolve_module before module_specifier {} containing_file {}",
       module_specifier, containing_file
@@ -165,12 +171,11 @@ impl DenoDir {
 
     let j: Url =
       if containing_file == "." || Path::new(module_specifier).is_absolute() {
-        let r = Url::from_file_path(module_specifier);
-        // TODO(ry) Properly handle error.
-        if r.is_err() {
-          error!("Url::from_file_path error {}", module_specifier);
-        }
-        r.unwrap()
+          if module_specifier.starts_with("http://") {
+            Url::parse(module_specifier)?
+          } else {
+            Url::from_file_path(module_specifier).unwrap()
+          }
       } else if containing_file.ends_with("/") {
         let r = Url::from_directory_path(&containing_file);
         // TODO(ry) Properly handle error.
@@ -189,23 +194,36 @@ impl DenoDir {
         base.join(module_specifier)?
       };
 
-    let mut p = j
-      .to_file_path()
-      .unwrap()
-      .into_os_string()
-      .into_string()
-      .unwrap();
+      match j.scheme() { 
+      "file" => { 
+        let mut p = j.to_file_path() 
+          .unwrap() 
+          .into_os_string() 
+          .into_string() 
+          .unwrap(); 
+  
+        if cfg!(target_os = "windows") { 
+          // On windows, replace backward slashes to forward slashes. 
+          // TODO(piscisaureus): This may not me be right, I just did it to make 
+          // the tests pass. 
+          p = p.replace("\\", "/"); 
+        }
 
-    if cfg!(target_os = "windows") {
-      // On windows, replace backward slashes to forward slashes.
-      // TODO(piscisaureus): This may not me be right, I just did it to make
-      // the tests pass.
-      p = p.replace("\\", "/");
+        module_name = p.to_string(); 
+        filename = p.to_string(); 
+      },
+      _ => { 
+        module_name = module_specifier.to_string(); 
+        let mut pathbuf: PathBuf = self.gen.clone();
+        pathbuf.push(j.host_str().unwrap());
+        for path_seg in j.path_segments().unwrap() {
+          pathbuf.push(path_seg);
+        }
+        filename = pathbuf.to_string_lossy().into_owned();
+      } 
     }
 
-    let module_name = p.to_string();
-    let filename = p.to_string();
-
+    debug!("module_name: {}, filename: {}", module_name, filename);
     Ok((module_name, filename))
   }
 }
@@ -396,7 +414,7 @@ fn test_resolve_module() {
 const ASSET_PREFIX: &str = "/$asset$/";
 
 fn is_remote(_module_name: &str) -> bool {
-  false
+  _module_name.starts_with("http") 
 }
 
 fn get_source_code(
@@ -404,7 +422,9 @@ fn get_source_code(
   filename: &str,
 ) -> std::io::Result<String> {
   if is_remote(module_name) {
-    unimplemented!();
+    let res = network::fetch_http_code_sync(module_name.parse::<hyper::Uri>().unwrap()).unwrap();
+    fs::write_file_sync(Path::new(filename), res.as_bytes());
+    Ok(res)
   } else if module_name.starts_with(ASSET_PREFIX) {
     assert!(false, "Asset resolution should be done in JS, not Rust.");
     unimplemented!();
@@ -416,3 +436,5 @@ fn get_source_code(
     fs::read_file_sync_string(Path::new(filename))
   }
 }
+
+

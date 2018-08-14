@@ -14,6 +14,7 @@ extern crate log;
 mod binding;
 mod deno_dir;
 mod fs;
+mod network;
 pub mod handlers;
 
 use libc::c_int;
