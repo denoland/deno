@@ -12,8 +12,9 @@ pub fn read_file_sync(path: &Path) -> std::io::Result<Vec<u8>> {
 }
 
 pub fn write_file_sync(path: &Path, content: &[u8]) {
-  std::fs::create_dir_all(path.parent().unwrap());
-  File::create(path).unwrap().write_all(content);
+  std::fs::create_dir_all(path.parent().unwrap()).and_then(|_| {
+    File::create(path).unwrap().write_all(content)
+  }).ok();
 }
 
 pub fn read_file_sync_string(path: &Path) -> std::io::Result<String> {

@@ -212,18 +212,24 @@ impl DenoDir {
       },
       _ => { 
         module_name = module_specifier.to_string(); 
-        let mut pathbuf: PathBuf = self.gen.clone();
-        pathbuf.push(j.host_str().unwrap());
-        for path_seg in j.path_segments().unwrap() {
-          pathbuf.push(path_seg);
-        }
-        filename = pathbuf.to_string_lossy().into_owned();
+        filename = get_cache_filename(self, j);
       } 
     }
 
     debug!("module_name: {}, filename: {}", module_name, filename);
     Ok((module_name, filename))
   }
+}
+
+fn get_cache_filename(dir: &DenoDir, j: Url) -> String {
+  let mut pathbuf: PathBuf = dir.deps.clone();
+
+  pathbuf.push(j.host_str().unwrap());
+  for path_seg in j.path_segments().unwrap() {
+      pathbuf.push(path_seg);
+  }
+
+  pathbuf.to_str().unwrap().to_owned()
 }
 
 #[derive(Debug)]
