@@ -12,8 +12,6 @@ use std::result::Result;
 use url;
 use url::Url;
 
-use hyper;
-
 #[cfg(test)]
 use tempfile::TempDir;
 
@@ -413,8 +411,8 @@ fn test_resolve_module() {
 
 const ASSET_PREFIX: &str = "/$asset$/";
 
-fn is_remote(_module_name: &str) -> bool {
-  _module_name.starts_with("http") 
+fn is_remote(module_name: &str) -> bool {
+  module_name.starts_with("http") 
 }
 
 fn get_source_code(
@@ -422,9 +420,16 @@ fn get_source_code(
   filename: &str,
 ) -> std::io::Result<String> {
   if is_remote(module_name) {
-    let res = network::fetch_http_code_sync(module_name.parse::<hyper::Uri>().unwrap()).unwrap();
-    fs::write_file_sync(Path::new(filename), res.as_bytes());
-    Ok(res)
+    let filepath = Path::new(filename);
+    if filepath.exists() {
+      fs::read_file_sync_string(&filepath)
+    } else {
+      network::http_code_fetch(module_name)
+        .and_then(|res| {
+          fs::write_file_sync(&filepath, res.as_bytes());
+          Ok(res)
+        })
+    }
   } else if module_name.starts_with(ASSET_PREFIX) {
     assert!(false, "Asset resolution should be done in JS, not Rust.");
     unimplemented!();

@@ -4,10 +4,17 @@ use std::sync::mpsc::channel;
 use hyper::{Client, Uri};
 use hyper::rt::{self, Future, Stream};
 
-pub fn fetch_http_code_sync(url: Uri) -> std::io::Result<String> {
+/**
+ * The CodeFetch message is used to load HTTP javascript resources and expects a synchronous response,
+ * this utility method supports that.
+*/
+pub fn http_code_fetch(module_name: &str) -> std::io::Result<String> {
+  let url = module_name.parse::<Uri>().unwrap();
   let (sender, receiver) = channel();
   let client = Client::new();
-    
+
+  println!("Downloading {}", url);
+
   rt::run(client
     .get(url)
     .and_then(move |res| {
