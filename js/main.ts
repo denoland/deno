@@ -72,5 +72,7 @@ export default function denoMain() {
 
   const inputFn = argv[1];
   const mod = runtime.resolveModule(inputFn, `${cwd}/`);
-  mod.compileAndRun();
+  assert(mod != null);
+  // TypeScript does not track assert, therefore not null assertion
+  mod!.compileAndRun();
 }
