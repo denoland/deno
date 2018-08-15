@@ -6,6 +6,8 @@ import sys
 from check_output_test import check_output_test
 from util import executable_suffix, run, build_path
 from util_test import util_test
+import subprocess
+import http_server
 
 
 def check_exists(filename):
@@ -23,6 +25,8 @@ def main(argv):
     else:
         print "Usage: tools/test.py [build_dir]"
         sys.exit(1)
+
+    http_server.spawn()
 
     # Internal tools testing
     util_test()
