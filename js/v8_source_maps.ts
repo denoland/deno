@@ -40,7 +40,7 @@ export function prepareStackTraceWrapper(
   try {
     return prepareStackTrace(error, stack);
   } catch (prepareStackError) {
-    Error.prepareStackTrace = null;
+    Error.prepareStackTrace = undefined;
     console.log("=====Error inside of prepareStackTrace====");
     console.log(prepareStackError.stack.toString());
     console.log("=====Original error=======================");
@@ -66,8 +66,8 @@ export function wrapCallSite(frame: CallSite): CallSite {
   const source = frame.getFileName() || frame.getScriptNameOrSourceURL();
 
   if (source) {
-    const line = frame.getLineNumber();
-    const column = frame.getColumnNumber() - 1;
+    const line = frame.getLineNumber() || 0;
+    const column = (frame.getColumnNumber() || 1) - 1;
     const position = mapSourcePosition({ source, line, column });
     frame = cloneCallSite(frame);
     frame.getFileName = () => position.source;
@@ -79,7 +79,7 @@ export function wrapCallSite(frame: CallSite): CallSite {
   }
 
   // Code called using eval() needs special handling
-  let origin = frame.isEval() && frame.getEvalOrigin();
+  let origin = (frame.isEval() && frame.getEvalOrigin()) || undefined;
   if (origin) {
     origin = mapEvalOrigin(origin);
     frame = cloneCallSite(frame);
@@ -115,7 +115,7 @@ function CallSiteToString(frame: CallSite): string {
   } else {
     fileName = frame.getScriptNameOrSourceURL();
     if (!fileName && frame.isEval()) {
-      fileLocation = frame.getEvalOrigin();
+      fileLocation = frame.getEvalOrigin() || "";
       fileLocation += ", "; // Expecting source position to follow.
     }
 
@@ -162,7 +162,7 @@ function CallSiteToString(frame: CallSite): string {
         line += ` [as ${methodName} ]`;
       }
     } else {
-      line += typeName + "." + (methodName || "<anonymous>");
+      line += `${typeName}.${methodName || "<anonymous>"}`;
     }
   } else if (isConstructor) {
     line += "new " + (functionName || "<anonymous>");
@@ -181,7 +181,7 @@ function CallSiteToString(frame: CallSite): string {
 // Regex for detecting source maps
 const reSourceMap = /^data:application\/json[^,]+base64,/;
 
-function loadConsumer(source: string): SourceMapConsumer {
+function loadConsumer(source: string): SourceMapConsumer | null {
   let consumer = consumers.get(source);
   if (consumer == null) {
     const code = getGeneratedContents(source);
@@ -221,7 +221,7 @@ function loadConsumer(source: string): SourceMapConsumer {
   return consumer;
 }
 
-function retrieveSourceMapURL(fileData: string): string {
+function retrieveSourceMapURL(fileData: string): string | null {
   // Get the URL of the source map
   // tslint:disable-next-line:max-line-length
   const re = /(?:\/\/[@#][ \t]+sourceMappingURL=([^\s'"]+?)[ \t]*$)|(?:\/\*[@#][ \t]+sourceMappingURL=([^\*]+?)[ \t]*(?:\*\/)[ \t]*$)/gm;

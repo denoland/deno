@@ -4,10 +4,10 @@
     "baseUrl": ".",
     "module": "esnext",
     "moduleResolution": "node",
-    "noImplicitAny": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noLib": true,
+    "noUnusedLocals": true,
     "paths": {
       "*": ["*", "out/debug/*", "out/default/*", "out/release/*"]
     },
@@ -15,6 +15,7 @@
     "pretty": true,
     "removeComments": true,
     "sourceMap": true,
+    "strict": true,
     "target": "esnext",
     "types": []
   },

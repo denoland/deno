@@ -37,11 +37,14 @@ export function codeFetch(
   fbs.Base.addMsgType(builder, fbs.Any.CodeFetch);
   builder.finish(fbs.Base.endBase(builder));
   const resBuf = libdeno.send(builder.asUint8Array());
+  assert(resBuf != null);
   // Process CodeFetchRes
-  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf));
+  // TypeScript does not track `assert` from a CFA perspective, therefore not
+  // null assertion `!`
+  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
   const baseRes = fbs.Base.getRootAsBase(bb);
   if (fbs.Any.NONE === baseRes.msgType()) {
-    throw Error(baseRes.error());
+    throw Error(baseRes.error()!);
   }
   assert(fbs.Any.CodeFetchRes === baseRes.msgType());
   const codeFetchRes = new fbs.CodeFetchRes();
@@ -80,7 +83,9 @@ export function codeCache(
     const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf));
     const baseRes = fbs.Base.getRootAsBase(bb);
     assert(fbs.Any.NONE === baseRes.msgType());
-    throw Error(baseRes.error());
+    // undefined and null are incompatible in strict mode, but at runtime
+    // a null value is fine, therefore not null assertion
+    throw Error(baseRes.error()!);
   }
 }
 
@@ -103,16 +108,22 @@ export function readFileSync(filename: string): Uint8Array {
   builder.finish(fbs.Base.endBase(builder));
   const resBuf = libdeno.send(builder.asUint8Array());
   assert(resBuf != null);
-
-  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf));
+  // TypeScript does not track `assert` from a CFA perspective, therefore not
+  // null assertion `!`
+  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
   const baseRes = fbs.Base.getRootAsBase(bb);
   if (fbs.Any.NONE === baseRes.msgType()) {
-    throw Error(baseRes.error());
+    // undefined and null are incompatible in strict mode, but at runtime
+    // a null value is fine, therefore not null assertion
+    throw Error(baseRes.error()!);
   }
   assert(fbs.Any.ReadFileSyncRes === baseRes.msgType());
   const res = new fbs.ReadFileSyncRes();
   assert(baseRes.msg(res) != null);
-  return new Uint8Array(res.dataArray());
+  const dataArray = res.dataArray();
+  assert(dataArray != null);
+  // TypeScript cannot track assertion above, therefore not null assertion
+  return new Uint8Array(dataArray!);
 }
 
 export function writeFileSync(
