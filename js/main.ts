@@ -2,6 +2,8 @@
 import { flatbuffers } from "flatbuffers";
 import { deno as fbs } from "gen/msg_generated";
 import { assert, log, assignCmdId } from "./util";
+import * as util from "./util";
+import * as os from "./os";
 import * as runtime from "./runtime";
 import { libdeno } from "./globals";
 import * as timers from "./timers";
@@ -60,6 +62,8 @@ export default function denoMain() {
   const startResMsg = new fbs.StartRes();
   assert(base.msg(startResMsg) != null);
 
+  util.setLogDebug(startResMsg.debugFlag());
+
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
 
@@ -70,6 +74,11 @@ export default function denoMain() {
   log("argv", argv);
 
   const inputFn = argv[1];
+  if (!inputFn) {
+    console.log("No input script specified.");
+    os.exit(1);
+  }
+
   const mod = runtime.resolveModule(inputFn, `${cwd}/`);
   assert(mod != null);
   // TypeScript does not track assert, therefore not null assertion
