@@ -35,6 +35,8 @@ config("deno_config") {
 }
 
 main_extern = [
+  "$rust_build:hyper",
+  "$rust_build:rustls",
   "$rust_build:futures",
   "$rust_build:libc",
   "$rust_build:log",
@@ -78,12 +80,10 @@ rust_test("test_rs") {
 v8_executable("test_cc") {
   testonly = true
   sources = [
-    "src/flatbuffer_builder_test.cc",
     "src/test.cc",
   ]
   deps = [
     ":deno_base_test",
-    ":deno_flatbuffer_builder",
     "//testing/gtest:gtest",
   ]
   configs = [ ":deno_config" ]
@@ -141,29 +141,9 @@ v8_source_set("deno_base_test") {
   configs = [ ":deno_config" ]
 }
 
-v8_source_set("deno_flatbuffer_builder") {
-  sources = [
-    "src/flatbuffer_builder.cc",
-    "src/flatbuffer_builder.h",
-  ]
-  deps = [
-    ":deno_base",
-  ]
-  public_deps = [
-    "build_extra/flatbuffers:flatbuffers",
-  ]
-  configs = [ ":deno_config" ]
-}
-
 v8_source_set("deno_bindings") {
-  sources = [
-    "src/reply.cc",
-    "src/reply.h",
-  ]
   deps = [
     ":deno_base",
-    ":deno_flatbuffer_builder",
-    ":msg_cpp",
   ]
   configs = [ ":deno_config" ]
 }
@@ -176,12 +156,6 @@ executable("snapshot_creator") {
     ":deno_base",
   ]
   configs += [ ":deno_config" ]
-}
-
-flatbuffer("msg_cpp") {
-  sources = [
-    "src/msg.fbs",
-  ]
 }
 
 # Generates type declarations for files that need to be included
@@ -224,6 +198,8 @@ run_node("bundle") {
   sources = [
     "js/assets.ts",
     "js/console.ts",
+    "js/fetch.ts",
+    "js/fetch_types.d.ts",
     "js/globals.ts",
     "js/lib.globals.d.ts",
     "js/main.ts",

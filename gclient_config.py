@@ -37,7 +37,7 @@ solutions = [{
     # Tracking a bleeding-edge branch that is nearing rust support.
     # https://github.com/google/flatbuffers/pull/3894
     'url':
-    'https://github.com/rw/flatbuffers.git@2018-02--rust',
+    'https://github.com/rw/flatbuffers.git@2018-08-12--all-tests-passing',
     'name':
     'flatbuffers'
 }]

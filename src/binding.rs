@@ -35,5 +35,4 @@ extern "C" {
     js_filename: *const c_char,
     js_source: *const c_char,
   ) -> c_int;
-  pub fn deno_handle_msg_from_js(d: *const DenoC, buf: deno_buf);
 }
