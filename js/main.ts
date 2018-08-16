@@ -4,6 +4,7 @@ import { deno as fbs } from "gen/msg_generated";
 import { assert, log, assignCmdId } from "./util";
 import * as runtime from "./runtime";
 import { libdeno } from "./globals";
+import * as timers from "./timers";
 
 function startMsg(cmdId: number): Uint8Array {
   const builder = new flatbuffers.Builder();
@@ -17,8 +18,26 @@ function startMsg(cmdId: number): Uint8Array {
   return builder.asUint8Array();
 }
 
+function onMessage(ui8: Uint8Array) {
+  const bb = new flatbuffers.ByteBuffer(ui8);
+  const base = fbs.Base.getRootAsBase(bb);
+  switch (base.msgType()) {
+    case fbs.Any.TimerReady: {
+      const msg = new fbs.TimerReady();
+      assert(base.msg(msg) != null);
+      timers.onMessage(msg);
+      break;
+    }
+    default: {
+      assert(false, "Unhandled message type");
+      break;
+    }
+  }
+}
+
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
+  libdeno.recv(onMessage);
   runtime.setup();
 
   // First we send an empty "Start" message to let the privlaged side know we
@@ -37,7 +56,6 @@ export default function denoMain() {
   // Deserialize res into startResMsg.
   const bb = new flatbuffers.ByteBuffer(res);
   const base = fbs.Base.getRootAsBase(bb);
-  assert(base.cmdId() === cmdId);
   assert(fbs.Any.StartRes === base.msgType());
   const startResMsg = new fbs.StartRes();
   assert(base.msg(startResMsg) != null);
@@ -53,5 +71,7 @@ export default function denoMain() {
 
   const inputFn = argv[1];
   const mod = runtime.resolveModule(inputFn, `${cwd}/`);
-  mod.compileAndRun();
+  assert(mod != null);
+  // TypeScript does not track assert, therefore not null assertion
+  mod!.compileAndRun();
 }

@@ -70,7 +70,7 @@ impl DenoDir {
   ) -> std::io::Result<String> {
     let path = self.cache_path(filename, source_code);
     debug!("load_cache {}", path.display());
-    fs::read_file_sync(&path)
+    fs::read_file_sync_string(&path)
   }
 
   pub fn code_cache(
@@ -251,7 +251,7 @@ fn test_code_cache() {
   let r = deno_dir.code_cache(filename, source_code, output_code);
   r.expect("code_cache error");
   assert!(cache_path.exists());
-  assert_eq!(output_code, fs::read_file_sync(&cache_path).unwrap());
+  assert_eq!(output_code, fs::read_file_sync_string(&cache_path).unwrap());
 }
 
 // https://github.com/denoland/deno/blob/golang/deno_dir.go#L25-L30
@@ -413,6 +413,6 @@ fn get_source_code(
       module_name == filename,
       "if a module isn't remote, it should have the same filename"
     );
-    fs::read_file_sync(Path::new(filename))
+    fs::read_file_sync_string(Path::new(filename))
   }
 }

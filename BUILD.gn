@@ -35,76 +35,21 @@ config("deno_config") {
 }
 
 main_extern = [
+  "$rust_build:futures",
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:sha1",
   "$rust_build:tempfile",
   "$rust_build:tokio",
+  "$rust_build:tokio_current_thread",
   "$rust_build:url",
   "//build_extra/flatbuffers/rust:flatbuffers",
   ":msg_rs",
-
-  # Indirect rust depdendencies also need to be listed here:
-  # * Linking to `:handlers` or `:libdeno` isn't possible, because they
-  #   already contain some symbols exported by `handlers.rs`. These duplicate
-  #   symbols trip up the linker.
-  # * The `rust_test` and `rust_executable` templates only produce an object
-  #   file, and then invoke an external linker. Transitive rust depencenies
-  #   are not resolved in either step.
-  "$rust_build:arrayvec",
-  "$rust_build:byteorder",
-  "$rust_build:bytes",
-  "$rust_build:crossbeam_deque",
-  "$rust_build:crossbeam_epoch",
-  "$rust_build:crossbeam_utils",
-  "$rust_build:futures",
-  "$rust_build:idna",
-  "$rust_build:iovec",
-  "$rust_build:kernel32",
-  "$rust_build:lazy_static",
-  "$rust_build:lazycell",
-  "$rust_build:memoffset",
-  "$rust_build:mio",
-  "$rust_build:miow",
-  "$rust_build:net2",
-  "$rust_build:nodrop",
-  "$rust_build:num_cpus",
-  "$rust_build:percent_encoding",
-  "$rust_build:rand",
-  "$rust_build:rand_core",
-  "$rust_build:remove_dir_all",
-  "$rust_build:scopeguard",
-  "$rust_build:slab",
-  "$rust_build:tokio_executor",
-  "$rust_build:tokio_fs",
-  "$rust_build:tokio_io",
-  "$rust_build:tokio_reactor",
-  "$rust_build:tokio_tcp",
-  "$rust_build:tokio_threadpool",
-  "$rust_build:tokio_current_thread",
-  "$rust_build:tokio_timer",
-  "$rust_build:tokio_udp",
-  "$rust_build:unicode_bidi",
-  "$rust_build:unicode_normalization",
-  "$rust_build:winapi",
-  "$rust_build:ws2_32",
-]
-
-# Old version of the 'winapi' crate, required by 'mio', 'miow', and 'iovec'.
-# This exceptional! Generally we don't allow multiple versions of a crate.
-# TODO: Remove this dependency. https://github.com/denoland/deno/issues/484
-main_extern_version = [
-  {
-    label = "$rust_build:winapi-0.2"
-    crate_name = "winapi"
-    crate_version = "0.2"
-  },
 ]
 
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
-  extern_version = main_extern_version
   deps = [
     ":libdeno",
   ]
@@ -117,7 +62,6 @@ rust_executable("deno") {
 rust_executable("deno_ns") {
   source_root = "src/main.rs"
   extern = main_extern
-  extern_version = main_extern_version
   deps = [
     ":libdeno_nosnapshot",
   ]
@@ -126,24 +70,21 @@ rust_executable("deno_ns") {
 rust_test("test_rs") {
   source_root = "src/main.rs"
   extern = main_extern
-  extern_version = main_extern_version
   deps = [
     ":libdeno",
   ]
 }
 
-executable("test_cc") {
+v8_executable("test_cc") {
   testonly = true
   sources = [
-    "src/flatbuffer_builder_test.cc",
     "src/test.cc",
   ]
   deps = [
     ":deno_base_test",
-    ":deno_flatbuffer_builder",
     "//testing/gtest:gtest",
   ]
-  configs += [ ":deno_config" ]
+  configs = [ ":deno_config" ]
 }
 
 static_library("libdeno") {
@@ -161,7 +102,7 @@ static_library("libdeno") {
   configs += [ ":deno_config" ]
 }
 
-# Only functionality needed for mock_runtime_test and snapshot_creator
+# Only functionality needed for libdeno_test and snapshot_creator
 # In particular no flatbuffers, no assets, no rust, no msg handlers.
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
@@ -184,43 +125,23 @@ v8_source_set("deno_base_test") {
   sources = [
     "src/file_util_test.cc",
     "src/from_snapshot.cc",
-    "src/mock_runtime_test.cc",
+    "src/libdeno_test.cc",
   ]
   inputs = [
-    "$target_gen_dir/snapshot_mock_runtime.bin",
+    "$target_gen_dir/snapshot_libdeno_test.bin",
   ]
   deps = [
-    ":create_snapshot_mock_runtime",
+    ":create_snapshot_libdeno_test",
     ":deno_base",
     "//testing/gtest:gtest",
   ]
-  defines = [ "DENO_MOCK_RUNTIME" ]
-  configs = [ ":deno_config" ]
-}
-
-v8_source_set("deno_flatbuffer_builder") {
-  sources = [
-    "src/flatbuffer_builder.cc",
-    "src/flatbuffer_builder.h",
-  ]
-  deps = [
-    ":deno_base",
-  ]
-  public_deps = [
-    "build_extra/flatbuffers:flatbuffers",
-  ]
+  defines = [ "LIBDENO_TEST" ]
   configs = [ ":deno_config" ]
 }
 
 v8_source_set("deno_bindings") {
-  sources = [
-    "src/reply.cc",
-    "src/reply.h",
-  ]
   deps = [
     ":deno_base",
-    ":deno_flatbuffer_builder",
-    ":msg_cpp",
   ]
   configs = [ ":deno_config" ]
 }
@@ -235,12 +156,6 @@ executable("snapshot_creator") {
   configs += [ ":deno_config" ]
 }
 
-flatbuffer("msg_cpp") {
-  sources = [
-    "src/msg.fbs",
-  ]
-}
-
 # Generates type declarations for files that need to be included
 # in the runtime bundle
 run_node("gen_declarations") {
@@ -250,6 +165,7 @@ run_node("gen_declarations") {
     "js/deno.ts",
     "js/globals.ts",
     "js/os.ts",
+    "js/timers.ts",
     "js/tsconfig.generated.json",
     "js/util.ts",
   ]
@@ -258,6 +174,7 @@ run_node("gen_declarations") {
     out_dir + "/js/deno.d.ts",
     out_dir + "/js/globals.d.ts",
     out_dir + "/js/os.d.ts",
+    out_dir + "/js/timers.d.ts",
     out_dir + "/js/util.d.ts",
   ]
   deps = [
@@ -285,6 +202,8 @@ run_node("bundle") {
     "js/os.ts",
     "js/plugins.d.ts",
     "js/runtime.ts",
+    "js/text_encoding.ts",
+    "js/timers.ts",
     "js/types.d.ts",
     "js/util.ts",
     "js/v8_source_maps.ts",
@@ -317,6 +236,11 @@ run_node("bundle") {
 }
 
 source_set("libdeno_nosnapshot") {
+  bundle_outputs = get_target_outputs(":bundle")
+  bundle_location = rebase_path(bundle_outputs[0])
+  bundle_rel_location = rebase_path(bundle_outputs[0], root_build_dir)
+  bundle_map_location = rebase_path(bundle_outputs[1])
+  inputs = bundle_outputs
   sources = [
     "src/from_filesystem.cc",
   ]
@@ -325,9 +249,11 @@ source_set("libdeno_nosnapshot") {
     ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
-  bundle_outputs = get_target_outputs(":bundle")
-  bundle_location = rebase_path(bundle_outputs[0])
-  defines = [ "BUNDLE_LOCATION=\"$bundle_location\"" ]
+  defines = [
+    "BUNDLE_LOCATION=\"$bundle_location\"",
+    "BUNDLE_REL_LOCATION=\"$bundle_rel_location\"",
+    "BUNDLE_MAP_LOCATION=\"$bundle_map_location\"",
+  ]
 }
 
 ts_flatbuffer("msg_ts") {
@@ -342,7 +268,7 @@ rust_flatbuffer("msg_rs") {
   ]
 }
 
-# Generates $target_gen_dir/snapshot_deno.cc
+# Generates $target_gen_dir/snapshot_deno.bin
 create_snapshot("deno") {
   js = "$target_gen_dir/bundle/main.js"
   source_map = "$target_gen_dir/bundle/main.js.map"
@@ -351,8 +277,8 @@ create_snapshot("deno") {
   ]
 }
 
-# Generates $target_gen_dir/snapshot_mock_runtime.cc
-create_snapshot("mock_runtime") {
+# Generates $target_gen_dir/snapshot_libdeno_test.bin
+create_snapshot("libdeno_test") {
   testonly = true
-  js = "js/mock_runtime.js"
+  js = "js/libdeno_test.js"
 }

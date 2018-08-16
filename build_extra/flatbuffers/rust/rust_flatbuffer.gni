@@ -33,7 +33,7 @@ template("rust_flatbuffer") {
     }
   }
 
-  rust_component(source_set_name) {
+  rust_crate(source_set_name) {
     sources = get_target_outputs(":$action_name")
     source_root = sources[0]
     deps = [

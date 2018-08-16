@@ -1,5 +1,4 @@
-# Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-# All rights reserved. MIT License.
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import os
 import shutil
 import stat
@@ -133,3 +132,33 @@ def build_path():
         return os.environ["DENO_BUILD_PATH"]
     else:
         return os.path.join(root_path, "out", build_mode())
+
+
+# Returns True if the expected matches the actual output, allowing variation
+# from actual where expected has the wildcard (e.g. matches /.*/)
+def pattern_match(pattern, string, wildcard="[WILDCARD]"):
+    if len(pattern) == 0:
+        return string == 0
+    if pattern == wildcard:
+        return True
+
+    parts = str.split(pattern, wildcard)
+
+    if len(parts) == 1:
+        return pattern == string
+
+    if string.startswith(parts[0]):
+        string = string[len(parts[0]):]
+    else:
+        return False
+
+    for i in range(1, len(parts)):
+        if i == (len(parts) - 1):
+            if parts[i] == "" or parts[i] == "\n":
+                return True
+        found = string.find(parts[i])
+        if found < 0:
+            return False
+        string = string[(found + len(parts[i])):]
+
+    return len(string) == 0
