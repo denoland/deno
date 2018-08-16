@@ -20,6 +20,14 @@ export function assert(cond: boolean, msg = "assert") {
   }
 }
 
+let cmdIdCounter = 0;
+export function assignCmdId(): number {
+  // TODO(piscisaureus) Safely re-use so they don't overflow.
+  const cmdId = ++cmdIdCounter;
+  assert(cmdId < 2 ** 32, "cmdId overflow");
+  return cmdId;
+}
+
 export function typedArrayToArrayBuffer(ta: TypedArray): ArrayBuffer {
   const ab = ta.buffer.slice(ta.byteOffset, ta.byteOffset + ta.byteLength);
   return ab as ArrayBuffer;
@@ -41,15 +49,20 @@ export function arrayToStr(ui8: Uint8Array): string {
 // produces broken code when targeting ES5 code.
 // See https://github.com/Microsoft/TypeScript/issues/15202
 // At the time of writing, the github issue is closed but the problem remains.
-export interface Resolvable<T> extends Promise<T> {
+export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
   // tslint:disable-next-line:no-any
   reject: (reason?: any) => void;
 }
+
+type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
+
 export function createResolvable<T>(): Resolvable<T> {
-  let methods;
+  let methods: ResolvableMethods<T>;
   const promise = new Promise<T>((resolve, reject) => {
     methods = { resolve, reject };
   });
-  return Object.assign(promise, methods) as Resolvable<T>;
+  // TypeScript doesn't know that the Promise callback occurs synchronously
+  // therefore use of not null assertion (`!`)
+  return Object.assign(promise, methods!) as Resolvable<T>;
 }

@@ -10,11 +10,21 @@
 #include "deno.h"
 #include "internal.h"
 
-#ifdef DENO_MOCK_RUNTIME
-#include "snapshot_mock_runtime.cc"
+extern const char deno_snapshot_start asm("deno_snapshot_start");
+extern const char deno_snapshot_end asm("deno_snapshot_end");
+#ifdef LIBDENO_TEST
+asm(".data\n"
+    "deno_snapshot_start: .incbin \"gen/snapshot_libdeno_test.bin\"\n"
+    "deno_snapshot_end:\n"
+    ".globl deno_snapshot_start;\n"
+    ".globl deno_snapshot_end;");
 #else
-#include "snapshot_deno.cc"
-#endif
+asm(".data\n"
+    "deno_snapshot_start: .incbin \"gen/snapshot_deno.bin\"\n"
+    "deno_snapshot_end:\n"
+    ".globl deno_snapshot_start;\n"
+    ".globl deno_snapshot_end;");
+#endif  // LIBDENO_TEST
 
 namespace deno {
 
@@ -42,7 +52,13 @@ Deno* NewFromSnapshot(void* data, deno_recv_cb cb) {
   params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
   params.external_references = external_references;
-  params.snapshot_blob = StartupBlob_snapshot();
+
+  CHECK_NE(&deno_snapshot_start, nullptr);
+  int snapshot_len =
+      static_cast<int>(&deno_snapshot_end - &deno_snapshot_start);
+  static v8::StartupData snapshot = {&deno_snapshot_start, snapshot_len};
+  params.snapshot_blob = &snapshot;
+
   v8::Isolate* isolate = v8::Isolate::New(params);
   AddIsolate(d, isolate);
 

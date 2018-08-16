@@ -1,16 +1,16 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 // A simple runtime that doesn't involve typescript or protobufs to test
-// libdeno. Invoked by mock_runtime_test.cc
+// libdeno. Invoked by libdeno_test.cc
 
 const global = this;
 
 function assert(cond) {
-  if (!cond) throw Error("mock_runtime.js assert failed");
+  if (!cond) throw Error("libdeno_test.js assert failed");
 }
 
 global.CanCallFunction = () => {
-  deno.print("Hello world from foo");
+  libdeno.print("Hello world from foo");
   return "foo";
 };
 
@@ -26,13 +26,13 @@ global.TypedArraySnapshots = () => {
 };
 
 global.SendSuccess = () => {
-  deno.recv(msg => {
-    deno.print("SendSuccess: ok");
+  libdeno.recv(msg => {
+    libdeno.print("SendSuccess: ok");
   });
 };
 
 global.SendWrongByteLength = () => {
-  deno.recv(msg => {
+  libdeno.recv(msg => {
     assert(msg.byteLength === 3);
   });
 };
@@ -40,15 +40,15 @@ global.SendWrongByteLength = () => {
 global.RecvReturnEmpty = () => {
   const m1 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const m2 = m1.slice();
-  const r1 = deno.send(m1);
+  const r1 = libdeno.send(m1);
   assert(r1 == null);
-  const r2 = deno.send(m2);
+  const r2 = libdeno.send(m2);
   assert(r2 == null);
 };
 
 global.RecvReturnBar = () => {
   const m = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
-  const r = deno.send(m);
+  const r = libdeno.send(m);
   assert(r instanceof Uint8Array);
   assert(r.byteLength === 3);
   const rstr = String.fromCharCode(...r);
@@ -56,10 +56,10 @@ global.RecvReturnBar = () => {
 };
 
 global.DoubleRecvFails = () => {
-  // deno.recv is an internal function and should only be called once from the
+  // libdeno.recv is an internal function and should only be called once from the
   // runtime.
-  deno.recv((channel, msg) => assert(false));
-  deno.recv((channel, msg) => assert(false));
+  libdeno.recv((channel, msg) => assert(false));
+  libdeno.recv((channel, msg) => assert(false));
 };
 
 global.SendRecvSlice = () => {
@@ -70,7 +70,7 @@ global.SendRecvSlice = () => {
     buf[0] = 100 + i;
     buf[buf.length - 1] = 100 - i;
     // On the native side, the slice is shortened by 19 bytes.
-    buf = deno.send(buf);
+    buf = libdeno.send(buf);
     assert(buf.byteOffset === i * 11);
     assert(buf.byteLength === abLen - i * 30 - 19);
     assert(buf.buffer.byteLength == abLen);
@@ -90,17 +90,17 @@ global.JSSendArrayBufferViewTypes = () => {
   const ab1 = new ArrayBuffer(4321);
   const u8 = new Uint8Array(ab1, 2468, 1000);
   u8[0] = 1;
-  deno.send(u8);
+  libdeno.send(u8);
   // Send Uint32Array.
   const ab2 = new ArrayBuffer(4321);
   const u32 = new Uint32Array(ab2, 2468, 1000 / Uint32Array.BYTES_PER_ELEMENT);
   u32[0] = 0x02020202;
-  deno.send(u32);
+  libdeno.send(u32);
   // Send DataView.
   const ab3 = new ArrayBuffer(4321);
   const dv = new DataView(ab3, 2468, 1000);
   dv.setUint8(0, 3);
-  deno.send(dv);
+  libdeno.send(dv);
 };
 
 global.JSSendNeutersBuffer = () => {
@@ -109,7 +109,7 @@ global.JSSendNeutersBuffer = () => {
   assert(u8.byteLength === 1);
   assert(u8.buffer.byteLength === 1);
   assert(u8[0] === 42);
-  const r = deno.send(u8);
+  const r = libdeno.send(u8);
   assert(u8.byteLength === 0);
   assert(u8.buffer.byteLength === 0);
   assert(u8[0] === undefined);
@@ -124,19 +124,19 @@ global.SnapshotBug = () => {
 
 global.ErrorHandling = () => {
   global.onerror = (message, source, line, col, error) => {
-    deno.print(`line ${line} col ${col}`);
+    libdeno.print(`line ${line} col ${col}`);
     assert("ReferenceError: notdefined is not defined" === message);
     assert(source === "helloworld.js");
     assert(line === 3);
     assert(col === 1);
     assert(error instanceof Error);
-    deno.send(new Uint8Array([42]));
+    libdeno.send(new Uint8Array([42]));
   };
   eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
 };
 
 global.SendNullAllocPtr = () => {
-  deno.recv(msg => {
+  libdeno.recv(msg => {
     assert(msg instanceof Uint8Array);
     assert(msg.byteLength === 4);
     assert(msg[0] === "a".charCodeAt(0));

@@ -4,10 +4,11 @@ import { plugin as analyze } from "rollup-plugin-analyzer";
 import commonjs from "rollup-plugin-commonjs";
 import globals from "rollup-plugin-node-globals";
 import nodeResolve from "rollup-plugin-node-resolve";
-import typescript from "rollup-plugin-typescript2";
+import typescriptPlugin from "rollup-plugin-typescript2";
 import { createFilter } from "rollup-pluginutils";
+import typescript from "typescript";
 
-const mockPath = path.join(__dirname, "js", "mock_builtin");
+const mockPath = path.join(__dirname, "js", "mock_builtin.js");
 const tsconfig = path.join(__dirname, "tsconfig.json");
 const typescriptPath = `${
   process.env.BASEPATH
@@ -23,6 +24,15 @@ const tsconfigOverride = {
   }
 };
 
+// when the build path is not a child of the root of the project path
+// TypeScript will output resources following the same path structure,
+// `BASEPATH` will be a relative path to the root of the source project which
+// we can use to determine what TypeScript would have output
+const basePathParts = process.env.BASEPATH.split("/");
+while (basePathParts[0] === "..") {
+  basePathParts.shift();
+}
+
 // this is a rollup plugin which will look for imports ending with `!string` and resolve
 // them with a module that will inline the contents of the file as a string.  Needed to
 // support `js/assets.ts`.
@@ -36,17 +46,38 @@ function strings({ include, exclude } = {}) {
   return {
     name: "strings",
 
+    /**
+     * @param {string} importee
+     */
     resolveId(importee) {
       if (importee.endsWith("!string")) {
+        // strip the `!string` from `importee`
+        importee = importee.slice(0, importee.lastIndexOf("!string"));
+        if (!importee.startsWith("gen/")) {
+          // this is a static asset which is located relative to the root of the source project
+          return path.resolve(path.join(process.env.BASEPATH, importee));
+        }
+        // ignoring the first part, which is "gen"
+        const [, ...importeeParts] = importee.split("/");
+        // generated assets will be output by TypeScript relative between the build path and the
+        // root of the project.  For example on Travis, the project path is:
+        //     /home/travis/build/denoland/deno/
+        // and the build path is:
+        //     /home/travis/out/Default/
+        // TypeScript will then output `globals.d.ts` from `js/globals.ts` to:
+        //    /home/travis/out/Default/gen/build/denoland/deno/js/globals.d.ts
+        // therefore we need to insert any non relative BASEPATH parts into
+        // the final module ID
         return path.resolve(
-          path.join(
-            process.env.BASEPATH,
-            importee.slice(0, importee.lastIndexOf("!string"))
-          )
+          path.join(process.cwd(), "gen", ...basePathParts, ...importeeParts)
         );
       }
     },
 
+    /**
+     * @param {any} code
+     * @param {string} id
+     */
     transform(code, id) {
       if (filter(id)) {
         return {
@@ -97,6 +128,15 @@ export default function makeConfig(commandOptions) {
         module: mockPath
       }),
 
+      // Provides inlining of file contents for `js/assets.ts`
+      strings({
+        include: [
+          "*.d.ts",
+          `${__dirname}/**/*.d.ts`,
+          `${process.cwd()}/**/*.d.ts`
+        ]
+      }),
+
       // Resolves any resources that have been generated at build time
       resolveGenerated(),
 
@@ -122,12 +162,16 @@ export default function makeConfig(commandOptions) {
         }
       }),
 
-      typescript({
+      typescriptPlugin({
         // The build script is invoked from `out/:target` so passing an absolute file path is needed
         tsconfig,
 
         // This provides any overrides to the `tsconfig.json` that are needed to bundle
         tsconfigOverride,
+
+        // This provides the locally configured version of TypeScript instead of the plugins
+        // default version
+        typescript,
 
         // By default, the include path only includes the cwd and below, need to include the root of the project
         // and build path to be passed to this plugin.  This is different front tsconfig.json include
@@ -139,11 +183,6 @@ export default function makeConfig(commandOptions) {
           `${__dirname}/**/*.d.ts`,
           `${process.cwd()}/**/*.d.ts`
         ]
-      }),
-
-      // Provides inlining of file contents for `js/assets.ts`
-      strings({
-        include: ["*.d.ts", `${__dirname}/**/*.d.ts`]
       }),
 
       // Provide some concise information about the bundle

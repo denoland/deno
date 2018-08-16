@@ -1,23 +1,23 @@
 {
   "compilerOptions": {
-    "allowJs": true,
+    "allowUnreachableCode": false,
     "baseUrl": ".",
     "module": "esnext",
-    "noImplicitAny": true,
-    "sourceMap": true,
-    "removeComments": true,
-    "preserveConstEnums": true,
-    "target": "es2017",
     "moduleResolution": "node",
     "noImplicitReturns": true,
-    "pretty": true,
     "noFallthroughCasesInSwitch": true,
-    "allowUnreachableCode": false,
-    "experimentalDecorators": true,
+    "noLib": true,
+    "noUnusedLocals": true,
     "paths": {
       "*": ["*", "out/debug/*", "out/default/*", "out/release/*"]
-    }
+    },
+    "preserveConstEnums": true,
+    "pretty": true,
+    "removeComments": true,
+    "sourceMap": true,
+    "strict": true,
+    "target": "esnext",
+    "types": []
   },
-  "include": ["js/main.ts"],
-  "exclude": ["node_modules"]
+  "files": ["node_modules/typescript/lib/lib.esnext.d.ts", "js/main.ts"]
 }

@@ -4,21 +4,28 @@
 import os
 import sys
 from check_output_test import check_output_test
-from util import executable_suffix, run
+from util import executable_suffix, run, build_path
+from util_test import util_test
 
 
 def check_exists(filename):
     if not os.path.exists(filename):
         print "Required target doesn't exist:", filename
-        print "Build target :all"
+        print "Run ./tools/build.py"
         sys.exit(1)
 
 
 def main(argv):
-    if len(argv) != 2:
-        print "Usage: tools/test.py [build dir]"
+    if len(argv) == 2:
+        build_dir = sys.argv[1]
+    elif len(argv) == 1:
+        build_dir = build_path()
+    else:
+        print "Usage: tools/test.py [build_dir]"
         sys.exit(1)
-    build_dir = argv[1]
+
+    # Internal tools testing
+    util_test()
 
     test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
     check_exists(test_cc)
@@ -29,6 +36,9 @@ def main(argv):
     run([test_rs])
 
     deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
+    check_exists(deno_exe)
+    run([deno_exe, "js/unit_tests.ts"])
+
     check_exists(deno_exe)
     check_output_test(deno_exe)
 

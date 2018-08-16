@@ -29,7 +29,7 @@ pub struct DenoDir {
 
 impl DenoDir {
   // Must be called before using any function from this module.
-  // https://github.com/ry/deno/blob/golang/deno_dir.go#L99-L111
+  // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
   pub fn new(custom_root: Option<&Path>) -> std::io::Result<DenoDir> {
     // Only setup once.
     let home_dir = std::env::home_dir().expect("Could not get home directory.");
@@ -53,7 +53,7 @@ impl DenoDir {
     Ok(deno_dir)
   }
 
-  // https://github.com/ry/deno/blob/golang/deno_dir.go#L32-L35
+  // https://github.com/denoland/deno/blob/golang/deno_dir.go#L32-L35
   pub fn cache_path(
     self: &DenoDir,
     filename: &str,
@@ -70,7 +70,7 @@ impl DenoDir {
   ) -> std::io::Result<String> {
     let path = self.cache_path(filename, source_code);
     debug!("load_cache {}", path.display());
-    fs::read_file_sync(&path)
+    fs::read_file_sync_string(&path)
   }
 
   pub fn code_cache(
@@ -135,7 +135,7 @@ impl DenoDir {
     }
   }
 
-  // Prototype: https://github.com/ry/deno/blob/golang/os.go#L56-L68
+  // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
   #[allow(dead_code)]
   fn src_file_to_url<P: AsRef<Path>>(self: &DenoDir, filename: P) -> String {
     let filename = filename.as_ref().to_path_buf();
@@ -147,7 +147,7 @@ impl DenoDir {
     }
   }
 
-  // Prototype: https://github.com/ry/deno/blob/golang/os.go#L70-L98
+  // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L70-L98
   // Returns (module name, local filename)
   fn resolve_module(
     self: &DenoDir,
@@ -165,16 +165,32 @@ impl DenoDir {
 
     let j: Url =
       if containing_file == "." || Path::new(module_specifier).is_absolute() {
-        Url::from_file_path(module_specifier).unwrap()
+        let r = Url::from_file_path(module_specifier);
+        // TODO(ry) Properly handle error.
+        if r.is_err() {
+          error!("Url::from_file_path error {}", module_specifier);
+        }
+        r.unwrap()
       } else if containing_file.ends_with("/") {
-        let base = Url::from_directory_path(&containing_file).unwrap();
+        let r = Url::from_directory_path(&containing_file);
+        // TODO(ry) Properly handle error.
+        if r.is_err() {
+          error!("Url::from_directory_path error {}", containing_file);
+        }
+        let base = r.unwrap();
         base.join(module_specifier)?
       } else {
-        let base = Url::from_file_path(&containing_file).unwrap();
+        let r = Url::from_file_path(&containing_file);
+        // TODO(ry) Properly handle error.
+        if r.is_err() {
+          error!("Url::from_file_path error {}", containing_file);
+        }
+        let base = r.unwrap();
         base.join(module_specifier)?
       };
 
-    let mut p = j.to_file_path()
+    let mut p = j
+      .to_file_path()
       .unwrap()
       .into_os_string()
       .into_string()
@@ -235,10 +251,10 @@ fn test_code_cache() {
   let r = deno_dir.code_cache(filename, source_code, output_code);
   r.expect("code_cache error");
   assert!(cache_path.exists());
-  assert_eq!(output_code, fs::read_file_sync(&cache_path).unwrap());
+  assert_eq!(output_code, fs::read_file_sync_string(&cache_path).unwrap());
 }
 
-// https://github.com/ry/deno/blob/golang/deno_dir.go#L25-L30
+// https://github.com/denoland/deno/blob/golang/deno_dir.go#L25-L30
 fn source_code_hash(filename: &str, source_code: &str) -> String {
   let mut m = sha1::Sha1::new();
   m.update(filename.as_bytes());
@@ -309,7 +325,7 @@ fn test_src_file_to_url() {
   assert_eq!("http://hello/world.txt", deno_dir.src_file_to_url(x));
 }
 
-// https://github.com/ry/deno/blob/golang/os_test.go#L16-L87
+// https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87
 #[test]
 fn test_resolve_module() {
   let (_temp_dir, deno_dir) = test_setup();
@@ -318,20 +334,20 @@ fn test_resolve_module() {
     (
       "./subdir/print_hello.ts",
       add_root!(
-        "/Users/rld/go/src/github.com/ry/deno/testdata/006_url_imports.ts"
+        "/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"
       ),
       add_root!(
-        "/Users/rld/go/src/github.com/ry/deno/testdata/subdir/print_hello.ts"
+        "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
       ),
       add_root!(
-        "/Users/rld/go/src/github.com/ry/deno/testdata/subdir/print_hello.ts"
+        "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
       ),
     ),
     (
       "testdata/001_hello.js",
-      add_root!("/Users/rld/go/src/github.com/ry/deno/"),
-      add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/001_hello.js"),
-      add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/001_hello.js"),
+      add_root!("/Users/rld/go/src/github.com/denoland/deno/"),
+      add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
+      add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
     ),
     (
       add_root!("/Users/rld/src/deno/hello.js"),
@@ -348,7 +364,7 @@ fn test_resolve_module() {
     /*
         (
             "http://localhost:4545/testdata/subdir/print_hello.ts",
-            add_root!("/Users/rld/go/src/github.com/ry/deno/testdata/006_url_imports.ts"),
+            add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
             "http://localhost:4545/testdata/subdir/print_hello.ts",
             path.Join(SrcDir, "localhost:4545/testdata/subdir/print_hello.ts"),
         ),
@@ -397,6 +413,6 @@ fn get_source_code(
       module_name == filename,
       "if a module isn't remote, it should have the same filename"
     );
-    fs::read_file_sync(Path::new(filename))
+    fs::read_file_sync_string(Path::new(filename))
   }
 }

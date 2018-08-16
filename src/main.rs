@@ -1,8 +1,11 @@
 extern crate flatbuffers;
+extern crate futures;
 extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate sha1;
 extern crate tempfile;
+extern crate tokio;
+extern crate tokio_current_thread;
 extern crate url;
 #[macro_use]
 extern crate log;
@@ -14,6 +17,7 @@ pub mod handlers;
 
 use libc::c_int;
 use libc::c_void;
+use std::collections::HashMap;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -91,27 +95,33 @@ type DenoException<'a> = &'a str;
 pub struct Deno {
   ptr: *const binding::DenoC,
   dir: deno_dir::DenoDir,
+  rt: tokio::runtime::current_thread::Runtime,
+  timers: HashMap<u32, futures::sync::oneshot::Sender<()>>,
 }
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
 impl Deno {
-  fn new<'a>() -> &'a mut Deno {
+  fn new() -> Box<Deno> {
     DENO_INIT.call_once(|| {
       unsafe { binding::deno_init() };
     });
 
-    let deno_box = Box::new(Deno {
+    let mut deno_box = Box::new(Deno {
       ptr: 0 as *const binding::DenoC,
       dir: deno_dir::DenoDir::new(None).unwrap(),
+      rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
+      timers: HashMap::new(),
     });
-    let deno: &'a mut Deno = Box::leak(deno_box);
-    let external_ptr = deno as *mut _ as *const c_void;
-    let internal_deno_ptr = unsafe {
-      binding::deno_new(external_ptr, binding::deno_handle_msg_from_js)
+
+    (*deno_box).ptr = unsafe {
+      binding::deno_new(
+        deno_box.as_ref() as *const _ as *const c_void,
+        binding::deno_handle_msg_from_js,
+      )
     };
-    deno.ptr = internal_deno_ptr;
-    deno
+
+    deno_box
   }
 
   fn execute(
@@ -173,7 +183,7 @@ struct Logger;
 
 impl log::Log for Logger {
   fn enabled(&self, metadata: &log::Metadata) -> bool {
-    metadata.level() <= log::Level::Info
+    metadata.level() <= log::max_level()
   }
 
   fn log(&self, record: &log::Record) {
@@ -197,11 +207,14 @@ fn main() {
     println!("version: {}", version);
     */
 
-  let d = Deno::new();
+  let mut d = Deno::new();
 
   d.execute("deno_main.js", "denoMain();")
     .unwrap_or_else(|err| {
       error!("{}", err);
       std::process::exit(1);
     });
+
+  // Start the Tokio event loop
+  d.rt.run().expect("err");
 }

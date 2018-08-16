@@ -1,0 +1,190 @@
+version: '{build}.{branch}'
+
+skip_branch_with_pr: true
+
+clone_folder: c:\deno
+clone_depth: 1
+
+environment:
+  APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+  DENO_BUILD_MODE: debug
+  DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\debug
+  DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
+  CARGO_HOME: $(USERPROFILE)\.cargo
+  RUSTUP_HOME: $(USERPROFILE)\.rustup
+
+  # Appveyor uses 7zip to pack cache directories. We use these options:
+  #   -t7z  : Use '7z' format. The default is 'zip' which can't store symlinks.
+  #   -snl  : Store symlinks.
+  #   -mtc  : Use UTC timestamps. This is required for incremental builds.
+  #   -mx=1 : Fast compression.
+  APPVEYOR_CACHE_ENTRY_ZIP_ARGS: -t7z -snl -mtc -mx=1
+
+  # Define some PowerShell helper functions which are used in the scripts below.
+  # They're defined in an environment variable to reduce noise in the build log.
+  PS_UTILS: |-
+      # `Exec` runs a regular executable. It looks at the process' exit code,
+      # rather than its stderr output, to tell if a command has failed.
+      function Exec([ScriptBlock] $Command, [switch] $NoNewLines) {
+        "$Command".TrimStart(" &") | Write-Host              # Echo command.
+        & $Command 2>&1 | Write-Host -NoNewLine:$NoNewLines  # Execute command.
+        if ($NoNewLines) { Write-Host }                      # Write newline.
+        if ($LastExitCode -ne 0) { throw "Failure. Exit code: $LastExitCode" }
+      }
+
+      # `Delete-Tree` is a simple wrapper around Remove-Item. It doesn't set
+      # an error status if one of the paths to be deleted doesn't exist.
+      function Delete-Tree([string[]] $Path) {
+        $Path | Foreach-Object {
+          "Deleting '$_'" | Write-Host -NoNewLine
+          if (Test-Path -Path $_) {
+            Remove-Item -Path $_ -Recurse -Force -ErrorAction Ignore
+            $(if ($?) { " - ok" } else { " - failed" }) | Write-Host
+          } else {
+            " - not found" | Write-Host
+          }
+        }
+      }
+
+      # `$will_save_cache` equals true if the cache will be saved at the end.
+      $will_save_cache = -not $env:APPVEYOR_PULL_REQUEST_NUMBER -and
+                         -not $env:APPVEYOR_CACHE_SKIP_SAVE -eq "true"
+
+for:
+  # Do no save the build cache for feature branches. TODO: Once we have multiple
+  # permanent branches, use a build matrix so each branch has it's own cache.
+  - branches:
+      except:
+        - master
+    environment:
+      APPVEYOR_CACHE_SKIP_SAVE: true
+
+cache:
+  # Python packages installed with `pip --user` and Pip cache.
+  - $(APPDATA)\Python
+  - $(LOCALAPPDATA)\pip
+  # Rust stuff.
+  - $(CARGO_HOME)
+  - $(RUSTUP_HOME)
+  # Cache the third_party submodule to preserve binaries downloaded by setup.py,
+  # and to make incremental builds work.
+  - $(APPVEYOR_BUILD_FOLDER)\.git\modules\third_party
+  - $(APPVEYOR_BUILD_FOLDER)\third_party
+  # Build incrementally.
+  - $(DENO_BUILD_PATH)
+
+init:
+  # Load utility functions
+  - ps: Invoke-Expression $env:PS_UTILS
+
+  # Make git check out symlinks (not placeholder text files).
+  - git config --global core.symlinks true
+
+install:
+  # Clone the third_party submodule.
+  - ps: |-
+      try {
+        Exec { & git submodule update --init --force --depth 1 }
+      } catch {
+        # Git will fail if the `third_party` directory was restored from cache,
+        # but the `.git/modules` directory wasn't. Rebuild it from scratch.
+        Delete-Tree -Path $env:DENO_THIRD_PARTY_PATH
+        Exec -NoNewLines { & git submodule update --init --force --depth 1 }
+      }
+
+  # Prune and pack git objects. Thus when we upload `.git/modules/` to the
+  # Appveyor cache, it'll include only objects that were actually needed.
+  # This step is skipped if the cache is not going to be saved.
+  - ps: |-
+      if ($will_save_cache) {
+        Push-Location -Path $env:DENO_THIRD_PARTY_PATH
+        Exec { & git gc --prune=all }
+        Pop-Location
+      }
+
+  # Install a recent Node.js version.
+  - ps: Install-Product node 10 x64
+
+  # Make sure the right Python version is in PATH, and others are not.
+  - ps: |-
+      # Remove the wrong Python version(s) from PATH.
+      $p = $env:PATH -split ";" | Where-Object {
+             -not (Test-Path -Path "$_\python.exe") -and
+             -not (Test-Path -Path "$_\pip.exe")
+           }
+      # Add binary dir for `pip --user` packages.
+      $p += "$env:APPDATA\Python\Scripts"
+      # Add python27-x64.
+      $p += "c:\Python27-x64"
+      $p += "c:\Python27-x64\Scripts"
+      $env:PATH = $p -join ";"
+
+  # Pip on Appveyor is too old. Install a recent version in our user dir.
+  - python -m pip install --upgrade --user pip
+
+  # Install Python packages.
+  - pip install --upgrade --user pywin32 yapf
+
+  # Add Rust/Cargo to PATH.
+  - ps: $env:PATH += ";$env:CARGO_HOME\bin"
+
+  # Look for Rust updates.
+  # * If there are no updates, rustup will exit cleanly.
+  # * If there are updates, rustup will attempt to install them, and then blow
+  #   up because we removed the 'rust-docs' component.
+  # * The actual update is done by removing and reinstalling with rustup-init.
+  - ps: |-
+      if ($will_save_cache -and (Test-Path -Path $env:CARGO_HOME)) {
+        try {
+          Exec -NoNewLines { & rustup update stable-x86_64-pc-windows-msvc }
+        } catch {
+          Delete-Tree -Path $env:CARGO_HOME, $env:RUSTUP_HOME
+        }
+      }
+
+  # Install or reinstall Rust via rustup-init.
+  # * After install/update, the rustup directory is very big, with many files,
+  #   slowing down cache save/restore a lot, so we remove unnecessary stuff.
+  # * TODO: Use `rustup component remove docs` instead, when this issue
+  #   is resolved: https://github.com/rust-lang-nursery/rustup.rs/issues/998.
+  # * TODO: Ship Rust in the third_party repo. See issue #386.
+  - ps: |-
+      if (-not (Test-Path -Path $env:CARGO_HOME)) {
+        Invoke-WebRequest -Uri "https://win.rustup.rs" `
+                          -OutFile "$env:TEMP\rustup-init.exe"
+        Exec -NoNewLines { & "$env:TEMP\rustup-init.exe" -y }
+        Delete-Tree -Path @(
+          "$env:RUSTUP_HOME\downloads",
+          "$env:RUSTUP_HOME\tmp",
+          "$env:RUSTUP_HOME\toolchains\stable-x86_64-pc-windows-msvc\share\doc"
+        )
+      }
+
+  # Log installed Node.js version + processor architecture.
+  - node -p "`Node ${process.version} ${process.arch}`"
+
+  # Log installed Python version + processor architecture.
+  - ps: |-
+      @("from sys import version",
+        "print 'Python', version") -join "`n" | & python -
+
+  # Log some more versions.
+  - pip --version
+  - rustc --version
+  - cargo --version
+
+before_build:
+  # Download clang and gn, generate ninja files.
+  - python tools\setup.py
+
+build_script:
+  - python tools\build.py
+
+after_build:
+  # The build completed successfully; make sure the cache gets saved even if
+  # some tests fail.
+  - ps: $env:APPVEYOR_SAVE_CACHE_ON_ERROR = "true"
+
+test_script:
+  - python tools\lint.py
+  - ps: Exec { & python tools\test.py $env:DENO_BUILD_PATH }

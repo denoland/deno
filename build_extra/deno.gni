@@ -1,4 +1,5 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
+import("//build/compiled_action.gni")
 
 template("run_node") {
   action(target_name) {
@@ -19,36 +20,28 @@ template("run_node") {
 #       snapshot.
 template("create_snapshot") {
   name = target_name
-  suffix = "_$name"
-  action("create_snapshot_" + name) {
+  compiled_action("create_snapshot_" + name) {
     forward_variables_from(invoker,
                            [
                              "testonly",
                              "deps",
                            ])
+    tool = ":snapshot_creator"
     visibility = [ ":*" ]  # Only targets in this file can depend on this.
-    deps += [ ":snapshot_creator" ]
-    script = "//third_party/v8/tools/run.py"
-    data = []
-    exe = rebase_path(get_label_info(":snapshot_creator", "root_out_dir") +
-                      "/snapshot_creator")
-    snapshot_out_cc = "$target_gen_dir/snapshot${suffix}.cc"
-    sources = [
+    snapshot_out_bin = "$target_gen_dir/snapshot_$name.bin"
+    inputs = [
       invoker.js,
     ]
+    if (defined(invoker.source_map)) {
+      inputs += [ invoker.source_map ]
+    }
     outputs = [
-      snapshot_out_cc,
+      snapshot_out_bin,
     ]
-    args = [
-      exe,
-      rebase_path(invoker.js, root_build_dir),
-      rebase_path(snapshot_out_cc, root_build_dir),
-    ]
+    args = rebase_path(outputs, root_build_dir) +
+           rebase_path(inputs, root_build_dir)
 
     # To debug snapshotting problems:
     #  args += ["--trace-serializer"]
-    data = [
-      invoker.js,
-    ]
   }
 }

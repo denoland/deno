@@ -1,7 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { deno as pb } from "./msg.pb";
-import { pubInternal, sub } from "./dispatch";
 import { assert } from "./util";
+import * as util from "./util";
+import { deno as fbs } from "gen/msg_generated";
+import { flatbuffers } from "flatbuffers";
+import { libdeno } from "./globals";
 
 let nextTimerId = 1;
 
@@ -19,14 +21,10 @@ interface Timer {
 
 const timers = new Map<number, Timer>();
 
-export function initTimers() {
-  sub("timers", onMessage);
-}
-
-function onMessage(payload: Uint8Array) {
-  const msg = pb.Msg.decode(payload);
-  assert(msg.command === pb.Msg.Command.TIMER_READY);
-  const { timerReadyId, timerReadyDone } = msg;
+/** @internal */
+export function onMessage(msg: fbs.TimerReady) {
+  const timerReadyId = msg.id();
+  const timerReadyDone = msg.done();
   const timer = timers.get(timerReadyId);
   if (!timer) {
     return;
@@ -37,7 +35,7 @@ function onMessage(payload: Uint8Array) {
   }
 }
 
-function setTimer(
+function startTimer(
   cb: TimerCallback,
   delay: number,
   interval: boolean,
@@ -52,12 +50,23 @@ function setTimer(
     cb
   };
   timers.set(timer.id, timer);
-  pubInternal("timers", {
-    command: pb.Msg.Command.TIMER_START,
-    timerStartId: timer.id,
-    timerStartInterval: timer.interval,
-    timerStartDelay: timer.delay
-  });
+
+  util.log("timers.ts startTimer");
+
+  // Send TimerStart message
+  const builder = new flatbuffers.Builder();
+  fbs.TimerStart.startTimerStart(builder);
+  fbs.TimerStart.addId(builder, timer.id);
+  fbs.TimerStart.addInterval(builder, timer.interval);
+  fbs.TimerStart.addDelay(builder, timer.delay);
+  const msg = fbs.TimerStart.endTimerStart(builder);
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsgType(builder, fbs.Any.TimerStart);
+  builder.finish(fbs.Base.endBase(builder));
+  const resBuf = libdeno.send(builder.asUint8Array());
+  assert(resBuf == null);
+
   return timer.id;
 }
 
@@ -67,7 +76,7 @@ export function setTimeout(
   // tslint:disable-next-line:no-any
   ...args: any[]
 ): number {
-  return setTimer(cb, delay, false, args);
+  return startTimer(cb, delay, false, args);
 }
 
 export function setInterval(
@@ -76,13 +85,20 @@ export function setInterval(
   // tslint:disable-next-line:no-any
   ...args: any[]
 ): number {
-  return setTimer(cb, delay, true, args);
+  return startTimer(cb, delay, true, args);
 }
 
 export function clearTimer(id: number) {
   timers.delete(id);
-  pubInternal("timers", {
-    command: pb.Msg.Command.TIMER_CLEAR,
-    timerClearId: id
-  });
+
+  const builder = new flatbuffers.Builder();
+  fbs.TimerClear.startTimerClear(builder);
+  fbs.TimerClear.addId(builder, id);
+  const msg = fbs.TimerClear.endTimerClear(builder);
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsgType(builder, fbs.Any.TimerClear);
+  builder.finish(fbs.Base.endBase(builder));
+  const resBuf = libdeno.send(builder.asUint8Array());
+  assert(resBuf == null);
 }

@@ -12,11 +12,13 @@ import * as util from "./util";
 import { log } from "./util";
 import { assetSourceCode } from "./assets";
 import * as os from "./os";
-//import * as sourceMaps from "./v8_source_maps";
-import { window, globalEval } from "./globals";
-//import * as deno from "./deno";
+import * as sourceMaps from "./v8_source_maps";
+import { libdeno, window, globalEval } from "./globals";
+import * as deno from "./deno";
+import { RawSourceMap } from "./types";
 
 const EOL = "\n";
+const ASSETS = "/$asset$/";
 
 // tslint:disable-next-line:no-any
 export type AmdFactory = (...args: any[]) => undefined | object;
@@ -39,26 +41,29 @@ window.onerror = (
   os.exit(1);
 };
 
-/*
-export function setup(mainJs: string, mainMap: string): void {
+export function setup(): void {
   sourceMaps.install({
     installPrepareStackTrace: true,
-    getGeneratedContents: (filename: string): string => {
-      if (filename === "/main.js") {
-        return mainJs;
-      } else if (filename === "/main.map") {
-        return mainMap;
+    getGeneratedContents: (filename: string): string | RawSourceMap => {
+      util.log("getGeneratedContents", filename);
+      if (filename === "gen/bundle/main.js") {
+        util.assert(libdeno.mainSource.length > 0);
+        return libdeno.mainSource;
+      } else if (filename === "main.js.map") {
+        return libdeno.mainSourceMap;
+      } else if (filename === "deno_main.js") {
+        return "";
       } else {
         const mod = FileModule.load(filename);
         if (!mod) {
-          console.error("getGeneratedContents cannot find", filename);
+          util.log("getGeneratedContents cannot find", filename);
+          return "";
         }
         return mod.outputCode;
       }
     }
   });
 }
-*/
 
 // This class represents a module. We call it FileModule to make it explicit
 // that each module represents a single file.
@@ -66,7 +71,7 @@ export function setup(mainJs: string, mainMap: string): void {
 // FileModule.load(). FileModules are NOT executed upon first load, only when
 // compileAndRun is called.
 export class FileModule {
-  scriptVersion: string;
+  scriptVersion = "";
   readonly exports = {};
 
   private static readonly map = new Map<string, FileModule>();
@@ -100,7 +105,7 @@ export class FileModule {
     execute(this.fileName, this.outputCode);
   }
 
-  static load(fileName: string): FileModule {
+  static load(fileName: string): FileModule | undefined {
     return this.map.get(fileName);
   }
 
@@ -108,7 +113,7 @@ export class FileModule {
     const out = [];
     for (const fn of this.map.keys()) {
       const m = this.map.get(fn);
-      if (m.sourceCode) {
+      if (m && m.sourceCode) {
         out.push(fn);
       }
     }
@@ -122,7 +127,8 @@ export function makeDefine(fileName: string): AmdDefine {
       log("localRequire", x);
     };
     const currentModule = FileModule.load(fileName);
-    const localExports = currentModule.exports;
+    util.assert(currentModule != null);
+    const localExports = currentModule!.exports;
     log("localDefine", fileName, deps, localExports);
     const args = deps.map(dep => {
       if (dep === "require") {
@@ -135,9 +141,13 @@ export function makeDefine(fileName: string): AmdDefine {
         return deno;
       } else {
         const resolved = resolveModuleName(dep, fileName);
-        const depModule = FileModule.load(resolved);
-        depModule.compileAndRun();
-        return depModule.exports;
+        util.assert(resolved != null);
+        const depModule = FileModule.load(resolved!);
+        if (depModule) {
+          depModule.compileAndRun();
+          return depModule.exports;
+        }
+        return undefined;
       }
     });
     factory(...args);
@@ -151,15 +161,18 @@ export function resolveModule(
 ): null | FileModule {
   util.log("resolveModule", { moduleSpecifier, containingFile });
   util.assert(moduleSpecifier != null && moduleSpecifier.length > 0);
-  let filename: string, sourceCode: string, outputCode: string;
-  if (
-    moduleSpecifier.startsWith("/$asset$/") ||
-    containingFile.startsWith("/$asset$/")
-  ) {
+  let filename: string | null;
+  let sourceCode: string | null;
+  let outputCode: string | null;
+  if (moduleSpecifier.startsWith(ASSETS) || containingFile.startsWith(ASSETS)) {
     // Assets are compiled into the runtime javascript bundle.
-    const assetName = moduleSpecifier.split("/").pop();
+    // we _know_ `.pop()` will return a string, but TypeScript doesn't so
+    // not null assertion
+    const moduleId = moduleSpecifier.split("/").pop()!;
+    const assetName = moduleId.includes(".") ? moduleId : `${moduleId}.d.ts`;
+    util.assert(assetName in assetSourceCode, `No such asset "${assetName}"`);
     sourceCode = assetSourceCode[assetName];
-    filename = "/$asset$/" + assetName;
+    filename = ASSETS + assetName;
   } else {
     // We query Rust with a CodeFetch message. It will load the sourceCode, and
     // if there is any outputCode cached, will return that as well.
@@ -175,7 +188,7 @@ export function resolveModule(
     sourceCode = fetchResponse.sourceCode;
     outputCode = fetchResponse.outputCode;
   }
-  if (sourceCode == null || sourceCode.length === 0) {
+  if (sourceCode == null || sourceCode.length === 0 || filename == null) {
     return null;
   }
   util.log("resolveModule sourceCode length ", sourceCode.length);
@@ -183,7 +196,9 @@ export function resolveModule(
   if (m != null) {
     return m;
   } else {
-    return new FileModule(filename, sourceCode, outputCode);
+    // null and undefined are incompatible in strict mode, but outputCode being
+    // null here has no runtime behavior impact, therefore not null assertion
+    return new FileModule(filename, sourceCode, outputCode!);
   }
 }
 
@@ -200,7 +215,7 @@ function resolveModuleName(
 }
 
 function execute(fileName: string, outputCode: string): void {
-  util.assert(outputCode && outputCode.length > 0);
+  util.assert(outputCode != null && outputCode.length > 0);
   window["define"] = makeDefine(fileName);
   outputCode += `\n//# sourceURL=${fileName}`;
   globalEval(outputCode);
@@ -214,9 +229,8 @@ class Compiler {
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
     inlineSourceMap: true,
-    lib: ["es2017"],
     inlineSources: true,
-    target: ts.ScriptTarget.ES2017
+    target: ts.ScriptTarget.ESNext
   };
   /*
   allowJs: true,
@@ -275,7 +289,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   getScriptVersion(fileName: string): string {
     util.log("getScriptVersion", fileName);
     const m = FileModule.load(fileName);
-    return m.scriptVersion;
+    return (m && m.scriptVersion) || "";
   }
 
   getScriptSnapshot(fileName: string): ts.IScriptSnapshot | undefined {
@@ -317,33 +331,43 @@ class TypeScriptHost implements ts.LanguageServiceHost {
   }
 
   getDefaultLibFileName(options: ts.CompilerOptions): string {
-    const fn = "lib.d.ts"; // ts.getDefaultLibFileName(options);
+    const fn = "lib.globals.d.ts"; // ts.getDefaultLibFileName(options);
     util.log("getDefaultLibFileName", fn);
-    const m = resolveModule(fn, "/$asset$/");
-    return m.fileName;
+    const m = resolveModule(fn, ASSETS);
+    util.assert(m != null);
+    // TypeScript cannot track assertions, therefore not null assertion
+    return m!.fileName;
   }
 
   resolveModuleNames(
     moduleNames: string[],
-    containingFile: string,
-    reusedNames?: string[]
-  ): Array<ts.ResolvedModule | undefined> {
+    containingFile: string
+  ): ts.ResolvedModule[] {
     //util.log("resolveModuleNames", { moduleNames, reusedNames });
-    return moduleNames.map((name: string) => {
-      let resolvedFileName;
-      if (name === "deno") {
-        resolvedFileName = resolveModuleName("deno.d.ts", "/$asset$/");
-      } else if (name === "typescript") {
-        resolvedFileName = resolveModuleName("typescript.d.ts", "/$asset$/");
-      } else {
-        resolvedFileName = resolveModuleName(name, containingFile);
-        if (resolvedFileName == null) {
-          return undefined;
+    return moduleNames
+      .map(name => {
+        let resolvedFileName;
+        if (name === "deno") {
+          resolvedFileName = resolveModuleName("deno.d.ts", ASSETS);
+        } else if (name === "typescript") {
+          resolvedFileName = resolveModuleName("typescript.d.ts", ASSETS);
+        } else {
+          resolvedFileName = resolveModuleName(name, containingFile);
         }
-      }
-      const isExternalLibraryImport = false;
-      return { resolvedFileName, isExternalLibraryImport };
-    });
+        // According to the interface we shouldn't return `undefined` but if we 
+        // fail to return the same length of modules to those we cannot resolve
+        // then TypeScript fails on an assertion that the lengths can't be
+        // different, so we have to return an "empty" resolved module
+        // TODO: all this does is push the problem downstream, and TypeScript
+        // will complain it can't identify the type of the file and throw
+        // a runtime exception, so we need to handle missing modules better
+        resolvedFileName = resolvedFileName || "";
+        // This flags to the compiler to not go looking to transpile functional
+        // code, anything that is in `/$asset$/` is just library code
+        const isExternalLibraryImport = resolvedFileName.startsWith(ASSETS);
+        // TODO: we should be returning a ts.ResolveModuleFull
+        return { resolvedFileName, isExternalLibraryImport };
+      });
   }
 }
 

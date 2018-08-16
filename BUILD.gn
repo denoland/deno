@@ -35,29 +35,16 @@ config("deno_config") {
 }
 
 main_extern = [
+  "$rust_build:futures",
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:sha1",
   "$rust_build:tempfile",
+  "$rust_build:tokio",
+  "$rust_build:tokio_current_thread",
   "$rust_build:url",
   "//build_extra/flatbuffers/rust:flatbuffers",
   ":msg_rs",
-
-  # Indirect rust depdendencies also need to be listed here:
-  # * Linking to `:handlers` or `:libdeno` isn't possible, because they
-  #   already contain some symbols exported by `handlers.rs`. These duplicate
-  #   symbols trip up the linker.
-  # * The `rust_test` and `rust_executable` templates only produce an object
-  #   file, and then invoke an external linker. Transitive rust depencenies
-  #   are not resolved in either step.
-  "$rust_build:idna",
-  "$rust_build:percent_encoding",
-  "$rust_build:unicode_bidi",
-  "$rust_build:unicode_normalization",
-  "$rust_build:rand",
-  "$rust_build:rand_core",
-  "$rust_build:remove_dir_all",
-  "$rust_build:winapi",
 ]
 
 rust_executable("deno") {
@@ -88,7 +75,7 @@ rust_test("test_rs") {
   ]
 }
 
-executable("test_cc") {
+v8_executable("test_cc") {
   testonly = true
   sources = [
     "src/flatbuffer_builder_test.cc",
@@ -99,13 +86,16 @@ executable("test_cc") {
     ":deno_flatbuffer_builder",
     "//testing/gtest:gtest",
   ]
-  configs += [ ":deno_config" ]
+  configs = [ ":deno_config" ]
 }
 
 static_library("libdeno") {
   complete_static_lib = true
   sources = [
     "src/from_snapshot.cc",
+  ]
+  inputs = [
+    "$target_gen_dir/snapshot_deno.bin",
   ]
   deps = [
     ":create_snapshot_deno",
@@ -114,7 +104,7 @@ static_library("libdeno") {
   configs += [ ":deno_config" ]
 }
 
-# Only functionality needed for mock_runtime_test and snapshot_creator
+# Only functionality needed for libdeno_test and snapshot_creator
 # In particular no flatbuffers, no assets, no rust, no msg handlers.
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
@@ -137,14 +127,17 @@ v8_source_set("deno_base_test") {
   sources = [
     "src/file_util_test.cc",
     "src/from_snapshot.cc",
-    "src/mock_runtime_test.cc",
+    "src/libdeno_test.cc",
+  ]
+  inputs = [
+    "$target_gen_dir/snapshot_libdeno_test.bin",
   ]
   deps = [
-    ":create_snapshot_mock_runtime",
+    ":create_snapshot_libdeno_test",
     ":deno_base",
     "//testing/gtest:gtest",
   ]
-  defines = [ "DENO_MOCK_RUNTIME" ]
+  defines = [ "LIBDENO_TEST" ]
   configs = [ ":deno_config" ]
 }
 
@@ -191,19 +184,57 @@ flatbuffer("msg_cpp") {
   ]
 }
 
+# Generates type declarations for files that need to be included
+# in the runtime bundle
+run_node("gen_declarations") {
+  out_dir = target_gen_dir
+  sources = [
+    "js/console.ts",
+    "js/deno.ts",
+    "js/globals.ts",
+    "js/os.ts",
+    "js/timers.ts",
+    "js/tsconfig.generated.json",
+    "js/util.ts",
+  ]
+  outputs = [
+    out_dir + "/js/console.d.ts",
+    out_dir + "/js/deno.d.ts",
+    out_dir + "/js/globals.d.ts",
+    out_dir + "/js/os.d.ts",
+    out_dir + "/js/timers.d.ts",
+    out_dir + "/js/util.d.ts",
+  ]
+  deps = [
+    ":msg_ts",
+  ]
+  args = [
+    "./node_modules/typescript/bin/tsc",
+    "-p",
+    rebase_path("js/tsconfig.generated.json", root_build_dir),
+    "--baseUrl",
+    rebase_path(root_build_dir),
+    "--outDir",
+    rebase_path(out_dir),
+  ]
+}
+
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
     "js/assets.ts",
     "js/console.ts",
-    "js/deno.d.ts",
-    "js/dispatch.ts",
     "js/globals.ts",
+    "js/lib.globals.d.ts",
     "js/main.ts",
     "js/os.ts",
+    "js/plugins.d.ts",
     "js/runtime.ts",
-    "js/types.ts",
+    "js/text_encoding.ts",
+    "js/timers.ts",
+    "js/types.d.ts",
     "js/util.ts",
+    "js/v8_source_maps.ts",
     "rollup.config.js",
     "src/msg.fbs",
     "tsconfig.json",
@@ -213,6 +244,7 @@ run_node("bundle") {
     out_dir + "main.js.map",
   ]
   deps = [
+    ":gen_declarations",
     ":msg_ts",
   ]
   args = [
@@ -223,6 +255,8 @@ run_node("bundle") {
     rebase_path("js/main.ts", root_build_dir),
     "-o",
     rebase_path(out_dir + "main.js", root_build_dir),
+    "--sourcemapFile",
+    rebase_path("."),
     "--silent",
     "--environment",
     "BASEPATH:" + rebase_path(".", root_build_dir),
@@ -230,6 +264,11 @@ run_node("bundle") {
 }
 
 source_set("libdeno_nosnapshot") {
+  bundle_outputs = get_target_outputs(":bundle")
+  bundle_location = rebase_path(bundle_outputs[0])
+  bundle_rel_location = rebase_path(bundle_outputs[0], root_build_dir)
+  bundle_map_location = rebase_path(bundle_outputs[1])
+  inputs = bundle_outputs
   sources = [
     "src/from_filesystem.cc",
   ]
@@ -238,9 +277,11 @@ source_set("libdeno_nosnapshot") {
     ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
-  bundle_outputs = get_target_outputs(":bundle")
-  bundle_location = rebase_path(bundle_outputs[0])
-  defines = [ "BUNDLE_LOCATION=\"$bundle_location\"" ]
+  defines = [
+    "BUNDLE_LOCATION=\"$bundle_location\"",
+    "BUNDLE_REL_LOCATION=\"$bundle_rel_location\"",
+    "BUNDLE_MAP_LOCATION=\"$bundle_map_location\"",
+  ]
 }
 
 ts_flatbuffer("msg_ts") {
@@ -255,17 +296,17 @@ rust_flatbuffer("msg_rs") {
   ]
 }
 
-# Generates $target_gen_dir/snapshot_deno.cc
+# Generates $target_gen_dir/snapshot_deno.bin
 create_snapshot("deno") {
   js = "$target_gen_dir/bundle/main.js"
+  source_map = "$target_gen_dir/bundle/main.js.map"
   deps = [
     ":bundle",
   ]
 }
 
-# Generates $target_gen_dir/snapshot_mock_runtime.cc
-create_snapshot("mock_runtime") {
+# Generates $target_gen_dir/snapshot_libdeno_test.bin
+create_snapshot("libdeno_test") {
   testonly = true
-  js = "js/mock_runtime.js"
-  deps = []
+  js = "js/libdeno_test.js"
 }

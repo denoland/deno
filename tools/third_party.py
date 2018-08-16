@@ -47,7 +47,6 @@ def fix_symlinks():
 
     # Make symlinks to Yarn metadata living in the root repo.
     remove_and_symlink("../package.json", tp("package.json"))
-    remove_and_symlink("../yarn.lock", tp("yarn.lock"))
 
     # TODO(ry) Is it possible to remove these symlinks?
     remove_and_symlink("v8/third_party/googletest", tp("googletest"), True)
@@ -64,11 +63,13 @@ def fix_symlinks():
     remove_and_symlink("third_party/v8/build_overrides",
                        root("build_overrides"), True)
     remove_and_symlink("third_party/v8/testing", root("testing"), True)
+    remove_and_symlink("../third_party/v8/tools/clang", root("tools/clang"),
+                       True)
 
 
 # Run Yarn to install JavaScript dependencies.
 def run_yarn():
-    run(["yarn"], cwd=third_party_path)
+    run(["yarn", "--no-lockfile"], cwd=third_party_path)
 
 
 # Run Cargo to install Rust dependencies.

@@ -23,9 +23,14 @@ default_args = {
   use_ozone = false
   use_udev = false
 
+  # TODO(ry) We may want to turn on CFI at some point. Disabling for simplicity
+  # for now. See http://clang.llvm.org/docs/ControlFlowIntegrity.html
+  is_cfi = false
+
   is_component_build = false
   symbol_level = 1
   treat_warnings_as_errors = false
+  rust_treat_warnings_as_errors = false
 
   # https://cs.chromium.org/chromium/src/docs/ccache_mac.md
   clang_use_chrome_plugins = false

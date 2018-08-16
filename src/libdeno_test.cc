@@ -3,20 +3,20 @@
 
 #include "deno.h"
 
-TEST(MockRuntimeTest, InitializesCorrectly) {
+TEST(LibDenoTest, InitializesCorrectly) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "1 + 2"));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, CanCallFunction) {
+TEST(LibDenoTest, CanCallFunction) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js",
                            "if (CanCallFunction() != 'foo') throw Error();"));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, ErrorsCorrectly) {
+TEST(LibDenoTest, ErrorsCorrectly) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_FALSE(deno_execute(d, "a.js", "throw Error()"));
   deno_delete(d);
@@ -45,14 +45,14 @@ deno_buf StrBufNullAllocPtr(const char* str) {
   return buf;
 }
 
-TEST(MockRuntimeTest, SendSuccess) {
+TEST(LibDenoTest, SendSuccess) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "SendSuccess()"));
   EXPECT_TRUE(deno_send(d, strbuf("abc")));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, SendWrongByteLength) {
+TEST(LibDenoTest, SendWrongByteLength) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "SendWrongByteLength()"));
   // deno_send the wrong sized message, it should throw.
@@ -63,14 +63,14 @@ TEST(MockRuntimeTest, SendWrongByteLength) {
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, SendNoCallback) {
+TEST(LibDenoTest, SendNoCallback) {
   Deno* d = deno_new(nullptr, nullptr);
   // We didn't call deno.recv() in JS, should fail.
   EXPECT_FALSE(deno_send(d, strbuf("abc")));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, RecvReturnEmpty) {
+TEST(LibDenoTest, RecvReturnEmpty) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto _, auto buf) {
     count++;
@@ -84,7 +84,7 @@ TEST(MockRuntimeTest, RecvReturnEmpty) {
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, RecvReturnBar) {
+TEST(LibDenoTest, RecvReturnBar) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto deno, auto buf) {
     count++;
@@ -99,13 +99,13 @@ TEST(MockRuntimeTest, RecvReturnBar) {
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, DoubleRecvFails) {
+TEST(LibDenoTest, DoubleRecvFails) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_FALSE(deno_execute(d, "a.js", "DoubleRecvFails()"));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, SendRecvSlice) {
+TEST(LibDenoTest, SendRecvSlice) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto deno, auto buf) {
     static const size_t alloc_len = 1024;
@@ -137,7 +137,7 @@ TEST(MockRuntimeTest, SendRecvSlice) {
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, JSSendArrayBufferViewTypes) {
+TEST(LibDenoTest, JSSendArrayBufferViewTypes) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto _, auto buf) {
     count++;
@@ -152,7 +152,7 @@ TEST(MockRuntimeTest, JSSendArrayBufferViewTypes) {
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, JSSendNeutersBuffer) {
+TEST(LibDenoTest, JSSendNeutersBuffer) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto _, auto buf) {
     count++;
@@ -164,19 +164,19 @@ TEST(MockRuntimeTest, JSSendNeutersBuffer) {
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, TypedArraySnapshots) {
+TEST(LibDenoTest, TypedArraySnapshots) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "TypedArraySnapshots()"));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, SnapshotBug) {
+TEST(LibDenoTest, SnapshotBug) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "SnapshotBug()"));
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, ErrorHandling) {
+TEST(LibDenoTest, ErrorHandling) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto deno, auto buf) {
     count++;
@@ -188,7 +188,7 @@ TEST(MockRuntimeTest, ErrorHandling) {
   deno_delete(d);
 }
 
-TEST(MockRuntimeTest, SendNullAllocPtr) {
+TEST(LibDenoTest, SendNullAllocPtr) {
   static int count = 0;
   Deno* d = deno_new(nullptr, [](auto _, auto buf) { count++; });
   EXPECT_TRUE(deno_execute(d, "a.js", "SendNullAllocPtr()"));

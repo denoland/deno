@@ -1,5 +1,4 @@
-# Copyright 2018 Ryan Dahl <ry@tinyclouds.org>
-# All rights reserved. MIT License.
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import os
 import shutil
 import stat
@@ -53,21 +52,38 @@ def remove_and_symlink(target, name, target_is_dir=False):
 
 def symlink(target, name, target_is_dir=False):
     if os.name == "nt":
-        import ctypes
-        CreateSymbolicLinkW = ctypes.windll.kernel32.CreateSymbolicLinkW
-        CreateSymbolicLinkW.restype = ctypes.c_ubyte
-        CreateSymbolicLinkW.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p,
-                                        ctypes.c_uint32)
+        from ctypes import WinDLL, WinError, GetLastError
+        from ctypes.wintypes import BOOLEAN, DWORD, LPCWSTR
 
-        # Replace forward slashes by backward slashes.
-        # Strangely it seems that this is only necessary for symlinks to files.
-        # Forward slashes don't cause any issues when the target is a directory.
-        target = target.replace("/", "\\")
-        flags = 0x02  # SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
-        if (target_is_dir):
-            flags |= 0x01  # SYMBOLIC_LINK_FLAG_DIRECTORY
-        if not CreateSymbolicLinkW(name, target, flags):
-            raise ctypes.WinError()
+        kernel32 = WinDLL('kernel32', use_last_error=False)
+        CreateSymbolicLinkW = kernel32.CreateSymbolicLinkW
+        CreateSymbolicLinkW.restype = BOOLEAN
+        CreateSymbolicLinkW.argtypes = (LPCWSTR, LPCWSTR, DWORD)
+
+        # File-type symlinks can only use backslashes as separators.
+        target = os.path.normpath(target)
+
+        # If the symlink points at a directory, it needs to have the appropriate
+        # flag set, otherwise the link will be created but it won't work.
+        if target_is_dir:
+            type_flag = 0x01  # SYMBOLIC_LINK_FLAG_DIRECTORY
+        else:
+            type_flag = 0
+
+        # Before Windows 10, creating symlinks requires admin privileges.
+        # As of Win 10, there is a flag that allows anyone to create them.
+        # Initially, try to use this flag.
+        unpriv_flag = 0x02  # SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+        r = CreateSymbolicLinkW(name, target, type_flag | unpriv_flag)
+
+        # If it failed with ERROR_INVALID_PARAMETER, try again without the
+        # 'allow unprivileged create' flag.
+        if not r and GetLastError() == 87:  # ERROR_INVALID_PARAMETER
+            r = CreateSymbolicLinkW(name, target, type_flag)
+
+        # Throw if unsuccessful even after the second attempt.
+        if not r:
+            raise WinError()
     else:
         os.symlink(target, name)
 
@@ -103,11 +119,11 @@ def rmtree(directory):
     shutil.rmtree(directory, onerror=rm_readonly)
 
 
-def build_mode():
+def build_mode(default="debug"):
     if "DENO_BUILD_MODE" in os.environ:
         return os.environ["DENO_BUILD_MODE"]
     else:
-        return "debug"
+        return default
 
 
 # E.G. "out/debug"
@@ -116,3 +132,33 @@ def build_path():
         return os.environ["DENO_BUILD_PATH"]
     else:
         return os.path.join(root_path, "out", build_mode())
+
+
+# Returns True if the expected matches the actual output, allowing variation
+# from actual where expected has the wildcard (e.g. matches /.*/)
+def pattern_match(pattern, string, wildcard="[WILDCARD]"):
+    if len(pattern) == 0:
+        return string == 0
+    if pattern == wildcard:
+        return True
+
+    parts = str.split(pattern, wildcard)
+
+    if len(parts) == 1:
+        return pattern == string
+
+    if string.startswith(parts[0]):
+        string = string[len(parts[0]):]
+    else:
+        return False
+
+    for i in range(1, len(parts)):
+        if i == (len(parts) - 1):
+            if parts[i] == "" or parts[i] == "\n":
+                return True
+        found = string.find(parts[i])
+        if found < 0:
+            return False
+        string = string[(found + len(parts[i])):]
+
+    return len(string) == 0
