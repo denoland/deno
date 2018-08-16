@@ -112,7 +112,8 @@ export class Console {
 
   // tslint:disable-next-line:no-any
   warn(...args: any[]): void {
-    this.printFunc(`ERROR: ${stringifyArgs(args)}`);
+    // TODO Log to stderr.
+    this.printFunc(stringifyArgs(args));
   }
 
   error = this.warn;

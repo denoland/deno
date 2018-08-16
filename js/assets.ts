@@ -11,6 +11,7 @@ import consoleDts from "gen/js/console.d.ts!string";
 import denoDts from "gen/js/deno.d.ts!string";
 import globalsDts from "gen/js/globals.d.ts!string";
 import osDts from "gen/js/os.d.ts!string";
+import fetchDts from "gen/js/fetch.d.ts!string";
 import timersDts from "gen/js/timers.d.ts!string";
 import utilDts from "gen/js/util.d.ts!string";
 
@@ -48,6 +49,7 @@ import libGlobalsDts from "/js/lib.globals.d.ts!string";
 // Static definitions
 import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
 import typesDts from "/js/types.d.ts!string";
+import fetchTypesDts from "/js/fetch_types.d.ts!string";
 // tslint:enable:max-line-length
 
 // prettier-ignore
@@ -57,6 +59,8 @@ export const assetSourceCode: { [key: string]: string } = {
   "deno.d.ts": denoDts,
   "globals.d.ts": globalsDts,
   "os.d.ts": osDts,
+  "fetch.d.ts": fetchDts,
+  "fetch_types.d.ts": fetchTypesDts,
   "timers.d.ts": timersDts,
   "util.d.ts": utilDts,
 
@@ -94,4 +98,7 @@ export const assetSourceCode: { [key: string]: string } = {
   // Static definitions
   "typescript.d.ts": typescriptDts,
   "types.d.ts": typesDts,
+
+  // TODO Remove.
+  "msg_generated.d.ts": "",
 };
