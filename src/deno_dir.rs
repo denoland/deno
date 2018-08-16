@@ -1,8 +1,8 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use errors::DenoError;
 use fs;
 use sha1;
 use std;
-use std::error::Error;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -97,7 +97,7 @@ impl DenoDir {
     self: &DenoDir,
     module_specifier: &str,
     containing_file: &str,
-  ) -> Result<CodeFetchOutput, Box<Error>> {
+  ) -> Result<CodeFetchOutput, DenoError> {
     let (module_name, filename) =
       self.resolve_module(module_specifier, containing_file)?;
 

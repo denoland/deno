@@ -13,6 +13,7 @@ extern crate log;
 
 mod binding;
 mod deno_dir;
+mod errors;
 mod flags;
 mod fs;
 pub mod handlers;

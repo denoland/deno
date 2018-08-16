@@ -31,7 +31,8 @@ pub fn print_usage() {
 -r or --reload     Reload cached remote resources.
 -D or --log-debug  Log debug output.
 --help             Print this message.
---v8-options       Print V8 command line options.");
+--v8-options       Print V8 command line options."
+  );
 }
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
