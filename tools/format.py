@@ -23,6 +23,7 @@ run(["yapf", "-i"] + find_exts("tools/", ".py") +
     find_exts("build_extra", ".py"))
 
 run(["node", prettier, "--write"] + find_exts("js/", ".js", ".ts") +
+    find_exts("tests/", ".js", ".ts") +
     ["rollup.config.js", "tsconfig.json", "tslint.json"])
 
 # Requires rustfmt 0.8.2 (flags were different in previous versions)
