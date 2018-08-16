@@ -3,6 +3,7 @@ import { ModuleInfo } from "./types";
 import { deno as fbs } from "gen/msg_generated";
 import { assert } from "./util";
 import * as util from "./util";
+import { maybeThrowError } from "./errors";
 import { flatbuffers } from "flatbuffers";
 import { libdeno } from "./globals";
 
@@ -43,9 +44,7 @@ export function codeFetch(
   // null assertion `!`
   const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
   const baseRes = fbs.Base.getRootAsBase(bb);
-  if (fbs.Any.NONE === baseRes.msgType()) {
-    throw Error(baseRes.error()!);
-  }
+  maybeThrowError(baseRes);
   assert(fbs.Any.CodeFetchRes === baseRes.msgType());
   const codeFetchRes = new fbs.CodeFetchRes();
   assert(baseRes.msg(codeFetchRes) != null);
@@ -82,10 +81,7 @@ export function codeCache(
   if (resBuf != null) {
     const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf));
     const baseRes = fbs.Base.getRootAsBase(bb);
-    assert(fbs.Any.NONE === baseRes.msgType());
-    // undefined and null are incompatible in strict mode, but at runtime
-    // a null value is fine, therefore not null assertion
-    throw Error(baseRes.error()!);
+    maybeThrowError(baseRes);
   }
 }
 
@@ -112,11 +108,7 @@ export function readFileSync(filename: string): Uint8Array {
   // null assertion `!`
   const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
   const baseRes = fbs.Base.getRootAsBase(bb);
-  if (fbs.Any.NONE === baseRes.msgType()) {
-    // undefined and null are incompatible in strict mode, but at runtime
-    // a null value is fine, therefore not null assertion
-    throw Error(baseRes.error()!);
-  }
+  maybeThrowError(baseRes);
   assert(fbs.Any.ReadFileSyncRes === baseRes.msgType());
   const res = new fbs.ReadFileSyncRes();
   assert(baseRes.msg(res) != null);

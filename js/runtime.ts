@@ -176,14 +176,7 @@ export function resolveModule(
   } else {
     // We query Rust with a CodeFetch message. It will load the sourceCode, and
     // if there is any outputCode cached, will return that as well.
-    let fetchResponse;
-    try {
-      fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
-    } catch (e) {
-      // TODO Only catch "no such file or directory" errors. Need error codes.
-      util.log("os.codeFetch error ignored", e.message);
-      return null;
-    }
+    const fetchResponse = os.codeFetch(moduleSpecifier, containingFile);
     filename = fetchResponse.filename;
     sourceCode = fetchResponse.sourceCode;
     outputCode = fetchResponse.outputCode;

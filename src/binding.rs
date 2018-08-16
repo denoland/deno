@@ -11,6 +11,7 @@ pub struct DenoC {
 }
 
 #[repr(C)]
+#[derive(PartialEq)]
 pub struct deno_buf {
   pub alloc_ptr: *mut u8,
   pub alloc_len: usize,
