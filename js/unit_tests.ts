@@ -92,6 +92,21 @@ test(async function tests_readFileSync() {
   assertEqual(pkg.name, "deno");
 });
 
+/* TODO We should be able to catch specific types.
+test(function tests_readFileSync_NotFound() {
+  let caughtError = false;
+  let data;
+  try {
+    data = readFileSync("bad_filename");
+  } catch (e) {
+    caughtError = true;
+    assert(e instanceof deno.NotFound);
+  }
+  assert(caughtError);
+  assert(data === undefined);
+});
+*/
+
 test(async function tests_fetch() {
   const response = await fetch("http://localhost:4545/package.json");
   const json = await response.json();
