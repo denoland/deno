@@ -1,7 +1,7 @@
 const id = setInterval(function() {
-  console.log("test")
+  console.log("test");
 }, 200);
 
 setTimeout(function() {
-  clearInterval(id)
-}, 500)
+  clearInterval(id);
+}, 500);
