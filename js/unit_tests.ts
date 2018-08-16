@@ -92,13 +92,13 @@ test(async function tests_readFileSync() {
   assertEqual(pkg.name, "deno");
 });
 
-/*
 test(async function tests_fetch() {
   const response = await fetch("http://localhost:4545/package.json");
   const json = await response.json();
   assertEqual(json.name, "deno");
 });
 
+/*
 test(async function tests_writeFileSync() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
