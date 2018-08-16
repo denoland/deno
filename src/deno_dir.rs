@@ -212,7 +212,7 @@ impl DenoDir {
       },
       _ => { 
         module_name = module_specifier.to_string(); 
-        filename = get_cache_filename(self, j);
+        filename = get_cache_filename(self.deps.clone(), j);
       } 
     }
 
@@ -221,15 +221,23 @@ impl DenoDir {
   }
 }
 
-fn get_cache_filename(dir: &DenoDir, j: Url) -> String {
-  let mut pathbuf: PathBuf = dir.deps.clone();
+fn get_cache_filename(basedir: PathBuf, url: Url) -> String {
+  let mut pathbuf: PathBuf = basedir.clone();
 
-  pathbuf.push(j.host_str().unwrap());
-  for path_seg in j.path_segments().unwrap() {
+  pathbuf.push(url.host_str().unwrap());
+  for path_seg in url.path_segments().unwrap() {
       pathbuf.push(path_seg);
   }
 
   pathbuf.to_str().unwrap().to_owned()
+}
+
+#[test]
+fn test_get_cache_filename() {
+  let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
+  let basedir = Path::new("/cache/dir/").to_path_buf();
+  let cache_file = get_cache_filename(basedir, url);
+  assert_eq!(cache_file, "/cache/dir/example.com/path/to/file.ts");
 }
 
 #[derive(Debug)]
