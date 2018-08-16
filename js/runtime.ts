@@ -344,30 +344,29 @@ class TypeScriptHost implements ts.LanguageServiceHost {
     containingFile: string
   ): ts.ResolvedModule[] {
     //util.log("resolveModuleNames", { moduleNames, reusedNames });
-    return moduleNames
-      .map(name => {
-        let resolvedFileName;
-        if (name === "deno") {
-          resolvedFileName = resolveModuleName("deno.d.ts", ASSETS);
-        } else if (name === "typescript") {
-          resolvedFileName = resolveModuleName("typescript.d.ts", ASSETS);
-        } else {
-          resolvedFileName = resolveModuleName(name, containingFile);
-        }
-        // According to the interface we shouldn't return `undefined` but if we 
-        // fail to return the same length of modules to those we cannot resolve
-        // then TypeScript fails on an assertion that the lengths can't be
-        // different, so we have to return an "empty" resolved module
-        // TODO: all this does is push the problem downstream, and TypeScript
-        // will complain it can't identify the type of the file and throw
-        // a runtime exception, so we need to handle missing modules better
-        resolvedFileName = resolvedFileName || "";
-        // This flags to the compiler to not go looking to transpile functional
-        // code, anything that is in `/$asset$/` is just library code
-        const isExternalLibraryImport = resolvedFileName.startsWith(ASSETS);
-        // TODO: we should be returning a ts.ResolveModuleFull
-        return { resolvedFileName, isExternalLibraryImport };
-      });
+    return moduleNames.map(name => {
+      let resolvedFileName;
+      if (name === "deno") {
+        resolvedFileName = resolveModuleName("deno.d.ts", ASSETS);
+      } else if (name === "typescript") {
+        resolvedFileName = resolveModuleName("typescript.d.ts", ASSETS);
+      } else {
+        resolvedFileName = resolveModuleName(name, containingFile);
+      }
+      // According to the interface we shouldn't return `undefined` but if we
+      // fail to return the same length of modules to those we cannot resolve
+      // then TypeScript fails on an assertion that the lengths can't be
+      // different, so we have to return an "empty" resolved module
+      // TODO: all this does is push the problem downstream, and TypeScript
+      // will complain it can't identify the type of the file and throw
+      // a runtime exception, so we need to handle missing modules better
+      resolvedFileName = resolvedFileName || "";
+      // This flags to the compiler to not go looking to transpile functional
+      // code, anything that is in `/$asset$/` is just library code
+      const isExternalLibraryImport = resolvedFileName.startsWith(ASSETS);
+      // TODO: we should be returning a ts.ResolveModuleFull
+      return { resolvedFileName, isExternalLibraryImport };
+    });
   }
 }
 
