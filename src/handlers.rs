@@ -6,9 +6,13 @@ use from_c;
 use fs;
 use futures;
 use futures::sync::oneshot;
+use hyper;
+use hyper::rt::{Future, Stream};
+use hyper::Client;
 use msg_generated::deno as msg;
 use std;
 use std::path::Path;
+use tokio::prelude::future;
 
 pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
   let bytes = unsafe { std::slice::from_raw_parts(buf.data_ptr, buf.data_len) };
@@ -32,6 +36,12 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let source_code = msg.source_code().unwrap();
       let output_code = msg.output_code().unwrap();
       handle_code_cache(d, filename, source_code, output_code);
+    }
+    msg::Any::FetchReq => {
+      // TODO base.msg_as_FetchReq();
+      let msg = msg::FetchReq::init_from_table(base.msg().unwrap());
+      let url = msg.url().unwrap();
+      handle_fetch_req(d, msg.id(), url);
     }
     msg::Any::TimerStart => {
       // TODO base.msg_as_TimerStart();
@@ -208,6 +218,92 @@ fn handle_code_cache(
     reply_error(d, 0, &errmsg);
   }
   // null response indicates success.
+}
+
+fn handle_fetch_req(d: *const DenoC, id: u32, url: &str) {
+  let deno = from_c(d);
+  let url = url.parse::<hyper::Uri>().unwrap();
+  let client = Client::new();
+
+  deno.rt.spawn(
+    client
+      .get(url)
+      .map(move |res| {
+        let status = res.status().as_u16() as i32;
+
+        // Send the first message without a body. This is just to indicate
+        // what status code.
+        let mut builder = flatbuffers::FlatBufferBuilder::new();
+        let msg = msg::FetchRes::create(
+          &mut builder,
+          &msg::FetchResArgs {
+            id,
+            status,
+            ..Default::default()
+          },
+        );
+        send_base(
+          d,
+          &mut builder,
+          &msg::BaseArgs {
+            msg: Some(flatbuffers::Offset::new(msg.value())),
+            msg_type: msg::Any::FetchRes,
+            ..Default::default()
+          },
+        );
+        res
+      })
+      .and_then(move |res| {
+        // Send the body as a FetchRes message.
+        res.into_body().concat2().map(move |body_buffer| {
+          let mut builder = flatbuffers::FlatBufferBuilder::new();
+          let data_off = builder.create_byte_vector(body_buffer.as_ref());
+          let msg = msg::FetchRes::create(
+            &mut builder,
+            &msg::FetchResArgs {
+              id,
+              body: Some(data_off),
+              ..Default::default()
+            },
+          );
+          send_base(
+            d,
+            &mut builder,
+            &msg::BaseArgs {
+              msg: Some(flatbuffers::Offset::new(msg.value())),
+              msg_type: msg::Any::FetchRes,
+              ..Default::default()
+            },
+          );
+        })
+      })
+      .map_err(move |err| {
+        let errmsg = format!("{}", err);
+
+        // TODO This is obviously a lot of duplicated code from the success case.
+        // Leaving it here now jsut to get a first pass implementation, but this
+        // needs to be cleaned up.
+        let mut builder = flatbuffers::FlatBufferBuilder::new();
+        let err_off = builder.create_string(errmsg.as_str());
+        let msg = msg::FetchRes::create(
+          &mut builder,
+          &msg::FetchResArgs {
+            id,
+            ..Default::default()
+          },
+        );
+        send_base(
+          d,
+          &mut builder,
+          &msg::BaseArgs {
+            msg: Some(flatbuffers::Offset::new(msg.value())),
+            msg_type: msg::Any::FetchRes,
+            error: Some(err_off),
+            ..Default::default()
+          },
+        );
+      }),
+  );
 }
 
 fn set_timeout<F>(

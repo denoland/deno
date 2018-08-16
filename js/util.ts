@@ -56,7 +56,7 @@ export interface ResolvableMethods<T> {
   reject: (reason?: any) => void;
 }
 
-type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
+export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
 
 export function createResolvable<T>(): Resolvable<T> {
   let methods: ResolvableMethods<T>;
