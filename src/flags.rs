@@ -25,13 +25,13 @@ pub fn print_usage() {
   println!(
     "Usage: deno script.js
 
--help         Print this message.
--version      Print the version.
--reload       Reload cached remote resources.
--allow-write  Allow file system write access.
--allow-net    Allow network access.
--DEBUG        Log debug output."
-  );
+--allow-write      Allow file system write access.
+--allow-net        Allow network access.
+-v or --version    Print the version.
+-r or --reload     Reload cached remote resources.
+-D or --log-debug  Log debug output.
+--help             Print this message.
+--v8-options       Print V8 command line options.");
 }
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
@@ -47,12 +47,12 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
   let mut rest = Vec::new();
   for a in &args {
     match a.as_str() {
-      "-h" | "-help" | "--help" => flags.help = true,
-      "-D" | "-DEBUG" | "--DEBUG" => flags.log_debug = true,
-      "-v" | "-version" | "--version" => flags.version = true,
-      "-r" | "-reload" | "--reload" => flags.reload = true,
-      "-allow-write" | "--allow-write" => flags.allow_write = true,
-      "-allow-net" | "--allow-net" => flags.allow_net = true,
+      "-h" | "--help" => flags.help = true,
+      "-D" | "--log-debug" => flags.log_debug = true,
+      "-v" | "--version" => flags.version = true,
+      "-r" | "--reload" => flags.reload = true,
+      "--allow-write" => flags.allow_write = true,
+      "--allow-net" => flags.allow_net = true,
       _ => rest.push(a.clone()),
     }
   }
@@ -62,7 +62,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
 
 #[test]
 fn test_set_flags_1() {
-  let (flags, rest) = set_flags(svec!["deno", "-version"]);
+  let (flags, rest) = set_flags(svec!["deno", "--version"]);
   assert!(rest == svec!["deno"]);
   assert!(
     flags == DenoFlags {
@@ -95,7 +95,7 @@ fn test_set_flags_2() {
 #[test]
 fn test_set_flags_3() {
   let (flags, rest) =
-    set_flags(svec!["deno", "-r", "script.ts", "-allow-write"]);
+    set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]);
   assert!(rest == svec!["deno", "script.ts"]);
   assert!(
     flags == DenoFlags {
