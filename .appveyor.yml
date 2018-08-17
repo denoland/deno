@@ -178,6 +178,10 @@ before_build:
   - python tools\setup.py
 
 build_script:
+  # Attempt to work around multiple rustc instances messing with the same file
+  # when building in parallel.
+  # TODO: fix this properly.
+  - ninja -C out\debug -j 1 build_extra/rust:winapi build_extra/rust:winapi-0.2
   - python tools\build.py
 
 test_script:
