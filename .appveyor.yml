@@ -35,10 +35,10 @@ environment:
       # `Delete-Tree` is a simple wrapper around Remove-Item. It doesn't set
       # an error status if one of the paths to be deleted doesn't exist.
       function Delete-Tree([string[]] $Path) {
-        $Path | Foreach-Object {
+        $Path | foreach {
           "Deleting '$_'" | Write-Host -NoNewLine
-          if (Test-Path -Path $_) {
-            Remove-Item -Path $_ -Recurse -Force -ErrorAction Ignore
+          if (Test-Path $_) {
+            Remove-Item $_ -Recurse -Force -ErrorAction Ignore
             $(if ($?) { " - ok" } else { " - failed" }) | Write-Host
           } else {
             " - not found" | Write-Host
@@ -88,7 +88,7 @@ install:
       } catch {
         # Git will fail if the `third_party` directory was restored from cache,
         # but the `.git/modules` directory wasn't. Rebuild it from scratch.
-        Delete-Tree -Path $env:DENO_THIRD_PARTY_PATH
+        Delete-Tree $env:DENO_THIRD_PARTY_PATH
         Exec -NoNewLines { & git submodule update --init --force --depth 1 }
       }
 
@@ -97,7 +97,7 @@ install:
   # This step is skipped if the cache is not going to be saved.
   - ps: |-
       if ($will_save_cache) {
-        Push-Location -Path $env:DENO_THIRD_PARTY_PATH
+        Push-Location $env:DENO_THIRD_PARTY_PATH
         Exec { & git gc --prune=all }
         Pop-Location
       }
@@ -108,9 +108,9 @@ install:
   # Make sure the right Python version is in PATH, and others are not.
   - ps: |-
       # Remove the wrong Python version(s) from PATH.
-      $p = $env:PATH -split ";" | Where-Object {
-             -not (Test-Path -Path "$_\python.exe") -and
-             -not (Test-Path -Path "$_\pip.exe")
+      $p = $env:PATH -split ";" | where {
+             -not (Test-Path "$_\python.exe") -and
+             -not (Test-Path "$_\pip.exe")
            }
       # Add binary dir for `pip --user` packages.
       $p += "$env:APPDATA\Python\Scripts"
@@ -134,11 +134,11 @@ install:
   #   up because we removed the 'rust-docs' component.
   # * The actual update is done by removing and reinstalling with rustup-init.
   - ps: |-
-      if ($will_save_cache -and (Test-Path -Path $env:CARGO_HOME)) {
+      if ($will_save_cache -and (Test-Path $env:CARGO_HOME)) {
         try {
           Exec -NoNewLines { & rustup update stable-x86_64-pc-windows-msvc }
         } catch {
-          Delete-Tree -Path $env:CARGO_HOME, $env:RUSTUP_HOME
+          Delete-Tree $env:CARGO_HOME, $env:RUSTUP_HOME
         }
       }
 
@@ -149,11 +149,11 @@ install:
   #   is resolved: https://github.com/rust-lang-nursery/rustup.rs/issues/998.
   # * TODO: Ship Rust in the third_party repo. See issue #386.
   - ps: |-
-      if (-not (Test-Path -Path $env:CARGO_HOME)) {
+      if (-not (Test-Path $env:CARGO_HOME)) {
         Invoke-WebRequest -Uri "https://win.rustup.rs" `
                           -OutFile "$env:TEMP\rustup-init.exe"
         Exec -NoNewLines { & "$env:TEMP\rustup-init.exe" -y }
-        Delete-Tree -Path @(
+        Delete-Tree @(
           "$env:RUSTUP_HOME\downloads",
           "$env:RUSTUP_HOME\tmp",
           "$env:RUSTUP_HOME\toolchains\stable-x86_64-pc-windows-msvc\share\doc"
