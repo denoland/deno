@@ -103,7 +103,7 @@ fn reply_error(d: *const DenoC, cmd_id: u32, msg: &String) {
   let mut builder = flatbuffers::FlatBufferBuilder::new();
   // println!("reply_error{}", msg);
   let args = msg::BaseArgs {
-    cmdId: cmd_id,
+    cmd_id: cmd_id,
     error: Some(builder.create_string(msg)),
     ..Default::default()
   };
