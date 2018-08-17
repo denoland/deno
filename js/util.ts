@@ -1,16 +1,17 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
-//import { debug } from "./main";
-const debug = false;
-
 import { TypedArray } from "./types";
 
-// Internal logging for deno. Use the "debug" variable above to control
-// output.
+let logDebug = false;
+
+export function setLogDebug(debug: boolean): void {
+  logDebug = debug;
+}
+
+// Debug logging for deno. Enable with the --DEBUG command line flag.
 // tslint:disable-next-line:no-any
 export function log(...args: any[]): void {
-  if (debug) {
-    console.log(...args);
+  if (logDebug) {
+    console.log("DEBUG JS -", ...args);
   }
 }
 
