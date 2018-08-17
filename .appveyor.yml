@@ -310,7 +310,9 @@ build_script:
   # Attempt to work around multiple rustc instances messing with the same file
   # when building in parallel.
   # TODO: fix this properly.
-  - ninja -C out\debug -j 1 build_extra/rust:winapi build_extra/rust:winapi-0.2
+  - ps: ninja -C $env:DENO_BUILD_PATH -j 1
+              build_extra/rust:winapi build_extra/rust:winapi-0.2
+
   - python tools\build.py
   - ps: Set-FilesNeeded -Auto -Reason "Build finished"
 
@@ -321,3 +323,11 @@ test_script:
 after_test:
   # Remove stale files and empty dirs from the build directory.
   - ps: Stop-TraceFilesNeeded
+
+  # Verify that the build is fully up-to-date. Running ninja should be a no-op.
+  # This catches erroneous file cleanup, and incorrectly set up build deps.
+  - ps: |-
+      $out = ninja -C $env:DENO_BUILD_PATH -n -d explain :all
+      if ($out -notcontains "ninja: no work to do.") {
+        throw "Build should be up-to-date but isnt't."
+      }
