@@ -2,6 +2,7 @@
 import third_party
 from util import run, build_path, build_mode
 import os
+import sys
 import distutils.spawn
 
 third_party.fix_symlinks()
