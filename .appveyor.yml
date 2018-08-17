@@ -298,8 +298,6 @@ before_build:
 
   # Mark files that are produced during the build, and are known to ninja, as
   # needed. We obtain this list by dry-running `ninja -t clean`.
-  # N.b.: we deliberately do *not* pass `:all` to the clean command. It misses
-  # some important files, e.g. .exe and .pdb files.
   - ps: |-
       $outputs = ninja -C $env:DENO_BUILD_PATH -n -t clean -g |
         where   { $_ -match "^Remove (.*)$" }                 |
@@ -327,7 +325,7 @@ after_test:
   # Verify that the build is fully up-to-date. Running ninja should be a no-op.
   # This catches erroneous file cleanup, and incorrectly set up build deps.
   - ps: |-
-      $out = ninja -C $env:DENO_BUILD_PATH -n -d explain :all
+      $out = ninja -C $env:DENO_BUILD_PATH -n -d explain
       if ($out -notcontains "ninja: no work to do.") {
         throw "Build should be up-to-date but isnt't."
       }
