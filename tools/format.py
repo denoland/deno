@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import os
-from third_party import third_party_path, fix_symlinks, google_env
+from third_party import third_party_path, fix_symlinks, google_env, clang_format_path
 from util import root_path, run, find_exts
 
 fix_symlinks()
@@ -12,8 +12,8 @@ rustfmt_config = os.path.join(tools_path, "rustfmt.toml")
 
 os.chdir(root_path)
 
-# TODO(ry) Use third_party/depot_tools/clang-format.
-run(["clang-format", "-i", "-style", "Google"] + find_exts("src", ".cc", ".h"))
+run([clang_format_path, "-i", "-style", "Google"] +
+    find_exts("src", ".cc", ".h"))
 
 for fn in ["BUILD.gn", ".gn"] + find_exts("build_extra", ".gn", ".gni"):
     run(["third_party/depot_tools/gn", "format", fn], env=google_env())

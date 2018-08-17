@@ -21,6 +21,7 @@ third_party_path = tp()
 depot_tools_path = tp("depot_tools")
 rust_crates_path = tp("rust_crates")
 gn_path = tp(depot_tools_path, "gn")
+clang_format_path = tp(depot_tools_path, "clang-format")
 ninja_path = tp(depot_tools_path, "ninja")
 
 
@@ -141,25 +142,35 @@ def run_gclient_sync():
         rmtree(depot_tools_temp_path)
 
 
-# Download gn from Google storage.
-def download_gn():
+# Download the given item from Google storage.
+def download_from_google_storage(item, bucket):
     if sys.platform == 'win32':
-        sha1_file = "v8/buildtools/win/gn.exe.sha1"
+        sha1_file = "v8/buildtools/win/%s.exe.sha1" % item
     elif sys.platform == 'darwin':
-        sha1_file = "v8/buildtools/mac/gn.sha1"
+        sha1_file = "v8/buildtools/mac/%s.sha1" % item
     elif sys.platform.startswith('linux'):
-        sha1_file = "v8/buildtools/linux64/gn.sha1"
+        sha1_file = "v8/buildtools/linux64/%s.sha1" % item
 
     run([
         "python",
         tp('depot_tools/download_from_google_storage.py'),
         '--platform=' + sys.platform,
         '--no_auth',
-        '--bucket=chromium-gn',
+        '--bucket=%s' % bucket,
         '--sha1_file',
         tp(sha1_file),
     ],
         env=google_env())
+
+
+# Download gn from Google storage.
+def download_gn():
+    download_from_google_storage('gn', 'chromium-gn')
+
+
+# Download clang-format from Google storage.
+def download_clang_format():
+    download_from_google_storage('clang-format', 'chromium-clang-format')
 
 
 # Download clang by calling the clang update script.
