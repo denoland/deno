@@ -12,7 +12,7 @@ use std::path::Path;
 
 pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
   let bytes = unsafe { std::slice::from_raw_parts(buf.data_ptr, buf.data_len) };
-  let base = msg::GetRootAsBase(bytes);
+  let base = msg::get_root_as_base(bytes);
   let msg_type = base.msg_type();
   match msg_type {
     msg::Any::Start => {
@@ -60,7 +60,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     _ => {
       assert!(
         false,
-        format!("Unhandled message {}", msg::EnumNameAny(msg_type))
+        format!("Unhandled message {}", msg::enum_name_any(msg_type))
       );
     }
   }
@@ -77,7 +77,7 @@ fn reply_start(d: *const DenoC) {
   let cwd_path = std::env::current_dir().unwrap();
   let cwd_off = builder.create_string(cwd_path.to_str().unwrap());
 
-  let msg = msg::CreateStartRes(
+  let msg = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
       cwd: Some(cwd_off),
@@ -114,8 +114,8 @@ fn create_msg(
   builder: &mut flatbuffers::FlatBufferBuilder,
   args: &msg::BaseArgs,
 ) -> deno_buf {
-  let base = msg::CreateBase(builder, &args);
-  msg::FinishBaseBuffer(builder, base);
+  let base = msg::Base::create(builder, &args);
+  msg::finish_base_buffer(builder, base);
   let data = builder.get_active_buf_slice();
   deno_buf {
     // TODO(ry)
@@ -184,7 +184,7 @@ fn handle_code_fetch(
     }
     _ => (),
   };
-  let msg = msg::CreateCodeFetchRes(&mut builder, &msg_args);
+  let msg = msg::CodeFetchRes::create(&mut builder, &msg_args);
   let args = msg::BaseArgs {
     msg: Some(flatbuffers::Offset::new(msg.value())),
     msg_type: msg::Any::CodeFetchRes,
@@ -265,7 +265,7 @@ where
 // TODO(ry) Use Deno instead of DenoC as first arg.
 fn send_timer_ready(d: *const DenoC, timer_id: u32, done: bool) {
   let mut builder = flatbuffers::FlatBufferBuilder::new();
-  let msg = msg::CreateTimerReady(
+  let msg = msg::TimerReady::create(
     &mut builder,
     &msg::TimerReadyArgs {
       id: timer_id,
@@ -300,7 +300,7 @@ fn handle_read_file_sync(d: *const DenoC, filename: &str) {
   let mut builder = flatbuffers::FlatBufferBuilder::new();
   let vec = result.unwrap();
   let data_off = builder.create_byte_vector(vec.as_slice());
-  let msg = msg::CreateReadFileSyncRes(
+  let msg = msg::ReadFileSyncRes::create(
     &mut builder,
     &msg::ReadFileSyncResArgs {
       data: Some(data_off),
