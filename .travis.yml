@@ -54,7 +54,7 @@ jobs:
           DENO_BUILD_MODE=release \
           ./tools/build.py -j2
         # test release binary
-        env DENO_BUILD_MODE=release ./tools/tests.py
+        env DENO_BUILD_MODE=release ./tools/test.py
       before_deploy: |
         # gzip and name release to denote platform
         gzip -c $DENO_BUILD_PATH/deno > $DENO_BUILD_PATH/deno_linux_x64.gz
