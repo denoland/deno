@@ -6,7 +6,7 @@ import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
 import("//build_extra/deno.gni")
 import("//build_extra/rust/rust.gni")
 
-group("all") {
+group("default") {
   testonly = true
   deps = [
     ":deno",

@@ -14,6 +14,9 @@ import util
 # Updates the path of the main target in the depfile to the relative path
 # from base_path build_output_path
 def fix_depfile(depfile_path, base_path, build_output_path):
+    # It's important that the fixed-up depfile has the same mtime as before.
+    # Ninja relies on it to decide whether to rebuild the target it belongs to.
+    stat = os.stat(depfile_path)
     with open(depfile_path, "r") as depfile:
         content = depfile.read()
     content_split = content.split(': ', 1)
@@ -21,6 +24,7 @@ def fix_depfile(depfile_path, base_path, build_output_path):
     new_content = "%s: %s" % (target_path, content_split[1])
     with open(depfile_path, "w") as depfile:
         depfile.write(new_content)
+    os.utime(depfile_path, (stat.st_atime, stat.st_mtime))
 
 
 def main():

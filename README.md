@@ -94,7 +94,7 @@ To build:
 Other useful commands:
 
     # Call ninja manually.
-    ./third_party/depot_tools/ninja -C out/debug :all
+    ./third_party/depot_tools/ninja -C out/debug
     # Build a release binary.
     DENO_BUILD_MODE=release ./tools/build.py :deno
     # List executable targets.

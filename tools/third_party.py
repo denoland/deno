@@ -70,7 +70,7 @@ def fix_symlinks():
 
 # Run Yarn to install JavaScript dependencies.
 def run_yarn():
-    run(["yarn", "--no-lockfile"], cwd=third_party_path)
+    run(["yarn", "install"], cwd=third_party_path)
 
 
 # Run Cargo to install Rust dependencies.

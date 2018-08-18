@@ -12,83 +12,16 @@ extern crate log;
 
 mod binding;
 mod deno_dir;
+mod flags;
 mod fs;
 pub mod handlers;
+mod version;
 
-use libc::c_int;
 use libc::c_void;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::mem;
-
-// Returns args passed to V8, followed by args passed to JS
-fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
-  let mut rest = vec![];
-
-  // Filter out args that shouldn't be passed to V8
-  let mut args: Vec<String> = args
-    .into_iter()
-    .filter(|arg| {
-      if arg.as_str() == "--help" {
-        rest.push(arg.clone());
-        return false;
-      }
-
-      true
-    })
-    .collect();
-
-  // Replace args being sent to V8
-  for idx in 0..args.len() {
-    if args[idx] == "--v8-options" {
-      mem::swap(args.get_mut(idx).unwrap(), &mut String::from("--help"));
-    }
-  }
-
-  (args, rest)
-}
-
-// Pass the command line arguments to v8.
-// Returns a vector of command line arguments that v8 did not understand.
-fn set_flags(args: Vec<String>) -> Vec<String> {
-  // deno_set_flags(int* argc, char** argv) mutates argc and argv to remove
-  // flags that v8 understands.
-  // First parse core args, then converto to a vector of C strings.
-  let (argv, rest) = parse_core_args(args);
-  let mut argv = argv
-    .iter()
-    .map(|arg| CString::new(arg.as_str()).unwrap().into_bytes_with_nul())
-    .collect::<Vec<_>>();
-
-  // Make a new array, that can be modified by V8::SetFlagsFromCommandLine(),
-  // containing mutable raw pointers to the individual command line args.
-  let mut c_argv = argv
-    .iter_mut()
-    .map(|arg| arg.as_mut_ptr() as *mut i8)
-    .collect::<Vec<_>>();
-  // Store the length of the argv array in a local variable. We'll pass a
-  // pointer to this local variable to deno_set_flags(), which then
-  // updates its value.
-  let mut c_argc = c_argv.len() as c_int;
-  // Let v8 parse the arguments it recognizes and remove them from c_argv.
-  unsafe {
-    binding::deno_set_flags(&mut c_argc, c_argv.as_mut_ptr());
-  };
-  // If c_argc was updated we have to change the length of c_argv to match.
-  c_argv.truncate(c_argc as usize);
-  // Copy the modified arguments list into a proper rust vec and return it.
-  c_argv
-    .iter()
-    .map(|ptr| unsafe {
-      let cstr = CStr::from_ptr(*ptr as *const i8);
-      let slice = cstr.to_str().unwrap();
-      slice.to_string()
-    })
-    .chain(rest.into_iter())
-    .collect()
-}
 
 type DenoException<'a> = &'a str;
 
@@ -98,6 +31,7 @@ pub struct Deno {
   rt: tokio::runtime::current_thread::Runtime,
   timers: HashMap<u32, futures::sync::oneshot::Sender<()>>,
   argv: Vec<String>,
+  flags: flags::DenoFlags,
 }
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
@@ -108,12 +42,15 @@ impl Deno {
       unsafe { binding::deno_init() };
     });
 
+    let (flags, argv_rest) = flags::set_flags(argv);
+
     let mut deno_box = Box::new(Deno {
       ptr: 0 as *const binding::DenoC,
       dir: deno_dir::DenoDir::new(None).unwrap(),
       rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
       timers: HashMap::new(),
-      argv,
+      argv: argv_rest,
+      flags,
     });
 
     (*deno_box).ptr = unsafe {
@@ -151,19 +88,6 @@ impl Drop for Deno {
   }
 }
 
-#[test]
-fn test_parse_core_args_1() {
-  let js_args =
-    parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
-  assert!(js_args == (vec!["deno".to_string(), "--help".to_string()], vec![]));
-}
-
-#[test]
-fn test_parse_core_args_2() {
-  let js_args = parse_core_args(vec!["deno".to_string(), "--help".to_string()]);
-  assert!(js_args == (vec!["deno".to_string()], vec!["--help".to_string()]));
-}
-
 pub fn from_c<'a>(d: *const binding::DenoC) -> &'a mut Deno {
   let ptr = unsafe { binding::deno_get_data(d) };
   let deno_ptr = ptr as *mut Deno;
@@ -191,7 +115,7 @@ impl log::Log for Logger {
 
   fn log(&self, record: &log::Record) {
     if self.enabled(record.metadata()) {
-      println!("{} - {}", record.level(), record.args());
+      println!("{} RS - {}", record.level(), record.args());
     }
   }
   fn flush(&self) {}
@@ -199,18 +123,26 @@ impl log::Log for Logger {
 
 fn main() {
   log::set_logger(&LOGGER).unwrap();
-  log::set_max_level(log::LevelFilter::Info);
 
-  let js_args = set_flags(env::args().collect());
-
-  /*
-    let v = unsafe { deno_v8_version() };
-    let c_str = unsafe { CStr::from_ptr(v) };
-    let version = c_str.to_str().unwrap();
-    println!("version: {}", version);
-    */
+  let js_args = flags::v8_set_flags(env::args().collect());
 
   let mut d = Deno::new(js_args);
+
+  if d.flags.help {
+    flags::print_usage();
+    std::process::exit(0);
+  }
+
+  if d.flags.version {
+    version::print_version();
+    std::process::exit(0);
+  }
+
+  log::set_max_level(if d.flags.log_debug {
+    log::LevelFilter::Debug
+  } else {
+    log::LevelFilter::Info
+  });
 
   d.execute("deno_main.js", "denoMain();")
     .unwrap_or_else(|err| {
