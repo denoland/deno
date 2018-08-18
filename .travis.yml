@@ -48,14 +48,13 @@ jobs:
     - stage: test
 
     - stage: release
-      if: tag IS present
       script: |
         # build release binary
         env DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false" \
           DENO_BUILD_MODE=release \
           ./tools/build.py -j2
         # test release binary
-        env DENO_BUILD_MODE=release ./tools/tests.py
+        env DENO_BUILD_MODE=release ./tools/test.py
       before_deploy: |
         # gzip and name release to denote platform
         gzip -c $DENO_BUILD_PATH/deno > $DENO_BUILD_PATH/deno_linux_x64.gz
@@ -66,5 +65,4 @@ jobs:
           secure: nm/XSUqQkucsgrTqHhZvVzzGrNsiagQyvy4ozqIcuI9BIENJ7upV2HKy0q+lE0j3iwTLXEVFEQ40hnG166nVTgVjIpxoGcVZvMTqAQFus9gVzbA71fAfAQL+nVlIRsdrSJOvsz1BHLKUgZ7UwyciApduaBDgm+mwXtMty5SHDotTc6mX4bz4UceMG4W7WXFcrWwWz+oFz9r8rYW1aKXcCQOms8eshbCtA3LzJtzUIN9NCE+bWf7QGRtz65aKy26MA/mTEAivQQ/J3ueXn4BzulpATHaSwOy5bvc2HGq5YjVJk1RQI7wqr4ONAtFWyMNAxB4JJ+g1XcN6oscoelpQgVWM2GxEblOZ+HSZAhpYiUuCQiKVe4eF238VQpn0BKw1dPEj1UWf5DHUMdcDFxeBfv1vIge5qhb+fpJTGKXfy91+DlwzM+JMBwqkXnuPFoPbh1lDLDKWB8UPGt07o+Y6tdZytr82kCoMaaHFqAVXYb0iBvG0Bw3WfzpwUsURGU08rw1pFnofnC74IyHGbcJ/+u39GzWTlCNGKce7OgEn16MzGe8QzpVmnO5+WX/uBhDHUyvDZkZHGZWHi19gQaUqDlZ4F3lSe4LMgpjEN23Ovv4AWT8bD2lbVr0XhsMlrcMw5n+RhjNDgadDw3dV9F2MHlZBpp1kYNaVqDkv5nIltYA=
         file: "$DENO_BUILD_PATH/deno_linux_x64.gz"
         on:
-          tags: true
           repo: denoland/deno
