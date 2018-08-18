@@ -313,7 +313,7 @@ class TypeScriptHost implements ts.LanguageServiceHost {
 
   readFile(path: string, encoding?: string): string | undefined {
     util.log("readFile", path);
-    util.notImplemented();
+    return util.notImplemented();
   }
 
   getNewLine() {

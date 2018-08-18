@@ -16,7 +16,7 @@ export function exit(exitCode = 0): never {
   fbs.Base.addMsgType(builder, fbs.Any.Exit);
   builder.finish(fbs.Base.endBase(builder));
   libdeno.send(builder.asUint8Array());
-  util.notReachable();
+  return util.notReachable();
 }
 
 export function codeFetch(
