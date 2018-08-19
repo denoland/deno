@@ -118,6 +118,11 @@ def main():
         argsfile_content = os.read(argsfile_fd, argsfile_size)
         args = argsfile_content.split("\n")
 
+    except OSError as e:  # Note: in python 3 this will be a FileNotFoundError.
+        print "Error executing rustc command (is rust installed?):"
+        print " ".join(rustc_cmd) + "\n"
+        raise e
+
     finally:
         # Close and delete the temporary file.
         os.close(argsfile_fd)
