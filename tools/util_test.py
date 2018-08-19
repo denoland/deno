@@ -1,5 +1,5 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
-from util import pattern_match
+from util import pattern_match, parse_exit_code
 
 
 def pattern_match_test():
@@ -27,5 +27,17 @@ def pattern_match_test():
                          "[BAR]") == False, "expected wildcard to be set"
 
 
+def parse_exit_code_test():
+    print "Testing util.parse_exit_code()..."
+    assert 54 == parse_exit_code('hello_error54_world')
+    assert 1 == parse_exit_code('hello_error_world')
+    assert 0 == parse_exit_code('hello_world')
+
+
 def util_test():
     pattern_match_test()
+    parse_exit_code_test()
+
+
+if __name__ == '__main__':
+    util_test()
