@@ -54,6 +54,12 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let filename = msg.filename().unwrap();
       handle_read_file_sync(d, filename);
     }
+    msg::Any::WriteFileSync => {
+      let msg = msg::WriteFileSync::init_from_table(base.msg().unwrap());
+      let filename = msg.filename().unwrap();
+      let data = msg.data().unwrap();
+      handle_write_file_sync(d, filename, data);
+    }
     msg::Any::NONE => {
       assert!(false, "Got message with msg_type == Any_NONE");
     }
@@ -316,6 +322,18 @@ fn handle_read_file_sync(d: *const DenoC, filename: &str) {
       ..Default::default()
     },
   );
+}
+
+// Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
+fn handle_write_file_sync(d: *const DenoC, filename: &str, content: &[u8]) {
+  debug!("handle_write_file_sync {}", filename);
+  let result = fs::write_file_sync(Path::new(filename), content);
+  if result.is_err() {
+    let err = result.unwrap_err();
+    let errmsg = format!("{}", err);
+    reply_error(d, 0, &errmsg);
+    return;
+  }
 }
 
 // TODO(ry) Use Deno instead of DenoC as first arg.

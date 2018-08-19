@@ -1,6 +1,6 @@
 use std;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 
 pub fn read_file_sync(path: &Path) -> std::io::Result<Vec<u8>> {
@@ -8,6 +8,12 @@ pub fn read_file_sync(path: &Path) -> std::io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
     f.read_to_end(&mut buffer)?;
     Ok(buffer)
+  })
+}
+
+pub fn write_file_sync(path: &Path, content: &[u8]) -> std::io::Result<()> {
+  std::fs::create_dir_all(path.parent().unwrap()).and_then(|_| {
+    File::create(path).unwrap().write_all(content)
   })
 }
 

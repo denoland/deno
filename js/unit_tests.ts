@@ -4,7 +4,7 @@
 //  ./deno tests.ts
 
 import { test, assert, assertEqual } from "./testing/testing.ts";
-import { readFileSync } from "deno";
+import { readFileSync, writeFileSync } from "deno";
 
 test(async function tests_test() {
   assert(true);
@@ -92,23 +92,27 @@ test(async function tests_readFileSync() {
   assertEqual(pkg.name, "deno");
 });
 
+test(async function tests_writeFileSync() {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  // TODO need ability to get tmp dir.
+
+  // TODO @NewLunarFire: This test currently generates a random directory
+  // name from a random Number converted to String. This should be replaced
+  // with creating an actual tmpdir in the future
+  const randomSuffix = Math.random().toString(36).substr(2);
+  const fn = "tmp-" + randomSuffix + "/test.txt";
+  writeFileSync(fn, data, 0o666);
+  const dataRead = readFileSync(fn);
+  const dec = new TextDecoder("utf-8");
+  const actual = dec.decode(dataRead);
+  assertEqual("Hello", actual);
+});
+
 /*
 test(async function tests_fetch() {
   const response = await fetch("http://localhost:4545/package.json");
   const json = await response.json();
   assertEqual(json.name, "deno");
 });
-
-test(async function tests_writeFileSync() {
-  const enc = new TextEncoder();
-  const data = enc.encode("Hello");
-  // TODO need ability to get tmp dir.
-  const fn = "/tmp/test.txt";
-  writeFileSync("/tmp/test.txt", data, 0o666);
-  const dataRead = readFileSync("/tmp/test.txt");
-  const dec = new TextDecoder("utf-8");
-  const actual = dec.decode(dataRead);
-  assertEqual("Hello", actual);
-});
-
 */

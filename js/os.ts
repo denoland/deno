@@ -131,7 +131,19 @@ export function writeFileSync(
   data: Uint8Array,
   perm: number
 ): void {
-  assert(false, "Not Implemented");
+  const builder = new flatbuffers.Builder();
+  const filename_ = builder.createString(filename);
+  const dataOffset = fbs.WriteFileSync.createDataVector(builder, data);
+  fbs.WriteFileSync.startWriteFileSync(builder);
+  fbs.WriteFileSync.addFilename(builder, filename_);
+  fbs.WriteFileSync.addData(builder, dataOffset);
+  fbs.WriteFileSync.addPerm(builder, perm);
+  const msg = fbs.WriteFileSync.endWriteFileSync(builder);
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsgType(builder, fbs.Any.WriteFileSync);
+  builder.finish(fbs.Base.endBase(builder));
+  libdeno.send(builder.asUint8Array());
   /*
   pubInternal("os", {
     command: fbs.Command.WRITE_FILE_SYNC,
