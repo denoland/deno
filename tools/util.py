@@ -1,5 +1,6 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import os
+import re
 import shutil
 import stat
 import sys
@@ -162,3 +163,13 @@ def pattern_match(pattern, string, wildcard="[WILDCARD]"):
         string = string[(found + len(parts[i])):]
 
     return len(string) == 0
+
+
+def parse_exit_code(s):
+    codes = [int(d or 1) for d in re.findall(r'error(\d*)', s)]
+    if len(codes) > 1:
+        assert False, "doesn't support multiple error codes."
+    elif len(codes) == 1:
+        return codes[0]
+    else:
+        return 0
