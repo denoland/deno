@@ -78,7 +78,7 @@ rust_test("test_rs") {
 v8_executable("test_cc") {
   testonly = true
   sources = [
-    "src/test.cc",
+    "libdeno/test.cc",
   ]
   deps = [
     ":deno_base_test",
@@ -90,7 +90,7 @@ v8_executable("test_cc") {
 static_library("libdeno") {
   complete_static_lib = true
   sources = [
-    "src/from_snapshot.cc",
+    "libdeno/from_snapshot.cc",
   ]
   inputs = [
     "$target_gen_dir/snapshot_deno.bin",
@@ -108,11 +108,11 @@ static_library("libdeno") {
 # dependencies are minimal.
 v8_source_set("deno_base") {
   sources = [
-    "src/binding.cc",
-    "src/deno.h",
-    "src/file_util.cc",
-    "src/file_util.h",
-    "src/internal.h",
+    "libdeno/binding.cc",
+    "libdeno/deno.h",
+    "libdeno/file_util.cc",
+    "libdeno/file_util.h",
+    "libdeno/internal.h",
   ]
   public_deps = [
     "third_party/v8:v8_monolith",
@@ -123,9 +123,9 @@ v8_source_set("deno_base") {
 v8_source_set("deno_base_test") {
   testonly = true
   sources = [
-    "src/file_util_test.cc",
-    "src/from_snapshot.cc",
-    "src/libdeno_test.cc",
+    "libdeno/file_util_test.cc",
+    "libdeno/from_snapshot.cc",
+    "libdeno/libdeno_test.cc",
   ]
   inputs = [
     "$target_gen_dir/snapshot_libdeno_test.bin",
@@ -148,7 +148,7 @@ v8_source_set("deno_bindings") {
 
 executable("snapshot_creator") {
   sources = [
-    "src/snapshot_creator.cc",
+    "libdeno/snapshot_creator.cc",
   ]
   deps = [
     ":deno_base",
@@ -242,7 +242,7 @@ source_set("libdeno_nosnapshot") {
   bundle_map_location = rebase_path(bundle_outputs[1])
   inputs = bundle_outputs
   sources = [
-    "src/from_filesystem.cc",
+    "libdeno/from_filesystem.cc",
   ]
   deps = [
     ":bundle",
@@ -280,5 +280,5 @@ create_snapshot("deno") {
 # Generates $target_gen_dir/snapshot_libdeno_test.bin
 create_snapshot("libdeno_test") {
   testonly = true
-  js = "js/libdeno_test.js"
+  js = "libdeno/libdeno_test.js"
 }
