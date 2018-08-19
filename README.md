@@ -78,6 +78,8 @@ You probably want
 [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache)
 installed too.
 
+**Note:** the Python scripts in `./tools` only supports Python 2, since V8's build process doesn't support Python 3 (See [this](https://github.com/denoland/deno/issues/464#issuecomment-411795578))
+
 To build:
 
     # Fetch deps.
