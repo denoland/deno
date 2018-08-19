@@ -16,7 +16,7 @@ export function exit(exitCode = 0): never {
   fbs.Base.addMsgType(builder, fbs.Any.Exit);
   builder.finish(fbs.Base.endBase(builder));
   libdeno.send(builder.asUint8Array());
-  throw Error("Unreachable");
+  return util.unreachable();
 }
 
 export function codeFetch(
@@ -131,7 +131,7 @@ export function writeFileSync(
   data: Uint8Array,
   perm: number
 ): void {
-  assert(false, "Not Implemented");
+  util.notImplemented();
   /*
   pubInternal("os", {
     command: fbs.Command.WRITE_FILE_SYNC,

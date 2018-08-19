@@ -67,3 +67,11 @@ export function createResolvable<T>(): Resolvable<T> {
   // therefore use of not null assertion (`!`)
   return Object.assign(promise, methods!) as Resolvable<T>;
 }
+
+export function notImplemented(): never {
+  throw new Error("Not implemented");
+}
+
+export function unreachable(): never {
+  throw new Error("Code not reachable");
+}

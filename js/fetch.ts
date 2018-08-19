@@ -4,7 +4,8 @@ import {
   log,
   createResolvable,
   Resolvable,
-  typedArrayToArrayBuffer
+  typedArrayToArrayBuffer,
+  notImplemented,
 } from "./util";
 import { pubInternal, sub } from "./dispatch";
 import { deno as pb } from "./msg.pb";
@@ -46,11 +47,11 @@ class FetchResponse implements Response {
   }
 
   blob(): Promise<Blob> {
-    throw Error("not implemented");
+    notImplemented();
   }
 
   formData(): Promise<FormData> {
-    throw Error("not implemented");
+    notImplemented();
   }
 
   async json(): Promise<object> {
@@ -69,7 +70,7 @@ class FetchResponse implements Response {
   }
 
   clone(): Response {
-    throw Error("not implemented");
+    notImplemented();
   }
 
   onHeader: (res: Response) => void;
