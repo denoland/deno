@@ -69,9 +69,9 @@ export function createResolvable<T>(): Resolvable<T> {
 }
 
 export function notImplemented(): never {
-  throw new Error('Not implemented');
+  throw new Error("Not implemented");
 }
 
 export function notReachable(): never {
-  throw new Error('Code not reachable');
+  throw new Error("Code not reachable");
 }
