@@ -72,6 +72,6 @@ export function notImplemented(): never {
   throw new Error("Not implemented");
 }
 
-export function notReachable(): never {
+export function unreachable(): never {
   throw new Error("Code not reachable");
 }
