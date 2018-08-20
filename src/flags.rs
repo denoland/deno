@@ -23,7 +23,7 @@ pub struct DenoFlags {
 
 pub fn print_usage() {
   println!(
-    "Usage: deno script.js
+    "Usage: deno script.ts
 
 --allow-write      Allow file system write access.
 --allow-net        Allow network access.
