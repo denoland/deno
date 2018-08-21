@@ -81,12 +81,14 @@ class FetchResponse implements Response {
     return this.bodyWaiter;
   }
 
-  blob(): Promise<Blob> {
+  async blob(): Promise<Blob> {
     notImplemented();
+    return {} as Blob;
   }
 
-  formData(): Promise<FormData> {
+  async formData(): Promise<FormData> {
     notImplemented();
+    return {} as FormData;
   }
 
   async json(): Promise<object> {
@@ -106,6 +108,7 @@ class FetchResponse implements Response {
 
   clone(): Response {
     notImplemented();
+    return {} as Response;
   }
 
   onHeader?: (res: FetchResponse) => void;
