@@ -5,7 +5,7 @@ import {
   createResolvable,
   Resolvable,
   typedArrayToArrayBuffer,
-  notImplemented,
+  notImplemented
 } from "./util";
 import { flatbuffers } from "flatbuffers";
 import { libdeno } from "./globals";
