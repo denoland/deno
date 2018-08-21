@@ -162,6 +162,7 @@ executable("snapshot_creator") {
 run_node("gen_declarations") {
   out_dir = target_gen_dir
   sources = [
+    "js/compiler.ts",
     "js/console.ts",
     "js/deno.ts",
     "js/globals.ts",
@@ -171,6 +172,7 @@ run_node("gen_declarations") {
     "js/util.ts",
   ]
   outputs = [
+    out_dir + "/js/compiler.d.ts",
     out_dir + "/js/console.d.ts",
     out_dir + "/js/deno.d.ts",
     out_dir + "/js/globals.d.ts",
@@ -196,6 +198,7 @@ run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
   sources = [
     "js/assets.ts",
+    "js/compiler.ts",
     "js/console.ts",
     "js/fetch.ts",
     "js/fetch_types.d.ts",
@@ -204,7 +207,6 @@ run_node("bundle") {
     "js/main.ts",
     "js/os.ts",
     "js/plugins.d.ts",
-    "js/runtime.ts",
     "js/text_encoding.ts",
     "js/timers.ts",
     "js/types.d.ts",
