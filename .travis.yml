@@ -1,33 +1,24 @@
 language: c++
-
 branches:
   only:
   - master
-
 env:
   global:
-    - CARGO_PATH=$HOME/.cargo/
-    - RUSTUP_PATH=$HOME/.rustup/
-    # is_debug, use_allocator, and ccache are used to speed travis.
-    # use_custom_libcxx=false and use_sysroot=false seem to be required to build on
-    # Ubuntu 14.04
-    # Help: How do you wrap long lines here?
-    - DENO_BUILD_ARGS="is_debug=false use_allocator=\"none\" use_custom_libcxx=false use_sysroot=false"
-    - DENO_BUILD_PATH=$HOME/out/Default
-    - DENO_BUILD_MODE=debug
-    # ccache needs the custom LLVM to be in PATH and other variables.
-    - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_PATH/bin:$PATH
-    - CCACHE_CPP2=yes
-    - CCACHE_SLOPPINESS=time_macros
-
+  - CARGO_PATH=$HOME/.cargo/
+  - RUSTUP_PATH=$HOME/.rustup/
+  - DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false"
+  - DENO_BUILD_PATH=$HOME/out/Default
+  - DENO_BUILD_MODE=release
+  - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_PATH/bin:$PATH
+  - CCACHE_CPP2=yes
+  - CCACHE_SLOPPINESS=time_macros
 cache:
   ccache: true
   directories:
-   - $CARGO_PATH
-   - $RUSTUP_PATH
-   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
-   - third_party/v8/third_party/llvm-build/
-
+  - "$CARGO_PATH"
+  - "$RUSTUP_PATH"
+  - third_party/v8/build/linux/debian_sid_amd64-sysroot/
+  - third_party/v8/third_party/llvm-build/
 install: |
   # Install Rust.
   # TODO(ry) Include rustc in third_party https://github.com/denoland/deno/issues/386
@@ -36,33 +27,20 @@ install: |
     curl -sSf https://sh.rustup.rs | sh -s -- -y
   fi
 before_script:
-  - ccache -s
-  - ./tools/setup.py
+- ccache -s
+- "./tools/setup.py"
 script:
-  - ./tools/lint.py
-  - ./tools/build.py -j2
-  - ./tools/test.py $DENO_BUILD_PATH
-
-jobs:
-  include:
-    - stage: test
-
-    - stage: release
-      script: |
-        # build release binary
-        env DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false" \
-          DENO_BUILD_MODE=release \
-          ./tools/build.py -j2
-        # test release binary
-        env DENO_BUILD_MODE=release ./tools/test.py
-      before_deploy: |
-        # gzip and name release to denote platform
-        gzip -c $DENO_BUILD_PATH/deno > $DENO_BUILD_PATH/deno_linux_x64.gz
-      deploy:
-        provider: releases
-        skip_cleanup: true
-        api_key:
-          secure: nm/XSUqQkucsgrTqHhZvVzzGrNsiagQyvy4ozqIcuI9BIENJ7upV2HKy0q+lE0j3iwTLXEVFEQ40hnG166nVTgVjIpxoGcVZvMTqAQFus9gVzbA71fAfAQL+nVlIRsdrSJOvsz1BHLKUgZ7UwyciApduaBDgm+mwXtMty5SHDotTc6mX4bz4UceMG4W7WXFcrWwWz+oFz9r8rYW1aKXcCQOms8eshbCtA3LzJtzUIN9NCE+bWf7QGRtz65aKy26MA/mTEAivQQ/J3ueXn4BzulpATHaSwOy5bvc2HGq5YjVJk1RQI7wqr4ONAtFWyMNAxB4JJ+g1XcN6oscoelpQgVWM2GxEblOZ+HSZAhpYiUuCQiKVe4eF238VQpn0BKw1dPEj1UWf5DHUMdcDFxeBfv1vIge5qhb+fpJTGKXfy91+DlwzM+JMBwqkXnuPFoPbh1lDLDKWB8UPGt07o+Y6tdZytr82kCoMaaHFqAVXYb0iBvG0Bw3WfzpwUsURGU08rw1pFnofnC74IyHGbcJ/+u39GzWTlCNGKce7OgEn16MzGe8QzpVmnO5+WX/uBhDHUyvDZkZHGZWHi19gQaUqDlZ4F3lSe4LMgpjEN23Ovv4AWT8bD2lbVr0XhsMlrcMw5n+RhjNDgadDw3dV9F2MHlZBpp1kYNaVqDkv5nIltYA=
-        file: "$DENO_BUILD_PATH/deno_linux_x64.gz"
-        on:
-          repo: denoland/deno
+- "./tools/lint.py"
+- "./tools/build.py -j2"
+- "./tools/test.py $DENO_BUILD_PATH"
+before_deploy: |
+  # gzip and name release to denote platform
+  gzip -c $DENO_BUILD_PATH/deno > $DENO_BUILD_PATH/deno_linux_x64.gz
+deploy:
+  provider: releases
+  api_key:
+    secure: RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps=
+  file: "$DENO_BUILD_PATH/deno_linux_x64.gz"
+  on:
+    tags: true
+    repo: denoland/deno
