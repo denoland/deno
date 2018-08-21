@@ -3,8 +3,7 @@ before error
 Error: error
     at foo ([WILDCARD]tests/async_error.ts:4:9)
     at eval ([WILDCARD]tests/async_error.ts:7:1)
-    at eval (<anonymous>)
-    at execute (deno/js/runtime.ts:[WILDCARD])
-    at FileModule.compileAndRun (deno/js/runtime.ts:[WILDCARD])
+    at DenoCompiler.eval [as _globalEval] (<anonymous>)
+    at DenoCompiler.run (deno/js/compiler.ts:[WILDCARD])
     at denoMain (deno/js/main.ts:[WILDCARD])
     at deno_main.js:1:1

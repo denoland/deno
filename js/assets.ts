@@ -7,6 +7,7 @@
 // tslint:disable:max-line-length
 
 // Generated definitions
+import compilerDts from "gen/js/compiler.d.ts!string";
 import consoleDts from "gen/js/console.d.ts!string";
 import denoDts from "gen/js/deno.d.ts!string";
 import globalsDts from "gen/js/globals.d.ts!string";
@@ -55,6 +56,7 @@ import fetchTypesDts from "/js/fetch_types.d.ts!string";
 // prettier-ignore
 export const assetSourceCode: { [key: string]: string } = {
   // Generated definitions
+  "compiler.d.ts": compilerDts,
   "console.d.ts": consoleDts,
   "deno.d.ts": denoDts,
   "globals.d.ts": globalsDts,
