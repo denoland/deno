@@ -331,7 +331,11 @@ after_test:
       }
 
 before_deploy:
-  - gzip -c $env:DENO_BUILD_PATH/deno > $env:DENO_BUILD_PATH/deno_win_x64.gz
+  - ps: |-
+      Compress-Archive -LiteralPath $env:DENO_BUILD_PATH/deno.exe `
+         -CompressionLevel Optimal `
+         -DestinationPath $env:DENO_BUILD_PATH/deno_win_x64.zip
+
 deploy:
   provider: GitHub
   auth_token:
