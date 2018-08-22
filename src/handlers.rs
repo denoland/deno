@@ -603,8 +603,7 @@ fn handle_write_file_sync(
   debug!("handle_write_file_sync {}", filename);
   let deno = from_c(d);
   if deno.flags.allow_write {
-    // TODO(ry) Use perm.
-    deno_fs::write_file_sync(Path::new(filename), data)?;
+    deno_fs::write_file_sync(Path::new(filename), data, perm)?;
     Ok(null_buf())
   } else {
     let err = std::io::Error::new(
