@@ -41,7 +41,7 @@ def main(argv):
 
     deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
     check_exists(deno_exe)
-    run([deno_exe, "js/unit_tests.ts"])
+    run([deno_exe, "js/unit_tests.ts", "--allow-write"])
 
     check_exists(deno_exe)
     check_output_test(deno_exe)

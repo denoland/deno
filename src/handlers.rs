@@ -70,6 +70,14 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let filename = msg.filename().unwrap();
       handle_read_file_sync(d, &mut builder, filename)
     }
+    msg::Any::WriteFileSync => {
+      // TODO base.msg_as_WriteFileSync();
+      let msg = msg::WriteFileSync::init_from_table(base.msg().unwrap());
+      let filename = msg.filename().unwrap();
+      let data = msg.data().unwrap();
+      let perm = msg.perm();
+      handle_write_file_sync(d, &mut builder, filename, data, perm)
+    }
     _ => panic!(format!(
       "Unhandled message {}",
       msg::enum_name_any(msg_type)
@@ -411,6 +419,28 @@ fn handle_read_file_sync(
       ..Default::default()
     },
   ))
+}
+
+fn handle_write_file_sync(
+  d: *const DenoC,
+  builder: &mut FlatBufferBuilder,
+  filename: &str,
+  data: &[u8],
+  perm: u32,
+) -> HandlerResult {
+  debug!("handle_write_file_sync {}", filename);
+  let deno = from_c(d);
+  if deno.flags.allow_write {
+    // TODO(ry) Use perm.
+    fs::write_file_sync(Path::new(filename), data)?;
+    Ok(null_buf())
+  } else {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_write is off.",
+    );
+    Err(err.into())
+  }
 }
 
 // TODO(ry) Use Deno instead of DenoC as first arg.

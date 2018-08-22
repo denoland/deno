@@ -5,6 +5,7 @@
 
 import { test, assert, assertEqual } from "./testing/testing.ts";
 import { readFileSync } from "deno";
+import * as deno from "deno";
 
 import "./compiler_test.ts";
 
@@ -108,6 +109,35 @@ test(function tests_readFileSync_NotFound() {
   assert(data === undefined);
 });
 */
+
+/* TODO(ry) Add this once we can create a tmpDir to write the file into.
+test(function writeFileSyncSuccess() {
+  const enc = new TextEncoder();
+  const dataWritten = enc.encode("Hello");
+  const filename = "TEMPDIR/test.txt";
+  deno.writeFileSync(filename, dataWritten, 0o666);
+  const dataRead = readFileSync(filename);
+  assertEqual(dataRead, dataWritten);
+});
+*/
+
+// For this test to pass we need --allow-write permission.
+// Otherwise it will fail with deno.PermissionDenied instead of deno.NotFound.
+test(function writeFileSyncFail() {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const filename = "/baddir/test.txt";
+  // The following should fail because /baddir doesn't exist (hopefully).
+  let caughtError = false;
+  try {
+    deno.writeFileSync(filename, data);
+  } catch (e) {
+    caughtError = true;
+    // TODO assertEqual(e, deno.NotFound);
+    assertEqual(e.name, "deno.NotFound");
+  }
+  assert(caughtError);
+});
 
 test(async function tests_fetch() {
   const response = await fetch("http://localhost:4545/package.json");
