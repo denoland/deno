@@ -1,5 +1,5 @@
 solutions = [{
-    'url': 'https://chromium.googlesource.com/v8/v8.git@6.9.297',
+    'url': 'https://chromium.googlesource.com/v8/v8.git@7.0.247',
     'name': 'v8',
     'deps_file': 'DEPS',
     'custom_deps': {
