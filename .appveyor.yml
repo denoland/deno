@@ -9,10 +9,10 @@ environment:
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
   DENO_BUILD_MODE: release
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\release
-  RELEASE_ARTIFACT: $(APPVEYOR_BUILD_FOLDER)\out\release\deno_win_x64.zip
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   CARGO_HOME: $(USERPROFILE)\.cargo
   RUSTUP_HOME: $(USERPROFILE)\.rustup
+  RELEASE_ARTIFACT: deno_win_x64.zip
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
   #   -t7z  : Use '7z' format. The default is 'zip' which can't store symlinks.
@@ -331,16 +331,21 @@ after_test:
         throw "Build should be up-to-date but isnt't."
       }
 
-before_deploy:
+  # If this build is going to be deployed, build a zip file.
   - ps: |-
-      Compress-Archive -LiteralPath $env:DENO_BUILD_PATH/deno.exe `
-         -CompressionLevel Optimal `
-         -DestinationPath $env:RELEASE_ARTIFACT
+      if ($env:APPVEYOR_REPO_TAG) {
+        Compress-Archive -CompressionLevel Optimal -Force `
+          -Path "$env:DENO_BUILD_PATH\deno.exe" `
+          -DestinationPath "$env:APPVEYOR_BUILD_FOLDER\$env:RELEASE_ARTIFACT"
+      }
+
+artifacts:
+  path: $(RELEASE_ARTIFACT)
 
 deploy:
   provider: GitHub
   auth_token:
     secure: HQIIUEOtep3yRiBacZCtX8hVmgtdNvt6Hx7u9fP4Wj2ZYp+eBFP2OLf67RKVa5VZ
-  artifact: $env:RELEASE_ARTIFACT
   on:
-    appveyor_repo_tag: true  # deploy on tag push only
+    APPVEYOR_REPO_NAME: denoland/deno
+    APPVEYOR_REPO_TAG: true
