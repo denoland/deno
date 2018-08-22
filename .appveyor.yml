@@ -7,8 +7,9 @@ clone_depth: 1
 
 environment:
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
-  DENO_BUILD_MODE: debug
-  DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\debug
+  DENO_BUILD_MODE: release
+  DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\release
+  RELEASE_ARTIFACT: $(APPVEYOR_BUILD_FOLDER)\out\release\deno_win_x64.zip
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   CARGO_HOME: $(USERPROFILE)\.cargo
   RUSTUP_HOME: $(USERPROFILE)\.rustup
@@ -329,3 +330,17 @@ after_test:
       if ($out -notcontains "ninja: no work to do.") {
         throw "Build should be up-to-date but isnt't."
       }
+
+before_deploy:
+  - ps: |-
+      Compress-Archive -LiteralPath $env:DENO_BUILD_PATH/deno.exe `
+         -CompressionLevel Optimal `
+         -DestinationPath $env:RELEASE_ARTIFACT
+
+deploy:
+  provider: GitHub
+  auth_token:
+    secure: HQIIUEOtep3yRiBacZCtX8hVmgtdNvt6Hx7u9fP4Wj2ZYp+eBFP2OLf67RKVa5VZ
+  artifact: $env:RELEASE_ARTIFACT
+  on:
+    appveyor_repo_tag: true  # deploy on tag push only
