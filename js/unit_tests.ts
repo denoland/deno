@@ -6,7 +6,7 @@
 import { test, assert, assertEqual } from "./testing/testing.ts";
 import { readFileSync } from "deno";
 
-import "./compiler_tests.ts";
+import "./compiler_test.ts";
 
 test(async function tests_test() {
   assert(true);

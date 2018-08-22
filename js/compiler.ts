@@ -22,14 +22,23 @@ type AmdRequire = (
   callback: AmdCallback,
   errback?: AmdErrback
 ) => void;
+
+// The location that a module is being loaded from. This could be a directory,
+// like ".", or it could be a module specifier like
+// "http://gist.github.com/somefile.ts"
 type ContainingFile = string;
+// The internal local filename of a compiled module. It will often be something
+// like "/home/ry/.deno/gen/f7b4605dfbc4d3bb356e98fda6ceb1481e4a8df5.js"
 type ModuleFileName = string;
+// The external name of a module - could be a URL or could be a relative path.
+// Examples "http://gist.github.com/somefile.ts" or "./somefile.ts"
 type ModuleSpecifier = string;
+// The compiled source code which is cached in .deno/gen/
 type OutputCode = string;
 
 /**
  * Abstraction of the APIs required from the `os` module so they can be
- * easily substituted.
+ * easily mocked.
  */
 export interface Os {
   codeCache: typeof os.codeCache;
@@ -39,7 +48,7 @@ export interface Os {
 
 /**
  * Abstraction of the APIs required from the `typescript` module so they can
- * be easily substituted.
+ * be easily mocked.
  */
 export interface Ts {
   createLanguageService: typeof ts.createLanguageService;

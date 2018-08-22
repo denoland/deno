@@ -58,6 +58,7 @@ const fooBazTsSource = `import { foo } from "./bar.ts";
 console.log(foo);
 `;
 
+// TODO(#23) Remove source map strings from fooBarTsOutput.
 // tslint:disable:max-line-length
 const fooBarTsOutput = `define(["require", "exports", "compiler"], function (require, exports, compiler) {
     "use strict";
@@ -68,6 +69,7 @@ const fooBarTsOutput = `define(["require", "exports", "compiler"], function (req
 //# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiYmFyLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiZmlsZTovLy9yb290L3Byb2plY3QvZm9vL2Jhci50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7SUFDQSxPQUFPLENBQUMsR0FBRyxDQUFDLFFBQVEsQ0FBQyxDQUFDO0lBQ1QsUUFBQSxHQUFHLEdBQUcsS0FBSyxDQUFDIiwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0ICogYXMgY29tcGlsZXIgZnJvbSBcImNvbXBpbGVyXCI7XG5jb25zb2xlLmxvZyhjb21waWxlcik7XG5leHBvcnQgY29uc3QgZm9vID0gXCJiYXJcIjtcbiJdfQ==
 //# sourceURL=/root/project/foo/bar.ts`;
 
+// TODO(#23) Remove source map strings from fooBazTsOutput.
 const fooBazTsOutput = `define(["require", "exports", "./bar.ts"], function (require, exports, bar_ts_1) {
   "use strict";
   Object.defineProperty(exports, "__esModule", { value: true });
@@ -114,18 +116,26 @@ const emittedFiles = {
   "/root/project/foo/qat.ts": "console.log('foo');"
 };
 
-const globalEvalStack: string[] = [];
-const getEmitOutputStack: string[] = [];
-const logStack: any[][] = [];
-const codeCacheStack: Array<{
+let globalEvalStack: string[] = [];
+let getEmitOutputStack: string[] = [];
+let logStack: any[][] = [];
+let codeCacheStack: Array<{
   fileName: string;
   sourceCode: string;
   outputCode: string;
 }> = [];
-const codeFetchStack: Array<{
+let codeFetchStack: Array<{
   moduleSpecifier: string;
   containingFile: string;
 }> = [];
+
+function reset() {
+  codeFetchStack = [];
+  codeCacheStack = [];
+  logStack = [];
+  getEmitOutputStack = [];
+  globalEvalStack = [];
+}
 
 let mockDeps: string[] | undefined;
 let mockFactory: compiler.AmdFactory;
@@ -267,14 +277,12 @@ test(function compilerMakeDefine() {
 
 test(function compilerRun() {
   // equal to `deno foo/bar.ts`
-  const codeFetchLength = codeFetchStack.length;
-  const codeCacheLength = codeCacheStack.length;
-  const globalEvalLength = globalEvalStack.length;
+  reset();
   const result = compilerInstance.run("foo/bar.ts", "/root/project");
   assert(result instanceof ModuleMetaData);
-  assertEqual(codeFetchStack.length, codeFetchLength + 1);
-  assertEqual(codeCacheStack.length, codeCacheLength + 1);
-  assertEqual(globalEvalStack.length, globalEvalLength + 1);
+  assertEqual(codeFetchStack.length, 1);
+  assertEqual(codeCacheStack.length, 1);
+  assertEqual(globalEvalStack.length, 1);
 
   const lastGlobalEval = globalEvalStack.pop();
   assertEqual(lastGlobalEval, fooBarTsOutput);
@@ -293,9 +301,7 @@ test(function compilerRun() {
 
 test(function compilerRunMultiModule() {
   // equal to `deno foo/baz.ts`
-  const codeFetchLength = codeFetchStack.length;
-  const codeCacheLength = codeCacheStack.length;
-  const globalEvalLength = globalEvalStack.length;
+  reset();
   let factoryRun = false;
   mockDeps = ["require", "exports", "compiler"];
   mockFactory = (...deps: any[]) => {
@@ -318,11 +324,11 @@ test(function compilerRunMultiModule() {
   assert(result instanceof ModuleMetaData);
   // we have mocked that foo/bar.ts is already cached, so two fetches,
   // but only a single cache
-  assertEqual(codeFetchStack.length, codeFetchLength + 2);
-  assertEqual(codeCacheStack.length, codeCacheLength + 1);
+  assertEqual(codeFetchStack.length, 2);
+  assertEqual(codeCacheStack.length, 1);
   // because of the challenges with the way the module factories are generated
   // we only get one invocation of the `globalEval` mock.
-  assertEqual(globalEvalStack.length, globalEvalLength + 1);
+  assertEqual(globalEvalStack.length, 1);
   assert(factoryRun);
 });
 
@@ -341,7 +347,6 @@ test(function compilerGetCompilationSettings() {
   ]) {
     assert(key in result, `Expected "${key}" in compiler options.`);
   }
-  assertEqual(Object.keys(result).length, 7, "Expected only 7 keys.");
 });
 
 test(function compilerGetNewLine() {
@@ -391,7 +396,7 @@ test(function compilerGetScriptSnapshot() {
   );
   const result = compilerInstance.getScriptSnapshot(moduleMetaData.fileName);
   assert(result != null, "Expected snapshot to be defined.");
-  assertEqual(result.getLength(), 87, "Expected a length of 87.");
+  assertEqual(result.getLength(), fooBarTsSource.length);
   assertEqual(
     result.getText(0, 6),
     "import",
