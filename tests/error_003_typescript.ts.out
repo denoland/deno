@@ -1,0 +1,10 @@
+[96m[WILDCARD]tests/error_003_typescript.ts[WILDCARD] - [91merror[0m[90m TS2552: [0mCannot find name 'consol'. Did you mean 'console'?
+
+[30;47m[WILDCARD][0m consol.log("hello world!");
+[30;47m [0m [91m~~~~~~[0m
+
+  [96m$asset$/globals.d.ts[WILDCARD]
+    [30;47m[WILDCARD][0m     const console: Console;
+    [30;47m  [0m [96m          ~~~~~~~[0m
+    'console' is declared here.
+

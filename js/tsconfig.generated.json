@@ -11,6 +11,7 @@
   },
   "files": [
     "../node_modules/typescript/lib/lib.esnext.d.ts",
+    "./compiler.ts",
     "./deno.ts",
     "./globals.ts"
   ]
