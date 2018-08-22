@@ -121,15 +121,32 @@ export function readFileSync(filename: string): Uint8Array {
 export function writeFileSync(
   filename: string,
   data: Uint8Array,
-  perm: number
+  perm = 0o666
 ): void {
-  util.notImplemented();
-  /*
-  pubInternal("os", {
+  /* Ideally we could write:
+  const res = send({
     command: fbs.Command.WRITE_FILE_SYNC,
     writeFileSyncFilename: filename,
     writeFileSyncData: data,
     writeFileSyncPerm: perm
   });
   */
+  const builder = new flatbuffers.Builder();
+  const filename_ = builder.createString(filename);
+  const dataOffset = fbs.WriteFileSync.createDataVector(builder, data);
+  fbs.WriteFileSync.startWriteFileSync(builder);
+  fbs.WriteFileSync.addFilename(builder, filename_);
+  fbs.WriteFileSync.addData(builder, dataOffset);
+  fbs.WriteFileSync.addPerm(builder, perm);
+  const msg = fbs.WriteFileSync.endWriteFileSync(builder);
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsgType(builder, fbs.Any.WriteFileSync);
+  builder.finish(fbs.Base.endBase(builder));
+  const resBuf = libdeno.send(builder.asUint8Array());
+  if (resBuf != null) {
+    const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
+    const baseRes = fbs.Base.getRootAsBase(bb);
+    maybeThrowError(baseRes);
+  }
 }
