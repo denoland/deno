@@ -56,7 +56,7 @@ export interface ResolvableMethods<T> {
   reject: (reason?: any) => void;
 }
 
-type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
+export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
 
 export function createResolvable<T>(): Resolvable<T> {
   let methods: ResolvableMethods<T>;
@@ -66,4 +66,12 @@ export function createResolvable<T>(): Resolvable<T> {
   // TypeScript doesn't know that the Promise callback occurs synchronously
   // therefore use of not null assertion (`!`)
   return Object.assign(promise, methods!) as Resolvable<T>;
+}
+
+export function notImplemented(): never {
+  throw new Error("Not implemented");
+}
+
+export function unreachable(): never {
+  throw new Error("Code not reachable");
 }

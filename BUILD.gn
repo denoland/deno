@@ -35,6 +35,7 @@ config("deno_config") {
 }
 
 main_extern = [
+  "$rust_build:hyper",
   "$rust_build:futures",
   "$rust_build:libc",
   "$rust_build:log",
@@ -196,6 +197,8 @@ run_node("bundle") {
   sources = [
     "js/assets.ts",
     "js/console.ts",
+    "js/fetch.ts",
+    "js/fetch_types.d.ts",
     "js/globals.ts",
     "js/lib.globals.d.ts",
     "js/main.ts",

@@ -71,12 +71,13 @@ Also see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
 ## Build instructions
 
 To ensure reproducable builds, Deno has most of its dependencies in a git
-submodule. However, you need
-[rustc](https://www.rust-lang.org/en-US/install.html) installed separately.
+submodule. However, you need to install separately:
 
-You probably want
-[ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache)
-installed too.
+1. [Rust](https://www.rust-lang.org/en-US/install.html)
+2. [Node](http://nodejs.org/)
+3. Python 2. [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+4. [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache) (Optional but helpful for speeding up rebuilds of V8.)
+.
 
 To build:
 

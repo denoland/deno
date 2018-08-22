@@ -1,5 +1,6 @@
 extern crate flatbuffers;
 extern crate futures;
+extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate sha1;
@@ -12,6 +13,7 @@ extern crate log;
 
 mod binding;
 mod deno_dir;
+mod errors;
 mod flags;
 mod fs;
 pub mod handlers;
