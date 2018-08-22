@@ -329,3 +329,14 @@ after_test:
       if ($out -notcontains "ninja: no work to do.") {
         throw "Build should be up-to-date but isnt't."
       }
+
+before_deploy:
+  - gzip -c $env:DENO_BUILD_PATH/deno > $env:DENO_BUILD_PATH/deno_win_x64.gz
+deploy:
+  provider: GitHub
+  auth_token:
+    secure: HQIIUEOtep3yRiBacZCtX8hVmgtdNvt6Hx7u9fP4Wj2ZYp+eBFP2OLf67RKVa5VZ
+  artifact: $env:DENO_BUILD_PATH/deno_win_x64.gz
+  on:
+    branch: master           # release from master branch only
+    appveyor_repo_tag: true  # deploy on tag push only
