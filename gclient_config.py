@@ -38,7 +38,7 @@ solutions = [{
     # https://github.com/google/flatbuffers/pull/3894
     # https://github.com/rw/flatbuffers/tree/2018-08-12--all-tests-passing
     'url':
-    'https://github.com/rw/flatbuffers.git@9ab5d42b4471d7df06a45fd3939e4aec8a04dfe2',
+    'https://github.com/rw/flatbuffers.git@83a71543f8ccbf230ac27cb523831bfafb9c84d7',
     'name':
     'flatbuffers'
 }]
