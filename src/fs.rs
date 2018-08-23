@@ -1,6 +1,7 @@
 use std;
 use std::fs::File;
 use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 
 pub fn read_file_sync(path: &Path) -> std::io::Result<Vec<u8>> {
@@ -17,6 +18,11 @@ pub fn read_file_sync_string(path: &Path) -> std::io::Result<String> {
     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
 }
 
+pub fn write_file_sync(path: &Path, content: &[u8]) -> std::io::Result<()> {
+  let mut f = File::create(path)?;
+  f.write_all(content)
+}
+
 pub fn mkdir(path: &Path) -> std::io::Result<()> {
   debug!("mkdir -p {}", path.display());
   assert!(path.has_root(), "non-has_root not yet implemented");
@@ -27,4 +33,14 @@ pub fn mkdir(path: &Path) -> std::io::Result<()> {
       Err(err)
     }
   })
+}
+
+pub fn normalize_path(path: &Path) -> String {
+  let s = String::from(path.to_str().unwrap());
+  if cfg!(windows) {
+    // TODO This isn't correct. Probbly should iterate over components.
+    s.replace("\\", "/")
+  } else {
+    s
+  }
 }

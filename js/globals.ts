@@ -1,6 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 import { Console } from "./console";
+import { exit } from "./os";
 import { RawSourceMap } from "./types";
 import * as timers from "./timers";
 import { TextEncoder, TextDecoder } from "./text_encoding";
@@ -9,6 +10,14 @@ import * as fetch_ from "./fetch";
 declare global {
   interface Window {
     console: Console;
+    define: Readonly<unknown>;
+    onerror?: (
+      message: string,
+      source: string,
+      lineno: number,
+      colno: number,
+      error: Error
+    ) => void;
   }
 
   const clearTimeout: typeof timers.clearTimer;
@@ -58,6 +67,22 @@ window.clearTimeout = timers.clearTimer;
 window.clearInterval = timers.clearTimer;
 
 window.console = new Console(libdeno.print);
+// Uncaught exceptions are sent to window.onerror by the privileged binding.
+window.onerror = (
+  message: string,
+  source: string,
+  lineno: number,
+  colno: number,
+  error: Error
+) => {
+  // TODO Currently there is a bug in v8_source_maps.ts that causes a
+  // segfault if it is used within window.onerror. To workaround we
+  // uninstall the Error.prepareStackTrace handler. Users will get unmapped
+  // stack traces on uncaught exceptions until this issue is fixed.
+  //Error.prepareStackTrace = null;
+  console.log(error.stack);
+  exit(1);
+};
 window.TextEncoder = TextEncoder;
 window.TextDecoder = TextDecoder;
 

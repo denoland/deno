@@ -2,8 +2,7 @@ Error: bad
     at foo (file://[WILDCARD]tests/error_001.ts:2:9)
     at bar (file://[WILDCARD]tests/error_001.ts:6:3)
     at eval (file://[WILDCARD]tests/error_001.ts:9:1)
-    at eval (<anonymous>)
-    at execute (deno/js/runtime.ts:[WILDCARD])
-    at FileModule.compileAndRun (deno/js/runtime.ts:[WILDCARD])
+    at DenoCompiler.eval [as _globalEval] (<anonymous>)
+    at DenoCompiler.run (deno/js/compiler.ts:[WILDCARD])
     at denoMain (deno/js/main.ts:[WILDCARD])
     at deno_main.js:1:1

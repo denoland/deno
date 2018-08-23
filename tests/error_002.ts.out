@@ -2,10 +2,9 @@ Error: exception from mod1
     at Object.throwsError (file://[WILDCARD]tests/subdir/mod1.ts:16:9)
     at foo (file://[WILDCARD]tests/error_002.ts:4:3)
     at eval (file://[WILDCARD]tests/error_002.ts:7:1)
-    at localDefine (deno/js/runtime.ts:[WILDCARD])
+    at localDefine (deno/js/compiler.ts:[WILDCARD])
     at eval ([WILDCARD]tests/error_002.ts, <anonymous>)
-    at eval (<anonymous>)
-    at execute (deno/js/runtime.ts:[WILDCARD])
-    at FileModule.compileAndRun (deno/js/runtime.ts:[WILDCARD])
+    at DenoCompiler.eval [as _globalEval] (<anonymous>)
+    at DenoCompiler.run (deno/js/compiler.ts:[WILDCARD])
     at denoMain (deno/js/main.ts:[WILDCARD])
     at deno_main.js:1:1

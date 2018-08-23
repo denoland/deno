@@ -1,7 +1,4 @@
 language: c++
-branches:
-  only:
-  - master
 env:
   global:
   - CARGO_PATH=$HOME/.cargo/
