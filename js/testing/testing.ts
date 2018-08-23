@@ -24,21 +24,13 @@ export interface TestDefinition {
 
 export const exitOnFail = true;
 
-/* A subset of the tests can be ran by providing a filter expression.
- * In Node.js the filter is specified on the command line:
- *
- *   ts-node test_node log        # all tests with 'log' in the name
- *   ts-node test_node ^util      # tests starting with 'util'
- *
- * In the browser, the filter is specified as part of the url:
- *
- *   http://localhost:9876/test.html#script=some/script.js&filter=log
- *   http://localhost:9876/test.html#script=some/script.js&filter=^util
- */
-let filterExpr: string = null;
-
-const filterRegExp = filterExpr ? new RegExp(filterExpr, "i") : null;
+let filterRegExp: RegExp | null;
 const tests: TestDefinition[] = [];
+
+// Must be called before any test() that needs to be filtered.
+export function setFilter(s: string): void {
+  filterRegExp = new RegExp(s, "i");
+}
 
 export function test(t: TestDefinition | TestFunction): void {
   const fn: TestFunction = typeof t === "function" ? t : t.fn;
