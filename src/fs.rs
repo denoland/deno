@@ -34,3 +34,13 @@ pub fn mkdir(path: &Path) -> std::io::Result<()> {
     }
   })
 }
+
+pub fn normalize_path(path: &Path) -> String {
+  let s = String::from(path.to_str().unwrap());
+  if cfg!(windows) {
+    // TODO This isn't correct. Probbly should iterate over components.
+    s.replace("\\", "/")
+  } else {
+    s
+  }
+}
