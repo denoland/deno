@@ -7,6 +7,7 @@ import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import * as timers from "./timers";
 import { onFetchRes } from "./fetch";
+import { argv } from "./deno";
 
 function startMsg(cmdId: number): Uint8Array {
   const builder = new flatbuffers.Builder();
@@ -85,13 +86,14 @@ export default function denoMain() {
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
 
-  const argv: string[] = [];
-  for (let i = 0; i < startResMsg.argvLength(); i++) {
+  // TODO handle shebang.
+  for (let i = 1; i < startResMsg.argvLength(); i++) {
     argv.push(startResMsg.argv(i));
   }
   log("argv", argv);
+  Object.freeze(argv);
 
-  const inputFn = argv[1];
+  const inputFn = argv[0];
   if (!inputFn) {
     console.log("No input script specified.");
     os.exit(1);
