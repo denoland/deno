@@ -55,7 +55,8 @@ def check_output_test(deno_exe_filename):
         script_abs = os.path.join(tests_path, script)
         cmd = [deno_exe_filename, script_abs, "--reload"]
         p = subprocess.Popen(
-            cmd, universal_newlines=True, stdout=subprocess.PIPE)
+            cmd, universal_newlines=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, close_fds=True)
         child_processes.append((cmd, script, out_filename, p))
 
 
