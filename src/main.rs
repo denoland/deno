@@ -3,6 +3,7 @@ extern crate futures;
 extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg_generated;
+extern crate rand;
 extern crate sha1;
 extern crate tempfile;
 extern crate tokio;
