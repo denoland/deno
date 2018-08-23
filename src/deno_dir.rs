@@ -30,6 +30,27 @@ pub struct DenoDir {
   reload: bool,
 }
 
+#[derive(Debug)]
+enum ModuleLocation {
+  Path(PathBuf),
+  Url(Url),
+}
+
+impl ModuleLocation {
+  fn to_string(&self) -> String {
+    match self {
+      ModuleLocation::Path(p) => p.to_str().unwrap().to_string(),
+      ModuleLocation::Url(u) => u.to_string(),
+    }
+  }
+}
+
+impl std::fmt::Display for ModuleLocation {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "{:?}", self)
+  }
+}
+
 impl DenoDir {
   // Must be called before using any function from this module.
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
@@ -105,14 +126,14 @@ impl DenoDir {
   // Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
   fn fetch_remote_source(
     self: &DenoDir,
-    module_name: &str,
+    module_name: &Url,
     filename: &str,
   ) -> DenoResult<String> {
     let p = Path::new(filename);
 
     let src = if self.reload || !p.exists() {
       println!("Downloading {}", module_name);
-      let source = net::fetch_sync_string(module_name)?;
+      let source = net::fetch_sync_string(module_name.as_str())?;
       match p.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
@@ -129,19 +150,24 @@ impl DenoDir {
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L122-L138
   fn get_source_code(
     self: &DenoDir,
-    module_name: &str,
-    filename: &str,
+    module_name: &ModuleLocation,
+    filename: &Path,
   ) -> DenoResult<String> {
-    if is_remote(module_name) {
-      self.fetch_remote_source(module_name, filename)
-    } else if module_name.starts_with(ASSET_PREFIX) {
+    if is_remote(&module_name) {
+      if let ModuleLocation::Url(url) = module_name {
+        self
+          .fetch_remote_source(url, deno_fs::normalize_path(filename).as_str())
+      } else {
+        panic!("Remote code execution require an URL")
+      }
+    } else if module_name.to_string().starts_with(ASSET_PREFIX) {
       panic!("Asset resolution should be done in JS, not Rust.");
     } else {
       assert!(
-        module_name == filename,
+        module_name.to_string() == filename.to_string_lossy(),
         "if a module isn't remote, it should have the same filename"
       );
-      let src = fs::read_to_string(Path::new(filename))?;
+      let src = fs::read_to_string(filename)?;
       Ok(src)
     }
   }
@@ -151,8 +177,10 @@ impl DenoDir {
     module_specifier: &str,
     containing_file: &str,
   ) -> Result<CodeFetchOutput, DenoError> {
-    let (module_name, filename) =
+    let (module_name, filepath) =
       self.resolve_module(module_specifier, containing_file)?;
+
+    let filename: String = filepath.to_str().unwrap().to_string();
 
     debug!(
             "code_fetch. module_name = {} module_specifier = {} containing_file = {} filename = {}",
@@ -160,10 +188,10 @@ impl DenoDir {
         );
 
     let out = self
-      .get_source_code(module_name.as_str(), filename.as_str())
+      .get_source_code(&module_name, filepath.as_path())
       .and_then(|source_code| {
         Ok(CodeFetchOutput {
-          module_name,
+          module_name: module_name.to_string(),
           filename,
           source_code,
           maybe_output_code: None,
@@ -207,7 +235,7 @@ impl DenoDir {
     self: &DenoDir,
     module_specifier: &str,
     containing_file: &str,
-  ) -> Result<(String, String), url::ParseError> {
+  ) -> Result<(ModuleLocation, PathBuf), url::ParseError> {
     let module_name;
     let filename;
 
@@ -247,19 +275,21 @@ impl DenoDir {
 
     match j.scheme() {
       "file" => {
-        let mut p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
-        module_name = p.clone();
+        let mut p = j.to_file_path().unwrap();
+        module_name = ModuleLocation::Path(p.clone());
         filename = p;
       }
       _ => {
-        module_name = module_specifier.to_string();
-        filename = deno_fs::normalize_path(
-          get_cache_filename(self.deps.as_path(), j).as_ref(),
-        )
+        module_name = ModuleLocation::Url(j.clone());
+        filename = get_cache_filename(self.deps.as_path(), j);
       }
     }
 
-    debug!("module_name: {}, filename: {}", module_name, filename);
+    debug!(
+      "module_name: {}, filename: {}",
+      module_name,
+      filename.to_str().unwrap()
+    );
     Ok((module_name, filename))
   }
 }
@@ -424,36 +454,34 @@ fn test_resolve_module() {
       add_root!(
         "/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"
       ),
-      add_root!(
+      "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts",
+      Path::new(add_root!(
         "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
-      ),
-      add_root!(
-        "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
-      ),
+      )),
     ),
     (
       "testdata/001_hello.js",
       add_root!("/Users/rld/go/src/github.com/denoland/deno/"),
-      add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
-      add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
+      "/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js",
+      Path::new(add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js")),
     ),
     (
       add_root!("/Users/rld/src/deno/hello.js"),
       ".",
-      add_root!("/Users/rld/src/deno/hello.js"),
-      add_root!("/Users/rld/src/deno/hello.js"),
+      "/Users/rld/src/deno/hello.js",
+      Path::new(add_root!("/Users/rld/src/deno/hello.js")),
     ),
     (
       add_root!("/this/module/got/imported.js"),
       add_root!("/that/module/did/it.js"),
-      add_root!("/this/module/got/imported.js"),
-      add_root!("/this/module/got/imported.js"),
+      "/this/module/got/imported.js",
+      Path::new(add_root!("/this/module/got/imported.js")),
     ),
     (
         "http://localhost:4545/testdata/subdir/print_hello.ts",
         add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
         "http://localhost:4545/testdata/subdir/print_hello.ts",
-        d.as_ref(),
+        Path::new(d.as_str()),
     ),
     /*
         (
@@ -476,13 +504,61 @@ fn test_resolve_module() {
     let (module_name, filename) = deno_dir
       .resolve_module(&module_specifier, &containing_file)
       .unwrap();
-    assert_eq!(module_name, test.2);
+
+    assert_eq!(module_name.to_string(), test.2);
     assert_eq!(filename, test.3);
   }
 }
 
 const ASSET_PREFIX: &str = "/$asset$/";
 
-fn is_remote(module_name: &str) -> bool {
-  module_name.starts_with("http")
+fn is_remote(module_name: &ModuleLocation) -> bool {
+  match module_name {
+    ModuleLocation::Url(u) => match u.scheme() {
+      "http" => true,
+      "https" => true,
+      _ => false,
+    },
+    ModuleLocation::Path(_p) => false,
+  }
+}
+
+#[test]
+fn test_is_remote() {
+  assert_eq!(
+    is_remote(&ModuleLocation::Path(
+      Path::new("http-import.ts").to_path_buf()
+    )),
+    false
+  );
+  assert_eq!(
+    is_remote(&ModuleLocation::Path(
+      Path::new("http/file.ts").to_path_buf()
+    )),
+    false
+  );
+  assert_eq!(
+    is_remote(&ModuleLocation::Path(
+      Path::new("/home/tommy/http.ts").to_path_buf()
+    )),
+    false
+  );
+  assert_eq!(
+    is_remote(&ModuleLocation::Path(
+      Path::new("C:\\Users\\tommy\\http.ts").to_path_buf()
+    )),
+    false
+  );
+  assert_eq!(
+    is_remote(&ModuleLocation::Url(
+      Url::parse("http://example.com/http.ts").unwrap()
+    )),
+    true
+  );
+  assert_eq!(
+    is_remote(&ModuleLocation::Url(
+      Url::parse("https://example.com/http.ts").unwrap()
+    )),
+    true
+  );
 }
