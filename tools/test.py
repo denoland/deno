@@ -3,7 +3,7 @@
 # Usage: ./tools/test.py out/Debug
 import os
 import sys
-from check_output_test import check_output_test
+from check_output_test import check_output_test, check_output_wait
 from util import executable_suffix, run, build_path
 from util_test import util_test
 import subprocess
@@ -43,12 +43,15 @@ def main(argv):
     check_exists(deno_exe)
     run([deno_exe, "js/unit_tests.ts", "--allow-write"])
 
-    check_exists(deno_exe)
-    check_output_test(deno_exe)
-
     deno_ns_exe = os.path.join(build_dir, "deno_ns" + executable_suffix)
+
+    check_exists(deno_exe)
     check_exists(deno_ns_exe)
+
+    check_output_test(deno_exe)
     check_output_test(deno_ns_exe)
+
+    check_output_wait()
 
 
 if __name__ == '__main__':
