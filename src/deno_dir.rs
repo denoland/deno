@@ -250,29 +250,15 @@ impl DenoDir {
 
     match j.scheme() {
       "file" => {
-        let mut p = j
-          .to_file_path()
-          .unwrap()
-          .into_os_string()
-          .into_string()
-          .unwrap();
-
-        if cfg!(target_os = "windows") {
-          // On windows, replace backward slashes to forward slashes.
-          // TODO(piscisaureus): This may not me be right, I just did it to make
-          // the tests pass.
-          p = p.replace("\\", "/");
-        }
-
-        module_name = p.to_string();
-        filename = p.to_string();
+        let mut p = fs::normalize_path(j.to_file_path().unwrap().as_ref());
+        module_name = p.clone();
+        filename = p;
       }
       _ => {
         module_name = module_specifier.to_string();
-        filename = get_cache_filename(self.deps.as_path(), j)
-          .to_str()
-          .unwrap()
-          .to_string();
+        filename = fs::normalize_path(
+          get_cache_filename(self.deps.as_path(), j).as_ref(),
+        )
       }
     }
 
@@ -422,6 +408,13 @@ fn test_src_file_to_url() {
 fn test_resolve_module() {
   let (_temp_dir, deno_dir) = test_setup();
 
+  let d = fs::normalize_path(
+    deno_dir
+      .deps
+      .join("localhost/testdata/subdir/print_hello.ts")
+      .as_ref(),
+  );
+
   let test_cases = [
     (
       "./subdir/print_hello.ts",
@@ -453,13 +446,13 @@ fn test_resolve_module() {
       add_root!("/this/module/got/imported.js"),
       add_root!("/this/module/got/imported.js"),
     ),
+    (
+        "http://localhost:4545/testdata/subdir/print_hello.ts",
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
+        "http://localhost:4545/testdata/subdir/print_hello.ts",
+        d.as_ref(),
+    ),
     /*
-        (
-            "http://localhost:4545/testdata/subdir/print_hello.ts",
-            add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
-            "http://localhost:4545/testdata/subdir/print_hello.ts",
-            path.Join(SrcDir, "localhost:4545/testdata/subdir/print_hello.ts"),
-        ),
         (
             path.Join(SrcDir, "unpkg.com/liltest@0.0.5/index.ts"),
             ".",

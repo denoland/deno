@@ -127,7 +127,8 @@ fn handle_start(
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
 
   let cwd_path = std::env::current_dir().unwrap();
-  let cwd_off = builder.create_string(cwd_path.to_str().unwrap());
+  let cwd_off =
+    builder.create_string(fs::normalize_path(cwd_path.as_ref()).as_ref());
 
   let msg = msg::StartRes::create(
     builder,
