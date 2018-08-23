@@ -3,7 +3,7 @@ use binding;
 use std::ffi::CStr;
 
 // This is the source of truth for the Deno version. Ignore the value in Cargo.toml.
-const DENO_VERSION: &str = "0.0.3";
+const DENO_VERSION: &str = "0.1.0";
 
 pub fn print_version() {
   let v = unsafe { binding::deno_v8_version() };
