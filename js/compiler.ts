@@ -17,11 +17,6 @@ type AmdErrback = (err: any) => void;
 export type AmdFactory = (...args: any[]) => object | void;
 // tslint:enable:no-any
 export type AmdDefine = (deps: string[], factory: AmdFactory) => void;
-type AmdRequire = (
-  deps: string[],
-  callback: AmdCallback,
-  errback?: AmdErrback
-) => void;
 
 // The location that a module is being loaded from. This could be a directory,
 // like ".", or it could be a module specifier like
@@ -264,44 +259,42 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     const localDefine = (deps: string[], factory: AmdFactory): void => {
       // TypeScript will emit a local require dependency when doing dynamic
       // `import()`
-      const localRequire: AmdRequire = (
+      const { _log: log } = this;
+      const localExports = moduleMetaData.exports;
+
+      // tslint:disable-next-line:no-any
+      const resolveDependencies = (deps: string[]): any[] => {
+        return deps.map(dep => {
+          if (dep === "require") {
+            return localRequire;
+          } else if (dep === "exports") {
+            return localExports;
+          } else if (dep in DenoCompiler._builtins) {
+            return DenoCompiler._builtins[dep];
+          } else {
+            const depModuleMetaData = this.run(dep, moduleMetaData.fileName);
+            return depModuleMetaData.exports;
+          }
+        });
+      };
+
+      // this is a function because we need hoisting
+      function localRequire(
         deps: string[],
         callback: AmdCallback,
-        errback?: AmdErrback
-      ): void => {
-        this._log("localRequire", deps);
+        errback: AmdErrback
+      ): void {
+        log("localRequire", deps);
         try {
-          const args = deps.map(dep => {
-            if (dep in DenoCompiler._builtins) {
-              return DenoCompiler._builtins[dep];
-            } else {
-              const depModuleMetaData = this.run(dep, moduleMetaData.fileName);
-              return depModuleMetaData.exports;
-            }
-          });
+          const args = resolveDependencies(deps);
           callback(...args);
         } catch (e) {
-          if (errback) {
-            errback(e);
-          } else {
-            throw e;
-          }
+          errback(e);
         }
-      };
-      const localExports = moduleMetaData.exports;
+      }
+
       this._log("localDefine", moduleMetaData.fileName, deps, localExports);
-      const args = deps.map(dep => {
-        if (dep === "require") {
-          return localRequire;
-        } else if (dep === "exports") {
-          return localExports;
-        } else if (dep in DenoCompiler._builtins) {
-          return DenoCompiler._builtins[dep];
-        } else {
-          const depModuleMetaData = this.run(dep, moduleMetaData.fileName);
-          return depModuleMetaData.exports;
-        }
-      });
+      const args = resolveDependencies(deps);
       factory(...args);
     };
     return localDefine;
