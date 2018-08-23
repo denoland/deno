@@ -12,6 +12,8 @@ union Any {
   TimerClear,
   FetchReq,
   FetchRes,
+  MakeTempDir,
+  MakeTempDirRes,
   ReadFileSync,
   ReadFileSyncRes,
   WriteFileSync,
@@ -131,6 +133,16 @@ table FetchRes {
   status: int;
   header_line: [string];
   body: [ubyte];
+}
+
+table MakeTempDir {
+  dir: string;
+  prefix: string;
+  suffix: string;
+}
+
+table MakeTempDirRes {
+  path: string;
 }
 
 table ReadFileSync {

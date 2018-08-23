@@ -85,6 +85,57 @@ export function codeCache(
   }
 }
 
+/**
+ * makeTempDirSync creates a new temporary directory in the directory `dir`, its
+ * name beginning with `prefix` and ending with `suffix`.
+ * It returns the full path to the newly created directory.
+ * If `dir` is unspecified, tempDir uses the default directory for temporary
+ * files. Multiple programs calling tempDir simultaneously will not choose the
+ * same directory. It is the caller's responsibility to remove the directory
+ * when no longer needed.
+ */
+export interface MakeTempDirOptions {
+  dir?: string;
+  prefix?: string;
+  suffix?: string;
+}
+export function makeTempDirSync({
+  dir,
+  prefix,
+  suffix
+}: MakeTempDirOptions = {}): string {
+  const builder = new flatbuffers.Builder();
+  const fbDir = dir == null ? -1 : builder.createString(dir);
+  const fbPrefix = prefix == null ? -1 : builder.createString(prefix);
+  const fbSuffix = suffix == null ? -1 : builder.createString(suffix);
+  fbs.MakeTempDir.startMakeTempDir(builder);
+  if (dir != null) {
+    fbs.MakeTempDir.addDir(builder, fbDir);
+  }
+  if (prefix != null) {
+    fbs.MakeTempDir.addPrefix(builder, fbPrefix);
+  }
+  if (suffix != null) {
+    fbs.MakeTempDir.addSuffix(builder, fbSuffix);
+  }
+  const msg = fbs.MakeTempDir.endMakeTempDir(builder);
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsgType(builder, fbs.Any.MakeTempDir);
+  builder.finish(fbs.Base.endBase(builder));
+  const resBuf = libdeno.send(builder.asUint8Array());
+  assert(resBuf != null);
+  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
+  const baseRes = fbs.Base.getRootAsBase(bb);
+  maybeThrowError(baseRes);
+  assert(fbs.Any.MakeTempDirRes === baseRes.msgType());
+  const res = new fbs.MakeTempDirRes();
+  assert(baseRes.msg(res) != null);
+  const path = res.path();
+  assert(path != null);
+  return path!;
+}
+
 export function readFileSync(filename: string): Uint8Array {
   /* Ideally we could write
   const res = send({
