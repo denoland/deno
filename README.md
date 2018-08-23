@@ -55,12 +55,10 @@
 
 Under development.
 
-The prototype golang implementation is
-[here](https://github.com/denoland/deno/tree/golang). We are in the process of
-rewriting in C++/Rust to avoid future GC contention between Go and V8.
+We make binary releases [here](https://github.com/denoland/deno/releases).
 
-Progress towards first release is tracked
-[here](https://github.com/denoland/deno/issues?utf8=%E2%9C%93&q=is%3Aissue+milestone%3A%22v0.1+%28first+binary+release%29%22+).
+Progress towards future releases is tracked
+[here](https://github.com/denoland/deno/milestones).
 
 Roadmap is [here](https://github.com/denoland/deno/blob/master/Roadmap.md).
 Also see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
