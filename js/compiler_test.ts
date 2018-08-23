@@ -108,6 +108,12 @@ const moduleMap: {
       "/root/project/foo/bar.ts",
       fooBarTsSource,
       fooBarTsOutput
+    ),
+    "./qat.ts": mockModuleInfo(
+      "foo/qat",
+      "/root/project/foo/qat.ts",
+      "export const foo = 'bar'",
+      null
     )
   }
 };
@@ -274,6 +280,33 @@ test(function compilerMakeDefine() {
 // TODO testMakeDefineExternalModule - testing that make define properly runs
 // external modules, this is implicitly tested though in
 // `compilerRunMultiModule`
+
+test(function compilerLocalRequire() {
+  const moduleMetaData = new ModuleMetaData(
+    "/root/project/foo/baz.ts",
+    fooBazTsSource,
+    fooBazTsOutput
+  );
+  const localDefine = compilerInstance.makeDefine(moduleMetaData);
+  let requireCallbackCalled = false;
+  localDefine(
+    ["require", "exports"],
+    (_require, _exports, _compiler): void => {
+      assertEqual(typeof _require, "function");
+      _require(
+        ["./qat.ts"],
+        _qat => {
+          requireCallbackCalled = true;
+          assert(_qat);
+        },
+        () => {
+          throw new Error("Should not error");
+        }
+      );
+    }
+  );
+  assert(requireCallbackCalled, "Factory expected to be called");
+});
 
 test(function compilerRun() {
   // equal to `deno foo/bar.ts`
