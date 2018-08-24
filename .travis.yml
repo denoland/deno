@@ -34,6 +34,7 @@ before_script:
 - "./tools/setup.py"
 script:
 - "./tools/lint.py"
+- bash -c "sleep 2100; pkill ninja" &
 - "./tools/build.py -j2"
 - "./tools/test.py $DENO_BUILD_PATH"
 before_deploy: |
