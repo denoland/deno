@@ -436,7 +436,14 @@ test(function compilerGetScriptSnapshot() {
     "Expected .getText() to equal 'import'"
   );
   assertEqual(result.getChangeRange(result), undefined);
+  // This is and optional part of the `IScriptSnapshot` API which we don't
+  // define, os checking for the lack of this property.
   assert(!("dispose" in result));
+
+  assert(
+    result === moduleMetaData,
+    "result should strictly equal moduleMetaData"
+  );
 });
 
 test(function compilerGetCurrentDirectory() {

@@ -57,9 +57,8 @@ export interface Ts {
  * Named `ModuleMetaData` to clarify it is just a representation of meta data of
  * the module, not the actual module instance.
  */
-export class ModuleMetaData {
+export class ModuleMetaData implements ts.IScriptSnapshot {
   public readonly exports = {};
-  public scriptSnapshot?: ts.IScriptSnapshot;
   public scriptVersion = "";
 
   constructor(
@@ -70,6 +69,19 @@ export class ModuleMetaData {
     if (outputCode !== "" || fileName.endsWith(".d.ts")) {
       this.scriptVersion = "1";
     }
+  }
+
+  public getText(start: number, end: number): string {
+    return this.sourceCode.substring(start, end);
+  }
+
+  public getLength(): number {
+    return this.sourceCode.length;
+  }
+
+  public getChangeRange(): undefined {
+    // Required `IScriptSnapshot` API, but not implemented/needed in deno
+    return undefined;
   }
 }
 
@@ -478,25 +490,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
 
   getScriptSnapshot(fileName: ModuleFileName): ts.IScriptSnapshot | undefined {
     this._log("getScriptSnapshot()", fileName);
-    const moduleMetaData = this._getModuleMetaData(fileName);
-    if (moduleMetaData) {
-      return (
-        moduleMetaData.scriptSnapshot ||
-        (moduleMetaData.scriptSnapshot = {
-          getText(start, end) {
-            return moduleMetaData.sourceCode.substring(start, end);
-          },
-          getLength() {
-            return moduleMetaData.sourceCode.length;
-          },
-          getChangeRange() {
-            return undefined;
-          }
-        })
-      );
-    } else {
-      return undefined;
-    }
+    return this._getModuleMetaData(fileName);
   }
 
   getCurrentDirectory(): string {
