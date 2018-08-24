@@ -145,6 +145,61 @@ fn test_set_flags_3() {
   );
 }
 
+#[test]
+fn test_set_flags_4() {
+  let (flags, rest) = set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]);
+  assert!(rest == svec!["deno", "script.ts"]);
+  assert!(
+    flags == DenoFlags {
+      help: false,
+      log_debug: true,
+      version: false,
+      reload: true,
+      allow_write: true,
+      allow_net: false,
+      eval: None,
+    }
+  );
+}
+
+#[test]
+fn test_set_flags_5() {
+  let (flags, rest) = set_flags(svec!["deno", "-D", "-e", "console.log('Hello, World')"]);
+  assert!(rest == svec!["deno"]);
+  assert!(
+    flags == DenoFlags {
+      help: false,
+      log_debug: true,
+      version: false,
+      reload: false,
+      allow_write: false,
+      allow_net: false,
+      eval: Some("console.log('Hello, World')".to_owned()),
+    }
+  );
+}
+
+#[test]
+fn test_set_flags_6() {
+  let (flags, rest) = set_flags(svec![
+    "deno",
+    "-Dreconsole.error('ERROR: Oh no!')",
+    "script.ts"
+  ]);
+  assert!(rest == svec!["deno", "script.ts"]);
+  assert!(
+    flags == DenoFlags {
+      help: false,
+      log_debug: true,
+      version: false,
+      reload: true,
+      allow_write: false,
+      allow_net: false,
+      eval: Some("console.error('ERROR: Oh no!')".to_owned()),
+    }
+  );
+}
+
 // Returns args passed to V8, followed by args passed to JS
 // TODO Rename to v8_set_flags_preprocess
 fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
