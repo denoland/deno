@@ -19,19 +19,21 @@ pub struct DenoFlags {
   pub reload: bool,
   pub allow_write: bool,
   pub allow_net: bool,
+  pub eval: Option<String>,
 }
 
 pub fn print_usage() {
   println!(
     "Usage: deno script.ts
 
---allow-write      Allow file system write access.
---allow-net        Allow network access.
--v or --version    Print the version.
--r or --reload     Reload cached remote resources.
--D or --log-debug  Log debug output.
---help             Print this message.
---v8-options       Print V8 command line options."
+--allow-write          Allow file system write access.
+--allow-net            Allow network access.
+-v or --version        Print the version.
+-e or --eval [SCRIPT]  Evaluate a script from the command line
+-r or --reload         Reload cached remote resources.
+-D or --log-debug      Log debug output.
+--help                 Print this message.
+--v8-options           Print V8 command line options."
   );
 }
 
@@ -44,20 +46,51 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
     log_debug: false,
     allow_write: false,
     allow_net: false,
+    eval: None,
   };
   let mut rest = Vec::new();
-  for a in &args {
-    match a.as_str() {
-      "-h" | "--help" => flags.help = true,
-      "-D" | "--log-debug" => flags.log_debug = true,
-      "-v" | "--version" => flags.version = true,
-      "-r" | "--reload" => flags.reload = true,
-      "--allow-write" => flags.allow_write = true,
-      "--allow-net" => flags.allow_net = true,
-      _ => rest.push(a.clone()),
+  let mut arg_iter = args.iter();
+
+  while let Some(a) = arg_iter.next() {
+    if a.len() > 1 && &a[0..2] == "--" {
+      match a.as_str() {
+        "--help" => flags.help = true,
+        "--log-debug" => flags.log_debug = true,
+        "--version" => flags.version = true,
+        "--reload" => flags.reload = true,
+        "--eval" => flags.eval = arg_iter.next().map(|s| s.clone()),
+        "--allow-write" => flags.allow_write = true,
+        "--allow-net" => flags.allow_net = true,
+        "--" => break,
+        _ => rest.push(a.clone()), // maybe complain here about an unknown arg?
+      }
+    } else if a.len() > 1 && &a[0..1] == "-" {
+      let mut iter = a.chars().skip(1); // skip the "-"
+      while let Some(f) = iter.next() {
+        match f {
+          'h' => flags.help = true,
+          'D' => flags.log_debug = true,
+          'v' => flags.version = true,
+          'r' => flags.reload = true,
+          'e' => {
+            let chars_left = iter.count();
+            if chars_left != 0 {
+              flags.eval = Some(a[a.len() - chars_left..].to_owned());
+            } else {
+              flags.eval = arg_iter.next().map(|s| s.clone());
+            }
+            break;
+          }
+          _ => unimplemented!(),
+        }
+      }
+    } else {
+      rest.push(a.clone());
     }
   }
 
+  // add any remaining arguments to `rest`
+  rest.extend(arg_iter.map(|s| s.clone()));
   return (flags, rest);
 }
 
@@ -73,6 +106,7 @@ fn test_set_flags_1() {
       reload: false,
       allow_write: false,
       allow_net: false,
+      eval: None,
     }
   );
 }
@@ -89,14 +123,14 @@ fn test_set_flags_2() {
       reload: true,
       allow_write: false,
       allow_net: false,
+      eval: None,
     }
   );
 }
 
 #[test]
 fn test_set_flags_3() {
-  let (flags, rest) =
-    set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]);
+  let (flags, rest) = set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]);
   assert!(rest == svec!["deno", "script.ts"]);
   assert!(
     flags == DenoFlags {
@@ -106,6 +140,7 @@ fn test_set_flags_3() {
       reload: true,
       allow_write: true,
       allow_net: false,
+      eval: None,
     }
   );
 }
@@ -140,8 +175,7 @@ fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
 
 #[test]
 fn test_parse_core_args_1() {
-  let js_args =
-    parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
+  let js_args = parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
   assert!(js_args == (vec!["deno".to_string(), "--help".to_string()], vec![]));
 }
 
