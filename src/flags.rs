@@ -4,6 +4,7 @@ use libc::c_int;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
+use std::vec::Vec;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -19,7 +20,7 @@ pub struct DenoFlags {
   pub reload: bool,
   pub allow_write: bool,
   pub allow_net: bool,
-  pub eval: Option<String>,
+  pub eval: Vec<String>,
 }
 
 pub fn print_usage() {
@@ -29,7 +30,7 @@ pub fn print_usage() {
 --allow-write          Allow file system write access.
 --allow-net            Allow network access.
 -v or --version        Print the version.
--e or --eval [SCRIPT]  Evaluate a script from the command line
+-e or --eval [SCRIPT]  Evaluate a script from the command line, may be passed multiple times.
 -r or --reload         Reload cached remote resources.
 -D or --log-debug      Log debug output.
 --help                 Print this message.
@@ -46,7 +47,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
     log_debug: false,
     allow_write: false,
     allow_net: false,
-    eval: None,
+    eval: vec![],
   };
   let mut rest = Vec::new();
   let mut arg_iter = args.iter();
@@ -58,7 +59,12 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
         "--log-debug" => flags.log_debug = true,
         "--version" => flags.version = true,
         "--reload" => flags.reload = true,
-        "--eval" => flags.eval = arg_iter.next().map(|s| s.clone()),
+        "--eval" => {
+          match arg_iter.next() {
+            Some(e) => flags.eval.push(e.clone()),
+            None => unimplemented!(),
+          };
+        }
         "--allow-write" => flags.allow_write = true,
         "--allow-net" => flags.allow_net = true,
         "--" => break,
@@ -75,9 +81,11 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
           'e' => {
             let chars_left = iter.count();
             if chars_left != 0 {
-              flags.eval = Some(a[a.len() - chars_left..].to_owned());
+              flags.eval.push(a[a.len() - chars_left..].to_owned());
+            } else if let Some(e) = arg_iter.next() {
+              flags.eval.push(e.clone())
             } else {
-              flags.eval = arg_iter.next().map(|s| s.clone());
+              unimplemented!();
             }
             break;
           }
@@ -106,7 +114,7 @@ fn test_set_flags_1() {
       reload: false,
       allow_write: false,
       allow_net: false,
-      eval: None,
+      eval: vec![],
     }
   );
 }
@@ -123,7 +131,7 @@ fn test_set_flags_2() {
       reload: true,
       allow_write: false,
       allow_net: false,
-      eval: None,
+      eval: vec![],
     }
   );
 }
@@ -140,7 +148,7 @@ fn test_set_flags_3() {
       reload: true,
       allow_write: true,
       allow_net: false,
-      eval: None,
+      eval: vec![],
     }
   );
 }
@@ -157,14 +165,20 @@ fn test_set_flags_4() {
       reload: true,
       allow_write: true,
       allow_net: false,
-      eval: None,
+      eval: vec![],
     }
   );
 }
 
 #[test]
 fn test_set_flags_5() {
-  let (flags, rest) = set_flags(svec!["deno", "-D", "-e", "console.log('Hello, World')"]);
+  let (flags, rest) = set_flags(svec![
+    "deno",
+    "-D",
+    "-e",
+    "console.log('Hello, World')",
+    "-econsole.log('second e')"
+  ]);
   assert!(rest == svec!["deno"]);
   assert!(
     flags == DenoFlags {
@@ -174,7 +188,7 @@ fn test_set_flags_5() {
       reload: false,
       allow_write: false,
       allow_net: false,
-      eval: Some("console.log('Hello, World')".to_owned()),
+      eval: svec!["console.log('Hello, World')", "console.log('second e')"],
     }
   );
 }
@@ -195,7 +209,7 @@ fn test_set_flags_6() {
       reload: true,
       allow_write: false,
       allow_net: false,
-      eval: Some("console.error('ERROR: Oh no!')".to_owned()),
+      eval: svec!["console.error('ERROR: Oh no!')"],
     }
   );
 }
@@ -212,7 +226,7 @@ fn test_set_flags_7() {
       reload: false,
       allow_write: false,
       allow_net: false,
-      eval: None,
+      eval: vec![],
     }
   );
 }

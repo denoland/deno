@@ -141,7 +141,7 @@ fn main() {
     log::LevelFilter::Info
   });
 
-  if let Some(e) = d.flags.eval.clone() {
+  for e in d.flags.eval.clone() {
     d.execute("<anonymous>", &e).unwrap_or_else(|err| {
       error!("{}", err);
       std::process::exit(1);
