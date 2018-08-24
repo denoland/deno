@@ -14,6 +14,7 @@ PORT = 4545
 def serve_forever():
     os.chdir(root_path)  # Hopefully the main thread doesn't also chdir.
     Handler = SimpleHTTPServer.SimpleHTTPRequestHandler
+    SocketServer.TCPServer.allow_reuse_address = True
     httpd = SocketServer.TCPServer(("", PORT), Handler)
     print "Deno test server http://localhost:%d/" % PORT
     httpd.serve_forever()
