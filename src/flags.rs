@@ -68,7 +68,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
         "--allow-write" => flags.allow_write = true,
         "--allow-net" => flags.allow_net = true,
         "--" => break,
-        _ => rest.push(a.clone()), // maybe complain here about an unknown arg?
+        _ => unimplemented!(),
       }
     } else if a.len() > 1 && &a[0..1] == "-" {
       let mut iter = a.chars().skip(1); // skip the "-"
