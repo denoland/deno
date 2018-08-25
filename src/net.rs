@@ -1,13 +1,16 @@
 use errors::DenoResult;
 use hyper::rt::{Future, Stream};
-use hyper::{Client, Uri};
+use hyper::{Body, Client, Uri};
 use tokio::runtime::current_thread::Runtime;
+use hyper_tls::HttpsConnector;
 
 // The CodeFetch message is used to load HTTP javascript resources and expects a
 // synchronous response, this utility method supports that.
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<String> {
   let url = module_name.parse::<Uri>().unwrap();
-  let client = Client::new();
+  let https = HttpsConnector::new(4).unwrap();
+  let client = Client::builder()
+    .build::<_, Body>(https);
 
   // TODO Use Deno's RT
   let mut rt = Runtime::new().unwrap();

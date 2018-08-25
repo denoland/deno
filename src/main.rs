@@ -1,6 +1,7 @@
 extern crate flatbuffers;
 extern crate futures;
 extern crate hyper;
+extern crate hyper_tls;
 extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate sha1;
