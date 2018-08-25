@@ -104,7 +104,10 @@ fn test_c_to_rust() {
   let d = Deno::new(argv);
   let d2 = from_c(d.ptr);
   assert!(d.ptr == d2.ptr);
-  assert!(d.dir.root.join("gen") == d.dir.gen, "Sanity check");
+  assert!(
+    d.dir.root.join("gen") == d.dir.gen,
+    "Sanity check"
+  );
 }
 
 static LOGGER: Logger = Logger;
@@ -146,6 +149,14 @@ fn main() {
   } else {
     log::LevelFilter::Info
   });
+
+  for e in d.flags.eval.clone() {
+    d.execute("<anonymous>", &e)
+      .unwrap_or_else(|err| {
+        error!("{}", err);
+        std::process::exit(1);
+      });
+  }
 
   d.execute("deno_main.js", "denoMain();")
     .unwrap_or_else(|err| {
