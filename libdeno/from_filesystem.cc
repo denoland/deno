@@ -15,11 +15,17 @@
 namespace deno {
 
 Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
-  std::string js_source;
-  CHECK(deno::ReadFileToString(BUNDLE_LOCATION, &js_source));
+  std::string exe_path;
+  CHECK(deno::ExePath(&exe_path));
+  std::string exe_dir = deno::Dirname(exe_path);  // Always ends with a slash.
 
+  std::string js_source_path = exe_dir + BUNDLE_LOCATION;
+  std::string js_source;
+  CHECK(deno::ReadFileToString(js_source_path.c_str(), &js_source));
+
+  std::string js_source_map_path = exe_dir + BUNDLE_MAP_LOCATION;
   std::string js_source_map;
-  CHECK(deno::ReadFileToString(BUNDLE_MAP_LOCATION, &js_source_map));
+  CHECK(deno::ReadFileToString(js_source_map_path.c_str(), &js_source_map));
 
   Deno* d = new Deno;
   d->currentArgs = nullptr;
@@ -36,10 +42,9 @@ Deno* NewFromFileSystem(void* data, deno_recv_cb cb) {
   {
     v8::HandleScope handle_scope(isolate);
     auto context = v8::Context::New(isolate);
-    // BUNDLE_LOCATION is absolute so deno_ns can load the bundle independently
-    // of the cwd. However for source maps to work, the bundle location relative
-    // to the build path must be supplied: BUNDLE_REL_LOCATION.
-    InitializeContext(isolate, context, BUNDLE_REL_LOCATION, js_source,
+    // For source maps to work, the bundle location that is passed to
+    // InitializeContext must be a relative path.
+    InitializeContext(isolate, context, BUNDLE_LOCATION, js_source,
                       &js_source_map);
     d->context.Reset(d->isolate, context);
   }
