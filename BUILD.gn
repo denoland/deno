@@ -243,9 +243,8 @@ run_node("bundle") {
 
 source_set("libdeno_nosnapshot") {
   bundle_outputs = get_target_outputs(":bundle")
-  bundle_location = rebase_path(bundle_outputs[0])
-  bundle_rel_location = rebase_path(bundle_outputs[0], root_build_dir)
-  bundle_map_location = rebase_path(bundle_outputs[1])
+  bundle_location = rebase_path(bundle_outputs[0], root_build_dir)
+  bundle_map_location = rebase_path(bundle_outputs[1], root_build_dir)
   inputs = bundle_outputs
   sources = [
     "libdeno/from_filesystem.cc",
@@ -257,7 +256,6 @@ source_set("libdeno_nosnapshot") {
   configs += [ ":deno_config" ]
   defines = [
     "BUNDLE_LOCATION=\"$bundle_location\"",
-    "BUNDLE_REL_LOCATION=\"$bundle_rel_location\"",
     "BUNDLE_MAP_LOCATION=\"$bundle_map_location\"",
   ]
 }
