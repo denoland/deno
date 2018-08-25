@@ -5,6 +5,7 @@ import("//build_extra/flatbuffers/flatbuffer.gni")
 import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
 import("//build_extra/deno.gni")
 import("//build_extra/rust/rust.gni")
+import("//build_extra/toolchain/validate.gni")
 
 group("default") {
   testonly = true
