@@ -1,0 +1,15 @@
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
+import("//build/toolchain/cc_wrapper.gni")
+
+# Verify that cc_wrapper is correctly set up on Windows.
+if (is_win && cc_wrapper != "" && custom_toolchain == "") {
+  suggested_toolchain = "//build_extra/toolchain/win:win_clang_$target_cpu"
+
+  # Use print instead of assert with message for readability.
+  print(
+      "The 'cc_wrapper' option isn't supported by the default Windows toolchain.")
+  print("To make it work, add the option:")
+  print("  custom_toolchain=\"$suggested_toolchain\"")
+  assert(custom_toolchain != "")
+}
