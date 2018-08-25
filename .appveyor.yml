@@ -333,7 +333,7 @@ after_test:
 
   # If this build is going to be deployed, build a zip file.
   - ps: |-
-      if ($env:APPVEYOR_REPO_TAG) {
+      if ($env:APPVEYOR_REPO_TAG -eq "true") {
         Compress-Archive -CompressionLevel Optimal -Force `
           -Path "$env:DENO_BUILD_PATH\deno.exe" `
           -DestinationPath "$env:APPVEYOR_BUILD_FOLDER\$env:RELEASE_ARTIFACT"
