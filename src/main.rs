@@ -66,10 +66,16 @@ impl Deno {
     deno_box
   }
 
-  fn execute(&mut self, js_filename: &str, js_source: &str) -> Result<(), DenoException> {
+  fn execute(
+    &mut self,
+    js_filename: &str,
+    js_source: &str,
+  ) -> Result<(), DenoException> {
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
-    let r = unsafe { binding::deno_execute(self.ptr, filename.as_ptr(), source.as_ptr()) };
+    let r = unsafe {
+      binding::deno_execute(self.ptr, filename.as_ptr(), source.as_ptr())
+    };
     if r == 0 {
       let ptr = unsafe { binding::deno_last_exception(self.ptr) };
       let cstr = unsafe { CStr::from_ptr(ptr) };
@@ -98,7 +104,10 @@ fn test_c_to_rust() {
   let d = Deno::new(argv);
   let d2 = from_c(d.ptr);
   assert!(d.ptr == d2.ptr);
-  assert!(d.dir.root.join("gen") == d.dir.gen, "Sanity check");
+  assert!(
+    d.dir.root.join("gen") == d.dir.gen,
+    "Sanity check"
+  );
 }
 
 static LOGGER: Logger = Logger;
@@ -142,10 +151,11 @@ fn main() {
   });
 
   for e in d.flags.eval.clone() {
-    d.execute("<anonymous>", &e).unwrap_or_else(|err| {
-      error!("{}", err);
-      std::process::exit(1);
-    });
+    d.execute("<anonymous>", &e)
+      .unwrap_or_else(|err| {
+        error!("{}", err);
+        std::process::exit(1);
+      });
   }
 
   d.execute("deno_main.js", "denoMain();")

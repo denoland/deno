@@ -234,7 +234,10 @@ impl DenoDir {
         let r = Url::from_directory_path(&containing_file);
         // TODO(ry) Properly handle error.
         if r.is_err() {
-          error!("Url::from_directory_path error {}", containing_file);
+          error!(
+            "Url::from_directory_path error {}",
+            containing_file
+          );
         }
         let base = r.unwrap();
         base.join(module_specifier)?
@@ -262,7 +265,10 @@ impl DenoDir {
       }
     }
 
-    debug!("module_name: {}, filename: {}", module_name, filename);
+    debug!(
+      "module_name: {}, filename: {}",
+      module_name, filename
+    );
     Ok((module_name, filename))
   }
 }
@@ -329,7 +335,10 @@ fn test_code_cache() {
   let r = deno_dir.code_cache(filename, source_code, output_code);
   r.expect("code_cache error");
   assert!(cache_path.exists());
-  assert_eq!(output_code, fs::read_file_sync_string(&cache_path).unwrap());
+  assert_eq!(
+    output_code,
+    fs::read_file_sync_string(&cache_path).unwrap()
+  );
 }
 
 // https://github.com/denoland/deno/blob/golang/deno_dir.go#L25-L30
@@ -363,7 +372,7 @@ fn test_source_code_hash() {
 // `Url::from_file_path()` fails if the input path isn't an absolute path.
 #[cfg(test)]
 macro_rules! add_root {
-  ($path:expr) => {
+  ($path: expr) => {
     if cfg!(target_os = "windows") {
       concat!("C:", $path)
     } else {
@@ -399,8 +408,17 @@ fn test_src_file_to_url() {
   let (_temp_dir, deno_dir) = test_setup();
   assert_eq!("hello", deno_dir.src_file_to_url("hello"));
   assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
-  let x = String::from(deno_dir.deps.join("hello/world.txt").to_str().unwrap());
-  assert_eq!("http://hello/world.txt", deno_dir.src_file_to_url(x));
+  let x = String::from(
+    deno_dir
+      .deps
+      .join("hello/world.txt")
+      .to_str()
+      .unwrap(),
+  );
+  assert_eq!(
+    "http://hello/world.txt",
+    deno_dir.src_file_to_url(x)
+  );
 }
 
 // https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87

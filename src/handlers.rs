@@ -33,7 +33,12 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let msg = msg::CodeFetch::init_from_table(base.msg().unwrap());
       let module_specifier = msg.module_specifier().unwrap();
       let containing_file = msg.containing_file().unwrap();
-      handle_code_fetch(d, &mut builder, module_specifier, containing_file)
+      handle_code_fetch(
+        d,
+        &mut builder,
+        module_specifier,
+        containing_file,
+      )
     }
     msg::Any::CodeCache => {
       // TODO base.msg_as_CodeCache();
@@ -41,7 +46,13 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let filename = msg.filename().unwrap();
       let source_code = msg.source_code().unwrap();
       let output_code = msg.output_code().unwrap();
-      handle_code_cache(d, &mut builder, filename, source_code, output_code)
+      handle_code_cache(
+        d,
+        &mut builder,
+        filename,
+        source_code,
+        output_code,
+      )
     }
     msg::Any::FetchReq => {
       // TODO base.msg_as_FetchReq();
@@ -52,7 +63,13 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::TimerStart => {
       // TODO base.msg_as_TimerStart();
       let msg = msg::TimerStart::init_from_table(base.msg().unwrap());
-      handle_timer_start(d, &mut builder, msg.id(), msg.interval(), msg.delay())
+      handle_timer_start(
+        d,
+        &mut builder,
+        msg.id(),
+        msg.interval(),
+        msg.delay(),
+      )
     }
     msg::Any::TimerClear => {
       // TODO base.msg_as_TimerClear();
@@ -123,7 +140,11 @@ fn handle_start(
 ) -> HandlerResult {
   let deno = from_c(d);
 
-  let argv = deno.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+  let argv = deno
+    .argv
+    .iter()
+    .map(|s| s.as_str())
+    .collect::<Vec<_>>();
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
 
   let cwd_path = std::env::current_dir().unwrap();
@@ -188,9 +209,14 @@ fn handle_code_fetch(
 ) -> HandlerResult {
   let deno = from_c(d);
 
-  assert!(deno.dir.root.join("gen") == deno.dir.gen, "Sanity check");
+  assert!(
+    deno.dir.root.join("gen") == deno.dir.gen,
+    "Sanity check"
+  );
 
-  let out = deno.dir.code_fetch(module_specifier, containing_file)?;
+  let out = deno
+    .dir
+    .code_fetch(module_specifier, containing_file)?;
   // reply_code_fetch
   let mut msg_args = msg::CodeFetchResArgs {
     module_name: Some(builder.create_string(&out.module_name)),
@@ -224,7 +250,9 @@ fn handle_code_cache(
   output_code: &str,
 ) -> HandlerResult {
   let deno = from_c(d);
-  deno.dir.code_cache(filename, source_code, output_code)?;
+  deno
+    .dir
+    .code_cache(filename, source_code, output_code)?;
   Ok(null_buf()) // null response indicates success.
 }
 
@@ -268,27 +296,30 @@ fn handle_fetch_req(
       })
       .and_then(move |res| {
         // Send the body as a FetchRes message.
-        res.into_body().concat2().map(move |body_buffer| {
-          let mut builder = flatbuffers::FlatBufferBuilder::new();
-          let data_off = builder.create_byte_vector(body_buffer.as_ref());
-          let msg = msg::FetchRes::create(
-            &mut builder,
-            &msg::FetchResArgs {
-              id,
-              body: Some(data_off),
-              ..Default::default()
-            },
-          );
-          send_base(
-            d,
-            &mut builder,
-            &msg::BaseArgs {
-              msg: Some(flatbuffers::Offset::new(msg.value())),
-              msg_type: msg::Any::FetchRes,
-              ..Default::default()
-            },
-          );
-        })
+        res
+          .into_body()
+          .concat2()
+          .map(move |body_buffer| {
+            let mut builder = flatbuffers::FlatBufferBuilder::new();
+            let data_off = builder.create_byte_vector(body_buffer.as_ref());
+            let msg = msg::FetchRes::create(
+              &mut builder,
+              &msg::FetchResArgs {
+                id,
+                body: Some(data_off),
+                ..Default::default()
+              },
+            );
+            send_base(
+              d,
+              &mut builder,
+              &msg::BaseArgs {
+                msg: Some(flatbuffers::Offset::new(msg.value())),
+                msg_type: msg::Any::FetchRes,
+                ..Default::default()
+              },
+            );
+          })
       })
       .map_err(move |err| {
         let errmsg = format!("{}", err);

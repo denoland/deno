@@ -81,7 +81,9 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
           'e' => {
             let chars_left = iter.count();
             if chars_left != 0 {
-              flags.eval.push(a[a.len() - chars_left..].to_owned());
+              flags
+                .eval
+                .push(a[a.len() - chars_left..].to_owned());
             } else if let Some(e) = arg_iter.next() {
               flags.eval.push(e.clone())
             } else {
@@ -138,7 +140,12 @@ fn test_set_flags_2() {
 
 #[test]
 fn test_set_flags_3() {
-  let (flags, rest) = set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]);
+  let (flags, rest) = set_flags(svec![
+    "deno",
+    "-r",
+    "script.ts",
+    "--allow-write"
+  ]);
   assert!(rest == svec!["deno", "script.ts"]);
   assert!(
     flags == DenoFlags {
@@ -155,7 +162,12 @@ fn test_set_flags_3() {
 
 #[test]
 fn test_set_flags_4() {
-  let (flags, rest) = set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]);
+  let (flags, rest) = set_flags(svec![
+    "deno",
+    "-Dr",
+    "script.ts",
+    "--allow-write"
+  ]);
   assert!(rest == svec!["deno", "script.ts"]);
   assert!(
     flags == DenoFlags {
@@ -188,7 +200,10 @@ fn test_set_flags_5() {
       reload: false,
       allow_write: false,
       allow_net: false,
-      eval: svec!["console.log('Hello, World')", "console.log('second e')"],
+      eval: svec![
+        "console.log('Hello, World')",
+        "console.log('second e')"
+      ],
     }
   );
 }
@@ -252,7 +267,10 @@ fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
   // Replace args being sent to V8
   for idx in 0..args.len() {
     if args[idx] == "--v8-options" {
-      mem::swap(args.get_mut(idx).unwrap(), &mut String::from("--help"));
+      mem::swap(
+        args.get_mut(idx).unwrap(),
+        &mut String::from("--help"),
+      );
     }
   }
 
@@ -261,14 +279,29 @@ fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
 
 #[test]
 fn test_parse_core_args_1() {
-  let js_args = parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
-  assert!(js_args == (vec!["deno".to_string(), "--help".to_string()], vec![]));
+  let js_args = parse_core_args(vec![
+    "deno".to_string(),
+    "--v8-options".to_string(),
+  ]);
+  assert!(
+    js_args
+      == (
+        vec!["deno".to_string(), "--help".to_string()],
+        vec![]
+      )
+  );
 }
 
 #[test]
 fn test_parse_core_args_2() {
   let js_args = parse_core_args(vec!["deno".to_string(), "--help".to_string()]);
-  assert!(js_args == (vec!["deno".to_string()], vec!["--help".to_string()]));
+  assert!(
+    js_args
+      == (
+        vec!["deno".to_string()],
+        vec!["--help".to_string()]
+      )
+  );
 }
 
 // Pass the command line arguments to v8.
@@ -280,7 +313,11 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
   let (argv, rest) = parse_core_args(args);
   let mut argv = argv
     .iter()
-    .map(|arg| CString::new(arg.as_str()).unwrap().into_bytes_with_nul())
+    .map(|arg| {
+      CString::new(arg.as_str())
+        .unwrap()
+        .into_bytes_with_nul()
+    })
     .collect::<Vec<_>>();
 
   // Make a new array, that can be modified by V8::SetFlagsFromCommandLine(),
