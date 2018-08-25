@@ -10,6 +10,7 @@
 import compilerDts from "gen/js/compiler.d.ts!string";
 import consoleDts from "gen/js/console.d.ts!string";
 import denoDts from "gen/js/deno.d.ts!string";
+import libdenoDts from "gen/js/libdeno.d.ts!string";
 import globalsDts from "gen/js/globals.d.ts!string";
 import osDts from "gen/js/os.d.ts!string";
 import fetchDts from "gen/js/fetch.d.ts!string";
@@ -59,6 +60,7 @@ export const assetSourceCode: { [key: string]: string } = {
   "compiler.d.ts": compilerDts,
   "console.d.ts": consoleDts,
   "deno.d.ts": denoDts,
+  "libdeno.d.ts": libdenoDts,
   "globals.d.ts": globalsDts,
   "os.d.ts": osDts,
   "fetch.d.ts": fetchDts,
