@@ -189,9 +189,9 @@ run_node("gen_declarations") {
     "-p",
     rebase_path("js/tsconfig.generated.json", root_build_dir),
     "--baseUrl",
-    rebase_path(root_build_dir),
+    rebase_path(root_build_dir, root_build_dir),
     "--outDir",
-    rebase_path(out_dir),
+    rebase_path(out_dir, root_build_dir),
   ]
 }
 
