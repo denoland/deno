@@ -13,7 +13,7 @@ rustfmt_config = os.path.join(tools_path, "rustfmt.toml")
 os.chdir(root_path)
 
 run([clang_format_path, "-i", "-style", "Google"] +
-    find_exts("src", ".cc", ".h"))
+    find_exts("libdeno", ".cc", ".h"))
 
 for fn in ["BUILD.gn", ".gn"] + find_exts("build_extra", ".gn", ".gni"):
     run(["third_party/depot_tools/gn", "format", fn], env=google_env())
