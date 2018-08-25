@@ -331,6 +331,22 @@ after_test:
         throw "Build should be up-to-date but isnt't."
       }
 
+  # Verify that generated ninja files do not use absolute path names.
+  # If they do, it makes ccache/sccache much less effective.
+  - ps: |-
+      $trap = "NO_ABS_PATH_PLS"
+      $dir = "$env:APPVEYOR_BUILD_FOLDER\out\$trap"
+      Exec { gn gen $dir | Out-Null }
+      $files = Get-Tree $dir -File -Force -Recurse | where Extension -ne ".dll"
+      Select-String $trap -Path $files -SimpleMatch | tee -Variable line_matches
+      if ($line_matches) {
+        $ctx = $line_matches.Line                                          |
+          Select-String "[^\s;,]*[\s=]*[^\s;,=]*$trap[^\s;,]*" -AllMatches |
+          foreach { $_.Matches.Value -replace '\$(.)', '$1' }              |
+          sort -Unique
+        throw @("Absolute path(s) found in build script:") + $ctx -join "`n  "
+      }
+
   # If this build is going to be deployed, build a zip file.
   - ps: |-
       if ($env:APPVEYOR_REPO_TAG -eq "true") {
