@@ -4,7 +4,7 @@ import { deno as fbs } from "gen/msg_generated";
 import { assert, assignCmdId, log, setLogDebug } from "./util";
 import * as os from "./os";
 import { DenoCompiler } from "./compiler";
-import { libdeno } from "./globals";
+import { libdeno } from "./libdeno";
 import * as timers from "./timers";
 import { onFetchRes } from "./fetch";
 
