@@ -6,6 +6,7 @@ Cargo.lock
 yarn.lock
 # npm deps
 node_modules
+.idea
 
 # RLS generated files
 /target/
