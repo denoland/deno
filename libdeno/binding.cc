@@ -13,8 +13,6 @@
 
 namespace deno {
 
-static bool skip_onerror = false;
-
 Deno* FromIsolate(v8::Isolate* isolate) {
   return static_cast<Deno*>(isolate->GetData(0));
 }
@@ -34,36 +32,37 @@ void HandleExceptionStr(v8::Local<v8::Context> context,
                         v8::Local<v8::Value> exception,
                         std::string* exception_str) {
   auto* isolate = context->GetIsolate();
+  Deno* d = FromIsolate(isolate);
+
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
   auto message = v8::Exception::CreateMessage(isolate, exception);
-  auto onerrorStr = v8::String::NewFromUtf8(isolate, "onerror");
-  auto onerror = context->Global()->Get(onerrorStr);
   auto stack_trace = message->GetStackTrace();
   auto line =
       v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
   auto column =
       v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
 
-  if (skip_onerror == false) {
-    if (onerror->IsFunction()) {
-      // window.onerror is set so we try to handle the exception in javascript.
-      auto func = v8::Local<v8::Function>::Cast(onerror);
-      v8::Local<v8::Value> args[5];
-      args[0] = exception->ToString();
-      args[1] = message->GetScriptResourceName();
-      args[2] = line;
-      args[3] = column;
-      args[4] = exception;
-      func->Call(context->Global(), 5, args);
-      /* message, source, lineno, colno, error */
-    }
+  auto global_error_handler = d->global_error_handler.Get(isolate);
+
+  if (!global_error_handler.IsEmpty()) {
+    // global_error_handler is set so we try to handle the exception in javascript.
+    v8::Local<v8::Value> args[5];
+    args[0] = exception->ToString();
+    args[1] = message->GetScriptResourceName();
+    args[2] = line;
+    args[3] = column;
+    args[4] = exception;
+    global_error_handler->Call(context->Global(), 5, args);
+    /* message, source, lineno, colno, error */
+
+    return;
   }
 
   char buf[12 * 1024];
   if (!stack_trace.IsEmpty()) {
-    // No javascript onerror handler, but we do have a stack trace. Format it
+    // No javascript error handler, but we do have a stack trace. Format it
     // into a string and add to last_exception.
     std::string msg;
     v8::String::Utf8Value exceptionStr(isolate, exception);
@@ -80,7 +79,7 @@ void HandleExceptionStr(v8::Local<v8::Context> context,
     }
     *exception_str += msg;
   } else {
-    // No javascript onerror handler, no stack trace. Format the little info we
+    // No javascript error handler, no stack trace. Format the little info we
     // have into a string and add to last_exception.
     v8::String::Utf8Value exceptionStr(isolate, exception);
     v8::String::Utf8Value script_name(isolate,
@@ -188,7 +187,7 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::HandleScope handle_scope(isolate);
 
   if (!d->recv.IsEmpty()) {
-    isolate->ThrowException(v8_str("deno.recv already called."));
+    isolate->ThrowException(v8_str("libdeno.recv already called."));
     return;
   }
 
@@ -226,6 +225,27 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   d->currentArgs = nullptr;
 }
+
+// Sets the global error handler.
+void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+  Deno* d = reinterpret_cast<Deno*>(isolate->GetData(0));
+  DCHECK_EQ(d->isolate, isolate);
+
+  v8::HandleScope handle_scope(isolate);
+
+  if (!d->global_error_handler.IsEmpty()) {
+    isolate->ThrowException(v8_str("libdeno.setGlobalErrorHandler already called."));
+    return;
+  }
+
+  v8::Local<v8::Value> v = args[0];
+  CHECK(v->IsFunction());
+  v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
+
+  d->global_error_handler.Reset(isolate, func);
+}
+
 
 bool ExecuteV8StringSource(v8::Local<v8::Context> context,
                            const char* js_filename,
@@ -293,7 +313,10 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
 
-  skip_onerror = true;
+  auto set_global_error_handler_tmpl = v8::FunctionTemplate::New(isolate, SetGlobalErrorHandler);
+  auto set_global_error_handler_val = set_global_error_handler_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("setGlobalErrorHandler"), set_global_error_handler_val).FromJust());
+
   {
     auto source = deno::v8_str(js_source.c_str());
     CHECK(
@@ -326,7 +349,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
                 .FromJust());
     }
   }
-  skip_onerror = false;
 }
 
 void AddIsolate(Deno* d, v8::Isolate* isolate) {
@@ -384,7 +406,7 @@ int deno_send(Deno* d, deno_buf buf) {
 
   auto recv = d->recv.Get(d->isolate);
   if (recv.IsEmpty()) {
-    d->last_exception = "deno.recv has not been called.";
+    d->last_exception = "libdeno.recv has not been called.";
     return 0;
   }
 

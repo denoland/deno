@@ -122,8 +122,8 @@ global.SnapshotBug = () => {
   assert("1,2,3" === String([1, 2, 3]));
 };
 
-global.ErrorHandling = () => {
-  global.onerror = (message, source, line, col, error) => {
+global.GlobalErrorHandling = () => {
+  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {
     libdeno.print(`line ${line} col ${col}`);
     assert("ReferenceError: notdefined is not defined" === message);
     assert(source === "helloworld.js");
@@ -131,8 +131,13 @@ global.ErrorHandling = () => {
     assert(col === 1);
     assert(error instanceof Error);
     libdeno.send(new Uint8Array([42]));
-  };
+  });
   eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
+};
+
+global.DoubleGlobalErrorHandlingFails = () => {
+  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {});
+  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {});
 };
 
 global.SendNullAllocPtr = () => {

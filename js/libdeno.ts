@@ -10,6 +10,16 @@ interface Libdeno {
 
   print(x: string): void;
 
+  setGlobalErrorHandler: (
+    handler: (
+      message: string,
+      source: string,
+      line: number,
+      col: number,
+      error: Error
+    ) => void
+  ) => void;
+
   mainSource: string;
   mainSourceMap: RawSourceMap;
 }
