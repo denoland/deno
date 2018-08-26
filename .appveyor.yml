@@ -306,12 +306,6 @@ before_build:
       Set-FilesNeeded -Auto -Path $outputs -Reason "Build dependency graph"
 
 build_script:
-  # Attempt to work around multiple rustc instances messing with the same file
-  # when building in parallel.
-  # TODO: fix this properly.
-  - ps: ninja -C $env:DENO_BUILD_PATH -j 1
-              build_extra/rust:winapi build_extra/rust:winapi-0.2
-
   - python tools\build.py
   - ps: Set-FilesNeeded -Auto -Reason "Build finished"
 
