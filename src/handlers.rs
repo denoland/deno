@@ -5,7 +5,7 @@ use errors::DenoResult;
 use flatbuffers;
 use flatbuffers::FlatBufferBuilder;
 use from_c;
-use fs;
+use fs as deno_fs;
 use futures;
 use futures::sync::oneshot;
 use hyper;
@@ -13,6 +13,7 @@ use hyper::rt::{Future, Stream};
 use hyper::Client;
 use msg_generated::deno as msg;
 use std;
+use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::prelude::future;
@@ -128,7 +129,7 @@ fn handle_start(
 
   let cwd_path = std::env::current_dir().unwrap();
   let cwd_off =
-    builder.create_string(fs::normalize_path(cwd_path.as_ref()).as_ref());
+    builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
   let msg = msg::StartRes::create(
     builder,
@@ -401,7 +402,7 @@ fn handle_read_file_sync(
   filename: &str,
 ) -> HandlerResult {
   debug!("handle_read_file_sync {}", filename);
-  let vec = fs::read_file_sync(Path::new(filename))?;
+  let vec = fs::read(Path::new(filename))?;
   // Build the response message. memcpy data into msg.
   // TODO(ry) zero-copy.
   let data_off = builder.create_byte_vector(vec.as_slice());
@@ -433,7 +434,7 @@ fn handle_write_file_sync(
   let deno = from_c(d);
   if deno.flags.allow_write {
     // TODO(ry) Use perm.
-    fs::write_file_sync(Path::new(filename), data)?;
+    deno_fs::write_file_sync(Path::new(filename), data)?;
     Ok(null_buf())
   } else {
     let err = std::io::Error::new(
