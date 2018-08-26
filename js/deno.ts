@@ -6,6 +6,7 @@ export {
   exit,
   FileInfo,
   makeTempDirSync,
+  mkdirSync,
   readFileSync,
   statSync,
   lStatSync,
