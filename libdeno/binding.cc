@@ -47,7 +47,8 @@ void HandleExceptionStr(v8::Local<v8::Context> context,
   auto global_error_handler = d->global_error_handler.Get(isolate);
 
   if (!global_error_handler.IsEmpty()) {
-    // global_error_handler is set so we try to handle the exception in javascript.
+    // global_error_handler is set so we try to handle the exception in
+    // javascript.
     v8::Local<v8::Value> args[5];
     args[0] = exception->ToString();
     args[1] = message->GetScriptResourceName();
@@ -235,7 +236,8 @@ void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::HandleScope handle_scope(isolate);
 
   if (!d->global_error_handler.IsEmpty()) {
-    isolate->ThrowException(v8_str("libdeno.setGlobalErrorHandler already called."));
+    isolate->ThrowException(
+        v8_str("libdeno.setGlobalErrorHandler already called."));
     return;
   }
 
@@ -245,7 +247,6 @@ void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   d->global_error_handler.Reset(isolate, func);
 }
-
 
 bool ExecuteV8StringSource(v8::Local<v8::Context> context,
                            const char* js_filename,
@@ -313,9 +314,14 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
 
-  auto set_global_error_handler_tmpl = v8::FunctionTemplate::New(isolate, SetGlobalErrorHandler);
-  auto set_global_error_handler_val = set_global_error_handler_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("setGlobalErrorHandler"), set_global_error_handler_val).FromJust());
+  auto set_global_error_handler_tmpl =
+      v8::FunctionTemplate::New(isolate, SetGlobalErrorHandler);
+  auto set_global_error_handler_val =
+      set_global_error_handler_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val
+            ->Set(context, deno::v8_str("setGlobalErrorHandler"),
+                  set_global_error_handler_val)
+            .FromJust());
 
   {
     auto source = deno::v8_str(js_source.c_str());
