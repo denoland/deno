@@ -183,3 +183,24 @@ test(function makeTempDirSyncPerm() {
   assert(err);
   assertEqual(err.name, "deno.PermissionDenied");
 });
+
+testPerm({ write: true }, function mkdirSync() {
+  const path = deno.makeTempDirSync() + "/dir/subdir";
+  deno.mkdirSync(path);
+  const pathInfo = deno.statSync(path);
+  assert(pathInfo.isDirectory());
+});
+
+testPerm({ write: false }, function mkdDirSyncPerm() {
+  let err;
+  try {
+    const path = "/baddir";
+    deno.mkdirSync(path);
+  } catch (err_) {
+    err = err_;
+  }
+  // TODO assert(err instanceof deno.PermissionDenied).
+  assert(err);
+  assertEqual(err.name, "deno.PermissionDenied");
+});
+
