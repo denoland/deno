@@ -176,15 +176,21 @@ TEST(LibDenoTest, SnapshotBug) {
   deno_delete(d);
 }
 
-TEST(LibDenoTest, ErrorHandling) {
+TEST(LibDenoTest, GlobalErrorHandling) {
   static int count = 0;
-  Deno* d = deno_new(nullptr, [](auto deno, auto buf) {
+  Deno* d = deno_new(nullptr, [](auto _, auto buf) {
     count++;
     EXPECT_EQ(static_cast<size_t>(1), buf.data_len);
     EXPECT_EQ(buf.data_ptr[0], 42);
   });
-  EXPECT_FALSE(deno_execute(d, "a.js", "ErrorHandling()"));
+  EXPECT_FALSE(deno_execute(d, "a.js", "GlobalErrorHandling()"));
   EXPECT_EQ(count, 1);
+  deno_delete(d);
+}
+
+TEST(LibDenoTest, DoubleGlobalErrorHandlingFails) {
+  Deno* d = deno_new(nullptr, nullptr);
+  EXPECT_FALSE(deno_execute(d, "a.js", "DoubleGlobalErrorHandlingFails()"));
   deno_delete(d);
 }
 

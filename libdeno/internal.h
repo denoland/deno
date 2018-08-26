@@ -13,6 +13,7 @@ struct deno_s {
   const v8::FunctionCallbackInfo<v8::Value>* currentArgs;
   std::string last_exception;
   v8::Persistent<v8::Function> recv;
+  v8::Persistent<v8::Function> global_error_handler;
   v8::Persistent<v8::Context> context;
   deno_recv_cb cb;
   void* data;
@@ -28,9 +29,11 @@ struct InternalFieldData {
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
+void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args);
 static intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
                                          reinterpret_cast<intptr_t>(Recv),
-                                         reinterpret_cast<intptr_t>(Send), 0};
+                                         reinterpret_cast<intptr_t>(Send),
+                                         reinterpret_cast<intptr_t>(SetGlobalErrorHandler), 0};
 
 Deno* NewFromSnapshot(void* data, deno_recv_cb cb);
 
