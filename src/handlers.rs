@@ -38,6 +38,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::TimerStart => handle_timer_start,
     msg::Any::TimerClear => handle_timer_clear,
     msg::Any::MakeTempDir => handle_make_temp_dir,
+    msg::Any::MkdirSync => handle_mkdir_sync,
     msg::Any::ReadFileSync => handle_read_file_sync,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::StatSync => handle_stat_sync,
@@ -486,6 +487,30 @@ fn handle_make_temp_dir(
       ..Default::default()
     },
   ))
+}
+
+fn handle_mkdir_sync(
+  d: *const DenoC,
+  base: msg::Base,
+  _builder: &mut FlatBufferBuilder,
+) -> HandlerResult {
+  let msg = base.msg_as_mkdir_sync().unwrap();
+  let path = msg.path().unwrap();
+  // TODO let mode = msg.mode();
+  let deno = from_c(d);
+
+  debug!("handle_mkdir_sync {}", path);
+  if deno.flags.allow_write {
+    // TODO(ry) Use mode.
+    deno_fs::mkdir(Path::new(path))?;
+    Ok(null_buf())
+  } else {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_write is off.",
+    );
+    Err(err.into())
+  }
 }
 
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184

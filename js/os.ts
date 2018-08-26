@@ -104,6 +104,25 @@ export function makeTempDirSync({
   return path!;
 }
 
+// mkdir creates a new directory with the specified name
+// and permission bits  (before umask).
+export function mkdirSync(path: string, mode = 0o777): void {
+  /* Ideally we could write:
+  const res = send({
+    command: fbs.Command.MKDIR_SYNC,
+    mkdirSyncPath: path,
+    mkdirSyncMode: mode,
+  });
+  */
+  const builder = new flatbuffers.Builder();
+  const path_ = builder.createString(path);
+  fbs.MkdirSync.startMkdirSync(builder);
+  fbs.MkdirSync.addPath(builder, path_);
+  fbs.MkdirSync.addMode(builder, mode);
+  const msg = fbs.MkdirSync.endMkdirSync(builder);
+  send(builder, fbs.Any.MkdirSync, msg);
+}
+
 export function readFileSync(filename: string): Uint8Array {
   /* Ideally we could write
   const res = send({

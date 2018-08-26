@@ -16,6 +16,7 @@ union Any {
   FetchRes,
   MakeTempDir,
   MakeTempDirRes,
+  MkdirSync,
   ReadFileSync,
   ReadFileSyncRes,
   StatSync,
@@ -164,6 +165,12 @@ table MakeTempDir {
 
 table MakeTempDirRes {
   path: string;
+}
+
+table MkdirSync {
+  path: string;
+  mode: uint;
+  // mode specified by https://godoc.org/os#FileMode
 }
 
 table ReadFileSync {
