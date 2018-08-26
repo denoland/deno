@@ -3,7 +3,7 @@ import { assert } from "./util";
 import * as util from "./util";
 import { deno as fbs } from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
-import { libdeno } from "./globals";
+import { libdeno } from "./libdeno";
 
 let nextTimerId = 1;
 

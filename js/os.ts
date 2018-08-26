@@ -5,7 +5,7 @@ import { assert } from "./util";
 import * as util from "./util";
 import { maybeThrowError } from "./errors";
 import { flatbuffers } from "flatbuffers";
-import { libdeno } from "./globals";
+import { libdeno } from "./libdeno";
 
 export function exit(exitCode = 0): never {
   const builder = new flatbuffers.Builder();

@@ -8,7 +8,7 @@ import {
   notImplemented
 } from "./util";
 import { flatbuffers } from "flatbuffers";
-import { libdeno } from "./globals";
+import { libdeno } from "./libdeno";
 import { deno as fbs } from "gen/msg_generated";
 import {
   Headers,

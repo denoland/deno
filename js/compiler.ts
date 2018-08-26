@@ -2,7 +2,9 @@
 import * as ts from "typescript";
 import { assetSourceCode } from "./assets";
 import * as deno from "./deno";
-import { libdeno, window, globalEval } from "./globals";
+import { globalEval } from "./global-eval";
+import { libdeno } from "./libdeno";
+import { window } from "./globals";
 import * as os from "./os";
 import { RawSourceMap } from "./types";
 import { assert, log, notImplemented } from "./util";
@@ -17,11 +19,6 @@ type AmdErrback = (err: any) => void;
 export type AmdFactory = (...args: any[]) => object | void;
 // tslint:enable:no-any
 export type AmdDefine = (deps: string[], factory: AmdFactory) => void;
-type AmdRequire = (
-  deps: string[],
-  callback: AmdCallback,
-  errback?: AmdErrback
-) => void;
 
 // The location that a module is being loaded from. This could be a directory,
 // like ".", or it could be a module specifier like
@@ -62,9 +59,8 @@ export interface Ts {
  * Named `ModuleMetaData` to clarify it is just a representation of meta data of
  * the module, not the actual module instance.
  */
-export class ModuleMetaData {
+export class ModuleMetaData implements ts.IScriptSnapshot {
   public readonly exports = {};
-  public scriptSnapshot?: ts.IScriptSnapshot;
   public scriptVersion = "";
 
   constructor(
@@ -75,6 +71,19 @@ export class ModuleMetaData {
     if (outputCode !== "" || fileName.endsWith(".d.ts")) {
       this.scriptVersion = "1";
     }
+  }
+
+  public getText(start: number, end: number): string {
+    return this.sourceCode.substring(start, end);
+  }
+
+  public getLength(): number {
+    return this.sourceCode.length;
+  }
+
+  public getChangeRange(): undefined {
+    // Required `IScriptSnapshot` API, but not implemented/needed in deno
+    return undefined;
   }
 }
 
@@ -264,44 +273,42 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     const localDefine = (deps: string[], factory: AmdFactory): void => {
       // TypeScript will emit a local require dependency when doing dynamic
       // `import()`
-      const localRequire: AmdRequire = (
+      const { _log: log } = this;
+      const localExports = moduleMetaData.exports;
+
+      // tslint:disable-next-line:no-any
+      const resolveDependencies = (deps: string[]): any[] => {
+        return deps.map(dep => {
+          if (dep === "require") {
+            return localRequire;
+          } else if (dep === "exports") {
+            return localExports;
+          } else if (dep in DenoCompiler._builtins) {
+            return DenoCompiler._builtins[dep];
+          } else {
+            const depModuleMetaData = this.run(dep, moduleMetaData.fileName);
+            return depModuleMetaData.exports;
+          }
+        });
+      };
+
+      // this is a function because we need hoisting
+      function localRequire(
         deps: string[],
         callback: AmdCallback,
-        errback?: AmdErrback
-      ): void => {
-        this._log("localRequire", deps);
+        errback: AmdErrback
+      ): void {
+        log("localRequire", deps);
         try {
-          const args = deps.map(dep => {
-            if (dep in DenoCompiler._builtins) {
-              return DenoCompiler._builtins[dep];
-            } else {
-              const depModuleMetaData = this.run(dep, moduleMetaData.fileName);
-              return depModuleMetaData.exports;
-            }
-          });
+          const args = resolveDependencies(deps);
           callback(...args);
         } catch (e) {
-          if (errback) {
-            errback(e);
-          } else {
-            throw e;
-          }
+          errback(e);
         }
-      };
-      const localExports = moduleMetaData.exports;
+      }
+
       this._log("localDefine", moduleMetaData.fileName, deps, localExports);
-      const args = deps.map(dep => {
-        if (dep === "require") {
-          return localRequire;
-        } else if (dep === "exports") {
-          return localExports;
-        } else if (dep in DenoCompiler._builtins) {
-          return DenoCompiler._builtins[dep];
-        } else {
-          const depModuleMetaData = this.run(dep, moduleMetaData.fileName);
-          return depModuleMetaData.exports;
-        }
-      });
+      const args = resolveDependencies(deps);
       factory(...args);
     };
     return localDefine;
@@ -485,25 +492,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
 
   getScriptSnapshot(fileName: ModuleFileName): ts.IScriptSnapshot | undefined {
     this._log("getScriptSnapshot()", fileName);
-    const moduleMetaData = this._getModuleMetaData(fileName);
-    if (moduleMetaData) {
-      return (
-        moduleMetaData.scriptSnapshot ||
-        (moduleMetaData.scriptSnapshot = {
-          getText(start, end) {
-            return moduleMetaData.sourceCode.substring(start, end);
-          },
-          getLength() {
-            return moduleMetaData.sourceCode.length;
-          },
-          getChangeRange() {
-            return undefined;
-          }
-        })
-      );
-    } else {
-      return undefined;
-    }
+    return this._getModuleMetaData(fileName);
   }
 
   getCurrentDirectory(): string {

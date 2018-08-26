@@ -3,7 +3,7 @@ import third_party
 from util import run, build_path, build_mode
 import os
 import sys
-import distutils.spawn
+from distutils.spawn import find_executable
 
 third_party.fix_symlinks()
 third_party.download_gn()
@@ -24,10 +24,15 @@ def get_gn_args():
     if "DENO_BUILD_ARGS" in os.environ:
         out += os.environ["DENO_BUILD_ARGS"].split()
 
-    # Check if ccache is in the path, and if so we cc_wrapper.
-    ccache_path = distutils.spawn.find_executable("ccache")
-    if ccache_path:
-        out += [r'cc_wrapper="%s"' % ccache_path]
+    # Check if ccache or sccache are in the path, and if so we set cc_wrapper.
+    cc_wrapper = find_executable("ccache") or find_executable("sccache")
+    if cc_wrapper:
+        out += [r'cc_wrapper="%s"' % cc_wrapper]
+        # Windows needs a custom toolchain for cc_wrapper to work.
+        if os.name == "nt":
+            out += [
+                'custom_toolchain="//build_extra/toolchain/win:win_clang_x64"'
+            ]
 
     print "DENO_BUILD_ARGS:", out
 
