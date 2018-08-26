@@ -1,12 +1,11 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use errors::DenoError;
 use errors::DenoResult;
-use fs;
+use fs as deno_fs;
 use net;
 use sha1;
 use std;
-use std::fs::File;
-use std::io::Write;
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
@@ -55,8 +54,8 @@ impl DenoDir {
       deps,
       reload,
     };
-    fs::mkdir(deno_dir.gen.as_ref())?;
-    fs::mkdir(deno_dir.deps.as_ref())?;
+    deno_fs::mkdir(deno_dir.gen.as_ref())?;
+    deno_fs::mkdir(deno_dir.deps.as_ref())?;
 
     debug!("root {}", deno_dir.root.display());
     debug!("gen {}", deno_dir.gen.display());
@@ -82,7 +81,7 @@ impl DenoDir {
   ) -> std::io::Result<String> {
     let path = self.cache_path(filename, source_code);
     debug!("load_cache {}", path.display());
-    fs::read_file_sync_string(&path)
+    fs::read_to_string(&path)
   }
 
   pub fn code_cache(
@@ -99,9 +98,7 @@ impl DenoDir {
     if cache_path.exists() {
       Ok(())
     } else {
-      let mut file = File::create(cache_path)?;
-      file.write_all(output_code.as_bytes())?;
-      Ok(())
+      fs::write(cache_path, output_code.as_bytes())
     }
   }
 
@@ -117,13 +114,13 @@ impl DenoDir {
       println!("Downloading {}", module_name);
       let source = net::fetch_sync_string(module_name)?;
       match p.parent() {
-        Some(ref parent) => std::fs::create_dir_all(parent),
+        Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
       }?;
-      fs::write_file_sync(&p, source.as_bytes())?;
+      deno_fs::write_file_sync(&p, source.as_bytes())?;
       source
     } else {
-      let source = fs::read_file_sync_string(&p)?;
+      let source = fs::read_to_string(&p)?;
       source
     };
     Ok(src)
@@ -144,7 +141,7 @@ impl DenoDir {
         module_name == filename,
         "if a module isn't remote, it should have the same filename"
       );
-      let src = fs::read_file_sync_string(Path::new(filename))?;
+      let src = fs::read_to_string(Path::new(filename))?;
       Ok(src)
     }
   }
@@ -250,13 +247,13 @@ impl DenoDir {
 
     match j.scheme() {
       "file" => {
-        let mut p = fs::normalize_path(j.to_file_path().unwrap().as_ref());
+        let mut p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
         module_name = p.clone();
         filename = p;
       }
       _ => {
         module_name = module_specifier.to_string();
-        filename = fs::normalize_path(
+        filename = deno_fs::normalize_path(
           get_cache_filename(self.deps.as_path(), j).as_ref(),
         )
       }
@@ -329,7 +326,7 @@ fn test_code_cache() {
   let r = deno_dir.code_cache(filename, source_code, output_code);
   r.expect("code_cache error");
   assert!(cache_path.exists());
-  assert_eq!(output_code, fs::read_file_sync_string(&cache_path).unwrap());
+  assert_eq!(output_code, fs::read_to_string(&cache_path).unwrap());
 }
 
 // https://github.com/denoland/deno/blob/golang/deno_dir.go#L25-L30
@@ -408,7 +405,7 @@ fn test_src_file_to_url() {
 fn test_resolve_module() {
   let (_temp_dir, deno_dir) = test_setup();
 
-  let d = fs::normalize_path(
+  let d = deno_fs::normalize_path(
     deno_dir
       .deps
       .join("localhost/testdata/subdir/print_hello.ts")

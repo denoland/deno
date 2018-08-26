@@ -118,9 +118,30 @@ template("run_rustc") {
     ]
 
     if (defined(crate_version)) {
+      # Compute the sha256sum of the version number. See comments below.
+      # Note that we do this only if there are multiple versions of this crate.
+      hash =
+          exec_script("get_version_hash.py", [ crate_version ], "trim string")
+
       args += [
+        # In our build setup, all crates are built in the same directory. The
+        # actual build outputs have unique names (e.g. 'foo-1.2.3.rlib'), but
+        # rustc also creates many temp files (e.g. 'foo.crate.metadata.rcgu.bc',
+        # 'foo.foo0.rcgu.o'), and with those files, name collisions do occur.
+        # This causes random failures during parallel builds and on CI.
+        #
+        # These name conflicts can be avoided by setting `-C extra-filename=` to
+        # some unique value. Unfortunately the version number as such can't be
+        # used: everything after the first dot (.) is thrown away, so winapi-0.2
+        # vs. winapi-0.3 would still have conflicts -- so we use a hash instead.
         "-C",
-        "metadata=$crate_version",
+        "extra-filename=$hash",
+
+        # Rustc blows up if a target (directly or indirectly) depends on two+
+        # crates that have the same name *and* the same metadata. So we use the
+        # hash to give 'metadata' a unique value too (any unique value will do).
+        "-C",
+        "metadata=$hash",
       ]
     }
 
