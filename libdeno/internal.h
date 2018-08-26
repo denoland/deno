@@ -30,10 +30,10 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
 void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args);
-static intptr_t external_references[] = {reinterpret_cast<intptr_t>(Print),
-                                         reinterpret_cast<intptr_t>(Recv),
-                                         reinterpret_cast<intptr_t>(Send),
-                                         reinterpret_cast<intptr_t>(SetGlobalErrorHandler), 0};
+static intptr_t external_references[] = {
+    reinterpret_cast<intptr_t>(Print), reinterpret_cast<intptr_t>(Recv),
+    reinterpret_cast<intptr_t>(Send),
+    reinterpret_cast<intptr_t>(SetGlobalErrorHandler), 0};
 
 Deno* NewFromSnapshot(void* data, deno_recv_cb cb);
 
