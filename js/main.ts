@@ -43,9 +43,21 @@ function onMessage(ui8: Uint8Array) {
   }
 }
 
+function onGlobalError(
+  message: string,
+  source: string,
+  lineno: number,
+  colno: number,
+  error: Error
+) {
+  console.log(error.stack);
+  os.exit(1);
+}
+
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
   libdeno.recv(onMessage);
+  libdeno.setGlobalErrorHandler(onGlobalError);
   const compiler = DenoCompiler.instance();
 
   // First we send an empty "Start" message to let the privlaged side know we
