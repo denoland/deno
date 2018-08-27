@@ -13,7 +13,7 @@ function getClassInstanceName(instance: any): string {
 }
 
 // tslint:disable-next-line:no-any
-function stringify(ctx: ConsoleContext, value: any): string {
+export function stringify(ctx: ConsoleContext, value: any): string {
   switch (typeof value) {
     case "string":
       return value;
@@ -42,7 +42,7 @@ function stringify(ctx: ConsoleContext, value: any): string {
 
       if (Array.isArray(value)) {
         for (const el of value) {
-          entries.push(stringify(ctx, el));
+          entries.push(stringifyWithQuotes(ctx, el));
         }
 
         ctx.delete(value);
@@ -61,7 +61,7 @@ function stringify(ctx: ConsoleContext, value: any): string {
         }
 
         for (const key of Object.keys(value)) {
-          entries.push(`${key}: ${stringify(ctx, value[key])}`);
+          entries.push(`${key}: ${stringifyWithQuotes(ctx, value[key])}`);
         }
 
         ctx.delete(value);
@@ -80,6 +80,17 @@ function stringify(ctx: ConsoleContext, value: any): string {
       }
     default:
       return "[Not Implemented]";
+  }
+}
+
+// Print strings when they are inside of arrays or objects with quotes
+// tslint:disable-next-line:no-any
+function stringifyWithQuotes(ctx: ConsoleContext, value: any): string {
+  switch (typeof value) {
+    case "string":
+      return `"${value}"`;
+    default:
+      return stringify(ctx, value);
   }
 }
 
