@@ -236,6 +236,36 @@ fn handle_fetch_req(
   url: &str,
 ) -> HandlerResult {
   let deno = from_c(d);
+  if !deno.flags.allow_net {
+    use futures::future::{lazy, ok};
+    use futures::Lazy;
+
+    deno.rt.spawn(lazy(move || {
+      let mut builder = flatbuffers::FlatBufferBuilder::new();
+      let err_off = builder.create_string("allow_net is off");
+      let msg = msg::FetchRes::create(
+        &mut builder,
+        &msg::FetchResArgs {
+          id,
+          ..Default::default()
+        },
+      );
+      send_base(
+        d,
+        &mut builder,
+        &msg::BaseArgs {
+          msg: Some(flatbuffers::Offset::new(msg.value())),
+          msg_type: msg::Any::FetchRes,
+          error: Some(err_off),
+          ..Default::default()
+        },
+      );
+      return ok(());
+    }));
+
+    return Ok(null_buf());
+  }
+
   let url = url.parse::<hyper::Uri>().unwrap();
   let client = Client::new();
 
@@ -269,27 +299,30 @@ fn handle_fetch_req(
       })
       .and_then(move |res| {
         // Send the body as a FetchRes message.
-        res.into_body().concat2().map(move |body_buffer| {
-          let mut builder = flatbuffers::FlatBufferBuilder::new();
-          let data_off = builder.create_byte_vector(body_buffer.as_ref());
-          let msg = msg::FetchRes::create(
-            &mut builder,
-            &msg::FetchResArgs {
-              id,
-              body: Some(data_off),
-              ..Default::default()
-            },
-          );
-          send_base(
-            d,
-            &mut builder,
-            &msg::BaseArgs {
-              msg: Some(flatbuffers::Offset::new(msg.value())),
-              msg_type: msg::Any::FetchRes,
-              ..Default::default()
-            },
-          );
-        })
+        res
+          .into_body()
+          .concat2()
+          .map(move |body_buffer| {
+            let mut builder = flatbuffers::FlatBufferBuilder::new();
+            let data_off = builder.create_byte_vector(body_buffer.as_ref());
+            let msg = msg::FetchRes::create(
+              &mut builder,
+              &msg::FetchResArgs {
+                id,
+                body: Some(data_off),
+                ..Default::default()
+              },
+            );
+            send_base(
+              d,
+              &mut builder,
+              &msg::BaseArgs {
+                msg: Some(flatbuffers::Offset::new(msg.value())),
+                msg_type: msg::Any::FetchRes,
+                ..Default::default()
+              },
+            );
+          })
       })
       .map_err(move |err| {
         let errmsg = format!("{}", err);
