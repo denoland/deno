@@ -5,90 +5,13 @@
 
 import { test, assert, assertEqual } from "./testing/testing.ts";
 import { readFileSync } from "deno";
-import { stringify } from "./console.ts";
 import * as deno from "deno";
 
 import "./compiler_test.ts";
+import "./console_test.ts";
 
 test(async function tests_test() {
   assert(true);
-});
-
-test(function tests_console_assert() {
-  console.assert(true);
-
-  let hasThrown = false;
-  try {
-    console.assert(false);
-  } catch {
-    hasThrown = true;
-  }
-  assertEqual(hasThrown, true);
-});
-
-test(function tests_console_stringify_complex_objects() {
-  // tslint:disable:no-any
-  assertEqual("foo", stringify(new Set<any>(), "foo"));
-  assertEqual(`[ "foo", "bar" ]`, stringify(new Set<any>(), ["foo", "bar"]));
-  assertEqual(`{ foo: "bar" }`, stringify(new Set<any>(), { foo: "bar" }));
-  // tslint:enable:no-any
-});
-
-test(function tests_console_stringify_circular() {
-  class Base {
-    a = 1;
-    m1() {}
-  }
-
-  class Extended extends Base {
-    b = 2;
-    m2() {}
-  }
-
-  // tslint:disable-next-line:no-any
-  const nestedObj: any = {
-    num: 1,
-    bool: true,
-    str: "a",
-    method() {},
-    un: undefined,
-    nu: null,
-    arrowFunc: () => {},
-    extendedClass: new Extended(),
-    nFunc: new Function(),
-    extendedCstr: Extended
-  };
-
-  const circularObj = {
-    num: 2,
-    bool: false,
-    str: "b",
-    method() {},
-    un: undefined,
-    nu: null,
-    nested: nestedObj,
-    emptyObj: {},
-    arr: [1, "s", false, null, nestedObj],
-    baseClass: new Base()
-  };
-
-  nestedObj.o = circularObj;
-
-  try {
-    console.log(1);
-    console.log("s");
-    console.log(false);
-    console.log(Symbol(1));
-    console.log(null);
-    console.log(undefined);
-    console.log(new Extended());
-    console.log(function f() {});
-    console.log(nestedObj);
-    console.log(JSON);
-    console.log(console);
-  } catch {
-    throw new Error("Expected no crash on circular object");
-  }
 });
 
 test(async function tests_readFileSync() {
