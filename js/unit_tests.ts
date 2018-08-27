@@ -5,6 +5,7 @@
 
 import { test, assert, assertEqual } from "./testing/testing.ts";
 import { readFileSync } from "deno";
+import { stringify } from "./console.ts";
 import * as deno from "deno";
 
 import "./compiler_test.ts";
@@ -23,6 +24,14 @@ test(function tests_console_assert() {
     hasThrown = true;
   }
   assertEqual(hasThrown, true);
+});
+
+test(function tests_console_stringify_complex_objects() {
+  // tslint:disable:no-any
+  assertEqual("foo", stringify(new Set<any>(), "foo"));
+  assertEqual(`[ "foo", "bar" ]`, stringify(new Set<any>(), ["foo", "bar"]));
+  assertEqual(`{ foo: "bar" }`, stringify(new Set<any>(), { foo: "bar" }));
+  // tslint:enable:no-any
 });
 
 test(function tests_console_stringify_circular() {
