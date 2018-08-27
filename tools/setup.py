@@ -1,15 +1,36 @@
 #!/usr/bin/env python
 import third_party
-from util import run, build_path, build_mode
+from util import run, root_path, build_path, build_mode
 import os
 import sys
 from distutils.spawn import find_executable
 
-third_party.fix_symlinks()
-third_party.download_gn()
-third_party.download_clang_format()
-third_party.download_clang()
-third_party.maybe_download_sysroot()
+
+def main():
+    os.chdir(root_path)
+
+    third_party.fix_symlinks()
+    third_party.download_gn()
+    third_party.download_clang_format()
+    third_party.download_clang()
+    third_party.maybe_download_sysroot()
+
+    write_lastchange()
+
+    mode = build_mode(default=None)
+    if mode is not None:
+        gn_gen(mode)
+    else:
+        gn_gen("release")
+        gn_gen("debug")
+
+
+def write_lastchange():
+    run([
+        sys.executable, "build/util/lastchange.py", "-o",
+        "build/util/LASTCHANGE", "--source-dir", root_path,
+        "--filter="
+    ])
 
 
 def get_gn_args():
@@ -61,9 +82,5 @@ def gn_gen(mode):
         env=third_party.google_env())
 
 
-mode = build_mode(default=None)
-if mode is not None:
-    gn_gen(mode)
-else:
-    gn_gen("release")
-    gn_gen("debug")
+if __name__ == '__main__':
+    sys.exit(main())
