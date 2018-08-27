@@ -146,7 +146,7 @@ template("msvc_toolchain") {
       # invocation requires higher cpu usage compared to ninja invocation, and
       # the python wrapper is only needed to work around link.exe problems.
       # TODO(thakis): Remove wrapper once lld-link can merge manifests without
-      # relying on mt.exe being in %PATH% on Windows.
+      # relying on mt.exe being in %PATH% on Windows, https://crbug.com/872740
       linker_wrapper = "ninja -t msvc -e $env -- "  # Note trailing space.
       sys_lib_flags = ""
     } else {
@@ -298,21 +298,6 @@ template("msvc_toolchain") {
       pool = "//build/toolchain:link_pool($default_toolchain)"
 
       command = "$linker_wrapper$link /nologo ${sys_lib_flags}/OUT:$exename /PDB:$pdbname @$rspfile"
-
-      if (host_os == "win") {
-        shellprefix = "cmd /c"
-      } else {
-        shellprefix = ""
-      }
-      not_needed([ "shellprefix" ])
-
-      if (is_official_build) {
-        # On bots, the binary's PDB grow and eventually exceed 4G, causing the
-        # link to fail. As there's no utility to keeping the PDB around
-        # incrementally anyway in this config (because we're doing
-        # non-incremental LTCG builds), delete it before linking.
-        command = "$shellprefix $python_path $tool_wrapper_path delete-file $pdbname && $command"
-      }
 
       default_output_extension = ".exe"
       default_output_dir = "{{root_out_dir}}"
