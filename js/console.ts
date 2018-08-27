@@ -13,7 +13,7 @@ function getClassInstanceName(instance: any): string {
 }
 
 // tslint:disable-next-line:no-any
-export function stringify(ctx: ConsoleContext, value: any): string {
+function stringify(ctx: ConsoleContext, value: any): string {
   switch (typeof value) {
     case "string":
       return value;
@@ -95,7 +95,7 @@ function stringifyWithQuotes(ctx: ConsoleContext, value: any): string {
 }
 
 // tslint:disable-next-line:no-any
-function stringifyArgs(args: any[]): string {
+export function stringifyArgs(args: any[]): string {
   const out: string[] = [];
   for (const a of args) {
     if (typeof a === "string") {
