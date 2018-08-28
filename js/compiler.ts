@@ -25,17 +25,25 @@ type AMDRequire = (
   errback: AmdErrback
 ) => void;
 
-// The location that a module is being loaded from. This could be a directory,
-// like ".", or it could be a module specifier like
-// "http://gist.github.com/somefile.ts"
+/**
+ * The location that a module is being loaded from. This could be a directory,
+ * like `.`, or it could be a module specifier like
+ * `http://gist.github.com/somefile.ts`
+ */
 type ContainingFile = string;
-// The internal local filename of a compiled module. It will often be something
-// like "/home/ry/.deno/gen/f7b4605dfbc4d3bb356e98fda6ceb1481e4a8df5.js"
+/**
+ * The internal local filename of a compiled module. It will often be something
+ * like `/home/ry/.deno/gen/f7b4605dfbc4d3bb356e98fda6ceb1481e4a8df5.js`
+ */
 type ModuleFileName = string;
-// The external name of a module - could be a URL or could be a relative path.
-// Examples "http://gist.github.com/somefile.ts" or "./somefile.ts"
+/**
+ * The external name of a module - could be a URL or could be a relative path.
+ * Examples `http://gist.github.com/somefile.ts` or `./somefile.ts`
+ */
 type ModuleSpecifier = string;
-// The compiled source code which is cached in .deno/gen/
+/**
+ * The compiled source code which is cached in `.deno/gen/`
+ */
 type OutputCode = string;
 
 /**
@@ -72,7 +80,7 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
   public scriptVersion = "";
 
   constructor(
-    public readonly fileName: string,
+    public readonly fileName: ModuleFileName,
     public readonly sourceCode = "",
     public outputCode = ""
   ) {
@@ -311,7 +319,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     sourceMaps.install({
       installPrepareStackTrace: true,
       getGeneratedContents: (fileName: string): string | RawSourceMap => {
-        this._log("getGeneratedContents", fileName);
+        this._log("compiler.getGeneratedContents", fileName);
         if (fileName === "gen/bundle/main.js") {
           assert(libdeno.mainSource.length > 0);
           return libdeno.mainSource;
@@ -322,7 +330,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
         } else {
           const moduleMetaData = this._moduleMetaDataMap.get(fileName);
           if (!moduleMetaData) {
-            this._log("getGeneratedContents cannot find", fileName);
+            this._log("compiler.getGeneratedContents cannot find", fileName);
             return "";
           }
           return moduleMetaData.outputCode;
@@ -342,7 +350,8 @@ export class DenoCompiler implements ts.LanguageServiceHost {
   // Deno specific compiler API
 
   /**
-   * Retrieve the output of the TypeScript compiler for a given `fileName`.
+   * Retrieve the output of the TypeScript compiler for a given module and
+   * cache the result.
    */
   compile(moduleMetaData: ModuleMetaData): OutputCode {
     this._log("compiler.compile", moduleMetaData.fileName);
@@ -459,7 +468,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
   ): ModuleFileName | undefined {
-    this._log("resolveFileName", { moduleSpecifier, containingFile });
+    this._log("compiler.resolveFileName", { moduleSpecifier, containingFile });
     const innerMap = this._fileNamesMap.get(containingFile);
     if (innerMap) {
       return innerMap.get(moduleSpecifier);
@@ -475,7 +484,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
   ): ModuleMetaData {
-    this._log("resolveModule", { moduleSpecifier, containingFile });
+    this._log("compiler.resolveModule", { moduleSpecifier, containingFile });
     assert(moduleSpecifier != null && moduleSpecifier.length > 0);
     let fileName = this.resolveFileName(moduleSpecifier, containingFile);
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
@@ -519,7 +528,8 @@ export class DenoCompiler implements ts.LanguageServiceHost {
         containingFile
       );
     }
-    this._log("resolveModule sourceCode length ", sourceCode.length);
+    this._log("resolveModule sourceCode length:", sourceCode.length);
+    this._log("resolveModule has outputCode:", !!outputCode);
     this.setFileName(moduleSpecifier, containingFile, fileName);
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
       return this._moduleMetaDataMap.get(fileName)!;
@@ -536,6 +546,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
   ): ModuleFileName | undefined {
+    // TODO should this be part of the public API of the compiler?
     const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
     return moduleMetaData ? moduleMetaData.fileName : undefined;
   }
@@ -568,7 +579,8 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     containingFile: ContainingFile,
     fileName: ModuleFileName
   ): void {
-    this._log("setFileName", { moduleSpecifier, containingFile });
+    // TODO should this be part of the public API of the compiler?
+    this._log("compiler.setFileName", { moduleSpecifier, containingFile });
     let innerMap = this._fileNamesMap.get(containingFile);
     if (!innerMap) {
       innerMap = new Map();
@@ -634,19 +646,19 @@ export class DenoCompiler implements ts.LanguageServiceHost {
   }
 
   useCaseSensitiveFileNames(): boolean {
-    this._log("useCaseSensitiveFileNames");
+    this._log("useCaseSensitiveFileNames()");
     return true;
   }
 
   readFile(path: string): string | undefined {
-    this._log("readFile", path);
+    this._log("readFile()", path);
     return notImplemented();
   }
 
   fileExists(fileName: string): boolean {
     const moduleMetaData = this._getModuleMetaData(fileName);
     const exists = moduleMetaData != null;
-    this._log("fileExists", fileName, exists);
+    this._log("fileExists()", fileName, exists);
     return exists;
   }
 
@@ -654,7 +666,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     moduleNames: ModuleSpecifier[],
     containingFile: ContainingFile
   ): ts.ResolvedModule[] {
-    this._log("resolveModuleNames", { moduleNames, containingFile });
+    this._log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(name => {
       let resolvedFileName;
       if (name === "deno") {
