@@ -6,7 +6,7 @@ import * as ts from "typescript";
 // We use a silly amount of `any` in these tests...
 // tslint:disable:no-any
 
-const { DenoCompiler, ModuleMetaData } = compiler;
+const { DenoCompiler } = compiler;
 
 // Enums like this don't exist at runtime, so local copy
 enum ScriptKind {
@@ -93,13 +93,7 @@ const moduleMap: {
       "foo/baz",
       "/root/project/foo/baz.ts",
       fooBazTsSource,
-      null
-    ),
-    "foo/qat.ts": mockModuleInfo(
-      "foo/qat",
-      "/root/project/foo/qat.ts",
-      null,
-      null
+      fooBazTsOutput
     )
   },
   "/root/project/foo/baz.ts": {
@@ -108,12 +102,6 @@ const moduleMap: {
       "/root/project/foo/bar.ts",
       fooBarTsSource,
       fooBarTsOutput
-    ),
-    "./qat.ts": mockModuleInfo(
-      "foo/qat",
-      "/root/project/foo/qat.ts",
-      "export const foo = 'bar'",
-      null
     )
   }
 };
@@ -135,21 +123,13 @@ let codeFetchStack: Array<{
   containingFile: string;
 }> = [];
 
-function reset() {
-  codeFetchStack = [];
-  codeCacheStack = [];
-  logStack = [];
-  getEmitOutputStack = [];
-  globalEvalStack = [];
-}
-
-let mockDeps: string[] | undefined;
-let mockFactory: compiler.AmdFactory;
+let mockDepsStack: string[][] = [];
+let mockFactoryStack: compiler.AmdFactory[] = [];
 
 function globalEvalMock(x: string): void {
   globalEvalStack.push(x);
-  if (windowMock.define && mockDeps && mockFactory) {
-    windowMock.define(mockDeps, mockFactory);
+  if (windowMock.define && mockDepsStack.length && mockFactoryStack.length) {
+    windowMock.define(mockDepsStack.pop(), mockFactoryStack.pop());
   }
 }
 function logMock(...args: any[]): void {
@@ -231,16 +211,37 @@ const mocks = {
   _window: windowMock
 };
 
-// Setup the mocks
-test(function compilerTestsSetup() {
-  assert("_globalEval" in compilerInstance);
-  assert("_log" in compilerInstance);
-  assert("_os" in compilerInstance);
-  assert("_ts" in compilerInstance);
-  assert("_service" in compilerInstance);
-  assert("_window" in compilerInstance);
+/**
+ * Setup the mocks for a test
+ */
+function setup() {
+  // monkey patch mocks on instance
   Object.assign(compilerInstance, mocks);
-});
+}
+
+/**
+ * Teardown the mocks for a test
+ */
+function teardown() {
+  // reset compiler internal state
+  (compilerInstance as any)._moduleMetaDataMap.clear();
+  (compilerInstance as any)._fileNamesMap.clear();
+
+  // reset mock states
+  codeFetchStack = [];
+  codeCacheStack = [];
+  logStack = [];
+  getEmitOutputStack = [];
+  globalEvalStack = [];
+
+  assertEqual(mockDepsStack.length, 0);
+  assertEqual(mockFactoryStack.length, 0);
+  mockDepsStack = [];
+  mockFactoryStack = [];
+
+  // restore original properties and methods
+  Object.assign(compilerInstance, originals);
+}
 
 test(function compilerInstance() {
   assert(DenoCompiler != null);
@@ -249,120 +250,105 @@ test(function compilerInstance() {
 
 // Testing the internal APIs
 
-test(function compilerMakeDefine() {
-  const moduleMetaData = new ModuleMetaData(
-    "/root/project/foo/bar.ts",
-    fooBarTsSource,
-    fooBarTsOutput
-  );
-  const localDefine = compilerInstance.makeDefine(moduleMetaData);
-  let factoryCalled = false;
-  localDefine(
-    ["require", "exports", "compiler"],
-    (_require, _exports, _compiler): void => {
-      factoryCalled = true;
-      assertEqual(
-        typeof _require,
-        "function",
-        "localRequire should be a function"
-      );
-      assert(_exports != null);
-      assert(
-        Object.keys(_exports).length === 0,
-        "exports should have no properties"
-      );
-      assert(compiler === _compiler, "compiler should be passed to factory");
-    }
-  );
-  assert(factoryCalled, "Factory expected to be called");
-});
-
-// TODO testMakeDefineExternalModule - testing that make define properly runs
-// external modules, this is implicitly tested though in
-// `compilerRunMultiModule`
-
-test(function compilerLocalRequire() {
-  const moduleMetaData = new ModuleMetaData(
-    "/root/project/foo/baz.ts",
-    fooBazTsSource,
-    fooBazTsOutput
-  );
-  const localDefine = compilerInstance.makeDefine(moduleMetaData);
-  let requireCallbackCalled = false;
-  localDefine(
-    ["require", "exports"],
-    (_require, _exports, _compiler): void => {
-      assertEqual(typeof _require, "function");
-      _require(
-        ["./qat.ts"],
-        _qat => {
-          requireCallbackCalled = true;
-          assert(_qat);
-        },
-        () => {
-          throw new Error("Should not error");
-        }
-      );
-    }
-  );
-  assert(requireCallbackCalled, "Factory expected to be called");
-});
-
 test(function compilerRun() {
   // equal to `deno foo/bar.ts`
-  reset();
-  const result = compilerInstance.run("foo/bar.ts", "/root/project");
-  assert(result instanceof ModuleMetaData);
-  assertEqual(codeFetchStack.length, 1);
-  assertEqual(codeCacheStack.length, 1);
-  assertEqual(globalEvalStack.length, 1);
+  setup();
+  let factoryRun = false;
+  mockDepsStack.push(["require", "exports", "compiler"]);
+  mockFactoryStack.push((_require, _exports, _compiler) => {
+    factoryRun = true;
+    assertEqual(typeof _require, "function");
+    assertEqual(typeof _exports, "object");
+    assert(_compiler === compiler);
+    _exports.foo = "bar";
+  });
+  const moduleMetaData = compilerInstance.run("foo/bar.ts", "/root/project");
+  assert(factoryRun);
+  assert(moduleMetaData.hasRun);
+  assertEqual(moduleMetaData.sourceCode, fooBarTsSource);
+  assertEqual(moduleMetaData.outputCode, fooBarTsOutput);
+  assertEqual(moduleMetaData.exports, { foo: "bar" });
 
-  const lastGlobalEval = globalEvalStack.pop();
-  assertEqual(lastGlobalEval, fooBarTsOutput);
-  const lastCodeFetch = codeFetchStack.pop();
-  assertEqual(lastCodeFetch, {
-    moduleSpecifier: "foo/bar.ts",
-    containingFile: "/root/project"
-  });
-  const lastCodeCache = codeCacheStack.pop();
-  assertEqual(lastCodeCache, {
-    fileName: "/root/project/foo/bar.ts",
-    sourceCode: fooBarTsSource,
-    outputCode: fooBarTsOutput
-  });
+  assertEqual(
+    codeFetchStack.length,
+    1,
+    "Module should have only been fetched once."
+  );
+  assertEqual(
+    codeCacheStack.length,
+    1,
+    "Compiled code should have only been cached once."
+  );
+  teardown();
 });
 
 test(function compilerRunMultiModule() {
   // equal to `deno foo/baz.ts`
-  reset();
-  let factoryRun = false;
-  mockDeps = ["require", "exports", "compiler"];
-  mockFactory = (...deps: any[]) => {
-    const [_require, _exports, _compiler] = deps;
-    assertEqual(typeof _require, "function");
-    assertEqual(typeof _exports, "object");
-    assertEqual(_compiler, compiler);
-    factoryRun = true;
-    Object.defineProperty(_exports, "__esModule", { value: true });
-    _exports.foo = "bar";
-    // it is too complicated to test the outer factory, because the localised
-    // make define already has a reference to this factory and it can't really
-    // be easily unwound.  So we will do what we can with the inner one and
-    // then just clear it...
-    mockDeps = undefined;
-    mockFactory = undefined;
+  setup();
+  const factoryStack: string[] = [];
+  const bazDeps = ["require", "exports", "./bar.ts"];
+  const bazFactory = (_require, _exports, _bar) => {
+    factoryStack.push("baz");
+    assertEqual(_bar.foo, "bar");
   };
+  const barDeps = ["require", "exports", "compiler"];
+  const barFactory = (_require, _exports, _compiler) => {
+    factoryStack.push("bar");
+    _exports.foo = "bar";
+  };
+  mockDepsStack.push(barDeps);
+  mockFactoryStack.push(barFactory);
+  mockDepsStack.push(bazDeps);
+  mockFactoryStack.push(bazFactory);
+  compilerInstance.run("foo/baz.ts", "/root/project");
+  assertEqual(factoryStack, ["bar", "baz"]);
 
-  const result = compilerInstance.run("foo/baz.ts", "/root/project");
-  assert(result instanceof ModuleMetaData);
-  // we have mocked that foo/bar.ts is already cached, so two fetches,
-  // but only a single cache
-  assertEqual(codeFetchStack.length, 2);
-  assertEqual(codeCacheStack.length, 1);
-  // because of the challenges with the way the module factories are generated
-  // we only get one invocation of the `globalEval` mock.
-  assertEqual(globalEvalStack.length, 1);
-  assert(factoryRun);
+  assertEqual(
+    codeFetchStack.length,
+    2,
+    "Modules should have only been fetched once."
+  );
+  assertEqual(codeCacheStack.length, 0, "No code should have been cached.");
+  teardown();
+});
+
+test(function compilerResolveModule() {
+  setup();
+  const moduleMetaData = compilerInstance.resolveModule(
+    "foo/baz.ts",
+    "/root/project"
+  );
+  assertEqual(moduleMetaData.sourceCode, fooBazTsSource);
+  assertEqual(moduleMetaData.outputCode, fooBazTsOutput);
+  assert(!moduleMetaData.hasRun);
+  assert(!moduleMetaData.deps);
+  assertEqual(moduleMetaData.exports, {});
+  assertEqual(moduleMetaData.scriptVersion, "1");
+
+  assertEqual(codeFetchStack.length, 1, "Only initial module is resolved.");
+  teardown();
+});
+
+test(function compilerGetModuleDependencies() {
+  setup();
+  const bazDeps = ["require", "exports", "./bar.ts"];
+  const bazFactory = () => {
+    throw new Error("Unexpected factory call");
+  };
+  const barDeps = ["require", "exports", "compiler"];
+  const barFactory = () => {
+    throw new Error("Unexpected factory call");
+  };
+  mockDepsStack.push(barDeps);
+  mockFactoryStack.push(barFactory);
+  mockDepsStack.push(bazDeps);
+  mockFactoryStack.push(bazFactory);
+  const deps = compilerInstance.getModuleDependencies(
+    "foo/baz.ts",
+    "/root/project"
+  );
+  assertEqual(deps, ["/root/project/foo/bar.ts", "/root/project/foo/baz.ts"]);
+  teardown();
 });
 
 // TypeScript LanguageServiceHost APIs
@@ -388,10 +374,12 @@ test(function compilerGetNewLine() {
 });
 
 test(function compilerGetScriptFileNames() {
+  setup();
   compilerInstance.run("foo/bar.ts", "/root/project");
   const result = compilerInstance.getScriptFileNames();
   assertEqual(result.length, 1, "Expected only a single filename.");
   assertEqual(result[0], "/root/project/foo/bar.ts");
+  teardown();
 });
 
 test(function compilerGetScriptKind() {
@@ -403,15 +391,18 @@ test(function compilerGetScriptKind() {
 });
 
 test(function compilerGetScriptVersion() {
+  setup();
   const moduleMetaData = compilerInstance.resolveModule(
     "foo/bar.ts",
     "/root/project"
   );
+  compilerInstance.compile(moduleMetaData);
   assertEqual(
     compilerInstance.getScriptVersion(moduleMetaData.fileName),
     "1",
     "Expected known module to have script version of 1"
   );
+  teardown();
 });
 
 test(function compilerGetScriptVersionUnknown() {
@@ -423,6 +414,7 @@ test(function compilerGetScriptVersionUnknown() {
 });
 
 test(function compilerGetScriptSnapshot() {
+  setup();
   const moduleMetaData = compilerInstance.resolveModule(
     "foo/bar.ts",
     "/root/project"
@@ -444,6 +436,7 @@ test(function compilerGetScriptSnapshot() {
     result === moduleMetaData,
     "result should strictly equal moduleMetaData"
   );
+  teardown();
 });
 
 test(function compilerGetCurrentDirectory() {
@@ -451,10 +444,12 @@ test(function compilerGetCurrentDirectory() {
 });
 
 test(function compilerGetDefaultLibFileName() {
+  setup();
   assertEqual(
     compilerInstance.getDefaultLibFileName(),
     "$asset$/lib.globals.d.ts"
   );
+  teardown();
 });
 
 test(function compilerUseCaseSensitiveFileNames() {
@@ -473,6 +468,7 @@ test(function compilerReadFile() {
 });
 
 test(function compilerFileExists() {
+  setup();
   const moduleMetaData = compilerInstance.resolveModule(
     "foo/bar.ts",
     "/root/project"
@@ -483,9 +479,11 @@ test(function compilerFileExists() {
     compilerInstance.fileExists("/root/project/unknown-module.ts"),
     false
   );
+  teardown();
 });
 
 test(function compilerResolveModuleNames() {
+  setup();
   const results = compilerInstance.resolveModuleNames(
     ["foo/bar.ts", "foo/baz.ts", "$asset$/lib.globals.d.ts", "deno"],
     "/root/project"
@@ -503,9 +501,5 @@ test(function compilerResolveModuleNames() {
     assertEqual(result.resolvedFileName, resolvedFileName);
     assertEqual(result.isExternalLibraryImport, isExternalLibraryImport);
   }
-});
-
-// Remove the mocks
-test(function compilerTestsTeardown() {
-  Object.assign(compilerInstance, originals);
+  teardown();
 });
