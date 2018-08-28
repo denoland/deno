@@ -4,12 +4,13 @@ extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate rand;
-extern crate sha1;
 extern crate tempfile;
 extern crate tokio;
 extern crate url;
 #[macro_use]
 extern crate log;
+extern crate hyper_rustls;
+extern crate ring;
 
 mod binding;
 mod deno_dir;

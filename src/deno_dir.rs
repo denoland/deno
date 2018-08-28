@@ -3,17 +3,17 @@ use errors::DenoError;
 use errors::DenoResult;
 use fs as deno_fs;
 use net;
-use sha1;
+use ring;
 use std;
+use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
-use url;
-use url::Url;
-
 #[cfg(test)]
 use tempfile::TempDir;
+use url;
+use url::Url;
 
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
@@ -331,10 +331,16 @@ fn test_code_cache() {
 
 // https://github.com/denoland/deno/blob/golang/deno_dir.go#L25-L30
 fn source_code_hash(filename: &str, source_code: &str) -> String {
-  let mut m = sha1::Sha1::new();
-  m.update(filename.as_bytes());
-  m.update(source_code.as_bytes());
-  m.digest().to_string()
+  let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
+  ctx.update(filename.as_bytes());
+  ctx.update(source_code.as_bytes());
+  let digest = ctx.finish();
+  let mut out = String::new();
+  // TODO There must be a better way to do this...
+  for byte in digest.as_ref() {
+    write!(&mut out, "{:02x}", byte).unwrap();
+  }
+  out
 }
 
 #[test]
