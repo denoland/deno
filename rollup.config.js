@@ -4,6 +4,7 @@ import { plugin as analyze } from "rollup-plugin-analyzer";
 import commonjs from "rollup-plugin-commonjs";
 import globals from "rollup-plugin-node-globals";
 import nodeResolve from "rollup-plugin-node-resolve";
+import sourcemaps from "rollup-plugin-sourcemaps";
 import typescriptPlugin from "rollup-plugin-typescript2";
 import { createFilter } from "rollup-pluginutils";
 import typescript from "typescript";
@@ -96,7 +97,7 @@ function resolveGenerated() {
   return {
     name: "resolve-msg-generated",
     resolveId(importee) {
-      if (importee.startsWith("gen/")) {
+      if (importee.startsWith("gen/msg_generated")) {
         const resolved = path.resolve(
           path.join(process.cwd(), `${importee}.ts`)
         );
@@ -127,6 +128,9 @@ export default function makeConfig(commandOptions) {
         buffer: mockPath,
         module: mockPath
       }),
+
+      // Retrieves the source maps for the already transpiled files
+      sourcemaps(),
 
       // Provides inlining of file contents for `js/assets.ts`
       strings({
@@ -162,6 +166,8 @@ export default function makeConfig(commandOptions) {
         }
       }),
 
+      // we transpile all the static TypeScript outside of rollup, but `msg_generated.ts` is generated
+      // during the build and needs to be transpiled on the fly.
       typescriptPlugin({
         // The build script is invoked from `out/:target` so passing an absolute file path is needed
         tsconfig,
