@@ -67,11 +67,6 @@ rust_crate("cfg_if") {
   source_root = "$registry_github/cfg-if-0.1.4/src/lib.rs"
 }
 
-rust_crate("sha1") {
-  source_root = "$registry_github/sha1-0.6.0/src/lib.rs"
-  args = [ "-Aunused_parens" ]  # https://github.com/mitsuhiko/rust-sha1/issues/36
-}
-
 rust_crate("tempfile") {
   source_root = "$registry_github/tempfile-3.0.2/src/lib.rs"
   extern = [
@@ -401,6 +396,7 @@ rust_crate("tokio_core") {
     ":log",
     ":iovec",
     ":bytes",
+    ":scoped_tls",
   ]
 }
 
@@ -582,5 +578,233 @@ rust_crate("tokio_threadpool") {
     ":num_cpus",
     ":rand",
     ":tokio_executor",
+  ]
+}
+
+rust_crate("hyper_rustls") {
+  source_root = "$registry_github/hyper-rustls-0.14.0/src/lib.rs"
+  extern = [
+    ":ct_logs",
+    ":futures",
+    ":http",
+    ":hyper",
+    ":rustls",
+    ":tokio_core",
+    ":tokio_io",
+    ":tokio_rustls",
+    ":tokio_tcp",
+    ":webpki",
+    ":webpki_roots",
+  ]
+}
+
+ring_root = "$registry_github/ring-0.13.2/"
+
+component("ring_primitives") {
+  sources = [
+    "$ring_root/crypto/constant_time_test.c",
+    "$ring_root/crypto/cpu-aarch64-linux.c",
+    "$ring_root/crypto/cpu-arm-linux.c",
+    "$ring_root/crypto/cpu-arm.c",
+    "$ring_root/crypto/cpu-intel.c",
+    "$ring_root/crypto/crypto.c",
+    "$ring_root/crypto/fipsmodule/aes/aes.c",
+    "$ring_root/crypto/fipsmodule/aes/internal.h",
+    "$ring_root/crypto/fipsmodule/bn/exponentiation.c",
+    "$ring_root/crypto/fipsmodule/bn/generic.c",
+    "$ring_root/crypto/fipsmodule/bn/internal.h",
+    "$ring_root/crypto/fipsmodule/bn/montgomery.c",
+    "$ring_root/crypto/fipsmodule/bn/montgomery_inv.c",
+    "$ring_root/crypto/fipsmodule/bn/shift.c",
+    "$ring_root/crypto/fipsmodule/cipher/e_aes.c",
+    "$ring_root/crypto/fipsmodule/cipher/internal.h",
+    "$ring_root/crypto/fipsmodule/ec",
+    "$ring_root/crypto/fipsmodule/ec/ecp_nistz.c",
+    "$ring_root/crypto/fipsmodule/ec/ecp_nistz.h",
+    "$ring_root/crypto/fipsmodule/ec/ecp_nistz256.c",
+    "$ring_root/crypto/fipsmodule/ec/ecp_nistz256.h",
+    "$ring_root/crypto/fipsmodule/ec/ecp_nistz384.h",
+    "$ring_root/crypto/fipsmodule/ec/gfp_p256.c",
+    "$ring_root/crypto/fipsmodule/ec/gfp_p384.c",
+    "$ring_root/crypto/fipsmodule/modes/gcm.c",
+    "$ring_root/crypto/fipsmodule/modes/internal.h",
+    "$ring_root/crypto/internal.h",
+    "$ring_root/crypto/limbs/limbs.c",
+    "$ring_root/crypto/limbs/limbs.h",
+    "$ring_root/crypto/mem.c",
+    "$ring_root/include/GFp/aes.h",
+    "$ring_root/include/GFp/arm_arch.h",
+    "$ring_root/include/GFp/base.h",
+    "$ring_root/include/GFp/cpu.h",
+    "$ring_root/include/GFp/mem.h",
+    "$ring_root/include/GFp/type_check.h",
+    "$ring_root/third_party/fiat/curve25519.c",
+    "$ring_root/third_party/fiat/curve25519_tables.h",
+    "$ring_root/third_party/fiat/internal.h",
+
+    #"$ring_root/crypto/fipsmodule/modes/polyval.c",
+  ]
+  if (is_mac) {
+    sources += [
+      "$ring_root/pregenerated/aes-586-macosx.S",
+      "$ring_root/pregenerated/aes-x86_64-macosx.S",
+      "$ring_root/pregenerated/aesni-gcm-x86_64-macosx.S",
+      "$ring_root/pregenerated/aesni-x86-macosx.S",
+      "$ring_root/pregenerated/aesni-x86_64-macosx.S",
+      "$ring_root/pregenerated/chacha-x86-macosx.S",
+      "$ring_root/pregenerated/chacha-x86_64-macosx.S",
+      "$ring_root/pregenerated/ecp_nistz256-x86-macosx.S",
+      "$ring_root/pregenerated/ghash-x86-macosx.S",
+      "$ring_root/pregenerated/ghash-x86_64-macosx.S",
+      "$ring_root/pregenerated/p256-x86_64-asm-macosx.S",
+      "$ring_root/pregenerated/poly1305-x86-macosx.S",
+      "$ring_root/pregenerated/poly1305-x86_64-macosx.S",
+      "$ring_root/pregenerated/sha256-586-macosx.S",
+      "$ring_root/pregenerated/sha256-x86_64-macosx.S",
+      "$ring_root/pregenerated/sha512-586-macosx.S",
+      "$ring_root/pregenerated/sha512-x86_64-macosx.S",
+      "$ring_root/pregenerated/vpaes-x86-macosx.S",
+      "$ring_root/pregenerated/vpaes-x86_64-macosx.S",
+      "$ring_root/pregenerated/x86-mont-macosx.S",
+      "$ring_root/pregenerated/x86_64-mont-macosx.S",
+      "$ring_root/pregenerated/x86_64-mont5-macosx.S",
+    ]
+  }
+  if (is_linux) {
+    sources += [
+      "$ring_root/pregenerated/aes-x86_64-elf.S",
+      "$ring_root/pregenerated/aesni-gcm-x86_64-elf.S",
+      "$ring_root/pregenerated/aesni-x86_64-elf.S",
+      "$ring_root/pregenerated/aesv8-armx-linux64.S",
+      "$ring_root/pregenerated/chacha-x86_64-elf.S",
+      "$ring_root/pregenerated/ghash-x86_64-elf.S",
+      "$ring_root/pregenerated/ghashv8-armx-linux64.S",
+      "$ring_root/pregenerated/p256-x86_64-asm-elf.S",
+      "$ring_root/pregenerated/poly1305-x86_64-elf.S",
+      "$ring_root/pregenerated/sha256-x86_64-elf.S",
+      "$ring_root/pregenerated/sha512-x86_64-elf.S",
+      "$ring_root/pregenerated/vpaes-x86_64-elf.S",
+      "$ring_root/pregenerated/x86_64-mont-elf.S",
+      "$ring_root/pregenerated/x86_64-mont5-elf.S",
+    ]
+  }
+  if (is_win) {
+    libs = [
+      "$ring_root/pregenerated/aes-x86_64-nasm.obj",
+      "$ring_root/pregenerated/aesni-gcm-x86_64-nasm.obj",
+      "$ring_root/pregenerated/aesni-x86_64-nasm.obj",
+      "$ring_root/pregenerated/chacha-x86_64-nasm.obj",
+      "$ring_root/pregenerated/ghash-x86_64-nasm.obj",
+      "$ring_root/pregenerated/p256-x86_64-asm-nasm.obj",
+      "$ring_root/pregenerated/poly1305-x86_64-nasm.obj",
+      "$ring_root/pregenerated/sha256-x86_64-nasm.obj",
+      "$ring_root/pregenerated/sha512-x86_64-nasm.obj",
+      "$ring_root/pregenerated/vpaes-x86_64-nasm.obj",
+      "$ring_root/pregenerated/x86_64-mont-nasm.obj",
+      "$ring_root/pregenerated/x86_64-mont5-nasm.obj",
+    ]
+  }
+  include_dirs = [ "$ring_root/include/" ]
+}
+
+rust_crate("ring") {
+  source_root = "$ring_root/src/lib.rs"
+  features = [
+    "use_heap",
+    "rsa_signing",
+  ]
+  extern = [
+    ":libc",
+    ":untrusted",
+    ":lazy_static",
+  ]
+  deps = [
+    ":ring_primitives",
+  ]
+}
+
+rust_crate("rustls") {
+  source_root = "$registry_github/rustls-0.13.1/src/lib.rs"
+  extern = [
+    ":untrusted",
+    ":base64",
+    ":log",
+    ":ring",
+    ":webpki",
+    ":sct",
+  ]
+  args = [ "-Aunused_variables" ]  # TODO Remove.
+}
+
+rust_crate("ct_logs") {
+  source_root = "$registry_github/ct-logs-0.4.0/src/lib.rs"
+  extern = [ ":sct" ]
+}
+
+rust_crate("tokio_rustls") {
+  source_root = "$registry_github/tokio-rustls-0.7.2/src/lib.rs"
+  extern = [
+    ":rustls",
+    ":webpki",
+    ":tokio",
+  ]
+  features = [
+    "default",
+    "tokio",
+    "tokio-support",
+  ]
+  args = [ "-Adead_code" ]  # TODO Remove.
+}
+
+rust_crate("untrusted") {
+  source_root = "$registry_github/untrusted-0.6.2/src/untrusted.rs"
+  extern = []
+}
+
+rust_crate("webpki") {
+  source_root = "$registry_github/webpki-0.18.1/src/webpki.rs"
+  features = [
+    "std",
+    "trust_anchor_util",
+  ]
+  extern = [
+    ":ring",
+    ":untrusted",
+  ]
+}
+
+rust_crate("webpki_roots") {
+  source_root = "$registry_github/webpki-roots-0.15.0/src/lib.rs"
+  extern = [
+    ":webpki",
+    ":untrusted",
+  ]
+}
+
+rust_crate("sct") {
+  source_root = "$registry_github/sct-0.4.0/src/lib.rs"
+  extern = [
+    ":ring",
+    ":untrusted",
+  ]
+}
+
+rust_crate("base64") {
+  source_root = "$registry_github/base64-0.9.2/src/lib.rs"
+  extern = [
+    ":byteorder",
+    ":safemem",
+  ]
+}
+
+rust_crate("safemem") {
+  source_root = "$registry_github/safemem-0.2.0/src/lib.rs"
+}
+
+rust_crate("scoped_tls") {
+  source_root = "$registry_github/scoped-tls-0.1.2/src/lib.rs"
+  extern = [
+    ":ring",
+    ":untrusted",
   ]
 }
