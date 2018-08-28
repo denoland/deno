@@ -78,5 +78,8 @@ test(function consoleTestStringifyCircular() {
   assertEqual(stringify(function f() {}), "[Function: f]");
   assertEqual(stringify(nestedObj), nestedObjExpected);
   assertEqual(stringify(JSON), "{}");
-  assertEqual(stringify(console), "Console { printFunc: [Function], debug: [Function: log], info: [Function: log], error: [Function: warn] }");
+  assertEqual(
+    stringify(console),
+    "Console { printFunc: [Function], debug: [Function: log], info: [Function: log], error: [Function: warn] }"
+  );
 });

@@ -28,8 +28,7 @@ def main():
 def write_lastchange():
     run([
         sys.executable, "build/util/lastchange.py", "-o",
-        "build/util/LASTCHANGE", "--source-dir", root_path,
-        "--filter="
+        "build/util/LASTCHANGE", "--source-dir", root_path, "--filter="
     ])
 
 
