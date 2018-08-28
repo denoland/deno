@@ -63,8 +63,6 @@ def get_gn_args():
 def gn_gen(mode):
     os.environ["DENO_BUILD_MODE"] = mode
 
-    gn_args = get_gn_args()
-
     # mkdir $build_path(). We do this so we can write args.gn before running gn gen.
     if not os.path.isdir(build_path()):
         os.makedirs(build_path())
@@ -73,7 +71,10 @@ def gn_gen(mode):
     # This is to avoid quoting/escaping complications when passing overrides as
     # command-line arguments.
     args_filename = os.path.join(build_path(), "args.gn")
-    if not os.path.exists(args_filename) or gn_args:
+    if os.path.exists(args_filename):
+        print "Skip writing args file: '%s' already exists." % args_filename
+    else:
+        gn_args = get_gn_args()
         with open(args_filename, "w+") as f:
             f.write("\n".join(gn_args) + "\n")
 
