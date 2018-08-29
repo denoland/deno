@@ -25,11 +25,23 @@ def main():
         gn_gen("debug")
 
 
+def write_if_not_exists(filename, contents):
+    if not os.path.exists(filename):
+        with open(filename, "w+") as f:
+            f.write(contents)
+
+
 def write_lastchange():
-    run([
-        sys.executable, "build/util/lastchange.py", "-o",
-        "build/util/LASTCHANGE", "--source-dir", root_path, "--filter="
-    ])
+    write_if_not_exists(
+        "build/util/LASTCHANGE",
+        "LASTCHANGE=c42e4ddbb7973bfb0c57a49ab6bf6dc432baad7e-\n")
+    write_if_not_exists("build/util/LASTCHANGE.committime", "1535518087")
+    # TODO Properly we should call the following script, but it seems to cause
+    # a rebuild on every commit.
+    # run([
+    #    sys.executable, "build/util/lastchange.py", "-o",
+    #    "build/util/LASTCHANGE", "--source-dir", root_path, "--filter="
+    # ])
 
 
 def get_gn_args():
