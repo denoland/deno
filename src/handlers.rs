@@ -469,10 +469,10 @@ fn handle_read_file_sync(
 
 fn handle_write_file_sync(
   d: *const DenoC,
-  builder: &mut FlatBufferBuilder,
+  _builder: &mut FlatBufferBuilder,
   filename: &str,
   data: &[u8],
-  perm: u32,
+  _perm: u32,
 ) -> HandlerResult {
   debug!("handle_write_file_sync {}", filename);
   let deno = from_c(d);
