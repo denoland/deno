@@ -16,6 +16,8 @@ union Any {
   MakeTempDirRes,
   ReadFileSync,
   ReadFileSyncRes,
+  StatSync,
+  StatSyncRes,
   WriteFileSync,
 }
 
@@ -151,6 +153,20 @@ table ReadFileSync {
 
 table ReadFileSyncRes {
   data: [ubyte];
+}
+
+table StatSync {
+  filename: string;
+  lstat: bool;
+}
+
+table StatSyncRes {
+  is_file: bool;
+  is_symlink: bool;
+  len: ulong;
+  modified:ulong;
+  accessed:ulong;
+  created:ulong;
 }
 
 table WriteFileSync {

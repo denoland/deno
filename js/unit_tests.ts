@@ -13,6 +13,70 @@ test(async function tests_test() {
   assert(true);
 });
 
+// TODO Add tests for modified, accessed, and created fields once there is a way
+// to create temp files.
+test(async function statSyncSuccess() {
+  const packageInfo = deno.statSync("package.json");
+  assert(packageInfo.isFile());
+  assert(!packageInfo.isSymlink());
+
+  const testingInfo = deno.statSync("testing");
+  assert(testingInfo.isDirectory());
+  assert(!testingInfo.isSymlink());
+
+  const srcInfo = deno.statSync("src");
+  assert(srcInfo.isDirectory());
+  assert(!srcInfo.isSymlink());
+})
+
+test(async function statSyncNotFound() {
+  let caughtError = false;
+  let badInfo;
+
+  try {
+    badInfo = deno.statSync("bad_file_name");
+  } catch (err) {
+    caughtError = true;
+    // TODO assert(err instanceof deno.NotFound).
+    assert(err);
+    assertEqual(err.name, "deno.NotFound");
+  }
+
+  assert(caughtError);
+  assertEqual(badInfo, undefined);
+});
+
+test(async function lStatSyncSuccess() {
+  const packageInfo = deno.lStatSync("package.json");
+  assert(packageInfo.isFile());
+  assert(!packageInfo.isSymlink());
+
+  const testingInfo = deno.lStatSync("testing");
+  assert(!testingInfo.isDirectory());
+  assert(testingInfo.isSymlink());
+
+  const srcInfo = deno.lStatSync("src");
+  assert(srcInfo.isDirectory());
+  assert(!srcInfo.isSymlink());
+})
+
+test(async function lStatSyncNotFound() {
+  let caughtError = false;
+  let badInfo;
+
+  try {
+    badInfo = deno.lStatSync("bad_file_name");
+  } catch (err) {
+    caughtError = true;
+    // TODO assert(err instanceof deno.NotFound).
+    assert(err);
+    assertEqual(err.name, "deno.NotFound");
+  }
+
+  assert(caughtError);
+  assertEqual(badInfo, undefined);
+});
+
 test(async function tests_readFileSync() {
   const data = deno.readFileSync("package.json");
   if (!data.byteLength) {
