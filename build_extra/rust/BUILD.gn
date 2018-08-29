@@ -69,6 +69,7 @@ rust_crate("cfg_if") {
 
 rust_crate("sha1") {
   source_root = "$registry_github/sha1-0.6.0/src/lib.rs"
+  args = [ "-Aunused_parens" ]  # https://github.com/mitsuhiko/rust-sha1/issues/36
 }
 
 rust_crate("tempfile") {
@@ -259,6 +260,11 @@ rust_crate("iovec") {
 
 rust_crate("lazycell") {
   source_root = "$registry_github/lazycell-0.6.0/src/lib.rs"
+  args = [
+    # TODO Remove these:
+    "-Aunused_unsafe",
+    "-Aunused_mut",
+  ]
 }
 
 rust_crate("net2") {
@@ -366,6 +372,11 @@ rust_crate("hyper") {
     ":tokio_tcp",
     ":tokio_timer",
     ":want",
+  ]
+  args = [
+    # TODO Remove these.
+    "-Adeprecated",
+    "-Aunused_imports",
   ]
 }
 
