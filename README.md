@@ -1,6 +1,6 @@
 # deno
 
-| **Linux** | **Windows** |
+| **Linux & Mac** | **Windows** |
 |:---------------:|:-----------:|
 | [![Travis](https://travis-ci.com/denoland/deno.svg?branch=master)](https://travis-ci.com/denoland/deno) | [![Appveyor](https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true)](https://ci.appveyor.com/project/deno/deno) |
 

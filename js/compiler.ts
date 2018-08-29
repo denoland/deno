@@ -18,19 +18,32 @@ type AmdCallback = (...args: any[]) => void;
 type AmdErrback = (err: any) => void;
 export type AmdFactory = (...args: any[]) => object | void;
 // tslint:enable:no-any
-export type AmdDefine = (deps: string[], factory: AmdFactory) => void;
+export type AmdDefine = (deps: ModuleSpecifier[], factory: AmdFactory) => void;
+type AMDRequire = (
+  deps: ModuleSpecifier[],
+  callback: AmdCallback,
+  errback: AmdErrback
+) => void;
 
-// The location that a module is being loaded from. This could be a directory,
-// like ".", or it could be a module specifier like
-// "http://gist.github.com/somefile.ts"
+/**
+ * The location that a module is being loaded from. This could be a directory,
+ * like `.`, or it could be a module specifier like
+ * `http://gist.github.com/somefile.ts`
+ */
 type ContainingFile = string;
-// The internal local filename of a compiled module. It will often be something
-// like "/home/ry/.deno/gen/f7b4605dfbc4d3bb356e98fda6ceb1481e4a8df5.js"
+/**
+ * The internal local filename of a compiled module. It will often be something
+ * like `/home/ry/.deno/gen/f7b4605dfbc4d3bb356e98fda6ceb1481e4a8df5.js`
+ */
 type ModuleFileName = string;
-// The external name of a module - could be a URL or could be a relative path.
-// Examples "http://gist.github.com/somefile.ts" or "./somefile.ts"
+/**
+ * The external name of a module - could be a URL or could be a relative path.
+ * Examples `http://gist.github.com/somefile.ts` or `./somefile.ts`
+ */
 type ModuleSpecifier = string;
-// The compiled source code which is cached in .deno/gen/
+/**
+ * The compiled source code which is cached in `.deno/gen/`
+ */
 type OutputCode = string;
 
 /**
@@ -60,11 +73,14 @@ export interface Ts {
  * the module, not the actual module instance.
  */
 export class ModuleMetaData implements ts.IScriptSnapshot {
+  public deps?: ModuleFileName[];
   public readonly exports = {};
+  public factory?: AmdFactory;
+  public hasRun = false;
   public scriptVersion = "";
 
   constructor(
-    public readonly fileName: string,
+    public readonly fileName: ModuleFileName,
     public readonly sourceCode = "",
     public outputCode = ""
   ) {
@@ -155,6 +171,9 @@ export class DenoCompiler implements ts.LanguageServiceHost {
   // A reference to the `./os.ts` module, so it can be monkey patched during
   // testing
   private _os: Os = os;
+  // Contains a queue of modules that have been resolved, but not yet
+  // run
+  private _runQueue: ModuleMetaData[] = [];
   // Used to contain the script file we are currently running
   private _scriptFileNames: string[] = [];
   // A reference to the TypeScript LanguageService instance so it can be
@@ -166,6 +185,78 @@ export class DenoCompiler implements ts.LanguageServiceHost {
   // A reference to the global scope so it can be monkey patched during
   // testing
   private _window = window;
+
+  /**
+   * Drain the run queue, retrieving the arguments for the module
+   * factory and calling the module's factory.
+   */
+  private _drainRunQueue(): void {
+    this._log(
+      "compiler._drainRunQueue",
+      this._runQueue.map(metaData => metaData.fileName)
+    );
+    let moduleMetaData: ModuleMetaData | undefined;
+    while ((moduleMetaData = this._runQueue.shift())) {
+      assert(
+        moduleMetaData.factory != null,
+        "Cannot run module without factory."
+      );
+      assert(moduleMetaData.hasRun === false, "Module has already been run.");
+      // asserts not tracked by TypeScripts, so using not null operator
+      moduleMetaData.factory!(...this._getFactoryArguments(moduleMetaData));
+      moduleMetaData.hasRun = true;
+    }
+  }
+
+  /**
+   * Get the dependencies for a given module, but don't run the module,
+   * just add the module factory to the run queue.
+   */
+  private _gatherDependencies(moduleMetaData: ModuleMetaData): void {
+    this._log("compiler._resolveDependencies", moduleMetaData.fileName);
+
+    // if the module has already run, we can short circuit.
+    // it is intentional though that if we have already resolved dependencies,
+    // we won't short circuit, as something may have changed, or we might have
+    // only collected the dependencies to be able to able to obtain the graph of
+    // dependencies
+    if (moduleMetaData.hasRun) {
+      return;
+    }
+
+    this._window.define = this.makeDefine(moduleMetaData);
+    this._globalEval(this.compile(moduleMetaData));
+    this._window.define = undefined;
+  }
+
+  /**
+   * Retrieve the arguments to pass a module's factory function.
+   */
+  // tslint:disable-next-line:no-any
+  private _getFactoryArguments(moduleMetaData: ModuleMetaData): any[] {
+    if (!moduleMetaData.deps) {
+      throw new Error("Cannot get arguments until dependencies resolved.");
+    }
+    return moduleMetaData.deps.map(dep => {
+      if (dep === "require") {
+        return this._makeLocalRequire(moduleMetaData);
+      }
+      if (dep === "exports") {
+        return moduleMetaData.exports;
+      }
+      if (dep in DenoCompiler._builtins) {
+        return DenoCompiler._builtins[dep];
+      }
+      const dependencyMetaData = this._getModuleMetaData(dep);
+      assert(dependencyMetaData != null, `Missing dependency "${dep}".`);
+      assert(
+        dependencyMetaData!.hasRun === true,
+        `Module "${dep}" was not run.`
+      );
+      // TypeScript does not track assert, therefore using not null operator
+      return dependencyMetaData!.exports;
+    });
+  }
 
   /**
    * The TypeScript language service often refers to the resolved fileName of
@@ -187,6 +278,35 @@ export class DenoCompiler implements ts.LanguageServiceHost {
   }
 
   /**
+   * Returns a require that specifically handles the resolution of a transpiled
+   * emit of a dynamic ES `import()` from TypeScript.
+   */
+  private _makeLocalRequire(moduleMetaData: ModuleMetaData): AMDRequire {
+    const localRequire = (
+      deps: ModuleSpecifier[],
+      callback: AmdCallback,
+      errback: AmdErrback
+    ): void => {
+      log("localRequire", deps);
+      assert(
+        deps.length === 1,
+        "Local require requires exactly one dependency."
+      );
+      const [moduleSpecifier] = deps;
+      try {
+        const requiredMetaData = this.run(
+          moduleSpecifier,
+          moduleMetaData.fileName
+        );
+        callback(requiredMetaData.exports);
+      } catch (e) {
+        errback(e);
+      }
+    };
+    return localRequire;
+  }
+
+  /**
    * Setup being able to map back source references back to their source
    *
    * TODO is this the best place for this?  It is tightly coupled to how the
@@ -199,7 +319,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     sourceMaps.install({
       installPrepareStackTrace: true,
       getGeneratedContents: (fileName: string): string | RawSourceMap => {
-        this._log("getGeneratedContents", fileName);
+        this._log("compiler.getGeneratedContents", fileName);
         if (fileName === "gen/bundle/main.js") {
           assert(libdeno.mainSource.length > 0);
           return libdeno.mainSource;
@@ -210,7 +330,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
         } else {
           const moduleMetaData = this._moduleMetaDataMap.get(fileName);
           if (!moduleMetaData) {
-            this._log("getGeneratedContents cannot find", fileName);
+            this._log("compiler.getGeneratedContents cannot find", fileName);
             return "";
           }
           return moduleMetaData.outputCode;
@@ -230,9 +350,15 @@ export class DenoCompiler implements ts.LanguageServiceHost {
   // Deno specific compiler API
 
   /**
-   * Retrieve the output of the TypeScript compiler for a given `fileName`.
+   * Retrieve the output of the TypeScript compiler for a given module and
+   * cache the result.
    */
-  compile(fileName: ModuleFileName): OutputCode {
+  compile(moduleMetaData: ModuleMetaData): OutputCode {
+    this._log("compiler.compile", moduleMetaData.fileName);
+    if (moduleMetaData.outputCode) {
+      return moduleMetaData.outputCode;
+    }
+    const { fileName, sourceCode } = moduleMetaData;
     const service = this._service;
     const output = service.getEmitOutput(fileName);
 
@@ -263,53 +389,72 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     );
 
     const [outputFile] = output.outputFiles;
-    return outputFile.text;
+    const outputCode = (moduleMetaData.outputCode = `${
+      outputFile.text
+    }\n//# sourceURL=${fileName}`);
+    moduleMetaData.scriptVersion = "1";
+    this._os.codeCache(fileName, sourceCode, outputCode);
+    return moduleMetaData.outputCode;
+  }
+
+  /**
+   * For a given module specifier and containing file, return a list of absolute
+   * identifiers for dependent modules that are required by this module.
+   */
+  getModuleDependencies(
+    moduleSpecifier: ModuleSpecifier,
+    containingFile: ContainingFile
+  ): ModuleFileName[] {
+    assert(
+      this._runQueue.length === 0,
+      "Cannot get dependencies with modules queued to be run."
+    );
+    const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
+    assert(
+      !moduleMetaData.hasRun,
+      "Cannot get dependencies for a module that has already been run."
+    );
+    this._gatherDependencies(moduleMetaData);
+    const dependencies = this._runQueue.map(
+      moduleMetaData => moduleMetaData.fileName
+    );
+    // empty the run queue, to free up references to factories we have collected
+    // and to ensure that if there is a further invocation of `.run()` the
+    // factories don't get called
+    this._runQueue = [];
+    return dependencies;
   }
 
   /**
    * Create a localized AMD `define` function and return it.
    */
   makeDefine(moduleMetaData: ModuleMetaData): AmdDefine {
-    const localDefine = (deps: string[], factory: AmdFactory): void => {
-      // TypeScript will emit a local require dependency when doing dynamic
-      // `import()`
-      const { _log: log } = this;
-      const localExports = moduleMetaData.exports;
-
-      // tslint:disable-next-line:no-any
-      const resolveDependencies = (deps: string[]): any[] => {
-        return deps.map(dep => {
-          if (dep === "require") {
-            return localRequire;
-          } else if (dep === "exports") {
-            return localExports;
-          } else if (dep in DenoCompiler._builtins) {
-            return DenoCompiler._builtins[dep];
-          } else {
-            const depModuleMetaData = this.run(dep, moduleMetaData.fileName);
-            return depModuleMetaData.exports;
-          }
-        });
-      };
-
-      // this is a function because we need hoisting
-      function localRequire(
-        deps: string[],
-        callback: AmdCallback,
-        errback: AmdErrback
-      ): void {
-        log("localRequire", deps);
-        try {
-          const args = resolveDependencies(deps);
-          callback(...args);
-        } catch (e) {
-          errback(e);
+    // TODO should this really be part of the public API of the compiler?
+    const localDefine: AmdDefine = (
+      deps: ModuleSpecifier[],
+      factory: AmdFactory
+    ): void => {
+      this._log("compiler.localDefine", moduleMetaData.fileName);
+      moduleMetaData.factory = factory;
+      // we will recursively resolve the dependencies for any modules
+      moduleMetaData.deps = deps.map(dep => {
+        if (
+          dep === "require" ||
+          dep === "exports" ||
+          dep in DenoCompiler._builtins
+        ) {
+          return dep;
         }
+        const dependencyMetaData = this.resolveModule(
+          dep,
+          moduleMetaData.fileName
+        );
+        this._gatherDependencies(dependencyMetaData);
+        return dependencyMetaData.fileName;
+      });
+      if (!this._runQueue.includes(moduleMetaData)) {
+        this._runQueue.push(moduleMetaData);
       }
-
-      this._log("localDefine", moduleMetaData.fileName, deps, localExports);
-      const args = resolveDependencies(deps);
-      factory(...args);
     };
     return localDefine;
   }
@@ -323,7 +468,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
   ): ModuleFileName | undefined {
-    this._log("resolveFileName", { moduleSpecifier, containingFile });
+    this._log("compiler.resolveFileName", { moduleSpecifier, containingFile });
     const innerMap = this._fileNamesMap.get(containingFile);
     if (innerMap) {
       return innerMap.get(moduleSpecifier);
@@ -339,7 +484,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
   ): ModuleMetaData {
-    this._log("resolveModule", { moduleSpecifier, containingFile });
+    this._log("compiler.resolveModule", { moduleSpecifier, containingFile });
     assert(moduleSpecifier != null && moduleSpecifier.length > 0);
     let fileName = this.resolveFileName(moduleSpecifier, containingFile);
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
@@ -383,7 +528,8 @@ export class DenoCompiler implements ts.LanguageServiceHost {
         containingFile
       );
     }
-    this._log("resolveModule sourceCode length ", sourceCode.length);
+    this._log("resolveModule sourceCode length:", sourceCode.length);
+    this._log("resolveModule has outputCode:", !!outputCode);
     this.setFileName(moduleSpecifier, containingFile, fileName);
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
       return this._moduleMetaDataMap.get(fileName)!;
@@ -400,36 +546,27 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
   ): ModuleFileName | undefined {
+    // TODO should this be part of the public API of the compiler?
     const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
     return moduleMetaData ? moduleMetaData.fileName : undefined;
   }
 
-  /* tslint:disable-next-line:no-any */
   /**
-   * Execute a module based on the `moduleSpecifier` and the `containingFile`
-   * and return the resulting `FileModule`.
+   * Load and run a module and all of its dependencies based on a module
+   * specifier and a containing file
    */
   run(
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
   ): ModuleMetaData {
-    this._log("run", { moduleSpecifier, containingFile });
+    this._log("compiler.run", { moduleSpecifier, containingFile });
     const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
-    const fileName = moduleMetaData.fileName;
-    this._scriptFileNames = [fileName];
-    const sourceCode = moduleMetaData.sourceCode;
-    let outputCode = moduleMetaData.outputCode;
-    if (!outputCode) {
-      outputCode = moduleMetaData.outputCode = `${this.compile(
-        fileName
-      )}\n//# sourceURL=${fileName}`;
-      moduleMetaData!.scriptVersion = "1";
-      this._os.codeCache(fileName, sourceCode, outputCode);
+    this._scriptFileNames = [moduleMetaData.fileName];
+    if (!moduleMetaData.deps) {
+      this._gatherDependencies(moduleMetaData);
     }
-    this._window.define = this.makeDefine(moduleMetaData);
-    this._globalEval(moduleMetaData.outputCode);
-    this._window.define = undefined;
-    return moduleMetaData!;
+    this._drainRunQueue();
+    return moduleMetaData;
   }
 
   /**
@@ -442,7 +579,8 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     containingFile: ContainingFile,
     fileName: ModuleFileName
   ): void {
-    this._log("setFileName", { moduleSpecifier, containingFile });
+    // TODO should this be part of the public API of the compiler?
+    this._log("compiler.setFileName", { moduleSpecifier, containingFile });
     let innerMap = this._fileNamesMap.get(containingFile);
     if (!innerMap) {
       innerMap = new Map();
@@ -508,19 +646,19 @@ export class DenoCompiler implements ts.LanguageServiceHost {
   }
 
   useCaseSensitiveFileNames(): boolean {
-    this._log("useCaseSensitiveFileNames");
+    this._log("useCaseSensitiveFileNames()");
     return true;
   }
 
   readFile(path: string): string | undefined {
-    this._log("readFile", path);
+    this._log("readFile()", path);
     return notImplemented();
   }
 
   fileExists(fileName: string): boolean {
     const moduleMetaData = this._getModuleMetaData(fileName);
     const exists = moduleMetaData != null;
-    this._log("fileExists", fileName, exists);
+    this._log("fileExists()", fileName, exists);
     return exists;
   }
 
@@ -528,7 +666,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     moduleNames: ModuleSpecifier[],
     containingFile: ContainingFile
   ): ts.ResolvedModule[] {
-    this._log("resolveModuleNames", { moduleNames, containingFile });
+    this._log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(name => {
       let resolvedFileName;
       if (name === "deno") {

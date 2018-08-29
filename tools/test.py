@@ -5,6 +5,7 @@ import os
 import sys
 from check_output_test import check_output_test
 from util import executable_suffix, run, build_path
+from unit_tests import unit_tests
 from util_test import util_test
 import subprocess
 import http_server
@@ -41,7 +42,7 @@ def main(argv):
 
     deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
     check_exists(deno_exe)
-    run([deno_exe, "js/unit_tests.ts", "--allow-write"])
+    unit_tests(deno_exe)
 
     check_exists(deno_exe)
     check_output_test(deno_exe)
