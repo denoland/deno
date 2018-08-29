@@ -14,6 +14,7 @@ use hyper::Client;
 use msg_generated::deno as msg;
 use std;
 use std::fs;
+use std::time::UNIX_EPOCH;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::prelude::future;
@@ -77,6 +78,13 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let msg = msg::ReadFileSync::init_from_table(base.msg().unwrap());
       let filename = msg.filename().unwrap();
       handle_read_file_sync(d, &mut builder, filename)
+    }
+    msg::Any::StatSync => {
+      // TODO base.msg_as_StatSync();
+      let msg = msg::StatSync::init_from_table(base.msg().unwrap());
+      let filename = msg.filename().unwrap();
+      let lstat = msg.lstat();
+      handle_stat_sync(d, &mut builder, filename, lstat)
     }
     msg::Any::WriteFileSync => {
       // TODO base.msg_as_WriteFileSync();
@@ -462,6 +470,53 @@ fn handle_read_file_sync(
     &msg::BaseArgs {
       msg: Some(flatbuffers::Offset::new(msg.value())),
       msg_type: msg::Any::ReadFileSyncRes,
+      ..Default::default()
+    },
+  ))
+}
+
+macro_rules! to_seconds {
+  ($time:expr) => {{
+    // Unwrap is safe here as if the file is before the unix epoch
+    // something is very wrong.
+    $time.and_then(|t| Ok(t.duration_since(UNIX_EPOCH).unwrap().as_secs()))
+         .unwrap_or(0)
+  }}
+}
+
+
+fn handle_stat_sync(
+  _d: *const DenoC,
+  builder: &mut FlatBufferBuilder,
+  filename: &str,
+  lstat: bool,
+) -> HandlerResult {
+  debug!("handle_stat_sync {} {}", filename, lstat);
+  let path = Path::new(filename);
+  let metadata = if lstat {
+      fs::symlink_metadata(path)?
+  } else {
+      fs::metadata(path)?
+  };
+
+  let msg = msg::StatSyncRes::create(
+    builder,
+    &msg::StatSyncResArgs {
+      is_file: metadata.is_file(),
+      is_symlink: metadata.file_type().is_symlink(),
+      len: metadata.len(),
+      modified: to_seconds!(metadata.modified()),
+      accessed: to_seconds!(metadata.accessed()),
+      created: to_seconds!(metadata.created()),
+      ..Default::default()
+    },
+  );
+
+  Ok(create_msg(
+    builder,
+    &msg::BaseArgs {
+      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg_type: msg::Any::StatSyncRes,
       ..Default::default()
     },
   ))
