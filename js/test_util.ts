@@ -12,9 +12,7 @@ import * as testing from "./testing/testing.ts";
 export { assert, assertEqual } from "./testing/testing.ts";
 
 // testing.setFilter must be run before any tests are defined.
-const permFilter = deno.argv[1];
-permFromString(permFilter);
-testing.setFilter(permFilter);
+testing.setFilter(deno.argv[1]);
 
 interface DenoPermissions {
   write?: boolean;
