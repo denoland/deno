@@ -169,6 +169,81 @@ export function readFileSync(filename: string): Uint8Array {
   return new Uint8Array(dataArray!);
 }
 
+export class FileInfo {
+  private _isFile: boolean;
+  private _isSymlink: boolean;
+  len: number;
+  modified: number;
+  accessed: number;
+  // Creation time is not available on all platforms.
+  created: number | null;
+
+  /* @internal */
+  constructor(private _msg: fbs.StatSyncRes) {
+    const created = this._msg.created().toFloat64();
+
+    this._isFile = this._msg.isFile();
+    this._isSymlink = this._msg.isSymlink();
+    this.len = this._msg.len().toFloat64();
+    this.modified = this._msg.modified().toFloat64();
+    this.accessed = this._msg.accessed().toFloat64();
+    this.created = created ? created: null;
+  }
+
+  isFile() {
+    return this._isFile;
+  }
+
+  isDirectory() {
+    return !this._isFile && !this._isSymlink;
+  }
+
+  isSymlink() {
+    return this._isSymlink;
+  }
+}
+
+export function lStatSync(filename: string): FileInfo {
+  return statSyncInner(filename, true);
+}
+
+export function statSync(filename: string): FileInfo {
+  return statSyncInner(filename, false);
+}
+
+function statSyncInner(filename: string, lstat: boolean): FileInfo {
+  /* Ideally we could write
+  const res = send({
+    command: fbs.Command.STAT_FILE_SYNC,
+    StatFilename: filename,
+    StatLStat: lstat,
+  });
+  return new FileInfo(res);
+   */
+  const builder = new flatbuffers.Builder();
+  const filename_ = builder.createString(filename);
+  fbs.StatSync.startStatSync(builder);
+  fbs.StatSync.addFilename(builder, filename_);
+  fbs.StatSync.addLstat(builder, lstat);
+  const msg = fbs.StatSync.endStatSync(builder);
+  fbs.Base.startBase(builder);
+  fbs.Base.addMsg(builder, msg);
+  fbs.Base.addMsgType(builder, fbs.Any.StatSync);
+  builder.finish(fbs.Base.endBase(builder));
+  const resBuf = libdeno.send(builder.asUint8Array());
+  assert(resBuf != null);
+  // TypeScript does not track `assert` from a CFA perspective, therefore not
+  // null assertion `!`
+  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
+  const baseRes = fbs.Base.getRootAsBase(bb);
+  maybeThrowError(baseRes);
+  assert(fbs.Any.StatSyncRes === baseRes.msgType());
+  const res = new fbs.StatSyncRes();
+  assert(baseRes.msg(res) != null);
+  // TypeScript cannot track assertion above, therefore not null assertion
+  return new FileInfo(baseRes.msg(res)!);
+}
+
 export function writeFileSync(
   filename: string,
   data: Uint8Array,
