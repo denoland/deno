@@ -1,4 +1,5 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
+import("//build/toolchain/cc_wrapper.gni")
 import("//third_party/v8/gni/v8.gni")
 import("//third_party/v8/snapshot_toolchain.gni")
 import("//build_extra/flatbuffers/flatbuffer.gni")
@@ -102,6 +103,27 @@ static_library("libdeno") {
     ":deno_bindings",
   ]
   configs += [ ":deno_config" ]
+
+  # from_snapshot.cc uses an assembly '.incbin' directive to embed the snapshot.
+  # This causes trouble when using sccache: since the snapshot file is not
+  # inlined by the c preprocessor, sccache doesn't take its contents into
+  # consideration, leading to false-positive cache hits.
+  # Maybe other caching tools have this issue too, but ccache is unaffected.
+  # Therefore, if a cc_wrapper is used that isn't ccache, include a generated
+  # header file that contains the the sha256 hash of the snapshot.
+  if (cc_wrapper != "" && cc_wrapper != "ccache") {
+    hash_h = "$target_gen_dir/bundle/hash.h"
+    inputs += [ hash_h ]
+    deps += [ ":bundle_hash_h" ]
+    if (is_win) {
+      cflags = [ "/FI" + rebase_path(hash_h, target_out_dir) ]
+    } else {
+      cflags = [
+        "-include",
+        rebase_path(hash_h, target_out_dir),
+      ]
+    }
+  }
 }
 
 # Only functionality needed for libdeno_test and snapshot_creator
@@ -239,6 +261,29 @@ run_node("bundle") {
     "--environment",
     "BASEPATH:" + rebase_path(".", root_build_dir),
   ]
+}
+
+action("bundle_hash_h") {
+  script = "//tools/sha256sum.py"
+  inputs = get_target_outputs(":bundle")
+  outputs = [
+    "$target_gen_dir/bundle/hash.h",
+  ]
+  deps = [
+    ":bundle",
+  ]
+  args = [
+    "--format",
+    "__attribute__((__unused__)) static const int dummy_%s = 0;",
+    "--outfile",
+    rebase_path(outputs[0], root_build_dir),
+  ]
+  foreach(input, inputs) {
+    args += [
+      "--infile",
+      rebase_path(input, root_build_dir),
+    ]
+  }
 }
 
 source_set("libdeno_nosnapshot") {
