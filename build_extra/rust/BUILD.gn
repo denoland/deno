@@ -580,3 +580,124 @@ rust_crate("tokio_threadpool") {
     ":tokio_executor",
   ]
 }
+
+rust_crate("hyper_tls") {
+  source_root = "$registry_github/hyper-tls-0.3.0/src/lib.rs"
+  extern = [
+    ":bytes",
+    ":futures",
+    ":hyper",
+    ":native_tls",
+    ":tokio_io",
+  ]
+}
+
+rust_crate("native_tls") {
+  source_root = "$registry_github/native-tls-0.2.1/src/lib.rs"
+  extern = [
+    ":lazy_static",
+    ":libc",
+    ":hyper",
+    ":openssl",
+    ":openssl_probe",
+    ":openssl_sys",
+    ":schannel",
+    ":security_framework",
+    ":security_framework_sys",
+    ":tempfile",
+  ]
+}
+
+rust_crate("openssl") {
+  source_root = "$registry_github/openssl-0.10.11/src/lib.rs"
+  extern = [
+    ":bitflags",
+    ":cfg_if",
+    ":foreign_types",
+    ":lazy_static",
+    ":libc",
+    ":openssl_sys",
+  ]
+}
+
+rust_crate("bitflags") {
+  source_root = "$registry_github/bitflags-1.0.3/src/lib.rs"
+}
+
+rust_crate("foreign_types") {
+  source_root = "$registry_github/foreign-types-0.3.2/src/lib.rs"
+  extern = [
+    ":foreign_types_shared",
+  ]
+}
+
+rust_crate("foreign_types_shared") {
+  source_root = "$registry_github/foreign-types-shared-0.1.1/src/lib.rs"
+}
+
+rust_crate("openssl_probe") {
+  source_root = "$registry_github/openssl-probe-0.1.2/src/lib.rs"
+}
+
+rust_crate("openssl_sys") {
+  source_root = "$registry_github/openssl-sys-0.9.35/src/lib.rs"
+  extern = [
+    ":cc",
+    ":libc",
+    ":pkg_config",
+    ":vcpkg",
+  ]
+}
+
+rust_crate("cc") {
+  source_root = "$registry_github/cc-1.0.22/src/lib.rs"
+}
+
+rust_crate("pkg_config") {
+  source_root = "$registry_github/pkg-config-0.3.13/src/lib.rs"
+}
+
+rust_crate("vcpkg") {
+  source_root = "$registry_github/vcpkg-0.2.6/src/lib.rs"
+}
+
+rust_crate("schannel") {
+  source_root = "$registry_github/schannel-0.1.13/src/lib.rs"
+  extern = [
+    ":lazy_static",
+    ":winapi",
+  ]
+}
+
+rust_crate("security_framework") {
+  source_root = "$registry_github/security-framework-0.2.1/src/lib.rs"
+  extern = [
+    ":core_foundation",
+    ":core_foundation_sys",
+    ":libc",
+    ":security_framework_sys",
+  ]
+}
+
+rust_crate("security_framework_sys") {
+  source_root = "$registry_github/security-framework-sys-0.2.1/src/lib.rs"
+  extern = [
+    ":core_foundation_sys",
+    ":libc",
+  ]
+}
+
+rust_crate("core_foundation") {
+  source_root = "$registry_github/core-foundation-0.5.1/src/lib.rs"
+  extern = [
+    ":core_foundation_sys",
+    ":libc",
+  ]
+}
+
+rust_crate("core_foundation_sys") {
+  source_root = "$registry_github/core-foundation-sys-0.5.1/src/lib.rs"
+  extern = [
+    ":libc",
+  ]
+}

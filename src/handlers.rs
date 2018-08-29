@@ -10,7 +10,8 @@ use futures;
 use futures::sync::oneshot;
 use hyper;
 use hyper::rt::{Future, Stream};
-use hyper::Client;
+use hyper::{Client, Body};
+use hyper_tls::HttpsConnector;
 use msg_generated::deno as msg;
 use std;
 use std::fs;
@@ -244,7 +245,9 @@ fn handle_fetch_req(
 ) -> HandlerResult {
   let deno = from_c(d);
   let url = url.parse::<hyper::Uri>().unwrap();
-  let client = Client::new();
+  let https = HttpsConnector::new(4).unwrap();
+  let client = Client::builder()
+    .build::<_, Body>(https);
 
   deno.rt.spawn(
     client
