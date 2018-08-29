@@ -120,8 +120,14 @@ template("run_rustc") {
     if (defined(crate_version)) {
       # Compute the sha256sum of the version number. See comments below.
       # Note that we do this only if there are multiple versions of this crate.
-      hash =
-          exec_script("get_version_hash.py", [ crate_version ], "trim string")
+      hash = exec_script("//tools/sha256sum.py",
+                         [
+                           "--input",
+                           crate_version,
+                           "--format",
+                           "%.8s",
+                         ],
+                         "trim string")
 
       args += [
         # In our build setup, all crates are built in the same directory. The
