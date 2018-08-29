@@ -45,7 +45,6 @@ main_extern = [
   "$rust_build:tempfile",
   "$rust_build:rand",
   "$rust_build:tokio",
-  "$rust_build:tokio_current_thread",
   "$rust_build:url",
   "//build_extra/flatbuffers/rust:flatbuffers",
   ":msg_rs",

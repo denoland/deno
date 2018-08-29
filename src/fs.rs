@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use rand;
-use rand::RngCore;
+use rand::Rng;
 
 pub fn write_file_sync(path: &Path, content: &[u8]) -> std::io::Result<()> {
   let mut f = File::create(path)?;
@@ -23,8 +23,9 @@ pub fn make_temp_dir(
     Some(ref p) => p.to_path_buf(),
     None => std::env::temp_dir(),
   }.join("_");
+  let mut rng = rand::thread_rng();
   loop {
-    let unique = rand::thread_rng().next_u32();
+    let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
     // TODO: on posix, set mode flags to 0o700.
     let r = create_dir(buf.as_path());
