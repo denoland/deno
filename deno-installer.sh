@@ -2,6 +2,8 @@
 
 set -u
 
+DENO_HOME="${HOME}/.deno"
+
 main() {
 
   need_cmd downloader --check
@@ -11,13 +13,10 @@ main() {
   need_cmd mkdir
   need_cmd rm
   need_cmd rmdir
-  need_cmd jq
 
   get_architecture || return 1
 
   local _release_name=deno_"$RETVAL"_x64
-
-  get_release_url "$_release_name"
 
   local _ext=".gz"
   case "$RETVAL" in
@@ -26,19 +25,36 @@ main() {
       ;;
   esac
 
+  RELEASE_FILE_NAME="${_release_name}${_ext}"
+
+  printf '%s\n' "Checking for latest release of deno for $RETVAL" 1>&2
+
+  get_release_url $RELEASE_FILE_NAME
+
   local _dir="$(mktemp -d 2>/dev/null || ensure mktemp -d -t deno_installer)"
-  local _file="${_dir}/deno_${RETVAL}_x64${_ext}"
+  local _file="${_dir}/${RELEASE_FILE_NAME}"
+
+  printf '%s\n' "Downloading latest release of deno from $RELEASE_URL" 1>&2
 
   ensure downloader $RELEASE_URL $_file
 
-  local _deno_home="${HOME}/deno"
-  local _deno_bin="$_deno_home/deno"
+  printf '%s\n' "Finished downloading. Deno will be installed in $DENO_HOME/bin" 1>&2
 
-  ensure mkdir -p "$_deno_home"
+  local _deno_bin_dir="${DENO_HOME}/bin"
 
-  gunzip -c "$_file" > "$_deno_bin"
+  ensure mkdir -p "$_deno_bin_dir"
 
-  ensure chmod u+x "$_deno_bin"
+  local _deno_exec="$_deno_bin_dir/deno"
+
+  if [ $RETVAL = win ]; then
+    unzip "$_file" > "$_deno_exec"
+  else
+    gunzip -c "$_file" > "$_deno_exec"
+  fi
+
+  ensure chmod u+x "$_deno_exec"
+
+  printf '%s\n' "Add $DENO_HOME/bin to PATH variable in .bashrc for it to be availible globaly" 1>&2
 
   ignore rm "$_file"
   ignore rmdir "$_dir"
@@ -65,12 +81,28 @@ downloader() {
     fi
 }
 
-# the only way I found to get the URL to the latest release from github
-# unfortunatelly it required `jq` to parse JSON output
 get_release_url() {
+  # check if curl or wget is to be used
+  downloader --check
+
   local _url=""
-  # TODO cURL or wget condition
-  _url=$(curl -s https://api.github.com/repos/denoland/deno/releases/latest | jq -r ".assets[] | select(.name | test(\"$1\")) | .browser_download_url")
+
+  # python code that will find the latest release for detected architecture
+  local _get_latest_release_url='import sys, json; print [ str(asset["browser_download_url"]) for asset in json.load(sys.stdin)["assets"] if asset["name"] == "'$1'" ][0]'
+
+  if [ "$_dld" = curl ]; then
+
+    _url=$(curl -s https://api.github.com/repos/denoland/deno/releases/latest | python -c "$_get_latest_release_url")
+
+  elif [ "$_dld" = wget ]; then
+
+    ensure wget -q https://api.github.com/repos/denoland/deno/releases/latest
+    _url=$(cat latest | python -c "$_get_latest_release_url")
+    ensure rm latest
+
+  else err "Unknown downloader"   # should not reach here
+
+  fi
 
   RELEASE_URL=$_url
 }
