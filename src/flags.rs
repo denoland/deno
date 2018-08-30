@@ -229,23 +229,6 @@ fn test_set_flags_6() {
   );
 }
 
-#[test]
-fn test_set_flags_7() {
-  let (flags, rest) = set_flags(svec!["deno", "-h", "--", "-r", "-e"]);
-  assert!(rest == svec!["deno", "-r", "-e"]);
-  assert!(
-    flags == DenoFlags {
-      help: true,
-      log_debug: false,
-      version: false,
-      reload: false,
-      allow_write: false,
-      allow_net: false,
-      eval: vec![],
-    }
-  );
-}
-
 // Returns args passed to V8, followed by args passed to JS
 // TODO Rename to v8_set_flags_preprocess
 fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
