@@ -21,14 +21,6 @@ export function assert(cond: boolean, msg = "assert") {
   }
 }
 
-let cmdIdCounter = 0;
-export function assignCmdId(): number {
-  // TODO(piscisaureus) Safely re-use so they don't overflow.
-  const cmdId = ++cmdIdCounter;
-  assert(cmdId < 2 ** 32, "cmdId overflow");
-  return cmdId;
-}
-
 export function typedArrayToArrayBuffer(ta: TypedArray): ArrayBuffer {
   const ab = ta.buffer.slice(ta.byteOffset, ta.byteOffset + ta.byteLength);
   return ab as ArrayBuffer;
