@@ -30,7 +30,7 @@ pub struct DenoDir {
   reload: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum ModuleLocation {
   Path(PathBuf),
   Url(Url),
@@ -454,7 +454,7 @@ fn test_resolve_module() {
       add_root!(
         "/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"
       ),
-      "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts",
+      ModuleLocation::Path(Path::new("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts").to_path_buf()),
       Path::new(add_root!(
         "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
       )),
@@ -462,25 +462,25 @@ fn test_resolve_module() {
     (
       "testdata/001_hello.js",
       add_root!("/Users/rld/go/src/github.com/denoland/deno/"),
-      "/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js",
+      ModuleLocation::Path(Path::new("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js").to_path_buf()),
       Path::new(add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js")),
     ),
     (
       add_root!("/Users/rld/src/deno/hello.js"),
       ".",
-      "/Users/rld/src/deno/hello.js",
+      ModuleLocation::Path(Path::new("/Users/rld/src/deno/hello.js").to_path_buf()),
       Path::new(add_root!("/Users/rld/src/deno/hello.js")),
     ),
     (
       add_root!("/this/module/got/imported.js"),
       add_root!("/that/module/did/it.js"),
-      "/this/module/got/imported.js",
+      ModuleLocation::Path(Path::new("/this/module/got/imported.js").to_path_buf()),
       Path::new(add_root!("/this/module/got/imported.js")),
     ),
     (
         "http://localhost:4545/testdata/subdir/print_hello.ts",
         add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
-        "http://localhost:4545/testdata/subdir/print_hello.ts",
+        ModuleLocation::Url(Url::parse("http://localhost:4545/testdata/subdir/print_hello.ts").unwrap()),
         Path::new(d.as_str()),
     ),
     /*
@@ -498,14 +498,14 @@ fn test_resolve_module() {
         ),
         */
   ];
-  for &test in test_cases.iter() {
+  for ref test in test_cases.iter() {
     let module_specifier = String::from(test.0);
     let containing_file = String::from(test.1);
     let (module_name, filename) = deno_dir
       .resolve_module(&module_specifier, &containing_file)
       .unwrap();
 
-    assert_eq!(module_name.to_string(), test.2);
+    assert_eq!(module_name, test.2);
     assert_eq!(filename, test.3);
   }
 }
