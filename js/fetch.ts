@@ -8,7 +8,7 @@ import {
   notImplemented
 } from "./util";
 import { flatbuffers } from "flatbuffers";
-import { libdeno } from "./libdeno";
+import { send } from "./fbs_util";
 import { deno as fbs } from "gen/msg_generated";
 import {
   Headers,
@@ -166,14 +166,8 @@ class FetchRequest {
     fbs.FetchReq.addId(builder, this.id);
     fbs.FetchReq.addUrl(builder, url);
     const msg = fbs.FetchReq.endFetchReq(builder);
-    fbs.Base.startBase(builder);
-    fbs.Base.addMsg(builder, msg);
-    fbs.Base.addMsgType(builder, fbs.Any.FetchReq);
-    builder.finish(fbs.Base.endBase(builder));
-    const resBuf = libdeno.send(builder.asUint8Array());
-    assert(resBuf == null);
-
-    //console.log("FetchReq sent", builder);
+    const res = send(builder, fbs.Any.FetchReq, msg);
+    assert(res == null);
   }
 }
 

@@ -1,24 +1,25 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { flatbuffers } from "flatbuffers";
 import { deno as fbs } from "gen/msg_generated";
-import { assert, assignCmdId, log, setLogDebug } from "./util";
+import { assert, log, setLogDebug } from "./util";
 import * as os from "./os";
 import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import * as timers from "./timers";
 import { onFetchRes } from "./fetch";
 import { argv } from "./deno";
+import { send } from "./fbs_util";
 
-function startMsg(cmdId: number): Uint8Array {
+function sendStart(): fbs.StartRes {
   const builder = new flatbuffers.Builder();
   fbs.Start.startStart(builder);
   const startOffset = fbs.Start.endStart(builder);
-  fbs.Base.startBase(builder);
-  fbs.Base.addCmdId(builder, cmdId);
-  fbs.Base.addMsg(builder, startOffset);
-  fbs.Base.addMsgType(builder, fbs.Any.Start);
-  builder.finish(fbs.Base.endBase(builder));
-  return builder.asUint8Array();
+  const baseRes = send(builder, fbs.Any.Start, startOffset);
+  assert(baseRes != null);
+  assert(fbs.Any.StartRes === baseRes!.msgType());
+  const startRes = new fbs.StartRes();
+  assert(baseRes!.msg(startRes) != null);
+  return startRes;
 }
 
 function onMessage(ui8: Uint8Array) {
@@ -64,22 +65,7 @@ export default function denoMain() {
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
   // argv and other info.
-  const cmdId = assignCmdId();
-  const res = libdeno.send(startMsg(cmdId));
-
-  // TODO(ry) Remove this conditional once main.rs gets up to speed.
-  if (res == null) {
-    console.log(`The 'Start' message got a null response.  Normally this would
-    be an error but main.rs currently does this."); Exiting without error.`);
-    return;
-  }
-
-  // Deserialize res into startResMsg.
-  const bb = new flatbuffers.ByteBuffer(res);
-  const base = fbs.Base.getRootAsBase(bb);
-  assert(fbs.Any.StartRes === base.msgType());
-  const startResMsg = new fbs.StartRes();
-  assert(base.msg(startResMsg) != null);
+  const startResMsg = sendStart();
 
   setLogDebug(startResMsg.debugFlag());
 
