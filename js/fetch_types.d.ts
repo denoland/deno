@@ -30,6 +30,7 @@ type ReferrerPolicy =
   | "origin-when-cross-origin"
   | "unsafe-url";
 type BlobPart = BufferSource | Blob | string;
+type FormDataEntryValue = File | string;
 declare type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
@@ -39,10 +40,6 @@ interface Element {
 }
 
 interface HTMLFormElement {
-  // TODO
-}
-
-interface FormDataEntryValue {
   // TODO
 }
 
@@ -139,6 +136,20 @@ interface Event {
   readonly BUBBLING_PHASE: number;
   readonly CAPTURING_PHASE: number;
   readonly NONE: number;
+}
+
+interface File extends Blob {
+  readonly lastModified: number;
+  readonly name: string;
+}
+
+declare var File: {
+  prototype: File;
+  new(fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
+};
+
+interface FilePropertyBag extends BlobPropertyBag {
+  lastModified?: number;
 }
 
 interface ProgressEvent extends Event {
