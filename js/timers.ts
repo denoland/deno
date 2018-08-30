@@ -3,7 +3,7 @@ import { assert } from "./util";
 import * as util from "./util";
 import { deno as fbs } from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
-import { libdeno } from "./libdeno";
+import { send } from "./fbs_util";
 
 let nextTimerId = 1;
 
@@ -60,13 +60,8 @@ function startTimer(
   fbs.TimerStart.addInterval(builder, timer.interval);
   fbs.TimerStart.addDelay(builder, timer.delay);
   const msg = fbs.TimerStart.endTimerStart(builder);
-  fbs.Base.startBase(builder);
-  fbs.Base.addMsg(builder, msg);
-  fbs.Base.addMsgType(builder, fbs.Any.TimerStart);
-  builder.finish(fbs.Base.endBase(builder));
-  const resBuf = libdeno.send(builder.asUint8Array());
-  assert(resBuf == null);
-
+  const baseRes = send(builder, fbs.Any.TimerStart, msg);
+  assert(baseRes == null);
   return timer.id;
 }
 
@@ -95,10 +90,6 @@ export function clearTimer(id: number) {
   fbs.TimerClear.startTimerClear(builder);
   fbs.TimerClear.addId(builder, id);
   const msg = fbs.TimerClear.endTimerClear(builder);
-  fbs.Base.startBase(builder);
-  fbs.Base.addMsg(builder, msg);
-  fbs.Base.addMsgType(builder, fbs.Any.TimerClear);
-  builder.finish(fbs.Base.endBase(builder));
-  const resBuf = libdeno.send(builder.asUint8Array());
-  assert(resBuf == null);
+  const res = send(builder, fbs.Any.TimerClear, msg);
+  assert(res == null);
 }
