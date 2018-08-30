@@ -243,3 +243,162 @@ Fetch API:
 ```ts
 fetch(input?: Request | string, init?: RequestInit): Promise<Response>;
 ```
+
+#### I/O
+
+There are many OS constructs that perform I/O: files, sockets, pipes.
+Deno aims to provide a unified lowest common denominator interface to work with
+these objects. Deno needs to operate on all of these asynchronously in order
+to not block the event loop and it.
+
+Sockets and pipes support non-blocking reads and write.  Generally file I/O is
+blocking but it can be done in a thread pool to avoid blocking the main thread.
+Although file I/O can be made asynchronous, it does not support the same
+non-blocking reads and writes that sockets and pipes do.
+
+The following interfaces support files, socket, and pipes and are heavily
+inspired by Go. The main difference in porting to JavaScript is that errors will
+be handled by exceptions, modulo EOF, which is returned as part of
+`ReadResult`.
+
+```ts
+// The bytes read during an I/O call and a boolean indicating EOF.
+interface ReadResult {
+  nread: number;
+  eof: boolean;
+}
+
+// Reader is the interface that wraps the basic read() method.
+// https://golang.org/pkg/io/#Reader
+interface Reader {
+  // read() reads up to p.byteLength bytes into p. It returns the number of bytes
+  // read (0 <= n <= p.byteLength) and any error encountered. Even if read()
+  // returns n < p.byteLength, it may use all of p as scratch space during the
+  // call. If some data is available but not p.byteLength bytes, read()
+  // conventionally returns what is available instead of waiting for more.
+  //
+  // When read() encounters an error or end-of-file condition after successfully
+  // reading n > 0 bytes, it returns the number of bytes read. It may return the
+  // (non-nil) error from the same call or return the error (and n == 0) from a
+  // subsequent call. An instance of this general case is that a Reader
+  // returning a non-zero number of bytes at the end of the input stream may
+  // return either err == EOF or err == nil. The next read() should return 0, EOF.
+  //
+  // Callers should always process the n > 0 bytes returned before considering
+  // the error err. Doing so correctly handles I/O errors that happen after
+  // reading some bytes and also both of the allowed EOF behaviors.
+  //
+  // Implementations of read() are discouraged from returning a zero byte count
+  // with a nil error, except when p.byteLength == 0. Callers should treat a
+  // return of 0 and nil as indicating that nothing happened; in particular it
+  // does not indicate EOF.
+  //
+  // Implementations must not retain p.
+  async read(p: ArrayBufferView): Promise<ReadResult>;
+}
+
+// Writer is the interface that wraps the basic write() method.
+// https://golang.org/pkg/io/#Writer
+interface Writer {
+  // write() writes p.byteLength bytes from p to the underlying data stream. It
+  // returns the number of bytes written from p (0 <= n <= p.byteLength) and any
+  // error encountered that caused the write to stop early. write() must return a
+  // non-nil error if it returns n < p.byteLength. write() must not modify the
+  // slice data, even temporarily.
+  //
+  // Implementations must not retain p.
+  async write(p: ArrayBufferView): Promise<number>;
+}
+
+// https://golang.org/pkg/io/#Closer
+interface Closer {
+  // The behavior of Close after the first call is undefined. Specific
+  // implementations may document their own behavior.
+  close(): void;
+}
+
+// https://golang.org/pkg/io/#Seeker
+interface Seeker {
+  // Seek sets the offset for the next read() or write() to offset, interpreted
+  // according to whence: SeekStart means relative to the start of the file,
+  // SeekCurrent means relative to the current offset, and SeekEnd means
+  // relative to the end. Seek returns the new offset relative to the start of
+  // the file and an error, if any.
+  //
+  // Seeking to an offset before the start of the file is an error. Seeking to
+  // any positive offset is legal, but the behavior of subsequent I/O operations
+  // on the underlying object is implementation-dependent.
+  async seek(offset: number, whence: number): Promise<void>;
+}
+
+// https://golang.org/pkg/io/#ReadCloser
+interface ReaderCloser extends Reader, Closer { }
+
+// https://golang.org/pkg/io/#WriteCloser
+interface WriteCloser extends Writer, Closer { }
+
+// https://golang.org/pkg/io/#ReadSeeker
+interface ReadSeeker extends Reader, Seeker { }
+
+// https://golang.org/pkg/io/#WriteSeeker
+interface WriteSeeker extends Writer, Seeker { }
+
+// https://golang.org/pkg/io/#ReadWriteCloser
+interface ReadWriteCloser extends Reader, Writer, Closer { }
+
+// https://golang.org/pkg/io/#ReadWriteSeeker
+interface ReadWriteSeeker extends Reader, Writer, Seeker { }
+```
+These interfaces are well specified, simple, and have very nice utility
+functions that will be easy to port. Some example utilites:
+```ts
+// copy() copies from src to dst until either EOF is reached on src or an error
+// occurs. It returns the number of bytes copied and the first error encountered
+// while copying, if any.
+//
+// Because copy() is defined to read from src until EOF, it does not treat an EOF
+// from read() as an error to be reported.
+//
+// https://golang.org/pkg/io/#Copy
+async function copy(dst: Writer, src: Reader): Promise<number> {
+  let n = 0;
+  const b = new ArrayBufferView(1024);
+  let got_eof = false;
+  while (got_eof === false) {
+     let result = await src.read(b);
+     if (result.eof) got_eof = true;
+     n += await dst.write(b.subarray(0, result.nread));
+  }
+  return n;
+}
+
+// MultiWriter creates a writer that duplicates its writes to all the provided
+// writers, similar to the Unix tee(1) command.
+//
+// Each write is written to each listed writer, one at a time. If a listed
+// writer returns an error, that overall write operation stops and returns the
+// error; it does not continue down the list.
+//
+// https://golang.org/pkg/io/#MultiWriter
+function multiWriter(writers: ...Writer): Writer {
+  return {
+    write: async (p: ArrayBufferView) => Promise<number> {
+      let n;
+      let nwritten = await Promise.all(writers.map((w) => w.write(p)));
+      return nwritten[0];
+      // TODO unsure of proper semantics for return value..
+   }
+  };
+}
+```
+
+A utility function will be provided to make any `Reader` into an
+`AsyncIterator`, which has very similar semanatics.
+
+```ts
+function readerIterator(r: deno.Reader): AsyncIterator<ArrayBufferView>;
+// Example
+for await (let buf of readerIterator(socket)) {
+  console.log(`read ${buf.byteLength} from socket`);
+}
+```

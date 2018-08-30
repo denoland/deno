@@ -65,6 +65,13 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let msg = msg::Exit::init_from_table(base.msg().unwrap());
       std::process::exit(msg.code())
     }
+    msg::Any::MakeTempDir => {
+      let msg = msg::MakeTempDir::init_from_table(base.msg().unwrap());
+      let dir = msg.dir();
+      let prefix = msg.prefix();
+      let suffix = msg.suffix();
+      handle_make_temp_dir(d, &mut builder, dir, prefix, suffix)
+    }
     msg::Any::ReadFileSync => {
       // TODO base.msg_as_ReadFileSync();
       let msg = msg::ReadFileSync::init_from_table(base.msg().unwrap());
@@ -395,6 +402,43 @@ fn send_timer_ready(d: *const DenoC, timer_id: u32, done: bool) {
   );
 }
 
+fn handle_make_temp_dir(
+  d: *const DenoC,
+  builder: &mut FlatBufferBuilder,
+  dir: Option<&str>,
+  prefix: Option<&str>,
+  suffix: Option<&str>,
+) -> HandlerResult {
+  let deno = from_c(d);
+  if !deno.flags.allow_write {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_write is off.",
+    );
+    return Err(err.into());
+  }
+  // TODO(piscisaureus): use byte vector for paths, not a string.
+  // See https://github.com/denoland/deno/issues/627.
+  // We can't assume that paths are always valid utf8 strings.
+  let path = deno_fs::make_temp_dir(dir.map(Path::new), prefix, suffix)?;
+  let path_off = builder.create_string(path.to_str().unwrap());
+  let msg = msg::MakeTempDirRes::create(
+    builder,
+    &msg::MakeTempDirResArgs {
+      path: Some(path_off),
+      ..Default::default()
+    },
+  );
+  Ok(create_msg(
+    builder,
+    &msg::BaseArgs {
+      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg_type: msg::Any::MakeTempDirRes,
+      ..Default::default()
+    },
+  ))
+}
+
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
 fn handle_read_file_sync(
   _d: *const DenoC,
@@ -425,10 +469,10 @@ fn handle_read_file_sync(
 
 fn handle_write_file_sync(
   d: *const DenoC,
-  builder: &mut FlatBufferBuilder,
+  _builder: &mut FlatBufferBuilder,
   filename: &str,
   data: &[u8],
-  perm: u32,
+  _perm: u32,
 ) -> HandlerResult {
   debug!("handle_write_file_sync {}", filename);
   let deno = from_c(d);

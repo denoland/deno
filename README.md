@@ -68,7 +68,7 @@ Also see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
 
 ## Build instructions
 
-To ensure reproducable builds, Deno has most of its dependencies in a git
+To ensure reproducible builds, Deno has most of its dependencies in a git
 submodule. However, you need to install separately:
 
 1. [Rust](https://www.rust-lang.org/en-US/install.html)

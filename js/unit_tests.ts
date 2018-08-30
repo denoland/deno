@@ -41,16 +41,16 @@ test(function tests_readFileSync_NotFound() {
 });
 */
 
-/* TODO(ry) Add this once we can create a tmpDir to write the file into.
-test(function writeFileSyncSuccess() {
+testPerm({ write: true }, function writeFileSync() {
   const enc = new TextEncoder();
-  const dataWritten = enc.encode("Hello");
-  const filename = "TEMPDIR/test.txt";
-  deno.writeFileSync(filename, dataWritten, 0o666);
+  const data = enc.encode("Hello");
+  const filename = deno.makeTempDirSync() + "/test.txt";
+  deno.writeFileSync(filename, data, 0o666);
   const dataRead = deno.readFileSync(filename);
-  assertEqual(dataRead, dataWritten);
+  const dec = new TextDecoder("utf-8");
+  const actual = dec.decode(dataRead);
+  assertEqual("Hello", actual);
 });
-*/
 
 // For this test to pass we need --allow-write permission.
 // Otherwise it will fail with deno.PermissionDenied instead of deno.NotFound.
@@ -70,23 +70,48 @@ testPerm({ write: true }, function writeFileSyncFail() {
   assert(caughtError);
 });
 
+testPerm({ write: true }, function makeTempDirSync() {
+  const dir1 = deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
+  const dir2 = deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
+  // Check that both dirs are different.
+  assert(dir1 != dir2);
+  for (const dir of [dir1, dir2]) {
+    // Check that the prefix and suffix are applied.
+    const lastPart = dir.replace(/^.*[\\\/]/, "");
+    assert(lastPart.startsWith("hello"));
+    assert(lastPart.endsWith("world"));
+  }
+  // Check that the `dir` option works.
+  const dir3 = deno.makeTempDirSync({ dir: dir1 });
+  assert(dir3.startsWith(dir1));
+  assert(/^[\\\/]/.test(dir3.slice(dir1.length)));
+  // Check that creating a temp dir inside a nonexisting directory fails.
+  let err;
+  try {
+    deno.makeTempDirSync({ dir: "/baddir" });
+  } catch (err_) {
+    err = err_;
+  }
+  // TODO assert(err instanceof deno.NotFound).
+  assert(err);
+  assertEqual(err.name, "deno.NotFound");
+});
+
+test(function makeTempDirSyncPerm() {
+  // makeTempDirSync should require write permissions (for now).
+  let err;
+  try {
+    deno.makeTempDirSync({ dir: "/baddir" });
+  } catch (err_) {
+    err = err_;
+  }
+  // TODO assert(err instanceof deno.PermissionDenied).
+  assert(err);
+  assertEqual(err.name, "deno.PermissionDenied");
+});
+
 testPerm({ net: true }, async function tests_fetch() {
   const response = await fetch("http://localhost:4545/package.json");
   const json = await response.json();
   assertEqual(json.name, "deno");
 });
-
-/*
-test(async function tests_writeFileSync() {
-  const enc = new TextEncoder();
-  const data = enc.encode("Hello");
-  // TODO need ability to get tmp dir.
-  const fn = "/tmp/test.txt";
-  writeFileSync("/tmp/test.txt", data, 0o666);
-  const dataRead = deno.readFileSync("/tmp/test.txt");
-  const dec = new TextDecoder("utf-8");
-  const actual = dec.decode(dataRead);
-  assertEqual("Hello", actual);
-});
-
-*/
