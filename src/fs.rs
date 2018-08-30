@@ -43,7 +43,7 @@ fn set_permissions(perm: u32) {
 }
 
 #[cfg(not(target_os = "unix"))]
-fn set_permissions(perm: u32) {
+fn set_permissions(_perm: u32) {
   // Windows does not work with mode bits for files like Unixes does, so this is a noop
 }
 
