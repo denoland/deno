@@ -4,6 +4,7 @@
 import os
 import sys
 from check_output_test import check_output_test
+import install_test
 from util import executable_suffix, run, build_path
 from unit_tests import unit_tests
 from util_test import util_test
@@ -50,6 +51,8 @@ def main(argv):
     deno_ns_exe = os.path.join(build_dir, "deno_ns" + executable_suffix)
     check_exists(deno_ns_exe)
     check_output_test(deno_ns_exe)
+
+    install_test.main()
 
 
 if __name__ == '__main__':
