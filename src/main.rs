@@ -104,10 +104,7 @@ fn test_c_to_rust() {
   let d = Deno::new(argv);
   let d2 = from_c(d.ptr);
   assert!(d.ptr == d2.ptr);
-  assert!(
-    d.dir.root.join("gen") == d.dir.gen,
-    "Sanity check"
-  );
+  assert!(d.dir.root.join("gen") == d.dir.gen, "Sanity check");
 }
 
 static LOGGER: Logger = Logger;

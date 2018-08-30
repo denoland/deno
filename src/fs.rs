@@ -25,10 +25,7 @@ pub fn write_file_sync(path: &Path, content: &[u8]) -> std::io::Result<()> {
 
 pub fn mkdir(path: &Path) -> std::io::Result<()> {
   debug!("mkdir -p {}", path.display());
-  assert!(
-    path.has_root(),
-    "non-has_root not yet implemented"
-  );
+  assert!(path.has_root(), "non-has_root not yet implemented");
   std::fs::create_dir_all(path).or_else(|err| {
     if err.kind() == std::io::ErrorKind::AlreadyExists {
       Ok(())

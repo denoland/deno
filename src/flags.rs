@@ -33,7 +33,7 @@ pub fn print_usage() {
 -e or --eval [SCRIPT]  Evaluate a script from the command line, may be passed multiple times.
 -r or --reload         Reload cached remote resources.
 -D or --log-debug      Log debug output.
---help                 Print this message.
+-h or --help           Print this message.
 --v8-options           Print V8 command line options."
   );
 }
