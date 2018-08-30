@@ -14,8 +14,8 @@ use hyper::Client;
 use msg_generated::deno as msg;
 use std;
 use std::fs;
-use std::time::UNIX_EPOCH;
 use std::path::Path;
+use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
 use tokio::prelude::future;
 use tokio::prelude::*;
@@ -479,11 +479,11 @@ macro_rules! to_seconds {
   ($time:expr) => {{
     // Unwrap is safe here as if the file is before the unix epoch
     // something is very wrong.
-    $time.and_then(|t| Ok(t.duration_since(UNIX_EPOCH).unwrap().as_secs()))
-         .unwrap_or(0)
-  }}
+    $time
+      .and_then(|t| Ok(t.duration_since(UNIX_EPOCH).unwrap().as_secs()))
+      .unwrap_or(0)
+  }};
 }
-
 
 fn handle_stat_sync(
   _d: *const DenoC,
@@ -494,9 +494,9 @@ fn handle_stat_sync(
   debug!("handle_stat_sync {} {}", filename, lstat);
   let path = Path::new(filename);
   let metadata = if lstat {
-      fs::symlink_metadata(path)?
+    fs::symlink_metadata(path)?
   } else {
-      fs::metadata(path)?
+    fs::metadata(path)?
   };
 
   let msg = msg::StatSyncRes::create(

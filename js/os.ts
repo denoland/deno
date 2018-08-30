@@ -187,7 +187,7 @@ export class FileInfo {
     this.len = this._msg.len().toFloat64();
     this.modified = this._msg.modified().toFloat64();
     this.accessed = this._msg.accessed().toFloat64();
-    this.created = created ? created: null;
+    this.created = created ? created : null;
   }
 
   isFile() {
