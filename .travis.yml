@@ -1,7 +1,11 @@
 language: c++
-os:
-  - linux
-  - osx
+
+matrix:
+  include:
+    - os: linux
+    - os: osx
+      if: branch = master
+
 env:
   global:
   - CARGO_PATH=$HOME/.cargo/
