@@ -186,44 +186,88 @@ export function env(): { [index:string]: string } {
   return createEnv(res);
 }
 
+/**
+ * A FileInfo describes a file and is returned by `stat`, `lstat`,
+ * `statSync`, `lstatSync`.
+ */
 export class FileInfo {
   private _isFile: boolean;
   private _isSymlink: boolean;
+  /** The size of the file, in bytes. */
   len: number;
-  modified: number;
-  accessed: number;
-  // Creation time is not available on all platforms.
+  /**
+   * The last modification time of the file. This corresponds to the `mtime`
+   * field from `stat` on Unix and `ftLastWriteTime` on Windows. This may not
+   * be available on all platforms.
+   */
+  modified: number | null;
+  /**
+   * The last access time of the file. This corresponds to the `atime`
+   * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
+   * be available on all platforms.
+   */
+  accessed: number | null;
+  /**
+   * The last access time of the file. This corresponds to the `birthtime`
+   * field from `stat` on Unix and `ftCreationTime` on Windows. This may not
+   * be available on all platforms.
+   */
   created: number | null;
 
   /* @internal */
   constructor(private _msg: fbs.StatSyncRes) {
+    const modified = this._msg.modified().toFloat64();
+    const accessed = this._msg.accessed().toFloat64();
     const created = this._msg.created().toFloat64();
 
     this._isFile = this._msg.isFile();
     this._isSymlink = this._msg.isSymlink();
     this.len = this._msg.len().toFloat64();
-    this.modified = this._msg.modified().toFloat64();
-    this.accessed = this._msg.accessed().toFloat64();
+    this.modified = modified ? modified : null;
+    this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
   }
 
+  /**
+   * Returns whether this is info for a regular file. This result is mutually
+   * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
+   */
   isFile() {
     return this._isFile;
   }
 
+  /**
+   * Returns whether this is info for a regular directory. This result is
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`.
+   */
   isDirectory() {
     return !this._isFile && !this._isSymlink;
   }
 
+  /**
+   * Returns whether this is info for a symlink. This result is
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`.
+   */
   isSymlink() {
     return this._isSymlink;
   }
 }
 
+/**
+ * Queries the file system for information on the path provided.
+ * If the given path is a symlink information about the symlink will
+ * be returned.
+ * @returns FileInfo
+ */
 export function lStatSync(filename: string): FileInfo {
   return statSyncInner(filename, true);
 }
 
+/**
+ * Queries the file system for information on the path provided.
+ * `statSync` Will always follow symlinks.
+ * @returns FileInfo
+ */
 export function statSync(filename: string): FileInfo {
   return statSyncInner(filename, false);
 }
