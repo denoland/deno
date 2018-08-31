@@ -45,6 +45,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let output_code = msg.output_code().unwrap();
       handle_code_cache(d, &mut builder, filename, source_code, output_code)
     }
+    msg::Any::Environ => handle_env(d, &mut builder),
     msg::Any::FetchReq => {
       // TODO base.msg_as_FetchReq();
       let msg = msg::FetchReq::init_from_table(base.msg().unwrap());
@@ -78,6 +79,13 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let msg = msg::ReadFileSync::init_from_table(base.msg().unwrap());
       let filename = msg.filename().unwrap();
       handle_read_file_sync(d, &mut builder, filename)
+    }
+    msg::Any::SetEnv => {
+      // TODO base.msg_as_SetEnv();
+      let msg = msg::SetEnv::init_from_table(base.msg().unwrap());
+      let key = msg.key().unwrap();
+      let value = msg.value().unwrap();
+      handle_set_env(d, &mut builder, key, value)
     }
     msg::Any::StatSync => {
       // TODO base.msg_as_StatSync();
@@ -242,6 +250,69 @@ fn handle_code_cache(
   let deno = from_c(d);
   deno.dir.code_cache(filename, source_code, output_code)?;
   Ok(null_buf()) // null response indicates success.
+}
+
+fn handle_set_env(
+  d: *const DenoC,
+  _builder: &mut FlatBufferBuilder,
+  key: &str,
+  value: &str,
+) -> HandlerResult {
+  let deno = from_c(d);
+  if !deno.flags.allow_env {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_env is off.",
+    );
+    return Err(err.into());
+  }
+
+  std::env::set_var(key, value);
+  Ok(null_buf())
+}
+
+fn handle_env(
+  d: *const DenoC,
+  builder: &mut FlatBufferBuilder,
+) -> HandlerResult {
+  let deno = from_c(d);
+  if !deno.flags.allow_env {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_env is off.",
+    );
+    return Err(err.into());
+  }
+
+  let vars: Vec<_> = std::env::vars().map(|(key, value)| {
+    let key = builder.create_string(&key);
+    let value = builder.create_string(&value);
+
+    msg::EnvPair::create(builder, &msg::EnvPairArgs {
+      key: Some(key),
+      value: Some(value),
+      ..Default::default()
+    })
+  }).collect();
+
+  let tables = builder.create_vector_of_reverse_offsets(&vars);
+
+  let msg = msg::EnvironRes::create(
+    builder,
+    &msg::EnvironResArgs {
+      map: Some(tables),
+      ..Default::default()
+    },
+  );
+
+  Ok(create_msg(
+    builder,
+    &msg::BaseArgs {
+      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg_type: msg::Any::EnvironRes,
+      ..Default::default()
+    },
+  ))
 }
 
 fn handle_fetch_req(

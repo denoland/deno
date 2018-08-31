@@ -10,6 +10,8 @@ union Any {
   TimerStart,
   TimerReady,
   TimerClear,
+  Environ,
+  EnvironRes,
   FetchReq,
   FetchRes,
   MakeTempDir,
@@ -18,6 +20,7 @@ union Any {
   ReadFileSyncRes,
   StatSync,
   StatSyncRes,
+  SetEnv,
   WriteFileSync,
 }
 
@@ -122,6 +125,22 @@ table TimerReady {
 
 table TimerClear {
   id: uint;
+}
+
+table Environ {}
+
+table SetEnv {
+    key: string;
+    value: string;
+}
+
+table EnvironRes {
+    map: [EnvPair];
+}
+
+table EnvPair {
+    key: string;
+    value: string;
 }
 
 table FetchReq {
