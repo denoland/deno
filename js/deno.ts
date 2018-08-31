@@ -7,7 +7,8 @@ export {
   readFileSync,
   statSync,
   lStatSync,
-  writeFileSync
+  writeFileSync,
 } from "./os";
 export { libdeno } from "./libdeno";
 export const argv: string[] = [];
+export * from "./inspect";

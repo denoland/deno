@@ -16,6 +16,7 @@ import osDts from "gen/js/os.d.ts!string";
 import fetchDts from "gen/js/fetch.d.ts!string";
 import timersDts from "gen/js/timers.d.ts!string";
 import utilDts from "gen/js/util.d.ts!string";
+import inspectDts from "gen/js/inspect.d.ts!string";
 
 // Static libraries
 import libEs2015Dts from "/third_party/node_modules/typescript/lib/lib.es2015.d.ts!string";
@@ -67,6 +68,7 @@ export const assetSourceCode: { [key: string]: string } = {
   "fetch_types.d.ts": fetchTypesDts,
   "timers.d.ts": timersDts,
   "util.d.ts": utilDts,
+  "inspect.d.ts": inspectDts,
 
   // Static libraries
   "lib.es2015.collection.d.ts": libEs2015CollectionDts,

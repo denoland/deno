@@ -1,3 +1,5 @@
+import { inspect } from "./inspect";
+
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
 
@@ -115,7 +117,10 @@ export class Console {
 
   // tslint:disable-next-line:no-any
   log(...args: any[]): void {
-    this.printFunc(stringifyArgs(args));
+    for (const arg of args) {
+      this.printFunc(inspect(arg, { colors: true }));
+    }
+    //this.printFunc(stringifyArgs(args));
   }
 
   debug = this.log;

@@ -106,4 +106,10 @@ Other useful commands:
     ./third_party/depot_tools/gn desc out/debug/ :deno
     ./third_party/depot_tools/gn help
 
+For windows users:
+
+You will need to download the windows development kit which is required for the `./tools/setup.py` step (https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk)[here], and follow the instructions before building.
+
+Additionally, the `python 2.7` version of `pywin32` is required for the `./tools/build.py` step, which is downloadable (https://github.com/mhammond/pywin32/releases)[here], and required for `flatbuffers` compilation/linking.
+
 Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`.
