@@ -2,6 +2,27 @@
 import { test, testPerm, assert, assertEqual } from "./test_util.ts";
 import * as deno from "deno";
 
+testPerm({ env: true }, async function envSuccess() {
+  const env = deno.env();
+  assert(env !== null);
+  env.test_var = "Hello World";
+  const newEnv = deno.env();
+  assertEqual(env.test_var, newEnv.test_var);
+});
+
+test(async function envFailure() {
+  let caughtError = false;
+  try {
+    const env = deno.env();
+  } catch (err) {
+    caughtError = true;
+    // TODO assert(err instanceof deno.PermissionDenied).
+    assertEqual(err.name, "deno.PermissionDenied");
+  }
+
+  assert(caughtError);
+});
+
 // TODO Add tests for modified, accessed, and created fields once there is a way
 // to create temp files.
 test(async function statSyncSuccess() {

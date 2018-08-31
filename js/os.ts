@@ -128,6 +128,64 @@ export function readFileSync(filename: string): Uint8Array {
   return new Uint8Array(dataArray!);
 }
 
+function createEnv(_msg: fbs.EnvironRes): { [index:string]: string } {
+  const env: { [index:string]: string } = {};
+
+  for (let i = 0; i < _msg.mapLength(); i++) {
+    const item = _msg.map(i)!;
+
+    env[item.key()!] = item.value()!;
+  }
+
+  return new Proxy(env, {
+    set(obj, prop: string, value: string | number) {
+      setEnv(prop, value.toString());
+      return Reflect.set(obj, prop, value);
+    }
+  });
+}
+
+function setEnv(key: string, value: string): void {
+  const builder = new flatbuffers.Builder();
+  const _key = builder.createString(key);
+  const _value = builder.createString(value);
+  fbs.SetEnv.startSetEnv(builder);
+  fbs.SetEnv.addKey(builder, _key);
+  fbs.SetEnv.addValue(builder, _value);
+  const msg = fbs.SetEnv.endSetEnv(builder);
+  send(builder, fbs.Any.SetEnv, msg);
+}
+
+/**
+ * Returns a snapshot of the environment variables at invocation. Mutating a
+ * property in the object will set that variable in the environment for
+ * the process. The environment object will only accept `string`s or `number`s
+ * as values.
+ *     import { env } from "deno";
+ *     const env = deno.env();
+ *     console.log(env.SHELL)
+ *     env.TEST_VAR = "HELLO";
+ *
+ *     const newEnv = deno.env();
+ *     console.log(env.TEST_VAR == newEnv.TEST_VAR);
+ */
+export function env(): { [index:string]: string } {
+  /* Ideally we could write
+  const res = send({
+    command: fbs.Command.ENV,
+  });
+  */
+  const builder = new flatbuffers.Builder();
+  fbs.Environ.startEnviron(builder);
+  const msg = fbs.Environ.endEnviron(builder);
+  const baseRes = send(builder, fbs.Any.Environ, msg)!;
+  assert(fbs.Any.EnvironRes === baseRes.msgType());
+  const res = new fbs.EnvironRes();
+  assert(baseRes.msg(res) != null);
+  // TypeScript cannot track assertion above, therefore not null assertion
+  return createEnv(res);
+}
+
 export class FileInfo {
   private _isFile: boolean;
   private _isSymlink: boolean;
