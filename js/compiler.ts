@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+/// <amd-module name="compiler"/>
 import * as ts from "typescript";
 import { assetSourceCode } from "./assets";
 import * as deno from "./deno";
@@ -669,10 +670,9 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     this._log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(name => {
       let resolvedFileName;
-      if (name === "deno") {
-        resolvedFileName = this.resolveModuleName("deno.d.ts", ASSETS);
-      } else if (name === "compiler") {
-        resolvedFileName = this.resolveModuleName("compiler.d.ts", ASSETS);
+      if (name === "deno" || name === "compiler") {
+        // builtin modules are part of `globals.d.ts`
+        resolvedFileName = this.resolveModuleName("globals.d.ts", ASSETS);
       } else if (name === "typescript") {
         resolvedFileName = this.resolveModuleName("typescript.d.ts", ASSETS);
       } else {
