@@ -165,7 +165,7 @@ function CallSiteToString(frame: CallSite): string {
       line += `${typeName}.${methodName || "<anonymous>"}`;
     }
   } else if (isConstructor) {
-    line += "new " + (functionName || "<anonymous>");
+    line += `new ${functionName || "<anonymous>"}`;
   } else if (functionName) {
     line += functionName;
   } else {
