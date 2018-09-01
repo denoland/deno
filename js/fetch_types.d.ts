@@ -77,7 +77,8 @@ interface URLSearchParams {
    */
   append(name: string, value: string): void;
   /**
-   * Deletes the given search parameter, and its associated value, from the list of all search parameters.
+   * Deletes the given search parameter, and its associated value,
+   * from the list of all search parameters.
    */
   delete(name: string): void;
   /**
@@ -93,7 +94,8 @@ interface URLSearchParams {
    */
   has(name: string): boolean;
   /**
-   * Sets the value associated to a given search parameter to the given value. If there were several values, delete the others.
+   * Sets the value associated to a given search parameter to the given value.
+   * If there were several values, delete the others.
    */
   set(name: string, value: string): void;
   sort(): void;
@@ -349,14 +351,15 @@ export interface ResponseInit {
 
 export interface Request extends Body {
   /**
-   * Returns the cache mode associated with request, which is a string indicating
-   * how the the request will interact with the browser's cache when fetching.
+   * Returns the cache mode associated with request,
+   * which is a string indicating how the the request will interact
+   * with the browser's cache when fetching.
    */
   readonly cache: RequestCache;
   /**
    * Returns the credentials mode associated with request, which is a string
-   * indicating whether credentials will be sent with the request always, never, or only when sent to a
-   * same-origin URL.
+   * indicating whether credentials will be sent with the request always, never,
+   * or only when sent to a same-origin URL.
    */
   readonly credentials: RequestCredentials;
   /**
@@ -366,13 +369,14 @@ export interface Request extends Body {
   readonly destination: RequestDestination;
   /**
    * Returns a Headers object consisting of the headers associated with request.
-   * Note that headers added in the network layer by the user agent will not be accounted for in this
-   * object, e.g., the "Host" header.
+   * Note that headers added in the network layer by the user agent
+   * will not be accounted for in this object, e.g., the "Host" header.
    */
   readonly headers: Headers;
   /**
-   * Returns request's subresource integrity metadata, which is a cryptographic hash of
-   * the resource being fetched. Its value consists of multiple hashes separated by whitespace. [SRI]
+   * Returns request's subresource integrity metadata,
+   * which is a cryptographic hash of the resource being fetched.
+   * Its value consists of multiple hashes separated by whitespace. [SRI]
    */
   readonly integrity: string;
   /**
@@ -381,12 +385,13 @@ export interface Request extends Body {
    */
   readonly isHistoryNavigation: boolean;
   /**
-   * Returns a boolean indicating whether or not request is for a reload navigation.
+   * Returns a boolean indicating whether or not requestis for a
+   * reload navigation.
    */
   readonly isReloadNavigation: boolean;
   /**
-   * Returns a boolean indicating whether or not request can outlive the global in which
-   * it was created.
+   * Returns a boolean indicating whether or not request can outlive
+   * the global in which it was created.
    */
   readonly keepalive: boolean;
   /**
@@ -394,20 +399,23 @@ export interface Request extends Body {
    */
   readonly method: string;
   /**
-   * Returns the mode associated with request, which is a string indicating
-   * whether the request will use CORS, or will be restricted to same-origin URLs.
+   * Returns the mode associated with request, which is a string
+   * indicating whether the request will use CORS, or will be
+   * restricted to same-origin URLs.
    */
   readonly mode: RequestMode;
   /**
    * Returns the redirect mode associated with request, which is a string
-   * indicating how redirects for the request will be handled during fetching. A request will follow redirects by default.
+   * indicating how redirects for the request will be handled during fetching.
+   * A request will follow redirects by default.
    */
   readonly redirect: RequestRedirect;
   /**
    * Returns the referrer of request. Its value can be a same-origin URL if
    * explicitly set in init, the empty string to indicate no referrer, and
-   * "about:client" when defaulting to the global's default. This is used during
-   * fetching to determine the value of the `Referer` header of the request being made.
+   * "about:client" when defaulting to the global's default.
+   * This is used during fetching to determine the value of the `Referer`
+   * header of the request being made.
    */
   readonly referrer: string;
   /**
@@ -416,8 +424,9 @@ export interface Request extends Body {
    */
   readonly referrerPolicy: ReferrerPolicy;
   /**
-   * Returns the signal associated with request, which is an AbortSignal object indicating whether or not request has been aborted, and its abort
-   * event handler.
+   * Returns the signal associated with request, which is an AbortSignal
+   * object indicating whether or not request has been aborted,
+   * and its abort event handler.
    */
   readonly signal: AbortSignal;
   /**

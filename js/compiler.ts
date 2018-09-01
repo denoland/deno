@@ -283,7 +283,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
    * emit of a dynamic ES `import()` from TypeScript.
    */
   private _makeLocalRequire(moduleMetaData: ModuleMetaData): AMDRequire {
-    const localRequire = (
+    return (
       deps: ModuleSpecifier[],
       callback: AmdCallback,
       errback: AmdErrback
@@ -304,7 +304,6 @@ export class DenoCompiler implements ts.LanguageServiceHost {
         errback(e);
       }
     };
-    return localRequire;
   }
 
   /**
@@ -431,7 +430,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
    */
   makeDefine(moduleMetaData: ModuleMetaData): AmdDefine {
     // TODO should this really be part of the public API of the compiler?
-    const localDefine: AmdDefine = (
+    return (
       deps: ModuleSpecifier[],
       factory: AmdFactory
     ): void => {
@@ -457,7 +456,6 @@ export class DenoCompiler implements ts.LanguageServiceHost {
         this._runQueue.push(moduleMetaData);
       }
     };
-    return localDefine;
   }
 
   /**
