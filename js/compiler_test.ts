@@ -474,7 +474,7 @@ test(function compilerFileExists() {
     "/root/project"
   );
   assert(compilerInstance.fileExists(moduleMetaData.fileName));
-  assert(compilerInstance.fileExists("$asset$/compiler.d.ts"));
+  assert(compilerInstance.fileExists("$asset$/globals.d.ts"));
   assertEqual(
     compilerInstance.fileExists("/root/project/unknown-module.ts"),
     false
@@ -493,7 +493,7 @@ test(function compilerResolveModuleNames() {
     ["/root/project/foo/bar.ts", false],
     ["/root/project/foo/baz.ts", false],
     ["$asset$/lib.globals.d.ts", true],
-    ["$asset$/deno.d.ts", true]
+    ["$asset$/globals.d.ts", true]
   ];
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
