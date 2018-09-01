@@ -33,13 +33,12 @@ export function codeFetch(
   assert(fbs.Any.CodeFetchRes === baseRes!.msgType());
   const codeFetchRes = new fbs.CodeFetchRes();
   assert(baseRes!.msg(codeFetchRes) != null);
-  const r = {
+  return {
     moduleName: codeFetchRes.moduleName(),
     filename: codeFetchRes.filename(),
     sourceCode: codeFetchRes.sourceCode(),
     outputCode: codeFetchRes.outputCode()
   };
-  return r;
 }
 
 export function codeCache(
@@ -191,8 +190,8 @@ export function env(): { [index: string]: string } {
  * `statSync`, `lstatSync`.
  */
 export class FileInfo {
-  private _isFile: boolean;
-  private _isSymlink: boolean;
+  private readonly _isFile: boolean;
+  private readonly _isSymlink: boolean;
   /** The size of the file, in bytes. */
   len: number;
   /**
