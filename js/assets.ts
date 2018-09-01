@@ -1,21 +1,13 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 // tslint:disable-next-line:no-reference
-/// <reference path="plugins.d.ts" />
+/// <reference path="./plugins.d.ts" />
 
 // There is a rollup plugin that will inline any module ending with `!string`
 // tslint:disable:max-line-length
 
 // Generated definitions
-import compilerDts from "gen/js/compiler.d.ts!string";
-import consoleDts from "gen/js/console.d.ts!string";
-import denoDts from "gen/js/deno.d.ts!string";
-import libdenoDts from "gen/js/libdeno.d.ts!string";
-import globalsDts from "gen/js/globals.d.ts!string";
-import osDts from "gen/js/os.d.ts!string";
-import fetchDts from "gen/js/fetch.d.ts!string";
-import timersDts from "gen/js/timers.d.ts!string";
-import utilDts from "gen/js/util.d.ts!string";
+import globalsDts from "gen/types/globals.d.ts!string";
 
 // Static libraries
 import libEs2015Dts from "/third_party/node_modules/typescript/lib/lib.es2015.d.ts!string";
@@ -49,24 +41,16 @@ import libEsnextSymbolDts from "/third_party/node_modules/typescript/lib/lib.esn
 import libGlobalsDts from "/js/lib.globals.d.ts!string";
 
 // Static definitions
-import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
-import typesDts from "/js/types.d.ts!string";
 import fetchTypesDts from "/js/fetch_types.d.ts!string";
+import flatbuffersDts from "/third_party/node_modules/@types/flatbuffers/index.d.ts!string";
+import textEncodingDts from "/third_party/node_modules/@types/text-encoding/index.d.ts!string";
+import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
 // tslint:enable:max-line-length
 
 // prettier-ignore
 export const assetSourceCode: { [key: string]: string } = {
   // Generated definitions
-  "compiler.d.ts": compilerDts,
-  "console.d.ts": consoleDts,
-  "deno.d.ts": denoDts,
-  "libdeno.d.ts": libdenoDts,
   "globals.d.ts": globalsDts,
-  "os.d.ts": osDts,
-  "fetch.d.ts": fetchDts,
-  "fetch_types.d.ts": fetchTypesDts,
-  "timers.d.ts": timersDts,
-  "util.d.ts": utilDts,
 
   // Static libraries
   "lib.es2015.collection.d.ts": libEs2015CollectionDts,
@@ -100,9 +84,8 @@ export const assetSourceCode: { [key: string]: string } = {
   "lib.globals.d.ts": libGlobalsDts,
 
   // Static definitions
+  "fetch-types.d.ts": fetchTypesDts,
+  "flatbuffers.d.ts": flatbuffersDts,
+  "text-encoding.d.ts": textEncodingDts,
   "typescript.d.ts": typescriptDts,
-  "types.d.ts": typesDts,
-
-  // TODO Remove.
-  "msg_generated.d.ts": "",
 };

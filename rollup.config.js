@@ -24,15 +24,6 @@ const tsconfigOverride = {
   }
 };
 
-// when the build path is not a child of the root of the project path
-// TypeScript will output resources following the same path structure,
-// `BASEPATH` will be a relative path to the root of the source project which
-// we can use to determine what TypeScript would have output
-const basePathParts = process.env.BASEPATH.split("/");
-while (basePathParts[0] === "..") {
-  basePathParts.shift();
-}
-
 // this is a rollup plugin which will look for imports ending with `!string` and resolve
 // them with a module that will inline the contents of the file as a string.  Needed to
 // support `js/assets.ts`.
@@ -54,23 +45,13 @@ function strings({ include, exclude } = {}) {
         // strip the `!string` from `importee`
         importee = importee.slice(0, importee.lastIndexOf("!string"));
         if (!importee.startsWith("gen/")) {
-          // this is a static asset which is located relative to the root of the source project
+          // this is a static asset which is located relative to the root of
+          // the source project
           return path.resolve(path.join(process.env.BASEPATH, importee));
         }
-        // ignoring the first part, which is "gen"
-        const [, ...importeeParts] = importee.split("/");
-        // generated assets will be output by TypeScript relative between the build path and the
-        // root of the project.  For example on Travis, the project path is:
-        //     /home/travis/build/denoland/deno/
-        // and the build path is:
-        //     /home/travis/out/Default/
-        // TypeScript will then output `globals.d.ts` from `js/globals.ts` to:
-        //    /home/travis/out/Default/gen/build/denoland/deno/js/globals.d.ts
-        // therefore we need to insert any non relative BASEPATH parts into
-        // the final module ID
-        return path.resolve(
-          path.join(process.cwd(), "gen", ...basePathParts, ...importeeParts)
-        );
+        // this is an asset which has been generated, therefore it will be
+        // located within the build path
+        return path.resolve(path.join(process.cwd(), importee));
       }
     },
 
@@ -96,7 +77,7 @@ function resolveGenerated() {
   return {
     name: "resolve-msg-generated",
     resolveId(importee) {
-      if (importee.startsWith("gen/")) {
+      if (importee.startsWith("gen/msg_generated")) {
         const resolved = path.resolve(
           path.join(process.cwd(), `${importee}.ts`)
         );

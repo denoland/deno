@@ -2,7 +2,7 @@
 
 import { Console } from "./console";
 import * as timers from "./timers";
-import { TextDecoder, TextEncoder } from "./text_encoding";
+import * as textEncoding from "./text_encoding";
 import * as fetch_ from "./fetch";
 import { libdeno } from "./libdeno";
 import { globalEval } from "./global-eval";
@@ -24,8 +24,8 @@ declare global {
   const fetch: typeof fetch_.fetch;
 
   // tslint:disable:variable-name
-  let TextEncoder: TextEncoder;
-  let TextDecoder: TextDecoder;
+  let TextEncoder: typeof textEncoding.TextEncoder;
+  let TextDecoder: typeof textEncoding.TextDecoder;
   // tslint:enable:variable-name
 }
 
@@ -41,7 +41,7 @@ window.clearTimeout = timers.clearTimer;
 window.clearInterval = timers.clearTimer;
 
 window.console = new Console(libdeno.print);
-window.TextEncoder = TextEncoder;
-window.TextDecoder = TextDecoder;
+window.TextEncoder = textEncoding.TextEncoder;
+window.TextDecoder = textEncoding.TextDecoder;
 
 window.fetch = fetch_.fetch;

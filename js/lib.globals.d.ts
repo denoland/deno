@@ -2,4 +2,4 @@
 // This file contains the default TypeScript libraries for the deno runtime.
 /// <reference no-default-lib="true"/>
 /// <reference lib="esnext" />
-import "gen/js/globals";
+/// <reference path="globals.d.ts"/>
