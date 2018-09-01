@@ -6,7 +6,7 @@
 // There is a rollup plugin that will inline any module ending with `!string`
 // tslint:disable:max-line-length
 
-// Generated definitions
+// Generated default library
 import globalsDts from "gen/types/globals.d.ts!string";
 
 // Static libraries
@@ -38,7 +38,6 @@ import libEsnextAsynciterablesDts from "/third_party/node_modules/typescript/lib
 import libEsnextDts from "/third_party/node_modules/typescript/lib/lib.esnext.d.ts!string";
 import libEsnextIntlDts from "/third_party/node_modules/typescript/lib/lib.esnext.intl.d.ts!string";
 import libEsnextSymbolDts from "/third_party/node_modules/typescript/lib/lib.esnext.symbol.d.ts!string";
-import libGlobalsDts from "/js/lib.globals.d.ts!string";
 
 // Static definitions
 import fetchTypesDts from "/js/fetch_types.d.ts!string";
@@ -49,7 +48,7 @@ import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d
 
 // prettier-ignore
 export const assetSourceCode: { [key: string]: string } = {
-  // Generated definitions
+  // Generated library
   "globals.d.ts": globalsDts,
 
   // Static libraries
@@ -81,7 +80,6 @@ export const assetSourceCode: { [key: string]: string } = {
   "lib.esnext.asynciterable.d.ts": libEsnextAsynciterablesDts,
   "lib.esnext.intl.d.ts": libEsnextIntlDts,
   "lib.esnext.symbol.d.ts": libEsnextSymbolDts,
-  "lib.globals.d.ts": libGlobalsDts,
 
   // Static definitions
   "fetch-types.d.ts": fetchTypesDts,
