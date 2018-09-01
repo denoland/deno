@@ -14,19 +14,13 @@ try:
 except ImportError:
     from urllib2 import urlopen
 
-GITHUB_URL = "https://github.com"
 releases_url_html = "https://github.com/denoland/deno/releases/latest"
-
 install_dir = os.path.join(tempfile.gettempdir(), "deno_install")
-
 home = os.path.expanduser("~")
 
 def get_latest_url():
-
     res = urlopen(releases_url_html)
-
     html = res.read().decode('utf-8')
-
     urls = re.findall(r'href=[\'"]?([^\'" >]+)', html)
 
     filename = {
@@ -46,7 +40,7 @@ def get_latest_url():
         print("matching", matching)
         sys.exit(1)
 
-    return GITHUB_URL + matching[0]
+    return "https://github.com" + matching[0]
 
         
 def main():
@@ -92,9 +86,7 @@ def deno_bin_dir():
 
 def dlfile(url):
     print("Downloading " + url)
-
     f = urlopen(url)
-
     mkdir(install_dir)
     p = os.path.join(install_dir, os.path.basename(url))
     print("Writing " + p)
