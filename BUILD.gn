@@ -186,23 +186,23 @@ executable("snapshot_creator") {
 run_node("gen_declarations") {
   out_dir = target_gen_dir
   sources = [
+    "js/assets.ts",
     "js/compiler.ts",
     "js/console.ts",
     "js/deno.ts",
+    "js/fetch.ts",
+    "js/global-eval.ts",
     "js/globals.ts",
     "js/os.ts",
+    "js/text_encoding.ts",
     "js/timers.ts",
     "js/tsconfig.generated.json",
+    "js/types.ts",
     "js/util.ts",
+    "js/v8_source_maps.ts"
   ]
   outputs = [
-    out_dir + "/js/compiler.d.ts",
-    out_dir + "/js/console.d.ts",
-    out_dir + "/js/deno.d.ts",
-    out_dir + "/js/globals.d.ts",
-    out_dir + "/js/os.d.ts",
-    out_dir + "/js/timers.d.ts",
-    out_dir + "/js/util.d.ts",
+    "$out_dir/types/globals.d.ts",
   ]
   deps = [
     ":msg_ts",
@@ -213,8 +213,8 @@ run_node("gen_declarations") {
     rebase_path("js/tsconfig.generated.json", root_build_dir),
     "--baseUrl",
     rebase_path(root_build_dir, root_build_dir),
-    "--outDir",
-    rebase_path(out_dir, root_build_dir),
+    "--outFile",
+    rebase_path("$out_dir/types/globals.js", root_build_dir),
   ]
 }
 
@@ -233,7 +233,7 @@ run_node("bundle") {
     "js/plugins.d.ts",
     "js/text_encoding.ts",
     "js/timers.ts",
-    "js/types.d.ts",
+    "js/types.ts",
     "js/util.ts",
     "js/v8_source_maps.ts",
     "rollup.config.js",

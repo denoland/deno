@@ -128,8 +128,8 @@ export function readFileSync(filename: string): Uint8Array {
   return new Uint8Array(dataArray!);
 }
 
-function createEnv(_msg: fbs.EnvironRes): { [index:string]: string } {
-  const env: { [index:string]: string } = {};
+function createEnv(_msg: fbs.EnvironRes): { [index: string]: string } {
+  const env: { [index: string]: string } = {};
 
   for (let i = 0; i < _msg.mapLength(); i++) {
     const item = _msg.map(i)!;
@@ -169,7 +169,7 @@ function setEnv(key: string, value: string): void {
  *     const newEnv = deno.env();
  *     console.log(env.TEST_VAR == newEnv.TEST_VAR);
  */
-export function env(): { [index:string]: string } {
+export function env(): { [index: string]: string } {
   /* Ideally we could write
   const res = send({
     command: fbs.Command.ENV,
