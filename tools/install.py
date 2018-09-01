@@ -27,11 +27,11 @@ FILENAME_LOOKUP = {
 }
 
 
-def latest_release_url():
+def release_url(platform):
     try:
-        filename = FILENAME_LOOKUP[sys.platform]
+        filename = FILENAME_LOOKUP[platform]
     except KeyError:
-        print("Unable to locate appropriate filename for", sys.platform)
+        print("Unable to locate appropriate filename for", platform)
         sys.exit(1)
 
     html = urlopen(RELEASES_URL).read().decode('utf-8')
@@ -49,7 +49,7 @@ def main():
     bin_dir = deno_bin_dir()
     exe_fn = os.path.join(bin_dir, "deno")
 
-    url = latest_release_url()
+    url = release_url(sys.platform)
     print("Downloading", url)
     compressed = urlopen(url).read()
 
@@ -80,11 +80,11 @@ def mkdir(d):
 
 def deno_bin_dir():
     home = os.path.expanduser("~")
-    d = os.path.join(home, ".deno")
-    mkdir(d)
-    b = os.path.join(d, "bin")
-    mkdir(b)
-    return b
+    deno = os.path.join(home, ".deno")
+    mkdir(deno)
+    deno_bin = os.path.join(deno, "bin")
+    mkdir(deno_bin)
+    return deno_bin
 
 
 if __name__ == '__main__':
