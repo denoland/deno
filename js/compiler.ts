@@ -77,6 +77,7 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
   public deps?: ModuleFileName[];
   public readonly exports = {};
   public factory?: AmdFactory;
+  public gatheringDeps = false;
   public hasRun = false;
   public scriptVersion = "";
 
@@ -250,10 +251,6 @@ export class DenoCompiler implements ts.LanguageServiceHost {
       }
       const dependencyMetaData = this._getModuleMetaData(dep);
       assert(dependencyMetaData != null, `Missing dependency "${dep}".`);
-      assert(
-        dependencyMetaData!.hasRun === true,
-        `Module "${dep}" was not run.`
-      );
       // TypeScript does not track assert, therefore using not null operator
       return dependencyMetaData!.exports;
     });
@@ -436,6 +433,9 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     ): void => {
       this._log("compiler.localDefine", moduleMetaData.fileName);
       moduleMetaData.factory = factory;
+      // when there are circular dependencies, we need to skip recursing the
+      // dependencies
+      moduleMetaData.gatheringDeps = true;
       // we will recursively resolve the dependencies for any modules
       moduleMetaData.deps = deps.map(dep => {
         if (
@@ -449,9 +449,12 @@ export class DenoCompiler implements ts.LanguageServiceHost {
           dep,
           moduleMetaData.fileName
         );
-        this._gatherDependencies(dependencyMetaData);
+        if (!dependencyMetaData.gatheringDeps) {
+          this._gatherDependencies(dependencyMetaData);
+        }
         return dependencyMetaData.fileName;
       });
+      moduleMetaData.gatheringDeps = false;
       if (!this._runQueue.includes(moduleMetaData)) {
         this._runQueue.push(moduleMetaData);
       }
