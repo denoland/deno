@@ -1,66 +1,69 @@
 #!/usr/bin/env python
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 from __future__ import print_function
-import os
+
+import io
 import json
+import os
+import re
+import shutil
 import sys
 import tempfile
-import shutil
-import gzip
-from zipfile import ZipFile
-import re
+import zipfile
+import zlib
+
 try:
     from urllib.request import urlopen
 except ImportError:
     from urllib2 import urlopen
 
-releases_url_html = "https://github.com/denoland/deno/releases/latest"
-install_dir = os.path.join(tempfile.gettempdir(), "deno_install")
-home = os.path.expanduser("~")
+RELEASES_URL = "https://github.com/denoland/deno/releases/latest"
+FILENAME_LOOKUP = {
+    "darwin": "deno_osx_x64.gz",
+    "linux": "deno_linux_x64.gz",  # python3
+    "linux2": "deno_linux_x64.gz",  # python2
+    "win32": "deno_win_x64.zip",
+    "cygwin": "deno_win_x64.zip"
+}
 
-def get_latest_url():
-    res = urlopen(releases_url_html)
-    html = res.read().decode('utf-8')
+
+def latest_release_url():
+    try:
+        filename = FILENAME_LOOKUP[sys.platform]
+    except KeyError:
+        print("Unable to locate appropriate filename for", sys.platform)
+        sys.exit(1)
+
+    html = urlopen(RELEASES_URL).read().decode('utf-8')
     urls = re.findall(r'href=[\'"]?([^\'" >]+)', html)
-
-    filename = {
-        "darwin": "deno_osx_x64.gz",
-        # python3 sys.platform returns linux ( python2 returns linux2 )
-        "linux": "deno_linux_x64.gz",
-        "linux2": "deno_linux_x64.gz",
-        "win32": "deno_win_x64.zip",
-        "cygwin": "deno_win_x64.zip"
-    }[sys.platform]
-
     matching = [u for u in urls if filename in u]
 
     if len(matching) != 1:
-        print("Bad download url")
-        print("urls", urls)
-        print("matching", matching)
+        print("Unable to find download url for", filename)
         sys.exit(1)
 
     return "https://github.com" + matching[0]
 
-        
-def main():
-    latest_url = get_latest_url()
-    latest_fn = dlfile(latest_url)
 
+def main():
     bin_dir = deno_bin_dir()
     exe_fn = os.path.join(bin_dir, "deno")
 
-    if "zip" in latest_fn:
-        with ZipFile(latest_fn, 'r') as z:
+    url = latest_release_url()
+    print("Downloading", url)
+    compressed = urlopen(url).read()
+
+    if url.endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(compressed), 'r') as z:
             with open(exe_fn, 'wb+') as exe:
                 exe.write(z.read('deno.exe'))
     else:
-        with gzip.open(latest_fn, 'rb') as f:
-            content = f.read()
-            with open(exe_fn, 'wb+') as exe:
-                exe.write(content)
-
+        # Note: gzip.decompress is not available in python2.
+        content = zlib.decompress(compressed, 15 + 32)
+        with open(exe_fn, 'wb+') as exe:
+            exe.write(content)
     os.chmod(exe_fn, 0o744)
+
     print("DENO_EXE: " + exe_fn)
     print("Now manually add %s to your $PATH" % bin_dir)
     print("Example:")
@@ -76,23 +79,12 @@ def mkdir(d):
 
 
 def deno_bin_dir():
-    install_dir = home
-    d = os.path.join(install_dir, ".deno")
-    b = os.path.join(d, "bin")
+    home = os.path.expanduser("~")
+    d = os.path.join(home, ".deno")
     mkdir(d)
+    b = os.path.join(d, "bin")
     mkdir(b)
     return b
-
-
-def dlfile(url):
-    print("Downloading " + url)
-    f = urlopen(url)
-    mkdir(install_dir)
-    p = os.path.join(install_dir, os.path.basename(url))
-    print("Writing " + p)
-    with open(p, "wb") as local_file:
-        local_file.write(f.read())
-    return p
 
 
 if __name__ == '__main__':
