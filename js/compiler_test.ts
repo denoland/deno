@@ -445,10 +445,7 @@ test(function compilerGetCurrentDirectory() {
 
 test(function compilerGetDefaultLibFileName() {
   setup();
-  assertEqual(
-    compilerInstance.getDefaultLibFileName(),
-    "$asset$/lib.globals.d.ts"
-  );
+  assertEqual(compilerInstance.getDefaultLibFileName(), "$asset$/globals.d.ts");
   teardown();
 });
 
@@ -485,14 +482,13 @@ test(function compilerFileExists() {
 test(function compilerResolveModuleNames() {
   setup();
   const results = compilerInstance.resolveModuleNames(
-    ["foo/bar.ts", "foo/baz.ts", "$asset$/lib.globals.d.ts", "deno"],
+    ["foo/bar.ts", "foo/baz.ts", "deno"],
     "/root/project"
   );
-  assertEqual(results.length, 4);
+  assertEqual(results.length, 3);
   const fixtures: Array<[string, boolean]> = [
     ["/root/project/foo/bar.ts", false],
     ["/root/project/foo/baz.ts", false],
-    ["$asset$/lib.globals.d.ts", true],
     ["$asset$/globals.d.ts", true]
   ];
   for (let i = 0; i < results.length; i++) {

@@ -641,7 +641,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
 
   getDefaultLibFileName(): string {
     this._log("getDefaultLibFileName()");
-    const moduleSpecifier = "lib.globals.d.ts";
+    const moduleSpecifier = "globals.d.ts";
     const moduleMetaData = this.resolveModule(moduleSpecifier, ASSETS);
     return moduleMetaData.fileName;
   }

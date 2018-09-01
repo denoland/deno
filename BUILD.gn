@@ -227,7 +227,6 @@ run_node("bundle") {
     "js/fetch.ts",
     "js/fetch_types.d.ts",
     "js/globals.ts",
-    "js/lib.globals.d.ts",
     "js/main.ts",
     "js/os.ts",
     "js/plugins.d.ts",
