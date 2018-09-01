@@ -50,6 +50,12 @@
 
 * Aims to be browser compatible.
 
+## Install
+
+```
+curl -sSf https://raw.githubusercontent.com/denoland/deno/master/tools/install.py | python
+```
+
 
 ## Status
 
