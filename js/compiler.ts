@@ -427,10 +427,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
    */
   makeDefine(moduleMetaData: ModuleMetaData): AmdDefine {
     // TODO should this really be part of the public API of the compiler?
-    return (
-      deps: ModuleSpecifier[],
-      factory: AmdFactory
-    ): void => {
+    return (deps: ModuleSpecifier[], factory: AmdFactory): void => {
       this._log("compiler.localDefine", moduleMetaData.fileName);
       moduleMetaData.factory = factory;
       // when there are circular dependencies, we need to skip recursing the

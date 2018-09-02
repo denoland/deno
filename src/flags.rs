@@ -61,7 +61,9 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
 fn test_set_flags_1() {
   let (flags, rest) = set_flags(svec!["deno", "--version"]);
   assert_eq!(rest, svec!["deno"]);
-  assert_eq!(flags, DenoFlags {
+  assert_eq!(
+    flags,
+    DenoFlags {
       version: true,
       ..DenoFlags::default()
     }
@@ -72,7 +74,9 @@ fn test_set_flags_1() {
 fn test_set_flags_2() {
   let (flags, rest) = set_flags(svec!["deno", "-r", "-D", "script.ts"]);
   assert_eq!(rest, svec!["deno", "script.ts"]);
-  assert_eq!(flags, DenoFlags {
+  assert_eq!(
+    flags,
+    DenoFlags {
       log_debug: true,
       reload: true,
       ..DenoFlags::default()
@@ -85,7 +89,9 @@ fn test_set_flags_3() {
   let (flags, rest) =
     set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]);
   assert_eq!(rest, svec!["deno", "script.ts"]);
-  assert_eq!(flags, DenoFlags {
+  assert_eq!(
+    flags,
+    DenoFlags {
       reload: true,
       allow_write: true,
       ..DenoFlags::default()
@@ -125,13 +131,19 @@ fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
 fn test_parse_core_args_1() {
   let js_args =
     parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
-  assert_eq!(js_args, (vec!["deno".to_string(), "--help".to_string()], vec![]));
+  assert_eq!(
+    js_args,
+    (vec!["deno".to_string(), "--help".to_string()], vec![])
+  );
 }
 
 #[test]
 fn test_parse_core_args_2() {
   let js_args = parse_core_args(vec!["deno".to_string(), "--help".to_string()]);
-  assert_eq!(js_args, (vec!["deno".to_string()], vec!["--help".to_string()]));
+  assert_eq!(
+    js_args,
+    (vec!["deno".to_string()], vec!["--help".to_string()])
+  );
 }
 
 // Pass the command line arguments to v8.
