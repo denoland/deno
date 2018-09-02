@@ -2,9 +2,11 @@
 use errors::DenoError;
 use errors::DenoResult;
 use fs as deno_fs;
+use hyper::{Uri};
 use net;
 use ring;
 use std;
+use std::io::Error;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -12,8 +14,6 @@ use std::path::PathBuf;
 use std::result::Result;
 #[cfg(test)]
 use tempfile::TempDir;
-use url;
-use url::Url;
 
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
@@ -33,7 +33,7 @@ pub struct DenoDir {
 #[derive(Debug, PartialEq)]
 enum ModuleLocation {
   Path(PathBuf),
-  Url(Url),
+  Url(Uri),
 }
 
 impl ModuleLocation {
@@ -126,14 +126,14 @@ impl DenoDir {
   // Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
   fn fetch_remote_source(
     self: &DenoDir,
-    module_name: &Url,
+    module_name: &Uri,
     filename: &str,
   ) -> DenoResult<String> {
     let p = Path::new(filename);
 
     let src = if self.reload || !p.exists() {
       println!("Downloading {}", module_name);
-      let source = net::fetch_sync_string(module_name.as_str())?;
+      let source = net::fetch_sync_string(module_name)?;
       match p.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
@@ -235,7 +235,7 @@ impl DenoDir {
     self: &DenoDir,
     module_specifier: &str,
     containing_file: &str,
-  ) -> Result<(ModuleLocation, PathBuf), url::ParseError> {
+  ) -> Result<(ModuleLocation, PathBuf), Error> {
     let module_name;
     let filename;
 
@@ -244,45 +244,37 @@ impl DenoDir {
       module_specifier, containing_file
     );
 
-    //let module_specifier = src_file_to_url(module_specifier);
-    //let containing_file = src_file_to_url(containing_file);
-    //let base_url = Url::parse(&containing_file)?;
+    let r = module_specifier.parse::<Uri>();
+    let is_remote_url = match module_specifier.parse::<Uri>() {
+      Ok(uri) => match uri.scheme_part() {
+        Some(_s) => true,
+        None => false
+      },  
+      _ => false
+    };
 
-    let j: Url =
-      if containing_file == "." || Path::new(module_specifier).is_absolute() {
-        if module_specifier.starts_with("http://") {
-          Url::parse(module_specifier)?
+    if is_remote_url {
+      let uri = r.unwrap();
+      module_name = ModuleLocation::Url(uri.clone());
+      filename = get_cache_filename(self.deps.as_path(), uri);
+    } else {
+      let module_path = Path::new(module_specifier).components().as_path();
+      let path : PathBuf = 
+        if module_path.is_absolute() {
+          module_path.to_path_buf()
         } else {
-          Url::from_file_path(module_specifier).unwrap()
-        }
-      } else if containing_file.ends_with("/") {
-        let r = Url::from_directory_path(&containing_file);
-        // TODO(ry) Properly handle error.
-        if r.is_err() {
-          error!("Url::from_directory_path error {}", containing_file);
-        }
-        let base = r.unwrap();
-        base.join(module_specifier)?
-      } else {
-        let r = Url::from_file_path(&containing_file);
-        // TODO(ry) Properly handle error.
-        if r.is_err() {
-          error!("Url::from_file_path error {}", containing_file);
-        }
-        let base = r.unwrap();
-        base.join(module_specifier)?
-      };
+          let containing_folder = PathBuf::from(containing_file);
+          let parent = if containing_file.ends_with("/") {
+            containing_folder.as_path()
+          } else {
+            containing_folder.parent().unwrap()
+          };
 
-    match j.scheme() {
-      "file" => {
-        let mut p = j.to_file_path().unwrap();
-        module_name = ModuleLocation::Path(p.clone());
-        filename = p;
-      }
-      _ => {
-        module_name = ModuleLocation::Url(j.clone());
-        filename = get_cache_filename(self.deps.as_path(), j);
-      }
+          parent.join(Path::new(module_specifier))
+        };
+
+      module_name = ModuleLocation::Path(path.clone());
+      filename = path;
     }
 
     debug!(
@@ -294,18 +286,16 @@ impl DenoDir {
   }
 }
 
-fn get_cache_filename(basedir: &Path, url: Url) -> PathBuf {
+fn get_cache_filename(basedir: &Path, url: Uri) -> PathBuf {
   let mut out = basedir.to_path_buf();
-  out.push(url.host_str().unwrap());
-  for path_seg in url.path_segments().unwrap() {
-    out.push(path_seg);
-  }
+  out.push(url.host().unwrap());
+  out.push(&url.path()[1..]);
   out
 }
 
 #[test]
 fn test_get_cache_filename() {
-  let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
+  let url = "http://example.com:1234/path/to/file.ts".parse::<Uri>().unwrap();
   let basedir = Path::new("/cache/dir/");
   let cache_file = get_cache_filename(&basedir, url);
   assert_eq!(
@@ -480,7 +470,7 @@ fn test_resolve_module() {
     (
         "http://localhost:4545/testdata/subdir/print_hello.ts",
         add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
-        ModuleLocation::Url(Url::parse("http://localhost:4545/testdata/subdir/print_hello.ts").unwrap()),
+        ModuleLocation::Url("http://localhost:4545/testdata/subdir/print_hello.ts".parse::<Uri>().unwrap()),
         Path::new(d.as_str()),
     ),
     /*
@@ -514,10 +504,13 @@ const ASSET_PREFIX: &str = "/$asset$/";
 
 fn is_remote(module_name: &ModuleLocation) -> bool {
   match module_name {
-    ModuleLocation::Url(u) => match u.scheme() {
-      "http" => true,
-      "https" => true,
-      _ => false,
+    ModuleLocation::Url(u) => match u.scheme_part() {
+      Some(scheme) => match scheme.as_str() {
+        "http" => true,
+        "https" => true,
+        _ => false,
+      },
+      None => false
     },
     ModuleLocation::Path(_p) => false,
   }
@@ -551,13 +544,13 @@ fn test_is_remote() {
   );
   assert_eq!(
     is_remote(&ModuleLocation::Url(
-      Url::parse("http://example.com/http.ts").unwrap()
+      "http://example.com/http.ts".parse::<Uri>().unwrap()
     )),
     true
   );
   assert_eq!(
     is_remote(&ModuleLocation::Url(
-      Url::parse("https://example.com/http.ts").unwrap()
+      "https://example.com/http.ts".parse::<Uri>().unwrap()
     )),
     true
   );
