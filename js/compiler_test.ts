@@ -50,12 +50,12 @@ function mockModuleInfo(
 
 // Some fixtures we will us in testing
 const fooBarTsSource = `import * as compiler from "compiler";
-console.log(compiler);
-export const foo = "bar";
+    console.log(compiler);
+    export const foo = "bar";
 `;
 
 const fooBazTsSource = `import { foo } from "./bar.ts";
-console.log(foo);
+    console.log(foo);
 `;
 
 const modASource = `import { B } from "./modB.ts";
