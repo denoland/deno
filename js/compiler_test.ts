@@ -112,13 +112,13 @@ const moduleMap: {
 } = {
   "/root/project": {
     "foo/bar.ts": mockModuleInfo(
-      "foo/bar",
+      "/root/project/foo/bar.ts",
       "/root/project/foo/bar.ts",
       fooBarTsSource,
       null
     ),
     "foo/baz.ts": mockModuleInfo(
-      "foo/baz",
+      "/root/project/foo/baz.ts",
       "/root/project/foo/baz.ts",
       fooBazTsSource,
       fooBazTsOutput
@@ -127,7 +127,7 @@ const moduleMap: {
   },
   "/root/project/foo/baz.ts": {
     "./bar.ts": mockModuleInfo(
-      "foo/bar",
+      "/root/project/foo/bar.ts",
       "/root/project/foo/bar.ts",
       fooBarTsSource,
       fooBarTsOutput
