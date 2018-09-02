@@ -808,3 +808,19 @@ rust_crate("scoped_tls") {
     ":untrusted",
   ]
 }
+
+rust_crate("smallvec") {
+  source_root = "$registry_github/smallvec-0.6.5/lib.rs"
+  extern = [ ":unreachable" ]
+  features = [ "std" ]
+}
+
+rust_crate("unreachable") {
+  source_root = "$registry_github/unreachable-1.0.0/src/lib.rs"
+  extern = [ ":void" ]
+}
+
+rust_crate("void") {
+  source_root = "$registry_github/void-1.0.2/src/lib.rs"
+  features = [ "default" ]
+}
