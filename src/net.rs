@@ -25,7 +25,11 @@ pub fn fetch_sync_string(url: &Uri) -> DenoResult<String> {
 #[test]
 fn test_fetch_sync_string() {
   // Relies on external http server. See tools/http_server.pyfetch_sync_string
-  let p = fetch_sync_string(&"http://localhost:4545/package.json".parse::<hyper::Uri>().unwrap()).unwrap();
+  let p = fetch_sync_string(
+    &"http://localhost:4545/package.json"
+      .parse::<hyper::Uri>()
+      .unwrap(),
+  ).unwrap();
   println!("package.json len {}", p.len());
   assert!(p.len() > 1);
 }

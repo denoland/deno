@@ -2,13 +2,13 @@
 use errors::DenoError;
 use errors::DenoResult;
 use fs as deno_fs;
-use hyper::{Uri};
+use hyper::Uri;
 use net;
 use ring;
 use std;
-use std::io::Error;
 use std::fmt::Write;
 use std::fs;
+use std::io::Error;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
@@ -248,9 +248,9 @@ impl DenoDir {
     let is_remote_url = match module_specifier.parse::<Uri>() {
       Ok(uri) => match uri.scheme_part() {
         Some(_s) => true,
-        None => false
-      },  
-      _ => false
+        None => false,
+      },
+      _ => false,
     };
 
     if is_remote_url {
@@ -259,19 +259,18 @@ impl DenoDir {
       filename = get_cache_filename(self.deps.as_path(), uri);
     } else {
       let module_path = Path::new(module_specifier).components().as_path();
-      let path : PathBuf = 
-        if module_path.is_absolute() {
-          module_path.to_path_buf()
+      let path: PathBuf = if module_path.is_absolute() {
+        module_path.to_path_buf()
+      } else {
+        let containing_folder = PathBuf::from(containing_file);
+        let parent = if containing_file.ends_with("/") {
+          containing_folder.as_path()
         } else {
-          let containing_folder = PathBuf::from(containing_file);
-          let parent = if containing_file.ends_with("/") {
-            containing_folder.as_path()
-          } else {
-            containing_folder.parent().unwrap()
-          };
-
-          parent.join(Path::new(module_specifier))
+          containing_folder.parent().unwrap()
         };
+
+        parent.join(Path::new(module_specifier))
+      };
 
       module_name = ModuleLocation::Path(path.clone());
       filename = path;
@@ -295,7 +294,9 @@ fn get_cache_filename(basedir: &Path, url: Uri) -> PathBuf {
 
 #[test]
 fn test_get_cache_filename() {
-  let url = "http://example.com:1234/path/to/file.ts".parse::<Uri>().unwrap();
+  let url = "http://example.com:1234/path/to/file.ts"
+    .parse::<Uri>()
+    .unwrap();
   let basedir = Path::new("/cache/dir/");
   let cache_file = get_cache_filename(&basedir, url);
   assert_eq!(
@@ -510,7 +511,7 @@ fn is_remote(module_name: &ModuleLocation) -> bool {
         "https" => true,
         _ => false,
       },
-      None => false
+      None => false,
     },
     ModuleLocation::Path(_p) => false,
   }

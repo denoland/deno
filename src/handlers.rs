@@ -284,16 +284,21 @@ fn handle_env(
     return Err(err.into());
   }
 
-  let vars: Vec<_> = std::env::vars().map(|(key, value)| {
-    let key = builder.create_string(&key);
-    let value = builder.create_string(&value);
+  let vars: Vec<_> = std::env::vars()
+    .map(|(key, value)| {
+      let key = builder.create_string(&key);
+      let value = builder.create_string(&value);
 
-    msg::EnvPair::create(builder, &msg::EnvPairArgs {
-      key: Some(key),
-      value: Some(value),
-      ..Default::default()
+      msg::EnvPair::create(
+        builder,
+        &msg::EnvPairArgs {
+          key: Some(key),
+          value: Some(value),
+          ..Default::default()
+        },
+      )
     })
-  }).collect();
+    .collect();
 
   let tables = builder.create_vector_of_reverse_offsets(&vars);
 
