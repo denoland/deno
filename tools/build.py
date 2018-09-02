@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
+from __future__ import print_function
 import os
 import sys
-from os.path import join
 import third_party
-from util import root_path, run, run_output, build_path
+from util import build_path, run
 
 third_party.fix_symlinks()
 
-print "DENO_BUILD_PATH:", build_path()
-if not os.path.isdir(build_path()):
-    print "DENO_BUILD_PATH does not exist. Run tools/setup.py"
-    sys.exit(1)
-os.chdir(build_path())
-
 ninja_args = sys.argv[1:]
+if not "-C" in ninja_args:
+    if not os.path.isdir(build_path()):
+        print("Build directory '%s' does not exist." % build_path(),
+              "Run tools/setup.py")
+        sys.exit(1)
+    ninja_args = ["-C", build_path()] + ninja_args
 
 run([third_party.ninja_path] + ninja_args,
     env=third_party.google_env(),
