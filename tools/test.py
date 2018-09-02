@@ -5,7 +5,7 @@ import os
 import sys
 from check_output_test import check_output_test
 from setup_test import setup_test
-from util import executable_suffix, run, build_path
+from util import build_path, enable_ansi_colors, executable_suffix, run
 from unit_tests import unit_tests
 from util_test import util_test
 import subprocess
@@ -27,6 +27,8 @@ def main(argv):
     else:
         print "Usage: tools/test.py [build_dir]"
         sys.exit(1)
+
+    enable_ansi_colors()
 
     http_server.spawn()
 

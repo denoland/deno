@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import third_party
-from util import run, root_path, build_path, build_mode
+from util import build_mode, build_path, enable_ansi_colors, root_path, run
 import os
 import re
 import sys
@@ -8,6 +8,8 @@ from distutils.spawn import find_executable
 
 
 def main():
+    enable_ansi_colors()
+
     os.chdir(root_path)
 
     third_party.fix_symlinks()
