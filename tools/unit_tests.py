@@ -15,7 +15,10 @@ def unit_tests(deno_exe):
     run([deno_exe, "js/unit_tests.ts", "permW0N1E0", "--allow-net"])
     run([deno_exe, "js/unit_tests.ts", "permW0N0E1", "--allow-env"])
     run([
-        deno_exe, "js/unit_tests.ts", "permW1N1E1", "--allow-write",
+        deno_exe,
+        "js/unit_tests.ts",
+        "permW1N1E1",
+        "--allow-write",
         "--allow-net",
         "--allow-env",
     ])
