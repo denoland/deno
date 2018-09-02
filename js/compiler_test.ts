@@ -58,6 +58,34 @@ const fooBazTsSource = `import { foo } from "./bar.ts";
 console.log(foo);
 `;
 
+const modASource = `import { B } from "./modB.ts";
+
+export class A {
+  b = new B();
+};
+`;
+
+const modAModuleInfo = mockModuleInfo(
+  "modA",
+  "/root/project/modA.ts",
+  modASource,
+  undefined
+);
+
+const modBSource = `import { A } from "./modA.ts";
+
+export class B {
+  a = new A();
+};
+`;
+
+const modBModuleInfo = mockModuleInfo(
+  "modB",
+  "/root/project/modB.ts",
+  modBSource,
+  undefined
+);
+
 // TODO(#23) Remove source map strings from fooBarTsOutput.
 // tslint:disable:max-line-length
 const fooBarTsOutput = `define(["require", "exports", "compiler"], function (require, exports, compiler) {
@@ -94,7 +122,8 @@ const moduleMap: {
       "/root/project/foo/baz.ts",
       fooBazTsSource,
       fooBazTsOutput
-    )
+    ),
+    "modA.ts": modAModuleInfo
   },
   "/root/project/foo/baz.ts": {
     "./bar.ts": mockModuleInfo(
@@ -103,7 +132,20 @@ const moduleMap: {
       fooBarTsSource,
       fooBarTsOutput
     )
+  },
+  "/root/project/modA.ts": {
+    "./modB.ts": modBModuleInfo
+  },
+  "/root/project/modB.ts": {
+    "./modA.ts": modAModuleInfo
   }
+};
+
+const moduleCache: {
+  [fileName: string]: ModuleInfo;
+} = {
+  "/root/project/modA.ts": modAModuleInfo,
+  "/root/project/modB.ts": modBModuleInfo
 };
 
 const emittedFiles = {
@@ -138,6 +180,17 @@ function logMock(...args: any[]): void {
 const osMock: compiler.Os = {
   codeCache(fileName: string, sourceCode: string, outputCode: string): void {
     codeCacheStack.push({ fileName, sourceCode, outputCode });
+    if (fileName in moduleCache) {
+      moduleCache[fileName].sourceCode = sourceCode;
+      moduleCache[fileName].outputCode = outputCode;
+    } else {
+      moduleCache[fileName] = mockModuleInfo(
+        fileName,
+        fileName,
+        sourceCode,
+        outputCode
+      );
+    }
   },
   codeFetch(moduleSpecifier: string, containingFile: string): ModuleInfo {
     codeFetchStack.push({ moduleSpecifier, containingFile });
@@ -309,6 +362,36 @@ test(function compilerRunMultiModule() {
     "Modules should have only been fetched once."
   );
   assertEqual(codeCacheStack.length, 0, "No code should have been cached.");
+  teardown();
+});
+
+test(function compilerRunCircularDependency() {
+  setup();
+  const factoryStack: string[] = [];
+  const modADeps = ["require", "exports", "./modB.ts"];
+  const modAFactory = (_require, _exports, _modB) => {
+    assertEqual(_modB.foo, "bar");
+    factoryStack.push("modA");
+    _exports.bar = "baz";
+    _modB.assertModA();
+  };
+  const modBDeps = ["require", "exports", "./modA.ts"];
+  const modBFactory = (_require, _exports, _modA) => {
+    assertEqual(_modA, {});
+    factoryStack.push("modB");
+    _exports.foo = "bar";
+    _exports.assertModA = () => {
+      assertEqual(_modA, {
+        bar: "baz"
+      });
+    };
+  };
+  mockDepsStack.push(modBDeps);
+  mockFactoryStack.push(modBFactory);
+  mockDepsStack.push(modADeps);
+  mockFactoryStack.push(modAFactory);
+  compilerInstance.run("modA.ts", "/root/project");
+  assertEqual(factoryStack, ["modB", "modA"]);
   teardown();
 });
 
