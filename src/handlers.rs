@@ -31,15 +31,13 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
   let result: HandlerResult = match msg_type {
     msg::Any::Start => handle_start(d, &mut builder),
     msg::Any::CodeFetch => {
-      // TODO base.msg_as_CodeFetch();
-      let msg = msg::CodeFetch::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_code_fetch().unwrap();
       let module_specifier = msg.module_specifier().unwrap();
       let containing_file = msg.containing_file().unwrap();
       handle_code_fetch(d, &mut builder, module_specifier, containing_file)
     }
     msg::Any::CodeCache => {
-      // TODO base.msg_as_CodeCache();
-      let msg = msg::CodeCache::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_code_cache().unwrap();
       let filename = msg.filename().unwrap();
       let source_code = msg.source_code().unwrap();
       let output_code = msg.output_code().unwrap();
@@ -47,56 +45,48 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     }
     msg::Any::Environ => handle_env(d, &mut builder),
     msg::Any::FetchReq => {
-      // TODO base.msg_as_FetchReq();
-      let msg = msg::FetchReq::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_fetch_req().unwrap();
       let url = msg.url().unwrap();
       handle_fetch_req(d, &mut builder, msg.id(), url)
     }
     msg::Any::TimerStart => {
-      // TODO base.msg_as_TimerStart();
-      let msg = msg::TimerStart::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_timer_start().unwrap();
       handle_timer_start(d, &mut builder, msg.id(), msg.interval(), msg.delay())
     }
     msg::Any::TimerClear => {
-      // TODO base.msg_as_TimerClear();
-      let msg = msg::TimerClear::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_timer_clear().unwrap();
       handle_timer_clear(d, &mut builder, msg.id())
     }
     msg::Any::Exit => {
-      // TODO base.msg_as_Exit();
-      let msg = msg::Exit::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_exit().unwrap();
       std::process::exit(msg.code())
     }
     msg::Any::MakeTempDir => {
-      let msg = msg::MakeTempDir::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_make_temp_dir().unwrap();
       let dir = msg.dir();
       let prefix = msg.prefix();
       let suffix = msg.suffix();
       handle_make_temp_dir(d, &mut builder, dir, prefix, suffix)
     }
     msg::Any::ReadFileSync => {
-      // TODO base.msg_as_ReadFileSync();
-      let msg = msg::ReadFileSync::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_read_file_sync().unwrap();
       let filename = msg.filename().unwrap();
       handle_read_file_sync(d, &mut builder, filename)
     }
     msg::Any::SetEnv => {
-      // TODO base.msg_as_SetEnv();
-      let msg = msg::SetEnv::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_set_env().unwrap();
       let key = msg.key().unwrap();
       let value = msg.value().unwrap();
       handle_set_env(d, &mut builder, key, value)
     }
     msg::Any::StatSync => {
-      // TODO base.msg_as_StatSync();
-      let msg = msg::StatSync::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_stat_sync().unwrap();
       let filename = msg.filename().unwrap();
       let lstat = msg.lstat();
       handle_stat_sync(d, &mut builder, filename, lstat)
     }
     msg::Any::WriteFileSync => {
-      // TODO base.msg_as_WriteFileSync();
-      let msg = msg::WriteFileSync::init_from_table(base.msg().unwrap());
+      let msg = base.msg_as_write_file_sync().unwrap();
       let filename = msg.filename().unwrap();
       let data = msg.data().unwrap();
       let perm = msg.perm();
@@ -167,7 +157,7 @@ fn handle_start(
   Ok(create_msg(
     builder,
     &msg::BaseArgs {
-      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg: Some(msg.as_union_value()),
       msg_type: msg::Any::StartRes,
       ..Default::default()
     },
@@ -180,7 +170,7 @@ fn create_msg(
 ) -> deno_buf {
   let base = msg::Base::create(builder, &args);
   msg::finish_base_buffer(builder, base);
-  let data = builder.get_active_buf_slice();
+  let data = builder.finished_data();
   deno_buf {
     // TODO(ry)
     // The deno_buf / ImportBuf / ExportBuf semantics should be such that we do not need to yield
@@ -232,7 +222,7 @@ fn handle_code_fetch(
   Ok(create_msg(
     builder,
     &msg::BaseArgs {
-      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg: Some(msg.as_union_value()),
       msg_type: msg::Any::CodeFetchRes,
       ..Default::default()
     },
@@ -300,7 +290,7 @@ fn handle_env(
     })
     .collect();
 
-  let tables = builder.create_vector_of_reverse_offsets(&vars);
+  let tables = builder.create_vector(&vars);
 
   let msg = msg::EnvironRes::create(
     builder,
@@ -313,7 +303,7 @@ fn handle_env(
   Ok(create_msg(
     builder,
     &msg::BaseArgs {
-      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg: Some(msg.as_union_value()),
       msg_type: msg::Any::EnvironRes,
       ..Default::default()
     },
@@ -351,7 +341,7 @@ fn handle_fetch_req(
           d,
           &mut builder,
           &msg::BaseArgs {
-            msg: Some(flatbuffers::Offset::new(msg.value())),
+            msg: Some(msg.as_union_value()),
             msg_type: msg::Any::FetchRes,
             ..Default::default()
           },
@@ -362,7 +352,7 @@ fn handle_fetch_req(
         // Send the body as a FetchRes message.
         res.into_body().concat2().map(move |body_buffer| {
           let mut builder = flatbuffers::FlatBufferBuilder::new();
-          let data_off = builder.create_byte_vector(body_buffer.as_ref());
+          let data_off = builder.create_vector(body_buffer.as_ref());
           let msg = msg::FetchRes::create(
             &mut builder,
             &msg::FetchResArgs {
@@ -375,7 +365,7 @@ fn handle_fetch_req(
             d,
             &mut builder,
             &msg::BaseArgs {
-              msg: Some(flatbuffers::Offset::new(msg.value())),
+              msg: Some(msg.as_union_value()),
               msg_type: msg::Any::FetchRes,
               ..Default::default()
             },
@@ -401,7 +391,7 @@ fn handle_fetch_req(
           d,
           &mut builder,
           &msg::BaseArgs {
-            msg: Some(flatbuffers::Offset::new(msg.value())),
+            msg: Some(msg.as_union_value()),
             msg_type: msg::Any::FetchRes,
             error: Some(err_off),
             ..Default::default()
@@ -479,7 +469,7 @@ fn send_timer_ready(d: *const DenoC, timer_id: u32, done: bool) {
     d,
     &mut builder,
     &msg::BaseArgs {
-      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg: Some(msg.as_union_value()),
       msg_type: msg::Any::TimerReady,
       ..Default::default()
     },
@@ -516,7 +506,7 @@ fn handle_make_temp_dir(
   Ok(create_msg(
     builder,
     &msg::BaseArgs {
-      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg: Some(msg.as_union_value()),
       msg_type: msg::Any::MakeTempDirRes,
       ..Default::default()
     },
@@ -533,7 +523,7 @@ fn handle_read_file_sync(
   let vec = fs::read(Path::new(filename))?;
   // Build the response message. memcpy data into msg.
   // TODO(ry) zero-copy.
-  let data_off = builder.create_byte_vector(vec.as_slice());
+  let data_off = builder.create_vector(vec.as_slice());
   let msg = msg::ReadFileSyncRes::create(
     builder,
     &msg::ReadFileSyncResArgs {
@@ -544,7 +534,7 @@ fn handle_read_file_sync(
   Ok(create_msg(
     builder,
     &msg::BaseArgs {
-      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg: Some(msg.as_union_value()),
       msg_type: msg::Any::ReadFileSyncRes,
       ..Default::default()
     },
@@ -591,7 +581,7 @@ fn handle_stat_sync(
   Ok(create_msg(
     builder,
     &msg::BaseArgs {
-      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg: Some(msg.as_union_value()),
       msg_type: msg::Any::StatSyncRes,
       ..Default::default()
     },

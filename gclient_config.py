@@ -35,10 +35,10 @@ solutions = [{
     'cpplint'
 }, {
     # Tracking a bleeding-edge branch. Upgrade frequently.
-    # https://github.com/google/flatbuffers/pull/3894
-    # https://github.com/rw/flatbuffers/tree/2018-08-12--all-tests-passing
+    # https://github.com/google/flatbuffers/pull/4898
+    # https://github.com/rw/flatbuffers/tree/2018-08-28--rw-flatbuffers-rust
     'url':
-    'https://github.com/rw/flatbuffers.git@83a71543f8ccbf230ac27cb523831bfafb9c84d7',
+    'https://github.com/rw/flatbuffers.git@93f91622561907e2e51662be897631b5e0ed5634',
     'name':
     'flatbuffers'
 }]
