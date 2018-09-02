@@ -116,6 +116,7 @@ fn handle_start(
       cwd: Some(cwd_off),
       argv: Some(argv_off),
       debug_flag: deno.flags.log_debug,
+      deps_flag: deno.flags.deps_flag,
       ..Default::default()
     },
   );
