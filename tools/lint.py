@@ -2,7 +2,9 @@
 # Does google-lint on c++ files and ts-lint on typescript files
 
 import os
-from util import run
+from util import enable_ansi_colors, run
+
+enable_ansi_colors()
 
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 third_party_path = os.path.join(root_path, "third_party")

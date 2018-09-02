@@ -5,6 +5,9 @@
 # find . -type f | grep -v "\.git" | xargs -I% git add -f --no-warn-embedded-repo "%"
 
 import third_party
+import util
+
+util.enable_ansi_colors()
 
 third_party.fix_symlinks()
 
