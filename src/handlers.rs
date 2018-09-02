@@ -2,7 +2,6 @@
 use binding;
 use binding::{deno_buf, DenoC};
 use errors::DenoResult;
-use flatbuffers;
 use flatbuffers::FlatBufferBuilder;
 use from_c;
 use fs as deno_fs;
@@ -22,81 +21,36 @@ use tokio::prelude::*;
 use tokio::timer::{Delay, Interval};
 
 type HandlerResult = DenoResult<binding::deno_buf>;
+type Handler =
+  fn(d: *const DenoC, base: msg::Base, builder: &mut FlatBufferBuilder)
+    -> HandlerResult;
 
 pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
   let bytes = unsafe { std::slice::from_raw_parts(buf.data_ptr, buf.data_len) };
   let base = msg::get_root_as_base(bytes);
-  let mut builder = FlatBufferBuilder::new();
   let msg_type = base.msg_type();
-  let result: HandlerResult = match msg_type {
-    msg::Any::Start => handle_start(d, &mut builder),
-    msg::Any::CodeFetch => {
-      let msg = base.msg_as_code_fetch().unwrap();
-      let module_specifier = msg.module_specifier().unwrap();
-      let containing_file = msg.containing_file().unwrap();
-      handle_code_fetch(d, &mut builder, module_specifier, containing_file)
-    }
-    msg::Any::CodeCache => {
-      let msg = base.msg_as_code_cache().unwrap();
-      let filename = msg.filename().unwrap();
-      let source_code = msg.source_code().unwrap();
-      let output_code = msg.output_code().unwrap();
-      handle_code_cache(d, &mut builder, filename, source_code, output_code)
-    }
-    msg::Any::Environ => handle_env(d, &mut builder),
-    msg::Any::FetchReq => {
-      let msg = base.msg_as_fetch_req().unwrap();
-      let url = msg.url().unwrap();
-      handle_fetch_req(d, &mut builder, msg.id(), url)
-    }
-    msg::Any::TimerStart => {
-      let msg = base.msg_as_timer_start().unwrap();
-      handle_timer_start(d, &mut builder, msg.id(), msg.interval(), msg.delay())
-    }
-    msg::Any::TimerClear => {
-      let msg = base.msg_as_timer_clear().unwrap();
-      handle_timer_clear(d, &mut builder, msg.id())
-    }
-    msg::Any::Exit => {
-      let msg = base.msg_as_exit().unwrap();
-      std::process::exit(msg.code())
-    }
-    msg::Any::MakeTempDir => {
-      let msg = base.msg_as_make_temp_dir().unwrap();
-      let dir = msg.dir();
-      let prefix = msg.prefix();
-      let suffix = msg.suffix();
-      handle_make_temp_dir(d, &mut builder, dir, prefix, suffix)
-    }
-    msg::Any::ReadFileSync => {
-      let msg = base.msg_as_read_file_sync().unwrap();
-      let filename = msg.filename().unwrap();
-      handle_read_file_sync(d, &mut builder, filename)
-    }
-    msg::Any::SetEnv => {
-      let msg = base.msg_as_set_env().unwrap();
-      let key = msg.key().unwrap();
-      let value = msg.value().unwrap();
-      handle_set_env(d, &mut builder, key, value)
-    }
-    msg::Any::StatSync => {
-      let msg = base.msg_as_stat_sync().unwrap();
-      let filename = msg.filename().unwrap();
-      let lstat = msg.lstat();
-      handle_stat_sync(d, &mut builder, filename, lstat)
-    }
-    msg::Any::WriteFileSync => {
-      let msg = base.msg_as_write_file_sync().unwrap();
-      let filename = msg.filename().unwrap();
-      let data = msg.data().unwrap();
-      let perm = msg.perm();
-      handle_write_file_sync(d, &mut builder, filename, data, perm)
-    }
+  let handler: Handler = match msg_type {
+    msg::Any::Start => handle_start,
+    msg::Any::CodeFetch => handle_code_fetch,
+    msg::Any::CodeCache => handle_code_cache,
+    msg::Any::Environ => handle_env,
+    msg::Any::FetchReq => handle_fetch_req,
+    msg::Any::TimerStart => handle_timer_start,
+    msg::Any::TimerClear => handle_timer_clear,
+    msg::Any::MakeTempDir => handle_make_temp_dir,
+    msg::Any::ReadFileSync => handle_read_file_sync,
+    msg::Any::SetEnv => handle_set_env,
+    msg::Any::StatSync => handle_stat_sync,
+    msg::Any::WriteFileSync => handle_write_file_sync,
+    msg::Any::Exit => handle_exit,
     _ => panic!(format!(
       "Unhandled message {}",
       msg::enum_name_any(msg_type)
     )),
   };
+
+  let builder = &mut FlatBufferBuilder::new();
+  let result = handler(d, base, builder);
 
   // No matter whether we got an Err or Ok, we want a serialized message to
   // send back. So transform the DenoError into a deno_buf.
@@ -104,7 +58,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     Err(ref err) => {
       let errmsg_offset = builder.create_string(&format!("{}", err));
       create_msg(
-        &mut builder,
+        builder,
         &msg::BaseArgs {
           error: Some(errmsg_offset),
           error_kind: err.kind(),
@@ -131,8 +85,18 @@ fn null_buf() -> deno_buf {
   }
 }
 
+fn handle_exit(
+  _d: *const DenoC,
+  base: msg::Base,
+  _builder: &mut FlatBufferBuilder,
+) -> HandlerResult {
+  let msg = base.msg_as_exit().unwrap();
+  std::process::exit(msg.code())
+}
+
 fn handle_start(
   d: *const DenoC,
+  _base: msg::Base,
   builder: &mut FlatBufferBuilder,
 ) -> HandlerResult {
   let deno = from_c(d);
@@ -157,8 +121,8 @@ fn handle_start(
   Ok(create_msg(
     builder,
     &msg::BaseArgs {
-      msg: Some(msg.as_union_value()),
       msg_type: msg::Any::StartRes,
+      msg: Some(msg.as_union_value()),
       ..Default::default()
     },
   ))
@@ -196,16 +160,17 @@ fn send_base(
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn handle_code_fetch(
   d: *const DenoC,
+  base: msg::Base,
   builder: &mut FlatBufferBuilder,
-  module_specifier: &str,
-  containing_file: &str,
 ) -> HandlerResult {
+  let msg = base.msg_as_code_fetch().unwrap();
+  let module_specifier = msg.module_specifier().unwrap();
+  let containing_file = msg.containing_file().unwrap();
   let deno = from_c(d);
 
   assert!(deno.dir.root.join("gen") == deno.dir.gen, "Sanity check");
 
   let out = deno.dir.code_fetch(module_specifier, containing_file)?;
-  // reply_code_fetch
   let mut msg_args = msg::CodeFetchResArgs {
     module_name: Some(builder.create_string(&out.module_name)),
     filename: Some(builder.create_string(&out.filename)),
@@ -232,11 +197,13 @@ fn handle_code_fetch(
 // https://github.com/denoland/deno/blob/golang/os.go#L156-L169
 fn handle_code_cache(
   d: *const DenoC,
+  base: msg::Base,
   _builder: &mut FlatBufferBuilder,
-  filename: &str,
-  source_code: &str,
-  output_code: &str,
 ) -> HandlerResult {
+  let msg = base.msg_as_code_cache().unwrap();
+  let filename = msg.filename().unwrap();
+  let source_code = msg.source_code().unwrap();
+  let output_code = msg.output_code().unwrap();
   let deno = from_c(d);
   deno.dir.code_cache(filename, source_code, output_code)?;
   Ok(null_buf()) // null response indicates success.
@@ -244,10 +211,13 @@ fn handle_code_cache(
 
 fn handle_set_env(
   d: *const DenoC,
+  base: msg::Base,
   _builder: &mut FlatBufferBuilder,
-  key: &str,
-  value: &str,
 ) -> HandlerResult {
+  let msg = base.msg_as_set_env().unwrap();
+  let key = msg.key().unwrap();
+  let value = msg.value().unwrap();
+
   let deno = from_c(d);
   if !deno.flags.allow_env {
     let err = std::io::Error::new(
@@ -263,6 +233,7 @@ fn handle_set_env(
 
 fn handle_env(
   d: *const DenoC,
+  _base: msg::Base,
   builder: &mut FlatBufferBuilder,
 ) -> HandlerResult {
   let deno = from_c(d);
@@ -312,10 +283,12 @@ fn handle_env(
 
 fn handle_fetch_req(
   d: *const DenoC,
+  base: msg::Base,
   _builder: &mut FlatBufferBuilder,
-  id: u32,
-  url: &str,
 ) -> HandlerResult {
+  let msg = base.msg_as_fetch_req().unwrap();
+  let id = msg.id();
+  let url = msg.url().unwrap();
   let deno = from_c(d);
   let url = url.parse::<hyper::Uri>().unwrap();
   let client = Client::new();
@@ -326,9 +299,9 @@ fn handle_fetch_req(
       .map(move |res| {
         let status = res.status().as_u16() as i32;
 
+        let mut builder = FlatBufferBuilder::new();
         // Send the first message without a body. This is just to indicate
         // what status code.
-        let mut builder = flatbuffers::FlatBufferBuilder::new();
         let msg = msg::FetchRes::create(
           &mut builder,
           &msg::FetchResArgs {
@@ -351,7 +324,7 @@ fn handle_fetch_req(
       .and_then(move |res| {
         // Send the body as a FetchRes message.
         res.into_body().concat2().map(move |body_buffer| {
-          let mut builder = flatbuffers::FlatBufferBuilder::new();
+          let mut builder = FlatBufferBuilder::new();
           let data_off = builder.create_vector(body_buffer.as_ref());
           let msg = msg::FetchRes::create(
             &mut builder,
@@ -378,7 +351,7 @@ fn handle_fetch_req(
         // TODO This is obviously a lot of duplicated code from the success case.
         // Leaving it here now jsut to get a first pass implementation, but this
         // needs to be cleaned up.
-        let mut builder = flatbuffers::FlatBufferBuilder::new();
+        let mut builder = FlatBufferBuilder::new();
         let err_off = builder.create_string(errmsg.as_str());
         let msg = msg::FetchRes::create(
           &mut builder,
@@ -478,11 +451,13 @@ fn send_timer_ready(d: *const DenoC, timer_id: u32, done: bool) {
 
 fn handle_make_temp_dir(
   d: *const DenoC,
+  base: msg::Base,
   builder: &mut FlatBufferBuilder,
-  dir: Option<&str>,
-  prefix: Option<&str>,
-  suffix: Option<&str>,
 ) -> HandlerResult {
+  let msg = base.msg_as_make_temp_dir().unwrap();
+  let dir = msg.dir();
+  let prefix = msg.prefix();
+  let suffix = msg.suffix();
   let deno = from_c(d);
   if !deno.flags.allow_write {
     let err = std::io::Error::new(
@@ -516,9 +491,11 @@ fn handle_make_temp_dir(
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
 fn handle_read_file_sync(
   _d: *const DenoC,
+  base: msg::Base,
   builder: &mut FlatBufferBuilder,
-  filename: &str,
 ) -> HandlerResult {
+  let msg = base.msg_as_read_file_sync().unwrap();
+  let filename = msg.filename().unwrap();
   debug!("handle_read_file_sync {}", filename);
   let vec = fs::read(Path::new(filename))?;
   // Build the response message. memcpy data into msg.
@@ -553,10 +530,13 @@ macro_rules! to_seconds {
 
 fn handle_stat_sync(
   _d: *const DenoC,
+  base: msg::Base,
   builder: &mut FlatBufferBuilder,
-  filename: &str,
-  lstat: bool,
 ) -> HandlerResult {
+  let msg = base.msg_as_stat_sync().unwrap();
+  let filename = msg.filename().unwrap();
+  let lstat = msg.lstat();
+
   debug!("handle_stat_sync {} {}", filename, lstat);
   let path = Path::new(filename);
   let metadata = if lstat {
@@ -590,13 +570,16 @@ fn handle_stat_sync(
 
 fn handle_write_file_sync(
   d: *const DenoC,
+  base: msg::Base,
   _builder: &mut FlatBufferBuilder,
-  filename: &str,
-  data: &[u8],
-  _perm: u32,
 ) -> HandlerResult {
-  debug!("handle_write_file_sync {}", filename);
+  let msg = base.msg_as_write_file_sync().unwrap();
+  let filename = msg.filename().unwrap();
+  let data = msg.data().unwrap();
+  // TODO let perm = msg.perm();
   let deno = from_c(d);
+
+  debug!("handle_write_file_sync {}", filename);
   if deno.flags.allow_write {
     // TODO(ry) Use perm.
     deno_fs::write_file_sync(Path::new(filename), data)?;
@@ -619,12 +602,14 @@ fn remove_timer(d: *const DenoC, timer_id: u32) {
 // Prototype: https://github.com/ry/deno/blob/golang/timers.go#L25-L39
 fn handle_timer_start(
   d: *const DenoC,
+  base: msg::Base,
   _builder: &mut FlatBufferBuilder,
-  timer_id: u32,
-  interval: bool,
-  delay: u32,
 ) -> HandlerResult {
   debug!("handle_timer_start");
+  let msg = base.msg_as_timer_start().unwrap();
+  let timer_id = msg.id();
+  let interval = msg.interval();
+  let delay = msg.delay();
   let deno = from_c(d);
 
   if interval {
@@ -655,10 +640,11 @@ fn handle_timer_start(
 // Prototype: https://github.com/ry/deno/blob/golang/timers.go#L40-L43
 fn handle_timer_clear(
   d: *const DenoC,
+  base: msg::Base,
   _builder: &mut FlatBufferBuilder,
-  timer_id: u32,
 ) -> HandlerResult {
+  let msg = base.msg_as_timer_clear().unwrap();
   debug!("handle_timer_clear");
-  remove_timer(d, timer_id);
+  remove_timer(d, msg.id());
   Ok(null_buf())
 }
