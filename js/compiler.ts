@@ -38,6 +38,11 @@ type ContainingFile = string;
  */
 type ModuleFileName = string;
 /**
+ * The original resolved resource name.
+ * Path to cached module file or URL from which dependency was retrieved
+ */
+type ModuleId = string;
+/**
  * The external name of a module - could be a URL or could be a relative path.
  * Examples `http://gist.github.com/somefile.ts` or `./somefile.ts`
  */
@@ -84,6 +89,7 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
   public scriptVersion = "";
 
   constructor(
+    public readonly moduleId: ModuleId,
     public readonly fileName: ModuleFileName,
     public readonly sourceCode = "",
     public outputCode = ""
@@ -415,7 +421,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     );
     this._gatherDependencies(moduleMetaData);
     const dependencies = this._runQueue.map(
-      moduleMetaData => moduleMetaData.fileName
+      moduleMetaData => moduleMetaData.moduleId
     );
     // empty the run queue, to free up references to factories we have collected
     // and to ensure that if there is a further invocation of `.run()` the
@@ -491,6 +497,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
       return this._moduleMetaDataMap.get(fileName)!;
     }
+    let moduleId: ModuleId = "";
     let sourceCode: string | undefined;
     let outputCode: string | undefined;
     if (
@@ -518,6 +525,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
           containingFile
         );
       }
+      moduleId = fetchResponse.moduleName || "";
       fileName = fetchResponse.filename || undefined;
       sourceCode = fetchResponse.sourceCode || undefined;
       outputCode = fetchResponse.outputCode || undefined;
@@ -535,7 +543,12 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
       return this._moduleMetaDataMap.get(fileName)!;
     }
-    const moduleMetaData = new ModuleMetaData(fileName, sourceCode, outputCode);
+    const moduleMetaData = new ModuleMetaData(
+      moduleId,
+      fileName,
+      sourceCode,
+      outputCode
+    );
     this._moduleMetaDataMap.set(fileName, moduleMetaData);
     return moduleMetaData;
   }
