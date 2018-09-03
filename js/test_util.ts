@@ -17,23 +17,26 @@ testing.setFilter(deno.argv[1]);
 interface DenoPermissions {
   write?: boolean;
   net?: boolean;
+  env?: boolean;
 }
 
 function permToString(perms: DenoPermissions): string {
   const w = perms.write ? 1 : 0;
   const n = perms.net ? 1 : 0;
-  return `permW${w}N${n}`;
+  const e = perms.env ? 1 : 0;
+  return `permW${w}N${n}E${e}`;
 }
 
 function permFromString(s: string): DenoPermissions {
-  const re = /^permW([01])N([01])$/;
+  const re = /^permW([01])N([01])E([01])$/;
   const found = s.match(re);
   if (!found) {
     throw Error("Not a permission string");
   }
   return {
     write: Boolean(Number(found[1])),
-    net: Boolean(Number(found[2]))
+    net: Boolean(Number(found[2])),
+    env: Boolean(Number(found[3])),
   };
 }
 
@@ -43,14 +46,16 @@ export function testPerm(perms: DenoPermissions, fn: testing.TestFunction) {
 }
 
 export function test(fn: testing.TestFunction) {
-  testPerm({ write: false, net: false }, fn);
+  testPerm({ write: false, net: false, env: false }, fn);
 }
 
 test(function permSerialization() {
-  for (let write of [true, false]) {
-    for (let net of [true, false]) {
-      let perms: DenoPermissions = { write, net };
-      testing.assertEqual(perms, permFromString(permToString(perms)));
+  for (const write of [true, false]) {
+    for (const net of [true, false]) {
+      for (const env of [true, false]) {
+        const perms: DenoPermissions = { write, net, env };
+        testing.assertEqual(perms, permFromString(permToString(perms)));
+      }
     }
   }
 });

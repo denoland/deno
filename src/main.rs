@@ -4,13 +4,13 @@ extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg_generated;
 extern crate rand;
-extern crate sha1;
 extern crate tempfile;
 extern crate tokio;
-extern crate tokio_current_thread;
 extern crate url;
 #[macro_use]
 extern crate log;
+extern crate hyper_rustls;
+extern crate ring;
 
 mod binding;
 mod deno_dir;
@@ -131,6 +131,7 @@ fn main() {
   let js_args = flags::v8_set_flags(env::args().collect());
 
   let mut d = Deno::new(js_args);
+  let mut log_level = log::LevelFilter::Info;
 
   if d.flags.help {
     flags::print_usage();
@@ -142,11 +143,11 @@ fn main() {
     std::process::exit(0);
   }
 
-  log::set_max_level(if d.flags.log_debug {
-    log::LevelFilter::Debug
-  } else {
-    log::LevelFilter::Info
-  });
+  if d.flags.log_debug {
+    log_level = log::LevelFilter::Debug;
+  }
+
+  log::set_max_level(log_level);
 
   d.execute("deno_main.js", "denoMain();")
     .unwrap_or_else(|err| {

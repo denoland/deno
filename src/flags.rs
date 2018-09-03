@@ -11,7 +11,7 @@ macro_rules! svec {
     ($($x:expr),*) => (vec![$($x.to_string()),*]);
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct DenoFlags {
   pub help: bool,
   pub log_debug: bool,
@@ -19,6 +19,7 @@ pub struct DenoFlags {
   pub reload: bool,
   pub allow_write: bool,
   pub allow_net: bool,
+  pub allow_env: bool,
 }
 
 pub fn print_usage() {
@@ -27,6 +28,7 @@ pub fn print_usage() {
 
 --allow-write      Allow file system write access.
 --allow-net        Allow network access.
+--allow-env        Allow environment access.
 -v or --version    Print the version.
 -r or --reload     Reload cached remote resources.
 -D or --log-debug  Log debug output.
@@ -37,14 +39,7 @@ pub fn print_usage() {
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
 pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
-  let mut flags = DenoFlags {
-    help: false,
-    version: false,
-    reload: false,
-    log_debug: false,
-    allow_write: false,
-    allow_net: false,
-  };
+  let mut flags = DenoFlags::default();
   let mut rest = Vec::new();
   for a in &args {
     match a.as_str() {
@@ -52,6 +47,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
       "-D" | "--log-debug" => flags.log_debug = true,
       "-v" | "--version" => flags.version = true,
       "-r" | "--reload" => flags.reload = true,
+      "--allow-env" => flags.allow_env = true,
       "--allow-write" => flags.allow_write = true,
       "--allow-net" => flags.allow_net = true,
       _ => rest.push(a.clone()),
@@ -64,15 +60,10 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
 #[test]
 fn test_set_flags_1() {
   let (flags, rest) = set_flags(svec!["deno", "--version"]);
-  assert!(rest == svec!["deno"]);
-  assert!(
-    flags == DenoFlags {
-      help: false,
-      log_debug: false,
+  assert_eq!(rest, svec!["deno"]);
+  assert_eq!(flags, DenoFlags {
       version: true,
-      reload: false,
-      allow_write: false,
-      allow_net: false,
+      ..DenoFlags::default()
     }
   );
 }
@@ -80,15 +71,11 @@ fn test_set_flags_1() {
 #[test]
 fn test_set_flags_2() {
   let (flags, rest) = set_flags(svec!["deno", "-r", "-D", "script.ts"]);
-  assert!(rest == svec!["deno", "script.ts"]);
-  assert!(
-    flags == DenoFlags {
-      help: false,
+  assert_eq!(rest, svec!["deno", "script.ts"]);
+  assert_eq!(flags, DenoFlags {
       log_debug: true,
-      version: false,
       reload: true,
-      allow_write: false,
-      allow_net: false,
+      ..DenoFlags::default()
     }
   );
 }
@@ -97,15 +84,11 @@ fn test_set_flags_2() {
 fn test_set_flags_3() {
   let (flags, rest) =
     set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]);
-  assert!(rest == svec!["deno", "script.ts"]);
-  assert!(
-    flags == DenoFlags {
-      help: false,
-      log_debug: false,
-      version: false,
+  assert_eq!(rest, svec!["deno", "script.ts"]);
+  assert_eq!(flags, DenoFlags {
       reload: true,
       allow_write: true,
-      allow_net: false,
+      ..DenoFlags::default()
     }
   );
 }
@@ -142,13 +125,13 @@ fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
 fn test_parse_core_args_1() {
   let js_args =
     parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
-  assert!(js_args == (vec!["deno".to_string(), "--help".to_string()], vec![]));
+  assert_eq!(js_args, (vec!["deno".to_string(), "--help".to_string()], vec![]));
 }
 
 #[test]
 fn test_parse_core_args_2() {
   let js_args = parse_core_args(vec!["deno".to_string(), "--help".to_string()]);
-  assert!(js_args == (vec!["deno".to_string()], vec!["--help".to_string()]));
+  assert_eq!(js_args, (vec!["deno".to_string()], vec!["--help".to_string()]));
 }
 
 // Pass the command line arguments to v8.

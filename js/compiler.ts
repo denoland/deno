@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+/// <amd-module name="compiler"/>
 import * as ts from "typescript";
 import { assetSourceCode } from "./assets";
 import * as deno from "./deno";
@@ -76,6 +77,7 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
   public deps?: ModuleFileName[];
   public readonly exports = {};
   public factory?: AmdFactory;
+  public gatheringDeps = false;
   public hasRun = false;
   public scriptVersion = "";
 
@@ -249,10 +251,6 @@ export class DenoCompiler implements ts.LanguageServiceHost {
       }
       const dependencyMetaData = this._getModuleMetaData(dep);
       assert(dependencyMetaData != null, `Missing dependency "${dep}".`);
-      assert(
-        dependencyMetaData!.hasRun === true,
-        `Module "${dep}" was not run.`
-      );
       // TypeScript does not track assert, therefore using not null operator
       return dependencyMetaData!.exports;
     });
@@ -282,7 +280,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
    * emit of a dynamic ES `import()` from TypeScript.
    */
   private _makeLocalRequire(moduleMetaData: ModuleMetaData): AMDRequire {
-    const localRequire = (
+    return (
       deps: ModuleSpecifier[],
       callback: AmdCallback,
       errback: AmdErrback
@@ -303,7 +301,6 @@ export class DenoCompiler implements ts.LanguageServiceHost {
         errback(e);
       }
     };
-    return localRequire;
   }
 
   /**
@@ -430,12 +427,15 @@ export class DenoCompiler implements ts.LanguageServiceHost {
    */
   makeDefine(moduleMetaData: ModuleMetaData): AmdDefine {
     // TODO should this really be part of the public API of the compiler?
-    const localDefine: AmdDefine = (
+    return (
       deps: ModuleSpecifier[],
       factory: AmdFactory
     ): void => {
       this._log("compiler.localDefine", moduleMetaData.fileName);
       moduleMetaData.factory = factory;
+      // when there are circular dependencies, we need to skip recursing the
+      // dependencies
+      moduleMetaData.gatheringDeps = true;
       // we will recursively resolve the dependencies for any modules
       moduleMetaData.deps = deps.map(dep => {
         if (
@@ -449,14 +449,16 @@ export class DenoCompiler implements ts.LanguageServiceHost {
           dep,
           moduleMetaData.fileName
         );
-        this._gatherDependencies(dependencyMetaData);
+        if (!dependencyMetaData.gatheringDeps) {
+          this._gatherDependencies(dependencyMetaData);
+        }
         return dependencyMetaData.fileName;
       });
+      moduleMetaData.gatheringDeps = false;
       if (!this._runQueue.includes(moduleMetaData)) {
         this._runQueue.push(moduleMetaData);
       }
     };
-    return localDefine;
   }
 
   /**
@@ -640,7 +642,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
 
   getDefaultLibFileName(): string {
     this._log("getDefaultLibFileName()");
-    const moduleSpecifier = "lib.globals.d.ts";
+    const moduleSpecifier = "globals.d.ts";
     const moduleMetaData = this.resolveModule(moduleSpecifier, ASSETS);
     return moduleMetaData.fileName;
   }
@@ -669,10 +671,9 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     this._log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(name => {
       let resolvedFileName;
-      if (name === "deno") {
-        resolvedFileName = this.resolveModuleName("deno.d.ts", ASSETS);
-      } else if (name === "compiler") {
-        resolvedFileName = this.resolveModuleName("compiler.d.ts", ASSETS);
+      if (name === "deno" || name === "compiler") {
+        // builtin modules are part of `globals.d.ts`
+        resolvedFileName = this.resolveModuleName("globals.d.ts", ASSETS);
       } else if (name === "typescript") {
         resolvedFileName = this.resolveModuleName("typescript.d.ts", ASSETS);
       } else {

@@ -58,6 +58,34 @@ const fooBazTsSource = `import { foo } from "./bar.ts";
 console.log(foo);
 `;
 
+const modASource = `import { B } from "./modB.ts";
+
+export class A {
+  b = new B();
+};
+`;
+
+const modAModuleInfo = mockModuleInfo(
+  "modA",
+  "/root/project/modA.ts",
+  modASource,
+  undefined
+);
+
+const modBSource = `import { A } from "./modA.ts";
+
+export class B {
+  a = new A();
+};
+`;
+
+const modBModuleInfo = mockModuleInfo(
+  "modB",
+  "/root/project/modB.ts",
+  modBSource,
+  undefined
+);
+
 // TODO(#23) Remove source map strings from fooBarTsOutput.
 // tslint:disable:max-line-length
 const fooBarTsOutput = `define(["require", "exports", "compiler"], function (require, exports, compiler) {
@@ -94,7 +122,8 @@ const moduleMap: {
       "/root/project/foo/baz.ts",
       fooBazTsSource,
       fooBazTsOutput
-    )
+    ),
+    "modA.ts": modAModuleInfo
   },
   "/root/project/foo/baz.ts": {
     "./bar.ts": mockModuleInfo(
@@ -103,7 +132,20 @@ const moduleMap: {
       fooBarTsSource,
       fooBarTsOutput
     )
+  },
+  "/root/project/modA.ts": {
+    "./modB.ts": modBModuleInfo
+  },
+  "/root/project/modB.ts": {
+    "./modA.ts": modAModuleInfo
   }
+};
+
+const moduleCache: {
+  [fileName: string]: ModuleInfo;
+} = {
+  "/root/project/modA.ts": modAModuleInfo,
+  "/root/project/modB.ts": modBModuleInfo
 };
 
 const emittedFiles = {
@@ -138,6 +180,17 @@ function logMock(...args: any[]): void {
 const osMock: compiler.Os = {
   codeCache(fileName: string, sourceCode: string, outputCode: string): void {
     codeCacheStack.push({ fileName, sourceCode, outputCode });
+    if (fileName in moduleCache) {
+      moduleCache[fileName].sourceCode = sourceCode;
+      moduleCache[fileName].outputCode = outputCode;
+    } else {
+      moduleCache[fileName] = mockModuleInfo(
+        fileName,
+        fileName,
+        sourceCode,
+        outputCode
+      );
+    }
   },
   codeFetch(moduleSpecifier: string, containingFile: string): ModuleInfo {
     codeFetchStack.push({ moduleSpecifier, containingFile });
@@ -312,6 +365,36 @@ test(function compilerRunMultiModule() {
   teardown();
 });
 
+test(function compilerRunCircularDependency() {
+  setup();
+  const factoryStack: string[] = [];
+  const modADeps = ["require", "exports", "./modB.ts"];
+  const modAFactory = (_require, _exports, _modB) => {
+    assertEqual(_modB.foo, "bar");
+    factoryStack.push("modA");
+    _exports.bar = "baz";
+    _modB.assertModA();
+  };
+  const modBDeps = ["require", "exports", "./modA.ts"];
+  const modBFactory = (_require, _exports, _modA) => {
+    assertEqual(_modA, {});
+    factoryStack.push("modB");
+    _exports.foo = "bar";
+    _exports.assertModA = () => {
+      assertEqual(_modA, {
+        bar: "baz"
+      });
+    };
+  };
+  mockDepsStack.push(modBDeps);
+  mockFactoryStack.push(modBFactory);
+  mockDepsStack.push(modADeps);
+  mockFactoryStack.push(modAFactory);
+  compilerInstance.run("modA.ts", "/root/project");
+  assertEqual(factoryStack, ["modB", "modA"]);
+  teardown();
+});
+
 test(function compilerResolveModule() {
   setup();
   const moduleMetaData = compilerInstance.resolveModule(
@@ -445,10 +528,7 @@ test(function compilerGetCurrentDirectory() {
 
 test(function compilerGetDefaultLibFileName() {
   setup();
-  assertEqual(
-    compilerInstance.getDefaultLibFileName(),
-    "$asset$/lib.globals.d.ts"
-  );
+  assertEqual(compilerInstance.getDefaultLibFileName(), "$asset$/globals.d.ts");
   teardown();
 });
 
@@ -474,7 +554,7 @@ test(function compilerFileExists() {
     "/root/project"
   );
   assert(compilerInstance.fileExists(moduleMetaData.fileName));
-  assert(compilerInstance.fileExists("$asset$/compiler.d.ts"));
+  assert(compilerInstance.fileExists("$asset$/globals.d.ts"));
   assertEqual(
     compilerInstance.fileExists("/root/project/unknown-module.ts"),
     false
@@ -485,15 +565,14 @@ test(function compilerFileExists() {
 test(function compilerResolveModuleNames() {
   setup();
   const results = compilerInstance.resolveModuleNames(
-    ["foo/bar.ts", "foo/baz.ts", "$asset$/lib.globals.d.ts", "deno"],
+    ["foo/bar.ts", "foo/baz.ts", "deno"],
     "/root/project"
   );
-  assertEqual(results.length, 4);
+  assertEqual(results.length, 3);
   const fixtures: Array<[string, boolean]> = [
     ["/root/project/foo/bar.ts", false],
     ["/root/project/foo/baz.ts", false],
-    ["$asset$/lib.globals.d.ts", true],
-    ["$asset$/deno.d.ts", true]
+    ["$asset$/globals.d.ts", true]
   ];
   for (let i = 0; i < results.length; i++) {
     const result = results[i];

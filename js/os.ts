@@ -3,20 +3,15 @@ import { ModuleInfo } from "./types";
 import { deno as fbs } from "gen/msg_generated";
 import { assert } from "./util";
 import * as util from "./util";
-import { maybeThrowError } from "./errors";
 import { flatbuffers } from "flatbuffers";
-import { libdeno } from "./libdeno";
+import { send } from "./fbs_util";
 
 export function exit(exitCode = 0): never {
   const builder = new flatbuffers.Builder();
   fbs.Exit.startExit(builder);
   fbs.Exit.addCode(builder, exitCode);
   const msg = fbs.Exit.endExit(builder);
-  fbs.Base.startBase(builder);
-  fbs.Base.addMsg(builder, msg);
-  fbs.Base.addMsgType(builder, fbs.Any.Exit);
-  builder.finish(fbs.Base.endBase(builder));
-  libdeno.send(builder.asUint8Array());
+  send(builder, fbs.Any.Exit, msg);
   return util.unreachable();
 }
 
@@ -33,28 +28,17 @@ export function codeFetch(
   fbs.CodeFetch.addModuleSpecifier(builder, moduleSpecifier_);
   fbs.CodeFetch.addContainingFile(builder, containingFile_);
   const msg = fbs.CodeFetch.endCodeFetch(builder);
-  fbs.Base.startBase(builder);
-  fbs.Base.addMsg(builder, msg);
-  fbs.Base.addMsgType(builder, fbs.Any.CodeFetch);
-  builder.finish(fbs.Base.endBase(builder));
-  const resBuf = libdeno.send(builder.asUint8Array());
-  assert(resBuf != null);
-  // Process CodeFetchRes
-  // TypeScript does not track `assert` from a CFA perspective, therefore not
-  // null assertion `!`
-  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
-  const baseRes = fbs.Base.getRootAsBase(bb);
-  maybeThrowError(baseRes);
-  assert(fbs.Any.CodeFetchRes === baseRes.msgType());
+  const baseRes = send(builder, fbs.Any.CodeFetch, msg);
+  assert(baseRes != null);
+  assert(fbs.Any.CodeFetchRes === baseRes!.msgType());
   const codeFetchRes = new fbs.CodeFetchRes();
-  assert(baseRes.msg(codeFetchRes) != null);
-  const r = {
+  assert(baseRes!.msg(codeFetchRes) != null);
+  return {
     moduleName: codeFetchRes.moduleName(),
     filename: codeFetchRes.filename(),
     sourceCode: codeFetchRes.sourceCode(),
     outputCode: codeFetchRes.outputCode()
   };
-  return r;
 }
 
 export function codeCache(
@@ -72,17 +56,8 @@ export function codeCache(
   fbs.CodeCache.addSourceCode(builder, sourceCode_);
   fbs.CodeCache.addOutputCode(builder, outputCode_);
   const msg = fbs.CodeCache.endCodeCache(builder);
-  fbs.Base.startBase(builder);
-  fbs.Base.addMsg(builder, msg);
-  fbs.Base.addMsgType(builder, fbs.Any.CodeCache);
-  builder.finish(fbs.Base.endBase(builder));
-  const resBuf = libdeno.send(builder.asUint8Array());
-  // Expect null or error.
-  if (resBuf != null) {
-    const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf));
-    const baseRes = fbs.Base.getRootAsBase(bb);
-    maybeThrowError(baseRes);
-  }
+  const baseRes = send(builder, fbs.Any.CodeCache, msg);
+  assert(baseRes == null); // Expect null or error.
 }
 
 /**
@@ -119,18 +94,11 @@ export function makeTempDirSync({
     fbs.MakeTempDir.addSuffix(builder, fbSuffix);
   }
   const msg = fbs.MakeTempDir.endMakeTempDir(builder);
-  fbs.Base.startBase(builder);
-  fbs.Base.addMsg(builder, msg);
-  fbs.Base.addMsgType(builder, fbs.Any.MakeTempDir);
-  builder.finish(fbs.Base.endBase(builder));
-  const resBuf = libdeno.send(builder.asUint8Array());
-  assert(resBuf != null);
-  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
-  const baseRes = fbs.Base.getRootAsBase(bb);
-  maybeThrowError(baseRes);
-  assert(fbs.Any.MakeTempDirRes === baseRes.msgType());
+  const baseRes = send(builder, fbs.Any.MakeTempDir, msg);
+  assert(baseRes != null);
+  assert(fbs.Any.MakeTempDirRes === baseRes!.msgType());
   const res = new fbs.MakeTempDirRes();
-  assert(baseRes.msg(res) != null);
+  assert(baseRes!.msg(res) != null);
   const path = res.path();
   assert(path != null);
   return path!;
@@ -149,24 +117,181 @@ export function readFileSync(filename: string): Uint8Array {
   fbs.ReadFileSync.startReadFileSync(builder);
   fbs.ReadFileSync.addFilename(builder, filename_);
   const msg = fbs.ReadFileSync.endReadFileSync(builder);
-  fbs.Base.startBase(builder);
-  fbs.Base.addMsg(builder, msg);
-  fbs.Base.addMsgType(builder, fbs.Any.ReadFileSync);
-  builder.finish(fbs.Base.endBase(builder));
-  const resBuf = libdeno.send(builder.asUint8Array());
-  assert(resBuf != null);
-  // TypeScript does not track `assert` from a CFA perspective, therefore not
-  // null assertion `!`
-  const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
-  const baseRes = fbs.Base.getRootAsBase(bb);
-  maybeThrowError(baseRes);
-  assert(fbs.Any.ReadFileSyncRes === baseRes.msgType());
+  const baseRes = send(builder, fbs.Any.ReadFileSync, msg);
+  assert(baseRes != null);
+  assert(fbs.Any.ReadFileSyncRes === baseRes!.msgType());
   const res = new fbs.ReadFileSyncRes();
-  assert(baseRes.msg(res) != null);
+  assert(baseRes!.msg(res) != null);
   const dataArray = res.dataArray();
   assert(dataArray != null);
-  // TypeScript cannot track assertion above, therefore not null assertion
   return new Uint8Array(dataArray!);
+}
+
+function createEnv(_msg: fbs.EnvironRes): { [index: string]: string } {
+  const env: { [index: string]: string } = {};
+
+  for (let i = 0; i < _msg.mapLength(); i++) {
+    const item = _msg.map(i)!;
+
+    env[item.key()!] = item.value()!;
+  }
+
+  return new Proxy(env, {
+    set(obj, prop: string, value: string | number) {
+      setEnv(prop, value.toString());
+      return Reflect.set(obj, prop, value);
+    }
+  });
+}
+
+function setEnv(key: string, value: string): void {
+  const builder = new flatbuffers.Builder();
+  const _key = builder.createString(key);
+  const _value = builder.createString(value);
+  fbs.SetEnv.startSetEnv(builder);
+  fbs.SetEnv.addKey(builder, _key);
+  fbs.SetEnv.addValue(builder, _value);
+  const msg = fbs.SetEnv.endSetEnv(builder);
+  send(builder, fbs.Any.SetEnv, msg);
+}
+
+/**
+ * Returns a snapshot of the environment variables at invocation. Mutating a
+ * property in the object will set that variable in the environment for
+ * the process. The environment object will only accept `string`s or `number`s
+ * as values.
+ *     import { env } from "deno";
+ *     const env = deno.env();
+ *     console.log(env.SHELL)
+ *     env.TEST_VAR = "HELLO";
+ *
+ *     const newEnv = deno.env();
+ *     console.log(env.TEST_VAR == newEnv.TEST_VAR);
+ */
+export function env(): { [index: string]: string } {
+  /* Ideally we could write
+  const res = send({
+    command: fbs.Command.ENV,
+  });
+  */
+  const builder = new flatbuffers.Builder();
+  fbs.Environ.startEnviron(builder);
+  const msg = fbs.Environ.endEnviron(builder);
+  const baseRes = send(builder, fbs.Any.Environ, msg)!;
+  assert(fbs.Any.EnvironRes === baseRes.msgType());
+  const res = new fbs.EnvironRes();
+  assert(baseRes.msg(res) != null);
+  // TypeScript cannot track assertion above, therefore not null assertion
+  return createEnv(res);
+}
+
+/**
+ * A FileInfo describes a file and is returned by `stat`, `lstat`,
+ * `statSync`, `lstatSync`.
+ */
+export class FileInfo {
+  private readonly _isFile: boolean;
+  private readonly _isSymlink: boolean;
+  /** The size of the file, in bytes. */
+  len: number;
+  /**
+   * The last modification time of the file. This corresponds to the `mtime`
+   * field from `stat` on Unix and `ftLastWriteTime` on Windows. This may not
+   * be available on all platforms.
+   */
+  modified: number | null;
+  /**
+   * The last access time of the file. This corresponds to the `atime`
+   * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
+   * be available on all platforms.
+   */
+  accessed: number | null;
+  /**
+   * The last access time of the file. This corresponds to the `birthtime`
+   * field from `stat` on Unix and `ftCreationTime` on Windows. This may not
+   * be available on all platforms.
+   */
+  created: number | null;
+
+  /* @internal */
+  constructor(private _msg: fbs.StatSyncRes) {
+    const modified = this._msg.modified().toFloat64();
+    const accessed = this._msg.accessed().toFloat64();
+    const created = this._msg.created().toFloat64();
+
+    this._isFile = this._msg.isFile();
+    this._isSymlink = this._msg.isSymlink();
+    this.len = this._msg.len().toFloat64();
+    this.modified = modified ? modified : null;
+    this.accessed = accessed ? accessed : null;
+    this.created = created ? created : null;
+  }
+
+  /**
+   * Returns whether this is info for a regular file. This result is mutually
+   * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
+   */
+  isFile() {
+    return this._isFile;
+  }
+
+  /**
+   * Returns whether this is info for a regular directory. This result is
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`.
+   */
+  isDirectory() {
+    return !this._isFile && !this._isSymlink;
+  }
+
+  /**
+   * Returns whether this is info for a symlink. This result is
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`.
+   */
+  isSymlink() {
+    return this._isSymlink;
+  }
+}
+
+/**
+ * Queries the file system for information on the path provided.
+ * If the given path is a symlink information about the symlink will
+ * be returned.
+ * @returns FileInfo
+ */
+export function lStatSync(filename: string): FileInfo {
+  return statSyncInner(filename, true);
+}
+
+/**
+ * Queries the file system for information on the path provided.
+ * `statSync` Will always follow symlinks.
+ * @returns FileInfo
+ */
+export function statSync(filename: string): FileInfo {
+  return statSyncInner(filename, false);
+}
+
+function statSyncInner(filename: string, lstat: boolean): FileInfo {
+  /* Ideally we could write
+  const res = send({
+    command: fbs.Command.STAT_FILE_SYNC,
+    StatFilename: filename,
+    StatLStat: lstat,
+  });
+  return new FileInfo(res);
+   */
+  const builder = new flatbuffers.Builder();
+  const filename_ = builder.createString(filename);
+  fbs.StatSync.startStatSync(builder);
+  fbs.StatSync.addFilename(builder, filename_);
+  fbs.StatSync.addLstat(builder, lstat);
+  const msg = fbs.StatSync.endStatSync(builder);
+  const baseRes = send(builder, fbs.Any.StatSync, msg);
+  assert(baseRes != null);
+  assert(fbs.Any.StatSyncRes === baseRes!.msgType());
+  const res = new fbs.StatSyncRes();
+  assert(baseRes!.msg(res) != null);
+  return new FileInfo(res);
 }
 
 export function writeFileSync(
@@ -190,14 +315,5 @@ export function writeFileSync(
   fbs.WriteFileSync.addData(builder, dataOffset);
   fbs.WriteFileSync.addPerm(builder, perm);
   const msg = fbs.WriteFileSync.endWriteFileSync(builder);
-  fbs.Base.startBase(builder);
-  fbs.Base.addMsg(builder, msg);
-  fbs.Base.addMsgType(builder, fbs.Any.WriteFileSync);
-  builder.finish(fbs.Base.endBase(builder));
-  const resBuf = libdeno.send(builder.asUint8Array());
-  if (resBuf != null) {
-    const bb = new flatbuffers.ByteBuffer(new Uint8Array(resBuf!));
-    const baseRes = fbs.Base.getRootAsBase(bb);
-    maybeThrowError(baseRes);
-  }
+  send(builder, fbs.Any.WriteFileSync, msg);
 }

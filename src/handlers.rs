@@ -15,6 +15,7 @@ use msg_generated::deno as msg;
 use std;
 use std::fs;
 use std::path::Path;
+use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
 use tokio::prelude::future;
 use tokio::prelude::*;
@@ -44,6 +45,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let output_code = msg.output_code().unwrap();
       handle_code_cache(d, &mut builder, filename, source_code, output_code)
     }
+    msg::Any::Environ => handle_env(d, &mut builder),
     msg::Any::FetchReq => {
       // TODO base.msg_as_FetchReq();
       let msg = msg::FetchReq::init_from_table(base.msg().unwrap());
@@ -77,6 +79,20 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       let msg = msg::ReadFileSync::init_from_table(base.msg().unwrap());
       let filename = msg.filename().unwrap();
       handle_read_file_sync(d, &mut builder, filename)
+    }
+    msg::Any::SetEnv => {
+      // TODO base.msg_as_SetEnv();
+      let msg = msg::SetEnv::init_from_table(base.msg().unwrap());
+      let key = msg.key().unwrap();
+      let value = msg.value().unwrap();
+      handle_set_env(d, &mut builder, key, value)
+    }
+    msg::Any::StatSync => {
+      // TODO base.msg_as_StatSync();
+      let msg = msg::StatSync::init_from_table(base.msg().unwrap());
+      let filename = msg.filename().unwrap();
+      let lstat = msg.lstat();
+      handle_stat_sync(d, &mut builder, filename, lstat)
     }
     msg::Any::WriteFileSync => {
       // TODO base.msg_as_WriteFileSync();
@@ -234,6 +250,69 @@ fn handle_code_cache(
   let deno = from_c(d);
   deno.dir.code_cache(filename, source_code, output_code)?;
   Ok(null_buf()) // null response indicates success.
+}
+
+fn handle_set_env(
+  d: *const DenoC,
+  _builder: &mut FlatBufferBuilder,
+  key: &str,
+  value: &str,
+) -> HandlerResult {
+  let deno = from_c(d);
+  if !deno.flags.allow_env {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_env is off.",
+    );
+    return Err(err.into());
+  }
+
+  std::env::set_var(key, value);
+  Ok(null_buf())
+}
+
+fn handle_env(
+  d: *const DenoC,
+  builder: &mut FlatBufferBuilder,
+) -> HandlerResult {
+  let deno = from_c(d);
+  if !deno.flags.allow_env {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_env is off.",
+    );
+    return Err(err.into());
+  }
+
+  let vars: Vec<_> = std::env::vars().map(|(key, value)| {
+    let key = builder.create_string(&key);
+    let value = builder.create_string(&value);
+
+    msg::EnvPair::create(builder, &msg::EnvPairArgs {
+      key: Some(key),
+      value: Some(value),
+      ..Default::default()
+    })
+  }).collect();
+
+  let tables = builder.create_vector_of_reverse_offsets(&vars);
+
+  let msg = msg::EnvironRes::create(
+    builder,
+    &msg::EnvironResArgs {
+      map: Some(tables),
+      ..Default::default()
+    },
+  );
+
+  Ok(create_msg(
+    builder,
+    &msg::BaseArgs {
+      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg_type: msg::Any::EnvironRes,
+      ..Default::default()
+    },
+  ))
 }
 
 fn handle_fetch_req(
@@ -462,6 +541,53 @@ fn handle_read_file_sync(
     &msg::BaseArgs {
       msg: Some(flatbuffers::Offset::new(msg.value())),
       msg_type: msg::Any::ReadFileSyncRes,
+      ..Default::default()
+    },
+  ))
+}
+
+macro_rules! to_seconds {
+  ($time:expr) => {{
+    // Unwrap is safe here as if the file is before the unix epoch
+    // something is very wrong.
+    $time
+      .and_then(|t| Ok(t.duration_since(UNIX_EPOCH).unwrap().as_secs()))
+      .unwrap_or(0)
+  }};
+}
+
+fn handle_stat_sync(
+  _d: *const DenoC,
+  builder: &mut FlatBufferBuilder,
+  filename: &str,
+  lstat: bool,
+) -> HandlerResult {
+  debug!("handle_stat_sync {} {}", filename, lstat);
+  let path = Path::new(filename);
+  let metadata = if lstat {
+    fs::symlink_metadata(path)?
+  } else {
+    fs::metadata(path)?
+  };
+
+  let msg = msg::StatSyncRes::create(
+    builder,
+    &msg::StatSyncResArgs {
+      is_file: metadata.is_file(),
+      is_symlink: metadata.file_type().is_symlink(),
+      len: metadata.len(),
+      modified: to_seconds!(metadata.modified()),
+      accessed: to_seconds!(metadata.accessed()),
+      created: to_seconds!(metadata.created()),
+      ..Default::default()
+    },
+  );
+
+  Ok(create_msg(
+    builder,
+    &msg::BaseArgs {
+      msg: Some(flatbuffers::Offset::new(msg.value())),
+      msg_type: msg::Any::StatSyncRes,
       ..Default::default()
     },
   ))

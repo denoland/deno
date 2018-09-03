@@ -8,6 +8,7 @@ export interface ModuleInfo {
   outputCode: string | null;
 }
 
+// tslint:disable:max-line-length
 // Following definitions adapted from:
 //   https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/node/index.d.ts
 // Type definitions for Node.js 10.3.x
@@ -36,11 +37,13 @@ export interface ModuleInfo {
 //                 Alexander T. <https://github.com/a-tarasyuk>
 //                 Lishude <https://github.com/islishude>
 //                 Andrew Makarov <https://github.com/r3nya>
+// tslint:enable:max-line-length
 
 export interface CallSite {
   /**
    * Value of "this"
    */
+  // tslint:disable-next-line:no-any
   getThis(): any;
 
   /**
@@ -133,13 +136,16 @@ declare global {
   // Declare "static" methods in Error
   interface ErrorConstructor {
     /** Create .stack property on a target object */
-    captureStackTrace(targetObject: Object, constructorOpt?: Function): void;
+    captureStackTrace(targetObject: object, constructorOpt?: Function): void;
 
+    // tslint:disable:max-line-length
     /**
      * Optional override for formatting stack traces
      *
      * @see https://github.com/v8/v8/wiki/Stack%20Trace%20API#customizing-stack-traces
      */
+    // tslint:enable:max-line-length
+    // tslint:disable-next-line:no-any
     prepareStackTrace?: (err: Error, stackTraces: CallSite[]) => any;
 
     stackTraceLimit: number;

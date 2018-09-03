@@ -10,12 +10,17 @@ union Any {
   TimerStart,
   TimerReady,
   TimerClear,
+  Environ,
+  EnvironRes,
   FetchReq,
   FetchRes,
   MakeTempDir,
   MakeTempDirRes,
   ReadFileSync,
   ReadFileSyncRes,
+  StatSync,
+  StatSyncRes,
+  SetEnv,
   WriteFileSync,
 }
 
@@ -122,6 +127,22 @@ table TimerClear {
   id: uint;
 }
 
+table Environ {}
+
+table SetEnv {
+    key: string;
+    value: string;
+}
+
+table EnvironRes {
+    map: [EnvPair];
+}
+
+table EnvPair {
+    key: string;
+    value: string;
+}
+
 table FetchReq {
   id: uint;
   url: string;
@@ -151,6 +172,20 @@ table ReadFileSync {
 
 table ReadFileSyncRes {
   data: [ubyte];
+}
+
+table StatSync {
+  filename: string;
+  lstat: bool;
+}
+
+table StatSyncRes {
+  is_file: bool;
+  is_symlink: bool;
+  len: ulong;
+  modified:ulong;
+  accessed:ulong;
+  created:ulong;
 }
 
 table WriteFileSync {
