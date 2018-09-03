@@ -1,15 +1,50 @@
 use std;
-use std::fs::{create_dir, File};
-use std::io::ErrorKind;
-use std::io::Write;
-use std::path::{Path, PathBuf};
 
+use std::fs::{create_dir, File, OpenOptions};
+use std::io::{ErrorKind, Read, Write};
+use std::path::{Path, PathBuf};
 use rand;
 use rand::Rng;
 
-pub fn write_file_sync(path: &Path, content: &[u8]) -> std::io::Result<()> {
-  let mut f = File::create(path)?;
-  f.write_all(content)
+#[cfg(target_os = "unix")]
+use std::os::unix::fs::PermissionsExt;
+
+pub fn read_file_sync(path: &Path) -> std::io::Result<Vec<u8>> {
+  File::open(path).and_then(|mut f| {
+    let mut buffer = Vec::new();
+    f.read_to_end(&mut buffer)?;
+    Ok(buffer)
+  })
+}
+
+pub fn read_file_sync_string(path: &Path) -> std::io::Result<String> {
+  let vec = read_file_sync(path)?;
+  String::from_utf8(vec)
+    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
+}
+
+pub fn write_file_sync(path: &Path, content: &[u8], perm: u32) -> std::io::Result<()> {
+  let is_append = perm & (1 << 31) != 0;
+  let mut file = OpenOptions::new()
+            .read(false)
+            .write(true)
+            .append(is_append)
+            .truncate(!is_append)
+            .create(true)
+            .open(path)?;
+  
+  set_permissions(perm);
+  file.write_all(content)
+}
+
+#[cfg(target_os = "unix")]
+fn set_permissions(perm: u32) {
+  file.set_permissions(PermissionsExt::from_mode(perm & 0o777))?;
+}
+
+#[cfg(not(target_os = "unix"))]
+fn set_permissions(_perm: u32) {
+  // Windows does not work with mode bits for files like Unixes does, so this is a noop
 }
 
 pub fn make_temp_dir(

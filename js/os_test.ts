@@ -183,3 +183,30 @@ test(function makeTempDirSyncPerm() {
   assert(err);
   assertEqual(err.name, "deno.PermissionDenied");
 });
+
+testPerm({ write: true },async function writeFileSyncAppend() {
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const data1 = enc.encode("Hello");
+  const data2 = enc.encode(" World");
+  const filename = "test.txt";
+  const appendPerm = (0o666 | (1 << 31)); // Read-write + append
+
+  deno.writeFileSync(filename, data1);
+  deno.writeFileSync(filename, data2, appendPerm);
+
+  assertEqual(dec.decode(deno.readFileSync(filename)), "Hello World");
+});
+
+testPerm({ write: true },async function writeFileSyncTruncate() {
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const data1 = enc.encode("Hello");
+  const data2 = enc.encode("World");
+  const filename = "test.txt";
+
+  deno.writeFileSync(filename, data1);
+  deno.writeFileSync(filename, data2);
+
+  assertEqual(dec.decode(deno.readFileSync(filename)), "World");
+});
