@@ -28,8 +28,13 @@
   serialized messages defined in this
   [flatbuffer](https://github.com/denoland/deno/blob/master/src/msg.fbs). This makes it
   easy to audit.
-	To enable write access explicitly use `--allow-write` and `--allow-net` for
-  network access.
+
+  The following flags are used to explicitly enable different type of accesses:
+  * `--allow-write`: enable write access.
+  * `--allow-net`: enable network access.
+  * `--allow-env`: enable access to environment variables.
+
+  You can also use `-A[wne]` as shorthand to enable corresponding write, network and env access.
 
 * Single executable:
 	```
