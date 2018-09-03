@@ -29,6 +29,7 @@ pub fn print_usage() {
 --allow-write      Allow file system write access.
 --allow-net        Allow network access.
 --allow-env        Allow environment access.
+-A[wne]            Short hand of --allow-* flags.
 -v or --version    Print the version.
 -r or --reload     Reload cached remote resources.
 -D or --log-debug  Log debug output.
@@ -50,7 +51,21 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
       "--allow-env" => flags.allow_env = true,
       "--allow-write" => flags.allow_write = true,
       "--allow-net" => flags.allow_net = true,
-      _ => rest.push(a.clone()),
+      _ => {
+        // Check for shorthand
+        if a.starts_with("-A") {
+          for c in (&a[2..]).chars() {
+            match c {
+              'e' => flags.allow_env = true,
+              'w' => flags.allow_write = true,
+              'n' => flags.allow_net = true,
+              _ => (),
+             }
+          }
+        } else {
+          rest.push(a.clone());
+        }
+      },
     }
   }
 
