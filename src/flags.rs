@@ -108,6 +108,20 @@ fn test_set_flags_3() {
   );
 }
 
+#[test]
+fn test_set_flags_4() {
+  let (flags, rest) =
+    set_flags(svec!["deno", "-Awn", "script.ts", "--allow-env"]);
+  assert_eq!(rest, svec!["deno", "script.ts"]);
+  assert_eq!(flags, DenoFlags {
+      allow_write: true,
+      allow_net: true,
+      allow_env: true,
+      ..DenoFlags::default()
+    }
+  );
+}
+
 // Returns args passed to V8, followed by args passed to JS
 // TODO Rename to v8_set_flags_preprocess
 fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
