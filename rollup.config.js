@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import path from "path";
 import alias from "rollup-plugin-alias";
 import { plugin as analyze } from "rollup-plugin-analyzer";
@@ -30,6 +31,25 @@ const libPreamble = `/// <reference no-default-lib="true"/>
 /// <reference lib="esnext" />
 `;
 
+// this is a preamble for any `lib.*.d.ts` files that come from TypeScript
+const tsLibPreamble = `/*! *****************************************************************************
+Copyright (c) Microsoft Corporation. All rights reserved.
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at http://www.apache.org/licenses/LICENSE-2.0
+
+THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
+WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
+MERCHANTABLITY OR NON-INFRINGEMENT.
+
+See the Apache Version 2.0 License for specific language governing permissions
+and limitations under the License.
+***************************************************************************** */
+
+/// <reference no-default-lib="true"/>
+`;
+
 // this is a rollup plugin which will look for imports ending with `!string` and resolve
 // them with a module that will inline the contents of the file as a string.  Needed to
 // support `js/assets.ts`.
@@ -39,6 +59,10 @@ function strings({ include, exclude } = {}) {
   }
 
   const filter = createFilter(include, exclude);
+  const libRegEx = /\/lib\.\S+\.d\.ts$/;
+  const libReference = /\/{3}\s+\<reference\s+lib="([^"]+)"\s+\/\>/g;
+  const licenseRegex = /\n*\/\*\!\s+\*+\n([^*]*(\*[^/])?)*\*\/\n*/g;
+  const noDefaultLibRegex = /\n+\/{3}\s*\<reference\s+no-default-lib="true"\s*\/\>\s*\n+/g;
 
   return {
     name: "strings",
@@ -66,7 +90,42 @@ function strings({ include, exclude } = {}) {
      * @param {string} id
      */
     transform(code, id) {
+      const libSet = new Set();
+
+      // will inline any`lib.*.d.ts` files that are referenced from other
+      // lib files.
+      function inlineLibs(libCode) {
+        return libCode.replace(libReference, (_, libName) => {
+          // we need to only inline each lib once
+          if (!libSet.has(libName)) {
+            libSet.add(libName);
+            const libFileContents = readFileSync(
+              path.resolve(
+                path.join(
+                  process.cwd(),
+                  "node_modules",
+                  "typescript",
+                  "lib",
+                  `lib.${libName}.d.ts`
+                )
+              ),
+              { encoding: "utf8" }
+            );
+            return inlineLibs(libFileContents);
+          }
+          return "";
+        });
+      }
+
       if (filter(id)) {
+        if (libRegEx.exec(id)) {
+          // modify the code to inline any references to lib files and remove
+          // redundant license notifications and no default lib references
+          // and re-add at the top of the inlined asset.
+          code = `${tsLibPreamble}\n${inlineLibs(code)
+            .replace(licenseRegex, "\n\n")
+            .replace(noDefaultLibRegex, "\n\n")}`;
+        }
         return {
           code: `export default ${JSON.stringify(
             id.endsWith("globals.d.ts") ? libPreamble + code : code
