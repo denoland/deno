@@ -80,6 +80,10 @@ test(function consoleTestStringifyCircular() {
   assertEqual(stringify(function f() {}), "[Function: f]");
   assertEqual(stringify(async function af() {}), "[AsyncFunction: af]");
   assertEqual(stringify(function* gf() {}), "[GeneratorFunction: gf]");
+  assertEqual(
+    stringify(async function* agf() {}),
+    "[AsyncGeneratorFunction: agf]"
+  );
   assertEqual(stringify(nestedObj), nestedObjExpected);
   assertEqual(stringify(JSON), "{}");
   assertEqual(
