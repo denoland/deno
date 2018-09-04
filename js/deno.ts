@@ -8,6 +8,7 @@ export {
   makeTempDirSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   statSync,
   lStatSync,
   writeFileSync
