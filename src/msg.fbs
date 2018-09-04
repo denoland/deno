@@ -19,6 +19,7 @@ union Any {
   MkdirSync,
   ReadFileSync,
   ReadFileSyncRes,
+  RenameSync,
   StatSync,
   StatSyncRes,
   SetEnv,
@@ -179,6 +180,11 @@ table ReadFileSync {
 
 table ReadFileSyncRes {
   data: [ubyte];
+}
+
+table RenameSync {
+  oldpath: string;
+  newpath: string;
 }
 
 table StatSync {
