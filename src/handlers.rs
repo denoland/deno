@@ -40,6 +40,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::MakeTempDir => handle_make_temp_dir,
     msg::Any::MkdirSync => handle_mkdir_sync,
     msg::Any::ReadFileSync => handle_read_file_sync,
+    msg::Any::RenameSync => handle_rename_sync,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::StatSync => handle_stat_sync,
     msg::Any::WriteFileSync => handle_write_file_sync,
@@ -671,5 +672,27 @@ fn handle_timer_clear(
   let msg = base.msg_as_timer_clear().unwrap();
   debug!("handle_timer_clear");
   remove_timer(d, msg.id());
+  Ok(null_buf())
+}
+
+fn handle_rename_sync(
+    d: *const DenoC,
+    base: msg::Base,
+    _builder: &mut FlatBufferBuilder,
+) -> HandlerResult {
+  let msg = base.msg_as_rename_sync().unwrap();
+  let oldpath = msg.oldpath().unwrap();
+  let newpath = msg.newpath().unwrap();
+  let deno = from_c(d);
+
+  debug!("handle_rename_sync {} {}", oldpath, newpath);
+  if !deno.flags.allow_write {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_write is off.",
+    );
+    return Err(err.into());
+  }
+  fs::rename(Path::new(oldpath), Path::new(newpath))?;
   Ok(null_buf())
 }

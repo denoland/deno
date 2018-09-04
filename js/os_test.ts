@@ -204,3 +204,41 @@ testPerm({ write: false }, function mkdDirSyncPerm() {
   assertEqual(err.name, "deno.PermissionDenied");
 });
 
+testPerm({ write: true }, function renameSync() {
+  const testDir = deno.makeTempDirSync() + "/test-rename";
+  const oldpath = testDir + "/oldpath"
+  const newpath = testDir + "/newpath"
+  deno.mkdirSync(oldpath);
+  deno.renameSync(oldpath, newpath);
+  const newPathInfo = deno.statSync(newpath);
+  assert(newPathInfo.isDirectory());
+
+  let caughtErr = false;
+  let oldPathInfo;
+
+  try {
+    oldPathInfo = deno.statSync(oldpath);
+  } catch (err) {
+    caughtErr = true;
+    // TODO assert(err instanceof deno.NotFound).
+    assert(err);
+    assertEqual(err.name, "deno.NotFound");
+  }
+
+  assert(caughtErr);
+  assertEqual(oldPathInfo, undefined);
+});
+
+test(function renameSyncPerm() {
+  let err;
+  try {
+    const oldpath = "/oldbaddir";
+    const newpath = "/newbaddir";
+    deno.renameSync(oldpath, newpath);
+  } catch (err_) {
+    err = err_;
+  }
+  // TODO assert(err instanceof deno.PermissionDenied).
+  assert(err);
+  assertEqual(err.name, "deno.PermissionDenied");
+});
