@@ -56,26 +56,26 @@ test(async function statSyncNotFound() {
   assertEqual(badInfo, undefined);
 });
 
-test(async function lStatSyncSuccess() {
-  const packageInfo = deno.lStatSync("package.json");
+test(async function lstatSyncSuccess() {
+  const packageInfo = deno.lstatSync("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const testingInfo = deno.lStatSync("testing");
+  const testingInfo = deno.lstatSync("testing");
   assert(!testingInfo.isDirectory());
   assert(testingInfo.isSymlink());
 
-  const srcInfo = deno.lStatSync("src");
+  const srcInfo = deno.lstatSync("src");
   assert(srcInfo.isDirectory());
   assert(!srcInfo.isSymlink());
 });
 
-test(async function lStatSyncNotFound() {
+test(async function lstatSyncNotFound() {
   let caughtError = false;
   let badInfo;
 
   try {
-    badInfo = deno.lStatSync("bad_file_name");
+    badInfo = deno.lstatSync("bad_file_name");
   } catch (err) {
     caughtError = true;
     // TODO assert(err instanceof deno.NotFound).
