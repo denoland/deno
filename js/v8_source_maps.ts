@@ -26,6 +26,7 @@ type GetGeneratedContentsCallback = (fileName: string) => string | RawSourceMap;
 
 let getGeneratedContents: GetGeneratedContentsCallback;
 
+// @internal
 export function install(options: Options) {
   getGeneratedContents = options.getGeneratedContents;
   if (options.installPrepareStackTrace) {
@@ -33,6 +34,7 @@ export function install(options: Options) {
   }
 }
 
+// @internal
 export function prepareStackTraceWrapper(
   error: Error,
   stack: CallSite[]
@@ -48,6 +50,7 @@ export function prepareStackTraceWrapper(
   }
 }
 
+// @internal
 export function prepareStackTrace(error: Error, stack: CallSite[]): string {
   const frames = stack.map(
     (frame: CallSite) => `\n    at ${wrapCallSite(frame).toString()}`
@@ -55,6 +58,7 @@ export function prepareStackTrace(error: Error, stack: CallSite[]): string {
   return error.toString() + frames.join("");
 }
 
+// @internal
 export function wrapCallSite(frame: CallSite): CallSite {
   if (frame.isNative()) {
     return frame;
