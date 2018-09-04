@@ -1,5 +1,6 @@
 import { deno as fbs } from "gen/msg_generated";
 
+// @internal
 export class DenoError<T extends fbs.ErrorKind> extends Error {
   constructor(readonly kind: T, msg: string) {
     super(msg);
@@ -7,6 +8,7 @@ export class DenoError<T extends fbs.ErrorKind> extends Error {
   }
 }
 
+// @internal
 export function maybeThrowError(base: fbs.Base): void {
   const kind = base.errorKind();
   if (kind !== fbs.ErrorKind.NoError) {

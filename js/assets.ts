@@ -46,7 +46,7 @@ import textEncodingDts from "/third_party/node_modules/@types/text-encoding/inde
 import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
 // tslint:enable:max-line-length
 
-// prettier-ignore
+// @internal
 export const assetSourceCode: { [key: string]: string } = {
   // Generated library
   "globals.d.ts": globalsDts,
@@ -85,5 +85,5 @@ export const assetSourceCode: { [key: string]: string } = {
   "fetch-types.d.ts": fetchTypesDts,
   "flatbuffers.d.ts": flatbuffersDts,
   "text-encoding.d.ts": textEncodingDts,
-  "typescript.d.ts": typescriptDts,
+  "typescript.d.ts": typescriptDts
 };

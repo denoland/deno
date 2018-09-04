@@ -50,6 +50,7 @@ type OutputCode = string;
 /**
  * Abstraction of the APIs required from the `os` module so they can be
  * easily mocked.
+ * @internal
  */
 export interface Os {
   codeCache: typeof os.codeCache;
@@ -60,6 +61,7 @@ export interface Os {
 /**
  * Abstraction of the APIs required from the `typescript` module so they can
  * be easily mocked.
+ * @internal
  */
 export interface Ts {
   createLanguageService: typeof ts.createLanguageService;

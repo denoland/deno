@@ -177,7 +177,7 @@ function globalEvalMock(x: string): void {
 function logMock(...args: any[]): void {
   logStack.push(args);
 }
-const osMock: compiler.Os = {
+const osMock = {
   codeCache(fileName: string, sourceCode: string, outputCode: string): void {
     codeCacheStack.push({ fileName, sourceCode, outputCode });
     if (fileName in moduleCache) {
@@ -205,7 +205,7 @@ const osMock: compiler.Os = {
     throw new Error(`os.exit(${code})`);
   }
 };
-const tsMock: compiler.Ts = {
+const tsMock = {
   createLanguageService(host: ts.LanguageServiceHost): ts.LanguageService {
     return {} as ts.LanguageService;
   },
