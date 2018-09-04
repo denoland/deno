@@ -1,6 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-use binding;
-use binding::{deno_buf, DenoC};
 use errors::DenoResult;
 use flatbuffers::FlatBufferBuilder;
 use from_c;
@@ -10,6 +8,8 @@ use futures::sync::oneshot;
 use hyper;
 use hyper::rt::{Future, Stream};
 use hyper::Client;
+use libdeno;
+use libdeno::{deno_buf, DenoC};
 use msg_generated::deno as msg;
 use std;
 use std::fs;
@@ -20,7 +20,7 @@ use tokio::prelude::future;
 use tokio::prelude::*;
 use tokio::timer::{Delay, Interval};
 
-type HandlerResult = DenoResult<binding::deno_buf>;
+type HandlerResult = DenoResult<libdeno::deno_buf>;
 type Handler =
   fn(d: *const DenoC, base: msg::Base, builder: &mut FlatBufferBuilder)
     -> HandlerResult;
@@ -74,7 +74,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
   // Set the synchronous response, the value returned from deno.send().
   // null_buf is a special case that indicates success.
   if buf != null_buf() {
-    unsafe { binding::deno_set_response(d, buf) }
+    unsafe { libdeno::deno_set_response(d, buf) }
   }
 }
 
@@ -156,7 +156,7 @@ fn send_base(
   args: &msg::BaseArgs,
 ) {
   let buf = create_msg(builder, args);
-  unsafe { binding::deno_send(d, buf) }
+  unsafe { libdeno::deno_send(d, buf) }
 }
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
