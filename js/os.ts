@@ -277,7 +277,7 @@ export class FileInfo {
  * be returned.
  * @returns FileInfo
  */
-export function lStatSync(filename: string): FileInfo {
+export function lstatSync(filename: string): FileInfo {
   return statSyncInner(filename, true);
 }
 
