@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-use binding;
 use libc::c_int;
+use libdeno;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
@@ -208,7 +208,7 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
   // Let v8 parse the arguments it recognizes and remove them from c_argv.
   unsafe {
     // TODO(ry) Rename deno_set_flags to deno_set_v8_flags().
-    binding::deno_set_flags(&mut c_argc, c_argv.as_mut_ptr());
+    libdeno::deno_set_flags(&mut c_argc, c_argv.as_mut_ptr());
   };
   // If c_argc was updated we have to change the length of c_argv to match.
   c_argv.truncate(c_argc as usize);
