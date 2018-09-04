@@ -4,6 +4,7 @@ import { flatbuffers } from "flatbuffers";
 import { maybeThrowError } from "./errors";
 import { deno as fbs } from "gen/msg_generated";
 
+// @internal
 export function send(
   builder: flatbuffers.Builder,
   msgType: fbs.Any,
