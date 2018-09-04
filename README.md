@@ -108,8 +108,8 @@ Other useful commands:
 
 For windows users:
 
-You will need to download the windows development kit which is required for the `./tools/setup.py` step (https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk)[here], and follow the instructions before building.
+You will need to download the windows development kit which is required for the `./tools/setup.py` step [here](https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk), and follow the instructions before building.
 
-Additionally, the `python 2.7` version of `pywin32` is required for the `./tools/build.py` step, which is downloadable (https://github.com/mhammond/pywin32/releases)[here], and required for `flatbuffers` compilation/linking.
+Additionally, the `python 2.7` version of `pywin32` is required for the `./tools/build.py` step, which is downloadable [here](https://github.com/mhammond/pywin32/releases), and required for `flatbuffers` compilation/linking.
 
 Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`.
