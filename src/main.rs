@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::path::Path;
 
 type DenoException<'a> = &'a str;
 
@@ -48,9 +49,18 @@ impl Deno {
 
     let (flags, argv_rest) = flags::set_flags(argv);
 
+    let _deno_dir_path;
+    let custom_root = match env::var("DENO_DIR") {
+      Ok(path) => {
+        _deno_dir_path = path;
+        Some(Path::new(_deno_dir_path.as_str()))
+      }
+      Err(_e) => None,
+    };
+
     let mut deno_box = Box::new(Deno {
       ptr: 0 as *const binding::DenoC,
-      dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
+      dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
       rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
       timers: HashMap::new(),
       argv: argv_rest,
