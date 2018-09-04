@@ -12,6 +12,7 @@ use hyper::rt::{Future, Stream};
 use hyper::Client;
 use msg_generated::deno as msg;
 use std;
+use std::process::Command;
 use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
@@ -40,6 +41,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::MakeTempDir => handle_make_temp_dir,
     msg::Any::MkdirSync => handle_mkdir_sync,
     msg::Any::ReadFileSync => handle_read_file_sync,
+    msg::Any::ChmodSync => handle_chmod_sync,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::StatSync => handle_stat_sync,
     msg::Any::WriteFileSync => handle_write_file_sync,
@@ -671,5 +673,43 @@ fn handle_timer_clear(
   let msg = base.msg_as_timer_clear().unwrap();
   debug!("handle_timer_clear");
   remove_timer(d, msg.id());
+  Ok(null_buf())
+}
+
+fn handle_chmod_sync (
+  d: *const DenoC,
+  base: msg::Base,
+  _builder: &mut FlatBufferBuilder,
+) -> HandlerResult {
+  let msg = base.msg_as_chmod_sync().unwrap();
+  let path = msg.path().unwrap();
+  let mode = msg.mode().unwrap();
+  let deno = from_c(d);
+  debug!("handle_chmod_sync {} {}", path, mode);
+  if !deno.flags.allow_write {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_write is off.",
+    );
+    return Err(err.into());
+  }
+  let mut final_cmd = "chmod ".to_owned();
+  final_cmd.push_str(mode);
+  final_cmd.push_str(" ");
+  final_cmd.push_str(path);
+  println!("{}", final_cmd);
+  if cfg!(target_os = "windows") {
+    // Todo
+    Command::new("cmd")
+            .args(&["/C", "Yet to make for windows"])
+            .output()
+            .expect("failed to execute process")
+  } else {
+    Command::new("sh")
+            .arg("-c")
+            .arg(final_cmd.to_string())
+            .output()
+            .expect("failed to execute process")
+  };
   Ok(null_buf())
 }

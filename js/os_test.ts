@@ -204,3 +204,22 @@ testPerm({ write: false }, function mkdDirSyncPerm() {
   assertEqual(err.name, "deno.PermissionDenied");
 });
 
+testPerm ({ write: true }, function chmodSync() {
+  const path = "/README.md";
+    const mode = "777";
+    deno.chmodSync(path, mode);
+});
+
+test({ write: false }, function chmodSyncPerm() {
+  let err;
+  try {
+    const path = "/README.md";
+    const mode = "755";
+    deno.chmodSync(path, mode);
+  } catch (err_) {
+    err = err_;
+  }
+  // TODO assert(err instanceof deno.PermissionDenied).
+  assert(err);
+  assertEqual(err.name, "deno.PermissionDenied");
+});

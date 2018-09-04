@@ -14,6 +14,7 @@ union Any {
   EnvironRes,
   FetchReq,
   FetchRes,
+  ChmodSync,
   MakeTempDir,
   MakeTempDirRes,
   MkdirSync,
@@ -176,6 +177,12 @@ table MkdirSync {
 table ReadFileSync {
   filename: string;
 }
+
+table ChmodSync {
+  path: string;
+  mode: string;
+}
+
 
 table ReadFileSyncRes {
   data: [ubyte];
