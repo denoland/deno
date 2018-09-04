@@ -336,3 +336,29 @@ export function writeFileSync(
   const msg = fbs.WriteFileSync.endWriteFileSync(builder);
   send(builder, fbs.Any.WriteFileSync, msg);
 }
+
+/**
+ * Changes the permissions of file or folder
+ *     import { chmodSync } from "deno";
+ *     const path = 'path';
+ *     const mode = '755'; // octal number in string
+ *
+ *     chmodSync(path, mode);
+ */
+export function chmodSync(path: string, mode: string): void {
+  /* Ideally we could write:
+  const res = send({
+    command: fbs.Command.CHMOD_SYNC,
+    renameOldPath: path,
+    renameNewPath: mode
+  });
+  */
+  const builder = new flatbuffers.Builder();
+  const _path = builder.createString(path);
+  const _mode = builder.createString(mode);
+  fbs.ChmodSync.startChmodSync(builder);
+  fbs.ChmodSync.addPath(builder, _path);
+  fbs.ChmodSync.addMode(builder, _mode);
+  const msg = fbs.ChmodSync.endChmodSync(builder);
+  send(builder, fbs.Any.ChmodSync, msg);
+}
