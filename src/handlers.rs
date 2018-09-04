@@ -676,9 +676,9 @@ fn handle_timer_clear(
 }
 
 fn handle_rename_sync(
-    d: *const DenoC,
-    base: msg::Base,
-    _builder: &mut FlatBufferBuilder,
+  d: *const DenoC,
+  base: msg::Base,
+  _builder: &mut FlatBufferBuilder,
 ) -> HandlerResult {
   let msg = base.msg_as_rename_sync().unwrap();
   let oldpath = msg.oldpath().unwrap();
