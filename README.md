@@ -93,8 +93,14 @@ To build:
     # Build.
     ./tools/build.py
 
-    # Run
+    # Run.
     ./out/debug/deno tests/002_hello.ts
+
+    # Test.
+    ./tools/test.py
+
+    # Format code.
+    ./tools/format.py
 
 Other useful commands:
 
