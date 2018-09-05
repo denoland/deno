@@ -146,6 +146,32 @@ export function readFileSync(filename: string): Uint8Array {
   return new Uint8Array(dataArray!);
 }
 
+/**
+ * Read a line from stdin.
+ *     import { stdinReadlineSync } from "deno";
+ *
+ *     stdinReadlineSync();
+ */
+export function stdinReadlineSync(): Uint8Array {
+  /* Ideally we could write:
+  const res = send({
+    command: fbs.Command.STDIN_READ_UNTIL_SYNC,
+    until: 10,
+  });
+  */
+  const builder = new flatbuffers.Builder();
+  fbs.StdinReadUntilSync.startStdinReadUntilSync(builder);
+  fbs.StdinReadUntilSync.addUntil(builder, 10);  // '\n'
+  const msg = fbs.StdinReadUntilSync.endStdinReadUntilSync(builder);
+  const baseRes = send(builder, fbs.Any.StdinReadUntilSync, msg);
+  assert(fbs.Any.StdinReadUntilSyncRes === baseRes!.msgType());
+  const res = new fbs.StdinReadUntilSyncRes();
+  assert(baseRes!.msg(res) != null);
+  const dataArray = res.dataArray();
+  assert(dataArray != null);
+  return new Uint8Array(dataArray!);
+}
+
 function createEnv(_msg: fbs.EnvironRes): { [index: string]: string } {
   const env: { [index: string]: string } = {};
 
