@@ -1,3 +1,4 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assertEqual } from "./test_util.ts";
 
 function deferred() {
@@ -28,6 +29,28 @@ test(async function timeoutSuccess() {
   await promise;
   // count should increment
   assertEqual(count, 1);
+});
+
+test(async function timeoutArgs() {
+  let arg = 1;
+  await new Promise((resolve, reject) => {
+    setTimeout(
+      (a, b, c) => {
+        try {
+          assertEqual(a, arg);
+          assertEqual(b, arg.toString());
+          assertEqual(c, [arg]);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      },
+      10,
+      arg,
+      arg.toString(),
+      [arg]
+    );
+  });
 });
 
 test(async function timeoutCancelSuccess() {
@@ -89,6 +112,30 @@ test(async function intervalCancelSuccess() {
   // Wait a bit longer than 500ms
   await waitForMs(600);
   assertEqual(count, 0);
+});
+
+test(async function intervalCancelSuccess2() {
+  const timers = [];
+  let timeouts = 0;
+  for (let i = 0; i < 5; i++) {
+    timers[i] = setTimeout(onTimeout, 20 * i);
+  }
+  function onTimeout() {
+    ++timeouts;
+    for (let i = 1; i < timers.length; i++) {
+      clearTimeout(timers[i]);
+    }
+  }
+  await new Promise((resolve, reject) => {
+    setTimeout(() => {
+      try {
+        assertEqual(timeouts, 1);
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+    }, 200);
+  });
 });
 
 test(async function intervalCancelInvalidSilentFail() {
