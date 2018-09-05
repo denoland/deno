@@ -23,6 +23,7 @@ union Any {
   StatSync,
   StatSyncRes,
   SetEnv,
+  SymlinkSync,
   WriteFileSync,
 }
 
@@ -199,6 +200,11 @@ table StatSyncRes {
   modified:ulong;
   accessed:ulong;
   created:ulong;
+}
+
+table SymlinkSync {
+  oldname: string;
+  newname: string;
 }
 
 table WriteFileSync {

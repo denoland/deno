@@ -43,6 +43,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::RenameSync => handle_rename_sync,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::StatSync => handle_stat_sync,
+    msg::Any::SymlinkSync => handle_symlink_sync,
     msg::Any::WriteFileSync => handle_write_file_sync,
     msg::Any::Exit => handle_exit,
     _ => panic!(format!(
@@ -694,5 +695,42 @@ fn handle_rename_sync(
     return Err(err.into());
   }
   fs::rename(Path::new(oldpath), Path::new(newpath))?;
+  Ok(null_buf())
+}
+
+fn handle_symlink_sync(
+    d: *const DenoC,
+    base: msg::Base,
+    _builder: &mut FlatBufferBuilder,
+) -> HandlerResult {
+  let msg = base.msg_as_symlink_sync().unwrap();
+  let oldname = msg.oldname().unwrap();
+  let newname = msg.newname().unwrap();
+  let deno = from_c(d);
+
+  debug!("handle_symlink_sync {} {}", oldname, newname);
+  if !deno.flags.allow_write {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_write is off.",
+    );
+    return Err(err.into());
+  }
+
+  let oldpath = Path::new(oldname);
+  let newpath = Path::new(newname);
+  if cfg!(windows) {
+    let oldpath_stat = fs::metadata(oldpath)?;
+    if oldpath_stat.is_dir() {
+      #[cfg(windows)]
+      std::os::windows::fs::symlink_dir(oldpath, newpath)?;
+    } else {
+      #[cfg(windows)]
+      std::os::windows::fs::symlink_file(oldpath, newpath)?;
+    }
+  } else {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(oldpath, newpath)?;
+  }
   Ok(null_buf())
 }
