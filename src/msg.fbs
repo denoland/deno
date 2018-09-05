@@ -19,6 +19,8 @@ union Any {
   MkdirSync,
   ReadFileSync,
   ReadFileSyncRes,
+  StdinReadUntilSync,
+  StdinReadUntilSyncRes,
   RenameSync,
   StatSync,
   StatSyncRes,
@@ -179,6 +181,14 @@ table ReadFileSync {
 }
 
 table ReadFileSyncRes {
+  data: [ubyte];
+}
+
+table StdinReadUntilSync {
+  until: ubyte;
+}
+
+table StdinReadUntilSyncRes {
   data: [ubyte];
 }
 

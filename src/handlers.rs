@@ -12,6 +12,8 @@ use hyper::rt::{Future, Stream};
 use hyper::Client;
 use msg_generated::deno as msg;
 use std;
+use std::io;
+use std::io::prelude::*;
 use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
@@ -40,6 +42,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::MakeTempDir => handle_make_temp_dir,
     msg::Any::MkdirSync => handle_mkdir_sync,
     msg::Any::ReadFileSync => handle_read_file_sync,
+    msg::Any::StdinReadUntilSync => handle_stdin_read_until_sync,
     msg::Any::RenameSync => handle_rename_sync,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::StatSync => handle_stat_sync,
@@ -539,6 +542,41 @@ fn handle_read_file_sync(
     &msg::BaseArgs {
       msg: Some(msg.as_union_value()),
       msg_type: msg::Any::ReadFileSyncRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn handle_stdin_read_until_sync(
+    _d: *const DenoC,
+    base: msg::Base,
+    builder: &mut FlatBufferBuilder,
+) -> HandlerResult {
+  let msg = base.msg_as_stdin_read_until_sync().unwrap();
+  let until = msg.until();
+
+  debug!("handle_stdin_read_until_sync {}", until);
+  let mut buffer = Vec::new();
+  let stdin = io::stdin();
+  let mut stdin = stdin.lock();
+  stdin.read_until(until, &mut buffer)?;
+
+  // Build the response message. memcpy data into msg.
+  // TODO(ry) zero-copy.
+  let data_off = builder.create_vector(&buffer);
+
+  let msg = msg::StdinReadUntilSyncRes::create(
+    builder,
+    &msg::StdinReadUntilSyncResArgs {
+      data: Some(data_off),
+      ..Default::default()
+    },
+  );
+  Ok(create_msg(
+    builder,
+    &msg::BaseArgs {
+      msg: Some(msg.as_union_value()),
+      msg_type: msg::Any::StdinReadUntilSyncRes,
       ..Default::default()
     },
   ))
