@@ -4,7 +4,7 @@
 [30;47m [0m [91m~~~~~~[0m
 
   [96m$asset$/globals.d.ts[WILDCARD]
-    [30;47m[WILDCARD][0m         const console: Console;
-    [30;47m   [0m [96m              ~~~~~~~[0m
-    'console' is declared here.
+[WILDCARD]const console: Console;
+[WILDCARD]~~~~~~~[0m
+[WILDCARD]'console' is declared here.
 

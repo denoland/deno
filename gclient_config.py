@@ -34,11 +34,8 @@ solutions = [{
     'name':
     'cpplint'
 }, {
-    # Tracking a bleeding-edge branch. Upgrade frequently.
-    # https://github.com/google/flatbuffers/pull/3894
-    # https://github.com/rw/flatbuffers/tree/2018-08-12--all-tests-passing
     'url':
-    'https://github.com/rw/flatbuffers.git@83a71543f8ccbf230ac27cb523831bfafb9c84d7',
+    'https://github.com/google/flatbuffers.git@919c929d30f3e344537793794cdae8b204d40f32',
     'name':
     'flatbuffers'
 }]

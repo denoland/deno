@@ -50,6 +50,7 @@ type OutputCode = string;
 /**
  * Abstraction of the APIs required from the `os` module so they can be
  * easily mocked.
+ * @internal
  */
 export interface Os {
   codeCache: typeof os.codeCache;
@@ -60,6 +61,7 @@ export interface Os {
 /**
  * Abstraction of the APIs required from the `typescript` module so they can
  * be easily mocked.
+ * @internal
  */
 export interface Ts {
   createLanguageService: typeof ts.createLanguageService;
@@ -427,10 +429,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
    */
   makeDefine(moduleMetaData: ModuleMetaData): AmdDefine {
     // TODO should this really be part of the public API of the compiler?
-    return (
-      deps: ModuleSpecifier[],
-      factory: AmdFactory
-    ): void => {
+    return (deps: ModuleSpecifier[], factory: AmdFactory): void => {
       this._log("compiler.localDefine", moduleMetaData.fileName);
       moduleMetaData.factory = factory;
       // when there are circular dependencies, we need to skip recursing the

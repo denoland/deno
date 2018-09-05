@@ -56,26 +56,26 @@ test(async function statSyncNotFound() {
   assertEqual(badInfo, undefined);
 });
 
-test(async function lStatSyncSuccess() {
-  const packageInfo = deno.lStatSync("package.json");
+test(async function lstatSyncSuccess() {
+  const packageInfo = deno.lstatSync("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const testingInfo = deno.lStatSync("testing");
+  const testingInfo = deno.lstatSync("testing");
   assert(!testingInfo.isDirectory());
   assert(testingInfo.isSymlink());
 
-  const srcInfo = deno.lStatSync("src");
+  const srcInfo = deno.lstatSync("src");
   assert(srcInfo.isDirectory());
   assert(!srcInfo.isSymlink());
 });
 
-test(async function lStatSyncNotFound() {
+test(async function lstatSyncNotFound() {
   let caughtError = false;
   let badInfo;
 
   try {
-    badInfo = deno.lStatSync("bad_file_name");
+    badInfo = deno.lstatSync("bad_file_name");
   } catch (err) {
     caughtError = true;
     // TODO assert(err instanceof deno.NotFound).
@@ -176,6 +176,65 @@ test(function makeTempDirSyncPerm() {
   let err;
   try {
     deno.makeTempDirSync({ dir: "/baddir" });
+  } catch (err_) {
+    err = err_;
+  }
+  // TODO assert(err instanceof deno.PermissionDenied).
+  assert(err);
+  assertEqual(err.name, "deno.PermissionDenied");
+});
+
+testPerm({ write: true }, function mkdirSync() {
+  const path = deno.makeTempDirSync() + "/dir/subdir";
+  deno.mkdirSync(path);
+  const pathInfo = deno.statSync(path);
+  assert(pathInfo.isDirectory());
+});
+
+testPerm({ write: false }, function mkdDirSyncPerm() {
+  let err;
+  try {
+    const path = "/baddir";
+    deno.mkdirSync(path);
+  } catch (err_) {
+    err = err_;
+  }
+  // TODO assert(err instanceof deno.PermissionDenied).
+  assert(err);
+  assertEqual(err.name, "deno.PermissionDenied");
+});
+
+testPerm({ write: true }, function renameSync() {
+  const testDir = deno.makeTempDirSync() + "/test-rename";
+  const oldpath = testDir + "/oldpath"
+  const newpath = testDir + "/newpath"
+  deno.mkdirSync(oldpath);
+  deno.renameSync(oldpath, newpath);
+  const newPathInfo = deno.statSync(newpath);
+  assert(newPathInfo.isDirectory());
+
+  let caughtErr = false;
+  let oldPathInfo;
+
+  try {
+    oldPathInfo = deno.statSync(oldpath);
+  } catch (err) {
+    caughtErr = true;
+    // TODO assert(err instanceof deno.NotFound).
+    assert(err);
+    assertEqual(err.name, "deno.NotFound");
+  }
+
+  assert(caughtErr);
+  assertEqual(oldPathInfo, undefined);
+});
+
+test(function renameSyncPerm() {
+  let err;
+  try {
+    const oldpath = "/oldbaddir";
+    const newpath = "/newbaddir";
+    deno.renameSync(oldpath, newpath);
   } catch (err_) {
     err = err_;
   }

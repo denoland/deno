@@ -6,9 +6,11 @@ export {
   exit,
   FileInfo,
   makeTempDirSync,
+  mkdirSync,
   readFileSync,
+  renameSync,
   statSync,
-  lStatSync,
+  lstatSync,
   writeFileSync
 } from "./os";
 export { libdeno } from "./libdeno";

@@ -36,7 +36,7 @@ function permFromString(s: string): DenoPermissions {
   return {
     write: Boolean(Number(found[1])),
     net: Boolean(Number(found[2])),
-    env: Boolean(Number(found[3])),
+    env: Boolean(Number(found[3]))
   };
 }
 

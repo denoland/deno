@@ -4,6 +4,7 @@ use libc::c_int;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
+use std::vec::Vec;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -32,7 +33,7 @@ pub fn print_usage() {
 -v or --version    Print the version.
 -r or --reload     Reload cached remote resources.
 -D or --log-debug  Log debug output.
---help             Print this message.
+-h or --help       Print this message.
 --v8-options       Print V8 command line options."
   );
 }
@@ -41,19 +42,39 @@ pub fn print_usage() {
 pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
   let mut flags = DenoFlags::default();
   let mut rest = Vec::new();
-  for a in &args {
-    match a.as_str() {
-      "-h" | "--help" => flags.help = true,
-      "-D" | "--log-debug" => flags.log_debug = true,
-      "-v" | "--version" => flags.version = true,
-      "-r" | "--reload" => flags.reload = true,
-      "--allow-env" => flags.allow_env = true,
-      "--allow-write" => flags.allow_write = true,
-      "--allow-net" => flags.allow_net = true,
-      _ => rest.push(a.clone()),
+  let mut arg_iter = args.iter();
+
+  while let Some(a) = arg_iter.next() {
+    if a.len() > 1 && &a[0..2] == "--" {
+      match a.as_str() {
+        "--help" => flags.help = true,
+        "--log-debug" => flags.log_debug = true,
+        "--version" => flags.version = true,
+        "--reload" => flags.reload = true,
+        "--allow-write" => flags.allow_write = true,
+        "--allow-net" => flags.allow_net = true,
+        "--allow-env" => flags.allow_env = true,
+        "--" => break,
+        _ => unimplemented!(),
+      }
+    } else if a.len() > 1 && &a[0..1] == "-" {
+      let mut iter = a.chars().skip(1); // skip the "-"
+      while let Some(f) = iter.next() {
+        match f {
+          'h' => flags.help = true,
+          'D' => flags.log_debug = true,
+          'v' => flags.version = true,
+          'r' => flags.reload = true,
+          _ => unimplemented!(),
+        }
+      }
+    } else {
+      rest.push(a.clone());
     }
   }
 
+  // add any remaining arguments to `rest`
+  rest.extend(arg_iter.map(|s| s.clone()));
   return (flags, rest);
 }
 
@@ -61,7 +82,9 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
 fn test_set_flags_1() {
   let (flags, rest) = set_flags(svec!["deno", "--version"]);
   assert_eq!(rest, svec!["deno"]);
-  assert_eq!(flags, DenoFlags {
+  assert_eq!(
+    flags,
+    DenoFlags {
       version: true,
       ..DenoFlags::default()
     }
@@ -72,7 +95,9 @@ fn test_set_flags_1() {
 fn test_set_flags_2() {
   let (flags, rest) = set_flags(svec!["deno", "-r", "-D", "script.ts"]);
   assert_eq!(rest, svec!["deno", "script.ts"]);
-  assert_eq!(flags, DenoFlags {
+  assert_eq!(
+    flags,
+    DenoFlags {
       log_debug: true,
       reload: true,
       ..DenoFlags::default()
@@ -85,7 +110,25 @@ fn test_set_flags_3() {
   let (flags, rest) =
     set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]);
   assert_eq!(rest, svec!["deno", "script.ts"]);
-  assert_eq!(flags, DenoFlags {
+  assert_eq!(
+    flags,
+    DenoFlags {
+      reload: true,
+      allow_write: true,
+      ..DenoFlags::default()
+    }
+  );
+}
+
+#[test]
+fn test_set_flags_4() {
+  let (flags, rest) =
+    set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]);
+  assert_eq!(rest, svec!["deno", "script.ts"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      log_debug: true,
       reload: true,
       allow_write: true,
       ..DenoFlags::default()
@@ -125,13 +168,19 @@ fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
 fn test_parse_core_args_1() {
   let js_args =
     parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
-  assert_eq!(js_args, (vec!["deno".to_string(), "--help".to_string()], vec![]));
+  assert_eq!(
+    js_args,
+    (vec!["deno".to_string(), "--help".to_string()], vec![])
+  );
 }
 
 #[test]
 fn test_parse_core_args_2() {
   let js_args = parse_core_args(vec!["deno".to_string(), "--help".to_string()]);
-  assert_eq!(js_args, (vec!["deno".to_string()], vec!["--help".to_string()]));
+  assert_eq!(
+    js_args,
+    (vec!["deno".to_string()], vec!["--help".to_string()])
+  );
 }
 
 // Pass the command line arguments to v8.

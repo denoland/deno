@@ -104,6 +104,25 @@ export function makeTempDirSync({
   return path!;
 }
 
+// mkdir creates a new directory with the specified name
+// and permission bits  (before umask).
+export function mkdirSync(path: string, mode = 0o777): void {
+  /* Ideally we could write:
+  const res = send({
+    command: fbs.Command.MKDIR_SYNC,
+    mkdirSyncPath: path,
+    mkdirSyncMode: mode,
+  });
+  */
+  const builder = new flatbuffers.Builder();
+  const path_ = builder.createString(path);
+  fbs.MkdirSync.startMkdirSync(builder);
+  fbs.MkdirSync.addPath(builder, path_);
+  fbs.MkdirSync.addMode(builder, mode);
+  const msg = fbs.MkdirSync.endMkdirSync(builder);
+  send(builder, fbs.Any.MkdirSync, msg);
+}
+
 export function readFileSync(filename: string): Uint8Array {
   /* Ideally we could write
   const res = send({
@@ -258,7 +277,7 @@ export class FileInfo {
  * be returned.
  * @returns FileInfo
  */
-export function lStatSync(filename: string): FileInfo {
+export function lstatSync(filename: string): FileInfo {
   return statSyncInner(filename, true);
 }
 
@@ -316,4 +335,30 @@ export function writeFileSync(
   fbs.WriteFileSync.addPerm(builder, perm);
   const msg = fbs.WriteFileSync.endWriteFileSync(builder);
   send(builder, fbs.Any.WriteFileSync, msg);
+}
+
+/**
+ * Renames (moves) oldpath to newpath.
+ *     import { renameSync } from "deno";
+ *     const oldpath = 'from/path';
+ *     const newpath = 'to/path';
+ *
+ *     renameSync(oldpath, newpath);
+ */
+export function renameSync(oldpath: string, newpath: string): void {
+  /* Ideally we could write:
+  const res = send({
+    command: fbs.Command.RENAME_SYNC,
+    renameOldPath: oldpath,
+    renameNewPath: newpath
+  });
+  */
+  const builder = new flatbuffers.Builder();
+  const _oldpath = builder.createString(oldpath);
+  const _newpath = builder.createString(newpath);
+  fbs.RenameSync.startRenameSync(builder);
+  fbs.RenameSync.addOldpath(builder, _oldpath);
+  fbs.RenameSync.addNewpath(builder, _newpath);
+  const msg = fbs.RenameSync.endRenameSync(builder);
+  send(builder, fbs.Any.RenameSync, msg);
 }
