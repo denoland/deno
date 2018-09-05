@@ -21,7 +21,7 @@ test(async function timerTestClearedTimerId() {
   const timers = [];
   let timeouts = 0;
   for(let i = 0; i < 5; i++) {
-    timers[i] = setTimeout(onTimeout, 10);
+    timers[i] = setTimeout(onTimeout, 20 * i);
   }
   function onTimeout() {
     ++timeouts;
