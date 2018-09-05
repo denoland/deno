@@ -289,10 +289,17 @@ fn handle_fetch_req(
   base: msg::Base,
   _builder: &mut FlatBufferBuilder,
 ) -> HandlerResult {
+  let deno = from_c(d);
+  if !deno.flags.allow_net {
+    let err = std::io::Error::new(
+      std::io::ErrorKind::PermissionDenied,
+      "allow_net is off.",
+    );
+    return Err(err.into());
+  }
   let msg = base.msg_as_fetch_req().unwrap();
   let id = msg.id();
   let url = msg.url().unwrap();
-  let deno = from_c(d);
   let url = url.parse::<hyper::Uri>().unwrap();
   let client = Client::new();
 
