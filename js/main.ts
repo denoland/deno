@@ -79,10 +79,23 @@ export default function denoMain() {
   log("argv", argv);
   Object.freeze(argv);
 
-  const inputFn = argv[0];
-  if (!inputFn) {
-    console.log("No input script specified.");
-    os.exit(1);
+  let inputFn = argv[0];
+
+  if (startResMsg.depfileFlag() && argv.length > 1) {
+    inputFn = argv[1];
+    // TODO: should probably be a function
+    const deps = compiler.placeholderTODO(inputFn, `${cwd}/`);
+    const output: string[] = [];
+    for (const moduleFileName in deps) {
+      const moduleDependencies = deps[moduleFileName] || [];
+      output.push(`${moduleFileName}: ${moduleDependencies.join(" ")}`);
+    }
+    const enc = new TextEncoder();
+    const data = enc.encode(output.join("\n"));
+    const filename = argv[0];
+    os.writeFileSync(filename, data);
+    log(`saved dependency in ${filename}`);
+    os.exit(0);
   }
 
   const printDeps = startResMsg.depsFlag();
@@ -91,6 +104,11 @@ export default function denoMain() {
       console.log(dep);
     }
     os.exit(0);
+  }
+
+  if (!inputFn) {
+    console.log("No input script specified.");
+    os.exit(1);
   }
 
   compiler.run(inputFn, `${cwd}/`);

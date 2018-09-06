@@ -468,6 +468,38 @@ export class DenoCompiler
     return moduleMetaData.outputCode;
   }
 
+  placeholderTODO(
+    moduleSpecifier: ModuleSpecifier,
+    containingFile: ContainingFile
+  ): { [key: string]: string[] | undefined } {
+    assert(
+      this._runQueue.length === 0,
+      "Cannot get dependencies with modules queued to be run."
+    );
+    const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
+    assert(
+      !moduleMetaData.hasRun,
+      "Cannot get dependencies for a module that has already been run."
+    );
+    this._gatherDependencies(moduleMetaData);
+
+    const dependencies = this._runQueue.reduce(
+      (
+        deps: { [key: string]: string[] | undefined },
+        moduleMetaData: ModuleMetaData
+      ) => {
+        deps[moduleMetaData.fileName] = moduleMetaData.deps;
+        return deps;
+      },
+      {}
+    );
+    // empty the run queue, to free up references to factories we have collected
+    // and to ensure that if there is a further invocation of `.run()` the
+    // factories don't get called
+    this._runQueue = [];
+    return dependencies;
+  }
+
   /**
    * For a given module specifier and containing file, return a list of absolute
    * identifiers for dependent modules that are required by this module.
