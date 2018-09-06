@@ -133,11 +133,11 @@ environment:
       function Stop-TraceFilesNeeded {
         # Look for files that had their atime changed, and mark them needed.
         Set-FilesNeeded -Auto
-        # Make a list of all files to delete, then delete them.
+        # Make a list of all files to delete.
         $files = $not_needed.Keys                        |
                  where   { Test-Path $_ -PathType Leaf } |
                  foreach { Get-Item $_ -Force }
-        # Compute the total size of all deleted files.
+        # Compute the total size of all to-be-deleted files.
         $size_info = $files | measure -Property Length -Sum
         $size_mb = "{0:N1}" -f ($size_info.Sum / (1024 * 1024))
         # Delete files, as well as parent directories if they became empty.
@@ -147,7 +147,7 @@ environment:
         }
         # All unnecessary files are now gone.
         $not_needed.Clear()
-        # Log about what what was cleaned up.
+        # Summarize what was cleaned up in the build log.
         if ($files.Count -gt 0) {
           Write-Host "Deleted $($files.Count) unnecessary files and",
                      "$($dirs.Count) directories ($size_mb MB)."
@@ -172,23 +172,19 @@ environment:
         $dirty = git status -z --ignore-submodules=all --untracked-files=no
         if ($dirty) { throw "Work tree dirty." }
         # Ask git for a list of checked-out files and their hashes, metadata.
-        # Include regular files only (mode 100644/100755), no symlinks etc.
-        (git ls-files -z --stage --full-name) -split "\0" |
-          Select-String "^100"                            |
-          foreach {
-            # Parse git output.
-            $metadata, $path = $_ -split "\t", 2
-            $mode, $sha, $null, $eol_info = $metadata -split "\s+"
-            # Compute cache key.
-            $key = $path, $mode, $sha, $eol_info -join ","
+        (git ls-files -z --stage --eol --full-name) -split "\0" | foreach {
+            # Skip non-files (symlinks etc.). File mode should be 100644/100755.
+            if ($_ -notmatch "^100") { return }
             # Look up mtime in cache. Reset to 'now' if not found or invalid.
-            $mtime = $old_cache[$key]
+            # The entire "mode hash attr filename" line serves as the cache key.
+            $mtime = $old_cache[$_]
             if (-not $mtime -or $mtime -gt $now) { $mtime = $now }
-            # Change file mtime.
-            $dt = [DateTime]::FromFileTimeUtc($mtime)
-            Set-ItemProperty -Path $path -Name LastWriteTime -Value $dt -Force
+            # Change the file's LastWriteTime to the mtime found in the cache.
+            $path = ($_ -split "\t", 3)[2]  # Filename starts after 2nd tab.
+            $lwt = [DateTime]::FromFileTimeUtc($mtime)
+            Set-ItemProperty -Path $path -Name LastWriteTime -Value $lwt -Force
             # Add entry to updated cache.
-            $new_cache[$key] = $mtime
+            $new_cache[$_] = $mtime
           }
         # Write the updated cache back to disk.
         if (Get-SaveCache) {
@@ -225,9 +221,8 @@ for:
       APPVEYOR_CACHE_SKIP_SAVE: true
 
 cache:
-  # Python packages installed with `pip --user` and Pip cache.
+  # Python packages installed with `pip --user`.
   - $(APPDATA)\Python
-  - $(LOCALAPPDATA)\pip
   # Rust stuff.
   - $(CARGO_HOME)
   - $(RUSTUP_HOME)
@@ -262,12 +257,7 @@ install:
   # Prune and pack git objects. Thus when we upload `.git/modules/` to the
   # Appveyor cache, it'll include only objects that were actually needed.
   # This step is skipped if the cache is not going to be saved.
-  - ps: |-
-      if (Get-SaveCache) {
-        Push-Location $env:DENO_THIRD_PARTY_PATH
-        Exec { & git gc --prune=all }
-        Pop-Location
-      }
+  - ps: if (Get-SaveCache) { git -C $env:DENO_THIRD_PARTY_PATH gc --prune=all }
 
   # Git doesn't store file mtimes, so those are stored separately in the cache.
   # Without it, ninja will assume all files are dirty and rebuild everything.
@@ -297,10 +287,10 @@ install:
       $env:PATH = $p -join ";"
 
   # Pip on Appveyor is too old. Install a recent version in our user dir.
-  - python -m pip install --upgrade --user pip
+  - python -m pip install --upgrade --user --no-cache-dir pip
 
   # Install Python packages.
-  - pip install --upgrade --user pywin32 yapf
+  - pip install --upgrade --user --no-cache-dir pywin32 yapf
 
   # Add Rust/Cargo to PATH.
   - ps: $env:PATH += ";$env:CARGO_HOME\bin"
@@ -384,7 +374,7 @@ after_test:
   - ps: |-
       $out = ninja -C $env:DENO_BUILD_PATH -n -d explain
       if ($out -notcontains "ninja: no work to do.") {
-        throw "Build should be up-to-date but isnt't."
+        throw "Build should be up-to-date but isn't."
       }
 
   # Verify that generated ninja files do not use absolute path names.
