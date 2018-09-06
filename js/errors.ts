@@ -1,9 +1,12 @@
 import { deno as fbs } from "gen/msg_generated";
+import { assert } from "./util";
+
+const ERR_PREFIX = "Err";
 
 export class DenoError<T extends fbs.ErrorKind> extends Error {
   constructor(readonly kind: T, msg: string) {
     super(msg);
-    this.name = `deno.Err${fbs.ErrorKind[kind]}`;
+    this.name = `deno.${ERR_PREFIX}${fbs.ErrorKind[kind]}`;
   }
 }
 
@@ -12,7 +15,7 @@ const errorClasses = new Map();
 function ErrorFactory<T extends fbs.ErrorKind>(
   kind: T
 ): new (msg: string) => DenoError<T> {
-  const name = `Err${fbs.ErrorKind[kind]}`;
+  const name = `${ERR_PREFIX}${fbs.ErrorKind[kind]}`;
   const anonymousClass = class extends DenoError<T> {
     constructor(msg: string) {
       super(kind, msg);
@@ -22,11 +25,11 @@ function ErrorFactory<T extends fbs.ErrorKind>(
     value: name,
   });
   errorClasses.set(kind, anonymousClass);
+  console.log("SET " + kind);
   return anonymousClass;
 }
 
 // tslint:disable:variable-name
-
 // IO errors.
 export const ErrNotFound = ErrorFactory(fbs.ErrorKind.NotFound);
 export const ErrPermissionDenied = ErrorFactory(fbs.ErrorKind.PermissionDenied);
@@ -86,9 +89,25 @@ export const ErrHttpOther = ErrorFactory(fbs.ErrorKind.HttpOther);
 // @internal
 export function maybeThrowError(base: fbs.Base): void {
   const kind = base.errorKind();
-  if (kind === fbs.ErrorKind.NoError) {
-    return;
+  if (kind !== fbs.ErrorKind.NoError) {
+    const errorClass = errorClasses.get(kind);
+    throw new errorClass(base.error()!);
   }
-  const errorClass = errorClasses.get(kind);
-  throw new errorClass(base.error()!);
 }
+
+// Test
+// The following code does not have any impact on Deno's startup
+// performance as we're using V8 snapshots, this code will casue
+// `snapshot_creator` to fail during build time whenever we
+// forgot to register an error class.
+function testErrors(): void {
+  const len = Object.keys(fbs.ErrorKind).length / 2;
+  for (let kind = 0; kind < len; ++kind) {
+    if (kind === fbs.ErrorKind.NoError) {
+      continue;
+    }
+    assert(errorClasses.has(kind), `No error class for ${fbs.ErrorKind[kind]}`);
+  }
+}
+
+testErrors();
