@@ -10,6 +10,8 @@
 import globalsDts from "gen/types/globals.d.ts!string";
 
 // Static libraries
+// TODO figure out why on Windows TypeScript requests lib.es2018, when on other platforms it doesn't
+import libEs2018Dts from "/third_party/node_modules/typescript/lib/lib.es2018.d.ts!string";
 import libEsnextDts from "/third_party/node_modules/typescript/lib/lib.esnext.d.ts!string";
 
 // Static definitions
@@ -25,6 +27,7 @@ export const assetSourceCode: { [key: string]: string } = {
   "globals.d.ts": globalsDts,
 
   // Static libraries
+  "lib.es2018.d.ts": libEs2018Dts,
   "lib.esnext.d.ts": libEsnextDts,
 
   // Static definitions
