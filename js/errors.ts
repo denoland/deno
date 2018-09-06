@@ -25,7 +25,6 @@ function ErrorFactory<T extends fbs.ErrorKind>(
     value: name,
   });
   errorClasses.set(kind, anonymousClass);
-  console.log("SET " + kind);
   return anonymousClass;
 }
 
