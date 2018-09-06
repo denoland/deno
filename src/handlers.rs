@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use errors::DenoError;
 use errors::DenoResult;
 use flatbuffers::FlatBufferBuilder;
 use from_c;
@@ -16,19 +17,29 @@ use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
-use tokio::prelude::future;
-use tokio::prelude::*;
-use tokio::timer::{Delay, Interval};
+use tokio::timer::Delay;
 
-type HandlerResult = DenoResult<libdeno::deno_buf>;
-type Handler =
-  fn(d: *const DenoC, base: msg::Base, builder: &mut FlatBufferBuilder)
-    -> HandlerResult;
+// Buf represents a byte array returned from a "Op".
+// The message might be empty (which will be translated into a null object on
+// the javascript side) or it is a heap allocated opaque sequence of bytes.
+// Usually a flatbuffer message.
+type Buf = Option<Box<[u8]>>;
+
+// JS promises in Deno map onto a specific Future
+// which yields either a DenoError or a byte array.
+type Op = Future<Item = Buf, Error = DenoError>;
+
+type OpResult = DenoResult<Buf>;
+
+// TODO Ideally we wouldn't have to box the Op being returned.
+// The box is just to make it easier to get a prototype refactor working.
+type Handler = fn(d: *const DenoC, base: &msg::Base) -> Box<Op>;
 
 pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
   let bytes = unsafe { std::slice::from_raw_parts(buf.data_ptr, buf.data_len) };
   let base = msg::get_root_as_base(bytes);
   let msg_type = base.msg_type();
+  let cmd_id = base.cmd_id();
   let handler: Handler = match msg_type {
     msg::Any::Start => handle_start,
     msg::Any::CodeFetch => handle_code_fetch,
@@ -51,30 +62,59 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     )),
   };
 
-  let builder = &mut FlatBufferBuilder::new();
-  let result = handler(d, base, builder);
+  let future = handler(d, &base);
+  let future = future.or_else(move |err| {
+    // No matter whether we got an Err or Ok, we want a serialized message to
+    // send back. So transform the DenoError into a deno_buf.
+    let builder = &mut FlatBufferBuilder::new();
+    let errmsg_offset = builder.create_string(&format!("{}", err));
+    Ok(create_msg(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        error: Some(errmsg_offset),
+        error_kind: err.kind(),
+        ..Default::default()
+      },
+    ))
+  });
 
-  // No matter whether we got an Err or Ok, we want a serialized message to
-  // send back. So transform the DenoError into a deno_buf.
-  let buf = match result {
-    Err(ref err) => {
-      let errmsg_offset = builder.create_string(&format!("{}", err));
-      create_msg(
-        builder,
-        &msg::BaseArgs {
-          error: Some(errmsg_offset),
-          error_kind: err.kind(),
-          ..Default::default()
-        },
-      )
+  let deno = from_c(d);
+  if base.sync() {
+    // Execute future synchronously.
+    // println!("sync handler {}", msg::enum_name_any(msg_type));
+    let maybe_box_u8 = future.wait().unwrap();
+    match maybe_box_u8 {
+      None => {}
+      Some(box_u8) => {
+        let buf = deno_buf_from(box_u8);
+        // Set the synchronous response, the value returned from deno.send().
+        unsafe { libdeno::deno_set_response(d, buf) }
+      }
     }
-    Ok(buf) => buf,
-  };
+  } else {
+    // Execute future asynchornously.
+    let future = future.and_then(move |maybe_box_u8| {
+      let buf = match maybe_box_u8 {
+        Some(box_u8) => deno_buf_from(box_u8),
+        None => null_buf(),
+      };
+      // TODO(ry) make this thread safe.
+      unsafe { libdeno::deno_send(d, buf) };
+      Ok(())
+    });
+    deno.rt.spawn(future);
+  }
+}
 
-  // Set the synchronous response, the value returned from deno.send().
-  // null_buf is a special case that indicates success.
-  if buf != null_buf() {
-    unsafe { libdeno::deno_set_response(d, buf) }
+fn deno_buf_from(x: Box<[u8]>) -> deno_buf {
+  let len = x.len();
+  let ptr = Box::into_raw(x);
+  deno_buf {
+    alloc_ptr: 0 as *mut u8,
+    alloc_len: 0,
+    data_ptr: ptr as *mut u8,
+    data_len: len,
   }
 }
 
@@ -87,21 +127,21 @@ fn null_buf() -> deno_buf {
   }
 }
 
-fn handle_exit(
-  _d: *const DenoC,
-  base: msg::Base,
-  _builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn permission_denied() -> DenoError {
+  DenoError::from(std::io::Error::new(
+    std::io::ErrorKind::PermissionDenied,
+    "permission denied",
+  ))
+}
+
+fn handle_exit(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_exit().unwrap();
   std::process::exit(msg.code())
 }
 
-fn handle_start(
-  d: *const DenoC,
-  _base: msg::Base,
-  builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let deno = from_c(d);
+  let mut builder = FlatBufferBuilder::new();
 
   let argv = deno.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
@@ -111,19 +151,19 @@ fn handle_start(
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
   let msg = msg::StartRes::create(
-    builder,
+    &mut builder,
     &msg::StartResArgs {
       cwd: Some(cwd_off),
       argv: Some(argv_off),
       debug_flag: deno.flags.log_debug,
-      deps_flag: deno.flags.deps_flag,
       ..Default::default()
     },
   );
 
-  Ok(create_msg(
-    builder,
-    &msg::BaseArgs {
+  ok_future(create_msg(
+    base.cmd_id(),
+    &mut builder,
+    msg::BaseArgs {
       msg_type: msg::Any::StartRes,
       msg: Some(msg.as_union_value()),
       ..Default::default()
@@ -132,122 +172,101 @@ fn handle_start(
 }
 
 fn create_msg(
+  cmd_id: u32,
   builder: &mut FlatBufferBuilder,
-  args: &msg::BaseArgs,
-) -> deno_buf {
+  mut args: msg::BaseArgs,
+) -> Buf {
+  args.cmd_id = cmd_id;
   let base = msg::Base::create(builder, &args);
   msg::finish_base_buffer(builder, base);
   let data = builder.finished_data();
-  deno_buf {
-    // TODO(ry)
-    // The deno_buf / ImportBuf / ExportBuf semantics should be such that we do not need to yield
-    // ownership. Temporarally there is a hack in ImportBuf that when alloc_ptr is null, it will
-    // memcpy the deno_buf into V8 instead of doing zero copy.
-    alloc_ptr: 0 as *mut u8,
-    alloc_len: 0,
-    data_ptr: data.as_ptr() as *mut u8,
-    data_len: data.len(),
-  }
+  // println!("create_msg {:x?}", data);
+  let vec = data.to_vec();
+  Some(vec.into_boxed_slice())
 }
 
-// TODO(ry) Use Deno instead of DenoC as first arg.
-fn send_base(
-  d: *const DenoC,
-  builder: &mut FlatBufferBuilder,
-  args: &msg::BaseArgs,
-) {
-  let buf = create_msg(builder, args);
-  unsafe { libdeno::deno_send(d, buf) }
+fn ok_future(buf: Buf) -> Box<Op> {
+  Box::new(futures::future::ok(buf))
+}
+
+// Shout out to Earl Sweatshirt.
+fn odd_future(err: DenoError) -> Box<Op> {
+  Box::new(futures::future::err(err))
 }
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
-fn handle_code_fetch(
-  d: *const DenoC,
-  base: msg::Base,
-  builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_code_fetch(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_code_fetch().unwrap();
+  let cmd_id = base.cmd_id();
   let module_specifier = msg.module_specifier().unwrap();
   let containing_file = msg.containing_file().unwrap();
   let deno = from_c(d);
 
-  assert!(deno.dir.root.join("gen") == deno.dir.gen, "Sanity check");
+  assert_eq!(deno.dir.root.join("gen"), deno.dir.gen, "Sanity check");
 
-  let out = deno.dir.code_fetch(module_specifier, containing_file)?;
-  let mut msg_args = msg::CodeFetchResArgs {
-    module_name: Some(builder.create_string(&out.module_name)),
-    filename: Some(builder.create_string(&out.filename)),
-    source_code: Some(builder.create_string(&out.source_code)),
-    ..Default::default()
-  };
-  match out.maybe_output_code {
-    Some(ref output_code) => {
-      msg_args.output_code = Some(builder.create_string(output_code));
-    }
-    _ => (),
-  };
-  let msg = msg::CodeFetchRes::create(builder, &msg_args);
-  Ok(create_msg(
-    builder,
-    &msg::BaseArgs {
-      msg: Some(msg.as_union_value()),
-      msg_type: msg::Any::CodeFetchRes,
+  Box::new(futures::future::result(|| -> OpResult {
+    let builder = &mut FlatBufferBuilder::new();
+    let out = deno.dir.code_fetch(module_specifier, containing_file)?;
+    let mut msg_args = msg::CodeFetchResArgs {
+      module_name: Some(builder.create_string(&out.module_name)),
+      filename: Some(builder.create_string(&out.filename)),
+      source_code: Some(builder.create_string(&out.source_code)),
       ..Default::default()
-    },
-  ))
+    };
+    match out.maybe_output_code {
+      Some(ref output_code) => {
+        msg_args.output_code = Some(builder.create_string(output_code));
+      }
+      _ => (),
+    };
+    let msg = msg::CodeFetchRes::create(builder, &msg_args);
+    Ok(create_msg(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::CodeFetchRes,
+        ..Default::default()
+      },
+    ))
+  }()))
 }
 
 // https://github.com/denoland/deno/blob/golang/os.go#L156-L169
-fn handle_code_cache(
-  d: *const DenoC,
-  base: msg::Base,
-  _builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_code_cache(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_code_cache().unwrap();
   let filename = msg.filename().unwrap();
   let source_code = msg.source_code().unwrap();
   let output_code = msg.output_code().unwrap();
-  let deno = from_c(d);
-  deno.dir.code_cache(filename, source_code, output_code)?;
-  Ok(null_buf()) // null response indicates success.
+  Box::new(futures::future::result(|| -> OpResult {
+    let deno = from_c(d);
+    deno.dir.code_cache(filename, source_code, output_code)?;
+    Ok(None)
+  }()))
 }
 
-fn handle_set_env(
-  d: *const DenoC,
-  base: msg::Base,
-  _builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_set_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_set_env().unwrap();
   let key = msg.key().unwrap();
   let value = msg.value().unwrap();
 
   let deno = from_c(d);
   if !deno.flags.allow_env {
-    let err = std::io::Error::new(
-      std::io::ErrorKind::PermissionDenied,
-      "allow_env is off.",
-    );
-    return Err(err.into());
+    return odd_future(permission_denied());
   }
 
   std::env::set_var(key, value);
-  Ok(null_buf())
+  ok_future(None)
 }
 
-fn handle_env(
-  d: *const DenoC,
-  _base: msg::Base,
-  builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let deno = from_c(d);
+  let cmd_id = base.cmd_id();
   if !deno.flags.allow_env {
-    let err = std::io::Error::new(
-      std::io::ErrorKind::PermissionDenied,
-      "allow_env is off.",
-    );
-    return Err(err.into());
+    return odd_future(permission_denied());
   }
 
+  let builder = &mut FlatBufferBuilder::new();
   let vars: Vec<_> = std::env::vars()
     .map(|(key, value)| {
       let key = builder.create_string(&key);
@@ -263,9 +282,7 @@ fn handle_env(
       )
     })
     .collect();
-
   let tables = builder.create_vector(&vars);
-
   let msg = msg::EnvironRes::create(
     builder,
     &msg::EnvironResArgs {
@@ -273,10 +290,10 @@ fn handle_env(
       ..Default::default()
     },
   );
-
-  Ok(create_msg(
+  ok_future(create_msg(
+    cmd_id,
     builder,
-    &msg::BaseArgs {
+    msg::BaseArgs {
       msg: Some(msg.as_union_value()),
       msg_type: msg::Any::EnvironRes,
       ..Default::default()
@@ -284,105 +301,53 @@ fn handle_env(
   ))
 }
 
-fn handle_fetch_req(
-  d: *const DenoC,
-  base: msg::Base,
-  _builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
-  let deno = from_c(d);
-  if !deno.flags.allow_net {
-    let err = std::io::Error::new(
-      std::io::ErrorKind::PermissionDenied,
-      "allow_net is off.",
-    );
-    return Err(err.into());
-  }
+fn handle_fetch_req(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_fetch_req().unwrap();
+  let cmd_id = base.cmd_id();
   let id = msg.id();
   let url = msg.url().unwrap();
+  let deno = from_c(d);
+
+  if !deno.flags.allow_net {
+    return odd_future(permission_denied());
+  }
+
   let url = url.parse::<hyper::Uri>().unwrap();
   let client = Client::new();
 
-  deno.rt.spawn(
-    client
-      .get(url)
-      .map(move |res| {
-        let status = res.status().as_u16() as i32;
+  let future = client.get(url).and_then(|res| {
+    let status = res.status().as_u16() as i32;
+    // TODO Handle streaming body.
+    res.into_body().concat2().map(move |body| (status, body))
+  });
 
-        let mut builder = FlatBufferBuilder::new();
-        // Send the first message without a body. This is just to indicate
-        // what status code.
-        let msg = msg::FetchRes::create(
-          &mut builder,
-          &msg::FetchResArgs {
-            id,
-            status,
-            ..Default::default()
-          },
-        );
-        send_base(
-          d,
-          &mut builder,
-          &msg::BaseArgs {
-            msg: Some(msg.as_union_value()),
-            msg_type: msg::Any::FetchRes,
-            ..Default::default()
-          },
-        );
-        res
-      })
-      .and_then(move |res| {
-        // Send the body as a FetchRes message.
-        res.into_body().concat2().map(move |body_buffer| {
-          let mut builder = FlatBufferBuilder::new();
-          let data_off = builder.create_vector(body_buffer.as_ref());
-          let msg = msg::FetchRes::create(
-            &mut builder,
-            &msg::FetchResArgs {
-              id,
-              body: Some(data_off),
-              ..Default::default()
-            },
-          );
-          send_base(
-            d,
-            &mut builder,
-            &msg::BaseArgs {
-              msg: Some(msg.as_union_value()),
-              msg_type: msg::Any::FetchRes,
-              ..Default::default()
-            },
-          );
-        })
-      })
-      .map_err(move |err| {
-        let errmsg = format!("{}", err);
-
-        // TODO This is obviously a lot of duplicated code from the success case.
-        // Leaving it here now jsut to get a first pass implementation, but this
-        // needs to be cleaned up.
-        let mut builder = FlatBufferBuilder::new();
-        let err_off = builder.create_string(errmsg.as_str());
-        let msg = msg::FetchRes::create(
-          &mut builder,
-          &msg::FetchResArgs {
-            id,
-            ..Default::default()
-          },
-        );
-        send_base(
-          d,
-          &mut builder,
-          &msg::BaseArgs {
-            msg: Some(msg.as_union_value()),
-            msg_type: msg::Any::FetchRes,
-            error: Some(err_off),
-            ..Default::default()
-          },
-        );
-      }),
+  let future = future.map_err(|err| -> DenoError { err.into() }).and_then(
+    move |(status, body)| {
+      let builder = &mut FlatBufferBuilder::new();
+      // Send the first message without a body. This is just to indicate
+      // what status code.
+      let body_off = builder.create_vector(body.as_ref());
+      let msg = msg::FetchRes::create(
+        builder,
+        &msg::FetchResArgs {
+          id,
+          status,
+          body: Some(body_off),
+          ..Default::default()
+        },
+      );
+      Ok(create_msg(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          msg: Some(msg.as_union_value()),
+          msg_type: msg::Any::FetchRes,
+          ..Default::default()
+        },
+      ))
+    },
   );
-  Ok(null_buf()) // null response indicates success.
+  Box::new(future)
 }
 
 fn set_timeout<F>(
@@ -410,146 +375,92 @@ where
   (delay_task, cancel_tx)
 }
 
-fn set_interval<F>(
-  cb: F,
-  delay: u32,
-) -> (
-  impl Future<Item = (), Error = ()>,
-  futures::sync::oneshot::Sender<()>,
-)
-where
-  F: Fn() -> (),
-{
-  let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-  let delay = Duration::from_millis(delay.into());
-  let interval_task = future::lazy(move || {
-    Interval::new(Instant::now() + delay, delay)
-      .for_each(move |_| {
-        cb();
-        future::ok(())
-      })
-      .into_future()
-      .map_err(|_| panic!())
-  }).select(cancel_rx)
-    .map(|_| ())
-    .map_err(|_| ());
-
-  (interval_task, cancel_tx)
-}
-
-// TODO(ry) Use Deno instead of DenoC as first arg.
-fn send_timer_ready(d: *const DenoC, timer_id: u32, done: bool) {
-  let mut builder = FlatBufferBuilder::new();
-  let msg = msg::TimerReady::create(
-    &mut builder,
-    &msg::TimerReadyArgs {
-      id: timer_id,
-      done,
-      ..Default::default()
-    },
-  );
-  send_base(
-    d,
-    &mut builder,
-    &msg::BaseArgs {
-      msg: Some(msg.as_union_value()),
-      msg_type: msg::Any::TimerReady,
-      ..Default::default()
-    },
-  );
-}
-
-fn handle_make_temp_dir(
-  d: *const DenoC,
-  base: msg::Base,
-  builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_make_temp_dir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let base = Box::new(*base);
   let msg = base.msg_as_make_temp_dir().unwrap();
+  let cmd_id = base.cmd_id();
   let dir = msg.dir();
   let prefix = msg.prefix();
   let suffix = msg.suffix();
+
   let deno = from_c(d);
   if !deno.flags.allow_write {
-    let err = std::io::Error::new(
-      std::io::ErrorKind::PermissionDenied,
-      "allow_write is off.",
-    );
-    return Err(err.into());
+    return Box::new(futures::future::err(permission_denied()));
   }
-  // TODO(piscisaureus): use byte vector for paths, not a string.
-  // See https://github.com/denoland/deno/issues/627.
-  // We can't assume that paths are always valid utf8 strings.
-  let path = deno_fs::make_temp_dir(dir.map(Path::new), prefix, suffix)?;
-  let path_off = builder.create_string(path.to_str().unwrap());
-  let msg = msg::MakeTempDirRes::create(
-    builder,
-    &msg::MakeTempDirResArgs {
-      path: Some(path_off),
-      ..Default::default()
-    },
-  );
-  Ok(create_msg(
-    builder,
-    &msg::BaseArgs {
-      msg: Some(msg.as_union_value()),
-      msg_type: msg::Any::MakeTempDirRes,
-      ..Default::default()
-    },
-  ))
+  // TODO Use blocking() here.
+  Box::new(futures::future::result(|| -> OpResult {
+    // TODO(piscisaureus): use byte vector for paths, not a string.
+    // See https://github.com/denoland/deno/issues/627.
+    // We can't assume that paths are always valid utf8 strings.
+    let path = deno_fs::make_temp_dir(dir.map(Path::new), prefix, suffix)?;
+    let builder = &mut FlatBufferBuilder::new();
+    let path_off = builder.create_string(path.to_str().unwrap());
+    let msg = msg::MakeTempDirRes::create(
+      builder,
+      &msg::MakeTempDirResArgs {
+        path: Some(path_off),
+        ..Default::default()
+      },
+    );
+    Ok(create_msg(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::MakeTempDirRes,
+        ..Default::default()
+      },
+    ))
+  }()))
 }
 
-fn handle_mkdir_sync(
-  d: *const DenoC,
-  base: msg::Base,
-  _builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_mkdir_sync(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_mkdir_sync().unwrap();
   let path = msg.path().unwrap();
   // TODO let mode = msg.mode();
   let deno = from_c(d);
-
   debug!("handle_mkdir_sync {}", path);
-  if deno.flags.allow_write {
+  if !deno.flags.allow_write {
+    return odd_future(permission_denied());
+  }
+
+  // TODO(ry) use blocking
+  Box::new(futures::future::result(|| -> OpResult {
     // TODO(ry) Use mode.
     deno_fs::mkdir(Path::new(path))?;
-    Ok(null_buf())
-  } else {
-    let err = std::io::Error::new(
-      std::io::ErrorKind::PermissionDenied,
-      "allow_write is off.",
-    );
-    Err(err.into())
-  }
+    Ok(None)
+  }()))
 }
 
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
-fn handle_read_file_sync(
-  _d: *const DenoC,
-  base: msg::Base,
-  builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_read_file_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_read_file_sync().unwrap();
-  let filename = msg.filename().unwrap();
-  debug!("handle_read_file_sync {}", filename);
-  let vec = fs::read(Path::new(filename))?;
-  // Build the response message. memcpy data into msg.
-  // TODO(ry) zero-copy.
-  let data_off = builder.create_vector(vec.as_slice());
-  let msg = msg::ReadFileSyncRes::create(
-    builder,
-    &msg::ReadFileSyncResArgs {
-      data: Some(data_off),
-      ..Default::default()
-    },
-  );
-  Ok(create_msg(
-    builder,
-    &msg::BaseArgs {
-      msg: Some(msg.as_union_value()),
-      msg_type: msg::Any::ReadFileSyncRes,
-      ..Default::default()
-    },
-  ))
+  let cmd_id = base.cmd_id();
+  let filename = String::from(msg.filename().unwrap());
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_read_file_sync {}", filename);
+    let vec = fs::read(Path::new(&filename))?;
+    // Build the response message. memcpy data into msg.
+    // TODO(ry) zero-copy.
+    let builder = &mut FlatBufferBuilder::new();
+    let data_off = builder.create_vector(vec.as_slice());
+    let msg = msg::ReadFileSyncRes::create(
+      builder,
+      &msg::ReadFileSyncResArgs {
+        data: Some(data_off),
+        ..Default::default()
+      },
+    );
+    Ok(create_msg(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::ReadFileSyncRes,
+        ..Default::default()
+      },
+    ))
+  }()))
 }
 
 macro_rules! to_seconds {
@@ -562,145 +473,135 @@ macro_rules! to_seconds {
   }};
 }
 
-fn handle_stat_sync(
-  _d: *const DenoC,
-  base: msg::Base,
-  builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_stat_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_stat_sync().unwrap();
-  let filename = msg.filename().unwrap();
+  let cmd_id = base.cmd_id();
+  let filename = String::from(msg.filename().unwrap());
   let lstat = msg.lstat();
 
-  debug!("handle_stat_sync {} {}", filename, lstat);
-  let path = Path::new(filename);
-  let metadata = if lstat {
-    fs::symlink_metadata(path)?
-  } else {
-    fs::metadata(path)?
-  };
+  Box::new(futures::future::result(|| -> OpResult {
+    let builder = &mut FlatBufferBuilder::new();
+    debug!("handle_stat_sync {} {}", filename, lstat);
+    let path = Path::new(&filename);
+    let metadata = if lstat {
+      fs::symlink_metadata(path)?
+    } else {
+      fs::metadata(path)?
+    };
 
-  let msg = msg::StatSyncRes::create(
-    builder,
-    &msg::StatSyncResArgs {
-      is_file: metadata.is_file(),
-      is_symlink: metadata.file_type().is_symlink(),
-      len: metadata.len(),
-      modified: to_seconds!(metadata.modified()),
-      accessed: to_seconds!(metadata.accessed()),
-      created: to_seconds!(metadata.created()),
-      ..Default::default()
-    },
-  );
+    let msg = msg::StatSyncRes::create(
+      builder,
+      &msg::StatSyncResArgs {
+        is_file: metadata.is_file(),
+        is_symlink: metadata.file_type().is_symlink(),
+        len: metadata.len(),
+        modified: to_seconds!(metadata.modified()),
+        accessed: to_seconds!(metadata.accessed()),
+        created: to_seconds!(metadata.created()),
+        ..Default::default()
+      },
+    );
 
-  Ok(create_msg(
-    builder,
-    &msg::BaseArgs {
-      msg: Some(msg.as_union_value()),
-      msg_type: msg::Any::StatSyncRes,
-      ..Default::default()
-    },
-  ))
+    Ok(create_msg(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::StatSyncRes,
+        ..Default::default()
+      },
+    ))
+  }()))
 }
 
-fn handle_write_file_sync(
-  d: *const DenoC,
-  base: msg::Base,
-  _builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_write_file_sync(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_write_file_sync().unwrap();
-  let filename = msg.filename().unwrap();
+  let filename = String::from(msg.filename().unwrap());
   let data = msg.data().unwrap();
   // TODO let perm = msg.perm();
   let deno = from_c(d);
 
   debug!("handle_write_file_sync {}", filename);
-  if deno.flags.allow_write {
-    // TODO(ry) Use perm.
-    deno_fs::write_file_sync(Path::new(filename), data)?;
-    Ok(null_buf())
-  } else {
-    let err = std::io::Error::new(
-      std::io::ErrorKind::PermissionDenied,
-      "allow_write is off.",
-    );
-    Err(err.into())
-  }
+  Box::new(futures::future::result(|| -> OpResult {
+    if !deno.flags.allow_write {
+      Err(permission_denied())
+    } else {
+      // TODO(ry) Use perm.
+      deno_fs::write_file_sync(Path::new(&filename), data)?;
+      Ok(None)
+    }
+  }()))
 }
 
 // TODO(ry) Use Deno instead of DenoC as first arg.
 fn remove_timer(d: *const DenoC, timer_id: u32) {
   let deno = from_c(d);
+  assert!(deno.timers.contains_key(&timer_id));
   deno.timers.remove(&timer_id);
+  assert!(!deno.timers.contains_key(&timer_id));
 }
 
 // Prototype: https://github.com/ry/deno/blob/golang/timers.go#L25-L39
-fn handle_timer_start(
-  d: *const DenoC,
-  base: msg::Base,
-  _builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_timer_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   debug!("handle_timer_start");
   let msg = base.msg_as_timer_start().unwrap();
+  let cmd_id = base.cmd_id();
   let timer_id = msg.id();
-  let interval = msg.interval();
   let delay = msg.delay();
   let deno = from_c(d);
 
-  if interval {
-    let (interval_task, cancel_interval) = set_interval(
-      move || {
-        send_timer_ready(d, timer_id, false);
-      },
-      delay,
-    );
-
-    deno.timers.insert(timer_id, cancel_interval);
-    deno.rt.spawn(interval_task);
-  } else {
+  let future = {
     let (delay_task, cancel_delay) = set_timeout(
       move || {
         remove_timer(d, timer_id);
-        send_timer_ready(d, timer_id, true);
       },
       delay,
     );
-
     deno.timers.insert(timer_id, cancel_delay);
-    deno.rt.spawn(delay_task);
-  }
-  Ok(null_buf())
+    delay_task
+  };
+  Box::new(future.then(move |result| {
+    let builder = &mut FlatBufferBuilder::new();
+    let msg = msg::TimerReady::create(
+      builder,
+      &msg::TimerReadyArgs {
+        id: timer_id,
+        canceled: result.is_err(),
+        ..Default::default()
+      },
+    );
+    Ok(create_msg(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::TimerReady,
+        ..Default::default()
+      },
+    ))
+  }))
 }
 
 // Prototype: https://github.com/ry/deno/blob/golang/timers.go#L40-L43
-fn handle_timer_clear(
-  d: *const DenoC,
-  base: msg::Base,
-  _builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
+fn handle_timer_clear(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_timer_clear().unwrap();
   debug!("handle_timer_clear");
   remove_timer(d, msg.id());
-  Ok(null_buf())
+  ok_future(None)
 }
 
-fn handle_rename_sync(
-  d: *const DenoC,
-  base: msg::Base,
-  _builder: &mut FlatBufferBuilder,
-) -> HandlerResult {
-  let msg = base.msg_as_rename_sync().unwrap();
-  let oldpath = msg.oldpath().unwrap();
-  let newpath = msg.newpath().unwrap();
+fn handle_rename_sync(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let deno = from_c(d);
-
-  debug!("handle_rename_sync {} {}", oldpath, newpath);
   if !deno.flags.allow_write {
-    let err = std::io::Error::new(
-      std::io::ErrorKind::PermissionDenied,
-      "allow_write is off.",
-    );
-    return Err(err.into());
-  }
-  fs::rename(Path::new(oldpath), Path::new(newpath))?;
-  Ok(null_buf())
+    return Box::new(futures::future::err(permission_denied()));
+  };
+  let msg = base.msg_as_rename_sync().unwrap();
+  let oldpath = String::from(msg.oldpath().unwrap());
+  let newpath = String::from(msg.newpath().unwrap());
+  // TODO use blocking()
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_rename {} {}", oldpath, newpath);
+    fs::rename(Path::new(&oldpath), Path::new(&newpath))?;
+    Ok(None)
+  }()))
 }

@@ -10,8 +10,17 @@ export class DenoError<T extends fbs.ErrorKind> extends Error {
 
 // @internal
 export function maybeThrowError(base: fbs.Base): void {
+  const err = maybeError(base);
+  if (err != null) {
+    throw err;
+  }
+}
+
+export function maybeError(base: fbs.Base): null | DenoError<fbs.ErrorKind> {
   const kind = base.errorKind();
-  if (kind !== fbs.ErrorKind.NoError) {
-    throw new DenoError(kind, base.error()!);
+  if (kind === fbs.ErrorKind.NoError) {
+    return null;
+  } else {
+    return new DenoError(kind, base.error()!);
   }
 }

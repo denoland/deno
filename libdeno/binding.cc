@@ -11,6 +11,14 @@
 #include "deno.h"
 #include "internal.h"
 
+void hexdump(const uint8_t* buf, size_t len) {
+  for (size_t i = 0; i < len; ++i) {
+    char ch = buf[i];
+    printf("%02x ", ch & 0xff);
+  }
+  printf("\n");
+}
+
 namespace deno {
 
 Deno* FromIsolate(v8::Isolate* isolate) {
@@ -429,6 +437,8 @@ int deno_send(Deno* d, deno_buf buf) {
 }
 
 void deno_set_response(Deno* d, deno_buf buf) {
+  // printf("deno_set_response: ");
+  // hexdump(buf.data_ptr, buf.data_len);
   auto ab = deno::ImportBuf(d->isolate, buf);
   d->currentArgs->GetReturnValue().Set(ab);
 }
