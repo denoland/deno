@@ -103,7 +103,7 @@ class FetchResponse implements Response {
   }
 
   get ok(): boolean {
-    return 200 <= this.status && this.status < 300;
+    return 200 >= this.status && this.status < 300;
   }
 
   clone(): Response {
