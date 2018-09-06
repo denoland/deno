@@ -137,13 +137,6 @@ function throwResolutionError(
   );
 }
 
-// ts.ScriptKind is not available at runtime, so local enum definition
-enum ScriptKind {
-  JS = 1,
-  TS = 3,
-  JSON = 6
-}
-
 /**
  * A singleton class that combines the TypeScript Language Service host API
  * with Deno specific APIs to provide an interface for compiling and running
@@ -626,13 +619,13 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     const suffix = fileName.substr(fileName.lastIndexOf(".") + 1);
     switch (suffix) {
       case "ts":
-        return ScriptKind.TS;
+        return ts.ScriptKind.TS;
       case "js":
-        return ScriptKind.JS;
+        return ts.ScriptKind.JS;
       case "json":
-        return ScriptKind.JSON;
+        return ts.ScriptKind.JSON;
       default:
-        return this._options.allowJs ? ScriptKind.JS : ScriptKind.TS;
+        return this._options.allowJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
     }
   }
 
