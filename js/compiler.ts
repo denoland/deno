@@ -114,16 +114,6 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
 }
 
 /**
- * The required minimal API to allow formatting of TypeScript compiler
- * diagnostics.
- */
-const formatDiagnosticsHost: ts.FormatDiagnosticsHost = {
-  getCurrentDirectory: () => ".",
-  getCanonicalFileName: (fileName: string) => fileName,
-  getNewLine: () => EOL
-};
-
-/**
  * Throw a module resolution error, when a module is unsuccessfully resolved.
  */
 function throwResolutionError(
@@ -142,7 +132,8 @@ function throwResolutionError(
  * with Deno specific APIs to provide an interface for compiling and running
  * TypeScript and JavaScript modules.
  */
-export class DenoCompiler implements ts.LanguageServiceHost {
+export class DenoCompiler
+  implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
   // Modules are usually referenced by their ModuleSpecifier and ContainingFile,
   // and keeping a map of the resolved module file name allows more efficient
   // future resolution
@@ -370,7 +361,7 @@ export class DenoCompiler implements ts.LanguageServiceHost {
     if (diagnostics.length > 0) {
       const errMsg = this._ts.formatDiagnosticsWithColorAndContext(
         diagnostics,
-        formatDiagnosticsHost
+        this
       );
       console.log(errMsg);
       // All TypeScript errors are terminal for deno
@@ -597,6 +588,11 @@ export class DenoCompiler implements ts.LanguageServiceHost {
   }
 
   // TypeScript Language Service API
+
+  getCanonicalFileName(fileName: string): string {
+    this._log("getCanonicalFileName", fileName);
+    return fileName;
+  }
 
   getCompilationSettings(): ts.CompilerOptions {
     this._log("getCompilationSettings()");
