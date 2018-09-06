@@ -12,7 +12,7 @@ import { assert, log, notImplemented } from "./util";
 import * as sourceMaps from "./v8_source_maps";
 
 const EOL = "\n";
-const ASSETS = "$asset$";
+const ASSETS = "/$asset$";
 
 // tslint:disable:no-any
 type AmdCallback = (...args: any[]) => void;
@@ -74,8 +74,10 @@ export interface Os {
  */
 export interface Ts {
   createLanguageService: typeof ts.createLanguageService;
+  createProgram: typeof ts.createProgram;
   /* tslint:disable-next-line:max-line-length */
   formatDiagnosticsWithColorAndContext: typeof ts.formatDiagnosticsWithColorAndContext;
+  getPreEmitDiagnostics: typeof ts.getPreEmitDiagnostics;
 }
 
 /**
@@ -124,6 +126,8 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
  */
 export class DenoCompiler
   implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
+  // Needed to supply to the TypeScript compiler
+  private _cwd = "";
   // Modules are usually referenced by their ModuleSpecifier and ContainingFile,
   // and keeping a map of the resolved module file name allows more efficient
   // future resolution
@@ -209,7 +213,10 @@ export class DenoCompiler
     }
 
     this._window.define = this._makeDefine(moduleMetaData);
-    this._globalEval(this.compile(moduleMetaData));
+    if (!moduleMetaData.outputCode) {
+      throw new Error(`Missing source code for: "${moduleMetaData.fileName}"`);
+    }
+    this._globalEval(moduleMetaData.outputCode);
     this._window.define = undefined;
   }
 
@@ -254,7 +261,9 @@ export class DenoCompiler
       ? this._moduleMetaDataMap.get(fileName)
       : fileName.startsWith(ASSETS)
         ? this.resolveModule(fileName, "")
-        : undefined;
+        : fileName === "/js/plugins.d.ts"
+          ? this.resolveModule(`${ASSETS}/plugins.d.ts`, "")
+          : undefined;
   }
 
   /**
@@ -410,6 +419,29 @@ export class DenoCompiler
 
   // Deno specific compiler API
 
+  compileProgram(rootModuleMetaData: ModuleMetaData) {
+    this._log("compiler.compileProgram", rootModuleMetaData.fileName);
+    const program = this._ts.createProgram({
+      rootNames: [rootModuleMetaData.fileName],
+      options: this._options,
+      host: this
+    });
+    const emitResult = program.emit();
+
+    const diagnostics = [
+      ...this._ts.getPreEmitDiagnostics(program),
+      ...emitResult.diagnostics
+    ];
+    if (diagnostics.length > 0) {
+      const errMsg = this._ts.formatDiagnosticsWithColorAndContext(
+        diagnostics,
+        this
+      );
+      console.log(errMsg);
+      this._os.exit(1);
+    }
+  }
+
   /**
    * Retrieve the output of the TypeScript compiler for a given module and
    * cache the result.
@@ -560,16 +592,55 @@ export class DenoCompiler
     return moduleMetaData;
   }
 
-  // TypeScript Language Service and Format Diagnostic Host API
+  runProgram(
+    moduleSpecifier: ModuleSpecifier,
+    containingFile: ContainingFile
+  ): void {
+    this._log("compiler.runProgram", { moduleSpecifier, containingFile });
+    const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
+    this.compileProgram(moduleMetaData);
+    if (!moduleMetaData.deps) {
+      this._gatherDependencies(moduleMetaData);
+    }
+    this._drainRunQueue();
+  }
 
-  getCanonicalFileName(fileName: string): string {
-    this._log("getCanonicalFileName", fileName);
-    return fileName;
+  setCwd(cwd: string): void {
+    this._cwd = cwd;
+  }
+
+  /**
+   * Caches the resolved `fileName` in relationship to the `moduleSpecifier`
+   * and `containingFile` in order to reduce calls to the privileged side
+   * to retrieve the contents of a module.
+   */
+  setFileName(
+    moduleSpecifier: ModuleSpecifier,
+    containingFile: ContainingFile,
+    fileName: ModuleFileName
+  ): void {
+    // TODO should this be part of the public API of the compiler?
+    this._log("compiler.setFileName", { moduleSpecifier, containingFile });
+    let innerMap = this._fileNamesMap.get(containingFile);
+    if (!innerMap) {
+      innerMap = new Map();
+      this._fileNamesMap.set(containingFile, innerMap);
+    }
+    innerMap.set(moduleSpecifier, fileName);
   }
 
   getCompilationSettings(): ts.CompilerOptions {
     this._log("getCompilationSettings()");
     return this._options;
+  }
+
+  getCanonicalFileName(fileName: string): string {
+    return fileName;
+  }
+
+  getDirectories(path: string) {
+    this._log("getDirectories()", path);
+    return notImplemented();
   }
 
   getNewLine(): string {
@@ -609,9 +680,25 @@ export class DenoCompiler
     return this._getModuleMetaData(fileName);
   }
 
+  getSourceFile(
+    fileName: string,
+    languageVersion: ts.ScriptTarget
+  ): ts.SourceFile | undefined {
+    this._log("getSourceFile()", fileName);
+    const moduleMetaData = this._getModuleMetaData(fileName);
+    if (!moduleMetaData || !moduleMetaData.sourceCode) {
+      return undefined;
+    }
+    return ts.createSourceFile(
+      moduleMetaData.fileName,
+      moduleMetaData.sourceCode,
+      languageVersion
+    );
+  }
+
   getCurrentDirectory(): string {
     this._log("getCurrentDirectory()");
-    return "";
+    return this._cwd;
   }
 
   getDefaultLibFileName(): string {
@@ -667,6 +754,25 @@ export class DenoCompiler
       // TODO: we should be returning a ts.ResolveModuleFull
       return { resolvedFileName, isExternalLibraryImport };
     });
+  }
+
+  writeFile(
+    fileName: string,
+    data: string,
+    writeByteOrderMark: boolean,
+    onError?: ((message: string) => void),
+    sourceFiles?: ReadonlyArray<ts.SourceFile>
+  ): void {
+    this._log("writeFile()", fileName);
+    if (!sourceFiles || sourceFiles.length !== 1) {
+      throw new Error(`Unexpected emit of file: "${fileName}"`);
+    }
+    const sourceFileName = sourceFiles[0].fileName;
+    const moduleMetaData = this._getModuleMetaData(sourceFileName);
+    if (!moduleMetaData) {
+      throw new Error(`Cannot find source module: ${sourceFileName}`);
+    }
+    moduleMetaData.outputCode = data;
   }
 
   // Deno specific static properties and methods

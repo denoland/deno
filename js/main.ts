@@ -69,4 +69,8 @@ export default function denoMain() {
   }
 
   compiler.run(inputFn, `${cwd}/`);
+  if (cwd) {
+    compiler.setCwd(cwd);
+  }
+  compiler.runProgram(inputFn, `${cwd}/`);
 }
