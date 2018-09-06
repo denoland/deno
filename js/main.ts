@@ -56,11 +56,13 @@ function onGlobalError(
   os.exit(1);
 }
 
+// ensure the compiler instance is created and is part of the snapshot
+const compiler = DenoCompiler.instance();
+
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
   libdeno.recv(onMessage);
   libdeno.setGlobalErrorHandler(onGlobalError);
-  const compiler = DenoCompiler.instance();
 
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
