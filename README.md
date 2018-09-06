@@ -53,7 +53,7 @@
 ## Install
 
 ```
-curl -sSf https://raw.githubusercontent.com/denoland/deno/master/tools/install.py | python
+curl -sSf https://raw.githubusercontent.com/denoland/deno_install/master/install.py | python
 ```
 
 
