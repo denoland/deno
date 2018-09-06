@@ -8,13 +8,6 @@ import * as ts from "typescript";
 
 const { DenoCompiler } = compiler;
 
-// Enums like this don't exist at runtime, so local copy
-enum ScriptKind {
-  JS = 1,
-  TS = 3,
-  JSON = 6
-}
-
 interface ModuleInfo {
   moduleName: string | null;
   filename: string | null;
@@ -466,11 +459,11 @@ test(function compilerGetScriptFileNames() {
 });
 
 test(function compilerGetScriptKind() {
-  assertEqual(compilerInstance.getScriptKind("foo.ts"), ScriptKind.TS);
-  assertEqual(compilerInstance.getScriptKind("foo.d.ts"), ScriptKind.TS);
-  assertEqual(compilerInstance.getScriptKind("foo.js"), ScriptKind.JS);
-  assertEqual(compilerInstance.getScriptKind("foo.json"), ScriptKind.JSON);
-  assertEqual(compilerInstance.getScriptKind("foo.txt"), ScriptKind.JS);
+  assertEqual(compilerInstance.getScriptKind("foo.ts"), ts.ScriptKind.TS);
+  assertEqual(compilerInstance.getScriptKind("foo.d.ts"), ts.ScriptKind.TS);
+  assertEqual(compilerInstance.getScriptKind("foo.js"), ts.ScriptKind.JS);
+  assertEqual(compilerInstance.getScriptKind("foo.json"), ts.ScriptKind.JSON);
+  assertEqual(compilerInstance.getScriptKind("foo.txt"), ts.ScriptKind.JS);
 });
 
 test(function compilerGetScriptVersion() {
