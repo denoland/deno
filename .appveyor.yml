@@ -10,13 +10,14 @@ environment:
   DENO_BUILD_MODE: release
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\release
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
+  MTIME_CACHE_DB: $(APPVEYOR_BUILD_FOLDER)\mtime_cache.xml
   CARGO_HOME: $(USERPROFILE)\.cargo
   RUSTUP_HOME: $(USERPROFILE)\.rustup
   RELEASE_ARTIFACT: deno_win_x64.zip
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
-  #   -t7z  : Use '7z' format. The default is 'zip' which can't store symlinks.
-  #   -snl  : Store symlinks.
+  #   -t7z  : Use '7z' format.
+  #   -snl  : Store symlinks; doesn't work, but it prevents following symlinks.
   #   -mtc  : Use UTC timestamps. This is required for incremental builds.
   #   -mx=1 : Fast compression.
   APPVEYOR_CACHE_ENTRY_ZIP_ARGS: -t7z -snl -mtc -mx=1
@@ -153,6 +154,61 @@ environment:
         }
       }
 
+      function Sync-MTimeCache([string] $DatabasePath) {
+        # Load the previously saved cache, if it exists.
+        try {
+          $old_cache = Import-CliXml -Path $DatabasePath -ErrorAction Stop
+        } catch {
+          $old_cache = @{}
+        }
+        # The updated cache gets populated while restoring the old one.
+        $new_cache = @{}
+        # Determine the mtime that will be assigned to new and modified files.
+        # To retain nanosecond precision when (de)serializing, mtimes are stored
+        # as 64-bit 'FileTime' integers, not as DateTime objects.
+        $now = (Get-Date).ToFileTimeUtc()
+        # Since we're gonna rely on git to give us file SHAs, double check that
+        # the work dir is clean and the index is up to date.
+        $dirty = git status -z --ignore-submodules=all --untracked-files=no
+        if ($dirty) { throw "Work tree dirty." }
+        # Ask git for a list of checked-out files and their hashes, metadata.
+        # Include regular files only (mode 100644/100755), no symlinks etc.
+        (git ls-files -z --stage --full-name) -split "\0" |
+          Select-String "^100"                            |
+          foreach {
+            # Parse git output.
+            $metadata, $path = $_ -split "\t", 2
+            $mode, $sha, $null, $eol_info = $metadata -split "\s+"
+            # Compute cache key.
+            $key = $path, $mode, $sha, $eol_info -join ","
+            # Look up mtime in cache. Reset to 'now' if not found or invalid.
+            $mtime = $old_cache[$key]
+            if (-not $mtime -or $mtime -gt $now) { $mtime = $now }
+            # Change file mtime.
+            $dt = [DateTime]::FromFileTimeUtc($mtime)
+            Set-ItemProperty -Path $path -Name LastWriteTime -Value $dt -Force
+            # Add entry to updated cache.
+            $new_cache[$key] = $mtime
+          }
+        # Write the updated cache back to disk.
+        if (Get-SaveCache) {
+          $new_cache | Export-CliXml -Path $DatabasePath -ErrorAction Stop
+        }
+        # Log some statistics to get an idea if this is all working.
+        $rows = [ordered]@{ Valid = "=="; New   = "=>"
+                            Stale = "<="; Total = "*" }
+        $keys = @{ old = @($old_cache.Keys); new = @($new_cache.Keys) }
+        $diff = Compare-Object $keys.old $keys.new -IncludeEqual
+        $rows.GetEnumerator() | foreach {
+            $keyset = ($diff | where SideIndicator -like $_.Value).InputObject
+            New-Object -TypeName PSObject -Property ([ordered]@{
+              "Status"      = $_.Name
+              "Old Cache #" = ($keyset | where { $_ -in $keys.old }).Count
+              "New Cache #" = ($keyset | where { $_ -in $keys.new }).Count
+            })
+          } | Format-Table | Out-String -Stream | where { $_ }
+      }
+
       # Get-SaveCache returns $true if the cache will be saved at the end.
       function Get-SaveCache {
         -not $env:APPVEYOR_PULL_REQUEST_NUMBER -and
@@ -179,6 +235,8 @@ cache:
   # and to make incremental builds work.
   - $(APPVEYOR_BUILD_FOLDER)\.git\modules\third_party
   - $(APPVEYOR_BUILD_FOLDER)\third_party
+  # Cache file mtimes in the main git repo, also to enable incremental builds.
+  - $(MTIME_CACHE_DB)
   # Build incrementally.
   - $(DENO_BUILD_PATH)
 
@@ -210,6 +268,10 @@ install:
         Exec { & git gc --prune=all }
         Pop-Location
       }
+
+  # Git doesn't store file mtimes, so those are stored separately in the cache.
+  # Without it, ninja will assume all files are dirty and rebuild everything.
+  - ps: Sync-MTimeCache -DatabasePath $env:MTIME_CACHE_DB
 
   # Configure depot_tools and add it to the search path. This is necessary
   # because, later in this script, we need to invoke ninja directly.

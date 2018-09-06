@@ -206,8 +206,8 @@ testPerm({ write: false }, function mkdDirSyncPerm() {
 
 testPerm({ write: true }, function renameSync() {
   const testDir = deno.makeTempDirSync() + "/test-rename";
-  const oldpath = testDir + "/oldpath"
-  const newpath = testDir + "/newpath"
+  const oldpath = testDir + "/oldpath";
+  const newpath = testDir + "/newpath";
   deno.mkdirSync(oldpath);
   deno.renameSync(oldpath, newpath);
   const newPathInfo = deno.statSync(newpath);

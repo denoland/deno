@@ -137,8 +137,8 @@ impl DenoDir {
     } else if module_name.starts_with(ASSET_PREFIX) {
       panic!("Asset resolution should be done in JS, not Rust.");
     } else {
-      assert!(
-        module_name == filename,
+      assert_eq!(
+        module_name, filename,
         "if a module isn't remote, it should have the same filename"
       );
       let src = fs::read_to_string(Path::new(filename))?;
@@ -151,13 +151,13 @@ impl DenoDir {
     module_specifier: &str,
     containing_file: &str,
   ) -> Result<CodeFetchOutput, DenoError> {
+    debug!(
+      "code_fetch. module_specifier {} containing_file {}",
+      module_specifier, containing_file
+    );
+
     let (module_name, filename) =
       self.resolve_module(module_specifier, containing_file)?;
-
-    debug!(
-            "code_fetch. module_name = {} module_specifier = {} containing_file = {} filename = {}",
-            module_name, module_specifier, containing_file, filename
-        );
 
     let out = self
       .get_source_code(module_name.as_str(), filename.as_str())
@@ -190,14 +190,18 @@ impl DenoDir {
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
-  #[allow(dead_code)]
-  fn src_file_to_url<P: AsRef<Path>>(self: &DenoDir, filename: P) -> String {
-    let filename = filename.as_ref().to_path_buf();
-    if filename.starts_with(&self.deps) {
-      let rest = filename.strip_prefix(&self.deps).unwrap();
-      "http://".to_string() + rest.to_str().unwrap()
+  fn src_file_to_url(self: &DenoDir, filename: &str) -> String {
+    let filename_path = Path::new(filename);
+    if filename_path.starts_with(&self.deps) {
+      let rest = filename_path.strip_prefix(&self.deps).unwrap();
+      // Windows doesn't support ":" in filenames, so we represent port using a
+      // special string.
+      // TODO(ry) This current implementation will break on a URL that has
+      // the default port but contains "_PORT" in the path.
+      let rest = rest.to_str().unwrap().replacen("_PORT", ":", 1);
+      "http://".to_string() + &rest
     } else {
-      String::from(filename.to_str().unwrap())
+      String::from(filename)
     }
   }
 
@@ -211,39 +215,31 @@ impl DenoDir {
     let module_name;
     let filename;
 
+    let module_specifier = self.src_file_to_url(module_specifier);
+    let containing_file = self.src_file_to_url(containing_file);
+
     debug!(
-      "resolve_module before module_specifier {} containing_file {}",
+      "resolve_module module_specifier {} containing_file {}",
       module_specifier, containing_file
     );
 
-    //let module_specifier = src_file_to_url(module_specifier);
-    //let containing_file = src_file_to_url(containing_file);
-    //let base_url = Url::parse(&containing_file)?;
-
-    let j: Url =
-      if containing_file == "." || Path::new(module_specifier).is_absolute() {
-        if module_specifier.starts_with("http://") {
-          Url::parse(module_specifier)?
-        } else {
-          Url::from_file_path(module_specifier).unwrap()
-        }
-      } else if containing_file.ends_with("/") {
-        let r = Url::from_directory_path(&containing_file);
-        // TODO(ry) Properly handle error.
-        if r.is_err() {
-          error!("Url::from_directory_path error {}", containing_file);
-        }
-        let base = r.unwrap();
-        base.join(module_specifier)?
-      } else {
-        let r = Url::from_file_path(&containing_file);
-        // TODO(ry) Properly handle error.
-        if r.is_err() {
-          error!("Url::from_file_path error {}", containing_file);
-        }
-        let base = r.unwrap();
-        base.join(module_specifier)?
-      };
+    let j: Url = if containing_file == "."
+      || is_remote(&module_specifier)
+      || Path::new(&module_specifier).is_absolute()
+    {
+      parse_local_or_remote(&module_specifier)?
+    } else if containing_file.ends_with("/") {
+      let r = Url::from_directory_path(&containing_file);
+      // TODO(ry) Properly handle error.
+      if r.is_err() {
+        error!("Url::from_directory_path error {}", containing_file);
+      }
+      let base = r.unwrap();
+      base.join(module_specifier.as_ref())?
+    } else {
+      let base = parse_local_or_remote(&containing_file)?;
+      base.join(module_specifier.as_ref())?
+    };
 
     match j.scheme() {
       "file" => {
@@ -252,7 +248,7 @@ impl DenoDir {
         filename = p;
       }
       _ => {
-        module_name = module_specifier.to_string();
+        module_name = j.to_string();
         filename = deno_fs::normalize_path(
           get_cache_filename(self.deps.as_path(), j).as_ref(),
         )
@@ -265,8 +261,16 @@ impl DenoDir {
 }
 
 fn get_cache_filename(basedir: &Path, url: Url) -> PathBuf {
+  let host = url.host_str().unwrap();
+  let host_port = match url.port() {
+    // Windows doesn't support ":" in filenames, so we represent port using a
+    // special string.
+    Some(port) => format!("{}_PORT{}", host, port),
+    None => host.to_string(),
+  };
+
   let mut out = basedir.to_path_buf();
-  out.push(url.host_str().unwrap());
+  out.push(host_port);
   for path_seg in url.path_segments().unwrap() {
     out.push(path_seg);
   }
@@ -280,7 +284,7 @@ fn test_get_cache_filename() {
   let cache_file = get_cache_filename(&basedir, url);
   assert_eq!(
     cache_file,
-    Path::new("/cache/dir/example.com/path/to/file.ts")
+    Path::new("/cache/dir/example.com_PORT1234/path/to/file.ts")
   );
 }
 
@@ -398,25 +402,31 @@ fn test_code_fetch() {
 }
 
 #[test]
-fn test_src_file_to_url() {
+fn test_src_file_to_url_1() {
   let (_temp_dir, deno_dir) = test_setup();
   assert_eq!("hello", deno_dir.src_file_to_url("hello"));
   assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
-  let x = String::from(deno_dir.deps.join("hello/world.txt").to_str().unwrap());
-  assert_eq!("http://hello/world.txt", deno_dir.src_file_to_url(x));
+  let x = deno_dir.deps.join("hello/world.txt");
+  assert_eq!(
+    "http://hello/world.txt",
+    deno_dir.src_file_to_url(x.to_str().unwrap())
+  );
+}
+
+#[test]
+fn test_src_file_to_url_2() {
+  let (_temp_dir, deno_dir) = test_setup();
+  let x = deno_dir.deps.join("localhost_PORT4545/world.txt");
+  assert_eq!(
+    "http://localhost:4545/world.txt",
+    deno_dir.src_file_to_url(x.to_str().unwrap())
+  );
 }
 
 // https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87
 #[test]
-fn test_resolve_module() {
+fn test_resolve_module_1() {
   let (_temp_dir, deno_dir) = test_setup();
-
-  let d = deno_fs::normalize_path(
-    deno_dir
-      .deps
-      .join("localhost/testdata/subdir/print_hello.ts")
-      .as_ref(),
-  );
 
   let test_cases = [
     (
@@ -449,26 +459,6 @@ fn test_resolve_module() {
       add_root!("/this/module/got/imported.js"),
       add_root!("/this/module/got/imported.js"),
     ),
-    (
-        "http://localhost:4545/testdata/subdir/print_hello.ts",
-        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
-        "http://localhost:4545/testdata/subdir/print_hello.ts",
-        d.as_ref(),
-    ),
-    /*
-        (
-            path.Join(SrcDir, "unpkg.com/liltest@0.0.5/index.ts"),
-            ".",
-            "http://unpkg.com/liltest@0.0.5/index.ts",
-            path.Join(SrcDir, "unpkg.com/liltest@0.0.5/index.ts"),
-        ),
-        (
-            "./util",
-            path.Join(SrcDir, "unpkg.com/liltest@0.0.5/index.ts"),
-            "http://unpkg.com/liltest@0.0.5/util",
-            path.Join(SrcDir, "unpkg.com/liltest@0.0.5/util"),
-        ),
-        */
   ];
   for &test in test_cases.iter() {
     let module_specifier = String::from(test.0);
@@ -481,8 +471,104 @@ fn test_resolve_module() {
   }
 }
 
+#[test]
+fn test_resolve_module_2() {
+  let (_temp_dir, deno_dir) = test_setup();
+
+  let module_specifier = "http://localhost:4545/testdata/subdir/print_hello.ts";
+  let containing_file = add_root!("/deno/testdata/006_url_imports.ts");
+
+  let expected_module_name =
+    "http://localhost:4545/testdata/subdir/print_hello.ts";
+  let expected_filename = deno_fs::normalize_path(
+    deno_dir
+      .deps
+      .join("localhost_PORT4545/testdata/subdir/print_hello.ts")
+      .as_ref(),
+  );
+
+  let (module_name, filename) = deno_dir
+    .resolve_module(module_specifier, containing_file)
+    .unwrap();
+  assert_eq!(module_name, expected_module_name);
+  assert_eq!(filename, expected_filename);
+}
+
+#[test]
+fn test_resolve_module_3() {
+  let (_temp_dir, deno_dir) = test_setup();
+
+  let module_specifier_ =
+    deno_dir.deps.join("unpkg.com/liltest@0.0.5/index.ts");
+  let module_specifier = module_specifier_.to_str().unwrap();
+  let containing_file = ".";
+
+  let expected_module_name = "http://unpkg.com/liltest@0.0.5/index.ts";
+  let expected_filename = deno_fs::normalize_path(
+    deno_dir
+      .deps
+      .join("unpkg.com/liltest@0.0.5/index.ts")
+      .as_ref(),
+  );
+
+  let (module_name, filename) = deno_dir
+    .resolve_module(module_specifier, containing_file)
+    .unwrap();
+  assert_eq!(module_name, expected_module_name);
+  assert_eq!(filename, expected_filename);
+}
+
+#[test]
+fn test_resolve_module_4() {
+  let (_temp_dir, deno_dir) = test_setup();
+
+  let module_specifier = "./util";
+  let containing_file_ = deno_dir.deps.join("unpkg.com/liltest@0.0.5/index.ts");
+  let containing_file = containing_file_.to_str().unwrap();
+
+  let expected_module_name = "http://unpkg.com/liltest@0.0.5/util";
+  let expected_filename = deno_fs::normalize_path(
+    deno_dir.deps.join("unpkg.com/liltest@0.0.5/util").as_ref(),
+  );
+
+  let (module_name, filename) = deno_dir
+    .resolve_module(module_specifier, containing_file)
+    .unwrap();
+  assert_eq!(module_name, expected_module_name);
+  assert_eq!(filename, expected_filename);
+}
+
+#[test]
+fn test_resolve_module_5() {
+  let (_temp_dir, deno_dir) = test_setup();
+
+  let module_specifier = "http://localhost:4545/tests/subdir/mod2.ts";
+  let containing_file = add_root!("/deno/tests/006_url_imports.ts");
+  let expected_module_name = "http://localhost:4545/tests/subdir/mod2.ts";
+  let expected_filename = deno_fs::normalize_path(
+    deno_dir
+      .deps
+      .join("localhost_PORT4545/tests/subdir/mod2.ts")
+      .as_ref(),
+  );
+
+  let (module_name, filename) = deno_dir
+    .resolve_module(module_specifier, containing_file)
+    .unwrap();
+  assert_eq!(module_name, expected_module_name);
+  assert_eq!(filename, expected_filename);
+}
+
 const ASSET_PREFIX: &str = "/$asset$/";
 
 fn is_remote(module_name: &str) -> bool {
   module_name.starts_with("http")
+}
+
+fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
+  if is_remote(p) {
+    Url::parse(p)
+  } else {
+    Url::from_file_path(p).map_err(|_err| url::ParseError::IdnaError)
+  }
 }

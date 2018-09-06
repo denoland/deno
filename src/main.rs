@@ -12,12 +12,12 @@ extern crate log;
 extern crate hyper_rustls;
 extern crate ring;
 
-mod binding;
 mod deno_dir;
 mod errors;
 mod flags;
 mod fs;
 pub mod handlers;
+mod libdeno;
 mod net;
 mod version;
 
@@ -30,7 +30,7 @@ use std::ffi::CString;
 type DenoException<'a> = &'a str;
 
 pub struct Deno {
-  ptr: *const binding::DenoC,
+  ptr: *const libdeno::DenoC,
   dir: deno_dir::DenoDir,
   rt: tokio::runtime::current_thread::Runtime,
   timers: HashMap<u32, futures::sync::oneshot::Sender<()>>,
@@ -43,13 +43,13 @@ static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 impl Deno {
   fn new(argv: Vec<String>) -> Box<Deno> {
     DENO_INIT.call_once(|| {
-      unsafe { binding::deno_init() };
+      unsafe { libdeno::deno_init() };
     });
 
     let (flags, argv_rest) = flags::set_flags(argv);
 
     let mut deno_box = Box::new(Deno {
-      ptr: 0 as *const binding::DenoC,
+      ptr: 0 as *const libdeno::DenoC,
       dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
       rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
       timers: HashMap::new(),
@@ -58,7 +58,7 @@ impl Deno {
     });
 
     (*deno_box).ptr = unsafe {
-      binding::deno_new(
+      libdeno::deno_new(
         deno_box.as_ref() as *const _ as *const c_void,
         handlers::msg_from_js,
       )
@@ -75,10 +75,10 @@ impl Deno {
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
     let r = unsafe {
-      binding::deno_execute(self.ptr, filename.as_ptr(), source.as_ptr())
+      libdeno::deno_execute(self.ptr, filename.as_ptr(), source.as_ptr())
     };
     if r == 0 {
-      let ptr = unsafe { binding::deno_last_exception(self.ptr) };
+      let ptr = unsafe { libdeno::deno_last_exception(self.ptr) };
       let cstr = unsafe { CStr::from_ptr(ptr) };
       return Err(cstr.to_str().unwrap());
     }
@@ -88,12 +88,12 @@ impl Deno {
 
 impl Drop for Deno {
   fn drop(&mut self) {
-    unsafe { binding::deno_delete(self.ptr) }
+    unsafe { libdeno::deno_delete(self.ptr) }
   }
 }
 
-pub fn from_c<'a>(d: *const binding::DenoC) -> &'a mut Deno {
-  let ptr = unsafe { binding::deno_get_data(d) };
+pub fn from_c<'a>(d: *const libdeno::DenoC) -> &'a mut Deno {
+  let ptr = unsafe { libdeno::deno_get_data(d) };
   let deno_ptr = ptr as *mut Deno;
   let deno_box = unsafe { Box::from_raw(deno_ptr) };
   Box::leak(deno_box)
