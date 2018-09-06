@@ -5,10 +5,8 @@ import { assert, log, setLogDebug } from "./util";
 import * as os from "./os";
 import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
-import * as timers from "./timers";
-import { onFetchRes } from "./fetch";
 import { argv } from "./deno";
-import { send } from "./fbs_util";
+import { send, handleAsyncMsgFromRust } from "./fbs_util";
 
 function sendStart(): fbs.StartRes {
   const builder = new flatbuffers.Builder();
@@ -20,29 +18,6 @@ function sendStart(): fbs.StartRes {
   const startRes = new fbs.StartRes();
   assert(baseRes!.msg(startRes) != null);
   return startRes;
-}
-
-function onMessage(ui8: Uint8Array) {
-  const bb = new flatbuffers.ByteBuffer(ui8);
-  const base = fbs.Base.getRootAsBase(bb);
-  switch (base.msgType()) {
-    case fbs.Any.FetchRes: {
-      const msg = new fbs.FetchRes();
-      assert(base.msg(msg) != null);
-      onFetchRes(base, msg);
-      break;
-    }
-    case fbs.Any.TimerReady: {
-      const msg = new fbs.TimerReady();
-      assert(base.msg(msg) != null);
-      timers.onMessage(msg);
-      break;
-    }
-    default: {
-      assert(false, "Unhandled message type");
-      break;
-    }
-  }
 }
 
 function onGlobalError(
@@ -58,7 +33,7 @@ function onGlobalError(
 
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
-  libdeno.recv(onMessage);
+  libdeno.recv(handleAsyncMsgFromRust);
   libdeno.setGlobalErrorHandler(onGlobalError);
   const compiler = DenoCompiler.instance();
 

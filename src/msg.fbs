@@ -74,6 +74,7 @@ enum ErrorKind: byte {
 
 table Base {
   cmd_id: uint32;
+  sync: bool = true; // TODO(ry) Change default to false.
   error_kind: ErrorKind = NoError;
   error: string;
   msg: Any;
@@ -117,13 +118,12 @@ table Exit {
 
 table TimerStart {
   id: uint;
-  interval: bool;
   delay: uint;
 }
 
 table TimerReady {
   id: uint;
-  done: bool;
+  canceled: bool;
 }
 
 table TimerClear {

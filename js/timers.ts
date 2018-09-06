@@ -3,7 +3,7 @@ import { assert } from "./util";
 import * as util from "./util";
 import { deno as fbs } from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
-import { send } from "./fbs_util";
+import { send, sendAsync } from "./fbs_util";
 
 let nextTimerId = 1;
 
@@ -19,50 +19,51 @@ interface Timer {
   delay: number; // milliseconds
 }
 
-const timers = new Map<number, Timer>();
-
-/** @internal */
-export function onMessage(msg: fbs.TimerReady) {
-  const timerReadyId = msg.id();
-  const timerReadyDone = msg.done();
-  const timer = timers.get(timerReadyId);
-  if (!timer) {
-    return;
-  }
-  timer.cb(...timer.args);
-  if (timerReadyDone) {
-    timers.delete(timerReadyId);
-  }
-}
-
 function startTimer(
+  id: number,
   cb: TimerCallback,
   delay: number,
   interval: boolean,
   // tslint:disable-next-line:no-any
   args: any[]
-): number {
-  const timer = {
-    id: nextTimerId++,
+): void {
+  const timer: Timer = {
+    id,
     interval,
     delay,
     args,
     cb
   };
-  timers.set(timer.id, timer);
-
   util.log("timers.ts startTimer");
 
   // Send TimerStart message
   const builder = new flatbuffers.Builder();
   fbs.TimerStart.startTimerStart(builder);
   fbs.TimerStart.addId(builder, timer.id);
-  fbs.TimerStart.addInterval(builder, timer.interval);
   fbs.TimerStart.addDelay(builder, timer.delay);
   const msg = fbs.TimerStart.endTimerStart(builder);
-  const baseRes = send(builder, fbs.Any.TimerStart, msg);
-  assert(baseRes == null);
-  return timer.id;
+
+  sendAsync(builder, fbs.Any.TimerStart, msg).then(
+    baseRes => {
+      assert(fbs.Any.TimerReady === baseRes!.msgType());
+      const msg = new fbs.TimerReady();
+      assert(baseRes!.msg(msg) != null);
+      assert(msg.id() === timer.id);
+      if (msg.canceled()) {
+        util.log("timer canceled message");
+      } else {
+        cb(...args);
+        if (interval) {
+          // TODO Faking setInterval with setTimeout.
+          // We need a new timer implementation, this is just a stopgap.
+          startTimer(id, cb, delay, true, args);
+        }
+      }
+    },
+    error => {
+      throw error;
+    }
+  );
 }
 
 export function setTimeout(
@@ -71,7 +72,9 @@ export function setTimeout(
   // tslint:disable-next-line:no-any
   ...args: any[]
 ): number {
-  return startTimer(cb, delay, false, args);
+  const id = nextTimerId++;
+  startTimer(id, cb, delay, false, args);
+  return id;
 }
 
 export function setInterval(
@@ -80,12 +83,12 @@ export function setInterval(
   // tslint:disable-next-line:no-any
   ...args: any[]
 ): number {
-  return startTimer(cb, delay, true, args);
+  const id = nextTimerId++;
+  startTimer(id, cb, delay, true, args);
+  return id;
 }
 
 export function clearTimer(id: number) {
-  timers.delete(id);
-
   const builder = new flatbuffers.Builder();
   fbs.TimerClear.startTimerClear(builder);
   fbs.TimerClear.addId(builder, id);
