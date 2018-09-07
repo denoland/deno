@@ -8,7 +8,7 @@ env:
   - RUSTUP_PATH=$HOME/.rustup/
   - DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false"
   - DENO_BUILD_PATH=$HOME/out/Default
-  - DENO_BUILD_MODE=release
+  - DENO_BUILD_MODE=debug
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_PATH/bin:$PATH
   - CCACHE_CPP2=yes
   - CCACHE_SLOPPINESS=time_macros
@@ -36,6 +36,7 @@ script:
 - "./tools/lint.py"
 - bash -c "sleep 2100; pkill ninja" &
 - "./tools/build.py -j2"
+- "du -h $DENO_BUILD_PATH"
 - "./tools/test.py $DENO_BUILD_PATH"
 before_deploy: |
   # gzip and name release to denote platform

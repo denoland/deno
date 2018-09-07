@@ -28,7 +28,6 @@ default_args = {
   is_cfi = false
 
   is_component_build = false
-  symbol_level = 1
   treat_warnings_as_errors = false
   rust_treat_warnings_as_errors = false
 
