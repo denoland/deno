@@ -2,14 +2,18 @@
 
 import("//build/toolchain/cc_wrapper.gni")
 
-# Verify that cc_wrapper is correctly set up on Windows.
-if (is_win && cc_wrapper != "" && custom_toolchain == "") {
-  suggested_toolchain = "//build_extra/toolchain/win:win_clang_$target_cpu"
+# Verify that the cc_wrapper/toolchain combo correctly set up on Windows.
+if (is_win && cc_wrapper != "") {
+  cc_wrapper_toolchain = "//build_extra/toolchain/win:win_clang_$target_cpu"
+  toolchain_supports_cc_wrapper = cc_wrapper_toolchain == default_toolchain &&
+                                  cc_wrapper_toolchain == host_toolchain
 
-  # Use print instead of assert with message for readability.
-  print(
-      "The 'cc_wrapper' option isn't supported by the default Windows toolchain.")
-  print("To make it work, add the option:")
-  print("  custom_toolchain=\"$suggested_toolchain\"")
-  assert(custom_toolchain != "")
+  if (!toolchain_supports_cc_wrapper) {
+    # Using print instead of assert-with-message for readability of the output.
+    print("The 'cc_wrapper' option isn't supported by the default Windows" +
+          " toolchain. To make it work, add these gn arguments:")
+    print("  custom_toolchain=\"$cc_wrapper_toolchain\"")
+    print("  host_toolchain=\"$cc_wrapper_toolchain\"")
+    assert(toolchain_supports_cc_wrapper)
+  }
 }
