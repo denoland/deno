@@ -133,17 +133,17 @@ table TimerClear {
 table Environ {}
 
 table SetEnv {
-    key: string;
-    value: string;
+  key: string;
+  value: string;
 }
 
 table EnvironRes {
-    map: [EnvPair];
+  map: [EnvPair];
 }
 
 table EnvPair {
-    key: string;
-    value: string;
+  key: string;
+  value: string;
 }
 
 table FetchReq {
