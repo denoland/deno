@@ -28,17 +28,27 @@ function ErrorFactory<T extends fbs.ErrorKind>(
   return anonymousClass;
 }
 
+// @internal
+export function maybeThrowError(base: fbs.Base): void {
+  const kind = base.errorKind();
+  if (kind !== fbs.ErrorKind.NoError) {
+    const errorClass = errorClasses.get(kind);
+    throw new errorClass(base.error()!);
+  }
+}
+
+// Each of the error codes in src/msg.fbs is manually mapped to a
+// JavaScript error class. The testErrorClasses function below 
+// checks that there is a class for every error code.
+// TODO It would be good if we didn't have to manually maintain this list.
+// prettier-ignore-start
+// tslint:disable:max-line-length
 // tslint:disable:variable-name
-// IO errors.
 export const ErrNotFound = ErrorFactory(fbs.ErrorKind.NotFound);
 export const ErrPermissionDenied = ErrorFactory(fbs.ErrorKind.PermissionDenied);
-export const ErrConnectionRefused = ErrorFactory(
-  fbs.ErrorKind.ConnectionRefused
-);
+export const ErrConnectionRefused = ErrorFactory(fbs.ErrorKind.ConnectionRefused);
 export const ErrConnectionReset = ErrorFactory(fbs.ErrorKind.ConnectionReset);
-export const ErrConnectionAborted = ErrorFactory(
-  fbs.ErrorKind.ConnectionAborted
-);
+export const ErrConnectionAborted = ErrorFactory(fbs.ErrorKind.ConnectionAborted);
 export const ErrNotConnected = ErrorFactory(fbs.ErrorKind.NotConnected);
 export const ErrAddrInUse = ErrorFactory(fbs.ErrorKind.AddrInUse);
 export const ErrAddrNotAvailable = ErrorFactory(fbs.ErrorKind.AddrNotAvailable);
@@ -52,31 +62,15 @@ export const ErrInterrupted = ErrorFactory(fbs.ErrorKind.Interrupted);
 export const ErrWriteZero = ErrorFactory(fbs.ErrorKind.WriteZero);
 export const ErrOther = ErrorFactory(fbs.ErrorKind.Other);
 export const ErrUnexpectedEof = ErrorFactory(fbs.ErrorKind.UnexpectedEof);
-
-// URL errors.
 export const ErrEmptyHost = ErrorFactory(fbs.ErrorKind.EmptyHost);
 export const ErrIdnaError = ErrorFactory(fbs.ErrorKind.IdnaError);
 export const ErrInvalidPort = ErrorFactory(fbs.ErrorKind.InvalidPort);
-export const ErrInvalidIpv4Address = ErrorFactory(
-  fbs.ErrorKind.InvalidIpv4Address
-);
-export const ErrInvalidIpv6Address = ErrorFactory(
-  fbs.ErrorKind.InvalidIpv6Address
-);
-export const ErrInvalidDomainCharacter = ErrorFactory(
-  fbs.ErrorKind.InvalidDomainCharacter
-);
-export const ErrRelativeUrlWithoutBase = ErrorFactory(
-  fbs.ErrorKind.RelativeUrlWithoutBase
-);
-export const ErrRelativeUrlWithCannotBeABaseBase = ErrorFactory(
-  fbs.ErrorKind.RelativeUrlWithCannotBeABaseBase
-);
-export const ErrSetHostOnCannotBeABaseUrl = ErrorFactory(
-  fbs.ErrorKind.SetHostOnCannotBeABaseUrl
-);
-
-// Hyper errors.
+export const ErrInvalidIpv4Address = ErrorFactory(fbs.ErrorKind.InvalidIpv4Address);
+export const ErrInvalidIpv6Address = ErrorFactory(fbs.ErrorKind.InvalidIpv6Address);
+export const ErrInvalidDomainCharacter = ErrorFactory(fbs.ErrorKind.InvalidDomainCharacter);
+export const ErrRelativeUrlWithoutBase = ErrorFactory(fbs.ErrorKind.RelativeUrlWithoutBase);
+export const ErrRelativeUrlWithCannotBeABaseBase = ErrorFactory(fbs.ErrorKind.RelativeUrlWithCannotBeABaseBase);
+export const ErrSetHostOnCannotBeABaseUrl = ErrorFactory(fbs.ErrorKind.SetHostOnCannotBeABaseUrl);
 export const ErrOverflow = ErrorFactory(fbs.ErrorKind.Overflow);
 export const ErrHttpUser = ErrorFactory(fbs.ErrorKind.HttpUser);
 export const ErrHttpClosed = ErrorFactory(fbs.ErrorKind.HttpClosed);
@@ -84,22 +78,14 @@ export const ErrHttpCanceled = ErrorFactory(fbs.ErrorKind.HttpCanceled);
 export const ErrHttpParse = ErrorFactory(fbs.ErrorKind.HttpParse);
 export const ErrHttpOther = ErrorFactory(fbs.ErrorKind.HttpOther);
 // tslint:enable:variable-name
+// tslint:enable:max-line-length
+// prettier-ignore-end
 
-// @internal
-export function maybeThrowError(base: fbs.Base): void {
-  const kind = base.errorKind();
-  if (kind !== fbs.ErrorKind.NoError) {
-    const errorClass = errorClasses.get(kind);
-    throw new errorClass(base.error()!);
-  }
-}
-
-// Test
 // The following code does not have any impact on Deno's startup
 // performance as we're using V8 snapshots, this code will casue
 // `snapshot_creator` to fail during build time whenever we
 // forgot to register an error class.
-function testErrors(): void {
+function testErrorClasses(): void {
   const len = Object.keys(fbs.ErrorKind).length / 2;
   for (let kind = 0; kind < len; ++kind) {
     if (kind === fbs.ErrorKind.NoError) {
@@ -109,4 +95,4 @@ function testErrors(): void {
   }
 }
 
-testErrors();
+testErrorClasses();
