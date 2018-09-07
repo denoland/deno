@@ -51,6 +51,10 @@ type ModuleSpecifier = string;
  * The compiled source code which is cached in `.deno/gen/`
  */
 type OutputCode = string;
+/**
+ * The original source code
+ */
+type SourceCode = string;
 
 /**
  * Abstraction of the APIs required from the `os` module so they can be
@@ -91,8 +95,8 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
   constructor(
     public readonly moduleId: ModuleId,
     public readonly fileName: ModuleFileName,
-    public readonly sourceCode = "",
-    public outputCode = ""
+    public readonly sourceCode: SourceCode = "",
+    public outputCode: OutputCode = ""
   ) {
     if (outputCode !== "" || fileName.endsWith(".d.ts")) {
       this.scriptVersion = "1";
@@ -511,8 +515,8 @@ export class DenoCompiler
       return this._moduleMetaDataMap.get(fileName)!;
     }
     let moduleId: ModuleId = "";
-    let sourceCode: string | undefined;
-    let outputCode: string | undefined;
+    let sourceCode: SourceCode | undefined;
+    let outputCode: OutputCode | undefined;
     if (
       moduleSpecifier.startsWith(ASSETS) ||
       containingFile.startsWith(ASSETS)
