@@ -85,5 +85,13 @@ export default function denoMain() {
     os.exit(1);
   }
 
+  const printDeps = startResMsg.depsFlag();
+  if (printDeps) {
+    for (const dep of compiler.getModuleDependencies(inputFn, `${cwd}/`)) {
+      console.log(dep);
+    }
+    os.exit(0);
+  }
+
   compiler.run(inputFn, `${cwd}/`);
 }

@@ -139,11 +139,13 @@ export default function makeConfig(commandOptions) {
       commonjs({
         namedExports: {
           // Static analysis of `typescript.js` does detect the exports properly, therefore
-          // rollup requires them to be explicitly defined to avoid generating warnings
+          // rollup requires them to be explicitly defined to make them available in the
+          // bundle
           [typescriptPath]: [
             "createLanguageService",
             "formatDiagnosticsWithColorAndContext",
             "ModuleKind",
+            "ScriptKind",
             "ScriptSnapshot",
             "ScriptTarget",
             "version"

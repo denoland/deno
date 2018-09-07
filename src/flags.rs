@@ -21,12 +21,12 @@ pub struct DenoFlags {
   pub allow_write: bool,
   pub allow_net: bool,
   pub allow_env: bool,
+  pub deps_flag: bool,
 }
 
 pub fn print_usage() {
   println!(
     "Usage: deno script.ts
-
 --allow-write      Allow file system write access.
 --allow-net        Allow network access.
 --allow-env        Allow environment access.
@@ -34,7 +34,8 @@ pub fn print_usage() {
 -r or --reload     Reload cached remote resources.
 -D or --log-debug  Log debug output.
 -h or --help       Print this message.
---v8-options       Print V8 command line options."
+--v8-options       Print V8 command line options.
+--deps             Print module dependencies."
   );
 }
 
@@ -54,6 +55,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
         "--allow-write" => flags.allow_write = true,
         "--allow-net" => flags.allow_net = true,
         "--allow-env" => flags.allow_env = true,
+        "--deps" => flags.deps_flag = true,
         "--" => break,
         _ => unimplemented!(),
       }
@@ -108,13 +110,14 @@ fn test_set_flags_2() {
 #[test]
 fn test_set_flags_3() {
   let (flags, rest) =
-    set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]);
+    set_flags(svec!["deno", "-r", "--deps", "script.ts", "--allow-write"]);
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
     DenoFlags {
       reload: true,
       allow_write: true,
+      deps_flag: true,
       ..DenoFlags::default()
     }
   );

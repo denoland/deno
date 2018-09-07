@@ -87,6 +87,7 @@ table StartRes {
   cwd: string;
   argv: [string];
   debug_flag: bool;
+  deps_flag: bool;
 }
 
 table CodeFetch {

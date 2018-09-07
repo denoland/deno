@@ -166,8 +166,7 @@ class FetchRequest {
     fbs.FetchReq.addId(builder, this.id);
     fbs.FetchReq.addUrl(builder, url);
     const msg = fbs.FetchReq.endFetchReq(builder);
-    const res = send(builder, fbs.Any.FetchReq, msg);
-    assert(res == null);
+    send(builder, fbs.Any.FetchReq, msg);
   }
 }
 
@@ -177,7 +176,7 @@ export function fetch(
 ): Promise<Response> {
   const fetchReq = new FetchRequest(input as string);
   const response = fetchReq.response;
-  return new Promise((resolve, reject) => {
+  const promise = new Promise<Response>((resolve, reject) => {
     response.onHeader = (response: FetchResponse) => {
       log("onHeader");
       resolve(response);
@@ -186,6 +185,7 @@ export function fetch(
       log("onError", error);
       reject(error);
     };
-    fetchReq.start();
   });
+  fetchReq.start();
+  return promise;
 }
