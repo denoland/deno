@@ -123,6 +123,14 @@ export function mkdirSync(path: string, mode = 0o777): void {
   send(builder, fbs.Any.MkdirSync, msg);
 }
 
+/**
+ * Read the file.
+ *     import { readFileSync } from "deno";
+ *
+ *     const decoder = new TextDecoder("utf-8");
+ *     const data = readFileSync("hello.txt");
+ *     console.log(decoder.decode(data));
+ */
 export function readFileSync(filename: string): Uint8Array {
   /* Ideally we could write
   const res = send({
@@ -180,12 +188,12 @@ function setEnv(key: string, value: string): void {
  * the process. The environment object will only accept `string`s or `number`s
  * as values.
  *     import { env } from "deno";
- *     const env = deno.env();
- *     console.log(env.SHELL)
- *     env.TEST_VAR = "HELLO";
  *
- *     const newEnv = deno.env();
- *     console.log(env.TEST_VAR == newEnv.TEST_VAR);
+ *     const myEnv = env();
+ *     console.log(myEnv.SHELL);
+ *     myEnv.TEST_VAR = "HELLO";
+ *     const newEnv = env();
+ *     console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
 export function env(): { [index: string]: string } {
   /* Ideally we could write
@@ -313,6 +321,14 @@ function statSyncInner(filename: string, lstat: boolean): FileInfo {
   return new FileInfo(res);
 }
 
+/**
+ * Write a new file.
+ *     import { writeFileSync } from "deno";
+ *
+ *     const encoder = new TextEncoder("utf-8");
+ *     const data = encoder.encode("Hello world\n");
+ *     writeFileSync("hello.txt", data);
+ */
 export function writeFileSync(
   filename: string,
   data: Uint8Array,
