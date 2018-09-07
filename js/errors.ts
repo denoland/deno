@@ -41,7 +41,6 @@ export function maybeThrowError(base: fbs.Base): void {
 // JavaScript error class. The testErrorClasses function below 
 // checks that there is a class for every error code.
 // TODO It would be good if we didn't have to manually maintain this list.
-// prettier-ignore-start
 // tslint:disable:max-line-length
 // tslint:disable:variable-name
 export const ErrNotFound = ErrorFactory(fbs.ErrorKind.NotFound);
@@ -79,7 +78,6 @@ export const ErrHttpParse = ErrorFactory(fbs.ErrorKind.HttpParse);
 export const ErrHttpOther = ErrorFactory(fbs.ErrorKind.HttpOther);
 // tslint:enable:variable-name
 // tslint:enable:max-line-length
-// prettier-ignore-end
 
 // The following code does not have any impact on Deno's startup
 // performance as we're using V8 snapshots, this code will casue
