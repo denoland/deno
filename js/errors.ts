@@ -1,5 +1,4 @@
 import { deno as fbs } from "gen/msg_generated";
-import { assert } from "./util";
 
 const ERR_PREFIX = "Err";
 
@@ -36,6 +35,8 @@ export function maybeThrowError(base: fbs.Base): void {
     throw new errorClass(base.error()!);
   }
 }
+
+export const errorKinds = fbs.ErrorKind;
 
 // Each of the error codes in src/msg.fbs is manually mapped to a
 // JavaScript error class. The testErrorClasses function below 
@@ -78,19 +79,3 @@ export const ErrHttpParse = ErrorFactory(fbs.ErrorKind.HttpParse);
 export const ErrHttpOther = ErrorFactory(fbs.ErrorKind.HttpOther);
 // tslint:enable:variable-name
 // tslint:enable:max-line-length
-
-// The following code does not have any impact on Deno's startup
-// performance as we're using V8 snapshots, this code will casue
-// `snapshot_creator` to fail during build time whenever we
-// forgot to register an error class.
-function testErrorClasses(): void {
-  const len = Object.keys(fbs.ErrorKind).length / 2;
-  for (let kind = 0; kind < len; ++kind) {
-    if (kind === fbs.ErrorKind.NoError) {
-      continue;
-    }
-    assert(errorClasses.has(kind), `No error class for ${fbs.ErrorKind[kind]}`);
-  }
-}
-
-testErrorClasses();
