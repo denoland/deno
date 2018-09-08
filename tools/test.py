@@ -4,6 +4,7 @@
 import os
 import sys
 from check_output_test import check_output_test
+from setup_test import setup_test
 from util import executable_suffix, run, build_path
 from unit_tests import unit_tests
 from util_test import util_test
@@ -30,6 +31,7 @@ def main(argv):
     http_server.spawn()
 
     # Internal tools testing
+    setup_test()
     util_test()
 
     test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
