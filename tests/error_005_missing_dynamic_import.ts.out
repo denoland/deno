@@ -1,12 +1,11 @@
-Error: Cannot resolve module "bad-module.ts" from "[WILDCARD]deno/tests/error_005_missing_dynamic_import.ts".
-  os.codeFetch message: [WILDCARD] (os error 2)
-    at throwResolutionError (deno/js/compiler.ts:[WILDCARD])
+NotFound: Cannot resolve module "bad-module.ts" from "[WILDCARD]deno/tests/error_005_missing_dynamic_import.ts"
+    at maybeError (deno/js/errors.ts:[WILDCARD])
+    at maybeThrowError (deno/js/errors.ts:[WILDCARD])
+    at send (deno/js/fbs_util.ts:[WILDCARD])
+    at Object.codeFetch (deno/js/os.ts:[WILDCARD])
     at DenoCompiler.resolveModule (deno/js/compiler.ts:[WILDCARD])
     at DenoCompiler._resolveModuleName (deno/js/compiler.ts:[WILDCARD])
     at moduleNames.map.name (deno/js/compiler.ts:[WILDCARD])
     at Array.map (<anonymous>)
     at DenoCompiler.resolveModuleNames (deno/js/compiler.ts:[WILDCARD])
     at Object.compilerHost.resolveModuleNames (deno/third_party/node_modules/typescript/lib/typescript.js:[WILDCARD])
-    at resolveModuleNamesWorker (deno/third_party/node_modules/typescript/lib/typescript.js:[WILDCARD])
-    at resolveModuleNamesReusingOldState (deno/third_party/node_modules/typescript/lib/typescript.js:[WILDCARD])
-    at processImportedModules (deno/third_party/node_modules/typescript/lib/typescript.js:[WILDCARD])

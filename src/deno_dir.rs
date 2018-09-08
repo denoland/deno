@@ -1,6 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use errors::DenoError;
 use errors::DenoResult;
+use errors::ErrorKind;
 use fs as deno_fs;
 use net;
 use ring;
@@ -159,7 +160,7 @@ impl DenoDir {
     let (module_name, filename) =
       self.resolve_module(module_specifier, containing_file)?;
 
-    let out = self
+    let result = self
       .get_source_code(module_name.as_str(), filename.as_str())
       .and_then(|source_code| {
         Ok(CodeFetchOutput {
@@ -168,7 +169,24 @@ impl DenoDir {
           source_code,
           maybe_output_code: None,
         })
-      })?;
+      });
+    let out = match result {
+      Err(err) => {
+        if err.kind() == ErrorKind::NotFound {
+          // For NotFound, change the message to something better.
+          return Err(DenoError::from(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+              "Cannot resolve module \"{}\" from \"{}\"",
+              module_specifier, containing_file
+            ),
+          )));
+        } else {
+          return Err(err);
+        }
+      }
+      Ok(out) => out,
+    };
 
     let result =
       self.load_cache(out.filename.as_str(), out.source_code.as_str());
