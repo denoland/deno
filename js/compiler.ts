@@ -468,10 +468,10 @@ export class DenoCompiler
     return moduleMetaData.outputCode;
   }
 
-  placeholderTODO(
+  gatherDependenciesMap(
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
-  ): { [key: string]: string[] | undefined } {
+  ): Map<ModuleId, ModuleMetaData> {
     assert(
       this._runQueue.length === 0,
       "Cannot get dependencies with modules queued to be run."
@@ -483,16 +483,10 @@ export class DenoCompiler
     );
     this._gatherDependencies(moduleMetaData);
 
-    const dependencies = this._runQueue.reduce(
-      (
-        deps: { [key: string]: string[] | undefined },
-        moduleMetaData: ModuleMetaData
-      ) => {
-        deps[moduleMetaData.fileName] = moduleMetaData.deps;
-        return deps;
-      },
-      {}
-    );
+    const dependencies = new Map();
+    for (const dependency of this._runQueue) {
+      dependencies.set(dependency.moduleId, dependency);
+    }
     // empty the run queue, to free up references to factories we have collected
     // and to ensure that if there is a further invocation of `.run()` the
     // factories don't get called
@@ -507,24 +501,15 @@ export class DenoCompiler
   getModuleDependencies(
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
-  ): ModuleFileName[] {
-    assert(
-      this._runQueue.length === 0,
-      "Cannot get dependencies with modules queued to be run."
+  ): ModuleId[] {
+    const dependenciesMap = this.gatherDependenciesMap(
+      moduleSpecifier,
+      containingFile
     );
-    const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
-    assert(
-      !moduleMetaData.hasRun,
-      "Cannot get dependencies for a module that has already been run."
-    );
-    this._gatherDependencies(moduleMetaData);
-    const dependencies = this._runQueue.map(
-      moduleMetaData => moduleMetaData.moduleId
-    );
-    // empty the run queue, to free up references to factories we have collected
-    // and to ensure that if there is a further invocation of `.run()` the
-    // factories don't get called
-    this._runQueue = [];
+    const dependencies: ModuleId[] = [];
+    for (const key of dependenciesMap.keys()) {
+      dependencies.push(key);
+    }
     return dependencies;
   }
 

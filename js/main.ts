@@ -84,11 +84,11 @@ export default function denoMain() {
   if (startResMsg.depfileFlag() && argv.length > 1) {
     inputFn = argv[1];
     // TODO: should probably be a function
-    const deps = compiler.placeholderTODO(inputFn, `${cwd}/`);
+    const deps = compiler.gatherDependenciesMap(inputFn, `${cwd}/`);
     const output: string[] = [];
-    for (const moduleFileName in deps) {
-      const moduleDependencies = deps[moduleFileName] || [];
-      output.push(`${moduleFileName}: ${moduleDependencies.join(" ")}`);
+    for (const [, moduleMetaData] of deps) {
+      const dependencies = moduleMetaData.deps || [];
+      output.push(`${moduleMetaData.fileName}: ${dependencies.join(" ")}`);
     }
     const enc = new TextEncoder();
     const data = enc.encode(output.join("\n"));
