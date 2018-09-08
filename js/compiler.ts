@@ -118,20 +118,6 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
 }
 
 /**
- * Throw a module resolution error, when a module is unsuccessfully resolved.
- */
-function throwResolutionError(
-  message: string,
-  moduleSpecifier: ModuleSpecifier,
-  containingFile: ContainingFile
-): never {
-  throw new Error(
-    // tslint:disable-next-line:max-line-length
-    `Cannot resolve module "${moduleSpecifier}" from "${containingFile}".\n  ${message}`
-  );
-}
-
-/**
  * A singleton class that combines the TypeScript Language Service host API
  * with Deno specific APIs to provide an interface for compiling and running
  * TypeScript and JavaScript modules.
@@ -514,9 +500,9 @@ export class DenoCompiler
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
       return this._moduleMetaDataMap.get(fileName)!;
     }
-    let moduleId: ModuleId = "";
-    let sourceCode: SourceCode | undefined;
-    let outputCode: OutputCode | undefined;
+    let moduleId: ModuleId;
+    let sourceCode: SourceCode;
+    let outputCode: OutputCode | null;
     if (
       moduleSpecifier.startsWith(ASSETS) ||
       containingFile.startsWith(ASSETS)
@@ -524,38 +510,24 @@ export class DenoCompiler
       // Assets are compiled into the runtime javascript bundle.
       // we _know_ `.pop()` will return a string, but TypeScript doesn't so
       // not null assertion
-      const moduleId = moduleSpecifier.split("/").pop()!;
+      moduleId = moduleSpecifier.split("/").pop()!;
       const assetName = moduleId.includes(".") ? moduleId : `${moduleId}.d.ts`;
       assert(assetName in assetSourceCode, `No such asset "${assetName}"`);
       sourceCode = assetSourceCode[assetName];
       fileName = `${ASSETS}/${assetName}`;
+      outputCode = "";
     } else {
       // We query Rust with a CodeFetch message. It will load the sourceCode,
       // and if there is any outputCode cached, will return that as well.
-      let fetchResponse;
-      try {
-        fetchResponse = this._os.codeFetch(moduleSpecifier, containingFile);
-      } catch (e) {
-        return throwResolutionError(
-          `os.codeFetch message: ${e.message}`,
-          moduleSpecifier,
-          containingFile
-        );
-      }
-      moduleId = fetchResponse.moduleName || "";
-      fileName = fetchResponse.filename || undefined;
-      sourceCode = fetchResponse.sourceCode || undefined;
-      outputCode = fetchResponse.outputCode || undefined;
+      const fetchResponse = this._os.codeFetch(moduleSpecifier, containingFile);
+      moduleId = fetchResponse.moduleName!;
+      fileName = fetchResponse.filename!;
+      sourceCode = fetchResponse.sourceCode!;
+      outputCode = fetchResponse.outputCode!;
     }
-    if (!sourceCode || sourceCode.length === 0 || !fileName) {
-      return throwResolutionError(
-        "Invalid source code or file name.",
-        moduleSpecifier,
-        containingFile
-      );
-    }
+    assert(sourceCode!.length > 0);
     this._log("resolveModule sourceCode length:", sourceCode.length);
-    this._log("resolveModule has outputCode:", !!outputCode);
+    this._log("resolveModule has outputCode:", outputCode! != null);
     this._setFileName(moduleSpecifier, containingFile, fileName);
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
       return this._moduleMetaDataMap.get(fileName)!;
