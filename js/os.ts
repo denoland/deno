@@ -30,7 +30,10 @@ export function codeFetch(
   const msg = fbs.CodeFetch.endCodeFetch(builder);
   const baseRes = send(builder, fbs.Any.CodeFetch, msg);
   assert(baseRes != null);
-  assert(fbs.Any.CodeFetchRes === baseRes!.msgType());
+  assert(
+    fbs.Any.CodeFetchRes === baseRes!.msgType(),
+    `base.msgType() unexpectedly is ${baseRes!.msgType()}`
+  );
   const codeFetchRes = new fbs.CodeFetchRes();
   assert(baseRes!.msg(codeFetchRes) != null);
   return {
