@@ -1,3 +1,4 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { deno as fbs } from "gen/msg_generated";
 
 const ERR_PREFIX = "Err";
@@ -36,7 +37,8 @@ export function maybeThrowError(base: fbs.Base): void {
   }
 }
 
-export const errorKinds = fbs.ErrorKind;
+export const errorNames: string[] = Object.keys(fbs.ErrorKind)
+  .filter(x => isNaN(Number(x)) && x !== "NoError").map(e => ERR_PREFIX + e);
 
 // Each of the error codes in src/msg.fbs is manually mapped to a
 // JavaScript error class. The testErrorClasses function below 

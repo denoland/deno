@@ -14,7 +14,7 @@ export {
   writeFileSync
 } from "./os";
 export {
-  errorKinds,
+  errorNames,
   DenoError,
   ErrNotFound,
   ErrPermissionDenied,
