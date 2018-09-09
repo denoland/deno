@@ -472,14 +472,10 @@ export class DenoCompiler
     return moduleMetaData.outputCode;
   }
 
-  /**
-   * For a given module specifier and containing file, return a list of absolute
-   * identifiers for dependent modules that are required by this module.
-   */
-  getModuleDependencies(
+  gatherDependenciesMap(
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
-  ): ModuleFileName[] {
+  ): Map<ModuleId, ModuleMetaData> {
     assert(
       this._runQueue.length === 0,
       "Cannot get dependencies with modules queued to be run."
@@ -490,13 +486,34 @@ export class DenoCompiler
       "Cannot get dependencies for a module that has already been run."
     );
     this._gatherDependencies(moduleMetaData);
-    const dependencies = this._runQueue.map(
-      moduleMetaData => moduleMetaData.moduleId
-    );
+
+    const dependencies = new Map();
+    for (const dependency of this._runQueue) {
+      dependencies.set(dependency.moduleId, dependency);
+    }
     // empty the run queue, to free up references to factories we have collected
     // and to ensure that if there is a further invocation of `.run()` the
     // factories don't get called
     this._runQueue = [];
+    return dependencies;
+  }
+
+  /**
+   * For a given module specifier and containing file, return a list of absolute
+   * identifiers for dependent modules that are required by this module.
+   */
+  getModuleDependencies(
+    moduleSpecifier: ModuleSpecifier,
+    containingFile: ContainingFile
+  ): ModuleId[] {
+    const dependenciesMap = this.gatherDependenciesMap(
+      moduleSpecifier,
+      containingFile
+    );
+    const dependencies: ModuleId[] = [];
+    for (const key of dependenciesMap.keys()) {
+      dependencies.push(key);
+    }
     return dependencies;
   }
 

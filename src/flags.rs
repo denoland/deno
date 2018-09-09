@@ -22,6 +22,7 @@ pub struct DenoFlags {
   pub allow_net: bool,
   pub allow_env: bool,
   pub deps_flag: bool,
+  pub depfile_flag: bool,
 }
 
 pub fn print_usage() {
@@ -35,7 +36,8 @@ pub fn print_usage() {
 -D or --log-debug  Log debug output.
 -h or --help       Print this message.
 --v8-options       Print V8 command line options.
---deps             Print module dependencies."
+--deps             Print module dependencies.
+--depfile          Outputs module dependencies to a file specified as argument."
   );
 }
 
@@ -56,6 +58,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
         "--allow-net" => flags.allow_net = true,
         "--allow-env" => flags.allow_env = true,
         "--deps" => flags.deps_flag = true,
+        "--depfile" => flags.depfile_flag = true,
         "--" => break,
         _ => unimplemented!(),
       }
@@ -137,6 +140,20 @@ fn test_set_flags_4() {
       ..DenoFlags::default()
     }
   );
+}
+
+#[test]
+fn test_set_flags_5() {
+  let (flags, rest) = 
+    set_flags(svec!["deno", "--depfile", "deps.d", "script.ts"]);
+    assert_eq!(rest, svec!["deno", "deps.d", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        depfile_flag: true,
+        ..DenoFlags::default()
+      }
+    );
 }
 
 // Returns args passed to V8, followed by args passed to JS
