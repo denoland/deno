@@ -8,7 +8,7 @@ import {
   notImplemented
 } from "./util";
 import { flatbuffers } from "flatbuffers";
-import { sendAsync } from "./fbs_util";
+import { sendAsync } from "./dispatch";
 import * as fbs from "gen/msg_generated";
 import {
   Headers,

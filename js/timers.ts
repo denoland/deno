@@ -3,7 +3,7 @@ import { assert } from "./util";
 import * as util from "./util";
 import * as fbs from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
-import { send, sendAsync } from "./fbs_util";
+import { sendSync, sendAsync } from "./dispatch";
 
 let nextTimerId = 1;
 
@@ -93,6 +93,6 @@ export function clearTimer(id: number) {
   fbs.TimerClear.startTimerClear(builder);
   fbs.TimerClear.addId(builder, id);
   const msg = fbs.TimerClear.endTimerClear(builder);
-  const res = send(builder, fbs.Any.TimerClear, msg);
+  const res = sendSync(builder, fbs.Any.TimerClear, msg);
   assert(res == null);
 }

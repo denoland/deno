@@ -1,7 +1,7 @@
 NotFound: Cannot resolve module "bad-module.ts" from "[WILDCARD]deno/tests/error_005_missing_dynamic_import.ts"
     at maybeError (deno/js/errors.ts:[WILDCARD])
     at maybeThrowError (deno/js/errors.ts:[WILDCARD])
-    at send (deno/js/fbs_util.ts:[WILDCARD])
+    at sendSync (deno/js/dispatch.ts:[WILDCARD])
     at Object.codeFetch (deno/js/os.ts:[WILDCARD])
     at DenoCompiler.resolveModule (deno/js/compiler.ts:[WILDCARD])
     at DenoCompiler._resolveModuleName (deno/js/compiler.ts:[WILDCARD])
