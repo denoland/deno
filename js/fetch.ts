@@ -9,7 +9,7 @@ import {
 } from "./util";
 import { flatbuffers } from "flatbuffers";
 import { sendAsync } from "./fbs_util";
-import { deno as fbs } from "gen/msg_generated";
+import * as fbs from "gen/msg_generated";
 import {
   Headers,
   Request,
