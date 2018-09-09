@@ -37,8 +37,15 @@ export function maybeThrowError(base: fbs.Base): void {
   }
 }
 
+// An enum is a bidirectional relation between keys and values,
+// so `Object.keys` will return both error names and the numeric
+// codes which are associated with the keys.
 export const errorNames: string[] = Object.keys(fbs.ErrorKind)
-  .filter(x => isNaN(Number(x)) && x !== "NoError").map(e => ERR_PREFIX + e);
+  // Remove numeric-string values from the array.
+  .filter(x => isNaN(Number(x)))
+  .map(e => ERR_PREFIX + e)
+  // Indeed NoError is not a error, so remove it.
+  .filter(x => x !== `${ERR_PREFIX}NoError`);
 
 // Each of the error codes in src/msg.fbs is manually mapped to a
 // JavaScript error class. The testErrorClasses function below 
