@@ -15,7 +15,7 @@ test(async function fetchPerm() {
   } catch (err_) {
     err = err_;
   }
-  // TODO assert(err instanceof deno.PermissionDenied).
-  assert(err);
-  assertEqual(err.name, "deno.PermissionDenied");
+  assert(err instanceof deno.ErrPermissionDenied);
+  assert(err instanceof deno.DenoError);
+  assertEqual(err.name, "deno.ErrPermissionDenied");
 });

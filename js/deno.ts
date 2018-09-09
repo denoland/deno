@@ -13,5 +13,42 @@ export {
   lstatSync,
   writeFileSync
 } from "./os";
+export {
+  errorNames,
+  DenoError,
+  ErrNotFound,
+  ErrPermissionDenied,
+  ErrConnectionRefused,
+  ErrConnectionReset,
+  ErrConnectionAborted,
+  ErrNotConnected,
+  ErrAddrInUse,
+  ErrAddrNotAvailable,
+  ErrBrokenPipe,
+  ErrAlreadyExists,
+  ErrWouldBlock,
+  ErrInvalidInput,
+  ErrInvalidData,
+  ErrTimedOut,
+  ErrInterrupted,
+  ErrWriteZero,
+  ErrOther,
+  ErrUnexpectedEof,
+  ErrEmptyHost,
+  ErrIdnaError,
+  ErrInvalidPort,
+  ErrInvalidIpv4Address,
+  ErrInvalidIpv6Address,
+  ErrInvalidDomainCharacter,
+  ErrRelativeUrlWithoutBase,
+  ErrRelativeUrlWithCannotBeABaseBase,
+  ErrSetHostOnCannotBeABaseUrl,
+  ErrOverflow,
+  ErrHttpUser,
+  ErrHttpClosed,
+  ErrHttpCanceled,
+  ErrHttpParse,
+  ErrHttpOther
+} from "./errors";
 export { libdeno } from "./libdeno";
 export const argv: string[] = [];

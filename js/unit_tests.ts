@@ -5,3 +5,4 @@ import "./compiler_test.ts";
 import "./console_test.ts";
 import "./os_test.ts";
 import "./fetch_test.ts";
+import "./errors_test.ts";

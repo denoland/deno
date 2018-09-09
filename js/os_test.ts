@@ -16,8 +16,8 @@ test(async function envFailure() {
     const env = deno.env();
   } catch (err) {
     caughtError = true;
-    // TODO assert(err instanceof deno.PermissionDenied).
-    assertEqual(err.name, "deno.PermissionDenied");
+    assert(err instanceof deno.ErrPermissionDenied);
+    assertEqual(err.name, "deno.ErrPermissionDenied");
   }
 
   assert(caughtError);
@@ -47,9 +47,9 @@ test(async function statSyncNotFound() {
     badInfo = deno.statSync("bad_file_name");
   } catch (err) {
     caughtError = true;
-    // TODO assert(err instanceof deno.NotFound).
-    assert(err);
-    assertEqual(err.name, "deno.NotFound");
+    assert(err instanceof deno.ErrNotFound);
+    assert(err instanceof deno.DenoError);
+    assertEqual(err.name, "deno.ErrNotFound");
   }
 
   assert(caughtError);
@@ -78,9 +78,9 @@ test(async function lstatSyncNotFound() {
     badInfo = deno.lstatSync("bad_file_name");
   } catch (err) {
     caughtError = true;
-    // TODO assert(err instanceof deno.NotFound).
-    assert(err);
-    assertEqual(err.name, "deno.NotFound");
+    assert(err instanceof deno.ErrNotFound);
+    assert(err instanceof deno.DenoError);
+    assertEqual(err.name, "deno.ErrNotFound");
   }
 
   assert(caughtError);
@@ -138,8 +138,8 @@ testPerm({ write: true }, function writeFileSyncFail() {
     deno.writeFileSync(filename, data);
   } catch (e) {
     caughtError = true;
-    // TODO assertEqual(e, deno.NotFound);
-    assertEqual(e.name, "deno.NotFound");
+    assert(e instanceof deno.ErrNotFound);
+    assertEqual(e.name, "deno.ErrNotFound");
   }
   assert(caughtError);
 });
@@ -166,9 +166,9 @@ testPerm({ write: true }, function makeTempDirSync() {
   } catch (err_) {
     err = err_;
   }
-  // TODO assert(err instanceof deno.NotFound).
-  assert(err);
-  assertEqual(err.name, "deno.NotFound");
+  assert(err instanceof deno.ErrNotFound);
+  assert(err instanceof deno.DenoError);
+  assertEqual(err.name, "deno.ErrNotFound");
 });
 
 test(function makeTempDirSyncPerm() {
@@ -179,9 +179,9 @@ test(function makeTempDirSyncPerm() {
   } catch (err_) {
     err = err_;
   }
-  // TODO assert(err instanceof deno.PermissionDenied).
-  assert(err);
-  assertEqual(err.name, "deno.PermissionDenied");
+  assert(err instanceof deno.ErrPermissionDenied);
+  assert(err instanceof deno.DenoError);
+  assertEqual(err.name, "deno.ErrPermissionDenied");
 });
 
 testPerm({ write: true }, function mkdirSync() {
@@ -199,9 +199,9 @@ testPerm({ write: false }, function mkdDirSyncPerm() {
   } catch (err_) {
     err = err_;
   }
-  // TODO assert(err instanceof deno.PermissionDenied).
-  assert(err);
-  assertEqual(err.name, "deno.PermissionDenied");
+  assert(err instanceof deno.ErrPermissionDenied);
+  assert(err instanceof deno.DenoError);
+  assertEqual(err.name, "deno.ErrPermissionDenied");
 });
 
 testPerm({ write: true }, function renameSync() {
@@ -220,9 +220,9 @@ testPerm({ write: true }, function renameSync() {
     oldPathInfo = deno.statSync(oldpath);
   } catch (err) {
     caughtErr = true;
-    // TODO assert(err instanceof deno.NotFound).
-    assert(err);
-    assertEqual(err.name, "deno.NotFound");
+    assert(err instanceof deno.ErrNotFound);
+    assert(err instanceof deno.DenoError);
+    assertEqual(err.name, "deno.ErrNotFound");
   }
 
   assert(caughtErr);
@@ -238,7 +238,7 @@ test(function renameSyncPerm() {
   } catch (err_) {
     err = err_;
   }
-  // TODO assert(err instanceof deno.PermissionDenied).
-  assert(err);
-  assertEqual(err.name, "deno.PermissionDenied");
+  assert(err instanceof deno.ErrPermissionDenied);
+  assert(err instanceof deno.DenoError);
+  assertEqual(err.name, "deno.ErrPermissionDenied");
 });
