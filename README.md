@@ -119,3 +119,13 @@ Other useful commands:
     ./third_party/depot_tools/gn help
 
 Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`.
+
+## Contributing
+
+1. Fork [this repository](https://github.com/denoland/deno) and create your branch from `master`.
+2. Make your change.
+3. Ensure `./tools/test.py` passes.
+4. Format your code with `./tools/format.py`.
+5. Make sure `./tools/lint.py` passes.
+6. Send a pull request.
+7. Sign the [CLA](https://cla-assistant.io/denoland/deno), if you haven't already.
