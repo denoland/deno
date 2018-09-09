@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { ModuleInfo } from "./types";
-import { deno as fbs } from "gen/msg_generated";
+import * as fbs from "gen/msg_generated";
 import { assert } from "./util";
 import * as util from "./util";
 import { flatbuffers } from "flatbuffers";

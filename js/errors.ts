@@ -1,4 +1,4 @@
-import { deno as fbs } from "gen/msg_generated";
+import * as fbs from "gen/msg_generated";
 
 // @internal
 export class DenoError<T extends fbs.ErrorKind> extends Error {
