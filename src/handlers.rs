@@ -68,7 +68,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     // send back. So transform the DenoError into a deno_buf.
     let builder = &mut FlatBufferBuilder::new();
     let errmsg_offset = builder.create_string(&format!("{}", err));
-    Ok(create_msg(
+    Ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
@@ -157,7 +157,7 @@ fn handle_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
     },
   );
 
-  ok_future(create_msg(
+  ok_future(serialize_response(
     base.cmd_id(),
     &mut builder,
     msg::BaseArgs {
@@ -168,7 +168,7 @@ fn handle_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   ))
 }
 
-fn create_msg(
+fn serialize_response(
   cmd_id: u32,
   builder: &mut FlatBufferBuilder,
   mut args: msg::BaseArgs,
@@ -177,7 +177,7 @@ fn create_msg(
   let base = msg::Base::create(builder, &args);
   msg::finish_base_buffer(builder, base);
   let data = builder.finished_data();
-  // println!("create_msg {:x?}", data);
+  // println!("serialize_response {:x?}", data);
   let vec = data.to_vec();
   Some(vec.into_boxed_slice())
 }
@@ -217,7 +217,7 @@ fn handle_code_fetch(d: *const DenoC, base: &msg::Base) -> Box<Op> {
       _ => (),
     };
     let msg = msg::CodeFetchRes::create(builder, &msg_args);
-    Ok(create_msg(
+    Ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
@@ -287,7 +287,7 @@ fn handle_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
       ..Default::default()
     },
   );
-  ok_future(create_msg(
+  ok_future(serialize_response(
     cmd_id,
     builder,
     msg::BaseArgs {
@@ -333,7 +333,7 @@ fn handle_fetch_req(d: *const DenoC, base: &msg::Base) -> Box<Op> {
           ..Default::default()
         },
       );
-      Ok(create_msg(
+      Ok(serialize_response(
         cmd_id,
         builder,
         msg::BaseArgs {
@@ -399,7 +399,7 @@ fn handle_make_temp_dir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
         ..Default::default()
       },
     );
-    Ok(create_msg(
+    Ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
@@ -448,7 +448,7 @@ fn handle_read_file_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
         ..Default::default()
       },
     );
-    Ok(create_msg(
+    Ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
@@ -499,7 +499,7 @@ fn handle_stat_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
       },
     );
 
-    Ok(create_msg(
+    Ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
@@ -567,7 +567,7 @@ fn handle_timer_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
         ..Default::default()
       },
     );
-    Ok(create_msg(
+    Ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
