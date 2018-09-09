@@ -6,6 +6,7 @@
 [package]
 name = "deno"
 version = "0.0.0"
+build = "build.rs"
 
 [dependencies]
 url = "1.7.1"
@@ -17,4 +18,5 @@ tokio = "0.1"
 hyper = "0.12.8"
 hyper-rustls = "0.14.0"
 flatbuffers = { path = "third_party/flatbuffers/rust/flatbuffers/" }
+futures = "0.1"
 
