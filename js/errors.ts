@@ -1,10 +1,11 @@
 import * as fbs from "gen/msg_generated";
+export { ErrorKind } from "gen/msg_generated";
 
 // @internal
 export class DenoError<T extends fbs.ErrorKind> extends Error {
   constructor(readonly kind: T, msg: string) {
     super(msg);
-    this.name = `deno.${fbs.ErrorKind[kind]}`;
+    this.name = fbs.ErrorKind[kind];
   }
 }
 
