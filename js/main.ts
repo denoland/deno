@@ -6,13 +6,13 @@ import * as os from "./os";
 import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import { argv } from "./deno";
-import { send, handleAsyncMsgFromRust } from "./fbs_util";
+import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 
 function sendStart(): fbs.StartRes {
   const builder = new flatbuffers.Builder();
   fbs.Start.startStart(builder);
   const startOffset = fbs.Start.endStart(builder);
-  const baseRes = send(builder, fbs.Any.Start, startOffset);
+  const baseRes = sendSync(builder, fbs.Any.Start, startOffset);
   assert(baseRes != null);
   assert(fbs.Any.StartRes === baseRes!.msgType());
   const startRes = new fbs.StartRes();

@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-// TODO Rename this file to //js/dispatch.ts
 import { libdeno } from "./libdeno";
 import { flatbuffers } from "flatbuffers";
 import * as fbs from "gen/msg_generated";
@@ -12,7 +11,6 @@ const promiseTable = new Map<number, util.Resolvable<fbs.Base>>();
 export function handleAsyncMsgFromRust(ui8: Uint8Array) {
   const bb = new flatbuffers.ByteBuffer(ui8);
   const base = fbs.Base.getRootAsBase(bb);
-
   const cmdId = base.cmdId();
   const promise = promiseTable.get(cmdId);
   util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
@@ -38,9 +36,8 @@ export function sendAsync(
   return promise;
 }
 
-// TODO Rename to sendSync
 // @internal
-export function send(
+export function sendSync(
   builder: flatbuffers.Builder,
   msgType: fbs.Any,
   msg: flatbuffers.Offset
