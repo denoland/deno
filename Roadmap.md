@@ -76,7 +76,7 @@ Program requests to spawn `rm -rf /`. Grant? [yNs]
 
 ## Milestone 1: Rust rewrite / V8 snapshot
 
-ETA: July 2018.
+Complete! https://github.com/denoland/deno/milestone/1
 
 Go is a garbage collected language and we are worried that combining it with
 V8's GC will lead to difficult contention problems down the road.
@@ -91,6 +91,22 @@ startup. This is already working.
 
 When the rewrite is at feature parity with the Go prototype, we will release
 binaries for people to try.
+
+
+## Milestone 2: Scale binding infrastructure
+
+ETA: October 2018
+https://github.com/denoland/deno/milestone/2
+
+We decided to use Tokio https://tokio.rs/ to provide asynchronous I/O, thread
+pool execution, and as a base for high level support for various internet
+protocols like HTTP.  Tokio is strongly designed around the idea of Futures -
+which map quite well onto JavaScript promises.  We want to make it as easy as
+possible to start a Tokio future from JavaScript and get a Promise for handling
+it. We expect this to result in preliminary file system operations, fetch() for
+http. Additionally we are working on CI, release, and benchmarking
+infrastructure to scale development.
+
 
 ## libdeno C API.
 
