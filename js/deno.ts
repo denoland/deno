@@ -13,5 +13,6 @@ export {
   lstatSync,
   writeFileSync
 } from "./os";
+export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export const argv: string[] = [];
