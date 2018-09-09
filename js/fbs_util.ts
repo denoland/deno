@@ -2,7 +2,7 @@
 // TODO Rename this file to //js/dispatch.ts
 import { libdeno } from "./libdeno";
 import { flatbuffers } from "flatbuffers";
-import { deno as fbs } from "gen/msg_generated";
+import * as fbs from "gen/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
 

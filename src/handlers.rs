@@ -11,7 +11,7 @@ use hyper::rt::{Future, Stream};
 use hyper::Client;
 use libdeno;
 use libdeno::{deno_buf, DenoC};
-use msg_generated::deno as msg;
+use msg;
 use std;
 use std::fs;
 use std::path::Path;
