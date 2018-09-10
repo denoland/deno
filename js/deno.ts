@@ -6,12 +6,12 @@ export {
   exit,
   FileInfo,
   makeTempDirSync,
-  mkdirSync,
   renameSync,
   statSync,
   lstatSync,
   writeFileSync
 } from "./os";
+export { mkdirSync, mkdir } from "./mkdir";
 export { readFileSync, readFile } from "./read_file";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
