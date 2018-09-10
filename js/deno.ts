@@ -7,12 +7,12 @@ export {
   FileInfo,
   makeTempDirSync,
   mkdirSync,
-  readFileSync,
   renameSync,
   statSync,
   lstatSync,
   writeFileSync
 } from "./os";
+export { readFileSync, readFile } from "./read_file";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export const argv: string[] = [];
