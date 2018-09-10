@@ -85,34 +85,6 @@ test(async function lstatSyncNotFound() {
   assertEqual(badInfo, undefined);
 });
 
-test(async function readFileSyncSuccess() {
-  const data = deno.readFileSync("package.json");
-  if (!data.byteLength) {
-    throw Error(
-      `Expected positive value for data.byteLength ${data.byteLength}`
-    );
-  }
-  const decoder = new TextDecoder("utf-8");
-  const json = decoder.decode(data);
-  const pkg = JSON.parse(json);
-  assertEqual(pkg.name, "deno");
-});
-
-/* TODO We should be able to catch specific types.
-test(function tests_readFileSync_NotFound() {
-  let caughtError = false;
-  let data;
-  try {
-    data = deno.readFileSync("bad_filename");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof deno.NotFound);
-  }
-  assert(caughtError);
-  assert(data === undefined);
-});
-*/
-
 testPerm({ write: true }, function writeFileSyncSuccess() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
