@@ -323,27 +323,54 @@ fn handle_fetch_req(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let url = url.parse::<hyper::Uri>().unwrap();
   let client = Client::new();
 
-  let future = client.get(url).and_then(|res| {
+  let future = client.get(url).and_then(move |res| {
     let status = res.status().as_u16() as i32;
+
+    let headers = {
+      let map = res.headers();
+      let keys = map
+        .keys()
+        .map(|s| s.as_str().to_string())
+        .collect::<Vec<_>>();
+      let values = map
+        .values()
+        .map(|s| s.to_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+      (keys, values)
+    };
+
     // TODO Handle streaming body.
-    res.into_body().concat2().map(move |body| (status, body))
+    res
+      .into_body()
+      .concat2()
+      .map(move |body| (status, body, headers))
   });
 
   let future = future.map_err(|err| -> DenoError { err.into() }).and_then(
-    move |(status, body)| {
+    move |(status, body, headers)| {
       let builder = &mut FlatBufferBuilder::new();
       // Send the first message without a body. This is just to indicate
       // what status code.
       let body_off = builder.create_vector(body.as_ref());
+      let header_keys: Vec<&str> = headers.0.iter().map(|s| &**s).collect();
+      let header_keys_off =
+        builder.create_vector_of_strings(header_keys.as_slice());
+      let header_values: Vec<&str> = headers.1.iter().map(|s| &**s).collect();
+      let header_values_off =
+        builder.create_vector_of_strings(header_values.as_slice());
+
       let msg = msg::FetchRes::create(
         builder,
         &msg::FetchResArgs {
           id,
           status,
           body: Some(body_off),
+          header_key: Some(header_keys_off),
+          header_value: Some(header_values_off),
           ..Default::default()
         },
       );
+
       Ok(serialize_response(
         cmd_id,
         builder,

@@ -18,3 +18,10 @@ test(async function fetchPerm() {
   assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
   assertEqual(err.name, "PermissionDenied");
 });
+
+testPerm({ net: true }, async function fetchHeaders() {
+  const response = await fetch("http://localhost:4545/package.json");
+  const headers = response.headers;
+
+  assertEqual(headers.get("Content-Type"), "application/json");
+});
