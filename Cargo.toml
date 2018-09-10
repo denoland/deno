@@ -6,7 +6,6 @@
 [package]
 name = "deno"
 version = "0.0.0"
-build = "build.rs"
 
 [dependencies]
 url = "1.7.1"
