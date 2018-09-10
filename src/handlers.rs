@@ -97,13 +97,20 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     let future = future.and_then(move |maybe_box_u8| {
       let buf = match maybe_box_u8 {
         Some(box_u8) => deno_buf_from(box_u8),
-        // Send back null deno_buf.
-        None => deno_buf {
-          alloc_ptr: 0 as *mut u8,
-          alloc_len: 0,
-          data_ptr: 0 as *mut u8,
-          data_len: 0,
-        },
+        None => {
+          // async RPCs that return None still need to
+          // send a message back to signal completion.
+          let builder = &mut FlatBufferBuilder::new();
+          deno_buf_from(
+            serialize_response(
+              cmd_id,
+              builder,
+              msg::BaseArgs {
+                ..Default::default()
+              },
+            ).unwrap(),
+          )
+        }
       };
       // TODO(ry) make this thread safe.
       unsafe { libdeno::deno_send(d, buf) };
