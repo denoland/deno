@@ -235,3 +235,29 @@ test(function renameSyncPerm() {
   assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
   assertEqual(err.name, "PermissionDenied");
 });
+
+testPerm({ write: true }, function symlinkSyncSuccess() {
+  const testDir = deno.makeTempDirSync() + "/test-symlink";
+  const oldname = testDir + "/oldpath"
+  const newname = testDir + "/newpath"
+  deno.mkdirSync(oldname);
+  deno.symlinkSync(oldname, newname);
+  const newNameInfoLStat = deno.lstatSync(newname);
+  const newNameInfoStat = deno.statSync(newname);
+  assert(newNameInfoLStat.isSymlink());
+  assert(newNameInfoStat.isDirectory());
+});
+
+test(function symlinkSyncPerm() {
+  let err;
+  try {
+    const oldname = "/oldbaddir";
+    const newname = "/newbaddir";
+    deno.symlinkSync(oldname, newname);
+  } catch (err_) {
+    err = err_;
+  }
+  // TODO assert(err instanceof deno.PermissionDenied).
+  assert(err);
+  assertEqual(err.name, "deno.PermissionDenied");
+});

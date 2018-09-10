@@ -359,8 +359,8 @@ export function writeFileSync(
 /**
  * Renames (moves) oldpath to newpath.
  *     import { renameSync } from "deno";
- *     const oldpath = 'from/path';
- *     const newpath = 'to/path';
+ *     const oldpath = "old/path";
+ *     const newpath = "new/path";
  *
  *     renameSync(oldpath, newpath);
  */
@@ -368,8 +368,8 @@ export function renameSync(oldpath: string, newpath: string): void {
   /* Ideally we could write:
   const res = send({
     command: fbs.Command.RENAME_SYNC,
-    renameOldPath: oldpath,
-    renameNewPath: newpath
+    renameSyncOldpath: oldpath,
+    renameSyncNewpath: newpath
   });
   */
   const builder = new flatbuffers.Builder();
@@ -380,4 +380,30 @@ export function renameSync(oldpath: string, newpath: string): void {
   fbs.RenameSync.addNewpath(builder, _newpath);
   const msg = fbs.RenameSync.endRenameSync(builder);
   send(builder, fbs.Any.RenameSync, msg);
+}
+
+/**
+ * Creates newname as a symbolic link to oldname.
+ *     import { symlinkSync } from "deno";
+ *     const oldname = "old/name";
+ *     const newname = "new/name";
+ *
+ *     symlinkSync(oldname, newname);
+ */
+export function symlinkSync(oldname: string, newname: string): void {
+  /* Ideally we could write:
+  const res = send({
+    command: fbs.Command.SYMLINK_SYNC,
+    symlinkSyncOldname: oldname,
+    symlinkSyncNewname: newname
+  });
+  */
+  const builder = new flatbuffers.Builder();
+  const _oldname = builder.createString(oldname);
+  const _newname = builder.createString(newname);
+  fbs.SymlinkSync.startSymlinkSync(builder);
+  fbs.SymlinkSync.addOldname(builder, _oldname);
+  fbs.SymlinkSync.addNewname(builder, _newname);
+  const msg = fbs.SymlinkSync.endSymlinkSync(builder);
+  send(builder, fbs.Any.SymlinkSync, msg);
 }

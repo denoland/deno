@@ -11,6 +11,7 @@ export {
   renameSync,
   statSync,
   lstatSync,
+  symlinkSync,
   writeFileSync
 } from "./os";
 export { ErrorKind, DenoError } from "./errors";
