@@ -27,4 +27,5 @@ run(["node", prettier, "--write"] + find_exts("js/", ".js", ".ts") +
     ["rollup.config.js", "tsconfig.json", "tslint.json"])
 
 # Requires rustfmt 0.8.2 (flags were different in previous versions)
-run(["rustfmt", "--config-path", rustfmt_config] + find_exts("src/", ".rs"))
+run(["rustfmt", "--config-path", rustfmt_config, "build.rs"] +
+    find_exts("src/", ".rs"))
