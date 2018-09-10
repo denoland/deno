@@ -49,7 +49,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::TimerStart => handle_timer_start,
     msg::Any::TimerClear => handle_timer_clear,
     msg::Any::MakeTempDir => handle_make_temp_dir,
-    msg::Any::MkdirSync => handle_mkdir_sync,
+    msg::Any::Mkdir => handle_mkdir,
     msg::Any::ReadFile => handle_read_file,
     msg::Any::RenameSync => handle_rename_sync,
     msg::Any::SetEnv => handle_set_env,
@@ -418,18 +418,17 @@ fn handle_make_temp_dir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_mkdir_sync(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let msg = base.msg_as_mkdir_sync().unwrap();
-  let path = msg.path().unwrap();
+fn handle_mkdir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_mkdir().unwrap();
   // TODO let mode = msg.mode();
+  let path = msg.path().unwrap();
   let deno = from_c(d);
-  debug!("handle_mkdir_sync {}", path);
   if !deno.flags.allow_write {
     return odd_future(permission_denied());
   }
-
-  // TODO(ry) use blocking
+  // TODO Use tokio_threadpool.
   Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_mkdir {}", path);
     // TODO(ry) Use mode.
     deno_fs::mkdir(Path::new(path))?;
     Ok(None)
