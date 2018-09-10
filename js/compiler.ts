@@ -159,6 +159,7 @@ export class DenoCompiler
   // A reference to the `./os.ts` module, so it can be monkey patched during
   // testing
   private _os: Os = os;
+  private _program?: ts.Program;
   // Contains a queue of modules that have been resolved, but not yet
   // run
   private _runQueue: ModuleMetaData[] = [];
@@ -415,21 +416,27 @@ export class DenoCompiler
     }
     this._service = this._ts.createLanguageService(this);
     this._setupSourceMaps();
+    this._program = this._ts.createProgram({
+      host: this,
+      options: this._options,
+      rootNames: []
+    });
   }
 
   // Deno specific compiler API
 
   compileProgram(rootModuleMetaData: ModuleMetaData) {
     this._log("compiler.compileProgram", rootModuleMetaData.fileName);
-    const program = this._ts.createProgram({
-      rootNames: [rootModuleMetaData.fileName],
+    this._program = this._ts.createProgram({
+      host: this,
+      oldProgram: this._program,
       options: this._options,
-      host: this
+      rootNames: [rootModuleMetaData.fileName]
     });
-    const emitResult = program.emit();
+    const emitResult = this._program.emit();
 
     const diagnostics = [
-      ...this._ts.getPreEmitDiagnostics(program),
+      ...this._ts.getPreEmitDiagnostics(this._program),
       ...emitResult.diagnostics
     ];
     if (diagnostics.length > 0) {
