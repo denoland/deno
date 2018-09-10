@@ -126,37 +126,6 @@ export function mkdirSync(path: string, mode = 0o777): void {
   sendSync(builder, fbs.Any.MkdirSync, msg);
 }
 
-/**
- * Read the file.
- *     import { readFileSync } from "deno";
- *
- *     const decoder = new TextDecoder("utf-8");
- *     const data = readFileSync("hello.txt");
- *     console.log(decoder.decode(data));
- */
-export function readFileSync(filename: string): Uint8Array {
-  /* Ideally we could write
-  const res = sendSync({
-    command: fbs.Command.READ_FILE_SYNC,
-    readFileSyncFilename: filename
-  });
-  return res.readFileSyncData;
-  */
-  const builder = new flatbuffers.Builder();
-  const filename_ = builder.createString(filename);
-  fbs.ReadFileSync.startReadFileSync(builder);
-  fbs.ReadFileSync.addFilename(builder, filename_);
-  const msg = fbs.ReadFileSync.endReadFileSync(builder);
-  const baseRes = sendSync(builder, fbs.Any.ReadFileSync, msg);
-  assert(baseRes != null);
-  assert(fbs.Any.ReadFileSyncRes === baseRes!.msgType());
-  const res = new fbs.ReadFileSyncRes();
-  assert(baseRes!.msg(res) != null);
-  const dataArray = res.dataArray();
-  assert(dataArray != null);
-  return new Uint8Array(dataArray!);
-}
-
 function createEnv(_msg: fbs.EnvironRes): { [index: string]: string } {
   const env: { [index: string]: string } = {};
 
@@ -365,13 +334,6 @@ export function writeFileSync(
  *     renameSync(oldpath, newpath);
  */
 export function renameSync(oldpath: string, newpath: string): void {
-  /* Ideally we could write:
-  const res = sendSync({
-    command: fbs.Command.RENAME_SYNC,
-    renameOldPath: oldpath,
-    renameNewPath: newpath
-  });
-  */
   const builder = new flatbuffers.Builder();
   const _oldpath = builder.createString(oldpath);
   const _newpath = builder.createString(newpath);

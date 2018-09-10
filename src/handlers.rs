@@ -50,7 +50,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::TimerClear => handle_timer_clear,
     msg::Any::MakeTempDir => handle_make_temp_dir,
     msg::Any::MkdirSync => handle_mkdir_sync,
-    msg::Any::ReadFileSync => handle_read_file_sync,
+    msg::Any::ReadFile => handle_read_file,
     msg::Any::RenameSync => handle_rename_sync,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::StatSync => handle_stat_sync,
@@ -430,20 +430,20 @@ fn handle_mkdir_sync(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 }
 
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
-fn handle_read_file_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let msg = base.msg_as_read_file_sync().unwrap();
+fn handle_read_file(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
   let filename = String::from(msg.filename().unwrap());
   Box::new(futures::future::result(|| -> OpResult {
-    debug!("handle_read_file_sync {}", filename);
+    debug!("handle_read_file {}", filename);
     let vec = fs::read(Path::new(&filename))?;
     // Build the response message. memcpy data into msg.
     // TODO(ry) zero-copy.
     let builder = &mut FlatBufferBuilder::new();
     let data_off = builder.create_vector(vec.as_slice());
-    let msg = msg::ReadFileSyncRes::create(
+    let msg = msg::ReadFileRes::create(
       builder,
-      &msg::ReadFileSyncResArgs {
+      &msg::ReadFileResArgs {
         data: Some(data_off),
         ..Default::default()
       },
@@ -453,7 +453,7 @@ fn handle_read_file_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
       builder,
       msg::BaseArgs {
         msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::ReadFileSyncRes,
+        msg_type: msg::Any::ReadFileRes,
         ..Default::default()
       },
     ))

@@ -15,8 +15,8 @@ union Any {
   MakeTempDir,
   MakeTempDirRes,
   MkdirSync,
-  ReadFileSync,
-  ReadFileSyncRes,
+  ReadFile,
+  ReadFileRes,
   RenameSync,
   StatSync,
   StatSyncRes,
@@ -173,11 +173,11 @@ table MkdirSync {
   // mode specified by https://godoc.org/os#FileMode
 }
 
-table ReadFileSync {
+table ReadFile {
   filename: string;
 }
 
-table ReadFileSyncRes {
+table ReadFileRes {
   data: [ubyte];
 }
 
