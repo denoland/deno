@@ -47,6 +47,7 @@ main_extern = [
   "$rust_build:rand",
   "$rust_build:tokio",
   "$rust_build:url",
+  "$rust_build:remove_dir_all",
   "//build_extra/flatbuffers/rust:flatbuffers",
   ":msg_rs",
 ]
@@ -198,6 +199,7 @@ run_node("gen_declarations") {
     "js/mkdir.ts",
     "js/os.ts",
     "js/read_file.ts",
+    "js/remove.ts",
     "js/stat.ts",
     "js/text_encoding.ts",
     "js/timers.ts",
@@ -205,6 +207,7 @@ run_node("gen_declarations") {
     "js/types.ts",
     "js/util.ts",
     "js/v8_source_maps.ts",
+    "js/write_file.ts",
   ]
   outputs = [
     "$out_dir/types/globals.d.ts",
@@ -239,12 +242,14 @@ run_node("bundle") {
     "js/os.ts",
     "js/plugins.d.ts",
     "js/read_file.ts",
+    "js/remove.ts",
     "js/stat.ts",
     "js/text_encoding.ts",
     "js/timers.ts",
     "js/types.ts",
     "js/util.ts",
     "js/v8_source_maps.ts",
+    "js/write_file.ts",
     "rollup.config.js",
     "src/msg.fbs",
     "tsconfig.json",
