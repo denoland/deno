@@ -19,8 +19,8 @@ union Any {
   ReadFileRes,
   WriteFile,
   RenameSync,
-  StatSync,
-  StatSyncRes,
+  Stat,
+  StatRes,
   SetEnv,
 }
 
@@ -193,12 +193,12 @@ table RenameSync {
   newpath: string;
 }
 
-table StatSync {
+table Stat {
   filename: string;
   lstat: bool;
 }
 
-table StatSyncRes {
+table StatRes {
   is_file: bool;
   is_symlink: bool;
   len: ulong;
