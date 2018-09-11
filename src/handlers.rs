@@ -54,7 +54,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::RenameSync => handle_rename_sync,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::StatSync => handle_stat_sync,
-    msg::Any::WriteFileSync => handle_write_file_sync,
+    msg::Any::WriteFile => handle_write_file,
     msg::Any::Exit => handle_exit,
     _ => panic!(format!(
       "Unhandled message {}",
@@ -517,20 +517,19 @@ fn handle_stat_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_write_file_sync(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let msg = base.msg_as_write_file_sync().unwrap();
+fn handle_write_file(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_write_file().unwrap();
   let filename = String::from(msg.filename().unwrap());
   let data = msg.data().unwrap();
-  // TODO let perm = msg.perm();
+  let perm = msg.perm();
   let deno = from_c(d);
 
-  debug!("handle_write_file_sync {}", filename);
+  debug!("handle_write_file {}", filename);
   Box::new(futures::future::result(|| -> OpResult {
     if !deno.flags.allow_write {
       Err(permission_denied())
     } else {
-      // TODO(ry) Use perm.
-      deno_fs::write_file_sync(Path::new(&filename), data)?;
+      deno_fs::write_file(Path::new(&filename), data, perm)?;
       Ok(None)
     }
   }()))

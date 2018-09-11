@@ -275,38 +275,6 @@ function statSyncInner(filename: string, lstat: boolean): FileInfo {
 }
 
 /**
- * Write a new file.
- *     import { writeFileSync } from "deno";
- *
- *     const encoder = new TextEncoder("utf-8");
- *     const data = encoder.encode("Hello world\n");
- *     writeFileSync("hello.txt", data);
- */
-export function writeFileSync(
-  filename: string,
-  data: Uint8Array,
-  perm = 0o666
-): void {
-  /* Ideally we could write:
-  const res = sendSync({
-    command: fbs.Command.WRITE_FILE_SYNC,
-    writeFileSyncFilename: filename,
-    writeFileSyncData: data,
-    writeFileSyncPerm: perm
-  });
-  */
-  const builder = new flatbuffers.Builder();
-  const filename_ = builder.createString(filename);
-  const dataOffset = fbs.WriteFileSync.createDataVector(builder, data);
-  fbs.WriteFileSync.startWriteFileSync(builder);
-  fbs.WriteFileSync.addFilename(builder, filename_);
-  fbs.WriteFileSync.addData(builder, dataOffset);
-  fbs.WriteFileSync.addPerm(builder, perm);
-  const msg = fbs.WriteFileSync.endWriteFileSync(builder);
-  sendSync(builder, fbs.Any.WriteFileSync, msg);
-}
-
-/**
  * Renames (moves) oldpath to newpath.
  *     import { renameSync } from "deno";
  *     const oldpath = 'from/path';
