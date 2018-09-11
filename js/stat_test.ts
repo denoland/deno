@@ -123,4 +123,3 @@ test(async function lstatNotFound() {
   assert(caughtError);
   assertEqual(badInfo, undefined);
 });
-
