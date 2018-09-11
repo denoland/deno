@@ -53,7 +53,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::ReadFile => handle_read_file,
     msg::Any::RenameSync => handle_rename_sync,
     msg::Any::SetEnv => handle_set_env,
-    msg::Any::StatSync => handle_stat_sync,
+    msg::Any::Stat => handle_stat,
     msg::Any::WriteFile => handle_write_file,
     msg::Any::Exit => handle_exit,
     _ => panic!(format!(
@@ -476,15 +476,15 @@ macro_rules! to_seconds {
   }};
 }
 
-fn handle_stat_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let msg = base.msg_as_stat_sync().unwrap();
+fn handle_stat(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_stat().unwrap();
   let cmd_id = base.cmd_id();
   let filename = String::from(msg.filename().unwrap());
   let lstat = msg.lstat();
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
-    debug!("handle_stat_sync {} {}", filename, lstat);
+    debug!("handle_stat {} {}", filename, lstat);
     let path = Path::new(&filename);
     let metadata = if lstat {
       fs::symlink_metadata(path)?
@@ -492,9 +492,9 @@ fn handle_stat_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
       fs::metadata(path)?
     };
 
-    let msg = msg::StatSyncRes::create(
+    let msg = msg::StatRes::create(
       builder,
-      &msg::StatSyncResArgs {
+      &msg::StatResArgs {
         is_file: metadata.is_file(),
         is_symlink: metadata.file_type().is_symlink(),
         len: metadata.len(),
@@ -510,7 +510,7 @@ fn handle_stat_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
       builder,
       msg::BaseArgs {
         msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::StatSyncRes,
+        msg_type: msg::Any::StatRes,
         ..Default::default()
       },
     ))

@@ -8,3 +8,4 @@ import "./os_test.ts";
 import "./read_file_test.ts";
 import "./write_file_test.ts";
 import "./mkdir_test.ts";
+import "./stat_test.ts";
