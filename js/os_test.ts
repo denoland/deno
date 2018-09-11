@@ -23,68 +23,6 @@ test(async function envFailure() {
   assert(caughtError);
 });
 
-// TODO Add tests for modified, accessed, and created fields once there is a way
-// to create temp files.
-test(async function statSyncSuccess() {
-  const packageInfo = deno.statSync("package.json");
-  assert(packageInfo.isFile());
-  assert(!packageInfo.isSymlink());
-
-  const testingInfo = deno.statSync("testing");
-  assert(testingInfo.isDirectory());
-  assert(!testingInfo.isSymlink());
-
-  const srcInfo = deno.statSync("src");
-  assert(srcInfo.isDirectory());
-  assert(!srcInfo.isSymlink());
-});
-
-test(async function statSyncNotFound() {
-  let caughtError = false;
-  let badInfo;
-
-  try {
-    badInfo = deno.statSync("bad_file_name");
-  } catch (err) {
-    caughtError = true;
-    assertEqual(err.kind, deno.ErrorKind.NotFound);
-    assertEqual(err.name, "NotFound");
-  }
-
-  assert(caughtError);
-  assertEqual(badInfo, undefined);
-});
-
-test(async function lstatSyncSuccess() {
-  const packageInfo = deno.lstatSync("package.json");
-  assert(packageInfo.isFile());
-  assert(!packageInfo.isSymlink());
-
-  const testingInfo = deno.lstatSync("testing");
-  assert(!testingInfo.isDirectory());
-  assert(testingInfo.isSymlink());
-
-  const srcInfo = deno.lstatSync("src");
-  assert(srcInfo.isDirectory());
-  assert(!srcInfo.isSymlink());
-});
-
-test(async function lstatSyncNotFound() {
-  let caughtError = false;
-  let badInfo;
-
-  try {
-    badInfo = deno.lstatSync("bad_file_name");
-  } catch (err) {
-    caughtError = true;
-    assertEqual(err.kind, deno.ErrorKind.NotFound);
-    assertEqual(err.name, "NotFound");
-  }
-
-  assert(caughtError);
-  assertEqual(badInfo, undefined);
-});
-
 testPerm({ write: true }, function makeTempDirSync() {
   const dir1 = deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   const dir2 = deno.makeTempDirSync({ prefix: "hello", suffix: "world" });

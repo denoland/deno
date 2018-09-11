@@ -4,14 +4,12 @@
 export {
   env,
   exit,
-  FileInfo,
   makeTempDirSync,
   renameSync,
-  statSync,
-  lstatSync
 } from "./os";
 export { mkdirSync, mkdir } from "./mkdir";
 export { readFileSync, readFile } from "./read_file";
+export { FileInfo, statSync, lstatSync, stat, lstat } from "./stat";
 export { writeFileSync, writeFile } from "./write_file";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
