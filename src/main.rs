@@ -10,6 +10,7 @@ extern crate url;
 #[macro_use]
 extern crate log;
 extern crate hyper_rustls;
+extern crate remove_dir_all;
 extern crate ring;
 
 mod deno_dir;

@@ -12,6 +12,7 @@ use hyper::Client;
 use libdeno;
 use libdeno::{deno_buf, DenoC};
 use msg;
+use remove_dir_all::remove_dir_all;
 use std;
 use std::fs;
 use std::path::Path;
@@ -50,6 +51,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::TimerClear => handle_timer_clear,
     msg::Any::MakeTempDir => handle_make_temp_dir,
     msg::Any::Mkdir => handle_mkdir,
+    msg::Any::Remove => handle_remove,
     msg::Any::ReadFile => handle_read_file,
     msg::Any::RenameSync => handle_rename_sync,
     msg::Any::SetEnv => handle_set_env,
@@ -431,6 +433,32 @@ fn handle_mkdir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
     debug!("handle_mkdir {}", path);
     // TODO(ry) Use mode.
     deno_fs::mkdir(Path::new(path))?;
+    Ok(None)
+  }()))
+}
+
+fn handle_remove(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_remove().unwrap();
+  let path = msg.path().unwrap();
+  let recursive = msg.recursive();
+  let deno = from_c(d);
+  if !deno.flags.allow_write {
+    return odd_future(permission_denied());
+  }
+  // TODO Use tokio_threadpool.
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_remove {}", path);
+    let path_ = Path::new(&path);
+    let metadata = fs::metadata(&path_)?;
+    if metadata.is_file() {
+      fs::remove_file(&path_)?;
+    } else {
+      if recursive {
+        remove_dir_all(&path_)?;
+      } else {
+        fs::remove_dir(&path_)?;
+      }
+    }
     Ok(None)
   }()))
 }
