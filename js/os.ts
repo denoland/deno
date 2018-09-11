@@ -1,17 +1,17 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { ModuleInfo } from "./types";
-import { deno as fbs } from "gen/msg_generated";
+import * as fbs from "gen/msg_generated";
 import { assert } from "./util";
 import * as util from "./util";
 import { flatbuffers } from "flatbuffers";
-import { send } from "./fbs_util";
+import { sendSync } from "./dispatch";
 
 export function exit(exitCode = 0): never {
   const builder = new flatbuffers.Builder();
   fbs.Exit.startExit(builder);
   fbs.Exit.addCode(builder, exitCode);
   const msg = fbs.Exit.endExit(builder);
-  send(builder, fbs.Any.Exit, msg);
+  sendSync(builder, fbs.Any.Exit, msg);
   return util.unreachable();
 }
 
@@ -28,9 +28,12 @@ export function codeFetch(
   fbs.CodeFetch.addModuleSpecifier(builder, moduleSpecifier_);
   fbs.CodeFetch.addContainingFile(builder, containingFile_);
   const msg = fbs.CodeFetch.endCodeFetch(builder);
-  const baseRes = send(builder, fbs.Any.CodeFetch, msg);
+  const baseRes = sendSync(builder, fbs.Any.CodeFetch, msg);
   assert(baseRes != null);
-  assert(fbs.Any.CodeFetchRes === baseRes!.msgType());
+  assert(
+    fbs.Any.CodeFetchRes === baseRes!.msgType(),
+    `base.msgType() unexpectedly is ${baseRes!.msgType()}`
+  );
   const codeFetchRes = new fbs.CodeFetchRes();
   assert(baseRes!.msg(codeFetchRes) != null);
   return {
@@ -56,7 +59,7 @@ export function codeCache(
   fbs.CodeCache.addSourceCode(builder, sourceCode_);
   fbs.CodeCache.addOutputCode(builder, outputCode_);
   const msg = fbs.CodeCache.endCodeCache(builder);
-  const baseRes = send(builder, fbs.Any.CodeCache, msg);
+  const baseRes = sendSync(builder, fbs.Any.CodeCache, msg);
   assert(baseRes == null); // Expect null or error.
 }
 
@@ -94,7 +97,7 @@ export function makeTempDirSync({
     fbs.MakeTempDir.addSuffix(builder, fbSuffix);
   }
   const msg = fbs.MakeTempDir.endMakeTempDir(builder);
-  const baseRes = send(builder, fbs.Any.MakeTempDir, msg);
+  const baseRes = sendSync(builder, fbs.Any.MakeTempDir, msg);
   assert(baseRes != null);
   assert(fbs.Any.MakeTempDirRes === baseRes!.msgType());
   const res = new fbs.MakeTempDirRes();
@@ -102,56 +105,6 @@ export function makeTempDirSync({
   const path = res.path();
   assert(path != null);
   return path!;
-}
-
-// mkdir creates a new directory with the specified name
-// and permission bits  (before umask).
-export function mkdirSync(path: string, mode = 0o777): void {
-  /* Ideally we could write:
-  const res = send({
-    command: fbs.Command.MKDIR_SYNC,
-    mkdirSyncPath: path,
-    mkdirSyncMode: mode,
-  });
-  */
-  const builder = new flatbuffers.Builder();
-  const path_ = builder.createString(path);
-  fbs.MkdirSync.startMkdirSync(builder);
-  fbs.MkdirSync.addPath(builder, path_);
-  fbs.MkdirSync.addMode(builder, mode);
-  const msg = fbs.MkdirSync.endMkdirSync(builder);
-  send(builder, fbs.Any.MkdirSync, msg);
-}
-
-/**
- * Read the file.
- *     import { readFileSync } from "deno";
- *
- *     const decoder = new TextDecoder("utf-8");
- *     const data = readFileSync("hello.txt");
- *     console.log(decoder.decode(data));
- */
-export function readFileSync(filename: string): Uint8Array {
-  /* Ideally we could write
-  const res = send({
-    command: fbs.Command.READ_FILE_SYNC,
-    readFileSyncFilename: filename
-  });
-  return res.readFileSyncData;
-  */
-  const builder = new flatbuffers.Builder();
-  const filename_ = builder.createString(filename);
-  fbs.ReadFileSync.startReadFileSync(builder);
-  fbs.ReadFileSync.addFilename(builder, filename_);
-  const msg = fbs.ReadFileSync.endReadFileSync(builder);
-  const baseRes = send(builder, fbs.Any.ReadFileSync, msg);
-  assert(baseRes != null);
-  assert(fbs.Any.ReadFileSyncRes === baseRes!.msgType());
-  const res = new fbs.ReadFileSyncRes();
-  assert(baseRes!.msg(res) != null);
-  const dataArray = res.dataArray();
-  assert(dataArray != null);
-  return new Uint8Array(dataArray!);
 }
 
 function createEnv(_msg: fbs.EnvironRes): { [index: string]: string } {
@@ -179,7 +132,7 @@ function setEnv(key: string, value: string): void {
   fbs.SetEnv.addKey(builder, _key);
   fbs.SetEnv.addValue(builder, _value);
   const msg = fbs.SetEnv.endSetEnv(builder);
-  send(builder, fbs.Any.SetEnv, msg);
+  sendSync(builder, fbs.Any.SetEnv, msg);
 }
 
 /**
@@ -197,14 +150,14 @@ function setEnv(key: string, value: string): void {
  */
 export function env(): { [index: string]: string } {
   /* Ideally we could write
-  const res = send({
+  const res = sendSync({
     command: fbs.Command.ENV,
   });
   */
   const builder = new flatbuffers.Builder();
   fbs.Environ.startEnviron(builder);
   const msg = fbs.Environ.endEnviron(builder);
-  const baseRes = send(builder, fbs.Any.Environ, msg)!;
+  const baseRes = sendSync(builder, fbs.Any.Environ, msg)!;
   assert(fbs.Any.EnvironRes === baseRes.msgType());
   const res = new fbs.EnvironRes();
   assert(baseRes.msg(res) != null);
@@ -300,7 +253,7 @@ export function statSync(filename: string): FileInfo {
 
 function statSyncInner(filename: string, lstat: boolean): FileInfo {
   /* Ideally we could write
-  const res = send({
+  const res = sendSync({
     command: fbs.Command.STAT_FILE_SYNC,
     StatFilename: filename,
     StatLStat: lstat,
@@ -313,7 +266,7 @@ function statSyncInner(filename: string, lstat: boolean): FileInfo {
   fbs.StatSync.addFilename(builder, filename_);
   fbs.StatSync.addLstat(builder, lstat);
   const msg = fbs.StatSync.endStatSync(builder);
-  const baseRes = send(builder, fbs.Any.StatSync, msg);
+  const baseRes = sendSync(builder, fbs.Any.StatSync, msg);
   assert(baseRes != null);
   assert(fbs.Any.StatSyncRes === baseRes!.msgType());
   const res = new fbs.StatSyncRes();
@@ -335,7 +288,7 @@ export function writeFileSync(
   perm = 0o666
 ): void {
   /* Ideally we could write:
-  const res = send({
+  const res = sendSync({
     command: fbs.Command.WRITE_FILE_SYNC,
     writeFileSyncFilename: filename,
     writeFileSyncData: data,
@@ -350,7 +303,7 @@ export function writeFileSync(
   fbs.WriteFileSync.addData(builder, dataOffset);
   fbs.WriteFileSync.addPerm(builder, perm);
   const msg = fbs.WriteFileSync.endWriteFileSync(builder);
-  send(builder, fbs.Any.WriteFileSync, msg);
+  sendSync(builder, fbs.Any.WriteFileSync, msg);
 }
 
 /**
@@ -362,13 +315,6 @@ export function writeFileSync(
  *     renameSync(oldpath, newpath);
  */
 export function renameSync(oldpath: string, newpath: string): void {
-  /* Ideally we could write:
-  const res = send({
-    command: fbs.Command.RENAME_SYNC,
-    renameOldPath: oldpath,
-    renameNewPath: newpath
-  });
-  */
   const builder = new flatbuffers.Builder();
   const _oldpath = builder.createString(oldpath);
   const _newpath = builder.createString(newpath);
@@ -376,5 +322,5 @@ export function renameSync(oldpath: string, newpath: string): void {
   fbs.RenameSync.addOldpath(builder, _oldpath);
   fbs.RenameSync.addNewpath(builder, _newpath);
   const msg = fbs.RenameSync.endRenameSync(builder);
-  send(builder, fbs.Any.RenameSync, msg);
+  sendSync(builder, fbs.Any.RenameSync, msg);
 }

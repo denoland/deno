@@ -1,12 +1,10 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use hyper;
-use msg_generated::deno as msg;
+pub use msg::ErrorKind;
 use std;
 use std::fmt;
 use std::io;
 use url;
-
-pub use self::msg::ErrorKind;
 
 pub type DenoResult<T> = std::result::Result<T, DenoError>;
 

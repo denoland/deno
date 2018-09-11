@@ -2,7 +2,7 @@ extern crate flatbuffers;
 extern crate futures;
 extern crate hyper;
 extern crate libc;
-extern crate msg_rs as msg_generated;
+extern crate msg_rs as msg;
 extern crate rand;
 extern crate tempfile;
 extern crate tokio;

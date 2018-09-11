@@ -33,9 +33,23 @@ def google_env(env=None, merge_env={}, depot_tools_path=depot_tools_path):
     path_prefix = depot_tools_path + os.path.pathsep
     if not env['PATH'].startswith(path_prefix):
         env['PATH'] = path_prefix + env['PATH']
-    # We're not using Google's internal infrastructure.
-    if os.name == 'nt' and not 'DEPOT_TOOLS_WIN_TOOLCHAIN' in env:
-        env['DEPOT_TOOLS_WIN_TOOLCHAIN'] = "0"
+
+    if os.name == "nt":  # Windows-only enviroment tweaks.
+        # We're not using Google's internal infrastructure.
+        if os.name == "nt" and not "DEPOT_TOOLS_WIN_TOOLCHAIN" in env:
+            env["DEPOT_TOOLS_WIN_TOOLCHAIN"] = "0"
+
+        # The 'setup_toolchain.py' script does a good job finding the Windows
+        # SDK. Unfortunately, if any of the environment variables below are set
+        # (as vcvarsall.bat typically would), setup_toolchain absorbs them too,
+        # adding multiple identical -imsvc<path> items to CFLAGS.
+        # This small variation has no effect on compiler output, but it
+        # makes ninja rebuild everything, and causes sccache cache misses.
+        # TODO(piscisaureus): fix this upstream.
+        env["INCLUDE"] = ""
+        env["LIB"] = ""
+        env["LIBPATH"] = ""
+
     return env
 
 

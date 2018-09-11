@@ -16,8 +16,8 @@ test(async function envFailure() {
     const env = deno.env();
   } catch (err) {
     caughtError = true;
-    // TODO assert(err instanceof deno.PermissionDenied).
-    assertEqual(err.name, "deno.PermissionDenied");
+    assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(err.name, "PermissionDenied");
   }
 
   assert(caughtError);
@@ -47,9 +47,8 @@ test(async function statSyncNotFound() {
     badInfo = deno.statSync("bad_file_name");
   } catch (err) {
     caughtError = true;
-    // TODO assert(err instanceof deno.NotFound).
-    assert(err);
-    assertEqual(err.name, "deno.NotFound");
+    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.name, "NotFound");
   }
 
   assert(caughtError);
@@ -78,42 +77,13 @@ test(async function lstatSyncNotFound() {
     badInfo = deno.lstatSync("bad_file_name");
   } catch (err) {
     caughtError = true;
-    // TODO assert(err instanceof deno.NotFound).
-    assert(err);
-    assertEqual(err.name, "deno.NotFound");
+    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.name, "NotFound");
   }
 
   assert(caughtError);
   assertEqual(badInfo, undefined);
 });
-
-test(async function readFileSyncSuccess() {
-  const data = deno.readFileSync("package.json");
-  if (!data.byteLength) {
-    throw Error(
-      `Expected positive value for data.byteLength ${data.byteLength}`
-    );
-  }
-  const decoder = new TextDecoder("utf-8");
-  const json = decoder.decode(data);
-  const pkg = JSON.parse(json);
-  assertEqual(pkg.name, "deno");
-});
-
-/* TODO We should be able to catch specific types.
-test(function tests_readFileSync_NotFound() {
-  let caughtError = false;
-  let data;
-  try {
-    data = deno.readFileSync("bad_filename");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof deno.NotFound);
-  }
-  assert(caughtError);
-  assert(data === undefined);
-});
-*/
 
 testPerm({ write: true }, function writeFileSyncSuccess() {
   const enc = new TextEncoder();
@@ -138,8 +108,8 @@ testPerm({ write: true }, function writeFileSyncFail() {
     deno.writeFileSync(filename, data);
   } catch (e) {
     caughtError = true;
-    // TODO assertEqual(e, deno.NotFound);
-    assertEqual(e.name, "deno.NotFound");
+    assertEqual(e.kind, deno.ErrorKind.NotFound);
+    assertEqual(e.name, "NotFound");
   }
   assert(caughtError);
 });
@@ -166,9 +136,8 @@ testPerm({ write: true }, function makeTempDirSync() {
   } catch (err_) {
     err = err_;
   }
-  // TODO assert(err instanceof deno.NotFound).
-  assert(err);
-  assertEqual(err.name, "deno.NotFound");
+  assertEqual(err.kind, deno.ErrorKind.NotFound);
+  assertEqual(err.name, "NotFound");
 });
 
 test(function makeTempDirSyncPerm() {
@@ -179,29 +148,8 @@ test(function makeTempDirSyncPerm() {
   } catch (err_) {
     err = err_;
   }
-  // TODO assert(err instanceof deno.PermissionDenied).
-  assert(err);
-  assertEqual(err.name, "deno.PermissionDenied");
-});
-
-testPerm({ write: true }, function mkdirSync() {
-  const path = deno.makeTempDirSync() + "/dir/subdir";
-  deno.mkdirSync(path);
-  const pathInfo = deno.statSync(path);
-  assert(pathInfo.isDirectory());
-});
-
-testPerm({ write: false }, function mkdDirSyncPerm() {
-  let err;
-  try {
-    const path = "/baddir";
-    deno.mkdirSync(path);
-  } catch (err_) {
-    err = err_;
-  }
-  // TODO assert(err instanceof deno.PermissionDenied).
-  assert(err);
-  assertEqual(err.name, "deno.PermissionDenied");
+  assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+  assertEqual(err.name, "PermissionDenied");
 });
 
 testPerm({ write: true }, function renameSync() {
@@ -220,9 +168,8 @@ testPerm({ write: true }, function renameSync() {
     oldPathInfo = deno.statSync(oldpath);
   } catch (err) {
     caughtErr = true;
-    // TODO assert(err instanceof deno.NotFound).
-    assert(err);
-    assertEqual(err.name, "deno.NotFound");
+    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.name, "NotFound");
   }
 
   assert(caughtErr);
@@ -238,7 +185,6 @@ test(function renameSyncPerm() {
   } catch (err_) {
     err = err_;
   }
-  // TODO assert(err instanceof deno.PermissionDenied).
-  assert(err);
-  assertEqual(err.name, "deno.PermissionDenied");
+  assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+  assertEqual(err.name, "PermissionDenied");
 });

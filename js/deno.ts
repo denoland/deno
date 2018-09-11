@@ -6,12 +6,13 @@ export {
   exit,
   FileInfo,
   makeTempDirSync,
-  mkdirSync,
-  readFileSync,
   renameSync,
   statSync,
   lstatSync,
   writeFileSync
 } from "./os";
+export { mkdirSync, mkdir } from "./mkdir";
+export { readFileSync, readFile } from "./read_file";
+export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export const argv: string[] = [];
