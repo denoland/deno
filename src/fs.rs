@@ -17,13 +17,13 @@ pub fn write_file(
 ) -> std::io::Result<()> {
   let is_append = perm & (1 << 31) != 0;
   let mut file = OpenOptions::new()
-            .read(false)
-            .write(true)
-            .append(is_append)
-            .truncate(!is_append)
-            .create(true)
-            .open(filename)?;
-  
+    .read(false)
+    .write(true)
+    .append(is_append)
+    .truncate(!is_append)
+    .create(true)
+    .open(filename)?;
+
   set_permissions(&mut file, perm)?;
   file.write_all(data)
 }
