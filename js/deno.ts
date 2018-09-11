@@ -8,11 +8,11 @@ export {
   makeTempDirSync,
   renameSync,
   statSync,
-  lstatSync,
-  writeFileSync
+  lstatSync
 } from "./os";
 export { mkdirSync, mkdir } from "./mkdir";
 export { readFileSync, readFile } from "./read_file";
+export { writeFileSync, writeFile } from "./write_file";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export const argv: string[] = [];

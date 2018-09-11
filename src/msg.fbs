@@ -17,11 +17,11 @@ union Any {
   Mkdir,
   ReadFile,
   ReadFileRes,
+  WriteFile,
   RenameSync,
   StatSync,
   StatSyncRes,
   SetEnv,
-  WriteFileSync,
 }
 
 enum ErrorKind: byte {
@@ -181,6 +181,13 @@ table ReadFileRes {
   data: [ubyte];
 }
 
+table WriteFile {
+  filename: string;
+  data: [ubyte];
+  perm: uint;
+  // perm specified by https://godoc.org/os#FileMode
+}
+
 table RenameSync {
   oldpath: string;
   newpath: string;
@@ -198,13 +205,6 @@ table StatSyncRes {
   modified:ulong;
   accessed:ulong;
   created:ulong;
-}
-
-table WriteFileSync {
-  filename: string;
-  data: [ubyte];
-  perm: uint;
-  // perm specified by https://godoc.org/os#FileMode
 }
 
 root_type Base;

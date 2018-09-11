@@ -1,5 +1,5 @@
 use std;
-use std::fs::{create_dir, File};
+use std::fs::{create_dir, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -7,9 +7,36 @@ use std::path::{Path, PathBuf};
 use rand;
 use rand::Rng;
 
-pub fn write_file_sync(path: &Path, content: &[u8]) -> std::io::Result<()> {
-  let mut f = File::create(path)?;
-  f.write_all(content)
+#[cfg(any(unix))]
+use std::os::unix::fs::PermissionsExt;
+
+pub fn write_file(
+  filename: &Path,
+  data: &[u8],
+  perm: u32,
+) -> std::io::Result<()> {
+  let is_append = perm & (1 << 31) != 0;
+  let mut file = OpenOptions::new()
+    .read(false)
+    .write(true)
+    .append(is_append)
+    .truncate(!is_append)
+    .create(true)
+    .open(filename)?;
+
+  set_permissions(&mut file, perm)?;
+  file.write_all(data)
+}
+
+#[cfg(any(unix))]
+fn set_permissions(file: &mut File, perm: u32) -> std::io::Result<()> {
+  debug!("set file perm to {}", perm);
+  file.set_permissions(PermissionsExt::from_mode(perm & 0o777))
+}
+#[cfg(not(any(unix)))]
+fn set_permissions(_file: &mut File, _perm: u32) -> std::io::Result<()> {
+  // NOOP on windows
+  Ok(())
 }
 
 pub fn make_temp_dir(
