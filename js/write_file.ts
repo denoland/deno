@@ -5,6 +5,7 @@ import * as dispatch from "./dispatch";
 
 /**
  * Write a new file, with given filename and data synchronously.
+ *
  *     import { writeFileSync } from "deno";
  *
  *     const encoder = new TextEncoder("utf-8");
@@ -21,6 +22,7 @@ export function writeFileSync(
 
 /**
  * Write a new file, with given filename and data.
+ *
  *     import { writeFile } from "deno";
  *
  *     const encoder = new TextEncoder("utf-8");

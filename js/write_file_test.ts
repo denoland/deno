@@ -33,7 +33,7 @@ testPerm({ write: false }, function writeFileSyncPerm() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
-  // The following should fail because /baddir doesn't exist (hopefully).
+  // The following should fail due to no write permission
   let caughtError = false;
   try {
     deno.writeFileSync(filename, data);
@@ -56,7 +56,7 @@ testPerm({ write: true }, async function writeFileSuccess() {
   assertEqual("Hello", actual);
 });
 
-testPerm({ write: true }, async function writeFileFail() {
+testPerm({ write: true }, async function writeFileNotFound() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -76,7 +76,7 @@ testPerm({ write: false }, async function writeFilePerm() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
-  // The following should fail because /baddir doesn't exist (hopefully).
+  // The following should fail due to no write permission
   let caughtError = false;
   try {
     await deno.writeFile(filename, data);
