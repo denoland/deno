@@ -211,6 +211,8 @@ table StatRes {
   modified:ulong;
   accessed:ulong;
   created:ulong;
+  mode: int = -1;
+  // negative mode for invalid (Windows); default to invalid
 }
 
 root_type Base;
