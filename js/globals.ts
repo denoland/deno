@@ -6,6 +6,7 @@ import * as textEncoding from "./text_encoding";
 import * as fetch_ from "./fetch";
 import { libdeno } from "./libdeno";
 import { globalEval } from "./global-eval";
+import { DenoHeaders } from "./fetch";
 
 declare global {
   interface Window {
@@ -23,6 +24,8 @@ declare global {
 
     TextEncoder: typeof TextEncoder;
     TextDecoder: typeof TextDecoder;
+
+    Headers: typeof Headers;
   }
 
   const clearTimeout: typeof timers.clearTimer;
@@ -38,6 +41,7 @@ declare global {
   // tslint:disable:variable-name
   const TextEncoder: typeof textEncoding.TextEncoder;
   const TextDecoder: typeof textEncoding.TextDecoder;
+  const Headers: typeof DenoHeaders;
   // tslint:enable:variable-name
 }
 
@@ -57,3 +61,5 @@ window.TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
 
 window.fetch = fetch_.fetch;
+
+window.Headers = DenoHeaders;

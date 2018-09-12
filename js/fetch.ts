@@ -16,18 +16,17 @@ import {
   Response,
   Blob,
   RequestInit,
+  HeadersInit,
   FormData
 } from "./fetch_types";
 import { TextDecoder } from "./text_encoding";
-
-type HeadersInit = Array<[string, string]> | { [K: string]: string };
 
 interface Header {
   name: string;
   value: string;
 }
 
-class DenoHeaders implements Headers {
+export class DenoHeaders implements Headers {
   private readonly headerList: Header[] = [];
 
   constructor(init?: HeadersInit) {
@@ -56,7 +55,7 @@ class DenoHeaders implements Headers {
       for (let i = 0; i < init.length; ++i) {
         const header = init[i];
         if (header.length !== 2) {
-          throw new TypeError();
+          throw new TypeError("Failed to construct 'Headers': Invalid value");
         }
         this._append({
           name: header[0],
