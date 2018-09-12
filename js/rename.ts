@@ -4,7 +4,10 @@ import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 
 /**
- * Renames (moves) oldpath to newpath.
+ * Synchronously renames (moves) oldpath to newpath. If newpath already exists 
+ * and is not a directory, Rename replaces it. OS-specific restrictions may 
+ * apply when oldpath and newpath are in different directories.
+ *
  *     import { renameSync } from "deno";
  *     renameSync("old/path", "new/path");
  */
@@ -13,7 +16,10 @@ export function renameSync(oldpath: string, newpath: string): void {
 }
 
 /**
- * Renames (moves) oldpath to newpath.
+ * Renames (moves) oldpath to newpath. If newpath already exists 
+ * and is not a directory, Rename replaces it. OS-specific restrictions may 
+ * apply when oldpath and newpath are in different directories.
+ *
  *     import { rename } from "deno";
  *     await rename("old/path", "new/path");
  */
