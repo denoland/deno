@@ -18,7 +18,7 @@ union Any {
   ReadFile,
   ReadFileRes,
   WriteFile,
-  RenameSync,
+  Rename,
   Stat,
   StatRes,
   SetEnv,
@@ -188,7 +188,7 @@ table WriteFile {
   // perm specified by https://godoc.org/os#FileMode
 }
 
-table RenameSync {
+table Rename {
   oldpath: string;
   newpath: string;
 }

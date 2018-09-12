@@ -164,22 +164,3 @@ export function env(): { [index: string]: string } {
   // TypeScript cannot track assertion above, therefore not null assertion
   return createEnv(res);
 }
-
-/**
- * Renames (moves) oldpath to newpath.
- *     import { renameSync } from "deno";
- *     const oldpath = 'from/path';
- *     const newpath = 'to/path';
- *
- *     renameSync(oldpath, newpath);
- */
-export function renameSync(oldpath: string, newpath: string): void {
-  const builder = new flatbuffers.Builder();
-  const _oldpath = builder.createString(oldpath);
-  const _newpath = builder.createString(newpath);
-  fbs.RenameSync.startRenameSync(builder);
-  fbs.RenameSync.addOldpath(builder, _oldpath);
-  fbs.RenameSync.addNewpath(builder, _newpath);
-  const msg = fbs.RenameSync.endRenameSync(builder);
-  sendSync(builder, fbs.Any.RenameSync, msg);
-}
