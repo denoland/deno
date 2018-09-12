@@ -28,6 +28,7 @@ const tsconfigOverride = {
 // lib for deno.
 const libPreamble = `/// <reference no-default-lib="true"/>
 /// <reference lib="esnext" />
+/// <reference path="/$asset$/flatbuffers.d.ts" />
 `;
 
 // this is a rollup plugin which will look for imports ending with `!string` and resolve
@@ -143,7 +144,10 @@ export default function makeConfig(commandOptions) {
           // bundle
           [typescriptPath]: [
             "createLanguageService",
+            "createProgram",
+            "createSourceFile",
             "formatDiagnosticsWithColorAndContext",
+            "getPreEmitDiagnostics",
             "ModuleKind",
             "ScriptKind",
             "ScriptSnapshot",

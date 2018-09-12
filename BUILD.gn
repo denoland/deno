@@ -236,7 +236,7 @@ run_node("bundle") {
     "js/dispatch.ts",
     "js/errors.ts",
     "js/fetch.ts",
-    "js/fetch_types.d.ts",
+    "js/fetch_types.ts",
     "js/globals.ts",
     "js/main.ts",
     "js/mkdir.ts",

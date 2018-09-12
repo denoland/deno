@@ -230,7 +230,7 @@ declare var ReadableStreamReader: {
   new (): ReadableStreamReader;
 };
 
-interface FormData {
+export interface FormData {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
@@ -273,7 +273,7 @@ interface Body {
   text(): Promise<string>;
 }
 
-interface Headers {
+export interface Headers {
   append(name: string, value: string): void;
   delete(name: string): void;
   get(name: string): string | null;

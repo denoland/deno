@@ -31,11 +31,12 @@ function onGlobalError(
   os.exit(1);
 }
 
+const compiler = DenoCompiler.instance();
+
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
   libdeno.recv(handleAsyncMsgFromRust);
   libdeno.setGlobalErrorHandler(onGlobalError);
-  const compiler = DenoCompiler.instance();
 
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
@@ -68,5 +69,8 @@ export default function denoMain() {
     os.exit(0);
   }
 
-  compiler.run(inputFn, `${cwd}/`);
+  if (cwd) {
+    compiler.setCwd(cwd);
+  }
+  compiler.runProgram(inputFn, `${cwd}/`);
 }
