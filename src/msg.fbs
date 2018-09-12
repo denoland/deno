@@ -154,7 +154,8 @@ table FetchReq {
 table FetchRes {
   id: uint;
   status: int;
-  header_line: [string];
+  header_key: [string];
+  header_value: [string];
   body: [ubyte];
 }
 
