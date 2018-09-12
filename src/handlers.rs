@@ -12,8 +12,11 @@ use hyper::Client;
 use libdeno;
 use libdeno::{deno_buf, DenoC};
 use msg;
+use remove_dir_all::remove_dir_all;
 use std;
 use std::fs;
+#[cfg(any(unix))]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
@@ -50,11 +53,12 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::TimerClear => handle_timer_clear,
     msg::Any::MakeTempDir => handle_make_temp_dir,
     msg::Any::Mkdir => handle_mkdir,
+    msg::Any::Remove => handle_remove,
     msg::Any::ReadFile => handle_read_file,
-    msg::Any::RenameSync => handle_rename_sync,
+    msg::Any::Rename => handle_rename,
     msg::Any::SetEnv => handle_set_env,
-    msg::Any::StatSync => handle_stat_sync,
-    msg::Any::WriteFileSync => handle_write_file_sync,
+    msg::Any::Stat => handle_stat,
+    msg::Any::WriteFile => handle_write_file,
     msg::Any::Exit => handle_exit,
     _ => panic!(format!(
       "Unhandled message {}",
@@ -435,6 +439,32 @@ fn handle_mkdir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
+fn handle_remove(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_remove().unwrap();
+  let path = msg.path().unwrap();
+  let recursive = msg.recursive();
+  let deno = from_c(d);
+  if !deno.flags.allow_write {
+    return odd_future(permission_denied());
+  }
+  // TODO Use tokio_threadpool.
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_remove {}", path);
+    let path_ = Path::new(&path);
+    let metadata = fs::metadata(&path_)?;
+    if metadata.is_file() {
+      fs::remove_file(&path_)?;
+    } else {
+      if recursive {
+        remove_dir_all(&path_)?;
+      } else {
+        fs::remove_dir(&path_)?;
+      }
+    }
+    Ok(None)
+  }()))
+}
+
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
 fn handle_read_file(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_read_file().unwrap();
@@ -476,15 +506,25 @@ macro_rules! to_seconds {
   }};
 }
 
-fn handle_stat_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let msg = base.msg_as_stat_sync().unwrap();
+#[cfg(any(unix))]
+fn get_mode(perm: fs::Permissions) -> i32 {
+  (perm.mode() as i32)
+}
+
+#[cfg(not(any(unix)))]
+fn get_mode(_perm: fs::Permissions) -> i32 {
+  -1
+}
+
+fn handle_stat(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_stat().unwrap();
   let cmd_id = base.cmd_id();
   let filename = String::from(msg.filename().unwrap());
   let lstat = msg.lstat();
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
-    debug!("handle_stat_sync {} {}", filename, lstat);
+    debug!("handle_stat {} {}", filename, lstat);
     let path = Path::new(&filename);
     let metadata = if lstat {
       fs::symlink_metadata(path)?
@@ -492,15 +532,16 @@ fn handle_stat_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
       fs::metadata(path)?
     };
 
-    let msg = msg::StatSyncRes::create(
+    let msg = msg::StatRes::create(
       builder,
-      &msg::StatSyncResArgs {
+      &msg::StatResArgs {
         is_file: metadata.is_file(),
         is_symlink: metadata.file_type().is_symlink(),
         len: metadata.len(),
         modified: to_seconds!(metadata.modified()),
         accessed: to_seconds!(metadata.accessed()),
         created: to_seconds!(metadata.created()),
+        mode: get_mode(metadata.permissions()),
         ..Default::default()
       },
     );
@@ -510,27 +551,26 @@ fn handle_stat_sync(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
       builder,
       msg::BaseArgs {
         msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::StatSyncRes,
+        msg_type: msg::Any::StatRes,
         ..Default::default()
       },
     ))
   }()))
 }
 
-fn handle_write_file_sync(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let msg = base.msg_as_write_file_sync().unwrap();
+fn handle_write_file(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_write_file().unwrap();
   let filename = String::from(msg.filename().unwrap());
   let data = msg.data().unwrap();
-  // TODO let perm = msg.perm();
+  let perm = msg.perm();
   let deno = from_c(d);
 
-  debug!("handle_write_file_sync {}", filename);
+  debug!("handle_write_file {}", filename);
   Box::new(futures::future::result(|| -> OpResult {
     if !deno.flags.allow_write {
       Err(permission_denied())
     } else {
-      // TODO(ry) Use perm.
-      deno_fs::write_file_sync(Path::new(&filename), data)?;
+      deno_fs::write_file(Path::new(&filename), data, perm)?;
       Ok(None)
     }
   }()))
@@ -593,15 +633,14 @@ fn handle_timer_clear(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   ok_future(None)
 }
 
-fn handle_rename_sync(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let deno = from_c(d);
   if !deno.flags.allow_write {
-    return Box::new(futures::future::err(permission_denied()));
-  };
-  let msg = base.msg_as_rename_sync().unwrap();
+    return odd_future(permission_denied());
+  }
+  let msg = base.msg_as_rename().unwrap();
   let oldpath = String::from(msg.oldpath().unwrap());
   let newpath = String::from(msg.newpath().unwrap());
-  // TODO use blocking()
   Box::new(futures::future::result(|| -> OpResult {
     debug!("handle_rename {} {}", oldpath, newpath);
     fs::rename(Path::new(&oldpath), Path::new(&newpath))?;

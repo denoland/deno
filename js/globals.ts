@@ -9,8 +9,20 @@ import { globalEval } from "./global-eval";
 
 declare global {
   interface Window {
-    console: Console;
     define: Readonly<unknown>;
+
+    clearTimeout: typeof clearTimeout;
+    clearInterval: typeof clearInterval;
+    setTimeout: typeof setTimeout;
+    setInterval: typeof setInterval;
+
+    console: typeof console;
+    window: typeof window;
+
+    fetch: typeof fetch;
+
+    TextEncoder: typeof TextEncoder;
+    TextDecoder: typeof TextDecoder;
   }
 
   const clearTimeout: typeof timers.clearTimer;
@@ -24,8 +36,8 @@ declare global {
   const fetch: typeof fetch_.fetch;
 
   // tslint:disable:variable-name
-  let TextEncoder: typeof textEncoding.TextEncoder;
-  let TextDecoder: typeof textEncoding.TextDecoder;
+  const TextEncoder: typeof textEncoding.TextEncoder;
+  const TextDecoder: typeof textEncoding.TextDecoder;
   // tslint:enable:variable-name
 }
 

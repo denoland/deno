@@ -118,7 +118,7 @@ impl DenoDir {
         Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
       }?;
-      deno_fs::write_file_sync(&p, source.as_bytes())?;
+      deno_fs::write_file(&p, source.as_bytes(), 0o666)?;
       source
     } else {
       let source = fs::read_to_string(&p)?;
