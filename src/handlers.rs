@@ -55,7 +55,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::Mkdir => handle_mkdir,
     msg::Any::Remove => handle_remove,
     msg::Any::ReadFile => handle_read_file,
-    msg::Any::RenameSync => handle_rename_sync,
+    msg::Any::Rename => handle_rename,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::Stat => handle_stat,
     msg::Any::WriteFile => handle_write_file,
@@ -633,15 +633,14 @@ fn handle_timer_clear(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   ok_future(None)
 }
 
-fn handle_rename_sync(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let deno = from_c(d);
   if !deno.flags.allow_write {
-    return Box::new(futures::future::err(permission_denied()));
-  };
-  let msg = base.msg_as_rename_sync().unwrap();
+    return odd_future(permission_denied());
+  }
+  let msg = base.msg_as_rename().unwrap();
   let oldpath = String::from(msg.oldpath().unwrap());
   let newpath = String::from(msg.newpath().unwrap());
-  // TODO use blocking()
   Box::new(futures::future::result(|| -> OpResult {
     debug!("handle_rename {} {}", oldpath, newpath);
     fs::rename(Path::new(&oldpath), Path::new(&newpath))?;
