@@ -18,6 +18,8 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
+#[cfg(any(unix))]
+use std::os::unix::fs::PermissionsExt;
 
 // Buf represents a byte array returned from a "Op".
 // The message might be empty (which will be translated into a null object on
@@ -476,6 +478,16 @@ macro_rules! to_seconds {
   }};
 }
 
+#[cfg(any(unix))]
+fn get_mode(perm: fs::Permissions) -> i32 {
+  (perm.mode() as i32)
+}
+
+#[cfg(not(any(unix)))]
+fn get_mode(_perm: fs::Permissions) -> i32 {
+  -1
+}
+
 fn handle_stat(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_stat().unwrap();
   let cmd_id = base.cmd_id();
@@ -501,6 +513,7 @@ fn handle_stat(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
         modified: to_seconds!(metadata.modified()),
         accessed: to_seconds!(metadata.accessed()),
         created: to_seconds!(metadata.created()),
+        mode: get_mode(metadata.permissions()),
         ..Default::default()
       },
     );

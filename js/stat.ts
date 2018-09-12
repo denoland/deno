@@ -31,12 +31,18 @@ export class FileInfo {
    * be available on all platforms.
    */
   created: number | null;
+  /**
+   * The underlying raw st_mode bits that contain the standard Unix permissions
+   * for this file/directory. Not available on Windows.
+   */
+  mode: number | null;
 
   /* @internal */
   constructor(private _msg: fbs.StatRes) {
     const modified = this._msg.modified().toFloat64();
     const accessed = this._msg.accessed().toFloat64();
     const created = this._msg.created().toFloat64();
+    const mode = this._msg.mode(); // negative for invalid mode (Windows)
 
     this._isFile = this._msg.isFile();
     this._isSymlink = this._msg.isSymlink();
@@ -44,6 +50,7 @@ export class FileInfo {
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
+    this.mode = mode >= 0 ? mode : null; // null if invalid mode (Windows)
   }
 
   /**
