@@ -15,6 +15,7 @@ union Any {
   MakeTempDir,
   MakeTempDirRes,
   Mkdir,
+  Remove,
   ReadFile,
   ReadFileRes,
   WriteFile,
@@ -171,6 +172,11 @@ table Mkdir {
   path: string;
   mode: uint;
   // mode specified by https://godoc.org/os#FileMode
+}
+
+table Remove {
+  path: string;
+  recursive: bool;
 }
 
 table ReadFile {
