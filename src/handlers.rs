@@ -14,12 +14,12 @@ use libdeno::{deno_buf, DenoC};
 use msg;
 use std;
 use std::fs;
+#[cfg(any(unix))]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
-#[cfg(any(unix))]
-use std::os::unix::fs::PermissionsExt;
 
 // Buf represents a byte array returned from a "Op".
 // The message might be empty (which will be translated into a null object on
