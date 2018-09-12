@@ -8,6 +8,7 @@ import { assert } from "./util";
  * A FileInfo describes a file and is returned by `stat`, `lstat`,
  * `statSync`, `lstatSync`.
  */
+// TODO FileInfo should be an interface not a class.
 export class FileInfo {
   private readonly _isFile: boolean;
   private readonly _isSymlink: boolean;
@@ -33,7 +34,7 @@ export class FileInfo {
   created: number | null;
   /**
    * The underlying raw st_mode bits that contain the standard Unix permissions
-   * for this file/directory. Not available on Windows.
+   * for this file/directory. TODO Match behavior with Go on windows for mode.
    */
   mode: number | null;
 
