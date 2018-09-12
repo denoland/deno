@@ -420,7 +420,7 @@ fn handle_make_temp_dir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 
   let deno = from_c(d);
   if !deno.flags.allow_write {
-    return Box::new(futures::future::err(permission_denied()));
+    return odd_future(permission_denied());
   }
   // TODO Use blocking() here.
   Box::new(futures::future::result(|| -> OpResult {
@@ -590,16 +590,15 @@ fn handle_write_file(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let filename = String::from(msg.filename().unwrap());
   let data = msg.data().unwrap();
   let perm = msg.perm();
-  let deno = from_c(d);
 
-  debug!("handle_write_file {}", filename);
+  let deno = from_c(d);
+  if !deno.flags.allow_write {
+    return odd_future(permission_denied());
+  }
   Box::new(futures::future::result(|| -> OpResult {
-    if !deno.flags.allow_write {
-      Err(permission_denied())
-    } else {
-      deno_fs::write_file(Path::new(&filename), data, perm)?;
-      Ok(None)
-    }
+    debug!("handle_write_file {}", filename);
+    deno_fs::write_file(Path::new(&filename), data, perm)?;
+    Ok(None)
   }()))
 }
 
@@ -664,7 +663,7 @@ fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let deno = from_c(d);
   if !deno.flags.allow_write {
     return odd_future(permission_denied());
-  }
+  };
   let msg = base.msg_as_rename().unwrap();
   let oldpath = String::from(msg.oldpath().unwrap());
   let newpath = String::from(msg.newpath().unwrap());
