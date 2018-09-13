@@ -16,19 +16,75 @@ import {
   Response,
   Blob,
   RequestInit,
+  HeadersInit,
   FormData
 } from "./fetch_types";
 import { TextDecoder } from "./text_encoding";
 
-class DenoHeaders implements Headers {
-  append(name: string, value: string): void {
-    assert(false, "Implement me");
+interface Header {
+  name: string;
+  value: string;
+}
+
+export class DenoHeaders implements Headers {
+  private readonly headerList: Header[] = [];
+
+  constructor(init?: HeadersInit) {
+    if (init) {
+      this._fill(init);
+    }
   }
+
+  private _append(header: Header): void {
+    // TODO(qti3e) Check header based on the fetch spec.
+    this._appendToHeaderList(header);
+  }
+
+  private _appendToHeaderList(header: Header): void {
+    const lowerCaseName = header.name.toLowerCase();
+    for (let i = 0; i < this.headerList.length; ++i) {
+      if (this.headerList[i].name.toLowerCase() === lowerCaseName) {
+        header.name = this.headerList[i].name;
+      }
+    }
+    this.headerList.push(header);
+  }
+
+  private _fill(init: HeadersInit): void {
+    if (Array.isArray(init)) {
+      for (let i = 0; i < init.length; ++i) {
+        const header = init[i];
+        if (header.length !== 2) {
+          throw new TypeError("Failed to construct 'Headers': Invalid value");
+        }
+        this._append({
+          name: header[0],
+          value: header[1]
+        });
+      }
+    } else {
+      for (const key in init) {
+        this._append({
+          name: key,
+          value: init[key]
+        });
+      }
+    }
+  }
+
+  append(name: string, value: string): void {
+    this._appendToHeaderList({ name, value });
+  }
+
   delete(name: string): void {
     assert(false, "Implement me");
   }
   get(name: string): string | null {
-    assert(false, "Implement me");
+    for (const header of this.headerList) {
+      if (header.name.toLowerCase() === name.toLowerCase()) {
+        return header.value;
+      }
+    }
     return null;
   }
   has(name: string): boolean {
@@ -54,15 +110,20 @@ class FetchResponse implements Response {
   statusText = "FIXME"; // TODO
   readonly type = "basic"; // TODO
   redirected = false; // TODO
-  headers = new DenoHeaders();
+  headers: DenoHeaders;
   readonly trailer: Promise<Headers>;
   //private bodyChunks: Uint8Array[] = [];
   private first = true;
   private bodyWaiter: Resolvable<ArrayBuffer>;
 
-  constructor(readonly status: number, readonly body_: ArrayBuffer) {
+  constructor(
+    readonly status: number,
+    readonly body_: ArrayBuffer,
+    headersList: Array<[string, string]>
+  ) {
     this.bodyWaiter = createResolvable();
     this.trailer = createResolvable();
+    this.headers = new DenoHeaders(headersList);
     setTimeout(() => {
       this.bodyWaiter.resolve(body_);
     }, 0);
@@ -149,6 +210,14 @@ export async function fetch(
   assert(bodyArray != null);
   const body = typedArrayToArrayBuffer(bodyArray!);
 
-  const response = new FetchResponse(status, body);
+  const headersList: Array<[string, string]> = [];
+  const len = msg.headerKeyLength();
+  for (let i = 0; i < len; ++i) {
+    const key = msg.headerKey(i);
+    const value = msg.headerValue(i);
+    headersList.push([key, value]);
+  }
+
+  const response = new FetchResponse(status, body, headersList);
   return response;
 }
