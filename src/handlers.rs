@@ -663,7 +663,7 @@ fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let deno = from_c(d);
   if !deno.flags.allow_write {
     return odd_future(permission_denied());
-  };
+  }
   let msg = base.msg_as_rename().unwrap();
   let oldpath = String::from(msg.oldpath().unwrap());
   let newpath = String::from(msg.newpath().unwrap());
