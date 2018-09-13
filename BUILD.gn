@@ -66,6 +66,7 @@ ts_sources = [
   "js/libdeno.ts",
   "js/main.ts",
   "js/mkdir.ts",
+  "js/make_temp_dir.ts",
   "js/mock_builtin.js",
   "js/os.ts",
   "js/plugins.d.ts",
@@ -236,9 +237,7 @@ run_node("gen_declarations") {
 
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
-  sources = ts_sources + [
-    "rollup.config.js",
-  ]
+  sources = ts_sources + [ "rollup.config.js" ]
   outputs = [
     out_dir + "main.js",
     out_dir + "main.js.map",
