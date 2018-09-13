@@ -14,8 +14,8 @@ export interface MakeTempDirOptions {
  * makeTempDirSync is the synchronous version of `makeTempDir`.
  *
  *     import { makeTempDirSync } from "deno";
- *     const tempDirName0 = makeTempDirSync()
- *     const tempDirName1 = makeTempDirSync({ prefix: 'my_temp' })
+ *     const tempDirName0 = makeTempDirSync();
+ *     const tempDirName1 = makeTempDirSync({ prefix: 'my_temp' });
  */
 export function makeTempDirSync(options: MakeTempDirOptions = {}): string {
   return res(dispatch.sendSync(...req(options)));
@@ -29,10 +29,10 @@ export function makeTempDirSync(options: MakeTempDirOptions = {}): string {
  * files. Multiple programs calling tempDir simultaneously will not choose the
  * same directory. It is the caller's responsibility to remove the directory
  * when no longer needed.
- * 
+ *
  *     import { makeTempDir } from "deno";
- *     const tempDirName0 = await makeTempDir()
- *     const tempDirName1 = await makeTempDir({ prefix: 'my_temp' })
+ *     const tempDirName0 = await makeTempDir();
+ *     const tempDirName1 = await makeTempDir({ prefix: 'my_temp' });
  */
 export async function makeTempDir(
   options: MakeTempDirOptions = {}
