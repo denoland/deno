@@ -56,6 +56,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::Remove => handle_remove,
     msg::Any::ReadFile => handle_read_file,
     msg::Any::Rename => handle_rename,
+    msg::Any::Symlink => handle_symlink,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::Stat => handle_stat,
     msg::Any::WriteFile => handle_write_file,
@@ -663,13 +664,40 @@ fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let isolate = from_c(d);
   if !isolate.flags.allow_write {
     return odd_future(permission_denied());
-  };
+  }
   let msg = base.msg_as_rename().unwrap();
   let oldpath = String::from(msg.oldpath().unwrap());
   let newpath = String::from(msg.newpath().unwrap());
   Box::new(futures::future::result(|| -> OpResult {
     debug!("handle_rename {} {}", oldpath, newpath);
     fs::rename(Path::new(&oldpath), Path::new(&newpath))?;
+    Ok(None)
+  }()))
+}
+
+fn handle_symlink(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let deno = from_c(d);
+  if !deno.flags.allow_write {
+    return odd_future(permission_denied());
+  }
+  let msg = base.msg_as_symlink().unwrap();
+  let oldname = String::from(msg.oldname().unwrap());
+  let newname = String::from(msg.newname().unwrap());
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_symlink {} {}", oldname, newname);
+    if cfg!(windows) {
+      let oldname_stat = fs::metadata(oldname)?;
+      if oldname_stat.is_dir() {
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(oldname, newname)?;
+      } else {
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(oldname, newname)?;
+      }
+    } else {
+      #[cfg(unix)]
+      std::os::unix::fs::symlink(oldname, newname)?;
+    }
     Ok(None)
   }()))
 }
