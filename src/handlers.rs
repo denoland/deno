@@ -685,18 +685,20 @@ fn handle_symlink(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let newname = String::from(msg.newname().unwrap());
   Box::new(futures::future::result(|| -> OpResult {
     debug!("handle_symlink {} {}", oldname, newname);
+    let oldname_ = Path::new(&oldname);
+    let newname_ = Path::new(&newname);
     if cfg!(windows) {
-      let oldname_stat = fs::metadata(oldname)?;
-      if oldname_stat.is_dir() {
+      let metadata = fs::metadata(&oldname_)?;
+      if metadata.is_dir() {
         #[cfg(windows)]
-        std::os::windows::fs::symlink_dir(oldname, newname)?;
+        std::os::windows::fs::symlink_dir(&oldname_, &newname_)?;
       } else {
         #[cfg(windows)]
-        std::os::windows::fs::symlink_file(oldname, newname)?;
+        std::os::windows::fs::symlink_file(&oldname_, &newname_)?;
       }
     } else {
       #[cfg(unix)]
-      std::os::unix::fs::symlink(oldname, newname)?;
+      std::os::unix::fs::symlink(&oldname_, &newname_)?;
     }
     Ok(None)
   }()))
