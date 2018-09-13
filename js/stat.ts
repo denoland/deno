@@ -56,7 +56,7 @@ export interface FileInfo {
   isSymlink(): boolean;
 }
 
-class DenoFileInfo implements FileInfo {
+class FileInfoImpl implements FileInfo {
   _isFile: boolean;
   _isSymlink: boolean;
   len: number;
@@ -162,5 +162,5 @@ function res(baseRes: null | fbs.Base): FileInfo {
   assert(fbs.Any.StatRes === baseRes!.msgType());
   const res = new fbs.StatRes();
   assert(baseRes!.msg(res) != null);
-  return new DenoFileInfo(res);
+  return new FileInfoImpl(res);
 }
