@@ -20,6 +20,7 @@ import {
   FormData
 } from "./dom_types";
 import { TextDecoder } from "./text_encoding";
+import { DenoBlob } from "./blob";
 
 interface Header {
   name: string;
@@ -134,8 +135,10 @@ class FetchResponse implements Response {
   }
 
   async blob(): Promise<Blob> {
-    notImplemented();
-    return {} as Blob;
+    const arrayBuffer = await this.arrayBuffer();
+    return new DenoBlob([arrayBuffer], {
+      type: this.headers.get("content-type") || ""
+    });
   }
 
   async formData(): Promise<FormData> {

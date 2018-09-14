@@ -9,7 +9,7 @@ export function setLogDebug(debug: boolean): void {
 }
 
 /**
- * Debug logging for deno. 
+ * Debug logging for deno.
  * Enable with the `--log-debug` or `-D` command line flag.
  * @internal
  */
