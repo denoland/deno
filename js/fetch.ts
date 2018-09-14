@@ -18,7 +18,7 @@ import {
   RequestInit,
   HeadersInit,
   FormData
-} from "./fetch_types";
+} from "./dom_types";
 import { TextDecoder } from "./text_encoding";
 
 interface Header {
