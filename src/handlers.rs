@@ -451,7 +451,7 @@ fn handle_make_temp_dir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 
 fn handle_mkdir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_mkdir().unwrap();
-  // TODO let mode = msg.mode();
+  let mode = msg.mode();
   let path = msg.path().unwrap();
   let deno = from_c(d);
   if !deno.flags.allow_write {
@@ -460,8 +460,7 @@ fn handle_mkdir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   // TODO Use tokio_threadpool.
   Box::new(futures::future::result(|| -> OpResult {
     debug!("handle_mkdir {}", path);
-    // TODO(ry) Use mode.
-    deno_fs::mkdir(Path::new(path))?;
+    deno_fs::mkdir(Path::new(path), mode)?;
     Ok(None)
   }()))
 }
