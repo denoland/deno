@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { Blob, BlobPart, BlobPropertyBag } from "./fetch_types";
+import { Blob, BlobPart, BlobPropertyBag } from "./dom_types";
 import { containsOnlyASCII } from "./util";
 
 const bytesSymbol = Symbol("bytes");
