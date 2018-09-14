@@ -43,8 +43,11 @@ interface HTMLFormElement {
   // TODO
 }
 
+type EndingType = "tranparent" | "native";
+
 interface BlobPropertyBag {
   type?: string;
+  ending?: EndingType;
 }
 
 interface AbortSignalEventMap {
