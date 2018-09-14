@@ -54,6 +54,7 @@ main_extern = [
 
 ts_sources = [
   "js/assets.ts",
+  "js/blob.ts",
   "js/compiler.ts",
   "js/console.ts",
   "js/deno.ts",

@@ -85,10 +85,19 @@ export function unreachable(): never {
   throw new Error("Code not reachable");
 }
 
+// @internal
 export function hexdump(u8: Uint8Array): string {
   return Array.prototype.map
     .call(u8, (x: number) => {
       return ("00" + x.toString(16)).slice(-2);
     })
     .join(" ");
+}
+
+// @internal
+export function containsOnlyASCII(str: string): boolean {
+  if (typeof str !== "string") {
+    return false;
+  }
+  return /^[\x00-\x7F]*$/.test(str);
 }
