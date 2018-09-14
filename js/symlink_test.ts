@@ -17,9 +17,7 @@ testPerm({ write: true }, function symlinkSyncSuccess() {
 testPerm({ write: false }, function symlinkSyncPerm() {
   let err;
   try {
-    const oldname = "/oldbaddir";
-    const newname = "/newbaddir";
-    deno.symlinkSync(oldname, newname);
+    deno.symlinkSync("oldbaddir", "newbaddir");
   } catch (e) {
     err = e;
   }
