@@ -1,5 +1,5 @@
 use std;
-use std::fs::{create_dir, File, OpenOptions, DirBuilder};
+use std::fs::{create_dir, DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -71,11 +71,9 @@ pub fn mkdir(path: &Path, perm: u32) -> std::io::Result<()> {
   let mut builder = DirBuilder::new();
   builder.recursive(true);
   set_dir_permission(&mut builder, perm);
-  builder.create(path).or_else(|err| {
-    match err.kind() {
-      std::io::ErrorKind::AlreadyExists => Ok(()),
-      _ => Err(err),
-    }
+  builder.create(path).or_else(|err| match err.kind() {
+    std::io::ErrorKind::AlreadyExists => Ok(()),
+    _ => Err(err),
   })
 }
 
