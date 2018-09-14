@@ -1,5 +1,5 @@
 use std;
-use std::fs::{create_dir, File, OpenOptions};
+use std::fs::{create_dir, DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use rand;
 use rand::Rng;
 
+#[cfg(any(unix))]
+use std::os::unix::fs::DirBuilderExt;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 
@@ -64,16 +66,26 @@ pub fn make_temp_dir(
   }
 }
 
-pub fn mkdir(path: &Path) -> std::io::Result<()> {
+pub fn mkdir(path: &Path, perm: u32) -> std::io::Result<()> {
   debug!("mkdir -p {}", path.display());
-  assert!(path.has_root(), "non-has_root not yet implemented");
-  std::fs::create_dir_all(path).or_else(|err| {
-    if err.kind() == std::io::ErrorKind::AlreadyExists {
-      Ok(())
-    } else {
-      Err(err)
-    }
+  let mut builder = DirBuilder::new();
+  builder.recursive(true);
+  set_dir_permission(&mut builder, perm);
+  builder.create(path).or_else(|err| match err.kind() {
+    std::io::ErrorKind::AlreadyExists => Ok(()),
+    _ => Err(err),
   })
+}
+
+#[cfg(any(unix))]
+fn set_dir_permission(builder: &mut DirBuilder, perm: u32) {
+  debug!("set dir perm to {}", perm);
+  builder.mode(perm);
+}
+
+#[cfg(not(any(unix)))]
+fn set_dir_permission(_builder: &mut DirBuilder, _perm: u32) {
+  // NOOP on windows
 }
 
 pub fn normalize_path(path: &Path) -> String {
