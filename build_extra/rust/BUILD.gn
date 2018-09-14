@@ -598,6 +598,11 @@ rust_crate("hyper_rustls") {
   ]
 }
 
+rust_crate("dirs") {
+  source_root = "$registry_github/dirs-1.0.3/src/lib.rs"
+  extern = [ ":libc" ]
+}
+
 ring_root = "$registry_github/ring-0.13.2/"
 
 component("ring_primitives") {
