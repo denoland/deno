@@ -9,7 +9,8 @@ export function setLogDebug(debug: boolean): void {
 }
 
 /**
- * Debug logging for deno. Enable with the `--DEBUG` command line flag.
+ * Debug logging for deno. 
+ * Enable with the `--log-debug` or `-D` command line flag.
  * @internal
  */
 // tslint:disable-next-line:no-any
