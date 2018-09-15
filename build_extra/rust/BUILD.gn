@@ -389,8 +389,8 @@ rust_crate("hyper") {
   ]
   args = [
     # TODO Remove these.
-    # "-Adeprecated",
-    # "-Aunused_imports",
+    "-Adeprecated",
+    "-Aunused_imports",
   ]
 }
 
