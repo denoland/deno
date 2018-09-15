@@ -40,7 +40,7 @@ import libEsnextIntlDts from "/third_party/node_modules/typescript/lib/lib.esnex
 import libEsnextSymbolDts from "/third_party/node_modules/typescript/lib/lib.esnext.symbol.d.ts!string";
 
 // Static definitions
-import fetchTypesDts from "/js/fetch_types.d.ts!string";
+import domTypesDts from "/js/dom_types.d.ts!string";
 import flatbuffersDts from "/third_party/node_modules/@types/flatbuffers/index.d.ts!string";
 import textEncodingDts from "/third_party/node_modules/@types/text-encoding/index.d.ts!string";
 import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
@@ -82,7 +82,7 @@ export const assetSourceCode: { [key: string]: string } = {
   "lib.esnext.symbol.d.ts": libEsnextSymbolDts,
 
   // Static definitions
-  "fetch-types.d.ts": fetchTypesDts,
+  "dom_types.d.ts": domTypesDts,
   "flatbuffers.d.ts": flatbuffersDts,
   "text-encoding.d.ts": textEncodingDts,
   "typescript.d.ts": typescriptDts

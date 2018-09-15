@@ -51,7 +51,8 @@ export class FileInfo {
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
-    this.mode = mode >= 0 ? mode : null; // null if invalid mode (Windows)
+    // null if invalid mode (Windows)
+    this.mode = mode >= 0 ? mode & 0o7777 : null;
   }
 
   /**

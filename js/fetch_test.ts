@@ -35,3 +35,11 @@ test(async function headersAppend() {
   }
   assert(err instanceof TypeError);
 });
+
+testPerm({ net: true }, async function fetchBlob() {
+  const response = await fetch("http://localhost:4545/package.json");
+  const headers = response.headers;
+  const blob = await response.blob();
+  assertEqual(blob.type, headers.get("Content-Type"));
+  assertEqual(blob.size, Number(headers.get("Content-Length")));
+});

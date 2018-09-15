@@ -55,8 +55,8 @@ impl DenoDir {
       deps,
       reload,
     };
-    deno_fs::mkdir(deno_dir.gen.as_ref())?;
-    deno_fs::mkdir(deno_dir.deps.as_ref())?;
+    deno_fs::mkdir(deno_dir.gen.as_ref(), 0o755)?;
+    deno_fs::mkdir(deno_dir.deps.as_ref(), 0o755)?;
 
     debug!("root {}", deno_dir.root.display());
     debug!("gen {}", deno_dir.gen.display());
