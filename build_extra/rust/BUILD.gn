@@ -128,6 +128,7 @@ rust_crate("winapi") {
     "profileapi",
     "propidl",
     "qos",
+    "rpc",
     "rpcdce",
     "rpcndr",
     "shlobj",
@@ -388,8 +389,8 @@ rust_crate("hyper") {
   ]
   args = [
     # TODO Remove these.
-    "-Adeprecated",
-    "-Aunused_imports",
+    # "-Adeprecated",
+    # "-Aunused_imports",
   ]
 }
 
