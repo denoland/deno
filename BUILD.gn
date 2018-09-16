@@ -54,18 +54,20 @@ main_extern = [
 
 ts_sources = [
   "js/assets.ts",
+  "js/blob.ts",
   "js/compiler.ts",
   "js/console.ts",
   "js/deno.ts",
   "js/dispatch.ts",
+  "js/dom_types.d.ts",
   "js/errors.ts",
   "js/fetch.ts",
-  "js/fetch_types.d.ts",
   "js/global-eval.ts",
   "js/globals.ts",
   "js/libdeno.ts",
   "js/main.ts",
   "js/mkdir.ts",
+  "js/make_temp_dir.ts",
   "js/mock_builtin.js",
   "js/os.ts",
   "js/plugins.d.ts",
@@ -80,6 +82,11 @@ ts_sources = [
   "js/v8_source_maps.ts",
   "js/write_file.ts",
   "tsconfig.json",
+
+  # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
+  # when npm packages are added/removed or their contents changes.
+  "package.json",
+  "third_party/yarn.lock",
 ]
 
 rust_executable("deno") {
@@ -236,9 +243,7 @@ run_node("gen_declarations") {
 
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
-  sources = ts_sources + [
-    "rollup.config.js",
-  ]
+  sources = ts_sources + [ "rollup.config.js" ]
   outputs = [
     out_dir + "main.js",
     out_dir + "main.js.map",

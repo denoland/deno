@@ -8,6 +8,8 @@ import "./os_test.ts";
 import "./read_file_test.ts";
 import "./write_file_test.ts";
 import "./mkdir_test.ts";
+import "./make_temp_dir_test.ts";
 import "./stat_test.ts";
 import "./rename_test.ts";
+import "./blob_test.ts";
 import "./chmod_test.ts";

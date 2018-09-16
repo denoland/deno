@@ -7,6 +7,7 @@ import * as fetch_ from "./fetch";
 import { libdeno } from "./libdeno";
 import { globalEval } from "./global-eval";
 import { DenoHeaders } from "./fetch";
+import { DenoBlob } from "./blob";
 
 declare global {
   interface Window {
@@ -26,6 +27,7 @@ declare global {
     TextDecoder: typeof TextDecoder;
 
     Headers: typeof Headers;
+    Blob: typeof Blob;
   }
 
   const clearTimeout: typeof timers.clearTimer;
@@ -42,6 +44,7 @@ declare global {
   const TextEncoder: typeof textEncoding.TextEncoder;
   const TextDecoder: typeof textEncoding.TextDecoder;
   const Headers: typeof DenoHeaders;
+  const Blob: typeof DenoBlob;
   // tslint:enable:variable-name
 }
 
@@ -63,3 +66,4 @@ window.TextDecoder = textEncoding.TextDecoder;
 window.fetch = fetch_.fetch;
 
 window.Headers = DenoHeaders;
+window.Blob = DenoBlob;
