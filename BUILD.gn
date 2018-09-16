@@ -59,7 +59,7 @@ ts_sources = [
   "js/console.ts",
   "js/deno.ts",
   "js/dispatch.ts",
-  "js/dom_types.d.ts",
+  "js/dom_types.ts",
   "js/errors.ts",
   "js/fetch.ts",
   "js/global-eval.ts",
