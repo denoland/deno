@@ -6,6 +6,7 @@ export { mkdirSync, mkdir } from "./mkdir";
 export { removeSync, remove, removeAllSync, removeAll } from "./remove";
 export { readFileSync, readFile } from "./read_file";
 export { renameSync, rename } from "./rename";
+export { chmodSync } from "./chmod";
 export { FileInfo, statSync, lstatSync, stat, lstat } from "./stat";
 export { writeFileSync, writeFile } from "./write_file";
 export { ErrorKind, DenoError } from "./errors";

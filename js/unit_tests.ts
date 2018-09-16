@@ -10,3 +10,4 @@ import "./write_file_test.ts";
 import "./mkdir_test.ts";
 import "./stat_test.ts";
 import "./rename_test.ts";
+import "./chmod_test.ts";

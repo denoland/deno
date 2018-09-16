@@ -1,6 +1,7 @@
 union Any {
   Start,
   StartRes,
+  Chmod,
   CodeFetch,
   CodeFetchRes,
   CodeCache,
@@ -77,6 +78,11 @@ table Base {
   error_kind: ErrorKind = NoError;
   error: string;
   msg: Any;
+}
+
+table Chmod {
+  path: string;
+  mode: uint32;
 }
 
 table Start {

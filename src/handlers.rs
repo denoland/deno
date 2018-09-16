@@ -47,6 +47,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::Start => handle_start,
     msg::Any::CodeFetch => handle_code_fetch,
     msg::Any::CodeCache => handle_code_cache,
+    msg::Any::Chmod => handle_chmod,
     msg::Any::Environ => handle_env,
     msg::Any::FetchReq => handle_fetch_req,
     msg::Any::TimerStart => handle_timer_start,
@@ -672,4 +673,30 @@ fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
     fs::rename(Path::new(&oldpath), Path::new(&newpath))?;
     Ok(None)
   }()))
+}
+
+fn handle_chmod(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let deno = from_c(d);
+  if !deno.flags.allow_write {
+    return odd_future(permission_denied());
+  };
+  let msg = base.msg_as_chmod().unwrap();
+  let path = msg.path().unwrap();
+  let mode = msg.mode();
+  debug!("handle_chmod {} {}", path, mode);
+   if cfg!(target_os = "windows") {
+    Box::new(futures::future::result(|| -> OpResult {
+    // let mut permissions = fs::metadata("foo.txt")?.permissions();
+    // permissions.set_mode(0o755);
+    // fs::set_permissions("foo.txt", permissions);
+    Ok(None)
+  }()))
+  } else {
+    Box::new(futures::future::result(|| -> OpResult {
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(mode);
+    let _result = fs::set_permissions(path, permissions)?;
+    Ok(None)
+  }()))
+  }
 }
