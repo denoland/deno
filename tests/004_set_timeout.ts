@@ -9,12 +9,3 @@ const id = setTimeout(() => {
 }, 10000);
 
 clearTimeout(id);
-
-const id2 = setTimeout(() => {
-  console.log("Clearing timeout");
-  // Should silently fail (no panic)
-  clearTimeout(id2);
-}, 500);
-
-// Should silently fail (no panic)
-clearTimeout(2147483647);
