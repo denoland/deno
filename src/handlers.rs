@@ -288,8 +288,7 @@ fn handle_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
           ..Default::default()
         },
       )
-    })
-    .collect();
+    }).collect();
   let tables = builder.create_vector(&vars);
   let msg = msg::EnvironRes::create(
     builder,
@@ -402,8 +401,7 @@ where
     .and_then(|_| {
       cb();
       Ok(())
-    })
-    .select(cancel_rx)
+    }).select(cancel_rx)
     .map(|_| ())
     .map_err(|_| ());
 
@@ -604,9 +602,7 @@ fn handle_write_file(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 // TODO(ry) Use Deno instead of DenoC as first arg.
 fn remove_timer(d: *const DenoC, timer_id: u32) {
   let deno = from_c(d);
-  assert!(deno.timers.contains_key(&timer_id));
   deno.timers.remove(&timer_id);
-  assert!(!deno.timers.contains_key(&timer_id));
 }
 
 // Prototype: https://github.com/ry/deno/blob/golang/timers.go#L25-L39
