@@ -10,7 +10,7 @@ testPerm({ write: true }, function chmodSyncSuccess() {
   deno.chmodSync(filename, 0o777);
   const fileInfo = deno.statSync(filename);
   console.log(fileInfo.mode);
-  assertEqual(fileInfo.mode - 32768, 0o777 ); //Look at issue number 756 for why 32768 was subtracted
+  assertEqual(fileInfo.mode, 0o777 );
 });
 
 testPerm({ write: false }, function chmodSyncPerm() {
