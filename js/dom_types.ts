@@ -13,7 +13,7 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 *******************************************************************************/
 
-type HeadersInit = string[][] | Record<string, string>;
+export type HeadersInit = string[][] | Record<string, string>;
 type BodyInit =
   | Blob
   | BufferSource
@@ -21,7 +21,7 @@ type BodyInit =
   | URLSearchParams
   | ReadableStream
   | string;
-type RequestInfo = Request | string;
+export type RequestInfo = Request | string;
 type ReferrerPolicy =
   | ""
   | "no-referrer"
@@ -29,9 +29,9 @@ type ReferrerPolicy =
   | "origin-only"
   | "origin-when-cross-origin"
   | "unsafe-url";
-type BlobPart = BufferSource | Blob | string;
+export type BlobPart = BufferSource | Blob | string;
 type FormDataEntryValue = File | string;
-declare type EventListenerOrEventListenerObject =
+export type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
 
@@ -39,13 +39,13 @@ interface Element {
   // TODO
 }
 
-interface HTMLFormElement {
+export interface HTMLFormElement {
   // TODO
 }
 
 type EndingType = "tranparent" | "native";
 
-interface BlobPropertyBag {
+export interface BlobPropertyBag {
   type?: string;
   ending?: EndingType;
 }
@@ -68,7 +68,7 @@ interface EventTarget {
   ): void;
 }
 
-interface ProgressEventInit extends EventInit {
+export interface ProgressEventInit extends EventInit {
   lengthComputable?: boolean;
   loaded?: number;
   total?: number;
@@ -104,6 +104,7 @@ interface URLSearchParams {
   sort(): void;
   forEach(
     callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
+    // tslint:disable-next-line:no-any
     thisArg?: any
   ): void;
 }
@@ -148,12 +149,7 @@ interface File extends Blob {
   readonly name: string;
 }
 
-declare var File: {
-  prototype: File;
-  new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
-};
-
-interface FilePropertyBag extends BlobPropertyBag {
+export interface FilePropertyBag extends BlobPropertyBag {
   lastModified?: number;
 }
 
@@ -162,11 +158,6 @@ interface ProgressEvent extends Event {
   readonly loaded: number;
   readonly total: number;
 }
-
-declare var ProgressEvent: {
-  prototype: ProgressEvent;
-  new (type: string, eventInitDict?: ProgressEventInit): ProgressEvent;
-};
 
 interface EventListenerOptions {
   capture?: boolean;
@@ -179,9 +170,11 @@ interface AddEventListenerOptions extends EventListenerOptions {
 
 interface AbortSignal extends EventTarget {
   readonly aborted: boolean;
+  // tslint:disable-next-line:no-any
   onabort: ((this: AbortSignal, ev: ProgressEvent) => any) | null;
   addEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
+    // tslint:disable-next-line:no-any
     listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
     options?: boolean | AddEventListenerOptions
   ): void;
@@ -192,6 +185,7 @@ interface AbortSignal extends EventTarget {
   ): void;
   removeEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
+    // tslint:disable-next-line:no-any
     listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
     options?: boolean | EventListenerOptions
   ): void;
@@ -202,21 +196,11 @@ interface AbortSignal extends EventTarget {
   ): void;
 }
 
-declare var AbortSignal: {
-  prototype: AbortSignal;
-  new (): AbortSignal;
-};
-
 interface ReadableStream {
   readonly locked: boolean;
   cancel(): Promise<void>;
   getReader(): ReadableStreamReader;
 }
-
-declare var ReadableStream: {
-  prototype: ReadableStream;
-  new (): ReadableStream;
-};
 
 interface EventListenerObject {
   handleEvent(evt: Event): void;
@@ -224,16 +208,12 @@ interface EventListenerObject {
 
 interface ReadableStreamReader {
   cancel(): Promise<void>;
+  // tslint:disable-next-line:no-any
   read(): Promise<any>;
   releaseLock(): void;
 }
 
-declare var ReadableStreamReader: {
-  prototype: ReadableStreamReader;
-  new (): ReadableStreamReader;
-};
-
-interface FormData {
+export interface FormData {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
@@ -246,14 +226,10 @@ interface FormData {
       key: string,
       parent: FormData
     ) => void,
+    // tslint:disable-next-line:no-any
     thisArg?: any
   ): void;
 }
-
-declare var FormData: {
-  prototype: FormData;
-  new (form?: HTMLFormElement): FormData;
-};
 
 export interface Blob {
   readonly size: number;
@@ -261,22 +237,18 @@ export interface Blob {
   slice(start?: number, end?: number, contentType?: string): Blob;
 }
 
-declare var Blob: {
-  prototype: Blob;
-  new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
-};
-
 interface Body {
   readonly body: ReadableStream | null;
   readonly bodyUsed: boolean;
   arrayBuffer(): Promise<ArrayBuffer>;
   blob(): Promise<Blob>;
   formData(): Promise<FormData>;
+  // tslint:disable-next-line:no-any
   json(): Promise<any>;
   text(): Promise<string>;
 }
 
-interface Headers {
+export interface Headers {
   append(name: string, value: string): void;
   delete(name: string): void;
   get(name: string): string | null;
@@ -284,14 +256,10 @@ interface Headers {
   set(name: string, value: string): void;
   forEach(
     callbackfn: (value: string, key: string, parent: Headers) => void,
+    // tslint:disable-next-line:no-any
     thisArg?: any
   ): void;
 }
-
-declare var Headers: {
-  prototype: Headers;
-  new (init?: HeadersInit): Headers;
-};
 
 type RequestCache =
   | "default"
@@ -343,6 +311,7 @@ export interface RequestInit {
   referrer?: string;
   referrerPolicy?: ReferrerPolicy;
   signal?: AbortSignal | null;
+  // tslint:disable-next-line:no-any
   window?: any;
 }
 
@@ -439,11 +408,6 @@ export interface Request extends Body {
   clone(): Request;
 }
 
-declare var Request: {
-  prototype: Request;
-  new (input: RequestInfo, init?: RequestInit): Request;
-};
-
 export interface Response extends Body {
   readonly headers: Headers;
   readonly ok: boolean;
@@ -455,10 +419,3 @@ export interface Response extends Body {
   readonly url: string;
   clone(): Response;
 }
-
-declare var Response: {
-  prototype: Response;
-  new (body?: BodyInit | null, init?: ResponseInit): Response;
-  error(): Response;
-  redirect(url: string, status?: number): Response;
-};
