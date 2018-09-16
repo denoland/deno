@@ -288,8 +288,7 @@ fn handle_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
           ..Default::default()
         },
       )
-    })
-    .collect();
+    }).collect();
   let tables = builder.create_vector(&vars);
   let msg = msg::EnvironRes::create(
     builder,
@@ -402,8 +401,7 @@ where
     .and_then(|_| {
       cb();
       Ok(())
-    })
-    .select(cancel_rx)
+    }).select(cancel_rx)
     .map(|_| ())
     .map_err(|_| ());
 
@@ -533,13 +531,13 @@ macro_rules! to_seconds {
 }
 
 #[cfg(any(unix))]
-fn get_mode(perm: fs::Permissions) -> i32 {
-  (perm.mode() as i32)
+fn get_mode(perm: fs::Permissions) -> u32 {
+  perm.mode()
 }
 
 #[cfg(not(any(unix)))]
-fn get_mode(_perm: fs::Permissions) -> i32 {
-  -1
+fn get_mode(_perm: fs::Permissions) -> u32 {
+  0
 }
 
 fn handle_stat(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
@@ -568,6 +566,7 @@ fn handle_stat(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
         accessed: to_seconds!(metadata.accessed()),
         created: to_seconds!(metadata.created()),
         mode: get_mode(metadata.permissions()),
+        has_mode: cfg!(target_family = "unix"),
         ..Default::default()
       },
     );

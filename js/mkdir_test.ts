@@ -13,7 +13,8 @@ testPerm({ write: true }, function mkdirSyncMode() {
   const path = deno.makeTempDirSync() + "/dir/subdir";
   deno.mkdirSync(path, 0o755); // no perm for x
   const pathInfo = deno.statSync(path);
-  if (pathInfo.mode !== null) { // Skip windows
+  if (pathInfo.mode !== null) {
+    // Skip windows
     assertEqual(pathInfo.mode & 0o777, 0o755);
   }
 });
