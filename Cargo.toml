@@ -8,13 +8,15 @@ name = "deno"
 version = "0.0.0"
 
 [dependencies]
-url = "1.7.1"
+dirs = "1.0.3"
+flatbuffers = { path = "third_party/flatbuffers/rust/flatbuffers/" }
+futures = "0.1.23"
+hyper = "0.12.9"
+hyper-rustls = "0.14.0"
 libc = "0.2.42"
 log = "0.4.4"
 rand = "0.4.3"
+ring = "0.13.2"
 tempfile = "3"
 tokio = "0.1.8"
-hyper = "0.12.9"
-hyper-rustls = "0.14.0"
-flatbuffers = { path = "third_party/flatbuffers/rust/flatbuffers/" }
-dirs = "1.0.3"
+url = "1.7.1"
