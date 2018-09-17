@@ -9,7 +9,6 @@ testPerm({ write: true }, function chmodSyncSuccess() {
   deno.writeFileSync(filename, data, 0o666);
   deno.chmodSync(filename, 0o777);
   const fileInfo = deno.statSync(filename);
-  console.log(fileInfo.mode);
   assertEqual(fileInfo.mode, 0o777 );
 });
 
