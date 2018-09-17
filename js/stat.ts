@@ -71,14 +71,15 @@ class FileInfoImpl implements FileInfo {
     const accessed = this._msg.accessed().toFloat64();
     const created = this._msg.created().toFloat64();
     const mode = this._msg.mode(); // negative for invalid mode (Windows)
-
+    
     this._isFile = this._msg.isFile();
     this._isSymlink = this._msg.isSymlink();
     this.len = this._msg.len().toFloat64();
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
-    this.mode = mode >= 0 ? mode : null; // null if invalid mode (Windows)
+    // null if invalid mode (Windows)
+    this.mode = mode >= 0 ? mode & 0o7777 : null;
   }
 
   isFile() {
