@@ -8,10 +8,9 @@ import { assert } from "./util";
  * A FileInfo describes a file and is returned by `stat`, `lstat`,
  * `statSync`, `lstatSync`.
  */
-// TODO FileInfo should be an interface not a class.
-export class FileInfo {
-  private readonly _isFile: boolean;
-  private readonly _isSymlink: boolean;
+export interface FileInfo {
+  readonly _isFile: boolean;
+  readonly _isSymlink: boolean;
   /** The size of the file, in bytes. */
   len: number;
   /**
@@ -38,13 +37,41 @@ export class FileInfo {
    */
   mode: number | null;
 
+  /**
+   * Returns whether this is info for a regular file. This result is mutually
+   * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
+   */
+  isFile(): boolean;
+
+  /**
+   * Returns whether this is info for a regular directory. This result is
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`.
+   */
+  isDirectory(): boolean;
+
+  /**
+   * Returns whether this is info for a symlink. This result is
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`.
+   */
+  isSymlink(): boolean;
+}
+
+class FileInfoImpl implements FileInfo {
+  readonly _isFile: boolean;
+  readonly _isSymlink: boolean;
+  len: number;
+  modified: number | null;
+  accessed: number | null;
+  created: number | null;
+  mode: number | null;
+
   /* @internal */
   constructor(private _msg: fbs.StatRes) {
     const modified = this._msg.modified().toFloat64();
     const accessed = this._msg.accessed().toFloat64();
     const created = this._msg.created().toFloat64();
     const mode = this._msg.mode(); // negative for invalid mode (Windows)
-
+    
     this._isFile = this._msg.isFile();
     this._isSymlink = this._msg.isSymlink();
     this.len = this._msg.len().toFloat64();
@@ -55,26 +82,14 @@ export class FileInfo {
     this.mode = mode >= 0 ? mode & 0o7777 : null;
   }
 
-  /**
-   * Returns whether this is info for a regular file. This result is mutually
-   * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
-   */
   isFile() {
     return this._isFile;
   }
 
-  /**
-   * Returns whether this is info for a regular directory. This result is
-   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`.
-   */
   isDirectory() {
     return !this._isFile && !this._isSymlink;
   }
 
-  /**
-   * Returns whether this is info for a symlink. This result is
-   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`.
-   */
   isSymlink() {
     return this._isSymlink;
   }
@@ -148,5 +163,5 @@ function res(baseRes: null | fbs.Base): FileInfo {
   assert(fbs.Any.StatRes === baseRes!.msgType());
   const res = new fbs.StatRes();
   assert(baseRes!.msg(res) != null);
-  return new FileInfo(res);
+  return new FileInfoImpl(res);
 }
