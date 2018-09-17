@@ -36,7 +36,6 @@ default_args = {
   clang_use_chrome_plugins = false
 
   v8_deprecation_warnings = false
-  v8_embedder_string = "-deno"
   v8_enable_gdbjit = false
   v8_enable_i18n_support = false
   v8_experimental_extra_library_files = []

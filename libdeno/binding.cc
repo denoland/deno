@@ -58,7 +58,7 @@ void HandleExceptionStr(v8::Local<v8::Context> context,
     // global_error_handler is set so we try to handle the exception in
     // javascript.
     v8::Local<v8::Value> args[5];
-    args[0] = exception->ToString();
+    args[0] = exception->ToString(context).ToLocalChecked();
     args[1] = message->GetScriptResourceName();
     args[2] = line;
     args[3] = column;
@@ -79,7 +79,7 @@ void HandleExceptionStr(v8::Local<v8::Context> context,
     msg += "\n";
 
     for (int i = 0; i < stack_trace->GetFrameCount(); ++i) {
-      auto frame = stack_trace->GetFrame(i);
+      auto frame = stack_trace->GetFrame(isolate, i);
       v8::String::Utf8Value script_name(isolate, frame->GetScriptName());
       int l = frame->GetLineNumber();
       int c = frame->GetColumn();
