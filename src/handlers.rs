@@ -683,18 +683,15 @@ fn handle_chmod(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let path = msg.path().unwrap();
   let mode = msg.mode();
   debug!("handle_chmod {} {}", path, mode);
-   if cfg!(target_os = "windows") {
-    Box::new(futures::future::result(|| -> OpResult {
-    // let mut permissions = fs::metadata("foo.txt")?.permissions();
-    // permissions.set_mode(0o755);
-    // fs::set_permissions("foo.txt", permissions);
-    Ok(None)
-  }()))
-  } else {
+   if cfg!(target_family = "unix") {
     Box::new(futures::future::result(|| -> OpResult {
     let mut permissions = fs::metadata(path)?.permissions();
     permissions.set_mode(mode);
     let _result = fs::set_permissions(path, permissions)?;
+    Ok(None)
+  }()))
+  } else {
+    Box::new(futures::future::result(|| -> OpResult {
     Ok(None)
   }()))
   }
