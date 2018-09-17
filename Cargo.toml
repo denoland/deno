@@ -17,4 +17,4 @@ tokio = "0.1"
 hyper = "0.12.8"
 hyper-rustls = "0.14.0"
 flatbuffers = { path = "third_party/flatbuffers/rust/flatbuffers/" }
-
+dirs = "1.0.3"

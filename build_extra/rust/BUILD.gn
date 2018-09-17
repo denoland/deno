@@ -103,6 +103,7 @@ rust_crate("winapi") {
     "basetsd",
     "cfg",
     "cfgmgr32",
+    "combaseapi",
     "errhandlingapi",
     "excpt",
     "fileapi",
@@ -110,6 +111,7 @@ rust_crate("winapi") {
     "handleapi",
     "inaddr",
     "in6addr",
+    "knownfolders",
     "ktmtypes",
     "libloaderapi",
     "lsalookup",
@@ -119,15 +121,24 @@ rust_crate("winapi") {
     "ntdef",
     "ntsecapi",
     "ntstatus",
+    "objbase",
+    "objidl",
+    "objidlbase",
     "processthreadsapi",
     "profileapi",
+    "propidl",
     "qos",
+    "rpc",
+    "rpcdce",
     "rpcndr",
+    "shlobj",
+    "shtypes",
     "sspi",
     "std",
     "subauth",
     "sysinfoapi",
     "timezoneapi",
+    "unknwnbase",
     "vadefs",
     "vcruntime",
     "winbase",
@@ -595,6 +606,14 @@ rust_crate("hyper_rustls") {
     ":tokio_tcp",
     ":webpki",
     ":webpki_roots",
+  ]
+}
+
+rust_crate("dirs") {
+  source_root = "$registry_github/dirs-1.0.3/src/lib.rs"
+  extern = [
+    ":libc",
+    ":winapi",
   ]
 }
 
