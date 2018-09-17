@@ -180,6 +180,8 @@ template("run_rustc") {
       deps = []
     }
 
+    inputs = []
+
     # Build the list of '--extern' arguments from the 'extern_infos' array.
     foreach(info, extern_infos) {
       rlib = "$out_dir/lib${info.crate_name_and_version}.rlib"
@@ -187,7 +189,11 @@ template("run_rustc") {
         "--extern",
         info.crate_name + "=" + rebase_path(rlib, root_build_dir),
       ]
-      deps += [ info.label ]
+      inputs += [ rlib ]
+      deps += [
+        "${info.label}_rustc",
+        info.label,
+      ]
     }
   }
 }
