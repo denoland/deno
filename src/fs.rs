@@ -80,7 +80,7 @@ pub fn mkdir(path: &Path, perm: u32) -> std::io::Result<()> {
 #[cfg(any(unix))]
 fn set_dir_permission(builder: &mut DirBuilder, perm: u32) {
   debug!("set dir perm to {}", perm);
-  builder.mode(perm);
+  builder.mode(perm & 0o777);
 }
 
 #[cfg(not(any(unix)))]
