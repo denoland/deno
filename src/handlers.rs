@@ -696,10 +696,8 @@ fn handle_symlink(d: *const DenoC, base: &msg::Base) -> Box<Op> {
     let newname = String::from(msg.newname().unwrap());
     Box::new(futures::future::result(|| -> OpResult {
       debug!("handle_symlink {} {}", oldname, newname);
-      let oldname_ = Path::new(&oldname);
-      let newname_ = Path::new(&newname);
       #[cfg(any(unix))]
-      std::os::unix::fs::symlink(&oldname_, &newname_)?;
+      std::os::unix::fs::symlink(Path::new(&oldname), Path::new(&newname))?;
       Ok(None)
     }()))
   }
