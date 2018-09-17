@@ -57,12 +57,17 @@ template("run_rustc") {
                              "is_test",
                              "source_root",
                              "testonly",
+                             "treat_warnings_as_errors",
                            ])
     if (!defined(crate_name)) {
       crate_name = target_name
     }
     if (!defined(is_test)) {
       is_test = false
+    }
+    if (!defined(treat_warnings_as_errors)) {
+      # Use global setting if not explicitly specified for this target.
+      treat_warnings_as_errors = rust_treat_warnings_as_errors
     }
 
     sources = [
@@ -76,7 +81,7 @@ template("run_rustc") {
       "--crate-type=$crate_type",
     ]
 
-    if (rust_treat_warnings_as_errors) {
+    if (treat_warnings_as_errors) {
       args += [ "-Dwarnings" ]
     }
 
@@ -254,6 +259,7 @@ template("rust_crate") {
                              "is_test",
                              "source_root",
                              "testonly",
+                             "treat_warnings_as_errors",
                            ])
   }
 

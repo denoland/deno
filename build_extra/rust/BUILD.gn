@@ -14,6 +14,7 @@ registry_github = "$crates/registry/src/github.com-1ecc6299db9ec823/"
 rust_crate("libc") {
   source_root = "$registry_github/libc-0.2.42/src/lib.rs"
   features = [ "use_std" ]
+  args = [ "-Aunused_macros" ]  # Unused macro `f` in macros.rs:51.
 }
 
 rust_crate("url") {
@@ -163,6 +164,18 @@ rust_crate("winapi-0.2") {
   crate_name = "winapi"
   crate_version = "0.2"
   source_root = "$registry_github/winapi-0.2.8/src/lib.rs"
+  args = [
+    "-Asafe_packed_borrows",
+    "-Awarnings",
+  ]
+
+  # The winapi-0.2 crate contains an unused type alias, but it also specifically
+  # sets the lint level to warn about this, so we can't suppress that warning
+  # with a command line argument, other than by using "-Awarnings", which has no
+  # effect if we also pass "-Dwarnings" to treat all warnings as errors.
+  # Since this crate is outdated and this will never be fixed, just override
+  # the global 'rust_treat_warnings_as_errors' setting for this crate.
+  treat_warnings_as_errors = false
 }
 
 # TODO: Remove this crate together with crate 'winapi-0.2'.
@@ -242,6 +255,7 @@ rust_crate("miow") {
       crate_version = "0.2"
     },
   ]
+  args = [ "-Aunused_macros" ]  # Unused macro `t` in lib.rs:21.
 }
 
 rust_crate("iovec") {
