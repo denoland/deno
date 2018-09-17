@@ -7,11 +7,22 @@ testPerm({ write: true }, function symlinkSyncSuccess() {
   const oldname = testDir + "/oldname";
   const newname = testDir + "/newname";
   deno.mkdirSync(oldname);
-  deno.symlinkSync(oldname, newname);
-  const newNameInfoLStat = deno.lstatSync(newname);
-  const newNameInfoStat = deno.statSync(newname);
-  assert(newNameInfoLStat.isSymlink());
-  assert(newNameInfoStat.isDirectory());
+  let errOnWindows;
+  // Just for now, until we implement symlink for Windows.
+  try {
+    deno.symlinkSync(oldname, newname);
+  } catch (e) {
+    errOnWindows = e;
+  }
+  if (errOnWindows) {
+    assertEqual(errOnWindows.kind, deno.ErrorKind.Other);
+    assertEqual(errOnWindows.msg, "Not implemented");
+  } else {
+    const newNameInfoLStat = deno.lstatSync(newname);
+    const newNameInfoStat = deno.statSync(newname);
+    assert(newNameInfoLStat.isSymlink());
+    assert(newNameInfoStat.isDirectory());
+  }
 });
 
 testPerm({ write: false }, function symlinkSyncPerm() {
@@ -25,14 +36,36 @@ testPerm({ write: false }, function symlinkSyncPerm() {
   assertEqual(err.name, "PermissionDenied");
 });
 
+// Just for now, until we implement symlink for Windows.
+testPerm({ write: true }, function symlinkSyncNotImplemented() {
+  let err;
+  try {
+    deno.symlinkSync("oldname", "newname", "dir");
+  } catch (e) {
+    err = e;
+  }
+  assertEqual(err.message, "Not implemented");
+});
+
 testPerm({ write: true }, async function symlinkSuccess() {
   const testDir = deno.makeTempDirSync() + "/test-symlink";
   const oldname = testDir + "/oldname";
   const newname = testDir + "/newname";
   deno.mkdirSync(oldname);
-  await deno.symlink(oldname, newname);
-  const newNameInfoLStat = deno.lstatSync(newname);
-  const newNameInfoStat = deno.statSync(newname);
-  assert(newNameInfoLStat.isSymlink());
-  assert(newNameInfoStat.isDirectory());
+  let errOnWindows;
+  // Just for now, until we implement symlink for Windows.
+  try {
+    await deno.symlink(oldname, newname);
+  } catch (e) {
+    errOnWindows = e;
+  }
+  if (errOnWindows) {
+    assertEqual(errOnWindows.kind, deno.ErrorKind.Other);
+    assertEqual(errOnWindows.msg, "Not implemented");
+  } else {
+    const newNameInfoLStat = deno.lstatSync(newname);
+    const newNameInfoStat = deno.statSync(newname);
+    assert(newNameInfoLStat.isSymlink());
+    assert(newNameInfoStat.isDirectory());
+  }
 });

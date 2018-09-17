@@ -143,6 +143,13 @@ fn permission_denied() -> DenoError {
   ))
 }
 
+fn not_implemented() -> DenoError {
+  DenoError::from(std::io::Error::new(
+    std::io::ErrorKind::Other,
+    "Not implemented"
+  ))
+}
+
 fn handle_exit(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_exit().unwrap();
   std::process::exit(msg.code())
@@ -680,26 +687,20 @@ fn handle_symlink(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   if !deno.flags.allow_write {
     return odd_future(permission_denied());
   }
-  let msg = base.msg_as_symlink().unwrap();
-  let oldname = String::from(msg.oldname().unwrap());
-  let newname = String::from(msg.newname().unwrap());
-  Box::new(futures::future::result(|| -> OpResult {
-    debug!("handle_symlink {} {}", oldname, newname);
-    let oldname_ = Path::new(&oldname);
-    let newname_ = Path::new(&newname);
-    if cfg!(windows) {
-      let metadata = fs::metadata(&oldname_)?;
-      if metadata.is_dir() {
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_dir(&oldname_, &newname_)?;
-      } else {
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_file(&oldname_, &newname_)?;
-      }
-    } else {
-      #[cfg(unix)]
+  // TODO Use type for Windows.
+  if cfg!(windows) {
+    return odd_future(not_implemented());
+  } else {
+    let msg = base.msg_as_symlink().unwrap();
+    let oldname = String::from(msg.oldname().unwrap());
+    let newname = String::from(msg.newname().unwrap());
+    Box::new(futures::future::result(|| -> OpResult {
+      debug!("handle_symlink {} {}", oldname, newname);
+      let oldname_ = Path::new(&oldname);
+      let newname_ = Path::new(&newname);
+      #[cfg(any(unix))]
       std::os::unix::fs::symlink(&oldname_, &newname_)?;
-    }
-    Ok(None)
-  }()))
+      Ok(None)
+    }()))
+  }
 }
