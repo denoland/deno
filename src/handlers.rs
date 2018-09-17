@@ -605,9 +605,7 @@ fn handle_write_file(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 // TODO(ry) Use Deno instead of DenoC as first arg.
 fn remove_timer(d: *const DenoC, timer_id: u32) {
   let deno = from_c(d);
-  assert!(deno.timers.contains_key(&timer_id));
   deno.timers.remove(&timer_id);
-  assert!(!deno.timers.contains_key(&timer_id));
 }
 
 // Prototype: https://github.com/ry/deno/blob/golang/timers.go#L25-L39

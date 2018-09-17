@@ -86,7 +86,7 @@ export class FileInfo {
  * be returned.
  *
  *     import { lstat } from "deno";
- *     const fileInfo = await deno.lstat("hello.txt");
+ *     const fileInfo = await lstat("hello.txt");
  *     assert(fileInfo.isFile());
  */
 export async function lstat(filename: string): Promise<FileInfo> {
@@ -99,7 +99,7 @@ export async function lstat(filename: string): Promise<FileInfo> {
  * be returned.
  *
  *     import { lstatSync } from "deno";
- *     const fileInfo = deno.lstatSync("hello.txt");
+ *     const fileInfo = lstatSync("hello.txt");
  *     assert(fileInfo.isFile());
  */
 export function lstatSync(filename: string): FileInfo {
@@ -111,7 +111,7 @@ export function lstatSync(filename: string): FileInfo {
  * `stat` Will always follow symlinks.
  *
  *     import { stat } from "deno";
- *     const fileInfo = await deno.stat("hello.txt");
+ *     const fileInfo = await stat("hello.txt");
  *     assert(fileInfo.isFile());
  */
 export async function stat(filename: string): Promise<FileInfo> {
@@ -123,7 +123,7 @@ export async function stat(filename: string): Promise<FileInfo> {
  * `statSync` Will always follow symlinks.
  *
  *     import { statSync } from "deno";
- *     const fileInfo = deno.statSync("hello.txt");
+ *     const fileInfo = statSync("hello.txt");
  *     assert(fileInfo.isFile());
  */
 export function statSync(filename: string): FileInfo {
