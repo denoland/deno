@@ -52,7 +52,7 @@ impl Isolate {
   }
 
   pub fn execute(
-    &mut self,
+    &self,
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), DenoException> {
