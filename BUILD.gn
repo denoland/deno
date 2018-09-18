@@ -54,6 +54,7 @@ main_extern = [
   "$rust_build:tempfile",
   "$rust_build:rand",
   "$rust_build:tokio",
+  "$rust_build:tokio_executor",
   "$rust_build:url",
   "$rust_build:remove_dir_all",
   "$rust_build:dirs",

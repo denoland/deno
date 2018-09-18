@@ -7,6 +7,7 @@ extern crate msg_rs as msg;
 extern crate rand;
 extern crate tempfile;
 extern crate tokio;
+extern crate tokio_executor;
 extern crate url;
 #[macro_use]
 extern crate lazy_static;
@@ -25,9 +26,9 @@ pub mod handlers;
 mod http;
 mod isolate;
 mod libdeno;
+mod tokio_util;
 mod version;
 
-use isolate::Isolate;
 use std::env;
 
 static LOGGER: Logger = Logger;
@@ -49,18 +50,16 @@ impl log::Log for Logger {
 
 fn main() {
   log::set_logger(&LOGGER).unwrap();
-
   let args = env::args().collect();
-  let mut isolate = Isolate::new(args);
-  flags::process(&isolate.flags);
-
-  isolate
-    .execute("deno_main.js", "denoMain();")
-    .unwrap_or_else(|err| {
-      error!("{}", err);
-      std::process::exit(1);
-    });
-
-  // Start the Tokio event loop
-  isolate.rt.run().expect("err");
+  let mut isolate = isolate::Isolate::new(args, handlers::msg_from_js);
+  flags::process(&isolate.state.flags);
+  tokio_util::init(|| {
+    isolate
+      .execute("deno_main.js", "denoMain();")
+      .unwrap_or_else(|err| {
+        error!("{}", err);
+        std::process::exit(1);
+      });
+    isolate.event_loop();
+  });
 }
