@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use dirs;
 use errors::DenoError;
 use errors::DenoResult;
 use errors::ErrorKind;
@@ -39,7 +40,7 @@ impl DenoDir {
     custom_root: Option<&Path>,
   ) -> std::io::Result<DenoDir> {
     // Only setup once.
-    let home_dir = std::env::home_dir().expect("Could not get home directory.");
+    let home_dir = dirs::home_dir().expect("Could not get home directory.");
     let default = home_dir.join(".deno");
 
     let root: PathBuf = match custom_root {
