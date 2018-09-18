@@ -366,6 +366,10 @@ test_script:
   - ps: Exec { & python tools\test.py $env:DENO_BUILD_PATH }
 
 after_test:
+  # Delete the the rollup cache, which is unreliable, so that it doesn't get
+  # persisted in the appveyor cache.
+  - ps: if (Get-SaveCache) { Delete-Tree "$env:DENO_BUILD_PATH\.rpt2_cache" }
+
   # Remove stale files and empty dirs from the build directory.
   - ps: Stop-TraceFilesNeeded
 
