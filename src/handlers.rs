@@ -2,13 +2,13 @@
 use errors::DenoError;
 use errors::DenoResult;
 use flatbuffers::FlatBufferBuilder;
-use from_c;
 use fs as deno_fs;
 use futures;
 use futures::sync::oneshot;
 use hyper;
 use hyper::rt::{Future, Stream};
 use hyper::Client;
+use isolate::from_c;
 use libdeno;
 use libdeno::{deno_buf, DenoC};
 use msg;
@@ -83,7 +83,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     ))
   });
 
-  let deno = from_c(d);
+  let isolate = from_c(d);
   if base.sync() {
     // Execute future synchronously.
     // println!("sync handler {}", msg::enum_name_any(msg_type));
@@ -92,7 +92,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       None => {}
       Some(box_u8) => {
         let buf = deno_buf_from(box_u8);
-        // Set the synchronous response, the value returned from deno.send().
+        // Set the synchronous response, the value returned from isolate.send().
         unsafe { libdeno::deno_set_response(d, buf) }
       }
     }
@@ -120,7 +120,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       unsafe { libdeno::deno_send(d, buf) };
       Ok(())
     });
-    deno.rt.spawn(future);
+    isolate.rt.spawn(future);
   }
 }
 
@@ -148,10 +148,10 @@ fn handle_exit(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
 }
 
 fn handle_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let deno = from_c(d);
+  let isolate = from_c(d);
   let mut builder = FlatBufferBuilder::new();
 
-  let argv = deno.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+  let argv = isolate.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
 
   let cwd_path = std::env::current_dir().unwrap();
@@ -163,7 +163,7 @@ fn handle_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
     &msg::StartResArgs {
       cwd: Some(cwd_off),
       argv: Some(argv_off),
-      debug_flag: deno.flags.log_debug,
+      debug_flag: isolate.flags.log_debug,
       ..Default::default()
     },
   );
@@ -202,19 +202,23 @@ fn odd_future(err: DenoError) -> Box<Op> {
   Box::new(futures::future::err(err))
 }
 
-// https://github.com/denoland/deno/blob/golang/os.go#L100-L154
+// https://github.com/denoland/isolate/blob/golang/os.go#L100-L154
 fn handle_code_fetch(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_code_fetch().unwrap();
   let cmd_id = base.cmd_id();
   let module_specifier = msg.module_specifier().unwrap();
   let containing_file = msg.containing_file().unwrap();
-  let deno = from_c(d);
+  let isolate = from_c(d);
 
-  assert_eq!(deno.dir.root.join("gen"), deno.dir.gen, "Sanity check");
+  assert_eq!(
+    isolate.dir.root.join("gen"),
+    isolate.dir.gen,
+    "Sanity check"
+  );
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
-    let out = deno.dir.code_fetch(module_specifier, containing_file)?;
+    let out = isolate.dir.code_fetch(module_specifier, containing_file)?;
     let mut msg_args = msg::CodeFetchResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
@@ -240,15 +244,15 @@ fn handle_code_fetch(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-// https://github.com/denoland/deno/blob/golang/os.go#L156-L169
+// https://github.com/denoland/isolate/blob/golang/os.go#L156-L169
 fn handle_code_cache(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_code_cache().unwrap();
   let filename = msg.filename().unwrap();
   let source_code = msg.source_code().unwrap();
   let output_code = msg.output_code().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
-    let deno = from_c(d);
-    deno.dir.code_cache(filename, source_code, output_code)?;
+    let isolate = from_c(d);
+    isolate.dir.code_cache(filename, source_code, output_code)?;
     Ok(None)
   }()))
 }
@@ -258,8 +262,8 @@ fn handle_set_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let key = msg.key().unwrap();
   let value = msg.value().unwrap();
 
-  let deno = from_c(d);
-  if !deno.flags.allow_env {
+  let isolate = from_c(d);
+  if !isolate.flags.allow_env {
     return odd_future(permission_denied());
   }
 
@@ -268,9 +272,9 @@ fn handle_set_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 }
 
 fn handle_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let deno = from_c(d);
+  let isolate = from_c(d);
   let cmd_id = base.cmd_id();
-  if !deno.flags.allow_env {
+  if !isolate.flags.allow_env {
     return odd_future(permission_denied());
   }
 
@@ -288,8 +292,7 @@ fn handle_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
           ..Default::default()
         },
       )
-    })
-    .collect();
+    }).collect();
   let tables = builder.create_vector(&vars);
   let msg = msg::EnvironRes::create(
     builder,
@@ -314,9 +317,9 @@ fn handle_fetch_req(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let cmd_id = base.cmd_id();
   let id = msg.id();
   let url = msg.url().unwrap();
-  let deno = from_c(d);
+  let isolate = from_c(d);
 
-  if !deno.flags.allow_net {
+  if !isolate.flags.allow_net {
     return odd_future(permission_denied());
   }
 
@@ -402,8 +405,7 @@ where
     .and_then(|_| {
       cb();
       Ok(())
-    })
-    .select(cancel_rx)
+    }).select(cancel_rx)
     .map(|_| ())
     .map_err(|_| ());
 
@@ -418,14 +420,14 @@ fn handle_make_temp_dir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let prefix = msg.prefix();
   let suffix = msg.suffix();
 
-  let deno = from_c(d);
-  if !deno.flags.allow_write {
+  let isolate = from_c(d);
+  if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   }
   // TODO Use blocking() here.
   Box::new(futures::future::result(|| -> OpResult {
     // TODO(piscisaureus): use byte vector for paths, not a string.
-    // See https://github.com/denoland/deno/issues/627.
+    // See https://github.com/denoland/isolate/issues/627.
     // We can't assume that paths are always valid utf8 strings.
     let path = deno_fs::make_temp_dir(dir.map(Path::new), prefix, suffix)?;
     let builder = &mut FlatBufferBuilder::new();
@@ -453,8 +455,8 @@ fn handle_mkdir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_mkdir().unwrap();
   let mode = msg.mode();
   let path = msg.path().unwrap();
-  let deno = from_c(d);
-  if !deno.flags.allow_write {
+  let isolate = from_c(d);
+  if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   }
   // TODO Use tokio_threadpool.
@@ -469,8 +471,8 @@ fn handle_remove(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_remove().unwrap();
   let path = msg.path().unwrap();
   let recursive = msg.recursive();
-  let deno = from_c(d);
-  if !deno.flags.allow_write {
+  let isolate = from_c(d);
+  if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   }
   // TODO Use tokio_threadpool.
@@ -491,7 +493,7 @@ fn handle_remove(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-// Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
+// Prototype https://github.com/denoland/isolate/blob/golang/os.go#L171-L184
 fn handle_read_file(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
@@ -591,8 +593,8 @@ fn handle_write_file(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let data = msg.data().unwrap();
   let perm = msg.perm();
 
-  let deno = from_c(d);
-  if !deno.flags.allow_write {
+  let isolate = from_c(d);
+  if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   }
   Box::new(futures::future::result(|| -> OpResult {
@@ -602,20 +604,20 @@ fn handle_write_file(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-// TODO(ry) Use Deno instead of DenoC as first arg.
+// TODO(ry) Use Isolate instead of DenoC as first arg.
 fn remove_timer(d: *const DenoC, timer_id: u32) {
-  let deno = from_c(d);
-  deno.timers.remove(&timer_id);
+  let isolate = from_c(d);
+  isolate.timers.remove(&timer_id);
 }
 
-// Prototype: https://github.com/ry/deno/blob/golang/timers.go#L25-L39
+// Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L25-L39
 fn handle_timer_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   debug!("handle_timer_start");
   let msg = base.msg_as_timer_start().unwrap();
   let cmd_id = base.cmd_id();
   let timer_id = msg.id();
   let delay = msg.delay();
-  let deno = from_c(d);
+  let isolate = from_c(d);
 
   let future = {
     let (delay_task, cancel_delay) = set_timeout(
@@ -624,7 +626,7 @@ fn handle_timer_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
       },
       delay,
     );
-    deno.timers.insert(timer_id, cancel_delay);
+    isolate.timers.insert(timer_id, cancel_delay);
     delay_task
   };
   Box::new(future.then(move |result| {
@@ -649,7 +651,7 @@ fn handle_timer_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }))
 }
 
-// Prototype: https://github.com/ry/deno/blob/golang/timers.go#L40-L43
+// Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L40-L43
 fn handle_timer_clear(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_timer_clear().unwrap();
   debug!("handle_timer_clear");
@@ -658,8 +660,8 @@ fn handle_timer_clear(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 }
 
 fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let deno = from_c(d);
-  if !deno.flags.allow_write {
+  let isolate = from_c(d);
+  if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   };
   let msg = base.msg_as_rename().unwrap();
