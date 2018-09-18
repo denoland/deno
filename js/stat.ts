@@ -72,7 +72,7 @@ class FileInfoImpl implements FileInfo {
     const created = this._msg.created().toFloat64();
     const hasMode = this._msg.hasMode();
     const mode = this._msg.mode(); // negative for invalid mode (Windows)
-    
+
     this._isFile = this._msg.isFile();
     this._isSymlink = this._msg.isSymlink();
     this.len = this._msg.len().toFloat64();
