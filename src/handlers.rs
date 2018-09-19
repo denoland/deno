@@ -12,6 +12,7 @@ use isolate::from_c;
 use libdeno;
 use libdeno::{deno_buf, DenoC};
 use msg;
+use platform;
 use remove_dir_all::remove_dir_all;
 use std;
 use std::fs;
@@ -60,6 +61,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::SetEnv => handle_set_env,
     msg::Any::Stat => handle_stat,
     msg::Any::WriteFile => handle_write_file,
+    msg::Any::Platform => handle_platform,
     msg::Any::Exit => handle_exit,
     _ => panic!(format!(
       "Unhandled message {}",
@@ -146,7 +148,7 @@ fn permission_denied() -> DenoError {
 fn not_implemented() -> DenoError {
   DenoError::from(std::io::Error::new(
     std::io::ErrorKind::Other,
-    "Not implemented"
+    "Not implemented",
   ))
 }
 
@@ -679,6 +681,34 @@ fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
     debug!("handle_rename {} {}", oldpath, newpath);
     fs::rename(Path::new(&oldpath), Path::new(&newpath))?;
     Ok(None)
+  }()))
+}
+
+fn handle_platform(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let cmd_id = base.cmd_id();
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_platform");
+    let platform_ = platform::get_platform();
+    let builder = &mut FlatBufferBuilder::new();
+    let os = builder.create_string(platform_.os.as_str());
+    let family = builder.create_string(platform_.family.as_str());
+    let msg = msg::PlatformRes::create(
+      builder,
+      &msg::PlatformResArgs {
+        os: Some(os),
+        family: Some(family),
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::PlatformRes,
+        ..Default::default()
+      },
+    ))
   }()))
 }
 

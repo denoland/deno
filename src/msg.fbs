@@ -24,6 +24,8 @@ union Any {
   Stat,
   StatRes,
   SetEnv,
+  Platform,
+  PlatformRes,
 }
 
 enum ErrorKind: byte {
@@ -220,6 +222,13 @@ table StatRes {
   created:ulong;
   mode: uint;
   has_mode: bool; // false on windows
+}
+
+table Platform {}
+
+table PlatformRes {
+  os: string;
+  family: string;
 }
 
 root_type Base;

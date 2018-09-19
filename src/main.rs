@@ -23,6 +23,7 @@ pub mod handlers;
 mod isolate;
 mod libdeno;
 mod net;
+mod platform;
 mod version;
 
 use isolate::Isolate;

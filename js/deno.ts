@@ -10,6 +10,7 @@ export { renameSync, rename } from "./rename";
 export { FileInfo, statSync, lstatSync, stat, lstat } from "./stat";
 export { symlinkSync, symlink } from "./symlink";
 export { writeFileSync, writeFile } from "./write_file";
+export { PlatformInfo, platform } from "./platform";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export const argv: string[] = [];
