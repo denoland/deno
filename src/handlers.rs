@@ -684,13 +684,11 @@ fn handle_platform(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
     let builder = &mut FlatBufferBuilder::new();
     let os = builder.create_string(platform_.os.as_str());
     let family = builder.create_string(platform_.family.as_str());
-    let endian = builder.create_string(platform_.endian.as_str());
     let msg = msg::PlatformRes::create(
       builder,
       &msg::PlatformResArgs {
         os: Some(os),
         family: Some(family),
-        endian: Some(endian),
         ..Default::default()
       },
     );

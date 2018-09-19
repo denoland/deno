@@ -223,7 +223,6 @@ table Platform {}
 table PlatformRes {
   os: string;
   family: string;
-  endian: string;
 }
 
 root_type Base;

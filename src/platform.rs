@@ -2,7 +2,6 @@
 pub struct Platform {
   pub os: String,
   pub family: String,
-  pub endian: String,
 }
 
 // OS
@@ -96,22 +95,9 @@ fn get_family() -> String {
   "other".to_string()
 }
 
-// ENDIAN
-
-#[cfg(target_endian = "big")]
-fn get_endian() -> String {
-  "big".to_string()
-}
-
-#[cfg(target_endian = "little")]
-fn get_endian() -> String {
-  "little".to_string()
-}
-
 pub fn get_platform() -> Platform {
   Platform {
     os: get_os(),
     family: get_family(),
-    endian: get_endian(),
   }
 }

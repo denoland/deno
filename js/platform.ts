@@ -7,7 +7,6 @@ import * as dispatch from "./dispatch";
 export interface PlatformInfo {
   os: string;
   family: string;
-  endian: string;
 }
 
 /**
@@ -44,9 +43,7 @@ function res(baseRes: null | fbs.Base): PlatformInfo {
   assert(baseRes!.msg(msg) != null);
   const os = msg.os()!;
   const family = msg.family()!;
-  const endian = msg.endian()!;
   assert(os != null);
   assert(family != null);
-  assert(endian != null);
-  return { os, family, endian };
+  return { os, family };
 }

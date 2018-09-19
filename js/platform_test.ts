@@ -6,7 +6,6 @@ test(function platformSyncSuccess() {
   const plat = deno.platformSync();
   assert(!!plat.os);
   assert(!!plat.family);
-  assert(!!plat.endian);
   if (plat.os === "windows") {
     assert(plat.family === "windows");
   } else if (plat.os === "macos" || plat.os === "linux") {
@@ -18,7 +17,6 @@ test(async function platformSuccess() {
   const plat = await deno.platform();
   assert(!!plat.os);
   assert(!!plat.family);
-  assert(!!plat.endian);
   if (plat.os === "windows") {
     assert(plat.family === "windows");
   } else if (plat.os === "macos" || plat.os === "linux") {
