@@ -103,18 +103,6 @@ global.JSSendArrayBufferViewTypes = () => {
   libdeno.send(dv);
 };
 
-global.JSSendNeutersBuffer = () => {
-  // Buffer should be neutered after transferring it to the native side.
-  const u8 = new Uint8Array([42]);
-  assert(u8.byteLength === 1);
-  assert(u8.buffer.byteLength === 1);
-  assert(u8[0] === 42);
-  const r = libdeno.send(u8);
-  assert(u8.byteLength === 0);
-  assert(u8.buffer.byteLength === 0);
-  assert(u8[0] === undefined);
-};
-
 // The following join has caused SnapshotBug to segfault when using kKeep.
 [].join("");
 
