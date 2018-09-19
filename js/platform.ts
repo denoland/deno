@@ -20,7 +20,7 @@ let cachedPlatformInfo: PlatformInfo | null = null;
  */
 export function platformSync(): PlatformInfo {
   if (!cachedPlatformInfo) {
-    cachedPlatformInfo = res(dispatch.sendSync(...req()));
+    cachedPlatformInfo = Object.freeze(res(dispatch.sendSync(...req())));
   }
   return cachedPlatformInfo!;
 }
@@ -34,7 +34,7 @@ export function platformSync(): PlatformInfo {
  */
 export async function platform(): Promise<PlatformInfo> {
   if (!cachedPlatformInfo) {
-    cachedPlatformInfo = res(await dispatch.sendAsync(...req()));
+    cachedPlatformInfo = Object.freeze(res(await dispatch.sendAsync(...req())));
   }
   return cachedPlatformInfo!;
 }
