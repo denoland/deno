@@ -17,6 +17,9 @@ let cachedPlatformInfo: PlatformInfo | null = null;
  *
  *     import { platform } from "deno";
  *     const plat = platform();
+ *     // On Linux, would print "linux" and "unix"
+ *     // On Windows, would print "windows" and "windows"
+ *     console.log(plat.os, plat.family)
  */
 export function platform(): PlatformInfo {
   if (!cachedPlatformInfo) {
