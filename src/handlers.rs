@@ -56,6 +56,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::Remove => handle_remove,
     msg::Any::ReadFile => handle_read_file,
     msg::Any::Rename => handle_rename,
+    msg::Any::Symlink => handle_symlink,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::Stat => handle_stat,
     msg::Any::WriteFile => handle_write_file,
@@ -139,6 +140,13 @@ fn permission_denied() -> DenoError {
   DenoError::from(std::io::Error::new(
     std::io::ErrorKind::PermissionDenied,
     "permission denied",
+  ))
+}
+
+fn not_implemented() -> DenoError {
+  DenoError::from(std::io::Error::new(
+    std::io::ErrorKind::Other,
+    "Not implemented"
   ))
 }
 
@@ -663,7 +671,7 @@ fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let isolate = from_c(d);
   if !isolate.flags.allow_write {
     return odd_future(permission_denied());
-  };
+  }
   let msg = base.msg_as_rename().unwrap();
   let oldpath = String::from(msg.oldpath().unwrap());
   let newpath = String::from(msg.newpath().unwrap());
@@ -672,4 +680,25 @@ fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
     fs::rename(Path::new(&oldpath), Path::new(&newpath))?;
     Ok(None)
   }()))
+}
+
+fn handle_symlink(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let deno = from_c(d);
+  if !deno.flags.allow_write {
+    return odd_future(permission_denied());
+  }
+  // TODO Use type for Windows.
+  if cfg!(windows) {
+    return odd_future(not_implemented());
+  } else {
+    let msg = base.msg_as_symlink().unwrap();
+    let oldname = String::from(msg.oldname().unwrap());
+    let newname = String::from(msg.newname().unwrap());
+    Box::new(futures::future::result(|| -> OpResult {
+      debug!("handle_symlink {} {}", oldname, newname);
+      #[cfg(any(unix))]
+      std::os::unix::fs::symlink(Path::new(&oldname), Path::new(&newname))?;
+      Ok(None)
+    }()))
+  }
 }
