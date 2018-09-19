@@ -168,24 +168,17 @@ static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {
   }
 }
 
-static deno_buf ExportBuf(v8::Isolate* isolate,
-                          v8::Local<v8::ArrayBufferView> view) {
+static deno_buf GetContents(v8::Isolate* isolate,
+                            v8::Local<v8::ArrayBufferView> view) {
   auto ab = view->Buffer();
-  auto contents = ab->Externalize();
-
+  auto contents = ab->GetContents();
   deno_buf buf;
   buf.alloc_ptr = reinterpret_cast<uint8_t*>(contents.Data());
   buf.alloc_len = contents.ByteLength();
   buf.data_ptr = buf.alloc_ptr + view->ByteOffset();
   buf.data_len = view->ByteLength();
-
-  // Prevent JS from modifying buffer contents after exporting.
-  ab->Neuter();
-
   return buf;
 }
-
-static void FreeBuf(deno_buf buf) { free(buf.alloc_ptr); }
 
 // Sets the recv callback.
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -218,19 +211,12 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   CHECK_EQ(args.Length(), 1);
   v8::Local<v8::Value> ab_v = args[0];
   CHECK(ab_v->IsArrayBufferView());
-  auto buf = ExportBuf(isolate, v8::Local<v8::ArrayBufferView>::Cast(ab_v));
+  auto buf = GetContents(isolate, v8::Local<v8::ArrayBufferView>::Cast(ab_v));
 
   DCHECK_EQ(d->currentArgs, nullptr);
   d->currentArgs = &args;
 
   d->cb(d, buf);
-
-  // Buffer is only valid until the end of the callback.
-  // TODO(piscisaureus):
-  //   It's possible that data in the buffer is needed after the callback
-  //   returns, e.g. when the handler offloads work to a thread pool, therefore
-  //   make the callback responsible for releasing the buffer.
-  FreeBuf(buf);
 
   d->currentArgs = nullptr;
 }
