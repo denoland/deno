@@ -7,6 +7,7 @@ import nodeResolve from "rollup-plugin-node-resolve";
 import typescriptPlugin from "rollup-plugin-typescript2";
 import { createFilter } from "rollup-pluginutils";
 import typescript from "typescript";
+import MagicString from "magic-string";
 
 const mockPath = path.join(__dirname, "js", "mock_builtin.js");
 const platformPath = path.join(__dirname, "js", "platform.ts");
@@ -95,12 +96,15 @@ function platform({ include, exclude } = {}) {
      */
     transform(_code, id) {
       if (filter(id)) {
+        // Adapted from https://github.com/rollup/rollup-plugin-inject/blob/master/src/index.js
+        const magicString = new MagicString(`
+import { DenoArch, DenoPlatform } from "./types";
+export const arch: DenoArch = "${process.arch}";
+export const platform: DenoPlatform = "${process.platform}";`);
         // arch and platform comes from Node
         return {
-          code: `export const arch = "${process.arch}";
-          export const platform = "${process.platform}";
-          `,
-          map: { mappings: "" }
+          code: magicString.toString(),
+          map: magicString.generateMap()
         };
       }
     }

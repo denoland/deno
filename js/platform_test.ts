@@ -2,8 +2,8 @@
 import { test, assert } from "./test_util.ts";
 import * as deno from "deno";
 
-test(function injectPlatformSuccess() {
-  // Make sure they exists and not empty (transformed)
-  assert(!!deno.arch);
-  assert(!!deno.platform);
+test(function transformPlatformSuccess() {
+  // Make sure they are transformed
+  assert(deno.arch !== "unknown");
+  assert(deno.platform !== "unknown");
 });
