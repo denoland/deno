@@ -13,28 +13,14 @@ let cachedPlatformInfo: PlatformInfo | null = null;
 
 /**
  * Retrieves information (os, os family) about the current
- * platform synchronously.
- *
- *     import { platformSync } from "deno";
- *     const platform = deno.platformSync();
- */
-export function platformSync(): PlatformInfo {
-  if (!cachedPlatformInfo) {
-    cachedPlatformInfo = Object.freeze(res(dispatch.sendSync(...req())));
-  }
-  return cachedPlatformInfo!;
-}
-
-/**
- * Retrieves information (os, os family) about the current
- * platform.
+ * platform (synchronously).
  *
  *     import { platform } from "deno";
- *     const platform = await deno.platform();
+ *     const plat = platform();
  */
-export async function platform(): Promise<PlatformInfo> {
+export function platform(): PlatformInfo {
   if (!cachedPlatformInfo) {
-    cachedPlatformInfo = Object.freeze(res(await dispatch.sendAsync(...req())));
+    cachedPlatformInfo = Object.freeze(res(dispatch.sendSync(...req())));
   }
   return cachedPlatformInfo!;
 }
