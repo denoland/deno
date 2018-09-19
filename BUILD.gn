@@ -76,6 +76,7 @@ ts_sources = [
   "js/remove.ts",
   "js/rename.ts",
   "js/stat.ts",
+  "js/symlink.ts",
   "js/text_encoding.ts",
   "js/timers.ts",
   "js/types.ts",
