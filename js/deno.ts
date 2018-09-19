@@ -9,6 +9,7 @@ export { readFileSync, readFile } from "./read_file";
 export { renameSync, rename } from "./rename";
 export { FileInfo, statSync, lstatSync, stat, lstat } from "./stat";
 export { writeFileSync, writeFile } from "./write_file";
+export { PlatformInfo, platform, platformSync } from "./platform";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export const argv: string[] = [];
