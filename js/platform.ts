@@ -9,24 +9,34 @@ export interface PlatformInfo {
   family: string;
 }
 
+let cachedPlatformInfo: PlatformInfo | null = null;
+
 /**
- * Retrieves information about the current platform synchronously.
+ * Retrieves information (os, os family) about the current
+ * platform synchronously.
  *
  *     import { platformSync } from "deno";
  *     const platform = deno.platformSync();
  */
 export function platformSync(): PlatformInfo {
-  return res(dispatch.sendSync(...req()));
+  if (!cachedPlatformInfo) {
+    cachedPlatformInfo = res(dispatch.sendSync(...req()));
+  }
+  return cachedPlatformInfo!;
 }
 
 /**
- * Creates a new directory with the specified path and permission.
+ * Retrieves information (os, os family) about the current
+ * platform.
  *
  *     import { platform } from "deno";
  *     const platform = await deno.platform();
  */
 export async function platform(): Promise<PlatformInfo> {
-  return res(await dispatch.sendAsync(...req()));
+  if (!cachedPlatformInfo) {
+    cachedPlatformInfo = res(await dispatch.sendAsync(...req()));
+  }
+  return cachedPlatformInfo!;
 }
 
 function req(): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
