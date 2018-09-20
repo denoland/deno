@@ -29,20 +29,13 @@ export function btoa(s: string): string {
     const charCode = s[i].charCodeAt(0);
     if (charCode > 0xff) {
       throw new InvalidCharacterError(
-        "'btoa' failed: The string to be encoded contains " +
-          "characters outside of the Latin1 range."
+        "The string to be encoded contains characters " +
+          "outside of the Latin1 range."
       );
     }
     byteArray.push(charCode);
   }
-  let result;
-  try {
-    result = base64.fromByteArray(Uint8Array.from(byteArray));
-  } catch (_) {
-    throw new InvalidCharacterError(
-      "The string to be decoded is not correctly encoded"
-    );
-  }
+  const result = base64.fromByteArray(Uint8Array.from(byteArray));
   return result;
 }
 
