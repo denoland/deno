@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use base64;
 use errors::DenoError;
 use errors::DenoResult;
 use flatbuffers::FlatBufferBuilder;
@@ -61,6 +62,8 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     msg::Any::Stat => handle_stat,
     msg::Any::WriteFile => handle_write_file,
     msg::Any::Exit => handle_exit,
+    msg::Any::AToB => handle_atob,
+    msg::Any::BToA => handle_btoa,
     _ => panic!(format!(
       "Unhandled message {}",
       msg::enum_name_any(msg_type)
@@ -701,4 +704,61 @@ fn handle_symlink(d: *const DenoC, base: &msg::Base) -> Box<Op> {
       Ok(None)
     }()))
   }
+}
+
+fn handle_atob(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_a_to_b().unwrap();
+  let cmd_id = base.cmd_id();
+  let data = String::from(msg.data().unwrap());
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_atob {}", data);
+    let decoded_vec = base64::decode(&data)?;
+    let decoded = String::from_utf8(decoded_vec)?;
+    let builder = &mut FlatBufferBuilder::new();
+    let decoded_off = builder.create_string(&decoded);
+    let msg = msg::AToBRes::create(
+      builder,
+      &msg::AToBResArgs {
+        decoded: Some(decoded_off),
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::AToBRes,
+        ..Default::default()
+      },
+    ))
+  }()))
+}
+
+fn handle_btoa(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_b_to_a().unwrap();
+  let cmd_id = base.cmd_id();
+  let data = String::from(msg.data().unwrap());
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_btoa {}", data);
+    let encoded = base64::encode(&data);
+    let builder = &mut FlatBufferBuilder::new();
+    let encoded_off = builder.create_string(&encoded);
+    let msg = msg::BToARes::create(
+      builder,
+      &msg::BToAResArgs {
+        encoded: Some(encoded_off),
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::BToARes,
+        ..Default::default()
+      },
+    ))
+  }()))
 }

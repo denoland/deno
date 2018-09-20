@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use base64;
 use hyper;
 pub use msg::ErrorKind;
 use std;
@@ -19,6 +20,8 @@ enum Repr {
   IoErr(io::Error),
   UrlErr(url::ParseError),
   HyperErr(hyper::Error),
+  Base64DecodeErr(base64::DecodeError),
+  FromUtf8Err(std::string::FromUtf8Error),
 }
 
 impl DenoError {
@@ -80,6 +83,14 @@ impl DenoError {
           ErrorKind::HttpOther
         }
       }
+      Repr::Base64DecodeErr(ref err) => {
+        use base64::DecodeError::*;
+        match err {
+          InvalidByte(_, _) => ErrorKind::InvalidCharacterError,
+          InvalidLength => ErrorKind::Other,
+        }
+      }
+      _ => ErrorKind::Other,
     }
   }
 }
@@ -90,6 +101,8 @@ impl fmt::Display for DenoError {
       Repr::IoErr(ref err) => err.fmt(f),
       Repr::UrlErr(ref err) => err.fmt(f),
       Repr::HyperErr(ref err) => err.fmt(f),
+      Repr::Base64DecodeErr(ref err) => err.fmt(f),
+      Repr::FromUtf8Err(ref err) => err.fmt(f),
       // Repr::Simple(..) => Ok(()),
     }
   }
@@ -101,6 +114,8 @@ impl std::error::Error for DenoError {
       Repr::IoErr(ref err) => err.description(),
       Repr::UrlErr(ref err) => err.description(),
       Repr::HyperErr(ref err) => err.description(),
+      Repr::Base64DecodeErr(ref err) => err.description(),
+      Repr::FromUtf8Err(ref err) => err.description(),
       // Repr::Simple(..) => "FIXME",
     }
   }
@@ -110,6 +125,8 @@ impl std::error::Error for DenoError {
       Repr::IoErr(ref err) => Some(err),
       Repr::UrlErr(ref err) => Some(err),
       Repr::HyperErr(ref err) => Some(err),
+      Repr::Base64DecodeErr(ref err) => Some(err),
+      Repr::FromUtf8Err(ref err) => Some(err),
       // Repr::Simple(..) => None,
     }
   }
@@ -138,6 +155,24 @@ impl From<hyper::Error> for DenoError {
   fn from(err: hyper::Error) -> DenoError {
     DenoError {
       repr: Repr::HyperErr(err),
+    }
+  }
+}
+
+impl From<base64::DecodeError> for DenoError {
+  #[inline]
+  fn from(err: base64::DecodeError) -> DenoError {
+    DenoError {
+      repr: Repr::Base64DecodeErr(err),
+    }
+  }
+}
+
+impl From<std::string::FromUtf8Error> for DenoError {
+  #[inline]
+  fn from(err: std::string::FromUtf8Error) -> DenoError {
+    DenoError {
+      repr: Repr::FromUtf8Err(err),
     }
   }
 }

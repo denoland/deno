@@ -24,6 +24,10 @@ union Any {
   Stat,
   StatRes,
   SetEnv,
+  AToB,
+  AToBRes,
+  BToA,
+  BToARes,
 }
 
 enum ErrorKind: byte {
@@ -70,6 +74,9 @@ enum ErrorKind: byte {
   HttpCanceled,
   HttpParse,
   HttpOther,
+
+  // atob/btoa error
+  InvalidCharacterError,
 }
 
 table Base {
@@ -220,6 +227,22 @@ table StatRes {
   created:ulong;
   mode: uint;
   has_mode: bool; // false on windows
+}
+
+table AToB {
+  data: string;
+}
+
+table AToBRes {
+  decoded: string;
+}
+
+table BToA {
+  data: string;
+}
+
+table BToARes {
+  encoded: string;
 }
 
 root_type Base;
