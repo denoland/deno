@@ -6,7 +6,10 @@ Cargo.lock
 yarn.lock
 # npm deps
 node_modules
+# editor files
 .idea
-
 # RLS generated files
 /target/
+# benchmark temp files
+/benchmark.json
+/gh-pages

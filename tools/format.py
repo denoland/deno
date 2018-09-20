@@ -29,7 +29,7 @@ for fn in ["BUILD.gn", ".gn"] + find_exts("build_extra", ".gn", ".gni"):
 run(["yapf", "-i"] + glob("tools/*.py") + find_exts("build_extra", ".py"))
 
 run(["node", prettier, "--write"] + find_exts("js/", ".js", ".ts") +
-    find_exts("tests/", ".js", ".ts") +
+    find_exts("tests/", ".js", ".ts") + find_exts("website/", ".js", ".ts") +
     ["rollup.config.js", "tsconfig.json", "tslint.json"])
 
 # Requires rustfmt 0.8.2 (flags were different in previous versions)
