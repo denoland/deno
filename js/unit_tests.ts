@@ -14,3 +14,4 @@ import "./rename_test.ts";
 import "./blob_test.ts";
 import "./timers_test.ts";
 import "./symlink_test.ts";
+import "./platform_test.ts";

@@ -7,8 +7,10 @@ import nodeResolve from "rollup-plugin-node-resolve";
 import typescriptPlugin from "rollup-plugin-typescript2";
 import { createFilter } from "rollup-pluginutils";
 import typescript from "typescript";
+import MagicString from "magic-string";
 
 const mockPath = path.join(__dirname, "js", "mock_builtin.js");
+const platformPath = path.join(__dirname, "js", "platform.ts");
 const tsconfig = path.join(__dirname, "tsconfig.json");
 const typescriptPath = `${
   process.env.BASEPATH
@@ -78,6 +80,37 @@ function strings({ include, exclude } = {}) {
   };
 }
 
+// Inject deno.arch/deno.platform from Node's process.arch/process.platform
+function platform({ include, exclude } = {}) {
+  if (!include) {
+    throw new Error("include option must be passed");
+  }
+
+  const filter = createFilter(include, exclude);
+
+  return {
+    name: "platform",
+    /**
+     * @param {any} _code
+     * @param {string} id
+     */
+    transform(_code, id) {
+      if (filter(id)) {
+        // Adapted from https://github.com/rollup/rollup-plugin-inject/blob/master/src/index.js
+        const magicString = new MagicString(`
+import { DenoArch, DenoPlatform } from "./types";
+export const arch: DenoArch = "${process.arch}";
+export const platform: DenoPlatform = "${process.platform}";`);
+        // arch and platform comes from Node
+        return {
+          code: magicString.toString(),
+          map: magicString.generateMap()
+        };
+      }
+    }
+  };
+}
+
 // This plugin resolves at bundle time any generated resources that are
 // in the build path under `gen` and specified with a MID starting with `gen/`.
 // The plugin assumes that the MID needs to have the `.ts` extension appended.
@@ -104,6 +137,11 @@ export default function makeConfig(commandOptions) {
     },
 
     plugins: [
+      // inject platform and arch from Node
+      platform({
+        include: [platformPath]
+      }),
+
       // would prefer to use `rollup-plugin-virtual` to inject the empty module, but there
       // is an issue with `rollup-plugin-commonjs` which causes errors when using the
       // virtual plugin (see: rollup/rollup-plugin-commonjs#315), this means we have to use

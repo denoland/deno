@@ -71,6 +71,7 @@ ts_sources = [
   "js/make_temp_dir.ts",
   "js/mock_builtin.js",
   "js/os.ts",
+  "js/platform.ts",
   "js/plugins.d.ts",
   "js/read_file.ts",
   "js/remove.ts",
