@@ -9,7 +9,7 @@ API and Feature requests should be submitted as PRs to this document.
 Example, non-final API for piping a socket to stdout:
 
 ```javascript
-function nonblockingpipe(fd) {
+async function nonblockingpipe(fd) {
   let buf = new Uint8Array(1024); // Fixed 1k buffer.
   for (;;) {
     let code = await deno.pollNB(fd, deno.POLL_RD | deno.POLL_WR);
