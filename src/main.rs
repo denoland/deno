@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+extern crate base64;
 extern crate flatbuffers;
 extern crate futures;
 extern crate hyper;
