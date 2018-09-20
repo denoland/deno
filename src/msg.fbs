@@ -20,6 +20,7 @@ union Any {
   ReadFileRes,
   WriteFile,
   Rename,
+  Symlink,
   Stat,
   StatRes,
   SetEnv,
@@ -198,6 +199,11 @@ table WriteFile {
 table Rename {
   oldpath: string;
   newpath: string;
+}
+
+table Symlink {
+  oldname: string;
+  newname: string;
 }
 
 table Stat {
