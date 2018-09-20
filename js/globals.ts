@@ -25,6 +25,8 @@ declare global {
 
     TextEncoder: typeof TextEncoder;
     TextDecoder: typeof TextDecoder;
+    atob: typeof atob;
+    btoa: typeof btoa;
 
     Headers: typeof Headers;
     Blob: typeof Blob;
@@ -43,6 +45,8 @@ declare global {
   // tslint:disable:variable-name
   const TextEncoder: typeof textEncoding.TextEncoder;
   const TextDecoder: typeof textEncoding.TextDecoder;
+  const atob: typeof textEncoding.atob;
+  const btoa: typeof textEncoding.btoa;
   const Headers: typeof DenoHeaders;
   const Blob: typeof DenoBlob;
   // tslint:enable:variable-name
@@ -62,6 +66,8 @@ window.clearInterval = timers.clearTimer;
 window.console = new Console(libdeno.print);
 window.TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
+window.atob = textEncoding.atob;
+window.btoa = textEncoding.btoa;
 
 window.fetch = fetch_.fetch;
 
