@@ -22,5 +22,5 @@ test(function btoaFailed() {
     err = e;
   }
   assert(!!err);
-  assertEqual(err.name, "InvalidCharacterError");
+  assertEqual(err.name, "InvalidInput");
 });

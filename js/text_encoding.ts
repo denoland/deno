@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as base64 from "base64-js";
-import { InvalidCharacterError } from "./errors";
+import { DenoError, ErrorKind } from "./errors";
 
 export function atob(s: string): string {
   const rem = s.length % 4;
@@ -12,7 +12,8 @@ export function atob(s: string): string {
   try {
     byteArray = base64.toByteArray(s);
   } catch (_) {
-    throw new InvalidCharacterError(
+    throw new DenoError(
+      ErrorKind.InvalidInput,
       "The string to be decoded is not correctly encoded"
     );
   }
@@ -28,7 +29,8 @@ export function btoa(s: string): string {
   for (let i = 0; i < s.length; i++) {
     const charCode = s[i].charCodeAt(0);
     if (charCode > 0xff) {
-      throw new InvalidCharacterError(
+      throw new DenoError(
+        ErrorKind.InvalidInput,
         "The string to be encoded contains characters " +
           "outside of the Latin1 range."
       );

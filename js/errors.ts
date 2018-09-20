@@ -25,10 +25,3 @@ export function maybeError(base: fbs.Base): null | DenoError<fbs.ErrorKind> {
     return new DenoError(kind, base.error()!);
   }
 }
-
-export class InvalidCharacterError extends Error {
-  constructor(msg: string) {
-    super(msg);
-    this.name = "InvalidCharacterError";
-  }
-}
