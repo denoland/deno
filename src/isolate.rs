@@ -9,14 +9,14 @@ use std;
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::ffi::CString;
-use tokio;
+use tokio_runtime;
 
 type DenoException<'a> = &'a str;
 
 pub struct Isolate {
   pub ptr: *const libdeno::DenoC,
   pub dir: deno_dir::DenoDir,
-  pub rt: tokio::runtime::current_thread::Runtime,
+  pub rt: tokio_runtime::Runtime,
   pub timers: HashMap<u32, futures::sync::oneshot::Sender<()>>,
   pub argv: Vec<String>,
   pub flags: flags::DenoFlags,
@@ -35,7 +35,7 @@ impl Isolate {
     let mut deno_box = Box::new(Isolate {
       ptr: 0 as *const libdeno::DenoC,
       dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
-      rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
+      rt: tokio_runtime::Runtime::new().unwrap(),
       timers: HashMap::new(),
       argv: argv_rest,
       flags,

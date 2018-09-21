@@ -7,6 +7,10 @@ extern crate msg_rs as msg;
 extern crate rand;
 extern crate tempfile;
 extern crate tokio;
+extern crate tokio_current_thread;
+extern crate tokio_executor;
+extern crate tokio_reactor;
+extern crate tokio_timer;
 extern crate url;
 #[macro_use]
 extern crate log;
@@ -23,6 +27,7 @@ pub mod handlers;
 mod isolate;
 mod libdeno;
 mod net;
+mod tokio_runtime;
 mod version;
 
 use isolate::Isolate;
