@@ -41,6 +41,7 @@ after_success:
 # TODO: Include hyperfine in //third_party
 - cargo install hyperfine
 - ./tools/benchmark.py $DENO_BUILD_PATH
+# export website assets for deployment
 - cp website/*.* gh-pages/
 before_deploy: |
   # gzip and name release to denote platform

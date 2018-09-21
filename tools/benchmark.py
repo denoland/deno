@@ -1,10 +1,14 @@
 #!/usr/bin/env python
-# Performs benchmark, and append data to //gh-pages/data.json.
+# Performs benchmark and append data to //website/data.json.
+# If //website/data.json doesn't exist, this script tries to import it from gh-pages branch.
+# To view the results locally run ./tools/http_server.py and visit
+# http://localhost:4545/website
 
 import os
 import sys
 import json
 import time
+import shutil
 from util import run, run_output, root_path, build_path
 
 # The list of the tuples of the benchmark name and arguments
@@ -12,7 +16,8 @@ benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
               ("relative_import", ["tests/003_relative_import.ts",
                                    "--reload"])]
 
-data_file = "gh-pages/data.json"
+gh_pages_data_file = "gh-pages/data.json"
+data_file = "website/data.json"
 
 
 def read_json(filename):
@@ -25,18 +30,17 @@ def write_json(filename, data):
         json.dump(data, outfile)
 
 
-def prepare_gh_pages_dir():
-    if os.path.exists("gh-pages"):
+def import_data_from_gh_pages():
+    if os.path.exists(data_file):
         return
     try:
         run([
             "git", "clone", "--depth", "1", "-b", "gh-pages",
             "https://github.com/denoland/deno.git", "gh-pages"
         ])
+        shutil.copy(gh_pages_data_file, data_file)
     except:
-        os.mkdir("gh-pages")
-        with open(data_file, "w") as f:
-            f.write("[]")  # writes empty json data
+        write_json(data_file, [])  # writes empty json data
 
 
 def main(argv):
@@ -52,7 +56,7 @@ def main(argv):
     benchmark_file = os.path.join(build_dir, "benchmark.json")
 
     os.chdir(root_path)
-    prepare_gh_pages_dir()
+    import_data_from_gh_pages()
     # TODO: Use hyperfine in //third_party
     run(["hyperfine", "--export-json", benchmark_file, "--warmup", "3"] +
         [deno_path + " " + " ".join(args) for [_, args] in benchmarks])

@@ -10,6 +10,7 @@ node_modules
 .idea
 # RLS generated files
 /target/
-# benchmark temp files
-/benchmark.json
+# export dir for gh-pages
 /gh-pages
+# temp benchmark data
+/website/data.json
