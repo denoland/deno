@@ -37,24 +37,11 @@ script:
 - bash -c "sleep 2100; pkill ninja" &
 - "./tools/build.py -j2"
 - "./tools/test.py $DENO_BUILD_PATH"
-after_success:
-# TODO: Include hyperfine in //third_party
-- cargo install hyperfine
-- ./tools/benchmark.py $DENO_BUILD_PATH
-# export website assets for deployment
-- cp website/*.* gh-pages/
 before_deploy: |
   # gzip and name release to denote platform
   gzip -c $DENO_BUILD_PATH/deno > $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz
 deploy:
-- provider: pages
-  local-dir: gh-pages
-  skip-cleanup: true
-  github-token: $GITHUB_TOKEN
-  keep-history: true
-  on:
-    branch: master
-- provider: releases
+  provider: releases
   api_key:
     secure: RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps=
   file: "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
