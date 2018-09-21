@@ -1,12 +1,12 @@
-const benchmarkTypes = ["hello", "relative_import"];
+const benchmarkNames = ["hello", "relative_import"];
 
 (async () => {
   const data = await (await fetch("./data.json")).json();
 
-  const benchmarkColumns = benchmarkTypes.map(type => [
-    type,
+  const benchmarkColumns = benchmarkNames.map(name => [
+    name,
     ...data.map(d => {
-      const benchmark = d.benchmark[type];
+      const benchmark = d.benchmark[name];
       return benchmark ? benchmark.mean : 0;
     })
   ]);

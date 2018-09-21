@@ -7,11 +7,12 @@ import json
 import time
 from util import run, run_output, root_path, build_path
 
-benchmark_types = ["hello", "relative_import"]
-benchmark_files = ["tests/002_hello.ts", "tests/003_relative_import.ts"]
+# The list of the tuples of the benchmark name and arguments
+benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
+              ("relative_import", ["tests/003_relative_import.ts",
+                                   "--reload"])]
 
 data_file = "gh-pages/data.json"
-benchmark_file = "benchmark.json"
 
 
 def read_json(filename):
@@ -34,7 +35,7 @@ def prepare_gh_pages_dir():
         ])
     except:
         os.mkdir("gh-pages")
-        with open("gh-pages/data.json", "w") as f:
+        with open(data_file, "w") as f:
             f.write("[]")  # writes empty json data
 
 
@@ -47,12 +48,14 @@ def main(argv):
         print "Usage: tools/benchmark.py [build_dir]"
         sys.exit(1)
 
+    deno_path = os.path.join(build_dir, "deno")
+    benchmark_file = os.path.join(build_dir, "benchmark.json")
+
     os.chdir(root_path)
     prepare_gh_pages_dir()
-    run(["hyperfine", "--export-json", benchmark_file, "--warmup", "3"] + [
-        os.path.join(build_dir, "deno") + " " + file
-        for file in benchmark_files
-    ])
+    # TODO: Use hyperfine in //third_party
+    run(["hyperfine", "--export-json", benchmark_file, "--warmup", "3"] +
+        [deno_path + " " + " ".join(args) for [_, args] in benchmarks])
     all_data = read_json(data_file)
     benchmark_data = read_json(benchmark_file)
     sha1 = run_output(["git", "rev-parse", "HEAD"]).strip()
@@ -61,8 +64,8 @@ def main(argv):
         "sha1": sha1,
         "benchmark": {}
     }
-    for type, data in zip(benchmark_types, benchmark_data["results"]):
-        new_data["benchmark"][type] = {
+    for [[name, _], data] in zip(benchmarks, benchmark_data["results"]):
+        new_data["benchmark"][name] = {
             "mean": data["mean"],
             "stddev": data["stddev"],
             "user": data["user"],

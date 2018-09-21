@@ -38,7 +38,7 @@ script:
 - "./tools/build.py -j2"
 - "./tools/test.py $DENO_BUILD_PATH"
 after_success:
-# benchmark
+# TODO: Include hyperfine in //third_party
 - cargo install hyperfine
 - ./tools/benchmark.py $DENO_BUILD_PATH
 - cp website/*.* gh-pages/
