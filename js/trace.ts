@@ -6,47 +6,47 @@ export interface TraceInfo {
   name: string; // name of operation
 }
 
-interface TraceListStackNode {
+interface TraceStackNode {
   list: TraceInfo[];
-  prevStackNode: TraceListStackNode | null;
+  prev: TraceStackNode | null;
 }
 
-let currTraceListStackNode: TraceListStackNode | null = null;
+let current: TraceStackNode | null = null;
 
 // Push a new list to trace stack
-export function pushTraceStack(): void {
-  if (currTraceListStackNode === null) {
-    currTraceListStackNode = { list: [], prevStackNode: null };
+function pushStack(): void {
+  if (current === null) {
+    current = { list: [], prev: null };
   } else {
-    const newStack = { list: [], prevStackNode: currTraceListStackNode };
-    currTraceListStackNode = newStack;
+    const newStack = { list: [], prev: current };
+    current = newStack;
   }
 }
 
 // Pop from trace stack and (if possible) concat to parent trace stack node
-export function popTraceStack(): TraceInfo[] {
-  if (currTraceListStackNode === null) {
+function popStack(): TraceInfo[] {
+  if (current === null) {
     throw new Error("trace list stack should not be empty");
   }
-  const resultList = currTraceListStackNode!.list;
-  if (!!currTraceListStackNode!.prevStackNode) {
-    const prevStackNode = currTraceListStackNode!.prevStackNode!;
+  const resultList = current!.list;
+  if (!!current!.prev) {
+    const prev = current!.prev!;
     // concat inner results to outer stack
-    prevStackNode.list = prevStackNode.list.concat(resultList);
-    currTraceListStackNode = prevStackNode;
+    prev.list = prev.list.concat(resultList);
+    current = prev;
   } else {
-    currTraceListStackNode = null;
+    current = null;
   }
   return resultList;
 }
 
 // Push to trace stack if we are tracing
 export function maybePushTrace(op: fbs.Any, sync: boolean): void {
-  if (currTraceListStackNode === null) {
+  if (current === null) {
     return; // no trace requested
   }
   // Freeze the object, avoid tampering
-  currTraceListStackNode!.list.push(
+  current!.list.push(
     Object.freeze({
       sync,
       name: fbs.Any[op] // convert to enum names
@@ -70,11 +70,11 @@ export async function trace(
   // tslint:disable-next-line:no-any
   fnOrPromise: Function | Promise<any>
 ): Promise<TraceInfo[]> {
-  pushTraceStack();
+  pushStack();
   if (typeof fnOrPromise === "function") {
     await fnOrPromise();
   } else {
     await fnOrPromise;
   }
-  return popTraceStack();
+  return popStack();
 }
