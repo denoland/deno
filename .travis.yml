@@ -73,7 +73,7 @@ deploy:
     repo: denoland/deno
   skip-cleanup: true
 - provider: pages
-  condition: '"$BENCHMARK"'
+  condition: $BENCHMARK == 1
   github-token: *github-token
   keep-history: true
   local-dir: gh-pages
