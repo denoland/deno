@@ -7,6 +7,7 @@ export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
 export { removeSync, remove, removeAllSync, removeAll } from "./remove";
 export { readFileSync, readFile } from "./read_file";
 export { renameSync, rename } from "./rename";
+export { readlinkSync, readlink } from "./read_link";
 export { FileInfo, statSync, lstatSync, stat, lstat } from "./stat";
 export { symlinkSync, symlink } from "./symlink";
 export { writeFileSync, writeFile } from "./write_file";
