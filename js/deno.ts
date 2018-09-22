@@ -13,4 +13,4 @@ export { writeFileSync, writeFile } from "./write_file";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export { arch, platform } from "./platform";
-export const argv: string[] = [];
+export const args: string[] = [];

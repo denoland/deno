@@ -14,7 +14,7 @@ use tokio;
 type DenoException<'a> = &'a str;
 
 pub struct Isolate {
-  pub ptr: *const libdeno::DenoC,
+  pub ptr: *const libdeno::isolate,
   pub dir: deno_dir::DenoDir,
   pub rt: tokio::runtime::current_thread::Runtime,
   pub timers: HashMap<u32, futures::sync::oneshot::Sender<()>>,
@@ -33,7 +33,7 @@ impl Isolate {
     let (flags, argv_rest) = flags::set_flags(argv);
 
     let mut deno_box = Box::new(Isolate {
-      ptr: 0 as *const libdeno::DenoC,
+      ptr: 0 as *const libdeno::isolate,
       dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
       rt: tokio::runtime::current_thread::Runtime::new().unwrap(),
       timers: HashMap::new(),
@@ -76,7 +76,7 @@ impl Drop for Isolate {
   }
 }
 
-pub fn from_c<'a>(d: *const libdeno::DenoC) -> &'a mut Isolate {
+pub fn from_c<'a>(d: *const libdeno::isolate) -> &'a mut Isolate {
   let ptr = unsafe { libdeno::deno_get_data(d) };
   let ptr = ptr as *mut Isolate;
   let isolate_box = unsafe { Box::from_raw(ptr) };

@@ -5,7 +5,7 @@ import { assert, log, setLogDebug } from "./util";
 import * as os from "./os";
 import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
-import { argv } from "./deno";
+import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 
 function sendStart(): fbs.StartRes {
@@ -39,7 +39,7 @@ export default function denoMain() {
 
   // First we send an empty "Start" message to let the privlaged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
-  // argv and other info.
+  // args and other info.
   const startResMsg = sendStart();
 
   setLogDebug(startResMsg.debugFlag());
@@ -49,12 +49,12 @@ export default function denoMain() {
 
   // TODO handle shebang.
   for (let i = 1; i < startResMsg.argvLength(); i++) {
-    argv.push(startResMsg.argv(i));
+    args.push(startResMsg.argv(i));
   }
-  log("argv", argv);
-  Object.freeze(argv);
+  log("args", args);
+  Object.freeze(args);
 
-  const inputFn = argv[0];
+  const inputFn = args[0];
   if (!inputFn) {
     console.log("No input script specified.");
     os.exit(1);
