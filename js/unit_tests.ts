@@ -16,3 +16,4 @@ import "./timers_test.ts";
 import "./symlink_test.ts";
 import "./platform_test.ts";
 import "./text_encoding_test.ts";
+import "./trace_test.ts";
