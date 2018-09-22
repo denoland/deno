@@ -4,40 +4,43 @@ API and Feature requests should be submitted as PRs to this document.
 
 ## Target Use Cases
 
-### Low-level, fast memory efficient sockets
+### Implementation of `cat`
 
-Example, non-final API for piping a socket to stdout:
+#721
 
-```javascript
-async function nonblockingpipe(fd) {
-  let buf = new Uint8Array(1024); // Fixed 1k buffer.
-  for (;;) {
-    let code = await deno.pollNB(fd, deno.POLL_RD | deno.POLL_WR);
-    switch (code) {
-    case "READABLE":
-       let [nread, err] = deno.readNB(fd, buf, buf.byteSize);
-       if (err === "EAGAIN") continue;
-       if (err != null) break;
-       await deno.stdout.write(buf.slice(0, nread));
-       break;
-    case "ERROR":
-       throw Error("blah");
-    }
-  }
+```ts
+import * as deno from "deno";
+
+for (let i = 1; i < deno.argv.length; i++) {
+  let filename = deno.argv[i];
+  let file = await deno.open(filename);
+  await deno.copy(deno.stdout, file);
 }
 ```
 
-### List deps
+### TCP Server
+
+#725
+
+```ts
+import * as deno from "deno";
+const listener = deno.listen("tcp", ":8080");
+for await (const conn of listener.accept()) {
+  deno.copy(conn, conn);
+}
+```
+
+### List deps (implemented)
 
 ```
-% deno --list-deps http://gist.com/blah.js
+% deno --deps http://gist.com/blah.js
 http://gist.com/blah.js
 http://gist.com/dep.js
 https://github.com/denoland/deno/master/testing.js
 %
 ```
 
-## Security Model
+## Security Model (partially implemented)
 
 * We want to be secure by default; user should be able to run untrusted code,
   like the web.
@@ -145,122 +148,65 @@ const char* deno_last_exception(Deno* d);
 
 ## TypeScript API.
 
+This section will not attempt to over all of the APIs
+but give a general sense of them.
 
-There are three layers of API to consider:
-* L1: the low-level message passing API exported by libdeno (L1),
-* L2: the flatbuffer messages used internally (L2),
-* L3: the final "deno" namespace exported to users (L3).
+### Internal: libdeno
 
-### L1
+This is the lowest-level interface to the privileged side.
+It provides little more than passing ArrayBuffers in and
+out of the VM.
+The libdeno API is more or less feature complete now.
+See https://github.com/denoland/deno/blob/master/js/libdeno.ts
 
-```typescript
-function send(...ab: ArrayBuffer[]): ArrayBuffer[] | null;
-```
-Used to make calls outside of V8. Send an ArrayBuffer and synchronously receive
-an ArrayBuffer back.
+### Internal: Shared data between Rust and V8
 
-```typescript
-function poll(): ArrayBuffer[];
-```
-Poll for new asynchronous events from the privileged side. This will be done
-as the main event loop.
-
-```typescript
-function print(x: string): void;
-```
-A way to print to stdout. Although this could be easily implemented thru
-`send()` this is an important debugging tool to avoid intermediate
-infrastructure.
-
-
-The current implementation is out of sync with this document:
-https://github.com/denoland/deno/blob/master/js/deno.d.ts
-
-#### L1 Examples
-
-The main event loop of Deno should look something like this:
-```js
-function main() {
-   // Setup...
-   while (true) {
-      const messages = deno.poll();
-      processMessages(messages);
-   }
-}
-```
-
-
-### L2
-
+We use Flatbuffers to define common structs and enums between
+TypeScript and Rust. These common data structures are defined in
 https://github.com/denoland/deno/blob/master/src/msg.fbs
+This is more or less working.
 
-### L3
+### Public API
 
-With in Deno this is the high-level user facing API. However, the intention
-is to expose functionality as simply as possible. There should be little or
-no "ergonomics" APIs. (For example, `deno.readFileSync` only deals with
-ArrayBuffers and does not have an encoding parameter to return strings.)
-The intention is to make very easy to extend and link in external modules
-which can then add this functionality.
+This is the global variables and various built-in modules, namely the
+`"deno"` module.
+
+Deno will provide common browser global utilities like `fetch()` and
+`setTimeout()`.
+
+Deno has typescript built-in. Users can access the built-in typescript
+using:
+```ts
+import * as ts from "typescript"
+```
+Deno has its own built-in module which is imported with:
+```ts
+import * as deno from "deno"
+```
+The rest of this section discusses what will be in the `deno` module.
+
+Within Deno this is the high-level user facing API. However, the intention is to
+expose functionality as simply as possible. There should be little or no
+"ergonomics" APIs. (For example, `deno.readFileSync` only deals with
+ArrayBuffers and does not have an encoding parameter to return strings.) The
+intention is to make very easy to extend and link in external modules which can
+then add this functionality.
 
 Deno does not aim to be API compatible with Node in any respect. Deno will
 export a single flat namespace "deno" under which all core functions are
 defined.  We leave it up to users to wrap Deno's namespace to provide some
 compatibility with Node.
 
-*Top-level await*: This will be put off until at least deno2 Milestone1 is
+#### Top-level Await (Not Implemented)
+
+#471
+
+This will be put off until at least deno2 Milestone1 is
 complete. One of the major problems is that top-level await calls are not
 syntactically valid TypeScript.
 
-Functions exported under Deno namespace:
-```ts
-deno.readFileSync(filename: string): ArrayBuffer;
-deno.writeFileSync(filename: string, data: Uint8Array, perm: number): void;
-```
 
-Timers:
-```ts
-setTimeout(cb: TimerCallback, delay: number, ...args: any[]): number;
-setInterval(cb: TimerCallbac, duration: number, ...args: any[]): number;
-clearTimeout(timerId: number);
-clearInterval(timerId: number);
-```
-
-Console:
-```ts
-declare var console: {
-  log(...args: any[]): void;
-  error(...args: any[]): void;
-  assert(assertion: boolean, ...msg: any[]): void;
-}
-```
-
-URL:
-```ts
-URL(url: string, base?: string): URL;
-```
-
-Text encoding:
-```ts
-declare var TextEncoder: {
-  new (utfLabel?: string, options?: TextEncoderOptions): TextEncoder;
-  (utfLabel?: string, options?: TextEncoderOptions): TextEncoder;
-  encoding: string;
-};
-
-declare var TextDecoder: {
-  new (label?: string, options?: TextDecoderOptions): TextDecoder;
-  (label?: string, options?: TextDecoderOptions): TextDecoder;
-  encoding: string;
-};
-```
-
-Fetch API:
-```ts
-fetch(input?: Request | string, init?: RequestInit): Promise<Response>;
-```
-
-#### I/O
+#### I/O (Not Implemented) #721
 
 There are many OS constructs that perform I/O: files, sockets, pipes.
 Deno aims to provide a unified lowest common denominator interface to work with
