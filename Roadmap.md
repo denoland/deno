@@ -4,7 +4,9 @@ API and Feature requests should be submitted as PRs to this document.
 
 ## Target Use Cases
 
-### Implementation of `cat` #721
+### Implementation of `cat`
+
+#721
 
 ```ts
 import * as deno from "deno";
@@ -16,13 +18,14 @@ for (let i = 1; i < deno.argv.length; i++) {
 }
 ```
 
-### TCP Server #725
+### TCP Server
+
+#725
 
 ```ts
 import * as deno from "deno";
 const listener = deno.listen("tcp", ":8080");
-for (;;) {
-  const conn = await listener.accept();
+for await (const conn of listener.accept()) {
   deno.copy(conn, conn);
 }
 ```
@@ -150,7 +153,7 @@ but give a general sense of them.
 
 ### Internal: libdeno
 
-This is the lowest-level interface to the privlaged side.
+This is the lowest-level interface to the privileged side.
 It provides little more than passing ArrayBuffers in and
 out of the VM.
 The libdeno API is more or less feature complete now.
@@ -165,18 +168,18 @@ This is more or less working.
 
 ### Public API
 
-This is the global variables and various built in modules, namely the
+This is the global variables and various built-in modules, namely the
 `"deno"` module.
 
 Deno will provide common browser global utilities like `fetch()` and
 `setTimeout()`.
 
-Deno has typescript builtin. Users can access the builtin typescript
+Deno has typescript built-in. Users can access the built-in typescript
 using:
 ```ts
 import * as ts from "typescript"
 ```
-Deno has its own builtin module which is imported with:
+Deno has its own built-in module which is imported with:
 ```ts
 import * as deno from "deno"
 ```
@@ -194,7 +197,9 @@ export a single flat namespace "deno" under which all core functions are
 defined.  We leave it up to users to wrap Deno's namespace to provide some
 compatibility with Node.
 
-#### Top-level Await #471 (Not Implemented)
+#### Top-level Await (Not Implemented)
+
+#471
 
 This will be put off until at least deno2 Milestone1 is
 complete. One of the major problems is that top-level await calls are not
