@@ -189,7 +189,7 @@ fn test_parse_core_args_2() {
 // Pass the command line arguments to v8.
 // Returns a vector of command line arguments that v8 did not understand.
 pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
-  // deno_set_flags(int* argc, char** argv) mutates argc and argv to remove
+  // deno_set_v8_flags(int* argc, char** argv) mutates argc and argv to remove
   // flags that v8 understands.
   // First parse core args, then converto to a vector of C strings.
   let (argv, rest) = parse_core_args(args);
@@ -205,13 +205,12 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
     .map(|arg| arg.as_mut_ptr() as *mut i8)
     .collect::<Vec<_>>();
   // Store the length of the argv array in a local variable. We'll pass a
-  // pointer to this local variable to deno_set_flags(), which then
+  // pointer to this local variable to deno_set_v8_flags(), which then
   // updates its value.
   let mut c_argc = c_argv.len() as c_int;
   // Let v8 parse the arguments it recognizes and remove them from c_argv.
   unsafe {
-    // TODO(ry) Rename deno_set_flags to deno_set_v8_flags().
-    libdeno::deno_set_flags(&mut c_argc, c_argv.as_mut_ptr());
+    libdeno::deno_set_v8_flags(&mut c_argc, c_argv.as_mut_ptr());
   };
   // If c_argc was updated we have to change the length of c_argv to match.
   c_argv.truncate(c_argc as usize);

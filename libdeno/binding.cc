@@ -393,7 +393,7 @@ void* deno_get_data(Deno* d) { return d->data; }
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 
-void deno_set_flags(int* argc, char** argv) {
+void deno_set_v8_flags(int* argc, char** argv) {
   v8::V8::SetFlagsFromCommandLine(argc, argv, true);
 }
 

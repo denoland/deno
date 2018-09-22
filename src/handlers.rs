@@ -10,7 +10,7 @@ use hyper::rt::{Future, Stream};
 use hyper::Client;
 use isolate::from_c;
 use libdeno;
-use libdeno::{deno_buf, DenoC};
+use libdeno::{deno_buf, isolate};
 use msg;
 use remove_dir_all::remove_dir_all;
 use std;
@@ -36,9 +36,9 @@ type OpResult = DenoResult<Buf>;
 
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type Handler = fn(d: *const DenoC, base: &msg::Base) -> Box<Op>;
+type Handler = fn(i: *const isolate, base: &msg::Base) -> Box<Op>;
 
-pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
+pub extern "C" fn msg_from_js(i: *const isolate, buf: deno_buf) {
   let bytes = unsafe { std::slice::from_raw_parts(buf.data_ptr, buf.data_len) };
   let base = msg::get_root_as_base(bytes);
   let msg_type = base.msg_type();
@@ -67,7 +67,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     )),
   };
 
-  let future = handler(d, &base);
+  let future = handler(i, &base);
   let future = future.or_else(move |err| {
     // No matter whether we got an Err or Ok, we want a serialized message to
     // send back. So transform the DenoError into a deno_buf.
@@ -84,7 +84,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
     ))
   });
 
-  let isolate = from_c(d);
+  let isolate = from_c(i);
   if base.sync() {
     // Execute future synchronously.
     // println!("sync handler {}", msg::enum_name_any(msg_type));
@@ -94,7 +94,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
       Some(box_u8) => {
         let buf = deno_buf_from(box_u8);
         // Set the synchronous response, the value returned from isolate.send().
-        unsafe { libdeno::deno_set_response(d, buf) }
+        unsafe { libdeno::deno_set_response(i, buf) }
       }
     }
   } else {
@@ -118,7 +118,7 @@ pub extern "C" fn msg_from_js(d: *const DenoC, buf: deno_buf) {
         }
       };
       // TODO(ry) make this thread safe.
-      unsafe { libdeno::deno_send(d, buf) };
+      unsafe { libdeno::deno_send(i, buf) };
       Ok(())
     });
     isolate.rt.spawn(future);
@@ -150,13 +150,13 @@ fn not_implemented() -> DenoError {
   ))
 }
 
-fn handle_exit(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_exit(_i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_exit().unwrap();
   std::process::exit(msg.code())
 }
 
-fn handle_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let isolate = from_c(d);
+fn handle_start(i: *const isolate, base: &msg::Base) -> Box<Op> {
+  let isolate = from_c(i);
   let mut builder = FlatBufferBuilder::new();
 
   let argv = isolate.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
@@ -211,12 +211,12 @@ fn odd_future(err: DenoError) -> Box<Op> {
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L100-L154
-fn handle_code_fetch(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_code_fetch(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_code_fetch().unwrap();
   let cmd_id = base.cmd_id();
   let module_specifier = msg.module_specifier().unwrap();
   let containing_file = msg.containing_file().unwrap();
-  let isolate = from_c(d);
+  let isolate = from_c(i);
 
   assert_eq!(
     isolate.dir.root.join("gen"),
@@ -253,24 +253,24 @@ fn handle_code_fetch(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L156-L169
-fn handle_code_cache(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_code_cache(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_code_cache().unwrap();
   let filename = msg.filename().unwrap();
   let source_code = msg.source_code().unwrap();
   let output_code = msg.output_code().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
-    let isolate = from_c(d);
+    let isolate = from_c(i);
     isolate.dir.code_cache(filename, source_code, output_code)?;
     Ok(None)
   }()))
 }
 
-fn handle_set_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_set_env(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_set_env().unwrap();
   let key = msg.key().unwrap();
   let value = msg.value().unwrap();
 
-  let isolate = from_c(d);
+  let isolate = from_c(i);
   if !isolate.flags.allow_env {
     return odd_future(permission_denied());
   }
@@ -279,8 +279,8 @@ fn handle_set_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   ok_future(None)
 }
 
-fn handle_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let isolate = from_c(d);
+fn handle_env(i: *const isolate, base: &msg::Base) -> Box<Op> {
+  let isolate = from_c(i);
   let cmd_id = base.cmd_id();
   if !isolate.flags.allow_env {
     return odd_future(permission_denied());
@@ -320,12 +320,12 @@ fn handle_env(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   ))
 }
 
-fn handle_fetch_req(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_fetch_req(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_fetch_req().unwrap();
   let cmd_id = base.cmd_id();
   let id = msg.id();
   let url = msg.url().unwrap();
-  let isolate = from_c(d);
+  let isolate = from_c(i);
 
   if !isolate.flags.allow_net {
     return odd_future(permission_denied());
@@ -420,7 +420,7 @@ where
   (delay_task, cancel_tx)
 }
 
-fn handle_make_temp_dir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_make_temp_dir(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let base = Box::new(*base);
   let msg = base.msg_as_make_temp_dir().unwrap();
   let cmd_id = base.cmd_id();
@@ -428,7 +428,7 @@ fn handle_make_temp_dir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let prefix = msg.prefix();
   let suffix = msg.suffix();
 
-  let isolate = from_c(d);
+  let isolate = from_c(i);
   if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   }
@@ -459,11 +459,11 @@ fn handle_make_temp_dir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_mkdir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_mkdir(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_mkdir().unwrap();
   let mode = msg.mode();
   let path = msg.path().unwrap();
-  let isolate = from_c(d);
+  let isolate = from_c(i);
   if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   }
@@ -475,11 +475,11 @@ fn handle_mkdir(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_remove(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_remove(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_remove().unwrap();
   let path = msg.path().unwrap();
   let recursive = msg.recursive();
-  let isolate = from_c(d);
+  let isolate = from_c(i);
   if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   }
@@ -502,7 +502,7 @@ fn handle_remove(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 }
 
 // Prototype https://github.com/denoland/isolate/blob/golang/os.go#L171-L184
-fn handle_read_file(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_read_file(_i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
   let filename = String::from(msg.filename().unwrap());
@@ -552,7 +552,7 @@ fn get_mode(_perm: fs::Permissions) -> u32 {
   0
 }
 
-fn handle_stat(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_stat(_i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_stat().unwrap();
   let cmd_id = base.cmd_id();
   let filename = String::from(msg.filename().unwrap());
@@ -595,13 +595,13 @@ fn handle_stat(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_write_file(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_write_file(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_write_file().unwrap();
   let filename = String::from(msg.filename().unwrap());
   let data = msg.data().unwrap();
   let perm = msg.perm();
 
-  let isolate = from_c(d);
+  let isolate = from_c(i);
   if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   }
@@ -612,25 +612,24 @@ fn handle_write_file(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-// TODO(ry) Use Isolate instead of DenoC as first arg.
-fn remove_timer(d: *const DenoC, timer_id: u32) {
-  let isolate = from_c(d);
+fn remove_timer(i: *const isolate, timer_id: u32) {
+  let isolate = from_c(i);
   isolate.timers.remove(&timer_id);
 }
 
 // Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L25-L39
-fn handle_timer_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_timer_start(i: *const isolate, base: &msg::Base) -> Box<Op> {
   debug!("handle_timer_start");
   let msg = base.msg_as_timer_start().unwrap();
   let cmd_id = base.cmd_id();
   let timer_id = msg.id();
   let delay = msg.delay();
-  let isolate = from_c(d);
+  let isolate = from_c(i);
 
   let future = {
     let (delay_task, cancel_delay) = set_timeout(
       move || {
-        remove_timer(d, timer_id);
+        remove_timer(i, timer_id);
       },
       delay,
     );
@@ -660,15 +659,15 @@ fn handle_timer_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
 }
 
 // Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L40-L43
-fn handle_timer_clear(d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_timer_clear(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_timer_clear().unwrap();
   debug!("handle_timer_clear");
-  remove_timer(d, msg.id());
+  remove_timer(i, msg.id());
   ok_future(None)
 }
 
-fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let isolate = from_c(d);
+fn handle_rename(i: *const isolate, base: &msg::Base) -> Box<Op> {
+  let isolate = from_c(i);
   if !isolate.flags.allow_write {
     return odd_future(permission_denied());
   }
@@ -682,8 +681,8 @@ fn handle_rename(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_symlink(d: *const DenoC, base: &msg::Base) -> Box<Op> {
-  let deno = from_c(d);
+fn handle_symlink(i: *const isolate, base: &msg::Base) -> Box<Op> {
+  let deno = from_c(i);
   if !deno.flags.allow_write {
     return odd_future(permission_denied());
   }
