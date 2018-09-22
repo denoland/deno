@@ -146,7 +146,7 @@ fn permission_denied() -> DenoError {
 fn not_implemented() -> DenoError {
   DenoError::from(std::io::Error::new(
     std::io::ErrorKind::Other,
-    "Not implemented"
+    "Not implemented",
   ))
 }
 
