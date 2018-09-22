@@ -68,5 +68,5 @@ export default function denoMain() {
     os.exit(0);
   }
 
-  compiler.run(inputFn, `${cwd}/`);
+  compiler.run(inputFn, `${cwd}/`, startResMsg.compileFlag());
 }

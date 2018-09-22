@@ -196,7 +196,10 @@ export class DenoCompiler
    * Get the dependencies for a given module, but don't run the module,
    * just add the module factory to the run queue.
    */
-  private _gatherDependencies(moduleMetaData: ModuleMetaData): void {
+  private _gatherDependencies(
+      moduleMetaData: ModuleMetaData,
+      forceCompilation?: boolean
+  ): void {
     this._log("compiler._resolveDependencies", moduleMetaData.fileName);
 
     // if the module has already run, we can short circuit.
@@ -209,7 +212,7 @@ export class DenoCompiler
     }
 
     this._window.define = this._makeDefine(moduleMetaData);
-    this._globalEval(this.compile(moduleMetaData));
+    this._globalEval(this.compile(moduleMetaData, forceCompilation));
     this._window.define = undefined;
   }
 
@@ -412,11 +415,17 @@ export class DenoCompiler
 
   /**
    * Retrieve the output of the TypeScript compiler for a given module and
-   * cache the result.
+   * cache the result. Re-compilation can be forced using 'compile' flag.
    */
-  compile(moduleMetaData: ModuleMetaData): OutputCode {
-    this._log("compiler.compile", moduleMetaData.fileName);
-    if (moduleMetaData.outputCode) {
+  compile(
+      moduleMetaData: ModuleMetaData,
+      forceCompilation?: boolean
+  ): OutputCode {
+    this._log(
+        "compiler.compile", moduleMetaData.fileName,
+        "forceCompilation", forceCompilation
+    );
+    if (!forceCompilation && moduleMetaData.outputCode) {
       return moduleMetaData.outputCode;
     }
     const { fileName, sourceCode } = moduleMetaData;
@@ -548,13 +557,14 @@ export class DenoCompiler
    */
   run(
     moduleSpecifier: ModuleSpecifier,
-    containingFile: ContainingFile
+    containingFile: ContainingFile,
+    forceCompilation?: boolean,
   ): ModuleMetaData {
     this._log("compiler.run", { moduleSpecifier, containingFile });
     const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
     this._scriptFileNames = [moduleMetaData.fileName];
     if (!moduleMetaData.deps) {
-      this._gatherDependencies(moduleMetaData);
+      this._gatherDependencies(moduleMetaData, forceCompilation);
     }
     this._drainRunQueue();
     return moduleMetaData;
