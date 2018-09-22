@@ -76,8 +76,8 @@ impl Drop for Isolate {
   }
 }
 
-pub fn from_c<'a>(d: *const libdeno::isolate) -> &'a mut Isolate {
-  let ptr = unsafe { libdeno::deno_get_data(d) };
+pub fn from_c<'a>(i: *const libdeno::isolate) -> &'a mut Isolate {
+  let ptr = unsafe { libdeno::deno_get_data(i) };
   let ptr = ptr as *mut Isolate;
   let isolate_box = unsafe { Box::from_raw(ptr) };
   Box::leak(isolate_box)
