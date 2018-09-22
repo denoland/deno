@@ -629,7 +629,7 @@ fn handle_timer_start(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let future = {
     let (delay_task, cancel_delay) = set_timeout(
       move || {
-        remove_timer(d, timer_id);
+        remove_timer(i, timer_id);
       },
       delay,
     );
