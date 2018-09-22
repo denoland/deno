@@ -4,6 +4,7 @@ import { flatbuffers } from "flatbuffers";
 import * as fbs from "gen/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
+import { maybePushTrace } from "./trace";
 
 let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<fbs.Base>>();
@@ -29,6 +30,7 @@ export function sendAsync(
   msgType: fbs.Any,
   msg: flatbuffers.Offset
 ): Promise<fbs.Base> {
+  maybePushTrace(msgType, false); // add to trace if tracing
   const [cmdId, resBuf] = sendInternal(builder, msgType, msg, false);
   util.assert(resBuf == null);
   const promise = util.createResolvable<fbs.Base>();
@@ -42,6 +44,7 @@ export function sendSync(
   msgType: fbs.Any,
   msg: flatbuffers.Offset
 ): null | fbs.Base {
+  maybePushTrace(msgType, true); // add to trace if tracing
   const [cmdId, resBuf] = sendInternal(builder, msgType, msg, true);
   util.assert(cmdId >= 0);
   if (resBuf == null) {
