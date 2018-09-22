@@ -8,25 +8,54 @@ import * as util from "./util";
 let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<fbs.Base>>();
 
-let traceQueue: fbs.Any[] = [];
-let isTracing = false;
-
-export function startTrace(): void {
-  isTracing = true;
+export interface TraceInfo {
+  sync: boolean;
+  name: string;
 }
 
-export function endTrace(): string[] {
-  isTracing = false;
-  const lastTrace = traceQueue;
-  traceQueue = [];
-  // convert to enum names
-  return lastTrace.map(v => fbs.Any[v]);
+interface TraceListStack {
+  list: TraceInfo[];
+  prevStack: TraceListStack | null;
 }
 
-function maybePushTrace(op: fbs.Any): void {
-  if (isTracing) {
-    traceQueue.push(op);
+let currTraceListStack: TraceListStack | null = null;
+
+export function pushTraceStack(): void {
+  if (currTraceListStack === null) {
+    currTraceListStack = { list: [], prevStack: null };
+  } else {
+    const newStack = { list: [], prevStack: currTraceListStack };
+    currTraceListStack = newStack;
   }
+}
+
+export function popTraceStack(): TraceInfo[] {
+  if (currTraceListStack === null) {
+    throw new Error("trace list stack should not be empty");
+  }
+  const resultList = currTraceListStack!.list;
+  if (!!currTraceListStack!.prevStack) {
+    const prevStack = currTraceListStack!.prevStack!;
+    // concat inner results to outer stack
+    prevStack.list = prevStack.list.concat(resultList);
+    currTraceListStack = prevStack;
+  } else {
+    currTraceListStack = null;
+  }
+  return resultList;
+}
+
+function maybePushTrace(op: fbs.Any, sync: boolean): void {
+  if (currTraceListStack === null) {
+    return; // no trace requested
+  }
+  // Freeze the object, avoid tampering
+  currTraceListStack!.list.push(
+    Object.freeze({
+      sync,
+      name: fbs.Any[op] // convert to enum names
+    })
+  );
 }
 
 export function handleAsyncMsgFromRust(ui8: Uint8Array) {
@@ -50,6 +79,7 @@ export function sendAsync(
   msgType: fbs.Any,
   msg: flatbuffers.Offset
 ): Promise<fbs.Base> {
+  maybePushTrace(msgType, false); // add to trace if tracing
   const [cmdId, resBuf] = sendInternal(builder, msgType, msg, false);
   util.assert(resBuf == null);
   const promise = util.createResolvable<fbs.Base>();
@@ -63,6 +93,7 @@ export function sendSync(
   msgType: fbs.Any,
   msg: flatbuffers.Offset
 ): null | fbs.Base {
+  maybePushTrace(msgType, true); // add to trace if tracing
   const [cmdId, resBuf] = sendInternal(builder, msgType, msg, true);
   util.assert(cmdId >= 0);
   if (resBuf == null) {
@@ -83,7 +114,6 @@ function sendInternal(
   msg: flatbuffers.Offset,
   sync = true
 ): [number, null | Uint8Array] {
-  maybePushTrace(msgType); // add to trace if tracing
   const cmdId = nextCmdId++;
   fbs.Base.startBase(builder);
   fbs.Base.addMsg(builder, msg);
