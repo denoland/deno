@@ -4,59 +4,10 @@ import { flatbuffers } from "flatbuffers";
 import * as fbs from "gen/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
+import { maybePushTrace } from "./trace";
 
 let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<fbs.Base>>();
-
-export interface TraceInfo {
-  sync: boolean;
-  name: string;
-}
-
-interface TraceListStack {
-  list: TraceInfo[];
-  prevStack: TraceListStack | null;
-}
-
-let currTraceListStack: TraceListStack | null = null;
-
-export function pushTraceStack(): void {
-  if (currTraceListStack === null) {
-    currTraceListStack = { list: [], prevStack: null };
-  } else {
-    const newStack = { list: [], prevStack: currTraceListStack };
-    currTraceListStack = newStack;
-  }
-}
-
-export function popTraceStack(): TraceInfo[] {
-  if (currTraceListStack === null) {
-    throw new Error("trace list stack should not be empty");
-  }
-  const resultList = currTraceListStack!.list;
-  if (!!currTraceListStack!.prevStack) {
-    const prevStack = currTraceListStack!.prevStack!;
-    // concat inner results to outer stack
-    prevStack.list = prevStack.list.concat(resultList);
-    currTraceListStack = prevStack;
-  } else {
-    currTraceListStack = null;
-  }
-  return resultList;
-}
-
-function maybePushTrace(op: fbs.Any, sync: boolean): void {
-  if (currTraceListStack === null) {
-    return; // no trace requested
-  }
-  // Freeze the object, avoid tampering
-  currTraceListStack!.list.push(
-    Object.freeze({
-      sync,
-      name: fbs.Any[op] // convert to enum names
-    })
-  );
-}
 
 export function handleAsyncMsgFromRust(ui8: Uint8Array) {
   const bb = new flatbuffers.ByteBuffer(ui8);
