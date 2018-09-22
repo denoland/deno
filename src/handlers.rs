@@ -10,7 +10,7 @@ use hyper::rt::{Future, Stream};
 use hyper::Client;
 use isolate::from_c;
 use libdeno;
-use libdeno::{deno_buf, isolate_ptr};
+use libdeno::{deno_buf, isolate};
 use msg;
 use remove_dir_all::remove_dir_all;
 use std;
@@ -36,9 +36,9 @@ type OpResult = DenoResult<Buf>;
 
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type Handler = fn(d: *const isolate_ptr, base: &msg::Base) -> Box<Op>;
+type Handler = fn(d: *const isolate, base: &msg::Base) -> Box<Op>;
 
-pub extern "C" fn msg_from_js(d: *const isolate_ptr, buf: deno_buf) {
+pub extern "C" fn msg_from_js(d: *const isolate, buf: deno_buf) {
   let bytes = unsafe { std::slice::from_raw_parts(buf.data_ptr, buf.data_len) };
   let base = msg::get_root_as_base(bytes);
   let msg_type = base.msg_type();
@@ -150,12 +150,12 @@ fn not_implemented() -> DenoError {
   ))
 }
 
-fn handle_exit(_d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_exit(_d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_exit().unwrap();
   std::process::exit(msg.code())
 }
 
-fn handle_start(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_start(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let isolate = from_c(d);
   let mut builder = FlatBufferBuilder::new();
 
@@ -211,7 +211,7 @@ fn odd_future(err: DenoError) -> Box<Op> {
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L100-L154
-fn handle_code_fetch(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_code_fetch(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_code_fetch().unwrap();
   let cmd_id = base.cmd_id();
   let module_specifier = msg.module_specifier().unwrap();
@@ -253,7 +253,7 @@ fn handle_code_fetch(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L156-L169
-fn handle_code_cache(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_code_cache(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_code_cache().unwrap();
   let filename = msg.filename().unwrap();
   let source_code = msg.source_code().unwrap();
@@ -265,7 +265,7 @@ fn handle_code_cache(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_set_env(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_set_env(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_set_env().unwrap();
   let key = msg.key().unwrap();
   let value = msg.value().unwrap();
@@ -279,7 +279,7 @@ fn handle_set_env(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   ok_future(None)
 }
 
-fn handle_env(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_env(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let isolate = from_c(d);
   let cmd_id = base.cmd_id();
   if !isolate.flags.allow_env {
@@ -320,7 +320,7 @@ fn handle_env(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   ))
 }
 
-fn handle_fetch_req(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_fetch_req(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_fetch_req().unwrap();
   let cmd_id = base.cmd_id();
   let id = msg.id();
@@ -420,7 +420,7 @@ where
   (delay_task, cancel_tx)
 }
 
-fn handle_make_temp_dir(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_make_temp_dir(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let base = Box::new(*base);
   let msg = base.msg_as_make_temp_dir().unwrap();
   let cmd_id = base.cmd_id();
@@ -459,7 +459,7 @@ fn handle_make_temp_dir(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_mkdir(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_mkdir(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_mkdir().unwrap();
   let mode = msg.mode();
   let path = msg.path().unwrap();
@@ -475,7 +475,7 @@ fn handle_mkdir(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_remove(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_remove(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_remove().unwrap();
   let path = msg.path().unwrap();
   let recursive = msg.recursive();
@@ -502,7 +502,7 @@ fn handle_remove(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
 }
 
 // Prototype https://github.com/denoland/isolate/blob/golang/os.go#L171-L184
-fn handle_read_file(_d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_read_file(_d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
   let filename = String::from(msg.filename().unwrap());
@@ -552,7 +552,7 @@ fn get_mode(_perm: fs::Permissions) -> u32 {
   0
 }
 
-fn handle_stat(_d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_stat(_d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_stat().unwrap();
   let cmd_id = base.cmd_id();
   let filename = String::from(msg.filename().unwrap());
@@ -595,7 +595,7 @@ fn handle_stat(_d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_write_file(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_write_file(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_write_file().unwrap();
   let filename = String::from(msg.filename().unwrap());
   let data = msg.data().unwrap();
@@ -612,13 +612,13 @@ fn handle_write_file(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn remove_timer(d: *const isolate_ptr, timer_id: u32) {
+fn remove_timer(d: *const isolate, timer_id: u32) {
   let isolate = from_c(d);
   isolate.timers.remove(&timer_id);
 }
 
 // Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L25-L39
-fn handle_timer_start(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_timer_start(d: *const isolate, base: &msg::Base) -> Box<Op> {
   debug!("handle_timer_start");
   let msg = base.msg_as_timer_start().unwrap();
   let cmd_id = base.cmd_id();
@@ -659,14 +659,14 @@ fn handle_timer_start(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
 }
 
 // Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L40-L43
-fn handle_timer_clear(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_timer_clear(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_timer_clear().unwrap();
   debug!("handle_timer_clear");
   remove_timer(d, msg.id());
   ok_future(None)
 }
 
-fn handle_rename(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_rename(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let isolate = from_c(d);
   if !isolate.flags.allow_write {
     return odd_future(permission_denied());
@@ -681,7 +681,7 @@ fn handle_rename(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_symlink(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
+fn handle_symlink(d: *const isolate, base: &msg::Base) -> Box<Op> {
   let deno = from_c(d);
   if !deno.flags.allow_write {
     return odd_future(permission_denied());
