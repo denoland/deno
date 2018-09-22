@@ -1,10 +1,13 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use libc::c_int;
 use libdeno;
+use log;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
+use std::process::exit;
 use std::vec::Vec;
+use version;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -25,6 +28,24 @@ pub struct DenoFlags {
   pub deps_flag: bool,
 }
 
+pub fn process(flags: &DenoFlags) {
+  if flags.help {
+    print_usage();
+    exit(0);
+  }
+
+  if flags.version {
+    version::print_version();
+    exit(0);
+  }
+
+  let mut log_level = log::LevelFilter::Info;
+  if flags.log_debug {
+    log_level = log::LevelFilter::Debug;
+  }
+  log::set_max_level(log_level);
+}
+
 pub fn print_usage() {
   println!(
     "Usage: deno script.ts
@@ -43,6 +64,8 @@ pub fn print_usage() {
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
 pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
+  let args = v8_set_flags(args);
+
   let mut flags = DenoFlags::default();
   let mut rest = Vec::new();
   let mut arg_iter = args.iter();
