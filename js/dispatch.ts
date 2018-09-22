@@ -8,6 +8,27 @@ import * as util from "./util";
 let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<fbs.Base>>();
 
+let traceQueue: fbs.Any[] = [];
+let isTracing = false;
+
+export function startTrace(): void {
+  isTracing = true;
+}
+
+export function endTrace(): string[] {
+  isTracing = false;
+  const lastTrace = traceQueue;
+  traceQueue = [];
+  // convert to enum names
+  return lastTrace.map(v => fbs.Any[v]);
+}
+
+function maybePushTrace(op: fbs.Any): void {
+  if (isTracing) {
+    traceQueue.push(op);
+  }
+}
+
 export function handleAsyncMsgFromRust(ui8: Uint8Array) {
   const bb = new flatbuffers.ByteBuffer(ui8);
   const base = fbs.Base.getRootAsBase(bb);
@@ -62,6 +83,7 @@ function sendInternal(
   msg: flatbuffers.Offset,
   sync = true
 ): [number, null | Uint8Array] {
+  maybePushTrace(msgType); // add to trace if tracing
   const cmdId = nextCmdId++;
   fbs.Base.startBase(builder);
   fbs.Base.addMsg(builder, msg);
