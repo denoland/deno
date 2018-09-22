@@ -459,7 +459,7 @@ fn handle_make_temp_dir(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_mkdir(d: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_mkdir(d: *const isolate_ptr, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_mkdir().unwrap();
   let mode = msg.mode();
   let path = msg.path().unwrap();
