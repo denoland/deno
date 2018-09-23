@@ -55,6 +55,10 @@ type OutputCode = string;
  * The original source code
  */
 type SourceCode = string;
+/**
+ * Flags that are passed from CLI arguments
+ */
+type CompilerFlags = { [key: string]: boolean };
 
 /**
  * Abstraction of the APIs required from the `os` module so they can be
@@ -169,6 +173,8 @@ export class DenoCompiler
   // A reference to the global scope so it can be monkey patched during
   // testing
   private _window = window;
+  // Flags provide settings that can be changed via CLI arguments
+  private _flags: CompilerFlags = {};
 
   /**
    * Drain the run queue, retrieving the arguments for the module
@@ -196,10 +202,7 @@ export class DenoCompiler
    * Get the dependencies for a given module, but don't run the module,
    * just add the module factory to the run queue.
    */
-  private _gatherDependencies(
-      moduleMetaData: ModuleMetaData,
-      forceCompilation?: boolean
-  ): void {
+  private _gatherDependencies(moduleMetaData: ModuleMetaData): void {
     this._log("compiler._resolveDependencies", moduleMetaData.fileName);
 
     // if the module has already run, we can short circuit.
@@ -212,7 +215,7 @@ export class DenoCompiler
     }
 
     this._window.define = this._makeDefine(moduleMetaData);
-    this._globalEval(this.compile(moduleMetaData, forceCompilation));
+    this._globalEval(this.compile(moduleMetaData));
     this._window.define = undefined;
   }
 
@@ -417,15 +420,13 @@ export class DenoCompiler
    * Retrieve the output of the TypeScript compiler for a given module and
    * cache the result. Re-compilation can be forced using '--recompile' flag.
    */
-  compile(
-      moduleMetaData: ModuleMetaData,
-      forceCompilation?: boolean
-  ): OutputCode {
+  compile(moduleMetaData: ModuleMetaData): OutputCode {
+    const recompile = !!this._flags.recompile;
     this._log(
         "compiler.compile",
-        { filename: moduleMetaData.fileName, recompile: forceCompilation }
+        { filename: moduleMetaData.fileName, recompile }
     );
-    if (!forceCompilation && moduleMetaData.outputCode) {
+    if (!recompile && moduleMetaData.outputCode) {
       return moduleMetaData.outputCode;
     }
     const { fileName, sourceCode } = moduleMetaData;
@@ -556,15 +557,14 @@ export class DenoCompiler
    * specifier and a containing file
    */
   run(
-    moduleSpecifier: ModuleSpecifier,
-    containingFile: ContainingFile,
-    forceCompilation?: boolean,
+      moduleSpecifier: ModuleSpecifier,
+      containingFile: ContainingFile
   ): ModuleMetaData {
     this._log("compiler.run", { moduleSpecifier, containingFile });
     const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
     this._scriptFileNames = [moduleMetaData.fileName];
     if (!moduleMetaData.deps) {
-      this._gatherDependencies(moduleMetaData, forceCompilation);
+      this._gatherDependencies(moduleMetaData);
     }
     this._drainRunQueue();
     return moduleMetaData;
@@ -677,6 +677,10 @@ export class DenoCompiler
       // TODO: we should be returning a ts.ResolveModuleFull
       return { resolvedFileName, isExternalLibraryImport };
     });
+  }
+
+  setFlags(flags: CompilerFlags): void {
+    this._flags = { ...this._flags, ...flags };
   }
 
   // Deno specific static properties and methods
