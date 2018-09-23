@@ -557,8 +557,8 @@ export class DenoCompiler
    * specifier and a containing file
    */
   run(
-      moduleSpecifier: ModuleSpecifier,
-      containingFile: ContainingFile
+    moduleSpecifier: ModuleSpecifier,
+    containingFile: ContainingFile
   ): ModuleMetaData {
     this._log("compiler.run", { moduleSpecifier, containingFile });
     const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
