@@ -415,7 +415,7 @@ export class DenoCompiler
 
   /**
    * Retrieve the output of the TypeScript compiler for a given module and
-   * cache the result. Re-compilation can be forced using 'compile' flag.
+   * cache the result. Re-compilation can be forced using '--recompile' flag.
    */
   compile(
       moduleMetaData: ModuleMetaData,

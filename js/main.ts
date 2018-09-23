@@ -37,7 +37,7 @@ export default function denoMain() {
   libdeno.setGlobalErrorHandler(onGlobalError);
   const compiler = DenoCompiler.instance();
 
-  // First we send an empty "Start" message to let the privlaged side know we
+  // First we send an empty "Start" message to let the privileged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
   // argv and other info.
   const startResMsg = sendStart();
@@ -68,5 +68,5 @@ export default function denoMain() {
     os.exit(0);
   }
 
-  compiler.run(inputFn, `${cwd}/`, startResMsg.compileFlag());
+  compiler.run(inputFn, `${cwd}/`, startResMsg.recompileFlag());
 }

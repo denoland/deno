@@ -172,7 +172,7 @@ fn handle_start(d: *const DenoC, base: &msg::Base) -> Box<Op> {
       cwd: Some(cwd_off),
       argv: Some(argv_off),
       debug_flag: isolate.flags.log_debug,
-      compile_flag: isolate.flags.compile,
+      recompile_flag: isolate.flags.recompile,
       ..Default::default()
     },
   );

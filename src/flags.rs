@@ -18,7 +18,7 @@ pub struct DenoFlags {
   pub log_debug: bool,
   pub version: bool,
   pub reload: bool,
-  pub compile: bool,
+  pub recompile: bool,
   pub allow_write: bool,
   pub allow_net: bool,
   pub allow_env: bool,
@@ -31,9 +31,9 @@ pub fn print_usage() {
 --allow-write      Allow file system write access.
 --allow-net        Allow network access.
 --allow-env        Allow environment access.
+--recompile        Force recompilation of TypeScript code.
 -v or --version    Print the version.
 -r or --reload     Reload cached remote resources.
--c or --compile    Force recompilation of TypeScript code.
 -D or --log-debug  Log debug output.
 -h or --help       Print this message.
 --v8-options       Print V8 command line options.
@@ -54,7 +54,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
         "--log-debug" => flags.log_debug = true,
         "--version" => flags.version = true,
         "--reload" => flags.reload = true,
-        "--compile" => flags.compile = true,
+        "--recompile" => flags.recompile = true,
         "--allow-write" => flags.allow_write = true,
         "--allow-net" => flags.allow_net = true,
         "--allow-env" => flags.allow_env = true,
@@ -70,7 +70,6 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
           'D' => flags.log_debug = true,
           'v' => flags.version = true,
           'r' => flags.reload = true,
-          'c' => flags.compile = true,
           _ => unimplemented!(),
         }
       }
