@@ -14,4 +14,5 @@ export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export { arch, platform } from "./platform";
 export { trace } from "./trace";
+export { truncateSync, truncate } from "./truncate";
 export const args: string[] = [];

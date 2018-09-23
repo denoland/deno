@@ -59,6 +59,7 @@ pub extern "C" fn msg_from_js(i: *const isolate, buf: deno_buf) {
     msg::Any::Symlink => handle_symlink,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::Stat => handle_stat,
+    msg::Any::Truncate => handle_truncate,
     msg::Any::WriteFile => handle_write_file,
     msg::Any::Exit => handle_exit,
     _ => panic!(format!(
@@ -700,4 +701,22 @@ fn handle_symlink(i: *const isolate, base: &msg::Base) -> Box<Op> {
       Ok(None)
     }()))
   }
+}
+
+fn handle_truncate(i: *const isolate, base: &msg::Base) -> Box<Op> {
+  let deno = from_c(i);
+  if !deno.flags.allow_write {
+    return odd_future(permission_denied());
+  }
+   let msg = base.msg_as_truncate().unwrap();
+  let name = msg.name().unwrap();
+  let len = msg.len();
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_mkdir {}", name);
+    debug!("handle_mkdir {}", len);
+    let mut options = fs::OpenOptions::new();
+    let f = options.write(true).open(name)?;
+    f.set_len(len as u64)?;
+    Ok(None)
+  }()))
 }

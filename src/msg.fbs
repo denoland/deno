@@ -24,6 +24,7 @@ union Any {
   Stat,
   StatRes,
   SetEnv,
+  Truncate,
 }
 
 enum ErrorKind: byte {
@@ -220,6 +221,11 @@ table StatRes {
   created:ulong;
   mode: uint;
   has_mode: bool; // false on windows
+}
+
+table Truncate {
+  name: string;
+  len: uint;
 }
 
 root_type Base;
