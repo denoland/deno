@@ -422,8 +422,8 @@ export class DenoCompiler
       forceCompilation?: boolean
   ): OutputCode {
     this._log(
-        "compiler.compile", moduleMetaData.fileName,
-        "forceCompilation", forceCompilation
+        "compiler.compile",
+        { filename: moduleMetaData.fileName, recompile: forceCompilation }
     );
     if (!forceCompilation && moduleMetaData.outputCode) {
       return moduleMetaData.outputCode;
