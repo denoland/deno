@@ -8,7 +8,7 @@
 
 ## A secure TypeScript runtime built on V8
 
-* Supports TypeScript 3.0.1 out of the box. Uses V8 6.9.297. That is, it's
+* Supports TypeScript 3.0 out of the box. Uses V8 7.0. That is, it's
   very modern JavaScript.
 
 * No `package.json`. No npm. Not explicitly compatible with Node.
@@ -52,9 +52,26 @@
 
 ## Install
 
+**With Python:**
+
 ```
 curl -sSf https://raw.githubusercontent.com/denoland/deno_install/master/install.py | python
 ```
+
+**With PowerShell:**
+
+```powershell
+iex (iwr https://raw.githubusercontent.com/denoland/deno_install/master/install.ps1)
+```
+
+_Note: Depending on your security settings, you may have to run `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` first to allow downloaded scripts to be executed._
+
+Try it:
+```
+> deno http://deno.land/thumb.ts
+```
+
+See also [deno_install](https://github.com/denoland/deno_install).
 
 
 ## Status

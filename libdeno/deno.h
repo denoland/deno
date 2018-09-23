@@ -26,7 +26,7 @@ typedef void (*deno_recv_cb)(Deno* d, deno_buf buf);
 
 void deno_init();
 const char* deno_v8_version();
-void deno_set_flags(int* argc, char** argv);
+void deno_set_v8_flags(int* argc, char** argv);
 
 Deno* deno_new(void* data, deno_recv_cb cb);
 void deno_delete(Deno* d);
