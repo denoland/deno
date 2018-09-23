@@ -16,6 +16,8 @@ union Any {
   MakeTempDirRes,
   Mkdir,
   Remove,
+  ReadDir,
+  ReadDirRes,
   ReadFile,
   ReadFileRes,
   WriteFile,
@@ -206,12 +208,26 @@ table Symlink {
   newname: string;
 }
 
+table ReadDir {
+  filename: string;
+}
+
+table ReadDirRes {
+  entries: [FileInfo];
+}
+
 table Stat {
   filename: string;
   lstat: bool;
 }
 
 table StatRes {
+  // Workaround for codegen issues. Without the array Flatbuffers will not
+  // declare a lifetime for StatRes that FileInfo requires.
+  info: [FileInfo];
+}
+
+table FileInfo {
   is_file: bool;
   is_symlink: bool;
   len: ulong;
@@ -220,6 +236,8 @@ table StatRes {
   created:ulong;
   mode: uint;
   has_mode: bool; // false on windows
+  name: string;
+  path: string;
 }
 
 root_type Base;
