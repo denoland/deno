@@ -6,6 +6,7 @@ export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
 export { removeSync, remove, removeAllSync, removeAll } from "./remove";
 export { readFileSync, readFile } from "./read_file";
+export { readDirSync, readDir } from "./read_dir";
 export { renameSync, rename } from "./rename";
 export { FileInfo, statSync, lstatSync, stat, lstat } from "./stat";
 export { symlinkSync, symlink } from "./symlink";

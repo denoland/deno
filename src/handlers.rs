@@ -54,6 +54,7 @@ pub extern "C" fn msg_from_js(i: *const isolate, buf: deno_buf) {
     msg::Any::MakeTempDir => handle_make_temp_dir,
     msg::Any::Mkdir => handle_mkdir,
     msg::Any::Remove => handle_remove,
+    msg::Any::ReadDir => handle_read_dir,
     msg::Any::ReadFile => handle_read_file,
     msg::Any::Rename => handle_rename,
     msg::Any::Symlink => handle_symlink,
@@ -552,6 +553,64 @@ fn get_mode(_perm: fs::Permissions) -> u32 {
   0
 }
 
+fn handle_read_dir(_i: *const isolate, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_read_dir().unwrap();
+  let cmd_id = base.cmd_id();
+  let filename = String::from(msg.filename().unwrap());
+
+  Box::new(futures::future::result(|| -> OpResult {
+    let builder = &mut FlatBufferBuilder::new();
+    debug!("handle_read_dir {}", filename);
+    let path = Path::new(&filename);
+    let entries: Vec<_> = fs::read_dir(path)?
+      .filter_map(Result::ok)
+      .filter_map(|e| e.metadata().map(|m| (e, m.file_type(), m)).ok())
+      .filter_map(|(entry, file_type, metadata)| {
+        let name = entry.file_name().to_str().and_then(|s| {
+          Some(builder.create_string(s))
+        });
+        let path = entry.path().to_str().and_then(|s| {
+          Some(builder.create_string(s))
+        });
+
+        Some(msg::FileInfo::create(
+          builder,
+          &msg::FileInfoArgs {
+            is_file: file_type.is_file(),
+            is_symlink: file_type.is_symlink(),
+            len: metadata.len(),
+            modified: to_seconds!(metadata.modified()),
+            accessed: to_seconds!(metadata.accessed()),
+            created: to_seconds!(metadata.created()),
+            name: name,
+            path: path,
+            ..Default::default()
+          })
+        )
+      })
+    .collect();
+
+    let entries = builder.create_vector(&*entries);
+    let msg = msg::ReadDirRes::create(
+      builder,
+      &msg::ReadDirResArgs {
+        entries: Some(entries),
+        ..Default::default()
+      }
+    );
+
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::ReadDirRes,
+        ..Default::default()
+      },
+    ))
+  }()))
+}
+
 fn handle_stat(_i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_stat().unwrap();
   let cmd_id = base.cmd_id();
@@ -568,17 +627,34 @@ fn handle_stat(_i: *const isolate, base: &msg::Base) -> Box<Op> {
       fs::metadata(path)?
     };
 
-    let msg = msg::StatRes::create(
+    let name = path.file_name().and_then(std::ffi::OsStr::to_str).and_then(|s| {
+      Some(builder.create_string(s))
+    });
+
+    let path = Some(builder.create_string(&filename));
+
+    let info = msg::FileInfo::create(
       builder,
-      &msg::StatResArgs {
+      &msg::FileInfoArgs {
         is_file: metadata.is_file(),
         is_symlink: metadata.file_type().is_symlink(),
         len: metadata.len(),
         modified: to_seconds!(metadata.modified()),
         accessed: to_seconds!(metadata.accessed()),
         created: to_seconds!(metadata.created()),
+        name,
+        path,
         mode: get_mode(metadata.permissions()),
         has_mode: cfg!(target_family = "unix"),
+        ..Default::default()
+      }
+    );
+
+    let vec = builder.create_vector(&[info]);
+    let msg = msg::StatRes::create(
+      builder,
+      &msg::StatResArgs {
+        info: Some(vec),
         ..Default::default()
       },
     );

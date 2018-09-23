@@ -36,6 +36,12 @@ export interface FileInfo {
    * for this file/directory. TODO Match behavior with Go on windows for mode.
    */
   mode: number | null;
+  /**
+   * Returns the file or directory name. Is `null` if the path ends in `..`.
+   */
+  name: string | null;
+  /** Returns the file or directory path.  */
+  path: string;
 
   /**
    * Returns whether this is info for a regular file. This result is mutually
@@ -64,23 +70,27 @@ class FileInfoImpl implements FileInfo {
   accessed: number | null;
   created: number | null;
   mode: number | null;
+  name: string | null;
+  path: string;
 
   /* @internal */
-  constructor(private _msg: fbs.StatRes) {
-    const modified = this._msg.modified().toFloat64();
-    const accessed = this._msg.accessed().toFloat64();
-    const created = this._msg.created().toFloat64();
-    const hasMode = this._msg.hasMode();
-    const mode = this._msg.mode(); // negative for invalid mode (Windows)
+  constructor(msg: fbs.FileInfo) {
+    const modified = msg.modified().toFloat64();
+    const accessed = msg.accessed().toFloat64();
+    const created = msg.created().toFloat64();
+    const hasMode = msg.hasMode();
+    const mode = msg.mode();
 
-    this._isFile = this._msg.isFile();
-    this._isSymlink = this._msg.isSymlink();
-    this.len = this._msg.len().toFloat64();
+    this._isFile = msg.isFile();
+    this._isSymlink = msg.isSymlink();
+    this.len = msg.len().toFloat64();
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
     // null on Windows
     this.mode = hasMode ? mode : null;
+    this.name = msg.name();
+    this.path = msg.path()!;
   }
 
   isFile() {
@@ -164,5 +174,5 @@ function res(baseRes: null | fbs.Base): FileInfo {
   assert(fbs.Any.StatRes === baseRes!.msgType());
   const res = new fbs.StatRes();
   assert(baseRes!.msg(res) != null);
-  return new FileInfoImpl(res);
+  return new FileInfoImpl(res.info(0)!);
 }
