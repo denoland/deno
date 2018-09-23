@@ -88,6 +88,7 @@ export function wrapCallSite(frame: CallSite): CallSite {
     origin = mapEvalOrigin(origin);
     frame = cloneCallSite(frame);
     frame.getEvalOrigin = () => origin;
+    frame.toString = () => CallSiteToString(frame);
     return frame;
   }
 
