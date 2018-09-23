@@ -66,6 +66,7 @@ def main(argv):
     new_data = {
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sha1": sha1,
+        "binary_size": os.path.getsize(deno_path),
         "benchmark": {}
     }
     for [[name, _], data] in zip(benchmarks, benchmark_data["results"]):
