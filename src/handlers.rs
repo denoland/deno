@@ -708,12 +708,11 @@ fn handle_truncate(i: *const isolate, base: &msg::Base) -> Box<Op> {
   if !deno.flags.allow_write {
     return odd_future(permission_denied());
   }
-   let msg = base.msg_as_truncate().unwrap();
+  let msg = base.msg_as_truncate().unwrap();
   let name = msg.name().unwrap();
   let len = msg.len();
   Box::new(futures::future::result(|| -> OpResult {
-    debug!("handle_mkdir {}", name);
-    debug!("handle_mkdir {}", len);
+    debug!("handle_truncate {} {}", name, len);
     let mut options = fs::OpenOptions::new();
     let f = options.write(true).open(name)?;
     f.set_len(len as u64)?;
