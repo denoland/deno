@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from gh-pages branch.
 # To view the results locally run ./tools/http_server.py and visit
@@ -10,14 +11,12 @@ import json
 import time
 import shutil
 from util import run, run_output, root_path, build_path
-from sys import platform
+import tempfile
 
 # The list of the tuples of the benchmark name and arguments
 benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
               ("relative_import", ["tests/003_relative_import.ts",
                                    "--reload"])]
-thread_count_tests = [("set_timeout", ["tests/004_set_timeout.ts",
-                                       "--reload"])]
 
 gh_pages_data_file = "gh-pages/data.json"
 data_file = "website/data.json"
@@ -45,16 +44,36 @@ def import_data_from_gh_pages():
     except:
         write_json(data_file, [])  # writes empty json data
 
-
-def main(argv):
+def get_build_dir_from_argv(argv):
     if len(argv) == 2:
-        build_dir = sys.argv[1]
+        return sys.argv[1]
     elif len(argv) == 1:
-        build_dir = build_path()
+        return build_path()
     else:
         print "Usage: tools/benchmark.py [build_dir]"
         sys.exit(1)
 
+# run strace with test_args and record times a syscall record appears in out file
+# based on syscall_line_matcher. Should be reusable
+def count_strace_syscall(syscall_name, syscall_line_matcher, test_args):
+    f = tempfile.NamedTemporaryFile()
+    run(["strace", "-f", "-o", f.name, "-e",
+        "trace=" + syscall_name] + test_args)
+    return len(filter(syscall_line_matcher, f))
+
+def run_thread_count_tests(deno_path):
+    thread_count_args_map = {
+        "set_timeout": ["tests/004_set_timeout.ts", "--reload"]
+    }
+    thread_count_map = {}
+    for name, test_args in thread_count_args_map.items():
+        count = count_strace_syscall("clone", lambda line: "clone(" in line,
+            [deno_path] + test_args) + 1 # main thread
+        thread_count_map[name] = count
+    return thread_count_map
+
+def main(argv):
+    build_dir = get_build_dir_from_argv(argv)
     deno_path = os.path.join(build_dir, "deno")
     benchmark_file = os.path.join(build_dir, "benchmark.json")
 
@@ -83,20 +102,9 @@ def main(argv):
             "max": data["max"]
         }
 
-    # Test only on linux
-    if "linux" in platform:
-        for [name, test_args] in thread_count_tests:
-            filename = test_args[0]
-            strace_output_filename = filename.split(".")[0] + ".out"
-            run([
-                "strace", "-f", "-o", strace_output_filename, "-e"
-                "trace=clone"
-            ] + [deno_path] + test_args)
-            # Add 1 for main thread
-            with open(strace_output_filename, "r") as f:
-                thread_count = 1 + len(filter(lambda x: "clone(" in x, f))
-            new_data["thread_count"][name] = thread_count
-            os.remove(strace_output_filename)
+    if "linux" in sys.platform:
+        # Thread count test, only on linux
+        new_data["thread_count"] = run_thread_count_tests(deno_path)
 
     all_data.append(new_data)
     write_json(data_file, all_data)
