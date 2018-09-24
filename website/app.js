@@ -69,6 +69,7 @@ export async function main() {
   const execTimeColumns = createExecTimeColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
   const threadCountColumns = createThreadCountColumns(data);
+  const syscallCountColumns = createSyscallCountColumns(data);
   const sha1List = createSha1List(data);
 
   c3.generate({
