@@ -17,5 +17,5 @@ import "./symlink_test.ts";
 import "./platform_test.ts";
 import "./text_encoding_test.ts";
 import "./trace_test.ts";
-
+import "./v8_source_maps_test.ts";
 import "../website/app_test.js";
