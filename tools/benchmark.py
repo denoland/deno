@@ -10,11 +10,14 @@ import json
 import time
 import shutil
 from util import run, run_output, root_path, build_path
+from sys import platform
 
 # The list of the tuples of the benchmark name and arguments
 benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
               ("relative_import", ["tests/003_relative_import.ts",
                                    "--reload"])]
+thread_count_tests = [("set_timeout", ["tests/004_set_timeout.ts",
+                                       "--reload"])]
 
 gh_pages_data_file = "gh-pages/data.json"
 data_file = "website/data.json"
@@ -67,6 +70,7 @@ def main(argv):
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sha1": sha1,
         "binary_size": os.path.getsize(deno_path),
+        "thread_count": {},
         "benchmark": {}
     }
     for [[name, _], data] in zip(benchmarks, benchmark_data["results"]):
@@ -78,6 +82,22 @@ def main(argv):
             "min": data["min"],
             "max": data["max"]
         }
+
+    # Test only on linux
+    if "linux" in platform:
+        for [name, test_args] in thread_count_tests:
+            filename = test_args[0]
+            strace_output_filename = filename.split(".")[0] + ".out"
+            run([
+                "strace", "-f", "-o", strace_output_filename, "-e"
+                "trace=clone"
+            ] + [deno_path] + test_args)
+            # Add 1 for main thread
+            with open(strace_output_filename, "r") as f:
+                thread_count = 1 + len(filter(lambda x: "clone(" in x, f))
+            new_data["thread_count"][name] = thread_count
+            os.remove(strace_output_filename)
+
     all_data.append(new_data)
     write_json(data_file, all_data)
 

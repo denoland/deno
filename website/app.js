@@ -42,6 +42,17 @@ export async function main() {
   const binarySizeColumns = createBinarySizeColumns(data);
   const sha1List = createSha1List(data);
 
+  const threadCountColumns = threadCountNames.map(name => [
+    name,
+    ...data.map(d => {
+      const threadCountData = d["thread_count"];
+      if (!threadCountData) {
+        return 0;
+      }
+      return threadCountData[name] || 0;
+    })
+  ]);
+
   c3.generate({
     bindto: "#exec-time-chart",
     data: { columns: execTimeColumns },

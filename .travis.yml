@@ -3,6 +3,7 @@ matrix:
   include:
   - os: linux
     env: BENCHMARK=1
+    sudo: required
   - os: osx
 env:
   global:
@@ -38,6 +39,11 @@ install:
       cargo install hyperfine
     fi
     hyperfine --version
+    if [ ! $(which strace) ]; then
+      if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+        sudo apt-get install strace
+      fi
+    fi
   fi
 - |-
   # Install ccache (OS X only).
