@@ -20,6 +20,20 @@ export function createBinarySizeColumns(data) {
   return [["binary_size", ...data.map(d => d.binary_size || 0)]];
 }
 
+const threadCountNames = ["set_timeout"];
+export function createThreadCountColumns(data) {
+  return threadCountNames.map(name => [
+    name,
+    ...data.map(d => {
+      const threadCountData = d["thread_count"];
+      if (!threadCountData) {
+        return 0;
+      }
+      return threadCountData[name] || 0;
+    })
+  ]);
+}
+
 export function createSha1List(data) {
   return data.map(d => d.sha1);
 }
@@ -40,6 +54,7 @@ export async function main() {
 
   const execTimeColumns = createExecTimeColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
+  const threadCountColumns = createThreadCountColumns(data);
   const sha1List = createSha1List(data);
 
   c3.generate({
@@ -65,6 +80,17 @@ export async function main() {
         tick: {
           format: d => formatBytes(d)
         }
+      }
+    }
+  });
+
+  c3.generate({
+    bindto: "#thread-count-chart",
+    data: { columns: threadCountColumns },
+    axis: {
+      x: {
+        type: "category",
+        categories: sha1List
       }
     }
   });
