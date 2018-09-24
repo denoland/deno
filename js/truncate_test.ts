@@ -20,22 +20,16 @@ testPerm({ write: true }, function truncateSyncSuccess() {
   const enc = new TextEncoder();
   const d = enc.encode("Hello");
   const filename = deno.makeTempDirSync() + "/test_truncateSync.txt";
-  deno.writeFileSync(filename, d, 0o666);
-  
-  // test len more than file's length 
+  deno.writeFileSync(filename, d);
   deno.truncateSync(filename, 20);
   let data = readDataSync(filename);
   assertEqual(data.length, 20);
-  // test len less than file's length
   deno.truncateSync(filename, 5);
   data = readDataSync(filename);
   assertEqual(data.length, 5);
-  // test len less than 0
   deno.truncateSync(filename, -5);
   data = readDataSync(filename);
   assertEqual(data.length, 0);
-  
-  // delete test txt
   deno.removeSync(filename);
 });
 
@@ -44,21 +38,15 @@ testPerm({ write: true }, async function truncateSuccess() {
   const d = enc.encode("Hello");
   const filename = deno.makeTempDirSync() + "/test_truncate.txt";
   await deno.writeFile(filename, d);
-  
-  // test len more than file's length 
   await deno.truncate(filename, 20);
   let data = await readData(filename);
   assertEqual(data.length, 20);
-  // test len less than file's length
   await deno.truncate(filename, 5);
   data = await readData(filename);
   assertEqual(data.length, 5);
-  // test len less than 0
   await deno.truncate(filename, -5);
   data = await readData(filename);
   assertEqual(data.length, 0);
-  
-  //delete test txt
   await deno.remove(filename);
 });
 

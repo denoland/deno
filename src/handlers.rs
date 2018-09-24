@@ -713,8 +713,7 @@ fn handle_truncate(i: *const isolate, base: &msg::Base) -> Box<Op> {
   let len = msg.len();
   Box::new(futures::future::result(|| -> OpResult {
     debug!("handle_truncate {} {}", name, len);
-    let mut options = fs::OpenOptions::new();
-    let f = options.write(true).open(name)?;
+    let f = fs::OpenOptions::new().write(true).open(name)?;
     f.set_len(len as u64)?;
     Ok(None)
   }()))
