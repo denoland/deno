@@ -47,10 +47,11 @@ def import_data_from_gh_pages():
 
 # run strace with test_args and record times a syscall record appears in out file
 # based on syscall_line_matcher. Should be reusable
+# if syscall_name == None, track all syscalls
 def count_strace_syscall(syscall_name, syscall_line_matcher, test_args):
     f = tempfile.NamedTemporaryFile()
-    run(["strace", "-f", "-o", f.name, "-e", "trace=" + syscall_name] +
-        test_args)
+    run(["strace", "-f", "-o", f.name] +
+        ["-e", "trace=" + syscall_name] if syscall_name else [] + test_args)
     return len(filter(syscall_line_matcher, f))
 
 
@@ -60,6 +61,16 @@ def run_thread_count_benchmark(deno_path):
         "clone", lambda line: "clone(" in line,
         [deno_path, "tests/004_set_timeout.ts", "--reload"]) + 1
     return thread_count_map
+
+
+def run_syscall_count_benchmark(deno_path):
+    syscall_count_map = {}
+    syscall_count_map["hello"] = count_strace_syscall(
+        None,
+        lambda line: "<... unfinished>" not in line and  # <unfinished> and <resume> repeats same syscall
+        "+++ exited with" not in line,  # lines labelling exit
+        [deno_path, "tests/002_hello.ts", "--reload"])
+    return syscall_count_map
 
 
 def main(argv):
@@ -87,6 +98,7 @@ def main(argv):
         "sha1": sha1,
         "binary_size": os.path.getsize(deno_path),
         "thread_count": {},
+        "syscall_count": {},
         "benchmark": {}
     }
     for [[name, _], data] in zip(benchmarks, benchmark_data["results"]):
@@ -102,6 +114,7 @@ def main(argv):
     if "linux" in sys.platform:
         # Thread count test, only on linux
         new_data["thread_count"] = run_thread_count_benchmark(deno_path)
+        new_data["syscall_count"] = run_syscall_count_benchmark(deno_path)
 
     all_data.append(new_data)
     write_json(data_file, all_data)

@@ -34,6 +34,20 @@ export function createThreadCountColumns(data) {
   ]);
 }
 
+const syscallCountNames = ["hello"];
+export function createSyscallCountColumns(data) {
+  return syscallCountNames.map(name => [
+    name,
+    ...data.map(d => {
+      const syscallCountData = d["syscall_count"];
+      if (!syscallCountData) {
+        return 0;
+      }
+      return syscallCountData[name] || 0;
+    })
+  ]);
+}
+
 export function createSha1List(data) {
   return data.map(d => d.sha1);
 }
@@ -87,6 +101,17 @@ export async function main() {
   c3.generate({
     bindto: "#thread-count-chart",
     data: { columns: threadCountColumns },
+    axis: {
+      x: {
+        type: "category",
+        categories: sha1List
+      }
+    }
+  });
+
+  c3.generate({
+    bindto: "#syscall-count-chart",
+    data: { columns: syscallCountColumns },
     axis: {
       x: {
         type: "category",

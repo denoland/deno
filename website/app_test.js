@@ -5,6 +5,7 @@ import {
   createBinarySizeColumns,
   createExecTimeColumns,
   createThreadCountColumns,
+  createSyscallCountColumns,
   createSha1List,
   formatBytes
 } from "./app.js";
@@ -24,6 +25,9 @@ const regularData = [
     },
     thread_count: {
       set_timeout: 4
+    },
+    syscall_count: {
+      hello: 600
     }
   },
   {
@@ -40,6 +44,9 @@ const regularData = [
     },
     thread_count: {
       set_timeout: 5
+    },
+    syscall_count: {
+      hello: 700
     }
   }
 ];
@@ -52,7 +59,8 @@ const irregularData = [
       hello: {},
       relative_import: {}
     },
-    thread_count: {}
+    thread_count: {},
+    syscall_count: {}
   },
   {
     created_at: "2018-02-01T01:00:00Z",
@@ -92,6 +100,16 @@ test(function createThreadCountColumnsRegularData() {
 test(function createThreadCountColumnsIrregularData() {
   const columns = createThreadCountColumns(irregularData);
   assertEqual(columns, [["set_timeout", 0, 0]]);
+});
+
+test(function createSyscallCountColumnsRegularData() {
+  const columns = createSyscallCountColumns(regularData);
+  assertEqual(columns, [["hello", 600, 700]]);
+});
+
+test(function createSyscallCountColumnsIrregularData() {
+  const columns = createSyscallCountColumns(irregularData);
+  assertEqual(columns, [["hello", 0, 0]]);
 });
 
 test(function createSha1ListRegularData() {
