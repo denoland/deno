@@ -17,6 +17,9 @@ config("flatbuffers_config") {
       # TODO: rust branch of flatbuffers has this warning.
       # This should be removed when the branch fixed.
       "-Wno-return-type",
+
+      "-fcolor-diagnostics",
+      "-fansi-escape-codes",
     ]
   }
 }
