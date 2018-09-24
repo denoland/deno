@@ -89,6 +89,7 @@ table StartRes {
   argv: [string];
   debug_flag: bool;
   deps_flag: bool;
+  recompile_flag: bool;
 }
 
 table CodeFetch {
