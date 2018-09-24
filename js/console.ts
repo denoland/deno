@@ -108,7 +108,7 @@ export function stringifyArgs(args: any[]): string {
   return out.join(" ");
 }
 
-type PrintFunc = (x: string) => void;
+type PrintFunc = (x: string, isErr?: boolean) => void;
 
 export class Console {
   constructor(private printFunc: PrintFunc) {}
@@ -123,8 +123,7 @@ export class Console {
 
   // tslint:disable-next-line:no-any
   warn(...args: any[]): void {
-    // TODO Log to stderr.
-    this.printFunc(stringifyArgs(args));
+    this.printFunc(stringifyArgs(args), true);
   }
 
   error = this.warn;
