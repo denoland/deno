@@ -1,3 +1,5 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
 export async function getJson(path) {
   return (await fetch(path)).json();
 }
