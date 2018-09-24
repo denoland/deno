@@ -51,7 +51,7 @@ def import_data_from_gh_pages():
 def count_strace_syscall(syscall_name, syscall_line_matcher, test_args):
     f = tempfile.NamedTemporaryFile()
     run(["strace", "-f", "-o", f.name] +
-        ["-e", "trace=" + syscall_name] if syscall_name else [] + test_args)
+        (["-e", "trace=" + syscall_name] if syscall_name else []) + test_args)
     return len(filter(syscall_line_matcher, f))
 
 
