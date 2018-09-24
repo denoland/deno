@@ -4,7 +4,7 @@ use errors::DenoError;
 use errors::DenoResult;
 use errors::ErrorKind;
 use fs as deno_fs;
-use net;
+use http;
 use ring;
 use std;
 use std::fmt::Write;
@@ -114,7 +114,7 @@ impl DenoDir {
 
     let src = if self.reload || !p.exists() {
       println!("Downloading {}", module_name);
-      let source = net::fetch_sync_string(module_name)?;
+      let source = http::fetch_sync_string(module_name)?;
       match p.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
