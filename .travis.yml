@@ -3,6 +3,7 @@ matrix:
   include:
   - os: linux
     env: BENCHMARK=1
+    sudo: required
   - os: osx
 env:
   global:
