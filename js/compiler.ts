@@ -169,6 +169,8 @@ export class DenoCompiler
   // A reference to the global scope so it can be monkey patched during
   // testing
   private _window = window;
+  // Flags forcing recompilation of TS code
+  public recompile = false;
 
   /**
    * Drain the run queue, retrieving the arguments for the module
@@ -412,11 +414,15 @@ export class DenoCompiler
 
   /**
    * Retrieve the output of the TypeScript compiler for a given module and
-   * cache the result.
+   * cache the result. Re-compilation can be forced using '--recompile' flag.
    */
   compile(moduleMetaData: ModuleMetaData): OutputCode {
-    this._log("compiler.compile", moduleMetaData.fileName);
-    if (moduleMetaData.outputCode) {
+    const recompile = !!this.recompile;
+    this._log(
+        "compiler.compile",
+        { filename: moduleMetaData.fileName, recompile }
+    );
+    if (!recompile && moduleMetaData.outputCode) {
       return moduleMetaData.outputCode;
     }
     const { fileName, sourceCode } = moduleMetaData;

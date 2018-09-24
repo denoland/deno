@@ -458,6 +458,23 @@ test(function compilerGetScriptFileNames() {
   teardown();
 });
 
+test(function compilerRecompileFlag() {
+  setup();
+  compilerInstance.run("foo/bar.ts", "/root/project");
+  assertEqual(getEmitOutputStack.length, 1, "Expected only a single emitted file.");
+  // running compiler against same file should use cached code
+  compilerInstance.run("foo/bar.ts", "/root/project");
+  assertEqual(getEmitOutputStack.length, 1, "Expected only a single emitted file.");
+  compilerInstance.recompile = true;
+  compilerInstance.run("foo/bar.ts", "/root/project");
+  assertEqual(getEmitOutputStack.length, 2, "Expected two emitted file.");
+  assert(
+      getEmitOutputStack[0] === getEmitOutputStack[1],
+      "Expected same file to be emitted twice."
+  );
+  teardown();
+});
+
 test(function compilerGetScriptKind() {
   assertEqual(compilerInstance.getScriptKind("foo.ts"), ts.ScriptKind.TS);
   assertEqual(compilerInstance.getScriptKind("foo.d.ts"), ts.ScriptKind.TS);
