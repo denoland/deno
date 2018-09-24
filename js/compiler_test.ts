@@ -465,9 +465,7 @@ test(function compilerRecompileFlag() {
   // running compiler against same file should use cached code
   compilerInstance.run("foo/bar.ts", "/root/project");
   assertEqual(getEmitOutputStack.length, 1, "Expected only a single emitted file.");
-  compilerInstance.setFlags({
-      recompile: true,
-  });
+  compilerInstance.recompile = true;
   compilerInstance.run("foo/bar.ts", "/root/project");
   assertEqual(getEmitOutputStack.length, 2, "Expected two emitted file.");
   assert(

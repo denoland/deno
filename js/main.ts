@@ -68,8 +68,6 @@ export default function denoMain() {
     os.exit(0);
   }
 
-  compiler.setFlags({
-    recompile: startResMsg.recompileFlag(),
-  });
+  compiler.recompile = startResMsg.recompileFlag();
   compiler.run(inputFn, `${cwd}/`);
 }

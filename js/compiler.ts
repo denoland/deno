@@ -55,10 +55,6 @@ type OutputCode = string;
  * The original source code
  */
 type SourceCode = string;
-/**
- * Flags that are passed from CLI arguments
- */
-type CompilerFlags = { [key: string]: boolean };
 
 /**
  * Abstraction of the APIs required from the `os` module so they can be
@@ -173,8 +169,8 @@ export class DenoCompiler
   // A reference to the global scope so it can be monkey patched during
   // testing
   private _window = window;
-  // Flags provide settings that can be changed via CLI arguments
-  private _flags: CompilerFlags = {};
+  // Flags forcing recompilation of TS code
+  public recompile = false;
 
   /**
    * Drain the run queue, retrieving the arguments for the module
@@ -421,7 +417,7 @@ export class DenoCompiler
    * cache the result. Re-compilation can be forced using '--recompile' flag.
    */
   compile(moduleMetaData: ModuleMetaData): OutputCode {
-    const recompile = !!this._flags.recompile;
+    const recompile = !!this.recompile;
     this._log(
         "compiler.compile",
         { filename: moduleMetaData.fileName, recompile }
@@ -677,10 +673,6 @@ export class DenoCompiler
       // TODO: we should be returning a ts.ResolveModuleFull
       return { resolvedFileName, isExternalLibraryImport };
     });
-  }
-
-  setFlags(flags: CompilerFlags): void {
-    this._flags = { ...this._flags, ...flags };
   }
 
   // Deno specific static properties and methods
