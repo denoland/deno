@@ -44,6 +44,7 @@ def import_data_from_gh_pages():
     except:
         write_json(data_file, [])  # writes empty json data
 
+
 def get_build_dir_from_argv(argv):
     if len(argv) == 2:
         return sys.argv[1]
@@ -53,13 +54,15 @@ def get_build_dir_from_argv(argv):
         print "Usage: tools/benchmark.py [build_dir]"
         sys.exit(1)
 
+
 # run strace with test_args and record times a syscall record appears in out file
 # based on syscall_line_matcher. Should be reusable
 def count_strace_syscall(syscall_name, syscall_line_matcher, test_args):
     f = tempfile.NamedTemporaryFile()
-    run(["strace", "-f", "-o", f.name, "-e",
-        "trace=" + syscall_name] + test_args)
+    run(["strace", "-f", "-o", f.name, "-e", "trace=" + syscall_name] +
+        test_args)
     return len(filter(syscall_line_matcher, f))
+
 
 def run_thread_count_tests(deno_path):
     thread_count_args_map = {
@@ -67,10 +70,12 @@ def run_thread_count_tests(deno_path):
     }
     thread_count_map = {}
     for name, test_args in thread_count_args_map.items():
-        count = count_strace_syscall("clone", lambda line: "clone(" in line,
-            [deno_path] + test_args) + 1 # main thread
+        count = count_strace_syscall(
+            "clone", lambda line: "clone(" in line,
+            [deno_path] + test_args) + 1  # main thread
         thread_count_map[name] = count
     return thread_count_map
+
 
 def main(argv):
     build_dir = get_build_dir_from_argv(argv)
