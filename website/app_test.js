@@ -1,3 +1,5 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
 import { test, testPerm, assertEqual } from "../js/test_util.ts";
 import {
   createBinarySizeColumns,
