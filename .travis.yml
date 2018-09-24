@@ -9,6 +9,7 @@ env:
   global:
   - CARGO_PATH=$HOME/.cargo/
   - RUSTUP_PATH=$HOME/.rustup/
+  - HOMEBREW_PATH=$HOME/homebrew/
   - DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false"
   - DENO_BUILD_PATH=$HOME/out/Default
   - DENO_BUILD_MODE=release
@@ -20,9 +21,27 @@ cache:
   directories:
   - "$CARGO_PATH"
   - "$RUSTUP_PATH"
+  - "$HOMEBREW_PATH"
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
   - third_party/v8/third_party/llvm-build/
 install:
+- |-
+  # OS X: install a private copy of homebrew.
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    export BREW="${HOMEBREW_PATH}bin/brew"
+    export PATH="${HOMEBREW_PATH}bin:$PATH"
+    if [[ ! -x "$BREW" ]]; then
+      git clone git://github.com/homebrew/brew "$HOMEBREW_PATH"
+    fi
+    "$BREW" --version
+  fi
+- |-
+  # Install ccache (if necessary) and set it up.
+  if [[ "$TRAVIS_OS_NAME" == "osx" && ! $(which ccache) ]]; then
+    "$BREW" install ccache
+  fi
+  ccache --version | head -n 1
+  ccache --max-size=1G --show-stats
 - |-
   # Install Rust.
   # TODO(ry) Include rustc in third_party.
@@ -40,15 +59,7 @@ install:
     fi
     hyperfine --version
   fi
-- |-
-  # Install ccache (OS X only).
-  # TODO: Save ccache in the Travis CI cache.
-  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-    brew install ccache &&
-    export PATH="/usr/local/opt/ccache/libexec:$PATH"
-  fi
 before_script:
-- ccache -s
 - ./tools/setup.py
 script:
 - ./tools/lint.py
