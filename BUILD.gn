@@ -47,6 +47,7 @@ main_extern = [
   "$rust_build:hyper",
   "$rust_build:hyper_rustls",
   "$rust_build:futures",
+  "$rust_build:lazy_static",
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:ring",
