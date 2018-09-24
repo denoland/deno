@@ -23,11 +23,13 @@ function stringify(ctx: ConsoleContext, value: any): string {
     case "symbol":
       return String(value);
     case "function":
+      // Might be Function/AsyncFunction/GeneratorFunction
+      const cstrName = value.__proto__.constructor.name;
       if (value.name && value.name !== "anonymous") {
         // from MDN spec
-        return `[Function: ${value.name}]`;
+        return `[${cstrName}: ${value.name}]`;
       }
-      return "[Function]";
+      return `[${cstrName}]`;
     case "object":
       if (value === null) {
         return "null";
