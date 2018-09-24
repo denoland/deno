@@ -9,6 +9,8 @@ extern crate tempfile;
 extern crate tokio;
 extern crate url;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate log;
 extern crate dirs;
 extern crate hyper_rustls;
@@ -20,9 +22,9 @@ mod errors;
 mod flags;
 mod fs;
 pub mod handlers;
+mod http;
 mod isolate;
 mod libdeno;
-mod net;
 mod version;
 
 use isolate::Isolate;
