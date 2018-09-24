@@ -8,6 +8,7 @@ from setup_test import setup_test
 from util import executable_suffix, run, build_path
 from unit_tests import unit_tests
 from util_test import util_test
+from benchmark_test import benchmark_test
 import subprocess
 import http_server
 
@@ -52,6 +53,9 @@ def main(argv):
     deno_ns_exe = os.path.join(build_dir, "deno_ns" + executable_suffix)
     check_exists(deno_ns_exe)
     check_output_test(deno_ns_exe)
+
+    check_exists(deno_exe)
+    benchmark_test(deno_exe)
 
 
 if __name__ == '__main__':

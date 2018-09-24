@@ -45,16 +45,6 @@ def import_data_from_gh_pages():
         write_json(data_file, [])  # writes empty json data
 
 
-def get_build_dir_from_argv(argv):
-    if len(argv) == 2:
-        return sys.argv[1]
-    elif len(argv) == 1:
-        return build_path()
-    else:
-        print "Usage: tools/benchmark.py [build_dir]"
-        sys.exit(1)
-
-
 # run strace with test_args and record times a syscall record appears in out file
 # based on syscall_line_matcher. Should be reusable
 def count_strace_syscall(syscall_name, syscall_line_matcher, test_args):
@@ -64,21 +54,23 @@ def count_strace_syscall(syscall_name, syscall_line_matcher, test_args):
     return len(filter(syscall_line_matcher, f))
 
 
-def run_thread_count_tests(deno_path):
-    thread_count_args_map = {
-        "set_timeout": ["tests/004_set_timeout.ts", "--reload"]
-    }
+def run_thread_count_benchmark(deno_path):
     thread_count_map = {}
-    for name, test_args in thread_count_args_map.items():
-        count = count_strace_syscall(
-            "clone", lambda line: "clone(" in line,
-            [deno_path] + test_args) + 1  # main thread
-        thread_count_map[name] = count
+    thread_count_map["set_timeout"] = count_strace_syscall(
+        "clone", lambda line: "clone(" in line,
+        [deno_path, "tests/004_set_timeout.ts", "--reload"]) + 1
     return thread_count_map
 
 
 def main(argv):
-    build_dir = get_build_dir_from_argv(argv)
+    if len(argv) == 2:
+        build_dir = sys.argv[1]
+    elif len(argv) == 1:
+        build_dir = build_path()
+    else:
+        print "Usage: tools/benchmark.py [build_dir]"
+        sys.exit(1)
+
     deno_path = os.path.join(build_dir, "deno")
     benchmark_file = os.path.join(build_dir, "benchmark.json")
 
@@ -109,7 +101,7 @@ def main(argv):
 
     if "linux" in sys.platform:
         # Thread count test, only on linux
-        new_data["thread_count"] = run_thread_count_tests(deno_path)
+        new_data["thread_count"] = run_thread_count_benchmark(deno_path)
 
     all_data.append(new_data)
     write_json(data_file, all_data)
