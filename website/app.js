@@ -4,7 +4,12 @@ export async function getJson(path) {
   return (await fetch(path)).json();
 }
 
-const benchmarkNames = ["hello", "relative_import"];
+const benchmarkNames = [
+  "hello",
+  "relative_import",
+  "cold_hello",
+  "cold_relative_import"
+];
 export function createExecTimeColumns(data) {
   return benchmarkNames.map(name => [
     name,
