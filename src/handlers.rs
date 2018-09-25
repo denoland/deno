@@ -551,7 +551,6 @@ macro_rules! to_seconds {
 
 #[cfg(any(unix))]
 fn get_mode(perm: fs::Permissions) -> u32 {
-  println!("{}", prem.mode);
   perm.mode()
 }
 
