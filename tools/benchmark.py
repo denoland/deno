@@ -20,9 +20,9 @@ except:
     "Warning: another http_server instance is running"
 
 # The list of the tuples of the benchmark name and arguments
-benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
-              ("relative_import", ["tests/003_relative_import.ts",
-                                   "--reload"])]
+exec_time_benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
+                        ("relative_import",
+                         ["tests/003_relative_import.ts", "--reload"])]
 
 gh_pages_data_file = "gh-pages/data.json"
 data_file = "website/data.json"
@@ -127,8 +127,9 @@ def main(argv):
     os.chdir(root_path)
     import_data_from_gh_pages()
     # TODO: Use hyperfine in //third_party
-    run(["hyperfine", "--export-json", benchmark_file, "--warmup", "3"] +
-        [deno_path + " " + " ".join(args) for [_, args] in benchmarks])
+    run(["hyperfine", "--export-json", benchmark_file, "--warmup", "3"] + [
+        deno_path + " " + " ".join(args) for [_, args] in exec_time_benchmarks
+    ])
     all_data = read_json(data_file)
     benchmark_data = read_json(benchmark_file)
     sha1 = run_output(["git", "rev-parse", "HEAD"]).strip()
@@ -140,7 +141,8 @@ def main(argv):
         "syscall_count": {},
         "benchmark": {}
     }
-    for [[name, _], data] in zip(benchmarks, benchmark_data["results"]):
+    for [[name, _], data] in zip(exec_time_benchmarks,
+                                 benchmark_data["results"]):
         new_data["benchmark"][name] = {
             "mean": data["mean"],
             "stddev": data["stddev"],
