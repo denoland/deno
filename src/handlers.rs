@@ -704,7 +704,7 @@ fn handle_symlink(i: *const isolate, base: &msg::Base) -> Box<Op> {
   }
 }
 
-fn handle_read_link(_d: *const DenoC, base: &msg::Base) -> Box<Op> {
+fn handle_read_link(_i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
   let name = String::from(msg.name().unwrap());
