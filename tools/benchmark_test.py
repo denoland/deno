@@ -1,10 +1,38 @@
 import sys
 import os
-from benchmark import run_thread_count_benchmark
+import benchmark
+
+
+def strace_parse_test():
+    with open(os.path.join(sys.path[0], "testdata/strace_summary.out"),
+              "r") as f:
+        summary = benchmark.strace_parse(f.read())
+        # first syscall line
+        assert summary["munmap"]["calls"] == 60
+        assert summary["munmap"]["errors"] == 0
+        # line with errors
+        assert summary["mkdir"]["errors"] == 2
+        # last syscall line
+        assert summary["prlimit64"]["calls"] == 2
+        assert summary["prlimit64"]["% time"] == 0
+        # summary line
+        assert summary["total"]["calls"] == 704
+
+
+def thread_count_test(deno_path):
+    thread_count_dict = benchmark.run_thread_count_benchmark(deno_path)
+    assert "set_timeout" in thread_count_dict
+    assert thread_count_dict["set_timeout"] > 1
+
+
+def syscall_count_test(deno_path):
+    syscall_count_dict = benchmark.run_syscall_count_benchmark(deno_path)
+    assert "hello" in syscall_count_dict
+    assert syscall_count_dict["hello"] > 1
 
 
 def benchmark_test(deno_path):
+    strace_parse_test()
     if "linux" in sys.platform:
-        thread_count_dict = run_thread_count_benchmark(deno_path)
-        assert "set_timeout" in thread_count_dict
-        assert thread_count_dict["set_timeout"] > 1
+        thread_count_test(deno_path)
+        syscall_count_test(deno_path)

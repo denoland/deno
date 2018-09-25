@@ -20,7 +20,7 @@ export function createBinarySizeColumns(data) {
   return [["binary_size", ...data.map(d => d.binary_size || 0)]];
 }
 
-const threadCountNames = ["set_timeout"];
+const threadCountNames = ["set_timeout", "fetch_deps"];
 export function createThreadCountColumns(data) {
   return threadCountNames.map(name => [
     name,
@@ -30,6 +30,20 @@ export function createThreadCountColumns(data) {
         return 0;
       }
       return threadCountData[name] || 0;
+    })
+  ]);
+}
+
+const syscallCountNames = ["hello"];
+export function createSyscallCountColumns(data) {
+  return syscallCountNames.map(name => [
+    name,
+    ...data.map(d => {
+      const syscallCountData = d["syscall_count"];
+      if (!syscallCountData) {
+        return 0;
+      }
+      return syscallCountData[name] || 0;
     })
   ]);
 }
@@ -55,6 +69,7 @@ export async function main() {
   const execTimeColumns = createExecTimeColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
   const threadCountColumns = createThreadCountColumns(data);
+  const syscallCountColumns = createSyscallCountColumns(data);
   const sha1List = createSha1List(data);
 
   c3.generate({
@@ -87,6 +102,17 @@ export async function main() {
   c3.generate({
     bindto: "#thread-count-chart",
     data: { columns: threadCountColumns },
+    axis: {
+      x: {
+        type: "category",
+        categories: sha1List
+      }
+    }
+  });
+
+  c3.generate({
+    bindto: "#syscall-count-chart",
+    data: { columns: syscallCountColumns },
     axis: {
       x: {
         type: "category",
