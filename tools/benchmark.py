@@ -10,7 +10,7 @@ import sys
 import json
 import time
 import shutil
-from util import run, run_output, root_path, build_path
+from util import run, run_output, root_path, build_path, executable_suffix
 import tempfile
 import http_server
 
@@ -53,7 +53,7 @@ def import_data_from_gh_pages():
 
 def get_binary_sizes(build_dir):
     path_dict = {
-        "deno": os.path.join(build_dir, "deno"),
+        "deno": os.path.join(build_dir, "deno" + executable_suffix),
         "main.js": os.path.join(build_dir, "gen/bundle/main.js"),
         "main.js.map": os.path.join(build_dir, "gen/bundle/main.js.map"),
         "snapshot_deno.bin": os.path.join(build_dir, "gen/snapshot_deno.bin")
