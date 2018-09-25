@@ -2,6 +2,7 @@
 // This test is executed as part of tools/test.py
 // But it can also be run manually: ./out/debug/deno js/unit_tests.ts
 import "./compiler_test.ts";
+import "./chmod_test.ts";
 import "./console_test.ts";
 import "./fetch_test.ts";
 import "./os_test.ts";

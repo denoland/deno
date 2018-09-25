@@ -47,6 +47,7 @@ pub extern "C" fn msg_from_js(i: *const isolate, buf: deno_buf) {
     msg::Any::Start => handle_start,
     msg::Any::CodeFetch => handle_code_fetch,
     msg::Any::CodeCache => handle_code_cache,
+    msg::Any::Chmod => handle_chmod,
     msg::Any::Environ => handle_env,
     msg::Any::FetchReq => handle_fetch_req,
     msg::Any::TimerStart => handle_timer_start,
@@ -147,7 +148,7 @@ fn permission_denied() -> DenoError {
 fn not_implemented() -> DenoError {
   DenoError::from(std::io::Error::new(
     std::io::ErrorKind::Other,
-    "Not implemented"
+    "Not implemented",
   ))
 }
 
@@ -302,7 +303,8 @@ fn handle_env(i: *const isolate, base: &msg::Base) -> Box<Op> {
           ..Default::default()
         },
       )
-    }).collect();
+    })
+    .collect();
   let tables = builder.create_vector(&vars);
   let msg = msg::EnvironRes::create(
     builder,
@@ -415,7 +417,8 @@ where
     .and_then(|_| {
       cb();
       Ok(())
-    }).select(cancel_rx)
+    })
+    .select(cancel_rx)
     .map(|_| ())
     .map_err(|_| ());
 
@@ -704,6 +707,26 @@ fn handle_symlink(i: *const isolate, base: &msg::Base) -> Box<Op> {
   }
 }
 
+fn handle_chmod(i: *const isolate, base: &msg::Base) -> Box<Op> {
+  let deno = from_c(i);
+  if !deno.flags.allow_write {
+    return odd_future(permission_denied());
+  };
+  let msg = base.msg_as_chmod().unwrap();
+  let path = msg.path().unwrap();
+  let mode = msg.mode();
+  debug!("handle_chmod {} {}", path, mode);
+  if cfg!(target_family = "unix") {
+    Box::new(futures::future::result(|| -> OpResult {
+      let mut permissions = fs::metadata(path)?.permissions();
+      permissions.set_mode(mode);
+      let _result = fs::set_permissions(path, permissions)?;
+      Ok(None)
+    }()))
+  } else {
+    Box::new(futures::future::result(|| -> OpResult { Ok(None) }()))
+  }
+}
 fn handle_read_link(_i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_readlink().unwrap();
   let cmd_id = base.cmd_id();

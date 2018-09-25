@@ -15,4 +15,5 @@ export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export { arch, platform } from "./platform";
 export { trace } from "./trace";
+export { chmodSync } from "./chmod";
 export const args: string[] = [];

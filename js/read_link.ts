@@ -24,9 +24,7 @@ export async function readlink(name: string): Promise<string> {
   return res(await dispatch.sendAsync(...req(name)));
 }
 
-function req(
-  name: string
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+function req(name: string): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const name_ = builder.createString(name);
   fbs.Readlink.startReadlink(builder);

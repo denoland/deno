@@ -4,6 +4,7 @@ union Any {
   CodeFetch,
   CodeFetchRes,
   CodeCache,
+  Chmod,
   Exit,
   TimerStart,
   TimerReady,
@@ -221,6 +222,12 @@ table Stat {
   filename: string;
   lstat: bool;
 }
+
+table Chmod {
+  path: string;
+  mode: uint32;
+}
+
 
 table StatRes {
   is_file: bool;
