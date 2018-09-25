@@ -15,6 +15,8 @@ use msg;
 use remove_dir_all::remove_dir_all;
 use std;
 use std::fs;
+extern crate libc;
+use std::ffi::CString;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -549,6 +551,7 @@ macro_rules! to_seconds {
 
 #[cfg(any(unix))]
 fn get_mode(perm: fs::Permissions) -> u32 {
+  println!("{}", prem.mode);
   perm.mode()
 }
 
@@ -718,9 +721,10 @@ fn handle_chmod(i: *const isolate, base: &msg::Base) -> Box<Op> {
   debug!("handle_chmod {} {}", path, mode);
   if cfg!(target_family = "unix") {
     Box::new(futures::future::result(|| -> OpResult {
-      let mut permissions = fs::metadata(path)?.permissions();
-      permissions.set_mode(mode);
-      let _result = fs::set_permissions(path, permissions)?;
+      let path_as_cstring = CString::new(path).unwrap();
+      unsafe {
+        libc::chmod(path_as_cstring.as_ptr(), mode);
+      }
       Ok(None)
     }()))
   } else {

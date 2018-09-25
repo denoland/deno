@@ -6,8 +6,10 @@ testPerm({ write: true }, function chmodSyncSuccess() {
   const data = enc.encode("Hello");
   const filename = deno.makeTempDirSync() + "/test.txt";
   deno.writeFileSync(filename, data, 0o666);
+  let fileInfo = deno.statSync(filename);
+  console.log(fileInfo.mode, 0o666); // This is printing 33206 438
   deno.chmodSync(filename, 0o777);
-  const fileInfo = deno.statSync(filename);
+  fileInfo = deno.statSync(filename);
   assertEqual(fileInfo.mode, 0o777);
 });
 testPerm({ write: false }, function chmodSyncPerm() {
