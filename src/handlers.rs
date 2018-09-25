@@ -56,6 +56,7 @@ pub extern "C" fn msg_from_js(i: *const isolate, buf: deno_buf) {
     msg::Any::Remove => handle_remove,
     msg::Any::ReadFile => handle_read_file,
     msg::Any::Rename => handle_rename,
+    msg::Any::Readlink => handle_read_link,
     msg::Any::Symlink => handle_symlink,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::Stat => handle_stat,
@@ -701,4 +702,32 @@ fn handle_symlink(i: *const isolate, base: &msg::Base) -> Box<Op> {
       Ok(None)
     }()))
   }
+}
+
+fn handle_read_link(_i: *const isolate, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_readlink().unwrap();
+  let cmd_id = base.cmd_id();
+  let name = String::from(msg.name().unwrap());
+  Box::new(futures::future::result(|| -> OpResult {
+    debug!("handle_read_link {}", name);
+    let path = fs::read_link(Path::new(&name))?;
+    let builder = &mut FlatBufferBuilder::new();
+    let path_off = builder.create_string(path.to_str().unwrap());
+    let msg = msg::ReadlinkRes::create(
+      builder,
+      &msg::ReadlinkResArgs {
+        path: Some(path_off),
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::ReadlinkRes,
+        ..Default::default()
+      },
+    ))
+  }()))
 }
