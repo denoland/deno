@@ -20,9 +20,12 @@ except:
     "Warning: another http_server instance is running"
 
 # The list of the tuples of the benchmark name and arguments
-exec_time_benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
-                        ("relative_import",
-                         ["tests/003_relative_import.ts", "--reload"])]
+exec_time_benchmarks = [
+    ("hello", ["tests/002_hello.ts"]),
+    ("relative_import", ["tests/003_relative_import.ts"]),
+    ("cold_hello", ["tests/002_hello.ts", "--recompile"]),
+    ("cold_relative_import", ["tests/003_relative_import.ts", "--recompile"]),
+]
 
 gh_pages_data_file = "gh-pages/data.json"
 data_file = "website/data.json"
