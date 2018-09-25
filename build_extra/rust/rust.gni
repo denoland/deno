@@ -85,9 +85,7 @@ template("run_rustc") {
       args += [ "-Dwarnings" ]
     }
 
-    if (!is_win) {
-      args += [ "--color=always" ]
-    }
+    args += [ "--color=always" ]
 
     if (!defined(crate_version)) {
       crate_name_and_version = crate_name

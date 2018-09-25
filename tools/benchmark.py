@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from gh-pages branch.
 # To view the results locally run ./tools/http_server.py and visit
@@ -10,11 +11,18 @@ import json
 import time
 import shutil
 from util import run, run_output, root_path, build_path
+import tempfile
+import http_server
+
+try:
+    http_server.spawn()
+except:
+    "Warning: another http_server instance is running"
 
 # The list of the tuples of the benchmark name and arguments
-benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
-              ("relative_import", ["tests/003_relative_import.ts",
-                                   "--reload"])]
+exec_time_benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
+                        ("relative_import",
+                         ["tests/003_relative_import.ts", "--reload"])]
 
 gh_pages_data_file = "gh-pages/data.json"
 data_file = "website/data.json"
@@ -43,6 +51,67 @@ def import_data_from_gh_pages():
         write_json(data_file, [])  # writes empty json data
 
 
+def get_strace_summary_text(test_args):
+    f = tempfile.NamedTemporaryFile()
+    run(["strace", "-c", "-f", "-o", f.name] + test_args)
+    return f.read()
+
+
+def strace_parse(summary_text):
+    summary = {}
+    # clear empty lines
+    lines = list(filter(lambda x: x and x != "\n", summary_text.split("\n")))
+    if len(lines) < 4:
+        return {}  # malformed summary
+    lines, total_line = lines[2:-2], lines[-1]
+    # data to dict for each line
+    for line in lines:
+        syscall_fields = line.split()
+        syscall_name = syscall_fields[-1]
+        syscall_dict = {}
+        if 5 <= len(syscall_fields) <= 6:
+            syscall_dict = {
+                "% time": float(syscall_fields[0]),
+                "seconds": float(syscall_fields[1]),
+                "usecs/call": int(syscall_fields[2]),
+                "calls": int(syscall_fields[3])
+            }
+            syscall_dict["errors"] = 0 if len(syscall_fields) < 6 else int(
+                syscall_fields[4])
+        summary[syscall_name] = syscall_dict
+    # record overall (total) data
+    total_fields = total_line.split()
+    summary["total"] = {
+        "% time": float(total_fields[0]),
+        "seconds": float(total_fields[1]),
+        "calls": int(total_fields[2]),
+        "errors": int(total_fields[3])
+    }
+    return summary
+
+
+def get_strace_summary(test_args):
+    return strace_parse(get_strace_summary_text(test_args))
+
+
+def run_thread_count_benchmark(deno_path):
+    thread_count_map = {}
+    thread_count_map["set_timeout"] = get_strace_summary([
+        deno_path, "tests/004_set_timeout.ts", "--reload"
+    ])["clone"]["calls"] + 1
+    thread_count_map["fetch_deps"] = get_strace_summary([
+        deno_path, "tests/fetch_deps.ts", "--reload", "--allow-net"
+    ])["clone"]["calls"] + 1
+    return thread_count_map
+
+
+def run_syscall_count_benchmark(deno_path):
+    syscall_count_map = {}
+    syscall_count_map["hello"] = get_strace_summary(
+        [deno_path, "tests/002_hello.ts", "--reload"])["total"]["calls"]
+    return syscall_count_map
+
+
 def main(argv):
     if len(argv) == 2:
         build_dir = sys.argv[1]
@@ -58,8 +127,9 @@ def main(argv):
     os.chdir(root_path)
     import_data_from_gh_pages()
     # TODO: Use hyperfine in //third_party
-    run(["hyperfine", "--export-json", benchmark_file, "--warmup", "3"] +
-        [deno_path + " " + " ".join(args) for [_, args] in benchmarks])
+    run(["hyperfine", "--export-json", benchmark_file, "--warmup", "3"] + [
+        deno_path + " " + " ".join(args) for [_, args] in exec_time_benchmarks
+    ])
     all_data = read_json(data_file)
     benchmark_data = read_json(benchmark_file)
     sha1 = run_output(["git", "rev-parse", "HEAD"]).strip()
@@ -67,9 +137,12 @@ def main(argv):
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sha1": sha1,
         "binary_size": os.path.getsize(deno_path),
+        "thread_count": {},
+        "syscall_count": {},
         "benchmark": {}
     }
-    for [[name, _], data] in zip(benchmarks, benchmark_data["results"]):
+    for [[name, _], data] in zip(exec_time_benchmarks,
+                                 benchmark_data["results"]):
         new_data["benchmark"][name] = {
             "mean": data["mean"],
             "stddev": data["stddev"],
@@ -78,6 +151,12 @@ def main(argv):
             "min": data["min"],
             "max": data["max"]
         }
+
+    if "linux" in sys.platform:
+        # Thread count test, only on linux
+        new_data["thread_count"] = run_thread_count_benchmark(deno_path)
+        new_data["syscall_count"] = run_syscall_count_benchmark(deno_path)
+
     all_data.append(new_data)
     write_json(data_file, all_data)
 

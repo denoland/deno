@@ -1,9 +1,11 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
-import { test, testPerm, assertEqual } from "../js/test_util.ts";
+import { test, assertEqual } from "../js/test_util.ts";
 import {
   createBinarySizeColumns,
   createExecTimeColumns,
+  createThreadCountColumns,
+  createSyscallCountColumns,
   createSha1List,
   formatBytes
 } from "./app.js";
@@ -20,6 +22,13 @@ const regularData = [
       relative_import: {
         mean: 0.06
       }
+    },
+    thread_count: {
+      set_timeout: 4,
+      fetch_deps: 6
+    },
+    syscall_count: {
+      hello: 600
     }
   },
   {
@@ -33,6 +42,13 @@ const regularData = [
       relative_import: {
         mean: 0.065
       }
+    },
+    thread_count: {
+      set_timeout: 5,
+      fetch_deps: 7
+    },
+    syscall_count: {
+      hello: 700
     }
   }
 ];
@@ -44,7 +60,9 @@ const irregularData = [
     benchmark: {
       hello: {},
       relative_import: {}
-    }
+    },
+    thread_count: {},
+    syscall_count: {}
   },
   {
     created_at: "2018-02-01T01:00:00Z",
@@ -74,6 +92,26 @@ test(function createBinarySizeColumnsRegularData() {
 test(function createBinarySizeColumnsIrregularData() {
   const columns = createBinarySizeColumns(irregularData);
   assertEqual(columns, [["binary_size", 0, 0]]);
+});
+
+test(function createThreadCountColumnsRegularData() {
+  const columns = createThreadCountColumns(regularData);
+  assertEqual(columns, [["set_timeout", 4, 5], ["fetch_deps", 6, 7]]);
+});
+
+test(function createThreadCountColumnsIrregularData() {
+  const columns = createThreadCountColumns(irregularData);
+  assertEqual(columns, [["set_timeout", 0, 0], ["fetch_deps", 0, 0]]);
+});
+
+test(function createSyscallCountColumnsRegularData() {
+  const columns = createSyscallCountColumns(regularData);
+  assertEqual(columns, [["hello", 600, 700]]);
+});
+
+test(function createSyscallCountColumnsIrregularData() {
+  const columns = createSyscallCountColumns(irregularData);
+  assertEqual(columns, [["hello", 0, 0]]);
 });
 
 test(function createSha1ListRegularData() {

@@ -173,3 +173,103 @@ def parse_exit_code(s):
         return codes[0]
     else:
         return 0
+
+
+# Attempts to enable ANSI escape code support.
+# Returns True if successful, False if not supported.
+def enable_ansi_colors():
+    if os.name != 'nt':
+        return True  # On non-windows platforms this just works.
+    elif "CI" in os.environ:
+        return True  # Ansi escape codes work out of the box on Appveyor.
+
+    return enable_ansi_colors_win10()
+
+
+# The windows 10 implementation of enable_ansi_colors.
+def enable_ansi_colors_win10():
+    import ctypes
+
+    # Function factory for errcheck callbacks that raise WinError on failure.
+    def raise_if(error_result):
+        def check(result, func, args):
+            if result == error_result:
+                raise ctypes.WinError(ctypes.get_last_error())
+            return args
+
+        return check
+
+    # Windows API types.
+    from ctypes.wintypes import BOOL, DWORD, HANDLE, LPCWSTR, LPVOID
+    LPDWORD = ctypes.POINTER(DWORD)
+
+    # Generic constants.
+    NULL = ctypes.c_void_p(0).value
+    INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+
+    # CreateFile flags.
+    # yapf: disable
+    GENERIC_READ  = 0x80000000
+    GENERIC_WRITE = 0x40000000
+    FILE_SHARE_READ  = 0x01
+    FILE_SHARE_WRITE = 0x02
+    OPEN_EXISTING = 3
+    # yapf: enable
+
+    # Get/SetConsoleMode flags.
+    ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x04
+
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+
+    # HANDLE CreateFileW(...)
+    CreateFileW = kernel32.CreateFileW
+    CreateFileW.restype = HANDLE
+    CreateFileW.errcheck = raise_if(INVALID_HANDLE_VALUE)
+    # yapf: disable
+    CreateFileW.argtypes = (LPCWSTR,  # lpFileName
+                            DWORD,    # dwDesiredAccess
+                            DWORD,    # dwShareMode
+                            LPVOID,   # lpSecurityAttributes
+                            DWORD,    # dwCreationDisposition
+                            DWORD,    # dwFlagsAndAttributes
+                            HANDLE)   # hTemplateFile
+    # yapf: enable
+
+    # BOOL CloseHandle(HANDLE hObject)
+    CloseHandle = kernel32.CloseHandle
+    CloseHandle.restype = BOOL
+    CloseHandle.errcheck = raise_if(False)
+    CloseHandle.argtypes = (HANDLE, )
+
+    # BOOL GetConsoleMode(HANDLE hConsoleHandle, LPDWORD lpMode)
+    GetConsoleMode = kernel32.GetConsoleMode
+    GetConsoleMode.restype = BOOL
+    GetConsoleMode.errcheck = raise_if(False)
+    GetConsoleMode.argtypes = (HANDLE, LPDWORD)
+
+    # BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode)
+    SetConsoleMode = kernel32.SetConsoleMode
+    SetConsoleMode.restype = BOOL
+    SetConsoleMode.errcheck = raise_if(False)
+    SetConsoleMode.argtypes = (HANDLE, DWORD)
+
+    # Open the console output device.
+    conout = CreateFileW("CONOUT$", GENERIC_READ | GENERIC_WRITE,
+                         FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                         OPEN_EXISTING, 0, 0)
+
+    # Get the current mode.
+    mode = DWORD()
+    GetConsoleMode(conout, ctypes.byref(mode))
+
+    # Try to set the flag that controls ANSI escape code support.
+    try:
+        SetConsoleMode(conout, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+    except WindowsError as e:
+        if e.winerror == ERROR_INVALID_PARAMETER:
+            return False  # Not supported, likely an older version of Windows.
+        raise
+    finally:
+        CloseHandle(conout)
+
+    return True
