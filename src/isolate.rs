@@ -16,6 +16,7 @@ use std;
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::sync::atomic::AtomicIsize;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -48,6 +49,7 @@ pub struct Isolate {
 // Isolate cannot be passed between threads but IsolateState can. So any state that
 // needs to be accessed outside the main V8 thread should be inside IsolateState.
 pub struct IsolateState {
+  pub timeout: AtomicIsize,
   pub dir: deno_dir::DenoDir,
   pub timers: Mutex<HashMap<u32, futures::sync::oneshot::Sender<()>>>,
   pub argv: Vec<String>,
@@ -85,6 +87,7 @@ impl Isolate {
       rx,
       ntasks: 0,
       state: Arc::new(IsolateState {
+        timeout: AtomicIsize::new(-1),
         dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
         timers: Mutex::new(HashMap::new()),
         argv: argv_rest,
