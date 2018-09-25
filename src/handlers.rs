@@ -21,7 +21,8 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
-
+extern crate libc;
+use std::ffi::CString;
 // Buf represents a byte array returned from a "Op".
 // The message might be empty (which will be translated into a null object on
 // the javascript side) or it is a heap allocated opaque sequence of bytes.
@@ -681,16 +682,25 @@ fn handle_chmod(d: *const DenoC, base: &msg::Base) -> Box<Op> {
   let path = msg.path().unwrap();
   let mode = msg.mode();
   debug!("handle_chmod {} {}", path, mode);
-   if cfg!(target_family = "unix") {
+  if cfg!(target_family = "unix") {
     Box::new(futures::future::result(|| -> OpResult {
-    let mut permissions = fs::metadata(path)?.permissions();
-    permissions.set_mode(mode);
-    let _result = fs::set_permissions(path, permissions)?;
-    Ok(None)
-  }()))
+      let path_as_cstring = CString::new(path).unwrap();
+      // let _mode = CString::new(mode).unwrap();
+      unsafe {
+        let output = libc::chmod(path_as_cstring.as_ptr(), mode);
+        println!("{}", output);
+      }
+      Ok(None)
+    }()))
   } else {
     Box::new(futures::future::result(|| -> OpResult {
-    Ok(None)
-  }()))
+      let path_as_cstring = CString::new(path).unwrap();
+      // let _mode = CString::new(mode).unwrap();
+      unsafe {
+        let output = libc::chmod(path_as_cstring.as_ptr(), mode);
+        println!("{}", output);
+      }
+      Ok(None)
+    }()))
   }
 }

@@ -13,15 +13,14 @@ export function chmodSync(path: string, mode: number): void {
 }
 
 function req(
-    path: string,
-    mode: number
-  ): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
-    const builder = new flatbuffers.Builder();
-    const path_ = builder.createString(path);
-    fbs.Chmod.startChmod(builder);
-    fbs.Chmod.addPath(builder, path_);
-    fbs.Chmod.addMode(builder, mode);
-    const msg = fbs.Chmod.endChmod(builder);
-    return [builder, fbs.Any.Chmod, msg];
-  }
-  
+  path: string,
+  mode: number
+): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+  const builder = new flatbuffers.Builder();
+  const path_ = builder.createString(path);
+  fbs.Chmod.startChmod(builder);
+  fbs.Chmod.addPath(builder, path_);
+  fbs.Chmod.addMode(builder, mode);
+  const msg = fbs.Chmod.endChmod(builder);
+  return [builder, fbs.Any.Chmod, msg];
+}
