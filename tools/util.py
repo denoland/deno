@@ -39,6 +39,26 @@ def run_output(args, quiet=False, cwd=None, env=None, merge_env={}):
     return subprocess.check_output(args, cwd=cwd, env=env, shell=shell)
 
 
+def shell_quote_win(arg):
+    if re.search(r'[\x00-\x20"^%~!@&?*<>|()=]', arg):
+        # Double all " quote characters.
+        arg = arg.replace('"', '""')
+        # Wrap the entire string in " quotes.
+        arg = '"' + arg + '"'
+        # Double any N backslashes that are immediately followed by a " quote.
+        arg = re.sub(r'(\\+)(?=")', r'\1\1', arg)
+    return arg
+
+
+def shell_quote(arg):
+    if os.name == "nt":
+        return shell_quote_win(arg)
+    else:
+        # Python 2 has posix shell quoting built in, albeit in a weird place.
+        from pipes import quote
+        return quote(arg)
+
+
 def remove_and_symlink(target, name, target_is_dir=False):
     try:
         # On Windows, directory symlink can only be removed with rmdir().
