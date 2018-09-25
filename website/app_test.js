@@ -21,6 +21,12 @@ const regularData = [
       },
       relative_import: {
         mean: 0.06
+      },
+      cold_hello: {
+        mean: 0.05
+      },
+      cold_relative_import: {
+        mean: 0.06
       }
     },
     thread_count: {
@@ -41,6 +47,12 @@ const regularData = [
       },
       relative_import: {
         mean: 0.065
+      },
+      cold_hello: {
+        mean: 0.055
+      },
+      cold_relative_import: {
+        mean: 0.065
       }
     },
     thread_count: {
@@ -59,7 +71,9 @@ const irregularData = [
     sha1: "123",
     benchmark: {
       hello: {},
-      relative_import: {}
+      relative_import: {},
+      cold_hello: {},
+      cold_relative_import: {}
     },
     thread_count: {},
     syscall_count: {}
@@ -75,13 +89,20 @@ test(function createExecTimeColumnsRegularData() {
   const columns = createExecTimeColumns(regularData);
   assertEqual(columns, [
     ["hello", 0.05, 0.055],
-    ["relative_import", 0.06, 0.065]
+    ["relative_import", 0.06, 0.065],
+    ["cold_hello", 0.05, 0.055],
+    ["cold_relative_import", 0.06, 0.065]
   ]);
 });
 
 test(function createExecTimeColumnsIrregularData() {
   const columns = createExecTimeColumns(irregularData);
-  assertEqual(columns, [["hello", 0, 0], ["relative_import", 0, 0]]);
+  assertEqual(columns, [
+    ["hello", 0, 0],
+    ["relative_import", 0, 0],
+    ["cold_hello", 0, 0],
+    ["cold_relative_import", 0, 0]
+  ]);
 });
 
 test(function createBinarySizeColumnsRegularData() {
