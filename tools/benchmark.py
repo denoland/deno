@@ -12,6 +12,12 @@ import time
 import shutil
 from util import run, run_output, root_path, build_path
 import tempfile
+import http_server
+
+try:
+    http_server.spawn()
+except:
+    "Warning: another http_server instance is running"
 
 # The list of the tuples of the benchmark name and arguments
 benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
