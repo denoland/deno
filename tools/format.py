@@ -26,7 +26,7 @@ for fn in ["BUILD.gn", ".gn"] + find_exts("build_extra", ".gn", ".gni"):
 #   * These third party python files shouldn't be formatted.
 #   * The tools directory has no subdirectories, so `glob()` is sufficient.
 # TODO(ry) Install yapf in third_party.
-# run(["yapf", "-i"] + glob("tools/*.py") + find_exts("build_extra", ".py"))
+run(["yapf", "-i"] + glob("tools/*.py") + find_exts("build_extra", ".py"))
 
 run(["node", prettier, "--write"] + find_exts("js/", ".js", ".ts") +
     find_exts("tests/", ".js", ".ts") + find_exts("website/", ".js", ".ts") +
