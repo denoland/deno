@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import third_party
 from util import build_mode, build_path, enable_ansi_colors, root_path, run
+from util import shell_quote
 import os
 import re
 import sys
@@ -114,7 +115,8 @@ def generate_gn_args(mode):
     # Check if ccache or sccache are in the path, and if so we set cc_wrapper.
     cc_wrapper = find_executable("ccache") or find_executable("sccache")
     if cc_wrapper:
-        out += ['cc_wrapper="%s"' % cc_wrapper]
+        # The gn toolchain does not shell escape cc_wrapper, so do it here.
+        out += ['cc_wrapper=%s' % gn_string(shell_quote(cc_wrapper))]
         # For cc_wrapper to work on Windows, we need to select our own toolchain
         # by overriding 'custom_toolchain' and 'host_toolchain'.
         # TODO: Is there a way to use it without the involvement of args.gn?
