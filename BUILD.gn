@@ -44,8 +44,11 @@ config("deno_config") {
 }
 
 main_extern = [
+  "$rust_build:ct_logs",
   "$rust_build:hyper",
-  "$rust_build:hyper_rustls",
+  "$rust_build:rustls",
+  "$rust_build:webpki",
+  "$rust_build:webpki_roots",
   "$rust_build:futures",
   "$rust_build:lazy_static",
   "$rust_build:libc",
@@ -54,8 +57,10 @@ main_extern = [
   "$rust_build:tempfile",
   "$rust_build:rand",
   "$rust_build:tokio",
+  "$rust_build:tokio_rustls",
   "$rust_build:tokio_executor",
   "$rust_build:tokio_threadpool",
+  "$rust_build:tokio_io",
   "$rust_build:url",
   "$rust_build:remove_dir_all",
   "$rust_build:dirs",
