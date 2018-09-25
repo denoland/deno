@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from gh-pages branch.
 # To view the results locally run ./tools/http_server.py and visit
@@ -10,6 +11,7 @@ import json
 import time
 import shutil
 from util import run, run_output, root_path, build_path
+import tempfile
 
 # The list of the tuples of the benchmark name and arguments
 benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
@@ -43,6 +45,23 @@ def import_data_from_gh_pages():
         write_json(data_file, [])  # writes empty json data
 
 
+# run strace with test_args and record times a syscall record appears in out file
+# based on syscall_line_matcher. Should be reusable
+def count_strace_syscall(syscall_name, syscall_line_matcher, test_args):
+    f = tempfile.NamedTemporaryFile()
+    run(["strace", "-f", "-o", f.name, "-e", "trace=" + syscall_name] +
+        test_args)
+    return len(filter(syscall_line_matcher, f))
+
+
+def run_thread_count_benchmark(deno_path):
+    thread_count_map = {}
+    thread_count_map["set_timeout"] = count_strace_syscall(
+        "clone", lambda line: "clone(" in line,
+        [deno_path, "tests/004_set_timeout.ts", "--reload"]) + 1
+    return thread_count_map
+
+
 def main(argv):
     if len(argv) == 2:
         build_dir = sys.argv[1]
@@ -67,6 +86,7 @@ def main(argv):
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sha1": sha1,
         "binary_size": os.path.getsize(deno_path),
+        "thread_count": {},
         "benchmark": {}
     }
     for [[name, _], data] in zip(benchmarks, benchmark_data["results"]):
@@ -78,6 +98,11 @@ def main(argv):
             "min": data["min"],
             "max": data["max"]
         }
+
+    if "linux" in sys.platform:
+        # Thread count test, only on linux
+        new_data["thread_count"] = run_thread_count_benchmark(deno_path)
+
     all_data.append(new_data)
     write_json(data_file, all_data)
 
