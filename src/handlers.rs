@@ -718,6 +718,8 @@ fn handle_truncate(i: *const isolate, base: &msg::Base) -> Box<Op> {
     let f = fs::OpenOptions::new().write(true).open(name)?;
     f.set_len(len as u64)?;
     Ok(None)
+  }()))
+}
     
 fn handle_read_link(_i: *const isolate, base: &msg::Base) -> Box<Op> {
   let msg = base.msg_as_readlink().unwrap();
