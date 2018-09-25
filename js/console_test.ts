@@ -91,3 +91,11 @@ test(function consoleTestStringifyCircular() {
     "Console { printFunc: [Function], debug: [Function: log], info: [Function: log], error: [Function: warn] }"
   );
 });
+
+test(function consoleTestStringifyWithDepth() {
+  const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
+  assertEqual(stringifyArgs([nestedObj], { depth: 3 }), "{ a: { b: { c: { d: [object] } } } }");
+  assertEqual(stringifyArgs([nestedObj], { depth: 4 }), "{ a: { b: { c: { d: { e: [object] } } } } }");
+  assertEqual(stringifyArgs([nestedObj], { depth: 0 }), "{ a: { b: { c: [object] } } }");
+  assertEqual(stringifyArgs([nestedObj], { depth: null }), "{ a: { b: { c: [object] } } }");
+});

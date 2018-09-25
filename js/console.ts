@@ -1,5 +1,9 @@
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
+type ConsoleOptions = Partial<{ showHidden: boolean, depth: number, colors: boolean }>;
+
+// Default depth of logging nested objects
+const DEFAULT_MAX_DEPTH = 2;
 
 // tslint:disable-next-line:no-any
 function getClassInstanceName(instance: any): string {
@@ -13,7 +17,7 @@ function getClassInstanceName(instance: any): string {
 }
 
 // tslint:disable-next-line:no-any
-function stringify(ctx: ConsoleContext, value: any): string {
+function stringify(ctx: ConsoleContext, value: any, level: number, maxLevel: number): string {
   switch (typeof value) {
     case "string":
       return value;
@@ -39,12 +43,16 @@ function stringify(ctx: ConsoleContext, value: any): string {
         return "[Circular]";
       }
 
+      if (level > maxLevel) {
+        return `[object]`;
+      }
+
       ctx.add(value);
       const entries: string[] = [];
 
       if (Array.isArray(value)) {
         for (const el of value) {
-          entries.push(stringifyWithQuotes(ctx, el));
+          entries.push(stringifyWithQuotes(ctx, el, level + 1, maxLevel));
         }
 
         ctx.delete(value);
@@ -63,7 +71,7 @@ function stringify(ctx: ConsoleContext, value: any): string {
         }
 
         for (const key of Object.keys(value)) {
-          entries.push(`${key}: ${stringifyWithQuotes(ctx, value[key])}`);
+          entries.push(`${key}: ${stringifyWithQuotes(ctx, value[key], level + 1, maxLevel)}`);
         }
 
         ctx.delete(value);
@@ -87,24 +95,24 @@ function stringify(ctx: ConsoleContext, value: any): string {
 
 // Print strings when they are inside of arrays or objects with quotes
 // tslint:disable-next-line:no-any
-function stringifyWithQuotes(ctx: ConsoleContext, value: any): string {
+function stringifyWithQuotes(ctx: ConsoleContext, value: any, level: number, maxLevel: number): string {
   switch (typeof value) {
     case "string":
       return `"${value}"`;
     default:
-      return stringify(ctx, value);
+      return stringify(ctx, value, level, maxLevel);
   }
 }
 
 // tslint:disable-next-line:no-any
-export function stringifyArgs(args: any[]): string {
+export function stringifyArgs(args: any[], options: ConsoleOptions = {}): string {
   const out: string[] = [];
   for (const a of args) {
     if (typeof a === "string") {
       out.push(a);
     } else {
       // tslint:disable-next-line:no-any
-      out.push(stringify(new Set<any>(), a));
+      out.push(stringify(new Set<any>(), a, 0, options.depth || DEFAULT_MAX_DEPTH));
     }
   }
   return out.join(" ");
@@ -122,6 +130,11 @@ export class Console {
 
   debug = this.log;
   info = this.log;
+
+  // tslint:disable-next-line:no-any
+  dir(obj: any, options: ConsoleOptions = {}) {
+    this.printFunc(stringifyArgs([obj], { depth: options.depth || DEFAULT_MAX_DEPTH }));
+  }
 
   // tslint:disable-next-line:no-any
   warn(...args: any[]): void {
