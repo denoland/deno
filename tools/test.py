@@ -5,9 +5,10 @@ import os
 import sys
 from check_output_test import check_output_test
 from setup_test import setup_test
-from util import executable_suffix, run, build_path
+from util import build_path, enable_ansi_colors, executable_suffix, run
 from unit_tests import unit_tests
 from util_test import util_test
+from benchmark_test import benchmark_test
 import subprocess
 import http_server
 
@@ -28,11 +29,19 @@ def main(argv):
         print "Usage: tools/test.py [build_dir]"
         sys.exit(1)
 
+    enable_ansi_colors()
+
     http_server.spawn()
+
+    deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
+    check_exists(deno_exe)
+    deno_ns_exe = os.path.join(build_dir, "deno_ns" + executable_suffix)
+    check_exists(deno_ns_exe)
 
     # Internal tools testing
     setup_test()
     util_test()
+    benchmark_test(deno_exe)
 
     test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
     check_exists(test_cc)
@@ -42,15 +51,9 @@ def main(argv):
     check_exists(test_rs)
     run([test_rs])
 
-    deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
-    check_exists(deno_exe)
     unit_tests(deno_exe)
 
-    check_exists(deno_exe)
     check_output_test(deno_exe)
-
-    deno_ns_exe = os.path.join(build_dir, "deno_ns" + executable_suffix)
-    check_exists(deno_ns_exe)
     check_output_test(deno_ns_exe)
 
 

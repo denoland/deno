@@ -152,18 +152,6 @@ TEST(LibDenoTest, JSSendArrayBufferViewTypes) {
   deno_delete(d);
 }
 
-TEST(LibDenoTest, JSSendNeutersBuffer) {
-  static int count = 0;
-  Deno* d = deno_new(nullptr, [](auto _, auto buf) {
-    count++;
-    EXPECT_EQ(buf.data_len, 1u);
-    EXPECT_EQ(buf.data_ptr[0], 42);
-  });
-  EXPECT_TRUE(deno_execute(d, "a.js", "JSSendNeutersBuffer()"));
-  EXPECT_EQ(count, 1);
-  deno_delete(d);
-}
-
 TEST(LibDenoTest, TypedArraySnapshots) {
   Deno* d = deno_new(nullptr, nullptr);
   EXPECT_TRUE(deno_execute(d, "a.js", "TypedArraySnapshots()"));

@@ -43,6 +43,8 @@ test(function consoleTestStringifyCircular() {
     bool: true,
     str: "a",
     method() {},
+    async asyncMethod() {},
+    *generatorMethod() {},
     un: undefined,
     nu: null,
     arrowFunc: () => {},
@@ -66,7 +68,7 @@ test(function consoleTestStringifyCircular() {
 
   nestedObj.o = circularObj;
 
-  const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: {}, arr: [ 1, "s", false, null, [Circular] ], baseClass: Base { a: 1 } } }`;
+  const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], asyncMethod: [AsyncFunction: asyncMethod], generatorMethod: [GeneratorFunction: generatorMethod], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: {}, arr: [ 1, "s", false, null, [Circular] ], baseClass: Base { a: 1 } } }`;
 
   assertEqual(stringify(1), "1");
   assertEqual(stringify("s"), "s");
@@ -76,6 +78,12 @@ test(function consoleTestStringifyCircular() {
   assertEqual(stringify(undefined), "undefined");
   assertEqual(stringify(new Extended()), "Extended { a: 1, b: 2 }");
   assertEqual(stringify(function f() {}), "[Function: f]");
+  assertEqual(stringify(async function af() {}), "[AsyncFunction: af]");
+  assertEqual(stringify(function* gf() {}), "[GeneratorFunction: gf]");
+  assertEqual(
+    stringify(async function* agf() {}),
+    "[AsyncGeneratorFunction: agf]"
+  );
   assertEqual(stringify(nestedObj), nestedObjExpected);
   assertEqual(stringify(JSON), "{}");
   assertEqual(

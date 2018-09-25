@@ -34,6 +34,13 @@ config("deno_config") {
   if (is_win) {
     libs = [ "userenv.lib" ]
   }
+
+  if (is_clang) {
+    cflags = [
+      "-fcolor-diagnostics",
+      "-fansi-escape-codes",
+    ]
+  }
 }
 
 main_extern = [

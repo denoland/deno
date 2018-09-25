@@ -4,7 +4,9 @@ from __future__ import print_function
 import os
 import sys
 import third_party
-from util import build_path, run
+from util import build_path, enable_ansi_colors, run
+
+enable_ansi_colors()
 
 third_party.fix_symlinks()
 
