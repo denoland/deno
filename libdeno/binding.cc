@@ -141,13 +141,19 @@ void ExitOnPromiseRejectCallback(
 }
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  CHECK_EQ(args.Length(), 1);
+  CHECK_GE(args.Length(), 1);
+  CHECK_LE(args.Length(), 2);
   auto* isolate = args.GetIsolate();
+  Deno* d = static_cast<Deno*>(isolate->GetData(0));
+  auto context = d->context.Get(d->isolate);
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value str(isolate, args[0]);
+  bool is_err =
+      args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
   const char* cstr = ToCString(str);
-  printf("%s\n", cstr);
-  fflush(stdout);
+  auto stream = is_err ? stderr : stdout;
+  fprintf(stream, "%s\n", cstr);
+  fflush(stream);
 }
 
 static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {

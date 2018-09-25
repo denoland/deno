@@ -8,7 +8,7 @@ interface Libdeno {
 
   send(msg: ArrayBufferView): null | Uint8Array;
 
-  print(x: string): void;
+  print(x: string, isErr?: boolean): void;
 
   setGlobalErrorHandler: (
     handler: (

@@ -112,7 +112,7 @@ global.SnapshotBug = () => {
 
 global.GlobalErrorHandling = () => {
   libdeno.setGlobalErrorHandler((message, source, line, col, error) => {
-    libdeno.print(`line ${line} col ${col}`);
+    libdeno.print(`line ${line} col ${col}`, true);
     assert("ReferenceError: notdefined is not defined" === message);
     assert(source === "helloworld.js");
     assert(line === 3);
