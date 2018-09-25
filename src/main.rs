@@ -9,6 +9,8 @@ extern crate tempfile;
 extern crate tokio;
 extern crate url;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate log;
 extern crate dirs;
 extern crate hyper_rustls;
@@ -20,9 +22,9 @@ mod errors;
 mod flags;
 mod fs;
 pub mod handlers;
+mod http;
 mod isolate;
 mod libdeno;
-mod net;
 mod version;
 
 use isolate::Isolate;
@@ -48,25 +50,9 @@ impl log::Log for Logger {
 fn main() {
   log::set_logger(&LOGGER).unwrap();
 
-  let js_args = flags::v8_set_flags(env::args().collect());
-
-  let mut isolate = Isolate::new(js_args);
-
-  if isolate.flags.help {
-    flags::print_usage();
-    std::process::exit(0);
-  }
-
-  if isolate.flags.version {
-    version::print_version();
-    std::process::exit(0);
-  }
-
-  let mut log_level = log::LevelFilter::Info;
-  if isolate.flags.log_debug {
-    log_level = log::LevelFilter::Debug;
-  }
-  log::set_max_level(log_level);
+  let args = env::args().collect();
+  let mut isolate = Isolate::new(args);
+  flags::process(&isolate.flags);
 
   isolate
     .execute("deno_main.js", "denoMain();")
