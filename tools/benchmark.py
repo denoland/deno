@@ -93,6 +93,9 @@ def run_thread_count_benchmark(deno_path):
     thread_count_map["set_timeout"] = get_strace_summary([
         deno_path, "tests/004_set_timeout.ts", "--reload"
     ])["clone"]["calls"] + 1
+    thread_count_map["fetch_deps"] = get_strace_summary([
+        deno_path, "tests/fetch_deps.ts", "--reload", "--allow-net"
+    ])["clone"]["calls"] + 1
     return thread_count_map
 
 

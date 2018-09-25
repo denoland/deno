@@ -20,7 +20,7 @@ export function createBinarySizeColumns(data) {
   return [["binary_size", ...data.map(d => d.binary_size || 0)]];
 }
 
-const threadCountNames = ["set_timeout"];
+const threadCountNames = ["set_timeout", "fetch_deps"];
 export function createThreadCountColumns(data) {
   return threadCountNames.map(name => [
     name,
