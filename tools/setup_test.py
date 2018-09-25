@@ -1,9 +1,16 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 import os
-from setup import read_gn_args, write_gn_args
+from setup import gn_string, read_gn_args, write_gn_args
 from shutil import rmtree
 from tempfile import mktemp
+
+
+def gn_string_test():
+    assert '"abc"' == gn_string('abc')
+    assert '"foo\\$bar\\"baz"' == gn_string('foo$bar"baz')
+    assert '"do\\not\\escape"' == gn_string('do\\not\\escape')
+    assert '"so\\\\\\very\\\\\\"fun\\"' == gn_string('so\\\\very\\"fun\\')
 
 
 def read_gn_args_test():
@@ -53,6 +60,7 @@ def write_gn_args_test():
 
 
 def setup_test():
+    gn_string_test()
     read_gn_args_test()
     write_gn_args_test()
 

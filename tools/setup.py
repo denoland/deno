@@ -54,6 +54,18 @@ gn_args_header = [
 ]
 
 
+def gn_string(s):
+    # In gn, strings are enclosed in double-quotes and use backslash as the
+    # escape character. The only escape sequences supported are:
+    #   \" (for literal quote)
+    #   \$ (for literal dollars sign)
+    #   \\ (for literal backslash)
+    # Any other use of a backslash is treated as a literal backslash.
+    s = re.sub(r'("|\$|\\(?=["$\\]))', r'\\\1', s)
+    s = '"' + s + '"'
+    return s
+
+
 def gn_args_are_generated(lines):
     for line in lines:
         if re.match("^\s*#.*REMOVE THIS LINE", line):
