@@ -45,6 +45,7 @@ pub fn msg_from_js(state: Arc<IsolateState>, bytes: &[u8]) -> (bool, Box<Op>) {
     msg::Any::Start => handle_start,
     msg::Any::CodeFetch => handle_code_fetch,
     msg::Any::CodeCache => handle_code_cache,
+    msg::Any::SetTimeout => handle_set_timeout,
     msg::Any::Environ => handle_env,
     msg::Any::FetchReq => handle_fetch_req,
     msg::Any::TimerStart => handle_timer_start,
@@ -234,6 +235,15 @@ fn handle_code_cache(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
     state.dir.code_cache(filename, source_code, output_code)?;
     Ok(empty_buf())
   }()))
+}
+
+fn handle_set_timeout(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+  let msg = base.msg_as_set_timeout().unwrap();
+  let val = msg.timeout() as isize;
+  state
+    .timeout
+    .swap(val, std::sync::atomic::Ordering::Relaxed);
+  ok_future(empty_buf())
 }
 
 fn handle_set_env(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
