@@ -24,7 +24,8 @@ const regularData = [
       }
     },
     thread_count: {
-      set_timeout: 4
+      set_timeout: 4,
+      fetch_deps: 6
     },
     syscall_count: {
       hello: 600
@@ -43,7 +44,8 @@ const regularData = [
       }
     },
     thread_count: {
-      set_timeout: 5
+      set_timeout: 5,
+      fetch_deps: 7
     },
     syscall_count: {
       hello: 700
@@ -94,12 +96,12 @@ test(function createBinarySizeColumnsIrregularData() {
 
 test(function createThreadCountColumnsRegularData() {
   const columns = createThreadCountColumns(regularData);
-  assertEqual(columns, [["set_timeout", 4, 5]]);
+  assertEqual(columns, [["set_timeout", 4, 5], ["fetch_deps", 6, 7]]);
 });
 
 test(function createThreadCountColumnsIrregularData() {
   const columns = createThreadCountColumns(irregularData);
-  assertEqual(columns, [["set_timeout", 0, 0]]);
+  assertEqual(columns, [["set_timeout", 0, 0], ["fetch_deps", 0, 0]]);
 });
 
 test(function createSyscallCountColumnsRegularData() {
