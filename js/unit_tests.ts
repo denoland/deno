@@ -11,6 +11,7 @@ import "./mkdir_test.ts";
 import "./make_temp_dir_test.ts";
 import "./stat_test.ts";
 import "./rename_test.ts";
+import "./read_link_test.ts";
 import "./blob_test.ts";
 import "./timers_test.ts";
 import "./symlink_test.ts";
