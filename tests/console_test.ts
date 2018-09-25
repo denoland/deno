@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 import { test, assertEqual } from "./test_util.ts";
-import { stringifyArgs } from "./console.ts";
+import { stringifyArgs } from "../js/console.ts";
 
 // tslint:disable-next-line:no-any
 function stringify(...args: any[]): string {

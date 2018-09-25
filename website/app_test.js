@@ -1,10 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
-import { test, assertEqual } from "../js/test_util.ts";
+import { test, testPerm, assertEqual } from "../tests/test_util.ts";
 import {
   createBinarySizeColumns,
   createExecTimeColumns,
-  createThreadCountColumns,
   createSha1List,
   formatBytes
 } from "./app.js";
@@ -21,9 +20,6 @@ const regularData = [
       relative_import: {
         mean: 0.06
       }
-    },
-    thread_count: {
-      set_timeout: 4
     }
   },
   {
@@ -37,9 +33,6 @@ const regularData = [
       relative_import: {
         mean: 0.065
       }
-    },
-    thread_count: {
-      set_timeout: 5
     }
   }
 ];
@@ -51,8 +44,7 @@ const irregularData = [
     benchmark: {
       hello: {},
       relative_import: {}
-    },
-    thread_count: {}
+    }
   },
   {
     created_at: "2018-02-01T01:00:00Z",
@@ -82,16 +74,6 @@ test(function createBinarySizeColumnsRegularData() {
 test(function createBinarySizeColumnsIrregularData() {
   const columns = createBinarySizeColumns(irregularData);
   assertEqual(columns, [["binary_size", 0, 0]]);
-});
-
-test(function createThreadCountColumnsRegularData() {
-  const columns = createThreadCountColumns(regularData);
-  assertEqual(columns, [["set_timeout", 4, 5]]);
-});
-
-test(function createThreadCountColumnsIrregularData() {
-  const columns = createThreadCountColumns(irregularData);
-  assertEqual(columns, [["set_timeout", 0, 0]]);
 });
 
 test(function createSha1ListRegularData() {

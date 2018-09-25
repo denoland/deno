@@ -10,20 +10,20 @@ import sys
 # tests by the special string. permW0N0 means allow-write but not allow-net.
 # See js/test_util.ts for more details.
 def unit_tests(deno_exe):
-    run([deno_exe, "--reload", "js/unit_tests.ts", "permW0N0E0"])
+    run([deno_exe, "--reload", "tests/unit_tests.ts", "permW0N0E0"])
     run([
-        deno_exe, "--reload", "js/unit_tests.ts", "permW1N0E0", "--allow-write"
+        deno_exe, "--reload", "tests/unit_tests.ts", "permW1N0E0", "--allow-write"
     ])
     run([
-        deno_exe, "--reload", "js/unit_tests.ts", "permW0N1E0", "--allow-net"
+        deno_exe, "--reload", "tests/unit_tests.ts", "permW0N1E0", "--allow-net"
     ])
     run([
-        deno_exe, "--reload", "js/unit_tests.ts", "permW0N0E1", "--allow-env"
+        deno_exe, "--reload", "tests/unit_tests.ts", "permW0N0E1", "--allow-env"
     ])
     run([
         deno_exe,
         "--reload",
-        "js/unit_tests.ts",
+        "tests/unit_tests.ts",
         "permW1N1E1",
         "--allow-write",
         "--allow-net",
