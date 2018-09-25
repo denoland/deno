@@ -461,16 +461,24 @@ test(function compilerGetScriptFileNames() {
 test(function compilerRecompileFlag() {
   setup();
   compilerInstance.run("foo/bar.ts", "/root/project");
-  assertEqual(getEmitOutputStack.length, 1, "Expected only a single emitted file.");
+  assertEqual(
+    getEmitOutputStack.length,
+    1,
+    "Expected only a single emitted file."
+  );
   // running compiler against same file should use cached code
   compilerInstance.run("foo/bar.ts", "/root/project");
-  assertEqual(getEmitOutputStack.length, 1, "Expected only a single emitted file.");
+  assertEqual(
+    getEmitOutputStack.length,
+    1,
+    "Expected only a single emitted file."
+  );
   compilerInstance.recompile = true;
   compilerInstance.run("foo/bar.ts", "/root/project");
   assertEqual(getEmitOutputStack.length, 2, "Expected two emitted file.");
   assert(
-      getEmitOutputStack[0] === getEmitOutputStack[1],
-      "Expected same file to be emitted twice."
+    getEmitOutputStack[0] === getEmitOutputStack[1],
+    "Expected same file to be emitted twice."
   );
   teardown();
 });

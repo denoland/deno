@@ -1,6 +1,10 @@
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
-type ConsoleOptions = Partial<{ showHidden: boolean, depth: number, colors: boolean }>;
+type ConsoleOptions = Partial<{
+  showHidden: boolean;
+  depth: number;
+  colors: boolean;
+}>;
 
 // Default depth of logging nested objects
 const DEFAULT_MAX_DEPTH = 2;
@@ -16,8 +20,13 @@ function getClassInstanceName(instance: any): string {
   return "";
 }
 
-// tslint:disable-next-line:no-any
-function stringify(ctx: ConsoleContext, value: any, level: number, maxLevel: number): string {
+function stringify(
+  ctx: ConsoleContext,
+  // tslint:disable-next-line:no-any
+  value: any,
+  level: number,
+  maxLevel: number
+): string {
   switch (typeof value) {
     case "string":
       return value;
@@ -71,7 +80,14 @@ function stringify(ctx: ConsoleContext, value: any, level: number, maxLevel: num
         }
 
         for (const key of Object.keys(value)) {
-          entries.push(`${key}: ${stringifyWithQuotes(ctx, value[key], level + 1, maxLevel)}`);
+          entries.push(
+            `${key}: ${stringifyWithQuotes(
+              ctx,
+              value[key],
+              level + 1,
+              maxLevel
+            )}`
+          );
         }
 
         ctx.delete(value);
@@ -94,8 +110,13 @@ function stringify(ctx: ConsoleContext, value: any, level: number, maxLevel: num
 }
 
 // Print strings when they are inside of arrays or objects with quotes
-// tslint:disable-next-line:no-any
-function stringifyWithQuotes(ctx: ConsoleContext, value: any, level: number, maxLevel: number): string {
+function stringifyWithQuotes(
+  ctx: ConsoleContext,
+  // tslint:disable-next-line:no-any
+  value: any,
+  level: number,
+  maxLevel: number
+): string {
   switch (typeof value) {
     case "string":
       return `"${value}"`;
@@ -104,15 +125,20 @@ function stringifyWithQuotes(ctx: ConsoleContext, value: any, level: number, max
   }
 }
 
-// tslint:disable-next-line:no-any
-export function stringifyArgs(args: any[], options: ConsoleOptions = {}): string {
+export function stringifyArgs(
+  // tslint:disable-next-line:no-any
+  args: any[],
+  options: ConsoleOptions = {}
+): string {
   const out: string[] = [];
   for (const a of args) {
     if (typeof a === "string") {
       out.push(a);
     } else {
-      // tslint:disable-next-line:no-any
-      out.push(stringify(new Set<any>(), a, 0, options.depth || DEFAULT_MAX_DEPTH));
+      out.push(
+        // tslint:disable-next-line:no-any
+        stringify(new Set<any>(), a, 0, options.depth || DEFAULT_MAX_DEPTH)
+      );
     }
   }
   return out.join(" ");
@@ -133,7 +159,9 @@ export class Console {
 
   // tslint:disable-next-line:no-any
   dir(obj: any, options: ConsoleOptions = {}) {
-    this.printFunc(stringifyArgs([obj], { depth: options.depth || DEFAULT_MAX_DEPTH }));
+    this.printFunc(
+      stringifyArgs([obj], { depth: options.depth || DEFAULT_MAX_DEPTH })
+    );
   }
 
   // tslint:disable-next-line:no-any
