@@ -14,11 +14,6 @@ from util import run, run_output, root_path, build_path, executable_suffix
 import tempfile
 import http_server
 
-try:
-    http_server.spawn()
-except:
-    "Warning: another http_server instance is running"
-
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [("hello", ["tests/002_hello.ts", "--reload"]),
                         ("relative_import",
@@ -133,6 +128,8 @@ def main(argv):
     else:
         print "Usage: tools/benchmark.py [build_dir]"
         sys.exit(1)
+
+    http_server.spawn()
 
     deno_path = os.path.join(build_dir, "deno")
     benchmark_file = os.path.join(build_dir, "benchmark.json")

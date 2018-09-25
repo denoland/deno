@@ -31,10 +31,7 @@ def main(argv):
 
     enable_ansi_colors()
 
-    try:
-        http_server.spawn()
-    except:
-        "Warning: another http_server instance is running"
+    http_server.spawn()
 
     deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
     check_exists(deno_exe)
