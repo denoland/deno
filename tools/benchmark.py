@@ -45,31 +45,61 @@ def import_data_from_gh_pages():
         write_json(data_file, [])  # writes empty json data
 
 
-# run strace with test_args and record times a syscall record appears in out file
-# based on syscall_line_matcher. Should be reusable
-# if syscall_name == None, track all syscalls
-def count_strace_syscall(syscall_name, syscall_line_matcher, test_args):
+def get_strace_summary_text(test_args):
     f = tempfile.NamedTemporaryFile()
-    run(["strace", "-f", "-o", f.name] +
-        (["-e", "trace=" + syscall_name] if syscall_name else []) + test_args)
-    return len(filter(syscall_line_matcher, f))
+    run(["strace", "-c", "-f", "-o", f.name] + test_args)
+    return f.read()
+
+
+def strace_parse(summary_text):
+    summary = {}
+    # clear empty lines
+    lines = list(filter(lambda x: x and x != "\n", summary_text.split("\n")))
+    if len(lines) < 4:
+        return {}  # malformed summary
+    lines, total_line = lines[2:-2], lines[-1]
+    # data to dict for each line
+    for line in lines:
+        syscall_fields = line.split()
+        syscall_name = syscall_fields[-1]
+        syscall_dict = {}
+        if 5 <= len(syscall_fields) <= 6:
+            syscall_dict = {
+                "% time": float(syscall_fields[0]),
+                "seconds": float(syscall_fields[1]),
+                "usecs/call": int(syscall_fields[2]),
+                "calls": int(syscall_fields[3])
+            }
+            syscall_dict["errors"] = 0 if len(syscall_fields) < 6 else int(
+                syscall_fields[4])
+        summary[syscall_name] = syscall_dict
+    # record overall (total) data
+    total_fields = total_line.split()
+    summary["total"] = {
+        "% time": float(total_fields[0]),
+        "seconds": float(total_fields[1]),
+        "calls": int(total_fields[2]),
+        "errors": int(total_fields[3])
+    }
+    return summary
+
+
+def get_strace_summary(test_args):
+    return strace_parse(get_strace_summary_text(test_args))
 
 
 def run_thread_count_benchmark(deno_path):
     thread_count_map = {}
-    thread_count_map["set_timeout"] = count_strace_syscall(
-        "clone", lambda line: "clone(" in line,
-        [deno_path, "tests/004_set_timeout.ts", "--reload"]) + 1
+    thread_count_map["set_timeout"] = get_strace_summary([
+        deno_path, "tests/004_set_timeout.ts", "--reload"
+    ])["clone"]["calls"] + 1
     return thread_count_map
 
 
 def run_syscall_count_benchmark(deno_path):
     syscall_count_map = {}
-    syscall_count_map["hello"] = count_strace_syscall(
-        None,
-        lambda line: "<... unfinished>" not in line and  # <unfinished> and <resume> repeats same syscall
-        "+++ exited with" not in line,  # lines labelling exit
-        [deno_path, "tests/002_hello.ts", "--reload"])
+    syscall_count_map["hello"] = get_strace_summary(
+        [deno_path, "tests/002_hello.ts", "--reload"])["total"]["calls"]
     return syscall_count_map
 
 
