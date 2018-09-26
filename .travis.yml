@@ -64,13 +64,13 @@ before_script:
 script:
 - ./tools/lint.py
 - bash -c "sleep 2100; pkill ninja" &
-- ./tools/build.py -j2
-- ./tools/test.py $DENO_BUILD_PATH
+- BUILD_DURATION=$(/usr/bin/time -p ./tools/build.py -j2 3>&1 1>&2 2>&3 | awk '/real/ {print $2}') # swap stdout and stderr
+- TEST_DURATION=$(/usr/bin/time -p ./tools/test.py $DENO_BUILD_PATH 3>&1 1>&2 2>&3 | awk '/real/ {print $2}') # swap stdout and stderr
 after_success:
 - |
   # Run benchmarks and publish the result to github pages.
   if [ $BENCHMARK ]; then
-    ./tools/benchmark.py $DENO_BUILD_PATH &&
+    ./tools/benchmark.py --build_dir=$DENO_BUILD_PATH --build_duration=$BUILD_DURATION --test_duration=$TEST_DURATION &&
     cp -r website/* gh-pages/
   fi
 before_deploy:

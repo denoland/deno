@@ -21,6 +21,20 @@ export function createExecTimeColumns(data) {
   ]);
 }
 
+const durationNames = ["build", "test"];
+export function createDurationColumns(data) {
+  return durationNames.map(name => [
+    name,
+    ...data.map(d => {
+      const durationData = d["duration"];
+      if (!durationData) {
+        return 0;
+      }
+      return durationData[name] || 0;
+    })
+  ]);
+}
+
 const binarySizeNames = ["deno", "main.js", "main.js.map", "snapshot_deno.bin"];
 export function createBinarySizeColumns(data) {
   return binarySizeNames.map(name => [
@@ -90,6 +104,7 @@ export async function main() {
   const binarySizeColumns = createBinarySizeColumns(data);
   const threadCountColumns = createThreadCountColumns(data);
   const syscallCountColumns = createSyscallCountColumns(data);
+  const durationColumns = createDurationColumns(data);
   const sha1List = createSha1List(data);
 
   c3.generate({
@@ -133,6 +148,17 @@ export async function main() {
   c3.generate({
     bindto: "#syscall-count-chart",
     data: { columns: syscallCountColumns },
+    axis: {
+      x: {
+        type: "category",
+        categories: sha1List
+      }
+    }
+  });
+
+  c3.generate({
+    bindto: "#duration-chart",
+    data: { columns: durationColumns },
     axis: {
       x: {
         type: "category",
