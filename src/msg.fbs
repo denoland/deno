@@ -199,7 +199,6 @@ table ReadFileRes {
 
 table WriteFile {
   filename: string;
-  data: [ubyte];
   perm: uint;
   // perm specified by https://godoc.org/os#FileMode
 }

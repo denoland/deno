@@ -41,14 +41,12 @@ function req(
   filename: string,
   data: Uint8Array,
   perm: number
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset, Uint8Array] {
   const builder = new flatbuffers.Builder();
   const filename_ = builder.createString(filename);
-  const dataOffset = fbs.WriteFile.createDataVector(builder, data);
   fbs.WriteFile.startWriteFile(builder);
   fbs.WriteFile.addFilename(builder, filename_);
-  fbs.WriteFile.addData(builder, dataOffset);
   fbs.WriteFile.addPerm(builder, perm);
   const msg = fbs.WriteFile.endWriteFile(builder);
-  return [builder, fbs.Any.WriteFile, msg];
+  return [builder, fbs.Any.WriteFile, msg, data];
 }
