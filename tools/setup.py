@@ -124,6 +124,11 @@ def generate_gn_args(mode):
             tc = "//build_extra/toolchain/win:win_clang_x64"
             out += ['custom_toolchain="%s"' % tc, 'host_toolchain="%s"' % tc]
 
+    # Look for sccache; if found, set rustc_wrapper.
+    rustc_wrapper = find_executable("sccache")
+    if rustc_wrapper:
+        out += ['rustc_wrapper=%s' % gn_string(rustc_wrapper)]
+
     return out
 
 
