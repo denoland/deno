@@ -5,7 +5,7 @@ export async function getJson(path) {
 }
 
 export function getTravisData() {
-  const url = "https://api.travis-ci.com/repos/denoland/deno/builds?event_type=pull_request#number=20";
+  const url = "https://api.travis-ci.com/repos/denoland/deno/builds?event_type=pull_request";
   return fetch(url, {
     headers: {
       "Accept": "application/vnd.travis-ci.2.1+json"
@@ -65,10 +65,10 @@ export function createSyscallCountColumns(data) {
 }
 
 const travisCompileTimeNames = ["duration_time"]
-export function createTravisCompileTimeColumns(data) {
+function createTravisCompileTimeColumns(data) {
   const columnsData = travisCompileTimeNames.map(name => [
     name,
-    ...data.map(d => d.duration)
+    ...data.map(d => d.duration || 0)
   ]);
   return columnsData;
 }
@@ -86,6 +86,19 @@ export function formatBytes(a, b) {
     e = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"],
     f = Math.floor(Math.log(a) / Math.log(c));
   return parseFloat((a / Math.pow(c, f)).toFixed(d)) + " " + e[f];
+}
+
+export function formatSeconds(t) {
+  if (t < 0) {
+    return "";
+  }
+
+  if (t === 0) {
+    return "0 min";
+  }
+  const min = Math.floor(t / 60);
+  const sec = t - min * 60;
+  return min === 0 ? `${sec} sec` : `${min} min ${sec} sec`;
 }
 
 export async function main() {
@@ -156,9 +169,12 @@ export async function main() {
       x: {
         type: "category",
         categories: travisData.map(d => d.pull_request_number)
+      },
+      y: {
+        tick: {
+          format: d => formatSeconds(d)
+        }
       }
     }
   });
-
-  // createTravisCompileTimeColumns();
 }
