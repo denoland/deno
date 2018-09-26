@@ -4,6 +4,17 @@ export async function getJson(path) {
   return (await fetch(path)).json();
 }
 
+export function getTravisData() {
+  const url = "https://api.travis-ci.com/repos/denoland/deno/builds?event_type=pull_request#number=20";
+  return fetch(url, {
+    headers: {
+      "Accept": "application/vnd.travis-ci.2.1+json"
+    }
+  })
+  .then(res => res.json())
+  .then(data => data.builds.reverse());
+}
+
 const benchmarkNames = [
   "hello",
   "relative_import",
@@ -53,6 +64,15 @@ export function createSyscallCountColumns(data) {
   ]);
 }
 
+const travisCompileTimeNames = ["duration_time"]
+export function createTravisCompileTimeColumns(data) {
+  const columnsData = travisCompileTimeNames.map(name => [
+    name,
+    ...data.map(d => d.duration)
+  ]);
+  return columnsData;
+}
+
 export function createSha1List(data) {
   return data.map(d => d.sha1);
 }
@@ -70,12 +90,15 @@ export function formatBytes(a, b) {
 
 export async function main() {
   const data = await getJson("./data.json");
+  const travisData = await getTravisData();
 
   const execTimeColumns = createExecTimeColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
   const threadCountColumns = createThreadCountColumns(data);
   const syscallCountColumns = createSyscallCountColumns(data);
+  const travisCompileTimeColumns = createTravisCompileTimeColumns(travisData);
   const sha1List = createSha1List(data);
+  
 
   c3.generate({
     bindto: "#exec-time-chart",
@@ -125,4 +148,17 @@ export async function main() {
       }
     }
   });
+
+  c3.generate({
+    bindto: "#travis-compile-time-chart",
+    data: { columns: travisCompileTimeColumns },
+    axis: {
+      x: {
+        type: "category",
+        categories: travisData.map(d => d.pull_request_number)
+      }
+    }
+  });
+
+  // createTravisCompileTimeColumns();
 }
