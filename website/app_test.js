@@ -14,7 +14,12 @@ const regularData = [
   {
     created_at: "2018-01-01T01:00:00Z",
     sha1: "abcdef",
-    binary_size: 100000000,
+    binary_size: {
+      deno: 100000000,
+      "main.js": 90000000,
+      "main.js.map": 80000000,
+      "snapshot_deno.bin": 70000000
+    },
     benchmark: {
       hello: {
         mean: 0.05
@@ -40,7 +45,12 @@ const regularData = [
   {
     created_at: "2018-01-02T01:00:00Z",
     sha1: "012345",
-    binary_size: 110000000,
+    binary_size: {
+      deno: 100000001,
+      "main.js": 90000001,
+      "main.js.map": 80000001,
+      "snapshot_deno.bin": 70000001
+    },
     benchmark: {
       hello: {
         mean: 0.055
@@ -69,6 +79,7 @@ const irregularData = [
   {
     created_at: "2018-01-01T01:00:00Z",
     sha1: "123",
+    binary_size: {},
     benchmark: {
       hello: {},
       relative_import: {},
@@ -81,6 +92,7 @@ const irregularData = [
   {
     created_at: "2018-02-01T01:00:00Z",
     sha1: "456",
+    binary_size: 100000000,
     benchmark: {}
   }
 ];
@@ -107,12 +119,22 @@ test(function createExecTimeColumnsIrregularData() {
 
 test(function createBinarySizeColumnsRegularData() {
   const columns = createBinarySizeColumns(regularData);
-  assertEqual(columns, [["binary_size", 100000000, 110000000]]);
+  assertEqual(columns, [
+    ["deno", 100000000, 100000001],
+    ["main.js", 90000000, 90000001],
+    ["main.js.map", 80000000, 80000001],
+    ["snapshot_deno.bin", 70000000, 70000001]
+  ]);
 });
 
 test(function createBinarySizeColumnsIrregularData() {
   const columns = createBinarySizeColumns(irregularData);
-  assertEqual(columns, [["binary_size", 0, 0]]);
+  assertEqual(columns, [
+    ["deno", 0, 100000000],
+    ["main.js", 0, 0],
+    ["main.js.map", 0, 0],
+    ["snapshot_deno.bin", 0, 0]
+  ]);
 });
 
 test(function createThreadCountColumnsRegularData() {
