@@ -7,13 +7,13 @@ matrix:
   - os: osx
 env:
   global:
-  - CARGO_PATH=$HOME/.cargo/
-  - RUSTUP_PATH=$HOME/.rustup/
+  - CARGO_HOME=$HOME/.cargo/
+  - RUSTUP_HOME=$HOME/.rustup/
   - HOMEBREW_PATH=$HOME/homebrew/
   - DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false"
   - DENO_BUILD_PATH=$HOME/out/Default
   - DENO_BUILD_MODE=release
-  - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_PATH/bin:$PATH
+  - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - CCACHE_CPP2=yes
   - CCACHE_SLOPPINESS=time_macros
   - SCCACHE_DIR=$HOME/.sccache/
@@ -22,8 +22,8 @@ env:
 cache:
   ccache: true
   directories:
-  - "$CARGO_PATH"
-  - "$RUSTUP_PATH"
+  - "$CARGO_HOME"
+  - "$RUSTUP_HOME"
   - "$HOMEBREW_PATH"
   - "$SCCACHE_DIR"
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
