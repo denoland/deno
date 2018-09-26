@@ -21,23 +21,8 @@ export function createExecTimeColumns(data) {
   ]);
 }
 
-const binarySizeNames = ["deno", "main.js", "main.js.map", "snapshot_deno.bin"];
 export function createBinarySizeColumns(data) {
-  return binarySizeNames.map(name => [
-    name,
-    ...data.map(d => {
-      const binarySizeData = d["binary_size"];
-      switch (typeof binarySizeData) {
-        case "number": // legacy implementation
-          return name === "deno" ? binarySizeData : 0;
-        default:
-          if (!binarySizeData) {
-            return 0;
-          }
-          return binarySizeData[name] || 0;
-      }
-    })
-  ]);
+  return [["binary_size", ...data.map(d => d.binary_size || 0)]];
 }
 
 const threadCountNames = ["set_timeout", "fetch_deps"];
