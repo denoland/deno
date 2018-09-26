@@ -21,7 +21,7 @@ export function createExecTimeColumns(data) {
   ]);
 }
 
-const durationNames = ["travis", "travis_build", "test"];
+const durationNames = ["build", "test"];
 export function createDurationColumns(data) {
   return durationNames.map(name => [
     name,

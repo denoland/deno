@@ -126,12 +126,11 @@ def run_syscall_count_benchmark(deno_path):
 
 def main(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument("build_dir", type=str, default=build_path())
-    parser.add_argument("travis_duration", type=int, default=0)
-    parser.add_argument("travis_build_duration", type=float, default=0)
-    parser.add_argument("test_duration", type=float, default=0)
-    args = parser.parse_args()
-    build_dir = args.build_dir
+    parser.add_argument("--build_dir", dest="build_dir", type=str, default=build_path())
+    parser.add_argument("--build_duration", dest="build_duration", type=float, default=0)
+    parser.add_argument("--test_duration", dest="test_duration", type=float, default=0)
+    parse_args = parser.parse_args()
+    build_dir = parse_args.build_dir
 
     http_server.spawn()
 
@@ -155,9 +154,8 @@ def main(argv):
         "syscall_count": {},
         "benchmark": {},
         "duration": {
-            "travis": args.travis_duration,
-            "travis_build": args.travis_build_duration,
-            "test": args.test_duration
+            "build": parse_args.build_duration,
+            "test": parse_args.test_duration
         }
     }
     for [[name, _], data] in zip(exec_time_benchmarks,

@@ -43,8 +43,7 @@ const regularData = [
       hello: 600
     },
     duration: {
-      travis: 1000,
-      travis_build: 500,
+      build: 500,
       test: 100
     }
   },
@@ -79,8 +78,7 @@ const regularData = [
       hello: 700
     },
     duration: {
-      travis: 1001,
-      travis_build: 501,
+      build: 501,
       test: 101
     }
   }
@@ -172,8 +170,7 @@ test(function createSyscallCountColumnsIrregularData() {
 test(function createDurationColumnsRegularData() {
   const columns = createDurationColumns(regularData);
   assertEqual(columns, [
-    ["travis", 1000, 1001],
-    ["travis_build", 500, 501],
+    ["build", 500, 501],
     ["test", 100, 101]
   ]);
 });
@@ -181,8 +178,7 @@ test(function createDurationColumnsRegularData() {
 test(function createThreadCountColumnsIrregularData() {
   const columns = createDurationColumns(irregularData);
   assertEqual(columns, [
-    ["travis", 0, 0],
-    ["travis_build", 0, 0],
+    ["build", 0, 0],
     ["test", 0, 0]
   ]);
 });
