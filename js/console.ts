@@ -52,7 +52,7 @@ function stringify(
         return "[Circular]";
       }
 
-      if (level > maxLevel) {
+      if (level >= maxLevel) {
         return `[object]`;
       }
 
@@ -136,8 +136,15 @@ export function stringifyArgs(
       out.push(a);
     } else {
       out.push(
-        // tslint:disable-next-line:no-any
-        stringify(new Set<any>(), a, 0, options.depth || DEFAULT_MAX_DEPTH)
+        // use default maximum depth for null or undefined argument
+        stringify(
+          // tslint:disable-next-line:no-any
+          new Set<any>(),
+          a,
+          0,
+          // tslint:disable-next-line:triple-equals
+          options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
+        )
       );
     }
   }
@@ -159,9 +166,7 @@ export class Console {
 
   // tslint:disable-next-line:no-any
   dir(obj: any, options: ConsoleOptions = {}) {
-    this.printFunc(
-      stringifyArgs([obj], { depth: options.depth || DEFAULT_MAX_DEPTH })
-    );
+    this.printFunc(stringifyArgs([obj], options));
   }
 
   // tslint:disable-next-line:no-any
