@@ -695,7 +695,7 @@ fn handle_truncate(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
     debug!("handle_truncate {} {}", name, len);
     let f = fs::OpenOptions::new().write(true).open(name)?;
     f.set_len(len as u64)?;
-    Ok(None)
+    Ok(empty_buf())
   }()))
 }
     
