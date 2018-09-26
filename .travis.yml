@@ -70,6 +70,14 @@ install:
     fi
     hyperfine --version
   fi
+- |-
+  # Remove unnnecessary cargo and rustup directories.
+  # This keeps the Travis CI cache small and fast.
+  rm -rf "$CARGO_HOME"registry
+  rm -rf "$RUSTUP_HOME"downloads
+  rm -rf "$RUSTUP_HOME"tmp
+  rm -rf "$RUSTUP_HOME"toolchains/*/etc
+  rm -rf "$RUSTUP_HOME"toolchains/*/share
 before_script:
 - ./tools/setup.py
 script:
