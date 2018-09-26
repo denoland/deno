@@ -150,10 +150,10 @@ test(function formatBytesPatterns() {
 });
 
 test(function formatSecondsPatterns() {
-  assertEqual(formatSeconds(10), "10 sec");
-  assertEqual(formatSeconds(100), "1 min 40 sec");
-  assertEqual(formatSeconds(1000), "16 min 40 sec");
-  assertEqual(formatSeconds(10000), "166 min 40 sec");
+  assertEqual(formatSeconds(10), "0 min");
+  assertEqual(formatSeconds(100), "2 min");
+  assertEqual(formatSeconds(1000), "17 min");
+  assertEqual(formatSeconds(10000), "167 min");
 })
 
 test(async function getTravisDataSuccess() {

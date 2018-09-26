@@ -68,7 +68,7 @@ const travisCompileTimeNames = ["duration_time"]
 function createTravisCompileTimeColumns(data) {
   const columnsData = travisCompileTimeNames.map(name => [
     name,
-    ...data.map(d => d.duration || 0)
+    ...data.map(d => d.duration)
   ]);
   return columnsData;
 }
@@ -89,21 +89,14 @@ export function formatBytes(a, b) {
 }
 
 export function formatSeconds(t) {
-  if (t < 0) {
-    return "";
-  }
-
-  if (t === 0) {
-    return "0 min";
-  }
+  const a = t % 60;
   const min = Math.floor(t / 60);
-  const sec = t - min * 60;
-  return min === 0 ? `${sec} sec` : `${min} min ${sec} sec`;
+  return a  < 30 ? `${min} min` : `${min + 1} min`;
 }
 
 export async function main() {
   const data = await getJson("./data.json");
-  const travisData = await getTravisData();
+  const travisData = (await getTravisData()).filter(d => d.duration > 0);
 
   const execTimeColumns = createExecTimeColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
