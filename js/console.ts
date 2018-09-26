@@ -6,10 +6,66 @@ function getClassInstanceName(instance: any): string {
   if (typeof instance !== "object") {
     return "";
   }
-  if (instance && instance.__proto__ && instance.__proto__.constructor) {
-    return instance.__proto__.constructor.name; // could be "Object" or "Array"
+  if (instance) {
+    const proto = Object.getPrototypeOf(instance);
+    if (proto && proto.constructor) {
+      return proto.constructor.name; // could be "Object" or "Array"
+    }
   }
   return "";
+}
+
+function createFunctionString(value: Function, ctx: ConsoleContext): string {
+  // Might be Function/AsyncFunction/GeneratorFunction
+  const cstrName = Object.getPrototypeOf(value).constructor.name;
+  if (value.name && value.name !== "anonymous") {
+    // from MDN spec
+    return `[${cstrName}: ${value.name}]`;
+  }
+  return `[${cstrName}]`;
+}
+
+// tslint:disable-next-line:no-any
+function createArrayString(value: any[], ctx: ConsoleContext): string {
+  const entries: string[] = [];
+  for (const el of value) {
+    entries.push(stringifyWithQuotes(ctx, el));
+  }
+  ctx.delete(value);
+  if (entries.length === 0) {
+    return "[]";
+  }
+  return `[ ${entries.join(", ")} ]`;
+}
+
+// tslint:disable-next-line:no-any
+function createObjectString(value: any, ctx: ConsoleContext): string {
+  const entries: string[] = [];
+  let baseString = "";
+
+  const className = getClassInstanceName(value);
+  let shouldShowClassName = false;
+  if (className && className !== "Object" && className !== "anonymous") {
+    shouldShowClassName = true;
+  }
+
+  for (const key of Object.keys(value)) {
+    entries.push(`${key}: ${stringifyWithQuotes(ctx, value[key])}`);
+  }
+
+  ctx.delete(value);
+
+  if (entries.length === 0) {
+    baseString = "{}";
+  } else {
+    baseString = `{ ${entries.join(", ")} }`;
+  }
+
+  if (shouldShowClassName) {
+    baseString = `${className} ${baseString}`;
+  }
+
+  return baseString;
 }
 
 // tslint:disable-next-line:no-any
@@ -23,13 +79,7 @@ function stringify(ctx: ConsoleContext, value: any): string {
     case "symbol":
       return String(value);
     case "function":
-      // Might be Function/AsyncFunction/GeneratorFunction
-      const cstrName = value.__proto__.constructor.name;
-      if (value.name && value.name !== "anonymous") {
-        // from MDN spec
-        return `[${cstrName}: ${value.name}]`;
-      }
-      return `[${cstrName}]`;
+      return createFunctionString(value as Function, ctx);
     case "object":
       if (value === null) {
         return "null";
@@ -38,47 +88,15 @@ function stringify(ctx: ConsoleContext, value: any): string {
       if (ctx.has(value)) {
         return "[Circular]";
       }
-
       ctx.add(value);
-      const entries: string[] = [];
 
-      if (Array.isArray(value)) {
-        for (const el of value) {
-          entries.push(stringifyWithQuotes(ctx, el));
-        }
-
-        ctx.delete(value);
-
-        if (entries.length === 0) {
-          return "[]";
-        }
-        return `[ ${entries.join(", ")} ]`;
+      if (value instanceof Error) {
+        return value.stack! || "";
+      } else if (Array.isArray(value)) {
+        // tslint:disable-next-line:no-any
+        return createArrayString(value as any[], ctx);
       } else {
-        let baseString = "";
-
-        const className = getClassInstanceName(value);
-        let shouldShowClassName = false;
-        if (className && className !== "Object" && className !== "anonymous") {
-          shouldShowClassName = true;
-        }
-
-        for (const key of Object.keys(value)) {
-          entries.push(`${key}: ${stringifyWithQuotes(ctx, value[key])}`);
-        }
-
-        ctx.delete(value);
-
-        if (entries.length === 0) {
-          baseString = "{}";
-        } else {
-          baseString = `{ ${entries.join(", ")} }`;
-        }
-
-        if (shouldShowClassName) {
-          baseString = `${className} ${baseString}`;
-        }
-
-        return baseString;
+        return createObjectString(value, ctx);
       }
     default:
       return "[Not Implemented]";
