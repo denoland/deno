@@ -2,6 +2,10 @@ declare_args() {
   # Absolute path of rust build files.
   rust_build = "//build_extra/rust/"
 
+  # Wrapper executable for rustc invocations. This can be used for a caching
+  # utility, e.g. sccache.
+  rustc_wrapper = ""
+
   # treat the warnings in rust files as errors
   rust_treat_warnings_as_errors = true
 }
@@ -114,7 +118,13 @@ template("run_rustc") {
     ]
     depfile = "$out_dir/$crate_name$crate_suffix.d"
 
-    args = [
+    if (rustc_wrapper != "") {
+      args = [ rustc_wrapper ]
+    } else {
+      args = []
+    }
+
+    args += [
       "rustc",
       rebase_path(source_root, root_build_dir),
       "--crate-name=$crate_name",
