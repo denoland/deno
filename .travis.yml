@@ -16,12 +16,16 @@ env:
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_PATH/bin:$PATH
   - CCACHE_CPP2=yes
   - CCACHE_SLOPPINESS=time_macros
+  - SCCACHE_DIR=$HOME/.sccache/
+  - SCCACHE_CACHE_SIZE=1G
+  - SCCACHE_IDLE_TIMEOUT=0
 cache:
   ccache: true
   directories:
   - "$CARGO_PATH"
   - "$RUSTUP_PATH"
   - "$HOMEBREW_PATH"
+  - "$SCCACHE_DIR"
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
   - third_party/v8/third_party/llvm-build/
 install:
@@ -41,7 +45,7 @@ install:
     "$BREW" install ccache
   fi
   ccache --version | head -n 1
-  ccache --max-size=1G --show-stats
+  ccache --max-size=1G
 - |-
   # Install Rust.
   # TODO(ry) Include rustc in third_party.
@@ -52,7 +56,14 @@ install:
   rustc --version
   cargo --version
 - |-
-  # Install Hyperfine (if benchmarking is enabled for this build).
+  # Install and start sccache.
+  if [ ! $(which sccache) ]; then
+    cargo install sccache
+  fi
+  sccache --version
+  sccache --start-server
+- |-
+  # Install hyperfine (if benchmarking is enabled for this build).
   if [ $BENCHMARK ]; then
     if [ ! $(which hyperfine) ]; then
       cargo install hyperfine
@@ -66,6 +77,9 @@ script:
 - bash -c "sleep 2100; pkill ninja" &
 - ./tools/build.py -j2
 - ./tools/test.py $DENO_BUILD_PATH
+after_script:
+- ccache --show-stats
+- sccache --stop-server
 after_success:
 - |
   # Run benchmarks and publish the result to github pages.
