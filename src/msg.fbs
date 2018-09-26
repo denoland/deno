@@ -4,6 +4,7 @@ union Any {
   CodeFetch,
   CodeFetchRes,
   CodeCache,
+  SetTimeout,
   Exit,
   TimerStart,
   TimerReady,
@@ -113,6 +114,10 @@ table CodeCache {
   filename: string;
   source_code: string;
   output_code: string;
+}
+
+table SetTimeout {
+  timeout: int;
 }
 
 table Exit {
