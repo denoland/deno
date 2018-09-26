@@ -70,88 +70,72 @@ template("run_rustc") {
       treat_warnings_as_errors = rust_treat_warnings_as_errors
     }
 
-    sources = [
-      source_root,
-    ]
-    script = "//tools/run_rustc.py"
-
-    args = [
-      rebase_path(source_root, root_build_dir),
-      "--crate-name=$crate_name",
-      "--crate-type=$crate_type",
-    ]
-
-    if (treat_warnings_as_errors) {
-      args += [ "-Dwarnings" ]
-    }
-
-    args += [ "--color=always" ]
-
     if (!defined(crate_version)) {
-      crate_name_and_version = crate_name
+      # If there is only a single version of this crate in our tree, there's no
+      # need to set the crate metadata and add a suffix to the file name.
+      metadata = ""
+      crate_suffix = ""
     } else {
-      crate_name_and_version = "$crate_name-$crate_version"
+      # Rustc blows up if a target (directly or indirectly) depends on two+
+      # crates that have the same name *and* the same metadata, so we use the
+      # version number to ensure they have unique metadata.
+      metadata = crate_version
+
+      # In our build setup, all crates are built in the same directory. To avoid
+      # file name conflicts between when multiple versions of the same crate are
+      # built, add a unique suffix to output file names.
+      #
+      # Unfortunately the version number as such can't be used directly:
+      # everything after the first dot (.) is thrown away by rust, so in case of
+      # foo-0.2 vs foo-0.3 only the first '0' would be used, and conflicts would
+      # still occur. Therefore we use a hash of the version number instead.
+      crate_suffix = exec_script("//tools/sha256sum.py",
+                                 [
+                                   "--input=$crate_version",
+                                   "--format=-%.8s",
+                                 ],
+                                 "trim string")
     }
 
     if (crate_type == "bin") {
-      output_file = "$out_dir/$crate_name_and_version.o"
+      output_file = "$out_dir/$crate_name$crate_suffix.o"
       emit_type = "obj"
     } else if (crate_type == "rlib") {
-      output_file = "$out_dir/lib$crate_name_and_version.rlib"
+      output_file = "$out_dir/lib$crate_name$crate_suffix.rlib"
       emit_type = "link"
     }
+
+    script = "//third_party/v8/tools/run.py"
+    sources = [
+      source_root,
+    ]
     outputs = [
       output_file,
     ]
-    output_file_rel = rebase_path(output_file, root_build_dir)
-    args += [ "--emit=$emit_type=$output_file_rel" ]
+    depfile = "$out_dir/$crate_name$crate_suffix.d"
 
-    depfile = "$out_dir/$crate_name_and_version.d"
-    args += [
-      "--emit=dep-info=" + rebase_path(depfile, root_build_dir),
+    args = [
+      "rustc",
+      rebase_path(source_root, root_build_dir),
+      "--crate-name=$crate_name",
+      "--crate-type=$crate_type",
+      "--emit=$emit_type,dep-info",
+      "--out-dir=" + rebase_path(out_dir, root_build_dir),
 
-      # The following two args are used by run_rustc.py to fix
-      # the depfile on the fly. They are not passed thru to rustc.
-      "--depfile=" + rebase_path(depfile, root_build_dir),
-      "--output_file=" + output_file_rel,
+      # This is to disambiguate multiple versions of the same crate.
+      "-Cextra-filename=$crate_suffix",
+      "-Cmetadata=$metadata",
 
       # This is needed for transitive dependencies.
       "-L",
       "dependency=" + rebase_path(out_dir, root_build_dir),
+
+      # Use colorful output even if stdout is redirected and not a tty.
+      "--color=always",
     ]
 
-    if (defined(crate_version)) {
-      # Compute the sha256sum of the version number. See comments below.
-      # Note that we do this only if there are multiple versions of this crate.
-      hash = exec_script("//tools/sha256sum.py",
-                         [
-                           "--input",
-                           crate_version,
-                           "--format",
-                           "%.8s",
-                         ],
-                         "trim string")
-
-      args += [
-        # In our build setup, all crates are built in the same directory. The
-        # actual build outputs have unique names (e.g. 'foo-1.2.3.rlib'), but
-        # rustc also creates many temp files (e.g. 'foo.crate.metadata.rcgu.bc',
-        # 'foo.foo0.rcgu.o'), and with those files, name collisions do occur.
-        # This causes random failures during parallel builds and on CI.
-        #
-        # These name conflicts can be avoided by setting `-C extra-filename=` to
-        # some unique value. Unfortunately the version number as such can't be
-        # used: everything after the first dot (.) is thrown away, so winapi-0.2
-        # vs. winapi-0.3 would still have conflicts -- so we use a hash instead.
-        "-C",
-        "extra-filename=$hash",
-
-        # Rustc blows up if a target (directly or indirectly) depends on two+
-        # crates that have the same name *and* the same metadata. So we use the
-        # hash to give 'metadata' a unique value too (any unique value will do).
-        "-C",
-        "metadata=$hash",
-      ]
+    if (treat_warnings_as_errors) {
+      args += [ "-Dwarnings" ]
     }
 
     if (is_debug) {
@@ -187,7 +171,7 @@ template("run_rustc") {
 
     # Build the list of '--extern' arguments from the 'extern_infos' array.
     foreach(info, extern_infos) {
-      rlib = "$out_dir/lib${info.crate_name_and_version}.rlib"
+      rlib = "$out_dir/lib${info.crate_name}${info.crate_suffix}.rlib"
       args += [
         "--extern",
         info.crate_name + "=" + rebase_path(rlib, root_build_dir),
@@ -214,7 +198,7 @@ template("rust_crate") {
         {
           label = label
           crate_name = get_label_info(label, "name")
-          crate_name_and_version = crate_name
+          crate_suffix = ""
         },
       ]
     }
@@ -229,7 +213,12 @@ template("rust_crate") {
                                    "crate_name",
                                    "crate_version",
                                  ])
-          crate_name_and_version = "$crate_name-$crate_version"
+          crate_suffix = exec_script("//tools/sha256sum.py",
+                                     [
+                                       "--input=$crate_version",
+                                       "--format=-%.8s",
+                                     ],
+                                     "trim string")
         },
       ]
     }
@@ -271,7 +260,7 @@ template("rust_crate") {
       libs = []
     }
     foreach(info, extern_infos) {
-      rlib = "$out_dir/lib${info.crate_name_and_version}.rlib"
+      rlib = "$out_dir/lib${info.crate_name}${info.crate_suffix}.rlib"
       libs += [ rlib ]
     }
     lib_dirs = [ out_dir ]
