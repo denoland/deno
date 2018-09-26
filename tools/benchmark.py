@@ -13,6 +13,7 @@ import shutil
 from util import run, run_output, root_path, build_path, executable_suffix
 import tempfile
 import http_server
+import argparse
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -124,13 +125,13 @@ def run_syscall_count_benchmark(deno_path):
 
 
 def main(argv):
-    if len(argv) == 2:
-        build_dir = sys.argv[1]
-    elif len(argv) == 1:
-        build_dir = build_path()
-    else:
-        print "Usage: tools/benchmark.py [build_dir]"
-        sys.exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("build_dir", type=str, default=build_path())
+    parser.add_argument("travis_duration", type=int, default=0)
+    parser.add_argument("travis_build_duration", type=float, default=0)
+    parser.add_argument("test_duration", type=float, default=0)
+    args = parser.parse_args()
+    build_dir = args.build_dir
 
     http_server.spawn()
 
@@ -152,7 +153,12 @@ def main(argv):
         "binary_size": {},
         "thread_count": {},
         "syscall_count": {},
-        "benchmark": {}
+        "benchmark": {},
+        "duration": {
+            "travis": args.travis_duration,
+            "travis_build": args.travis_build_duration,
+            "test": args.test_duration
+        }
     }
     for [[name, _], data] in zip(exec_time_benchmarks,
                                  benchmark_data["results"]):

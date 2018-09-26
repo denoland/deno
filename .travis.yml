@@ -24,6 +24,11 @@ cache:
   - "$HOMEBREW_PATH"
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
   - third_party/v8/third_party/llvm-build/
+before_install:
+- |-
+  # Start timer
+  echo "Start travis timer..."
+  SECONDS=0 # clear SECONDS for recording
 install:
 - |-
   # OS X: install a private copy of homebrew.
@@ -64,13 +69,14 @@ before_script:
 script:
 - ./tools/lint.py
 - bash -c "sleep 2100; pkill ninja" &
-- ./tools/build.py -j2
-- ./tools/test.py $DENO_BUILD_PATH
+- TIMEFORMAT="%E" # set time format
+- TRAVIS_BUILD_DURATION=$(time ./tools/build.py -j2 3>&1 1>&2 2>&3) # swap stdout and stderr
+- TEST_DURATION=$(time ./tools/test.py $DENO_BUILD_PATH 3>&1 1>&2 2>&3) # swap stdout and stderr
 after_success:
 - |
   # Run benchmarks and publish the result to github pages.
   if [ $BENCHMARK ]; then
-    ./tools/benchmark.py $DENO_BUILD_PATH &&
+    ./tools/benchmark.py --build_dir=$DENO_BUILD_PATH --travis_duration=$SECONDS --travis_build_duration=$TRAVIS_BUILD_DURATION --test_duration=$TEST_DURATION &&
     cp -r website/* gh-pages/
   fi
 before_deploy:

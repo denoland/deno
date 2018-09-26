@@ -6,6 +6,7 @@ import {
   createExecTimeColumns,
   createThreadCountColumns,
   createSyscallCountColumns,
+  createDurationColumns,
   createSha1List,
   formatBytes
 } from "./app.js";
@@ -40,6 +41,11 @@ const regularData = [
     },
     syscall_count: {
       hello: 600
+    },
+    duration: {
+      travis: 1000,
+      travis_build: 500,
+      test: 100
     }
   },
   {
@@ -71,6 +77,11 @@ const regularData = [
     },
     syscall_count: {
       hello: 700
+    },
+    duration: {
+      travis: 1001,
+      travis_build: 501,
+      test: 101
     }
   }
 ];
@@ -87,7 +98,8 @@ const irregularData = [
       cold_relative_import: {}
     },
     thread_count: {},
-    syscall_count: {}
+    syscall_count: {},
+    duration: {}
   },
   {
     created_at: "2018-02-01T01:00:00Z",
@@ -155,6 +167,24 @@ test(function createSyscallCountColumnsRegularData() {
 test(function createSyscallCountColumnsIrregularData() {
   const columns = createSyscallCountColumns(irregularData);
   assertEqual(columns, [["hello", 0, 0]]);
+});
+
+test(function createDurationColumnsRegularData() {
+  const columns = createDurationColumns(regularData);
+  assertEqual(columns, [
+    ["travis", 1000, 1001],
+    ["travis_build", 500, 501],
+    ["test", 100, 101]
+  ]);
+});
+
+test(function createThreadCountColumnsIrregularData() {
+  const columns = createDurationColumns(irregularData);
+  assertEqual(columns, [
+    ["travis", 0, 0],
+    ["travis_build", 0, 0],
+    ["test", 0, 0]
+  ]);
 });
 
 test(function createSha1ListRegularData() {
