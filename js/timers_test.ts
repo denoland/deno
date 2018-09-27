@@ -1,4 +1,5 @@
 import { test, assertEqual } from "./test_util.ts";
+import { setGlobalTimeout } from "deno";
 
 function deferred() {
   let resolve;
@@ -94,4 +95,8 @@ test(async function intervalCancelSuccess() {
 test(async function intervalCancelInvalidSilentFail() {
   // Should silently fail (no panic)
   clearInterval(2147483647);
+});
+
+test(async function SetGlobalTimeoutSmoke() {
+  setGlobalTimeout(50);
 });

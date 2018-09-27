@@ -4,6 +4,7 @@ union Any {
   CodeFetch,
   CodeFetchRes,
   CodeCache,
+  SetTimeout,
   Exit,
   TimerStart,
   TimerReady,
@@ -20,6 +21,8 @@ union Any {
   ReadFileRes,
   WriteFile,
   Rename,
+  Readlink,
+  ReadlinkRes,
   Symlink,
   Stat,
   StatRes,
@@ -113,6 +116,10 @@ table CodeCache {
   output_code: string;
 }
 
+table SetTimeout {
+  timeout: int;
+}
+
 table Exit {
   code: int;
 }
@@ -200,6 +207,14 @@ table WriteFile {
 table Rename {
   oldpath: string;
   newpath: string;
+}
+
+table Readlink {
+  name: string;
+}
+
+table ReadlinkRes {
+  path: string;
 }
 
 table Symlink {

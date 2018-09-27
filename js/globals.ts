@@ -56,8 +56,6 @@ declare global {
 export const window = globalEval("this");
 window.window = window;
 
-window.libdeno = null;
-
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
 window.clearTimeout = timers.clearTimer;
