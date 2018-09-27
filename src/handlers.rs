@@ -33,15 +33,21 @@ type OpResult = DenoResult<Buf>;
 
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type Handler = fn(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op>;
+type Handler =
+  fn(state: Arc<IsolateState>, base: &msg::Base, data: &'static mut [u8])
+    -> Box<Op>;
 
 // Hopefully Rust optimizes this away.
 fn empty_buf() -> Buf {
   Box::new([])
 }
 
-pub fn msg_from_js(state: Arc<IsolateState>, bytes: &[u8]) -> (bool, Box<Op>) {
-  let base = msg::get_root_as_base(bytes);
+pub fn msg_from_js(
+  state: Arc<IsolateState>,
+  control: &[u8],
+  data: &'static mut [u8],
+) -> (bool, Box<Op>) {
+  let base = msg::get_root_as_base(control);
   let is_sync = base.sync();
   let msg_type = base.msg_type();
   let cmd_id = base.cmd_id();
@@ -71,7 +77,7 @@ pub fn msg_from_js(state: Arc<IsolateState>, bytes: &[u8]) -> (bool, Box<Op>) {
     )),
   };
 
-  let op: Box<Op> = handler(state.clone(), &base);
+  let op: Box<Op> = handler(state.clone(), &base, data);
   let boxed_op = Box::new(
     op.or_else(move |err: DenoError| -> DenoResult<Buf> {
       debug!("op err {}", err);
@@ -130,12 +136,21 @@ fn not_implemented() -> DenoError {
   ))
 }
 
-fn handle_exit(_config: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_exit(
+  _config: Arc<IsolateState>,
+  base: &msg::Base,
+  _data: &'static mut [u8],
+) -> Box<Op> {
   let msg = base.msg_as_exit().unwrap();
   std::process::exit(msg.code())
 }
 
-fn handle_start(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_start(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let mut builder = FlatBufferBuilder::new();
 
   let argv = state.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
@@ -191,7 +206,12 @@ fn odd_future(err: DenoError) -> Box<Op> {
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L100-L154
-fn handle_code_fetch(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_code_fetch(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_code_fetch().unwrap();
   let cmd_id = base.cmd_id();
   let module_specifier = msg.module_specifier().unwrap();
@@ -228,7 +248,12 @@ fn handle_code_fetch(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L156-L169
-fn handle_code_cache(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_code_cache(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_code_cache().unwrap();
   let filename = msg.filename().unwrap();
   let source_code = msg.source_code().unwrap();
@@ -239,7 +264,12 @@ fn handle_code_cache(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   }()))
 }
 
-fn handle_set_timeout(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_set_timeout(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_set_timeout().unwrap();
   let val = msg.timeout() as isize;
   state
@@ -248,7 +278,12 @@ fn handle_set_timeout(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   ok_future(empty_buf())
 }
 
-fn handle_set_env(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_set_env(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_set_env().unwrap();
   let key = msg.key().unwrap();
   let value = msg.value().unwrap();
@@ -261,7 +296,12 @@ fn handle_set_env(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   ok_future(empty_buf())
 }
 
-fn handle_env(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_env(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
   if !state.flags.allow_env {
@@ -302,7 +342,12 @@ fn handle_env(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   ))
 }
 
-fn handle_fetch_req(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_fetch_req(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_fetch_req().unwrap();
   let cmd_id = base.cmd_id();
   let id = msg.id();
@@ -436,7 +481,12 @@ macro_rules! blocking {
   };
 }
 
-fn handle_make_temp_dir(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_make_temp_dir(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let base = Box::new(*base);
   let msg = base.msg_as_make_temp_dir().unwrap();
   let cmd_id = base.cmd_id();
@@ -480,7 +530,12 @@ fn handle_make_temp_dir(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   })
 }
 
-fn handle_mkdir(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_mkdir(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_mkdir().unwrap();
   let mode = msg.mode();
   let path = String::from(msg.path().unwrap());
@@ -496,7 +551,12 @@ fn handle_mkdir(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   })
 }
 
-fn handle_remove(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_remove(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_remove().unwrap();
   let path = PathBuf::from(msg.path().unwrap());
   let recursive = msg.recursive();
@@ -520,7 +580,12 @@ fn handle_remove(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
 }
 
 // Prototype https://github.com/denoland/isolate/blob/golang/os.go#L171-L184
-fn handle_read_file(_config: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_read_file(
+  _config: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
   let filename = PathBuf::from(msg.filename().unwrap());
@@ -570,7 +635,12 @@ fn get_mode(_perm: fs::Permissions) -> u32 {
   0
 }
 
-fn handle_stat(_config: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_stat(
+  _config: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_stat().unwrap();
   let cmd_id = base.cmd_id();
   let filename = PathBuf::from(msg.filename().unwrap());
@@ -612,7 +682,11 @@ fn handle_stat(_config: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   })
 }
 
-fn handle_write_file(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_write_file(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
   let msg = base.msg_as_write_file().unwrap();
 
   if !state.flags.allow_write {
@@ -620,12 +694,11 @@ fn handle_write_file(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   }
 
   let filename = String::from(msg.filename().unwrap());
-  let data = Vec::from(msg.data().unwrap());
   let perm = msg.perm();
 
   blocking!(base.sync(), || -> OpResult {
-    debug!("handle_write_file {}", filename);
-    deno_fs::write_file(Path::new(&filename), data.as_slice(), perm)?;
+    debug!("handle_write_file {} {}", filename, data.len());
+    deno_fs::write_file(Path::new(&filename), data, perm)?;
     Ok(empty_buf())
   })
 }
@@ -636,7 +709,12 @@ fn remove_timer(state: Arc<IsolateState>, timer_id: u32) {
 }
 
 // Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L25-L39
-fn handle_timer_start(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_timer_start(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   debug!("handle_timer_start");
   let msg = base.msg_as_timer_start().unwrap();
   let cmd_id = base.cmd_id();
@@ -679,14 +757,24 @@ fn handle_timer_start(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
 }
 
 // Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L40-L43
-fn handle_timer_clear(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_timer_clear(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_timer_clear().unwrap();
   debug!("handle_timer_clear");
   remove_timer(state, msg.id());
   ok_future(empty_buf())
 }
 
-fn handle_rename(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_rename(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
@@ -700,7 +788,12 @@ fn handle_rename(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   })
 }
 
-fn handle_symlink(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_symlink(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
@@ -720,7 +813,12 @@ fn handle_symlink(state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
   })
 }
 
-fn handle_read_link(_state: Arc<IsolateState>, base: &msg::Base) -> Box<Op> {
+fn handle_read_link(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
   let name = PathBuf::from(msg.name().unwrap());
