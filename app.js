@@ -17,24 +17,23 @@ export function createExecTimeColumns(data) {
       const benchmark = d.benchmark[name];
       const meanValue = benchmark ? benchmark.mean : 0;
       return (meanValue || 0) == 0 ? null : meanValue;
-    })]);
+    })
+  ]);
 }
 
 const binarySizeNames = ["deno", "main.js", "main.js.map", "snapshot_deno.bin"];
 export function createBinarySizeColumns(data) {
-  var tmp = [
-    ["binary_size", ...data.map(d => d.binary_size || 0)]
-  ];
+  var tmp = [["binary_size", ...data.map(d => d.binary_size || 0)]];
   var arr = [];
   tmp[0].forEach(el => {
-    if(typeof(el)=="string" || el>0) {
+    if (typeof el == "string" || el > 0) {
       arr.push(el);
     } else {
       arr.push(null);
     }
-  })
+  });
   tmp[0] = arr;
-  console.log(tmp[0],arr);
+  console.log(tmp[0], arr);
   return tmp;
 }
 
@@ -50,15 +49,12 @@ export function createThreadCountColumns(data) {
     });
     var arr = [];
     tmp.forEach(el => {
-      el = ( el>0 ? el : null )
+      el = el > 0 ? el : null;
       arr.push(el);
-    })
-    return [
-    name,
-    ...arr
-  ]});
+    });
+    return [name, ...arr];
+  });
 }
-
 
 const syscallCountNames = ["hello"];
 export function createSyscallCountColumns(data) {
@@ -72,13 +68,11 @@ export function createSyscallCountColumns(data) {
     });
     var arr = [];
     tmp.forEach(el => {
-      el = ( el>0 ? el : null )
+      el = el > 0 ? el : null;
       arr.push(el);
-    })
-    return [
-    name,
-    ...arr
-  ]});
+    });
+    return [name, ...arr];
+  });
 }
 
 export function createSha1List(data) {
@@ -88,8 +82,7 @@ export function createSha1List(data) {
 // Formats the byte sizes e.g. 19000 -> 18.55 KB
 // Copied from https://stackoverflow.com/a/18650828
 export function formatBytes(a, b) {
-  if(a==null && b==null)
-    return null;
+  if (a == null && b == null) return null;
   if (0 == a) return "0 Bytes";
   var c = 1024,
     d = b || 2,
@@ -125,8 +118,8 @@ export async function main() {
       x: {
         type: "category",
         categories: sha1List
-      }
-      ,y: {
+      },
+      y: {
         tick: {
           format: d => formatBytes(d)
         }
