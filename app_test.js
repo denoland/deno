@@ -9,7 +9,7 @@ import {
   createSha1List,
   formatBytes,
   formatSeconds,
-  getTravisData,
+  getTravisData
 } from "./app.js";
 
 const regularData = [
@@ -176,7 +176,7 @@ test(function formatSecondsPatterns() {
   assertEqual(formatSeconds(100), "2 min");
   assertEqual(formatSeconds(1000), "17 min");
   assertEqual(formatSeconds(10000), "167 min");
-})
+});
 
 test(async function getTravisDataSuccess() {
   try {
