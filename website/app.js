@@ -5,14 +5,15 @@ export async function getJson(path) {
 }
 
 export function getTravisData() {
-  const url = "https://api.travis-ci.com/repos/denoland/deno/builds?event_type=pull_request";
+  const url =
+    "https://api.travis-ci.com/repos/denoland/deno/builds?event_type=pull_request";
   return fetch(url, {
     headers: {
-      "Accept": "application/vnd.travis-ci.2.1+json"
+      Accept: "application/vnd.travis-ci.2.1+json"
     }
   })
-  .then(res => res.json())
-  .then(data => data.builds.reverse());
+    .then(res => res.json())
+    .then(data => data.builds.reverse());
 }
 
 const benchmarkNames = [
@@ -79,7 +80,7 @@ export function createSyscallCountColumns(data) {
   ]);
 }
 
-const travisCompileTimeNames = ["duration_time"]
+const travisCompileTimeNames = ["duration_time"];
 function createTravisCompileTimeColumns(data) {
   const columnsData = travisCompileTimeNames.map(name => [
     name,
@@ -106,7 +107,7 @@ export function formatBytes(a, b) {
 export function formatSeconds(t) {
   const a = t % 60;
   const min = Math.floor(t / 60);
-  return a  < 30 ? `${min} min` : `${min + 1} min`;
+  return a < 30 ? `${min} min` : `${min + 1} min`;
 }
 
 export async function main() {
@@ -119,26 +120,45 @@ export async function main() {
   const syscallCountColumns = createSyscallCountColumns(data);
   const travisCompileTimeColumns = createTravisCompileTimeColumns(travisData);
   const sha1List = createSha1List(data);
-  
+  const sha1SuffixList = sha1List.map(sha1 => sha1.substring(sha1.length - 6));
+  const prNumberList = travisData.map(d => d.pull_request_number);
+
+  const viewCommitOnClick = _sha1List => d => {
+    window.open(
+      `https://github.com/denoland/deno/commit/${_sha1List[d["index"]]}`
+    );
+  };
+
+  const viewPullRequestOnClick = _prNumberList => d => {
+    window.open(
+      `https://github.com/denoland/deno/pull/${_prNumberList[d["index"]]}`
+    );
+  };
 
   c3.generate({
     bindto: "#exec-time-chart",
-    data: { columns: execTimeColumns },
+    data: {
+      columns: execTimeColumns,
+      onclick: viewCommitOnClick(sha1List)
+    },
     axis: {
       x: {
         type: "category",
-        categories: sha1List
+        categories: sha1SuffixList
       }
     }
   });
 
   c3.generate({
     bindto: "#binary-size-chart",
-    data: { columns: binarySizeColumns },
+    data: {
+      columns: binarySizeColumns,
+      onclick: viewCommitOnClick(sha1List)
+    },
     axis: {
       x: {
         type: "category",
-        categories: sha1List
+        categories: sha1SuffixList
       },
       y: {
         tick: {
@@ -150,33 +170,42 @@ export async function main() {
 
   c3.generate({
     bindto: "#thread-count-chart",
-    data: { columns: threadCountColumns },
+    data: {
+      columns: threadCountColumns,
+      onclick: viewCommitOnClick(sha1List)
+    },
     axis: {
       x: {
         type: "category",
-        categories: sha1List
+        categories: sha1SuffixList
       }
     }
   });
 
   c3.generate({
     bindto: "#syscall-count-chart",
-    data: { columns: syscallCountColumns },
+    data: {
+      columns: syscallCountColumns,
+      onclick: viewCommitOnClick(sha1List)
+    },
     axis: {
       x: {
         type: "category",
-        categories: sha1List
+        categories: sha1SuffixList
       }
     }
   });
 
   c3.generate({
     bindto: "#travis-compile-time-chart",
-    data: { columns: travisCompileTimeColumns },
+    data: {
+      columns: travisCompileTimeColumns,
+      onclick: viewPullRequestOnClick(prNumberList)
+    },
     axis: {
       x: {
         type: "category",
-        categories: travisData.map(d => d.pull_request_number)
+        categories: prNumberList
       },
       y: {
         tick: {
