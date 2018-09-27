@@ -1,13 +1,15 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
-import { test, assertEqual } from "../js/test_util.ts";
+import { test, assert, assertEqual } from "../js/test_util.ts";
 import {
   createBinarySizeColumns,
   createExecTimeColumns,
   createThreadCountColumns,
   createSyscallCountColumns,
   createSha1List,
-  formatBytes
+  formatBytes,
+  formatSeconds,
+  getTravisData,
 } from "./app.js";
 
 const regularData = [
@@ -167,4 +169,20 @@ test(function formatBytesPatterns() {
   assertEqual(formatBytes(1800000), "1.72 MB");
   assertEqual(formatBytes(180000000), "171.66 MB");
   assertEqual(formatBytes(18000000000), "16.76 GB");
+});
+
+test(function formatSecondsPatterns() {
+  assertEqual(formatSeconds(10), "0 min");
+  assertEqual(formatSeconds(100), "2 min");
+  assertEqual(formatSeconds(1000), "17 min");
+  assertEqual(formatSeconds(10000), "167 min");
+})
+
+test(async function getTravisDataSuccess() {
+  try {
+    const data = await getTravisData();
+    assert(data.length !== 0);
+  } catch (e) {
+    assert(e !== null);
+  }
 });
