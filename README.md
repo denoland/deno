@@ -86,6 +86,8 @@ Progress towards future releases is tracked
 Roadmap is [here](https://github.com/denoland/deno/blob/master/Roadmap.md).
 Also see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
 
+[Benchmarks](https://denoland.github.io/deno/)
+
 [Chat room](https://gitter.im/denolife/Lobby).
 
 
