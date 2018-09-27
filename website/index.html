@@ -1,22 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>deno benchmark</title>
+  <title>deno</title>
   <link rel="stylesheet" href="https://unpkg.com/c3@0.6.7/c3.min.css">
 </head>
 <body>
+  <h1>deno</h1>
+
+  <p> <a href="https://github.com/denoland/deno">github.com/denoland/deno</a>
+
+  <p> <a href="https://github.com/denoland/deno/issues/573">User Documentation</a>
+
+  <p> <a href="https://github.com/denoland/deno/blob/master/Roadmap.md">Roadmap</a>
+
+  <p> <a href="https://github.com/denoland/deno_install">Install!</a>
+
   <h2>Execution time</h2>
+  This shows how much time total it takes to run a few simple deno programs:
+  <a href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts">tests/002_hello.ts</a>
+  and
+  <a href="https://github.com/denoland/deno/blob/master/tests/003_relative_import.ts">tests/003_relative_import.ts</a>.
+  For deno to execute typescript, it must first compile it to JS.
+  A warm startup is when deno has a cached JS output already, so
+  it should be fast because it bypasses the TS compiler.
+  A cold startup is when deno must compile from scratch.
   <div id="exec-time-chart"></div>
-  <h2>Binary size</h2>
+
+  <h2>Executable size</h2>
+  deno ships only a single binary. We track its size here.
   <div id="binary-size-chart"></div>
+
   <h2>Thread count</h2>
+  How many threads various programs use.
   <div id="thread-count-chart"></div>
+
   <h2>Syscall count</h2>
+  How many total syscalls are performed when executing a given script.
   <div id="syscall-count-chart"></div>
-  <h2>Travis compile time</h2>
+
+  <h2>Travis</h2>
+  How long for Travis CI to return a green status for pull requests.
   <div id="travis-compile-time-chart"></div>
   <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
   <script src="https://unpkg.com/c3@0.6.7/c3.min.js"></script>
+
   <script type="module">
   import { main } from "./app.js";
   main();
