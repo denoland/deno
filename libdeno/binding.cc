@@ -11,14 +11,6 @@
 #include "deno.h"
 #include "internal.h"
 
-void hexdump(const uint8_t* buf, size_t len) {
-  for (size_t i = 0; i < len; ++i) {
-    char ch = buf[i];
-    printf("%02x ", ch & 0xff);
-  }
-  printf("\n");
-}
-
 namespace deno {
 
 Deno* FromIsolate(v8::Isolate* isolate) {
@@ -145,20 +137,6 @@ void HandleException(v8::Local<v8::Context> context,
   }
 }
 
-/*
-bool AbortOnUncaughtExceptionCallback(v8::Isolate* isolate) {
-  return true;
-}
-
-void MessageCallback2(Local<Message> message, v8::Local<v8::Value> data) {
-  printf("MessageCallback2\n\n");
-}
-
-void FatalErrorCallback2(const char* location, const char* message) {
-  printf("FatalErrorCallback2\n");
-}
-*/
-
 void ExitOnPromiseRejectCallback(
     v8::PromiseRejectMessage promise_reject_message) {
   auto* isolate = v8::Isolate::GetCurrent();
@@ -244,7 +222,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Locker locker(d->isolate);
   v8::EscapableHandleScope handle_scope(isolate);
 
-  CHECK_EQ(d->currentArgs, nullptr); // libdeno.send re-entry forbidden.
+  CHECK_EQ(d->currentArgs, nullptr);  // libdeno.send re-entry forbidden.
   int32_t req_id = d->next_req_id++;
 
   v8::Local<v8::Value> control_v = args[0];
