@@ -244,7 +244,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Locker locker(d->isolate);
   v8::EscapableHandleScope handle_scope(isolate);
 
-  CHECK_EQ(d->currentArgs, nullptr); // libdeno.send re-entry forbidden.
+  CHECK_EQ(d->currentArgs, nullptr);  // libdeno.send re-entry forbidden.
   int32_t req_id = d->next_req_id++;
 
   v8::Local<v8::Value> control_v = args[0];
