@@ -1,5 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
+use errors;
 use errors::DenoError;
 use errors::DenoResult;
 use fs as deno_fs;
@@ -8,6 +9,7 @@ use isolate::IsolateState;
 use isolate::Op;
 use msg;
 
+use files;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::future::poll_fn;
@@ -26,7 +28,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
+use tokio;
 use tokio::timer::Delay;
+use tokio_io::AsyncRead;
+use tokio_io::AsyncWrite;
 use tokio_threadpool;
 
 type OpResult = DenoResult<Buf>;
@@ -62,6 +67,9 @@ pub fn msg_from_js(
     msg::Any::TimerClear => handle_timer_clear,
     msg::Any::MakeTempDir => handle_make_temp_dir,
     msg::Any::Mkdir => handle_mkdir,
+    msg::Any::Open => handle_open,
+    msg::Any::Read => handle_read,
+    msg::Any::Write => handle_write,
     msg::Any::Remove => handle_remove,
     msg::Any::ReadFile => handle_read_file,
     msg::Any::Rename => handle_rename,
@@ -549,6 +557,129 @@ fn handle_mkdir(
     deno_fs::mkdir(Path::new(&path), mode)?;
     Ok(empty_buf())
   })
+}
+
+fn handle_open(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+  let msg = base.msg_as_open().unwrap();
+  let filename = PathBuf::from(msg.filename().unwrap());
+  // TODO let perm = msg.perm();
+
+  let op = tokio::fs::File::open(filename)
+    .map_err(|err| DenoError::from(err))
+    .and_then(move |fs_file| -> OpResult {
+      let dfile = files::add_fs_file(fs_file);
+      let builder = &mut FlatBufferBuilder::new();
+      let msg = msg::OpenRes::create(
+        builder,
+        &msg::OpenResArgs {
+          fd: dfile.fd,
+          ..Default::default()
+        },
+      );
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          msg: Some(msg.as_union_value()),
+          msg_type: msg::Any::OpenRes,
+          ..Default::default()
+        },
+      ))
+    });
+  Box::new(op)
+}
+
+fn handle_read(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  let cmd_id = base.cmd_id();
+  let msg = base.msg_as_read().unwrap();
+  let fd = msg.fd();
+
+  match files::lookup(fd) {
+    None => odd_future(errors::new(
+      errors::ErrorKind::BadFileDescriptor,
+      String::from("Bad File Descriptor"),
+    )),
+    Some(mut dfile) => {
+      let op = futures::future::poll_fn(move || {
+        let poll = dfile.poll_read(data);
+        poll
+      }).map_err(|err| DenoError::from(err))
+      .and_then(move |nread: usize| {
+        let builder = &mut FlatBufferBuilder::new();
+        let msg = msg::ReadRes::create(
+          builder,
+          &msg::ReadResArgs {
+            nread: nread as u32,
+            eof: nread == 0,
+            ..Default::default()
+          },
+        );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            msg: Some(msg.as_union_value()),
+            msg_type: msg::Any::ReadRes,
+            ..Default::default()
+          },
+        ))
+      });
+      Box::new(op)
+    }
+  }
+}
+
+fn handle_write(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  let cmd_id = base.cmd_id();
+  let msg = base.msg_as_write().unwrap();
+  let fd = msg.fd();
+
+  match files::lookup(fd) {
+    None => odd_future(errors::new(
+      errors::ErrorKind::BadFileDescriptor,
+      String::from("Bad File Descriptor"),
+    )),
+    Some(mut dfile) => {
+      let op = futures::future::poll_fn(move || {
+        let poll = dfile.poll_write(data);
+        poll
+      }).map_err(|err| DenoError::from(err))
+      .and_then(move |bytes_written: usize| {
+        let builder = &mut FlatBufferBuilder::new();
+        let msg = msg::WriteRes::create(
+          builder,
+          &msg::WriteResArgs {
+            nbyte: bytes_written as u32,
+            ..Default::default()
+          },
+        );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            msg: Some(msg.as_union_value()),
+            msg_type: msg::Any::WriteRes,
+            ..Default::default()
+          },
+        ))
+      });
+      Box::new(op)
+    }
+  }
 }
 
 fn handle_remove(
