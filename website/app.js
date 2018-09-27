@@ -120,7 +120,7 @@ export async function main() {
   const syscallCountColumns = createSyscallCountColumns(data);
   const travisCompileTimeColumns = createTravisCompileTimeColumns(travisData);
   const sha1List = createSha1List(data);
-  const sha1SuffixList = sha1List.map(sha1 => sha1.substring(sha1.length - 8));
+  const sha1SuffixList = sha1List.map(sha1 => sha1.substring(sha1.length - 6));
   const prNumberList = travisData.map(d => d.pull_request_number);
 
   const viewCommitOnClick = _sha1List => d => {
