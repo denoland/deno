@@ -36,7 +36,7 @@ void LazilyCreateDataMap(Deno* d) {
   DCHECK(!d->async_data_map.IsEmpty());
 }
 
-void AddDataRef(Deno* d, int req_id, v8::Local<v8::Value> data_v) {
+void AddDataRef(Deno* d, int32_t req_id, v8::Local<v8::Value> data_v) {
   LazilyCreateDataMap(d);
   auto async_data_map = d->async_data_map.Get(d->isolate);
   auto context = d->context.Get(d->isolate);
@@ -45,7 +45,7 @@ void AddDataRef(Deno* d, int req_id, v8::Local<v8::Value> data_v) {
   CHECK(!r.IsEmpty());
 }
 
-void DeleteDataRef(Deno* d, int req_id) {
+void DeleteDataRef(Deno* d, int32_t req_id) {
   LazilyCreateDataMap(d);
   auto context = d->context.Get(d->isolate);
   // Delete persistent reference to data ArrayBuffer.
@@ -245,7 +245,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::EscapableHandleScope handle_scope(isolate);
 
   CHECK_EQ(d->currentArgs, nullptr); // libdeno.send re-entry forbidden.
-  int req_id = d->next_req_id++;
+  int32_t req_id = d->next_req_id++;
 
   v8::Local<v8::Value> control_v = args[0];
   CHECK(control_v->IsArrayBufferView());
@@ -454,7 +454,7 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
 }
 
-int deno_respond(Deno* d, int req_id, deno_buf buf) {
+int deno_respond(Deno* d, int32_t req_id, deno_buf buf) {
   if (d->currentArgs != nullptr) {
     // Synchronous response.
     auto ab = deno::ImportBuf(d->isolate, buf);

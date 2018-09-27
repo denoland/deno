@@ -23,7 +23,7 @@ typedef struct deno_s Deno;
 // A callback to receive a message from a libdeno.send() javascript call.
 // control_buf is valid for only for the lifetime of this callback.
 // data_buf is valid until deno_respond() is called.
-typedef void (*deno_recv_cb)(Deno* d, int recv_id, deno_buf control_buf,
+typedef void (*deno_recv_cb)(Deno* d, int32_t req_id, deno_buf control_buf,
                              deno_buf data_buf);
 
 void deno_init();
@@ -41,8 +41,7 @@ void* deno_get_data(Deno*);
 // 0 = fail, 1 = success
 int deno_execute(Deno* d, const char* js_filename, const char* js_source);
 
-// For every message received, this must be called. This has to do with
-// when data_buf is freed.
+// deno_respond sends up to one message back for every deno_recv_cb made.
 //
 // If this is called during deno_recv_cb, the issuing libdeno.send() in
 // javascript will synchronously return the specified buf as an ArrayBuffer (or
@@ -51,12 +50,16 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source);
 // If this is called after deno_recv_cb has returned, the deno_respond
 // will call into the JS callback specified by libdeno.recv().
 //
-// After calling deno_respond(), the caller no longer owns `buf` and must not
-// use it; deno_respond() is responsible for releasing it's memory.
+// (Ideally, but not currently: After calling deno_respond(), the caller no
+// longer owns `buf` and must not use it; deno_respond() is responsible for
+// releasing its memory.)
+//
+// Calling this function more than once with the same req_id will result in
+// an error.
 //
 // A non-zero return value, means a JS exception was encountered during the
 // libdeno.recv() callback. Check deno_last_exception() for exception text.
-int deno_respond(Deno* d, int recv_id, deno_buf buf);
+int deno_respond(Deno* d, int32_t req_id, deno_buf buf);
 
 const char* deno_last_exception(Deno* d);
 
