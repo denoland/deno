@@ -2,6 +2,8 @@
 // Public deno module.
 /// <amd-module name="deno"/>
 export { env, exit } from "./os";
+export { File, open, stdin, stdout, stderr, read, write, close } from "./files";
+export { copy, Reader, Writer } from "./io";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
 export { removeSync, remove, removeAllSync, removeAll } from "./remove";
