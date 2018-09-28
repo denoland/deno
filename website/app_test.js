@@ -1,20 +1,27 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
-import { test, assertEqual } from "../js/test_util.ts";
+import { test, assert, assertEqual } from "../js/test_util.ts";
 import {
   createBinarySizeColumns,
   createExecTimeColumns,
   createThreadCountColumns,
   createSyscallCountColumns,
   createSha1List,
-  formatBytes
+  formatBytes,
+  formatSeconds,
+  getTravisData
 } from "./app.js";
 
 const regularData = [
   {
     created_at: "2018-01-01T01:00:00Z",
     sha1: "abcdef",
-    binary_size: 100000000,
+    binary_size: {
+      deno: 100000000,
+      "main.js": 90000000,
+      "main.js.map": 80000000,
+      "snapshot_deno.bin": 70000000
+    },
     benchmark: {
       hello: {
         mean: 0.05
@@ -40,7 +47,12 @@ const regularData = [
   {
     created_at: "2018-01-02T01:00:00Z",
     sha1: "012345",
-    binary_size: 110000000,
+    binary_size: {
+      deno: 100000001,
+      "main.js": 90000001,
+      "main.js.map": 80000001,
+      "snapshot_deno.bin": 70000001
+    },
     benchmark: {
       hello: {
         mean: 0.055
@@ -69,6 +81,7 @@ const irregularData = [
   {
     created_at: "2018-01-01T01:00:00Z",
     sha1: "123",
+    binary_size: {},
     benchmark: {
       hello: {},
       relative_import: {},
@@ -81,6 +94,7 @@ const irregularData = [
   {
     created_at: "2018-02-01T01:00:00Z",
     sha1: "456",
+    binary_size: 100000000,
     benchmark: {}
   }
 ];
@@ -107,12 +121,22 @@ test(function createExecTimeColumnsIrregularData() {
 
 test(function createBinarySizeColumnsRegularData() {
   const columns = createBinarySizeColumns(regularData);
-  assertEqual(columns, [["binary_size", 100000000, 110000000]]);
+  assertEqual(columns, [
+    ["deno", 100000000, 100000001],
+    ["main.js", 90000000, 90000001],
+    ["main.js.map", 80000000, 80000001],
+    ["snapshot_deno.bin", 70000000, 70000001]
+  ]);
 });
 
 test(function createBinarySizeColumnsIrregularData() {
   const columns = createBinarySizeColumns(irregularData);
-  assertEqual(columns, [["binary_size", 0, 0]]);
+  assertEqual(columns, [
+    ["deno", 0, 100000000],
+    ["main.js", 0, 0],
+    ["main.js.map", 0, 0],
+    ["snapshot_deno.bin", 0, 0]
+  ]);
 });
 
 test(function createThreadCountColumnsRegularData() {
@@ -145,4 +169,20 @@ test(function formatBytesPatterns() {
   assertEqual(formatBytes(1800000), "1.72 MB");
   assertEqual(formatBytes(180000000), "171.66 MB");
   assertEqual(formatBytes(18000000000), "16.76 GB");
+});
+
+test(function formatSecondsPatterns() {
+  assertEqual(formatSeconds(10), "0 min");
+  assertEqual(formatSeconds(100), "2 min");
+  assertEqual(formatSeconds(1000), "17 min");
+  assertEqual(formatSeconds(10000), "167 min");
+});
+
+test(async function getTravisDataSuccess() {
+  try {
+    const data = await getTravisData();
+    assert(data.length !== 0);
+  } catch (e) {
+    assert(e !== null);
+  }
 });

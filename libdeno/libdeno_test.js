@@ -25,18 +25,6 @@ global.TypedArraySnapshots = () => {
   assert(snapshotted[3] === 7);
 };
 
-global.SendSuccess = () => {
-  libdeno.recv(msg => {
-    libdeno.print("SendSuccess: ok");
-  });
-};
-
-global.SendWrongByteLength = () => {
-  libdeno.recv(msg => {
-    assert(msg.byteLength === 3);
-  });
-};
-
 global.RecvReturnEmpty = () => {
   const m1 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const m2 = m1.slice();
@@ -128,13 +116,20 @@ global.DoubleGlobalErrorHandlingFails = () => {
   libdeno.setGlobalErrorHandler((message, source, line, col, error) => {});
 };
 
-global.SendNullAllocPtr = () => {
-  libdeno.recv(msg => {
-    assert(msg instanceof Uint8Array);
-    assert(msg.byteLength === 4);
-    assert(msg[0] === "a".charCodeAt(0));
-    assert(msg[1] === "b".charCodeAt(0));
-    assert(msg[2] === "c".charCodeAt(0));
-    assert(msg[3] === "d".charCodeAt(0));
-  });
+// Allocate this buf at the top level to avoid GC.
+const dataBuf = new Uint8Array([3, 4]);
+
+global.DataBuf = () => {
+  const a = new Uint8Array([1, 2]);
+  const b = dataBuf;
+  // The second parameter of send should modified by the
+  // privileged side.
+  const r = libdeno.send(a, b);
+  assert(r == null);
+  // b is different.
+  assert(b[0] === 4);
+  assert(b[1] === 2);
+  // Now we modify it again.
+  b[0] = 9;
+  b[1] = 8;
 };

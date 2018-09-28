@@ -418,14 +418,11 @@ export class DenoCompiler
    */
   compile(moduleMetaData: ModuleMetaData): OutputCode {
     const recompile = !!this.recompile;
-    this._log("compiler.compile", {
-      filename: moduleMetaData.fileName,
-      recompile
-    });
     if (!recompile && moduleMetaData.outputCode) {
       return moduleMetaData.outputCode;
     }
-    const { fileName, sourceCode } = moduleMetaData;
+    const { fileName, sourceCode, moduleId } = moduleMetaData;
+    console.warn("Compiling", moduleId);
     const service = this._service;
     const output = service.getEmitOutput(fileName);
 

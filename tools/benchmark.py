@@ -10,14 +10,9 @@ import sys
 import json
 import time
 import shutil
-from util import run, run_output, root_path, build_path
+from util import run, run_output, root_path, build_path, executable_suffix
 import tempfile
 import http_server
-
-try:
-    http_server.spawn()
-except:
-    "Warning: another http_server instance is running"
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -52,6 +47,19 @@ def import_data_from_gh_pages():
         shutil.copy(gh_pages_data_file, data_file)
     except:
         write_json(data_file, [])  # writes empty json data
+
+
+def get_binary_sizes(build_dir):
+    path_dict = {
+        "deno": os.path.join(build_dir, "deno" + executable_suffix),
+        "main.js": os.path.join(build_dir, "gen/bundle/main.js"),
+        "main.js.map": os.path.join(build_dir, "gen/bundle/main.js.map"),
+        "snapshot_deno.bin": os.path.join(build_dir, "gen/snapshot_deno.bin")
+    }
+    sizes = {}
+    for name, path in path_dict.items():
+        sizes[name] = os.path.getsize(path)
+    return sizes
 
 
 def get_strace_summary_text(test_args):
@@ -124,6 +132,8 @@ def main(argv):
         print "Usage: tools/benchmark.py [build_dir]"
         sys.exit(1)
 
+    http_server.spawn()
+
     deno_path = os.path.join(build_dir, "deno")
     benchmark_file = os.path.join(build_dir, "benchmark.json")
 
@@ -139,7 +149,7 @@ def main(argv):
     new_data = {
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sha1": sha1,
-        "binary_size": os.path.getsize(deno_path),
+        "binary_size": {},
         "thread_count": {},
         "syscall_count": {},
         "benchmark": {}
@@ -155,6 +165,7 @@ def main(argv):
             "max": data["max"]
         }
 
+    new_data["binary_size"] = get_binary_sizes(build_dir)
     if "linux" in sys.platform:
         # Thread count test, only on linux
         new_data["thread_count"] = run_thread_count_benchmark(deno_path)
