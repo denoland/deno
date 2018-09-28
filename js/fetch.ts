@@ -104,7 +104,7 @@ export class DenoHeaders implements Headers {
     thisArg?: any
   ): void {
     this.headerMap.forEach((values, name) => {
-      const str = values.reduce((pre, cur) => `${cur}, ${pre}`);
+      const str = values.reduce((pre, cur) => `${pre}, ${cur}`);
       callbackfn(str, name, this);
     });
   }
