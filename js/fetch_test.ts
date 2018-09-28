@@ -72,7 +72,7 @@ for (const name in headerDict) {
   headerSeq.push([name, headerDict[name]]);
 }
   
-test(() => {
+test(function newHeaderWithSequence() {
   const headers = new Headers(headerSeq);
   for (const name in headerDict) {
     assertEqual(headers.get(name), String(headerDict[name]));
@@ -80,14 +80,14 @@ test(() => {
   assertEqual(headers.get("length"), null);
 });
 
-test(() => {
+test(function newHeaderWithRecord() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assertEqual(headers.get(name), String(headerDict[name]));
   }
 });
 
-test(() => {
+test(function newHeaderWithHeadersInstance() {
   const headers = new Headers(headerDict);
   const headers2 = new Headers(headers);
   for (const name in headerDict) {
@@ -95,7 +95,7 @@ test(() => {
   }
 });
 
-test(() => {
+test(function headerAppendSuccess() {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.append(name, headerDict[name]);
@@ -104,7 +104,7 @@ test(() => {
   }
 });
 
-test(() => {
+test(function headerSetSuccess() {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.set(name, headerDict[name]);
@@ -112,7 +112,7 @@ test(() => {
   }
 });
 
-test(() => {
+test(function headerHasSuccess() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assert(headers.has(name), "headers has name " + name);
@@ -121,7 +121,7 @@ test(() => {
   }
 });
 
-test(() => {
+test(function headerDeleteSuccess() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assert(headers.has(name), "headers have a header: " + name);
@@ -130,7 +130,7 @@ test(() => {
   }
 });
 
-test(() => {
+test(function headerGetSuccess() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assertEqual(headers.get(name), String(headerDict[name]));
@@ -147,7 +147,7 @@ const headerEntriesDict = {
   "Content-Types": "value6"
 };
 
-test(() => {
+test(function headerForEachSuccess() {
   const headers = new Headers(headerEntriesDict);
   const keys = Object.keys(headerEntriesDict);
   keys.forEach(key => {
