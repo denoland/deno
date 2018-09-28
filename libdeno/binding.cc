@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <iostream>
 #include <string>
 
 #include "third_party/v8/include/libplatform/libplatform.h"
@@ -132,7 +133,7 @@ void HandleException(v8::Local<v8::Context> context,
   if (d != nullptr) {
     d->last_exception = exception_str;
   } else {
-    printf("Pre-Deno Exception %s\n", exception_str.c_str());
+    std::cerr << "Pre-Deno Exception " << exception_str << std::endl;
     exit(1);
   }
 }
@@ -159,9 +160,8 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   bool is_err =
       args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
   const char* cstr = ToCString(str);
-  auto stream = is_err ? stderr : stdout;
-  fprintf(stream, "%s\n", cstr);
-  fflush(stream);
+  auto& stream = is_err ? std::cerr : std::cout;
+  stream << cstr << std::endl;
 }
 
 static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {
