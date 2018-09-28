@@ -22,10 +22,6 @@ environment:
   #   -mx=1 : Fast compression.
   APPVEYOR_CACHE_ENTRY_ZIP_ARGS: -t7z -snl -mtc -mx=1
 
-  # Disable python stdout buffering, so test output shows up in the build log in
-  # realtime, rather than all at once when the test runner exits.
-  PYTHONUNBUFFERED: 1
-
   # Define some PowerShell helper functions which are used in the scripts below.
   # They're defined in an environment variable to reduce noise in the build log.
   PS_UTILS: |-
