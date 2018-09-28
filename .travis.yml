@@ -84,7 +84,9 @@ script:
 - ./tools/lint.py
 - bash -c "sleep 2100; pkill ninja" &
 - ./tools/build.py -j2
-- ./tools/test.py $DENO_BUILD_PATH
+- TEMPFILE=$(mktemp)
+- /usr/bin/time -p ./tools/test.py $DENO_BUILD_PATH 2>$TEMPFILE
+- TEST_DURATION=$(cat $TEMPFILE | awk '/real/ {print $2}')
 after_script:
 - ccache --show-stats
 - sccache --stop-server
@@ -92,7 +94,7 @@ after_success:
 - |
   # Run benchmarks and publish the result to github pages.
   if [ $BENCHMARK ]; then
-    ./tools/benchmark.py $DENO_BUILD_PATH &&
+    ./tools/benchmark.py --build_dir=$DENO_BUILD_PATH --test_duration=$TEST_DURATION &&
     cp -r website/* gh-pages/
   fi
 before_deploy:

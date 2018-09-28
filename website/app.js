@@ -89,6 +89,20 @@ function createTravisCompileTimeColumns(data) {
   return columnsData;
 }
 
+const durationNames = ["test"];
+export function createDurationColumns(data) {
+  return durationNames.map(name => [
+    name,
+    ...data.map(d => {
+      const durationData = d["duration"];
+      if (!durationData) {
+        return 0;
+      }
+      return durationData[name] || 0;
+    })
+  ]);
+}
+
 export function createSha1List(data) {
   return data.map(d => d.sha1);
 }
@@ -119,6 +133,7 @@ export async function main() {
   const threadCountColumns = createThreadCountColumns(data);
   const syscallCountColumns = createSyscallCountColumns(data);
   const travisCompileTimeColumns = createTravisCompileTimeColumns(travisData);
+  const durationColumns = createDurationColumns(data);
   const sha1List = createSha1List(data);
   const sha1ShortList = sha1List.map(sha1 => sha1.substring(0, 6));
   const prNumberList = travisData.map(d => d.pull_request_number);
@@ -148,7 +163,7 @@ export async function main() {
         categories: sha1List
       },
       y: {
-        label: "seconds",
+        label: "seconds"
       }
     }
   });
@@ -218,6 +233,20 @@ export async function main() {
         tick: {
           format: d => formatSeconds(d)
         }
+      }
+    }
+  });
+
+  c3.generate({
+    bindto: "#duration-chart",
+    data: { columns: durationColumns },
+    axis: {
+      x: {
+        type: "category",
+        categories: sha1ShortList
+      },
+      y: {
+        label: "seconds"
       }
     }
   });
