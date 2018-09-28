@@ -5,13 +5,13 @@ use tokio_util;
 
 use futures::Future;
 use futures::Stream;
+use https_connector::HttpsConnector;
 use hyper;
 use hyper::client::Client;
 use hyper::client::HttpConnector;
 use hyper::Uri;
-use hyper_rustls;
 
-type Connector = hyper_rustls::HttpsConnector<HttpConnector>;
+type Connector = HttpsConnector<HttpConnector>;
 
 lazy_static! {
   static ref CONNECTOR: Connector = {

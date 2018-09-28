@@ -1,30 +1,35 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+extern crate ct_logs;
 extern crate flatbuffers;
 extern crate futures;
 extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg;
 extern crate rand;
+extern crate rustls;
 extern crate tempfile;
 extern crate tokio;
 extern crate tokio_executor;
+extern crate tokio_io;
+extern crate tokio_rustls;
 extern crate tokio_threadpool;
 extern crate url;
+extern crate webpki;
+extern crate webpki_roots;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
 extern crate dirs;
-extern crate hyper_rustls;
 extern crate remove_dir_all;
 extern crate ring;
-
 mod deno_dir;
 mod errors;
 mod flags;
 mod fs;
 pub mod handlers;
 mod http;
+mod https_connector;
 mod isolate;
 mod libdeno;
 mod tokio_util;
