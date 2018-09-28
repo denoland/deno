@@ -22,85 +22,91 @@ import {
 import { TextDecoder } from "./text_encoding";
 import { DenoBlob } from "./blob";
 
-interface Header {
-  name: string;
-  value: string;
-}
-
+// ref: https://fetch.spec.whatwg.org/#dom-headers
 export class DenoHeaders implements Headers {
-  private readonly headerList: Header[] = [];
+  private headerMap: Map<string, string[]> = new Map();
 
   constructor(init?: HeadersInit) {
-    if (init) {
-      this._fill(init);
+    if (init === null) {
+      throw new TypeError("Failed to construct 'Headers': Invalid value");
     }
-  }
 
-  private _append(header: Header): void {
-    // TODO(qti3e) Check header based on the fetch spec.
-    this._appendToHeaderList(header);
-  }
-
-  private _appendToHeaderList(header: Header): void {
-    const lowerCaseName = header.name.toLowerCase();
-    for (let i = 0; i < this.headerList.length; ++i) {
-      if (this.headerList[i].name.toLowerCase() === lowerCaseName) {
-        header.name = this.headerList[i].name;
-      }
+    if (!init) {
+      return;
     }
-    this.headerList.push(header);
-  }
 
-  private _fill(init: HeadersInit): void {
-    if (Array.isArray(init)) {
-      for (let i = 0; i < init.length; ++i) {
-        const header = init[i];
-        if (header.length !== 2) {
+    if (init instanceof DenoHeaders) {
+      // init is the instance of Header
+      init.forEach((value: string, name: string) => {
+        const values = value.split(", ");
+        this.headerMap.set(name, values);
+      });
+    } else if (Array.isArray(init)) {
+      // init is a  sequence
+      init.forEach(item => {
+        if (item.length !== 2) {
           throw new TypeError("Failed to construct 'Headers': Invalid value");
         }
-        this._append({
-          name: header[0],
-          value: header[1]
-        });
-      }
+         /* tslint:disable-next-line:max-line-length */
+        const [name, value] = this.normalizeParams(item[0], item[1]);
+        const values = this.headerMap.get(name);
+        const newValues = values ? [...values, value] : [value];
+        this.headerMap.set(name, newValues);
+      });
     } else {
-      for (const key in init) {
-        this._append({
-          name: key,
-          value: init[key]
-        });
-      }
+      // init is a object
+      const names = Object.keys(init);
+      names.forEach(name => {
+        const value = (init as Record<string, string>)[name];
+        const [newname, newvalue] = this.normalizeParams(name, value);
+        this.headerMap.set(newname, [newvalue]);
+      });
     }
+  }
+
+  private normalizeParams(name: string, value?: string): string[] {
+    name = String(name).toLowerCase();
+    value = String(value).trim();
+    return [name, value];
   }
 
   append(name: string, value: string): void {
-    this._appendToHeaderList({ name, value });
+    const [newname, newvalue] = this.normalizeParams(name, value);
+    const values = this.headerMap.get(newname);
+    const newValues = values ? [...values, newvalue] : [newvalue];
+    this.headerMap.set(newname, newValues);
   }
 
   delete(name: string): void {
-    assert(false, "Implement me");
+    const [newname] = this.normalizeParams(name);
+    this.headerMap.delete(newname);
   }
+
   get(name: string): string | null {
-    for (const header of this.headerList) {
-      if (header.name.toLowerCase() === name.toLowerCase()) {
-        return header.value;
-      }
-    }
-    return null;
+    const [newname] = this.normalizeParams(name);
+    const values = this.headerMap.get(newname);
+    return values ? values[0] : null;
   }
+
   has(name: string): boolean {
-    assert(false, "Implement me");
-    return false;
+    const [newname] = this.normalizeParams(name);
+    return this.headerMap.has(newname);
   }
+
   set(name: string, value: string): void {
-    assert(false, "Implement me");
+    const [newname, newvalue] = this.normalizeParams(name, value);
+    this.headerMap.set(newname, [newvalue]);
   }
+
   forEach(
     callbackfn: (value: string, key: string, parent: Headers) => void,
     // tslint:disable-next-line:no-any
     thisArg?: any
   ): void {
-    assert(false, "Implement me");
+    this.headerMap.forEach((values, name) => {
+      const str = values.reduce((pre, cur) => `${cur}, ${pre}`);
+      callbackfn(str, name, this);
+    });
   }
 }
 

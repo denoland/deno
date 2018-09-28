@@ -13,7 +13,8 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 *******************************************************************************/
 
-export type HeadersInit = string[][] | Record<string, string>;
+export type HeadersInit = Headers | string[][] | Record<string, string>;
+export type URLSearchParamsInit = string | string[][] | Record<string, string>;
 type BodyInit =
   | Blob
   | BufferSource
@@ -74,7 +75,7 @@ export interface ProgressEventInit extends EventInit {
   total?: number;
 }
 
-interface URLSearchParams {
+export interface URLSearchParams {
   /**
    * Appends a specified key/value pair as a new search parameter.
    */
@@ -101,7 +102,20 @@ interface URLSearchParams {
    * If there were several values, delete the others.
    */
   set(name: string, value: string): void;
+  /**
+   * Sort all key/value pairs contained in this object in place 
+   * and return undefined. The sort order is according to Unicode 
+   * code points of the keys.
+   */
   sort(): void;
+  /**
+   * Returns a query string suitable for use in a URL.
+   */
+  toString(): string;
+  /** 
+   * Iterates over each name-value pair in the query 
+   * and invokes the given function.
+   */
   forEach(
     callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
     // tslint:disable-next-line:no-any
