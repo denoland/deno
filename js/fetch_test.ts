@@ -58,6 +58,13 @@ test(function newHeaderTest() {
   } catch (e) {
     assertEqual(e.message, "Failed to construct 'Headers': Invalid value");
   }
+
+  try {
+    const init = [["a", "b", "c"]];
+    new Headers(init);
+  } catch (e) {
+    assertEqual(e.message, "Failed to construct 'Headers': Invalid value");
+  }
 });
 
 const headerDict = {
@@ -99,7 +106,6 @@ test(function headerAppendSuccess() {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.append(name, headerDict[name]);
-    console.log(name, headers.get(name));
     assertEqual(headers.get(name), String(headerDict[name]));
   }
 });
@@ -155,8 +161,11 @@ test(function headerForEachSuccess() {
     const newkey = key.toLowerCase();
     headerEntriesDict[newkey] = value;
   });
+  let callNum = 0;
   headers.forEach((value, key, container) => {
     assertEqual(headers, container);
     assertEqual(value, headerEntriesDict[key]);
+    callNum++;
   });
+  assertEqual(callNum, keys.length);
 });

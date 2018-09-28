@@ -24,43 +24,39 @@ import { DenoBlob } from "./blob";
 
 // ref: https://fetch.spec.whatwg.org/#dom-headers
 export class DenoHeaders implements Headers {
-  private headerMap: Map<string, string[]> = new Map();
+  private headerMap: Map<string, string> = new Map();
 
   constructor(init?: HeadersInit) {
-    if (init === null) {
-      throw new TypeError("Failed to construct 'Headers': Invalid value");
-    }
-
-    if (!init) {
+    if (arguments.length === 0 || init === undefined) {
       return;
     }
 
     if (init instanceof DenoHeaders) {
       // init is the instance of Header
       init.forEach((value: string, name: string) => {
-        const values = value.split(", ");
-        this.headerMap.set(name, values);
+        this.headerMap.set(name, value);
       });
     } else if (Array.isArray(init)) {
-      // init is a  sequence
+      // init is a sequence
       init.forEach(item => {
         if (item.length !== 2) {
           throw new TypeError("Failed to construct 'Headers': Invalid value");
         }
-         /* tslint:disable-next-line:max-line-length */
         const [name, value] = this.normalizeParams(item[0], item[1]);
-        const values = this.headerMap.get(name);
-        const newValues = values ? [...values, value] : [value];
-        this.headerMap.set(name, newValues);
+        const v = this.headerMap.get(name);
+        const str = v ? `${v}, ${value}` : value;
+        this.headerMap.set(name, str);
       });
-    } else {
+    } else if (Object.prototype.toString.call(init) === "[object Object]") {
       // init is a object
       const names = Object.keys(init);
       names.forEach(name => {
         const value = (init as Record<string, string>)[name];
         const [newname, newvalue] = this.normalizeParams(name, value);
-        this.headerMap.set(newname, [newvalue]);
+        this.headerMap.set(newname, newvalue);
       });
+    } else {
+      throw new TypeError("Failed to construct 'Headers': Invalid value");
     }
   }
 
@@ -72,9 +68,9 @@ export class DenoHeaders implements Headers {
 
   append(name: string, value: string): void {
     const [newname, newvalue] = this.normalizeParams(name, value);
-    const values = this.headerMap.get(newname);
-    const newValues = values ? [...values, newvalue] : [newvalue];
-    this.headerMap.set(newname, newValues);
+    const v = this.headerMap.get(newname);
+    const str = v ? `${v}, ${newvalue}` : newvalue;
+    this.headerMap.set(newname, str);
   }
 
   delete(name: string): void {
@@ -84,8 +80,8 @@ export class DenoHeaders implements Headers {
 
   get(name: string): string | null {
     const [newname] = this.normalizeParams(name);
-    const values = this.headerMap.get(newname);
-    return values ? values[0] : null;
+    const value = this.headerMap.get(newname);
+    return value || null;
   }
 
   has(name: string): boolean {
@@ -95,7 +91,7 @@ export class DenoHeaders implements Headers {
 
   set(name: string, value: string): void {
     const [newname, newvalue] = this.normalizeParams(name, value);
-    this.headerMap.set(newname, [newvalue]);
+    this.headerMap.set(newname, newvalue);
   }
 
   forEach(
@@ -103,9 +99,8 @@ export class DenoHeaders implements Headers {
     // tslint:disable-next-line:no-any
     thisArg?: any
   ): void {
-    this.headerMap.forEach((values, name) => {
-      const str = values.reduce((pre, cur) => `${pre}, ${cur}`);
-      callbackfn(str, name, this);
+    this.headerMap.forEach((value, name) => {
+      callbackfn(value, name, this);
     });
   }
 }
