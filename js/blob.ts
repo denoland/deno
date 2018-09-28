@@ -1,6 +1,8 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { Blob, BlobPart, BlobPropertyBag } from "./dom_types";
 import { containsOnlyASCII } from "./util";
+import { platform } from "./platform";
+import { DenoPlatform } from "./types";
 
 const bytesSymbol = Symbol("bytes");
 
@@ -86,7 +88,10 @@ function toUint8Arrays(
     if (typeof element === "string") {
       let str = element;
       if (doNormalizeLineEndingsToNative) {
-        str = convertLineEndingsToNative(element);
+        str = convertLineEndingsToNative(
+          element,
+          platform === ("windows" as DenoPlatform) ? "\r\n" : "\n"
+        );
       }
       ret.push(enc.encode(str));
     } else if (element instanceof DenoBlob) {
@@ -106,8 +111,24 @@ function toUint8Arrays(
   return ret;
 }
 
-function convertLineEndingsToNative(s: string): string {
-  // TODO(qti3e) Implement convertLineEndingsToNative.
+function convertLineEndingsToNative(
+  s: string,
+  nativeLineEnding: string
+): string {
   // https://w3c.github.io/FileAPI/#convert-line-endings-to-native
-  return s;
+  let result = "";
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === "\n" || c === "\r") {
+      result += nativeLineEnding;
+    } else {
+      result += c;
+    }
+    i += 1;
+    if (c === "\r" && i < s.length && s[i] === "\n") {
+      i += 1;
+    }
+  }
+  return result;
 }
