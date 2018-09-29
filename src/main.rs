@@ -8,6 +8,8 @@ extern crate rand;
 extern crate tempfile;
 extern crate tokio;
 extern crate tokio_executor;
+extern crate tokio_fs;
+extern crate tokio_io;
 extern crate tokio_threadpool;
 extern crate url;
 #[macro_use]
@@ -21,6 +23,7 @@ extern crate ring;
 
 mod deno_dir;
 mod errors;
+mod files;
 mod flags;
 mod fs;
 pub mod handlers;
