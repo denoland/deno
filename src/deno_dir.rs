@@ -449,6 +449,26 @@ fn test_code_fetch() {
 }
 
 #[test]
+fn test_code_fetch_no_ext() {
+  let (_temp_dir, deno_dir) = test_setup();
+
+  let cwd = std::env::current_dir().unwrap();
+  let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
+
+  // Assuming cwd is the deno repo root.
+  let module_specifier = "./js/main";
+  let containing_file = cwd_string.as_str();
+  let r = deno_dir.code_fetch(module_specifier, containing_file);
+  assert!(r.is_ok());
+
+  // Assuming cwd is the deno repo root.
+  let module_specifier = "./js/mock_builtin";
+  let containing_file = cwd_string.as_str();
+  let r = deno_dir.code_fetch(module_specifier, containing_file);
+  assert!(r.is_ok());
+}
+
+#[test]
 fn test_src_file_to_url_1() {
   let (_temp_dir, deno_dir) = test_setup();
   assert_eq!("hello", deno_dir.src_file_to_url("hello"));
