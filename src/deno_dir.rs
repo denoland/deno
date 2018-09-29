@@ -149,11 +149,12 @@ impl DenoDir {
       if module_name.ends_with(".ts") || module_name.ends_with(".js") {
         return try_extension("");
       }
-      println!("Trying {}.ts...", module_name);
-      if let Ok(v) = try_extension(".ts") {
-        return Ok(v);
+      debug!("Trying {}.ts...", module_name);
+      let ts_attempt = try_extension(".ts");
+      if let Ok(_) = ts_attempt {
+        return ts_attempt;
       }
-      println!("Trying {}.js...", module_name);
+      debug!("Trying {}.js...", module_name);
       try_extension(".js")
     } else if module_name.starts_with(ASSET_PREFIX) {
       panic!("Asset resolution should be done in JS, not Rust.");
@@ -176,11 +177,12 @@ impl DenoDir {
       if module_name.ends_with(".ts") || module_name.ends_with(".js") {
         return try_extension("");
       }
-      println!("Trying {}.ts...", module_name);
-      if let Ok(v) = try_extension(".ts") {
-        return Ok(v);
+      debug!("Trying {}.ts...", module_name);
+      let ts_attempt = try_extension(".ts");
+      if let Ok(_) = ts_attempt {
+        return ts_attempt;
       }
-      println!("Trying {}.js...", module_name);
+      debug!("Trying {}.js...", module_name);
       try_extension(".js")
     }
   }
