@@ -3,13 +3,14 @@
 use errors::DenoResult;
 use tokio_util;
 
-use futures::Future;
+// use futures::Future;
 use futures::Stream;
 use hyper;
 use hyper::client::Client;
 use hyper::client::HttpConnector;
 use hyper::Uri;
 use hyper_rustls;
+use std::io;
 
 type Connector = hyper_rustls::HttpsConnector<HttpConnector>;
 
@@ -31,10 +32,15 @@ pub fn get_client() -> Client<Connector, hyper::Body> {
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<String> {
   let url = module_name.parse::<Uri>().unwrap();
   let client = get_client();
-  let future = client
-    .get(url)
-    .and_then(|response| response.into_body().concat2());
-  let body = tokio_util::block_on(future)?;
+  let get_future = client.get(url);
+  let response = tokio_util::block_on(get_future)?;
+  if !response.status().is_success() {
+    Err(io::Error::new(
+      io::ErrorKind::NotFound,
+      format!("cannot load from '{}'", module_name),
+    ))?;
+  }
+  let body = tokio_util::block_on(response.into_body().concat2())?;
   Ok(String::from_utf8(body.to_vec()).unwrap())
 }
 

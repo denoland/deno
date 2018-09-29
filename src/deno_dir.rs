@@ -133,9 +133,28 @@ impl DenoDir {
     self: &DenoDir,
     module_name: &str,
     filename: &str,
-  ) -> DenoResult<String> {
+  ) -> DenoResult<CodeFetchOutput> {
     if is_remote(module_name) {
-      self.fetch_remote_source(module_name, filename)
+      let try_extension = |ext| {
+        let module_name = format!("{}{}", module_name, ext);
+        let filename = format!("{}{}", filename, ext);
+        let source_code = self.fetch_remote_source(&module_name, &filename)?;
+        return Ok(CodeFetchOutput {
+          module_name: module_name.to_string(),
+          filename: filename.to_string(),
+          source_code,
+          maybe_output_code: None,
+        });
+      };
+      if module_name.ends_with(".ts") || module_name.ends_with(".js") {
+        return try_extension("");
+      }
+      println!("Trying {}.ts...", module_name);
+      if let Ok(v) = try_extension(".ts") {
+        return Ok(v);
+      }
+      println!("Trying {}.js...", module_name);
+      try_extension(".js")
     } else if module_name.starts_with(ASSET_PREFIX) {
       panic!("Asset resolution should be done in JS, not Rust.");
     } else {
@@ -143,8 +162,26 @@ impl DenoDir {
         module_name, filename,
         "if a module isn't remote, it should have the same filename"
       );
-      let src = fs::read_to_string(Path::new(filename))?;
-      Ok(src)
+      let try_extension = |ext| {
+        let module_name = format!("{}{}", module_name, ext);
+        let filename = format!("{}{}", filename, ext);
+        let source_code = fs::read_to_string(Path::new(&filename))?;
+        return Ok(CodeFetchOutput {
+          module_name: module_name.to_string(),
+          filename: filename.to_string(),
+          source_code,
+          maybe_output_code: None,
+        });
+      };
+      if module_name.ends_with(".ts") || module_name.ends_with(".js") {
+        return try_extension("");
+      }
+      println!("Trying {}.ts...", module_name);
+      if let Ok(v) = try_extension(".ts") {
+        return Ok(v);
+      }
+      println!("Trying {}.js...", module_name);
+      try_extension(".js")
     }
   }
 
@@ -161,16 +198,7 @@ impl DenoDir {
     let (module_name, filename) =
       self.resolve_module(module_specifier, containing_file)?;
 
-    let result = self
-      .get_source_code(module_name.as_str(), filename.as_str())
-      .and_then(|source_code| {
-        Ok(CodeFetchOutput {
-          module_name,
-          filename,
-          source_code,
-          maybe_output_code: None,
-        })
-      });
+    let result = self.get_source_code(module_name.as_str(), filename.as_str());
     let out = match result {
       Err(err) => {
         if err.kind() == ErrorKind::NotFound {
