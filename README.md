@@ -46,6 +46,8 @@
 
 * Always dies on uncaught errors.
 
+* Aims to support top-level `await`.
+
 * Aims to be browser compatible.
 
 ## Install
