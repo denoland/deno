@@ -993,7 +993,7 @@ fn handle_truncate(
   let msg = base.msg_as_truncate().unwrap();
   let name = msg.name().unwrap();
   let len = msg.len();
-  blocking!(base.sync(), || -> OpResult {
+  blocking!(base.sync(), || {
     debug!("handle_truncate {} {}", name, len);
     let f = fs::OpenOptions::new().write(true).open(name)?;
     f.set_len(len as u64)?;
