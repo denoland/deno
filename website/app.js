@@ -239,10 +239,14 @@ export async function main() {
 
   c3.generate({
     bindto: "#duration-chart",
-    data: { columns: durationColumns },
+    data: {
+      columns: durationColumns,
+      onclick: viewCommitOnClick(sha1List)
+    },
     axis: {
       x: {
         type: "category",
+        show: false,
         categories: sha1ShortList
       },
       y: {
