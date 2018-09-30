@@ -101,6 +101,7 @@ ts_sources = [
   "js/util.ts",
   "js/v8_source_maps.ts",
   "js/write_file.ts",
+  "js/copy_file.ts",
   "tsconfig.json",
 
   # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
