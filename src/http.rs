@@ -1,9 +1,10 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
-use errors::DenoResult;
+use errors::{DenoError, DenoResult};
+use futures::stream::Concat2;
+use futures::{Async, Future};
 use tokio_util;
 
-// use futures::Future;
 use futures::Stream;
 use hyper;
 use hyper::client::Client;
@@ -27,21 +28,51 @@ pub fn get_client() -> Client<Connector, hyper::Body> {
   Client::builder().build(c)
 }
 
+struct FetchedBodyFuture {
+  body: Concat2<hyper::Body>,
+  status: hyper::StatusCode,
+}
+
+struct FetchedBody {
+  body: hyper::Chunk,
+  status: hyper::StatusCode,
+}
+
+impl Future for FetchedBodyFuture {
+  type Item = FetchedBody;
+  type Error = hyper::Error;
+  fn poll(&mut self) -> Result<Async<FetchedBody>, hyper::Error> {
+    match self.body.poll()? {
+      Async::Ready(body) => Ok(Async::Ready(FetchedBody {
+        body,
+        status: self.status.clone(),
+      })),
+      Async::NotReady => Ok(Async::NotReady),
+    }
+  }
+}
+
 // The CodeFetch message is used to load HTTP javascript resources and expects a
 // synchronous response, this utility method supports that.
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<String> {
   let url = module_name.parse::<Uri>().unwrap();
   let client = get_client();
-  let get_future = client.get(url);
-  let response = tokio_util::block_on(get_future)?;
-  if !response.status().is_success() {
-    Err(io::Error::new(
+  let fetch_future = client.get(url).and_then(|response| {
+    let status = response.status();
+    FetchedBodyFuture {
+      body: response.into_body().concat2(),
+      status,
+    }
+  });
+
+  let fetch_result = tokio_util::block_on(fetch_future)?;
+  if !fetch_result.status.is_success() {
+    return Err(DenoError::from(io::Error::new(
       io::ErrorKind::NotFound,
       format!("cannot load from '{}'", module_name),
-    ))?;
+    )));
   }
-  let body = tokio_util::block_on(response.into_body().concat2())?;
-  Ok(String::from_utf8(body.to_vec()).unwrap())
+  Ok(String::from_utf8(fetch_result.body.to_vec()).unwrap())
 }
 
 /* TODO(ry) Re-enabled this test. Disabling to work around bug in #782.
