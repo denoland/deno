@@ -20,6 +20,7 @@ union Any {
   ReadFile,
   ReadFileRes,
   WriteFile,
+  CopyFile,
   Rename,
   Readlink,
   ReadlinkRes,
@@ -212,6 +213,11 @@ table WriteFile {
   data: [ubyte];
   perm: uint;
   // perm specified by https://godoc.org/os#FileMode
+}
+
+table CopyFile {
+  from: string;
+  to: string;
 }
 
 table Rename {

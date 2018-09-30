@@ -80,6 +80,7 @@ pub fn msg_from_js(
     msg::Any::Truncate => handle_truncate,
     msg::Any::WriteFile => handle_write_file,
     msg::Any::Exit => handle_exit,
+    msg::Any::CopyFile => handle_copy_file,
     _ => panic!(format!(
       "Unhandled message {}",
       msg::enum_name_any(msg_type)
@@ -744,6 +745,27 @@ fn handle_read_file(
         ..Default::default()
       },
     ))
+  })
+}
+
+fn handle_copy_file(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let msg = base.msg_as_copy_file().unwrap();
+  let from = PathBuf::from(msg.from().unwrap());
+  let to = PathBuf::from(msg.to().unwrap());
+
+  if !state.flags.allow_write {
+    return odd_future(permission_denied());
+  }
+
+  debug!("handle_copy_file {} {}", from.display(), to.display());
+  blocking!(base.sync(), || {
+    fs::copy(&from, &to)?;
+    Ok(empty_buf())
   })
 }
 
