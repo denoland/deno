@@ -96,6 +96,7 @@ ts_sources = [
   "js/text_encoding.ts",
   "js/timers.ts",
   "js/trace.ts",
+  "js/truncate.ts",
   "js/types.ts",
   "js/util.ts",
   "js/v8_source_maps.ts",

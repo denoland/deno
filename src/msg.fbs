@@ -28,6 +28,7 @@ union Any {
   Stat,
   StatRes,
   SetEnv,
+  Truncate,
   Open,
   OpenRes,
   Read,
@@ -251,6 +252,18 @@ table StatRes {
   created:ulong;
   mode: uint;
   has_mode: bool; // false on windows
+}
+
+table Truncate {
+  name: string;
+  len: uint;
+}
+
+table WriteFileSync {
+  filename: string;
+  data: [ubyte];
+  perm: uint;
+  // perm specified by https://godoc.org/os#FileMode
 }
 
 table Open {

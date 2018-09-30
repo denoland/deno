@@ -46,7 +46,7 @@
 
 * Always dies on uncaught errors.
 
-* Supports top-level `await`.
+* [Aims to support top-level `await`.](https://github.com/denoland/deno/issues/471)
 
 * Aims to be browser compatible.
 
