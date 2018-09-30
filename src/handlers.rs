@@ -991,11 +991,11 @@ fn handle_truncate(
   }
 
   let msg = base.msg_as_truncate().unwrap();
-  let name = msg.name().unwrap();
+  let filename = String::from(msg.name().unwrap());
   let len = msg.len();
   blocking!(base.sync(), || {
-    debug!("handle_truncate {} {}", name, len);
-    let f = fs::OpenOptions::new().write(true).open(name)?;
+    debug!("handle_truncate {} {}", filename, len);
+    let f = fs::OpenOptions::new().write(true).open(&filename)?;
     f.set_len(len as u64)?;
     Ok(empty_buf())
   })
