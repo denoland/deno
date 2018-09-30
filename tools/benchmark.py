@@ -120,6 +120,9 @@ def run_syscall_count_benchmark(deno_path):
     syscall_count_map = {}
     syscall_count_map["hello"] = get_strace_summary(
         [deno_path, "tests/002_hello.ts", "--reload"])["total"]["calls"]
+    syscall_count_map["fetch_deps"] = get_strace_summary(
+        [deno_path, "tests/fetch_deps.ts", "--reload",
+         "--allow-net"])["total"]["calls"]
     return syscall_count_map
 
 
