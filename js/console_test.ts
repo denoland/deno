@@ -68,7 +68,7 @@ test(function consoleTestStringifyCircular() {
 
   nestedObj.o = circularObj;
 
-  const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], asyncMethod: [AsyncFunction: asyncMethod], generatorMethod: [GeneratorFunction: generatorMethod], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: {}, arr: [ 1, "s", false, null, [Circular] ], baseClass: Base { a: 1 } } }`;
+  const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], asyncMethod: [AsyncFunction: asyncMethod], generatorMethod: [GeneratorFunction: generatorMethod], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: [object], arr: [object], baseClass: [object] } }`;
 
   assertEqual(stringify(1), "1");
   assertEqual(stringify("s"), "s");
@@ -89,6 +89,23 @@ test(function consoleTestStringifyCircular() {
   assertEqual(
     stringify(console),
     "Console { printFunc: [Function], debug: [Function: log], info: [Function: log], error: [Function: warn] }"
+  );
+});
+
+test(function consoleTestStringifyWithDepth() {
+  const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
+  assertEqual(
+    stringifyArgs([nestedObj], { depth: 3 }),
+    "{ a: { b: { c: [object] } } }"
+  );
+  assertEqual(
+    stringifyArgs([nestedObj], { depth: 4 }),
+    "{ a: { b: { c: { d: [object] } } } }"
+  );
+  assertEqual(stringifyArgs([nestedObj], { depth: 0 }), "[object]");
+  assertEqual(
+    stringifyArgs([nestedObj], { depth: null }),
+    "{ a: { b: [object] } }"
   );
 });
 

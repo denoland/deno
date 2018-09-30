@@ -1,5 +1,13 @@
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
+type ConsoleOptions = Partial<{
+  showHidden: boolean;
+  depth: number;
+  colors: boolean;
+}>;
+
+// Default depth of logging nested objects
+const DEFAULT_MAX_DEPTH = 2;
 
 // tslint:disable-next-line:no-any
 function getClassInstanceName(instance: any): string {
@@ -25,11 +33,16 @@ function createFunctionString(value: Function, ctx: ConsoleContext): string {
   return `[${cstrName}]`;
 }
 
-// tslint:disable-next-line:no-any
-function createArrayString(value: any[], ctx: ConsoleContext): string {
+function createArrayString(
+  // tslint:disable-next-line:no-any
+  value: any[],
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
   const entries: string[] = [];
   for (const el of value) {
-    entries.push(stringifyWithQuotes(ctx, el));
+    entries.push(stringifyWithQuotes(ctx, el, level + 1, maxLevel));
   }
   ctx.delete(value);
   if (entries.length === 0) {
@@ -38,8 +51,13 @@ function createArrayString(value: any[], ctx: ConsoleContext): string {
   return `[ ${entries.join(", ")} ]`;
 }
 
-// tslint:disable-next-line:no-any
-function createObjectString(value: any, ctx: ConsoleContext): string {
+function createObjectString(
+  // tslint:disable-next-line:no-any
+  value: any,
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
   const entries: string[] = [];
   let baseString = "";
 
@@ -50,7 +68,9 @@ function createObjectString(value: any, ctx: ConsoleContext): string {
   }
 
   for (const key of Object.keys(value)) {
-    entries.push(`${key}: ${stringifyWithQuotes(ctx, value[key])}`);
+    entries.push(
+      `${key}: ${stringifyWithQuotes(ctx, value[key], level + 1, maxLevel)}`
+    );
   }
 
   ctx.delete(value);
@@ -68,8 +88,13 @@ function createObjectString(value: any, ctx: ConsoleContext): string {
   return baseString;
 }
 
-// tslint:disable-next-line:no-any
-function stringify(ctx: ConsoleContext, value: any): string {
+function stringify(
+  ctx: ConsoleContext,
+  // tslint:disable-next-line:no-any
+  value: any,
+  level: number,
+  maxLevel: number
+): string {
   switch (typeof value) {
     case "string":
       return value;
@@ -88,15 +113,20 @@ function stringify(ctx: ConsoleContext, value: any): string {
       if (ctx.has(value)) {
         return "[Circular]";
       }
+
+      if (level >= maxLevel) {
+        return `[object]`;
+      }
+
       ctx.add(value);
 
       if (value instanceof Error) {
         return value.stack! || "";
       } else if (Array.isArray(value)) {
         // tslint:disable-next-line:no-any
-        return createArrayString(value as any[], ctx);
+        return createArrayString(value as any[], ctx, level, maxLevel);
       } else {
-        return createObjectString(value, ctx);
+        return createObjectString(value, ctx, level, maxLevel);
       }
     default:
       return "[Not Implemented]";
@@ -104,25 +134,42 @@ function stringify(ctx: ConsoleContext, value: any): string {
 }
 
 // Print strings when they are inside of arrays or objects with quotes
-// tslint:disable-next-line:no-any
-function stringifyWithQuotes(ctx: ConsoleContext, value: any): string {
+function stringifyWithQuotes(
+  ctx: ConsoleContext,
+  // tslint:disable-next-line:no-any
+  value: any,
+  level: number,
+  maxLevel: number
+): string {
   switch (typeof value) {
     case "string":
       return `"${value}"`;
     default:
-      return stringify(ctx, value);
+      return stringify(ctx, value, level, maxLevel);
   }
 }
 
-// tslint:disable-next-line:no-any
-export function stringifyArgs(args: any[]): string {
+export function stringifyArgs(
+  // tslint:disable-next-line:no-any
+  args: any[],
+  options: ConsoleOptions = {}
+): string {
   const out: string[] = [];
   for (const a of args) {
     if (typeof a === "string") {
       out.push(a);
     } else {
-      // tslint:disable-next-line:no-any
-      out.push(stringify(new Set<any>(), a));
+      out.push(
+        // use default maximum depth for null or undefined argument
+        stringify(
+          // tslint:disable-next-line:no-any
+          new Set<any>(),
+          a,
+          0,
+          // tslint:disable-next-line:triple-equals
+          options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
+        )
+      );
     }
   }
   return out.join(" ");
@@ -140,6 +187,11 @@ export class Console {
 
   debug = this.log;
   info = this.log;
+
+  // tslint:disable-next-line:no-any
+  dir(obj: any, options: ConsoleOptions = {}) {
+    this.printFunc(stringifyArgs([obj], options));
+  }
 
   // tslint:disable-next-line:no-any
   warn(...args: any[]): void {
