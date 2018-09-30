@@ -1,61 +1,79 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
+use errors;
 use errors::DenoError;
 use errors::DenoResult;
-use flatbuffers::FlatBufferBuilder;
 use fs as deno_fs;
+use isolate::Buf;
+use isolate::IsolateState;
+use isolate::Op;
+use msg;
+
+use files;
+use flatbuffers::FlatBufferBuilder;
 use futures;
+use futures::future::poll_fn;
 use futures::sync::oneshot;
+use futures::Poll;
 use hyper;
 use hyper::rt::{Future, Stream};
 use hyper::Client;
-use isolate::from_c;
-use libdeno;
-use libdeno::{deno_buf, isolate};
-use msg;
 use remove_dir_all::remove_dir_all;
 use std;
 use std::fs;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
+use tokio;
 use tokio::timer::Delay;
-
-// Buf represents a byte array returned from a "Op".
-// The message might be empty (which will be translated into a null object on
-// the javascript side) or it is a heap allocated opaque sequence of bytes.
-// Usually a flatbuffer message.
-type Buf = Option<Box<[u8]>>;
-
-// JS promises in Deno map onto a specific Future
-// which yields either a DenoError or a byte array.
-type Op = Future<Item = Buf, Error = DenoError>;
+use tokio_io::AsyncRead;
+use tokio_io::AsyncWrite;
+use tokio_threadpool;
 
 type OpResult = DenoResult<Buf>;
 
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type Handler = fn(i: *const isolate, base: &msg::Base) -> Box<Op>;
+type Handler =
+  fn(state: Arc<IsolateState>, base: &msg::Base, data: &'static mut [u8])
+    -> Box<Op>;
 
-pub extern "C" fn msg_from_js(i: *const isolate, buf: deno_buf) {
-  let bytes = unsafe { std::slice::from_raw_parts(buf.data_ptr, buf.data_len) };
-  let base = msg::get_root_as_base(bytes);
+// Hopefully Rust optimizes this away.
+fn empty_buf() -> Buf {
+  Box::new([])
+}
+
+pub fn msg_from_js(
+  state: Arc<IsolateState>,
+  control: &[u8],
+  data: &'static mut [u8],
+) -> (bool, Box<Op>) {
+  let base = msg::get_root_as_base(control);
+  let is_sync = base.sync();
   let msg_type = base.msg_type();
   let cmd_id = base.cmd_id();
   let handler: Handler = match msg_type {
     msg::Any::Start => handle_start,
     msg::Any::CodeFetch => handle_code_fetch,
     msg::Any::CodeCache => handle_code_cache,
+    msg::Any::SetTimeout => handle_set_timeout,
     msg::Any::Environ => handle_env,
     msg::Any::FetchReq => handle_fetch_req,
     msg::Any::TimerStart => handle_timer_start,
     msg::Any::TimerClear => handle_timer_clear,
     msg::Any::MakeTempDir => handle_make_temp_dir,
     msg::Any::Mkdir => handle_mkdir,
+    msg::Any::Open => handle_open,
+    msg::Any::Read => handle_read,
+    msg::Any::Write => handle_write,
     msg::Any::Remove => handle_remove,
     msg::Any::ReadFile => handle_read_file,
     msg::Any::Rename => handle_rename,
+    msg::Any::Readlink => handle_read_link,
     msg::Any::Symlink => handle_symlink,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::Stat => handle_stat,
@@ -67,73 +85,49 @@ pub extern "C" fn msg_from_js(i: *const isolate, buf: deno_buf) {
     )),
   };
 
-  let future = handler(i, &base);
-  let future = future.or_else(move |err| {
-    // No matter whether we got an Err or Ok, we want a serialized message to
-    // send back. So transform the DenoError into a deno_buf.
-    let builder = &mut FlatBufferBuilder::new();
-    let errmsg_offset = builder.create_string(&format!("{}", err));
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        error: Some(errmsg_offset),
-        error_kind: err.kind(),
-        ..Default::default()
-      },
-    ))
-  });
-
-  let isolate = from_c(i);
-  if base.sync() {
-    // Execute future synchronously.
-    // println!("sync handler {}", msg::enum_name_any(msg_type));
-    let maybe_box_u8 = future.wait().unwrap();
-    match maybe_box_u8 {
-      None => {}
-      Some(box_u8) => {
-        let buf = deno_buf_from(box_u8);
-        // Set the synchronous response, the value returned from isolate.send().
-        unsafe { libdeno::deno_set_response(i, buf) }
-      }
-    }
-  } else {
-    // Execute future asynchornously.
-    let future = future.and_then(move |maybe_box_u8| {
-      let buf = match maybe_box_u8 {
-        Some(box_u8) => deno_buf_from(box_u8),
-        None => {
-          // async RPCs that return None still need to
-          // send a message back to signal completion.
-          let builder = &mut FlatBufferBuilder::new();
-          deno_buf_from(
-            serialize_response(
-              cmd_id,
-              builder,
-              msg::BaseArgs {
-                ..Default::default()
-              },
-            ).unwrap(),
-          )
-        }
+  let op: Box<Op> = handler(state.clone(), &base, data);
+  let boxed_op = Box::new(
+    op.or_else(move |err: DenoError| -> DenoResult<Buf> {
+      debug!("op err {}", err);
+      // No matter whether we got an Err or Ok, we want a serialized message to
+      // send back. So transform the DenoError into a deno_buf.
+      let builder = &mut FlatBufferBuilder::new();
+      let errmsg_offset = builder.create_string(&format!("{}", err));
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          error: Some(errmsg_offset),
+          error_kind: err.kind(),
+          ..Default::default()
+        },
+      ))
+    }).and_then(move |buf: Buf| -> DenoResult<Buf> {
+      // Handle empty responses. For sync responses we just want
+      // to send null. For async we want to send a small message
+      // with the cmd_id.
+      let buf = if is_sync || buf.len() > 0 {
+        buf
+      } else {
+        let builder = &mut FlatBufferBuilder::new();
+        serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            ..Default::default()
+          },
+        )
       };
-      // TODO(ry) make this thread safe.
-      unsafe { libdeno::deno_send(i, buf) };
-      Ok(())
-    });
-    isolate.rt.spawn(future);
-  }
-}
+      Ok(buf)
+    }),
+  );
 
-fn deno_buf_from(x: Box<[u8]>) -> deno_buf {
-  let len = x.len();
-  let ptr = Box::into_raw(x);
-  deno_buf {
-    alloc_ptr: 0 as *mut u8,
-    alloc_len: 0,
-    data_ptr: ptr as *mut u8,
-    data_len: len,
-  }
+  debug!(
+    "msg_from_js {} sync {}",
+    msg::enum_name_any(msg_type),
+    base.sync()
+  );
+  return (base.sync(), boxed_op);
 }
 
 fn permission_denied() -> DenoError {
@@ -150,16 +144,24 @@ fn not_implemented() -> DenoError {
   ))
 }
 
-fn handle_exit(_i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_exit(
+  _config: Arc<IsolateState>,
+  base: &msg::Base,
+  _data: &'static mut [u8],
+) -> Box<Op> {
   let msg = base.msg_as_exit().unwrap();
   std::process::exit(msg.code())
 }
 
-fn handle_start(i: *const isolate, base: &msg::Base) -> Box<Op> {
-  let isolate = from_c(i);
+fn handle_start(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let mut builder = FlatBufferBuilder::new();
 
-  let argv = isolate.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+  let argv = state.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
 
   let cwd_path = std::env::current_dir().unwrap();
@@ -171,8 +173,8 @@ fn handle_start(i: *const isolate, base: &msg::Base) -> Box<Op> {
     &msg::StartResArgs {
       cwd: Some(cwd_off),
       argv: Some(argv_off),
-      debug_flag: isolate.flags.log_debug,
-      recompile_flag: isolate.flags.recompile,
+      debug_flag: state.flags.log_debug,
+      recompile_flag: state.flags.recompile,
       ..Default::default()
     },
   );
@@ -199,7 +201,7 @@ fn serialize_response(
   let data = builder.finished_data();
   // println!("serialize_response {:x?}", data);
   let vec = data.to_vec();
-  Some(vec.into_boxed_slice())
+  vec.into_boxed_slice()
 }
 
 fn ok_future(buf: Buf) -> Box<Op> {
@@ -212,22 +214,22 @@ fn odd_future(err: DenoError) -> Box<Op> {
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L100-L154
-fn handle_code_fetch(i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_code_fetch(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_code_fetch().unwrap();
   let cmd_id = base.cmd_id();
   let module_specifier = msg.module_specifier().unwrap();
   let containing_file = msg.containing_file().unwrap();
-  let isolate = from_c(i);
 
-  assert_eq!(
-    isolate.dir.root.join("gen"),
-    isolate.dir.gen,
-    "Sanity check"
-  );
+  assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
-    let out = isolate.dir.code_fetch(module_specifier, containing_file)?;
+    let out = state.dir.code_fetch(module_specifier, containing_file)?;
     let mut msg_args = msg::CodeFetchResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
@@ -254,36 +256,63 @@ fn handle_code_fetch(i: *const isolate, base: &msg::Base) -> Box<Op> {
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L156-L169
-fn handle_code_cache(i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_code_cache(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_code_cache().unwrap();
   let filename = msg.filename().unwrap();
   let source_code = msg.source_code().unwrap();
   let output_code = msg.output_code().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
-    let isolate = from_c(i);
-    isolate.dir.code_cache(filename, source_code, output_code)?;
-    Ok(None)
+    state.dir.code_cache(filename, source_code, output_code)?;
+    Ok(empty_buf())
   }()))
 }
 
-fn handle_set_env(i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_set_timeout(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let msg = base.msg_as_set_timeout().unwrap();
+  let val = msg.timeout() as isize;
+  state
+    .timeout
+    .swap(val, std::sync::atomic::Ordering::Relaxed);
+  ok_future(empty_buf())
+}
+
+fn handle_set_env(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_set_env().unwrap();
   let key = msg.key().unwrap();
   let value = msg.value().unwrap();
 
-  let isolate = from_c(i);
-  if !isolate.flags.allow_env {
+  if !state.flags.allow_env {
     return odd_future(permission_denied());
   }
 
   std::env::set_var(key, value);
-  ok_future(None)
+  ok_future(empty_buf())
 }
 
-fn handle_env(i: *const isolate, base: &msg::Base) -> Box<Op> {
-  let isolate = from_c(i);
+fn handle_env(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
-  if !isolate.flags.allow_env {
+
+  if !state.flags.allow_env {
     return odd_future(permission_denied());
   }
 
@@ -321,22 +350,28 @@ fn handle_env(i: *const isolate, base: &msg::Base) -> Box<Op> {
   ))
 }
 
-fn handle_fetch_req(i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_fetch_req(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_fetch_req().unwrap();
   let cmd_id = base.cmd_id();
   let id = msg.id();
   let url = msg.url().unwrap();
-  let isolate = from_c(i);
 
-  if !isolate.flags.allow_net {
+  if !state.flags.allow_net {
     return odd_future(permission_denied());
   }
 
   let url = url.parse::<hyper::Uri>().unwrap();
   let client = Client::new();
 
+  debug!("Before fetch {}", url);
   let future = client.get(url).and_then(move |res| {
     let status = res.status().as_u16() as i32;
+    debug!("fetch {}", status);
 
     let headers = {
       let map = res.headers();
@@ -360,6 +395,7 @@ fn handle_fetch_req(i: *const isolate, base: &msg::Base) -> Box<Op> {
 
   let future = future.map_err(|err| -> DenoError { err.into() }).and_then(
     move |(status, body, headers)| {
+      debug!("fetch body ");
       let builder = &mut FlatBufferBuilder::new();
       // Send the first message without a body. This is just to indicate
       // what status code.
@@ -421,24 +457,66 @@ where
   (delay_task, cancel_tx)
 }
 
-fn handle_make_temp_dir(i: *const isolate, base: &msg::Base) -> Box<Op> {
+// This is just type conversion. Implement From trait?
+// See https://github.com/tokio-rs/tokio/blob/ffd73a64e7ec497622b7f939e38017afe7124dc4/tokio-fs/src/lib.rs#L76-L85
+fn convert_blocking<F>(f: F) -> Poll<Buf, DenoError>
+where
+  F: FnOnce() -> DenoResult<Buf>,
+{
+  use futures::Async::*;
+  match tokio_threadpool::blocking(f) {
+    Ok(Ready(Ok(v))) => Ok(v.into()),
+    Ok(Ready(Err(err))) => Err(err),
+    Ok(NotReady) => Ok(NotReady),
+    Err(_) => panic!("blocking error"),
+  }
+}
+
+// TODO Do not use macro for the blocking function.. We should instead be able
+// to do this with a normal function, but there seems to some type system
+// issues. The type of this function should be something like this:
+//   fn blocking<F>(is_sync: bool, f: F) -> Box<Op>
+//   where F: FnOnce() -> DenoResult<Buf>
+macro_rules! blocking {
+  ($is_sync:expr,$fn:expr) => {
+    if $is_sync {
+      // If synchronous, execute the function immediately on the main thread.
+      Box::new(futures::future::result($fn()))
+    } else {
+      // Otherwise dispatch to thread pool.
+      Box::new(poll_fn(move || convert_blocking($fn)))
+    }
+  };
+}
+
+fn handle_make_temp_dir(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let base = Box::new(*base);
   let msg = base.msg_as_make_temp_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let dir = msg.dir();
-  let prefix = msg.prefix();
-  let suffix = msg.suffix();
 
-  let isolate = from_c(i);
-  if !isolate.flags.allow_write {
+  if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
-  // TODO Use blocking() here.
-  Box::new(futures::future::result(|| -> OpResult {
+
+  let dir = msg.dir().map(PathBuf::from);
+  let prefix = msg.prefix().map(String::from);
+  let suffix = msg.suffix().map(String::from);
+
+  blocking!(base.sync(), || -> OpResult {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/isolate/issues/627.
     // We can't assume that paths are always valid utf8 strings.
-    let path = deno_fs::make_temp_dir(dir.map(Path::new), prefix, suffix)?;
+    let path = deno_fs::make_temp_dir(
+      // Converting Option<String> to Option<&str>
+      dir.as_ref().map(|x| &**x),
+      prefix.as_ref().map(|x| &**x),
+      suffix.as_ref().map(|x| &**x),
+    )?;
     let builder = &mut FlatBufferBuilder::new();
     let path_off = builder.create_string(path.to_str().unwrap());
     let msg = msg::MakeTempDirRes::create(
@@ -457,59 +535,194 @@ fn handle_make_temp_dir(i: *const isolate, base: &msg::Base) -> Box<Op> {
         ..Default::default()
       },
     ))
-  }()))
+  })
 }
 
-fn handle_mkdir(i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_mkdir(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_mkdir().unwrap();
   let mode = msg.mode();
-  let path = msg.path().unwrap();
-  let isolate = from_c(i);
-  if !isolate.flags.allow_write {
+  let path = String::from(msg.path().unwrap());
+
+  if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
-  // TODO Use tokio_threadpool.
-  Box::new(futures::future::result(|| -> OpResult {
+
+  blocking!(base.sync(), || {
     debug!("handle_mkdir {}", path);
-    deno_fs::mkdir(Path::new(path), mode)?;
-    Ok(None)
-  }()))
+    deno_fs::mkdir(Path::new(&path), mode)?;
+    Ok(empty_buf())
+  })
 }
 
-fn handle_remove(i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_open(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+  let msg = base.msg_as_open().unwrap();
+  let filename = PathBuf::from(msg.filename().unwrap());
+  // TODO let perm = msg.perm();
+
+  let op = tokio::fs::File::open(filename)
+    .map_err(|err| DenoError::from(err))
+    .and_then(move |fs_file| -> OpResult {
+      let dfile = files::add_fs_file(fs_file);
+      let builder = &mut FlatBufferBuilder::new();
+      let msg = msg::OpenRes::create(
+        builder,
+        &msg::OpenResArgs {
+          fd: dfile.fd,
+          ..Default::default()
+        },
+      );
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          msg: Some(msg.as_union_value()),
+          msg_type: msg::Any::OpenRes,
+          ..Default::default()
+        },
+      ))
+    });
+  Box::new(op)
+}
+
+fn handle_read(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  let cmd_id = base.cmd_id();
+  let msg = base.msg_as_read().unwrap();
+  let fd = msg.fd();
+
+  match files::lookup(fd) {
+    None => odd_future(errors::new(
+      errors::ErrorKind::BadFileDescriptor,
+      String::from("Bad File Descriptor"),
+    )),
+    Some(mut dfile) => {
+      let op = futures::future::poll_fn(move || {
+        let poll = dfile.poll_read(data);
+        poll
+      }).map_err(|err| DenoError::from(err))
+      .and_then(move |nread: usize| {
+        let builder = &mut FlatBufferBuilder::new();
+        let msg = msg::ReadRes::create(
+          builder,
+          &msg::ReadResArgs {
+            nread: nread as u32,
+            eof: nread == 0,
+            ..Default::default()
+          },
+        );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            msg: Some(msg.as_union_value()),
+            msg_type: msg::Any::ReadRes,
+            ..Default::default()
+          },
+        ))
+      });
+      Box::new(op)
+    }
+  }
+}
+
+fn handle_write(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  let cmd_id = base.cmd_id();
+  let msg = base.msg_as_write().unwrap();
+  let fd = msg.fd();
+
+  match files::lookup(fd) {
+    None => odd_future(errors::new(
+      errors::ErrorKind::BadFileDescriptor,
+      String::from("Bad File Descriptor"),
+    )),
+    Some(mut dfile) => {
+      let op = futures::future::poll_fn(move || {
+        let poll = dfile.poll_write(data);
+        poll
+      }).map_err(|err| DenoError::from(err))
+      .and_then(move |bytes_written: usize| {
+        let builder = &mut FlatBufferBuilder::new();
+        let msg = msg::WriteRes::create(
+          builder,
+          &msg::WriteResArgs {
+            nbyte: bytes_written as u32,
+            ..Default::default()
+          },
+        );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            msg: Some(msg.as_union_value()),
+            msg_type: msg::Any::WriteRes,
+            ..Default::default()
+          },
+        ))
+      });
+      Box::new(op)
+    }
+  }
+}
+
+fn handle_remove(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_remove().unwrap();
-  let path = msg.path().unwrap();
+  let path = PathBuf::from(msg.path().unwrap());
   let recursive = msg.recursive();
-  let isolate = from_c(i);
-  if !isolate.flags.allow_write {
+  if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
-  // TODO Use tokio_threadpool.
-  Box::new(futures::future::result(|| -> OpResult {
-    debug!("handle_remove {}", path);
-    let path_ = Path::new(&path);
-    let metadata = fs::metadata(&path_)?;
+  blocking!(base.sync(), || {
+    debug!("handle_remove {}", path.display());
+    let metadata = fs::metadata(&path)?;
     if metadata.is_file() {
-      fs::remove_file(&path_)?;
+      fs::remove_file(&path)?;
     } else {
       if recursive {
-        remove_dir_all(&path_)?;
+        remove_dir_all(&path)?;
       } else {
-        fs::remove_dir(&path_)?;
+        fs::remove_dir(&path)?;
       }
     }
-    Ok(None)
-  }()))
+    Ok(empty_buf())
+  })
 }
 
 // Prototype https://github.com/denoland/isolate/blob/golang/os.go#L171-L184
-fn handle_read_file(_i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_read_file(
+  _config: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
-  let filename = String::from(msg.filename().unwrap());
-  Box::new(futures::future::result(|| -> OpResult {
-    debug!("handle_read_file {}", filename);
-    let vec = fs::read(Path::new(&filename))?;
+  let filename = PathBuf::from(msg.filename().unwrap());
+  debug!("handle_read_file {}", filename.display());
+  blocking!(base.sync(), || {
+    let vec = fs::read(&filename)?;
     // Build the response message. memcpy data into msg.
     // TODO(ry) zero-copy.
     let builder = &mut FlatBufferBuilder::new();
@@ -530,7 +743,7 @@ fn handle_read_file(_i: *const isolate, base: &msg::Base) -> Box<Op> {
         ..Default::default()
       },
     ))
-  }()))
+  })
 }
 
 macro_rules! to_seconds {
@@ -553,20 +766,24 @@ fn get_mode(_perm: fs::Permissions) -> u32 {
   0
 }
 
-fn handle_stat(_i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_stat(
+  _config: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let filename = String::from(msg.filename().unwrap());
+  let filename = PathBuf::from(msg.filename().unwrap());
   let lstat = msg.lstat();
 
-  Box::new(futures::future::result(|| -> OpResult {
+  blocking!(base.sync(), || {
     let builder = &mut FlatBufferBuilder::new();
-    debug!("handle_stat {} {}", filename, lstat);
-    let path = Path::new(&filename);
+    debug!("handle_stat {} {}", filename.display(), lstat);
     let metadata = if lstat {
-      fs::symlink_metadata(path)?
+      fs::symlink_metadata(&filename)?
     } else {
-      fs::metadata(path)?
+      fs::metadata(&filename)?
     };
 
     let msg = msg::StatRes::create(
@@ -593,51 +810,61 @@ fn handle_stat(_i: *const isolate, base: &msg::Base) -> Box<Op> {
         ..Default::default()
       },
     ))
-  }()))
+  })
 }
 
-fn handle_write_file(i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_write_file(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
   let msg = base.msg_as_write_file().unwrap();
-  let filename = String::from(msg.filename().unwrap());
-  let data = msg.data().unwrap();
-  let perm = msg.perm();
 
-  let isolate = from_c(i);
-  if !isolate.flags.allow_write {
+  if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
-  Box::new(futures::future::result(|| -> OpResult {
-    debug!("handle_write_file {}", filename);
+
+  let filename = String::from(msg.filename().unwrap());
+  let perm = msg.perm();
+
+  blocking!(base.sync(), || -> OpResult {
+    debug!("handle_write_file {} {}", filename, data.len());
     deno_fs::write_file(Path::new(&filename), data, perm)?;
-    Ok(None)
-  }()))
+    Ok(empty_buf())
+  })
 }
 
-fn remove_timer(i: *const isolate, timer_id: u32) {
-  let isolate = from_c(i);
-  isolate.timers.remove(&timer_id);
+fn remove_timer(state: Arc<IsolateState>, timer_id: u32) {
+  let mut timers = state.timers.lock().unwrap();
+  timers.remove(&timer_id);
 }
 
 // Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L25-L39
-fn handle_timer_start(i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_timer_start(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   debug!("handle_timer_start");
   let msg = base.msg_as_timer_start().unwrap();
   let cmd_id = base.cmd_id();
   let timer_id = msg.id();
   let delay = msg.delay();
-  let isolate = from_c(i);
 
+  let config2 = state.clone();
   let future = {
     let (delay_task, cancel_delay) = set_timeout(
       move || {
-        remove_timer(i, timer_id);
+        remove_timer(config2, timer_id);
       },
       delay,
     );
-    isolate.timers.insert(timer_id, cancel_delay);
+    let mut timers = state.timers.lock().unwrap();
+    timers.insert(timer_id, cancel_delay);
     delay_task
   };
-  Box::new(future.then(move |result| {
+  let r = Box::new(future.then(move |result| {
     let builder = &mut FlatBufferBuilder::new();
     let msg = msg::TimerReady::create(
       builder,
@@ -656,49 +883,97 @@ fn handle_timer_start(i: *const isolate, base: &msg::Base) -> Box<Op> {
         ..Default::default()
       },
     ))
-  }))
+  }));
+  r
 }
 
 // Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L40-L43
-fn handle_timer_clear(i: *const isolate, base: &msg::Base) -> Box<Op> {
+fn handle_timer_clear(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
   let msg = base.msg_as_timer_clear().unwrap();
   debug!("handle_timer_clear");
-  remove_timer(i, msg.id());
-  ok_future(None)
+  remove_timer(state, msg.id());
+  ok_future(empty_buf())
 }
 
-fn handle_rename(i: *const isolate, base: &msg::Base) -> Box<Op> {
-  let isolate = from_c(i);
-  if !isolate.flags.allow_write {
+fn handle_rename(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
   let msg = base.msg_as_rename().unwrap();
-  let oldpath = String::from(msg.oldpath().unwrap());
-  let newpath = String::from(msg.newpath().unwrap());
-  Box::new(futures::future::result(|| -> OpResult {
-    debug!("handle_rename {} {}", oldpath, newpath);
-    fs::rename(Path::new(&oldpath), Path::new(&newpath))?;
-    Ok(None)
-  }()))
+  let oldpath = PathBuf::from(msg.oldpath().unwrap());
+  let newpath = PathBuf::from(msg.newpath().unwrap());
+  blocking!(base.sync(), || -> OpResult {
+    debug!("handle_rename {} {}", oldpath.display(), newpath.display());
+    fs::rename(&oldpath, &newpath)?;
+    Ok(empty_buf())
+  })
 }
 
-fn handle_symlink(i: *const isolate, base: &msg::Base) -> Box<Op> {
-  let deno = from_c(i);
-  if !deno.flags.allow_write {
+fn handle_symlink(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
   // TODO Use type for Windows.
   if cfg!(windows) {
     return odd_future(not_implemented());
-  } else {
-    let msg = base.msg_as_symlink().unwrap();
-    let oldname = String::from(msg.oldname().unwrap());
-    let newname = String::from(msg.newname().unwrap());
-    Box::new(futures::future::result(|| -> OpResult {
-      debug!("handle_symlink {} {}", oldname, newname);
-      #[cfg(any(unix))]
-      std::os::unix::fs::symlink(Path::new(&oldname), Path::new(&newname))?;
-      Ok(None)
-    }()))
   }
+
+  let msg = base.msg_as_symlink().unwrap();
+  let oldname = PathBuf::from(msg.oldname().unwrap());
+  let newname = PathBuf::from(msg.newname().unwrap());
+  blocking!(base.sync(), || -> OpResult {
+    debug!("handle_symlink {} {}", oldname.display(), newname.display());
+    #[cfg(any(unix))]
+    std::os::unix::fs::symlink(&oldname, &newname)?;
+    Ok(empty_buf())
+  })
+}
+
+fn handle_read_link(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let msg = base.msg_as_readlink().unwrap();
+  let cmd_id = base.cmd_id();
+  let name = PathBuf::from(msg.name().unwrap());
+
+  blocking!(base.sync(), || -> OpResult {
+    debug!("handle_read_link {}", name.display());
+    let path = fs::read_link(&name)?;
+    let builder = &mut FlatBufferBuilder::new();
+    let path_off = builder.create_string(path.to_str().unwrap());
+    let msg = msg::ReadlinkRes::create(
+      builder,
+      &msg::ReadlinkResArgs {
+        path: Some(path_off),
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::ReadlinkRes,
+        ..Default::default()
+      },
+    ))
+  })
 }

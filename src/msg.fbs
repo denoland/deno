@@ -4,6 +4,7 @@ union Any {
   CodeFetch,
   CodeFetchRes,
   CodeCache,
+  SetTimeout,
   Exit,
   TimerStart,
   TimerReady,
@@ -20,10 +21,19 @@ union Any {
   ReadFileRes,
   WriteFile,
   Rename,
+  Readlink,
+  ReadlinkRes,
   Symlink,
   Stat,
   StatRes,
   SetEnv,
+  Open,
+  OpenRes,
+  Read,
+  ReadRes,
+  Write,
+  WriteRes,
+  Close,
 }
 
 enum ErrorKind: byte {
@@ -49,6 +59,8 @@ enum ErrorKind: byte {
   WriteZero,
   Other,
   UnexpectedEof,
+
+  BadFileDescriptor,
 
   // url errors
 
@@ -111,6 +123,10 @@ table CodeCache {
   filename: string;
   source_code: string;
   output_code: string;
+}
+
+table SetTimeout {
+  timeout: int;
 }
 
 table Exit {
@@ -202,6 +218,14 @@ table Rename {
   newpath: string;
 }
 
+table Readlink {
+  name: string;
+}
+
+table ReadlinkRes {
+  path: string;
+}
+
 table Symlink {
   oldname: string;
   newname: string;
@@ -221,6 +245,44 @@ table StatRes {
   created:ulong;
   mode: uint;
   has_mode: bool; // false on windows
+}
+
+table WriteFileSync {
+  filename: string;
+  data: [ubyte];
+  perm: uint;
+  // perm specified by https://godoc.org/os#FileMode
+}
+
+table Open {
+  filename: string;
+  perm: uint;
+}
+
+table OpenRes {
+  fd: int;
+}
+
+table Read {
+  fd: int;
+  // (ptr, len) is passed as second parameter to libdeno.send().
+}
+
+table ReadRes {
+  nread: uint;
+  eof: bool;
+}
+
+table Write {
+  fd: int;
+}
+
+table WriteRes {
+  nbyte: uint;
+}
+
+table Close {
+  fd: int;
 }
 
 root_type Base;

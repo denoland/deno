@@ -107,4 +107,17 @@ test(function consoleTestStringifyWithDepth() {
     stringifyArgs([nestedObj], { depth: null }),
     "{ a: { b: [object] } }"
   );
+  
+test(function consoleTestError() {
+  class MyError extends Error {
+    constructor(msg: string) {
+      super(msg);
+      this.name = "MyError";
+    }
+  }
+  try {
+    throw new MyError("This is an error");
+  } catch (e) {
+    assertEqual(stringify(e).split("\n")[0], "MyError: This is an error");
+  }
 });

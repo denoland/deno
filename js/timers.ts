@@ -19,6 +19,15 @@ interface Timer {
   delay: number; // milliseconds
 }
 
+export function setGlobalTimeout(timeout: number) {
+  const builder = new flatbuffers.Builder();
+  fbs.SetTimeout.startSetTimeout(builder);
+  fbs.SetTimeout.addTimeout(builder, timeout);
+  const msg = fbs.SetTimeout.endSetTimeout(builder);
+  const res = sendSync(builder, fbs.Any.SetTimeout, msg);
+  assert(res == null);
+}
+
 function startTimer(
   id: number,
   cb: TimerCallback,

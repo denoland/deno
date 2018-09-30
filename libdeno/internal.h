@@ -15,7 +15,9 @@ struct deno_s {
   v8::Persistent<v8::Function> recv;
   v8::Persistent<v8::Function> global_error_handler;
   v8::Persistent<v8::Context> context;
+  v8::Persistent<v8::Map> async_data_map;
   deno_recv_cb cb;
+  int32_t next_req_id;
   void* data;
 };
 }

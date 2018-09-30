@@ -28,10 +28,11 @@ export function handleAsyncMsgFromRust(ui8: Uint8Array) {
 export function sendAsync(
   builder: flatbuffers.Builder,
   msgType: fbs.Any,
-  msg: flatbuffers.Offset
+  msg: flatbuffers.Offset,
+  data?: ArrayBufferView
 ): Promise<fbs.Base> {
   maybePushTrace(msgType, false); // add to trace if tracing
-  const [cmdId, resBuf] = sendInternal(builder, msgType, msg, false);
+  const [cmdId, resBuf] = sendInternal(builder, msgType, msg, data, false);
   util.assert(resBuf == null);
   const promise = util.createResolvable<fbs.Base>();
   promiseTable.set(cmdId, promise);
@@ -42,16 +43,16 @@ export function sendAsync(
 export function sendSync(
   builder: flatbuffers.Builder,
   msgType: fbs.Any,
-  msg: flatbuffers.Offset
+  msg: flatbuffers.Offset,
+  data?: ArrayBufferView
 ): null | fbs.Base {
   maybePushTrace(msgType, true); // add to trace if tracing
-  const [cmdId, resBuf] = sendInternal(builder, msgType, msg, true);
+  const [cmdId, resBuf] = sendInternal(builder, msgType, msg, data, true);
   util.assert(cmdId >= 0);
   if (resBuf == null) {
     return null;
   } else {
     const u8 = new Uint8Array(resBuf!);
-    // console.log("recv sync message", util.hexdump(u8));
     const bb = new flatbuffers.ByteBuffer(u8);
     const baseRes = fbs.Base.getRootAsBase(bb);
     errors.maybeThrowError(baseRes);
@@ -63,6 +64,7 @@ function sendInternal(
   builder: flatbuffers.Builder,
   msgType: fbs.Any,
   msg: flatbuffers.Offset,
+  data: undefined | ArrayBufferView,
   sync = true
 ): [number, null | Uint8Array] {
   const cmdId = nextCmdId++;
@@ -73,5 +75,5 @@ function sendInternal(
   fbs.Base.addCmdId(builder, cmdId);
   builder.finish(fbs.Base.endBase(builder));
 
-  return [cmdId, libdeno.send(builder.asUint8Array())];
+  return [cmdId, libdeno.send(builder.asUint8Array(), data)];
 }

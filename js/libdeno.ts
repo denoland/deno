@@ -6,9 +6,9 @@ type MessageCallback = (msg: Uint8Array) => void;
 interface Libdeno {
   recv(cb: MessageCallback): void;
 
-  send(msg: ArrayBufferView): null | Uint8Array;
+  send(control: ArrayBufferView, data?: ArrayBufferView): null | Uint8Array;
 
-  print(x: string): void;
+  print(x: string, isErr?: boolean): void;
 
   setGlobalErrorHandler: (
     handler: (

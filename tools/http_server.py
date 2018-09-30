@@ -11,17 +11,18 @@ from time import sleep
 PORT = 4545
 
 
-def serve_forever():
+def server():
     os.chdir(root_path)  # Hopefully the main thread doesn't also chdir.
     Handler = SimpleHTTPServer.SimpleHTTPRequestHandler
     SocketServer.TCPServer.allow_reuse_address = True
-    httpd = SocketServer.TCPServer(("", PORT), Handler)
+    s = SocketServer.TCPServer(("", PORT), Handler)
     print "Deno test server http://localhost:%d/" % PORT
-    httpd.serve_forever()
+    return s
 
 
 def spawn():
-    thread = Thread(target=serve_forever)
+    s = server()
+    thread = Thread(target=s.serve_forever)
     thread.daemon = True
     thread.start()
     sleep(1)  # TODO I'm too lazy to figure out how to do this properly.
@@ -29,4 +30,5 @@ def spawn():
 
 
 if __name__ == '__main__':
-    serve_forever()
+    s = server()
+    s.serve_forever()

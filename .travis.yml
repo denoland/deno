@@ -7,22 +7,45 @@ matrix:
   - os: osx
 env:
   global:
-  - CARGO_PATH=$HOME/.cargo/
-  - RUSTUP_PATH=$HOME/.rustup/
+  - CARGO_HOME=$HOME/.cargo/
+  - RUSTUP_HOME=$HOME/.rustup/
+  - HOMEBREW_PATH=$HOME/homebrew/
   - DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false"
   - DENO_BUILD_PATH=$HOME/out/Default
   - DENO_BUILD_MODE=release
-  - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_PATH/bin:$PATH
+  - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - CCACHE_CPP2=yes
   - CCACHE_SLOPPINESS=time_macros
+  - SCCACHE_DIR=$HOME/.sccache/
+  - SCCACHE_CACHE_SIZE=1G
+  - SCCACHE_IDLE_TIMEOUT=0
 cache:
   ccache: true
   directories:
-  - "$CARGO_PATH"
-  - "$RUSTUP_PATH"
+  - "$CARGO_HOME"
+  - "$RUSTUP_HOME"
+  - "$HOMEBREW_PATH"
+  - "$SCCACHE_DIR"
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
   - third_party/v8/third_party/llvm-build/
 install:
+- |-
+  # OS X: install a private copy of homebrew.
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    export BREW="${HOMEBREW_PATH}bin/brew"
+    export PATH="${HOMEBREW_PATH}bin:$PATH"
+    if [[ ! -x "$BREW" ]]; then
+      git clone git://github.com/homebrew/brew "$HOMEBREW_PATH"
+    fi
+    "$BREW" --version
+  fi
+- |-
+  # Install ccache (if necessary) and set it up.
+  if [[ "$TRAVIS_OS_NAME" == "osx" && ! $(which ccache) ]]; then
+    "$BREW" install ccache
+  fi
+  ccache --version | head -n 1
+  ccache --max-size=1G
 - |-
   # Install Rust.
   # TODO(ry) Include rustc in third_party.
@@ -33,7 +56,14 @@ install:
   rustc --version
   cargo --version
 - |-
-  # Install Hyperfine (if benchmarking is enabled for this build).
+  # Install and start sccache.
+  if [ ! $(which sccache) ]; then
+    cargo install sccache
+  fi
+  sccache --version
+  sccache --start-server
+- |-
+  # Install hyperfine (if benchmarking is enabled for this build).
   if [ $BENCHMARK ]; then
     if [ ! $(which hyperfine) ]; then
       cargo install hyperfine
@@ -41,20 +71,23 @@ install:
     hyperfine --version
   fi
 - |-
-  # Install ccache (OS X only).
-  # TODO: Save ccache in the Travis CI cache.
-  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-    brew install ccache &&
-    export PATH="/usr/local/opt/ccache/libexec:$PATH"
-  fi
+  # Remove unnnecessary cargo and rustup directories.
+  # This keeps the Travis CI cache small and fast.
+  rm -rf "$CARGO_HOME"registry
+  rm -rf "$RUSTUP_HOME"downloads
+  rm -rf "$RUSTUP_HOME"tmp
+  rm -rf "$RUSTUP_HOME"toolchains/*/etc
+  rm -rf "$RUSTUP_HOME"toolchains/*/share
 before_script:
-- ccache -s
 - ./tools/setup.py
 script:
 - ./tools/lint.py
 - bash -c "sleep 2100; pkill ninja" &
 - ./tools/build.py -j2
 - ./tools/test.py $DENO_BUILD_PATH
+after_script:
+- ccache --show-stats
+- sccache --stop-server
 after_success:
 - |
   # Run benchmarks and publish the result to github pages.
