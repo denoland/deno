@@ -134,57 +134,40 @@ impl DenoDir {
     module_name: &str,
     filename: &str,
   ) -> DenoResult<CodeFetchOutput> {
-    if is_remote(module_name) {
-      let try_extension = |ext| {
-        let module_name = format!("{}{}", module_name, ext);
-        let filename = format!("{}{}", filename, ext);
-        let source_code = self.fetch_remote_source(&module_name, &filename)?;
-        return Ok(CodeFetchOutput {
-          module_name: module_name.to_string(),
-          filename: filename.to_string(),
-          source_code,
-          maybe_output_code: None,
-        });
-      };
-      if module_name.ends_with(".ts") || module_name.ends_with(".js") {
-        return try_extension("");
-      }
-      debug!("Trying {}.ts...", module_name);
-      let ts_attempt = try_extension(".ts");
-      if let Ok(_) = ts_attempt {
-        return ts_attempt;
-      }
-      debug!("Trying {}.js...", module_name);
-      try_extension(".js")
-    } else if module_name.starts_with(ASSET_PREFIX) {
+    if module_name.starts_with(ASSET_PREFIX) {
       panic!("Asset resolution should be done in JS, not Rust.");
-    } else {
-      assert_eq!(
-        module_name, filename,
-        "if a module isn't remote, it should have the same filename"
-      );
-      let try_extension = |ext| {
-        let module_name = format!("{}{}", module_name, ext);
-        let filename = format!("{}{}", filename, ext);
-        let source_code = fs::read_to_string(Path::new(&filename))?;
-        return Ok(CodeFetchOutput {
-          module_name: module_name.to_string(),
-          filename: filename.to_string(),
-          source_code,
-          maybe_output_code: None,
-        });
-      };
-      if module_name.ends_with(".ts") || module_name.ends_with(".js") {
-        return try_extension("");
-      }
-      debug!("Trying {}.ts...", module_name);
-      let ts_attempt = try_extension(".ts");
-      if let Ok(_) = ts_attempt {
-        return ts_attempt;
-      }
-      debug!("Trying {}.js...", module_name);
-      try_extension(".js")
     }
+    let is_module_remote = is_remote(module_name);
+    let try_extension = |ext| {
+      let module_name = format!("{}{}", module_name, ext);
+      let filename = format!("{}{}", filename, ext);
+      let source_code = if is_module_remote {
+        self.fetch_remote_source(&module_name, &filename)?
+      } else {
+        assert_eq!(
+          module_name, filename,
+          "if a module isn't remote, it should have the same filename"
+        );
+        fs::read_to_string(Path::new(&filename))?
+      };
+      return Ok(CodeFetchOutput {
+        module_name: module_name.to_string(),
+        filename: filename.to_string(),
+        source_code,
+        maybe_output_code: None,
+      });
+    };
+    // Has extension, no guessing required
+    if module_name.ends_with(".ts") || module_name.ends_with(".js") {
+      return try_extension("");
+    }
+    debug!("Trying {}.ts...", module_name);
+    let ts_attempt = try_extension(".ts");
+    if let Ok(_) = ts_attempt {
+      return ts_attempt;
+    }
+    debug!("Trying {}.js...", module_name);
+    try_extension(".js")
   }
 
   pub fn code_fetch(
