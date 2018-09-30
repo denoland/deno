@@ -446,11 +446,31 @@ fn test_code_fetch_no_ext() {
   let r = deno_dir.code_fetch(module_specifier, containing_file);
   assert!(r.is_ok());
 
+  // Test .ts extension
+  // Assuming cwd is the deno repo root.
+  let module_specifier = "./js/main";
+  let containing_file = cwd_string.as_str();
+  let r = deno_dir.code_fetch(module_specifier, containing_file);
+  assert!(r.is_ok());
+  let code_fetch_output = r.unwrap();
+  // could only test .ends_with to avoid include local abs path
+  assert!(code_fetch_output.module_name.ends_with("/js/main.ts"));
+  assert!(code_fetch_output.source_code.len() > 10);
+
+  // Test .js extension
   // Assuming cwd is the deno repo root.
   let module_specifier = "./js/mock_builtin";
   let containing_file = cwd_string.as_str();
   let r = deno_dir.code_fetch(module_specifier, containing_file);
   assert!(r.is_ok());
+  let code_fetch_output = r.unwrap();
+  // could only test .ends_with to avoid include local abs path
+  assert!(
+    code_fetch_output
+      .module_name
+      .ends_with("/js/mock_builtin.js")
+  );
+  assert!(code_fetch_output.source_code.len() > 10);
 }
 
 #[test]
