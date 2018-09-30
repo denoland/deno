@@ -253,13 +253,6 @@ table Truncate {
   len: uint;
 }
 
-table WriteFileSync {
-  filename: string;
-  data: [ubyte];
-  perm: uint;
-  // perm specified by https://godoc.org/os#FileMode
-}
-
 table Open {
   filename: string;
   perm: uint;
