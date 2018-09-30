@@ -44,7 +44,7 @@ testPerm({ net: true }, async function fetchBlob() {
   assertEqual(blob.size, Number(headers.get("Content-Length")));
 });
 
-// Logic heavily copied from web-platform-tests, make 
+// Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
 /* tslint:disable-next-line:max-line-length */
 // ref: https://github.com/web-platform-tests/wpt/blob/7c50c216081d6ea3c9afe553ee7b64534020a1b2/fetch/api/headers/headers-basic.html
@@ -68,17 +68,17 @@ test(function newHeaderTest() {
 });
 
 const headerDict = {
-  "name1": "value1",
-  "name2": "value2",
-  "name3": "value3",
-  "name4": undefined,
+  name1: "value1",
+  name2: "value2",
+  name3: "value3",
+  name4: undefined,
   "Content-Type": "value4"
 };
 const headerSeq = [];
 for (const name in headerDict) {
   headerSeq.push([name, headerDict[name]]);
 }
-  
+
 test(function newHeaderWithSequence() {
   const headers = new Headers(headerSeq);
   for (const name in headerDict) {
@@ -123,7 +123,10 @@ test(function headerHasSuccess() {
   for (const name in headerDict) {
     assert(headers.has(name), "headers has name " + name);
     /* tslint:disable-next-line:max-line-length */
-    assert(!headers.has("nameNotInHeaders"), "headers do not have header: nameNotInHeaders");
+    assert(
+      !headers.has("nameNotInHeaders"),
+      "headers do not have header: nameNotInHeaders"
+    );
   }
 });
 
@@ -145,9 +148,9 @@ test(function headerGetSuccess() {
 });
 
 const headerEntriesDict = {
-  "name1": "value1",
-  "Name2": "value2",
-  "name": "value3",
+  name1: "value1",
+  Name2: "value2",
+  name: "value3",
   "content-Type": "value4",
   "Content-Typ": "value5",
   "Content-Types": "value6"

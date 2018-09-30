@@ -103,8 +103,8 @@ export interface URLSearchParams {
    */
   set(name: string, value: string): void;
   /**
-   * Sort all key/value pairs contained in this object in place 
-   * and return undefined. The sort order is according to Unicode 
+   * Sort all key/value pairs contained in this object in place
+   * and return undefined. The sort order is according to Unicode
    * code points of the keys.
    */
   sort(): void;
@@ -112,8 +112,8 @@ export interface URLSearchParams {
    * Returns a query string suitable for use in a URL.
    */
   toString(): string;
-  /** 
-   * Iterates over each name-value pair in the query 
+  /**
+   * Iterates over each name-value pair in the query
    * and invokes the given function.
    */
   forEach(
