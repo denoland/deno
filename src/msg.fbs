@@ -20,6 +20,7 @@ union Any {
   ReadFile,
   ReadFileRes,
   WriteFile,
+  CopyFile,
   Rename,
   Readlink,
   ReadlinkRes,
@@ -213,6 +214,11 @@ table WriteFile {
   // perm specified by https://godoc.org/os#FileMode
 }
 
+table CopyFile {
+  from: string;
+  to: string;
+}
+
 table Rename {
   oldpath: string;
   newpath: string;
@@ -245,13 +251,6 @@ table StatRes {
   created:ulong;
   mode: uint;
   has_mode: bool; // false on windows
-}
-
-table WriteFileSync {
-  filename: string;
-  data: [ubyte];
-  perm: uint;
-  // perm specified by https://godoc.org/os#FileMode
 }
 
 table Open {
