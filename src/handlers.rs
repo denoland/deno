@@ -77,6 +77,7 @@ pub fn msg_from_js(
     msg::Any::Symlink => handle_symlink,
     msg::Any::SetEnv => handle_set_env,
     msg::Any::Stat => handle_stat,
+    msg::Any::Truncate => handle_truncate,
     msg::Any::WriteFile => handle_write_file,
     msg::Any::Exit => handle_exit,
     _ => panic!(format!(
@@ -975,5 +976,27 @@ fn handle_read_link(
         ..Default::default()
       },
     ))
+  })
+}
+
+fn handle_truncate(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+
+  if !state.flags.allow_write {
+    return odd_future(permission_denied());
+  }
+
+  let msg = base.msg_as_truncate().unwrap();
+  let filename = String::from(msg.name().unwrap());
+  let len = msg.len();
+  blocking!(base.sync(), || {
+    debug!("handle_truncate {} {}", filename, len);
+    let f = fs::OpenOptions::new().write(true).open(&filename)?;
+    f.set_len(len as u64)?;
+    Ok(empty_buf())
   })
 }
