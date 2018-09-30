@@ -34,10 +34,15 @@ function createFunctionString(value: Function, ctx: ConsoleContext): string {
 }
 
 // tslint:disable-next-line:no-any
-function createArrayString(value: any[], ctx: ConsoleContext, level: number, maxLevel: number): string {
+function createArrayString(
+  value: any[],
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
   const entries: string[] = [];
   for (const el of value) {
-    entries.push(stringifyWithQuotes(ctx, el, level+1, maxLevel));
+    entries.push(stringifyWithQuotes(ctx, el, level + 1, maxLevel));
   }
   ctx.delete(value);
   if (entries.length === 0) {
@@ -47,7 +52,12 @@ function createArrayString(value: any[], ctx: ConsoleContext, level: number, max
 }
 
 // tslint:disable-next-line:no-any
-function createObjectString(value: any, ctx: ConsoleContext, level: number, maxLevel: number): string {
+function createObjectString(
+  value: any,
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
   const entries: string[] = [];
   let baseString = "";
 
@@ -58,7 +68,9 @@ function createObjectString(value: any, ctx: ConsoleContext, level: number, maxL
   }
 
   for (const key of Object.keys(value)) {
-    entries.push(`${key}: ${stringifyWithQuotes(ctx, value[key], level+1, maxLevel)}`);
+    entries.push(
+      `${key}: ${stringifyWithQuotes(ctx, value[key], level + 1, maxLevel)}`
+    );
   }
 
   ctx.delete(value);
@@ -105,7 +117,7 @@ function stringify(
       if (level >= maxLevel) {
         return `[object]`;
       }
-      
+
       ctx.add(value);
 
       if (value instanceof Error) {

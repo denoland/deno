@@ -107,7 +107,8 @@ test(function consoleTestStringifyWithDepth() {
     stringifyArgs([nestedObj], { depth: null }),
     "{ a: { b: [object] } }"
   );
-  
+});
+
 test(function consoleTestError() {
   class MyError extends Error {
     constructor(msg: string) {

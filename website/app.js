@@ -148,7 +148,7 @@ export async function main() {
         categories: sha1List
       },
       y: {
-        label: "seconds",
+        label: "seconds"
       }
     }
   });
