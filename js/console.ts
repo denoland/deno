@@ -33,8 +33,8 @@ function createFunctionString(value: Function, ctx: ConsoleContext): string {
   return `[${cstrName}]`;
 }
 
-// tslint:disable-next-line:no-any
 function createArrayString(
+  // tslint:disable-next-line:no-any
   value: any[],
   ctx: ConsoleContext,
   level: number,
@@ -51,8 +51,8 @@ function createArrayString(
   return `[ ${entries.join(", ")} ]`;
 }
 
-// tslint:disable-next-line:no-any
 function createObjectString(
+  // tslint:disable-next-line:no-any
   value: any,
   ctx: ConsoleContext,
   level: number,
