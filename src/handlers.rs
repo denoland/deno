@@ -985,16 +985,18 @@ fn handle_truncate(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
+
   if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
+
   let msg = base.msg_as_truncate().unwrap();
   let name = msg.name().unwrap();
   let len = msg.len();
-  Box::new(futures::future::result(|| -> OpResult {
+  blocking!(base.sync(), || -> OpResult {
     debug!("handle_truncate {} {}", name, len);
     let f = fs::OpenOptions::new().write(true).open(name)?;
     f.set_len(len as u64)?;
     Ok(empty_buf())
-  }()))
+  })
 }
