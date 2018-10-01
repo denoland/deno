@@ -20,6 +20,7 @@ import "./timers_test.ts";
 import "./symlink_test.ts";
 import "./platform_test.ts";
 import "./text_encoding_test.ts";
+import "./net_test.ts";
 import "./trace_test.ts";
 import "./truncate_test.ts";
 import "./v8_source_maps_test.ts";

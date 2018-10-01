@@ -14,11 +14,13 @@ use std;
 use std::collections::HashMap;
 use std::io::Error;
 use std::io::{Read, Write};
+use std::net::SocketAddr;
 use std::sync::atomic::AtomicIsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::TcpStream;
 
 pub type ResourceId = i32; // Sometimes referred to RID.
 
@@ -45,12 +47,38 @@ enum Repr {
   Stdout(tokio::io::Stdout),
   Stderr(tokio::io::Stderr),
   FsFile(tokio::fs::File),
+  TcpListener(tokio::net::TcpListener),
+  TcpStream(tokio::net::TcpStream),
 }
 
 // Abstract async file interface.
 // Ideally in unix, if Resource represents an OS rid, it will be the same.
+#[derive(Debug)]
 pub struct Resource {
   pub rid: ResourceId,
+}
+
+impl Resource {
+  // TODO Should it return a Resource instead of net::TcpStream?
+  pub fn poll_accept(&mut self) -> Poll<(TcpStream, SocketAddr), Error> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&self.rid);
+    match maybe_repr {
+      None => panic!("bad rid"),
+      Some(repr) => match repr {
+        Repr::TcpListener(ref mut s) => s.poll_accept(),
+        _ => panic!("Cannot accept"),
+      },
+    }
+  }
+
+  // close(2) is done by dropping the value. Therefore we just need to remove
+  // the resource from the RESOURCE_TABLE.
+  pub fn close(&mut self) {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let r = table.remove(&self.rid);
+    assert!(r.is_some());
+  }
 }
 
 impl Read for Resource {
@@ -68,9 +96,11 @@ impl AsyncRead for Resource {
       Some(repr) => match repr {
         Repr::FsFile(ref mut f) => f.poll_read(buf),
         Repr::Stdin(ref mut f) => f.poll_read(buf),
+        Repr::TcpStream(ref mut f) => f.poll_read(buf),
         Repr::Stdout(_) | Repr::Stderr(_) => {
           panic!("Cannot read from stdout/stderr")
         }
+        Repr::TcpListener(_) => panic!("Cannot read"),
       },
     }
   }
@@ -96,7 +126,9 @@ impl AsyncWrite for Resource {
         Repr::FsFile(ref mut f) => f.poll_write(buf),
         Repr::Stdout(ref mut f) => f.poll_write(buf),
         Repr::Stderr(ref mut f) => f.poll_write(buf),
+        Repr::TcpStream(ref mut f) => f.poll_write(buf),
         Repr::Stdin(_) => panic!("Cannot write to stdin"),
+        Repr::TcpListener(_) => panic!("Cannot write"),
       },
     }
   }
@@ -118,6 +150,22 @@ pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
     Some(_) => panic!("There is already a file with that rid"),
     None => Resource { rid },
   }
+}
+
+pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(rid, Repr::TcpListener(listener));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
+pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(rid, Repr::TcpStream(stream));
+  assert!(r.is_none());
+  Resource { rid }
 }
 
 pub fn lookup(rid: ResourceId) -> Option<Resource> {
