@@ -193,8 +193,10 @@ fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
 
 #[test]
 fn test_v8_set_flags_preprocess_1() {
-  let js_args =
-    v8_set_flags_preprocess(vec!["deno".to_string(), "--v8-options".to_string()]);
+  let js_args = v8_set_flags_preprocess(vec![
+    "deno".to_string(),
+    "--v8-options".to_string(),
+  ]);
   assert_eq!(
     js_args,
     (vec!["deno".to_string(), "--help".to_string()], vec![])
@@ -203,7 +205,8 @@ fn test_v8_set_flags_preprocess_1() {
 
 #[test]
 fn test_v8_set_flags_preprocess_2() {
-  let js_args = v8_set_flags_preprocess(vec!["deno".to_string(), "--help".to_string()]);
+  let js_args =
+    v8_set_flags_preprocess(vec!["deno".to_string(), "--help".to_string()]);
   assert_eq!(
     js_args,
     (vec!["deno".to_string()], vec!["--help".to_string()])
