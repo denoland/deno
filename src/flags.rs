@@ -166,7 +166,6 @@ fn test_set_flags_4() {
 }
 
 // Returns args passed to V8, followed by args passed to JS
-// make ci rebuild
 fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
   let mut rest = vec![];
 
