@@ -30,8 +30,7 @@ use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
 use tokio;
 use tokio::timer::Delay;
-use tokio_io::AsyncRead;
-use tokio_io::AsyncWrite;
+use tokio_io;
 use tokio_threadpool;
 
 type OpResult = DenoResult<Buf>;
@@ -611,31 +610,29 @@ fn handle_read(
       errors::ErrorKind::BadFileDescriptor,
       String::from("Bad File Descriptor"),
     )),
-    Some(mut resource) => {
-      let op = futures::future::poll_fn(move || {
-        let poll = resource.poll_read(data);
-        poll
-      }).map_err(|err| DenoError::from(err))
-      .and_then(move |nread: usize| {
-        let builder = &mut FlatBufferBuilder::new();
-        let msg = msg::ReadRes::create(
-          builder,
-          &msg::ReadResArgs {
-            nread: nread as u32,
-            eof: nread == 0,
-            ..Default::default()
-          },
-        );
-        Ok(serialize_response(
-          cmd_id,
-          builder,
-          msg::BaseArgs {
-            msg: Some(msg.as_union_value()),
-            msg_type: msg::Any::ReadRes,
-            ..Default::default()
-          },
-        ))
-      });
+    Some(resource) => {
+      let op = tokio_io::io::read(resource, data)
+        .map_err(|err| DenoError::from(err))
+        .and_then(move |(_resource, _buf, nread)| {
+          let builder = &mut FlatBufferBuilder::new();
+          let msg = msg::ReadRes::create(
+            builder,
+            &msg::ReadResArgs {
+              nread: nread as u32,
+              eof: nread == 0,
+              ..Default::default()
+            },
+          );
+          Ok(serialize_response(
+            cmd_id,
+            builder,
+            msg::BaseArgs {
+              msg: Some(msg.as_union_value()),
+              msg_type: msg::Any::ReadRes,
+              ..Default::default()
+            },
+          ))
+        });
       Box::new(op)
     }
   }
@@ -655,30 +652,29 @@ fn handle_write(
       errors::ErrorKind::BadFileDescriptor,
       String::from("Bad File Descriptor"),
     )),
-    Some(mut resource) => {
-      let op = futures::future::poll_fn(move || {
-        let poll = resource.poll_write(data);
-        poll
-      }).map_err(|err| DenoError::from(err))
-      .and_then(move |bytes_written: usize| {
-        let builder = &mut FlatBufferBuilder::new();
-        let msg = msg::WriteRes::create(
-          builder,
-          &msg::WriteResArgs {
-            nbyte: bytes_written as u32,
-            ..Default::default()
-          },
-        );
-        Ok(serialize_response(
-          cmd_id,
-          builder,
-          msg::BaseArgs {
-            msg: Some(msg.as_union_value()),
-            msg_type: msg::Any::WriteRes,
-            ..Default::default()
-          },
-        ))
-      });
+    Some(resource) => {
+      let len = data.len();
+      let op = tokio_io::io::write_all(resource, data)
+        .map_err(|err| DenoError::from(err))
+        .and_then(move |(_resource, _buf)| {
+          let builder = &mut FlatBufferBuilder::new();
+          let msg = msg::WriteRes::create(
+            builder,
+            &msg::WriteResArgs {
+              nbyte: len as u32,
+              ..Default::default()
+            },
+          );
+          Ok(serialize_response(
+            cmd_id,
+            builder,
+            msg::BaseArgs {
+              msg: Some(msg.as_union_value()),
+              msg_type: msg::Any::WriteRes,
+              ..Default::default()
+            },
+          ))
+        });
       Box::new(op)
     }
   }
