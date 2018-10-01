@@ -23,13 +23,13 @@ extern crate ring;
 
 mod deno_dir;
 mod errors;
-mod files;
 mod flags;
 mod fs;
 pub mod handlers;
 mod http;
 mod isolate;
 mod libdeno;
+mod resources;
 mod tokio_util;
 mod version;
 

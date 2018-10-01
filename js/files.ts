@@ -47,7 +47,7 @@ export async function open(
   assert(fbs.Any.OpenRes === baseRes!.msgType());
   const res = new fbs.OpenRes();
   assert(baseRes!.msg(res) != null);
-  const fd = res.fd();
+  const fd = res.rid();
   return new File(fd);
 }
 
@@ -57,7 +57,7 @@ export async function read(
 ): Promise<ReadResult> {
   const builder = new flatbuffers.Builder();
   fbs.Read.startRead(builder);
-  fbs.Read.addFd(builder, fd);
+  fbs.Read.addRid(builder, fd);
   const msg = fbs.Read.endRead(builder);
   const baseRes = await dispatch.sendAsync(builder, fbs.Any.Read, msg, p);
   assert(baseRes != null);
@@ -70,7 +70,7 @@ export async function read(
 export async function write(fd: number, p: ArrayBufferView): Promise<number> {
   const builder = new flatbuffers.Builder();
   fbs.Write.startWrite(builder);
-  fbs.Write.addFd(builder, fd);
+  fbs.Write.addRid(builder, fd);
   const msg = fbs.Write.endWrite(builder);
   const baseRes = await dispatch.sendAsync(builder, fbs.Any.Write, msg, p);
   assert(baseRes != null);
@@ -83,7 +83,7 @@ export async function write(fd: number, p: ArrayBufferView): Promise<number> {
 export function close(fd: number): void {
   const builder = new flatbuffers.Builder();
   fbs.Close.startClose(builder);
-  fbs.Close.addFd(builder, fd);
+  fbs.Close.addRid(builder, fd);
   const msg = fbs.Close.endClose(builder);
   dispatch.sendSync(builder, fbs.Any.Close, msg);
 }

@@ -265,11 +265,11 @@ table Open {
 }
 
 table OpenRes {
-  fd: int;
+  rid: int;
 }
 
 table Read {
-  fd: int;
+  rid: int;
   // (ptr, len) is passed as second parameter to libdeno.send().
 }
 
@@ -279,7 +279,7 @@ table ReadRes {
 }
 
 table Write {
-  fd: int;
+  rid: int;
 }
 
 table WriteRes {
@@ -287,7 +287,7 @@ table WriteRes {
 }
 
 table Close {
-  fd: int;
+  rid: int;
 }
 
 root_type Base;
