@@ -138,7 +138,7 @@ impl DenoDir {
       panic!("Asset resolution should be done in JS, not Rust.");
     }
     let is_module_remote = is_remote(module_name);
-    let try_extension = |ext| {
+    let use_extension = |ext| {
       let module_name = format!("{}{}", module_name, ext);
       let filename = format!("{}{}", filename, ext);
       let source_code = if is_module_remote {
@@ -157,17 +157,17 @@ impl DenoDir {
         maybe_output_code: None,
       });
     };
-    // Has extension, no guessing required
-    if module_name.ends_with(".ts") || module_name.ends_with(".js") {
-      return try_extension("");
+    let default_attempt = use_extension("");
+    if let Ok(_) = default_attempt {
+      return default_attempt;
     }
     debug!("Trying {}.ts...", module_name);
-    let ts_attempt = try_extension(".ts");
+    let ts_attempt = use_extension(".ts");
     if let Ok(_) = ts_attempt {
       return ts_attempt;
     }
     debug!("Trying {}.js...", module_name);
-    try_extension(".js")
+    use_extension(".js")
   }
 
   pub fn code_fetch(

@@ -1,8 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 use errors::{DenoError, DenoResult};
-use futures::stream::Concat2;
-use futures::{Async, Future};
+use futures;
+use futures::future::Either;
+use futures::Future;
 use tokio_util;
 
 use futures::Stream;
@@ -28,28 +29,27 @@ pub fn get_client() -> Client<Connector, hyper::Body> {
   Client::builder().build(c)
 }
 
-struct FetchedBodyFuture {
-  body: Concat2<hyper::Body>,
-  status: hyper::StatusCode,
+enum HyperOrIOError {
+  IO(io::Error),
+  Hyper(hyper::Error),
 }
 
-struct FetchedBody {
-  body: hyper::Chunk,
-  status: hyper::StatusCode,
-}
-
-impl Future for FetchedBodyFuture {
-  type Item = FetchedBody;
-  type Error = hyper::Error;
-  fn poll(&mut self) -> Result<Async<FetchedBody>, hyper::Error> {
-    match self.body.poll()? {
-      Async::Ready(body) => Ok(Async::Ready(FetchedBody {
-        body,
-        status: self.status.clone(),
-      })),
-      Async::NotReady => Ok(Async::NotReady),
-    }
+fn response_future(
+  response: hyper::Response<hyper::Body>,
+) -> impl Future<Item = String, Error = HyperOrIOError> {
+  if !response.status().is_success() {
+    return Either::A(futures::future::err(HyperOrIOError::IO(io::Error::new(
+      io::ErrorKind::NotFound,
+      format!("module not found"),
+    ))));
   }
+  Either::B(
+    response
+      .into_body()
+      .concat2()
+      .map(|body| String::from_utf8(body.to_vec()).unwrap())
+      .map_err(|err| HyperOrIOError::Hyper(err)),
+  )
 }
 
 // The CodeFetch message is used to load HTTP javascript resources and expects a
@@ -57,22 +57,15 @@ impl Future for FetchedBodyFuture {
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<String> {
   let url = module_name.parse::<Uri>().unwrap();
   let client = get_client();
-  let fetch_future = client.get(url).and_then(|response| {
-    let status = response.status();
-    FetchedBodyFuture {
-      body: response.into_body().concat2(),
-      status,
-    }
-  });
-
-  let fetch_result = tokio_util::block_on(fetch_future)?;
-  if !fetch_result.status.is_success() {
-    return Err(DenoError::from(io::Error::new(
-      io::ErrorKind::NotFound,
-      format!("cannot load from '{}'", module_name),
-    )));
+  let fetch_future = client
+    .get(url)
+    .map_err(|err| HyperOrIOError::Hyper(err))
+    .and_then(response_future);
+  match tokio_util::block_on(fetch_future) {
+    Ok(s) => Ok(s),
+    Err(HyperOrIOError::Hyper(err)) => Err(DenoError::from(err)),
+    Err(HyperOrIOError::IO(err)) => Err(DenoError::from(err)),
   }
-  Ok(String::from_utf8(fetch_result.body.to_vec()).unwrap())
 }
 
 /* TODO(ry) Re-enabled this test. Disabling to work around bug in #782.
