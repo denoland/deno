@@ -66,7 +66,7 @@ export function createThreadCountColumns(data) {
   ]);
 }
 
-const syscallCountNames = ["hello"];
+const syscallCountNames = ["hello", "fetch_deps"];
 export function createSyscallCountColumns(data) {
   return syscallCountNames.map(name => [
     name,
