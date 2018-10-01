@@ -132,18 +132,11 @@ test(function consoleDetachedLog() {
   const warn = console.warn;
   const error = console.error;
   const consoleAssert = console.assert;
-  let caughtError = false;
-  try {
-    log("Hello world");
-    dir("Hello world");
-    debug("Hello world");
-    info("Hello world");
-    warn("Hello world");
-    error("Hello world");
-    consoleAssert(true);
-  } catch (e) {
-    caughtError = e;
-  }
-
-  assert(!caughtError);
+  log("Hello world");
+  dir("Hello world");
+  debug("Hello world");
+  info("Hello world");
+  warn("Hello world");
+  error("Hello world");
+  consoleAssert(true);
 });
