@@ -181,29 +181,29 @@ export class Console {
   constructor(private printFunc: PrintFunc) {}
 
   // tslint:disable-next-line:no-any
-  log(...args: any[]): void {
+  log = (...args: any[]): void => {
     this.printFunc(stringifyArgs(args));
-  }
+  };
 
   debug = this.log;
   info = this.log;
 
   // tslint:disable-next-line:no-any
-  dir(obj: any, options: ConsoleOptions = {}) {
+  dir = (obj: any, options: ConsoleOptions = {}) => {
     this.printFunc(stringifyArgs([obj], options));
-  }
+  };
 
   // tslint:disable-next-line:no-any
-  warn(...args: any[]): void {
+  warn = (...args: any[]): void => {
     this.printFunc(stringifyArgs(args), true);
-  }
+  };
 
   error = this.warn;
 
   // tslint:disable-next-line:no-any
-  assert(condition: boolean, ...args: any[]): void {
+  assert = (condition: boolean, ...args: any[]): void => {
     if (!condition) {
       throw new Error(`Assertion failed: ${stringifyArgs(args)}`);
     }
-  }
+  };
 }
