@@ -648,7 +648,7 @@ export class DenoCompiler
     this._log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(name => {
       let resolvedFileName;
-      if (name === "deno" || name === "compiler") {
+      if (name === "deno") {
         // builtin modules are part of `globals.d.ts`
         resolvedFileName = this._resolveModuleName("globals.d.ts", ASSETS);
       } else if (name === "typescript") {
