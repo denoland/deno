@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
-import { test, assertEqual } from "./test_util.ts";
+import { test, assert, assertEqual } from "./test_util.ts";
 import { stringifyArgs } from "./console.ts";
 
 // tslint:disable-next-line:no-any
@@ -88,7 +88,7 @@ test(function consoleTestStringifyCircular() {
   assertEqual(stringify(JSON), "{}");
   assertEqual(
     stringify(console),
-    "Console { printFunc: [Function], debug: [Function: log], info: [Function: log], error: [Function: warn] }"
+    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function] }"
   );
 });
 
@@ -121,4 +121,22 @@ test(function consoleTestError() {
   } catch (e) {
     assertEqual(stringify(e).split("\n")[0], "MyError: This is an error");
   }
+});
+
+// Test bound this issue
+test(function consoleDetachedLog() {
+  const log = console.log;
+  const dir = console.dir;
+  const debug = console.debug;
+  const info = console.info;
+  const warn = console.warn;
+  const error = console.error;
+  const consoleAssert = console.assert;
+  log("Hello world");
+  dir("Hello world");
+  debug("Hello world");
+  info("Hello world");
+  warn("Hello world");
+  error("Hello world");
+  consoleAssert(true);
 });
