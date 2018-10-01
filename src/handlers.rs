@@ -9,7 +9,6 @@ use isolate::IsolateState;
 use isolate::Op;
 use msg;
 
-use files;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::future::poll_fn;
@@ -19,6 +18,7 @@ use hyper;
 use hyper::rt::{Future, Stream};
 use hyper::Client;
 use remove_dir_all::remove_dir_all;
+use resources;
 use std;
 use std::fs;
 #[cfg(any(unix))]
@@ -575,12 +575,12 @@ fn handle_open(
   let op = tokio::fs::File::open(filename)
     .map_err(|err| DenoError::from(err))
     .and_then(move |fs_file| -> OpResult {
-      let dfile = files::add_fs_file(fs_file);
+      let resource = resources::add_fs_file(fs_file);
       let builder = &mut FlatBufferBuilder::new();
       let msg = msg::OpenRes::create(
         builder,
         &msg::OpenResArgs {
-          fd: dfile.fd,
+          rid: resource.rid,
           ..Default::default()
         },
       );
@@ -604,16 +604,16 @@ fn handle_read(
 ) -> Box<Op> {
   let cmd_id = base.cmd_id();
   let msg = base.msg_as_read().unwrap();
-  let fd = msg.fd();
+  let rid = msg.rid();
 
-  match files::lookup(fd) {
+  match resources::lookup(rid) {
     None => odd_future(errors::new(
       errors::ErrorKind::BadFileDescriptor,
       String::from("Bad File Descriptor"),
     )),
-    Some(mut dfile) => {
+    Some(mut resource) => {
       let op = futures::future::poll_fn(move || {
-        let poll = dfile.poll_read(data);
+        let poll = resource.poll_read(data);
         poll
       }).map_err(|err| DenoError::from(err))
       .and_then(move |nread: usize| {
@@ -648,16 +648,16 @@ fn handle_write(
 ) -> Box<Op> {
   let cmd_id = base.cmd_id();
   let msg = base.msg_as_write().unwrap();
-  let fd = msg.fd();
+  let rid = msg.rid();
 
-  match files::lookup(fd) {
+  match resources::lookup(rid) {
     None => odd_future(errors::new(
       errors::ErrorKind::BadFileDescriptor,
       String::from("Bad File Descriptor"),
     )),
-    Some(mut dfile) => {
+    Some(mut resource) => {
       let op = futures::future::poll_fn(move || {
-        let poll = dfile.poll_write(data);
+        let poll = resource.poll_write(data);
         poll
       }).map_err(|err| DenoError::from(err))
       .and_then(move |bytes_written: usize| {
