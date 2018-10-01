@@ -166,8 +166,7 @@ fn test_set_flags_4() {
 }
 
 // Returns args passed to V8, followed by args passed to JS
-// TODO Rename to v8_set_flags_preprocess
-fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
+fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
   let mut rest = vec![];
 
   // Filter out args that shouldn't be passed to V8
@@ -193,9 +192,9 @@ fn parse_core_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
 }
 
 #[test]
-fn test_parse_core_args_1() {
+fn test_v8_set_flags_preprocess_1() {
   let js_args =
-    parse_core_args(vec!["deno".to_string(), "--v8-options".to_string()]);
+    v8_set_flags_preprocess(vec!["deno".to_string(), "--v8-options".to_string()]);
   assert_eq!(
     js_args,
     (vec!["deno".to_string(), "--help".to_string()], vec![])
@@ -203,8 +202,8 @@ fn test_parse_core_args_1() {
 }
 
 #[test]
-fn test_parse_core_args_2() {
-  let js_args = parse_core_args(vec!["deno".to_string(), "--help".to_string()]);
+fn test_v8_set_flags_preprocess_2() {
+  let js_args = v8_set_flags_preprocess(vec!["deno".to_string(), "--help".to_string()]);
   assert_eq!(
     js_args,
     (vec!["deno".to_string()], vec!["--help".to_string()])
@@ -217,7 +216,7 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
   // deno_set_v8_flags(int* argc, char** argv) mutates argc and argv to remove
   // flags that v8 understands.
   // First parse core args, then converto to a vector of C strings.
-  let (argv, rest) = parse_core_args(args);
+  let (argv, rest) = v8_set_flags_preprocess(args);
   let mut argv = argv
     .iter()
     .map(|arg| CString::new(arg.as_str()).unwrap().into_bytes_with_nul())
