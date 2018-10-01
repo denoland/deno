@@ -758,7 +758,7 @@ macro_rules! to_seconds {
 
 #[cfg(any(unix))]
 fn get_mode(perm: fs::Permissions) -> u32 {
-  perm.mode()
+  perm.mode() & 0o777
 }
 
 #[cfg(not(any(unix)))]
