@@ -5,7 +5,7 @@ import * as dispatch from "./dispatch";
 
 /**
  * Truncates or extends the specified file synchronously,
- * updating the size of this file to become size. 
+ * updating the size of this file to become size.
  *
  *     import { truncateSync } from "deno";
  *
@@ -17,7 +17,7 @@ export function truncateSync(name: string, len?: number): void {
 
 /**
  * Truncates or extends the specified file,
- * updating the size of this file to become size. 
+ * updating the size of this file to become size.
  *
  *     import { truncate } from "deno";
  *
