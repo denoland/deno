@@ -102,6 +102,7 @@ ts_sources = [
   "js/v8_source_maps.ts",
   "js/write_file.ts",
   "js/copy_file.ts",
+  "js/tsconfig.declarations.json",
   "tsconfig.json",
 
   # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
@@ -254,7 +255,7 @@ run_node("gen_declarations") {
   args = [
     "./node_modules/typescript/bin/tsc",
     "-p",
-    rebase_path("js/tsconfig.generated.json", root_build_dir),
+    rebase_path("js/tsconfig.declarations.json", root_build_dir),
     "--baseUrl",
     rebase_path(root_build_dir, root_build_dir),
     "--outFile",
