@@ -133,19 +133,41 @@ impl DenoDir {
     self: &DenoDir,
     module_name: &str,
     filename: &str,
-  ) -> DenoResult<String> {
-    if is_remote(module_name) {
-      self.fetch_remote_source(module_name, filename)
-    } else if module_name.starts_with(ASSET_PREFIX) {
+  ) -> DenoResult<CodeFetchOutput> {
+    if module_name.starts_with(ASSET_PREFIX) {
       panic!("Asset resolution should be done in JS, not Rust.");
-    } else {
-      assert_eq!(
-        module_name, filename,
-        "if a module isn't remote, it should have the same filename"
-      );
-      let src = fs::read_to_string(Path::new(filename))?;
-      Ok(src)
     }
+    let is_module_remote = is_remote(module_name);
+    let use_extension = |ext| {
+      let module_name = format!("{}{}", module_name, ext);
+      let filename = format!("{}{}", filename, ext);
+      let source_code = if is_module_remote {
+        self.fetch_remote_source(&module_name, &filename)?
+      } else {
+        assert_eq!(
+          module_name, filename,
+          "if a module isn't remote, it should have the same filename"
+        );
+        fs::read_to_string(Path::new(&filename))?
+      };
+      return Ok(CodeFetchOutput {
+        module_name: module_name.to_string(),
+        filename: filename.to_string(),
+        source_code,
+        maybe_output_code: None,
+      });
+    };
+    let default_attempt = use_extension("");
+    if default_attempt.is_ok() {
+      return default_attempt;
+    }
+    debug!("Trying {}.ts...", module_name);
+    let ts_attempt = use_extension(".ts");
+    if ts_attempt.is_ok() {
+      return ts_attempt;
+    }
+    debug!("Trying {}.js...", module_name);
+    use_extension(".js")
   }
 
   pub fn code_fetch(
@@ -161,16 +183,7 @@ impl DenoDir {
     let (module_name, filename) =
       self.resolve_module(module_specifier, containing_file)?;
 
-    let result = self
-      .get_source_code(module_name.as_str(), filename.as_str())
-      .and_then(|source_code| {
-        Ok(CodeFetchOutput {
-          module_name,
-          filename,
-          source_code,
-          maybe_output_code: None,
-        })
-      });
+    let result = self.get_source_code(module_name.as_str(), filename.as_str());
     let out = match result {
       Err(err) => {
         if err.kind() == ErrorKind::NotFound {
@@ -418,6 +431,48 @@ fn test_code_fetch() {
   assert!(r.is_ok());
   //let code_fetch_output = r.unwrap();
   //println!("code_fetch_output {:?}", code_fetch_output);
+}
+
+#[test]
+fn test_code_fetch_no_ext() {
+  let (_temp_dir, deno_dir) = test_setup();
+
+  let cwd = std::env::current_dir().unwrap();
+  let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
+
+  // Assuming cwd is the deno repo root.
+  let module_specifier = "./js/main";
+  let containing_file = cwd_string.as_str();
+  let r = deno_dir.code_fetch(module_specifier, containing_file);
+  assert!(r.is_ok());
+
+  // Test .ts extension
+  // Assuming cwd is the deno repo root.
+  let module_specifier = "./js/main";
+  let containing_file = cwd_string.as_str();
+  let r = deno_dir.code_fetch(module_specifier, containing_file);
+  assert!(r.is_ok());
+  let code_fetch_output = r.unwrap();
+  // could only test .ends_with to avoid include local abs path
+  assert!(code_fetch_output.module_name.ends_with("/js/main.ts"));
+  assert!(code_fetch_output.filename.ends_with("/js/main.ts"));
+  assert!(code_fetch_output.source_code.len() > 10);
+
+  // Test .js extension
+  // Assuming cwd is the deno repo root.
+  let module_specifier = "./js/mock_builtin";
+  let containing_file = cwd_string.as_str();
+  let r = deno_dir.code_fetch(module_specifier, containing_file);
+  assert!(r.is_ok());
+  let code_fetch_output = r.unwrap();
+  // could only test .ends_with to avoid include local abs path
+  assert!(
+    code_fetch_output
+      .module_name
+      .ends_with("/js/mock_builtin.js")
+  );
+  assert!(code_fetch_output.filename.ends_with("/js/mock_builtin.js"));
+  assert!(code_fetch_output.source_code.len() > 10);
 }
 
 #[test]
