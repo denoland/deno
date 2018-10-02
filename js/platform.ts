@@ -1,5 +1,3 @@
-// Dummy. Injected in rollup.config.js
-import { DenoArch, DenoPlatform } from "./types";
-
-export const arch: DenoArch = "unknown";
-export const platform: DenoPlatform = "unknown";
+import { Platform } from "./types";
+// 'platform' is  injected by rollup.config.js at compile time.
+export const platform: Platform = {};

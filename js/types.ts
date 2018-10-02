@@ -152,28 +152,8 @@ declare global {
   }
 }
 
-// Based on Node's arch
-export type DenoArch =
-  | "arm"
-  | "arm64"
-  | "ia32"
-  | "mips"
-  | "mipsel"
-  | "ppc"
-  | "ppc64"
-  | "s390"
-  | "s390x"
-  | "x32"
-  | "x64"
-  | "unknown";
-
-export type DenoPlatform =
-  | "aix"
-  | "darwin"
-  | "freebsd"
-  | "linux"
-  | "openbsd"
-  | "sunos"
-  | "win32"
-  | "android"
-  | "unknown";
+// Do not add unsupported platforms.
+export interface Platform {
+  arch?: "x64";
+  os?: "mac" | "win" | "linux";
+}
