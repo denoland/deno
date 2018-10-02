@@ -80,7 +80,16 @@ function strings({ include, exclude } = {}) {
   };
 }
 
-// Inject deno.arch/deno.platform from Node's process.arch/process.platform
+const archNodeToDeno = {
+  x64: "x64"
+};
+const osNodeToDeno = {
+  win32: "win",
+  darwin: "mac",
+  linux: "linux"
+};
+
+// Inject deno.platform.arch and deno.platform.os
 function platform({ include, exclude } = {}) {
   if (!include) {
     throw new Error("include option must be passed");
@@ -97,11 +106,11 @@ function platform({ include, exclude } = {}) {
     transform(_code, id) {
       if (filter(id)) {
         // Adapted from https://github.com/rollup/rollup-plugin-inject/blob/master/src/index.js
+        const arch = archNodeToDeno[process.arch];
+        const os = osNodeToDeno[process.platform];
         const magicString = new MagicString(`
-import { DenoArch, DenoPlatform } from "./types";
-export const arch: DenoArch = "${process.arch}";
-export const platform: DenoPlatform = "${process.platform}";`);
-        // arch and platform comes from Node
+import { Platform } from "./types";
+export const platform: Platform = { arch: "${arch}", os:"${os}" };`);
         return {
           code: magicString.toString(),
           map: magicString.generateMap()

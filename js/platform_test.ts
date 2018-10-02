@@ -2,8 +2,10 @@
 import { test, assert } from "./test_util.ts";
 import * as deno from "deno";
 
-test(function transformPlatformSuccess() {
-  // Make sure they are transformed
-  assert(deno.arch !== "unknown");
-  assert(deno.platform !== "unknown");
+test(function platformTransform() {
+  // deno.platform is injected by rollup at compile time. Here
+  // we check it has been properly transformed.
+  const { arch, os } = deno.platform;
+  assert(arch === "x64");
+  assert(os === "mac" || os === "win" || os === "linux");
 });

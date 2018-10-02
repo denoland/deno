@@ -16,7 +16,7 @@ export { symlinkSync, symlink } from "./symlink";
 export { writeFileSync, writeFile } from "./write_file";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
-export { arch, platform } from "./platform";
+export { platform } from "./platform";
 export { trace } from "./trace";
 export { truncateSync, truncate } from "./truncate";
 export const args: string[] = [];
