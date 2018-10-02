@@ -2,12 +2,11 @@
 
 use errors;
 use errors::{DenoError, DenoResult};
-use futures;
-use futures::future::Either;
-use futures::Future;
 use tokio_util;
 
-use futures::Stream;
+use futures;
+use futures::future::Either;
+use futures::{Future, Stream};
 use hyper;
 use hyper::client::Client;
 use hyper::client::HttpConnector;

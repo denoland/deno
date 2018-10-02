@@ -455,6 +455,7 @@ fn test_code_fetch_no_ext() {
   let code_fetch_output = r.unwrap();
   // could only test .ends_with to avoid include local abs path
   assert!(code_fetch_output.module_name.ends_with("/js/main.ts"));
+  assert!(code_fetch_output.filename.ends_with("/js/main.ts"));
   assert!(code_fetch_output.source_code.len() > 10);
 
   // Test .js extension
@@ -470,6 +471,7 @@ fn test_code_fetch_no_ext() {
       .module_name
       .ends_with("/js/mock_builtin.js")
   );
+  assert!(code_fetch_output.filename.ends_with("/js/mock_builtin.js"));
   assert!(code_fetch_output.source_code.len() > 10);
 }
 
