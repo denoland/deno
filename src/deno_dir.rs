@@ -158,12 +158,12 @@ impl DenoDir {
       });
     };
     let default_attempt = use_extension("");
-    if let Ok(_) = default_attempt {
+    if default_attempt.is_ok() {
       return default_attempt;
     }
     debug!("Trying {}.ts...", module_name);
     let ts_attempt = use_extension(".ts");
-    if let Ok(_) = ts_attempt {
+    if ts_attempt.is_ok() {
       return ts_attempt;
     }
     debug!("Trying {}.js...", module_name);
