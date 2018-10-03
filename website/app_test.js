@@ -41,7 +41,8 @@ const regularData = [
       fetch_deps: 6
     },
     syscall_count: {
-      hello: 600
+      hello: 600,
+      fetch_deps: 700
     }
   },
   {
@@ -72,7 +73,8 @@ const regularData = [
       fetch_deps: 7
     },
     syscall_count: {
-      hello: 700
+      hello: 700,
+      fetch_deps: 800
     }
   }
 ];
@@ -113,10 +115,10 @@ test(function createExecTimeColumnsRegularData() {
 test(function createExecTimeColumnsIrregularData() {
   const columns = createExecTimeColumns(irregularData);
   assertEqual(columns, [
-    ["hello", 0, 0],
-    ["relative_import", 0, 0],
-    ["cold_hello", 0, 0],
-    ["cold_relative_import", 0, 0]
+    ["hello", null, null],
+    ["relative_import", null, null],
+    ["cold_hello", null, null],
+    ["cold_relative_import", null, null]
   ]);
 });
 */
@@ -135,10 +137,10 @@ test(function createBinarySizeColumnsRegularData() {
 test(function createBinarySizeColumnsIrregularData() {
   const columns = createBinarySizeColumns(irregularData);
   assertEqual(columns, [
-    ["deno", 0, 100000000],
-    ["main.js", 0, 0],
-    ["main.js.map", 0, 0],
-    ["snapshot_deno.bin", 0, 0]
+    ["deno", null, 100000000],
+    ["main.js", null, 0],
+    ["main.js.map", null, 0],
+    ["snapshot_deno.bin", null, 0]
   ]);
 });
 */
@@ -151,21 +153,24 @@ test(function createThreadCountColumnsRegularData() {
 /* Test is incorrect. TODO: fix this test.
 test(function createThreadCountColumnsIrregularData() {
   const columns = createThreadCountColumns(irregularData);
-  assertEqual(columns, [["set_timeout", 0, 0], ["fetch_deps", 0, 0]]);
+  assertEqual(columns, [
+    ["set_timeout", null, null],
+    ["fetch_deps", null, null]
+  ]);
 });
 */
 
 /* Test is incorrect. TODO: fix this test.
 test(function createSyscallCountColumnsRegularData() {
   const columns = createSyscallCountColumns(regularData);
-  assertEqual(columns, [["hello", 600, 700]]);
+  assertEqual(columns, [["hello", 600, 700], ["fetch_deps", 700, 800]]);
 });
 */
 
 /* Test is incorrect. TODO: fix this test.
 test(function createSyscallCountColumnsIrregularData() {
   const columns = createSyscallCountColumns(irregularData);
-  assertEqual(columns, [["hello", 0, 0]]);
+  assertEqual(columns, [["hello", null, null], ["fetch_deps", null, null]]);
 });
 */
 
