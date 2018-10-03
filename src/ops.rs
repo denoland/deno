@@ -2,6 +2,7 @@
 use errors;
 use errors::{DenoError, DenoResult, ErrorKind};
 use fs as deno_fs;
+use http_server;
 use http_util;
 use isolate::Buf;
 use isolate::Isolate;
@@ -9,6 +10,7 @@ use isolate::IsolateState;
 use isolate::Op;
 use msg;
 use msg_util;
+use msg_util::serialize_response;
 use resources;
 use resources::Resource;
 use version;
@@ -17,6 +19,8 @@ use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::future::poll_fn;
 use futures::Poll;
+use http::header::HeaderName;
+use http::header::HeaderValue;
 use hyper;
 use hyper::rt::{Future, Stream};
 use remove_dir_all::remove_dir_all;
@@ -86,15 +90,18 @@ pub fn dispatch(
       msg::Any::Environ => op_env,
       msg::Any::Exit => op_exit,
       msg::Any::Fetch => op_fetch,
+      msg::Any::HttpAccept => op_http_accept,
+      msg::Any::HttpListen => op_http_listen,
+      msg::Any::HttpWriteResponse => op_http_write_response,
       msg::Any::Listen => op_listen,
       msg::Any::MakeTempDir => op_make_temp_dir,
       msg::Any::Metrics => op_metrics,
       msg::Any::Mkdir => op_mkdir,
       msg::Any::Open => op_open,
+      msg::Any::Read => op_read,
       msg::Any::ReadDir => op_read_dir,
       msg::Any::ReadFile => op_read_file,
       msg::Any::Readlink => op_read_link,
-      msg::Any::Read => op_read,
       msg::Any::Remove => op_remove,
       msg::Any::Rename => op_rename,
       msg::Any::ReplReadline => op_repl_readline,
@@ -106,8 +113,8 @@ pub fn dispatch(
       msg::Any::Stat => op_stat,
       msg::Any::Symlink => op_symlink,
       msg::Any::Truncate => op_truncate,
-      msg::Any::WriteFile => op_write_file,
       msg::Any::Write => op_write,
+      msg::Any::WriteFile => op_write_file,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -121,17 +128,10 @@ pub fn dispatch(
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
       // send back. So transform the DenoError into a deno_buf.
-      let builder = &mut FlatBufferBuilder::new();
-      let errmsg_offset = builder.create_string(&format!("{}", err));
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          error: Some(errmsg_offset),
-          error_kind: err.kind(),
-          ..Default::default()
-        },
-      ))
+
+      // Uncomment the following to trace errors in rust
+      //panic!(err)
+      Ok(msg_util::serialize_error(cmd_id, err))
     }).and_then(move |buf: Buf| -> DenoResult<Buf> {
       // Handle empty responses. For sync responses we just want
       // to send null. For async we want to send a small message
@@ -214,20 +214,6 @@ fn op_start(
       ..Default::default()
     },
   ))
-}
-
-fn serialize_response(
-  cmd_id: u32,
-  builder: &mut FlatBufferBuilder,
-  mut args: msg::BaseArgs,
-) -> Buf {
-  args.cmd_id = cmd_id;
-  let base = msg::Base::create(builder, &args);
-  msg::finish_base_buffer(builder, base);
-  let data = builder.finished_data();
-  // println!("serialize_response {:x?}", data);
-  let vec = data.to_vec();
-  vec.into_boxed_slice()
 }
 
 fn ok_future(buf: Buf) -> Box<Op> {
@@ -1185,6 +1171,134 @@ fn op_truncate(
   })
 }
 
+fn op_http_listen(
+  state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  let cmd_id = base.cmd_id();
+  assert_eq!(data.len(), 0);
+
+  let inner = base.inner_as_http_listen().unwrap();
+  let address = inner.address().unwrap();
+
+  if let Err(e) = state.check_net(address) {
+    return odd_future(e);
+  }
+
+  Box::new(futures::future::result((move || {
+    // TODO properly parse addr
+    let addr = SocketAddr::from_str(address).unwrap();
+
+    let http_server = http_server::create_and_bind(&addr).unwrap();
+    let resource = resources::add_http_server(http_server);
+    // tokio_util::spawn(server_fut);
+    //tokio::spawn(server_fut);
+
+    let builder = &mut FlatBufferBuilder::new();
+    let inner = msg::HttpListenRes::create(
+      builder,
+      &msg::HttpListenResArgs {
+        rid: resource.rid,
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::HttpListenRes,
+        ..Default::default()
+      },
+    ))
+  })()))
+}
+
+fn op_http_write_response(
+  state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert!(base.sync());
+
+  if let Err(e) = state.check_net("HttpWriteResponse") {
+    return odd_future(e);
+  }
+
+  let inner = base.inner_as_http_write_response().unwrap();
+  let transaction_rid = inner.transaction_rid();
+  let header = inner.header().unwrap();
+  assert!(false == header.is_request());
+  let status = header.status();
+
+  let d = Vec::from(data);
+  let body = hyper::Body::from(d);
+
+  Box::new(futures::future::result((move || {
+    let mut response = hyper::Response::new(body);
+    *response.status_mut() = hyper::StatusCode::from_u16(status)?;
+
+    if let Some(fields) = header.fields() {
+      let mut headers = response.headers_mut();
+      for i in 0..fields.len() {
+        let kv = fields.get(i);
+        let key = kv.key().unwrap();
+        let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+        let value = kv.value().unwrap();
+        let v = HeaderValue::from_str(value)?;
+        headers.insert(name, v);
+      }
+    }
+
+    // Yes, this is synchronous for now.
+    resources::http_write_response(transaction_rid, response)?;
+    Ok(empty_buf())
+  })()))
+}
+
+fn op_http_accept(
+  state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+
+  if let Err(e) = state.check_net("accept") {
+    return odd_future(e);
+  }
+
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_http_accept().unwrap();
+  let listener_rid = inner.listener_rid();
+
+  let op = resources::http_accept(listener_rid).map(move |transaction| {
+    let builder = &mut FlatBufferBuilder::new();
+    let header = msg_util::serialize_request_header(builder, &transaction.req);
+
+    let transaction_resource = resources::add_http_transaction(transaction);
+
+    let inner = msg::HttpAcceptRes::create(
+      builder,
+      &msg::HttpAcceptResArgs {
+        header: Some(header),
+        transaction_rid: transaction_resource.rid,
+        ..Default::default()
+      },
+    );
+    serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::HttpAcceptRes,
+        ..Default::default()
+      },
+    )
+  });
+  Box::new(op)
+}
+
 fn op_listen(
   state: &Arc<IsolateState>,
   base: &msg::Base,
@@ -1197,9 +1311,9 @@ fn op_listen(
 
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_listen().unwrap();
+  let address = inner.address().unwrap();
   let network = inner.network().unwrap();
   assert_eq!(network, "tcp");
-  let address = inner.address().unwrap();
 
   // Ignore this clippy warning until this issue is addressed:
   // https://github.com/rust-lang-nursery/rust-clippy/issues/1684

@@ -13,12 +13,14 @@ use eager_unix as eager;
 use errors::bad_resource;
 use errors::DenoError;
 use errors::DenoResult;
+use http_server;
 use repl::Repl;
 use tokio_util;
 use tokio_write;
 
 use futures;
 use futures::future::{Either, FutureResult};
+use futures::Future;
 use futures::Poll;
 use std;
 use std::collections::HashMap;
@@ -53,13 +55,15 @@ lazy_static! {
 
 // Internal representation of Resource.
 enum Repr {
+  FsFile(tokio::fs::File),
+  HttpServer(http_server::HttpServer),
+  HttpTransaction(http_server::Transaction),
+  Repl(Repl),
+  Stderr(tokio::io::Stderr),
   Stdin(tokio::io::Stdin),
   Stdout(tokio::io::Stdout),
-  Stderr(tokio::io::Stderr),
-  FsFile(tokio::fs::File),
   TcpListener(tokio::net::TcpListener),
   TcpStream(tokio::net::TcpStream),
-  Repl(Repl),
 }
 
 pub fn table_entries() -> Vec<(u32, String)> {
@@ -83,13 +87,15 @@ fn test_table_entries() {
 
 fn inspect_repr(repr: &Repr) -> String {
   let h_repr = match repr {
+    Repr::FsFile(_) => "fsFile",
+    Repr::HttpServer(_) => "httpServer",
+    Repr::HttpTransaction(_) => "httpTransaction",
+    Repr::Repl(_) => "repl",
+    Repr::Stderr(_) => "stderr",
     Repr::Stdin(_) => "stdin",
     Repr::Stdout(_) => "stdout",
-    Repr::Stderr(_) => "stderr",
-    Repr::FsFile(_) => "fsFile",
     Repr::TcpListener(_) => "tcpListener",
     Repr::TcpStream(_) => "tcpStream",
-    Repr::Repl(_) => "repl",
   };
 
   String::from(h_repr)
@@ -237,6 +243,51 @@ pub fn readline(rid: ResourceId, prompt: &str) -> DenoResult<String> {
     Some(Repr::Repl(ref mut r)) => {
       let line = r.readline(&prompt)?;
       Ok(line)
+    },
+    _ => Err(bad_resource()),
+  }
+}
+
+pub fn add_http_server(s: http_server::HttpServer) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  match tg.insert(rid, Repr::HttpServer(s)) {
+    Some(_) => panic!("There is already a file with that rid"),
+    None => Resource { rid },
+  }
+}
+
+pub fn add_http_transaction(transaction: http_server::Transaction) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  match tg.insert(rid, Repr::HttpTransaction(transaction)) {
+    Some(_) => panic!("There is already a file with that rid"),
+    None => Resource { rid },
+  }
+}
+
+pub fn http_accept(
+  rid: ResourceId,
+) -> impl Future<Item = http_server::Transaction, Error = DenoError> {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&rid);
+  match maybe_repr {
+    Some(Repr::HttpServer(ref mut s)) => Either::A(s.accept()),
+    _ => Either::B(futures::future::err(bad_resource())),
+  }
+}
+
+pub fn http_write_response(
+  rid: ResourceId,
+  response: http_server::Res,
+) -> DenoResult<()> {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&rid);
+  match maybe_repr {
+    Some(Repr::HttpTransaction(ref mut transaction)) => {
+      let tx = transaction.response_tx.take().unwrap();
+      tx.send(response).unwrap();
+      Ok(())
     }
     _ => Err(bad_resource()),
   }

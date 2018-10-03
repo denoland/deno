@@ -149,6 +149,47 @@ impl From<hyper::Error> for DenoError {
   }
 }
 
+use futures::sync::mpsc::SendError;
+impl<T> From<SendError<T>> for DenoError {
+  #[inline]
+  fn from(_err: SendError<T>) -> DenoError {
+    DenoError {
+      repr: Repr::Simple(ErrorKind::Other, String::from("Send Error")),
+    }
+  }
+}
+
+use futures::Canceled;
+impl From<Canceled> for DenoError {
+  #[inline]
+  fn from(_err: Canceled) -> DenoError {
+    DenoError {
+      repr: Repr::Simple(ErrorKind::Other, String::from("Future Canceled")),
+    }
+  }
+}
+
+use http::status::InvalidStatusCode;
+use std::error::Error;
+impl From<InvalidStatusCode> for DenoError {
+  #[inline]
+  fn from(err: InvalidStatusCode) -> DenoError {
+    DenoError {
+      repr: Repr::Simple(ErrorKind::HttpOther, String::from(err.description())),
+    }
+  }
+}
+
+use http::header::InvalidHeaderValue;
+impl From<InvalidHeaderValue> for DenoError {
+  #[inline]
+  fn from(err: InvalidHeaderValue) -> DenoError {
+    DenoError {
+      repr: Repr::Simple(ErrorKind::HttpOther, String::from(err.description())),
+    }
+  }
+}
+
 pub fn bad_resource() -> DenoError {
   new(ErrorKind::BadResource, String::from("bad resource id"))
 }

@@ -2,6 +2,7 @@
 extern crate dirs;
 extern crate flatbuffers;
 extern crate getopts;
+extern crate http;
 extern crate hyper;
 extern crate hyper_rustls;
 extern crate libc;
@@ -29,6 +30,7 @@ pub mod deno_dir;
 pub mod errors;
 pub mod flags;
 mod fs;
+mod http_server;
 mod http_util;
 pub mod isolate;
 pub mod libdeno;
