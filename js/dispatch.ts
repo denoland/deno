@@ -9,19 +9,31 @@ import { maybePushTrace } from "./trace";
 let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<fbs.Base>>();
 
+let fireTimers: () => void;
+
+export function setFireTimersCallback(fn: () => void) {
+  fireTimers = fn;
+}
+
 export function handleAsyncMsgFromRust(ui8: Uint8Array) {
-  const bb = new flatbuffers.ByteBuffer(ui8);
-  const base = fbs.Base.getRootAsBase(bb);
-  const cmdId = base.cmdId();
-  const promise = promiseTable.get(cmdId);
-  util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
-  promiseTable.delete(cmdId);
-  const err = errors.maybeError(base);
-  if (err != null) {
-    promise!.reject(err);
-  } else {
-    promise!.resolve(base);
+  // If a the buffer is empty, recv() on the native side timed out and we
+  // did not receive a message.
+  if (ui8.length) {
+    const bb = new flatbuffers.ByteBuffer(ui8);
+    const base = fbs.Base.getRootAsBase(bb);
+    const cmdId = base.cmdId();
+    const promise = promiseTable.get(cmdId);
+    util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
+    promiseTable.delete(cmdId);
+    const err = errors.maybeError(base);
+    if (err != null) {
+      promise!.reject(err);
+    } else {
+      promise!.resolve(base);
+    }
   }
+  // Fire timers that have become runnable.
+  fireTimers();
 }
 
 // @internal

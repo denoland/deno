@@ -5,6 +5,7 @@ use errors::DenoError;
 use errors::DenoResult;
 use fs as deno_fs;
 use isolate::Buf;
+use isolate::Isolate;
 use isolate::IsolateState;
 use isolate::Op;
 use msg;
@@ -47,7 +48,7 @@ fn empty_buf() -> Buf {
 }
 
 pub fn msg_from_js(
-  state: Arc<IsolateState>,
+  isolate: &mut Isolate,
   control: &[u8],
   data: &'static mut [u8],
 ) -> (bool, Box<Op>) {
@@ -55,38 +56,47 @@ pub fn msg_from_js(
   let is_sync = base.sync();
   let msg_type = base.msg_type();
   let cmd_id = base.cmd_id();
-  let handler: Handler = match msg_type {
-    msg::Any::Start => handle_start,
-    msg::Any::CodeFetch => handle_code_fetch,
-    msg::Any::CodeCache => handle_code_cache,
-    msg::Any::SetTimeout => handle_set_timeout,
-    msg::Any::Environ => handle_env,
-    msg::Any::FetchReq => handle_fetch_req,
-    msg::Any::TimerStart => handle_timer_start,
-    msg::Any::TimerClear => handle_timer_clear,
-    msg::Any::MakeTempDir => handle_make_temp_dir,
-    msg::Any::Mkdir => handle_mkdir,
-    msg::Any::Open => handle_open,
-    msg::Any::Read => handle_read,
-    msg::Any::Write => handle_write,
-    msg::Any::Remove => handle_remove,
-    msg::Any::ReadFile => handle_read_file,
-    msg::Any::Rename => handle_rename,
-    msg::Any::Readlink => handle_read_link,
-    msg::Any::Symlink => handle_symlink,
-    msg::Any::SetEnv => handle_set_env,
-    msg::Any::Stat => handle_stat,
-    msg::Any::Truncate => handle_truncate,
-    msg::Any::WriteFile => handle_write_file,
-    msg::Any::Exit => handle_exit,
-    msg::Any::CopyFile => handle_copy_file,
-    _ => panic!(format!(
-      "Unhandled message {}",
-      msg::enum_name_any(msg_type)
-    )),
+
+  let op: Box<Op> = if msg_type == msg::Any::SetTimeout {
+    // SetTimeout is an exceptional op: the global timeout field is part of the
+    // Isolate state (not the IsolateState state) and it must be updated on the
+    // main thread.
+    assert_eq!(is_sync, true);
+    handle_set_timeout(isolate, &base, data)
+  } else {
+    // Handle regular ops.
+    let handler: Handler = match msg_type {
+      msg::Any::Start => handle_start,
+      msg::Any::CodeFetch => handle_code_fetch,
+      msg::Any::CodeCache => handle_code_cache,
+      msg::Any::Environ => handle_env,
+      msg::Any::FetchReq => handle_fetch_req,
+      msg::Any::TimerStart => handle_timer_start,
+      msg::Any::TimerClear => handle_timer_clear,
+      msg::Any::MakeTempDir => handle_make_temp_dir,
+      msg::Any::Mkdir => handle_mkdir,
+      msg::Any::Open => handle_open,
+      msg::Any::Read => handle_read,
+      msg::Any::Write => handle_write,
+      msg::Any::Remove => handle_remove,
+      msg::Any::ReadFile => handle_read_file,
+      msg::Any::Rename => handle_rename,
+      msg::Any::Readlink => handle_read_link,
+      msg::Any::Symlink => handle_symlink,
+      msg::Any::SetEnv => handle_set_env,
+      msg::Any::Stat => handle_stat,
+      msg::Any::Truncate => handle_truncate,
+      msg::Any::WriteFile => handle_write_file,
+      msg::Any::Exit => handle_exit,
+      msg::Any::CopyFile => handle_copy_file,
+      _ => panic!(format!(
+        "Unhandled message {}",
+        msg::enum_name_any(msg_type)
+      )),
+    };
+    handler(isolate.state.clone(), &base, data)
   };
 
-  let op: Box<Op> = handler(state.clone(), &base, data);
   let boxed_op = Box::new(
     op.or_else(move |err: DenoError| -> DenoResult<Buf> {
       debug!("op err {}", err);
@@ -274,16 +284,18 @@ fn handle_code_cache(
 }
 
 fn handle_set_timeout(
-  state: Arc<IsolateState>,
+  isolate: &mut Isolate,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let msg = base.msg_as_set_timeout().unwrap();
-  let val = msg.timeout() as isize;
-  state
-    .timeout
-    .swap(val, std::sync::atomic::Ordering::Relaxed);
+  let val = msg.timeout() as i64;
+  isolate.timeout_due = if val >= 0 {
+    Some(Instant::now() + Duration::from_millis(val as u64))
+  } else {
+    None
+  };
   ok_future(empty_buf())
 }
 

@@ -128,7 +128,7 @@ table CodeCache {
 }
 
 table SetTimeout {
-  timeout: int;
+  timeout: double;
 }
 
 table Exit {
