@@ -114,11 +114,11 @@ test(async function intervalCancelSuccess() {
   assertEqual(count, 0);
 });
 
-test(async function intervalCancelSuccess2() {
+test(async function intervalOrdering() {
   const timers = [];
   let timeouts = 0;
-  for (let i = 0; i < 5; i++) {
-    timers[i] = setTimeout(onTimeout, 20 * i);
+  for (let i = 0; i < 10; i++) {
+    timers[i] = setTimeout(onTimeout, 20);
   }
   function onTimeout() {
     ++timeouts;
@@ -134,7 +134,7 @@ test(async function intervalCancelSuccess2() {
       } catch (e) {
         reject(e);
       }
-    }, 200);
+    }, 100);
   });
 });
 
