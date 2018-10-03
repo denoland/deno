@@ -31,7 +31,6 @@ testPerm({ write: true }, function copyFileSyncSuccess() {
   assertSameContent(fromFilename, toFilename);
 });
 
-/* Test is incorrect. TODO: fix this test.
 testPerm({ write: true }, function copyFileSyncFailure() {
   const tempDir = deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
@@ -44,11 +43,16 @@ testPerm({ write: true }, function copyFileSyncFailure() {
     err = e;
   }
   assert(!!err);
-  // Rust deem non-existent path as invalid input
-  assertEqual(err.kind, deno.ErrorKind.InvalidInput);
-  assertEqual(err.name, "InvalidInput");
+  if (deno.platform.os === "win") {
+    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.name, "NotFound");
+  } else {
+    // On *nix, Rust deem non-existent path as invalid input
+    // See https://github.com/rust-lang/rust/issues/54800
+    assertEqual(err.kind, deno.ErrorKind.InvalidInput);
+    assertEqual(err.name, "InvalidInput");
+  }
 });
-*/
 
 testPerm({ write: true }, function copyFileSyncOverwrite() {
   const tempDir = deno.makeTempDirSync();
@@ -88,7 +92,6 @@ testPerm({ write: true }, async function copyFileSuccess() {
   assertSameContent(fromFilename, toFilename);
 });
 
-/* Test is incorrect. TODO: fix this test.
 testPerm({ write: true }, async function copyFileFailure() {
   const tempDir = deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
@@ -101,11 +104,16 @@ testPerm({ write: true }, async function copyFileFailure() {
     err = e;
   }
   assert(!!err);
-  // Rust deem non-existent path as invalid input
-  assertEqual(err.kind, deno.ErrorKind.InvalidInput);
-  assertEqual(err.name, "InvalidInput");
+  if (deno.platform.os === "win") {
+    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.name, "NotFound");
+  } else {
+    // On *nix, Rust deem non-existent path as invalid input
+    // See https://github.com/rust-lang/rust/issues/54800
+    assertEqual(err.kind, deno.ErrorKind.InvalidInput);
+    assertEqual(err.name, "InvalidInput");
+  }
 });
-*/
 
 testPerm({ write: true }, async function copyFileOverwrite() {
   const tempDir = deno.makeTempDirSync();
