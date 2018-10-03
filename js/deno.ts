@@ -19,5 +19,4 @@ export { libdeno } from "./libdeno";
 export { arch, platform } from "./platform";
 export { trace } from "./trace";
 export { truncateSync, truncate } from "./truncate";
-export { setGlobalTimeout } from "./timers";
 export const args: string[] = [];
