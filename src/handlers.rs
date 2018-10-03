@@ -76,6 +76,7 @@ pub fn msg_from_js(
       msg::Any::Write => handle_write,
       msg::Any::Remove => handle_remove,
       msg::Any::ReadFile => handle_read_file,
+      msg::Any::ReadDir => handle_read_dir,
       msg::Any::Rename => handle_rename,
       msg::Any::Readlink => handle_read_link,
       msg::Any::Symlink => handle_symlink,
@@ -810,6 +811,63 @@ fn handle_stat(
       msg::BaseArgs {
         msg: Some(msg.as_union_value()),
         msg_type: msg::Any::StatRes,
+        ..Default::default()
+      },
+    ))
+  })
+}
+
+fn handle_read_dir(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let msg = base.msg_as_read_dir().unwrap();
+  let cmd_id = base.cmd_id();
+  let path = String::from(msg.path().unwrap());
+
+  blocking!(base.sync(), || -> OpResult {
+    debug!("handle_read_dir {}", path);
+    let builder = &mut FlatBufferBuilder::new();
+    let entries: Vec<_> = fs::read_dir(Path::new(&path))?
+      .map(|entry| {
+        let entry = entry.unwrap();
+        let metadata = entry.metadata().unwrap();
+        let file_type = metadata.file_type();
+        let name = builder.create_string(entry.file_name().to_str().unwrap());
+        let path = builder.create_string(entry.path().to_str().unwrap());
+
+        msg::StatRes::create(
+          builder,
+          &msg::StatResArgs {
+            is_file: file_type.is_file(),
+            is_symlink: file_type.is_symlink(),
+            len: metadata.len(),
+            modified: to_seconds!(metadata.modified()),
+            accessed: to_seconds!(metadata.accessed()),
+            created: to_seconds!(metadata.created()),
+            name: Some(name),
+            path: Some(path),
+            ..Default::default()
+          },
+        )
+      }).collect();
+
+    let entries = builder.create_vector(&entries);
+    let msg = msg::ReadDirRes::create(
+      builder,
+      &msg::ReadDirResArgs {
+        entries: Some(entries),
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::ReadDirRes,
         ..Default::default()
       },
     ))
