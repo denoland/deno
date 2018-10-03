@@ -13,6 +13,7 @@ environment:
   MTIME_CACHE_DB: $(APPVEYOR_BUILD_FOLDER)\mtime_cache.xml
   CARGO_HOME: $(USERPROFILE)\.cargo
   RUSTUP_HOME: $(USERPROFILE)\.rustup
+  RUST_BACKTRACE: 1
   RELEASE_ARTIFACT: deno_win_x64.zip
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
