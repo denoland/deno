@@ -116,20 +116,24 @@ test(async function intervalCancelSuccess() {
 
 test(async function intervalOrdering() {
   const timers = [];
+  const timersComplete = [];
   let timeouts = 0;
   for (let i = 0; i < 10; i++) {
-    timers[i] = setTimeout(onTimeout, 20);
+    timers[i] = setTimeout(() => onTimeout(i), 20);
   }
-  function onTimeout() {
+  function onTimeout(label) {
     ++timeouts;
     for (let i = 1; i < timers.length; i++) {
       clearTimeout(timers[i]);
     }
+    timersComplete.push(label);
   }
   await new Promise((resolve, reject) => {
     setTimeout(() => {
       try {
         assertEqual(timeouts, 1);
+        assertEqual(timersComplete.length, 1);
+        assertEqual(timersComplete[0], 0);
         resolve();
       } catch (e) {
         reject(e);
