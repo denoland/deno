@@ -28,7 +28,7 @@ export function createExecTimeColumns(data) {
     ...data.map(d => {
       const benchmark = d.benchmark[name];
       const meanValue = benchmark ? benchmark.mean : 0;
-      return meanValue || 0;
+      return meanValue || null;
     })
   ]);
 }
@@ -44,9 +44,9 @@ export function createBinarySizeColumns(data) {
           return name === "deno" ? binarySizeData : 0;
         default:
           if (!binarySizeData) {
-            return 0;
+            return null;
           }
-          return binarySizeData[name] || 0;
+          return binarySizeData[name] || null;
       }
     })
   ]);
@@ -59,9 +59,9 @@ export function createThreadCountColumns(data) {
     ...data.map(d => {
       const threadCountData = d["thread_count"];
       if (!threadCountData) {
-        return 0;
+        return null;
       }
-      return threadCountData[name] || 0;
+      return threadCountData[name] || null;
     })
   ]);
 }
@@ -73,9 +73,9 @@ export function createSyscallCountColumns(data) {
     ...data.map(d => {
       const syscallCountData = d["syscall_count"];
       if (!syscallCountData) {
-        return 0;
+        return null;
       }
-      return syscallCountData[name] || 0;
+      return syscallCountData[name] || null;
     })
   ]);
 }
