@@ -14,6 +14,7 @@ use libc::c_void;
 use std;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::sync::atomic;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -193,6 +194,14 @@ impl Isolate {
   }
 
   fn ntasks_decrement(&mut self) {
+    // Do something that has no effect. This is done to work around a spooky
+    // bug that happens in release mode only (presumably a compiler bug), that
+    // causes nsize to unexpectedly contain zero.
+    // TODO: remove this workaround when no longer necessary.
+    #[allow(unused)]
+    static UNUSED: atomic::AtomicIsize = atomic::AtomicIsize::new(0);
+    UNUSED.fetch_add(self.ntasks as isize, atomic::Ordering::AcqRel);
+    // Actually decrement the tasks counter here.
     self.ntasks = self.ntasks - 1;
     assert!(self.ntasks >= 0);
   }
