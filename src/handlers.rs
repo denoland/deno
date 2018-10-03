@@ -13,7 +13,6 @@ use msg;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::future::poll_fn;
-use futures::sync::oneshot;
 use futures::Poll;
 use hyper;
 use hyper::rt::{Future, Stream};
@@ -30,7 +29,6 @@ use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
 use tokio;
-use tokio::timer::Delay;
 use tokio_io;
 use tokio_threadpool;
 
@@ -71,8 +69,6 @@ pub fn msg_from_js(
       msg::Any::CodeCache => handle_code_cache,
       msg::Any::Environ => handle_env,
       msg::Any::FetchReq => handle_fetch_req,
-      msg::Any::TimerStart => handle_timer_start,
-      msg::Any::TimerClear => handle_timer_clear,
       msg::Any::MakeTempDir => handle_make_temp_dir,
       msg::Any::Mkdir => handle_mkdir,
       msg::Any::Open => handle_open,
@@ -444,30 +440,6 @@ fn handle_fetch_req(
     },
   );
   Box::new(future)
-}
-
-fn set_timeout<F>(
-  cb: F,
-  delay: u32,
-) -> (
-  impl Future<Item = (), Error = ()>,
-  futures::sync::oneshot::Sender<()>,
-)
-where
-  F: FnOnce() -> (),
-{
-  let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-  let when = Instant::now() + Duration::from_millis(delay.into());
-  let delay_task = Delay::new(when)
-    .map_err(|e| panic!("timer failed; err={:?}", e))
-    .and_then(|_| {
-      cb();
-      Ok(())
-    }).select(cancel_rx)
-    .map(|_| ())
-    .map_err(|_| ());
-
-  (delay_task, cancel_tx)
 }
 
 // This is just type conversion. Implement From trait?
@@ -863,72 +835,6 @@ fn handle_write_file(
     deno_fs::write_file(Path::new(&filename), data, perm)?;
     Ok(empty_buf())
   })
-}
-
-fn remove_timer(state: Arc<IsolateState>, timer_id: u32) {
-  let mut timers = state.timers.lock().unwrap();
-  timers.remove(&timer_id);
-}
-
-// Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L25-L39
-fn handle_timer_start(
-  state: Arc<IsolateState>,
-  base: &msg::Base,
-  data: &'static mut [u8],
-) -> Box<Op> {
-  assert_eq!(data.len(), 0);
-  debug!("handle_timer_start");
-  let msg = base.msg_as_timer_start().unwrap();
-  let cmd_id = base.cmd_id();
-  let timer_id = msg.id();
-  let delay = msg.delay();
-
-  let config2 = state.clone();
-  let future = {
-    let (delay_task, cancel_delay) = set_timeout(
-      move || {
-        remove_timer(config2, timer_id);
-      },
-      delay,
-    );
-    let mut timers = state.timers.lock().unwrap();
-    timers.insert(timer_id, cancel_delay);
-    delay_task
-  };
-  let r = Box::new(future.then(move |result| {
-    let builder = &mut FlatBufferBuilder::new();
-    let msg = msg::TimerReady::create(
-      builder,
-      &msg::TimerReadyArgs {
-        id: timer_id,
-        canceled: result.is_err(),
-        ..Default::default()
-      },
-    );
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::TimerReady,
-        ..Default::default()
-      },
-    ))
-  }));
-  r
-}
-
-// Prototype: https://github.com/ry/isolate/blob/golang/timers.go#L40-L43
-fn handle_timer_clear(
-  state: Arc<IsolateState>,
-  base: &msg::Base,
-  data: &'static mut [u8],
-) -> Box<Op> {
-  assert_eq!(data.len(), 0);
-  let msg = base.msg_as_timer_clear().unwrap();
-  debug!("handle_timer_clear");
-  remove_timer(state, msg.id());
-  ok_future(empty_buf())
 }
 
 fn handle_rename(

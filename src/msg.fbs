@@ -6,9 +6,6 @@ union Any {
   CodeCache,
   SetTimeout,
   Exit,
-  TimerStart,
-  TimerReady,
-  TimerClear,
   Environ,
   EnvironRes,
   FetchReq,
@@ -133,20 +130,6 @@ table SetTimeout {
 
 table Exit {
   code: int;
-}
-
-table TimerStart {
-  id: uint;
-  delay: uint;
-}
-
-table TimerReady {
-  id: uint;
-  canceled: bool;
-}
-
-table TimerClear {
-  id: uint;
 }
 
 table Environ {}
