@@ -1,0 +1,108 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+import * as fbs from "gen/msg_generated";
+
+/**
+ * A FileInfo describes a file and is returned by `stat`, `lstat`,
+ * `statSync`, `lstatSync`.
+ */
+export interface FileInfo {
+  readonly _isFile: boolean;
+  readonly _isSymlink: boolean;
+  /** The size of the file, in bytes. */
+  len: number;
+  /**
+   * The last modification time of the file. This corresponds to the `mtime`
+   * field from `stat` on Unix and `ftLastWriteTime` on Windows. This may not
+   * be available on all platforms.
+   */
+  modified: number | null;
+  /**
+   * The last access time of the file. This corresponds to the `atime`
+   * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
+   * be available on all platforms.
+   */
+  accessed: number | null;
+  /**
+   * The last access time of the file. This corresponds to the `birthtime`
+   * field from `stat` on Unix and `ftCreationTime` on Windows. This may not
+   * be available on all platforms.
+   */
+  created: number | null;
+  /**
+   * The underlying raw st_mode bits that contain the standard Unix permissions
+   * for this file/directory. TODO Match behavior with Go on windows for mode.
+   */
+  mode: number | null;
+
+  /**
+   * Returns the file or directory name.
+   */
+  name: string | null;
+
+  /** Returns the file or directory path.  */
+  path: string | null;
+
+  /**
+   * Returns whether this is info for a regular file. This result is mutually
+   * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
+   */
+  isFile(): boolean;
+
+  /**
+   * Returns whether this is info for a regular directory. This result is
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`.
+   */
+  isDirectory(): boolean;
+
+  /**
+   * Returns whether this is info for a symlink. This result is
+   * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`.
+   */
+  isSymlink(): boolean;
+}
+
+export class FileInfoImpl implements FileInfo {
+  readonly _isFile: boolean;
+  readonly _isSymlink: boolean;
+  len: number;
+  modified: number | null;
+  accessed: number | null;
+  created: number | null;
+  mode: number | null;
+  name: string | null;
+  path: string | null;
+
+  /* @internal */
+  constructor(private _msg: fbs.StatRes) {
+    const modified = this._msg.modified().toFloat64();
+    const accessed = this._msg.accessed().toFloat64();
+    const created = this._msg.created().toFloat64();
+    const hasMode = this._msg.hasMode();
+    const mode = this._msg.mode(); // negative for invalid mode (Windows)
+    const name = this._msg.name();
+    const path = this._msg.path();
+
+    this._isFile = this._msg.isFile();
+    this._isSymlink = this._msg.isSymlink();
+    this.len = this._msg.len().toFloat64();
+    this.modified = modified ? modified : null;
+    this.accessed = accessed ? accessed : null;
+    this.created = created ? created : null;
+    // null on Windows
+    this.mode = hasMode ? mode : null;
+    this.name = name ? name : null;
+    this.path = path ? path : null;
+  }
+
+  isFile() {
+    return this._isFile;
+  }
+
+  isDirectory() {
+    return !this._isFile && !this._isSymlink;
+  }
+
+  isSymlink() {
+    return this._isSymlink;
+  }
+}
