@@ -28,7 +28,7 @@ export function createExecTimeColumns(data) {
     ...data.map(d => {
       const benchmark = d.benchmark[name];
       const meanValue = benchmark ? benchmark.mean : 0;
-      return meanValue == 0 ? null : meanValue;
+      return meanValue || null;
     })
   ]);
 }
@@ -46,7 +46,7 @@ export function createBinarySizeColumns(data) {
           if (!binarySizeData) {
             return null;
           }
-          return binarySizeData[name] == 0 ? null : binarySizeData[name];
+          return binarySizeData[name] || null;
       }
     })
   ]);
@@ -61,7 +61,7 @@ export function createThreadCountColumns(data) {
       if (!threadCountData) {
         return null;
       }
-      return threadCountData[name] == 0 ? null : threadCountData[name];
+      return threadCountData[name] || null;
     })
   ]);
 }
@@ -75,7 +75,7 @@ export function createSyscallCountColumns(data) {
       if (!syscallCountData) {
         return null;
       }
-      return syscallCountData[name] == 0 ? null : syscallCountData[name];
+      return syscallCountData[name] || null;
     })
   ]);
 }
@@ -122,6 +122,8 @@ export async function main() {
   const sha1List = createSha1List(data);
   const sha1ShortList = sha1List.map(sha1 => sha1.substring(0, 6));
   const prNumberList = travisData.map(d => d.pull_request_number);
+
+  console.log(threadCountColumns);
 
   const viewCommitOnClick = _sha1List => d => {
     window.open(
