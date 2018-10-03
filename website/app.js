@@ -123,8 +123,6 @@ export async function main() {
   const sha1ShortList = sha1List.map(sha1 => sha1.substring(0, 6));
   const prNumberList = travisData.map(d => d.pull_request_number);
 
-  console.log(threadCountColumns);
-
   const viewCommitOnClick = _sha1List => d => {
     window.open(
       `https://github.com/denoland/deno/commit/${_sha1List[d["index"]]}`
