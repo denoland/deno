@@ -28,7 +28,7 @@ export function createExecTimeColumns(data) {
     ...data.map(d => {
       const benchmark = d.benchmark[name];
       const meanValue = benchmark ? benchmark.mean : 0;
-      return (meanValue || 0) == 0 ? null : meanValue || 0;
+      return meanValue == 0 ? null : meanValue;
     })
   ]);
 }
@@ -46,9 +46,7 @@ export function createBinarySizeColumns(data) {
           if (!binarySizeData) {
             return null;
           }
-          return (binarySizeData[name] || 0) == 0
-            ? null
-            : binarySizeData[name] || 0;
+          return binarySizeData[name] == 0 ? null : binarySizeData[name];
       }
     })
   ]);
@@ -63,9 +61,7 @@ export function createThreadCountColumns(data) {
       if (!threadCountData) {
         return null;
       }
-      return (threadCountData[name] || 0) == 0
-        ? null
-        : threadCountData[name] || 0;
+      return threadCountData[name] == 0 ? null : threadCountData[name];
     })
   ]);
 }
@@ -79,9 +75,7 @@ export function createSyscallCountColumns(data) {
       if (!syscallCountData) {
         return null;
       }
-      return (syscallCountData[name] || 0) == 0
-        ? null
-        : syscallCountData[name] || 0;
+      return syscallCountData[name] == 0 ? null : syscallCountData[name];
     })
   ]);
 }
