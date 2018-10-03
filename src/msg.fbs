@@ -16,6 +16,8 @@ union Any {
   Remove,
   ReadFile,
   ReadFileRes,
+  ReadDir,
+  ReadDirRes,
   WriteFile,
   CopyFile,
   Rename,
@@ -191,6 +193,14 @@ table ReadFileRes {
   data: [ubyte];
 }
 
+table ReadDir {
+  path: string;
+}
+
+table ReadDirRes {
+  entries: [StatRes];
+}
+
 table WriteFile {
   filename: string;
   data: [ubyte];
@@ -235,6 +245,8 @@ table StatRes {
   created:ulong;
   mode: uint;
   has_mode: bool; // false on windows
+  name: string;
+  path: string;
 }
 
 table Truncate {
