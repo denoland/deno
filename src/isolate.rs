@@ -9,11 +9,9 @@ use errors::DenoError;
 use flags;
 use libdeno;
 
-use futures;
 use futures::Future;
 use libc::c_void;
 use std;
-use std::collections::HashMap;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::sync::mpsc;
@@ -54,7 +52,6 @@ pub struct Isolate {
 // needs to be accessed outside the main V8 thread should be inside IsolateState.
 pub struct IsolateState {
   pub dir: deno_dir::DenoDir,
-  pub timers: Mutex<HashMap<u32, futures::sync::oneshot::Sender<()>>>,
   pub argv: Vec<String>,
   pub flags: flags::DenoFlags,
   tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
@@ -92,7 +89,6 @@ impl Isolate {
       timeout_due: None,
       state: Arc::new(IsolateState {
         dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
-        timers: Mutex::new(HashMap::new()),
         argv: argv_rest,
         flags,
         tx: Mutex::new(Some(tx)),
@@ -280,6 +276,7 @@ extern "C" fn pre_dispatch(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use futures;
 
   #[test]
   fn test_c_to_rust() {
