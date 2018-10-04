@@ -18,3 +18,21 @@ test(async function filesCopyToStdout() {
   assertEqual(bytesWritten, fileSize);
   console.log("bytes written", bytesWritten);
 });
+
+test(async function createFileSuccess() {
+  const path = "test.txt";
+  let f = await deno.create(path);
+  assert(f instanceof deno.File);
+  let fileInfo = deno.statSync(path);
+  assert(fileInfo.len === 0);
+  assert(fileInfo.isFile());
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  f.write(data);
+  fileInfo = deno.statSync(path);
+  assert(fileInfo.len === 5);
+  f = await deno.create(path);
+  fileInfo = deno.statSync(path);
+  assert(fileInfo.len === 0);
+  deno.removeSync(path);
+});

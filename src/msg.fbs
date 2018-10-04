@@ -28,6 +28,8 @@ union Any {
   StatRes,
   SetEnv,
   Truncate,
+  Create,
+  CreateRes,
   Open,
   OpenRes,
   Read,
@@ -257,6 +259,14 @@ table StatRes {
 table Truncate {
   name: string;
   len: uint;
+}
+
+table Create {
+  filename: string;
+}
+
+table CreateRes {
+  rid: int;
 }
 
 table Open {

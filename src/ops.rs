@@ -80,6 +80,7 @@ pub fn dispatch(
       msg::Any::FetchReq => op_fetch_req,
       msg::Any::MakeTempDir => op_make_temp_dir,
       msg::Any::Mkdir => op_mkdir,
+      msg::Any::Create => op_create,
       msg::Any::Open => op_open,
       msg::Any::Read => op_read,
       msg::Any::Write => op_write,
@@ -556,6 +557,41 @@ fn op_mkdir(
     deno_fs::mkdir(Path::new(&path), mode)?;
     Ok(empty_buf())
   })
+}
+
+fn op_create(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_create().unwrap();
+  let filename = PathBuf::from(inner.filename().unwrap());
+
+  let op = tokio::fs::File::create(filename)
+    .map_err(|err| DenoError::from(err))
+    .and_then(move |fs_file| -> OpResult {
+      let resource = resources::add_fs_file(fs_file);
+      let builder = &mut FlatBufferBuilder::new();
+      let inner = msg::CreateRes::create(
+        builder,
+        &msg::CreateResArgs {
+          rid: resource.rid,
+          ..Default::default()
+        },
+      );
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          inner: Some(inner.as_union_value()),
+          inner_type: msg::Any::CreateRes,
+          ..Default::default()
+        },
+      ))
+    });
+  Box::new(op)
 }
 
 fn op_open(

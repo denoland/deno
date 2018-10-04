@@ -29,10 +29,32 @@ export const stderr = new File(2);
 // TODO This is just a placeholder - not final API.
 export type OpenMode = "r" | "w" | "w+" | "x";
 
-export function create(filename: string): Promise<File> {
-  return open(filename, "x");
+/**
+ * Opens a file in write-only mode. This function will create a 
+ * file if it does not exist, and will truncate it if it does.
+ *     import { create } from "deno";
+ *     create("/dir/test.txt");
+ */
+export async function create(filename: string): Promise<File> {
+  const builder = new flatbuffers.Builder();
+  const filename_ = builder.createString(filename);
+  msg.Create.startCreate(builder);
+  msg.Create.addFilename(builder, filename_);
+  const inner = msg.Create.endCreate(builder);
+  const baseRes = await dispatch.sendAsync(builder, msg.Any.Create, inner);
+  assert(baseRes != null);
+  assert(msg.Any.CreateRes === baseRes!.innerType());
+  const res = new msg.CreateRes();
+  assert(baseRes!.inner(res) != null);
+  const fd = res.rid();
+  return new File(fd);
 }
 
+/**
+ * Opens a file in special mode. 
+ *     import { open } from "deno";
+ *     open("/dir/test.txt", "r");
+ */
 export async function open(
   filename: string,
   mode: OpenMode = "r"
