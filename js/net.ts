@@ -75,6 +75,22 @@ class ConnImpl implements Conn {
   close(): void {
     close(this.fd);
   }
+
+  /** closeRead shuts down (shutdown(2)) the reading side of the TCP connection.
+   * Most callers should just use close().
+   */
+  closeRead(): void {
+    // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
+    return notImplemented();
+  }
+
+  /** closeWrite shuts down (shutdown(2)) the writing side of the TCP connection.
+   * Most callers should just use close().
+   */
+  closeWrite(): void {
+    // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
+    return notImplemented();
+  }
 }
 
 /** Listen announces on the local network address.
