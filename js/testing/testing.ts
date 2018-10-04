@@ -52,27 +52,52 @@ function filter(name: string): boolean {
   }
 }
 
+const RESET = "\x1b[0m";
+const FG_RED = "\x1b[31m";
+const FG_GREEN = "\x1b[32m";
+
+function red_failed() {
+  return FG_RED + "FAILED" + RESET
+}
+
+
+function green_ok() {
+  return FG_GREEN + "ok" + RESET
+}
+
 async function runTests() {
   let passed = 0;
   let failed = 0;
 
+  console.log("running", tests.length, "tests");
   for (let i = 0; i < tests.length; i++) {
     const { fn, name } = tests[i];
-    console.log(`${i + 1}/${tests.length} +${passed} -${failed}: ${name}`);
+    let result = green_ok();
     try {
       await fn();
       passed++;
     } catch (e) {
-      console.error("\nTest FAIL", name);
+      result = red_failed();
       console.error((e && e.stack) || e);
       failed++;
       if (exitOnFail) {
         break;
       }
     }
+    console.log("test", name, "...", result);
   }
 
-  console.log(`\nDONE. Test passed: ${passed}, failed: ${failed}`);
+  // TODO counts for ignored , measured, filtered.
+  const filtered = 0;
+  const ignored = 0;
+  const measured = 0;
+
+  // Attempting to match the output of Rust's test runner.
+  const result = failed > 0 ? red_failed() : green_ok();
+  console.log(
+    `\ntest result: ${result}. ${passed} passed; ${failed} failed; ` +
+    `${ignored} ignored; ${measured} measured; ${filtered} filtered out\n`);
+
 
   if (failed === 0) {
     // All good.
