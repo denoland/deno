@@ -151,9 +151,3 @@ declare global {
     stackTraceLimit: number;
   }
 }
-
-// Do not add unsupported platforms.
-export interface Platform {
-  arch?: "x64";
-  os?: "mac" | "win" | "linux";
-}
