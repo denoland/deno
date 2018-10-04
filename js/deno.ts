@@ -2,7 +2,8 @@
 // Public deno module.
 /// <amd-module name="deno"/>
 export { env, exit } from "./os";
-export { File, open, stdin, stdout, stderr, read, write, close } from "./files";
+/* tslint:disable-next-line:max-line-length */
+export { File, open, stdin, stdout, stderr, create, read, write, close } from "./files";
 export { copy, Reader, Writer } from "./io";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
