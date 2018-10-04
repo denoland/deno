@@ -103,7 +103,7 @@ class ConnImpl implements Conn {
 }
 
 enum ShutdownMode {
-  // See https://linux.die.net/man/2/shutdown
+  // See http://man7.org/linux/man-pages/man2/shutdown.2.html
   // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
   Read = 0,
   Write,
