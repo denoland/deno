@@ -41,12 +41,12 @@ export async function open(
   const filename_ = builder.createString(filename);
   fbs.Open.startOpen(builder);
   fbs.Open.addFilename(builder, filename_);
-  const msg = fbs.Open.endOpen(builder);
-  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Open, msg);
+  const inner = fbs.Open.endOpen(builder);
+  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Open, inner);
   assert(baseRes != null);
-  assert(fbs.Any.OpenRes === baseRes!.msgType());
+  assert(fbs.Any.OpenRes === baseRes!.innerType());
   const res = new fbs.OpenRes();
-  assert(baseRes!.msg(res) != null);
+  assert(baseRes!.inner(res) != null);
   const fd = res.rid();
   return new File(fd);
 }
@@ -58,12 +58,12 @@ export async function read(
   const builder = new flatbuffers.Builder();
   fbs.Read.startRead(builder);
   fbs.Read.addRid(builder, fd);
-  const msg = fbs.Read.endRead(builder);
-  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Read, msg, p);
+  const inner = fbs.Read.endRead(builder);
+  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Read, inner, p);
   assert(baseRes != null);
-  assert(fbs.Any.ReadRes === baseRes!.msgType());
+  assert(fbs.Any.ReadRes === baseRes!.innerType());
   const res = new fbs.ReadRes();
-  assert(baseRes!.msg(res) != null);
+  assert(baseRes!.inner(res) != null);
   return { nread: res.nread(), eof: res.eof() };
 }
 
@@ -71,12 +71,12 @@ export async function write(fd: number, p: ArrayBufferView): Promise<number> {
   const builder = new flatbuffers.Builder();
   fbs.Write.startWrite(builder);
   fbs.Write.addRid(builder, fd);
-  const msg = fbs.Write.endWrite(builder);
-  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Write, msg, p);
+  const inner = fbs.Write.endWrite(builder);
+  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Write, inner, p);
   assert(baseRes != null);
-  assert(fbs.Any.WriteRes === baseRes!.msgType());
+  assert(fbs.Any.WriteRes === baseRes!.innerType());
   const res = new fbs.WriteRes();
-  assert(baseRes!.msg(res) != null);
+  assert(baseRes!.inner(res) != null);
   return res.nbyte();
 }
 
@@ -84,6 +84,6 @@ export function close(fd: number): void {
   const builder = new flatbuffers.Builder();
   fbs.Close.startClose(builder);
   fbs.Close.addRid(builder, fd);
-  const msg = fbs.Close.endClose(builder);
-  dispatch.sendSync(builder, fbs.Any.Close, msg);
+  const inner = fbs.Close.endClose(builder);
+  dispatch.sendSync(builder, fbs.Any.Close, inner);
 }

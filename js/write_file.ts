@@ -47,6 +47,6 @@ function req(
   fbs.WriteFile.startWriteFile(builder);
   fbs.WriteFile.addFilename(builder, filename_);
   fbs.WriteFile.addPerm(builder, perm);
-  const msg = fbs.WriteFile.endWriteFile(builder);
-  return [builder, fbs.Any.WriteFile, msg, data];
+  const inner = fbs.WriteFile.endWriteFile(builder);
+  return [builder, fbs.Any.WriteFile, inner, data];
 }

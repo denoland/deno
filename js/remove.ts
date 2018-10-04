@@ -58,6 +58,6 @@ function req(
   fbs.Remove.startRemove(builder);
   fbs.Remove.addPath(builder, path_);
   fbs.Remove.addRecursive(builder, recursive);
-  const msg = fbs.Remove.endRemove(builder);
-  return [builder, fbs.Any.Remove, msg];
+  const inner = fbs.Remove.endRemove(builder);
+  return [builder, fbs.Any.Remove, inner];
 }

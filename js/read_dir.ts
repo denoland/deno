@@ -32,15 +32,15 @@ function req(path: string): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
   const path_ = builder.createString(path);
   fbs.ReadDir.startReadDir(builder);
   fbs.ReadDir.addPath(builder, path_);
-  const msg = fbs.ReadDir.endReadDir(builder);
-  return [builder, fbs.Any.ReadDir, msg];
+  const inner = fbs.ReadDir.endReadDir(builder);
+  return [builder, fbs.Any.ReadDir, inner];
 }
 
 function res(baseRes: null | fbs.Base): FileInfo[] {
   assert(baseRes != null);
-  assert(fbs.Any.ReadDirRes === baseRes!.msgType());
+  assert(fbs.Any.ReadDirRes === baseRes!.innerType());
   const res = new fbs.ReadDirRes();
-  assert(baseRes!.msg(res) != null);
+  assert(baseRes!.inner(res) != null);
   const fileInfos: FileInfo[] = [];
   for (let i = 0; i < res.entriesLength(); i++) {
     fileInfos.push(new FileInfoImpl(res.entries(i)!));

@@ -29,15 +29,15 @@ function req(name: string): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
   const name_ = builder.createString(name);
   fbs.Readlink.startReadlink(builder);
   fbs.Readlink.addName(builder, name_);
-  const msg = fbs.Readlink.endReadlink(builder);
-  return [builder, fbs.Any.Readlink, msg];
+  const inner = fbs.Readlink.endReadlink(builder);
+  return [builder, fbs.Any.Readlink, inner];
 }
 
 function res(baseRes: null | fbs.Base): string {
   assert(baseRes !== null);
-  assert(fbs.Any.ReadlinkRes === baseRes!.msgType());
+  assert(fbs.Any.ReadlinkRes === baseRes!.innerType());
   const res = new fbs.ReadlinkRes();
-  assert(baseRes!.msg(res) !== null);
+  assert(baseRes!.inner(res) !== null);
   const path = res.path();
   assert(path !== null);
   return path!;
