@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 import * as deno from "deno";
-import { testPerm, assert, assertEqual } from "./test_util.ts";
+import { testPerm, assert, assertEqual, deferred } from "./test_util.ts";
 
 testPerm({ net: true }, function netListenClose() {
   const listener = deno.listen("tcp", "127.0.0.1:4500");
@@ -32,6 +32,62 @@ testPerm({ net: true }, async function netDialListen() {
   const readResult2 = await conn.read(buf);
   assertEqual(true, readResult2.eof);
 
+  listener.close();
+  conn.close();
+});
+
+testPerm({ net: true }, async function netConnCloseRead() {
+  const addr = "127.0.0.1:4500";
+  const listener = deno.listen("tcp", addr);
+  const closeDeferred = deferred();
+  listener.accept().then(async conn => {
+    await conn.write(new Uint8Array([1, 2, 3]));
+    const buf = new Uint8Array(1024);
+    const readResult = await conn.read(buf);
+    assertEqual(3, readResult.nread);
+    assertEqual(4, buf[0]);
+    assertEqual(5, buf[1]);
+    assertEqual(6, buf[2]);
+    conn.close();
+    closeDeferred.resolve();
+  });
+  const conn = await deno.dial("tcp", addr);
+  conn.closeRead(); // closing read
+  const buf = new Uint8Array(1024);
+  const readResult = await conn.read(buf);
+  assertEqual(0, readResult.nread); // TODO: no error?
+  assertEqual(true, readResult.eof);
+  await conn.write(new Uint8Array([4, 5, 6]));
+  await closeDeferred.promise;
+  listener.close();
+  conn.close();
+});
+
+testPerm({ net: true }, async function netConnCloseWrite() {
+  const addr = "127.0.0.1:4500";
+  const listener = deno.listen("tcp", addr);
+  const closeDeferred = deferred();
+  listener.accept().then(async conn => {
+    await conn.write(new Uint8Array([1, 2, 3]));
+    await closeDeferred.promise;
+    conn.close();
+  });
+  const conn = await deno.dial("tcp", addr);
+  conn.closeWrite(); // closing read
+  const buf = new Uint8Array(1024);
+  const readResult = await conn.read(buf);
+  assertEqual(3, readResult.nread);
+  assertEqual(1, buf[0]);
+  assertEqual(2, buf[1]);
+  assertEqual(3, buf[2]);
+  let err;
+  try {
+    await conn.write(new Uint8Array([1, 2, 3]));
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err); // TODO: Broken Pipe?
+  closeDeferred.resolve();
   listener.close();
   conn.close();
 });

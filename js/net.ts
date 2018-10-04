@@ -12,7 +12,10 @@ export type Network = "tcp";
 // export type Network = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
 // TODO Support finding network from Addr, see https://golang.org/pkg/net/#Addr
-export type Addr = string;
+export interface Addr {
+  network: Network;
+  address: string;
+}
 
 /** A Listener is a generic network listener for stream-oriented protocols. */
 export interface Listener {
@@ -28,7 +31,11 @@ export interface Listener {
 }
 
 class ListenerImpl implements Listener {
-  constructor(readonly fd: number) {}
+  private addr_: Addr;
+
+  constructor(readonly fd: number, network: Network, address: string) {
+    this.addr_ = Object.freeze({ network, address });
+  }
 
   async accept(): Promise<Conn> {
     const builder = new flatbuffers.Builder();
@@ -48,13 +55,15 @@ class ListenerImpl implements Listener {
   }
 
   addr(): Addr {
-    return notImplemented();
+    return this.addr_;
   }
 }
 
 export interface Conn extends Reader, Writer, Closer {
   localAddr: string;
   remoteAddr: string;
+  closeRead(): void;
+  closeWrite(): void;
 }
 
 class ConnImpl implements Conn {
@@ -81,7 +90,7 @@ class ConnImpl implements Conn {
    */
   closeRead(): void {
     // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
-    return notImplemented();
+    shutdown(this.fd, false);
   }
 
   /** closeWrite shuts down (shutdown(2)) the writing side of the TCP
@@ -89,8 +98,18 @@ class ConnImpl implements Conn {
    */
   closeWrite(): void {
     // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
-    return notImplemented();
+    shutdown(this.fd, true);
   }
+}
+
+function shutdown(fd: number, isWrite: boolean) {
+  const builder = new flatbuffers.Builder();
+  msg.Shutdown.startShutdown(builder);
+  msg.Shutdown.addRid(builder, fd);
+  msg.Shutdown.addIsWrite(builder, isWrite);
+  const inner = msg.Shutdown.endShutdown(builder);
+  const baseRes = dispatch.sendSync(builder, msg.Any.Shutdown, inner);
+  assert(baseRes == null);
 }
 
 /** Listen announces on the local network address.
@@ -121,7 +140,7 @@ export function listen(network: Network, address: string): Listener {
   assert(msg.Any.ListenRes === baseRes!.innerType());
   const res = new msg.ListenRes();
   assert(baseRes!.inner(res) != null);
-  return new ListenerImpl(res.rid());
+  return new ListenerImpl(res.rid(), network, address);
 }
 
 /** Dial connects to the address on the named network.
