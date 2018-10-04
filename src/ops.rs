@@ -623,20 +623,22 @@ fn op_shutdown(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_shutdown().unwrap();
   let rid = inner.rid();
-  let is_write = inner.is_write();
+  let how = inner.how();
   match resources::lookup(rid) {
     None => odd_future(errors::new(
       errors::ErrorKind::BadFileDescriptor,
       String::from("Bad File Descriptor"),
     )),
     Some(mut resource) => {
-      let shutdown_mode = if is_write {
-        Shutdown::Write
-      } else {
-        Shutdown::Read
+      let shutdown_mode = match how {
+        0 => Shutdown::Read,
+        1 => Shutdown::Write,
+        _ => unimplemented!(),
       };
-      resource.shutdown_on(shutdown_mode);
-      ok_future(empty_buf())
+      blocking!(base.sync(), || {
+        resource.shutdown_on(shutdown_mode)?;
+        Ok(empty_buf())
+      })
     }
   }
 }

@@ -90,7 +90,7 @@ class ConnImpl implements Conn {
    */
   closeRead(): void {
     // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
-    shutdown(this.fd, false);
+    shutdown(this.fd, ShutdownMode.Read);
   }
 
   /** closeWrite shuts down (shutdown(2)) the writing side of the TCP
@@ -98,15 +98,23 @@ class ConnImpl implements Conn {
    */
   closeWrite(): void {
     // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
-    shutdown(this.fd, true);
+    shutdown(this.fd, ShutdownMode.Write);
   }
 }
 
-function shutdown(fd: number, isWrite: boolean) {
+enum ShutdownMode {
+  // See https://linux.die.net/man/2/shutdown
+  // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
+  Read = 0,
+  Write,
+  ReadWrite // unused
+}
+
+function shutdown(fd: number, how: ShutdownMode) {
   const builder = new flatbuffers.Builder();
   msg.Shutdown.startShutdown(builder);
   msg.Shutdown.addRid(builder, fd);
-  msg.Shutdown.addIsWrite(builder, isWrite);
+  msg.Shutdown.addHow(builder, how);
   const inner = msg.Shutdown.endShutdown(builder);
   const baseRes = dispatch.sendSync(builder, msg.Any.Shutdown, inner);
   assert(baseRes == null);

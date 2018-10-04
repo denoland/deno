@@ -9,7 +9,7 @@ testPerm({ net: true }, function netListenClose() {
 });
 
 testPerm({ net: true }, async function netDialListen() {
-  let addr = "127.0.0.1:4500";
+  const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
   listener.accept().then(async conn => {
     await conn.write(new Uint8Array([1, 2, 3]));
@@ -55,10 +55,37 @@ testPerm({ net: true }, async function netConnCloseRead() {
   conn.closeRead(); // closing read
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
-  assertEqual(0, readResult.nread); // TODO: no error?
-  assertEqual(true, readResult.eof);
+  assertEqual(0, readResult.nread); // No error, read nothing
+  assertEqual(true, readResult.eof); // with immediate EOF
+  // Ensure closeRead does not impact write
   await conn.write(new Uint8Array([4, 5, 6]));
   await closeDeferred.promise;
+  listener.close();
+  conn.close();
+});
+
+testPerm({ net: true }, async function netConnDupCloseReadFailure() {
+  const addr = "127.0.0.1:4500";
+  const listener = deno.listen("tcp", addr);
+  const closeDeferred = deferred();
+  listener.accept().then(async conn => {
+    await conn.write(new Uint8Array([1, 2, 3]));
+    await closeDeferred.promise;
+    conn.close();
+  });
+  const conn = await deno.dial("tcp", addr);
+  conn.closeRead(); // closing read
+  let err;
+  try {
+    // Duplicated close should throw error
+    conn.closeRead();
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertEqual(err.kind, deno.ErrorKind.NotConnected);
+  assertEqual(err.name, "NotConnected");
+  closeDeferred.resolve();
   listener.close();
   conn.close();
 });
@@ -73,20 +100,49 @@ testPerm({ net: true }, async function netConnCloseWrite() {
     conn.close();
   });
   const conn = await deno.dial("tcp", addr);
-  conn.closeWrite(); // closing read
+  conn.closeWrite(); // closing write
   const buf = new Uint8Array(1024);
+  // Check read not impacted
   const readResult = await conn.read(buf);
   assertEqual(3, readResult.nread);
   assertEqual(1, buf[0]);
   assertEqual(2, buf[1]);
   assertEqual(3, buf[2]);
+  // Check write should be closed
   let err;
   try {
     await conn.write(new Uint8Array([1, 2, 3]));
   } catch (e) {
     err = e;
   }
-  assert(!!err); // TODO: Broken Pipe?
+  assert(!!err);
+  assertEqual(err.kind, deno.ErrorKind.BrokenPipe);
+  assertEqual(err.name, "BrokenPipe");
+  closeDeferred.resolve();
+  listener.close();
+  conn.close();
+});
+
+testPerm({ net: true }, async function netConnDupCloseWriteFailure() {
+  const addr = "127.0.0.1:4500";
+  const listener = deno.listen("tcp", addr);
+  const closeDeferred = deferred();
+  listener.accept().then(async conn => {
+    await closeDeferred.promise;
+    conn.close();
+  });
+  const conn = await deno.dial("tcp", addr);
+  conn.closeWrite(); // closing write
+  let err;
+  try {
+    // Duplicated close should throw error
+    conn.closeWrite();
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertEqual(err.kind, deno.ErrorKind.NotConnected);
+  assertEqual(err.name, "NotConnected");
   closeDeferred.resolve();
   listener.close();
   conn.close();

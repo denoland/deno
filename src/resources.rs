@@ -8,6 +8,8 @@
 // descriptors". This module implements a global resource table. Ops (AKA
 // handlers) look up resources by their integer id here.
 
+use errors::DenoError;
+
 use futures;
 use futures::Poll;
 use std;
@@ -81,13 +83,15 @@ impl Resource {
   }
 
   // no collision with unimplemented shutdown
-  pub fn shutdown_on(&mut self, how: Shutdown) {
+  pub fn shutdown_on(&mut self, how: Shutdown) -> Result<(), DenoError> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       None => panic!("bad rid"),
       Some(repr) => match repr {
-        Repr::TcpStream(ref mut f) => TcpStream::shutdown(f, how).unwrap(),
+        Repr::TcpStream(ref mut f) => {
+          TcpStream::shutdown(f, how).map_err(|err| DenoError::from(err))
+        }
         _ => panic!("Cannot shutdown"),
       },
     }

@@ -293,7 +293,7 @@ table Close {
 
 table Shutdown {
   rid: int;
-  is_write: bool;
+  how: uint;
 }
 
 table Listen {
