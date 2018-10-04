@@ -57,12 +57,11 @@ const FG_RED = "\x1b[31m";
 const FG_GREEN = "\x1b[32m";
 
 function red_failed() {
-  return FG_RED + "FAILED" + RESET
+  return FG_RED + "FAILED" + RESET;
 }
 
-
 function green_ok() {
-  return FG_GREEN + "ok" + RESET
+  return FG_GREEN + "ok" + RESET;
 }
 
 async function runTests() {
@@ -96,8 +95,8 @@ async function runTests() {
   const result = failed > 0 ? red_failed() : green_ok();
   console.log(
     `\ntest result: ${result}. ${passed} passed; ${failed} failed; ` +
-    `${ignored} ignored; ${measured} measured; ${filtered} filtered out\n`);
-
+      `${ignored} ignored; ${measured} measured; ${filtered} filtered out\n`
+  );
 
   if (failed === 0) {
     // All good.
