@@ -35,6 +35,11 @@ union Any {
   Write,
   WriteRes,
   Close,
+  Listen,
+  ListenRes,
+  Accept,
+  Dial,
+  NewConn,
 }
 
 enum ErrorKind: byte {
@@ -283,6 +288,31 @@ table WriteRes {
 
 table Close {
   rid: int;
+}
+
+table Listen {
+  network: string;
+  address: string;
+}
+
+table ListenRes {
+  rid: int;
+}
+
+table Accept {
+  rid: int;
+}
+
+table Dial {
+  network: string;
+  address: string;
+}
+
+// Response to Accept and Dial.
+table NewConn {
+  rid: int;
+  remote_addr: string;
+  local_addr: string;
 }
 
 root_type Base;
