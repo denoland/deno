@@ -56,7 +56,7 @@ impl log::Log for Logger {
 fn main() {
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
-  let mut isolate = isolate::Isolate::new(args, ops::msg_from_js);
+  let mut isolate = isolate::Isolate::new(args, ops::dispatch);
   flags::process(&isolate.state.flags);
   tokio_util::init(|| {
     isolate
