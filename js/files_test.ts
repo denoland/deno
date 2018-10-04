@@ -18,3 +18,9 @@ test(async function filesCopyToStdout() {
   assertEqual(bytesWritten, fileSize);
   console.log("bytes written", bytesWritten);
 });
+
+test(async function createFileSuccess() {
+  const path = deno.makeTempDirSync() + "/dir.txt";
+  const f = await deno.create(path);
+  assert(f instanceof deno.File);
+});
