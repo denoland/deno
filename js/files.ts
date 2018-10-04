@@ -18,7 +18,7 @@ export class File implements Reader, Writer, Closer {
   }
 
   close(): void {
-    return close(this.fd);
+    close(this.fd);
   }
 }
 

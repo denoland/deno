@@ -21,4 +21,5 @@ export { platform } from "./platform";
 export { trace } from "./trace";
 export { truncateSync, truncate } from "./truncate";
 export { FileInfo } from "./fileinfo";
+export { connect, dial, listen, Listener, Conn } from "./net";
 export const args: string[] = [];

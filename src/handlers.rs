@@ -9,6 +9,7 @@ use isolate::Isolate;
 use isolate::IsolateState;
 use isolate::Op;
 use msg;
+use tokio_util;
 
 use flatbuffers::FlatBufferBuilder;
 use futures;
@@ -21,14 +22,18 @@ use remove_dir_all::remove_dir_all;
 use resources;
 use std;
 use std::fs;
+use std::net::SocketAddr;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
 use tokio;
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 use tokio_io;
 use tokio_threadpool;
 
@@ -74,6 +79,7 @@ pub fn msg_from_js(
       msg::Any::Open => handle_open,
       msg::Any::Read => handle_read,
       msg::Any::Write => handle_write,
+      msg::Any::Close => handle_close,
       msg::Any::Remove => handle_remove,
       msg::Any::ReadFile => handle_read_file,
       msg::Any::ReadDir => handle_read_dir,
@@ -86,6 +92,9 @@ pub fn msg_from_js(
       msg::Any::WriteFile => handle_write_file,
       msg::Any::Exit => handle_exit,
       msg::Any::CopyFile => handle_copy_file,
+      msg::Any::Listen => handle_listen,
+      msg::Any::Accept => handle_accept,
+      msg::Any::Dial => handle_dial,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(msg_type)
@@ -581,6 +590,26 @@ fn handle_open(
   Box::new(op)
 }
 
+fn handle_close(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let msg = base.msg_as_close().unwrap();
+  let rid = msg.rid();
+  match resources::lookup(rid) {
+    None => odd_future(errors::new(
+      errors::ErrorKind::BadFileDescriptor,
+      String::from("Bad File Descriptor"),
+    )),
+    Some(mut resource) => {
+      resource.close();
+      ok_future(empty_buf())
+    }
+  }
+}
+
 fn handle_read(
   _state: Arc<IsolateState>,
   base: &msg::Base,
@@ -993,4 +1022,125 @@ fn handle_truncate(
     f.set_len(len as u64)?;
     Ok(empty_buf())
   })
+}
+
+fn handle_listen(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  if !state.flags.allow_net {
+    return odd_future(permission_denied());
+  }
+
+  let cmd_id = base.cmd_id();
+  let msg = base.msg_as_listen().unwrap();
+  let network = msg.network().unwrap();
+  assert_eq!(network, "tcp");
+  let address = msg.address().unwrap();
+
+  Box::new(futures::future::result((move || {
+    // TODO properly parse addr
+    let addr = SocketAddr::from_str(address).unwrap();
+
+    let listener = TcpListener::bind(&addr)?;
+    let resource = resources::add_tcp_listener(listener);
+
+    let builder = &mut FlatBufferBuilder::new();
+    let msg = msg::ListenRes::create(
+      builder,
+      &msg::ListenResArgs {
+        rid: resource.rid,
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        msg: Some(msg.as_union_value()),
+        msg_type: msg::Any::ListenRes,
+        ..Default::default()
+      },
+    ))
+  })()))
+}
+
+fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
+  let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
+  // TODO forward socket_addr to client.
+
+  let builder = &mut FlatBufferBuilder::new();
+  let msg = msg::NewConn::create(
+    builder,
+    &msg::NewConnArgs {
+      rid: tcp_stream_resource.rid,
+      ..Default::default()
+    },
+  );
+  Ok(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      msg: Some(msg.as_union_value()),
+      msg_type: msg::Any::NewConn,
+      ..Default::default()
+    },
+  ))
+}
+
+fn handle_accept(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  if !state.flags.allow_net {
+    return odd_future(permission_denied());
+  }
+
+  let cmd_id = base.cmd_id();
+  let msg = base.msg_as_accept().unwrap();
+  let server_rid = msg.rid();
+
+  match resources::lookup(server_rid) {
+    None => odd_future(errors::new(
+      errors::ErrorKind::BadFileDescriptor,
+      String::from("Bad File Descriptor"),
+    )),
+    Some(server_resource) => {
+      let op = tokio_util::accept(server_resource)
+        .map_err(|err| DenoError::from(err))
+        .and_then(move |(tcp_stream, _socket_addr)| {
+          new_conn(cmd_id, tcp_stream)
+        });
+      Box::new(op)
+    }
+  }
+}
+
+fn handle_dial(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  if !state.flags.allow_net {
+    return odd_future(permission_denied());
+  }
+
+  let cmd_id = base.cmd_id();
+  let msg = base.msg_as_dial().unwrap();
+  let network = msg.network().unwrap();
+  assert_eq!(network, "tcp");
+  let address = msg.address().unwrap();
+
+  // TODO properly parse addr
+  let addr = SocketAddr::from_str(address).unwrap();
+
+  let op = TcpStream::connect(&addr)
+    .map_err(|err| err.into())
+    .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream));
+  Box::new(op)
 }
