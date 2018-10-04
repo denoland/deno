@@ -149,3 +149,11 @@ export async function dial(network: Network, address: string): Promise<Conn> {
   assert(baseRes!.msg(res) != null);
   return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
 }
+
+// Unused but reserved op.
+export async function connect(
+  network: Network,
+  address: string
+): Promise<Conn> {
+  return notImplemented();
+}
