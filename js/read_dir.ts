@@ -2,7 +2,7 @@
 import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
-import { FileInfo, FileInfoImpl } from "./fileinfo";
+import { FileInfo, FileInfoImpl } from "./file_info";
 import { assert } from "./util";
 
 /**
