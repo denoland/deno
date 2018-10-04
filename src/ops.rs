@@ -600,8 +600,8 @@ fn op_close(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_close().unwrap();
-  let rid = msg.rid();
+  let inner = base.inner_as_close().unwrap();
+  let rid = inner.rid();
   match resources::lookup(rid) {
     None => odd_future(errors::new(
       errors::ErrorKind::BadFileDescriptor,
@@ -1039,10 +1039,10 @@ fn op_listen(
   }
 
   let cmd_id = base.cmd_id();
-  let msg = base.msg_as_listen().unwrap();
-  let network = msg.network().unwrap();
+  let inner = base.inner_as_listen().unwrap();
+  let network = inner.network().unwrap();
   assert_eq!(network, "tcp");
-  let address = msg.address().unwrap();
+  let address = inner.address().unwrap();
 
   Box::new(futures::future::result((move || {
     // TODO properly parse addr
@@ -1052,7 +1052,7 @@ fn op_listen(
     let resource = resources::add_tcp_listener(listener);
 
     let builder = &mut FlatBufferBuilder::new();
-    let msg = msg::ListenRes::create(
+    let inner = msg::ListenRes::create(
       builder,
       &msg::ListenResArgs {
         rid: resource.rid,
@@ -1063,8 +1063,8 @@ fn op_listen(
       cmd_id,
       builder,
       msg::BaseArgs {
-        msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::ListenRes,
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::ListenRes,
         ..Default::default()
       },
     ))
@@ -1076,7 +1076,7 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
   // TODO forward socket_addr to client.
 
   let builder = &mut FlatBufferBuilder::new();
-  let msg = msg::NewConn::create(
+  let inner = msg::NewConn::create(
     builder,
     &msg::NewConnArgs {
       rid: tcp_stream_resource.rid,
@@ -1087,8 +1087,8 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
     cmd_id,
     builder,
     msg::BaseArgs {
-      msg: Some(msg.as_union_value()),
-      msg_type: msg::Any::NewConn,
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::NewConn,
       ..Default::default()
     },
   ))
@@ -1105,8 +1105,8 @@ fn op_accept(
   }
 
   let cmd_id = base.cmd_id();
-  let msg = base.msg_as_accept().unwrap();
-  let server_rid = msg.rid();
+  let inner = base.inner_as_accept().unwrap();
+  let server_rid = inner.rid();
 
   match resources::lookup(server_rid) {
     None => odd_future(errors::new(
@@ -1135,10 +1135,10 @@ fn op_dial(
   }
 
   let cmd_id = base.cmd_id();
-  let msg = base.msg_as_dial().unwrap();
-  let network = msg.network().unwrap();
+  let inner = base.inner_as_dial().unwrap();
+  let network = inner.network().unwrap();
   assert_eq!(network, "tcp");
-  let address = msg.address().unwrap();
+  let address = inner.address().unwrap();
 
   // TODO properly parse addr
   let addr = SocketAddr::from_str(address).unwrap();

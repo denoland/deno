@@ -20,6 +20,6 @@ export { libdeno } from "./libdeno";
 export { platform } from "./platform";
 export { trace } from "./trace";
 export { truncateSync, truncate } from "./truncate";
-export { FileInfo } from "./fileinfo";
+export { FileInfo } from "./file_info";
 export { connect, dial, listen, Listener, Conn } from "./net";
 export const args: string[] = [];
