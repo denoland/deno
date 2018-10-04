@@ -28,9 +28,14 @@ for fn in ["BUILD.gn", ".gn"] + find_exts("build_extra", ".gn", ".gni"):
 # TODO(ry) Install yapf in third_party.
 run(["yapf", "-i"] + glob("tools/*.py") + find_exts("build_extra", ".py"))
 
-run(["node", prettier, "--write"] + find_exts("js/", ".js", ".ts") +
-    find_exts("tests/", ".js", ".ts") + find_exts("website/", ".js", ".ts") +
-    ["rollup.config.js", "tsconfig.json", "tslint.json"])
+# yapf: disable
+run(["node", prettier, "--write"] +
+    ["rollup.config.js"] + glob("*.json") + glob("*.md") +
+    find_exts(".github/", ".md") +
+    find_exts("js/", ".js", ".ts", ".md") +
+    find_exts("tests/", ".js", ".ts", ".md") +
+    find_exts("website/", ".js", ".ts", ".md"))
+# yapf: enable
 
 # Requires rustfmt 0.8.2 (flags were different in previous versions)
 run(["rustfmt", "--config-path", rustfmt_config] + find_exts("src/", ".rs"))

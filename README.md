@@ -2,8 +2,7 @@
 
 | **Linux & Mac** | **Windows** |
 |:---------------:|:-----------:|
-| [![Travis](https://travis-ci.com/denoland/deno.svg?branch=master)](https://travis-ci.com/denoland/deno) | [![Appveyor](https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true)](https://ci.appveyor.com/project/deno/deno) |
-
+| [![][tci badge]][tci link] | [![][avy badge]][avy link] |
 
 
 ## A secure TypeScript runtime built on V8
@@ -32,7 +31,7 @@
   network access.
 
 * Single executable:
-	```
+  ```
   > ls -lh out/release/deno
   -rwxr-xr-x  1 rld  staff    48M Aug  2 13:24 out/release/deno
   > otool -L out/release/deno
@@ -42,7 +41,7 @@
     /System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 58286.51.6)
     /usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 400.9.0)
   >
-	```
+  ```
 
 * Always dies on uncaught errors.
 
@@ -152,3 +151,9 @@ Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`.
 5. Make sure `./tools/lint.py` passes.
 6. Send a pull request.
 7. Sign the [CLA](https://cla-assistant.io/denoland/deno), if you haven't already.
+
+<!-- prettier-ignore -->
+[avy badge]: https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true
+[avy link]: https://ci.appveyor.com/project/deno/deno
+[tci badge]: https://travis-ci.com/denoland/deno.svg?branch=master
+[tci link]: https://travis-ci.com/denoland/deno
