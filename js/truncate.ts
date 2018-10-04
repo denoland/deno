@@ -37,6 +37,6 @@ function req(
   fbs.Truncate.startTruncate(builder);
   fbs.Truncate.addName(builder, name_);
   fbs.Truncate.addLen(builder, len);
-  const msg = fbs.Truncate.endTruncate(builder);
-  return [builder, fbs.Any.Truncate, msg];
+  const inner = fbs.Truncate.endTruncate(builder);
+  return [builder, fbs.Any.Truncate, inner];
 }

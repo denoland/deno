@@ -35,16 +35,16 @@ function req(
   const filename_ = builder.createString(filename);
   fbs.ReadFile.startReadFile(builder);
   fbs.ReadFile.addFilename(builder, filename_);
-  const msg = fbs.ReadFile.endReadFile(builder);
-  return [builder, fbs.Any.ReadFile, msg];
+  const inner = fbs.ReadFile.endReadFile(builder);
+  return [builder, fbs.Any.ReadFile, inner];
 }
 
 function res(baseRes: null | fbs.Base): Uint8Array {
   assert(baseRes != null);
-  assert(fbs.Any.ReadFileRes === baseRes!.msgType());
-  const msg = new fbs.ReadFileRes();
-  assert(baseRes!.msg(msg) != null);
-  const dataArray = msg.dataArray();
+  assert(fbs.Any.ReadFileRes === baseRes!.innerType());
+  const inner = new fbs.ReadFileRes();
+  assert(baseRes!.inner(inner) != null);
+  const dataArray = inner.dataArray();
   assert(dataArray != null);
   return new Uint8Array(dataArray!);
 }

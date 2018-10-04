@@ -37,6 +37,6 @@ function req(
   fbs.Rename.startRename(builder);
   fbs.Rename.addOldpath(builder, oldpath_);
   fbs.Rename.addNewpath(builder, newpath_);
-  const msg = fbs.Rename.endRename(builder);
-  return [builder, fbs.Any.Rename, msg];
+  const inner = fbs.Rename.endRename(builder);
+  return [builder, fbs.Any.Rename, inner];
 }

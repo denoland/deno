@@ -54,8 +54,8 @@ function setGlobalTimeout(due: number | null, now: number) {
   const builder = new flatbuffers.Builder();
   fbs.SetTimeout.startSetTimeout(builder);
   fbs.SetTimeout.addTimeout(builder, timeout);
-  const msg = fbs.SetTimeout.endSetTimeout(builder);
-  const res = sendSync(builder, fbs.Any.SetTimeout, msg);
+  const inner = fbs.SetTimeout.endSetTimeout(builder);
+  const res = sendSync(builder, fbs.Any.SetTimeout, inner);
   assert(res == null);
   // Remember when when the global timer will fire.
   globalTimeoutDue = due;

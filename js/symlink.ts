@@ -51,6 +51,6 @@ function req(
   fbs.Symlink.startSymlink(builder);
   fbs.Symlink.addOldname(builder, oldname_);
   fbs.Symlink.addNewname(builder, newname_);
-  const msg = fbs.Symlink.endSymlink(builder);
-  return [builder, fbs.Any.Symlink, msg];
+  const inner = fbs.Symlink.endSymlink(builder);
+  return [builder, fbs.Any.Symlink, inner];
 }
