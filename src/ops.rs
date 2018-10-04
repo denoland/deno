@@ -50,7 +50,11 @@ fn empty_buf() -> Buf {
   Box::new([])
 }
 
-pub fn msg_from_js(
+/// Processes raw messages from JavaScript.
+/// This functions invoked every time libdeno.send() is called.
+/// control corresponds to the first argument of libdeno.send().
+/// data corresponds to the second argument of libdeno.send().
+pub fn dispatch(
   isolate: &mut Isolate,
   control: &[u8],
   data: &'static mut [u8],
