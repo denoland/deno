@@ -41,7 +41,7 @@ type OpResult = DenoResult<Buf>;
 
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type Handler =
+type OpCreator =
   fn(state: Arc<IsolateState>, base: &msg::Base, data: &'static mut [u8])
     -> Box<Op>;
 
@@ -65,42 +65,42 @@ pub fn msg_from_js(
     // Isolate state (not the IsolateState state) and it must be updated on the
     // main thread.
     assert_eq!(is_sync, true);
-    handle_set_timeout(isolate, &base, data)
+    op_set_timeout(isolate, &base, data)
   } else {
     // Handle regular ops.
-    let handler: Handler = match msg_type {
-      msg::Any::Start => handle_start,
-      msg::Any::CodeFetch => handle_code_fetch,
-      msg::Any::CodeCache => handle_code_cache,
-      msg::Any::Environ => handle_env,
-      msg::Any::FetchReq => handle_fetch_req,
-      msg::Any::MakeTempDir => handle_make_temp_dir,
-      msg::Any::Mkdir => handle_mkdir,
-      msg::Any::Open => handle_open,
-      msg::Any::Read => handle_read,
-      msg::Any::Write => handle_write,
-      msg::Any::Close => handle_close,
-      msg::Any::Remove => handle_remove,
-      msg::Any::ReadFile => handle_read_file,
-      msg::Any::ReadDir => handle_read_dir,
-      msg::Any::Rename => handle_rename,
-      msg::Any::Readlink => handle_read_link,
-      msg::Any::Symlink => handle_symlink,
-      msg::Any::SetEnv => handle_set_env,
-      msg::Any::Stat => handle_stat,
-      msg::Any::Truncate => handle_truncate,
-      msg::Any::WriteFile => handle_write_file,
-      msg::Any::Exit => handle_exit,
-      msg::Any::CopyFile => handle_copy_file,
-      msg::Any::Listen => handle_listen,
-      msg::Any::Accept => handle_accept,
-      msg::Any::Dial => handle_dial,
+    let op_creator: OpCreator = match msg_type {
+      msg::Any::Start => op_start,
+      msg::Any::CodeFetch => op_code_fetch,
+      msg::Any::CodeCache => op_code_cache,
+      msg::Any::Environ => op_env,
+      msg::Any::FetchReq => op_fetch_req,
+      msg::Any::MakeTempDir => op_make_temp_dir,
+      msg::Any::Mkdir => op_mkdir,
+      msg::Any::Open => op_open,
+      msg::Any::Read => op_read,
+      msg::Any::Write => op_write,
+      msg::Any::Close => op_close,
+      msg::Any::Remove => op_remove,
+      msg::Any::ReadFile => op_read_file,
+      msg::Any::ReadDir => op_read_dir,
+      msg::Any::Rename => op_rename,
+      msg::Any::Readlink => op_read_link,
+      msg::Any::Symlink => op_symlink,
+      msg::Any::SetEnv => op_set_env,
+      msg::Any::Stat => op_stat,
+      msg::Any::Truncate => op_truncate,
+      msg::Any::WriteFile => op_write_file,
+      msg::Any::Exit => op_exit,
+      msg::Any::CopyFile => op_copy_file,
+      msg::Any::Listen => op_listen,
+      msg::Any::Accept => op_accept,
+      msg::Any::Dial => op_dial,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(msg_type)
       )),
     };
-    handler(isolate.state.clone(), &base, data)
+    op_creator(isolate.state.clone(), &base, data)
   };
 
   let boxed_op = Box::new(
@@ -161,7 +161,7 @@ fn not_implemented() -> DenoError {
   ))
 }
 
-fn handle_exit(
+fn op_exit(
   _config: Arc<IsolateState>,
   base: &msg::Base,
   _data: &'static mut [u8],
@@ -170,7 +170,7 @@ fn handle_exit(
   std::process::exit(msg.code())
 }
 
-fn handle_start(
+fn op_start(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -231,7 +231,7 @@ fn odd_future(err: DenoError) -> Box<Op> {
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L100-L154
-fn handle_code_fetch(
+fn op_code_fetch(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -273,7 +273,7 @@ fn handle_code_fetch(
 }
 
 // https://github.com/denoland/isolate/blob/golang/os.go#L156-L169
-fn handle_code_cache(
+fn op_code_cache(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -289,7 +289,7 @@ fn handle_code_cache(
   }()))
 }
 
-fn handle_set_timeout(
+fn op_set_timeout(
   isolate: &mut Isolate,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -305,7 +305,7 @@ fn handle_set_timeout(
   ok_future(empty_buf())
 }
 
-fn handle_set_env(
+fn op_set_env(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -323,7 +323,7 @@ fn handle_set_env(
   ok_future(empty_buf())
 }
 
-fn handle_env(
+fn op_env(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -369,7 +369,7 @@ fn handle_env(
   ))
 }
 
-fn handle_fetch_req(
+fn op_fetch_req(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -484,7 +484,7 @@ macro_rules! blocking {
   };
 }
 
-fn handle_make_temp_dir(
+fn op_make_temp_dir(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -533,7 +533,7 @@ fn handle_make_temp_dir(
   })
 }
 
-fn handle_mkdir(
+fn op_mkdir(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -548,13 +548,13 @@ fn handle_mkdir(
   }
 
   blocking!(base.sync(), || {
-    debug!("handle_mkdir {}", path);
+    debug!("op_mkdir {}", path);
     deno_fs::mkdir(Path::new(&path), mode)?;
     Ok(empty_buf())
   })
 }
 
-fn handle_open(
+fn op_open(
   _state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -590,7 +590,7 @@ fn handle_open(
   Box::new(op)
 }
 
-fn handle_close(
+fn op_close(
   _state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -610,7 +610,7 @@ fn handle_close(
   }
 }
 
-fn handle_read(
+fn op_read(
   _state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -652,7 +652,7 @@ fn handle_read(
   }
 }
 
-fn handle_write(
+fn op_write(
   _state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -694,7 +694,7 @@ fn handle_write(
   }
 }
 
-fn handle_remove(
+fn op_remove(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -707,7 +707,7 @@ fn handle_remove(
     return odd_future(permission_denied());
   }
   blocking!(base.sync(), || {
-    debug!("handle_remove {}", path.display());
+    debug!("op_remove {}", path.display());
     let metadata = fs::metadata(&path)?;
     if metadata.is_file() {
       fs::remove_file(&path)?;
@@ -723,7 +723,7 @@ fn handle_remove(
 }
 
 // Prototype https://github.com/denoland/isolate/blob/golang/os.go#L171-L184
-fn handle_read_file(
+fn op_read_file(
   _config: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -732,7 +732,7 @@ fn handle_read_file(
   let msg = base.msg_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
   let filename = PathBuf::from(msg.filename().unwrap());
-  debug!("handle_read_file {}", filename.display());
+  debug!("op_read_file {}", filename.display());
   blocking!(base.sync(), || {
     let vec = fs::read(&filename)?;
     // Build the response message. memcpy data into msg.
@@ -758,7 +758,7 @@ fn handle_read_file(
   })
 }
 
-fn handle_copy_file(
+fn op_copy_file(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -772,7 +772,7 @@ fn handle_copy_file(
     return odd_future(permission_denied());
   }
 
-  debug!("handle_copy_file {} {}", from.display(), to.display());
+  debug!("op_copy_file {} {}", from.display(), to.display());
   blocking!(base.sync(), || {
     fs::copy(&from, &to)?;
     Ok(empty_buf())
@@ -799,7 +799,7 @@ fn get_mode(_perm: fs::Permissions) -> u32 {
   0
 }
 
-fn handle_stat(
+fn op_stat(
   _config: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -812,7 +812,7 @@ fn handle_stat(
 
   blocking!(base.sync(), || {
     let builder = &mut FlatBufferBuilder::new();
-    debug!("handle_stat {} {}", filename.display(), lstat);
+    debug!("op_stat {} {}", filename.display(), lstat);
     let metadata = if lstat {
       fs::symlink_metadata(&filename)?
     } else {
@@ -846,7 +846,7 @@ fn handle_stat(
   })
 }
 
-fn handle_read_dir(
+fn op_read_dir(
   _state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -857,7 +857,7 @@ fn handle_read_dir(
   let path = String::from(msg.path().unwrap());
 
   blocking!(base.sync(), || -> OpResult {
-    debug!("handle_read_dir {}", path);
+    debug!("op_read_dir {}", path);
     let builder = &mut FlatBufferBuilder::new();
     let entries: Vec<_> = fs::read_dir(Path::new(&path))?
       .map(|entry| {
@@ -903,7 +903,7 @@ fn handle_read_dir(
   })
 }
 
-fn handle_write_file(
+fn op_write_file(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -918,13 +918,13 @@ fn handle_write_file(
   let perm = msg.perm();
 
   blocking!(base.sync(), || -> OpResult {
-    debug!("handle_write_file {} {}", filename, data.len());
+    debug!("op_write_file {} {}", filename, data.len());
     deno_fs::write_file(Path::new(&filename), data, perm)?;
     Ok(empty_buf())
   })
 }
 
-fn handle_rename(
+fn op_rename(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -937,13 +937,13 @@ fn handle_rename(
   let oldpath = PathBuf::from(msg.oldpath().unwrap());
   let newpath = PathBuf::from(msg.newpath().unwrap());
   blocking!(base.sync(), || -> OpResult {
-    debug!("handle_rename {} {}", oldpath.display(), newpath.display());
+    debug!("op_rename {} {}", oldpath.display(), newpath.display());
     fs::rename(&oldpath, &newpath)?;
     Ok(empty_buf())
   })
 }
 
-fn handle_symlink(
+fn op_symlink(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -961,14 +961,14 @@ fn handle_symlink(
   let oldname = PathBuf::from(msg.oldname().unwrap());
   let newname = PathBuf::from(msg.newname().unwrap());
   blocking!(base.sync(), || -> OpResult {
-    debug!("handle_symlink {} {}", oldname.display(), newname.display());
+    debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
     std::os::unix::fs::symlink(&oldname, &newname)?;
     Ok(empty_buf())
   })
 }
 
-fn handle_read_link(
+fn op_read_link(
   _state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -979,7 +979,7 @@ fn handle_read_link(
   let name = PathBuf::from(msg.name().unwrap());
 
   blocking!(base.sync(), || -> OpResult {
-    debug!("handle_read_link {}", name.display());
+    debug!("op_read_link {}", name.display());
     let path = fs::read_link(&name)?;
     let builder = &mut FlatBufferBuilder::new();
     let path_off = builder.create_string(path.to_str().unwrap());
@@ -1002,7 +1002,7 @@ fn handle_read_link(
   })
 }
 
-fn handle_truncate(
+fn op_truncate(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -1017,14 +1017,14 @@ fn handle_truncate(
   let filename = String::from(msg.name().unwrap());
   let len = msg.len();
   blocking!(base.sync(), || {
-    debug!("handle_truncate {} {}", filename, len);
+    debug!("op_truncate {} {}", filename, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
     f.set_len(len as u64)?;
     Ok(empty_buf())
   })
 }
 
-fn handle_listen(
+fn op_listen(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -1090,7 +1090,7 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
   ))
 }
 
-fn handle_accept(
+fn op_accept(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -1120,7 +1120,7 @@ fn handle_accept(
   }
 }
 
-fn handle_dial(
+fn op_dial(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
