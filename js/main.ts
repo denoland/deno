@@ -14,9 +14,9 @@ function sendStart(): fbs.StartRes {
   const startOffset = fbs.Start.endStart(builder);
   const baseRes = sendSync(builder, fbs.Any.Start, startOffset);
   assert(baseRes != null);
-  assert(fbs.Any.StartRes === baseRes!.msgType());
+  assert(fbs.Any.StartRes === baseRes!.innerType());
   const startRes = new fbs.StartRes();
-  assert(baseRes!.msg(startRes) != null);
+  assert(baseRes!.inner(startRes) != null);
   return startRes;
 }
 

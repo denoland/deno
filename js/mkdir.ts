@@ -32,6 +32,6 @@ function req(
   fbs.Mkdir.startMkdir(builder);
   fbs.Mkdir.addPath(builder, path_);
   fbs.Mkdir.addMode(builder, mode);
-  const msg = fbs.Mkdir.endMkdir(builder);
-  return [builder, fbs.Any.Mkdir, msg];
+  const inner = fbs.Mkdir.endMkdir(builder);
+  return [builder, fbs.Any.Mkdir, inner];
 }

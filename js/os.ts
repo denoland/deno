@@ -10,8 +10,8 @@ export function exit(exitCode = 0): never {
   const builder = new flatbuffers.Builder();
   fbs.Exit.startExit(builder);
   fbs.Exit.addCode(builder, exitCode);
-  const msg = fbs.Exit.endExit(builder);
-  sendSync(builder, fbs.Any.Exit, msg);
+  const inner = fbs.Exit.endExit(builder);
+  sendSync(builder, fbs.Any.Exit, inner);
   return util.unreachable();
 }
 
@@ -27,15 +27,15 @@ export function codeFetch(
   fbs.CodeFetch.startCodeFetch(builder);
   fbs.CodeFetch.addModuleSpecifier(builder, moduleSpecifier_);
   fbs.CodeFetch.addContainingFile(builder, containingFile_);
-  const msg = fbs.CodeFetch.endCodeFetch(builder);
-  const baseRes = sendSync(builder, fbs.Any.CodeFetch, msg);
+  const inner = fbs.CodeFetch.endCodeFetch(builder);
+  const baseRes = sendSync(builder, fbs.Any.CodeFetch, inner);
   assert(baseRes != null);
   assert(
-    fbs.Any.CodeFetchRes === baseRes!.msgType(),
-    `base.msgType() unexpectedly is ${baseRes!.msgType()}`
+    fbs.Any.CodeFetchRes === baseRes!.innerType(),
+    `base.innerType() unexpectedly is ${baseRes!.innerType()}`
   );
   const codeFetchRes = new fbs.CodeFetchRes();
-  assert(baseRes!.msg(codeFetchRes) != null);
+  assert(baseRes!.inner(codeFetchRes) != null);
   return {
     moduleName: codeFetchRes.moduleName(),
     filename: codeFetchRes.filename(),
@@ -58,16 +58,16 @@ export function codeCache(
   fbs.CodeCache.addFilename(builder, filename_);
   fbs.CodeCache.addSourceCode(builder, sourceCode_);
   fbs.CodeCache.addOutputCode(builder, outputCode_);
-  const msg = fbs.CodeCache.endCodeCache(builder);
-  const baseRes = sendSync(builder, fbs.Any.CodeCache, msg);
+  const inner = fbs.CodeCache.endCodeCache(builder);
+  const baseRes = sendSync(builder, fbs.Any.CodeCache, inner);
   assert(baseRes == null); // Expect null or error.
 }
 
-function createEnv(_msg: fbs.EnvironRes): { [index: string]: string } {
+function createEnv(_inner: fbs.EnvironRes): { [index: string]: string } {
   const env: { [index: string]: string } = {};
 
-  for (let i = 0; i < _msg.mapLength(); i++) {
-    const item = _msg.map(i)!;
+  for (let i = 0; i < _inner.mapLength(); i++) {
+    const item = _inner.map(i)!;
 
     env[item.key()!] = item.value()!;
   }
@@ -87,8 +87,8 @@ function setEnv(key: string, value: string): void {
   fbs.SetEnv.startSetEnv(builder);
   fbs.SetEnv.addKey(builder, _key);
   fbs.SetEnv.addValue(builder, _value);
-  const msg = fbs.SetEnv.endSetEnv(builder);
-  sendSync(builder, fbs.Any.SetEnv, msg);
+  const inner = fbs.SetEnv.endSetEnv(builder);
+  sendSync(builder, fbs.Any.SetEnv, inner);
 }
 
 /**
@@ -112,11 +112,11 @@ export function env(): { [index: string]: string } {
   */
   const builder = new flatbuffers.Builder();
   fbs.Environ.startEnviron(builder);
-  const msg = fbs.Environ.endEnviron(builder);
-  const baseRes = sendSync(builder, fbs.Any.Environ, msg)!;
-  assert(fbs.Any.EnvironRes === baseRes.msgType());
+  const inner = fbs.Environ.endEnviron(builder);
+  const baseRes = sendSync(builder, fbs.Any.Environ, inner)!;
+  assert(fbs.Any.EnvironRes === baseRes.innerType());
   const res = new fbs.EnvironRes();
-  assert(baseRes.msg(res) != null);
+  assert(baseRes.inner(res) != null);
   // TypeScript cannot track assertion above, therefore not null assertion
   return createEnv(res);
 }

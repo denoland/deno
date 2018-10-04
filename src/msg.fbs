@@ -95,7 +95,7 @@ table Base {
   sync: bool = true; // TODO(ry) Change default to false.
   error_kind: ErrorKind = NoError;
   error: string;
-  msg: Any;
+  inner: Any;
 }
 
 table Start {

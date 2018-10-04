@@ -205,20 +205,20 @@ export async function fetch(
   );
 
   // Decode FetchRes
-  assert(fbs.Any.FetchRes === resBase.msgType());
-  const msg = new fbs.FetchRes();
-  assert(resBase.msg(msg) != null);
+  assert(fbs.Any.FetchRes === resBase.innerType());
+  const inner = new fbs.FetchRes();
+  assert(resBase.inner(inner) != null);
 
-  const status = msg.status();
-  const bodyArray = msg.bodyArray();
+  const status = inner.status();
+  const bodyArray = inner.bodyArray();
   assert(bodyArray != null);
   const body = typedArrayToArrayBuffer(bodyArray!);
 
   const headersList: Array<[string, string]> = [];
-  const len = msg.headerKeyLength();
+  const len = inner.headerKeyLength();
   for (let i = 0; i < len; ++i) {
-    const key = msg.headerKey(i);
-    const value = msg.headerValue(i);
+    const key = inner.headerKey(i);
+    const value = inner.headerValue(i);
     headersList.push([key, value]);
   }
 

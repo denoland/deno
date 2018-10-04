@@ -61,10 +61,10 @@ pub fn dispatch(
 ) -> (bool, Box<Op>) {
   let base = msg::get_root_as_base(control);
   let is_sync = base.sync();
-  let msg_type = base.msg_type();
+  let inner_type = base.inner_type();
   let cmd_id = base.cmd_id();
 
-  let op: Box<Op> = if msg_type == msg::Any::SetTimeout {
+  let op: Box<Op> = if inner_type == msg::Any::SetTimeout {
     // SetTimeout is an exceptional op: the global timeout field is part of the
     // Isolate state (not the IsolateState state) and it must be updated on the
     // main thread.
@@ -72,7 +72,7 @@ pub fn dispatch(
     op_set_timeout(isolate, &base, data)
   } else {
     // Handle regular ops.
-    let op_creator: OpCreator = match msg_type {
+    let op_creator: OpCreator = match inner_type {
       msg::Any::Start => op_start,
       msg::Any::CodeFetch => op_code_fetch,
       msg::Any::CodeCache => op_code_cache,
@@ -101,7 +101,7 @@ pub fn dispatch(
       msg::Any::Dial => op_dial,
       _ => panic!(format!(
         "Unhandled message {}",
-        msg::enum_name_any(msg_type)
+        msg::enum_name_any(inner_type)
       )),
     };
     op_creator(isolate.state.clone(), &base, data)
@@ -145,7 +145,7 @@ pub fn dispatch(
 
   debug!(
     "msg_from_js {} sync {}",
-    msg::enum_name_any(msg_type),
+    msg::enum_name_any(inner_type),
     base.sync()
   );
   return (base.sync(), boxed_op);
@@ -170,8 +170,8 @@ fn op_exit(
   base: &msg::Base,
   _data: &'static mut [u8],
 ) -> Box<Op> {
-  let msg = base.msg_as_exit().unwrap();
-  std::process::exit(msg.code())
+  let inner = base.inner_as_exit().unwrap();
+  std::process::exit(inner.code())
 }
 
 fn op_start(
@@ -189,7 +189,7 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
-  let msg = msg::StartRes::create(
+  let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
       cwd: Some(cwd_off),
@@ -204,8 +204,8 @@ fn op_start(
     base.cmd_id(),
     &mut builder,
     msg::BaseArgs {
-      msg_type: msg::Any::StartRes,
-      msg: Some(msg.as_union_value()),
+      inner_type: msg::Any::StartRes,
+      inner: Some(inner.as_union_value()),
       ..Default::default()
     },
   ))
@@ -241,10 +241,10 @@ fn op_code_fetch(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_code_fetch().unwrap();
+  let inner = base.inner_as_code_fetch().unwrap();
   let cmd_id = base.cmd_id();
-  let module_specifier = msg.module_specifier().unwrap();
-  let containing_file = msg.containing_file().unwrap();
+  let module_specifier = inner.module_specifier().unwrap();
+  let containing_file = inner.containing_file().unwrap();
 
   assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
 
@@ -263,13 +263,13 @@ fn op_code_fetch(
       }
       _ => (),
     };
-    let msg = msg::CodeFetchRes::create(builder, &msg_args);
+    let inner = msg::CodeFetchRes::create(builder, &msg_args);
     Ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
-        msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::CodeFetchRes,
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::CodeFetchRes,
         ..Default::default()
       },
     ))
@@ -283,10 +283,10 @@ fn op_code_cache(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_code_cache().unwrap();
-  let filename = msg.filename().unwrap();
-  let source_code = msg.source_code().unwrap();
-  let output_code = msg.output_code().unwrap();
+  let inner = base.inner_as_code_cache().unwrap();
+  let filename = inner.filename().unwrap();
+  let source_code = inner.source_code().unwrap();
+  let output_code = inner.output_code().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
     state.dir.code_cache(filename, source_code, output_code)?;
     Ok(empty_buf())
@@ -299,8 +299,8 @@ fn op_set_timeout(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_set_timeout().unwrap();
-  let val = msg.timeout() as i64;
+  let inner = base.inner_as_set_timeout().unwrap();
+  let val = inner.timeout() as i64;
   isolate.timeout_due = if val >= 0 {
     Some(Instant::now() + Duration::from_millis(val as u64))
   } else {
@@ -315,9 +315,9 @@ fn op_set_env(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_set_env().unwrap();
-  let key = msg.key().unwrap();
-  let value = msg.value().unwrap();
+  let inner = base.inner_as_set_env().unwrap();
+  let key = inner.key().unwrap();
+  let value = inner.value().unwrap();
 
   if !state.flags.allow_env {
     return odd_future(permission_denied());
@@ -355,7 +355,7 @@ fn op_env(
       )
     }).collect();
   let tables = builder.create_vector(&vars);
-  let msg = msg::EnvironRes::create(
+  let inner = msg::EnvironRes::create(
     builder,
     &msg::EnvironResArgs {
       map: Some(tables),
@@ -366,8 +366,8 @@ fn op_env(
     cmd_id,
     builder,
     msg::BaseArgs {
-      msg: Some(msg.as_union_value()),
-      msg_type: msg::Any::EnvironRes,
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::EnvironRes,
       ..Default::default()
     },
   ))
@@ -379,10 +379,10 @@ fn op_fetch_req(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_fetch_req().unwrap();
+  let inner = base.inner_as_fetch_req().unwrap();
   let cmd_id = base.cmd_id();
-  let id = msg.id();
-  let url = msg.url().unwrap();
+  let id = inner.id();
+  let url = inner.url().unwrap();
 
   if !state.flags.allow_net {
     return odd_future(permission_denied());
@@ -430,7 +430,7 @@ fn op_fetch_req(
       let header_values_off =
         builder.create_vector_of_strings(header_values.as_slice());
 
-      let msg = msg::FetchRes::create(
+      let inner = msg::FetchRes::create(
         builder,
         &msg::FetchResArgs {
           id,
@@ -446,8 +446,8 @@ fn op_fetch_req(
         cmd_id,
         builder,
         msg::BaseArgs {
-          msg: Some(msg.as_union_value()),
-          msg_type: msg::Any::FetchRes,
+          inner: Some(inner.as_union_value()),
+          inner_type: msg::Any::FetchRes,
           ..Default::default()
         },
       ))
@@ -495,16 +495,16 @@ fn op_make_temp_dir(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let base = Box::new(*base);
-  let msg = base.msg_as_make_temp_dir().unwrap();
+  let inner = base.inner_as_make_temp_dir().unwrap();
   let cmd_id = base.cmd_id();
 
   if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
 
-  let dir = msg.dir().map(PathBuf::from);
-  let prefix = msg.prefix().map(String::from);
-  let suffix = msg.suffix().map(String::from);
+  let dir = inner.dir().map(PathBuf::from);
+  let prefix = inner.prefix().map(String::from);
+  let suffix = inner.suffix().map(String::from);
 
   blocking!(base.sync(), || -> OpResult {
     // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -518,7 +518,7 @@ fn op_make_temp_dir(
     )?;
     let builder = &mut FlatBufferBuilder::new();
     let path_off = builder.create_string(path.to_str().unwrap());
-    let msg = msg::MakeTempDirRes::create(
+    let inner = msg::MakeTempDirRes::create(
       builder,
       &msg::MakeTempDirResArgs {
         path: Some(path_off),
@@ -529,8 +529,8 @@ fn op_make_temp_dir(
       cmd_id,
       builder,
       msg::BaseArgs {
-        msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::MakeTempDirRes,
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::MakeTempDirRes,
         ..Default::default()
       },
     ))
@@ -543,9 +543,9 @@ fn op_mkdir(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_mkdir().unwrap();
-  let mode = msg.mode();
-  let path = String::from(msg.path().unwrap());
+  let inner = base.inner_as_mkdir().unwrap();
+  let mode = inner.mode();
+  let path = String::from(inner.path().unwrap());
 
   if !state.flags.allow_write {
     return odd_future(permission_denied());
@@ -565,16 +565,16 @@ fn op_open(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
-  let msg = base.msg_as_open().unwrap();
-  let filename = PathBuf::from(msg.filename().unwrap());
-  // TODO let perm = msg.perm();
+  let inner = base.inner_as_open().unwrap();
+  let filename = PathBuf::from(inner.filename().unwrap());
+  // TODO let perm = inner.perm();
 
   let op = tokio::fs::File::open(filename)
     .map_err(|err| DenoError::from(err))
     .and_then(move |fs_file| -> OpResult {
       let resource = resources::add_fs_file(fs_file);
       let builder = &mut FlatBufferBuilder::new();
-      let msg = msg::OpenRes::create(
+      let inner = msg::OpenRes::create(
         builder,
         &msg::OpenResArgs {
           rid: resource.rid,
@@ -585,8 +585,8 @@ fn op_open(
         cmd_id,
         builder,
         msg::BaseArgs {
-          msg: Some(msg.as_union_value()),
-          msg_type: msg::Any::OpenRes,
+          inner: Some(inner.as_union_value()),
+          inner_type: msg::Any::OpenRes,
           ..Default::default()
         },
       ))
@@ -620,8 +620,8 @@ fn op_read(
   data: &'static mut [u8],
 ) -> Box<Op> {
   let cmd_id = base.cmd_id();
-  let msg = base.msg_as_read().unwrap();
-  let rid = msg.rid();
+  let inner = base.inner_as_read().unwrap();
+  let rid = inner.rid();
 
   match resources::lookup(rid) {
     None => odd_future(errors::new(
@@ -633,7 +633,7 @@ fn op_read(
         .map_err(|err| DenoError::from(err))
         .and_then(move |(_resource, _buf, nread)| {
           let builder = &mut FlatBufferBuilder::new();
-          let msg = msg::ReadRes::create(
+          let inner = msg::ReadRes::create(
             builder,
             &msg::ReadResArgs {
               nread: nread as u32,
@@ -645,8 +645,8 @@ fn op_read(
             cmd_id,
             builder,
             msg::BaseArgs {
-              msg: Some(msg.as_union_value()),
-              msg_type: msg::Any::ReadRes,
+              inner: Some(inner.as_union_value()),
+              inner_type: msg::Any::ReadRes,
               ..Default::default()
             },
           ))
@@ -662,8 +662,8 @@ fn op_write(
   data: &'static mut [u8],
 ) -> Box<Op> {
   let cmd_id = base.cmd_id();
-  let msg = base.msg_as_write().unwrap();
-  let rid = msg.rid();
+  let inner = base.inner_as_write().unwrap();
+  let rid = inner.rid();
 
   match resources::lookup(rid) {
     None => odd_future(errors::new(
@@ -676,7 +676,7 @@ fn op_write(
         .map_err(|err| DenoError::from(err))
         .and_then(move |(_resource, _buf)| {
           let builder = &mut FlatBufferBuilder::new();
-          let msg = msg::WriteRes::create(
+          let inner = msg::WriteRes::create(
             builder,
             &msg::WriteResArgs {
               nbyte: len as u32,
@@ -687,8 +687,8 @@ fn op_write(
             cmd_id,
             builder,
             msg::BaseArgs {
-              msg: Some(msg.as_union_value()),
-              msg_type: msg::Any::WriteRes,
+              inner: Some(inner.as_union_value()),
+              inner_type: msg::Any::WriteRes,
               ..Default::default()
             },
           ))
@@ -704,9 +704,9 @@ fn op_remove(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_remove().unwrap();
-  let path = PathBuf::from(msg.path().unwrap());
-  let recursive = msg.recursive();
+  let inner = base.inner_as_remove().unwrap();
+  let path = PathBuf::from(inner.path().unwrap());
+  let recursive = inner.recursive();
   if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
@@ -733,17 +733,17 @@ fn op_read_file(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_read_file().unwrap();
+  let inner = base.inner_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
-  let filename = PathBuf::from(msg.filename().unwrap());
+  let filename = PathBuf::from(inner.filename().unwrap());
   debug!("op_read_file {}", filename.display());
   blocking!(base.sync(), || {
     let vec = fs::read(&filename)?;
-    // Build the response message. memcpy data into msg.
+    // Build the response message. memcpy data into inner.
     // TODO(ry) zero-copy.
     let builder = &mut FlatBufferBuilder::new();
     let data_off = builder.create_vector(vec.as_slice());
-    let msg = msg::ReadFileRes::create(
+    let inner = msg::ReadFileRes::create(
       builder,
       &msg::ReadFileResArgs {
         data: Some(data_off),
@@ -754,8 +754,8 @@ fn op_read_file(
       cmd_id,
       builder,
       msg::BaseArgs {
-        msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::ReadFileRes,
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::ReadFileRes,
         ..Default::default()
       },
     ))
@@ -768,9 +768,9 @@ fn op_copy_file(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_copy_file().unwrap();
-  let from = PathBuf::from(msg.from().unwrap());
-  let to = PathBuf::from(msg.to().unwrap());
+  let inner = base.inner_as_copy_file().unwrap();
+  let from = PathBuf::from(inner.from().unwrap());
+  let to = PathBuf::from(inner.to().unwrap());
 
   if !state.flags.allow_write {
     return odd_future(permission_denied());
@@ -809,10 +809,10 @@ fn op_stat(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_stat().unwrap();
+  let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let filename = PathBuf::from(msg.filename().unwrap());
-  let lstat = msg.lstat();
+  let filename = PathBuf::from(inner.filename().unwrap());
+  let lstat = inner.lstat();
 
   blocking!(base.sync(), || {
     let builder = &mut FlatBufferBuilder::new();
@@ -823,7 +823,7 @@ fn op_stat(
       fs::metadata(&filename)?
     };
 
-    let msg = msg::StatRes::create(
+    let inner = msg::StatRes::create(
       builder,
       &msg::StatResArgs {
         is_file: metadata.is_file(),
@@ -842,8 +842,8 @@ fn op_stat(
       cmd_id,
       builder,
       msg::BaseArgs {
-        msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::StatRes,
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::StatRes,
         ..Default::default()
       },
     ))
@@ -856,9 +856,9 @@ fn op_read_dir(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_read_dir().unwrap();
+  let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let path = String::from(msg.path().unwrap());
+  let path = String::from(inner.path().unwrap());
 
   blocking!(base.sync(), || -> OpResult {
     debug!("op_read_dir {}", path);
@@ -888,7 +888,7 @@ fn op_read_dir(
       }).collect();
 
     let entries = builder.create_vector(&entries);
-    let msg = msg::ReadDirRes::create(
+    let inner = msg::ReadDirRes::create(
       builder,
       &msg::ReadDirResArgs {
         entries: Some(entries),
@@ -899,8 +899,8 @@ fn op_read_dir(
       cmd_id,
       builder,
       msg::BaseArgs {
-        msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::ReadDirRes,
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::ReadDirRes,
         ..Default::default()
       },
     ))
@@ -912,14 +912,14 @@ fn op_write_file(
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
-  let msg = base.msg_as_write_file().unwrap();
+  let inner = base.inner_as_write_file().unwrap();
 
   if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
 
-  let filename = String::from(msg.filename().unwrap());
-  let perm = msg.perm();
+  let filename = String::from(inner.filename().unwrap());
+  let perm = inner.perm();
 
   blocking!(base.sync(), || -> OpResult {
     debug!("op_write_file {} {}", filename, data.len());
@@ -937,9 +937,9 @@ fn op_rename(
   if !state.flags.allow_write {
     return odd_future(permission_denied());
   }
-  let msg = base.msg_as_rename().unwrap();
-  let oldpath = PathBuf::from(msg.oldpath().unwrap());
-  let newpath = PathBuf::from(msg.newpath().unwrap());
+  let inner = base.inner_as_rename().unwrap();
+  let oldpath = PathBuf::from(inner.oldpath().unwrap());
+  let newpath = PathBuf::from(inner.newpath().unwrap());
   blocking!(base.sync(), || -> OpResult {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     fs::rename(&oldpath, &newpath)?;
@@ -961,9 +961,9 @@ fn op_symlink(
     return odd_future(not_implemented());
   }
 
-  let msg = base.msg_as_symlink().unwrap();
-  let oldname = PathBuf::from(msg.oldname().unwrap());
-  let newname = PathBuf::from(msg.newname().unwrap());
+  let inner = base.inner_as_symlink().unwrap();
+  let oldname = PathBuf::from(inner.oldname().unwrap());
+  let newname = PathBuf::from(inner.newname().unwrap());
   blocking!(base.sync(), || -> OpResult {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
@@ -978,16 +978,16 @@ fn op_read_link(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let msg = base.msg_as_readlink().unwrap();
+  let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let name = PathBuf::from(msg.name().unwrap());
+  let name = PathBuf::from(inner.name().unwrap());
 
   blocking!(base.sync(), || -> OpResult {
     debug!("op_read_link {}", name.display());
     let path = fs::read_link(&name)?;
     let builder = &mut FlatBufferBuilder::new();
     let path_off = builder.create_string(path.to_str().unwrap());
-    let msg = msg::ReadlinkRes::create(
+    let inner = msg::ReadlinkRes::create(
       builder,
       &msg::ReadlinkResArgs {
         path: Some(path_off),
@@ -998,8 +998,8 @@ fn op_read_link(
       cmd_id,
       builder,
       msg::BaseArgs {
-        msg: Some(msg.as_union_value()),
-        msg_type: msg::Any::ReadlinkRes,
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::ReadlinkRes,
         ..Default::default()
       },
     ))
@@ -1017,9 +1017,9 @@ fn op_truncate(
     return odd_future(permission_denied());
   }
 
-  let msg = base.msg_as_truncate().unwrap();
-  let filename = String::from(msg.name().unwrap());
-  let len = msg.len();
+  let inner = base.inner_as_truncate().unwrap();
+  let filename = String::from(inner.name().unwrap());
+  let len = inner.len();
   blocking!(base.sync(), || {
     debug!("op_truncate {} {}", filename, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;

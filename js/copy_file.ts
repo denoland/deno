@@ -41,6 +41,6 @@ function req(
   fbs.CopyFile.startCopyFile(builder);
   fbs.CopyFile.addFrom(builder, from_);
   fbs.CopyFile.addTo(builder, to_);
-  const msg = fbs.CopyFile.endCopyFile(builder);
-  return [builder, fbs.Any.CopyFile, msg];
+  const inner = fbs.CopyFile.endCopyFile(builder);
+  return [builder, fbs.Any.CopyFile, inner];
 }

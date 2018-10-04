@@ -59,15 +59,15 @@ function req({
   if (suffix != null) {
     fbs.MakeTempDir.addSuffix(builder, fbSuffix);
   }
-  const msg = fbs.MakeTempDir.endMakeTempDir(builder);
-  return [builder, fbs.Any.MakeTempDir, msg];
+  const inner = fbs.MakeTempDir.endMakeTempDir(builder);
+  return [builder, fbs.Any.MakeTempDir, inner];
 }
 
 function res(baseRes: null | fbs.Base): string {
   assert(baseRes != null);
-  assert(fbs.Any.MakeTempDirRes === baseRes!.msgType());
+  assert(fbs.Any.MakeTempDirRes === baseRes!.innerType());
   const res = new fbs.MakeTempDirRes();
-  assert(baseRes!.msg(res) != null);
+  assert(baseRes!.inner(res) != null);
   const path = res.path();
   assert(path != null);
   return path!;

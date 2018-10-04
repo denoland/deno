@@ -64,14 +64,14 @@ function req(
   fbs.Stat.startStat(builder);
   fbs.Stat.addFilename(builder, filename_);
   fbs.Stat.addLstat(builder, lstat);
-  const msg = fbs.Stat.endStat(builder);
-  return [builder, fbs.Any.Stat, msg];
+  const inner = fbs.Stat.endStat(builder);
+  return [builder, fbs.Any.Stat, inner];
 }
 
 function res(baseRes: null | fbs.Base): FileInfo {
   assert(baseRes != null);
-  assert(fbs.Any.StatRes === baseRes!.msgType());
+  assert(fbs.Any.StatRes === baseRes!.innerType());
   const res = new fbs.StatRes();
-  assert(baseRes!.msg(res) != null);
+  assert(baseRes!.inner(res) != null);
   return new FileInfoImpl(res);
 }

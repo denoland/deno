@@ -73,18 +73,18 @@ export class FileInfoImpl implements FileInfo {
   path: string | null;
 
   /* @internal */
-  constructor(private _msg: fbs.StatRes) {
-    const modified = this._msg.modified().toFloat64();
-    const accessed = this._msg.accessed().toFloat64();
-    const created = this._msg.created().toFloat64();
-    const hasMode = this._msg.hasMode();
-    const mode = this._msg.mode(); // negative for invalid mode (Windows)
-    const name = this._msg.name();
-    const path = this._msg.path();
+  constructor(private _inner: fbs.StatRes) {
+    const modified = this._inner.modified().toFloat64();
+    const accessed = this._inner.accessed().toFloat64();
+    const created = this._inner.created().toFloat64();
+    const hasMode = this._inner.hasMode();
+    const mode = this._inner.mode(); // negative for invalid mode (Windows)
+    const name = this._inner.name();
+    const path = this._inner.path();
 
-    this._isFile = this._msg.isFile();
-    this._isSymlink = this._msg.isSymlink();
-    this.len = this._msg.len().toFloat64();
+    this._isFile = this._inner.isFile();
+    this._isSymlink = this._inner.isSymlink();
+    this.len = this._inner.len().toFloat64();
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
