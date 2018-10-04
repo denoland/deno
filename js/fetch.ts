@@ -9,7 +9,7 @@ import {
 } from "./util";
 import { flatbuffers } from "flatbuffers";
 import { sendAsync } from "./dispatch";
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import {
   Headers,
   Request,
@@ -170,7 +170,7 @@ class FetchResponse implements Response {
   onHeader?: (res: FetchResponse) => void;
   onError?: (error: Error) => void;
 
-  onMsg(base: fbs.Base) {
+  onMsg(base: msg.Base) {
     /*
     const error = base.error();
     if (error != null) {
@@ -196,17 +196,17 @@ export async function fetch(
   // Send FetchReq message
   const builder = new flatbuffers.Builder();
   const url_ = builder.createString(url);
-  fbs.FetchReq.startFetchReq(builder);
-  fbs.FetchReq.addUrl(builder, url_);
+  msg.FetchReq.startFetchReq(builder);
+  msg.FetchReq.addUrl(builder, url_);
   const resBase = await sendAsync(
     builder,
-    fbs.Any.FetchReq,
-    fbs.FetchReq.endFetchReq(builder)
+    msg.Any.FetchReq,
+    msg.FetchReq.endFetchReq(builder)
   );
 
   // Decode FetchRes
-  assert(fbs.Any.FetchRes === resBase.innerType());
-  const inner = new fbs.FetchRes();
+  assert(msg.Any.FetchRes === resBase.innerType());
+  const inner = new msg.FetchRes();
   assert(resBase.inner(inner) != null);
 
   const status = inner.status();

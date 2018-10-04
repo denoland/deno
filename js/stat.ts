@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";
@@ -58,20 +58,20 @@ export function statSync(filename: string): FileInfo {
 function req(
   filename: string,
   lstat: boolean
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const filename_ = builder.createString(filename);
-  fbs.Stat.startStat(builder);
-  fbs.Stat.addFilename(builder, filename_);
-  fbs.Stat.addLstat(builder, lstat);
-  const inner = fbs.Stat.endStat(builder);
-  return [builder, fbs.Any.Stat, inner];
+  msg.Stat.startStat(builder);
+  msg.Stat.addFilename(builder, filename_);
+  msg.Stat.addLstat(builder, lstat);
+  const inner = msg.Stat.endStat(builder);
+  return [builder, msg.Any.Stat, inner];
 }
 
-function res(baseRes: null | fbs.Base): FileInfo {
+function res(baseRes: null | msg.Base): FileInfo {
   assert(baseRes != null);
-  assert(fbs.Any.StatRes === baseRes!.innerType());
-  const res = new fbs.StatRes();
+  assert(msg.Any.StatRes === baseRes!.innerType());
+  const res = new msg.StatRes();
   assert(baseRes!.inner(res) != null);
   return new FileInfoImpl(res);
 }

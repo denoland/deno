@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";
@@ -44,29 +44,29 @@ function req({
   dir,
   prefix,
   suffix
-}: MakeTempDirOptions): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+}: MakeTempDirOptions): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const fbDir = dir == null ? -1 : builder.createString(dir);
   const fbPrefix = prefix == null ? -1 : builder.createString(prefix);
   const fbSuffix = suffix == null ? -1 : builder.createString(suffix);
-  fbs.MakeTempDir.startMakeTempDir(builder);
+  msg.MakeTempDir.startMakeTempDir(builder);
   if (dir != null) {
-    fbs.MakeTempDir.addDir(builder, fbDir);
+    msg.MakeTempDir.addDir(builder, fbDir);
   }
   if (prefix != null) {
-    fbs.MakeTempDir.addPrefix(builder, fbPrefix);
+    msg.MakeTempDir.addPrefix(builder, fbPrefix);
   }
   if (suffix != null) {
-    fbs.MakeTempDir.addSuffix(builder, fbSuffix);
+    msg.MakeTempDir.addSuffix(builder, fbSuffix);
   }
-  const inner = fbs.MakeTempDir.endMakeTempDir(builder);
-  return [builder, fbs.Any.MakeTempDir, inner];
+  const inner = msg.MakeTempDir.endMakeTempDir(builder);
+  return [builder, msg.Any.MakeTempDir, inner];
 }
 
-function res(baseRes: null | fbs.Base): string {
+function res(baseRes: null | msg.Base): string {
   assert(baseRes != null);
-  assert(fbs.Any.MakeTempDirRes === baseRes!.innerType());
-  const res = new fbs.MakeTempDirRes();
+  assert(msg.Any.MakeTempDirRes === baseRes!.innerType());
+  const res = new msg.MakeTempDirRes();
   assert(baseRes!.inner(res) != null);
   const path = res.path();
   assert(path != null);

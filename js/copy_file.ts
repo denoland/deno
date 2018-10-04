@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 
@@ -34,13 +34,13 @@ export async function copyFile(from: string, to: string): Promise<void> {
 function req(
   from: string,
   to: string
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const from_ = builder.createString(from);
   const to_ = builder.createString(to);
-  fbs.CopyFile.startCopyFile(builder);
-  fbs.CopyFile.addFrom(builder, from_);
-  fbs.CopyFile.addTo(builder, to_);
-  const inner = fbs.CopyFile.endCopyFile(builder);
-  return [builder, fbs.Any.CopyFile, inner];
+  msg.CopyFile.startCopyFile(builder);
+  msg.CopyFile.addFrom(builder, from_);
+  msg.CopyFile.addTo(builder, to_);
+  const inner = msg.CopyFile.endCopyFile(builder);
+  return [builder, msg.Any.CopyFile, inner];
 }

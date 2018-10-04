@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 import * as util from "./util";
@@ -40,7 +40,7 @@ function req(
   oldname: string,
   newname: string,
   type?: string
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   // TODO Use type for Windows.
   if (type) {
     return util.notImplemented();
@@ -48,9 +48,9 @@ function req(
   const builder = new flatbuffers.Builder();
   const oldname_ = builder.createString(oldname);
   const newname_ = builder.createString(newname);
-  fbs.Symlink.startSymlink(builder);
-  fbs.Symlink.addOldname(builder, oldname_);
-  fbs.Symlink.addNewname(builder, newname_);
-  const inner = fbs.Symlink.endSymlink(builder);
-  return [builder, fbs.Any.Symlink, inner];
+  msg.Symlink.startSymlink(builder);
+  msg.Symlink.addOldname(builder, oldname_);
+  msg.Symlink.addNewname(builder, newname_);
+  const inner = msg.Symlink.endSymlink(builder);
+  return [builder, msg.Any.Symlink, inner];
 }

@@ -111,8 +111,8 @@ test(function consoleTestStringifyWithDepth() {
 
 test(function consoleTestError() {
   class MyError extends Error {
-    constructor(msg: string) {
-      super(msg);
+    constructor(errStr: string) {
+      super(errStr);
       this.name = "MyError";
     }
   }

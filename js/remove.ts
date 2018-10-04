@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 
@@ -52,12 +52,12 @@ export async function removeAll(path: string): Promise<void> {
 function req(
   path: string,
   recursive: boolean
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const path_ = builder.createString(path);
-  fbs.Remove.startRemove(builder);
-  fbs.Remove.addPath(builder, path_);
-  fbs.Remove.addRecursive(builder, recursive);
-  const inner = fbs.Remove.endRemove(builder);
-  return [builder, fbs.Any.Remove, inner];
+  msg.Remove.startRemove(builder);
+  msg.Remove.addPath(builder, path_);
+  msg.Remove.addRecursive(builder, recursive);
+  const inner = msg.Remove.endRemove(builder);
+  return [builder, msg.Any.Remove, inner];
 }

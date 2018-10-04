@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
@@ -30,19 +30,19 @@ export async function readFile(filename: string): Promise<Uint8Array> {
 
 function req(
   filename: string
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const filename_ = builder.createString(filename);
-  fbs.ReadFile.startReadFile(builder);
-  fbs.ReadFile.addFilename(builder, filename_);
-  const inner = fbs.ReadFile.endReadFile(builder);
-  return [builder, fbs.Any.ReadFile, inner];
+  msg.ReadFile.startReadFile(builder);
+  msg.ReadFile.addFilename(builder, filename_);
+  const inner = msg.ReadFile.endReadFile(builder);
+  return [builder, msg.Any.ReadFile, inner];
 }
 
-function res(baseRes: null | fbs.Base): Uint8Array {
+function res(baseRes: null | msg.Base): Uint8Array {
   assert(baseRes != null);
-  assert(fbs.Any.ReadFileRes === baseRes!.innerType());
-  const inner = new fbs.ReadFileRes();
+  assert(msg.Any.ReadFileRes === baseRes!.innerType());
+  const inner = new msg.ReadFileRes();
   assert(baseRes!.inner(inner) != null);
   const dataArray = inner.dataArray();
   assert(dataArray != null);

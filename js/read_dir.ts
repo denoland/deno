@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 import { FileInfo, FileInfoImpl } from "./fileinfo";
@@ -27,19 +27,19 @@ export async function readDir(path: string): Promise<FileInfo[]> {
   return res(await dispatch.sendAsync(...req(path)));
 }
 
-function req(path: string): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+function req(path: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const path_ = builder.createString(path);
-  fbs.ReadDir.startReadDir(builder);
-  fbs.ReadDir.addPath(builder, path_);
-  const inner = fbs.ReadDir.endReadDir(builder);
-  return [builder, fbs.Any.ReadDir, inner];
+  msg.ReadDir.startReadDir(builder);
+  msg.ReadDir.addPath(builder, path_);
+  const inner = msg.ReadDir.endReadDir(builder);
+  return [builder, msg.Any.ReadDir, inner];
 }
 
-function res(baseRes: null | fbs.Base): FileInfo[] {
+function res(baseRes: null | msg.Base): FileInfo[] {
   assert(baseRes != null);
-  assert(fbs.Any.ReadDirRes === baseRes!.innerType());
-  const res = new fbs.ReadDirRes();
+  assert(msg.Any.ReadDirRes === baseRes!.innerType());
+  const res = new msg.ReadDirRes();
   assert(baseRes!.inner(res) != null);
   const fileInfos: FileInfo[] = [];
   for (let i = 0; i < res.entriesLength(); i++) {
