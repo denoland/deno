@@ -1,36 +1,32 @@
 # deno
 
-| **Linux & Mac** | **Windows** |
-|:---------------:|:-----------:|
+|      **Linux & Mac**       |        **Windows**         |
+| :------------------------: | :------------------------: |
 | [![][tci badge]][tci link] | [![][avy badge]][avy link] |
-
 
 ## A secure TypeScript runtime built on V8
 
-* Supports TypeScript 3.0 out of the box. Uses V8 7.0. That is, it's
-  very modern JavaScript.
+- Supports TypeScript 3.0 out of the box. Uses V8 7.0. That is, it's very modern
+  JavaScript.
 
-* No `package.json`. No npm. Not explicitly compatible with Node.
+- No `package.json`. No npm. Not explicitly compatible with Node.
 
-* Imports reference source code URLs only.
-	```
-  import { test } from "https://unpkg.com/deno_testing@0.0.5/testing.ts"
-  import { log } from "./util.ts"
-	```
+- Imports reference source code URLs only.
+  `import { test } from "https://unpkg.com/deno_testing@0.0.5/testing.ts" import { log } from "./util.ts"`
   Remote code is fetched and cached on first execution, and never updated until
   the code is run with the `--reload` flag. (So, this will still work on an
   airplane. See `~/.deno/src` for details on the cache.)
 
-* File system and network access can be controlled in order to run sandboxed
-  code. Defaults to read-only file system access and no network access.
-	Access between V8 (unprivileged) and Rust (privileged) is only done via
-  serialized messages defined in this
-  [flatbuffer](https://github.com/denoland/deno/blob/master/src/msg.fbs). This makes it
-  easy to audit.
-	To enable write access explicitly use `--allow-write` and `--allow-net` for
-  network access.
+- File system and network access can be controlled in order to run sandboxed
+  code. Defaults to read-only file system access and no network access. Access
+  between V8 (unprivileged) and Rust (privileged) is only done via serialized
+  messages defined in this
+  [flatbuffer](https://github.com/denoland/deno/blob/master/src/msg.fbs). This
+  makes it easy to audit. To enable write access explicitly use `--allow-write`
+  and `--allow-net` for network access.
 
-* Single executable:
+- Single executable:
+
   ```
   > ls -lh out/release/deno
   -rwxr-xr-x  1 rld  staff    48M Aug  2 13:24 out/release/deno
@@ -43,11 +39,11 @@
   >
   ```
 
-* Always dies on uncaught errors.
+- Always dies on uncaught errors.
 
-* [Aims to support top-level `await`.](https://github.com/denoland/deno/issues/471)
+- [Aims to support top-level `await`.](https://github.com/denoland/deno/issues/471)
 
-* Aims to be browser compatible.
+- Aims to be browser compatible.
 
 ## Install
 
@@ -63,15 +59,17 @@ curl -sSf https://raw.githubusercontent.com/denoland/deno_install/master/install
 iex (iwr https://raw.githubusercontent.com/denoland/deno_install/master/install.ps1)
 ```
 
-_Note: Depending on your security settings, you may have to run `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` first to allow downloaded scripts to be executed._
+_Note: Depending on your security settings, you may have to run
+`Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` first to allow downloaded
+scripts to be executed._
 
 Try it:
+
 ```
 > deno http://deno.land/thumb.ts
 ```
 
 See also [deno_install](https://github.com/denoland/deno_install).
-
 
 ## Status
 
@@ -82,13 +80,12 @@ We make binary releases [here](https://github.com/denoland/deno/releases).
 Progress towards future releases is tracked
 [here](https://github.com/denoland/deno/milestones).
 
-Roadmap is [here](https://github.com/denoland/deno/blob/master/Roadmap.md).
-Also see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
+Roadmap is [here](https://github.com/denoland/deno/blob/master/Roadmap.md). Also
+see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
 
 [Benchmarks](https://denoland.github.io/deno/)
 
 [Chat room](https://gitter.im/denolife/Lobby).
-
 
 ## Build instructions
 
@@ -97,13 +94,17 @@ submodule. However, you need to install separately:
 
 1. [Rust](https://www.rust-lang.org/en-US/install.html)
 2. [Node](http://nodejs.org/)
-3. Python 2. [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
-4. [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache) (Optional but helpful for speeding up rebuilds of V8.).
+3. Python 2.
+   [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+4. [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache)
+   (Optional but helpful for speeding up rebuilds of V8.).
 5. Extra steps for Windows users:
    1. Add `python.exe` to `PATH`. E.g. `set PATH=%PATH%;C:\Python27\python.exe`
-   2. Get [VS Community 2017](https://www.visualstudio.com/downloads/), make sure to select the option to install C++ tools and the Windows SDK
-   3. Enable `Debugging Tools for Windows`, Goto Control Panel -> Windows 10 SDK -> Right-Click -> Change -> Change -> Check Debugging Tools for Windows -> Change -> Finish
-
+   2. Get [VS Community 2017](https://www.visualstudio.com/downloads/), make
+      sure to select the option to install C++ tools and the Windows SDK
+   3. Enable `Debugging Tools for Windows`, Goto Control Panel -> Windows 10 SDK
+      -> Right-Click -> Change -> Change -> Check Debugging Tools for Windows ->
+      Change -> Finish
 
 #### To build:
 
@@ -144,13 +145,15 @@ Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`.
 
 ## Contributing
 
-1. Fork [this repository](https://github.com/denoland/deno) and create your branch from `master`.
+1. Fork [this repository](https://github.com/denoland/deno) and create your
+   branch from `master`.
 2. Make your change.
 3. Ensure `./tools/test.py` passes.
 4. Format your code with `./tools/format.py`.
 5. Make sure `./tools/lint.py` passes.
 6. Send a pull request.
-7. Sign the [CLA](https://cla-assistant.io/denoland/deno), if you haven't already.
+7. Sign the [CLA](https://cla-assistant.io/denoland/deno), if you haven't
+   already.
 
 <!-- prettier-ignore -->
 [avy badge]: https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true
