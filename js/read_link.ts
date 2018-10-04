@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
@@ -24,19 +24,19 @@ export async function readlink(name: string): Promise<string> {
   return res(await dispatch.sendAsync(...req(name)));
 }
 
-function req(name: string): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+function req(name: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const name_ = builder.createString(name);
-  fbs.Readlink.startReadlink(builder);
-  fbs.Readlink.addName(builder, name_);
-  const inner = fbs.Readlink.endReadlink(builder);
-  return [builder, fbs.Any.Readlink, inner];
+  msg.Readlink.startReadlink(builder);
+  msg.Readlink.addName(builder, name_);
+  const inner = msg.Readlink.endReadlink(builder);
+  return [builder, msg.Any.Readlink, inner];
 }
 
-function res(baseRes: null | fbs.Base): string {
+function res(baseRes: null | msg.Base): string {
   assert(baseRes !== null);
-  assert(fbs.Any.ReadlinkRes === baseRes!.innerType());
-  const res = new fbs.ReadlinkRes();
+  assert(msg.Any.ReadlinkRes === baseRes!.innerType());
+  const res = new msg.ReadlinkRes();
   assert(baseRes!.inner(res) !== null);
   const path = res.path();
   assert(path !== null);

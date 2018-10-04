@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 
@@ -30,13 +30,13 @@ export async function truncate(name: string, len?: number): Promise<void> {
 function req(
   name: string,
   len?: number
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const name_ = builder.createString(name);
   len = len && len > 0 ? Math.floor(len) : 0;
-  fbs.Truncate.startTruncate(builder);
-  fbs.Truncate.addName(builder, name_);
-  fbs.Truncate.addLen(builder, len);
-  const inner = fbs.Truncate.endTruncate(builder);
-  return [builder, fbs.Any.Truncate, inner];
+  msg.Truncate.startTruncate(builder);
+  msg.Truncate.addName(builder, name_);
+  msg.Truncate.addLen(builder, len);
+  const inner = msg.Truncate.endTruncate(builder);
+  return [builder, msg.Any.Truncate, inner];
 }

@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 
@@ -41,12 +41,12 @@ function req(
   filename: string,
   data: Uint8Array,
   perm: number
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset, Uint8Array] {
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
   const builder = new flatbuffers.Builder();
   const filename_ = builder.createString(filename);
-  fbs.WriteFile.startWriteFile(builder);
-  fbs.WriteFile.addFilename(builder, filename_);
-  fbs.WriteFile.addPerm(builder, perm);
-  const inner = fbs.WriteFile.endWriteFile(builder);
-  return [builder, fbs.Any.WriteFile, inner, data];
+  msg.WriteFile.startWriteFile(builder);
+  msg.WriteFile.addFilename(builder, filename_);
+  msg.WriteFile.addPerm(builder, perm);
+  const inner = msg.WriteFile.endWriteFile(builder);
+  return [builder, msg.Any.WriteFile, inner, data];
 }

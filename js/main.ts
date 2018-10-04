@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { flatbuffers } from "flatbuffers";
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { assert, log, setLogDebug } from "./util";
 import * as os from "./os";
 import { DenoCompiler } from "./compiler";
@@ -8,14 +8,14 @@ import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 
-function sendStart(): fbs.StartRes {
+function sendStart(): msg.StartRes {
   const builder = new flatbuffers.Builder();
-  fbs.Start.startStart(builder);
-  const startOffset = fbs.Start.endStart(builder);
-  const baseRes = sendSync(builder, fbs.Any.Start, startOffset);
+  msg.Start.startStart(builder);
+  const startOffset = msg.Start.endStart(builder);
+  const baseRes = sendSync(builder, msg.Any.Start, startOffset);
   assert(baseRes != null);
-  assert(fbs.Any.StartRes === baseRes!.innerType());
-  const startRes = new fbs.StartRes();
+  assert(msg.Any.StartRes === baseRes!.innerType());
+  const startRes = new msg.StartRes();
   assert(baseRes!.inner(startRes) != null);
   return startRes;
 }
