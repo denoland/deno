@@ -6,9 +6,6 @@ union Any {
   CodeCache,
   SetTimeout,
   Exit,
-  TimerStart,
-  TimerReady,
-  TimerClear,
   Environ,
   EnvironRes,
   FetchReq,
@@ -19,7 +16,10 @@ union Any {
   Remove,
   ReadFile,
   ReadFileRes,
+  ReadDir,
+  ReadDirRes,
   WriteFile,
+  CopyFile,
   Rename,
   Readlink,
   ReadlinkRes,
@@ -27,6 +27,7 @@ union Any {
   Stat,
   StatRes,
   SetEnv,
+  Truncate,
   Open,
   OpenRes,
   Read,
@@ -34,6 +35,11 @@ union Any {
   Write,
   WriteRes,
   Close,
+  Listen,
+  ListenRes,
+  Accept,
+  Dial,
+  NewConn,
 }
 
 enum ErrorKind: byte {
@@ -89,7 +95,7 @@ table Base {
   sync: bool = true; // TODO(ry) Change default to false.
   error_kind: ErrorKind = NoError;
   error: string;
-  msg: Any;
+  inner: Any;
 }
 
 table Start {
@@ -126,25 +132,11 @@ table CodeCache {
 }
 
 table SetTimeout {
-  timeout: int;
+  timeout: double;
 }
 
 table Exit {
   code: int;
-}
-
-table TimerStart {
-  id: uint;
-  delay: uint;
-}
-
-table TimerReady {
-  id: uint;
-  canceled: bool;
-}
-
-table TimerClear {
-  id: uint;
 }
 
 table Environ {}
@@ -206,11 +198,24 @@ table ReadFileRes {
   data: [ubyte];
 }
 
+table ReadDir {
+  path: string;
+}
+
+table ReadDirRes {
+  entries: [StatRes];
+}
+
 table WriteFile {
   filename: string;
   data: [ubyte];
   perm: uint;
   // perm specified by https://godoc.org/os#FileMode
+}
+
+table CopyFile {
+  from: string;
+  to: string;
 }
 
 table Rename {
@@ -245,13 +250,13 @@ table StatRes {
   created:ulong;
   mode: uint;
   has_mode: bool; // false on windows
+  name: string;
+  path: string;
 }
 
-table WriteFileSync {
-  filename: string;
-  data: [ubyte];
-  perm: uint;
-  // perm specified by https://godoc.org/os#FileMode
+table Truncate {
+  name: string;
+  len: uint;
 }
 
 table Open {
@@ -260,11 +265,11 @@ table Open {
 }
 
 table OpenRes {
-  fd: int;
+  rid: int;
 }
 
 table Read {
-  fd: int;
+  rid: int;
   // (ptr, len) is passed as second parameter to libdeno.send().
 }
 
@@ -274,7 +279,7 @@ table ReadRes {
 }
 
 table Write {
-  fd: int;
+  rid: int;
 }
 
 table WriteRes {
@@ -282,7 +287,32 @@ table WriteRes {
 }
 
 table Close {
-  fd: int;
+  rid: int;
+}
+
+table Listen {
+  network: string;
+  address: string;
+}
+
+table ListenRes {
+  rid: int;
+}
+
+table Accept {
+  rid: int;
+}
+
+table Dial {
+  network: string;
+  address: string;
+}
+
+// Response to Accept and Dial.
+table NewConn {
+  rid: int;
+  remote_addr: string;
+  local_addr: string;
 }
 
 root_type Base;

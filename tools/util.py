@@ -226,6 +226,7 @@ def enable_ansi_colors_win10():
     # Generic constants.
     NULL = ctypes.c_void_p(0).value
     INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+    ERROR_INVALID_PARAMETER = 87
 
     # CreateFile flags.
     # yapf: disable

@@ -5,7 +5,7 @@ import * as timers from "./timers";
 import * as textEncoding from "./text_encoding";
 import * as fetch_ from "./fetch";
 import { libdeno } from "./libdeno";
-import { globalEval } from "./global-eval";
+import { globalEval } from "./global_eval";
 import { DenoHeaders } from "./fetch";
 import { DenoBlob } from "./blob";
 

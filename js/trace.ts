@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 
 export interface TraceInfo {
   sync: boolean; // is synchronous call
@@ -41,7 +41,7 @@ function popStack(): TraceInfo[] {
 }
 
 // Push to trace stack if we are tracing
-export function maybePushTrace(op: fbs.Any, sync: boolean): void {
+export function maybePushTrace(op: msg.Any, sync: boolean): void {
   if (current === null) {
     return; // no trace requested
   }
@@ -49,7 +49,7 @@ export function maybePushTrace(op: fbs.Any, sync: boolean): void {
   current!.list.push(
     Object.freeze({
       sync,
-      name: fbs.Any[op] // convert to enum names
+      name: msg.Any[op] // convert to enum names
     })
   );
 }

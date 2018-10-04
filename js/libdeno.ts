@@ -1,5 +1,5 @@
 import { RawSourceMap } from "./types";
-import { globalEval } from "./global-eval";
+import { globalEval } from "./global_eval";
 
 // The libdeno functions are moved so that users can't access them.
 type MessageCallback = (msg: Uint8Array) => void;

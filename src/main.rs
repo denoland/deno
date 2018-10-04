@@ -1,5 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 extern crate flatbuffers;
+#[macro_use]
 extern crate futures;
 extern crate hyper;
 extern crate libc;
@@ -23,13 +24,13 @@ extern crate ring;
 
 mod deno_dir;
 mod errors;
-mod files;
 mod flags;
 mod fs;
-pub mod handlers;
 mod http;
 mod isolate;
 mod libdeno;
+pub mod ops;
+mod resources;
 mod tokio_util;
 mod version;
 
@@ -55,7 +56,7 @@ impl log::Log for Logger {
 fn main() {
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
-  let mut isolate = isolate::Isolate::new(args, handlers::msg_from_js);
+  let mut isolate = isolate::Isolate::new(args, ops::dispatch);
   flags::process(&isolate.state.flags);
   tokio_util::init(|| {
     isolate

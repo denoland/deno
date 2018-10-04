@@ -1,5 +1,5 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assertEqual } from "./test_util.ts";
-import { setGlobalTimeout } from "deno";
 
 function deferred() {
   let resolve;
@@ -29,6 +29,28 @@ test(async function timeoutSuccess() {
   await promise;
   // count should increment
   assertEqual(count, 1);
+});
+
+test(async function timeoutArgs() {
+  let arg = 1;
+  await new Promise((resolve, reject) => {
+    setTimeout(
+      (a, b, c) => {
+        try {
+          assertEqual(a, arg);
+          assertEqual(b, arg.toString());
+          assertEqual(c, [arg]);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      },
+      10,
+      arg,
+      arg.toString(),
+      [arg]
+    );
+  });
 });
 
 test(async function timeoutCancelSuccess() {
@@ -92,11 +114,31 @@ test(async function intervalCancelSuccess() {
   assertEqual(count, 0);
 });
 
+test(async function intervalOrdering() {
+  const timers = [];
+  let timeouts = 0;
+  for (let i = 0; i < 10; i++) {
+    timers[i] = setTimeout(onTimeout, 20);
+  }
+  function onTimeout() {
+    ++timeouts;
+    for (let i = 1; i < timers.length; i++) {
+      clearTimeout(timers[i]);
+    }
+  }
+  await new Promise((resolve, reject) => {
+    setTimeout(() => {
+      try {
+        assertEqual(timeouts, 1);
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+    }, 100);
+  });
+});
+
 test(async function intervalCancelInvalidSilentFail() {
   // Should silently fail (no panic)
   clearInterval(2147483647);
-});
-
-test(async function SetGlobalTimeoutSmoke() {
-  setGlobalTimeout(50);
 });
