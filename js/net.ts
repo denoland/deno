@@ -84,8 +84,8 @@ class ConnImpl implements Conn {
     return notImplemented();
   }
 
-  /** closeWrite shuts down (shutdown(2)) the writing side of the TCP connection.
-   * Most callers should just use close().
+  /** closeWrite shuts down (shutdown(2)) the writing side of the TCP
+   * connection. Most callers should just use close().
    */
   closeWrite(): void {
     // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
