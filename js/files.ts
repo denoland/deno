@@ -2,7 +2,7 @@
 
 import { Reader, Writer, Closer, ReadResult } from "./io";
 import * as dispatch from "./dispatch";
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { assert } from "./util";
 import { flatbuffers } from "flatbuffers";
 
@@ -39,13 +39,13 @@ export async function open(
 ): Promise<File> {
   const builder = new flatbuffers.Builder();
   const filename_ = builder.createString(filename);
-  fbs.Open.startOpen(builder);
-  fbs.Open.addFilename(builder, filename_);
-  const inner = fbs.Open.endOpen(builder);
-  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Open, inner);
+  msg.Open.startOpen(builder);
+  msg.Open.addFilename(builder, filename_);
+  const inner = msg.Open.endOpen(builder);
+  const baseRes = await dispatch.sendAsync(builder, msg.Any.Open, inner);
   assert(baseRes != null);
-  assert(fbs.Any.OpenRes === baseRes!.innerType());
-  const res = new fbs.OpenRes();
+  assert(msg.Any.OpenRes === baseRes!.innerType());
+  const res = new msg.OpenRes();
   assert(baseRes!.inner(res) != null);
   const fd = res.rid();
   return new File(fd);
@@ -56,34 +56,34 @@ export async function read(
   p: ArrayBufferView
 ): Promise<ReadResult> {
   const builder = new flatbuffers.Builder();
-  fbs.Read.startRead(builder);
-  fbs.Read.addRid(builder, fd);
-  const inner = fbs.Read.endRead(builder);
-  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Read, inner, p);
+  msg.Read.startRead(builder);
+  msg.Read.addRid(builder, fd);
+  const inner = msg.Read.endRead(builder);
+  const baseRes = await dispatch.sendAsync(builder, msg.Any.Read, inner, p);
   assert(baseRes != null);
-  assert(fbs.Any.ReadRes === baseRes!.innerType());
-  const res = new fbs.ReadRes();
+  assert(msg.Any.ReadRes === baseRes!.innerType());
+  const res = new msg.ReadRes();
   assert(baseRes!.inner(res) != null);
   return { nread: res.nread(), eof: res.eof() };
 }
 
 export async function write(fd: number, p: ArrayBufferView): Promise<number> {
   const builder = new flatbuffers.Builder();
-  fbs.Write.startWrite(builder);
-  fbs.Write.addRid(builder, fd);
-  const inner = fbs.Write.endWrite(builder);
-  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Write, inner, p);
+  msg.Write.startWrite(builder);
+  msg.Write.addRid(builder, fd);
+  const inner = msg.Write.endWrite(builder);
+  const baseRes = await dispatch.sendAsync(builder, msg.Any.Write, inner, p);
   assert(baseRes != null);
-  assert(fbs.Any.WriteRes === baseRes!.innerType());
-  const res = new fbs.WriteRes();
+  assert(msg.Any.WriteRes === baseRes!.innerType());
+  const res = new msg.WriteRes();
   assert(baseRes!.inner(res) != null);
   return res.nbyte();
 }
 
 export function close(fd: number): void {
   const builder = new flatbuffers.Builder();
-  fbs.Close.startClose(builder);
-  fbs.Close.addRid(builder, fd);
-  const inner = fbs.Close.endClose(builder);
-  dispatch.sendSync(builder, fbs.Any.Close, inner);
+  msg.Close.startClose(builder);
+  msg.Close.addRid(builder, fd);
+  const inner = msg.Close.endClose(builder);
+  dispatch.sendSync(builder, msg.Any.Close, inner);
 }

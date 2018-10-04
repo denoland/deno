@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 
 /**
  * A FileInfo describes a file and is returned by `stat`, `lstat`,
@@ -73,7 +73,7 @@ export class FileInfoImpl implements FileInfo {
   path: string | null;
 
   /* @internal */
-  constructor(private _inner: fbs.StatRes) {
+  constructor(private _inner: msg.StatRes) {
     const modified = this._inner.modified().toFloat64();
     const accessed = this._inner.accessed().toFloat64();
     const created = this._inner.created().toFloat64();

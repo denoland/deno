@@ -1,13 +1,13 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { libdeno } from "./libdeno";
 import { flatbuffers } from "flatbuffers";
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
 import { maybePushTrace } from "./trace";
 
 let nextCmdId = 0;
-const promiseTable = new Map<number, util.Resolvable<fbs.Base>>();
+const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
 let fireTimers: () => void;
 
@@ -20,7 +20,7 @@ export function handleAsyncMsgFromRust(ui8: Uint8Array) {
   // did not receive a message.
   if (ui8.length) {
     const bb = new flatbuffers.ByteBuffer(ui8);
-    const base = fbs.Base.getRootAsBase(bb);
+    const base = msg.Base.getRootAsBase(bb);
     const cmdId = base.cmdId();
     const promise = promiseTable.get(cmdId);
     util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
@@ -39,14 +39,14 @@ export function handleAsyncMsgFromRust(ui8: Uint8Array) {
 // @internal
 export function sendAsync(
   builder: flatbuffers.Builder,
-  innerType: fbs.Any,
+  innerType: msg.Any,
   inner: flatbuffers.Offset,
   data?: ArrayBufferView
-): Promise<fbs.Base> {
+): Promise<msg.Base> {
   maybePushTrace(innerType, false); // add to trace if tracing
   const [cmdId, resBuf] = sendInternal(builder, innerType, inner, data, false);
   util.assert(resBuf == null);
-  const promise = util.createResolvable<fbs.Base>();
+  const promise = util.createResolvable<msg.Base>();
   promiseTable.set(cmdId, promise);
   return promise;
 }
@@ -54,10 +54,10 @@ export function sendAsync(
 // @internal
 export function sendSync(
   builder: flatbuffers.Builder,
-  innerType: fbs.Any,
+  innerType: msg.Any,
   inner: flatbuffers.Offset,
   data?: ArrayBufferView
-): null | fbs.Base {
+): null | msg.Base {
   maybePushTrace(innerType, true); // add to trace if tracing
   const [cmdId, resBuf] = sendInternal(builder, innerType, inner, data, true);
   util.assert(cmdId >= 0);
@@ -66,7 +66,7 @@ export function sendSync(
   } else {
     const u8 = new Uint8Array(resBuf!);
     const bb = new flatbuffers.ByteBuffer(u8);
-    const baseRes = fbs.Base.getRootAsBase(bb);
+    const baseRes = msg.Base.getRootAsBase(bb);
     errors.maybeThrowError(baseRes);
     return baseRes;
   }
@@ -74,18 +74,18 @@ export function sendSync(
 
 function sendInternal(
   builder: flatbuffers.Builder,
-  innerType: fbs.Any,
+  innerType: msg.Any,
   inner: flatbuffers.Offset,
   data: undefined | ArrayBufferView,
   sync = true
 ): [number, null | Uint8Array] {
   const cmdId = nextCmdId++;
-  fbs.Base.startBase(builder);
-  fbs.Base.addInner(builder, inner);
-  fbs.Base.addInnerType(builder, innerType);
-  fbs.Base.addSync(builder, sync);
-  fbs.Base.addCmdId(builder, cmdId);
-  builder.finish(fbs.Base.endBase(builder));
+  msg.Base.startBase(builder);
+  msg.Base.addInner(builder, inner);
+  msg.Base.addInnerType(builder, innerType);
+  msg.Base.addSync(builder, sync);
+  msg.Base.addCmdId(builder, cmdId);
+  builder.finish(msg.Base.endBase(builder));
 
   return [cmdId, libdeno.send(builder.asUint8Array(), data)];
 }

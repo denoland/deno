@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 
@@ -26,12 +26,12 @@ export async function mkdir(path: string, mode = 0o777): Promise<void> {
 function req(
   path: string,
   mode: number
-): [flatbuffers.Builder, fbs.Any, flatbuffers.Offset] {
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = new flatbuffers.Builder();
   const path_ = builder.createString(path);
-  fbs.Mkdir.startMkdir(builder);
-  fbs.Mkdir.addPath(builder, path_);
-  fbs.Mkdir.addMode(builder, mode);
-  const inner = fbs.Mkdir.endMkdir(builder);
-  return [builder, fbs.Any.Mkdir, inner];
+  msg.Mkdir.startMkdir(builder);
+  msg.Mkdir.addPath(builder, path_);
+  msg.Mkdir.addMode(builder, mode);
+  const inner = msg.Mkdir.endMkdir(builder);
+  return [builder, msg.Any.Mkdir, inner];
 }
