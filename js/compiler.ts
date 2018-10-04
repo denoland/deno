@@ -3,7 +3,7 @@
 import * as ts from "typescript";
 import { assetSourceCode } from "./assets";
 import * as deno from "./deno";
-import { globalEval } from "./global-eval";
+import { globalEval } from "./global_eval";
 import { libdeno } from "./libdeno";
 import { window } from "./globals";
 import * as os from "./os";

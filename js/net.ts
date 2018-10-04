@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 import { ReadResult, Reader, Writer, Closer } from "./io";
-import * as fbs from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { assert, notImplemented } from "./util";
 import * as dispatch from "./dispatch";
 import { flatbuffers } from "flatbuffers";
@@ -32,14 +32,14 @@ class ListenerImpl implements Listener {
 
   async accept(): Promise<Conn> {
     const builder = new flatbuffers.Builder();
-    fbs.Accept.startAccept(builder);
-    fbs.Accept.addRid(builder, this.fd);
-    const msg = fbs.Accept.endAccept(builder);
-    const baseRes = await dispatch.sendAsync(builder, fbs.Any.Accept, msg);
+    msg.Accept.startAccept(builder);
+    msg.Accept.addRid(builder, this.fd);
+    const inner = msg.Accept.endAccept(builder);
+    const baseRes = await dispatch.sendAsync(builder, msg.Any.Accept, inner);
     assert(baseRes != null);
-    assert(fbs.Any.NewConn === baseRes!.msgType());
-    const res = new fbs.NewConn();
-    assert(baseRes!.msg(res) != null);
+    assert(msg.Any.NewConn === baseRes!.innerType());
+    const res = new msg.NewConn();
+    assert(baseRes!.inner(res) != null);
     return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
   }
 
@@ -112,15 +112,15 @@ export function listen(network: Network, address: string): Listener {
   const builder = new flatbuffers.Builder();
   const network_ = builder.createString(network);
   const address_ = builder.createString(address);
-  fbs.Listen.startListen(builder);
-  fbs.Listen.addNetwork(builder, network_);
-  fbs.Listen.addAddress(builder, address_);
-  const msg = fbs.Listen.endListen(builder);
-  const baseRes = dispatch.sendSync(builder, fbs.Any.Listen, msg);
+  msg.Listen.startListen(builder);
+  msg.Listen.addNetwork(builder, network_);
+  msg.Listen.addAddress(builder, address_);
+  const inner = msg.Listen.endListen(builder);
+  const baseRes = dispatch.sendSync(builder, msg.Any.Listen, inner);
   assert(baseRes != null);
-  assert(fbs.Any.ListenRes === baseRes!.msgType());
-  const res = new fbs.ListenRes();
-  assert(baseRes!.msg(res) != null);
+  assert(msg.Any.ListenRes === baseRes!.innerType());
+  const res = new msg.ListenRes();
+  assert(baseRes!.inner(res) != null);
   return new ListenerImpl(res.rid());
 }
 
@@ -154,15 +154,15 @@ export async function dial(network: Network, address: string): Promise<Conn> {
   const builder = new flatbuffers.Builder();
   const network_ = builder.createString(network);
   const address_ = builder.createString(address);
-  fbs.Dial.startDial(builder);
-  fbs.Dial.addNetwork(builder, network_);
-  fbs.Dial.addAddress(builder, address_);
-  const msg = fbs.Dial.endDial(builder);
-  const baseRes = await dispatch.sendAsync(builder, fbs.Any.Dial, msg);
+  msg.Dial.startDial(builder);
+  msg.Dial.addNetwork(builder, network_);
+  msg.Dial.addAddress(builder, address_);
+  const inner = msg.Dial.endDial(builder);
+  const baseRes = await dispatch.sendAsync(builder, msg.Any.Dial, inner);
   assert(baseRes != null);
-  assert(fbs.Any.NewConn === baseRes!.msgType());
-  const res = new fbs.NewConn();
-  assert(baseRes!.msg(res) != null);
+  assert(msg.Any.NewConn === baseRes!.innerType());
+  const res = new msg.NewConn();
+  assert(baseRes!.inner(res) != null);
   return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
 }
 
