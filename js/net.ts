@@ -55,6 +55,8 @@ class ListenerImpl implements Listener {
 export interface Conn extends Reader, Writer, Closer {
   localAddr: string;
   remoteAddr: string;
+  closeRead(): void;
+  closeWrite(): void;
 }
 
 class ConnImpl implements Conn {
@@ -80,17 +82,33 @@ class ConnImpl implements Conn {
    * Most callers should just use close().
    */
   closeRead(): void {
-    // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
-    return notImplemented();
+    shutdown(this.fd, ShutdownMode.Read);
   }
 
   /** closeWrite shuts down (shutdown(2)) the writing side of the TCP
    * connection. Most callers should just use close().
    */
   closeWrite(): void {
-    // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
-    return notImplemented();
+    shutdown(this.fd, ShutdownMode.Write);
   }
+}
+
+enum ShutdownMode {
+  // See http://man7.org/linux/man-pages/man2/shutdown.2.html
+  // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
+  Read = 0,
+  Write,
+  ReadWrite // unused
+}
+
+function shutdown(fd: number, how: ShutdownMode) {
+  const builder = new flatbuffers.Builder();
+  msg.Shutdown.startShutdown(builder);
+  msg.Shutdown.addRid(builder, fd);
+  msg.Shutdown.addHow(builder, how);
+  const inner = msg.Shutdown.endShutdown(builder);
+  const baseRes = dispatch.sendSync(builder, msg.Any.Shutdown, inner);
+  assert(baseRes == null);
 }
 
 /** Listen announces on the local network address.

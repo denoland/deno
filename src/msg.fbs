@@ -35,6 +35,7 @@ union Any {
   Write,
   WriteRes,
   Close,
+  Shutdown,
   Listen,
   ListenRes,
   Accept,
@@ -288,6 +289,11 @@ table WriteRes {
 
 table Close {
   rid: int;
+}
+
+table Shutdown {
+  rid: int;
+  how: uint;
 }
 
 table Listen {
