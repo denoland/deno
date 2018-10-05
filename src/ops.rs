@@ -101,6 +101,7 @@ pub fn dispatch(
       msg::Any::Listen => op_listen,
       msg::Any::Accept => op_accept,
       msg::Any::Dial => op_dial,
+      msg::Any::Metrics => op_metrics,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -465,7 +466,7 @@ where
 //   fn blocking<F>(is_sync: bool, f: F) -> Box<Op>
 //   where F: FnOnce() -> DenoResult<Buf>
 macro_rules! blocking {
-  ($is_sync:expr,$fn:expr) => {
+  ($is_sync:expr, $fn:expr) => {
     if $is_sync {
       // If synchronous, execute the function immediately on the main thread.
       Box::new(futures::future::result($fn()))
@@ -1152,4 +1153,37 @@ fn op_dial(
     .map_err(|err| err.into())
     .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream));
   Box::new(op)
+}
+
+fn op_metrics(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+
+  let metrics = state.metrics.lock().unwrap();
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::MetricsRes::create(
+    builder,
+    &msg::MetricsResArgs {
+      ops_dispatched: metrics.ops_dispatched,
+      ops_completed: metrics.ops_completed,
+      bytes_sent_control: metrics.bytes_sent_control,
+      bytes_sent_data: metrics.bytes_sent_data,
+      bytes_received: metrics.bytes_received,
+      ..Default::default()
+    },
+  );
+  ok_future(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::MetricsRes,
+      ..Default::default()
+    },
+  ))
 }
