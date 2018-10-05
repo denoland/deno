@@ -1,7 +1,7 @@
-const id = setInterval(function() {
+const id = setInterval(() => {
   console.log("test");
 }, 200);
 
-setTimeout(function() {
+setTimeout(() => {
   clearInterval(id);
 }, 500);
