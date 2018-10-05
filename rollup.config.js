@@ -108,9 +108,10 @@ function platform({ include, exclude } = {}) {
         // Adapted from https://github.com/rollup/rollup-plugin-inject/blob/master/src/index.js
         const arch = archNodeToDeno[process.arch];
         const os = osNodeToDeno[process.platform];
+        // We do not have to worry about the interface here, because this is just to generate
+        // the actual runtime code, not any type information integrated into Deno
         const magicString = new MagicString(`
-import { Platform } from "./types";
-export const platform: Platform = { arch: "${arch}", os:"${os}" };`);
+export const platform = { arch: "${arch}", os:"${os}" };`);
         return {
           code: magicString.toString(),
           map: magicString.generateMap()
