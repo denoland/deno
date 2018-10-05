@@ -84,6 +84,7 @@ ts_sources = [
   "js/libdeno.ts",
   "js/main.ts",
   "js/make_temp_dir.ts",
+  "js/metrics.ts",
   "js/mkdir.ts",
   "js/mock_builtin.js",
   "js/net.ts",
