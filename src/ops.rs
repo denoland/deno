@@ -1,6 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 use errors;
+use errors::permission_denied;
 use errors::DenoError;
 use errors::DenoResult;
 use fs as deno_fs;
@@ -151,20 +152,6 @@ pub fn dispatch(
     base.sync()
   );
   return (base.sync(), boxed_op);
-}
-
-fn permission_denied() -> DenoError {
-  DenoError::from(std::io::Error::new(
-    std::io::ErrorKind::PermissionDenied,
-    "permission denied",
-  ))
-}
-
-fn not_implemented() -> DenoError {
-  DenoError::from(std::io::Error::new(
-    std::io::ErrorKind::Other,
-    "Not implemented",
-  ))
 }
 
 fn op_exit(
@@ -605,10 +592,7 @@ fn op_close(
   let inner = base.inner_as_close().unwrap();
   let rid = inner.rid();
   match resources::lookup(rid) {
-    None => odd_future(errors::new(
-      errors::ErrorKind::BadFileDescriptor,
-      String::from("Bad File Descriptor"),
-    )),
+    None => odd_future(errors::bad_resource()),
     Some(mut resource) => {
       resource.close();
       ok_future(empty_buf())
@@ -655,10 +639,7 @@ fn op_read(
   let rid = inner.rid();
 
   match resources::lookup(rid) {
-    None => odd_future(errors::new(
-      errors::ErrorKind::BadFileDescriptor,
-      String::from("Bad File Descriptor"),
-    )),
+    None => odd_future(errors::bad_resource()),
     Some(resource) => {
       let op = tokio_io::io::read(resource, data)
         .map_err(|err| DenoError::from(err))
@@ -697,10 +678,7 @@ fn op_write(
   let rid = inner.rid();
 
   match resources::lookup(rid) {
-    None => odd_future(errors::new(
-      errors::ErrorKind::BadFileDescriptor,
-      String::from("Bad File Descriptor"),
-    )),
+    None => odd_future(errors::bad_resource()),
     Some(resource) => {
       let len = data.len();
       let op = tokio_io::io::write_all(resource, data)
@@ -989,7 +967,7 @@ fn op_symlink(
   }
   // TODO Use type for Windows.
   if cfg!(windows) {
-    return odd_future(not_implemented());
+    panic!("symlink for windows is not yet implemented")
   }
 
   let inner = base.inner_as_symlink().unwrap();
@@ -1140,10 +1118,7 @@ fn op_accept(
   let server_rid = inner.rid();
 
   match resources::lookup(server_rid) {
-    None => odd_future(errors::new(
-      errors::ErrorKind::BadFileDescriptor,
-      String::from("Bad File Descriptor"),
-    )),
+    None => odd_future(errors::bad_resource()),
     Some(server_resource) => {
       let op = tokio_util::accept(server_resource)
         .map_err(|err| DenoError::from(err))
