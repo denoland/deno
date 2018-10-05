@@ -54,6 +54,18 @@ impl log::Log for Logger {
 }
 
 fn main() {
+  // Rust does not die on panic by default. And -Cpanic=abort is broken.
+  // https://github.com/rust-lang/cargo/issues/2738
+  // Therefore this hack.
+  std::panic::set_hook(Box::new(|panic_info| {
+    if let Some(location) = panic_info.location() {
+      println!("PANIC file '{}' line {}", location.file(), location.line());
+    } else {
+      println!("PANIC occurred but can't get location information...");
+    }
+    std::process::abort();
+  }));
+
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
   let mut isolate = isolate::Isolate::new(args, ops::dispatch);
