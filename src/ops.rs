@@ -9,6 +9,8 @@ use isolate::Isolate;
 use isolate::IsolateState;
 use isolate::Op;
 use msg;
+use resources;
+use resources::Resource;
 use tokio_util;
 
 use flatbuffers::FlatBufferBuilder;
@@ -19,10 +21,9 @@ use hyper;
 use hyper::rt::{Future, Stream};
 use hyper::Client;
 use remove_dir_all::remove_dir_all;
-use resources;
 use std;
 use std::fs;
-use std::net::SocketAddr;
+use std::net::{Shutdown, SocketAddr};
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -84,6 +85,7 @@ pub fn dispatch(
       msg::Any::Read => op_read,
       msg::Any::Write => op_write,
       msg::Any::Close => op_close,
+      msg::Any::Shutdown => op_shutdown,
       msg::Any::Remove => op_remove,
       msg::Any::ReadFile => op_read_file,
       msg::Any::ReadDir => op_read_dir,
@@ -610,6 +612,35 @@ fn op_close(
     Some(mut resource) => {
       resource.close();
       ok_future(empty_buf())
+    }
+  }
+}
+
+fn op_shutdown(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_shutdown().unwrap();
+  let rid = inner.rid();
+  let how = inner.how();
+  match resources::lookup(rid) {
+    None => odd_future(errors::new(
+      errors::ErrorKind::BadFileDescriptor,
+      String::from("Bad File Descriptor"),
+    )),
+    Some(mut resource) => {
+      let shutdown_mode = match how {
+        0 => Shutdown::Read,
+        1 => Shutdown::Write,
+        _ => unimplemented!(),
+      };
+      blocking!(base.sync(), || {
+        // Use UFCS for disambiguation
+        Resource::shutdown(&mut resource, shutdown_mode)?;
+        Ok(empty_buf())
+      })
     }
   }
 }
