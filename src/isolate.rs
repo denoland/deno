@@ -55,6 +55,7 @@ pub struct IsolateState {
   pub argv: Vec<String>,
   pub flags: flags::DenoFlags,
   tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
+  pub metrics: IsolateMetrics,
 }
 
 impl IsolateState {
@@ -65,6 +66,37 @@ impl IsolateState {
     assert!(maybe_tx.is_some(), "Expected tx to not be deleted.");
     let tx = maybe_tx.unwrap();
     tx.send((req_id, buf)).expect("tx.send error");
+  }
+}
+
+pub struct IsolateMetrics {
+  pub ops_executed: i32,
+  pub bytes_recv: i32,
+  pub bytes_sent: i32,
+}
+
+impl IsolateMetrics {
+  pub fn new() -> IsolateMetrics {
+    IsolateMetrics {
+      ops_executed: 0,
+      bytes_recv: 0,
+      bytes_sent: 0
+    }
+  }
+
+  fn increment_ops_executed(&mut self) {
+    assert!(self.ops_executed >= 0);
+    self.ops_executed += 1;
+  }
+
+  fn increment_bytes_recv(&mut self, len: i32) {
+    assert!(self.bytes_recv >= 0);
+    self.bytes_recv += len;
+  }
+
+  fn increment_bytes_sent(&mut self, len: i32) {
+    assert!(self.bytes_sent >= 0);
+    self.bytes_sent += len;
   }
 }
 
@@ -92,6 +124,7 @@ impl Isolate {
         argv: argv_rest,
         flags,
         tx: Mutex::new(Some(tx)),
+        metrics: IsolateMetrics::new(),
       }),
     }
   }

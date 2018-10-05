@@ -41,6 +41,8 @@ union Any {
   Accept,
   Dial,
   NewConn,
+  Metrics,
+  MetricsRes,
 }
 
 enum ErrorKind: byte {
@@ -319,6 +321,14 @@ table NewConn {
   rid: int;
   remote_addr: string;
   local_addr: string;
+}
+
+table Metrics {}
+
+table MetricsRes {
+  ops_executed: int;
+  bytes_recv: int;
+  bytes_sent: int;
 }
 
 root_type Base;
