@@ -12,7 +12,12 @@
 - No `package.json`. No npm. Not explicitly compatible with Node.
 
 - Imports reference source code URLs only.
-  `import { test } from "https://unpkg.com/deno_testing@0.0.5/testing.ts" import { log } from "./util.ts"`
+
+  ```typescript
+  import { test } from "https://unpkg.com/deno_testing@0.0.5/testing.ts";
+  import { log } from "./util.ts";
+  ```
+
   Remote code is fetched and cached on first execution, and never updated until
   the code is run with the `--reload` flag. (So, this will still work on an
   airplane. See `~/.deno/src` for details on the cache.)
