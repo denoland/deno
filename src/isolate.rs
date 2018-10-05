@@ -190,6 +190,7 @@ impl Isolate {
 
   fn ntasks_increment(&mut self) {
     assert!(self.ntasks >= 0);
+    debug!("ntasks {} + 1 = {}", self.ntasks, self.ntasks + 1);
     self.ntasks = self.ntasks + 1;
   }
 
@@ -202,6 +203,7 @@ impl Isolate {
     static UNUSED: atomic::AtomicIsize = atomic::AtomicIsize::new(0);
     UNUSED.fetch_add(self.ntasks as isize, atomic::Ordering::AcqRel);
     // Actually decrement the tasks counter here.
+    debug!("ntasks {} - 1 = {}", self.ntasks, self.ntasks - 1);
     self.ntasks = self.ntasks - 1;
     assert!(self.ntasks >= 0);
   }

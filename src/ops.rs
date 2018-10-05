@@ -147,7 +147,7 @@ pub fn dispatch(
   );
 
   debug!(
-    "msg_from_js {} sync {}",
+    "dispatch {} sync {}",
     msg::enum_name_any(inner_type),
     base.sync()
   );
