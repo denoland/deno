@@ -6,7 +6,7 @@ testPerm({ write: true }, function makeTempDirSyncSuccess() {
   const dir1 = deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   const dir2 = deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.
-  assert(dir1 != dir2);
+  assert(dir1 !== dir2);
   for (const dir of [dir1, dir2]) {
     // Check that the prefix and suffix are applied.
     const lastPart = dir.replace(/^.*[\\\/]/, "");
@@ -44,7 +44,7 @@ testPerm({ write: true }, async function makeTempDirSuccess() {
   const dir1 = await deno.makeTempDir({ prefix: "hello", suffix: "world" });
   const dir2 = await deno.makeTempDir({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.
-  assert(dir1 != dir2);
+  assert(dir1 !== dir2);
   for (const dir of [dir1, dir2]) {
     // Check that the prefix and suffix are applied.
     const lastPart = dir.replace(/^.*[\\\/]/, "");

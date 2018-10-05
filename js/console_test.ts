@@ -67,7 +67,7 @@ test(function consoleTestStringifyCircular() {
   };
 
   nestedObj.o = circularObj;
-
+  // tslint:disable-next-line:max-line-length  
   const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], asyncMethod: [AsyncFunction: asyncMethod], generatorMethod: [GeneratorFunction: generatorMethod], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: [object], arr: [object], baseClass: [object] } }`;
 
   assertEqual(stringify(1), "1");
@@ -88,11 +88,13 @@ test(function consoleTestStringifyCircular() {
   assertEqual(stringify(JSON), "{}");
   assertEqual(
     stringify(console),
+    // tslint:disable-next-line:max-line-length
     "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function] }"
   );
 });
 
 test(function consoleTestStringifyWithDepth() {
+  // tslint:disable-next-line:no-any  
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEqual(
     stringifyArgs([nestedObj], { depth: 3 }),

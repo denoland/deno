@@ -9,7 +9,7 @@ testPerm({ net: true }, function netListenClose() {
 });
 
 testPerm({ net: true }, async function netDialListen() {
-  let addr = "127.0.0.1:4500";
+  const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
   listener.accept().then(async conn => {
     await conn.write(new Uint8Array([1, 2, 3]));

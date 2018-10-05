@@ -32,7 +32,7 @@ test(async function timeoutSuccess() {
 });
 
 test(async function timeoutArgs() {
-  let arg = 1;
+  const arg = 1;
   await new Promise((resolve, reject) => {
     setTimeout(
       (a, b, c) => {
