@@ -49,26 +49,6 @@ export function test(fn: testing.TestFunction) {
   testPerm({ write: false, net: false, env: false }, fn);
 }
 
-interface Deferred {
-  promise: Promise<void>;
-  resolve: Function;
-  reject: Function;
-}
-
-export function deferred(): Deferred {
-  let resolve: Function | undefined;
-  let reject: Function | undefined;
-  const promise = new Promise<void>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return {
-    promise,
-    resolve: resolve!,
-    reject: reject!
-  };
-}
-
 test(function permSerialization() {
   for (const write of [true, false]) {
     for (const net of [true, false]) {

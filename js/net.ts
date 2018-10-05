@@ -82,7 +82,6 @@ class ConnImpl implements Conn {
    * Most callers should just use close().
    */
   closeRead(): void {
-    // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
     shutdown(this.fd, ShutdownMode.Read);
   }
 
@@ -90,7 +89,6 @@ class ConnImpl implements Conn {
    * connection. Most callers should just use close().
    */
   closeWrite(): void {
-    // TODO(ry) Connect to AsyncWrite::shutdown in resources.rs
     shutdown(this.fd, ShutdownMode.Write);
   }
 }
