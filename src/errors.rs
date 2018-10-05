@@ -94,7 +94,7 @@ impl DenoError {
 impl fmt::Display for DenoError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self.repr {
-      Repr::Simple(_kind, ref _msg) => panic!("todo"),
+      Repr::Simple(_kind, ref err_str) => f.pad(err_str),
       Repr::IoErr(ref err) => err.fmt(f),
       Repr::UrlErr(ref err) => err.fmt(f),
       Repr::HyperErr(ref err) => err.fmt(f),
@@ -109,7 +109,6 @@ impl std::error::Error for DenoError {
       Repr::IoErr(ref err) => err.description(),
       Repr::UrlErr(ref err) => err.description(),
       Repr::HyperErr(ref err) => err.description(),
-      // Repr::Simple(..) => "FIXME",
     }
   }
 
@@ -119,7 +118,6 @@ impl std::error::Error for DenoError {
       Repr::IoErr(ref err) => Some(err),
       Repr::UrlErr(ref err) => Some(err),
       Repr::HyperErr(ref err) => Some(err),
-      // Repr::Simple(..) => None,
     }
   }
 }
@@ -149,4 +147,18 @@ impl From<hyper::Error> for DenoError {
       repr: Repr::HyperErr(err),
     }
   }
+}
+
+pub fn bad_resource() -> DenoError {
+  new(
+    ErrorKind::BadFileDescriptor, // TODO Rename to BadResource
+    String::from("bad resource id"),
+  )
+}
+
+pub fn permission_denied() -> DenoError {
+  new(
+    ErrorKind::PermissionDenied,
+    String::from("permission denied"),
+  )
 }
