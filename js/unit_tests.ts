@@ -25,3 +25,4 @@ import "./trace_test.ts";
 import "./truncate_test.ts";
 import "./v8_source_maps_test.ts";
 import "../website/app_test.js";
+import "./metrics_test.ts";
