@@ -84,16 +84,19 @@ impl IsolateMetrics {
     }
   }
 
+  #[allow(dead_code)]
   fn increment_ops_executed(&mut self) {
     assert!(self.ops_executed >= 0);
     self.ops_executed += 1;
   }
 
+  #[allow(dead_code)]
   fn increment_bytes_recv(&mut self, len: i32) {
     assert!(self.bytes_recv >= 0);
     self.bytes_recv += len;
   }
 
+  #[allow(dead_code)]
   fn increment_bytes_sent(&mut self, len: i32) {
     assert!(self.bytes_sent >= 0);
     self.bytes_sent += len;
