@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-/// <amd-module name="compiler"/>
 import * as ts from "typescript";
 import { assetSourceCode } from "./assets";
+// tslint:disable-next-line:no-circular-imports
 import * as deno from "./deno";
 import { globalEval } from "./global_eval";
 import { libdeno } from "./libdeno";
@@ -648,7 +648,7 @@ export class DenoCompiler
     this._log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(name => {
       let resolvedFileName;
-      if (name === "deno" || name === "compiler") {
+      if (name === "deno") {
         // builtin modules are part of `globals.d.ts`
         resolvedFileName = this._resolveModuleName("globals.d.ts", ASSETS);
       } else if (name === "typescript") {
@@ -683,8 +683,7 @@ export class DenoCompiler
   // tslint:disable-next-line:no-any
   private static _builtins: { [mid: string]: any } = {
     typescript: ts,
-    deno,
-    compiler: { DenoCompiler, ModuleMetaData }
+    deno
   };
 
   private static _instance: DenoCompiler | undefined;

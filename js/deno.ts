@@ -23,3 +23,8 @@ export { truncateSync, truncate } from "./truncate";
 export { FileInfo } from "./file_info";
 export { connect, dial, listen, Listener, Conn } from "./net";
 export const args: string[] = [];
+
+// Provide the compiler API in an obfuscated way
+import * as compiler from "./compiler";
+// @internal
+export const _compiler = compiler;

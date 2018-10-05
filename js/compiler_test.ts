@@ -1,12 +1,12 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "./test_util.ts";
-import * as compiler from "compiler";
+import * as deno from "deno";
 import * as ts from "typescript";
 
 // We use a silly amount of `any` in these tests...
 // tslint:disable:no-any
 
-const { DenoCompiler } = compiler;
+const { DenoCompiler } = (deno as any)._compiler;
 
 interface ModuleInfo {
   moduleName: string | null;
@@ -42,8 +42,8 @@ function mockModuleInfo(
 }
 
 // Some fixtures we will us in testing
-const fooBarTsSource = `import * as compiler from "compiler";
-console.log(compiler);
+const fooBarTsSource = `import * as deno from "deno";
+console.log(deno);
 export const foo = "bar";
 `;
 
@@ -81,13 +81,13 @@ const modBModuleInfo = mockModuleInfo(
 
 // TODO(#23) Remove source map strings from fooBarTsOutput.
 // tslint:disable:max-line-length
-const fooBarTsOutput = `define(["require", "exports", "compiler"], function (require, exports, compiler) {
+const fooBarTsOutput = `define(["require", "exports", "deno"], function (require, exports, deno) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    console.log(compiler);
+    console.log(deno);
     exports.foo = "bar";
 });
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiYmFyLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiZmlsZTovLy9yb290L3Byb2plY3QvZm9vL2Jhci50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7SUFDQSxPQUFPLENBQUMsR0FBRyxDQUFDLFFBQVEsQ0FBQyxDQUFDO0lBQ1QsUUFBQSxHQUFHLEdBQUcsS0FBSyxDQUFDIiwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0ICogYXMgY29tcGlsZXIgZnJvbSBcImNvbXBpbGVyXCI7XG5jb25zb2xlLmxvZyhjb21waWxlcik7XG5leHBvcnQgY29uc3QgZm9vID0gXCJiYXJcIjtcbiJdfQ==
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiYmFyLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiZmlsZTovLy9yb290L3Byb2plY3QvZm9vL2Jhci50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7SUFDQSxPQUFPLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxDQUFDO0lBQ0wsUUFBQSxHQUFHLEdBQUcsS0FBSyxDQUFDIiwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0ICogYXMgZGVubyBmcm9tIFwiZGVub1wiO1xuY29uc29sZS5sb2coZGVubyk7XG5leHBvcnQgY29uc3QgZm9vID0gXCJiYXJcIjtcbiJdfQ==
 //# sourceURL=/root/project/foo/bar.ts`;
 
 // TODO(#23) Remove source map strings from fooBazTsOutput.
@@ -159,7 +159,7 @@ let codeFetchStack: Array<{
 }> = [];
 
 let mockDepsStack: string[][] = [];
-let mockFactoryStack: compiler.AmdFactory[] = [];
+let mockFactoryStack: any[] = [];
 
 function globalEvalMock(x: string): void {
   globalEvalStack.push(x);
@@ -247,7 +247,7 @@ const serviceMock = {
     );
   }
 };
-const windowMock: { define?: compiler.AmdDefine } = {};
+const windowMock: { define?: any } = {};
 const mocks = {
   _globalEval: globalEvalMock,
   _log: logMock,
@@ -300,12 +300,12 @@ test(function compilerRun() {
   // equal to `deno foo/bar.ts`
   setup();
   let factoryRun = false;
-  mockDepsStack.push(["require", "exports", "compiler"]);
-  mockFactoryStack.push((_require, _exports, _compiler) => {
+  mockDepsStack.push(["require", "exports", "deno"]);
+  mockFactoryStack.push((_require, _exports, _deno) => {
     factoryRun = true;
     assertEqual(typeof _require, "function");
     assertEqual(typeof _exports, "object");
-    assert(_compiler === compiler);
+    assert(_deno === deno);
     _exports.foo = "bar";
   });
   const moduleMetaData = compilerInstance.run("foo/bar.ts", "/root/project");
@@ -337,8 +337,8 @@ test(function compilerRunMultiModule() {
     factoryStack.push("baz");
     assertEqual(_bar.foo, "bar");
   };
-  const barDeps = ["require", "exports", "compiler"];
-  const barFactory = (_require, _exports, _compiler) => {
+  const barDeps = ["require", "exports", "deno"];
+  const barFactory = (_require, _exports, _deno) => {
     factoryStack.push("bar");
     _exports.foo = "bar";
   };
@@ -411,7 +411,7 @@ test(function compilerGetModuleDependencies() {
   const bazFactory = () => {
     throw new Error("Unexpected factory call");
   };
-  const barDeps = ["require", "exports", "compiler"];
+  const barDeps = ["require", "exports", "deno"];
   const barFactory = () => {
     throw new Error("Unexpected factory call");
   };
