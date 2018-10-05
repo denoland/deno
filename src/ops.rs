@@ -9,6 +9,8 @@ use isolate::Isolate;
 use isolate::IsolateState;
 use isolate::Op;
 use msg;
+use resources;
+use resources::Resource;
 use tokio_util;
 
 use flatbuffers::FlatBufferBuilder;
@@ -19,7 +21,6 @@ use hyper;
 use hyper::rt::{Future, Stream};
 use hyper::Client;
 use remove_dir_all::remove_dir_all;
-use resources;
 use std;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
@@ -636,7 +637,8 @@ fn op_shutdown(
         _ => unimplemented!(),
       };
       blocking!(base.sync(), || {
-        resource.shutdown_on(shutdown_mode)?;
+        // Use UFCS for disambiguation
+        Resource::shutdown(&mut resource, shutdown_mode)?;
         Ok(empty_buf())
       })
     }

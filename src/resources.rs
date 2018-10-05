@@ -82,8 +82,7 @@ impl Resource {
     assert!(r.is_some());
   }
 
-  // no collision with unimplemented shutdown
-  pub fn shutdown_on(&mut self, how: Shutdown) -> Result<(), DenoError> {
+  pub fn shutdown(&mut self, how: Shutdown) -> Result<(), DenoError> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {

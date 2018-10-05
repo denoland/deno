@@ -12,10 +12,7 @@ export type Network = "tcp";
 // export type Network = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
 // TODO Support finding network from Addr, see https://golang.org/pkg/net/#Addr
-export interface Addr {
-  network: Network;
-  address: string;
-}
+export type Addr = string;
 
 /** A Listener is a generic network listener for stream-oriented protocols. */
 export interface Listener {
@@ -31,11 +28,7 @@ export interface Listener {
 }
 
 class ListenerImpl implements Listener {
-  private addr_: Addr;
-
-  constructor(readonly fd: number, network: Network, address: string) {
-    this.addr_ = Object.freeze({ network, address });
-  }
+  constructor(readonly fd: number) {}
 
   async accept(): Promise<Conn> {
     const builder = new flatbuffers.Builder();
@@ -55,7 +48,7 @@ class ListenerImpl implements Listener {
   }
 
   addr(): Addr {
-    return this.addr_;
+    return notImplemented();
   }
 }
 
@@ -148,7 +141,7 @@ export function listen(network: Network, address: string): Listener {
   assert(msg.Any.ListenRes === baseRes!.innerType());
   const res = new msg.ListenRes();
   assert(baseRes!.inner(res) != null);
-  return new ListenerImpl(res.rid(), network, address);
+  return new ListenerImpl(res.rid());
 }
 
 /** Dial connects to the address on the named network.

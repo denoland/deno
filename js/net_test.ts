@@ -36,7 +36,7 @@ testPerm({ net: true }, async function netDialListen() {
   conn.close();
 });
 
-testPerm({ net: true }, async function netConnCloseRead() {
+testPerm({ net: true }, async function netCloseReadSuccess() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
   const closeDeferred = deferred();
@@ -64,7 +64,7 @@ testPerm({ net: true }, async function netConnCloseRead() {
   conn.close();
 });
 
-testPerm({ net: true }, async function netConnDupCloseReadFailure() {
+testPerm({ net: true }, async function netDoubleCloseRead() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
   const closeDeferred = deferred();
@@ -90,7 +90,7 @@ testPerm({ net: true }, async function netConnDupCloseReadFailure() {
   conn.close();
 });
 
-testPerm({ net: true }, async function netConnCloseWrite() {
+testPerm({ net: true }, async function netCloseWriteSuccess() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
   const closeDeferred = deferred();
@@ -123,7 +123,7 @@ testPerm({ net: true }, async function netConnCloseWrite() {
   conn.close();
 });
 
-testPerm({ net: true }, async function netConnDupCloseWriteFailure() {
+testPerm({ net: true }, async function netDoubleCloseWrite() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
   const closeDeferred = deferred();
