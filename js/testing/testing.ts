@@ -72,6 +72,7 @@ async function runTests() {
   for (let i = 0; i < tests.length; i++) {
     const { fn, name } = tests[i];
     let result = green_ok();
+    console.log("test", name);
     try {
       await fn();
       passed++;
@@ -83,7 +84,8 @@ async function runTests() {
         break;
       }
     }
-    console.log("test", name, "...", result);
+    // TODO Do this on the same line as test name is printed.
+    console.log("...", result);
   }
 
   // TODO counts for ignored , measured, filtered.
