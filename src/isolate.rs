@@ -158,18 +158,10 @@ impl Isolate {
   pub fn event_loop(&mut self) {
     // Main thread event loop.
     while !self.is_idle() {
-      // Ideally, mpsc::Receiver would have a receive method that takes a
-      // optional timeout. But it doesn't so we need all this duplicate code.
-      match self.timeout {
-        Some(t) => match self.rx.recv_timeout(t) {
-          Ok((req_id, buf)) => self.complete_op(req_id, buf),
-          Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
-          Err(e) => panic!("mpsc::Receiver::recv_timeout() failed: {:?}", e),
-        },
-        None => match self.rx.recv() {
-          Ok((req_id, buf)) => self.complete_op(req_id, buf),
-          Err(e) => panic!("mpsc::Receiver::recv() failed: {:?}", e),
-        },
+      match recv_maybe_timeout(&mut self.rx, self.timeout) {
+        Ok((req_id, buf)) => self.complete_op(req_id, buf),
+        Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
+        Err(e) => panic!("mpsc::Receiver::recv_timeout() failed: {:?}", e),
       };
     }
   }
@@ -256,7 +248,7 @@ extern "C" fn pre_dispatch(
       .and_then(move |buf| {
         state.send_to_js(req_id, buf);
         Ok(())
-      }).map_err(|_| ());
+      }).map_err(|_| -> () { panic!("Unexpected error") });
     tokio::spawn(task);
   }
 }
@@ -324,5 +316,17 @@ mod tests {
     let control = vec.into_boxed_slice();
     let op = Box::new(futures::future::ok(control));
     (true, op)
+  }
+}
+
+// Ideally, mpsc::Receiver would have a receive method that takes a
+// optional timeout. But it doesn't so we need all this duplicate code.
+fn recv_maybe_timeout<T>(
+  rx: &mut mpsc::Receiver<T>,
+  timeout: Option<Duration>,
+) -> Result<T, mpsc::RecvTimeoutError> {
+  match timeout {
+    Some(t) => rx.recv_timeout(t),
+    None => rx.recv().map_err(|err| err.into()),
   }
 }
