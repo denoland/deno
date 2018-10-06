@@ -2,8 +2,7 @@
 
 use errors;
 use errors::permission_denied;
-use errors::DenoError;
-use errors::DenoResult;
+use errors::{DenoError, DenoResult, ErrorKind};
 use fs as deno_fs;
 use isolate::Buf;
 use isolate::Isolate;
@@ -967,7 +966,10 @@ fn op_symlink(
   }
   // TODO Use type for Windows.
   if cfg!(windows) {
-    panic!("symlink for windows is not yet implemented")
+    return odd_future(errors::new(
+      ErrorKind::Other,
+      "symlink for windows is not yet implemented".to_string(),
+    ));
   }
 
   let inner = base.inner_as_symlink().unwrap();
