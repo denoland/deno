@@ -4,13 +4,13 @@ import { flatbuffers } from "flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
-interface DenoMetrics {
+interface Metrics {
     opsExecuted: number;
     bytesRecv: number;
     bytesSent: number;
 }
 
-export function metrics(): DenoMetrics {
+export function metrics(): Metrics {
     return res(dispatch.sendSync(...req()));
 }
 
@@ -21,7 +21,7 @@ function req(): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
     return [builder, msg.Any.Metrics, inner];
 }
 
-function res(baseRes: null | msg.Base): DenoMetrics {
+function res(baseRes: null | msg.Base): Metrics {
     assert(baseRes !== null);
     assert(msg.Any.MetricsRes === baseRes!.innerType());
     const res = new msg.MetricsRes();

@@ -55,7 +55,7 @@ pub struct IsolateState {
   pub argv: Vec<String>,
   pub flags: flags::DenoFlags,
   tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
-  pub metrics: IsolateMetrics,
+  pub metrics: Metrics,
 }
 
 impl IsolateState {
@@ -69,15 +69,15 @@ impl IsolateState {
   }
 }
 
-pub struct IsolateMetrics {
+pub struct Metrics {
   pub ops_executed: i32,
   pub bytes_recv: i32,
   pub bytes_sent: i32,
 }
 
-impl IsolateMetrics {
-  pub fn new() -> IsolateMetrics {
-    IsolateMetrics {
+impl Metrics {
+  pub fn new() -> Metrics {
+    Metrics {
       ops_executed: 0,
       bytes_recv: 0,
       bytes_sent: 0
@@ -127,7 +127,7 @@ impl Isolate {
         argv: argv_rest,
         flags,
         tx: Mutex::new(Some(tx)),
-        metrics: IsolateMetrics::new(),
+        metrics: Metrics::new(),
       }),
     }
   }
