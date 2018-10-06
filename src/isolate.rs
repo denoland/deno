@@ -85,19 +85,19 @@ impl Metrics {
   }
 
   #[allow(dead_code)]
-  fn increment_ops_executed(&mut self) {
+  fn increment_ops_executed(mut self) {
     assert!(self.ops_executed >= 0);
     self.ops_executed += 1;
   }
 
   #[allow(dead_code)]
-  fn increment_bytes_recv(&mut self, len: i32) {
+  fn increment_bytes_recv(mut self, len: i32) {
     assert!(self.bytes_recv >= 0);
     self.bytes_recv += len;
   }
 
   #[allow(dead_code)]
-  fn increment_bytes_sent(&mut self, len: i32) {
+  fn increment_bytes_sent(mut self, len: i32) {
     assert!(self.bytes_sent >= 0);
     self.bytes_sent += len;
   }
@@ -278,11 +278,18 @@ extern "C" fn pre_dispatch(
 
   if is_sync {
     // Execute op synchronously.
+    let state = isolate.state.clone();
+
     let buf = tokio_util::block_on(op).unwrap();
-    if buf.len() != 0 {
+    let buf_size = buf.len();
+    if buf_size != 0 {
       // Set the synchronous response, the value returned from isolate.send().
       isolate.respond(req_id, buf);
     }
+
+    // TODO: this throws E0507
+//    state.metrics.increment_ops_executed();
+//    state.metrics.increment_bytes_sent(buf_size as i32)
   } else {
     // Execute op asynchronously.
     let state = isolate.state.clone();
