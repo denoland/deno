@@ -14,12 +14,10 @@ use libc::c_void;
 use std;
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::sync::atomic;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
-use std::time::Instant;
 use tokio;
 use tokio_util;
 
@@ -45,7 +43,7 @@ pub struct Isolate {
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
   ntasks: i32,
-  pub timeout_due: Option<Instant>,
+  pub timeout: Option<Duration>,
   pub state: Arc<IsolateState>,
 }
 
@@ -87,7 +85,7 @@ impl Isolate {
       dispatch,
       rx,
       ntasks: 0,
-      timeout_due: None,
+      timeout: None,
       state: Arc::new(IsolateState {
         dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
         argv: argv_rest,
@@ -160,30 +158,10 @@ impl Isolate {
   pub fn event_loop(&mut self) {
     // Main thread event loop.
     while !self.is_idle() {
-      // Ideally, mpsc::Receiver would have a receive method that takes a optional
-      // timeout. But it doesn't so we need all this duplicate code.
-      match self.timeout_due {
-        Some(due) => {
-          // Subtracting two Instants causes a panic if the resulting duration
-          // would become negative. Avoid this.
-          let now = Instant::now();
-          let timeout = if due > now {
-            due - now
-          } else {
-            Duration::new(0, 0)
-          };
-          // TODO: use recv_deadline() instead of recv_timeout() when this
-          // feature becomes stable/available.
-          match self.rx.recv_timeout(timeout) {
-            Ok((req_id, buf)) => self.complete_op(req_id, buf),
-            Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
-            Err(e) => panic!("mpsc::Receiver::recv_timeout() failed: {:?}", e),
-          }
-        }
-        None => match self.rx.recv() {
-          Ok((req_id, buf)) => self.complete_op(req_id, buf),
-          Err(e) => panic!("mpsc::Receiver::recv() failed: {:?}", e),
-        },
+      match recv_maybe_timeout(&mut self.rx, self.timeout) {
+        Ok((req_id, buf)) => self.complete_op(req_id, buf),
+        Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
+        Err(e) => panic!("mpsc::Receiver::recv_timeout() failed: {:?}", e),
       };
     }
   }
@@ -194,20 +172,13 @@ impl Isolate {
   }
 
   fn ntasks_decrement(&mut self) {
-    // Do something that has no effect. This is done to work around a spooky
-    // bug that happens in release mode only (presumably a compiler bug), that
-    // causes nsize to unexpectedly contain zero.
-    // TODO: remove this workaround when no longer necessary.
-    #[allow(unused)]
-    static UNUSED: atomic::AtomicIsize = atomic::AtomicIsize::new(0);
-    UNUSED.fetch_add(self.ntasks as isize, atomic::Ordering::AcqRel);
     // Actually decrement the tasks counter here.
     self.ntasks = self.ntasks - 1;
     assert!(self.ntasks >= 0);
   }
 
   fn is_idle(&self) -> bool {
-    self.ntasks == 0 && self.timeout_due.is_none()
+    self.ntasks == 0 && self.timeout.is_none()
   }
 }
 
@@ -277,7 +248,7 @@ extern "C" fn pre_dispatch(
       .and_then(move |buf| {
         state.send_to_js(req_id, buf);
         Ok(())
-      }).map_err(|_| ());
+      }).map_err(|_| -> () { panic!("Unexpected error") });
     tokio::spawn(task);
   }
 }
@@ -345,5 +316,17 @@ mod tests {
     let control = vec.into_boxed_slice();
     let op = Box::new(futures::future::ok(control));
     (true, op)
+  }
+}
+
+// Ideally, mpsc::Receiver would have a receive method that takes a
+// optional timeout. But it doesn't so we need all this duplicate code.
+fn recv_maybe_timeout<T>(
+  rx: &mut mpsc::Receiver<T>,
+  timeout: Option<Duration>,
+) -> Result<T, mpsc::RecvTimeoutError> {
+  match timeout {
+    Some(t) => rx.recv_timeout(t),
+    None => rx.recv().map_err(|err| err.into()),
   }
 }

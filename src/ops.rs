@@ -30,8 +30,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::UNIX_EPOCH;
-use std::time::{Duration, Instant};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -289,8 +289,8 @@ fn op_set_timeout(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_set_timeout().unwrap();
   let val = inner.timeout() as i64;
-  isolate.timeout_due = if val >= 0 {
-    Some(Instant::now() + Duration::from_millis(val as u64))
+  isolate.timeout = if val > 0 {
+    Some(Duration::from_millis(val as u64))
   } else {
     None
   };

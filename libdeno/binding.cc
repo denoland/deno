@@ -45,7 +45,7 @@ void DeleteDataRef(Deno* d, int32_t req_id) {
   auto async_data_map = d->async_data_map.Get(d->isolate);
   auto req_id_v = v8::Integer::New(d->isolate, req_id);
   auto maybe_deleted = async_data_map->Delete(context, req_id_v);
-  DCHECK(maybe_deleted.IsJust());
+  CHECK(maybe_deleted.IsJust());
 }
 
 // Extracts a C string from a v8::V8 Utf8Value.
@@ -414,6 +414,8 @@ void deno_init() {
 }
 
 void* deno_get_data(Deno* d) { return d->data; }
+
+void deno_set_data(Deno* d, void* data) { d->data = data; }
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 

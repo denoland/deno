@@ -193,3 +193,15 @@ TEST(LibDenoTest, DataBuf) {
   EXPECT_EQ(data_buf_copy.data_ptr[1], 8);
   deno_delete(d);
 }
+
+TEST(LibDenoTest, GetSetData) {
+  static int count = 0;
+  void* data = reinterpret_cast<void*>(0xDEADBEEF);
+  Deno* d = deno_new(data, [](auto _, int req_id, deno_buf buf,
+                              deno_buf data_buf) { count++; });
+  EXPECT_EQ(count, 0);
+  EXPECT_EQ(deno_get_data(d), data);
+  void* data2 = reinterpret_cast<void*>(0xFEEDC0DE);
+  deno_set_data(d, data2);
+  EXPECT_EQ(deno_get_data(d), data2);
+}

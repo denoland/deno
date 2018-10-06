@@ -36,6 +36,9 @@ void deno_delete(Deno* d);
 // Returns the void* data provided in deno_new.
 void* deno_get_data(Deno*);
 
+// Set the data pointer.
+void deno_set_data(Deno* d, void* data);
+
 // Returns false on error.
 // Get error text with deno_last_exception().
 // 0 = fail, 1 = success

@@ -34,6 +34,7 @@ extern "C" {
   pub fn deno_delete(i: *const isolate);
   pub fn deno_last_exception(i: *const isolate) -> *const c_char;
   pub fn deno_get_data(i: *const isolate) -> *const c_void;
+  pub fn deno_set_data(i: *const isolate, data: *const c_void);
   pub fn deno_respond(i: *const isolate, req_id: i32, buf: deno_buf);
   pub fn deno_execute(
     i: *const isolate,
