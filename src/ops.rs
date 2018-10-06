@@ -968,7 +968,7 @@ fn op_symlink(
   if cfg!(windows) {
     return odd_future(errors::new(
       ErrorKind::Other,
-      "symlink for windows is not yet implemented".to_string(),
+      "Not implemented".to_string(),
     ));
   }
 
