@@ -3,6 +3,8 @@ from glob import glob
 import os
 from third_party import third_party_path, fix_symlinks, google_env, clang_format_path
 from util import root_path, run, find_exts
+from distutils.spawn import find_executable
+import sys
 
 fix_symlinks()
 
@@ -26,7 +28,12 @@ for fn in ["BUILD.gn", ".gn"] + find_exts("build_extra", ".gn", ".gni"):
 #   * These third party python files shouldn't be formatted.
 #   * The tools directory has no subdirectories, so `glob()` is sufficient.
 # TODO(ry) Install yapf in third_party.
-run(["yapf", "-i"] + glob("tools/*.py") + find_exts("build_extra", ".py"))
+if find_executable('yapf'):
+    run(["yapf", "-i"] + glob("tools/*.py") + find_exts("build_extra", ".py"))
+else:
+    print("\n\nUnable to format python code!: yapf not found."
+    "Install with \n`pip install yapf`\n exiting")
+    sys.exit(1)
 
 # yapf: disable
 run(["node", prettier, "--write"] +
@@ -38,4 +45,9 @@ run(["node", prettier, "--write"] +
 # yapf: enable
 
 # Requires rustfmt 0.8.2 (flags were different in previous versions)
-run(["rustfmt", "--config-path", rustfmt_config] + find_exts("src/", ".rs"))
+if find_executable('rustfmt'):
+    run(["rustfmt", "--config-path", rustfmt_config] + find_exts("src/", ".rs"))
+else:
+    print("\n\nUnable to format rust code!: rustfmt not found. 
+    "Install with \n`rustup component add rustfmt-preview`\n exiting")
+    sys.exit(1)
