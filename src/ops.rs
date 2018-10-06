@@ -101,6 +101,8 @@ pub fn dispatch(
       msg::Any::Listen => op_listen,
       msg::Any::Accept => op_accept,
       msg::Any::Dial => op_dial,
+      msg::Any::Chdir => op_chdir,
+      msg::Any::GetCwd => op_get_current_dir,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -109,8 +111,8 @@ pub fn dispatch(
     op_creator(isolate.state.clone(), &base, data)
   };
 
-  let boxed_op = Box::new(
-    op.or_else(move |err: DenoError| -> DenoResult<Buf> {
+  let boxed_op =
+    Box::new(op.or_else(move |err: DenoError| -> DenoResult<Buf> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
       // send back. So transform the DenoError into a deno_buf.
@@ -142,8 +144,7 @@ pub fn dispatch(
         )
       };
       Ok(buf)
-    }),
-  );
+    }));
 
   debug!(
     "msg_from_js {} sync {}",
@@ -281,6 +282,23 @@ fn op_code_cache(
   }()))
 }
 
+fn op_chdir(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_chdir().unwrap();
+  let directory = inner.directory().unwrap();
+  match std::env::set_current_dir(&directory) {
+    Ok(_v) => ok_future(empty_buf()),
+    Err(_e) => odd_future(errors::new(
+      errors::ErrorKind::NotFound,
+      String::from(format!("Directory {} Not Found", directory)),
+    )),
+  }
+}
+
 fn op_set_timeout(
   isolate: &mut Isolate,
   base: &msg::Base,
@@ -341,7 +359,8 @@ fn op_env(
           ..Default::default()
         },
       )
-    }).collect();
+    })
+    .collect();
   let tables = builder.create_vector(&vars);
   let inner = msg::EnvironRes::create(
     builder,
@@ -465,7 +484,7 @@ where
 //   fn blocking<F>(is_sync: bool, f: F) -> Box<Op>
 //   where F: FnOnce() -> DenoResult<Buf>
 macro_rules! blocking {
-  ($is_sync:expr,$fn:expr) => {
+  ($is_sync:expr, $fn:expr) => {
     if $is_sync {
       // If synchronous, execute the function immediately on the main thread.
       Box::new(futures::future::result($fn()))
@@ -808,6 +827,42 @@ fn get_mode(_perm: fs::Permissions) -> u32 {
   0
 }
 
+fn op_get_current_dir(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+  match std::env::current_dir() {
+    Ok(path) => {
+      let builder = &mut FlatBufferBuilder::new();
+      let cwd =
+        builder.create_string(&path.into_os_string().into_string().unwrap());
+      let inner = msg::GetCwdRes::create(
+        builder,
+        &msg::GetCwdResArgs {
+          cwd: Some(cwd),
+          ..Default::default()
+        },
+      );
+      Box::new(futures::future::result(Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          inner: Some(inner.as_union_value()),
+          inner_type: msg::Any::GetCwdRes,
+          ..Default::default()
+        },
+      ))))
+    }
+    Err(_v) => odd_future(errors::new(
+      errors::ErrorKind::NotFound,
+      String::from(format!("Directory Does not exists")),
+    )),
+  }
+}
+
 fn op_stat(
   _config: Arc<IsolateState>,
   base: &msg::Base,
@@ -890,7 +945,8 @@ fn op_read_dir(
             ..Default::default()
           },
         )
-      }).collect();
+      })
+      .collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(

@@ -105,7 +105,7 @@ ts_sources = [
   "js/util.ts",
   "js/v8_source_maps.ts",
   "js/write_file.ts",
-
+  "js/dir.ts",
   "js/tsconfig.declarations.json",
   "tsconfig.json",
 
