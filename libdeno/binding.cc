@@ -415,6 +415,8 @@ void deno_init() {
 
 void* deno_get_data(Deno* d) { return d->data; }
 
+void deno_set_data(Deno* d, void* data) { d->data = data; }
+
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 
 void deno_set_v8_flags(int* argc, char** argv) {
