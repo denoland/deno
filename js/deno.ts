@@ -3,7 +3,10 @@
 /// <amd-module name="deno"/>
 export { env, exit } from "./os";
 export { File, open, stdin, stdout, stderr, read, write, close } from "./files";
-export { copy, Reader, Writer } from "./io";
+export {
+	copy, ReadResult, Reader, Writer, Closer, Seeker, ReaderCloser,
+	WriteCloser, ReadSeeker, WriteSeeker, ReadWriteCloser, ReadWriteSeeker,
+} from "./io";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
 export { removeSync, remove, removeAllSync, removeAll } from "./remove";
