@@ -222,7 +222,7 @@ fn odd_future(err: DenoError) -> Box<Op> {
   Box::new(futures::future::err(err))
 }
 
-// https://github.com/denoland/isolate/blob/golang/os.go#L100-L154
+// https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn op_code_fetch(
   state: Arc<IsolateState>,
   base: &msg::Base,
@@ -264,7 +264,7 @@ fn op_code_fetch(
   }()))
 }
 
-// https://github.com/denoland/isolate/blob/golang/os.go#L156-L169
+// https://github.com/denoland/deno/blob/golang/os.go#L156-L169
 fn op_code_cache(
   state: Arc<IsolateState>,
   base: &msg::Base,
@@ -496,7 +496,7 @@ fn op_make_temp_dir(
 
   blocking!(base.sync(), || -> OpResult {
     // TODO(piscisaureus): use byte vector for paths, not a string.
-    // See https://github.com/denoland/isolate/issues/627.
+    // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
     let path = deno_fs::make_temp_dir(
       // Converting Option<String> to Option<&str>
@@ -734,7 +734,7 @@ fn op_remove(
   })
 }
 
-// Prototype https://github.com/denoland/isolate/blob/golang/os.go#L171-L184
+// Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
 fn op_read_file(
   _config: Arc<IsolateState>,
   base: &msg::Base,
