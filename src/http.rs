@@ -47,13 +47,13 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<String> {
             .to_str()
             .unwrap()
             .to_string();
-          println!("Redirecting to {}...", &new_url_string);
-          let new_url = Some(
+          debug!("Redirecting to {}...", &new_url_string);
+          let maybe_new_url = Some(
             new_url_string
               .parse::<Uri>()
               .expect("provided redirect url should be a valid url"),
           );
-          return Ok(Loop::Continue((client, new_url)));
+          return Ok(Loop::Continue((client, maybe_new_url)));
         }
         if !response.status().is_success() {
           return Err(errors::new(
