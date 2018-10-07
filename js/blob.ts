@@ -1,15 +1,18 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { Blob, BlobPart, BlobPropertyBag } from "./dom_types";
+import * as domTypes from "./dom_types";
 import { containsOnlyASCII } from "./util";
 
 const bytesSymbol = Symbol("bytes");
 
-export class DenoBlob implements Blob {
+export class DenoBlob implements domTypes.Blob {
   private readonly [bytesSymbol]: Uint8Array;
   readonly size: number = 0;
   readonly type: string = "";
 
-  constructor(blobParts?: BlobPart[], options?: BlobPropertyBag) {
+  constructor(
+    blobParts?: domTypes.BlobPart[],
+    options?: domTypes.BlobPropertyBag
+  ) {
     if (arguments.length === 0) {
       this[bytesSymbol] = new Uint8Array();
       return;
@@ -53,8 +56,8 @@ export class DenoBlob implements Blob {
 }
 
 function processBlobParts(
-  blobParts: BlobPart[],
-  options: BlobPropertyBag
+  blobParts: domTypes.BlobPart[],
+  options: domTypes.BlobPropertyBag
 ): Uint8Array {
   const normalizeLineEndingsToNative = options.ending === "native";
   // ArrayBuffer.transfer is not yet implemented in V8, so we just have to
@@ -77,7 +80,7 @@ function processBlobParts(
 }
 
 function toUint8Arrays(
-  blobParts: BlobPart[],
+  blobParts: domTypes.BlobPart[],
   doNormalizeLineEndingsToNative: boolean
 ): Uint8Array[] {
   const ret: Uint8Array[] = [];

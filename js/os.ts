@@ -15,6 +15,7 @@ export function exit(exitCode = 0): never {
   return util.unreachable();
 }
 
+// @internal
 export function codeFetch(
   moduleSpecifier: string,
   containingFile: string
@@ -44,6 +45,7 @@ export function codeFetch(
   };
 }
 
+// @internal
 export function codeCache(
   filename: string,
   sourceCode: string,

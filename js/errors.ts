@@ -1,25 +1,25 @@
-import * as msg from "gen/msg_generated";
+import { Base, ErrorKind } from "gen/msg_generated";
 export { ErrorKind } from "gen/msg_generated";
 
-// @internal
-export class DenoError<T extends msg.ErrorKind> extends Error {
-  constructor(readonly kind: T, errStr: string) {
-    super(errStr);
-    this.name = msg.ErrorKind[kind];
+export class DenoError<T extends ErrorKind> extends Error {
+  constructor(readonly kind: T, msg: string) {
+    super(msg);
+    this.name = ErrorKind[kind];
   }
 }
 
 // @internal
-export function maybeThrowError(base: msg.Base): void {
+export function maybeThrowError(base: Base): void {
   const err = maybeError(base);
   if (err != null) {
     throw err;
   }
 }
 
-export function maybeError(base: msg.Base): null | DenoError<msg.ErrorKind> {
+// @internal
+export function maybeError(base: Base): null | DenoError<ErrorKind> {
   const kind = base.errorKind();
-  if (kind === msg.ErrorKind.NoError) {
+  if (kind === ErrorKind.NoError) {
     return null;
   } else {
     return new DenoError(kind, base.error()!);

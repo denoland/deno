@@ -10,23 +10,15 @@ import {
 import { flatbuffers } from "flatbuffers";
 import { sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
-import {
-  Headers,
-  Request,
-  Response,
-  Blob,
-  RequestInit,
-  HeadersInit,
-  FormData
-} from "./dom_types";
+import * as domTypes from "./dom_types";
 import { TextDecoder } from "./text_encoding";
 import { DenoBlob } from "./blob";
 
 // ref: https://fetch.spec.whatwg.org/#dom-headers
-export class DenoHeaders implements Headers {
+export class DenoHeaders implements domTypes.Headers {
   private headerMap: Map<string, string> = new Map();
 
-  constructor(init?: HeadersInit) {
+  constructor(init?: domTypes.HeadersInit) {
     if (arguments.length === 0 || init === undefined) {
       return;
     }
@@ -95,7 +87,7 @@ export class DenoHeaders implements Headers {
   }
 
   forEach(
-    callbackfn: (value: string, key: string, parent: Headers) => void,
+    callbackfn: (value: string, key: string, parent: domTypes.Headers) => void,
     // tslint:disable-next-line:no-any
     thisArg?: any
   ): void {
@@ -105,7 +97,7 @@ export class DenoHeaders implements Headers {
   }
 }
 
-class FetchResponse implements Response {
+class FetchResponse implements domTypes.Response {
   readonly url: string = "";
   body: null;
   bodyUsed = false; // TODO
@@ -113,7 +105,7 @@ class FetchResponse implements Response {
   readonly type = "basic"; // TODO
   redirected = false; // TODO
   headers: DenoHeaders;
-  readonly trailer: Promise<Headers>;
+  readonly trailer: Promise<domTypes.Headers>;
   //private bodyChunks: Uint8Array[] = [];
   private first = true;
   private bodyWaiter: Resolvable<ArrayBuffer>;
@@ -135,16 +127,16 @@ class FetchResponse implements Response {
     return this.bodyWaiter;
   }
 
-  async blob(): Promise<Blob> {
+  async blob(): Promise<domTypes.Blob> {
     const arrayBuffer = await this.arrayBuffer();
     return new DenoBlob([arrayBuffer], {
       type: this.headers.get("content-type") || ""
     });
   }
 
-  async formData(): Promise<FormData> {
+  async formData(): Promise<domTypes.FormData> {
     notImplemented();
-    return {} as FormData;
+    return {} as domTypes.FormData;
   }
 
   async json(): Promise<object> {
@@ -162,9 +154,9 @@ class FetchResponse implements Response {
     return 200 <= this.status && this.status < 300;
   }
 
-  clone(): Response {
+  clone(): domTypes.Response {
     notImplemented();
-    return {} as Response;
+    return {} as domTypes.Response;
   }
 
   onHeader?: (res: FetchResponse) => void;
@@ -187,9 +179,9 @@ class FetchResponse implements Response {
 }
 
 export async function fetch(
-  input?: Request | string,
-  init?: RequestInit
-): Promise<Response> {
+  input?: domTypes.Request | string,
+  init?: domTypes.RequestInit
+): Promise<domTypes.Response> {
   const url = input as string;
   log("dispatch FETCH_REQ", url);
 

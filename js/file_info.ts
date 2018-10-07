@@ -61,6 +61,7 @@ export interface FileInfo {
   isSymlink(): boolean;
 }
 
+// @internal
 export class FileInfoImpl implements FileInfo {
   readonly _isFile: boolean;
   readonly _isSymlink: boolean;
