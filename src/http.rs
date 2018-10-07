@@ -83,3 +83,13 @@ fn test_fetch_sync_string() {
     assert!(p.len() > 1);
   });
 }
+
+#[test]
+fn test_fetch_sync_string_with_redirect() {
+  // Relies on external http server. See tools/http_server.py
+  tokio_util::init(|| {
+    let p = fetch_sync_string("http://127.0.0.1:4546/package.json").unwrap();
+    println!("package.json len {}", p.len());
+    assert!(p.len() > 1);
+  });
+}
