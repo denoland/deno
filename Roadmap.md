@@ -131,7 +131,7 @@ void deno_set_callback(Deno* deno, deno_sub_cb cb);
 // Get error text with deno_last_exception().
 // 0 = success, non-zero = failure.
 // TODO(ry) Currently the return code has opposite semantics.
-int deno_execute(Deno* d, const char* js_filename, const char* js_source);
+int deno_execute(Deno* d, void* user_data, const char* js_filename, const char* js_source);
 
 // This call doesn't go into JS. This is thread-safe.
 // TODO(ry) Currently this is called deno_pub. It should be renamed.

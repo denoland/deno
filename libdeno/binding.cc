@@ -401,6 +401,24 @@ void AddIsolate(Deno* d, v8::Isolate* isolate) {
   d->isolate->SetData(0, d);
 }
 
+class UserDataScope {
+  Deno* deno;
+  void* prev_data;
+  void* data;  // Not necessary; only for sanity checking.
+
+ public:
+  UserDataScope(Deno* deno_, void* data_) : deno(deno_), data(data_) {
+    CHECK(deno->user_data == nullptr || deno->user_data == data_);
+    prev_data = deno->user_data;
+    deno->user_data = data;
+  }
+
+  ~UserDataScope() {
+    CHECK(deno->user_data == data);
+    deno->user_data = prev_data;
+  }
+};
+
 }  // namespace deno
 
 extern "C" {
@@ -413,7 +431,10 @@ void deno_init() {
   v8::V8::Initialize();
 }
 
-void* deno_get_data(Deno* d) { return d->user_data; }
+void* deno_get_data(const Deno* d) {
+  CHECK(d->user_data != nullptr);
+  return d->user_data;
+}
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 
@@ -423,7 +444,9 @@ void deno_set_v8_flags(int* argc, char** argv) {
 
 const char* deno_last_exception(Deno* d) { return d->last_exception.c_str(); }
 
-int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
+int deno_execute(Deno* d, void* user_data, const char* js_filename,
+                 const char* js_source) {
+  deno::UserDataScope user_data_scope(d, user_data);
   auto* isolate = d->isolate;
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
@@ -432,7 +455,7 @@ int deno_execute(Deno* d, const char* js_filename, const char* js_source) {
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
 }
 
-int deno_respond(Deno* d, int32_t req_id, deno_buf buf) {
+int deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf) {
   if (d->currentArgs != nullptr) {
     // Synchronous response.
     auto ab = deno::ImportBuf(d->isolate, buf);
@@ -442,7 +465,7 @@ int deno_respond(Deno* d, int32_t req_id, deno_buf buf) {
   }
 
   // Asynchronous response.
-
+  deno::UserDataScope user_data_scope(d, user_data);
   v8::Locker locker(d->isolate);
   v8::Isolate::Scope isolate_scope(d->isolate);
   v8::HandleScope handle_scope(d->isolate);

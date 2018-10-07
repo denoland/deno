@@ -14,7 +14,7 @@
 
 namespace deno {
 
-Deno* NewFromFileSystem(void* user_data, deno_recv_cb cb) {
+Deno* NewFromFileSystem(deno_recv_cb cb) {
   std::string exe_path;
   CHECK(deno::ExePath(&exe_path));
   std::string exe_dir = deno::Dirname(exe_path);  // Always ends with a slash.
@@ -30,7 +30,7 @@ Deno* NewFromFileSystem(void* user_data, deno_recv_cb cb) {
   Deno* d = new Deno;
   d->currentArgs = nullptr;
   d->cb = cb;
-  d->user_data = user_data;
+  d->user_data = nullptr;
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -55,7 +55,5 @@ Deno* NewFromFileSystem(void* user_data, deno_recv_cb cb) {
 }  // namespace deno
 
 extern "C" {
-Deno* deno_new(void* user_data, deno_recv_cb cb) {
-  return deno::NewFromFileSystem(user_data, cb);
-}
+Deno* deno_new(deno_recv_cb cb) { return deno::NewFromFileSystem(cb); }
 }
