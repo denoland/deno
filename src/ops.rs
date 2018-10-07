@@ -1,14 +1,16 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 use errors;
-use errors::DenoError;
-use errors::DenoResult;
+use errors::permission_denied;
+use errors::{DenoError, DenoResult, ErrorKind};
 use fs as deno_fs;
 use isolate::Buf;
 use isolate::Isolate;
 use isolate::IsolateState;
 use isolate::Op;
 use msg;
+use resources;
+use resources::Resource;
 use tokio_util;
 
 use flatbuffers::FlatBufferBuilder;
@@ -19,10 +21,9 @@ use hyper;
 use hyper::rt::{Future, Stream};
 use hyper::Client;
 use remove_dir_all::remove_dir_all;
-use resources;
 use std;
 use std::fs;
-use std::net::SocketAddr;
+use std::net::{Shutdown, SocketAddr};
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -84,6 +85,7 @@ pub fn dispatch(
       msg::Any::Read => op_read,
       msg::Any::Write => op_write,
       msg::Any::Close => op_close,
+      msg::Any::Shutdown => op_shutdown,
       msg::Any::Remove => op_remove,
       msg::Any::ReadFile => op_read_file,
       msg::Any::ReadDir => op_read_dir,
@@ -149,20 +151,6 @@ pub fn dispatch(
     base.sync()
   );
   return (base.sync(), boxed_op);
-}
-
-fn permission_denied() -> DenoError {
-  DenoError::from(std::io::Error::new(
-    std::io::ErrorKind::PermissionDenied,
-    "permission denied",
-  ))
-}
-
-fn not_implemented() -> DenoError {
-  DenoError::from(std::io::Error::new(
-    std::io::ErrorKind::Other,
-    "Not implemented",
-  ))
 }
 
 fn op_exit(
@@ -234,7 +222,7 @@ fn odd_future(err: DenoError) -> Box<Op> {
   Box::new(futures::future::err(err))
 }
 
-// https://github.com/denoland/isolate/blob/golang/os.go#L100-L154
+// https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn op_code_fetch(
   state: Arc<IsolateState>,
   base: &msg::Base,
@@ -276,7 +264,7 @@ fn op_code_fetch(
   }()))
 }
 
-// https://github.com/denoland/isolate/blob/golang/os.go#L156-L169
+// https://github.com/denoland/deno/blob/golang/os.go#L156-L169
 fn op_code_cache(
   state: Arc<IsolateState>,
   base: &msg::Base,
@@ -508,7 +496,7 @@ fn op_make_temp_dir(
 
   blocking!(base.sync(), || -> OpResult {
     // TODO(piscisaureus): use byte vector for paths, not a string.
-    // See https://github.com/denoland/isolate/issues/627.
+    // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
     let path = deno_fs::make_temp_dir(
       // Converting Option<String> to Option<&str>
@@ -603,13 +591,39 @@ fn op_close(
   let inner = base.inner_as_close().unwrap();
   let rid = inner.rid();
   match resources::lookup(rid) {
+    None => odd_future(errors::bad_resource()),
+    Some(mut resource) => {
+      resource.close();
+      ok_future(empty_buf())
+    }
+  }
+}
+
+fn op_shutdown(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_shutdown().unwrap();
+  let rid = inner.rid();
+  let how = inner.how();
+  match resources::lookup(rid) {
     None => odd_future(errors::new(
       errors::ErrorKind::BadFileDescriptor,
       String::from("Bad File Descriptor"),
     )),
     Some(mut resource) => {
-      resource.close();
-      ok_future(empty_buf())
+      let shutdown_mode = match how {
+        0 => Shutdown::Read,
+        1 => Shutdown::Write,
+        _ => unimplemented!(),
+      };
+      blocking!(base.sync(), || {
+        // Use UFCS for disambiguation
+        Resource::shutdown(&mut resource, shutdown_mode)?;
+        Ok(empty_buf())
+      })
     }
   }
 }
@@ -624,10 +638,7 @@ fn op_read(
   let rid = inner.rid();
 
   match resources::lookup(rid) {
-    None => odd_future(errors::new(
-      errors::ErrorKind::BadFileDescriptor,
-      String::from("Bad File Descriptor"),
-    )),
+    None => odd_future(errors::bad_resource()),
     Some(resource) => {
       let op = tokio_io::io::read(resource, data)
         .map_err(|err| DenoError::from(err))
@@ -666,10 +677,7 @@ fn op_write(
   let rid = inner.rid();
 
   match resources::lookup(rid) {
-    None => odd_future(errors::new(
-      errors::ErrorKind::BadFileDescriptor,
-      String::from("Bad File Descriptor"),
-    )),
+    None => odd_future(errors::bad_resource()),
     Some(resource) => {
       let len = data.len();
       let op = tokio_io::io::write_all(resource, data)
@@ -726,7 +734,7 @@ fn op_remove(
   })
 }
 
-// Prototype https://github.com/denoland/isolate/blob/golang/os.go#L171-L184
+// Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
 fn op_read_file(
   _config: Arc<IsolateState>,
   base: &msg::Base,
@@ -958,7 +966,10 @@ fn op_symlink(
   }
   // TODO Use type for Windows.
   if cfg!(windows) {
-    return odd_future(not_implemented());
+    return odd_future(errors::new(
+      ErrorKind::Other,
+      "Not implemented".to_string(),
+    ));
   }
 
   let inner = base.inner_as_symlink().unwrap();
@@ -1109,10 +1120,7 @@ fn op_accept(
   let server_rid = inner.rid();
 
   match resources::lookup(server_rid) {
-    None => odd_future(errors::new(
-      errors::ErrorKind::BadFileDescriptor,
-      String::from("Bad File Descriptor"),
-    )),
+    None => odd_future(errors::bad_resource()),
     Some(server_resource) => {
       let op = tokio_util::accept(server_resource)
         .map_err(|err| DenoError::from(err))

@@ -101,3 +101,29 @@ export function containsOnlyASCII(str: string): boolean {
   }
   return /^[\x00-\x7F]*$/.test(str);
 }
+
+// @internal
+export interface Deferred {
+  promise: Promise<void>;
+  resolve: Function;
+  reject: Function;
+}
+
+/**
+ * Create a wrapper around a promise that could be
+ * resolved externally.
+ * @internal
+ */
+export function deferred(): Deferred {
+  let resolve: Function | undefined;
+  let reject: Function | undefined;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return {
+    promise,
+    resolve: resolve!,
+    reject: reject!
+  };
+}

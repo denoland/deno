@@ -7,7 +7,7 @@ function assertSameContent(files: FileInfo[]) {
   let counter = 0;
 
   for (const file of files) {
-    if (file.name == "subdir") {
+    if (file.name === "subdir") {
       assert(file.isDirectory());
       counter++;
     }

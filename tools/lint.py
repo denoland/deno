@@ -17,4 +17,9 @@ run([
     "python", cpplint, "--filter=-build/include_subdir", "--repository=src",
     "--extensions=cc,h", "--recursive", "src/."
 ])
+
 run(["node", tslint, "-p", ".", "--exclude", "**/gen/**/*.ts"])
+run([
+    "node", tslint, "./js/**/*_test.ts", "./tests/**/*.ts", "--exclude",
+    "**/gen/**/*.ts", "--project", "tsconfig.json"
+])
