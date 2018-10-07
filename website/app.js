@@ -16,13 +16,8 @@ export function getTravisData() {
     .then(data => data.builds.reverse());
 }
 
-const benchmarkNames = [
-  "hello",
-  "relative_import",
-  "cold_hello",
-  "cold_relative_import"
-];
 export function createExecTimeColumns(data) {
+  const benchmarkNames = Object.keys(data[data.length - 1].benchmark);
   return benchmarkNames.map(name => [
     name,
     ...data.map(d => {
@@ -33,8 +28,9 @@ export function createExecTimeColumns(data) {
   ]);
 }
 
-const binarySizeNames = ["deno", "main.js", "main.js.map", "snapshot_deno.bin"];
 export function createBinarySizeColumns(data) {
+  const propName = "binary_size";
+  const binarySizeNames = Object.keys(data[data.length - 1][propName]);
   return binarySizeNames.map(name => [
     name,
     ...data.map(d => {
@@ -52,12 +48,13 @@ export function createBinarySizeColumns(data) {
   ]);
 }
 
-const threadCountNames = ["set_timeout", "fetch_deps"];
 export function createThreadCountColumns(data) {
+  const propName = "thread_count";
+  const threadCountNames = Object.keys(data[data.length - 1][propName]);
   return threadCountNames.map(name => [
     name,
     ...data.map(d => {
-      const threadCountData = d["thread_count"];
+      const threadCountData = d[propName];
       if (!threadCountData) {
         return null;
       }
@@ -66,12 +63,13 @@ export function createThreadCountColumns(data) {
   ]);
 }
 
-const syscallCountNames = ["hello", "fetch_deps"];
 export function createSyscallCountColumns(data) {
+  const propName = "syscall_count";
+  const syscallCountNames = Object.keys(data[data.length - 1][propName]);
   return syscallCountNames.map(name => [
     name,
     ...data.map(d => {
-      const syscallCountData = d["syscall_count"];
+      const syscallCountData = d[propName];
       if (!syscallCountData) {
         return null;
       }
@@ -80,13 +78,8 @@ export function createSyscallCountColumns(data) {
   ]);
 }
 
-const travisCompileTimeNames = ["duration_time"];
 function createTravisCompileTimeColumns(data) {
-  const columnsData = travisCompileTimeNames.map(name => [
-    name,
-    ...data.map(d => d.duration)
-  ]);
-  return columnsData;
+  return [["duration_time", ...data.map(d => d.duration)]];
 }
 
 export function createSha1List(data) {

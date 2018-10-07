@@ -83,21 +83,31 @@ const irregularData = [
   {
     created_at: "2018-01-01T01:00:00Z",
     sha1: "123",
+    benchmark: {},
     binary_size: {},
-    benchmark: {
-      hello: {},
-      relative_import: {},
-      cold_hello: {},
-      cold_relative_import: {}
-    },
     thread_count: {},
     syscall_count: {}
   },
   {
     created_at: "2018-02-01T01:00:00Z",
     sha1: "456",
-    binary_size: 100000000,
-    benchmark: {}
+    benchmark: {
+      hello: {},
+      relative_import: {},
+      cold_hello: {},
+      cold_relative_import: {}
+    },
+    binary_size: {
+      deno: 1
+    },
+    thread_count: {
+      set_timeout: 5,
+      fetch_deps: 7
+    },
+    syscall_count: {
+      hello: 700,
+      fetch_deps: 800
+    }
   }
 ];
 
@@ -133,12 +143,7 @@ test(function createBinarySizeColumnsRegularData() {
 
 test(function createBinarySizeColumnsIrregularData() {
   const columns = createBinarySizeColumns(irregularData);
-  assertEqual(columns, [
-    ["deno", null, 100000000],
-    ["main.js", null, 0],
-    ["main.js.map", null, 0],
-    ["snapshot_deno.bin", null, 0]
-  ]);
+  assertEqual(columns, [["deno", null, 1]]);
 });
 
 test(function createThreadCountColumnsRegularData() {
@@ -148,10 +153,7 @@ test(function createThreadCountColumnsRegularData() {
 
 test(function createThreadCountColumnsIrregularData() {
   const columns = createThreadCountColumns(irregularData);
-  assertEqual(columns, [
-    ["set_timeout", null, null],
-    ["fetch_deps", null, null]
-  ]);
+  assertEqual(columns, [["set_timeout", null, 5], ["fetch_deps", null, 7]]);
 });
 
 test(function createSyscallCountColumnsRegularData() {
@@ -161,7 +163,7 @@ test(function createSyscallCountColumnsRegularData() {
 
 test(function createSyscallCountColumnsIrregularData() {
   const columns = createSyscallCountColumns(irregularData);
-  assertEqual(columns, [["hello", null, null], ["fetch_deps", null, null]]);
+  assertEqual(columns, [["hello", null, 700], ["fetch_deps", null, 800]]);
 });
 
 test(function createSha1ListRegularData() {
