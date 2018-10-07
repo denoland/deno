@@ -31,47 +31,40 @@ pub fn get_client() -> Client<Connector, hyper::Body> {
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<String> {
   let url = module_name.parse::<Uri>().unwrap();
   let client = get_client();
-  type FetchStringTuple = (
-    Client<Connector, hyper::Body>,
-    Option<hyper::Uri>,
-    Option<hyper::Response<hyper::Body>>,
-  );
-  let fetch_future = loop_fn(
-    (client, Some(url), None),
-    |(client, maybe_url, _): FetchStringTuple| {
-      let url = maybe_url.expect("target url should not be None");
-      client
-        .get(url)
-        .map_err(|err| DenoError::from(err))
-        .and_then(|response| {
-          if response.status().is_redirection() {
-            let new_url_string = response
-              .headers()
-              .get("location")
-              .expect("url redirection should provide 'location' header")
-              .to_str()
-              .unwrap()
-              .to_string();
-            println!("Redirecting to {}...", &new_url_string);
-            let new_url = Some(
-              new_url_string
-                .parse::<Uri>()
-                .expect("provided redirect url should be a valid url"),
-            );
-            return Ok(Loop::Continue((client, new_url, None)));
-          }
-          if !response.status().is_success() {
-            return Err(errors::new(
-              errors::ErrorKind::NotFound,
-              "module not found".to_string(),
-            ));
-          }
-          Ok(Loop::Break((client, None, Some(response))))
-        })
-    },
-  ).and_then(|(_, _, maybe_response): FetchStringTuple| {
-    maybe_response
-      .expect("Should contain a valid response")
+  // TODO(kevinkassimo): consider set a max redirection counter
+  // to avoid bouncing between 2 or more urls
+  let fetch_future = loop_fn((client, Some(url)), |(client, maybe_url)| {
+    let url = maybe_url.expect("target url should not be None");
+    client
+      .get(url)
+      .map_err(|err| DenoError::from(err))
+      .and_then(|response| {
+        if response.status().is_redirection() {
+          let new_url_string = response
+            .headers()
+            .get("location")
+            .expect("url redirection should provide 'location' header")
+            .to_str()
+            .unwrap()
+            .to_string();
+          println!("Redirecting to {}...", &new_url_string);
+          let new_url = Some(
+            new_url_string
+              .parse::<Uri>()
+              .expect("provided redirect url should be a valid url"),
+          );
+          return Ok(Loop::Continue((client, new_url)));
+        }
+        if !response.status().is_success() {
+          return Err(errors::new(
+            errors::ErrorKind::NotFound,
+            "module not found".to_string(),
+          ));
+        }
+        Ok(Loop::Break(response))
+      })
+  }).and_then(|response| {
+    response
       .into_body()
       .concat2()
       .map(|body| String::from_utf8(body.to_vec()).unwrap())
