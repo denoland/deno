@@ -1,6 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 export type TypedArray = Uint8Array | Float32Array | Int32Array;
 
+// @internal
 export interface ModuleInfo {
   moduleName: string | null;
   filename: string | null;
