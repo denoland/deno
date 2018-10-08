@@ -18,7 +18,7 @@ struct deno_s {
   v8::Persistent<v8::Map> async_data_map;
   deno_recv_cb cb;
   int32_t next_req_id;
-  void* data;
+  void* user_data;
 };
 }
 
@@ -37,7 +37,7 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Send),
     reinterpret_cast<intptr_t>(SetGlobalErrorHandler), 0};
 
-Deno* NewFromSnapshot(void* data, deno_recv_cb cb);
+Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
                        const char* js_filename, const std::string& js_source,

@@ -102,10 +102,7 @@ impl Isolate {
     });
 
     (*isolate).libdeno_isolate = unsafe {
-      libdeno::deno_new(
-        isolate.as_ref() as *const _ as *const c_void,
-        pre_dispatch,
-      )
+      libdeno::deno_new(isolate.as_mut() as *mut _ as *mut c_void, pre_dispatch)
     };
 
     isolate

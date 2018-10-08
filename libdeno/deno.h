@@ -30,10 +30,10 @@ void deno_init();
 const char* deno_v8_version();
 void deno_set_v8_flags(int* argc, char** argv);
 
-Deno* deno_new(void* data, deno_recv_cb cb);
+Deno* deno_new(void* user_data, deno_recv_cb cb);
 void deno_delete(Deno* d);
 
-// Returns the void* data provided in deno_new.
+// Returns the void* user_data provided in deno_new.
 void* deno_get_data(Deno*);
 
 // Returns false on error.

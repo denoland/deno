@@ -413,7 +413,7 @@ void deno_init() {
   v8::V8::Initialize();
 }
 
-void* deno_get_data(Deno* d) { return d->data; }
+void* deno_get_data(Deno* d) { return d->user_data; }
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
 
