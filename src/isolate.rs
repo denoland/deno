@@ -100,8 +100,8 @@ impl Isolate {
     self as *mut _ as *mut c_void
   }
 
-  pub fn from_c<'a>(d: *const libdeno::isolate) -> &'a mut Isolate {
-    let ptr = unsafe { libdeno::deno_get_data(d) } as *mut _;
+  pub fn from_void_ptr<'a>(ptr: *mut c_void) -> &'a mut Isolate {
+    let ptr = ptr as *mut _;
     unsafe { &mut *ptr }
   }
 
@@ -236,7 +236,7 @@ impl From<Buf> for libdeno::deno_buf {
 
 // Dereferences the C pointer into the Rust Isolate object.
 extern "C" fn pre_dispatch(
-  d: *const libdeno::isolate,
+  user_data: *mut c_void,
   req_id: i32,
   control_buf: libdeno::deno_buf,
   data_buf: libdeno::deno_buf,
@@ -256,7 +256,7 @@ extern "C" fn pre_dispatch(
     )
   };
 
-  let isolate = Isolate::from_c(d);
+  let isolate = Isolate::from_void_ptr(user_data);
   let dispatch = isolate.dispatch;
   let (is_sync, op) = dispatch(isolate, control_slice, data_slice);
 

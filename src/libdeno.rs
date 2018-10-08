@@ -20,7 +20,7 @@ pub struct deno_buf {
 }
 
 type DenoRecvCb = unsafe extern "C" fn(
-  d: *const isolate,
+  user_data: *mut c_void,
   req_id: i32,
   buf: deno_buf,
   data_buf: deno_buf,
@@ -33,7 +33,6 @@ extern "C" {
   pub fn deno_new(cb: DenoRecvCb) -> *const isolate;
   pub fn deno_delete(i: *const isolate);
   pub fn deno_last_exception(i: *const isolate) -> *const c_char;
-  pub fn deno_get_data(i: *const isolate) -> *mut c_void;
   pub fn deno_respond(
     i: *const isolate,
     user_data: *mut c_void,
