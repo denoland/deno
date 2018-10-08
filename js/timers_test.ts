@@ -65,6 +65,31 @@ test(async function timeoutCancelSuccess() {
   assertEqual(count, 0);
 });
 
+test(async function timeoutCancelMultiple() {
+  // Set timers and cancel them in the same order.
+  const t1 = setTimeout(uncalled, 10);
+  const t2 = setTimeout(uncalled, 10);
+  const t3 = setTimeout(uncalled, 10);
+  clearTimeout(t1);
+  clearTimeout(t2);
+  clearTimeout(t3);
+
+  // Set timers and cancel them in reverse order.
+  const t4 = setTimeout(uncalled, 20);
+  const t5 = setTimeout(uncalled, 20);
+  const t6 = setTimeout(uncalled, 20);
+  clearTimeout(t6);
+  clearTimeout(t5);
+  clearTimeout(t4);
+
+  // Sleep until we're certain that the cancelled timers aren't gonna fire.
+  await waitForMs(50);
+
+  function uncalled() {
+    throw new Error("This function should not be called.");
+  }
+});
+
 test(async function timeoutCancelInvalidSilentFail() {
   // Expect no panic
   const { promise, resolve } = deferred();
