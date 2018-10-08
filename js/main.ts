@@ -30,7 +30,7 @@ function onGlobalError(
   if (error instanceof Error) {
     console.log(error.stack);
   } else {
-    console.log(`Thrown: ${error.toString()}`);
+    console.log(`Thrown: ${String(error)}`);
   }
   os.exit(1);
 }
