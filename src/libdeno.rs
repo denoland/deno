@@ -30,10 +30,10 @@ extern "C" {
   pub fn deno_init();
   pub fn deno_v8_version() -> *const c_char;
   pub fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char);
-  pub fn deno_new(data: *const c_void, cb: DenoRecvCb) -> *const isolate;
+  pub fn deno_new(user_data: *mut c_void, cb: DenoRecvCb) -> *const isolate;
   pub fn deno_delete(i: *const isolate);
   pub fn deno_last_exception(i: *const isolate) -> *const c_char;
-  pub fn deno_get_data(i: *const isolate) -> *const c_void;
+  pub fn deno_get_data(i: *const isolate) -> *mut c_void;
   pub fn deno_respond(i: *const isolate, req_id: i32, buf: deno_buf);
   pub fn deno_execute(
     i: *const isolate,
