@@ -69,16 +69,17 @@ TEST(LibDenoTest, RecvReturnEmpty) {
 
 TEST(LibDenoTest, RecvReturnBar) {
   static int count = 0;
-  Deno* d = deno_new([](auto deno, int req_id, auto buf, auto data_buf) {
+  Deno* d = deno_new([](auto user_data, int req_id, auto buf, auto data_buf) {
+    auto d = reinterpret_cast<Deno*>(user_data);
     assert_null(data_buf);
     count++;
     EXPECT_EQ(static_cast<size_t>(3), buf.data_len);
     EXPECT_EQ(buf.data_ptr[0], 'a');
     EXPECT_EQ(buf.data_ptr[1], 'b');
     EXPECT_EQ(buf.data_ptr[2], 'c');
-    deno_respond(deno, nullptr, req_id, strbuf("bar"));
+    deno_respond(d, user_data, req_id, strbuf("bar"));
   });
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "RecvReturnBar()"));
+  EXPECT_TRUE(deno_execute(d, d, "a.js", "RecvReturnBar()"));
   EXPECT_EQ(count, 1);
   deno_delete(d);
 }
@@ -91,7 +92,8 @@ TEST(LibDenoTest, DoubleRecvFails) {
 
 TEST(LibDenoTest, SendRecvSlice) {
   static int count = 0;
-  Deno* d = deno_new([](auto deno, int req_id, auto buf, auto data_buf) {
+  Deno* d = deno_new([](auto user_data, int req_id, auto buf, auto data_buf) {
+    auto d = reinterpret_cast<Deno*>(user_data);
     assert_null(data_buf);
     static const size_t alloc_len = 1024;
     size_t i = count++;
@@ -115,9 +117,9 @@ TEST(LibDenoTest, SendRecvSlice) {
     buf2.data_ptr[0] = 200 + i;
     buf2.data_ptr[buf2.data_len - 1] = 200 - i;
     // Send back.
-    deno_respond(deno, nullptr, req_id, buf2);
+    deno_respond(d, user_data, req_id, buf2);
   });
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "SendRecvSlice()"));
+  EXPECT_TRUE(deno_execute(d, d, "a.js", "SendRecvSlice()"));
   EXPECT_EQ(count, 5);
   deno_delete(d);
 }

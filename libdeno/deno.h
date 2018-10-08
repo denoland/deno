@@ -23,8 +23,8 @@ typedef struct deno_s Deno;
 // A callback to receive a message from a libdeno.send() javascript call.
 // control_buf is valid for only for the lifetime of this callback.
 // data_buf is valid until deno_respond() is called.
-typedef void (*deno_recv_cb)(Deno* d, int32_t req_id, deno_buf control_buf,
-                             deno_buf data_buf);
+typedef void (*deno_recv_cb)(void* user_data, int32_t req_id,
+                             deno_buf control_buf, deno_buf data_buf);
 
 void deno_init();
 const char* deno_v8_version();
@@ -32,9 +32,6 @@ void deno_set_v8_flags(int* argc, char** argv);
 
 Deno* deno_new(deno_recv_cb cb);
 void deno_delete(Deno* d);
-
-// Returns the void* user_data provided in deno_new.
-void* deno_get_data(Deno*);
 
 // Returns false on error.
 // Get error text with deno_last_exception().

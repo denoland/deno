@@ -243,7 +243,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   DCHECK_EQ(d->currentArgs, nullptr);
   d->currentArgs = &args;
 
-  d->cb(d, req_id, control, data);
+  d->cb(d->user_data, req_id, control, data);
 
   if (d->currentArgs == nullptr) {
     // This indicates that deno_repond() was called already.
@@ -429,11 +429,6 @@ void deno_init() {
   auto* p = v8::platform::CreateDefaultPlatform();
   v8::V8::InitializePlatform(p);
   v8::V8::Initialize();
-}
-
-void* deno_get_data(const Deno* d) {
-  CHECK(d->user_data != nullptr);
-  return d->user_data;
 }
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
