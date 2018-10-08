@@ -41,7 +41,7 @@ pub type Dispatch =
     -> (bool, Box<Op>);
 
 pub struct Isolate {
-  ptr: *const libdeno::isolate,
+  libdeno_isolate: *const libdeno::isolate,
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
   // Although Isolate is only accessed on the main thread, we use an atomic
@@ -88,7 +88,7 @@ impl Isolate {
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
 
     let mut isolate = Box::new(Isolate {
-      ptr: 0 as *const libdeno::isolate,
+      libdeno_isolate: 0 as *const libdeno::isolate,
       dispatch,
       rx,
       ntasks: atomic::AtomicIsize::new(0),
@@ -101,7 +101,7 @@ impl Isolate {
       }),
     });
 
-    (*isolate).ptr = unsafe {
+    (*isolate).libdeno_isolate = unsafe {
       libdeno::deno_new(
         isolate.as_ref() as *const _ as *const c_void,
         pre_dispatch,
@@ -126,10 +126,14 @@ impl Isolate {
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
     let r = unsafe {
-      libdeno::deno_execute(self.ptr, filename.as_ptr(), source.as_ptr())
+      libdeno::deno_execute(
+        self.libdeno_isolate,
+        filename.as_ptr(),
+        source.as_ptr(),
+      )
     };
     if r == 0 {
-      let ptr = unsafe { libdeno::deno_last_exception(self.ptr) };
+      let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
       let cstr = unsafe { CStr::from_ptr(ptr) };
       return Err(cstr.to_str().unwrap());
     }
@@ -139,7 +143,7 @@ impl Isolate {
   pub fn respond(&self, req_id: i32, buf: Buf) {
     // TODO(zero-copy) Use Buf::leak(buf) to leak the heap allocated buf. And
     // don't do the memcpy in ImportBuf() (in libdeno/binding.cc)
-    unsafe { libdeno::deno_respond(self.ptr, req_id, buf.into()) }
+    unsafe { libdeno::deno_respond(self.libdeno_isolate, req_id, buf.into()) }
   }
 
   fn complete_op(&mut self, req_id: i32, buf: Buf) {
@@ -157,7 +161,7 @@ impl Isolate {
       data_ptr: 0 as *mut u8,
       data_len: 0,
     };
-    unsafe { libdeno::deno_respond(self.ptr, -1, dummy_buf) }
+    unsafe { libdeno::deno_respond(self.libdeno_isolate, -1, dummy_buf) }
   }
 
   // TODO Use Park abstraction? Note at time of writing Tokio default runtime
@@ -211,7 +215,7 @@ impl Isolate {
 
 impl Drop for Isolate {
   fn drop(&mut self) {
-    unsafe { libdeno::deno_delete(self.ptr) }
+    unsafe { libdeno::deno_delete(self.libdeno_isolate) }
   }
 }
 
@@ -289,8 +293,8 @@ mod tests {
   fn test_c_to_rust() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let isolate = Isolate::new(argv, unreachable_dispatch);
-    let isolate2 = Isolate::from_c(isolate.ptr);
-    assert_eq!(isolate.ptr, isolate2.ptr);
+    let isolate2 = Isolate::from_c(isolate.libdeno_isolate);
+    assert_eq!(isolate.libdeno_isolate, isolate2.libdeno_isolate);
     assert_eq!(
       isolate.state.dir.root.join("gen"),
       isolate.state.dir.gen,
