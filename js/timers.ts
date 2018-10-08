@@ -103,7 +103,7 @@ function unschedule(timer: Timer) {
     // Multiple timers that are due at the same point in time.
     // Remove this timer from the list.
     const index = list.indexOf(timer);
-    assert(index > 0);
+    assert(index > -1);
     list.splice(index, 1);
   }
 }
