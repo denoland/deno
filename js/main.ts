@@ -25,9 +25,13 @@ function onGlobalError(
   source: string,
   lineno: number,
   colno: number,
-  error: Error
+  error: any // tslint:disable-line:no-any
 ) {
-  console.log(error.stack);
+  if (error instanceof Error) {
+    console.log(error.stack);
+  } else {
+    console.log(`Thrown: ${String(error)}`);
+  }
   os.exit(1);
 }
 

@@ -14,7 +14,6 @@ use libc::c_void;
 use std;
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::sync::atomic;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -41,15 +40,10 @@ pub type Dispatch =
     -> (bool, Box<Op>);
 
 pub struct Isolate {
-  ptr: *const libdeno::isolate,
+  libdeno_isolate: *const libdeno::isolate,
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
-  // Although Isolate is only accessed on the main thread, we use an atomic
-  // variable here to workaround an issue probably caused by our poor usage
-  // of Box::leak in Isolate::from_c()
-  // https://github.com/denoland/deno/issues/919
-  // ntasks ought to be i32.
-  ntasks: atomic::AtomicIsize,
+  ntasks: i32,
   pub timeout_due: Option<Instant>,
   pub state: Arc<IsolateState>,
 }
@@ -77,21 +71,21 @@ impl IsolateState {
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
 impl Isolate {
-  pub fn new(argv: Vec<String>, dispatch: Dispatch) -> Box<Isolate> {
+  pub fn new(argv: Vec<String>, dispatch: Dispatch) -> Isolate {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
 
     let (flags, argv_rest) = flags::set_flags(argv);
-
+    let libdeno_isolate = unsafe { libdeno::deno_new(pre_dispatch) };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
 
-    let mut isolate = Box::new(Isolate {
-      ptr: 0 as *const libdeno::isolate,
+    Isolate {
+      libdeno_isolate,
       dispatch,
       rx,
-      ntasks: atomic::AtomicIsize::new(0),
+      ntasks: 0,
       timeout_due: None,
       state: Arc::new(IsolateState {
         dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
@@ -99,47 +93,52 @@ impl Isolate {
         flags,
         tx: Mutex::new(Some(tx)),
       }),
-    });
-
-    (*isolate).ptr = unsafe {
-      libdeno::deno_new(
-        isolate.as_ref() as *const _ as *const c_void,
-        pre_dispatch,
-      )
-    };
-
-    isolate
+    }
   }
 
-  pub fn from_c<'a>(d: *const libdeno::isolate) -> &'a mut Isolate {
-    let ptr = unsafe { libdeno::deno_get_data(d) };
-    let ptr = ptr as *mut Isolate;
-    let isolate_box = unsafe { Box::from_raw(ptr) };
-    Box::leak(isolate_box)
+  pub fn as_void_ptr(&mut self) -> *mut c_void {
+    self as *mut _ as *mut c_void
+  }
+
+  pub fn from_void_ptr<'a>(ptr: *mut c_void) -> &'a mut Isolate {
+    let ptr = ptr as *mut _;
+    unsafe { &mut *ptr }
   }
 
   pub fn execute(
-    &self,
+    &mut self,
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), DenoException> {
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
     let r = unsafe {
-      libdeno::deno_execute(self.ptr, filename.as_ptr(), source.as_ptr())
+      libdeno::deno_execute(
+        self.libdeno_isolate,
+        self.as_void_ptr(),
+        filename.as_ptr(),
+        source.as_ptr(),
+      )
     };
     if r == 0 {
-      let ptr = unsafe { libdeno::deno_last_exception(self.ptr) };
+      let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
       let cstr = unsafe { CStr::from_ptr(ptr) };
       return Err(cstr.to_str().unwrap());
     }
     Ok(())
   }
 
-  pub fn respond(&self, req_id: i32, buf: Buf) {
+  pub fn respond(&mut self, req_id: i32, buf: Buf) {
     // TODO(zero-copy) Use Buf::leak(buf) to leak the heap allocated buf. And
     // don't do the memcpy in ImportBuf() (in libdeno/binding.cc)
-    unsafe { libdeno::deno_respond(self.ptr, req_id, buf.into()) }
+    unsafe {
+      libdeno::deno_respond(
+        self.libdeno_isolate,
+        self.as_void_ptr(),
+        req_id,
+        buf.into(),
+      )
+    }
   }
 
   fn complete_op(&mut self, req_id: i32, buf: Buf) {
@@ -150,14 +149,21 @@ impl Isolate {
     self.respond(req_id, buf);
   }
 
-  fn timeout(&self) {
+  fn timeout(&mut self) {
     let dummy_buf = libdeno::deno_buf {
       alloc_ptr: 0 as *mut u8,
       alloc_len: 0,
       data_ptr: 0 as *mut u8,
       data_len: 0,
     };
-    unsafe { libdeno::deno_respond(self.ptr, -1, dummy_buf) }
+    unsafe {
+      libdeno::deno_respond(
+        self.libdeno_isolate,
+        self.as_void_ptr(),
+        -1,
+        dummy_buf,
+      )
+    }
   }
 
   // TODO Use Park abstraction? Note at time of writing Tokio default runtime
@@ -194,24 +200,23 @@ impl Isolate {
   }
 
   fn ntasks_increment(&mut self) {
-    let previous_ntasks = self.ntasks.fetch_add(1, atomic::Ordering::SeqCst);
-    assert!(previous_ntasks >= 0);
+    assert!(self.ntasks >= 0);
+    self.ntasks = self.ntasks + 1;
   }
 
   fn ntasks_decrement(&mut self) {
-    let previous_ntasks = self.ntasks.fetch_sub(1, atomic::Ordering::SeqCst);
-    assert!(previous_ntasks >= 1);
+    self.ntasks = self.ntasks - 1;
+    assert!(self.ntasks >= 0);
   }
 
   fn is_idle(&self) -> bool {
-    let n = self.ntasks.load(atomic::Ordering::SeqCst);
-    n == 0 && self.timeout_due.is_none()
+    self.ntasks == 0 && self.timeout_due.is_none()
   }
 }
 
 impl Drop for Isolate {
   fn drop(&mut self) {
-    unsafe { libdeno::deno_delete(self.ptr) }
+    unsafe { libdeno::deno_delete(self.libdeno_isolate) }
   }
 }
 
@@ -231,7 +236,7 @@ impl From<Buf> for libdeno::deno_buf {
 
 // Dereferences the C pointer into the Rust Isolate object.
 extern "C" fn pre_dispatch(
-  d: *const libdeno::isolate,
+  user_data: *mut c_void,
   req_id: i32,
   control_buf: libdeno::deno_buf,
   data_buf: libdeno::deno_buf,
@@ -251,7 +256,7 @@ extern "C" fn pre_dispatch(
     )
   };
 
-  let isolate = Isolate::from_c(d);
+  let isolate = Isolate::from_void_ptr(user_data);
   let dispatch = isolate.dispatch;
   let (is_sync, op) = dispatch(isolate, control_slice, data_slice);
 
@@ -284,27 +289,6 @@ extern "C" fn pre_dispatch(
 mod tests {
   use super::*;
   use futures;
-
-  #[test]
-  fn test_c_to_rust() {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let isolate = Isolate::new(argv, unreachable_dispatch);
-    let isolate2 = Isolate::from_c(isolate.ptr);
-    assert_eq!(isolate.ptr, isolate2.ptr);
-    assert_eq!(
-      isolate.state.dir.root.join("gen"),
-      isolate.state.dir.gen,
-      "Sanity check"
-    );
-  }
-
-  fn unreachable_dispatch(
-    _isolate: &mut Isolate,
-    _control: &[u8],
-    _data: &'static mut [u8],
-  ) -> (bool, Box<Op>) {
-    unreachable!();
-  }
 
   #[test]
   fn test_dispatch_sync() {
