@@ -54,21 +54,12 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<String> {
   tokio_util::block_on(fetch_future)
 }
 
-/* TODO(ry) Re-enabled this test. Disabling to work around bug in #782.
-
 #[test]
 fn test_fetch_sync_string() {
   // Relies on external http server. See tools/http_server.py
-  use futures;
-
   tokio_util::init(|| {
-    tokio_util::block_on(futures::future::lazy(|| -> DenoResult<()> {
-      let p = fetch_sync_string("http://127.0.0.1:4545/package.json")?;
-      println!("package.json len {}", p.len());
-      assert!(p.len() > 1);
-      Ok(())
-    })).unwrap();
+    let p = fetch_sync_string("http://127.0.0.1:4545/package.json").unwrap();
+    println!("package.json len {}", p.len());
+    assert!(p.len() > 1);
   });
 }
-
-*/
