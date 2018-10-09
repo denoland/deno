@@ -55,7 +55,7 @@ pub struct IsolateState {
   pub argv: Vec<String>,
   pub flags: flags::DenoFlags,
   tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
-  pub metrics: Metrics,
+  pub metrics: Mutex<Option<Metrics>>,
 }
 
 impl IsolateState {
@@ -66,6 +66,17 @@ impl IsolateState {
     assert!(maybe_tx.is_some(), "Expected tx to not be deleted.");
     let tx = maybe_tx.unwrap();
     tx.send((req_id, buf)).expect("tx.send error");
+  }
+
+  fn update_metrics(&self, bytes_recv: i32, bytes_sent: i32) {
+    let mut g = self.metrics.lock().unwrap();
+    let maybe_metrics = g.as_mut();
+    assert!(maybe_metrics.is_some(), "Expected tx to not be deleted.");
+    let metrics = maybe_metrics.unwrap();
+
+    metrics.increment_ops_executed();
+    metrics.increment_bytes_recv(bytes_recv);
+    metrics.increment_bytes_sent(bytes_sent);
   }
 }
 
@@ -85,19 +96,19 @@ impl Metrics {
   }
 
   #[allow(dead_code)]
-  fn increment_ops_executed(mut self) {
+  fn increment_ops_executed(&mut self) {
     assert!(self.ops_executed >= 0);
     self.ops_executed += 1;
   }
 
   #[allow(dead_code)]
-  fn increment_bytes_recv(mut self, len: i32) {
+  fn increment_bytes_recv(&mut self, len: i32) {
     assert!(self.bytes_recv >= 0);
     self.bytes_recv += len;
   }
 
   #[allow(dead_code)]
-  fn increment_bytes_sent(mut self, len: i32) {
+  fn increment_bytes_sent(&mut self, len: i32) {
     assert!(self.bytes_sent >= 0);
     self.bytes_sent += len;
   }
@@ -127,7 +138,7 @@ impl Isolate {
         argv: argv_rest,
         flags,
         tx: Mutex::new(Some(tx)),
-        metrics: Metrics::new(),
+        metrics: Mutex::new(Some(Metrics::new())),
       }),
     }
   }
@@ -272,14 +283,13 @@ extern "C" fn pre_dispatch(
     )
   };
 
+  let bytes_recv = data_buf.data_len as i32;
   let isolate = Isolate::from_void_ptr(user_data);
   let dispatch = isolate.dispatch;
   let (is_sync, op) = dispatch(isolate, control_slice, data_slice);
 
   if is_sync {
     // Execute op synchronously.
-    let state = isolate.state.clone();
-
     let buf = tokio_util::block_on(op).unwrap();
     let buf_size = buf.len();
     if buf_size != 0 {
@@ -287,12 +297,11 @@ extern "C" fn pre_dispatch(
       isolate.respond(req_id, buf);
     }
 
-    // TODO: this throws E0507
-//    state.metrics.increment_ops_executed();
-//    state.metrics.increment_bytes_sent(buf_size as i32)
+    let state = Arc::clone(&isolate.state);
+    state.update_metrics(bytes_recv, buf_size as i32);
   } else {
     // Execute op asynchronously.
-    let state = isolate.state.clone();
+    let state = Arc::clone(&isolate.state);
 
     // TODO Ideally Tokio would could tell us how many tasks are executing, but
     // it cannot currently. Therefore we track top-level promises/tasks
@@ -301,7 +310,9 @@ extern "C" fn pre_dispatch(
 
     let task = op
       .and_then(move |buf| {
+        let bytes_sent = buf.len() as i32;
         state.send_to_js(req_id, buf);
+        state.update_metrics(bytes_recv as i32, bytes_sent);
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);

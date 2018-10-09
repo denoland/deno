@@ -1163,7 +1163,10 @@ fn op_metrics(
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
-  let metrics = &state.metrics;
+  let mut g = state.metrics.lock().unwrap();
+  let maybe_metrics = g.as_mut();
+  assert!(maybe_metrics.is_some(), "Expected metrics to not be deleted.");
+  let metrics = maybe_metrics.unwrap();
 
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::MetricsRes::create(
