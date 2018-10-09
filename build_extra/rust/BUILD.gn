@@ -11,6 +11,51 @@ import("rust.gni")
 crates = "//third_party/rust_crates"
 registry_github = "$crates/registry/src/github.com-1ecc6299db9ec823/"
 
+rust_crate("nix") {
+  source_root = "$registry_github/nix-0.11.0/src/lib.rs"
+  extern = [
+    ":cfg_if",
+    ":libc",
+    ":void",
+    ":bitflags",
+  ]
+}
+
+rust_crate("rustyline") {
+  source_root = "$registry_github/rustyline-2.1.0/src/lib.rs"
+  extern = [
+    ":dirs",
+    ":libc",
+    ":log",
+    ":memchr",
+    ":nix",
+    ":unicode_segmentation",
+    ":unicode_width",
+    ":utf8parse",
+    ":winapi",
+  ]
+}
+
+rust_crate("bitflags") {
+  source_root = "$registry_github/bitflags-1.0.4/src/lib.rs"
+}
+
+rust_crate("unicode_segmentation") {
+  source_root = "$registry_github/unicode-segmentation-1.2.1/src/lib.rs"
+}
+
+rust_crate("memchr") {
+  source_root = "$registry_github/memchr-2.1.0/src/lib.rs"
+  extern = [
+    ":cfg_if",
+    ":libc",
+  ]
+}
+
+rust_crate("utf8parse") {
+  source_root = "$registry_github/utf8parse-0.1.1/src/lib.rs"
+}
+
 rust_crate("libc") {
   source_root = "$registry_github/libc-0.2.43/src/lib.rs"
   features = [ "use_std" ]
@@ -127,6 +172,7 @@ rust_crate("winapi") {
     "knownfolders",
     "ktmtypes",
     "libloaderapi",
+    "limits",
     "lsalookup",
     "minwinbase",
     "minwindef",
@@ -167,6 +213,7 @@ rust_crate("winapi") {
     "winnt",
     "winreg",
     "winsock2",
+    "winuser",
     "ws2def",
     "ws2ipdef",
     "ws2tcpip",

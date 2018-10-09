@@ -10,7 +10,10 @@
 
 #[cfg(unix)]
 use eager_unix as eager;
+use errors::bad_resource;
 use errors::DenoError;
+use errors::DenoResult;
+use repl::Repl;
 use tokio_util;
 use tokio_write;
 
@@ -56,6 +59,7 @@ enum Repr {
   FsFile(tokio::fs::File),
   TcpListener(tokio::net::TcpListener),
   TcpStream(tokio::net::TcpStream),
+  Repl(Repl),
 }
 
 pub fn table_entries() -> Vec<(i32, String)> {
@@ -85,6 +89,7 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::FsFile(_) => "fsFile",
     Repr::TcpListener(_) => "tcpListener",
     Repr::TcpStream(_) => "tcpStream",
+    Repr::Repl(_) => "repl",
   };
 
   String::from(h_repr)
@@ -150,10 +155,7 @@ impl AsyncRead for Resource {
         Repr::FsFile(ref mut f) => f.poll_read(buf),
         Repr::Stdin(ref mut f) => f.poll_read(buf),
         Repr::TcpStream(ref mut f) => f.poll_read(buf),
-        Repr::Stdout(_) | Repr::Stderr(_) => {
-          panic!("Cannot read from stdout/stderr")
-        }
-        Repr::TcpListener(_) => panic!("Cannot read"),
+        _ => panic!("Cannot read"),
       },
     }
   }
@@ -180,8 +182,7 @@ impl AsyncWrite for Resource {
         Repr::Stdout(ref mut f) => f.poll_write(buf),
         Repr::Stderr(ref mut f) => f.poll_write(buf),
         Repr::TcpStream(ref mut f) => f.poll_write(buf),
-        Repr::Stdin(_) => panic!("Cannot write to stdin"),
-        Repr::TcpListener(_) => panic!("Cannot write"),
+        _ => panic!("Cannot write"),
       },
     }
   }
@@ -219,6 +220,26 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   let r = tg.insert(rid, Repr::TcpStream(stream));
   assert!(r.is_none());
   Resource { rid }
+}
+
+pub fn add_repl(repl: Repl) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(rid, Repr::Repl(repl));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
+pub fn readline(rid: ResourceId, prompt: &str) -> DenoResult<String> {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&rid);
+  match maybe_repr {
+    Some(Repr::Repl(ref mut r)) => {
+      let line = r.readline(&prompt)?;
+      Ok(line)
+    }
+    _ => Err(bad_resource()),
+  }
 }
 
 pub fn lookup(rid: ResourceId) -> Option<Resource> {
