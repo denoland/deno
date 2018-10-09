@@ -2,9 +2,11 @@
 extern crate flatbuffers;
 #[macro_use]
 extern crate futures;
+// extern crate rustyline;
 extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg;
+extern crate rustyline;
 extern crate rand;
 extern crate tempfile;
 extern crate tokio;
@@ -21,6 +23,10 @@ extern crate dirs;
 extern crate hyper_rustls;
 extern crate remove_dir_all;
 extern crate ring;
+
+
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
 
 mod deno_dir;
 mod errors;
@@ -68,6 +74,7 @@ fn main() {
 
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
+  let args2: Vec<String> = env::args().collect();
   let mut isolate = isolate::Isolate::new(args, ops::dispatch);
   flags::process(&isolate.state.flags);
   tokio_util::init(|| {
@@ -78,5 +85,44 @@ fn main() {
         std::process::exit(1);
       });
     isolate.event_loop();
+    if args2.len() == 1{
+      repl_loop(isolate)
+    }
   });
+}
+
+#[allow(dead_code)]
+fn repl_loop(isolate:Box<isolate::Isolate>) {
+    // `()` can be used when no completer is required
+    let mut rl = Editor::<()>::new();
+    if rl.load_history("history.txt").is_err() {
+        println!("No previous history.");
+    }
+    loop {
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_ref());
+                isolate.execute("deno_main.js", &line)
+                .unwrap_or_else(|_err| {
+                  // error!("{}", err);
+                  println!("{}","error happened" )
+                 });
+                // println!("Line: {}", line);
+            },
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break
+            },
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break
+            }
+        }
+    }
+    rl.save_history("history.txt").unwrap();
 }
