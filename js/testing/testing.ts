@@ -25,6 +25,7 @@ export interface TestDefinition {
 export const exitOnFail = true;
 
 let filterRegExp: RegExp | null;
+let filtered = 0;
 const tests: TestDefinition[] = [];
 
 let filtered = 0;
@@ -77,21 +78,18 @@ async function runTests() {
   console.log("running", tests.length, "tests");
   for (let i = 0; i < tests.length; i++) {
     const { fn, name } = tests[i];
-    let result = green_ok();
-    console.log("test", name);
     try {
       await fn();
+      console.log("test", name, "...", green_ok());
       passed++;
     } catch (e) {
-      result = red_failed();
+      console.log("test", name, "...", red_failed());
       console.error((e && e.stack) || e);
       failed++;
       if (exitOnFail) {
         break;
       }
     }
-    // TODO Do this on the same line as test name is printed.
-    console.log("...", result);
   }
 
   // Attempting to match the output of Rust's test runner.
