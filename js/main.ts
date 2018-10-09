@@ -53,13 +53,14 @@ export default function denoMain() {
   }
   log("args", args);
   Object.freeze(args);
-
+  console.log('hahahaha')
   const inputFn = args[0];
   if (!inputFn) {
+    console.log("not exiting")
     console.log("No input script specified.");
-    os.exit(1);
+    // os.exit(1);
   }
-
+ else {
   const printDeps = startResMsg.depsFlag();
   if (printDeps) {
     for (const dep of compiler.getModuleDependencies(inputFn, `${cwd}/`)) {
@@ -70,4 +71,5 @@ export default function denoMain() {
 
   compiler.recompile = startResMsg.recompileFlag();
   compiler.run(inputFn, `${cwd}/`);
+}
 }
