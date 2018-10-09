@@ -51,6 +51,7 @@ main_extern = [
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:ring",
+  "$rust_build:rustyline",
   "$rust_build:tempfile",
   "$rust_build:rand",
   "$rust_build:tokio",
