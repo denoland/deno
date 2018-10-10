@@ -67,7 +67,7 @@ enum ErrorKind: byte {
   Other,
   UnexpectedEof,
 
-  BadFileDescriptor,
+  BadResource,
 
   // url errors
 
