@@ -419,6 +419,56 @@ mod tests {
     });
   }
 
+  #[test]
+  fn test_metrics_async() {
+    let argv = vec![String::from("./deno"), String::from("hello.js")];
+    let mut isolate = Isolate::new(argv, metrics_dispatch_async);
+    tokio_util::init(|| {
+      // verify that metrics have been properly initialized
+      {
+        let metrics = isolate.state.metrics.lock().unwrap();
+        assert_eq!(metrics.ops_dispatched, 0);
+        assert_eq!(metrics.ops_completed, 0);
+        assert_eq!(metrics.control_bytes_sent, 0);
+        assert_eq!(metrics.data_bytes_sent, 0);
+        assert_eq!(metrics.bytes_received, 0);
+      }
+
+      isolate
+        .execute(
+          "y.js",
+          r#"
+          const control = new Uint8Array([4, 5, 6]);
+          const data = new Uint8Array([42, 43, 44, 45, 46]);
+          libdeno.send(control, data);
+        "#,
+        )
+        .expect("execute error");
+
+      // make sure relevant metrics are updated before task is executed
+      {
+        let metrics = isolate.state.metrics.lock().unwrap();
+        assert_eq!(metrics.ops_dispatched, 1);
+        assert_eq!(metrics.ops_completed, 0);
+        assert_eq!(metrics.control_bytes_sent, 3);
+        assert_eq!(metrics.data_bytes_sent, 5);
+        assert_eq!(metrics.bytes_received, 0);
+      }
+
+      isolate.event_loop();
+
+      // make sure relevant metrics are updated after task is executed
+      {
+        let metrics = isolate.state.metrics.lock().unwrap();
+        assert_eq!(metrics.ops_dispatched, 1);
+        assert_eq!(metrics.ops_completed, 1);
+        assert_eq!(metrics.control_bytes_sent, 3);
+        assert_eq!(metrics.data_bytes_sent, 5);
+        assert_eq!(metrics.bytes_received, 4);
+      }
+    });
+  }
+
   fn metrics_dispatch(
     _isolate: &mut Isolate,
     _control: &[u8],
@@ -429,5 +479,17 @@ mod tests {
     let control = vec.into_boxed_slice();
     let op = Box::new(futures::future::ok(control));
     (true, op)
+  }
+
+  fn metrics_dispatch_async(
+    _isolate: &mut Isolate,
+    _control: &[u8],
+    _data: &'static mut [u8],
+  ) -> (bool, Box<Op>) {
+    // Send back some sync response
+    let vec: Vec<u8> = vec![1, 2, 3, 4];
+    let control = vec.into_boxed_slice();
+    let op = Box::new(futures::future::ok(control));
+    (false, op)
   }
 }
