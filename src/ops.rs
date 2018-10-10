@@ -25,6 +25,7 @@ use std;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
 #[cfg(any(unix))]
+use std::ops::Deref;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -1163,10 +1164,8 @@ fn op_metrics(
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
-  let mut g = state.metrics.lock().unwrap();
-  let maybe_metrics = g.as_mut();
-  assert!(maybe_metrics.is_some(), "Expected metrics to not be deleted.");
-  let metrics = maybe_metrics.unwrap();
+  let g = state.metrics.lock().unwrap();
+  let metrics = g.deref();
 
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::MetricsRes::create(

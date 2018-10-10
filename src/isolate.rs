@@ -14,6 +14,7 @@ use libc::c_void;
 use std;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::ops::DerefMut;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -55,7 +56,7 @@ pub struct IsolateState {
   pub argv: Vec<String>,
   pub flags: flags::DenoFlags,
   tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
-  pub metrics: Mutex<Option<Metrics>>,
+  pub metrics: Mutex<Metrics>,
 }
 
 impl IsolateState {
@@ -70,9 +71,7 @@ impl IsolateState {
 
   fn update_metrics(&self, bytes_recv: u64, bytes_sent: u64) {
     let mut g = self.metrics.lock().unwrap();
-    let maybe_metrics = g.as_mut();
-    assert!(maybe_metrics.is_some(), "Expected tx to not be deleted.");
-    let metrics = maybe_metrics.unwrap();
+    let metrics = g.deref_mut();
 
     metrics.update(bytes_recv, bytes_sent);
   }
@@ -124,7 +123,7 @@ impl Isolate {
         argv: argv_rest,
         flags,
         tx: Mutex::new(Some(tx)),
-        metrics: Mutex::new(Some(Metrics::new())),
+        metrics: Mutex::new(Metrics::new()),
       }),
     }
   }
