@@ -37,7 +37,7 @@ fn resolve_path(base: &str, path: &str) -> String {
   format!("/{}", new_components.join("/").trim_left_matches("/")).to_string()
 }
 
-pub fn _uri_join(
+pub fn uri_join(
   base_uri: uri::Uri,
   ref_str: &str,
 ) -> Result<uri::Uri, uri::InvalidUriParts> {
@@ -71,7 +71,7 @@ pub fn _uri_join(
 fn test_uri_join(base: &str, path: &str, expected: &str) {
   let base_uri = base.parse::<uri::Uri>().unwrap();
   let expected_uri = expected.parse::<uri::Uri>().unwrap();
-  assert_eq!(expected_uri, _uri_join(base_uri, path).unwrap());
+  assert_eq!(expected_uri, uri_join(base_uri, path).unwrap());
 }
 
 #[test]

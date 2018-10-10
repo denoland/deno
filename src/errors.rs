@@ -1,10 +1,10 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use http::uri;
 use hyper;
 pub use msg::ErrorKind;
 use std;
 use std::fmt;
 use std::io;
-use url;
 
 pub type DenoResult<T> = std::result::Result<T, DenoError>;
 
@@ -17,7 +17,6 @@ pub struct DenoError {
 enum Repr {
   Simple(ErrorKind, String),
   IoErr(io::Error),
-  UrlErr(url::ParseError),
   HyperErr(hyper::Error),
 }
 
@@ -56,23 +55,6 @@ impl DenoError {
           _ => unreachable!(),
         }
       }
-      Repr::UrlErr(ref err) => {
-        use url::ParseError::*;
-        match err {
-          EmptyHost => ErrorKind::EmptyHost,
-          IdnaError => ErrorKind::IdnaError,
-          InvalidPort => ErrorKind::InvalidPort,
-          InvalidIpv4Address => ErrorKind::InvalidIpv4Address,
-          InvalidIpv6Address => ErrorKind::InvalidIpv6Address,
-          InvalidDomainCharacter => ErrorKind::InvalidDomainCharacter,
-          RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
-          RelativeUrlWithCannotBeABaseBase => {
-            ErrorKind::RelativeUrlWithCannotBeABaseBase
-          }
-          SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
-          Overflow => ErrorKind::Overflow,
-        }
-      }
       Repr::HyperErr(ref err) => {
         // For some reason hyper::errors::Kind is private.
         if err.is_parse() {
@@ -96,7 +78,6 @@ impl fmt::Display for DenoError {
     match self.repr {
       Repr::Simple(_kind, ref err_str) => f.pad(err_str),
       Repr::IoErr(ref err) => err.fmt(f),
-      Repr::UrlErr(ref err) => err.fmt(f),
       Repr::HyperErr(ref err) => err.fmt(f),
     }
   }
@@ -107,7 +88,6 @@ impl std::error::Error for DenoError {
     match self.repr {
       Repr::Simple(_kind, ref msg) => msg.as_str(),
       Repr::IoErr(ref err) => err.description(),
-      Repr::UrlErr(ref err) => err.description(),
       Repr::HyperErr(ref err) => err.description(),
     }
   }
@@ -116,7 +96,6 @@ impl std::error::Error for DenoError {
     match self.repr {
       Repr::Simple(_kind, ref _msg) => None,
       Repr::IoErr(ref err) => Some(err),
-      Repr::UrlErr(ref err) => Some(err),
       Repr::HyperErr(ref err) => Some(err),
     }
   }
@@ -131,20 +110,29 @@ impl From<io::Error> for DenoError {
   }
 }
 
-impl From<url::ParseError> for DenoError {
-  #[inline]
-  fn from(err: url::ParseError) -> DenoError {
-    DenoError {
-      repr: Repr::UrlErr(err),
-    }
-  }
-}
-
 impl From<hyper::Error> for DenoError {
   #[inline]
   fn from(err: hyper::Error) -> DenoError {
     DenoError {
       repr: Repr::HyperErr(err),
+    }
+  }
+}
+
+impl From<uri::InvalidUri> for DenoError {
+  #[inline]
+  fn from(_err: uri::InvalidUri) -> DenoError {
+    DenoError {
+      repr: Repr::Simple(ErrorKind::InvalidUri, String::from("TODO")),
+    }
+  }
+}
+
+impl From<uri::InvalidUriParts> for DenoError {
+  #[inline]
+  fn from(_err: uri::InvalidUriParts) -> DenoError {
+    DenoError {
+      repr: Repr::Simple(ErrorKind::InvalidUri, String::from("TODO")),
     }
   }
 }

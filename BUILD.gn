@@ -48,6 +48,7 @@ main_extern = [
   "$rust_build:dirs",
   "$rust_build:futures",
   "$rust_build:getopts",
+  "$rust_build:http",
   "$rust_build:hyper",
   "$rust_build:hyper_rustls",
   "$rust_build:lazy_static",
@@ -62,7 +63,8 @@ main_extern = [
   "$rust_build:tokio_fs",
   "$rust_build:tokio_io",
   "$rust_build:tokio_threadpool",
-  "$rust_build:url",
+  "$rust_build:remove_dir_all",
+  "$rust_build:dirs",
   "//build_extra/flatbuffers/rust:flatbuffers",
   ":msg_rs",
 ]

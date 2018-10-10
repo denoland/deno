@@ -6,6 +6,9 @@ use errors::ErrorKind;
 use fs as deno_fs;
 use http_util;
 use msg;
+use uri_util::uri_join;
+
+use http::uri;
 use ring;
 use std;
 use std::fmt::Write;
@@ -13,10 +16,10 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
+use std::str::FromStr;
+
 #[cfg(test)]
 use tempfile::TempDir;
-use url;
-use url::Url;
 
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
@@ -290,7 +293,7 @@ impl DenoDir {
     self: &DenoDir,
     module_specifier: &str,
     containing_file: &str,
-  ) -> Result<(String, String), url::ParseError> {
+  ) -> Result<(String, String), DenoError> {
     let module_name;
     let filename;
 
@@ -302,37 +305,29 @@ impl DenoDir {
       module_specifier, containing_file
     );
 
-    let j: Url = if containing_file == "."
+    let j: uri::Uri = if containing_file == "."
       || is_remote(&module_specifier)
       || Path::new(&module_specifier).is_absolute()
     {
-      parse_local_or_remote(&module_specifier)?
-    } else if containing_file.ends_with("/") {
-      let r = Url::from_directory_path(&containing_file);
-      // TODO(ry) Properly handle error.
-      if r.is_err() {
-        error!("Url::from_directory_path error {}", containing_file);
-      }
-      let base = r.unwrap();
-      base.join(module_specifier.as_ref())?
+      uri::Uri::from_str(&module_specifier)?
     } else {
-      let base = parse_local_or_remote(&containing_file)?;
-      base.join(module_specifier.as_ref())?
+      let base = uri::Uri::from_str(&containing_file)?;
+      uri_join(base, module_specifier.as_ref())?
     };
 
-    match j.scheme() {
-      "file" => {
-        let mut p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
+    match j.scheme_part().map(|s| s.as_str()) {
+      None => {
+        let mut p = deno_fs::normalize_path(j.path().as_ref());
         module_name = p.clone();
         filename = p;
       }
-      "https" => {
+      Some("https") => {
         module_name = j.to_string();
         filename = deno_fs::normalize_path(
           get_cache_filename(self.deps_https.as_path(), j).as_ref(),
         )
       }
-      "http" => {
+      Some("http") => {
         module_name = j.to_string();
         filename = deno_fs::normalize_path(
           get_cache_filename(self.deps_http.as_path(), j).as_ref(),
@@ -347,9 +342,9 @@ impl DenoDir {
   }
 }
 
-fn get_cache_filename(basedir: &Path, url: Url) -> PathBuf {
-  let host = url.host_str().unwrap();
-  let host_port = match url.port() {
+fn get_cache_filename(basedir: &Path, uri: uri::Uri) -> PathBuf {
+  let host = uri.host().unwrap();
+  let host_port = match uri.port() {
     // Windows doesn't support ":" in filenames, so we represent port using a
     // special string.
     Some(port) => format!("{}_PORT{}", host, port),
@@ -358,7 +353,8 @@ fn get_cache_filename(basedir: &Path, url: Url) -> PathBuf {
 
   let mut out = basedir.to_path_buf();
   out.push(host_port);
-  for path_seg in url.path_segments().unwrap() {
+  let path_segments = uri.path().split("/");
+  for path_seg in path_segments {
     out.push(path_seg);
   }
   out
@@ -366,9 +362,10 @@ fn get_cache_filename(basedir: &Path, url: Url) -> PathBuf {
 
 #[test]
 fn test_get_cache_filename() {
-  let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
+  let uri =
+    uri::Uri::from_str("http://example.com:1234/path/to/file.ts").unwrap();
   let basedir = Path::new("/cache/dir/");
-  let cache_file = get_cache_filename(&basedir, url);
+  let cache_file = get_cache_filename(&basedir, uri);
   assert_eq!(
     cache_file,
     Path::new("/cache/dir/example.com_PORT1234/path/to/file.ts")
@@ -757,14 +754,6 @@ const ASSET_PREFIX: &str = "/$asset$/";
 
 fn is_remote(module_name: &str) -> bool {
   module_name.starts_with("http")
-}
-
-fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
-  if is_remote(p) {
-    Url::parse(p)
-  } else {
-    Url::from_file_path(p).map_err(|_err| url::ParseError::IdnaError)
-  }
 }
 
 fn map_file_extension(path: &Path) -> msg::MediaType {

@@ -17,48 +17,6 @@ rust_crate("libc") {
   args = [ "-Aunused_macros" ]  # Unused macro `f` in macros.rs:51.
 }
 
-rust_crate("url") {
-  source_root = "$registry_github/url-1.7.1/src/lib.rs"
-  extern = [
-    ":matches",
-    ":idna",
-    ":percent_encoding",
-  ]
-}
-
-rust_crate("percent_encoding") {
-  source_root = "$registry_github/percent-encoding-1.0.1/lib.rs"
-  args = [
-    # TODO: Suppress some warnings at this moment
-    # This should be removed when it's fixed in servo/rust-url repository
-    # https://github.com/servo/rust-url/issues/455
-    "-Aunused-imports",
-    "-Adeprecated",
-  ]
-}
-
-rust_crate("matches") {
-  source_root = "$registry_github/matches-0.1.8/lib.rs"
-}
-
-rust_crate("idna") {
-  source_root = "$registry_github/idna-0.1.5/src/lib.rs"
-  extern = [
-    ":matches",
-    ":unicode_bidi",
-    ":unicode_normalization",
-  ]
-}
-
-rust_crate("unicode_bidi") {
-  source_root = "$registry_github/unicode-bidi-0.3.4/src/lib.rs"
-  extern = [ ":matches" ]
-}
-
-rust_crate("unicode_normalization") {
-  source_root = "$registry_github/unicode-normalization-0.1.7/src/lib.rs"
-}
-
 rust_crate("log") {
   source_root = "$registry_github/log-0.4.5/src/lib.rs"
   extern = [ ":cfg_if" ]

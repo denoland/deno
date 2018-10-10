@@ -16,7 +16,6 @@ extern crate tokio_executor;
 extern crate tokio_fs;
 extern crate tokio_io;
 extern crate tokio_threadpool;
-extern crate url;
 
 #[macro_use]
 extern crate lazy_static;
