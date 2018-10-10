@@ -426,23 +426,6 @@ rust_crate("hyper") {
   ]
 }
 
-rust_crate("tokio_core") {
-  source_root = "$registry_github/tokio-core-0.1.17/src/lib.rs"
-  extern = [
-    ":mio",
-    ":futures",
-    ":tokio",
-    ":tokio_executor",
-    ":tokio_reactor",
-    ":tokio_timer",
-    ":tokio_io",
-    ":log",
-    ":iovec",
-    ":bytes",
-    ":scoped_tls",
-  ]
-}
-
 rust_crate("h2") {
   source_root = "$registry_github/h2-0.1.12/src/lib.rs"
   extern = [
@@ -659,14 +642,14 @@ rust_crate("tokio_current_thread") {
 }
 
 rust_crate("hyper_rustls") {
-  source_root = "$registry_github/hyper-rustls-0.14.0/src/lib.rs"
+  source_root =
+      "$crates/git/checkouts/hyper-rustls-d4ca51501db57c63/2c536d5/src/lib.rs"
   extern = [
     ":ct_logs",
     ":futures",
     ":http",
     ":hyper",
     ":rustls",
-    ":tokio_core",
     ":tokio_io",
     ":tokio_rustls",
     ":tokio_tcp",

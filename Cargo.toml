@@ -12,7 +12,9 @@ dirs = "1.0.3"
 flatbuffers = { path = "third_party/flatbuffers/rust/flatbuffers/" }
 futures = "0.1.23"
 hyper = "0.12.9"
-hyper-rustls = "0.14.0"
+# The current version of hyper-rustls, 0.14.0, depends on tokio-core, which is
+# deprecated.
+hyper-rustls = { git = "https://github.com/ctz/hyper-rustls.git" }
 libc = "0.2.42"
 log = "0.4.4"
 rand = "0.4.3"
