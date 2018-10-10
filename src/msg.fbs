@@ -326,7 +326,8 @@ table NewConn {
 table Metrics {}
 
 table MetricsRes {
-  ops_executed: uint64;
+  ops_dispatched: uint64;
+  ops_completed: uint64;
   control_bytes_sent: uint64;
   data_bytes_sent: uint64;
   bytes_received: uint64;

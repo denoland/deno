@@ -68,36 +68,40 @@ impl IsolateState {
     tx.send((req_id, buf)).expect("tx.send error");
   }
 
-  fn update_metrics(
+  fn metrics_op_dispatched(
     &self,
     control_bytes_sent: u64,
     data_bytes_sent: u64,
-    bytes_received: u64,
   ) {
     let mut metrics = self.metrics.lock().unwrap();
-    metrics.update(control_bytes_sent, data_bytes_sent, bytes_received);
+    metrics.op_dispatched(control_bytes_sent, data_bytes_sent);
+  }
+
+  fn metrics_op_completed(&self, bytes_received: u64) {
+    let mut metrics = self.metrics.lock().unwrap();
+    metrics.op_completed(bytes_received);
   }
 }
 
 #[derive(Default)]
 pub struct Metrics {
   // these are metrics as seen from JS side perspective
-  pub ops_executed: u64,
+  pub ops_dispatched: u64,
+  pub ops_completed: u64,
   pub control_bytes_sent: u64,
   pub data_bytes_sent: u64,
   pub bytes_received: u64,
 }
 
 impl Metrics {
-  fn update(
-    &mut self,
-    control_bytes_sent: u64,
-    data_bytes_sent: u64,
-    bytes_received: u64,
-  ) {
-    self.ops_executed += 1;
+  fn op_dispatched(&mut self, control_bytes_sent: u64, data_bytes_sent: u64) {
+    self.ops_dispatched += 1;
     self.control_bytes_sent += control_bytes_sent;
     self.data_bytes_sent += data_bytes_sent;
+  }
+
+  fn op_completed(&mut self, bytes_received: u64) {
+    self.ops_completed += 1;
     self.bytes_received += bytes_received;
   }
 }
@@ -279,6 +283,10 @@ extern "C" fn pre_dispatch(
   let dispatch = isolate.dispatch;
   let (is_sync, op) = dispatch(isolate, control_slice, data_slice);
 
+  isolate
+    .state
+    .metrics_op_dispatched(control_bytes_sent, data_bytes_sent);
+
   if is_sync {
     // Execute op synchronously.
     let buf = tokio_util::block_on(op).unwrap();
@@ -288,11 +296,7 @@ extern "C" fn pre_dispatch(
       isolate.respond(req_id, buf);
     }
 
-    isolate.state.update_metrics(
-      control_bytes_sent,
-      data_bytes_sent,
-      buf_size as u64,
-    );
+    isolate.state.metrics_op_completed(buf_size as u64);
   } else {
     // Execute op asynchronously.
     let state = Arc::clone(&isolate.state);
@@ -306,11 +310,7 @@ extern "C" fn pre_dispatch(
       op.and_then(move |buf| {
         let buf_size = buf.len();
         state.send_to_js(req_id, buf);
-        state.update_metrics(
-          control_bytes_sent,
-          data_bytes_sent,
-          buf_size as u64,
-        );
+        state.metrics_op_completed(buf_size as u64);
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);
@@ -392,7 +392,8 @@ mod tests {
       // verify that metrics have been properly initialized
       {
         let metrics = isolate.state.metrics.lock().unwrap();
-        assert_eq!(metrics.ops_executed, 0);
+        assert_eq!(metrics.ops_dispatched, 0);
+        assert_eq!(metrics.ops_completed, 0);
         assert_eq!(metrics.control_bytes_sent, 0);
         assert_eq!(metrics.data_bytes_sent, 0);
         assert_eq!(metrics.bytes_received, 0);
@@ -410,7 +411,8 @@ mod tests {
         .expect("execute error");
       isolate.event_loop();
       let metrics = isolate.state.metrics.lock().unwrap();
-      assert_eq!(metrics.ops_executed, 1);
+      assert_eq!(metrics.ops_dispatched, 1);
+      assert_eq!(metrics.ops_completed, 1);
       assert_eq!(metrics.control_bytes_sent, 3);
       assert_eq!(metrics.data_bytes_sent, 5);
       assert_eq!(metrics.bytes_received, 4);

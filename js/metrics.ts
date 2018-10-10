@@ -5,7 +5,8 @@ import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
 interface Metrics {
-  opsExecuted: number;
+  opsDispatched: number;
+  opsCompleted: number;
   controlBytesSent: number;
   dataBytesSent: number;
   bytesReceived: number;
@@ -29,7 +30,8 @@ function res(baseRes: null | msg.Base): Metrics {
   assert(baseRes!.inner(res) !== null);
 
   return {
-    opsExecuted: res.opsExecuted().toFloat64(),
+    opsDispatched: res.opsDispatched().toFloat64(),
+    opsCompleted: res.opsCompleted().toFloat64(),
     controlBytesSent: res.controlBytesSent().toFloat64(),
     dataBytesSent: res.dataBytesSent().toFloat64(),
     bytesReceived: res.bytesReceived().toFloat64()
