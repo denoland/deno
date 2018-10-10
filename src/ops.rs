@@ -343,7 +343,8 @@ fn op_env(
           ..Default::default()
         },
       )
-    }).collect();
+    })
+    .collect();
   let tables = builder.create_vector(&vars);
   let inner = msg::EnvironRes::create(
     builder,
@@ -467,7 +468,7 @@ where
 //   fn blocking<F>(is_sync: bool, f: F) -> Box<Op>
 //   where F: FnOnce() -> DenoResult<Buf>
 macro_rules! blocking {
-  ($is_sync:expr,$fn:expr) => {
+  ($is_sync:expr, $fn:expr) => {
     if $is_sync {
       // If synchronous, execute the function immediately on the main thread.
       Box::new(futures::future::result($fn()))
@@ -892,7 +893,8 @@ fn op_read_dir(
             ..Default::default()
           },
         )
-      }).collect();
+      })
+      .collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(

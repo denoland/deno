@@ -88,7 +88,7 @@ impl Metrics {
     Metrics {
       ops_executed: 0,
       bytes_recv: 0,
-      bytes_sent: 0
+      bytes_sent: 0,
     }
   }
 
@@ -294,8 +294,8 @@ extern "C" fn pre_dispatch(
     // manually.
     isolate.ntasks_increment();
 
-    let task = op
-      .and_then(move |buf| {
+    let task =
+      op.and_then(move |buf| {
         let bytes_sent = buf.len() as u64;
         state.send_to_js(req_id, buf);
         state.update_metrics(bytes_recv as u64, bytes_sent);
@@ -351,7 +351,8 @@ mod tests {
             throw Error("assert error");
           }
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
       isolate.event_loop();
     });
   }
@@ -394,7 +395,8 @@ mod tests {
           const data = new Uint8Array([42, 43, 44, 45, 46]);
           libdeno.send(control, data);
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
       isolate.event_loop();
       let g = isolate.state.metrics.lock().unwrap();
       let metrics = g.deref();
