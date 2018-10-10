@@ -331,6 +331,7 @@ fn recv_deadline<T>(
 mod tests {
   use super::*;
   use futures;
+  use std::ops::Deref;
 
   #[test]
   fn test_dispatch_sync() {
@@ -365,6 +366,40 @@ mod tests {
     assert_eq!(control[2], 6);
     assert_eq!(data.len(), 0);
     // Send back some sync response.
+    let vec: Vec<u8> = vec![1, 2, 3];
+    let control = vec.into_boxed_slice();
+    let op = Box::new(futures::future::ok(control));
+    (true, op)
+  }
+
+  #[test]
+  fn test_metrics() {
+    let argv = vec![String::from("./deno"), String::from("hello.js")];
+    let mut isolate = Isolate::new(argv, metrics_dispatch);
+    tokio_util::init(|| {
+      isolate
+        .execute(
+          "y.js",
+          r#"
+          const m = new Uint8Array([4, 5, 6]);
+          libdeno.send(m, m);
+        "#,
+        ).expect("execute error");
+      isolate.event_loop();
+      let g = isolate.state.metrics.lock().unwrap();
+      let metrics = g.deref();
+      assert_eq!(metrics.ops_executed, 1);
+      assert_eq!(metrics.bytes_sent, 3);
+      assert_eq!(metrics.bytes_recv, 3);
+    });
+  }
+
+  fn metrics_dispatch(
+    _isolate: &mut Isolate,
+    _control: &[u8],
+    _data: &'static mut [u8],
+  ) -> (bool, Box<Op>) {
+    // Send back some sync response
     let vec: Vec<u8> = vec![1, 2, 3];
     let control = vec.into_boxed_slice();
     let op = Box::new(futures::future::ok(control));
