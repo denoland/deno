@@ -32,6 +32,7 @@ run(["yapf", "-i"] + glob("tools/*.py") + find_exts("build_extra", ".py"))
 run(["node", prettier, "--write"] +
     ["rollup.config.js"] + glob("*.json") + glob("*.md") +
     find_exts(".github/", ".md") +
+    find_exts("tools/", ".js", ".ts",".md") +
     find_exts("js/", ".js", ".ts", ".md") +
     find_exts("tests/", ".js", ".ts", ".md") +
     find_exts("website/", ".js", ".ts", ".md"))
