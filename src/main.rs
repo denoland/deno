@@ -26,7 +26,7 @@ mod deno_dir;
 mod errors;
 mod flags;
 mod fs;
-mod http;
+mod http_util;
 mod isolate;
 mod libdeno;
 pub mod ops;
