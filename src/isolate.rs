@@ -377,6 +377,15 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let mut isolate = Isolate::new(argv, metrics_dispatch);
     tokio_util::init(|| {
+      // verify that metrics have been properly initialized
+      {
+        let g = isolate.state.metrics.lock().unwrap();
+        let metrics = g.deref();
+        assert_eq!(metrics.ops_executed, 0);
+        assert_eq!(metrics.bytes_sent, 0);
+        assert_eq!(metrics.bytes_recv, 0);
+      }
+
       isolate
         .execute(
           "y.js",
