@@ -24,8 +24,8 @@ use remove_dir_all::remove_dir_all;
 use std;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
-#[cfg(any(unix))]
 use std::ops::Deref;
+#[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
