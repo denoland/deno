@@ -23,6 +23,7 @@ typedef struct deno_s Deno;
 // A callback to receive a message from a libdeno.send() javascript call.
 // control_buf is valid for only for the lifetime of this callback.
 // data_buf is valid until deno_respond() is called.
+// TODO Remove deno_recv_cb it is unused.
 typedef void (*deno_recv_cb)(void* user_data, int32_t req_id,
                              deno_buf control_buf, deno_buf data_buf);
 
@@ -59,7 +60,7 @@ int deno_execute(Deno* d, void* user_data, const char* js_filename,
 // libdeno.recv() callback. Check deno_last_exception() for exception text.
 int deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf);
 
-void deno_check_promise_errors(Deno* d);
+void deno_run_microtasks(Deno* d);
 
 const char* deno_last_exception(Deno* d);
 

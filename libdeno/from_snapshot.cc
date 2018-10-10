@@ -45,9 +45,7 @@ void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
 
 Deno* NewFromSnapshot(deno_recv_cb cb) {
   Deno* d = new Deno;
-  d->currentArgs = nullptr;
   d->cb = cb;
-  d->user_data = nullptr;
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();

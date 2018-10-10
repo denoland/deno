@@ -28,9 +28,7 @@ Deno* NewFromFileSystem(deno_recv_cb cb) {
   CHECK(deno::ReadFileToString(js_source_map_path.c_str(), &js_source_map));
 
   Deno* d = new Deno;
-  d->currentArgs = nullptr;
   d->cb = cb;
-  d->user_data = nullptr;
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();

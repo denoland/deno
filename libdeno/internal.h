@@ -10,12 +10,11 @@ extern "C" {
 // deno_s = Wrapped Isolate.
 struct deno_s {
   v8::Isolate* isolate;
-  const v8::FunctionCallbackInfo<v8::Value>* currentArgs;
+  const v8::FunctionCallbackInfo<v8::Value>* current_args;
   std::string last_exception;
   v8::Persistent<v8::Function> recv;
   v8::Persistent<v8::Function> global_error_handler;
   v8::Persistent<v8::Function> promise_reject_handler;
-  v8::Persistent<v8::Function> promise_error_examiner;
 
   v8::Persistent<v8::ArrayBuffer> global_import_buf;
   void* global_import_buf_ptr;
@@ -24,6 +23,7 @@ struct deno_s {
   v8::Persistent<v8::Context> context;
   v8::Persistent<v8::Map> async_data_map;
   deno_recv_cb cb;
+  int32_t current_req_id;
   int32_t next_req_id;
   void* user_data;
 };
@@ -38,16 +38,18 @@ struct InternalFieldData {
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
+void RunMicrotasks(const v8::FunctionCallbackInfo<v8::Value>& args);
+void Exit(const v8::FunctionCallbackInfo<v8::Value>& args);
 void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args);
 void SetPromiseRejectHandler(const v8::FunctionCallbackInfo<v8::Value>& args);
-void SetPromiseErrorExaminer(const v8::FunctionCallbackInfo<v8::Value>& args);
 static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print),
     reinterpret_cast<intptr_t>(Recv),
     reinterpret_cast<intptr_t>(Send),
+    reinterpret_cast<intptr_t>(RunMicrotasks),
+    reinterpret_cast<intptr_t>(Exit),
     reinterpret_cast<intptr_t>(SetGlobalErrorHandler),
     reinterpret_cast<intptr_t>(SetPromiseRejectHandler),
-    reinterpret_cast<intptr_t>(SetPromiseErrorExaminer),
     0};
 
 Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);

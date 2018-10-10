@@ -1,10 +1,10 @@
 union Any {
+  Poll,
   Start,
   StartRes,
   CodeFetch,
   CodeFetchRes,
   CodeCache,
-  SetTimeout,
   Exit,
   Environ,
   EnvironRes,
@@ -110,6 +110,10 @@ table Base {
   inner: Any;
 }
 
+table Poll {
+  delay: double;
+}
+
 table Start {
   unused: int8;
 }
@@ -149,10 +153,6 @@ table CodeCache {
 
 table Chdir {
   directory: string;
-}
-
-table SetTimeout {
-  timeout: double;
 }
 
 table Exit {

@@ -1,8 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { assert } from "./util";
-import * as msg from "gen/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import { sendSync, setFireTimersCallback } from "./dispatch";
+import { setFireTimersCallback } from "./dispatch";
 
 // Tell the dispatcher which function it should call to fire timers that are
 // due. This is done using a callback because circular imports are disallowed.
@@ -14,7 +12,6 @@ interface Timer {
   delay: number;
   due: number;
   repeat: boolean;
-  scheduled: boolean;
 }
 
 // We'll subtract EPOCH every time we retrieve the time with Date.now(). This
@@ -24,8 +21,6 @@ interface Timer {
 // TODO(piscisaureus): fix that ^.
 const EPOCH = Date.now();
 const APOCALYPS = 2 ** 32 - 2;
-
-let globalTimeoutDue: number | null = null;
 
 let nextTimerId = 1;
 const idMap = new Map<number, Timer>();
@@ -38,32 +33,7 @@ function getTime() {
   return now;
 }
 
-function setGlobalTimeout(due: number | null, now: number) {
-  // Since JS and Rust don't use the same clock, pass the time to rust as a
-  // relative time value. On the Rust side we'll turn that into an absolute
-  // value again.
-  // Note that a negative time-out value stops the global timer.
-  let timeout;
-  if (due === null) {
-    timeout = -1;
-  } else {
-    timeout = due - now;
-    assert(timeout >= 0);
-  }
-  // Send message to the backend.
-  const builder = flatbuffers.createBuilder();
-  msg.SetTimeout.startSetTimeout(builder);
-  msg.SetTimeout.addTimeout(builder, timeout);
-  const inner = msg.SetTimeout.endSetTimeout(builder);
-  const res = sendSync(builder, msg.Any.SetTimeout, inner);
-  assert(res == null);
-  // Remember when when the global timer will fire.
-  globalTimeoutDue = due;
-}
-
-function schedule(timer: Timer, now: number) {
-  assert(!timer.scheduled);
-  assert(now <= timer.due);
+function schedule(timer: Timer) {
   // Find or create the list of timers that will fire at point-in-time `due`.
   let list = dueMap[timer.due];
   if (list === undefined) {
@@ -71,34 +41,19 @@ function schedule(timer: Timer, now: number) {
   }
   // Append the newly scheduled timer to the list and mark it as scheduled.
   list.push(timer);
-  timer.scheduled = true;
-  // If the new timer is scheduled to fire before any timer that existed before,
-  // update the global timeout to reflect this.
-  if (globalTimeoutDue === null || globalTimeoutDue > timer.due) {
-    setGlobalTimeout(timer.due, now);
-  }
 }
 
 function unschedule(timer: Timer) {
-  if (!timer.scheduled) {
-    return;
-  }
+  idMap.delete(timer.id);
   // Find the list of timers that will fire at point-in-time `due`.
   const list = dueMap[timer.due];
+  if (list == null) {
+    return;
+  }
   if (list.length === 1) {
     // Time timer is the only one in the list. Remove the entire list.
     assert(list[0] === timer);
     delete dueMap[timer.due];
-    // If the unscheduled timer was 'next up', find when the next timer that
-    // still exists is due, and update the global alarm accordingly.
-    if (timer.due === globalTimeoutDue) {
-      let nextTimerDue: number | null = null;
-      for (const key in dueMap) {
-        nextTimerDue = Number(key);
-        break;
-      }
-      setGlobalTimeout(nextTimerDue, getTime());
-    }
   } else {
     // Multiple timers that are due at the same point in time.
     // Remove this timer from the list.
@@ -120,10 +75,8 @@ function fire(timer: Timer) {
     idMap.delete(timer.id);
   } else {
     // Interval timer: compute when timer was supposed to fire next.
-    // However make sure to never schedule the next interval in the past.
-    const now = getTime();
-    timer.due = Math.max(now, timer.due + timer.delay);
-    schedule(timer, now);
+    timer.due = timer.due + timer.delay;
+    schedule(timer);
   }
   // Call the user callback. Intermediate assignment is to avoid leaking `this`
   // to it, while also keeping the stack trace neat when it shows up in there.
@@ -131,15 +84,11 @@ function fire(timer: Timer) {
   callback();
 }
 
-function fireTimers() {
+// Returns negative number  if there are no pending timers.
+// Returns positive number indicating the number of milliseconds that must
+// be waited until the next timer will fire.
+function fireTimers(): number {
   const now = getTime();
-  // Bail out if we're not expecting the global timer to fire (yet).
-  if (globalTimeoutDue === null || now < globalTimeoutDue) {
-    return;
-  }
-  // After firing the timers that are due now, this will hold the due time of
-  // the first timer that hasn't fired yet.
-  let nextTimerDue: number | null = null;
   // Walk over the keys of the 'due' map. Since dueMap is actually a regular
   // object and its keys are numerical and smaller than UINT32_MAX - 2,
   // keys are iterated in ascending order.
@@ -147,24 +96,18 @@ function fireTimers() {
     // Convert the object key (a string) to a number.
     const due = Number(key);
     // Break out of the loop if the next timer isn't due to fire yet.
-    if (Number(due) > now) {
-      nextTimerDue = due;
-      break;
+    if (due > now) {
+      return due - now;
     }
     // Get the list of timers that have this due time, then drop it.
     const list = dueMap[key];
     delete dueMap[key];
     // Fire all the timers in the list.
     for (const timer of list) {
-      // With the list dropped, the timer is no longer scheduled.
-      timer.scheduled = false;
-      // Place the callback on the microtask queue.
-      Promise.resolve(timer).then(fire);
+      fire(timer);
     }
   }
-  // Update the global alarm to go off when the first-up timer that hasn't fired
-  // yet is due.
-  setGlobalTimeout(nextTimerDue, now);
+  return -1; // Wait forever.
 }
 
 function setTimer<Args extends Array<unknown>>(
@@ -187,13 +130,12 @@ function setTimer<Args extends Array<unknown>>(
     args,
     delay,
     due: now + delay,
-    repeat,
-    scheduled: false
+    repeat
   };
   // Register the timer's existence in the id-to-timer map.
   idMap.set(timer.id, timer);
   // Schedule the timer in the due table.
-  schedule(timer, now);
+  schedule(timer);
   return timer.id;
 }
 
@@ -224,5 +166,4 @@ export function clearTimer(id: number): void {
   }
   // Unschedule the timer if it is currently scheduled, and forget about it.
   unschedule(timer);
-  idMap.delete(timer.id);
 }

@@ -5,35 +5,86 @@ import * as msg from "gen/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
 import { maybePushTrace } from "./trace";
+import { promiseErrorExaminer } from "./promise_util";
 
 let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
-let fireTimers: () => void;
+let fireTimers: () => number;
+let nTasks = 0; // Number of async tasks pending.
+let delay = 0; // Cached return value of fireTimers.
 
-export function setFireTimersCallback(fn: () => void) {
+function eventLoopLog(): void {
+  util.log(`TICK delay ${delay} nTasks ${nTasks}`);
+}
+
+function idle(): boolean {
+  delay = fireTimers();
+  return delay < 0 && nTasks === 0;
+}
+
+export function eventLoop(): boolean {
+  for (;;) {
+    if (idle()) {
+      libdeno.runMicrotasks();
+      if (idle()) {
+        break;
+      }
+    }
+    eventLoopLog();
+    const ui8 = poll(delay);
+    if (ui8 != null) {
+      handleAsyncMsgFromRust(ui8);
+      libdeno.runMicrotasks();
+    }
+  }
+  return promiseErrorExaminer();
+}
+
+// delay is in milliseconds.
+// delay < 0 hangs forever.
+// WARNING: poll is a special op. Messages returned from poll will
+// not have the same cmd_id.
+// WARNING: poll does not go thru sendSync or sendAsync. It is not a real op.
+export function poll(delay: number): null | Uint8Array {
+  const builder = flatbuffers.createBuilder();
+  msg.Poll.startPoll(builder);
+  msg.Poll.addDelay(builder, delay);
+  const inner = msg.Poll.endPoll(builder);
+  const innerType = msg.Any.Poll;
+  const [pollCmdId, resBuf] = sendInternal(
+    builder,
+    innerType,
+    inner,
+    undefined,
+    true
+  );
+  util.assert(pollCmdId > 0);
+  return resBuf;
+}
+
+export function setFireTimersCallback(fn: () => number) {
   fireTimers = fn;
 }
 
 export function handleAsyncMsgFromRust(ui8: Uint8Array) {
-  // If a the buffer is empty, recv() on the native side timed out and we
-  // did not receive a message.
-  if (ui8.length) {
-    const bb = new flatbuffers.ByteBuffer(ui8);
-    const base = msg.Base.getRootAsBase(bb);
-    const cmdId = base.cmdId();
-    const promise = promiseTable.get(cmdId);
-    util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
-    promiseTable.delete(cmdId);
-    const err = errors.maybeError(base);
-    if (err != null) {
-      promise!.reject(err);
-    } else {
-      promise!.resolve(base);
-    }
+  const bb = new flatbuffers.ByteBuffer(ui8);
+  const base = msg.Base.getRootAsBase(bb);
+  const cmdId = base.cmdId();
+  util.log(
+    `handleAsyncMsgFromRust cmdId ${cmdId} ${msg.Any[base.innerType()]}`
+  );
+  const promise = promiseTable.get(cmdId);
+  util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
+  promiseTable.delete(cmdId);
+  const err = errors.maybeError(base);
+  if (err != null) {
+    promise!.reject(err);
+  } else {
+    promise!.resolve(base);
   }
-  // Fire timers that have become runnable.
-  fireTimers();
+  util.assert(nTasks > 0);
+  nTasks--;
 }
 
 // @internal
@@ -44,6 +95,8 @@ export function sendAsync(
   data?: ArrayBufferView
 ): Promise<msg.Base> {
   maybePushTrace(innerType, false); // add to trace if tracing
+  util.assert(nTasks >= 0);
+  nTasks++;
   const [cmdId, resBuf] = sendInternal(builder, innerType, inner, data, false);
   util.assert(resBuf == null);
   const promise = util.createResolvable<msg.Base>();
@@ -61,6 +114,8 @@ export function sendSync(
   maybePushTrace(innerType, true); // add to trace if tracing
   const [cmdId, resBuf] = sendInternal(builder, innerType, inner, data, true);
   util.assert(cmdId >= 0);
+  // WARNING: in the case of poll() cmdId may not be the same in the outgoing
+  // message.
   if (resBuf == null) {
     return null;
   } else {

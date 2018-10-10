@@ -8,6 +8,7 @@ use deno_dir;
 use errors::DenoError;
 use flags;
 use libdeno;
+use ops::empty_buf;
 
 use futures::Future;
 use libc::c_void;
@@ -20,7 +21,6 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
-use std::time::Instant;
 use tokio;
 use tokio_util;
 
@@ -45,8 +45,6 @@ pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
-  ntasks: i32,
-  pub timeout_due: Option<Instant>,
   pub state: Arc<IsolateState>,
 }
 
@@ -126,8 +124,6 @@ impl Isolate {
       libdeno_isolate,
       dispatch,
       rx,
-      ntasks: 0,
-      timeout_due: None,
       state: Arc::new(IsolateState {
         dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
         argv: argv_rest,
@@ -171,7 +167,6 @@ impl Isolate {
   }
 
   pub fn respond(&mut self, req_id: i32, buf: Buf) {
-    self.state.metrics_op_completed(buf.len() as u64);
     // TODO(zero-copy) Use Buf::leak(buf) to leak the heap allocated buf. And
     // don't do the memcpy in ImportBuf() (in libdeno/binding.cc)
     unsafe {
@@ -184,71 +179,40 @@ impl Isolate {
     }
   }
 
-  fn complete_op(&mut self, req_id: i32, buf: Buf) {
-    // Receiving a message on rx exactly corresponds to an async task
-    // completing.
-    self.ntasks_decrement();
-    // Call into JS with the buf.
-    self.respond(req_id, buf);
+  #[allow(dead_code)]
+  fn run_microtasks(&self) {
+    unsafe { libdeno::deno_run_microtasks(self.libdeno_isolate) }
   }
 
-  fn timeout(&mut self) {
-    let dummy_buf = libdeno::deno_buf {
-      alloc_ptr: 0 as *mut u8,
-      alloc_len: 0,
-      data_ptr: 0 as *mut u8,
-      data_len: 0,
-    };
-    unsafe {
-      libdeno::deno_respond(
-        self.libdeno_isolate,
-        self.as_void_ptr(),
-        -1,
-        dummy_buf,
-      )
-    }
-  }
-
-  fn check_promise_errors(&self) {
-    unsafe {
-      libdeno::deno_check_promise_errors(self.libdeno_isolate);
-    }
-  }
-
-  // TODO Use Park abstraction? Note at time of writing Tokio default runtime
-  // does not have new_with_park().
-  pub fn event_loop(&mut self) {
-    // Main thread event loop.
-    while !self.is_idle() {
-      match recv_deadline(&self.rx, self.timeout_due) {
-        Ok((req_id, buf)) => self.complete_op(req_id, buf),
-        Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
-        Err(e) => panic!("recv_deadline() failed: {:?}", e),
+  pub fn poll(&mut self, delay: i64) -> Buf {
+    debug!("Isolate::poll {:?}", delay);
+    let buf = match recv_maybe_timeout(&self.rx, delay) {
+      Ok((_req_id, buf)) => {
+        self.state.metrics_op_completed(buf.len() as u64);
+        buf
       }
-      self.check_promise_errors();
-    }
-    // Check on done
-    self.check_promise_errors();
-  }
-
-  fn ntasks_increment(&mut self) {
-    assert!(self.ntasks >= 0);
-    self.ntasks = self.ntasks + 1;
-  }
-
-  fn ntasks_decrement(&mut self) {
-    self.ntasks = self.ntasks - 1;
-    assert!(self.ntasks >= 0);
-  }
-
-  fn is_idle(&self) -> bool {
-    self.ntasks == 0 && self.timeout_due.is_none()
+      Err(mpsc::RecvTimeoutError::Timeout) => empty_buf(),
+      Err(e) => panic!("recv_deadline() failed: {:?}", e),
+    };
+    buf
   }
 }
 
 impl Drop for Isolate {
   fn drop(&mut self) {
     unsafe { libdeno::deno_delete(self.libdeno_isolate) }
+  }
+}
+
+fn recv_maybe_timeout<T>(
+  rx: &mpsc::Receiver<T>,
+  delay: i64,
+) -> Result<T, mpsc::RecvTimeoutError> {
+  if delay < 0 {
+    rx.recv().map_err(|e| e.into())
+  } else {
+    let duration = Duration::from_millis(delay as u64);
+    rx.recv_timeout(duration)
   }
 }
 
@@ -304,6 +268,7 @@ extern "C" fn pre_dispatch(
     // Execute op synchronously.
     let buf = tokio_util::block_on(op).unwrap();
     let buf_size = buf.len();
+    isolate.state.metrics_op_completed(buf_size as u64);
     if buf_size != 0 {
       // Set the synchronous response, the value returned from isolate.send().
       isolate.respond(req_id, buf);
@@ -312,39 +277,12 @@ extern "C" fn pre_dispatch(
     // Execute op asynchronously.
     let state = Arc::clone(&isolate.state);
 
-    // TODO Ideally Tokio would could tell us how many tasks are executing, but
-    // it cannot currently. Therefore we track top-level promises/tasks
-    // manually.
-    isolate.ntasks_increment();
-
     let task = op
       .and_then(move |buf| {
         state.send_to_js(req_id, buf);
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);
-  }
-}
-
-fn recv_deadline<T>(
-  rx: &mpsc::Receiver<T>,
-  maybe_due: Option<Instant>,
-) -> Result<T, mpsc::RecvTimeoutError> {
-  match maybe_due {
-    None => rx.recv().map_err(|e| e.into()),
-    Some(due) => {
-      // Subtracting two Instants causes a panic if the resulting duration
-      // would become negative. Avoid this.
-      let now = Instant::now();
-      let timeout = if due > now {
-        due - now
-      } else {
-        Duration::new(0, 0)
-      };
-      // TODO: use recv_deadline() instead of recv_timeout() when this
-      // feature becomes stable/available.
-      rx.recv_timeout(timeout)
-    }
   }
 }
 
@@ -373,7 +311,8 @@ mod tests {
           }
         "#,
         ).expect("execute error");
-      isolate.event_loop();
+      let msg = isolate.poll(0);
+      assert_eq!(msg.len(), 0);
     });
   }
 
@@ -418,7 +357,7 @@ mod tests {
           libdeno.send(control, data);
         "#,
         ).expect("execute error");
-      isolate.event_loop();
+      isolate.poll(0);
       let metrics = isolate.state.metrics.lock().unwrap();
       assert_eq!(metrics.ops_dispatched, 1);
       assert_eq!(metrics.ops_completed, 1);
@@ -466,7 +405,8 @@ mod tests {
         // with metrics_dispatch_async() to properly validate them.
       }
 
-      isolate.event_loop();
+      let buf = isolate.poll(-1);
+      assert_eq!(buf.len(), 4);
 
       // Make sure relevant metrics are updated after task is executed.
       {

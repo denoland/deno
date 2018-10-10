@@ -32,7 +32,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
-use std::time::{Duration, Instant};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -48,7 +47,7 @@ type OpCreator =
     -> Box<Op>;
 
 // Hopefully Rust optimizes this away.
-fn empty_buf() -> Buf {
+pub fn empty_buf() -> Buf {
   Box::new([])
 }
 
@@ -66,52 +65,53 @@ pub fn dispatch(
   let inner_type = base.inner_type();
   let cmd_id = base.cmd_id();
 
-  let op: Box<Op> = if inner_type == msg::Any::SetTimeout {
-    // SetTimeout is an exceptional op: the global timeout field is part of the
+  if inner_type == msg::Any::Poll {
+    // Poll is an exceptional op: the global timeout field is part of the
     // Isolate state (not the IsolateState state) and it must be updated on the
     // main thread.
     assert_eq!(is_sync, true);
-    op_set_timeout(isolate, &base, data)
-  } else {
-    // Handle regular ops.
-    let op_creator: OpCreator = match inner_type {
-      msg::Any::Start => op_start,
-      msg::Any::CodeFetch => op_code_fetch,
-      msg::Any::CodeCache => op_code_cache,
-      msg::Any::Environ => op_env,
-      msg::Any::FetchReq => op_fetch_req,
-      msg::Any::MakeTempDir => op_make_temp_dir,
-      msg::Any::Mkdir => op_mkdir,
-      msg::Any::Open => op_open,
-      msg::Any::Read => op_read,
-      msg::Any::Write => op_write,
-      msg::Any::Close => op_close,
-      msg::Any::Shutdown => op_shutdown,
-      msg::Any::Remove => op_remove,
-      msg::Any::ReadFile => op_read_file,
-      msg::Any::ReadDir => op_read_dir,
-      msg::Any::Rename => op_rename,
-      msg::Any::Readlink => op_read_link,
-      msg::Any::Symlink => op_symlink,
-      msg::Any::SetEnv => op_set_env,
-      msg::Any::Stat => op_stat,
-      msg::Any::Truncate => op_truncate,
-      msg::Any::WriteFile => op_write_file,
-      msg::Any::Exit => op_exit,
-      msg::Any::CopyFile => op_copy_file,
-      msg::Any::Listen => op_listen,
-      msg::Any::Accept => op_accept,
-      msg::Any::Dial => op_dial,
-      msg::Any::Chdir => op_chdir,
-      msg::Any::Cwd => op_cwd,
-      msg::Any::Metrics => op_metrics,
-      _ => panic!(format!(
-        "Unhandled message {}",
-        msg::enum_name_any(inner_type)
-      )),
-    };
-    op_creator(isolate.state.clone(), &base, data)
+    let op = op_poll(isolate, &base, data);
+    return (true, op);
+  }
+
+  // Handle regular ops.
+  let op_creator: OpCreator = match inner_type {
+    msg::Any::Start => op_start,
+    msg::Any::CodeFetch => op_code_fetch,
+    msg::Any::CodeCache => op_code_cache,
+    msg::Any::Environ => op_env,
+    msg::Any::FetchReq => op_fetch_req,
+    msg::Any::MakeTempDir => op_make_temp_dir,
+    msg::Any::Mkdir => op_mkdir,
+    msg::Any::Open => op_open,
+    msg::Any::Read => op_read,
+    msg::Any::Write => op_write,
+    msg::Any::Close => op_close,
+    msg::Any::Shutdown => op_shutdown,
+    msg::Any::Remove => op_remove,
+    msg::Any::ReadFile => op_read_file,
+    msg::Any::ReadDir => op_read_dir,
+    msg::Any::Rename => op_rename,
+    msg::Any::Readlink => op_read_link,
+    msg::Any::Symlink => op_symlink,
+    msg::Any::SetEnv => op_set_env,
+    msg::Any::Stat => op_stat,
+    msg::Any::Truncate => op_truncate,
+    msg::Any::WriteFile => op_write_file,
+    msg::Any::Exit => op_exit,
+    msg::Any::CopyFile => op_copy_file,
+    msg::Any::Listen => op_listen,
+    msg::Any::Accept => op_accept,
+    msg::Any::Dial => op_dial,
+    msg::Any::Chdir => op_chdir,
+    msg::Any::Cwd => op_cwd,
+    msg::Any::Metrics => op_metrics,
+    _ => panic!(format!(
+      "Unhandled message {}",
+      msg::enum_name_any(inner_type)
+    )),
   };
+  let op: Box<Op> = op_creator(isolate.state.clone(), &base, data);
 
   let boxed_op = Box::new(
     op.or_else(move |err: DenoError| -> DenoResult<Buf> {
@@ -150,11 +150,22 @@ pub fn dispatch(
   );
 
   debug!(
-    "msg_from_js {} sync {}",
+    "dispatch {} sync {}",
     msg::enum_name_any(inner_type),
     base.sync()
   );
   return (base.sync(), boxed_op);
+}
+
+fn op_poll(
+  isolate: &mut Isolate,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_poll().unwrap();
+  let delay = inner.delay() as i64;
+  ok_future(isolate.poll(delay))
 }
 
 fn op_exit(
@@ -307,22 +318,6 @@ fn op_chdir(
     let _result = std::env::set_current_dir(&directory)?;
     Ok(empty_buf())
   }()))
-}
-
-fn op_set_timeout(
-  isolate: &mut Isolate,
-  base: &msg::Base,
-  data: &'static mut [u8],
-) -> Box<Op> {
-  assert_eq!(data.len(), 0);
-  let inner = base.inner_as_set_timeout().unwrap();
-  let val = inner.timeout() as i64;
-  isolate.timeout_due = if val >= 0 {
-    Some(Instant::now() + Duration::from_millis(val as u64))
-  } else {
-    None
-  };
-  ok_future(empty_buf())
 }
 
 fn op_set_env(

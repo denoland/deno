@@ -143,9 +143,6 @@ global.PromiseRejectCatchHandling = () => {
       libdeno.send(new Uint8Array([42]));
     }
   }
-  libdeno.setPromiseErrorExaminer(() => {
-    assertOrSend(count === 2);
-  });
   libdeno.setPromiseRejectHandler((error, event, promise) => {
     count++;
     if (event === "RejectWithNoHandler") {

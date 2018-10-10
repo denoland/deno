@@ -78,9 +78,8 @@ fn main() {
     isolate
       .execute("deno_main.js", "denoMain();")
       .unwrap_or_else(|err| {
-        error!("{}", err);
+        debug!("{}", err);
         std::process::exit(1);
       });
-    isolate.event_loop();
   });
 }

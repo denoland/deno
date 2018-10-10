@@ -6,9 +6,9 @@ import * as os from "./os";
 import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
-import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
-import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
+import { promiseRejectHandler } from "./promise_util";
 import { version } from "typescript";
+import { eventLoop, sendSync } from "./dispatch";
 
 function sendStart(): msg.StartRes {
   const builder = flatbuffers.createBuilder();
@@ -39,10 +39,9 @@ function onGlobalError(
 
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
-  libdeno.recv(handleAsyncMsgFromRust);
+  libdeno.recv(_ => assert(false && "recv callback is used. see poll()"));
   libdeno.setGlobalErrorHandler(onGlobalError);
   libdeno.setPromiseRejectHandler(promiseRejectHandler);
-  libdeno.setPromiseErrorExaminer(promiseErrorExaminer);
   const compiler = DenoCompiler.instance();
 
   // First we send an empty "Start" message to let the privileged side know we
@@ -94,4 +93,11 @@ export default function denoMain() {
 
   compiler.recompile = startResMsg.recompileFlag();
   compiler.run(inputFn, `${cwd}/`);
+
+  const r = eventLoop();
+  if (!r) {
+    // TODO Remove libdeno.exit() and instead return the error code from
+    // denoMain(). The trick is to properly pass this value thru deno_execute().
+    libdeno.exit(1);
+  }
 }
