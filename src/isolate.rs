@@ -79,6 +79,7 @@ impl IsolateState {
   }
 }
 
+#[derive(Default)]
 pub struct Metrics {
   // these are metrics as seen from JS side perspective
   pub ops_executed: u64,
@@ -88,15 +89,6 @@ pub struct Metrics {
 }
 
 impl Metrics {
-  pub fn new() -> Metrics {
-    Metrics {
-      ops_executed: 0,
-      control_bytes_sent: 0,
-      data_bytes_sent: 0,
-      bytes_received: 0,
-    }
-  }
-
   fn update(
     &mut self,
     control_bytes_sent: u64,
@@ -134,7 +126,7 @@ impl Isolate {
         argv: argv_rest,
         flags,
         tx: Mutex::new(Some(tx)),
-        metrics: Mutex::new(Metrics::new()),
+        metrics: Mutex::new(Metrics::default()),
       }),
     }
   }
@@ -296,8 +288,11 @@ extern "C" fn pre_dispatch(
       isolate.respond(req_id, buf);
     }
 
-    let state = Arc::clone(&isolate.state);
-    state.update_metrics(control_bytes_sent, data_bytes_sent, buf_size as u64);
+    isolate.state.update_metrics(
+      control_bytes_sent,
+      data_bytes_sent,
+      buf_size as u64,
+    );
   } else {
     // Execute op asynchronously.
     let state = Arc::clone(&isolate.state);
