@@ -184,6 +184,7 @@ fn op_start(
       argv: Some(argv_off),
       debug_flag: state.flags.log_debug,
       recompile_flag: state.flags.recompile,
+      types_flag: state.flags.types_flag,
       ..Default::default()
     },
   );
