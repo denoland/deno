@@ -69,33 +69,47 @@ impl IsolateState {
     tx.send((req_id, buf)).expect("tx.send error");
   }
 
-  fn update_metrics(&self, bytes_recv: u64, bytes_sent: u64) {
+  fn update_metrics(
+    &self,
+    control_bytes_sent: u64,
+    data_bytes_sent: u64,
+    bytes_received: u64,
+  ) {
     let mut g = self.metrics.lock().unwrap();
     let metrics = g.deref_mut();
 
-    metrics.update(bytes_recv, bytes_sent);
+    metrics.update(control_bytes_sent, data_bytes_sent, bytes_received);
   }
 }
 
 pub struct Metrics {
+  // these are metrics as seen from JS side perspective
   pub ops_executed: u64,
-  pub bytes_recv: u64,
-  pub bytes_sent: u64,
+  pub control_bytes_sent: u64,
+  pub data_bytes_sent: u64,
+  pub bytes_received: u64,
 }
 
 impl Metrics {
   pub fn new() -> Metrics {
     Metrics {
       ops_executed: 0,
-      bytes_recv: 0,
-      bytes_sent: 0,
+      control_bytes_sent: 0,
+      data_bytes_sent: 0,
+      bytes_received: 0,
     }
   }
 
-  fn update(&mut self, bytes_recv: u64, bytes_sent: u64) {
+  fn update(
+    &mut self,
+    control_bytes_sent: u64,
+    data_bytes_sent: u64,
+    bytes_received: u64,
+  ) {
     self.ops_executed += 1;
-    self.bytes_recv += bytes_recv;
-    self.bytes_sent += bytes_sent;
+    self.control_bytes_sent += control_bytes_sent;
+    self.data_bytes_sent += data_bytes_sent;
+    self.bytes_received += bytes_received;
   }
 }
 
@@ -253,6 +267,10 @@ extern "C" fn pre_dispatch(
   control_buf: libdeno::deno_buf,
   data_buf: libdeno::deno_buf,
 ) {
+  // for metrics
+  let control_bytes_sent = control_buf.data_len as u64;
+  let data_bytes_sent = data_buf.data_len as u64;
+
   // control_buf is only valid for the lifetime of this call, thus is
   // interpretted as a slice.
   let control_slice = unsafe {
@@ -268,8 +286,6 @@ extern "C" fn pre_dispatch(
     )
   };
 
-  let bytes_recv = data_buf.data_len as u64;
-
   let isolate = Isolate::from_void_ptr(user_data);
   let dispatch = isolate.dispatch;
   let (is_sync, op) = dispatch(isolate, control_slice, data_slice);
@@ -284,7 +300,7 @@ extern "C" fn pre_dispatch(
     }
 
     let state = Arc::clone(&isolate.state);
-    state.update_metrics(bytes_recv, buf_size as u64);
+    state.update_metrics(control_bytes_sent, data_bytes_sent, buf_size as u64);
   } else {
     // Execute op asynchronously.
     let state = Arc::clone(&isolate.state);
@@ -296,9 +312,13 @@ extern "C" fn pre_dispatch(
 
     let task =
       op.and_then(move |buf| {
-        let bytes_sent = buf.len() as u64;
+        let buf_size = buf.len();
         state.send_to_js(req_id, buf);
-        state.update_metrics(bytes_recv as u64, bytes_sent);
+        state.update_metrics(
+          control_bytes_sent,
+          data_bytes_sent,
+          buf_size as u64,
+        );
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);
@@ -374,7 +394,7 @@ mod tests {
   }
 
   #[test]
-  fn test_metrics() {
+  fn test_metrics_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let mut isolate = Isolate::new(argv, metrics_dispatch);
     tokio_util::init(|| {
@@ -383,8 +403,9 @@ mod tests {
         let g = isolate.state.metrics.lock().unwrap();
         let metrics = g.deref();
         assert_eq!(metrics.ops_executed, 0);
-        assert_eq!(metrics.bytes_sent, 0);
-        assert_eq!(metrics.bytes_recv, 0);
+        assert_eq!(metrics.control_bytes_sent, 0);
+        assert_eq!(metrics.data_bytes_sent, 0);
+        assert_eq!(metrics.bytes_received, 0);
       }
 
       isolate
@@ -401,8 +422,9 @@ mod tests {
       let g = isolate.state.metrics.lock().unwrap();
       let metrics = g.deref();
       assert_eq!(metrics.ops_executed, 1);
-      assert_eq!(metrics.bytes_recv, 5);
-      assert_eq!(metrics.bytes_sent, 4);
+      assert_eq!(metrics.control_bytes_sent, 3);
+      assert_eq!(metrics.data_bytes_sent, 5);
+      assert_eq!(metrics.bytes_received, 4);
     });
   }
 

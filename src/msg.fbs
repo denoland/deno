@@ -327,8 +327,9 @@ table Metrics {}
 
 table MetricsRes {
   ops_executed: uint64;
-  bytes_recv: uint64;
-  bytes_sent: uint64;
+  control_bytes_sent: uint64;
+  data_bytes_sent: uint64;
+  bytes_received: uint64;
 }
 
 root_type Base;

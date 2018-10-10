@@ -6,8 +6,9 @@ import * as dispatch from "./dispatch";
 
 interface Metrics {
   opsExecuted: number;
-  bytesRecv: number;
-  bytesSent: number;
+  controlBytesSent: number;
+  dataBytesSent: number;
+  bytesReceived: number;
 }
 
 export function metrics(): Metrics {
@@ -26,8 +27,11 @@ function res(baseRes: null | msg.Base): Metrics {
   assert(msg.Any.MetricsRes === baseRes!.innerType());
   const res = new msg.MetricsRes();
   assert(baseRes!.inner(res) !== null);
-  const opsExecuted = res.opsExecuted().toFloat64();
-  const bytesSent = res.bytesSent().toFloat64();
-  const bytesRecv = res.bytesRecv().toFloat64();
-  return { opsExecuted, bytesRecv, bytesSent };
+
+  return {
+    opsExecuted: res.opsExecuted().toFloat64(),
+    controlBytesSent: res.controlBytesSent().toFloat64(),
+    dataBytesSent: res.dataBytesSent().toFloat64(),
+    bytesReceived: res.bytesReceived().toFloat64()
+  };
 }

@@ -1174,8 +1174,9 @@ fn op_metrics(
     builder,
     &msg::MetricsResArgs {
       ops_executed: metrics.ops_executed,
-      bytes_recv: metrics.bytes_recv,
-      bytes_sent: metrics.bytes_sent,
+      control_bytes_sent: metrics.control_bytes_sent,
+      data_bytes_sent: metrics.data_bytes_sent,
+      bytes_received: metrics.bytes_received,
       ..Default::default()
     },
   );
