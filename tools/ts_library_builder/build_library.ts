@@ -136,7 +136,7 @@ interface MergeOptions {
 }
 
 /** Take a module and merge into into a single namespace */
-function merge({
+export function merge({
   basePath,
   declarationProject,
   debug,
