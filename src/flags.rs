@@ -26,6 +26,7 @@ pub struct DenoFlags {
   pub allow_net: bool,
   pub allow_env: bool,
   pub deps_flag: bool,
+  pub types_flag: bool,
 }
 
 pub fn process(flags: &DenoFlags) {
@@ -58,7 +59,8 @@ pub fn print_usage() {
 -D or --log-debug  Log debug output.
 -h or --help       Print this message.
 --v8-options       Print V8 command line options.
---deps             Print module dependencies."
+--deps             Print module dependencies.
+--types            Print global environment types."
   );
 }
 
@@ -82,6 +84,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
         "--allow-net" => flags.allow_net = true,
         "--allow-env" => flags.allow_env = true,
         "--deps" => flags.deps_flag = true,
+        "--types" => flags.types_flag = true,
         "--" => break,
         _ => unimplemented!(),
       }
@@ -163,6 +166,19 @@ fn test_set_flags_4() {
       ..DenoFlags::default()
     }
   );
+}
+
+#[test]
+fn test_set_flags_5() {
+  let (flags, rest) = set_flags(svec!["deno", "--types"]);
+  assert_eq!(rest, svec!["deno"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      types_flag: true,
+      ..DenoFlags::default()
+    }
+  )
 }
 
 // Returns args passed to V8, followed by args passed to JS
