@@ -14,7 +14,6 @@ use libc::c_void;
 use std;
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::ops::DerefMut;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -75,9 +74,7 @@ impl IsolateState {
     data_bytes_sent: u64,
     bytes_received: u64,
   ) {
-    let mut g = self.metrics.lock().unwrap();
-    let metrics = g.deref_mut();
-
+    let mut metrics = self.metrics.lock().unwrap();
     metrics.update(control_bytes_sent, data_bytes_sent, bytes_received);
   }
 }
@@ -351,7 +348,6 @@ fn recv_deadline<T>(
 mod tests {
   use super::*;
   use futures;
-  use std::ops::Deref;
 
   #[test]
   fn test_dispatch_sync() {
@@ -400,8 +396,7 @@ mod tests {
     tokio_util::init(|| {
       // verify that metrics have been properly initialized
       {
-        let g = isolate.state.metrics.lock().unwrap();
-        let metrics = g.deref();
+        let metrics = isolate.state.metrics.lock().unwrap();
         assert_eq!(metrics.ops_executed, 0);
         assert_eq!(metrics.control_bytes_sent, 0);
         assert_eq!(metrics.data_bytes_sent, 0);
@@ -419,8 +414,7 @@ mod tests {
         )
         .expect("execute error");
       isolate.event_loop();
-      let g = isolate.state.metrics.lock().unwrap();
-      let metrics = g.deref();
+      let metrics = isolate.state.metrics.lock().unwrap();
       assert_eq!(metrics.ops_executed, 1);
       assert_eq!(metrics.control_bytes_sent, 3);
       assert_eq!(metrics.data_bytes_sent, 5);

@@ -24,7 +24,6 @@ use remove_dir_all::remove_dir_all;
 use std;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
-use std::ops::Deref;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -1166,8 +1165,7 @@ fn op_metrics(
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
-  let g = state.metrics.lock().unwrap();
-  let metrics = g.deref();
+  let metrics = state.metrics.lock().unwrap();
 
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::MetricsRes::create(
