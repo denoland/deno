@@ -27,6 +27,10 @@ export const exitOnFail = true;
 let filterRegExp: RegExp | null;
 const tests: TestDefinition[] = [];
 
+let filtered = 0;
+const ignored = 0;
+const measured = 0;
+
 // Must be called before any test() that needs to be filtered.
 export function setFilter(s: string): void {
   filterRegExp = new RegExp(s, "i");
@@ -41,6 +45,8 @@ export function test(t: TestDefinition | TestFunction): void {
   }
   if (filter(name)) {
     tests.push({ fn, name });
+  } else {
+    filtered++;
   }
 }
 
@@ -87,11 +93,6 @@ async function runTests() {
     // TODO Do this on the same line as test name is printed.
     console.log("...", result);
   }
-
-  // TODO counts for ignored , measured, filtered.
-  const filtered = 0;
-  const ignored = 0;
-  const measured = 0;
 
   // Attempting to match the output of Rust's test runner.
   const result = failed > 0 ? red_failed() : green_ok();
