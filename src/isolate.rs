@@ -68,22 +68,20 @@ impl IsolateState {
     tx.send((req_id, buf)).expect("tx.send error");
   }
 
-  fn update_metrics(&self, bytes_recv: i32, bytes_sent: i32) {
+  fn update_metrics(&self, bytes_recv: u64, bytes_sent: u64) {
     let mut g = self.metrics.lock().unwrap();
     let maybe_metrics = g.as_mut();
     assert!(maybe_metrics.is_some(), "Expected tx to not be deleted.");
     let metrics = maybe_metrics.unwrap();
 
-    metrics.increment_ops_executed();
-    metrics.increment_bytes_recv(bytes_recv);
-    metrics.increment_bytes_sent(bytes_sent);
+    metrics.update(bytes_recv, bytes_sent);
   }
 }
 
 pub struct Metrics {
-  pub ops_executed: i32,
-  pub bytes_recv: i32,
-  pub bytes_sent: i32,
+  pub ops_executed: u64,
+  pub bytes_recv: u64,
+  pub bytes_sent: u64,
 }
 
 impl Metrics {
@@ -95,19 +93,10 @@ impl Metrics {
     }
   }
 
-  fn increment_ops_executed(&mut self) {
-    assert!(self.ops_executed >= 0);
+  fn update(&mut self, bytes_recv: u64, bytes_sent: u64) {
     self.ops_executed += 1;
-  }
-
-  fn increment_bytes_recv(&mut self, len: i32) {
-    assert!(self.bytes_recv >= 0);
-    self.bytes_recv += len;
-  }
-  
-  fn increment_bytes_sent(&mut self, len: i32) {
-    assert!(self.bytes_sent >= 0);
-    self.bytes_sent += len;
+    self.bytes_recv += bytes_recv;
+    self.bytes_sent += bytes_sent;
   }
 }
 
@@ -280,7 +269,8 @@ extern "C" fn pre_dispatch(
     )
   };
 
-  let bytes_recv = data_buf.data_len as i32;
+  let bytes_recv = data_buf.data_len as u64;
+
   let isolate = Isolate::from_void_ptr(user_data);
   let dispatch = isolate.dispatch;
   let (is_sync, op) = dispatch(isolate, control_slice, data_slice);
@@ -295,7 +285,7 @@ extern "C" fn pre_dispatch(
     }
 
     let state = Arc::clone(&isolate.state);
-    state.update_metrics(bytes_recv, buf_size as i32);
+    state.update_metrics(bytes_recv, buf_size as u64);
   } else {
     // Execute op asynchronously.
     let state = Arc::clone(&isolate.state);
@@ -307,9 +297,9 @@ extern "C" fn pre_dispatch(
 
     let task = op
       .and_then(move |buf| {
-        let bytes_sent = buf.len() as i32;
+        let bytes_sent = buf.len() as u64;
         state.send_to_js(req_id, buf);
-        state.update_metrics(bytes_recv as i32, bytes_sent);
+        state.update_metrics(bytes_recv as u64, bytes_sent);
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);

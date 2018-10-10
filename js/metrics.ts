@@ -26,8 +26,8 @@ function res(baseRes: null | msg.Base): Metrics {
     assert(msg.Any.MetricsRes === baseRes!.innerType());
     const res = new msg.MetricsRes();
     assert(baseRes!.inner(res) !== null);
-    const opsExecuted = res.opsExecuted();
-    const bytesSent = res.bytesSent();
-    const bytesRecv = res.bytesRecv();
+    const opsExecuted = res.opsExecuted().toFloat64();
+    const bytesSent = res.bytesSent().toFloat64();
+    const bytesRecv = res.bytesRecv().toFloat64();
     return { opsExecuted, bytesRecv, bytesSent };
 }
