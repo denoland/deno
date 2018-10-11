@@ -79,7 +79,6 @@ impl IsolateState {
     metrics.bytes_sent_data += bytes_sent_data;
   }
 
-  // Should be called before respond().
   fn metrics_op_completed(&self, bytes_received: u64) {
     let mut metrics = self.metrics.lock().unwrap();
     metrics.ops_completed += 1;
@@ -158,6 +157,7 @@ impl Isolate {
   }
 
   pub fn respond(&mut self, req_id: i32, buf: Buf) {
+    self.state.metrics_op_completed(buf.len() as u64);
     // TODO(zero-copy) Use Buf::leak(buf) to leak the heap allocated buf. And
     // don't do the memcpy in ImportBuf() (in libdeno/binding.cc)
     unsafe {
@@ -174,7 +174,6 @@ impl Isolate {
     // Receiving a message on rx exactly corresponds to an async task
     // completing.
     self.ntasks_decrement();
-    state.metrics_op_completed(buf_size as u64);
     // Call into JS with the buf.
     self.respond(req_id, buf);
   }
@@ -281,7 +280,6 @@ extern "C" fn pre_dispatch(
   if is_sync {
     // Execute op synchronously.
     let buf = tokio_util::block_on(op).unwrap();
-    isolate.state.metrics_op_completed(buf_size as u64);
     let buf_size = buf.len();
     if buf_size != 0 {
       // Set the synchronous response, the value returned from isolate.send().
@@ -298,7 +296,6 @@ extern "C" fn pre_dispatch(
 
     let task = op
       .and_then(move |buf| {
-        let buf_size = buf.len();
         state.send_to_js(req_id, buf);
         Ok(())
       }).map_err(|_| ());
