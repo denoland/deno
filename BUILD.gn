@@ -107,7 +107,6 @@ ts_sources = [
   "js/v8_source_maps.ts",
   "js/write_file.ts",
 
-  "js/tsconfig.declarations.json",
   "tsconfig.json",
 
   # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
@@ -246,26 +245,33 @@ executable("snapshot_creator") {
   configs += [ ":deno_config" ]
 }
 
-# Generates type declarations for files that need to be included
-# in the runtime bundle
-run_node("gen_declarations") {
+# Generates the core TypeScript type library for deno that will be
+# included in the runtime bundle
+run_node("deno_runtime_declaration") {
   out_dir = target_gen_dir
   sources = ts_sources
   outputs = [
-    "$out_dir/types/globals.d.ts",
+    "$out_dir/lib/lib.deno_runtime.d.ts",
   ]
   deps = [
     ":msg_ts",
   ]
   args = [
-    "./node_modules/typescript/bin/tsc",
-    "-p",
-    rebase_path("js/tsconfig.declarations.json", root_build_dir),
-    "--baseUrl",
+    rebase_path("node_modules/.bin/ts-node", root_build_dir),
+    "--project",
+    rebase_path("tools/ts_library_builder/tsconfig.json"),
+    rebase_path("tools/ts_library_builder/main.ts", root_build_dir),
+    "--basePath",
+    rebase_path(".", root_build_dir),
+    "--buildPath",
     rebase_path(root_build_dir, root_build_dir),
     "--outFile",
-    rebase_path("$out_dir/types/globals.js", root_build_dir),
+    rebase_path("$out_dir/lib/lib.deno_runtime.d.ts", root_build_dir),
+    "--silent",
   ]
+  if (is_debug) {
+    args += [ "--debug" ]
+  }
 }
 
 run_node("bundle") {
@@ -276,7 +282,7 @@ run_node("bundle") {
     out_dir + "main.js.map",
   ]
   deps = [
-    ":gen_declarations",
+    ":deno_runtime_declaration",
     ":msg_ts",
   ]
   args = [

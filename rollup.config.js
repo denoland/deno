@@ -26,12 +26,6 @@ const tsconfigOverride = {
   }
 };
 
-// this is a preamble for the `globals.d.ts` file to allow it to be the default
-// lib for deno.
-const libPreamble = `/// <reference no-default-lib="true"/>
-/// <reference lib="esnext" />
-`;
-
 // this is a rollup plugin which will look for imports ending with `!string` and resolve
 // them with a module that will inline the contents of the file as a string.  Needed to
 // support `js/assets.ts`.
@@ -70,9 +64,7 @@ function strings({ include, exclude } = {}) {
     transform(code, id) {
       if (filter(id)) {
         return {
-          code: `export default ${JSON.stringify(
-            id.endsWith("globals.d.ts") ? libPreamble + code : code
-          )};`,
+          code: `export default ${JSON.stringify(code)};`,
           map: { mappings: "" }
         };
       }
