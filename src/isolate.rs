@@ -298,8 +298,8 @@ extern "C" fn pre_dispatch(
     let task = op
       .and_then(move |buf| {
         let buf_size = buf.len();
-        state.send_to_js(req_id, buf);
         state.metrics_op_completed(buf_size as u64);
+        state.send_to_js(req_id, buf);
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);
