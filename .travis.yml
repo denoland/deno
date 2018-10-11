@@ -30,6 +30,9 @@ cache:
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
   - third_party/v8/third_party/llvm-build/
 install:
+- nvm install v8
+- nvm use --delete-prefix v8
+- node -v
 - |-
   # OS X: install a private copy of homebrew.
   if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
