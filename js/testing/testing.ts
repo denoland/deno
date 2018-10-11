@@ -13,6 +13,7 @@
    limitations under the License.
 */
 
+import * as deno from "deno";
 export { assert, assertEqual, equal } from "./util.ts";
 
 export type TestFunction = () => void | Promise<void>;
@@ -78,7 +79,7 @@ async function runTests() {
   for (let i = 0; i < tests.length; i++) {
     const { fn, name } = tests[i];
     let result = green_ok();
-    console.log("test", name);
+    deno.stdout.write(new TextEncoder().encode(`test ${name}`));
     try {
       await fn();
       passed++;
@@ -90,7 +91,6 @@ async function runTests() {
         break;
       }
     }
-    // TODO Do this on the same line as test name is printed.
     console.log("...", result);
   }
 
