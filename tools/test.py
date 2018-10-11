@@ -29,6 +29,8 @@ def main(argv):
         print "Usage: tools/test.py [build_dir]"
         sys.exit(1)
 
+    os.environ["DENO_DIR"] = os.path.join(build_dir, ".deno_test")
+
     enable_ansi_colors()
 
     http_server.spawn()

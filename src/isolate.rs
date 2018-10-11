@@ -12,8 +12,10 @@ use libdeno;
 use futures::Future;
 use libc::c_void;
 use std;
+use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::path::Path;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -108,6 +110,15 @@ impl Isolate {
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
 
+    let custom_root_path;
+    let custom_root = match env::var("DENO_DIR") {
+      Ok(path) => {
+        custom_root_path = path;
+        Some(Path::new(custom_root_path.as_str()))
+      }
+      Err(_e) => None,
+    };
+
     Isolate {
       libdeno_isolate,
       dispatch,
@@ -115,7 +126,7 @@ impl Isolate {
       ntasks: 0,
       timeout_due: None,
       state: Arc::new(IsolateState {
-        dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
+        dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
         argv: argv_rest,
         flags,
         tx: Mutex::new(Some(tx)),
