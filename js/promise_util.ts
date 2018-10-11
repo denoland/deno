@@ -1,49 +1,49 @@
 import { libdeno } from "./libdeno";
 
-const promiseRejectEvents = libdeno.constants.promiseRejectEvents;
+/* tslint:disable-next-line:no-any */
+const rejectMap = new Map<Promise<any>, string>();
+// For uncaught promise rejection errors
 
 /* tslint:disable-next-line:no-any */
-const promiseRejectMap = new Map<Promise<any>, string>();
-/* tslint:disable-next-line:no-any */
-const otherPromiseErrorMap = new Map<Promise<any>, string>();
+const otherErrorMap = new Map<Promise<any>, string>();
+// For reject after resolve / resolve after resolve errors
 
 export function promiseRejectHandler(
-  /* tslint:disable-next-line:no-any */
-  error: any,
+  error: Error | string,
   event: number,
   /* tslint:disable-next-line:no-any */
   promise: Promise<any>
 ) {
   switch (event) {
-    case promiseRejectEvents.kPromiseRejectWithNoHandler:
-      promiseRejectMap.set(
+    case libdeno.kPromiseRejectWithNoHandler:
+      rejectMap.set(
         promise,
-        error.stack || "PromiseRejectWithNoHandler"
+        (error as Error).stack || "PromiseRejectWithNoHandler"
       );
       break;
-    case promiseRejectEvents.kPromiseHandlerAddedAfterReject:
-      promiseRejectMap.delete(promise);
+    case libdeno.kPromiseHandlerAddedAfterReject:
+      rejectMap.delete(promise);
       break;
     default:
       // error is string here
-      otherPromiseErrorMap.set(promise, `Promise error: ${error}`);
+      otherErrorMap.set(promise, `Promise warning: ${error as string}`);
   }
 }
 
-// Return 0 when continue, 1 to die
-export function promiseErrorExaminer(): number {
-  if (otherPromiseErrorMap.size > 0) {
-    for (const msg of otherPromiseErrorMap.values()) {
+// Return true when continue, false to die on uncaught promise reject
+export function promiseErrorExaminer(): boolean {
+  if (otherErrorMap.size > 0) {
+    for (const msg of otherErrorMap.values()) {
       console.log(msg);
     }
-    otherPromiseErrorMap.clear();
+    otherErrorMap.clear();
   }
-  if (promiseRejectMap.size > 0) {
-    for (const msg of promiseRejectMap.values()) {
+  if (rejectMap.size > 0) {
+    for (const msg of rejectMap.values()) {
       console.log(msg);
     }
-    promiseRejectMap.clear();
-    return 1;
+    rejectMap.clear();
+    return false;
   }
-  return 0;
+  return true;
 }

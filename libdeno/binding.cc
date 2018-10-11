@@ -158,6 +158,7 @@ void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
     /* error, event, promise */
     if (event == v8::PromiseRejectEvent::kPromiseRejectWithNoHandler) {
       d->pending_promise_events++;
+      // exception only valid for kPromiseRejectWithNoHandler
       args[0] = exception;
     } else if (event ==
                v8::PromiseRejectEvent::kPromiseHandlerAddedAfterReject) {
@@ -396,43 +397,6 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   return ExecuteV8StringSource(context, js_filename, source);
 }
 
-v8::Local<v8::Object> InitializeConstants(v8::Isolate* isolate,
-                                          v8::Local<v8::Context> context) {
-  auto constants_val = v8::Object::New(isolate);
-
-  auto promise_reject_event_val = v8::Object::New(isolate);
-  CHECK(promise_reject_event_val
-            ->Set(context, deno::v8_str("kPromiseRejectWithNoHandler"),
-                  v8::Integer::New(
-                      isolate,
-                      v8::PromiseRejectEvent::kPromiseRejectWithNoHandler))
-            .FromJust());
-  CHECK(promise_reject_event_val
-            ->Set(context, deno::v8_str("kPromiseHandlerAddedAfterReject"),
-                  v8::Integer::New(
-                      isolate,
-                      v8::PromiseRejectEvent::kPromiseHandlerAddedAfterReject))
-            .FromJust());
-  CHECK(promise_reject_event_val
-            ->Set(context, deno::v8_str("kPromiseResolveAfterResolved"),
-                  v8::Integer::New(
-                      isolate,
-                      v8::PromiseRejectEvent::kPromiseResolveAfterResolved))
-            .FromJust());
-  CHECK(promise_reject_event_val
-            ->Set(context, deno::v8_str("kPromiseRejectAfterResolved"),
-                  v8::Integer::New(
-                      isolate,
-                      v8::PromiseRejectEvent::kPromiseRejectAfterResolved))
-            .FromJust());
-
-  CHECK(constants_val
-            ->Set(context, deno::v8_str("promiseRejectEvents"),
-                  promise_reject_event_val)
-            .FromJust());
-  return constants_val;
-}
-
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
                        const char* js_filename, const std::string& js_source,
                        const std::string* source_map) {
@@ -483,10 +447,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
                   set_promise_error_examiner_val)
             .FromJust());
 
-  auto constants_val = InitializeConstants(isolate, context);
-  CHECK(deno_val->Set(context, deno::v8_str("constants"), constants_val)
-            .FromJust());
-
   {
     auto source = deno::v8_str(js_source.c_str());
     CHECK(
@@ -519,6 +479,32 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
                 .FromJust());
     }
   }
+
+  // Initialize promise reject event constants
+  CHECK(deno_val
+            ->Set(context, deno::v8_str("kPromiseRejectWithNoHandler"),
+                  v8::Integer::New(
+                      isolate,
+                      v8::PromiseRejectEvent::kPromiseRejectWithNoHandler))
+            .FromJust());
+  CHECK(deno_val
+            ->Set(context, deno::v8_str("kPromiseHandlerAddedAfterReject"),
+                  v8::Integer::New(
+                      isolate,
+                      v8::PromiseRejectEvent::kPromiseHandlerAddedAfterReject))
+            .FromJust());
+  CHECK(deno_val
+            ->Set(context, deno::v8_str("kPromiseResolveAfterResolved"),
+                  v8::Integer::New(
+                      isolate,
+                      v8::PromiseRejectEvent::kPromiseResolveAfterResolved))
+            .FromJust());
+  CHECK(deno_val
+            ->Set(context, deno::v8_str("kPromiseRejectAfterResolved"),
+                  v8::Integer::New(
+                      isolate,
+                      v8::PromiseRejectEvent::kPromiseRejectAfterResolved))
+            .FromJust());
 }
 
 void AddIsolate(Deno* d, v8::Isolate* isolate) {
@@ -647,7 +633,8 @@ void deno_check_promise_errors(Deno* d) {
       deno::HandleException(context, try_catch.Exception());
     }
     d->pending_promise_events = 0;  // reset
-    if (result->Uint32Value(context).FromJust() == 1) {
+    if (!result->BooleanValue(context).FromJust()) {
+      // Has uncaught promise reject error, exiting...
       exit(1);
     }
   }

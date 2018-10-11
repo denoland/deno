@@ -148,12 +148,12 @@ global.PromiseRejectCatchHandling = () => {
   });
   libdeno.setPromiseRejectHandler((error, event, promise) => {
     count++;
-    if (event === libdeno.constants.promiseRejectEvents.kPromiseRejectWithNoHandler) {
+    if (event === libdeno.kPromiseRejectWithNoHandler) {
       assertOrSend(error instanceof Error);
       assertOrSend(error.message === "message");
       assertOrSend(count === 1);
       promiseRef = promise;
-    } else if (event === libdeno.constants.promiseRejectEvents.kPromiseHandlerAddedAfterReject) {
+    } else if (event === libdeno.kPromiseHandlerAddedAfterReject) {
       assertOrSend(count === 2);
       assertOrSend(promiseRef === promise);
     }
