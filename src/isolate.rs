@@ -295,8 +295,8 @@ extern "C" fn pre_dispatch(
     // manually.
     isolate.ntasks_increment();
 
-    let task = op
-      .and_then(move |buf| {
+    let task =
+      op.and_then(move |buf| {
         let buf_size = buf.len();
         state.send_to_js(req_id, buf);
         state.metrics_op_completed(buf_size as u64);
@@ -351,7 +351,8 @@ mod tests {
             throw Error("assert error");
           }
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
       isolate.event_loop();
     });
   }
@@ -395,7 +396,8 @@ mod tests {
           const data = new Uint8Array([42, 43, 44, 45, 46]);
           libdeno.send(control, data);
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
       isolate.event_loop();
       let metrics = isolate.state.metrics.lock().unwrap();
       assert_eq!(metrics.ops_dispatched, 1);
@@ -430,7 +432,8 @@ mod tests {
           let r = libdeno.send(control, data);
           if (r != null) throw Error("expected null");
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
 
       // Make sure relevant metrics are updated before task is executed.
       {

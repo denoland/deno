@@ -48,6 +48,14 @@ export default function denoMain() {
 
   setLogDebug(startResMsg.debugFlag());
 
+  // handle `--types`
+  if (startResMsg.typesFlag()) {
+    const defaultLibFileName = compiler.getDefaultLibFileName();
+    const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
+    console.log(defaultLibModule.sourceCode);
+    os.exit(0);
+  }
+
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
 
@@ -64,8 +72,8 @@ export default function denoMain() {
     os.exit(1);
   }
 
-  const printDeps = startResMsg.depsFlag();
-  if (printDeps) {
+  // handle `--deps`
+  if (startResMsg.depsFlag()) {
     for (const dep of compiler.getModuleDependencies(inputFn, `${cwd}/`)) {
       console.log(dep);
     }

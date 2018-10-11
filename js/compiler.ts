@@ -13,6 +13,7 @@ import * as sourceMaps from "./v8_source_maps";
 
 const EOL = "\n";
 const ASSETS = "$asset$";
+const LIB_RUNTIME = "lib.deno_runtime.d.ts";
 
 // tslint:disable:no-any
 type AmdCallback = (...args: any[]) => void;
@@ -619,7 +620,7 @@ export class DenoCompiler
 
   getDefaultLibFileName(): string {
     this._log("getDefaultLibFileName()");
-    const moduleSpecifier = "globals.d.ts";
+    const moduleSpecifier = LIB_RUNTIME;
     const moduleMetaData = this.resolveModule(moduleSpecifier, ASSETS);
     return moduleMetaData.fileName;
   }
@@ -649,8 +650,8 @@ export class DenoCompiler
     return moduleNames.map(name => {
       let resolvedFileName;
       if (name === "deno") {
-        // builtin modules are part of `globals.d.ts`
-        resolvedFileName = this._resolveModuleName("globals.d.ts", ASSETS);
+        // builtin modules are part of the runtime lib
+        resolvedFileName = this._resolveModuleName(LIB_RUNTIME, ASSETS);
       } else if (name === "typescript") {
         resolvedFileName = this._resolveModuleName("typescript.d.ts", ASSETS);
       } else {
