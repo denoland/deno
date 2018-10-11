@@ -193,3 +193,15 @@ TEST(LibDenoTest, DataBuf) {
   EXPECT_EQ(data_buf_copy.data_ptr[1], 8);
   deno_delete(d);
 }
+
+TEST(LibDenoTest, PromiseRejectCatchHandling) {
+  static int count = 0;
+  Deno* d = deno_new([](auto _, int req_id, auto buf, auto data_buf) {
+    // If no error, nothing should be sent, and count should not increment
+    count++;
+  });
+  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "PromiseRejectCatchHandling()"));
+
+  EXPECT_EQ(count, 0);
+  deno_delete(d);
+}
