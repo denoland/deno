@@ -609,10 +609,7 @@ fn op_shutdown(
   let rid = inner.rid();
   let how = inner.how();
   match resources::lookup(rid) {
-    None => odd_future(errors::new(
-      errors::ErrorKind::BadFileDescriptor,
-      String::from("Bad File Descriptor"),
-    )),
+    None => odd_future(errors::bad_resource()),
     Some(mut resource) => {
       let shutdown_mode = match how {
         0 => Shutdown::Read,

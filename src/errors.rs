@@ -150,10 +150,7 @@ impl From<hyper::Error> for DenoError {
 }
 
 pub fn bad_resource() -> DenoError {
-  new(
-    ErrorKind::BadFileDescriptor, // TODO Rename to BadResource
-    String::from("bad resource id"),
-  )
+  new(ErrorKind::BadResource, String::from("bad resource id"))
 }
 
 pub fn permission_denied() -> DenoError {

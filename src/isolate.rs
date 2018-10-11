@@ -171,31 +171,11 @@ impl Isolate {
   pub fn event_loop(&mut self) {
     // Main thread event loop.
     while !self.is_idle() {
-      // Ideally, mpsc::Receiver would have a receive method that takes a optional
-      // timeout. But it doesn't so we need all this duplicate code.
-      match self.timeout_due {
-        Some(due) => {
-          // Subtracting two Instants causes a panic if the resulting duration
-          // would become negative. Avoid this.
-          let now = Instant::now();
-          let timeout = if due > now {
-            due - now
-          } else {
-            Duration::new(0, 0)
-          };
-          // TODO: use recv_deadline() instead of recv_timeout() when this
-          // feature becomes stable/available.
-          match self.rx.recv_timeout(timeout) {
-            Ok((req_id, buf)) => self.complete_op(req_id, buf),
-            Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
-            Err(e) => panic!("mpsc::Receiver::recv_timeout() failed: {:?}", e),
-          }
-        }
-        None => match self.rx.recv() {
-          Ok((req_id, buf)) => self.complete_op(req_id, buf),
-          Err(e) => panic!("mpsc::Receiver::recv() failed: {:?}", e),
-        },
-      };
+      match recv_deadline(&self.rx, self.timeout_due) {
+        Ok((req_id, buf)) => self.complete_op(req_id, buf),
+        Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
+        Err(e) => panic!("recv_deadline() failed: {:?}", e),
+      }
     }
   }
 
@@ -282,6 +262,28 @@ extern "C" fn pre_dispatch(
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);
+  }
+}
+
+fn recv_deadline<T>(
+  rx: &mpsc::Receiver<T>,
+  maybe_due: Option<Instant>,
+) -> Result<T, mpsc::RecvTimeoutError> {
+  match maybe_due {
+    None => rx.recv().map_err(|e| e.into()),
+    Some(due) => {
+      // Subtracting two Instants causes a panic if the resulting duration
+      // would become negative. Avoid this.
+      let now = Instant::now();
+      let timeout = if due > now {
+        due - now
+      } else {
+        Duration::new(0, 0)
+      };
+      // TODO: use recv_deadline() instead of recv_timeout() when this
+      // feature becomes stable/available.
+      rx.recv_timeout(timeout)
+    }
   }
 }
 

@@ -7,18 +7,18 @@ import { assert } from "./util";
 import { flatbuffers } from "flatbuffers";
 
 export class File implements Reader, Writer, Closer {
-  constructor(readonly fd: number) {}
+  constructor(readonly rid: number) {}
 
   write(p: ArrayBufferView): Promise<number> {
-    return write(this.fd, p);
+    return write(this.rid, p);
   }
 
   read(p: ArrayBufferView): Promise<ReadResult> {
-    return read(this.fd, p);
+    return read(this.rid, p);
   }
 
   close(): void {
-    close(this.fd);
+    close(this.rid);
   }
 }
 
@@ -47,17 +47,17 @@ export async function open(
   assert(msg.Any.OpenRes === baseRes!.innerType());
   const res = new msg.OpenRes();
   assert(baseRes!.inner(res) != null);
-  const fd = res.rid();
-  return new File(fd);
+  const rid = res.rid();
+  return new File(rid);
 }
 
 export async function read(
-  fd: number,
+  rid: number,
   p: ArrayBufferView
 ): Promise<ReadResult> {
   const builder = new flatbuffers.Builder();
   msg.Read.startRead(builder);
-  msg.Read.addRid(builder, fd);
+  msg.Read.addRid(builder, rid);
   const inner = msg.Read.endRead(builder);
   const baseRes = await dispatch.sendAsync(builder, msg.Any.Read, inner, p);
   assert(baseRes != null);
@@ -67,10 +67,10 @@ export async function read(
   return { nread: res.nread(), eof: res.eof() };
 }
 
-export async function write(fd: number, p: ArrayBufferView): Promise<number> {
+export async function write(rid: number, p: ArrayBufferView): Promise<number> {
   const builder = new flatbuffers.Builder();
   msg.Write.startWrite(builder);
-  msg.Write.addRid(builder, fd);
+  msg.Write.addRid(builder, rid);
   const inner = msg.Write.endWrite(builder);
   const baseRes = await dispatch.sendAsync(builder, msg.Any.Write, inner, p);
   assert(baseRes != null);
@@ -80,10 +80,10 @@ export async function write(fd: number, p: ArrayBufferView): Promise<number> {
   return res.nbyte();
 }
 
-export function close(fd: number): void {
+export function close(rid: number): void {
   const builder = new flatbuffers.Builder();
   msg.Close.startClose(builder);
-  msg.Close.addRid(builder, fd);
+  msg.Close.addRid(builder, rid);
   const inner = msg.Close.endClose(builder);
   dispatch.sendSync(builder, msg.Any.Close, inner);
 }
