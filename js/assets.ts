@@ -7,7 +7,7 @@
 // tslint:disable:max-line-length
 
 // Generated default library
-import globalsDts from "gen/types/globals.d.ts!string";
+import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 
 // Static libraries
 import libEs2015Dts from "/third_party/node_modules/typescript/lib/lib.es2015.d.ts!string";
@@ -40,7 +40,6 @@ import libEsnextIntlDts from "/third_party/node_modules/typescript/lib/lib.esnex
 import libEsnextSymbolDts from "/third_party/node_modules/typescript/lib/lib.esnext.symbol.d.ts!string";
 
 // Static definitions
-import flatbuffersDts from "/third_party/node_modules/@types/flatbuffers/index.d.ts!string";
 import textEncodingDts from "/third_party/node_modules/@types/text-encoding/index.d.ts!string";
 import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
 // tslint:enable:max-line-length
@@ -48,7 +47,7 @@ import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d
 // @internal
 export const assetSourceCode: { [key: string]: string } = {
   // Generated library
-  "globals.d.ts": globalsDts,
+  "lib.deno_runtime.d.ts": libDts,
 
   // Static libraries
   "lib.es2015.collection.d.ts": libEs2015CollectionDts,
@@ -81,7 +80,6 @@ export const assetSourceCode: { [key: string]: string } = {
   "lib.esnext.symbol.d.ts": libEsnextSymbolDts,
 
   // Static definitions
-  "flatbuffers.d.ts": flatbuffersDts,
   "text-encoding.d.ts": textEncodingDts,
   "typescript.d.ts": typescriptDts
 };
