@@ -30,11 +30,12 @@ export function createColumns(data, benchmarkName) {
       if (d[benchmarkName] != null) {
         if (d[benchmarkName][variety] != null) {
           const v = d[benchmarkName][variety];
-          //if (benchmarkName == "throughput") debugger;
-          if (v["mean"]) {
-            return v.mean;
+          if (benchmarkName == "benchmark") {
+            const meanValue = v ? v.mean : 0;
+            return meanValue || null;
+          } else {
+            return v;
           }
-          return v;
         }
       }
       return null;
