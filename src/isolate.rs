@@ -79,6 +79,7 @@ impl IsolateState {
     metrics.bytes_sent_data += bytes_sent_data;
   }
 
+  // Should be called before respond().
   fn metrics_op_completed(&self, bytes_received: u64) {
     let mut metrics = self.metrics.lock().unwrap();
     metrics.ops_completed += 1;
@@ -173,6 +174,7 @@ impl Isolate {
     // Receiving a message on rx exactly corresponds to an async task
     // completing.
     self.ntasks_decrement();
+    state.metrics_op_completed(buf_size as u64);
     // Call into JS with the buf.
     self.respond(req_id, buf);
   }
@@ -279,13 +281,12 @@ extern "C" fn pre_dispatch(
   if is_sync {
     // Execute op synchronously.
     let buf = tokio_util::block_on(op).unwrap();
+    isolate.state.metrics_op_completed(buf_size as u64);
     let buf_size = buf.len();
     if buf_size != 0 {
       // Set the synchronous response, the value returned from isolate.send().
       isolate.respond(req_id, buf);
     }
-
-    isolate.state.metrics_op_completed(buf_size as u64);
   } else {
     // Execute op asynchronously.
     let state = Arc::clone(&isolate.state);
@@ -298,7 +299,6 @@ extern "C" fn pre_dispatch(
     let task = op
       .and_then(move |buf| {
         let buf_size = buf.len();
-        state.metrics_op_completed(buf_size as u64);
         state.send_to_js(req_id, buf);
         Ok(())
       }).map_err(|_| ());
