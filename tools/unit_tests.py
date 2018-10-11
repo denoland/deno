@@ -19,11 +19,10 @@ def run_unit_test(deno_exe, permStr, flags=[]):
     if errcode != 0:
         sys.exit(errcode)
     if actual == None and expected == None:
-        raise TypeError("Bad js/unit_test.ts output")
+        raise AssertionError("Bad js/unit_test.ts output")
     if expected != actual:
         print "expected", expected, "actual", actual
-        raise TypeError("expected tests did not equal actual")
-
+        raise AssertionError("expected tests did not equal actual")
     process.wait()
     errcode = process.returncode
     if errcode != 0:
