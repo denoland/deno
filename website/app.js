@@ -16,16 +16,39 @@ export function getTravisData() {
     .then(data => data.builds.reverse());
 }
 
-export function createExecTimeColumns(data) {
-  const benchmarkNames = Object.keys(data[data.length - 1].benchmark);
-  return benchmarkNames.map(name => [
-    name,
+function getBenchmarkVarieties(data, benchmarkName) {
+  // Look at last sha hash.
+  const last = data[data.length - 1];
+  return Object.keys(last[benchmarkName]);
+}
+
+export function createColumns(data, benchmarkName) {
+  const varieties = getBenchmarkVarieties(data, benchmarkName);
+  return varieties.map(variety => [
+    variety,
     ...data.map(d => {
-      const benchmark = d.benchmark[name];
-      const meanValue = benchmark ? benchmark.mean : 0;
-      return meanValue || null;
+      if (d[benchmarkName] != null) {
+        if (d[benchmarkName][variety] != null) {
+          const v = d[benchmarkName][variety];
+          if (benchmarkName == "benchmark") {
+            const meanValue = v ? v.mean : 0;
+            return meanValue || null;
+          } else {
+            return v;
+          }
+        }
+      }
+      return null;
     })
   ]);
+}
+
+export function createExecTimeColumns(data) {
+  return createColumns(data, "benchmark");
+}
+
+export function createThroughputColumns(data) {
+  return createColumns(data, "throughput");
 }
 
 export function createBinarySizeColumns(data) {
@@ -108,6 +131,7 @@ export async function main() {
   const travisData = (await getTravisData()).filter(d => d.duration > 0);
 
   const execTimeColumns = createExecTimeColumns(data);
+  const throughputColumns = createThroughputColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
   const threadCountColumns = createThreadCountColumns(data);
   const syscallCountColumns = createSyscallCountColumns(data);
@@ -139,6 +163,24 @@ export async function main() {
         type: "category",
         show: false,
         categories: sha1List
+      },
+      y: {
+        label: "seconds"
+      }
+    }
+  });
+
+  c3.generate({
+    bindto: "#throughput-chart",
+    data: {
+      columns: throughputColumns,
+      onclick: viewCommitOnClick(sha1List)
+    },
+    axis: {
+      x: {
+        type: "category",
+        show: false,
+        categories: sha1ShortList
       },
       y: {
         label: "seconds"
