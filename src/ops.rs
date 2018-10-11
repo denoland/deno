@@ -185,6 +185,7 @@ fn op_start(
       argv: Some(argv_off),
       debug_flag: state.flags.log_debug,
       recompile_flag: state.flags.recompile,
+      types_flag: state.flags.types_flag,
       ..Default::default()
     },
   );
@@ -342,7 +343,8 @@ fn op_env(
           ..Default::default()
         },
       )
-    }).collect();
+    })
+    .collect();
   let tables = builder.create_vector(&vars);
   let inner = msg::EnvironRes::create(
     builder,
@@ -891,7 +893,8 @@ fn op_read_dir(
             ..Default::default()
           },
         )
-      }).collect();
+      })
+      .collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(

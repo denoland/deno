@@ -26,6 +26,7 @@ pub struct DenoFlags {
   pub allow_net: bool,
   pub allow_env: bool,
   pub deps_flag: bool,
+  pub types_flag: bool,
 }
 
 pub fn process(flags: &DenoFlags) {
@@ -58,7 +59,8 @@ pub fn print_usage() {
 -D or --log-debug  Log debug output.
 -h or --help       Print this message.
 --v8-options       Print V8 command line options.
---deps             Print module dependencies."
+--deps             Print module dependencies.
+--types            Print runtime TypeScript declarations."
   );
 }
 
@@ -82,6 +84,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
         "--allow-net" => flags.allow_net = true,
         "--allow-env" => flags.allow_env = true,
         "--deps" => flags.deps_flag = true,
+        "--types" => flags.types_flag = true,
         "--" => break,
         _ => unimplemented!(),
       }
@@ -165,6 +168,19 @@ fn test_set_flags_4() {
   );
 }
 
+#[test]
+fn test_set_flags_5() {
+  let (flags, rest) = set_flags(svec!["deno", "--types"]);
+  assert_eq!(rest, svec!["deno"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      types_flag: true,
+      ..DenoFlags::default()
+    }
+  )
+}
+
 // Returns args passed to V8, followed by args passed to JS
 fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
   let mut rest = vec![];
@@ -179,7 +195,8 @@ fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
       }
 
       true
-    }).collect();
+    })
+    .collect();
 
   // Replace args being sent to V8
   for idx in 0..args.len() {
@@ -248,6 +265,7 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
       let cstr = CStr::from_ptr(*ptr as *const i8);
       let slice = cstr.to_str().unwrap();
       slice.to_string()
-    }).chain(rest.into_iter())
+    })
+    .chain(rest.into_iter())
     .collect()
 }

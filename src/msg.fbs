@@ -111,6 +111,7 @@ table StartRes {
   debug_flag: bool;
   deps_flag: bool;
   recompile_flag: bool;
+  types_flag: bool;
 }
 
 table CodeFetch {
