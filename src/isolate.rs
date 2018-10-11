@@ -157,6 +157,7 @@ impl Isolate {
   }
 
   pub fn respond(&mut self, req_id: i32, buf: Buf) {
+    self.state.metrics_op_completed(buf.len() as u64);
     // TODO(zero-copy) Use Buf::leak(buf) to leak the heap allocated buf. And
     // don't do the memcpy in ImportBuf() (in libdeno/binding.cc)
     unsafe {
@@ -284,8 +285,6 @@ extern "C" fn pre_dispatch(
       // Set the synchronous response, the value returned from isolate.send().
       isolate.respond(req_id, buf);
     }
-
-    isolate.state.metrics_op_completed(buf_size as u64);
   } else {
     // Execute op asynchronously.
     let state = Arc::clone(&isolate.state);
@@ -297,9 +296,7 @@ extern "C" fn pre_dispatch(
 
     let task = op
       .and_then(move |buf| {
-        let buf_size = buf.len();
         state.send_to_js(req_id, buf);
-        state.metrics_op_completed(buf_size as u64);
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);
