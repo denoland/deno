@@ -31,7 +31,7 @@ export function promiseRejectHandler(
 }
 
 // Return 0 when continue, 1 to die
-export function promiseExaminer(): number {
+export function promiseErrorExaminer(): number {
   if (otherPromiseErrorMap.size > 0) {
     for (const msg of otherPromiseErrorMap.values()) {
       console.log(msg);

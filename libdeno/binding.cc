@@ -333,16 +333,16 @@ void SetPromiseRejectHandler(const v8::FunctionCallbackInfo<v8::Value>& args) {
 }
 
 // Sets the promise uncaught reject handler
-void SetPromiseExaminer(const v8::FunctionCallbackInfo<v8::Value>& args) {
+void SetPromiseErrorExaminer(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   Deno* d = reinterpret_cast<Deno*>(isolate->GetData(0));
   DCHECK_EQ(d->isolate, isolate);
 
   v8::HandleScope handle_scope(isolate);
 
-  if (!d->promise_examiner.IsEmpty()) {
+  if (!d->promise_error_examiner.IsEmpty()) {
     isolate->ThrowException(
-        v8_str("libdeno.setPromiseExaminer already called."));
+        v8_str("libdeno.setPromiseErrorExaminer already called."));
     return;
   }
 
@@ -350,7 +350,7 @@ void SetPromiseExaminer(const v8::FunctionCallbackInfo<v8::Value>& args) {
   CHECK(v->IsFunction());
   v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
 
-  d->promise_examiner.Reset(isolate, func);
+  d->promise_error_examiner.Reset(isolate, func);
 }
 
 bool ExecuteV8StringSource(v8::Local<v8::Context> context,
@@ -474,13 +474,13 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
                   set_promise_reject_handler_val)
             .FromJust());
 
-  auto set_promise_examiner_tmpl =
-      v8::FunctionTemplate::New(isolate, SetPromiseExaminer);
-  auto set_promise_examiner_val =
-      set_promise_examiner_tmpl->GetFunction(context).ToLocalChecked();
+  auto set_promise_error_examiner_tmpl =
+      v8::FunctionTemplate::New(isolate, SetPromiseErrorExaminer);
+  auto set_promise_error_examiner_val =
+      set_promise_error_examiner_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val
-            ->Set(context, deno::v8_str("setPromiseExaminer"),
-                  set_promise_examiner_val)
+            ->Set(context, deno::v8_str("setPromiseErrorExaminer"),
+                  set_promise_error_examiner_val)
             .FromJust());
 
   auto constants_val = InitializeConstants(isolate, context);
@@ -624,7 +624,7 @@ int deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf) {
   return 0;
 }
 
-void deno_check_promise_reject_events(Deno* d) {
+void deno_check_promise_errors(Deno* d) {
   if (d->pending_promise_events > 0) {
     auto* isolate = d->isolate;
     v8::Locker locker(isolate);
@@ -635,13 +635,14 @@ void deno_check_promise_reject_events(Deno* d) {
     v8::Context::Scope context_scope(context);
 
     v8::TryCatch try_catch(d->isolate);
-    auto promise_examiner = d->promise_examiner.Get(d->isolate);
-    if (promise_examiner.IsEmpty()) {
-      d->last_exception = "libdeno.setPromiseExaminer has not been called.";
+    auto promise_error_examiner = d->promise_error_examiner.Get(d->isolate);
+    if (promise_error_examiner.IsEmpty()) {
+      d->last_exception =
+          "libdeno.setPromiseErrorExaminer has not been called.";
       return;
     }
     v8::Local<v8::Value> args[0];
-    auto result = promise_examiner->Call(context->Global(), 0, args);
+    auto result = promise_error_examiner->Call(context->Global(), 0, args);
     if (try_catch.HasCaught()) {
       deno::HandleException(context, try_catch.Exception());
     }

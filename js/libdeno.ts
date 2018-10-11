@@ -37,7 +37,7 @@ interface Libdeno {
     ) => void
   ) => void;
 
-  setPromiseExaminer: (handler: () => void) => number;
+  setPromiseErrorExaminer: (handler: () => void) => number;
 
   constants: {
     promiseRejectEvents: PromiseRejectEvents;

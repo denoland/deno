@@ -166,9 +166,9 @@ impl Isolate {
     }
   }
 
-  fn check_promise_reject_events(&self) {
+  fn check_promise_errors(&self) {
     unsafe {
-      libdeno::deno_check_promise_reject_events(self.libdeno_isolate);
+      libdeno::deno_check_promise_errors(self.libdeno_isolate);
     }
   }
 
@@ -182,10 +182,10 @@ impl Isolate {
         Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
         Err(e) => panic!("recv_deadline() failed: {:?}", e),
       }
-      self.check_promise_reject_events();
+      self.check_promise_errors();
     }
     // Check on done
-    self.check_promise_reject_events();
+    self.check_promise_errors();
   }
 
   fn ntasks_increment(&mut self) {
