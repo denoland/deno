@@ -138,6 +138,19 @@ void HandleException(v8::Local<v8::Context> context,
   }
 }
 
+const char* PromiseRejectStr(enum v8::PromiseRejectEvent e) {
+  switch (e) {
+    case v8::PromiseRejectEvent::kPromiseRejectWithNoHandler:
+      return "RejectWithNoHandler";
+    case v8::PromiseRejectEvent::kPromiseHandlerAddedAfterReject:
+      return "HandlerAddedAfterReject";
+    case v8::PromiseRejectEvent::kPromiseResolveAfterResolved:
+      return "ResolveAfterResolved";
+    case v8::PromiseRejectEvent::kPromiseRejectAfterResolved:
+      return "RejectAfterResolved";
+  }
+}
+
 void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
   auto* isolate = v8::Isolate::GetCurrent();
   Deno* d = static_cast<Deno*>(isolate->GetData(0));
@@ -153,7 +166,7 @@ void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
 
   if (!promise_reject_handler.IsEmpty()) {
     v8::Local<v8::Value> args[3];
-    args[1] = v8::Number::New(isolate, event);
+    args[1] = v8_str(PromiseRejectStr(event));
     args[2] = promise;
     /* error, event, promise */
     if (event == v8::PromiseRejectEvent::kPromiseRejectWithNoHandler) {
@@ -174,8 +187,6 @@ void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
     } else if (event == v8::PromiseRejectEvent::kPromiseRejectAfterResolved) {
       d->pending_promise_events++;
       args[0] = v8_str("Promise rejected after resolved");
-    } else {
-      args[0] = v8_str("Unimplemented error");
     }
     promise_reject_handler->Call(context->Global(), 3, args);
     return;
@@ -479,32 +490,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
                 .FromJust());
     }
   }
-
-  // Initialize promise reject event constants
-  CHECK(deno_val
-            ->Set(context, deno::v8_str("kPromiseRejectWithNoHandler"),
-                  v8::Integer::New(
-                      isolate,
-                      v8::PromiseRejectEvent::kPromiseRejectWithNoHandler))
-            .FromJust());
-  CHECK(deno_val
-            ->Set(context, deno::v8_str("kPromiseHandlerAddedAfterReject"),
-                  v8::Integer::New(
-                      isolate,
-                      v8::PromiseRejectEvent::kPromiseHandlerAddedAfterReject))
-            .FromJust());
-  CHECK(deno_val
-            ->Set(context, deno::v8_str("kPromiseResolveAfterResolved"),
-                  v8::Integer::New(
-                      isolate,
-                      v8::PromiseRejectEvent::kPromiseResolveAfterResolved))
-            .FromJust());
-  CHECK(deno_val
-            ->Set(context, deno::v8_str("kPromiseRejectAfterResolved"),
-                  v8::Integer::New(
-                      isolate,
-                      v8::PromiseRejectEvent::kPromiseRejectAfterResolved))
-            .FromJust());
 }
 
 void AddIsolate(Deno* d, v8::Isolate* isolate) {

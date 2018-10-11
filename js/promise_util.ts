@@ -1,4 +1,4 @@
-import { libdeno } from "./libdeno";
+import { PromiseRejectEvent } from "./libdeno";
 
 /* tslint:disable-next-line:no-any */
 const rejectMap = new Map<Promise<any>, string>();
@@ -10,18 +10,15 @@ const otherErrorMap = new Map<Promise<any>, string>();
 
 export function promiseRejectHandler(
   error: Error | string,
-  event: number,
+  event: PromiseRejectEvent,
   /* tslint:disable-next-line:no-any */
   promise: Promise<any>
 ) {
   switch (event) {
-    case libdeno.kPromiseRejectWithNoHandler:
-      rejectMap.set(
-        promise,
-        (error as Error).stack || "PromiseRejectWithNoHandler"
-      );
+    case "RejectWithNoHandler":
+      rejectMap.set(promise, (error as Error).stack || "RejectWithNoHandler");
       break;
-    case libdeno.kPromiseHandlerAddedAfterReject:
+    case "HandlerAddedAfterReject":
       rejectMap.delete(promise);
       break;
     default:
