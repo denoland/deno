@@ -294,3 +294,33 @@ def enable_ansi_colors_win10():
         CloseHandle(conout)
 
     return True
+
+
+def parse_unit_test_output(output, print_to_stdout):
+    first = True
+    expected = None
+    actual = None
+    result = None
+    for line in iter(output.readline, ''):
+        if expected is None:
+            # expect "running 30 tests"
+            expected = extract_number(r'running (\d+) tests', line)
+        elif "test result:" in line:
+            result = line
+        if print_to_stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+    # Check that the number of expected tests equals what was reported at the
+    # bottom.
+    if result:
+        # result should be a string like this:
+        # "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; ..."
+        actual = extract_number(r'(\d+) passed', result)
+    return (actual, expected)
+
+
+def extract_number(pattern, string):
+    matches = re.findall(pattern, string)
+    if len(matches) != 1:
+        return None
+    return int(matches[0])
