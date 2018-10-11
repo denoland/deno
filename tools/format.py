@@ -34,6 +34,7 @@ run(["node", prettier, "--write"] +
     find_exts(".github/", ".md") +
     find_exts("js/", ".js", ".ts", ".md") +
     find_exts("tests/", ".js", ".ts", ".md") +
+    find_exts("tools/", ".js", ".json", ".ts", ".md") +
     find_exts("website/", ".js", ".ts", ".md"))
 # yapf: enable
 
