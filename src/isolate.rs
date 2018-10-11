@@ -348,7 +348,8 @@ mod tests {
             throw Error("assert error");
           }
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
       isolate.event_loop();
     });
   }
@@ -392,7 +393,8 @@ mod tests {
           const data = new Uint8Array([42, 43, 44, 45, 46]);
           libdeno.send(control, data);
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
       isolate.event_loop();
       let metrics = isolate.state.metrics.lock().unwrap();
       assert_eq!(metrics.ops_dispatched, 1);
@@ -427,7 +429,8 @@ mod tests {
           let r = libdeno.send(control, data);
           if (r != null) throw Error("expected null");
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
 
       // Make sure relevant metrics are updated before task is executed.
       {
