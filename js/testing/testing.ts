@@ -13,7 +13,7 @@
    limitations under the License.
 */
 
-export { assert, assertEqual, equal } from "./util.ts";
+export { assert, assertEqual, equal } from "./util";
 
 export type TestFunction = () => void | Promise<void>;
 
