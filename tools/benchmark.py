@@ -13,6 +13,7 @@ import shutil
 from util import run, run_output, root_path, build_path, executable_suffix
 import tempfile
 import http_server
+import throughput_benchmark
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -116,6 +117,15 @@ def run_thread_count_benchmark(deno_path):
     return thread_count_map
 
 
+def run_throughput(deno_exe):
+    m = {}
+    m["100M_tcp"] = throughput_benchmark.tcp(deno_exe, 100)
+    m["100M_cat"] = throughput_benchmark.cat(deno_exe, 100)
+    m["10M_tcp"] = throughput_benchmark.tcp(deno_exe, 10)
+    m["10M_cat"] = throughput_benchmark.cat(deno_exe, 10)
+    return m
+
+
 def run_syscall_count_benchmark(deno_path):
     syscall_count_map = {}
     syscall_count_map["hello"] = get_strace_summary(
@@ -169,6 +179,10 @@ def main(argv):
         }
 
     new_data["binary_size"] = get_binary_sizes(build_dir)
+    # Cannot run throughput benchmark on windows because they don't have nc or
+    # pipe.
+    if os.name != 'nt':
+        new_data["throughput"] = run_throughput(deno_path)
     if "linux" in sys.platform:
         # Thread count test, only on linux
         new_data["thread_count"] = run_thread_count_benchmark(deno_path)
