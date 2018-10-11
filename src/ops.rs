@@ -111,8 +111,7 @@ pub fn dispatch(
     op_creator(isolate.state.clone(), &base, data)
   };
 
-  let boxed_op =
-    Box::new(op.or_else(move |err: DenoError| -> DenoResult<Buf> {
+  let boxed_op = Box::new(op.or_else(move |err: DenoError| -> DenoResult<Buf> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
       // send back. So transform the DenoError into a deno_buf.
@@ -290,13 +289,10 @@ fn op_chdir(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_chdir().unwrap();
   let directory = inner.directory().unwrap();
-  match std::env::set_current_dir(&directory) {
-    Ok(_v) => ok_future(empty_buf()),
-    Err(_e) => odd_future(errors::new(
-      errors::ErrorKind::NotFound,
-      String::from(format!("Directory {} Not Found", directory)),
-    )),
-  }
+  Box::new(futures::future::result(|| -> OpResult {
+    let _result = std::env::set_current_dir(&directory)?;
+    Ok(empty_buf())
+  }()))
 }
 
 fn op_set_timeout(
@@ -834,33 +830,28 @@ fn op_get_current_dir(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
-  match std::env::current_dir() {
-    Ok(path) => {
-      let builder = &mut FlatBufferBuilder::new();
-      let cwd =
-        builder.create_string(&path.into_os_string().into_string().unwrap());
-      let inner = msg::GetCwdRes::create(
-        builder,
-        &msg::GetCwdResArgs {
-          cwd: Some(cwd),
-          ..Default::default()
-        },
-      );
-      Box::new(futures::future::result(Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          inner: Some(inner.as_union_value()),
-          inner_type: msg::Any::GetCwdRes,
-          ..Default::default()
-        },
-      ))))
-    }
-    Err(_v) => odd_future(errors::new(
-      errors::ErrorKind::NotFound,
-      String::from(format!("Directory Does not exists")),
-    )),
-  }
+  Box::new(futures::future::result(|| -> OpResult {
+    let path = std::env::current_dir()?;
+    let builder = &mut FlatBufferBuilder::new();
+    let cwd =
+      builder.create_string(&path.into_os_string().into_string().unwrap());
+    let inner = msg::GetCwdRes::create(
+      builder,
+      &msg::GetCwdResArgs {
+        cwd: Some(cwd),
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::GetCwdRes,
+        ..Default::default()
+      },
+    ))
+  }()))
 }
 
 fn op_stat(

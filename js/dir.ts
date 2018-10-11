@@ -11,7 +11,7 @@ import { sendSync } from "./dispatch";
  * any one of them.
  * throws NotFound exception if directory not available
  */
-export function cwd(): string | null {
+export function cwd(): string {
   const builder = new flatbuffers.Builder(0);
   msg.GetCwd.startGetCwd(builder);
   const inner = msg.GetCwd.endGetCwd(builder);
@@ -20,7 +20,7 @@ export function cwd(): string | null {
   assert(msg.Any.GetCwdRes === baseRes!.innerType());
   const res = new msg.GetCwdRes();
   assert(baseRes!.inner(res) != null);
-  return res.cwd();
+  return res.cwd()!;
 }
 
 /**

@@ -6,8 +6,7 @@ test(function NotNullcwd() {
 });
 
 testPerm({ write: true }, function test_cwd_output() {
-  const path = deno.makeTempDirSync() + "/dir/subdir";
-  deno.mkdirSync(path);
+  const path = deno.makeTempDirSync();
   deno.chdir(path);
   assertEqual(deno.cwd(), path);
 });
