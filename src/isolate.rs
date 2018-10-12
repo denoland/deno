@@ -294,11 +294,10 @@ extern "C" fn pre_dispatch(
     // manually.
     isolate.ntasks_increment();
 
-    let task = op
-      .and_then(move |buf| {
-        state.send_to_js(req_id, buf);
-        Ok(())
-      }).map_err(|_| ());
+    let task = op.and_then(move |buf| {
+      state.send_to_js(req_id, buf);
+      Ok(())
+    }).map_err(|_| ());
     tokio::spawn(task);
   }
 }

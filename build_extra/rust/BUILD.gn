@@ -13,17 +13,17 @@ registry_github = "$crates/registry/src/github.com-1ecc6299db9ec823/"
 
 rust_crate("nix") {
   source_root = "$registry_github/nix-0.11.0/src/lib.rs"
-  extern=[
+  extern = [
     ":cfg_if",
     ":libc",
     ":void",
-    ":bitflags"
+    ":bitflags",
   ]
 }
 
 rust_crate("rustyline") {
   source_root = "$registry_github/rustyline-2.1.0/src/lib.rs"
-  extern=[
+  extern = [
     ":dirs",
     ":libc",
     ":log",
@@ -31,7 +31,7 @@ rust_crate("rustyline") {
     ":nix",
     ":unicode_segmentation",
     ":unicode_width",
-    ":utf8parse"
+    ":utf8parse",
   ]
 }
 
@@ -39,18 +39,14 @@ rust_crate("bitflags") {
   source_root = "$registry_github/bitflags-1.0.4/src/lib.rs"
 }
 
-
-
-
-
 rust_crate("unicode_segmentation") {
   source_root = "$registry_github/unicode-segmentation-1.2.1/src/lib.rs"
 }
 rust_crate("memchr") {
   source_root = "$registry_github/memchr-2.1.0/src/lib.rs"
-  extern=[
+  extern = [
     ":cfg_if",
-    ":libc"
+    ":libc",
   ]
 }
 rust_crate("utf8parse") {
@@ -59,7 +55,6 @@ rust_crate("utf8parse") {
 rust_crate("unicode_width") {
   source_root = "$registry_github/unicode-width-0.1.5/src/lib.rs"
 }
-
 
 rust_crate("libc") {
   source_root = "$registry_github/libc-0.2.43/src/lib.rs"
