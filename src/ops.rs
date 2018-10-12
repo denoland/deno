@@ -103,6 +103,7 @@ pub fn dispatch(
       msg::Any::Dial => op_dial,
       msg::Any::Chdir => op_chdir,
       msg::Any::GetCwd => op_get_current_dir,
+      msg::Any::Metrics => op_metrics,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -184,6 +185,7 @@ fn op_start(
       argv: Some(argv_off),
       debug_flag: state.flags.log_debug,
       recompile_flag: state.flags.recompile,
+      types_flag: state.flags.types_flag,
       ..Default::default()
     },
   );
@@ -1199,4 +1201,37 @@ fn op_dial(
     .map_err(|err| err.into())
     .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream));
   Box::new(op)
+}
+
+fn op_metrics(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+
+  let metrics = state.metrics.lock().unwrap();
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::MetricsRes::create(
+    builder,
+    &msg::MetricsResArgs {
+      ops_dispatched: metrics.ops_dispatched,
+      ops_completed: metrics.ops_completed,
+      bytes_sent_control: metrics.bytes_sent_control,
+      bytes_sent_data: metrics.bytes_sent_data,
+      bytes_received: metrics.bytes_received,
+      ..Default::default()
+    },
+  );
+  ok_future(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::MetricsRes,
+      ..Default::default()
+    },
+  ))
 }

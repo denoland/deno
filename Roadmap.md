@@ -6,7 +6,7 @@ API and Feature requests should be submitted as PRs to this document.
 
 ### Implementation of `cat`
 
-#721
+[#721](https://github.com/denoland/deno/issues/721)
 
 ```ts
 import * as deno from "deno";
@@ -20,7 +20,7 @@ for (let i = 1; i < deno.argv.length; i++) {
 
 ### TCP Server
 
-#725
+[#725](https://github.com/denoland/deno/issues/725)
 
 ```ts
 import * as deno from "deno";
@@ -199,13 +199,13 @@ compatibility with Node.
 
 #### Top-level Await (Not Implemented)
 
-#471
+[#471](https://github.com/denoland/deno/issues/471)
 
 This will be put off until at least deno2 Milestone1 is complete. One of the
 major problems is that top-level await calls are not syntactically valid
 TypeScript.
 
-#### I/O (Not Implemented) #721
+#### I/O (Not Implemented) [#721](https://github.com/denoland/deno/issues/721)
 
 There are many OS constructs that perform I/O: files, sockets, pipes. Deno aims
 to provide a unified lowest common denominator interface to work with these

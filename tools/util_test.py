@@ -1,5 +1,8 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 from util import pattern_match, parse_exit_code, shell_quote_win
+import util
+import os
+import sys
 
 
 def pattern_match_test():
@@ -44,10 +47,42 @@ def shell_quote_win_test():
         'a"b""c\\d\\"e\\\\')
 
 
+def parse_unit_test_output_test():
+    print "Testing util.parse_unit_test_output()..."
+    # This is an example of a successful unit test output.
+    output = open(
+        os.path.join(util.root_path, "tools/testdata/unit_test_output1.txt"))
+    (actual, expected) = util.parse_unit_test_output(output, False)
+    assert actual == 96
+    assert expected == 96
+
+    # This is an example of a silently dying unit test.
+    output = open(
+        os.path.join(util.root_path, "tools/testdata/unit_test_output2.txt"))
+    (actual, expected) = util.parse_unit_test_output(output, False)
+    assert actual == None
+    assert expected == 96
+
+    # This is an example of compiling before successful unit tests.
+    output = open(
+        os.path.join(util.root_path, "tools/testdata/unit_test_output3.txt"))
+    (actual, expected) = util.parse_unit_test_output(output, False)
+    assert actual == 96
+    assert expected == 96
+
+    # Check what happens on empty output.
+    from StringIO import StringIO
+    output = StringIO("\n\n\n")
+    (actual, expected) = util.parse_unit_test_output(output, False)
+    assert actual == None
+    assert expected == None
+
+
 def util_test():
     pattern_match_test()
     parse_exit_code_test()
     shell_quote_win_test()
+    parse_unit_test_output_test()
 
 
 if __name__ == '__main__':

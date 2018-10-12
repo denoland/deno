@@ -546,7 +546,10 @@ test(function compilerGetCurrentDirectory() {
 
 test(function compilerGetDefaultLibFileName() {
   setup();
-  assertEqual(compilerInstance.getDefaultLibFileName(), "$asset$/globals.d.ts");
+  assertEqual(
+    compilerInstance.getDefaultLibFileName(),
+    "$asset$/lib.deno_runtime.d.ts"
+  );
   teardown();
 });
 
@@ -572,7 +575,7 @@ test(function compilerFileExists() {
     "/root/project"
   );
   assert(compilerInstance.fileExists(moduleMetaData.fileName));
-  assert(compilerInstance.fileExists("$asset$/globals.d.ts"));
+  assert(compilerInstance.fileExists("$asset$/lib.deno_runtime.d.ts"));
   assertEqual(
     compilerInstance.fileExists("/root/project/unknown-module.ts"),
     false
@@ -590,7 +593,7 @@ test(function compilerResolveModuleNames() {
   const fixtures: Array<[string, boolean]> = [
     ["/root/project/foo/bar.ts", false],
     ["/root/project/foo/baz.ts", false],
-    ["$asset$/globals.d.ts", true]
+    ["$asset$/lib.deno_runtime.d.ts", true]
   ];
   for (let i = 0; i < results.length; i++) {
     const result = results[i];

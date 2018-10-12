@@ -3,8 +3,8 @@
 [30;47m[WILDCARD][0m consol.log("hello world!");
 [30;47m [0m [91m~~~~~~[0m
 
-  [96m$asset$/globals.d.ts[WILDCARD]
-[WILDCARD]const console: Console;
+  [96m$asset$/lib.deno_runtime.d.ts[WILDCARD]
+[WILDCARD]const console: console.Console;
 [WILDCARD]~~~~~~~[0m
 [WILDCARD]'console' is declared here.
 
