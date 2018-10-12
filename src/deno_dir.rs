@@ -240,11 +240,13 @@ impl DenoDir {
         let rest = filename_path.strip_prefix(&self.deps_https).unwrap();
         let prefix = "https://".to_string();
         (rest, prefix)
-      } else {
-        // TODO(kevinkassimo): change this to support other protocols than http
+      } else if filename_path.starts_with(&self.deps_http) {
         let rest = filename_path.strip_prefix(&self.deps_http).unwrap();
         let prefix = "http://".to_string();
         (rest, prefix)
+      } else {
+        // TODO(kevinkassimo): change this to support other protocols than http
+        unimplemented!()
       };
       // Windows doesn't support ":" in filenames, so we represent port using a
       // special string.
@@ -305,13 +307,14 @@ impl DenoDir {
           get_cache_filename(self.deps_https.as_path(), j).as_ref(),
         )
       }
-      // TODO(kevinkassimo): change this to support other protocols than http
-      _ => {
+      "http" => {
         module_name = j.to_string();
         filename = deno_fs::normalize_path(
           get_cache_filename(self.deps_http.as_path(), j).as_ref(),
         )
       }
+      // TODO(kevinkassimo): change this to support other protocols than http
+      _ => unimplemented!(),
     }
 
     debug!("module_name: {}, filename: {}", module_name, filename);
