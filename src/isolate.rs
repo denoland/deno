@@ -195,6 +195,12 @@ impl Isolate {
     }
   }
 
+  fn check_promise_errors(&self) {
+    unsafe {
+      libdeno::deno_check_promise_errors(self.libdeno_isolate);
+    }
+  }
+
   // TODO Use Park abstraction? Note at time of writing Tokio default runtime
   // does not have new_with_park().
   pub fn event_loop(&mut self) {
@@ -205,7 +211,10 @@ impl Isolate {
         Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
         Err(e) => panic!("recv_deadline() failed: {:?}", e),
       }
+      self.check_promise_errors();
     }
+    // Check on done
+    self.check_promise_errors();
   }
 
   fn ntasks_increment(&mut self) {
