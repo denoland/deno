@@ -13,12 +13,12 @@ import { sendSync } from "./dispatch";
  */
 export function cwd(): string {
   const builder = new flatbuffers.Builder(0);
-  msg.GetCwd.startGetCwd(builder);
-  const inner = msg.GetCwd.endGetCwd(builder);
-  const baseRes = sendSync(builder, msg.Any.GetCwd, inner);
+  msg.Cwd.startCwd(builder);
+  const inner = msg.Cwd.endCwd(builder);
+  const baseRes = sendSync(builder, msg.Any.Cwd, inner);
   assert(baseRes != null);
-  assert(msg.Any.GetCwdRes === baseRes!.innerType());
-  const res = new msg.GetCwdRes();
+  assert(msg.Any.CwdRes === baseRes!.innerType());
+  const res = new msg.CwdRes();
   assert(baseRes!.inner(res) != null);
   return res.cwd()!;
 }

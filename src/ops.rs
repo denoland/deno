@@ -102,7 +102,7 @@ pub fn dispatch(
       msg::Any::Accept => op_accept,
       msg::Any::Dial => op_dial,
       msg::Any::Chdir => op_chdir,
-      msg::Any::GetCwd => op_get_current_dir,
+      msg::Any::Cwd => op_cwd,
       msg::Any::Metrics => op_metrics,
       _ => panic!(format!(
         "Unhandled message {}",
@@ -825,7 +825,7 @@ fn get_mode(_perm: fs::Permissions) -> u32 {
   0
 }
 
-fn op_get_current_dir(
+fn op_cwd(
   _state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
@@ -837,9 +837,9 @@ fn op_get_current_dir(
     let builder = &mut FlatBufferBuilder::new();
     let cwd =
       builder.create_string(&path.into_os_string().into_string().unwrap());
-    let inner = msg::GetCwdRes::create(
+    let inner = msg::CwdRes::create(
       builder,
-      &msg::GetCwdResArgs {
+      &msg::CwdResArgs {
         cwd: Some(cwd),
         ..Default::default()
       },
@@ -849,7 +849,7 @@ fn op_get_current_dir(
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::GetCwdRes,
+        inner_type: msg::Any::CwdRes,
         ..Default::default()
       },
     ))

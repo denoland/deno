@@ -42,8 +42,8 @@ union Any {
   Dial,
   NewConn,
   Chdir,
-  GetCwd,
-  GetCwdRes,
+  Cwd,
+  CwdRes,
   Metrics,
   MetricsRes,
 }
@@ -96,11 +96,9 @@ enum ErrorKind: byte {
   HttpOther,
 }
 
-table GetCwd{
+table Cwd {}
 
-}
-
-table GetCwdRes{
+table CwdRes {
   cwd: string;
 }
 
@@ -146,7 +144,7 @@ table CodeCache {
   output_code: string;
 }
 
-table Chdir{
+table Chdir {
   directory: string;
 }
 
