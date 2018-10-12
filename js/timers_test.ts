@@ -32,25 +32,21 @@ test(async function timeoutSuccess() {
 });
 
 test(async function timeoutArgs() {
+  const { promise, resolve } = deferred();
   const arg = 1;
-  await new Promise((resolve, reject) => {
-    setTimeout(
-      (a, b, c) => {
-        try {
-          assertEqual(a, arg);
-          assertEqual(b, arg.toString());
-          assertEqual(c, [arg]);
-          resolve();
-        } catch (e) {
-          reject(e);
-        }
-      },
-      10,
-      arg,
-      arg.toString(),
-      [arg]
-    );
-  });
+  setTimeout(
+    (a, b, c) => {
+      assertEqual(a, arg);
+      assertEqual(b, arg.toString());
+      assertEqual(c, [arg]);
+      resolve();
+    },
+    10,
+    arg,
+    arg.toString(),
+    [arg]
+  );
+  await promise;
 });
 
 test(async function timeoutCancelSuccess() {
@@ -63,6 +59,31 @@ test(async function timeoutCancelSuccess() {
   // Wait a bit longer than 500ms
   await waitForMs(600);
   assertEqual(count, 0);
+});
+
+test(async function timeoutCancelMultiple() {
+  // Set timers and cancel them in the same order.
+  const t1 = setTimeout(uncalled, 10);
+  const t2 = setTimeout(uncalled, 10);
+  const t3 = setTimeout(uncalled, 10);
+  clearTimeout(t1);
+  clearTimeout(t2);
+  clearTimeout(t3);
+
+  // Set timers and cancel them in reverse order.
+  const t4 = setTimeout(uncalled, 20);
+  const t5 = setTimeout(uncalled, 20);
+  const t6 = setTimeout(uncalled, 20);
+  clearTimeout(t6);
+  clearTimeout(t5);
+  clearTimeout(t4);
+
+  // Sleep until we're certain that the cancelled timers aren't gonna fire.
+  await waitForMs(50);
+
+  function uncalled() {
+    throw new Error("This function should not be called.");
+  }
 });
 
 test(async function timeoutCancelInvalidSilentFail() {
@@ -126,16 +147,8 @@ test(async function intervalOrdering() {
       clearTimeout(timers[i]);
     }
   }
-  await new Promise((resolve, reject) => {
-    setTimeout(() => {
-      try {
-        assertEqual(timeouts, 1);
-        resolve();
-      } catch (e) {
-        reject(e);
-      }
-    }, 100);
-  });
+  await waitForMs(100);
+  assertEqual(timeouts, 1);
 });
 
 test(async function intervalCancelInvalidSilentFail() {

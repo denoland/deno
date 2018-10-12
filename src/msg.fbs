@@ -41,6 +41,8 @@ union Any {
   Accept,
   Dial,
   NewConn,
+  Metrics,
+  MetricsRes,
 }
 
 enum ErrorKind: byte {
@@ -67,7 +69,7 @@ enum ErrorKind: byte {
   Other,
   UnexpectedEof,
 
-  BadFileDescriptor,
+  BadResource,
 
   // url errors
 
@@ -109,6 +111,7 @@ table StartRes {
   debug_flag: bool;
   deps_flag: bool;
   recompile_flag: bool;
+  types_flag: bool;
 }
 
 table CodeFetch {
@@ -319,6 +322,16 @@ table NewConn {
   rid: int;
   remote_addr: string;
   local_addr: string;
+}
+
+table Metrics {}
+
+table MetricsRes {
+  ops_dispatched: uint64;
+  ops_completed: uint64;
+  bytes_sent_control: uint64;
+  bytes_sent_data: uint64;
+  bytes_received: uint64;
 }
 
 root_type Base;

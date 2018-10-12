@@ -4,8 +4,18 @@
 export { env, exit } from "./os";
 export { File, open, stdin, stdout, stderr, read, write, close } from "./files";
 export {
-	copy, ReadResult, Reader, Writer, Closer, Seeker, ReaderCloser,
-	WriteCloser, ReadSeeker, WriteSeeker, ReadWriteCloser, ReadWriteSeeker,
+  copy,
+  ReadResult,
+  Reader,
+  Writer,
+  Closer,
+  Seeker,
+  ReaderCloser,
+  WriteCloser,
+  ReadSeeker,
+  WriteSeeker,
+  ReadWriteCloser,
+  ReadWriteSeeker
 } from "./io";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
@@ -25,6 +35,7 @@ export { trace } from "./trace";
 export { truncateSync, truncate } from "./truncate";
 export { FileInfo } from "./file_info";
 export { connect, dial, listen, Listener, Conn } from "./net";
+export { metrics } from "./metrics";
 export const args: string[] = [];
 
 // Provide the compiler API in an obfuscated way

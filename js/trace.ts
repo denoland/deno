@@ -41,6 +41,7 @@ function popStack(): TraceInfo[] {
 }
 
 // Push to trace stack if we are tracing
+// @internal
 export function maybePushTrace(op: msg.Any, sync: boolean): void {
   if (current === null) {
     return; // no trace requested

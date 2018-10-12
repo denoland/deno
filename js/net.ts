@@ -28,12 +28,12 @@ export interface Listener {
 }
 
 class ListenerImpl implements Listener {
-  constructor(readonly fd: number) {}
+  constructor(readonly rid: number) {}
 
   async accept(): Promise<Conn> {
     const builder = new flatbuffers.Builder();
     msg.Accept.startAccept(builder);
-    msg.Accept.addRid(builder, this.fd);
+    msg.Accept.addRid(builder, this.rid);
     const inner = msg.Accept.endAccept(builder);
     const baseRes = await dispatch.sendAsync(builder, msg.Any.Accept, inner);
     assert(baseRes != null);
@@ -44,7 +44,7 @@ class ListenerImpl implements Listener {
   }
 
   close(): void {
-    close(this.fd);
+    close(this.rid);
   }
 
   addr(): Addr {
@@ -61,35 +61,35 @@ export interface Conn extends Reader, Writer, Closer {
 
 class ConnImpl implements Conn {
   constructor(
-    readonly fd: number,
+    readonly rid: number,
     readonly remoteAddr: string,
     readonly localAddr: string
   ) {}
 
   write(p: ArrayBufferView): Promise<number> {
-    return write(this.fd, p);
+    return write(this.rid, p);
   }
 
   read(p: ArrayBufferView): Promise<ReadResult> {
-    return read(this.fd, p);
+    return read(this.rid, p);
   }
 
   close(): void {
-    close(this.fd);
+    close(this.rid);
   }
 
   /** closeRead shuts down (shutdown(2)) the reading side of the TCP connection.
    * Most callers should just use close().
    */
   closeRead(): void {
-    shutdown(this.fd, ShutdownMode.Read);
+    shutdown(this.rid, ShutdownMode.Read);
   }
 
   /** closeWrite shuts down (shutdown(2)) the writing side of the TCP
    * connection. Most callers should just use close().
    */
   closeWrite(): void {
-    shutdown(this.fd, ShutdownMode.Write);
+    shutdown(this.rid, ShutdownMode.Write);
   }
 }
 
@@ -101,10 +101,10 @@ enum ShutdownMode {
   ReadWrite // unused
 }
 
-function shutdown(fd: number, how: ShutdownMode) {
+function shutdown(rid: number, how: ShutdownMode) {
   const builder = new flatbuffers.Builder();
   msg.Shutdown.startShutdown(builder);
-  msg.Shutdown.addRid(builder, fd);
+  msg.Shutdown.addRid(builder, rid);
   msg.Shutdown.addHow(builder, how);
   const inner = msg.Shutdown.endShutdown(builder);
   const baseRes = dispatch.sendSync(builder, msg.Any.Shutdown, inner);

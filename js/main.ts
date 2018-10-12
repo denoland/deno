@@ -25,9 +25,13 @@ function onGlobalError(
   source: string,
   lineno: number,
   colno: number,
-  error: Error
+  error: any // tslint:disable-line:no-any
 ) {
-  console.log(error.stack);
+  if (error instanceof Error) {
+    console.log(error.stack);
+  } else {
+    console.log(`Thrown: ${String(error)}`);
+  }
   os.exit(1);
 }
 
@@ -43,6 +47,14 @@ export default function denoMain() {
   const startResMsg = sendStart();
 
   setLogDebug(startResMsg.debugFlag());
+
+  // handle `--types`
+  if (startResMsg.typesFlag()) {
+    const defaultLibFileName = compiler.getDefaultLibFileName();
+    const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
+    console.log(defaultLibModule.sourceCode);
+    os.exit(0);
+  }
 
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
@@ -60,9 +72,9 @@ export default function denoMain() {
     console.log("No input script specified.");
     // os.exit(1);
   }
- else {
-  const printDeps = startResMsg.depsFlag();
-  if (printDeps) {
+
+  // handle `--deps`
+  if (startResMsg.depsFlag()) {
     for (const dep of compiler.getModuleDependencies(inputFn, `${cwd}/`)) {
       console.log(dep);
     }
@@ -71,5 +83,4 @@ export default function denoMain() {
 
   compiler.recompile = startResMsg.recompileFlag();
   compiler.run(inputFn, `${cwd}/`);
-}
 }

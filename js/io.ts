@@ -101,7 +101,7 @@ export interface ReadWriteSeeker extends Reader, Writer, Seeker {}
 // https://golang.org/pkg/io/#Copy
 export async function copy(dst: Writer, src: Reader): Promise<number> {
   let n = 0;
-  const b = new Uint8Array(1024);
+  const b = new Uint8Array(32*1024);
   let gotEOF = false;
   while (gotEOF === false) {
     const result = await src.read(b);

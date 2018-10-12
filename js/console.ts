@@ -149,6 +149,7 @@ function stringifyWithQuotes(
   }
 }
 
+// @internal
 export function stringifyArgs(
   // tslint:disable-next-line:no-any
   args: any[],
@@ -178,6 +179,7 @@ export function stringifyArgs(
 type PrintFunc = (x: string, isErr?: boolean) => void;
 
 export class Console {
+  // @internal
   constructor(private printFunc: PrintFunc) {}
 
   // tslint:disable-next-line:no-any

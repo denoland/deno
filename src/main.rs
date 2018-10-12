@@ -32,7 +32,7 @@ mod deno_dir;
 mod errors;
 mod flags;
 mod fs;
-mod http;
+mod http_util;
 mod isolate;
 mod libdeno;
 pub mod ops;
@@ -92,7 +92,7 @@ fn main() {
 }
 
 #[allow(dead_code)]
-fn repl_loop(isolate:Box<isolate::Isolate>) {
+fn repl_loop(mut isolate:isolate::Isolate) {
     // `()` can be used when no completer is required
     let mut rl = Editor::<()>::new();
     if rl.load_history("history.txt").is_err() {
