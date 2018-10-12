@@ -8,21 +8,28 @@ test(function NotNullcwd() {
 testPerm({ write: true }, function test_cwd_output() {
   const path = deno.makeTempDirSync();
   deno.chdir(path);
-  assertEqual(deno.cwd(), path);
+  var current = deno.cwd();
+  if (deno.platform.os === "mac") {
+    assertEqual(current, "/private" + path);
+  } else {
+    assertEqual(current, path);
+  }
 });
 
 testPerm({ write: true }, function test_cwd_error() {
-  const path = deno.makeTempDirSync();
-  deno.chdir(path);
-  deno.removeSync(path);
-  try {
-    deno.cwd();
-    throw "current directory removed, should throw error";
-  } catch (err) {
-    if (err instanceof deno.DenoError) {
-      console.log(err.name === "NotFound");
-    } else {
-      throw "raised different exception";
+  if (["linux", "mac"].includes(deno.platform.os)) {
+    const path = deno.makeTempDirSync();
+    deno.chdir(path);
+    deno.removeSync(path);
+    try {
+      deno.cwd();
+      throw "current directory removed, should throw error";
+    } catch (err) {
+      if (err instanceof deno.DenoError) {
+        console.log(err.name === "NotFound");
+      } else {
+        throw "raised different exception";
+      }
     }
   }
 });
