@@ -32,7 +32,12 @@ function onGlobalError(
   } else {
     console.log(`Thrown: ${String(error)}`);
   }
-  os.exit(1);
+  // FIXME this is a hack, and anyway doesn't work for `throw "error"`
+  // which (for some reason) has source == undefined
+  if (source !== 'deno repl') {
+    console.log(`Source: ${source}`);
+    os.exit(1);
+  }
 }
 
 /* tslint:disable-next-line:no-default-export */
