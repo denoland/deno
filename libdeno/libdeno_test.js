@@ -133,3 +133,43 @@ global.DataBuf = () => {
   b[0] = 9;
   b[1] = 8;
 };
+
+global.PromiseRejectCatchHandling = () => {
+  let count = 0;
+  let promiseRef = null;
+  // When we have an error, libdeno sends something
+  function assertOrSend(cond) {
+    if (!cond) {
+      libdeno.send(new Uint8Array([42]));
+    }
+  }
+  libdeno.setPromiseErrorExaminer(() => {
+    assertOrSend(count === 2);
+  });
+  libdeno.setPromiseRejectHandler((error, event, promise) => {
+    count++;
+    if (event === "RejectWithNoHandler") {
+      assertOrSend(error instanceof Error);
+      assertOrSend(error.message === "message");
+      assertOrSend(count === 1);
+      promiseRef = promise;
+    } else if (event === "HandlerAddedAfterReject") {
+      assertOrSend(count === 2);
+      assertOrSend(promiseRef === promise);
+    }
+    // Should never reach 3!
+    assertOrSend(count !== 3);
+  });
+
+  async function fn() {
+    throw new Error("message");
+  }
+
+  (async () => {
+    try {
+      await fn();
+    } catch (e) {
+      assertOrSend(count === 2);
+    }
+  })();
+}
