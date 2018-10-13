@@ -62,7 +62,7 @@ def main(argv):
     check_output_test(deno_exe)
     check_output_test(deno_ns_exe)
 
-    check_deno_dir_test(deno_dir)
+    deno_dir_test(deno_dir)
     rmtree(deno_dir)
 
 
