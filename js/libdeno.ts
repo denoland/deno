@@ -3,6 +3,12 @@ import { globalEval } from "./global_eval";
 
 // The libdeno functions are moved so that users can't access them.
 type MessageCallback = (msg: Uint8Array) => void;
+export type PromiseRejectEvent =
+  | "RejectWithNoHandler"
+  | "HandlerAddedAfterReject"
+  | "ResolveAfterResolved"
+  | "RejectAfterResolved";
+
 interface Libdeno {
   recv(cb: MessageCallback): void;
 
@@ -19,6 +25,17 @@ interface Libdeno {
       error: Error
     ) => void
   ) => void;
+
+  setPromiseRejectHandler: (
+    handler: (
+      error: Error | string,
+      event: PromiseRejectEvent,
+      /* tslint:disable-next-line:no-any */
+      promise: Promise<any>
+    ) => void
+  ) => void;
+
+  setPromiseErrorExaminer: (handler: () => boolean) => void;
 
   mainSource: string;
   mainSourceMap: RawSourceMap;

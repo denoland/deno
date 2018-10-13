@@ -1,5 +1,6 @@
 hello
 before error
+world
 Error: error
     at foo ([WILDCARD]tests/async_error.ts:4:9)
     at eval ([WILDCARD]tests/async_error.ts:7:1)

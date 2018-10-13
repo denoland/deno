@@ -7,6 +7,7 @@ import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
+import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
 
 function sendStart(): msg.StartRes {
   const builder = new flatbuffers.Builder();
@@ -39,6 +40,8 @@ function onGlobalError(
 export default function denoMain() {
   libdeno.recv(handleAsyncMsgFromRust);
   libdeno.setGlobalErrorHandler(onGlobalError);
+  libdeno.setPromiseRejectHandler(promiseRejectHandler);
+  libdeno.setPromiseErrorExaminer(promiseErrorExaminer);
   const compiler = DenoCompiler.instance();
 
   // First we send an empty "Start" message to let the privileged side know we
@@ -47,6 +50,14 @@ export default function denoMain() {
   const startResMsg = sendStart();
 
   setLogDebug(startResMsg.debugFlag());
+
+  // handle `--types`
+  if (startResMsg.typesFlag()) {
+    const defaultLibFileName = compiler.getDefaultLibFileName();
+    const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
+    console.log(defaultLibModule.sourceCode);
+    os.exit(0);
+  }
 
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
@@ -64,8 +75,8 @@ export default function denoMain() {
     os.exit(1);
   }
 
-  const printDeps = startResMsg.depsFlag();
-  if (printDeps) {
+  // handle `--deps`
+  if (startResMsg.depsFlag()) {
     for (const dep of compiler.getModuleDependencies(inputFn, `${cwd}/`)) {
       console.log(dep);
     }

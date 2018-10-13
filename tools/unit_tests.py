@@ -1,6 +1,34 @@
 #!/usr/bin/env python
-from util import run
+import util
 import sys
+import subprocess
+import re
+
+def run_unit_test2(cmd):
+    process = subprocess.Popen(
+        cmd,
+        bufsize=1,
+        universal_newlines=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT)
+    (actual, expected) = util.parse_unit_test_output(process.stdout, True)
+    process.wait()
+    errcode = process.returncode
+    if errcode != 0:
+        sys.exit(errcode)
+    if actual == None and expected == None:
+        raise AssertionError("Bad js/unit_test.ts output")
+    if expected != actual:
+        print "expected", expected, "actual", actual
+        raise AssertionError("expected tests did not equal actual")
+    process.wait()
+    errcode = process.returncode
+    if errcode != 0:
+        sys.exit(errcode)
+
+def run_unit_test(deno_exe, permStr, flags=[]):
+    cmd = [deno_exe, "--reload", "js/unit_tests.ts", permStr] + flags
+    run_unit_test2(cmd)
 
 
 # We want to test many ops in deno which have different behavior depending on
@@ -10,24 +38,21 @@ import sys
 # tests by the special string. permW0N0 means allow-write but not allow-net.
 # See js/test_util.ts for more details.
 def unit_tests(deno_exe):
-    run([deno_exe, "--reload", "js/unit_tests.ts", "permW0N0E0"])
-    run([
-        deno_exe, "--reload", "js/unit_tests.ts", "permW1N0E0", "--allow-write"
-    ])
-    run([
-        deno_exe, "--reload", "js/unit_tests.ts", "permW0N1E0", "--allow-net"
-    ])
-    run([
-        deno_exe, "--reload", "js/unit_tests.ts", "permW0N0E1", "--allow-env"
-    ])
-    run([
-        deno_exe,
-        "--reload",
-        "js/unit_tests.ts",
-        "permW1N1E1",
-        "--allow-write",
-        "--allow-net",
-        "--allow-env",
+    run_unit_test(deno_exe, "permW0N0E0")
+    run_unit_test(deno_exe, "permW1N0E0", ["--allow-write"])
+    run_unit_test(deno_exe, "permW0N1E0", ["--allow-net"])
+    run_unit_test(deno_exe, "permW0N0E1", ["--allow-env"])
+    # TODO We might accidentally miss some. We should be smarter about which we
+    # run. Maybe we can use the "filtered out" number to check this.
+
+    # These are not strictly unit tests for Deno, but for ts_library_builder.
+    # They run under Node, but use the same //js/testing/ library.
+    run_unit_test2([
+        "node",
+        "./node_modules/.bin/ts-node",
+        "--project",
+        "tools/ts_library_builder/tsconfig.json",
+        "tools/ts_library_builder/test.ts"
     ])
 
 

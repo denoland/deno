@@ -22,6 +22,12 @@ const regularData = [
       "main.js.map": 80000000,
       "snapshot_deno.bin": 70000000
     },
+    throughput: {
+      "100M_tcp": 3.6,
+      "100M_cat": 3.0,
+      "10M_tcp": 1.6,
+      "10M_cat": 1.0
+    },
     benchmark: {
       hello: {
         mean: 0.05
@@ -54,6 +60,12 @@ const regularData = [
       "main.js.map": 80000001,
       "snapshot_deno.bin": 70000001
     },
+    throughput: {
+      "100M_tcp": 3.6,
+      "100M_cat": 3.0,
+      "10M_tcp": 1.6,
+      "10M_cat": 1.0
+    },
     benchmark: {
       hello: {
         mean: 0.055
@@ -84,6 +96,7 @@ const irregularData = [
     created_at: "2018-01-01T01:00:00Z",
     sha1: "123",
     benchmark: {},
+    throughput: {},
     binary_size: {},
     thread_count: {},
     syscall_count: {}
@@ -96,6 +109,9 @@ const irregularData = [
       relative_import: {},
       cold_hello: {},
       cold_relative_import: {}
+    },
+    throughput: {
+      "100M_tcp": 3.0
     },
     binary_size: {
       deno: 1

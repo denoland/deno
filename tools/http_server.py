@@ -55,5 +55,4 @@ def spawn():
 
 
 if __name__ == '__main__':
-    s = server()
-    s.serve_forever()
+    spawn().join()
