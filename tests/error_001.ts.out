@@ -3,7 +3,7 @@ Error: bad
     at bar (file://[WILDCARD]tests/error_001.ts:6:3)
     at eval (file://[WILDCARD]tests/error_001.ts:9:1)
     at DenoCompiler.eval [as _globalEval] (<anonymous>)
-    at DenoCompiler._gatherDependencies (deno/js/compiler.ts:[WILDCARD])
-    at DenoCompiler.run (deno/js/compiler.ts:[WILDCARD])
-    at denoMain (deno/js/main.ts:[WILDCARD])
+    at DenoCompiler._gatherDependencies ([WILDCARD]/js/compiler.ts:[WILDCARD])
+    at DenoCompiler.run ([WILDCARD]/js/compiler.ts:[WILDCARD])
+    at denoMain ([WILDCARD]/js/main.ts:[WILDCARD])
     at deno_main.js:1:1
