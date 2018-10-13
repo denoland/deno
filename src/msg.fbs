@@ -41,6 +41,9 @@ union Any {
   Accept,
   Dial,
   NewConn,
+  Chdir,
+  Cwd,
+  CwdRes,
   Metrics,
   MetricsRes,
 }
@@ -93,6 +96,12 @@ enum ErrorKind: byte {
   HttpOther,
 }
 
+table Cwd {}
+
+table CwdRes {
+  cwd: string;
+}
+
 table Base {
   cmd_id: uint32;
   sync: bool = true; // TODO(ry) Change default to false.
@@ -133,6 +142,10 @@ table CodeCache {
   filename: string;
   source_code: string;
   output_code: string;
+}
+
+table Chdir {
+  directory: string;
 }
 
 table SetTimeout {
