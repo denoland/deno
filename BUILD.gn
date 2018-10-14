@@ -44,6 +44,7 @@ config("deno_config") {
 }
 
 main_extern = [
+  "$rust_build:http",
   "$rust_build:hyper",
   "$rust_build:hyper_rustls",
   "$rust_build:futures",

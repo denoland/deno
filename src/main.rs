@@ -2,6 +2,7 @@
 extern crate flatbuffers;
 #[macro_use]
 extern crate futures;
+extern crate http;
 extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg;
@@ -32,6 +33,7 @@ mod libdeno;
 pub mod ops;
 mod resources;
 mod tokio_util;
+mod uri_util;
 mod version;
 
 use std::env;
