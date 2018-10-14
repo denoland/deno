@@ -12,6 +12,7 @@ interface Metrics {
   bytesReceived: number;
 }
 
+/** Receive metrics from the privileged side of Deno. */
 export function metrics(): Metrics {
   return res(dispatch.sendSync(...req()));
 }

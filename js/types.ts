@@ -41,82 +41,60 @@ export interface ModuleInfo {
 // tslint:enable:max-line-length
 
 export interface CallSite {
-  /**
-   * Value of "this"
-   */
+  /** Value of `this` */
   // tslint:disable-next-line:no-any
   getThis(): any;
 
-  /**
-   * Type of "this" as a string.
+  /** Type of `this` as a string.
+   *
    * This is the name of the function stored in the constructor field of
-   * "this", if available.  Otherwise the object's [[Class]] internal
+   * `this`, if available.  Otherwise the object's `[[Class]]` internal
    * property.
    */
   getTypeName(): string | null;
 
-  /**
-   * Current function
-   */
+  /** Current function. */
   getFunction(): Function | undefined;
 
-  /**
-   * Name of the current function, typically its name property.
+  /** Name of the current function, typically its name property.
+   *
    * If a name property is not available an attempt will be made to try
    * to infer a name from the function's context.
    */
   getFunctionName(): string | null;
 
-  /**
-   * Name of the property [of "this" or one of its prototypes] that holds
-   * the current function
+  /** Name of the property (of `this` or one of its prototypes) that holds
+   * the current function.
    */
   getMethodName(): string | null;
 
-  /**
-   * Name of the script [if this function was defined in a script]
-   */
+  /** Name of the script (if this function was defined in a script). */
   getFileName(): string | null;
 
-  /**
-   * Get the script name or source URL for the source map
-   */
+  /** Get the script name or source URL for the source map. */
   getScriptNameOrSourceURL(): string;
 
-  /**
-   * Current line number [if this function was defined in a script]
-   */
+  /** Current line number (if this function was defined in a script). */
   getLineNumber(): number | null;
 
-  /**
-   * Current column number [if this function was defined in a script]
-   */
+  /** Current column number (if this function was defined in a script). */
   getColumnNumber(): number | null;
 
-  /**
-   * A call site object representing the location where eval was called
-   * [if this function was created using a call to eval]
+  /** A call site object representing the location where eval was called (if
+   * this function was created using a call to `eval`)
    */
   getEvalOrigin(): string | undefined;
 
-  /**
-   * Is this a toplevel invocation, that is, is "this" the global object?
-   */
+  /** Is this a top level invocation, that is, is `this` the global object? */
   isToplevel(): boolean;
 
-  /**
-   * Does this call take place in code defined by a call to eval?
-   */
+  /** Does this call take place in code defined by a call to `eval`? */
   isEval(): boolean;
 
-  /**
-   * Is this call in native V8 code?
-   */
+  /** Is this call in native V8 code? */
   isNative(): boolean;
 
-  /**
-   * Is this a constructor call?
-   */
+  /** Is this a constructor call? */
   isConstructor(): boolean;
 }
 
@@ -136,7 +114,7 @@ export interface RawSourceMap extends StartOfSourceMap {
 declare global {
   // Declare "static" methods in Error
   interface ErrorConstructor {
-    /** Create .stack property on a target object */
+    /** Create `.stack` property on a target object */
     captureStackTrace(targetObject: object, constructorOpt?: Function): void;
 
     // tslint:disable:max-line-length

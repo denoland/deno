@@ -5,23 +5,20 @@ import * as dispatch from "./dispatch";
 import { FileInfo, FileInfoImpl } from "./file_info";
 import { assert } from "./util";
 
-/**
- * Reads the directory given by path and returns
- * a list of file info synchronously.
+/** Reads the directory given by path and returns a list of file info
+ * synchronously.
  *
- *     import { readDirSync } from "deno";
- *     const files = readDirSync("/");
+ *       import { readDirSync } from "deno";
+ *       const files = readDirSync("/");
  */
 export function readDirSync(path: string): FileInfo[] {
   return res(dispatch.sendSync(...req(path)));
 }
 
-/**
- * Reads the directory given by path and returns a list of file info.
+/** Reads the directory given by path and returns a list of file info.
  *
- *     import { readDir } from "deno";
- *     const files = await readDir("/");
- *
+ *       import { readDir } from "deno";
+ *       const files = await readDir("/");
  */
 export async function readDir(path: string): Promise<FileInfo[]> {
   return res(await dispatch.sendAsync(...req(path)));
