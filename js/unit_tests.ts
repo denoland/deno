@@ -19,6 +19,7 @@ import "./read_link_test.ts";
 import "./blob_test.ts";
 import "./timers_test.ts";
 import "./symlink_test.ts";
+import "./path_test.ts";
 import "./platform_test.ts";
 import "./text_encoding_test.ts";
 import "./net_test.ts";
