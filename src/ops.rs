@@ -101,6 +101,8 @@ pub fn dispatch(
       msg::Any::Listen => op_listen,
       msg::Any::Accept => op_accept,
       msg::Any::Dial => op_dial,
+      msg::Any::Chdir => op_chdir,
+      msg::Any::Cwd => op_cwd,
       msg::Any::Metrics => op_metrics,
       _ => panic!(format!(
         "Unhandled message {}",
@@ -110,8 +112,7 @@ pub fn dispatch(
     op_creator(isolate.state.clone(), &base, data)
   };
 
-  let boxed_op = Box::new(
-    op.or_else(move |err: DenoError| -> DenoResult<Buf> {
+  let boxed_op = Box::new(op.or_else(move |err: DenoError| -> DenoResult<Buf> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
       // send back. So transform the DenoError into a deno_buf.
@@ -143,8 +144,7 @@ pub fn dispatch(
         )
       };
       Ok(buf)
-    }),
-  );
+    }));
 
   debug!(
     "msg_from_js {} sync {}",
@@ -279,6 +279,20 @@ fn op_code_cache(
   let output_code = inner.output_code().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
     state.dir.code_cache(filename, source_code, output_code)?;
+    Ok(empty_buf())
+  }()))
+}
+
+fn op_chdir(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_chdir().unwrap();
+  let directory = inner.directory().unwrap();
+  Box::new(futures::future::result(|| -> OpResult {
+    let _result = std::env::set_current_dir(&directory)?;
     Ok(empty_buf())
   }()))
 }
@@ -809,6 +823,37 @@ fn get_mode(perm: fs::Permissions) -> u32 {
 #[cfg(not(any(unix)))]
 fn get_mode(_perm: fs::Permissions) -> u32 {
   0
+}
+
+fn op_cwd(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+  Box::new(futures::future::result(|| -> OpResult {
+    let path = std::env::current_dir()?;
+    let builder = &mut FlatBufferBuilder::new();
+    let cwd =
+      builder.create_string(&path.into_os_string().into_string().unwrap());
+    let inner = msg::CwdRes::create(
+      builder,
+      &msg::CwdResArgs {
+        cwd: Some(cwd),
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::CwdRes,
+        ..Default::default()
+      },
+    ))
+  }()))
 }
 
 fn op_stat(
