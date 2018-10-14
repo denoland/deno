@@ -3,14 +3,13 @@ import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 
-/**
- * Write a new file, with given filename and data synchronously.
+/** Write a new file, with given filename and data synchronously.
  *
- *     import { writeFileSync } from "deno";
+ *       import { writeFileSync } from "deno";
  *
- *     const encoder = new TextEncoder("utf-8");
- *     const data = encoder.encode("Hello world\n");
- *     writeFileSync("hello.txt", data);
+ *       const encoder = new TextEncoder("utf-8");
+ *       const data = encoder.encode("Hello world\n");
+ *       writeFileSync("hello.txt", data);
  */
 export function writeFileSync(
   filename: string,
@@ -20,14 +19,13 @@ export function writeFileSync(
   dispatch.sendSync(...req(filename, data, perm));
 }
 
-/**
- * Write a new file, with given filename and data.
+/** Write a new file, with given filename and data.
  *
- *     import { writeFile } from "deno";
+ *       import { writeFile } from "deno";
  *
- *     const encoder = new TextEncoder("utf-8");
- *     const data = encoder.encode("Hello world\n");
- *     await writeFile("hello.txt", data);
+ *       const encoder = new TextEncoder("utf-8");
+ *       const data = encoder.encode("Hello world\n");
+ *       await writeFile("hello.txt", data);
  */
 export async function writeFile(
   filename: string,

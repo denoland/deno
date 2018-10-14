@@ -3,21 +3,20 @@ import * as msg from "gen/msg_generated";
 import { flatbuffers } from "flatbuffers";
 import * as dispatch from "./dispatch";
 
-/**
- * Creates a new directory with the specified path and permission synchronously.
+/** Creates a new directory with the specified path and permission
+ * synchronously.
  *
- *     import { mkdirSync } from "deno";
- *     mkdirSync("new_dir");
+ *       import { mkdirSync } from "deno";
+ *       mkdirSync("new_dir");
  */
 export function mkdirSync(path: string, mode = 0o777): void {
   dispatch.sendSync(...req(path, mode));
 }
 
-/**
- * Creates a new directory with the specified path and permission.
+/** Creates a new directory with the specified path and permission.
  *
- *     import { mkdir } from "deno";
- *     await mkdir("new_dir");
+ *       import { mkdir } from "deno";
+ *       await mkdir("new_dir");
  */
 export async function mkdir(path: string, mode = 0o777): Promise<void> {
   await dispatch.sendAsync(...req(path, mode));

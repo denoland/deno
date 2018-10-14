@@ -178,6 +178,7 @@ class FetchResponse implements domTypes.Response {
   }
 }
 
+/** Fetch a resource from the network. */
 export async function fetch(
   input?: domTypes.Request | string,
   init?: domTypes.RequestInit

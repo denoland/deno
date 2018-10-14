@@ -55,17 +55,16 @@ export function maybePushTrace(op: msg.Any, sync: boolean): void {
   );
 }
 
-/**
- * Trace operations executed inside a given function or promise.
- * Notice: To capture every operation in asynchronous deno.* calls,
+/** Trace privileged operations executed inside a given function or promise.
+ *
+ * _Notice:_ To capture every operation in asynchronous `deno.*` calls,
  * you might want to put them in functions instead of directly invoking.
  *
- *     import { trace, mkdir } from "deno";
+ *       import { trace, mkdir } from "deno";
  *
- *     const ops = await trace(async () => {
- *       await mkdir("my_dir");
- *     });
- *     // ops becomes [{ sync: false, name: "Mkdir" }]
+ *       const ops = await trace(async () => {
+ *         await mkdir("my_dir");
+ *       });
  */
 export async function trace(
   // tslint:disable-next-line:no-any

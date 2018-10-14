@@ -9,6 +9,7 @@ export class DenoBlob implements domTypes.Blob {
   readonly size: number = 0;
   readonly type: string = "";
 
+  /** A blob object represents a file-like object of immutable, raw data. */
   constructor(
     blobParts?: domTypes.BlobPart[],
     options?: domTypes.BlobPropertyBag

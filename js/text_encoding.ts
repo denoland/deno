@@ -2,6 +2,7 @@
 import * as base64 from "base64-js";
 import { DenoError, ErrorKind } from "./errors";
 
+/** Decodes a string of data which has been encoded using base-64. */
 export function atob(s: string): string {
   const rem = s.length % 4;
   // base64-js requires length exactly times of 4
@@ -24,6 +25,7 @@ export function atob(s: string): string {
   return result;
 }
 
+/** Creates a base-64 ASCII string from the input string. */
 export function btoa(s: string): string {
   const byteArray = [];
   for (let i = 0; i < s.length; i++) {
