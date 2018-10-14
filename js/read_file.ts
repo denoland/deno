@@ -4,25 +4,23 @@ import { flatbuffers } from "flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
-/**
- * Read the entire contents of a file synchronously.
+/** Read the entire contents of a file synchronously.
  *
- *     import { readFileSync } from "deno";
- *     const decoder = new TextDecoder("utf-8");
- *     const data = readFileSync("hello.txt");
- *     console.log(decoder.decode(data));
+ *       import { readFileSync } from "deno";
+ *       const decoder = new TextDecoder("utf-8");
+ *       const data = readFileSync("hello.txt");
+ *       console.log(decoder.decode(data));
  */
 export function readFileSync(filename: string): Uint8Array {
   return res(dispatch.sendSync(...req(filename)));
 }
 
-/**
- * Read the entire contents of a file.
+/** Read the entire contents of a file.
  *
- *     import { readFile } from "deno";
- *     const decoder = new TextDecoder("utf-8");
- *     const data = await readFile("hello.txt");
- *     console.log(decoder.decode(data));
+ *       import { readFile } from "deno";
+ *       const decoder = new TextDecoder("utf-8");
+ *       const data = await readFile("hello.txt");
+ *       console.log(decoder.decode(data));
  */
 export async function readFile(filename: string): Promise<Uint8Array> {
   return res(await dispatch.sendAsync(...req(filename)));

@@ -8,8 +8,7 @@ export function setLogDebug(debug: boolean): void {
   logDebug = debug;
 }
 
-/**
- * Debug logging for deno.
+/** Debug logging for deno.
  * Enable with the `--log-debug` or `-D` command line flag.
  * @internal
  */
@@ -38,20 +37,22 @@ export function arrayToStr(ui8: Uint8Array): string {
   return String.fromCharCode(...ui8);
 }
 
-/**
- * A `Resolvable` is a Promise with the `reject` and `resolve` functions
+/** A `Resolvable` is a Promise with the `reject` and `resolve` functions
  * placed as methods on the promise object itself. It allows you to do:
  *
- *     const p = createResolvable<number>();
- *     ...
- *     p.resolve(42);
+ *       const p = createResolvable<number>();
+ *       // ...
+ *       p.resolve(42);
  *
- * It'd be prettier to make Resolvable a class that inherits from Promise,
+ * It'd be prettier to make `Resolvable` a class that inherits from `Promise`,
  * rather than an interface. This is possible in ES2016, however typescript
  * produces broken code when targeting ES5 code.
- * See https://github.com/Microsoft/TypeScript/issues/15202
- * At the time of writing, the github issue is closed but the problem remains.
  *
+ * At the time of writing, the GitHub issue is closed in favour of a proposed
+ * solution that is awaiting feedback.
+ *
+ * @see https://github.com/Microsoft/TypeScript/issues/15202
+ * @see https://github.com/Microsoft/TypeScript/issues/15397
  * @internal
  */
 
@@ -109,11 +110,8 @@ export interface Deferred {
   reject: Function;
 }
 
-/**
- * Create a wrapper around a promise that could be
- * resolved externally.
- * @internal
- */
+/** Create a wrapper around a promise that could be resolved externally. */
+// @internal
 export function deferred(): Deferred {
   let resolve: Function | undefined;
   let reject: Function | undefined;

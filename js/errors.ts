@@ -1,6 +1,18 @@
 import { Base, ErrorKind } from "gen/msg_generated";
 export { ErrorKind } from "gen/msg_generated";
 
+/** A Deno specific error.  The `kind` property is set to a specific error code
+ * which can be used to in application logic.
+ *
+ *     import { DenoError, ErrorKind } from "deno";
+ *     try {
+ *       somethingThatMightThrow();
+ *     } catch (e) {
+ *       if (e instanceof DenoError && e.kind === DenoError.Overflow) {
+ *         console.error("Overflow error!");
+ *       }
+ *     }
+ */
 export class DenoError<T extends ErrorKind> extends Error {
   constructor(readonly kind: T, msg: string) {
     super(msg);
