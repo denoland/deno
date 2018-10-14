@@ -32,6 +32,10 @@ default_args = {
   treat_warnings_as_errors = false
   rust_treat_warnings_as_errors = true
 
+  # Enable Jumbo build by default
+  # https://chromium.googlesource.com/chromium/src/+/master/docs/jumbo.md
+  use_jumbo_build = true
+
   # https://cs.chromium.org/chromium/src/docs/ccache_mac.md
   clang_use_chrome_plugins = false
 
