@@ -2,6 +2,7 @@
 extern crate dirs;
 extern crate flatbuffers;
 extern crate getopts;
+extern crate http;
 extern crate hyper;
 extern crate hyper_rustls;
 extern crate libc;
@@ -37,6 +38,7 @@ mod resources;
 mod snapshot;
 mod tokio_util;
 mod tokio_write;
+mod uri_util;
 mod version;
 
 #[cfg(unix)]
