@@ -88,6 +88,7 @@ script:
 - ./tools/lint.py
 - bash -c "sleep 2100; pkill ninja" &
 - ./tools/build.py -j2
+- $DENO_BUILD_PATH/deno -v # check version output
 - ./tools/test.py $DENO_BUILD_PATH
 after_script:
 - ccache --show-stats
