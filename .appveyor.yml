@@ -2,7 +2,7 @@ version: '{build}.{branch}'
 
 skip_branch_with_pr: true
 
-clone_folder: c:\deno
+clone_folder: C:\deno
 clone_depth: 1
 
 environment:
@@ -283,8 +283,8 @@ install:
       # Add binary dir for `pip --user` packages.
       $p += "$env:APPDATA\Python\Scripts"
       # Add python27-x64.
-      $p += "c:\Python27-x64"
-      $p += "c:\Python27-x64\Scripts"
+      $p += "C:\Python27-x64"
+      $p += "C:\Python27-x64\Scripts"
       $env:PATH = $p -join ";"
 
   # Pip on Appveyor is too old. Install a recent version in our user dir.
