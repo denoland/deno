@@ -113,7 +113,8 @@ pub fn dispatch(
     op_creator(isolate.state.clone(), &base, data)
   };
 
-  let boxed_op = Box::new(op.or_else(move |err: DenoError| -> DenoResult<Buf> {
+  let boxed_op = Box::new(
+    op.or_else(move |err: DenoError| -> DenoResult<Buf> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
       // send back. So transform the DenoError into a deno_buf.
@@ -145,7 +146,8 @@ pub fn dispatch(
         )
       };
       Ok(buf)
-    }));
+    }),
+  );
 
   debug!(
     "msg_from_js {} sync {}",
@@ -367,8 +369,7 @@ fn op_env(
           ..Default::default()
         },
       )
-    })
-    .collect();
+    }).collect();
   let tables = builder.create_vector(&vars);
   let inner = msg::EnvironRes::create(
     builder,
@@ -948,8 +949,7 @@ fn op_read_dir(
             ..Default::default()
           },
         )
-      })
-      .collect();
+      }).collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(
