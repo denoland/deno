@@ -10,7 +10,6 @@ import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
 import { repl_loop } from "./repl";
 
-
 function sendStart(): msg.StartRes {
   const builder = new flatbuffers.Builder();
   msg.Start.startStart(builder);
@@ -37,7 +36,7 @@ function onGlobalError(
   }
   // FIXME this is a hack, and anyway doesn't work for `throw "error"`
   // which (for some reason) has source == undefined
-  if (source !== 'deno repl') {
+  if (source !== "deno repl") {
     console.log(`Source: ${source}`);
     os.exit(1);
   }

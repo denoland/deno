@@ -2,17 +2,19 @@
 extern crate rustyline;
 use rustyline::Editor;
 
-use std::sync::Arc;
 use std::error::Error;
+use std::sync::Arc;
 //use futures::Future;
 use msg::ErrorKind;
 
-
-use isolate;
-use errors::DenoResult;
 use errors::new as deno_error;
+use errors::DenoResult;
+use isolate;
 
-pub fn readline(_state: &Arc<isolate::IsolateState>, prompt: &String) -> DenoResult<String> {
+pub fn readline(
+  _state: &Arc<isolate::IsolateState>,
+  prompt: &String,
+) -> DenoResult<String> {
   // FIXME
   // let mut maybe_editor = state.repl.lock().unwrap();
   // if maybe_editor.is_none() {
@@ -29,9 +31,9 @@ pub fn readline(_state: &Arc<isolate::IsolateState>, prompt: &String) -> DenoRes
 // FIXME can we call save_history when this is dropped / upon exit?
 // rl.save_history("history.txt").unwrap();
 fn start_repl() -> Editor<()> {
-    let mut editor = Editor::<()>::new();
-    if editor.load_history("history.txt").is_err() {
-        eprintln!("No previous history.");
-    }
-    editor
+  let mut editor = Editor::<()>::new();
+  if editor.load_history("history.txt").is_err() {
+    eprintln!("No previous history.");
+  }
+  editor
 }

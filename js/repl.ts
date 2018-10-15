@@ -4,10 +4,10 @@ import { flatbuffers } from "flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 import { window } from "./globals";
-import * as deno from './deno';
+import * as deno from "./deno";
 
 // FIXME assignis like this is bad
-window.deno = deno
+window.deno = deno;
 /** Read the next line for the repl.
  *
  *       import { readFile } from "deno";
@@ -37,18 +37,19 @@ function res(baseRes: null | msg.Base): string {
   assert(baseRes!.inner(inner) != null);
   const line = inner.line();
   assert(line !== null);
-  return line ? line : "FIXME" // FIXME null handling
+  return line ? line : "FIXME"; // FIXME null handling
 }
 
 export async function repl_loop() {
-  while(true){
-    let line = await readline('>> ')
+  while (true) {
+    const line = await readline(">> ");
     try {
-      let result = eval.call(window, line);
-      if (result) { console.log(result) };
+      const result = eval.call(window, line);
+      if (result) {
+        console.log(result);
+      }
     } catch (err) {
       console.log(err);
     }
   }
 }
- 
