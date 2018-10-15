@@ -31,8 +31,8 @@ for fn in ["BUILD.gn", ".gn"] + find_exts("build_extra", ".gn", ".gni"):
 if find_executable('yapf'):
     run(["yapf", "-i"] + glob("tools/*.py") + find_exts("build_extra", ".py"))
 else:
-    print("\n\nUnable to format python code!: yapf not found."
-    "Install with \n`pip install yapf`\n exiting")
+    print("\n\nUnable to format python code!: yapf not found.")
+    print("Install with \n`pip install yapf`\n exiting")
     sys.exit(1)
 
 # yapf: disable
@@ -48,6 +48,6 @@ run(["node", prettier, "--write"] +
 if find_executable('rustfmt'):
     run(["rustfmt", "--config-path", rustfmt_config] + find_exts("src/", ".rs"))
 else:
-    print("\n\nUnable to format rust code!: rustfmt not found. 
-    "Install with \n`rustup component add rustfmt-preview`\n exiting")
+    print("\n\nUnable to format rust code!: rustfmt not found.")
+    print("Install with \n`rustup component add rustfmt-preview`\n exiting")
     sys.exit(1)
