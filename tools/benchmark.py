@@ -14,6 +14,7 @@ from util import run, run_output, root_path, build_path, executable_suffix
 import tempfile
 import http_server
 import throughput_benchmark
+from http_benchmark import http_benchmark
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -183,6 +184,7 @@ def main(argv):
     # pipe.
     if os.name != 'nt':
         new_data["throughput"] = run_throughput(deno_path)
+        new_data["req_per_sec"] = http_benchmark(deno_path)
     if "linux" in sys.platform:
         # Thread count test, only on linux
         new_data["thread_count"] = run_thread_count_benchmark(deno_path)
