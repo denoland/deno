@@ -1,7 +1,7 @@
 [96m[WILDCARD]tests/error_003_typescript.ts[WILDCARD] - [91merror[0m[90m TS2552: [0mCannot find name 'consol'. Did you mean 'console'?
 
-[30;47m[WILDCARD][0m consol.log("hello world!");
-[30;47m [0m [91m~~~~~~[0m
+[WILDCARD] consol.log("hello world!");
+[WILDCARD]~~~~~~[0m
 
   [96m$asset$/lib.deno_runtime.d.ts[WILDCARD]
 [WILDCARD]const console: console.Console;
