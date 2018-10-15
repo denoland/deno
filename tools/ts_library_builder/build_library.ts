@@ -2,12 +2,10 @@ import { writeFileSync } from "fs";
 import * as prettier from "prettier";
 import {
   ExpressionStatement,
-  ModuleKind,
-  ModuleResolutionKind,
   NamespaceDeclarationKind,
   Project,
-  ScriptTarget,
   SourceFile,
+  ts,
   Type,
   TypeGuards
 } from "ts-simple-ast";
@@ -51,6 +49,8 @@ export interface BuildLibraryOptions {
    */
   silent?: boolean;
 }
+
+const { ModuleKind, ModuleResolutionKind, ScriptTarget } = ts;
 
 /**
  * A preamble which is appended to the start of the library.
