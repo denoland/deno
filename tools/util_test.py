@@ -78,11 +78,19 @@ def parse_unit_test_output_test():
     assert expected == None
 
 
+def parse_wrk_output_test():
+    print "Testing util.parse_wrk_output_test()..."
+    f = open(os.path.join(util.root_path, "tools/testdata/wrk1.txt"))
+    req_per_sec = util.parse_wrk_output(f.read())
+    assert req_per_sec == 1837
+
+
 def util_test():
     pattern_match_test()
     parse_exit_code_test()
     shell_quote_win_test()
     parse_unit_test_output_test()
+    parse_wrk_output_test()
 
 
 if __name__ == '__main__':

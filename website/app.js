@@ -51,6 +51,10 @@ export function createThroughputColumns(data) {
   return createColumns(data, "throughput");
 }
 
+export function createReqPerSecColumns(data) {
+  return createColumns(data, "req_per_sec");
+}
+
 export function createBinarySizeColumns(data) {
   const propName = "binary_size";
   const binarySizeNames = Object.keys(data[data.length - 1][propName]);
@@ -132,6 +136,7 @@ export async function main() {
 
   const execTimeColumns = createExecTimeColumns(data);
   const throughputColumns = createThroughputColumns(data);
+  const reqPerSecColumns = createReqPerSecColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
   const threadCountColumns = createThreadCountColumns(data);
   const syscallCountColumns = createSyscallCountColumns(data);
@@ -174,6 +179,24 @@ export async function main() {
     bindto: "#throughput-chart",
     data: {
       columns: throughputColumns,
+      onclick: viewCommitOnClick(sha1List)
+    },
+    axis: {
+      x: {
+        type: "category",
+        show: false,
+        categories: sha1ShortList
+      },
+      y: {
+        label: "seconds"
+      }
+    }
+  });
+
+  c3.generate({
+    bindto: "#req-per-sec-chart",
+    data: {
+      columns: reqPerSecColumns,
       onclick: viewCommitOnClick(sha1List)
     },
     axis: {
