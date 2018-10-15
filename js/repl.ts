@@ -4,7 +4,10 @@ import { flatbuffers } from "flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 import { window } from "./globals";
+import * as deno from './deno';
 
+// FIXME assignis like this is bad
+window.deno = deno
 /** Read the next line for the repl.
  *
  *       import { readFile } from "deno";
