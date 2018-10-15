@@ -82,8 +82,8 @@ fn main() {
       });
     isolate.event_loop();
     // if no args then enter repl
-    if isolate.state.argv.len() == 1 {
-      repl::repl_loop(&mut isolate)
-    }
+    // if isolate.state.argv.len() == 1 {
+    //   repl::repl_loop(&mut isolate)
+    // }
   });
 }

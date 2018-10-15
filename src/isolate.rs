@@ -11,6 +11,7 @@ use libdeno;
 
 use futures::Future;
 use libc::c_void;
+use rustyline::Editor;
 use std;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -56,6 +57,7 @@ pub struct IsolateState {
   pub flags: flags::DenoFlags,
   tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
   pub metrics: Mutex<Metrics>,
+  pub repl: Mutex<Option<Editor<()>>>,
 }
 
 impl IsolateState {
@@ -120,6 +122,7 @@ impl Isolate {
         flags,
         tx: Mutex::new(Some(tx)),
         metrics: Mutex::new(Metrics::default()),
+        repl: Mutex::new(None),
       }),
     }
   }

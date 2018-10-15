@@ -8,6 +8,8 @@ import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
+import { repl_loop } from "./repl";
+
 
 function sendStart(): msg.StartRes {
   const builder = new flatbuffers.Builder();
@@ -75,20 +77,22 @@ export default function denoMain() {
   Object.freeze(args);
   const inputFn = args[0];
   if (!inputFn) {
-    // console.log("not exiting")
+    // repl!!
     // console.log("No input script specified.");
     // os.exit(1);
   }
 
   // handle `--deps`
-  if (startResMsg.depsFlag()) {
+  if (inputFn && startResMsg.depsFlag()) {
     for (const dep of compiler.getModuleDependencies(inputFn, `${cwd}/`)) {
       console.log(dep);
     }
     os.exit(0);
   }
-
   compiler.recompile = startResMsg.recompileFlag();
-  compiler.run(inputFn, `${cwd}/`);
-}
+  if (inputFn) {
+    compiler.run(inputFn, `${cwd}/`);
+  } else {
+    repl_loop();
+  }
 }
