@@ -209,8 +209,7 @@ fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
       }
 
       true
-    })
-    .collect();
+    }).collect();
 
   // Replace args being sent to V8
   for idx in 0..args.len() {
@@ -279,7 +278,6 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
       let cstr = CStr::from_ptr(*ptr as *const i8);
       let slice = cstr.to_str().unwrap();
       slice.to_string()
-    })
-    .chain(rest.into_iter())
+    }).chain(rest.into_iter())
     .collect()
 }
