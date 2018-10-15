@@ -11,6 +11,7 @@ use libdeno;
 
 use futures::Future;
 use libc::c_void;
+use rustyline::Editor;
 use std;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -56,6 +57,7 @@ pub struct IsolateState {
   pub flags: flags::DenoFlags,
   tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
   pub metrics: Mutex<Metrics>,
+  pub repl: Mutex<Option<Editor<()>>>,
 }
 
 impl IsolateState {
@@ -120,6 +122,7 @@ impl Isolate {
         flags,
         tx: Mutex::new(Some(tx)),
         metrics: Mutex::new(Metrics::default()),
+        repl: Mutex::new(None),
       }),
     }
   }
@@ -195,6 +198,12 @@ impl Isolate {
     }
   }
 
+  fn check_promise_errors(&self) {
+    unsafe {
+      libdeno::deno_check_promise_errors(self.libdeno_isolate);
+    }
+  }
+
   // TODO Use Park abstraction? Note at time of writing Tokio default runtime
   // does not have new_with_park().
   pub fn event_loop(&mut self) {
@@ -205,7 +214,10 @@ impl Isolate {
         Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
         Err(e) => panic!("recv_deadline() failed: {:?}", e),
       }
+      self.check_promise_errors();
     }
+    // Check on done
+    self.check_promise_errors();
   }
 
   fn ntasks_increment(&mut self) {

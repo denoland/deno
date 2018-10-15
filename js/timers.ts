@@ -197,6 +197,7 @@ function setTimer<Args extends Array<unknown>>(
   return timer.id;
 }
 
+/** Sets a timer which executes a function once after the timer expires. */
 export function setTimeout<Args extends Array<unknown>>(
   cb: (...args: Args) => void,
   delay: number,
@@ -205,6 +206,7 @@ export function setTimeout<Args extends Array<unknown>>(
   return setTimer(cb, delay, args, false);
 }
 
+/** Repeatedly calls a function , with a fixed time delay between each call. */
 export function setInterval<Args extends Array<unknown>>(
   cb: (...args: Args) => void,
   delay: number,
@@ -213,6 +215,7 @@ export function setInterval<Args extends Array<unknown>>(
   return setTimer(cb, delay, args, true);
 }
 
+/** Clears a previously set timer by id. */
 export function clearTimer(id: number): void {
   const timer = idMap.get(id);
   if (timer === undefined) {

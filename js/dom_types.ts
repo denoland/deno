@@ -245,28 +245,68 @@ export interface FormData {
   ): void;
 }
 
+/** A blob object represents a file-like object of immutable, raw data. */
 export interface Blob {
+  /** The size, in bytes, of the data contained in the `Blob` object. */
   readonly size: number;
+  /** A string indicating the media type of the data contained in the `Blob`.
+   * If the type is unknown, this string is empty.
+   */
   readonly type: string;
+  /** Returns a new `Blob` object containing the data in the specified range of
+   * bytes of the source `Blob`.
+   */
   slice(start?: number, end?: number, contentType?: string): Blob;
 }
 
 interface Body {
+  /** A simple getter used to expose a `ReadableStream` of the body contents. */
   readonly body: ReadableStream | null;
+  /** Stores a `Boolean` that declares whether the body has been used in a
+   * response yet.
+   */
   readonly bodyUsed: boolean;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with an `ArrayBuffer`.
+   */
   arrayBuffer(): Promise<ArrayBuffer>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `Blob`.
+   */
   blob(): Promise<Blob>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `FormData` object.
+   */
   formData(): Promise<FormData>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with the result of parsing the body text as JSON.
+   */
   // tslint:disable-next-line:no-any
   json(): Promise<any>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `USVString` (text).
+   */
   text(): Promise<string>;
 }
 
 export interface Headers {
+  /** Appends a new value onto an existing header inside a `Headers` object, or
+   * adds the header if it does not already exist.
+   */
   append(name: string, value: string): void;
+  /** Deletes a header from a `Headers` object. */
   delete(name: string): void;
+  /** Returns a `ByteString` sequence of all the values of a header within a
+   * `Headers` object with a given name.
+   */
   get(name: string): string | null;
+  /** Returns a boolean stating whether a `Headers` object contains a certain
+   * header.
+   */
   has(name: string): boolean;
+  /** Sets a new value for an existing header inside a Headers object, or adds
+   * the header if it does not already exist.
+   */
   set(name: string, value: string): void;
   forEach(
     callbackfn: (value: string, key: string, parent: Headers) => void,
@@ -336,100 +376,101 @@ export interface ResponseInit {
 }
 
 export interface Request extends Body {
-  /**
-   * Returns the cache mode associated with request,
-   * which is a string indicating how the the request will interact
-   * with the browser's cache when fetching.
+  /** Returns the cache mode associated with request, which is a string
+   * indicating how the the request will interact with the browser's cache when
+   * fetching.
    */
   readonly cache: RequestCache;
-  /**
-   * Returns the credentials mode associated with request, which is a string
+  /** Returns the credentials mode associated with request, which is a string
    * indicating whether credentials will be sent with the request always, never,
    * or only when sent to a same-origin URL.
    */
   readonly credentials: RequestCredentials;
-  /**
-   * Returns the kind of resource requested by request, e.g., "document" or
-   * "script".
+  /** Returns the kind of resource requested by request, (e.g., `document` or
+   * `script`).
    */
   readonly destination: RequestDestination;
-  /**
-   * Returns a Headers object consisting of the headers associated with request.
+  /** Returns a Headers object consisting of the headers associated with
+   * request.
+   *
    * Note that headers added in the network layer by the user agent
-   * will not be accounted for in this object, e.g., the "Host" header.
+   * will not be accounted for in this object, (e.g., the `Host` header).
    */
   readonly headers: Headers;
-  /**
-   * Returns request's subresource integrity metadata,
-   * which is a cryptographic hash of the resource being fetched.
-   * Its value consists of multiple hashes separated by whitespace. [SRI]
+  /** Returns request's subresource integrity metadata, which is a cryptographic
+   * hash of the resource being fetched. Its value consists of multiple hashes
+   * separated by whitespace. [SRI]
    */
   readonly integrity: string;
-  /**
-   * Returns a boolean indicating whether or not request is for a history
+  /** Returns a boolean indicating whether or not request is for a history
    * navigation (a.k.a. back-foward navigation).
    */
   readonly isHistoryNavigation: boolean;
-  /**
-   * Returns a boolean indicating whether or not requestis for a
-   * reload navigation.
+  /** Returns a boolean indicating whether or not request is for a reload
+   * navigation.
    */
   readonly isReloadNavigation: boolean;
-  /**
-   * Returns a boolean indicating whether or not request can outlive
-   * the global in which it was created.
+  /** Returns a boolean indicating whether or not request can outlive the global
+   * in which it was created.
    */
   readonly keepalive: boolean;
-  /**
-   * Returns request's HTTP method, which is "GET" by default.
-   */
+  /** Returns request's HTTP method, which is `GET` by default. */
   readonly method: string;
-  /**
-   * Returns the mode associated with request, which is a string
-   * indicating whether the request will use CORS, or will be
-   * restricted to same-origin URLs.
+  /** Returns the mode associated with request, which is a string indicating
+   * whether the request will use CORS, or will be restricted to same-origin
+   * URLs.
    */
   readonly mode: RequestMode;
-  /**
-   * Returns the redirect mode associated with request, which is a string
+  /** Returns the redirect mode associated with request, which is a string
    * indicating how redirects for the request will be handled during fetching.
+   *
    * A request will follow redirects by default.
    */
   readonly redirect: RequestRedirect;
-  /**
-   * Returns the referrer of request. Its value can be a same-origin URL if
+  /** Returns the referrer of request. Its value can be a same-origin URL if
    * explicitly set in init, the empty string to indicate no referrer, and
-   * "about:client" when defaulting to the global's default.
+   * `about:client` when defaulting to the global's default.
+   *
    * This is used during fetching to determine the value of the `Referer`
    * header of the request being made.
    */
   readonly referrer: string;
-  /**
-   * Returns the referrer policy associated with request. This is used during
+  /** Returns the referrer policy associated with request. This is used during
    * fetching to compute the value of the request's referrer.
    */
   readonly referrerPolicy: ReferrerPolicy;
-  /**
-   * Returns the signal associated with request, which is an AbortSignal
-   * object indicating whether or not request has been aborted,
-   * and its abort event handler.
+  /** Returns the signal associated with request, which is an AbortSignal object
+   * indicating whether or not request has been aborted, and its abort event
+   * handler.
    */
   readonly signal: AbortSignal;
-  /**
-   * Returns the URL of request as a string.
-   */
+  /** Returns the URL of request as a string. */
   readonly url: string;
   clone(): Request;
 }
 
 export interface Response extends Body {
+  /** Contains the `Headers` object associated with the response. */
   readonly headers: Headers;
+  /** Contains a boolean stating whether the response was successful (status in
+   * the range 200-299) or not.
+   */
   readonly ok: boolean;
+  /** Indicates whether or not the response is the result of a redirect; that
+   * is, its URL list has more than one entry.
+   */
   readonly redirected: boolean;
+  /** Contains the status code of the response (e.g., `200` for a success). */
   readonly status: number;
+  /** Contains the status message corresponding to the status code (e.g., `OK`
+   * for `200`).
+   */
   readonly statusText: string;
   readonly trailer: Promise<Headers>;
+  /** Contains the type of the response (e.g., `basic`, `cors`). */
   readonly type: ResponseType;
+  /** Contains the URL of the response. */
   readonly url: string;
+  /** Creates a clone of a `Response` object. */
   clone(): Response;
 }

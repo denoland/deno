@@ -7,6 +7,9 @@ import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
+import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
+import { repl_loop } from "./repl";
+
 
 function sendStart(): msg.StartRes {
   const builder = new flatbuffers.Builder();
@@ -44,6 +47,8 @@ function onGlobalError(
 export default function denoMain() {
   libdeno.recv(handleAsyncMsgFromRust);
   libdeno.setGlobalErrorHandler(onGlobalError);
+  libdeno.setPromiseRejectHandler(promiseRejectHandler);
+  libdeno.setPromiseErrorExaminer(promiseErrorExaminer);
   const compiler = DenoCompiler.instance();
 
   // First we send an empty "Start" message to let the privileged side know we
@@ -71,16 +76,23 @@ export default function denoMain() {
   log("args", args);
   Object.freeze(args);
   const inputFn = args[0];
-  if (inputFn) {
-    // handle `--deps`
-    if (startResMsg.depsFlag()) {
-      for (const dep of compiler.getModuleDependencies(inputFn, `${cwd}/`)) {
-        console.log(dep);
-      }
-      os.exit(0);
-    }
+  if (!inputFn) {
+    // repl!!
+    // console.log("No input script specified.");
+    // os.exit(1);
+  }
 
-    compiler.recompile = startResMsg.recompileFlag();
+  // handle `--deps`
+  if (inputFn && startResMsg.depsFlag()) {
+    for (const dep of compiler.getModuleDependencies(inputFn, `${cwd}/`)) {
+      console.log(dep);
+    }
+    os.exit(0);
+  }
+  compiler.recompile = startResMsg.recompileFlag();
+  if (inputFn) {
     compiler.run(inputFn, `${cwd}/`);
+  } else {
+    repl_loop();
   }
 }

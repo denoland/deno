@@ -1,13 +1,9 @@
 // Do not add unsupported platforms.
 export interface Platform {
-  /**
-   * The operating system CPU architecture
-   */
+  /** The operating system CPU architecture. */
   arch: "x64";
 
-  /**
-   * The operating system platform
-   */
+  /** The operating system platform. */
   os: "mac" | "win" | "linux";
 }
 

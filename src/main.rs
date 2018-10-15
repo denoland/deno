@@ -2,6 +2,7 @@
 extern crate flatbuffers;
 #[macro_use]
 extern crate futures;
+// extern crate rustyline;
 extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg;
@@ -81,8 +82,8 @@ fn main() {
       });
     isolate.event_loop();
     // if no args then enter repl
-    if isolate.state.argv.len() == 1 {
-      repl::repl_loop(&mut isolate)
-    }
+    // if isolate.state.argv.len() == 1 {
+    //   repl::repl_loop(&mut isolate)
+    // }
   });
 }

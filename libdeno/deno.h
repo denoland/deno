@@ -59,6 +59,8 @@ int deno_execute(Deno* d, void* user_data, const char* js_filename,
 // libdeno.recv() callback. Check deno_last_exception() for exception text.
 int deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf);
 
+void deno_check_promise_errors(Deno* d);
+
 const char* deno_last_exception(Deno* d);
 
 void deno_terminate_execution(Deno* d);
