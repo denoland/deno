@@ -182,26 +182,35 @@ export class Console {
   // @internal
   constructor(private printFunc: PrintFunc) {}
 
+  /** Writes the arguments to stdout */
   // tslint:disable-next-line:no-any
   log = (...args: any[]): void => {
     this.printFunc(stringifyArgs(args));
   };
 
+  /** Writes the arguments to stdout */
   debug = this.log;
+  /** Writes the arguments to stdout */
   info = this.log;
 
+  /** Writes the properties of the supplied `obj` to stdout */
   // tslint:disable-next-line:no-any
   dir = (obj: any, options: ConsoleOptions = {}) => {
     this.printFunc(stringifyArgs([obj], options));
   };
 
+  /** Writes the arguments to stdout */
   // tslint:disable-next-line:no-any
   warn = (...args: any[]): void => {
     this.printFunc(stringifyArgs(args), true);
   };
 
+  /** Writes the arguments to stdout */
   error = this.warn;
 
+  /** Writes an error message to stdout if the assertion is `false`. If the
+   * assertion is `true`, nothing happens.
+   */
   // tslint:disable-next-line:no-any
   assert = (condition: boolean, ...args: any[]): void => {
     if (!condition) {

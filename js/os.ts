@@ -6,6 +6,7 @@ import * as util from "./util";
 import { flatbuffers } from "flatbuffers";
 import { sendSync } from "./dispatch";
 
+/** Exit the Deno process with optional exit code. */
 export function exit(exitCode = 0): never {
   const builder = new flatbuffers.Builder();
   msg.Exit.startExit(builder);
@@ -93,18 +94,18 @@ function setEnv(key: string, value: string): void {
   sendSync(builder, msg.Any.SetEnv, inner);
 }
 
-/**
- * Returns a snapshot of the environment variables at invocation. Mutating a
+/** Returns a snapshot of the environment variables at invocation. Mutating a
  * property in the object will set that variable in the environment for
  * the process. The environment object will only accept `string`s or `number`s
  * as values.
- *     import { env } from "deno";
  *
- *     const myEnv = env();
- *     console.log(myEnv.SHELL);
- *     myEnv.TEST_VAR = "HELLO";
- *     const newEnv = env();
- *     console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
+ *       import { env } from "deno";
+ *
+ *       const myEnv = env();
+ *       console.log(myEnv.SHELL);
+ *       myEnv.TEST_VAR = "HELLO";
+ *       const newEnv = env();
+ *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
 export function env(): { [index: string]: string } {
   /* Ideally we could write

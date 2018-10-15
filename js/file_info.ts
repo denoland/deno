@@ -1,8 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
 
-/**
- * A FileInfo describes a file and is returned by `stat`, `lstat`,
+/** A FileInfo describes a file and is returned by `stat`, `lstat`,
  * `statSync`, `lstatSync`.
  */
 export interface FileInfo {
@@ -10,52 +9,43 @@ export interface FileInfo {
   readonly _isSymlink: boolean;
   /** The size of the file, in bytes. */
   len: number;
-  /**
-   * The last modification time of the file. This corresponds to the `mtime`
+  /** The last modification time of the file. This corresponds to the `mtime`
    * field from `stat` on Unix and `ftLastWriteTime` on Windows. This may not
    * be available on all platforms.
    */
   modified: number | null;
-  /**
-   * The last access time of the file. This corresponds to the `atime`
+  /** The last access time of the file. This corresponds to the `atime`
    * field from `stat` on Unix and `ftLastAccessTime` on Windows. This may not
    * be available on all platforms.
    */
   accessed: number | null;
-  /**
-   * The last access time of the file. This corresponds to the `birthtime`
+  /** The last access time of the file. This corresponds to the `birthtime`
    * field from `stat` on Unix and `ftCreationTime` on Windows. This may not
    * be available on all platforms.
    */
   created: number | null;
-  /**
-   * The underlying raw st_mode bits that contain the standard Unix permissions
+  /** The underlying raw st_mode bits that contain the standard Unix permissions
    * for this file/directory. TODO Match behavior with Go on windows for mode.
    */
   mode: number | null;
 
-  /**
-   * Returns the file or directory name.
-   */
+  /** Returns the file or directory name. */
   name: string | null;
 
-  /** Returns the file or directory path.  */
+  /** Returns the file or directory path. */
   path: string | null;
 
-  /**
-   * Returns whether this is info for a regular file. This result is mutually
+  /** Returns whether this is info for a regular file. This result is mutually
    * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
    */
   isFile(): boolean;
 
-  /**
-   * Returns whether this is info for a regular directory. This result is
+  /** Returns whether this is info for a regular directory. This result is
    * mutually exclusive to `FileInfo.isFile` and `FileInfo.isSymlink`.
    */
   isDirectory(): boolean;
 
-  /**
-   * Returns whether this is info for a symlink. This result is
+  /** Returns whether this is info for a symlink. This result is
    * mutually exclusive to `FileInfo.isFile` and `FileInfo.isDirectory`.
    */
   isSymlink(): boolean;

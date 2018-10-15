@@ -6,6 +6,7 @@ import * as msg from "gen/msg_generated";
 import { assert } from "./util";
 import { flatbuffers } from "flatbuffers";
 
+/** The Deno abstraction for reading and writing files. */
 export class File implements Reader, Writer, Closer {
   constructor(readonly rid: number) {}
 
@@ -22,17 +23,30 @@ export class File implements Reader, Writer, Closer {
   }
 }
 
+/** An instance of `File` for stdin. */
 export const stdin = new File(0);
+/** An instance of `File` for stdout. */
 export const stdout = new File(1);
+/** An instance of `File` for stderr. */
 export const stderr = new File(2);
 
 // TODO This is just a placeholder - not final API.
 export type OpenMode = "r" | "w" | "w+" | "x";
 
+/** A factory function for creating instances of `File` associated with the
+ * supplied file name.
+ */
 export function create(filename: string): Promise<File> {
   return open(filename, "x");
 }
 
+/** Open a file and return an instance of the `File` object.
+ *
+ *       import * as deno from "deno";
+ *       (async () => {
+ *         const file = await deno.open("/foo/bar.txt");
+ *       })();
+ */
 export async function open(
   filename: string,
   mode: OpenMode = "r"
@@ -51,6 +65,10 @@ export async function open(
   return new File(rid);
 }
 
+/** Read from a file ID into an array buffer.
+ *
+ * Resolves with the `ReadResult` for the operation.
+ */
 export async function read(
   rid: number,
   p: ArrayBufferView
@@ -67,6 +85,10 @@ export async function read(
   return { nread: res.nread(), eof: res.eof() };
 }
 
+/** Write to the file ID the contents of the array buffer.
+ *
+ * Resolves with the number of bytes written.
+ */
 export async function write(rid: number, p: ArrayBufferView): Promise<number> {
   const builder = new flatbuffers.Builder();
   msg.Write.startWrite(builder);
@@ -80,6 +102,7 @@ export async function write(rid: number, p: ArrayBufferView): Promise<number> {
   return res.nbyte();
 }
 
+/** Close the file ID. */
 export function close(rid: number): void {
   const builder = new flatbuffers.Builder();
   msg.Close.startClose(builder);
