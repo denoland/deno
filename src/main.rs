@@ -2,10 +2,12 @@
 extern crate flatbuffers;
 #[macro_use]
 extern crate futures;
+// extern crate rustyline;
 extern crate hyper;
 extern crate libc;
 extern crate msg_rs as msg;
 extern crate rand;
+extern crate rustyline;
 extern crate tempfile;
 extern crate tokio;
 extern crate tokio_executor;
@@ -30,6 +32,7 @@ mod http_util;
 mod isolate;
 mod libdeno;
 pub mod ops;
+mod repl;
 mod resources;
 mod tokio_util;
 mod version;
@@ -78,5 +81,9 @@ fn main() {
         std::process::exit(1);
       });
     isolate.event_loop();
+    // if no args then enter repl
+    // if isolate.state.argv.len() == 1 {
+    //   repl::repl_loop(&mut isolate)
+    // }
   });
 }
