@@ -59,16 +59,20 @@ fn main() {
   // Therefore this hack.
   std::panic::set_hook(Box::new(|panic_info| {
     if let Some(location) = panic_info.location() {
-      println!("PANIC file '{}' line {}", location.file(), location.line());
+      eprintln!("PANIC file '{}' line {}", location.file(), location.line());
     } else {
-      println!("PANIC occurred but can't get location information...");
+      eprintln!("PANIC occurred but can't get location information...");
     }
     std::process::abort();
   }));
 
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
-  let mut isolate = isolate::Isolate::new(args, ops::dispatch);
+  let (flags, rest_argv) = flags::set_flags(args).unwrap_or_else(|err| {
+    eprintln!("{}", err);
+    std::process::exit(1)
+  });
+  let mut isolate = isolate::Isolate::new(flags, rest_argv, ops::dispatch);
   flags::process(&isolate.state.flags);
   tokio_util::init(|| {
     isolate

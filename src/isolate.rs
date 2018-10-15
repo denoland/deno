@@ -100,12 +100,15 @@ pub struct Metrics {
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
 impl Isolate {
-  pub fn new(argv: Vec<String>, dispatch: Dispatch) -> Isolate {
+  pub fn new(
+    flags: flags::DenoFlags,
+    argv_rest: Vec<String>,
+    dispatch: Dispatch,
+  ) -> Isolate {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
 
-    let (flags, argv_rest) = flags::set_flags(argv);
     let libdeno_isolate = unsafe { libdeno::deno_new(pre_dispatch) };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
@@ -353,7 +356,8 @@ mod tests {
   #[test]
   fn test_dispatch_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let mut isolate = Isolate::new(argv, dispatch_sync);
+    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
+    let mut isolate = Isolate::new(flags, rest_argv, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute(
@@ -393,7 +397,8 @@ mod tests {
   #[test]
   fn test_metrics_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let mut isolate = Isolate::new(argv, metrics_dispatch_sync);
+    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
+    let mut isolate = Isolate::new(flags, rest_argv, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -428,7 +433,8 @@ mod tests {
   #[test]
   fn test_metrics_async() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let mut isolate = Isolate::new(argv, metrics_dispatch_async);
+    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
+    let mut isolate = Isolate::new(flags, rest_argv, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
