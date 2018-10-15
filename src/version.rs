@@ -4,6 +4,7 @@ use std::ffi::CStr;
 
 // This is the source of truth for the Deno version. Ignore the value in Cargo.toml.
 const DENO_VERSION: &str = "0.1.8";
+const TYPESCRIPT_VERSION: &'static str = env!("TYPESCRIPT_VERSION");
 
 pub fn print_version() {
   let v = unsafe { libdeno::deno_v8_version() };
@@ -11,4 +12,5 @@ pub fn print_version() {
   let version = c_str.to_str().unwrap();
   println!("deno: {}", DENO_VERSION);
   println!("v8: {}", version);
+  println!("typescript: {}", TYPESCRIPT_VERSION);
 }

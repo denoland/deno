@@ -6,6 +6,7 @@ import subprocess
 import sys
 from util import rmtree, run
 
+
 def deno_dir_test(deno_exe, deno_dir):
     assert os.path.isfile(deno_exe)
 
@@ -29,13 +30,14 @@ def deno_dir_test(deno_exe, deno_dir):
     rmtree(deno_dir)
 
     if old_deno_dir is not None:
-      os.environ["DENO_DIR"] = old_deno_dir
+        os.environ["DENO_DIR"] = old_deno_dir
 
 
 def run_deno(deno_exe, deno_dir=None):
     cmd = [deno_exe, "tests/002_hello.ts"]
     deno_dir_env = {"DENO_DIR": deno_dir} if deno_dir is not None else None
     run(cmd, quiet=True, env=deno_dir_env)
+
 
 def main(argv):
     if len(sys.argv) != 3:

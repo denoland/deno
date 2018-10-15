@@ -4,7 +4,8 @@ from __future__ import print_function
 import os
 import sys
 import third_party
-from util import build_path, enable_ansi_colors, run
+from util import build_path, enable_ansi_colors, run, make_env
+import package_json
 
 enable_ansi_colors()
 
@@ -18,6 +19,10 @@ if not "-C" in ninja_args:
         sys.exit(1)
     ninja_args = ["-C", build_path()] + ninja_args
 
+package_json_env = {
+    "TYPESCRIPT_VERSION": package_json.get_typescript_version()
+}
+
 run([third_party.ninja_path] + ninja_args,
-    env=third_party.google_env(),
+    env=make_env(package_json_env, third_party.google_env()),
     quiet=True)
