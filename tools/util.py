@@ -324,3 +324,11 @@ def extract_number(pattern, string):
     if len(matches) != 1:
         return None
     return int(matches[0])
+
+
+def parse_wrk_output(output):
+    req_per_sec = None
+    for line in output.split("\n"):
+        if req_per_sec is None:
+            req_per_sec = extract_number(r'Requests/sec:\s+(\d+)', line)
+    return req_per_sec
