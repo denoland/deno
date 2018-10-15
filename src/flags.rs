@@ -60,7 +60,10 @@ pub fn print_usage() {
 -h or --help       Print this message.
 --v8-options       Print V8 command line options.
 --deps             Print module dependencies.
---types            Print runtime TypeScript declarations."
+--types            Print runtime TypeScript declarations.
+
+Environment variables:
+DENO_DIR           Set deno's base directory."
   );
 }
 
