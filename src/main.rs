@@ -69,7 +69,7 @@ fn main() {
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
   let (flags, rest_argv) = flags::set_flags(args).unwrap_or_else(|err| {
-    eprintln!("deno: {}", err);
+    eprintln!("{}", err);
     std::process::exit(1)
   });
   let mut isolate = isolate::Isolate::new(flags, rest_argv, ops::dispatch);
