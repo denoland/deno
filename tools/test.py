@@ -62,8 +62,9 @@ def main(argv):
     check_output_test(deno_exe)
     check_output_test(deno_ns_exe)
 
-    deno_dir_test(deno_dir)
     rmtree(deno_dir)
+
+    deno_dir_test(deno_exe, deno_dir)
 
 
 if __name__ == '__main__':
