@@ -121,6 +121,9 @@ table StartRes {
   deps_flag: bool;
   recompile_flag: bool;
   types_flag: bool;
+  version_flag: bool;
+  deno_version: string;
+  v8_version: string;
 }
 
 table CodeFetch {
