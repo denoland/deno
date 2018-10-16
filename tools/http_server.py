@@ -2,6 +2,7 @@
 # Many tests expect there to be an http server on port 4545 servering the deno
 # root directory.
 import os
+import sys
 from threading import Thread
 import SimpleHTTPServer
 import SocketServer
@@ -51,8 +52,11 @@ def spawn():
     r_thread.daemon = True
     r_thread.start()
     sleep(1)  # TODO I'm too lazy to figure out how to do this properly.
-    return thread
 
 
 if __name__ == '__main__':
-    spawn().join()
+    try:
+        spawn()
+        while True: sleep(100)
+    except KeyboardInterrupt:
+        sys.exit()
