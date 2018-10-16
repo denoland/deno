@@ -12,6 +12,7 @@ use msg;
 use resources;
 use resources::Resource;
 use tokio_util;
+use version;
 
 use flatbuffers::FlatBufferBuilder;
 use futures;
@@ -178,6 +179,12 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
+  let v8_version = version::get_v8_version();
+  let v8_version_off = builder.create_string(v8_version);
+
+  let deno_version = version::DENO_VERSION;
+  let deno_version_off = builder.create_string(deno_version);
+
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
@@ -186,6 +193,9 @@ fn op_start(
       debug_flag: state.flags.log_debug,
       recompile_flag: state.flags.recompile,
       types_flag: state.flags.types_flag,
+      version_flag: state.flags.version,
+      v8_version: Some(v8_version_off),
+      deno_version: Some(deno_version_off),
       ..Default::default()
     },
   );
