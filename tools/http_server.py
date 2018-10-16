@@ -51,6 +51,7 @@ def spawn():
     r_thread = Thread(target=rs.serve_forever)
     r_thread.daemon = True
     r_thread.start()
+    sleep(1)  # TODO I'm too lazy to figure out how to do this properly.
 
 
 if __name__ == '__main__':
