@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
-import { test, assert, assertEqual } from "../js/test_util.ts";
+import { test, testPerm, assert, assertEqual } from "../js/test_util.ts";
 import {
   createBinarySizeColumns,
   createExecTimeColumns,
@@ -209,11 +209,9 @@ test(function formatSecondsPatterns() {
   assertEqual(formatSeconds(10000), "167 min");
 });
 
-test(async function getTravisDataSuccess() {
-  try {
-    const data = await getTravisData();
-    assert(data.length !== 0);
-  } catch (e) {
-    assert(e !== null);
-  }
+testPerm({ net: true }, async function getTravisDataSuccess() {
+  const data = await getTravisData(
+    "http://localhost:4545/tools/testdata/travis_benchmark.json"
+  );
+  assert(data.length !== 0);
 });
