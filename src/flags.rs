@@ -7,7 +7,6 @@ use std::ffi::CString;
 use std::mem;
 use std::process::exit;
 use std::vec::Vec;
-use version;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -32,11 +31,6 @@ pub struct DenoFlags {
 pub fn process(flags: &DenoFlags) {
   if flags.help {
     print_usage();
-    exit(0);
-  }
-
-  if flags.version {
-    version::print_version();
     exit(0);
   }
 
