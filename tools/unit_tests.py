@@ -4,6 +4,7 @@ import sys
 import subprocess
 import re
 
+
 def run_unit_test2(cmd):
     process = subprocess.Popen(
         cmd,
@@ -25,6 +26,7 @@ def run_unit_test2(cmd):
     errcode = process.returncode
     if errcode != 0:
         sys.exit(errcode)
+
 
 def run_unit_test(deno_exe, permStr, flags=[]):
     cmd = [deno_exe, "--reload", "js/unit_tests.ts", permStr] + flags
@@ -48,9 +50,7 @@ def unit_tests(deno_exe):
     # These are not strictly unit tests for Deno, but for ts_library_builder.
     # They run under Node, but use the same //js/testing/ library.
     run_unit_test2([
-        "node",
-        "./node_modules/.bin/ts-node",
-        "--project",
+        "node", "./node_modules/.bin/ts-node", "--project",
         "tools/ts_library_builder/tsconfig.json",
         "tools/ts_library_builder/test.ts"
     ])

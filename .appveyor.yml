@@ -360,6 +360,7 @@ before_build:
 
 build_script:
   - python tools\build.py
+  - .\out\release\deno.exe -v # check version output
   - ps: Set-FilesNeeded -Auto -Reason "Build finished"
 
 test_script:
