@@ -28,6 +28,10 @@ const regularData = [
       "10M_tcp": 1.6,
       "10M_cat": 1.0
     },
+    req_per_sec: {
+      node: 16000,
+      deno: 1000
+    },
     benchmark: {
       hello: {
         mean: 0.05
@@ -65,6 +69,10 @@ const regularData = [
       "100M_cat": 3.0,
       "10M_tcp": 1.6,
       "10M_cat": 1.0
+    },
+    req_per_sec: {
+      node: 1600,
+      deno: 3.0
     },
     benchmark: {
       hello: {

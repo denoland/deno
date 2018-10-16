@@ -8,6 +8,7 @@ import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
+import { version } from "typescript";
 
 function sendStart(): msg.StartRes {
   const builder = new flatbuffers.Builder();
@@ -56,6 +57,14 @@ export default function denoMain() {
     const defaultLibFileName = compiler.getDefaultLibFileName();
     const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
     console.log(defaultLibModule.sourceCode);
+    os.exit(0);
+  }
+
+  // handle `--version`
+  if (startResMsg.versionFlag()) {
+    console.log("deno:", startResMsg.denoVersion());
+    console.log("v8:", startResMsg.v8Version());
+    console.log("typescript:", version);
     os.exit(0);
   }
 

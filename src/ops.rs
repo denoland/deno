@@ -12,6 +12,7 @@ use msg;
 use resources;
 use resources::Resource;
 use tokio_util;
+use version;
 
 use flatbuffers::FlatBufferBuilder;
 use futures;
@@ -112,7 +113,8 @@ pub fn dispatch(
     op_creator(isolate.state.clone(), &base, data)
   };
 
-  let boxed_op = Box::new(op.or_else(move |err: DenoError| -> DenoResult<Buf> {
+  let boxed_op = Box::new(
+    op.or_else(move |err: DenoError| -> DenoResult<Buf> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
       // send back. So transform the DenoError into a deno_buf.
@@ -144,7 +146,8 @@ pub fn dispatch(
         )
       };
       Ok(buf)
-    }));
+    }),
+  );
 
   debug!(
     "msg_from_js {} sync {}",
@@ -178,6 +181,12 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
+  let v8_version = version::get_v8_version();
+  let v8_version_off = builder.create_string(v8_version);
+
+  let deno_version = version::DENO_VERSION;
+  let deno_version_off = builder.create_string(deno_version);
+
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
@@ -186,6 +195,9 @@ fn op_start(
       debug_flag: state.flags.log_debug,
       recompile_flag: state.flags.recompile,
       types_flag: state.flags.types_flag,
+      version_flag: state.flags.version,
+      v8_version: Some(v8_version_off),
+      deno_version: Some(deno_version_off),
       ..Default::default()
     },
   );
@@ -357,8 +369,7 @@ fn op_env(
           ..Default::default()
         },
       )
-    })
-    .collect();
+    }).collect();
   let tables = builder.create_vector(&vars);
   let inner = msg::EnvironRes::create(
     builder,
@@ -938,8 +949,7 @@ fn op_read_dir(
             ..Default::default()
           },
         )
-      })
-      .collect();
+      }).collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(

@@ -152,7 +152,7 @@ Other useful commands:
     ./third_party/depot_tools/gn desc out/debug/ :deno
     ./third_party/depot_tools/gn help
 
-Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`.
+Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`, `DENO_DIR`.
 
 ## Contributing
 

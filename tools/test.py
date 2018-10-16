@@ -4,8 +4,9 @@
 import os
 import sys
 from check_output_test import check_output_test
+from deno_dir_test import deno_dir_test
 from setup_test import setup_test
-from util import build_path, enable_ansi_colors, executable_suffix, run
+from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
 from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test
@@ -28,6 +29,11 @@ def main(argv):
     else:
         print "Usage: tools/test.py [build_dir]"
         sys.exit(1)
+
+    deno_dir = os.path.join(build_dir, ".deno_test")
+    if os.path.isdir(deno_dir):
+        rmtree(deno_dir)
+    os.environ["DENO_DIR"] = deno_dir
 
     enable_ansi_colors()
 
@@ -55,6 +61,10 @@ def main(argv):
 
     check_output_test(deno_exe)
     check_output_test(deno_ns_exe)
+
+    rmtree(deno_dir)
+
+    deno_dir_test(deno_exe, deno_dir)
 
 
 if __name__ == '__main__':

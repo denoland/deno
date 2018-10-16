@@ -22,10 +22,10 @@
     "source-map-support": "^0.5.6",
     "text-encoding": "0.6.4",
     "ts-node": "^7.0.1",
-    "ts-simple-ast": "^16.0.4",
+    "ts-simple-ast": "^17.0.0",
     "tslint": "^5.10.0",
     "tslint-eslint-rules": "^5.3.1",
     "tslint-no-circular-imports": "^0.5.0",
-    "typescript": "3.0.3"
+    "typescript": "3.1.3"
   }
 }

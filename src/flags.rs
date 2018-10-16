@@ -7,7 +7,6 @@ use std::ffi::CString;
 use std::mem;
 use std::process::exit;
 use std::vec::Vec;
-use version;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -35,11 +34,6 @@ pub fn process(flags: &DenoFlags) {
     exit(0);
   }
 
-  if flags.version {
-    version::print_version();
-    exit(0);
-  }
-
   let mut log_level = log::LevelFilter::Info;
   if flags.log_debug {
     log_level = log::LevelFilter::Debug;
@@ -60,12 +54,17 @@ pub fn print_usage() {
 -h or --help       Print this message.
 --v8-options       Print V8 command line options.
 --deps             Print module dependencies.
---types            Print runtime TypeScript declarations."
+--types            Print runtime TypeScript declarations.
+
+Environment variables:
+DENO_DIR           Set deno's base directory."
   );
 }
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
-pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
+pub fn set_flags(
+  args: Vec<String>,
+) -> Result<(DenoFlags, Vec<String>), String> {
   let args = v8_set_flags(args);
 
   let mut flags = DenoFlags::default();
@@ -86,7 +85,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
         "--deps" => flags.deps_flag = true,
         "--types" => flags.types_flag = true,
         "--" => break,
-        _ => unimplemented!(),
+        other => return Err(format!("bad option {}", other)),
       }
     } else if a.len() > 1 && &a[0..1] == "-" {
       let mut iter = a.chars().skip(1); // skip the "-"
@@ -96,7 +95,7 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
           'D' => flags.log_debug = true,
           'v' => flags.version = true,
           'r' => flags.reload = true,
-          _ => unimplemented!(),
+          other => return Err(format!("bad option -{}", other)),
         }
       }
     } else {
@@ -106,12 +105,12 @@ pub fn set_flags(args: Vec<String>) -> (DenoFlags, Vec<String>) {
 
   // add any remaining arguments to `rest`
   rest.extend(arg_iter.map(|s| s.clone()));
-  return (flags, rest);
+  return Ok((flags, rest));
 }
 
 #[test]
 fn test_set_flags_1() {
-  let (flags, rest) = set_flags(svec!["deno", "--version"]);
+  let (flags, rest) = set_flags(svec!["deno", "--version"]).unwrap();
   assert_eq!(rest, svec!["deno"]);
   assert_eq!(
     flags,
@@ -124,7 +123,8 @@ fn test_set_flags_1() {
 
 #[test]
 fn test_set_flags_2() {
-  let (flags, rest) = set_flags(svec!["deno", "-r", "-D", "script.ts"]);
+  let (flags, rest) =
+    set_flags(svec!["deno", "-r", "-D", "script.ts"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
@@ -139,7 +139,8 @@ fn test_set_flags_2() {
 #[test]
 fn test_set_flags_3() {
   let (flags, rest) =
-    set_flags(svec!["deno", "-r", "--deps", "script.ts", "--allow-write"]);
+    set_flags(svec!["deno", "-r", "--deps", "script.ts", "--allow-write"])
+      .unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
@@ -155,7 +156,7 @@ fn test_set_flags_3() {
 #[test]
 fn test_set_flags_4() {
   let (flags, rest) =
-    set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]);
+    set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
@@ -170,7 +171,7 @@ fn test_set_flags_4() {
 
 #[test]
 fn test_set_flags_5() {
-  let (flags, rest) = set_flags(svec!["deno", "--types"]);
+  let (flags, rest) = set_flags(svec!["deno", "--types"]).unwrap();
   assert_eq!(rest, svec!["deno"]);
   assert_eq!(
     flags,
@@ -179,6 +180,19 @@ fn test_set_flags_5() {
       ..DenoFlags::default()
     }
   )
+}
+
+#[test]
+fn test_set_bad_flags_1() {
+  let err = set_flags(svec!["deno", "--unknown-flag"]).unwrap_err();
+  assert_eq!(err, "bad option --unknown-flag");
+}
+
+#[test]
+fn test_set_bad_flags_2() {
+  // This needs to be changed if -z is added as a flag
+  let err = set_flags(svec!["deno", "-z"]).unwrap_err();
+  assert_eq!(err, "bad option -z");
 }
 
 // Returns args passed to V8, followed by args passed to JS
@@ -195,8 +209,7 @@ fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
       }
 
       true
-    })
-    .collect();
+    }).collect();
 
   // Replace args being sent to V8
   for idx in 0..args.len() {
@@ -265,7 +278,6 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
       let cstr = CStr::from_ptr(*ptr as *const i8);
       let slice = cstr.to_str().unwrap();
       slice.to_string()
-    })
-    .chain(rest.into_iter())
+    }).chain(rest.into_iter())
     .collect()
 }

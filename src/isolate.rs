@@ -12,8 +12,10 @@ use libdeno;
 use futures::Future;
 use libc::c_void;
 use std;
+use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::path::Path;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -98,15 +100,27 @@ pub struct Metrics {
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
 impl Isolate {
-  pub fn new(argv: Vec<String>, dispatch: Dispatch) -> Isolate {
+  pub fn new(
+    flags: flags::DenoFlags,
+    argv_rest: Vec<String>,
+    dispatch: Dispatch,
+  ) -> Isolate {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
 
-    let (flags, argv_rest) = flags::set_flags(argv);
     let libdeno_isolate = unsafe { libdeno::deno_new(pre_dispatch) };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
+
+    let custom_root_path;
+    let custom_root = match env::var("DENO_DIR") {
+      Ok(path) => {
+        custom_root_path = path;
+        Some(Path::new(custom_root_path.as_str()))
+      }
+      Err(_e) => None,
+    };
 
     Isolate {
       libdeno_isolate,
@@ -115,7 +129,7 @@ impl Isolate {
       ntasks: 0,
       timeout_due: None,
       state: Arc::new(IsolateState {
-        dir: deno_dir::DenoDir::new(flags.reload, None).unwrap(),
+        dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
         argv: argv_rest,
         flags,
         tx: Mutex::new(Some(tx)),
@@ -342,7 +356,8 @@ mod tests {
   #[test]
   fn test_dispatch_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let mut isolate = Isolate::new(argv, dispatch_sync);
+    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
+    let mut isolate = Isolate::new(flags, rest_argv, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute(
@@ -357,8 +372,7 @@ mod tests {
             throw Error("assert error");
           }
         "#,
-        )
-        .expect("execute error");
+        ).expect("execute error");
       isolate.event_loop();
     });
   }
@@ -382,7 +396,8 @@ mod tests {
   #[test]
   fn test_metrics_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let mut isolate = Isolate::new(argv, metrics_dispatch_sync);
+    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
+    let mut isolate = Isolate::new(flags, rest_argv, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -402,8 +417,7 @@ mod tests {
           const data = new Uint8Array([42, 43, 44, 45, 46]);
           libdeno.send(control, data);
         "#,
-        )
-        .expect("execute error");
+        ).expect("execute error");
       isolate.event_loop();
       let metrics = isolate.state.metrics.lock().unwrap();
       assert_eq!(metrics.ops_dispatched, 1);
@@ -417,7 +431,8 @@ mod tests {
   #[test]
   fn test_metrics_async() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let mut isolate = Isolate::new(argv, metrics_dispatch_async);
+    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
+    let mut isolate = Isolate::new(flags, rest_argv, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -438,8 +453,7 @@ mod tests {
           let r = libdeno.send(control, data);
           if (r != null) throw Error("expected null");
         "#,
-        )
-        .expect("execute error");
+        ).expect("execute error");
 
       // Make sure relevant metrics are updated before task is executed.
       {

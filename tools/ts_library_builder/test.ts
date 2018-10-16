@@ -2,15 +2,12 @@
 //
 //  ./node_modules/.bin/ts-node --project tools/ts_library_builder/tsconfig.json tools/ts_library_builder/test.ts
 
-import {
-  ModuleKind,
-  ModuleResolutionKind,
-  Project,
-  ScriptTarget
-} from "ts-simple-ast";
+import { Project, ts } from "ts-simple-ast";
 import { assert, assertEqual, test } from "../../js/testing/testing";
 import { flatten, merge } from "./build_library";
 import { loadDtsFiles } from "./ast_util";
+
+const { ModuleKind, ModuleResolutionKind, ScriptTarget } = ts;
 
 /** setups and returns the fixtures for testing */
 function setupFixtures() {

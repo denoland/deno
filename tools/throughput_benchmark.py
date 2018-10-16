@@ -31,7 +31,7 @@ def tcp(deno_exe, megs):
     echo_server = subprocess.Popen(
         [deno_exe, "--allow-net", "tests/echo_server.ts", ADDR])
 
-    time.sleep(1)  # wait for deno to wake up. TODO racy.
+    time.sleep(5)  # wait for deno to wake up. TODO racy.
     try:
         start = time.time()
         cmd = ("head -c %s /dev/zero " % size) + "| nc " + ADDR.replace(
@@ -50,5 +50,5 @@ if __name__ == '__main__':
     if not deno_exe or not megs:
         print "Usage ./tools/throughput_benchmark.py out/debug/deno 100"
         sys.exit(1)
-    secs = tcp_throughput_benchmark(sys.argv[1], megs)
+    secs = tcp(sys.argv[1], megs)
     print secs, "seconds"
