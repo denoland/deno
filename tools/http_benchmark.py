@@ -10,15 +10,21 @@ ADDR = "127.0.0.1:4544"
 DURATION = "10s"
 
 
-def http_benchmark(deno_exe):
+def deno_http_benchmark(deno_exe):
     deno_cmd = [deno_exe, "--allow-net", "tests/http_bench.ts", ADDR]
-    node_cmd = ["node", "tools/node_http.js", ADDR.split(":")[1]]
-
     print "http_benchmark testing DENO."
-    deno_rps = run(deno_cmd)
+    return run(deno_cmd)
 
+
+def node_http_benchmark(deno_exe):
+    node_cmd = ["node", "tools/node_http.js", ADDR.split(":")[1]]
     print "http_benchmark testing NODE."
-    node_rps = run(node_cmd)
+    return run(node_cmd)
+
+
+def http_benchmark(deno_exe):
+    deno_rps = deno_http_benchmark(deno_exe)
+    node_rps = node_http_benchmark(deno_exe)
 
     return {"deno": deno_rps, "node": node_rps}
 
@@ -46,4 +52,4 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print "Usage ./tools/tcp_http_benchmark.py out/debug/deno"
         sys.exit(1)
-    http_benchmark(sys.argv[1])
+    deno_http_benchmark(sys.argv[1])
