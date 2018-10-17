@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { libdeno } from "./libdeno";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
@@ -86,6 +86,7 @@ function sendInternal(
   msg.Base.addSync(builder, sync);
   msg.Base.addCmdId(builder, cmdId);
   builder.finish(msg.Base.endBase(builder));
-
-  return [cmdId, libdeno.send(builder.asUint8Array(), data)];
+  const res = libdeno.send(builder.asUint8Array(), data);
+  builder.inUse = false;
+  return [cmdId, res];
 }

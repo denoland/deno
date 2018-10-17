@@ -79,6 +79,7 @@ ts_sources = [
   "js/fetch.ts",
   "js/file_info.ts",
   "js/files.ts",
+  "js/flatbuffers.ts",
   "js/global_eval.ts",
   "js/globals.ts",
   "js/io.ts",

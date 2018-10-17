@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { assert } from "./util";
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import { sendSync, setFireTimersCallback } from "./dispatch";
 
 // Tell the dispatcher which function it should call to fire timers that are
@@ -51,7 +51,7 @@ function setGlobalTimeout(due: number | null, now: number) {
     assert(timeout >= 0);
   }
   // Send message to the backend.
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   msg.SetTimeout.startSetTimeout(builder);
   msg.SetTimeout.addTimeout(builder, timeout);
   const inner = msg.SetTimeout.endSetTimeout(builder);
