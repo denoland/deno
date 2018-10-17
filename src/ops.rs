@@ -811,6 +811,16 @@ fn op_copy_file(
 
   debug!("op_copy_file {} {}", from.display(), to.display());
   blocking!(base.sync(), || {
+    // On *nix, Rust deem non-existent path as invalid input
+    // See https://github.com/rust-lang/rust/issues/54800
+    // Once the issue is reolved, we should remove this workaround.
+    if cfg!(unix) && !from.is_file() {
+      return Err(errors::new(
+          ErrorKind::NotFound,
+          "File not found".to_string(),
+      ));
+    }
+
     fs::copy(&from, &to)?;
     Ok(empty_buf())
   })
