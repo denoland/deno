@@ -12,6 +12,8 @@
 #include "deno.h"
 #include "internal.h"
 
+#define GLOBAL_IMPORT_BUF_SIZE 1024
+
 namespace deno {
 
 Deno* FromIsolate(v8::Isolate* isolate) {
@@ -208,17 +210,41 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   stream << cstr << std::endl;
 }
 
-static v8::Local<v8::Uint8Array> ImportBuf(v8::Isolate* isolate, deno_buf buf) {
+static v8::Local<v8::Uint8Array> ImportBuf(Deno* d, deno_buf buf) {
   if (buf.alloc_ptr == nullptr) {
     // If alloc_ptr isn't set, we memcpy.
     // This is currently used for flatbuffers created in Rust.
-    auto ab = v8::ArrayBuffer::New(isolate, buf.data_len);
-    memcpy(ab->GetContents().Data(), buf.data_ptr, buf.data_len);
+
+    // To avoid excessively allocating new ArrayBuffers, we try to reuse a
+    // single global ArrayBuffer. The caveat is that users must extract data
+    // from it before the next tick. We only do this for ArrayBuffers less than
+    // 1024 bytes.
+    v8::Local<v8::ArrayBuffer> ab;
+    void* data;
+    if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
+      // Simple case. We allocate a new ArrayBuffer for this.
+      ab = v8::ArrayBuffer::New(d->isolate, buf.data_len);
+      data = ab->GetContents().Data();
+    } else {
+      // Fast case. We reuse the global ArrayBuffer.
+      if (d->global_import_buf.IsEmpty()) {
+        // Lazily initialize it.
+        DCHECK_EQ(d->global_import_buf_ptr, nullptr);
+        ab = v8::ArrayBuffer::New(d->isolate, GLOBAL_IMPORT_BUF_SIZE);
+        d->global_import_buf.Reset(d->isolate, ab);
+        d->global_import_buf_ptr = ab->GetContents().Data();
+      } else {
+        DCHECK(d->global_import_buf_ptr);
+        ab = d->global_import_buf.Get(d->isolate);
+      }
+      data = d->global_import_buf_ptr;
+    }
+    memcpy(data, buf.data_ptr, buf.data_len);
     auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
     return view;
   } else {
     auto ab = v8::ArrayBuffer::New(
-        isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
+        d->isolate, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
         v8::ArrayBufferCreationMode::kInternalized);
     auto view =
         v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
@@ -495,6 +521,7 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
 void AddIsolate(Deno* d, v8::Isolate* isolate) {
   d->pending_promise_events = 0;
   d->next_req_id = 0;
+  d->global_import_buf_ptr = nullptr;
   d->isolate = isolate;
   // Leaving this code here because it will probably be useful later on, but
   // disabling it now as I haven't got tests for the desired behavior.
@@ -558,7 +585,7 @@ int deno_execute(Deno* d, void* user_data, const char* js_filename,
 int deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf) {
   if (d->currentArgs != nullptr) {
     // Synchronous response.
-    auto ab = deno::ImportBuf(d->isolate, buf);
+    auto ab = deno::ImportBuf(d, buf);
     d->currentArgs->GetReturnValue().Set(ab);
     d->currentArgs = nullptr;
     return 0;
@@ -584,7 +611,7 @@ int deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf) {
   }
 
   v8::Local<v8::Value> args[1];
-  args[0] = deno::ImportBuf(d->isolate, buf);
+  args[0] = deno::ImportBuf(d, buf);
   recv->Call(context->Global(), 1, args);
 
   if (try_catch.HasCaught()) {

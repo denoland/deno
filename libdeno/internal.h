@@ -16,6 +16,10 @@ struct deno_s {
   v8::Persistent<v8::Function> global_error_handler;
   v8::Persistent<v8::Function> promise_reject_handler;
   v8::Persistent<v8::Function> promise_error_examiner;
+
+  v8::Persistent<v8::ArrayBuffer> global_import_buf;
+  void* global_import_buf_ptr;
+
   int32_t pending_promise_events;
   v8::Persistent<v8::Context> context;
   v8::Persistent<v8::Map> async_data_map;
