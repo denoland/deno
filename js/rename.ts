@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
 /** Synchronously renames (moves) `oldpath` to `newpath`. If `newpath` already
@@ -30,7 +30,7 @@ function req(
   oldpath: string,
   newpath: string
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const oldpath_ = builder.createString(oldpath);
   const newpath_ = builder.createString(newpath);
   msg.Rename.startRename(builder);

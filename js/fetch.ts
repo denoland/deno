@@ -7,7 +7,7 @@ import {
   typedArrayToArrayBuffer,
   notImplemented
 } from "./util";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
 import * as domTypes from "./dom_types";
@@ -187,7 +187,7 @@ export async function fetch(
   log("dispatch FETCH_REQ", url);
 
   // Send FetchReq message
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const url_ = builder.createString(url);
   msg.FetchReq.startFetchReq(builder);
   msg.FetchReq.addUrl(builder, url_);

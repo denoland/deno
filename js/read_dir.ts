@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import { FileInfo, FileInfoImpl } from "./file_info";
 import { assert } from "./util";
@@ -25,7 +25,7 @@ export async function readDir(path: string): Promise<FileInfo[]> {
 }
 
 function req(path: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const path_ = builder.createString(path);
   msg.ReadDir.startReadDir(builder);
   msg.ReadDir.addPath(builder, path_);

@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import { assert, log, setLogDebug } from "./util";
 import * as os from "./os";
@@ -11,7 +11,7 @@ import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
 import { version } from "typescript";
 
 function sendStart(): msg.StartRes {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   msg.Start.startStart(builder);
   const startOffset = msg.Start.endStart(builder);
   const baseRes = sendSync(builder, msg.Any.Start, startOffset);

@@ -57,6 +57,7 @@ def spawn():
 if __name__ == '__main__':
     try:
         spawn()
-        while True: sleep(100)
+        while True:
+            sleep(100)
     except KeyboardInterrupt:
         sys.exit()

@@ -3,12 +3,12 @@ import { ModuleInfo } from "./types";
 import * as msg from "gen/msg_generated";
 import { assert } from "./util";
 import * as util from "./util";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
 
 /** Exit the Deno process with optional exit code. */
 export function exit(exitCode = 0): never {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   msg.Exit.startExit(builder);
   msg.Exit.addCode(builder, exitCode);
   const inner = msg.Exit.endExit(builder);
@@ -23,7 +23,7 @@ export function codeFetch(
 ): ModuleInfo {
   util.log("os.ts codeFetch", moduleSpecifier, containingFile);
   // Send CodeFetch message
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const moduleSpecifier_ = builder.createString(moduleSpecifier);
   const containingFile_ = builder.createString(containingFile);
   msg.CodeFetch.startCodeFetch(builder);
@@ -53,7 +53,7 @@ export function codeCache(
   outputCode: string
 ): void {
   util.log("os.ts codeCache", filename, sourceCode, outputCode);
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
   const sourceCode_ = builder.createString(sourceCode);
   const outputCode_ = builder.createString(outputCode);
@@ -84,7 +84,7 @@ function createEnv(_inner: msg.EnvironRes): { [index: string]: string } {
 }
 
 function setEnv(key: string, value: string): void {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const _key = builder.createString(key);
   const _value = builder.createString(value);
   msg.SetEnv.startSetEnv(builder);
@@ -113,7 +113,7 @@ export function env(): { [index: string]: string } {
     command: msg.Command.ENV,
   });
   */
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   msg.Environ.startEnviron(builder);
   const inner = msg.Environ.endEnviron(builder);
   const baseRes = sendSync(builder, msg.Any.Environ, inner)!;
