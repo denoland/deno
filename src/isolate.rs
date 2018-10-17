@@ -171,6 +171,8 @@ impl Isolate {
   }
 
   pub fn respond(&mut self, req_id: i32, buf: Buf) {
+    self.state.metrics_op_completed(buf.len() as u64);
+    
     // TODO(zero-copy) Use Buf::leak(buf) to leak the heap allocated buf. And
     // don't do the memcpy in ImportBuf() (in libdeno/binding.cc)
     unsafe {
@@ -188,9 +190,7 @@ impl Isolate {
     // completing.
     self.ntasks_decrement();
     // Call into JS with the buf.
-    let buf_size = buf.len() as u64;
     self.respond(req_id, buf);
-    self.state.metrics_op_completed(buf_size)
   }
 
   fn timeout(&mut self) {
@@ -305,10 +305,13 @@ extern "C" fn pre_dispatch(
     // Execute op synchronously.
     let buf = tokio_util::block_on(op).unwrap();
     let buf_size = buf.len();
+
     if buf_size != 0 {
       // Set the synchronous response, the value returned from isolate.send().
       isolate.respond(req_id, buf);
-      isolate.state.metrics_op_completed(buf_size as u64);
+    } else {
+      // FIXME
+      isolate.state.metrics_op_completed(buf.len() as u64);
     }
   } else {
     // Execute op asynchronously.
