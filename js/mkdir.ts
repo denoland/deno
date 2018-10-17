@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
 /** Creates a new directory with the specified path and permission
@@ -26,7 +26,7 @@ function req(
   path: string,
   mode: number
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const path_ = builder.createString(path);
   msg.Mkdir.startMkdir(builder);
   msg.Mkdir.addPath(builder, path_);

@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
@@ -23,7 +23,7 @@ export async function readlink(name: string): Promise<string> {
 }
 
 function req(name: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const name_ = builder.createString(name);
   msg.Readlink.startReadlink(builder);
   msg.Readlink.addName(builder, name_);

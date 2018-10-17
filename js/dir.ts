@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
 import { assert } from "./util";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
 
 /**
@@ -12,7 +12,7 @@ import { sendSync } from "./dispatch";
  * throws NotFound exception if directory not available
  */
 export function cwd(): string {
-  const builder = new flatbuffers.Builder(0);
+  const builder = flatbuffers.createBuilder();
   msg.Cwd.startCwd(builder);
   const inner = msg.Cwd.endCwd(builder);
   const baseRes = sendSync(builder, msg.Any.Cwd, inner);
@@ -28,7 +28,7 @@ export function cwd(): string {
  * throws NotFound exception if directory not available
  */
 export function chdir(directory: string): void {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const directory_ = builder.createString(directory);
   msg.Chdir.startChdir(builder);
   msg.Chdir.addDirectory(builder, directory_);

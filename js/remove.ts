@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
 /** Removes the named file or (empty) directory synchronously. Would throw
@@ -47,7 +47,7 @@ function req(
   path: string,
   recursive: boolean
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const path_ = builder.createString(path);
   msg.Remove.startRemove(builder);
   msg.Remove.addPath(builder, path_);

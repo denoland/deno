@@ -816,8 +816,8 @@ fn op_copy_file(
     // Once the issue is reolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
       return Err(errors::new(
-          ErrorKind::NotFound,
-          "File not found".to_string(),
+        ErrorKind::NotFound,
+        "File not found".to_string(),
       ));
     }
 

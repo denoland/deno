@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import * as util from "./util";
 
@@ -43,7 +43,7 @@ function req(
   if (type) {
     return util.notImplemented();
   }
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const oldname_ = builder.createString(oldname);
   const newname_ = builder.createString(newname);
   msg.Symlink.startSymlink(builder);

@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
 /** Copies the contents of a file to another by name synchronously.
@@ -36,7 +36,7 @@ function req(
   from: string,
   to: string
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const from_ = builder.createString(from);
   const to_ = builder.createString(to);
   msg.CopyFile.startCopyFile(builder);
