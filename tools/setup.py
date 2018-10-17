@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import third_party
-from util import build_mode, build_path, enable_ansi_colors, root_path, run
+from util import build_path, enable_ansi_colors, root_path, run
 from util import shell_quote
+import argparse
 import os
 import re
 import sys
@@ -22,12 +23,8 @@ def main():
 
     write_lastchange()
 
-    mode = build_mode(default=None)
-    if mode is not None:
-        gn_gen(mode)
-    else:
-        gn_gen("release")
-        gn_gen("debug")
+    gn_gen("release")
+    gn_gen("debug")
 
 
 def write_if_not_exists(filename, contents):
@@ -137,12 +134,10 @@ def generate_gn_args(mode):
 
 # gn gen.
 def gn_gen(mode):
-    os.environ["DENO_BUILD_MODE"] = mode
-
     # Rather than using gn gen --args we write directly to the args.gn file.
     # This is to avoid quoting/escaping complications when passing overrides as
     # command-line arguments.
-    args_filename = os.path.join(build_path(), "args.gn")
+    args_filename = os.path.join(build_path(mode), "args.gn")
 
     # Check if args.gn exists, and if it was auto-generated or handcrafted.
     existing_gn_args, hand_edited = read_gn_args(args_filename)
@@ -161,7 +156,8 @@ def gn_gen(mode):
     for line in gn_args:
         print "  " + line
 
-    run([third_party.gn_path, "gen", build_path()],
+    run([third_party.gn_path, "gen",
+         build_path(mode)],
         env=third_party.google_env())
 
 

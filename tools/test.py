@@ -22,15 +22,7 @@ def check_exists(filename):
         sys.exit(1)
 
 
-def main(argv):
-    if len(argv) == 2:
-        build_dir = sys.argv[1]
-    elif len(argv) == 1:
-        build_dir = build_path()
-    else:
-        print "Usage: tools/test.py [build_dir]"
-        sys.exit(1)
-
+def main(build_dir):
     deno_dir = os.path.join(build_dir, ".deno_test")
     if os.path.isdir(deno_dir):
         rmtree(deno_dir)
@@ -69,4 +61,9 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    if len(sys.argv) == 2:
+        build_dir = sys.argv[1]
+    else:
+        print "Usage: tools/test.py out/debug"
+        sys.exit(1)
+    sys.exit(main(build_dir))
