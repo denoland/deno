@@ -141,7 +141,7 @@ Other useful commands:
     # Call ninja manually.
     ./third_party/depot_tools/ninja -C out/debug
     # Build a release binary.
-    DENO_BUILD_MODE=release ./tools/build.py :deno
+    ./tools/build.py --release :deno
     # List executable targets.
     ./third_party/depot_tools/gn ls out/debug //:* --as=output --type=executable
     # List build configuation.
@@ -152,7 +152,7 @@ Other useful commands:
     ./third_party/depot_tools/gn desc out/debug/ :deno
     ./third_party/depot_tools/gn help
 
-Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`, `DENO_DIR`.
+Env vars: `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`, `DENO_DIR`.
 
 ## Contributing
 

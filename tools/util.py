@@ -140,19 +140,12 @@ def rmtree(directory):
     shutil.rmtree(directory, onerror=rm_readonly)
 
 
-def build_mode(default="debug"):
-    if "DENO_BUILD_MODE" in os.environ:
-        return os.environ["DENO_BUILD_MODE"]
-    else:
-        return default
-
-
 # E.G. "out/debug"
-def build_path():
+def build_path(build_mode="debug"):
     if "DENO_BUILD_PATH" in os.environ:
         return os.environ["DENO_BUILD_PATH"]
     else:
-        return os.path.join(root_path, "out", build_mode())
+        return os.path.join(root_path, "out", build_mode)
 
 
 # Returns True if the expected matches the actual output, allowing variation

@@ -62,7 +62,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -85,7 +85,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -100,7 +99,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "errored",
       "started_at": "2018-10-16T06:02:26Z",
@@ -170,7 +169,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -193,7 +192,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -208,7 +206,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-16T01:24:11Z",
@@ -278,7 +276,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -301,7 +299,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -316,7 +313,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-16T01:14:08Z",
@@ -386,7 +383,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -409,7 +406,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -424,7 +420,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-16T00:54:22Z",
@@ -494,7 +490,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "$DENO_BUILD_PATH/deno -v",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
@@ -518,7 +514,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -533,7 +528,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-16T00:22:14Z",
@@ -603,7 +598,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./out/Default/deno -v",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
@@ -627,7 +622,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -642,7 +636,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "failed",
       "started_at": "2018-10-16T00:11:05Z",
@@ -712,7 +706,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./out/release/deno -v",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
@@ -736,7 +730,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -751,7 +744,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "failed",
       "started_at": "2018-10-16T00:02:53Z",
@@ -821,7 +814,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -844,7 +837,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -859,7 +851,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T23:56:19Z",
@@ -929,7 +921,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -952,7 +944,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -967,7 +958,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T23:39:18Z",
@@ -1037,7 +1028,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -1060,7 +1051,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -1075,7 +1065,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T22:55:48Z",
@@ -1145,7 +1135,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -1168,7 +1158,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -1183,7 +1172,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T22:36:34Z",
@@ -1253,7 +1242,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -1276,7 +1265,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -1291,7 +1279,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "errored",
       "started_at": "2018-10-15T22:03:14Z",
@@ -1361,7 +1349,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -1384,7 +1372,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -1399,7 +1386,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "errored",
       "started_at": "2018-10-15T21:03:30Z",
@@ -1469,7 +1456,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -1492,7 +1479,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -1507,7 +1493,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T18:41:34Z",
@@ -1577,7 +1563,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -1600,7 +1586,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -1615,7 +1600,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T17:33:47Z",
@@ -1685,7 +1670,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -1708,7 +1693,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -1723,7 +1707,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T16:43:54Z",
@@ -1793,7 +1777,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -1816,7 +1800,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -1831,7 +1814,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "failed",
       "started_at": "2018-10-15T14:59:30Z",
@@ -1901,7 +1884,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -1924,7 +1907,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -1939,7 +1921,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "failed",
       "started_at": "2018-10-15T14:49:22Z",
@@ -2009,7 +1991,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -2032,7 +2014,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -2047,7 +2028,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "errored",
       "started_at": "2018-10-15T14:14:16Z",
@@ -2117,7 +2098,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -2140,7 +2121,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -2155,7 +2135,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "errored",
       "started_at": "2018-10-15T14:07:57Z",
@@ -2225,7 +2205,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -2248,7 +2228,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -2263,7 +2242,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T12:54:45Z",
@@ -2333,7 +2312,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -2356,7 +2335,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -2371,7 +2349,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T11:33:43Z",
@@ -2441,7 +2419,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -2464,7 +2442,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -2479,7 +2456,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T11:13:31Z",
@@ -2549,7 +2526,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -2572,7 +2549,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -2587,7 +2563,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T01:03:58Z",
@@ -2657,7 +2633,7 @@
         "script": [
           "./tools/lint.py",
           "bash -c \"sleep 2100; pkill ninja\" \u0026",
-          "./tools/build.py -j2",
+          "./tools/build.py --release -j2",
           "./tools/test.py $DENO_BUILD_PATH"
         ],
         ".result": "configured",
@@ -2680,7 +2656,6 @@
           "HOMEBREW_PATH=$HOME/homebrew/",
           "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
           "DENO_BUILD_PATH=$HOME/out/Default",
-          "DENO_BUILD_MODE=release",
           "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
           "CCACHE_CPP2=yes",
           "CCACHE_SLOPPINESS=time_macros",
@@ -2695,7 +2670,7 @@
         "before_deploy": [
           "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
         ],
-        "before_script": ["./tools/setup.py"]
+        "before_script": ["./tools/setup.py --release"]
       },
       "state": "passed",
       "started_at": "2018-10-15T00:34:50Z",
