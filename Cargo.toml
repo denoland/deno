@@ -9,6 +9,7 @@ name = "deno"
 version = "0.0.0"
 
 [dependencies]
+atty = "0.2.11"
 dirs = "1.0.4"
 flatbuffers = { path = "third_party/flatbuffers/rust/flatbuffers/" }
 futures = "0.1.25"
