@@ -124,6 +124,30 @@ export function formatBytes(a, b) {
   return parseFloat((a / Math.pow(c, f)).toFixed(d)) + " " + e[f];
 }
 
+function gen2(id, categories, columns, onclick) {
+  c3.generate({
+    bindto: id,
+    size: {
+      height: 300,
+      width: 375
+    },
+    data: {
+      columns,
+      onclick
+    },
+    axis: {
+      x: {
+        type: "category",
+        show: false,
+        categories
+      },
+      y: {
+        label: "seconds"
+      }
+    }
+  });
+}
+
 export function formatSeconds(t) {
   const a = t % 60;
   const min = Math.floor(t / 60);
@@ -156,109 +180,26 @@ export async function drawChartsFromBenchmarkData() {
     );
   };
 
-  c3.generate({
-    bindto: "#exec-time-chart",
-    data: {
-      columns: execTimeColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1List
-      },
-      y: {
-        label: "seconds"
-      }
-    }
-  });
+  function gen(id, columns) {
+    gen2(id, sha1ShortList, columns, viewCommitOnClick(sha1List));
+  }
 
-  c3.generate({
-    bindto: "#throughput-chart",
-    data: {
-      columns: throughputColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      },
-      y: {
-        label: "seconds"
-      }
-    }
-  });
+  gen("#exec-time-chart", execTimeColumns);
+  gen("#throughput-chart", throughputColumns);
+  gen("#req-per-sec-chart", reqPerSecColumns);
 
-  c3.generate({
-    bindto: "#req-per-sec-chart",
-    data: {
-      columns: reqPerSecColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
+  /* TODO 
     axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      },
-      y: {
-        label: "seconds"
-      }
-    }
-  });
-
-  c3.generate({
-    bindto: "#binary-size-chart",
-    data: {
-      columns: binarySizeColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      },
       y: {
         tick: {
           format: d => formatBytes(d)
         }
       }
     }
-  });
-
-  c3.generate({
-    bindto: "#thread-count-chart",
-    data: {
-      columns: threadCountColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      }
-    }
-  });
-
-  c3.generate({
-    bindto: "#syscall-count-chart",
-    data: {
-      columns: syscallCountColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      }
-    }
-  });
+  */
+  gen("#binary-size-chart", binarySizeColumns);
+  gen("#thread-count-chart", threadCountColumns);
+  gen("#syscall-count-chart", syscallCountColumns);
 }
 
 /**
@@ -275,22 +216,10 @@ export async function drawChartsFromTravisData() {
   const travisCompileTimeColumns = createTravisCompileTimeColumns(travisData);
   const prNumberList = travisData.map(d => d.pull_request_number);
 
-  c3.generate({
-    bindto: "#travis-compile-time-chart",
-    data: {
-      columns: travisCompileTimeColumns,
-      onclick: viewPullRequestOnClick(prNumberList)
-    },
-    axis: {
-      x: {
-        type: "category",
-        categories: prNumberList
-      },
-      y: {
-        tick: {
-          format: d => formatSeconds(d)
-        }
-      }
-    }
-  });
+  gen2(
+    "#travis-compile-time-chart",
+    prNumberList,
+    travisCompileTimeColumns,
+    viewPullRequestOnClick(prNumberList)
+  );
 }
