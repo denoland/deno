@@ -1,12 +1,13 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use getopts::Options;
+use errors::DenoResult;
+use errors::permission_denied;
 use libc::c_int;
 use libdeno;
 use log;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
-use std::process::exit;
 use std::vec::Vec;
 
 // Creates vector of strings, Vec<String>
@@ -22,24 +23,38 @@ pub struct DenoFlags {
   pub version: bool,
   pub reload: bool,
   pub recompile: bool,
-  pub allow_write: bool,
-  pub allow_net: bool,
-  pub allow_env: bool,
+  allow_write: bool,
+  allow_net: bool,
+  allow_env: bool,
   pub deps_flag: bool,
   pub types_flag: bool,
 }
 
-pub fn process(flags: &DenoFlags, usage_string: String) {
-  if flags.help {
-    println!("{}", &usage_string);
-    exit(0);
+
+impl DenoFlags {
+
+  pub fn permissions_check_write(&self, filename: &str) -> DenoResult<()> {
+    if self.allow_write { return Ok(()) };
+    permission_prompt(format!("XX requests write access to \"{}\".", filename))
   }
 
-  let mut log_level = log::LevelFilter::Info;
-  if flags.log_debug {
-    log_level = log::LevelFilter::Debug;
+  pub fn permissions_check_net(&self, domain_name: &str) -> DenoResult<()> {
+    if self.allow_net { return Ok(()) };
+    permission_prompt(format!("XX requests network access to \"{}\".", domain_name))
   }
-  log::set_max_level(log_level);
+
+  pub fn permissions_check_env(&self) -> DenoResult<()> {
+    if self.allow_env { return Ok(()) };
+    permission_prompt("XX requests access to environment variables.".to_string())
+  }
+
+  pub fn set_log_level(&self) {
+    let mut log_level = log::LevelFilter::Info;
+    if self.log_debug {
+      log_level = log::LevelFilter::Debug;
+    }
+    log::set_max_level(log_level);
+  }
 }
 
 pub fn get_usage(opts: &Options) -> String {
@@ -49,6 +64,11 @@ Environment variables:
         DENO_DIR        Set deno's base directory.",
     opts.usage("")
   )
+}
+
+fn permission_prompt(message: String) -> DenoResult<()> {
+  println!("{}", message);
+  Err(permission_denied())
 }
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
