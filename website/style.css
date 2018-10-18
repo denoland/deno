@@ -1,0 +1,41 @@
+
+body {
+  color: #111;
+  background: #f0f0f0;
+  margin: 80px 0;
+  font-family: Arial;
+  font-size: 20px;
+}
+
+main {
+  max-width: 800px;
+  margin: 0px auto;
+}
+svg {
+  margin: 0px auto;
+}
+
+a {
+  color: #333;
+}
+
+a:hover {
+  background: #aee;
+}
+
+@media only screen and (max-device-width: 480px) {
+
+  main {
+    margin: 15px;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  svg {
+    max-width: 375px;
+    margin: 25px -15px;
+  }
+}
+
