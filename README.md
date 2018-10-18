@@ -52,13 +52,13 @@
 
 ## Install
 
-**With Python:**
+With Python:
 
 ```
 curl -sSf https://raw.githubusercontent.com/denoland/deno_install/master/install.py | python
 ```
 
-**With PowerShell:**
+With PowerShell:
 
 ```powershell
 iex (iwr https://raw.githubusercontent.com/denoland/deno_install/master/install.ps1)
@@ -82,89 +82,7 @@ Under development.
 
 We make binary releases [here](https://github.com/denoland/deno/releases).
 
-Progress towards future releases is tracked
-[here](https://github.com/denoland/deno/milestones).
-
-Roadmap is [here](https://github.com/denoland/deno/blob/master/Roadmap.md). Also
-see [this presentation](http://tinyclouds.org/jsconf2018.pdf).
-
-[Benchmarks](https://denoland.github.io/deno/)
-
-[Chat room](https://gitter.im/denolife/Lobby).
-
-## Build instructions
-
-To ensure reproducible builds, Deno has most of its dependencies in a git
-submodule. However, you need to install separately:
-
-1. [Rust](https://www.rust-lang.org/en-US/install.html)
-2. [Node](http://nodejs.org/)
-3. Python 2.
-   [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
-4. [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache)
-   (Optional but helpful for speeding up rebuilds of V8.).
-5. Extra steps for Windows users:
-   1. Add `python.exe` to `PATH`. E.g. `set PATH=%PATH%;C:\Python27\python.exe`
-   2. Get [VS Community 2017](https://www.visualstudio.com/downloads/), make
-      sure to select the option to install C++ tools and the Windows SDK
-   3. Enable `Debugging Tools for Windows`, Goto Control Panel -> Windows 10 SDK
-      -> Right-Click -> Change -> Change -> Check Debugging Tools for Windows ->
-      Change -> Finish
-
-#### To build:
-
-    # Fetch deps.
-    git clone --recurse-submodules https://github.com/denoland/deno.git
-    cd deno
-    ./tools/setup.py
-
-    # Build.
-    ./tools/build.py
-
-    # Run.
-    ./out/debug/deno tests/002_hello.ts
-
-    # Test.
-    ./tools/test.py
-
-    # Format code.
-    ./tools/format.py
-
-Before running `./tools/format.py`, make sure you have `yapf` installed for the
-current Python and `rustfmt` for Rust. They can be installed by:
-
-    pip install yapf
-    rustup component add rustfmt-preview
-
-Other useful commands:
-
-    # Call ninja manually.
-    ./third_party/depot_tools/ninja -C out/debug
-    # Build a release binary.
-    DENO_BUILD_MODE=release ./tools/build.py :deno
-    # List executable targets.
-    ./third_party/depot_tools/gn ls out/debug //:* --as=output --type=executable
-    # List build configuation.
-    ./third_party/depot_tools/gn args out/debug/ --list
-    # Edit build configuration.
-    ./third_party/depot_tools/gn args out/debug/
-    # Describe a target.
-    ./third_party/depot_tools/gn desc out/debug/ :deno
-    ./third_party/depot_tools/gn help
-
-Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`, `DENO_DIR`.
-
-## Contributing
-
-1. Fork [this repository](https://github.com/denoland/deno) and create your
-   branch from `master`.
-2. Make your change.
-3. Ensure `./tools/test.py` passes.
-4. Format your code with `./tools/format.py`.
-5. Make sure `./tools/lint.py` passes.
-6. Send a pull request.
-7. Sign the [CLA](https://cla-assistant.io/denoland/deno), if you haven't
-   already.
+Docs are [here](https://github.com/denoland/deno/blob/master/Docs.md).
 
 <!-- prettier-ignore -->
 [avy badge]: https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true
