@@ -21,20 +21,15 @@ Deno* FromIsolate(v8::Isolate* isolate) {
 }
 
 void AddDataRef(Deno* d, int32_t req_id, v8::Local<v8::Value> data_v) {
-  // TODO Use std::unique_ptr
-  auto pair =
-      std::make_pair(req_id, new v8::Persistent<v8::Value>(d->isolate, data_v));
-  d->async_data_map.insert(pair);
+  d->async_data_map.emplace(std::piecewise_construct, std::make_tuple(req_id),
+                            std::make_tuple(d->isolate, data_v));
 }
 
 void DeleteDataRef(Deno* d, int32_t req_id) {
   // Delete persistent reference to data ArrayBuffer.
   auto it = d->async_data_map.find(req_id);
   if (it != d->async_data_map.end()) {
-    auto pair = *it;
-    auto p = pair.second;
-    p->Reset();
-    delete p;
+    it->second.Reset();
     d->async_data_map.erase(it);
   }
 }

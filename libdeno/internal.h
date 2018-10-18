@@ -23,7 +23,7 @@ struct deno_s {
 
   int32_t pending_promise_events;
   v8::Persistent<v8::Context> context;
-  std::map<int32_t, v8::Persistent<v8::Value>*> async_data_map;
+  std::map<int32_t, v8::Persistent<v8::Value>> async_data_map;
   deno_recv_cb cb;
   int32_t next_req_id;
   void* user_data;
