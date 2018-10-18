@@ -1,0 +1,3059 @@
+{
+  "builds": [
+    {
+      "id": 88053256,
+      "repository_id": 4647767,
+      "commit_id": 142218266,
+      "number": "3226",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Add repl",
+      "pull_request_number": 998,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "errored",
+      "started_at": "2018-10-16T06:02:26Z",
+      "finished_at": "2018-10-16T06:02:59Z",
+      "duration": 47,
+      "job_ids": [152008528, 152008529]
+    },
+    {
+      "id": 88039269,
+      "repository_id": 4647767,
+      "commit_id": 142188592,
+      "number": "3224",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "`deno -v` should report typescript version",
+      "pull_request_number": 995,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-16T01:24:11Z",
+      "finished_at": "2018-10-16T01:32:43Z",
+      "duration": 980,
+      "job_ids": [151979421, 151979422]
+    },
+    {
+      "id": 88038776,
+      "repository_id": 4647767,
+      "commit_id": 142187574,
+      "number": "3223",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "First pass at HTTP req/sec benchmark",
+      "pull_request_number": 996,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\n  if [ ! $(which ab) ]; then\n    sudo apt-get install apache2-utils\n  fi\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-16T01:14:08Z",
+      "finished_at": "2018-10-16T01:23:02Z",
+      "duration": 1047,
+      "job_ids": [151978345, 151978346]
+    },
+    {
+      "id": 88037765,
+      "repository_id": 4647767,
+      "commit_id": 142185325,
+      "number": "3222",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "`deno -v` should report typescript version",
+      "pull_request_number": 995,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-16T00:54:22Z",
+      "finished_at": "2018-10-16T01:03:53Z",
+      "duration": 1027,
+      "job_ids": [151976108, 151976109]
+    },
+    {
+      "id": 88035921,
+      "repository_id": 4647767,
+      "commit_id": 142181355,
+      "number": "3221",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Inject typescript version from package.json during build through env! (`deno -v`)",
+      "pull_request_number": 997,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "$DENO_BUILD_PATH/deno -v",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-16T00:22:14Z",
+      "finished_at": "2018-10-16T00:31:13Z",
+      "duration": 970,
+      "job_ids": [151972101, 151972102]
+    },
+    {
+      "id": 88035173,
+      "repository_id": 4647767,
+      "commit_id": 142179730,
+      "number": "3220",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Inject typescript version from package.json during build through env! (`deno -v`)",
+      "pull_request_number": 997,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./out/Default/deno -v",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "failed",
+      "started_at": "2018-10-16T00:11:05Z",
+      "finished_at": "2018-10-16T00:19:46Z",
+      "duration": 934,
+      "job_ids": [151970315, 151970316]
+    },
+    {
+      "id": 88034680,
+      "repository_id": 4647767,
+      "commit_id": 142178667,
+      "number": "3219",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Inject typescript version from package.json during build through env! (`deno -v`)",
+      "pull_request_number": 997,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./out/release/deno -v",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "failed",
+      "started_at": "2018-10-16T00:02:53Z",
+      "finished_at": "2018-10-16T00:13:59Z",
+      "duration": 943,
+      "job_ids": [151969208, 151969210]
+    },
+    {
+      "id": 88034308,
+      "repository_id": 4647767,
+      "commit_id": 142177845,
+      "number": "3218",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Inject typescript version from package.json during build through env! (`deno -v`)",
+      "pull_request_number": 997,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T23:56:19Z",
+      "finished_at": "2018-10-16T00:06:01Z",
+      "duration": 1021,
+      "job_ids": [151968442, 151968443]
+    },
+    {
+      "id": 88033114,
+      "repository_id": 4647767,
+      "commit_id": 142175399,
+      "number": "3217",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Inject typescript version from package.json during build through env! (`deno -v`)",
+      "pull_request_number": 997,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T23:39:18Z",
+      "finished_at": "2018-10-15T23:48:27Z",
+      "duration": 993,
+      "job_ids": [151965974, 151965975]
+    },
+    {
+      "id": 88029775,
+      "repository_id": 4647767,
+      "commit_id": 142168152,
+      "number": "3216",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "First pass at HTTP req/sec benchmark",
+      "pull_request_number": 996,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\n  if [ ! $(which ab) ]; then\n    sudo apt-get install apache2-utils\n  fi\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T22:55:48Z",
+      "finished_at": "2018-10-15T23:04:46Z",
+      "duration": 1048,
+      "job_ids": [151958374, 151958378]
+    },
+    {
+      "id": 88028304,
+      "repository_id": 4647767,
+      "commit_id": 142164828,
+      "number": "3215",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "First pass at HTTP req/sec benchmark",
+      "pull_request_number": 996,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\n  if [ ! $(which ab) ]; then\n    sudo apt-get install apache2-utils\n  fi\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T22:36:34Z",
+      "finished_at": "2018-10-15T22:46:01Z",
+      "duration": 1080,
+      "job_ids": [151955204, 151955205]
+    },
+    {
+      "id": 88025400,
+      "repository_id": 4647767,
+      "commit_id": 142158554,
+      "number": "3214",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "First pass at HTTP req/sec benchmark",
+      "pull_request_number": 996,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\n  if [ ! $(which wrk) ]; then\n    sudo apt-get install wrk\n  fi\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "errored",
+      "started_at": "2018-10-15T22:03:14Z",
+      "finished_at": "2018-10-15T22:12:24Z",
+      "duration": 633,
+      "job_ids": [151949214, 151949215]
+    },
+    {
+      "id": 88019352,
+      "repository_id": 4647767,
+      "commit_id": 142143927,
+      "number": "3213",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "First pass at HTTP req/sec benchmark",
+      "pull_request_number": 996,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\n  if [ ! $(which wrk) ]; then\n    apt-get install wrk\n  fi\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "errored",
+      "started_at": "2018-10-15T21:03:30Z",
+      "finished_at": "2018-10-15T21:12:43Z",
+      "duration": 605,
+      "job_ids": [151936265, 151936266]
+    },
+    {
+      "id": 88003226,
+      "repository_id": 4647767,
+      "commit_id": 142108538,
+      "number": "3212",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "`deno -v` should report typescript version",
+      "pull_request_number": 995,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T18:41:34Z",
+      "finished_at": "2018-10-15T18:50:57Z",
+      "duration": 1023,
+      "job_ids": [151902875, 151902876]
+    },
+    {
+      "id": 87995060,
+      "repository_id": 4647767,
+      "commit_id": 142091478,
+      "number": "3209",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Fix a binary size regression",
+      "pull_request_number": 992,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T17:33:47Z",
+      "finished_at": "2018-10-15T17:43:46Z",
+      "duration": 1140,
+      "job_ids": [151886378, 151886379]
+    },
+    {
+      "id": 87988978,
+      "repository_id": 4647767,
+      "commit_id": 142079021,
+      "number": "3207",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Exit cleanly on unrecognized arguments",
+      "pull_request_number": 990,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T16:43:54Z",
+      "finished_at": "2018-10-15T17:12:26Z",
+      "duration": 1957,
+      "job_ids": [151874417, 151874418]
+    },
+    {
+      "id": 87973681,
+      "repository_id": 4647767,
+      "commit_id": 142047284,
+      "number": "3204",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "WIP repl inside deno, initial phase",
+      "pull_request_number": 947,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "failed",
+      "started_at": "2018-10-15T14:59:30Z",
+      "finished_at": "2018-10-15T15:08:01Z",
+      "duration": 978,
+      "job_ids": [151846133, 151846134]
+    },
+    {
+      "id": 87971925,
+      "repository_id": 4647767,
+      "commit_id": 142043639,
+      "number": "3203",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "WIP repl inside deno, initial phase",
+      "pull_request_number": 947,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "failed",
+      "started_at": "2018-10-15T14:49:22Z",
+      "finished_at": "2018-10-15T14:57:42Z",
+      "duration": 948,
+      "job_ids": [151843047, 151843048]
+    },
+    {
+      "id": 87966224,
+      "repository_id": 4647767,
+      "commit_id": 142031738,
+      "number": "3202",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "WIP repl inside deno, initial phase",
+      "pull_request_number": 947,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "errored",
+      "started_at": "2018-10-15T14:14:16Z",
+      "finished_at": "2018-10-15T14:15:10Z",
+      "duration": 47,
+      "job_ids": [151832638, 151832639]
+    },
+    {
+      "id": 87965303,
+      "repository_id": 4647767,
+      "commit_id": 142029715,
+      "number": "3201",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "WIP repl inside deno, initial phase",
+      "pull_request_number": 947,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "errored",
+      "started_at": "2018-10-15T14:07:57Z",
+      "finished_at": "2018-10-15T14:08:44Z",
+      "duration": 43,
+      "job_ids": [151830770, 151830771]
+    },
+    {
+      "id": 87954382,
+      "repository_id": 4647767,
+      "commit_id": 142007106,
+      "number": "3200",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Implement url joining utility function",
+      "pull_request_number": 991,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T12:54:45Z",
+      "finished_at": "2018-10-15T13:03:54Z",
+      "duration": 1022,
+      "job_ids": [151809886, 151809887]
+    },
+    {
+      "id": 87944481,
+      "repository_id": 4647767,
+      "commit_id": 141986531,
+      "number": "3199",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Specify deno_dir location with env var DENO_DIR",
+      "pull_request_number": 970,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T11:33:43Z",
+      "finished_at": "2018-10-15T11:42:25Z",
+      "duration": 990,
+      "job_ids": [151791302, 151791303]
+    },
+    {
+      "id": 87942227,
+      "repository_id": 4647767,
+      "commit_id": 141981706,
+      "number": "3198",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Specify deno_dir location with env var DENO_DIR",
+      "pull_request_number": 970,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T11:13:31Z",
+      "finished_at": "2018-10-15T11:22:13Z",
+      "duration": 1010,
+      "job_ids": [151787197, 151787199]
+    },
+    {
+      "id": 87897848,
+      "repository_id": 4647767,
+      "commit_id": 141887249,
+      "number": "3197",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "Exit cleanly on unrecognized arguments",
+      "pull_request_number": 990,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T01:03:58Z",
+      "finished_at": "2018-10-15T01:12:43Z",
+      "duration": 999,
+      "job_ids": [151701418, 151701419]
+    },
+    {
+      "id": 87896922,
+      "repository_id": 4647767,
+      "commit_id": 141884956,
+      "number": "3196",
+      "event_type": "pull_request",
+      "pull_request": true,
+      "pull_request_title": "better error message from tools/format.py",
+      "pull_request_number": 926,
+      "config": {
+        "dist": "trusty",
+        "cache": {
+          "ccache": true,
+          "directories": [
+            "$CARGO_HOME",
+            "$RUSTUP_HOME",
+            "$HOMEBREW_PATH",
+            "$SCCACHE_DIR",
+            "third_party/v8/build/linux/debian_sid_amd64-sysroot/",
+            "third_party/v8/third_party/llvm-build/"
+          ]
+        },
+        "group": "stable",
+        "deploy": [
+          {
+            "file": "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz",
+            "true": { "repo": "denoland/deno", "tags": true },
+            "api_key": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "provider": "releases",
+            "skip-cleanup": true
+          },
+          {
+            "true": {
+              "repo": "denoland/deno",
+              "branch": "master",
+              "condition": "$BENCHMARK == 1"
+            },
+            "provider": "pages",
+            "local-dir": "gh-pages",
+            "github-token": {
+              "secure": "RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps="
+            },
+            "keep-history": true,
+            "skip-cleanup": true
+          }
+        ],
+        "matrix": {
+          "include": [
+            {
+              "os": "linux",
+              "env": "BENCHMARK=1",
+              "dist": "trusty",
+              "sudo": "required"
+            },
+            { "os": "osx", "dist": "trusty" }
+          ]
+        },
+        "script": [
+          "./tools/lint.py",
+          "bash -c \"sleep 2100; pkill ninja\" \u0026",
+          "./tools/build.py -j2",
+          "./tools/test.py $DENO_BUILD_PATH"
+        ],
+        ".result": "configured",
+        "install": [
+          "nvm install v8",
+          "nvm use --delete-prefix v8",
+          "node -v",
+          "# OS X: install a private copy of homebrew.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" ]]; then\n  export BREW=\"${HOMEBREW_PATH}bin/brew\"\n  export PATH=\"${HOMEBREW_PATH}bin:$PATH\"\n  if [[ ! -x \"$BREW\" ]]; then\n    git clone git://github.com/homebrew/brew \"$HOMEBREW_PATH\"\n  fi\n  \"$BREW\" --version\nfi",
+          "# Install ccache (if necessary) and set it up.\nif [[ \"$TRAVIS_OS_NAME\" == \"osx\" \u0026\u0026 ! $(which ccache) ]]; then\n  \"$BREW\" install ccache\nfi\nccache --version | head -n 1\nccache --max-size=1G",
+          "# Install Rust.\n# TODO(ry) Include rustc in third_party.\n# https://github.com/denoland/deno/issues/386\nif [ ! $(which rustc) ]; then\n  curl -sSf https://sh.rustup.rs | sh -s -- -y\nfi\nrustc --version\ncargo --version",
+          "# Install and start sccache.\nif [ ! $(which sccache) ]; then\n  cargo install sccache\nfi\nsccache --version\nsccache --start-server",
+          "# Install hyperfine (if benchmarking is enabled for this build).\nif [ $BENCHMARK ]; then\n  if [ ! $(which hyperfine) ]; then\n    cargo install hyperfine\n  fi\n  hyperfine --version\nfi",
+          "# Remove unnnecessary cargo and rustup directories.\n# This keeps the Travis CI cache small and fast.\nrm -rf \"$CARGO_HOME\"registry\nrm -rf \"$RUSTUP_HOME\"downloads\nrm -rf \"$RUSTUP_HOME\"tmp\nrm -rf \"$RUSTUP_HOME\"toolchains/*/etc\nrm -rf \"$RUSTUP_HOME\"toolchains/*/share"
+        ],
+        "language": "c++",
+        "global_env": [
+          "CARGO_HOME=$HOME/.cargo/",
+          "RUSTUP_HOME=$HOME/.rustup/",
+          "RUST_BACKTRACE=1",
+          "HOMEBREW_PATH=$HOME/homebrew/",
+          "DENO_BUILD_ARGS=\"use_custom_libcxx=false use_sysroot=false\"",
+          "DENO_BUILD_PATH=$HOME/out/Default",
+          "DENO_BUILD_MODE=release",
+          "PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH",
+          "CCACHE_CPP2=yes",
+          "CCACHE_SLOPPINESS=time_macros",
+          "SCCACHE_DIR=$HOME/.sccache/",
+          "SCCACHE_CACHE_SIZE=1G",
+          "SCCACHE_IDLE_TIMEOUT=0"
+        ],
+        "after_script": ["ccache --show-stats", "sccache --stop-server"],
+        "after_success": [
+          "# Run benchmarks and publish the result to github pages.\nif [ $BENCHMARK ]; then\n  ./tools/benchmark.py $DENO_BUILD_PATH \u0026\u0026\n  cp -r website/* gh-pages/\nfi\n"
+        ],
+        "before_deploy": [
+          "gzip -c $DENO_BUILD_PATH/deno \u003e $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
+        ],
+        "before_script": ["./tools/setup.py"]
+      },
+      "state": "passed",
+      "started_at": "2018-10-15T00:34:50Z",
+      "finished_at": "2018-10-15T00:43:33Z",
+      "duration": 984,
+      "job_ids": [151699430, 151699431]
+    }
+  ],
+  "commits": [
+    {
+      "id": 142218266,
+      "sha": "fd73a90539b34ff6eeda5bc5da536e97e7cc1f89",
+      "branch": "master",
+      "tag": null,
+      "message": "Remove old code",
+      "committed_at": "2018-10-16T05:48:46Z",
+      "author_name": "Andy Hayden",
+      "author_email": "andyhayden1@gmail.com",
+      "committer_name": "Andy Hayden",
+      "committer_email": "andyhayden1@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/998",
+      "pull_request_number": 998
+    },
+    {
+      "id": 142188592,
+      "sha": "95486a061161511714af59349c348e96ea92a5f0",
+      "branch": "master",
+      "tag": null,
+      "message": "`deno -v` should report typescript version\n\nFixes #993",
+      "committed_at": "2018-10-16T01:21:36Z",
+      "author_name": "Jinho Bang",
+      "author_email": "zino@chromium.org",
+      "committer_name": "Jinho Bang",
+      "committer_email": "zino@chromium.org",
+      "compare_url": "https://github.com/denoland/deno/pull/995",
+      "pull_request_number": 995
+    },
+    {
+      "id": 142187574,
+      "sha": "f112d1c5cade99ad8446e70982867b636f5443b9",
+      "branch": "master",
+      "tag": null,
+      "message": "First pass at http benchmark.",
+      "committed_at": "2018-10-16T01:13:07Z",
+      "author_name": "Ryan Dahl",
+      "author_email": "ry@tinyclouds.org",
+      "committer_name": "Ryan Dahl",
+      "committer_email": "ry@tinyclouds.org",
+      "compare_url": "https://github.com/denoland/deno/pull/996",
+      "pull_request_number": 996
+    },
+    {
+      "id": 142185325,
+      "sha": "dac5f097445f05ea7bcadcbe4ad4f4ddb251b86a",
+      "branch": "master",
+      "tag": null,
+      "message": "`deno -v` should report typescript version\n\nFixes #993",
+      "committed_at": "2018-10-16T00:52:33Z",
+      "author_name": "Jinho Bang",
+      "author_email": "zino@chromium.org",
+      "committer_name": "Jinho Bang",
+      "committer_email": "zino@chromium.org",
+      "compare_url": "https://github.com/denoland/deno/pull/995",
+      "pull_request_number": 995
+    },
+    {
+      "id": 142181355,
+      "sha": "8e3bc586a27c5471a7d1d92f881a5421be99c380",
+      "branch": "master",
+      "tag": null,
+      "message": "Fix unicode issue; print -v on AppVeyor/Travis",
+      "committed_at": "2018-10-16T00:20:26Z",
+      "author_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "author_email": "kevinkassimo@gmail.com",
+      "committer_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "committer_email": "kevinkassimo@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/997",
+      "pull_request_number": 997
+    },
+    {
+      "id": 142179730,
+      "sha": "69d571858564c191baa665b501851421c3fdf7cb",
+      "branch": "master",
+      "tag": null,
+      "message": "Fix unicode issue; print -v on AppVeyor/Travis",
+      "committed_at": "2018-10-16T00:09:32Z",
+      "author_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "author_email": "kevinkassimo@gmail.com",
+      "committer_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "committer_email": "kevinkassimo@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/997",
+      "pull_request_number": 997
+    },
+    {
+      "id": 142178667,
+      "sha": "df38bae0249730c013661446954497771adec530",
+      "branch": "master",
+      "tag": null,
+      "message": "Debug",
+      "committed_at": "2018-10-16T00:01:02Z",
+      "author_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "author_email": "kevinkassimo@gmail.com",
+      "committer_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "committer_email": "kevinkassimo@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/997",
+      "pull_request_number": 997
+    },
+    {
+      "id": 142177845,
+      "sha": "f73a2e54c18ba86ec0d6ead7744a7ab66d221c12",
+      "branch": "master",
+      "tag": null,
+      "message": "Debug",
+      "committed_at": "2018-10-15T23:55:27Z",
+      "author_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "author_email": "kevinkassimo@gmail.com",
+      "committer_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "committer_email": "kevinkassimo@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/997",
+      "pull_request_number": 997
+    },
+    {
+      "id": 142175399,
+      "sha": "3a0a7aec9874b0d01adca9591adf537587d2777d",
+      "branch": "master",
+      "tag": null,
+      "message": "Inject ts version during build through env",
+      "committed_at": "2018-10-15T23:34:26Z",
+      "author_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "author_email": "kevinkassimo@gmail.com",
+      "committer_name": "Kevin (Kun) \"Kassimo\" Qian",
+      "committer_email": "kevinkassimo@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/997",
+      "pull_request_number": 997
+    },
+    {
+      "id": 142168152,
+      "sha": "06e8f5b6687330c49c8faf0d7da109110326e5e0",
+      "branch": "master",
+      "tag": null,
+      "message": "First pass at http benchmark.",
+      "committed_at": "2018-10-15T22:54:43Z",
+      "author_name": "Ryan Dahl",
+      "author_email": "ry@tinyclouds.org",
+      "committer_name": "Ryan Dahl",
+      "committer_email": "ry@tinyclouds.org",
+      "compare_url": "https://github.com/denoland/deno/pull/996",
+      "pull_request_number": 996
+    },
+    {
+      "id": 142164828,
+      "sha": "1e7d3f81ea9176e8f35dc499e31e2e21ed954fda",
+      "branch": "master",
+      "tag": null,
+      "message": "Use ab instead of wrk (debian doesnt have wrk)",
+      "committed_at": "2018-10-15T22:35:44Z",
+      "author_name": "Ryan Dahl",
+      "author_email": "ry@tinyclouds.org",
+      "committer_name": "Ryan Dahl",
+      "committer_email": "ry@tinyclouds.org",
+      "compare_url": "https://github.com/denoland/deno/pull/996",
+      "pull_request_number": 996
+    },
+    {
+      "id": 142158554,
+      "sha": "793a2bde892e61eadaa07ebe09c8c808db77d7b9",
+      "branch": "master",
+      "tag": null,
+      "message": "First pass at wrk benchmark.",
+      "committed_at": "2018-10-15T22:01:54Z",
+      "author_name": "Ryan Dahl",
+      "author_email": "ry@tinyclouds.org",
+      "committer_name": "Ryan Dahl",
+      "committer_email": "ry@tinyclouds.org",
+      "compare_url": "https://github.com/denoland/deno/pull/996",
+      "pull_request_number": 996
+    },
+    {
+      "id": 142143927,
+      "sha": "326604257421c88db4b07f6a6a32d5bd72efb734",
+      "branch": "master",
+      "tag": null,
+      "message": "First pass at wrk benchmark.",
+      "committed_at": "2018-10-15T21:01:26Z",
+      "author_name": "Ryan Dahl",
+      "author_email": "ry@tinyclouds.org",
+      "committer_name": "Ryan Dahl",
+      "committer_email": "ry@tinyclouds.org",
+      "compare_url": "https://github.com/denoland/deno/pull/996",
+      "pull_request_number": 996
+    },
+    {
+      "id": 142108538,
+      "sha": "4ddb2a80705450abb1c4e038c34dd0ff035356e0",
+      "branch": "master",
+      "tag": null,
+      "message": "`deno -v` should report typescript version\n\nFixes #993",
+      "committed_at": "2018-10-15T18:40:21Z",
+      "author_name": "Jinho Bang",
+      "author_email": "zino@chromium.org",
+      "committer_name": "Jinho Bang",
+      "committer_email": "zino@chromium.org",
+      "compare_url": "https://github.com/denoland/deno/pull/995",
+      "pull_request_number": 995
+    },
+    {
+      "id": 142091478,
+      "sha": "b9e9ac57e4b5727aa0076ba5f5fc7b6215d463fe",
+      "branch": "master",
+      "tag": null,
+      "message": "Fix a binary size regression\n\nThis patch changes Jumbo build to use only in debug mode.",
+      "committed_at": "2018-10-15T17:28:35Z",
+      "author_name": "Jinho Bang",
+      "author_email": "zino@chromium.org",
+      "committer_name": "Jinho Bang",
+      "committer_email": "zino@chromium.org",
+      "compare_url": "https://github.com/denoland/deno/pull/992",
+      "pull_request_number": 992
+    },
+    {
+      "id": 142079021,
+      "sha": "c30b2fd05b9218c476f52439b66ced5afe471e26",
+      "branch": "master",
+      "tag": null,
+      "message": "simplify error message",
+      "committed_at": "2018-10-15T16:42:58Z",
+      "author_name": "Ryan Dahl",
+      "author_email": "ry@tinyclouds.org",
+      "committer_name": "GitHub",
+      "committer_email": "noreply@github.com",
+      "compare_url": "https://github.com/denoland/deno/pull/990",
+      "pull_request_number": 990
+    },
+    {
+      "id": 142047284,
+      "sha": "f6d0de1276aecb5583aba5266205db465fd82598",
+      "branch": "master",
+      "tag": null,
+      "message": "formating",
+      "committed_at": "2018-10-15T14:58:19Z",
+      "author_name": "Shiva Prasanth",
+      "author_email": "kesavararapu.siva@gmail.com",
+      "committer_name": "Shiva Prasanth",
+      "committer_email": "kesavararapu.siva@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/947",
+      "pull_request_number": 947
+    },
+    {
+      "id": 142043639,
+      "sha": "2183fb826cecba6ef8bfb00344156d1ade752c7c",
+      "branch": "master",
+      "tag": null,
+      "message": "adding deno namespace to repl",
+      "committed_at": "2018-10-15T14:12:52Z",
+      "author_name": "Shiva Prasanth",
+      "author_email": "kesavararapu.siva@gmail.com",
+      "committer_name": "Shiva Prasanth",
+      "committer_email": "kesavararapu.siva@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/947",
+      "pull_request_number": 947
+    },
+    {
+      "id": 142031738,
+      "sha": "566d00715d0ff1674ff221689d4f7b4cbb0d2330",
+      "branch": "master",
+      "tag": null,
+      "message": "adding deno namespace to repl",
+      "committed_at": "2018-10-15T14:12:52Z",
+      "author_name": "Shiva Prasanth",
+      "author_email": "kesavararapu.siva@gmail.com",
+      "committer_name": "Shiva Prasanth",
+      "committer_email": "kesavararapu.siva@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/947",
+      "pull_request_number": 947
+    },
+    {
+      "id": 142029715,
+      "sha": "9e815bc6b8eeedec408091b57638bfb9096d43b3",
+      "branch": "master",
+      "tag": null,
+      "message": "thirdParty",
+      "committed_at": "2018-10-15T13:56:03Z",
+      "author_name": "Shiva Prasanth",
+      "author_email": "kesavararapu.siva@gmail.com",
+      "committer_name": "Shiva Prasanth",
+      "committer_email": "kesavararapu.siva@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/947",
+      "pull_request_number": 947
+    },
+    {
+      "id": 142007106,
+      "sha": "5a31e1eaf0a9ce89a19be30babd2048d39fe536d",
+      "branch": "master",
+      "tag": null,
+      "message": "Implement url joining utility function\n\nFixes #955",
+      "committed_at": "2018-10-15T08:22:54Z",
+      "author_name": "Jinho Bang",
+      "author_email": "zino@chromium.org",
+      "committer_name": "Jinho Bang",
+      "committer_email": "jinho.bang@samsung.com",
+      "compare_url": "https://github.com/denoland/deno/pull/991",
+      "pull_request_number": 991
+    },
+    {
+      "id": 141986531,
+      "sha": "7127136928e54c06b775402227cb6480a1dc9d8e",
+      "branch": "master",
+      "tag": null,
+      "message": "Use C:\\deno instead of c:\\deno",
+      "committed_at": "2018-10-15T11:31:48Z",
+      "author_name": "Amos Lim",
+      "author_email": "amoseui@gmail.com",
+      "committer_name": "Amos Lim",
+      "committer_email": "amoseui@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/970",
+      "pull_request_number": 970
+    },
+    {
+      "id": 141981706,
+      "sha": "21c8ce0f1a49ad909fc52ab82cd9b98c1ae02430",
+      "branch": "master",
+      "tag": null,
+      "message": "Let deno_dir_test run deno with or without env DENO_DIR",
+      "committed_at": "2018-10-15T11:08:30Z",
+      "author_name": "Amos Lim",
+      "author_email": "amoseui@gmail.com",
+      "committer_name": "Amos Lim",
+      "committer_email": "amoseui@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/970",
+      "pull_request_number": 970
+    },
+    {
+      "id": 141887249,
+      "sha": "44fc4ce9920340fefdcce3930269cf99dc4369bc",
+      "branch": "master",
+      "tag": null,
+      "message": "Exit cleanly on unrecognized arguments\n\nRefactor set_flags to return a Result",
+      "committed_at": "2018-10-15T00:56:41Z",
+      "author_name": "Andy Hayden",
+      "author_email": "andyhayden1@gmail.com",
+      "committer_name": "Andy Hayden",
+      "committer_email": "andyhayden1@gmail.com",
+      "compare_url": "https://github.com/denoland/deno/pull/990",
+      "pull_request_number": 990
+    },
+    {
+      "id": 141884956,
+      "sha": "d220136bee5c5645da905a6118bb3f0f0c893319",
+      "branch": "master",
+      "tag": null,
+      "message": "formating print",
+      "committed_at": "2018-10-15T00:34:03Z",
+      "author_name": "Shiva Prasanth",
+      "author_email": "kesavarapu.siva@gmail.com",
+      "committer_name": "GitHub",
+      "committer_email": "noreply@github.com",
+      "compare_url": "https://github.com/denoland/deno/pull/926",
+      "pull_request_number": 926
+    }
+  ]
+}

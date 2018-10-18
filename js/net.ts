@@ -4,7 +4,7 @@ import { ReadResult, Reader, Writer, Closer } from "./io";
 import * as msg from "gen/msg_generated";
 import { assert, notImplemented } from "./util";
 import * as dispatch from "./dispatch";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import { read, write, close } from "./files";
 
 export type Network = "tcp";
@@ -32,7 +32,7 @@ class ListenerImpl implements Listener {
   constructor(readonly rid: number) {}
 
   async accept(): Promise<Conn> {
-    const builder = new flatbuffers.Builder();
+    const builder = flatbuffers.createBuilder();
     msg.Accept.startAccept(builder);
     msg.Accept.addRid(builder, this.rid);
     const inner = msg.Accept.endAccept(builder);
@@ -111,7 +111,7 @@ enum ShutdownMode {
 }
 
 function shutdown(rid: number, how: ShutdownMode) {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   msg.Shutdown.startShutdown(builder);
   msg.Shutdown.addRid(builder, rid);
   msg.Shutdown.addHow(builder, how);
@@ -136,7 +136,7 @@ function shutdown(rid: number, how: ShutdownMode) {
  * See `dial()` for a description of the network and address parameters.
  */
 export function listen(network: Network, address: string): Listener {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const network_ = builder.createString(network);
   const address_ = builder.createString(address);
   msg.Listen.startListen(builder);
@@ -179,7 +179,7 @@ export function listen(network: Network, address: string): Listener {
  *     dial("tcp", ":80")
  */
 export async function dial(network: Network, address: string): Promise<Conn> {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const network_ = builder.createString(network);
   const address_ = builder.createString(address);
   msg.Dial.startDial(builder);

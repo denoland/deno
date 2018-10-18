@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
 /** Write a new file, with given filename and data synchronously.
@@ -40,7 +40,7 @@ function req(
   data: Uint8Array,
   perm: number
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
   msg.WriteFile.startWriteFile(builder);
   msg.WriteFile.addFilename(builder, filename_);

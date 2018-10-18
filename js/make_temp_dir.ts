@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";
 
@@ -43,7 +43,7 @@ function req({
   prefix,
   suffix
 }: MakeTempDirOptions): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const fbDir = dir == null ? -1 : builder.createString(dir);
   const fbPrefix = prefix == null ? -1 : builder.createString(prefix);
   const fbSuffix = suffix == null ? -1 : builder.createString(suffix);

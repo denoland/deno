@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
 /** Truncates or extends the specified file synchronously, updating the size of
@@ -30,7 +30,7 @@ function req(
   name: string,
   len?: number
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const name_ = builder.createString(name);
   len = len && len > 0 ? Math.floor(len) : 0;
   msg.Truncate.startTruncate(builder);

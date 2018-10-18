@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";
 import { FileInfo, FileInfoImpl } from "./file_info";
@@ -54,7 +54,7 @@ function req(
   filename: string,
   lstat: boolean
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
   msg.Stat.startStat(builder);
   msg.Stat.addFilename(builder, filename_);

@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { flatbuffers } from "flatbuffers";
+import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
@@ -18,7 +18,7 @@ export function metrics(): Metrics {
 }
 
 function req(): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = new flatbuffers.Builder();
+  const builder = flatbuffers.createBuilder();
   msg.Metrics.startMetrics(builder);
   const inner = msg.Metrics.endMetrics(builder);
   return [builder, msg.Any.Metrics, inner];

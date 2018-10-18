@@ -43,15 +43,8 @@ testPerm({ write: true }, function copyFileSyncFailure() {
     err = e;
   }
   assert(!!err);
-  if (deno.platform.os === "win") {
-    assertEqual(err.kind, deno.ErrorKind.NotFound);
-    assertEqual(err.name, "NotFound");
-  } else {
-    // On *nix, Rust deem non-existent path as invalid input
-    // See https://github.com/rust-lang/rust/issues/54800
-    assertEqual(err.kind, deno.ErrorKind.InvalidInput);
-    assertEqual(err.name, "InvalidInput");
-  }
+  assertEqual(err.kind, deno.ErrorKind.NotFound);
+  assertEqual(err.name, "NotFound");
 });
 
 testPerm({ write: true }, function copyFileSyncOverwrite() {
@@ -104,15 +97,8 @@ testPerm({ write: true }, async function copyFileFailure() {
     err = e;
   }
   assert(!!err);
-  if (deno.platform.os === "win") {
-    assertEqual(err.kind, deno.ErrorKind.NotFound);
-    assertEqual(err.name, "NotFound");
-  } else {
-    // On *nix, Rust deem non-existent path as invalid input
-    // See https://github.com/rust-lang/rust/issues/54800
-    assertEqual(err.kind, deno.ErrorKind.InvalidInput);
-    assertEqual(err.name, "InvalidInput");
-  }
+  assertEqual(err.kind, deno.ErrorKind.NotFound);
+  assertEqual(err.name, "NotFound");
 });
 
 testPerm({ write: true }, async function copyFileOverwrite() {
