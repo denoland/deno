@@ -1,7 +1,17 @@
-# Thank you...
+# Contributing To Deno
 
-Thank you for your interest in contributing to Deno. Here are a few key areas to
-consider when contributing to Deno.
+Check [the roadmap](https://github.com/denoland/deno/blob/master/Roadmap.md)
+before contributing.
+
+Please don't make [the benchmarks](https://denoland.github.io/deno/) worse.
+
+Ask for help in the issues or on the
+[chat room](https://gitter.im/denolife/Lobby).
+
+Progress towards future releases is tracked
+[here](https://github.com/denoland/deno/milestones).
+
+Docs are [here](https://github.com/denoland/deno/blob/master/Docs.md).
 
 ## Submitting a pull request
 
