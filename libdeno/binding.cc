@@ -20,34 +20,23 @@ Deno* FromIsolate(v8::Isolate* isolate) {
   return static_cast<Deno*>(isolate->GetData(0));
 }
 
-void LazilyCreateDataMap(Deno* d) {
-  if (d->async_data_map.IsEmpty()) {
-    v8::HandleScope handle_scope(d->isolate);
-    // It's important for security reasons that async_data_map is not exposed to
-    // the VM.
-    auto async_data_map = v8::Map::New(d->isolate);
-    d->async_data_map.Reset(d->isolate, async_data_map);
-  }
-  DCHECK(!d->async_data_map.IsEmpty());
-}
-
 void AddDataRef(Deno* d, int32_t req_id, v8::Local<v8::Value> data_v) {
-  LazilyCreateDataMap(d);
-  auto async_data_map = d->async_data_map.Get(d->isolate);
-  auto context = d->context.Get(d->isolate);
-  auto req_id_v = v8::Integer::New(d->isolate, req_id);
-  auto r = async_data_map->Set(context, req_id_v, data_v);
-  CHECK(!r.IsEmpty());
+  // TODO Use std::unique_ptr
+  auto pair =
+      std::make_pair(req_id, new v8::Persistent<v8::Value>(d->isolate, data_v));
+  d->async_data_map.insert(pair);
 }
 
 void DeleteDataRef(Deno* d, int32_t req_id) {
-  LazilyCreateDataMap(d);
-  auto context = d->context.Get(d->isolate);
   // Delete persistent reference to data ArrayBuffer.
-  auto async_data_map = d->async_data_map.Get(d->isolate);
-  auto req_id_v = v8::Integer::New(d->isolate, req_id);
-  auto maybe_deleted = async_data_map->Delete(context, req_id_v);
-  CHECK(maybe_deleted.IsJust());
+  auto it = d->async_data_map.find(req_id);
+  if (it != d->async_data_map.end()) {
+    auto pair = *it;
+    auto p = pair.second;
+    p->Reset();
+    delete p;
+    d->async_data_map.erase(it);
+  }
 }
 
 // Extracts a C string from a v8::V8 Utf8Value.
