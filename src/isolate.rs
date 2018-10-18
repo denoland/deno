@@ -172,7 +172,7 @@ impl Isolate {
 
   pub fn respond(&mut self, req_id: i32, buf: Buf) {
     self.state.metrics_op_completed(buf.len() as u64);
-    
+
     // TODO(zero-copy) Use Buf::leak(buf) to leak the heap allocated buf. And
     // don't do the memcpy in ImportBuf() (in libdeno/binding.cc)
     unsafe {
