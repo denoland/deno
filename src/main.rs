@@ -31,6 +31,7 @@ mod http_util;
 mod isolate;
 mod libdeno;
 pub mod ops;
+mod permissions;
 mod resources;
 mod tokio_util;
 mod tokio_write;

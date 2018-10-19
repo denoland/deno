@@ -1,7 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use getopts::Options;
-use errors::DenoResult;
-use errors::permission_denied;
 use libc::c_int;
 use libdeno;
 use log;
@@ -9,6 +7,8 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
 use std::vec::Vec;
+
+use permissions::DenoPermissions;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -23,30 +23,13 @@ pub struct DenoFlags {
   pub version: bool,
   pub reload: bool,
   pub recompile: bool,
-  allow_write: bool,
-  allow_net: bool,
-  allow_env: bool,
+  pub permissions: DenoPermissions,
   pub deps_flag: bool,
   pub types_flag: bool,
 }
 
 
 impl DenoFlags {
-
-  pub fn permissions_check_write(&self, filename: &str) -> DenoResult<()> {
-    if self.allow_write { return Ok(()) };
-    permission_prompt(format!("XX requests write access to \"{}\".", filename))
-  }
-
-  pub fn permissions_check_net(&self, domain_name: &str) -> DenoResult<()> {
-    if self.allow_net { return Ok(()) };
-    permission_prompt(format!("XX requests network access to \"{}\".", domain_name))
-  }
-
-  pub fn permissions_check_env(&self) -> DenoResult<()> {
-    if self.allow_env { return Ok(()) };
-    permission_prompt("XX requests access to environment variables.".to_string())
-  }
 
   pub fn set_log_level(&self) {
     let mut log_level = log::LevelFilter::Info;
@@ -64,11 +47,6 @@ Environment variables:
         DENO_DIR        Set deno's base directory.",
     opts.usage("")
   )
-}
-
-fn permission_prompt(message: String) -> DenoResult<()> {
-  println!("{}", message);
-  Err(permission_denied())
 }
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
@@ -118,13 +96,13 @@ pub fn set_flags(
     flags.recompile = true;
   }
   if matches.opt_present("allow-write") {
-    flags.allow_write = true;
+    flags.permissions.allow_write(true);
   }
   if matches.opt_present("allow-net") {
-    flags.allow_net = true;
+    flags.permissions.allow_net(true);
   }
   if matches.opt_present("allow-env") {
-    flags.allow_env = true;
+    flags.permissions.allow_env(true);
   }
   if matches.opt_present("deps") {
     flags.deps_flag = true;
@@ -171,11 +149,13 @@ fn test_set_flags_3() {
     set_flags(svec!["deno", "-r", "--deps", "script.ts", "--allow-write"])
       .unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
+  let mut expected_permissions = DenoPermissions::default();
+  expected_permissions.allow_write(true);
   assert_eq!(
     flags,
     DenoFlags {
       reload: true,
-      allow_write: true,
+      permissions: expected_permissions,
       deps_flag: true,
       ..DenoFlags::default()
     }
@@ -187,12 +167,14 @@ fn test_set_flags_4() {
   let (flags, rest, _) =
     set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
+  let mut expected_permissions = DenoPermissions::default();
+  expected_permissions.allow_write(true);
   assert_eq!(
     flags,
     DenoFlags {
       log_debug: true,
       reload: true,
-      allow_write: true,
+      permissions: expected_permissions,
       ..DenoFlags::default()
     }
   );
