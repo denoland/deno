@@ -143,7 +143,7 @@ export class CreateIterableIterator<T> implements IterableIterator<T> {
 
   next(): IteratorResult<T> {
     return {
-      done: this.index === this._data.length ? true : false,
+      done: this.index === this._data.length,
       value: this._data[this.index++]
     };
   }
