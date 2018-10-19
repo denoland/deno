@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 from glob import glob
 import os
 from third_party import third_party_path, fix_symlinks, google_env, clang_format_path

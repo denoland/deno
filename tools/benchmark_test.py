@@ -1,3 +1,4 @@
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import sys
 import os
 import benchmark

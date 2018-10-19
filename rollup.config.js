@@ -1,3 +1,4 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import path from "path";
 import alias from "rollup-plugin-alias";
 import { plugin as analyze } from "rollup-plugin-analyzer";
