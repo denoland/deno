@@ -5,7 +5,8 @@ import {
   createResolvable,
   Resolvable,
   typedArrayToArrayBuffer,
-  notImplemented
+  notImplemented,
+  CreateIterableIterator
 } from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
@@ -70,6 +71,12 @@ export class DenoHeaders implements domTypes.Headers {
     this.headerMap.delete(newname);
   }
 
+  entries(): IterableIterator<[string, string]> {
+    const iterators = this.headerMap.entries();
+    const list = Array.from(iterators);
+    return new CreateIterableIterator(list);
+  }
+
   get(name: string): string | null {
     const [newname] = this.normalizeParams(name);
     const value = this.headerMap.get(newname);
@@ -81,9 +88,21 @@ export class DenoHeaders implements domTypes.Headers {
     return this.headerMap.has(newname);
   }
 
+  keys(): IterableIterator<string> {
+    const iterators = this.headerMap.keys();
+    const list = Array.from(iterators);
+    return new CreateIterableIterator(list); 
+  }
+
   set(name: string, value: string): void {
     const [newname, newvalue] = this.normalizeParams(name, value);
     this.headerMap.set(newname, newvalue);
+  }
+
+  values(): IterableIterator<string> {
+    const iterators = this.headerMap.values();
+    const list = Array.from(iterators);
+    return new CreateIterableIterator(list); 
   }
 
   forEach(
@@ -94,6 +113,10 @@ export class DenoHeaders implements domTypes.Headers {
     this.headerMap.forEach((value, name) => {
       callbackfn(value, name, this);
     });
+  }
+
+  [Symbol.iterator](): IterableIterator<[string, string]> {
+    return this.entries();
   }
 }
 

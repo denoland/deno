@@ -125,3 +125,26 @@ export function deferred(): Deferred {
     reject: reject!
   };
 }
+
+/** Create a IterableIterator. */
+// @internal
+export class CreateIterableIterator<T> implements IterableIterator<T> {
+  private readonly _data: T[];
+  private index = 0;
+  readonly [Symbol.toStringTag] = "Iterator";
+
+  constructor(data: T[]) {
+    this._data = data;
+  }
+
+  [Symbol.iterator](): IterableIterator<T> {
+    return this;
+  }  
+
+  next(): IteratorResult<T> {
+    return {
+      done: this.index === this._data.length ? true : false,
+      value: this._data[this.index++]
+    };
+  }
+}
