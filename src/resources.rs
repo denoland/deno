@@ -11,6 +11,8 @@
 use errors::DenoError;
 
 use futures;
+use futures::future::Either;
+use futures::future::FutureResult;
 use futures::Poll;
 use std;
 use std::collections::HashMap;
@@ -23,6 +25,7 @@ use std::sync::Mutex;
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
+use tokio_io;
 
 pub type ResourceId = i32; // Sometimes referred to RID.
 
@@ -187,4 +190,54 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
 pub fn lookup(rid: ResourceId) -> Option<Resource> {
   let table = RESOURCE_TABLE.lock().unwrap();
   table.get(&rid).map(|_| Resource { rid })
+}
+
+type EagerRead<R, T> =
+  Either<tokio_io::io::Read<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
+
+#[cfg(windows)]
+#[allow(unused_mut)]
+pub fn eager_read<T>(resource: Resource, mut buf: T) -> EagerRead<Resource, T>
+where
+  T: AsMut<[u8]>,
+{
+  Either::A(tokio_io::io::read(resource, buf)).into()
+}
+
+// This is an optimization that Tokio should do.
+// Attempt to call read() on the main thread.
+#[cfg(not(windows))]
+pub fn eager_read<T>(resource: Resource, mut buf: T) -> EagerRead<Resource, T>
+where
+  T: AsMut<[u8]>,
+{
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&resource.rid);
+  match maybe_repr {
+    None => panic!("bad rid"),
+    Some(repr) => match repr {
+      Repr::TcpStream(ref mut tcp_stream) => {
+        // Unforunately we can't just call read() on tokio::net::TcpStream
+        use std::os::unix::io::AsRawFd;
+        use std::os::unix::io::FromRawFd;
+        use std::os::unix::io::IntoRawFd;
+        let mut std_tcp_stream =
+          unsafe { std::net::TcpStream::from_raw_fd(tcp_stream.as_raw_fd()) };
+        let read_result = std_tcp_stream.read(buf.as_mut());
+        // std_tcp_stream will close when it gets dropped. Thus...
+        let _ = std_tcp_stream.into_raw_fd();
+        match read_result {
+          Ok(nread) => Either::B(futures::future::ok((resource, buf, nread))),
+          Err(err) => {
+            if err.kind() == std::io::ErrorKind::WouldBlock {
+              Either::A(tokio_io::io::read(resource, buf))
+            } else {
+              Either::B(futures::future::err(err))
+            }
+          }
+        }
+      }
+      _ => Either::A(tokio_io::io::read(resource, buf)),
+    },
+  }
 }

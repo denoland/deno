@@ -664,7 +664,7 @@ fn op_read(
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      let op = tokio_io::io::read(resource, data)
+      let op = resources::eager_read(resource, data)
         .map_err(|err| DenoError::from(err))
         .and_then(move |(_resource, _buf, nread)| {
           let builder = &mut FlatBufferBuilder::new();
