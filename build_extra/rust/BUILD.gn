@@ -755,6 +755,9 @@ component("ring_primitives") {
       "$ring_root/pregenerated/x86_64-mont-elf.S",
       "$ring_root/pregenerated/x86_64-mont5-elf.S",
     ]
+
+    # Disable warning: '_GNU_SOURCE' macro redefined
+    cflags = [ "-Wno-macro-redefined" ]
   }
   if (is_win) {
     libs = [
