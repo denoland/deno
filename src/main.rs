@@ -32,6 +32,7 @@ mod libdeno;
 pub mod ops;
 mod resources;
 mod tokio_util;
+mod tokio_write;
 mod version;
 
 use std::env;
