@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
 use errors;
 use errors::permission_denied;
 use errors::{DenoError, DenoResult, ErrorKind};

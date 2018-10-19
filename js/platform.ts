@@ -1,3 +1,5 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
 // Do not add unsupported platforms.
 export interface Platform {
   /** The operating system CPU architecture. */

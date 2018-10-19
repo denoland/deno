@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
 import * as deno from "deno";
 import { test, assert, assertEqual } from "./test_util.ts";
 
