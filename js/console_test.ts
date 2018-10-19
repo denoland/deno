@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
 import { test, assert, assertEqual } from "./test_util.ts";
 import { stringifyArgs } from "./console.ts";
 

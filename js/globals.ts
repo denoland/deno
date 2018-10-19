@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
 import * as blob from "./blob";
 import * as console from "./console";
 import * as fetch_ from "./fetch";
