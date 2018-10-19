@@ -10,7 +10,6 @@ use isolate::Op;
 use msg;
 use resources;
 use resources::Resource;
-use tokio_util;
 use version;
 
 use flatbuffers::FlatBufferBuilder;
@@ -1185,7 +1184,7 @@ fn op_accept(
   match resources::lookup(server_rid) {
     None => odd_future(errors::bad_resource()),
     Some(server_resource) => {
-      let op = tokio_util::accept(server_resource)
+      let op = resources::eager_accept(server_resource)
         .map_err(|err| DenoError::from(err))
         .and_then(move |(tcp_stream, _socket_addr)| {
           new_conn(cmd_id, tcp_stream)

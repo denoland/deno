@@ -9,6 +9,7 @@
 // handlers) look up resources by their integer id here.
 
 use errors::DenoError;
+use tokio_util;
 use tokio_write;
 
 use futures;
@@ -288,6 +289,58 @@ where
         }
       }
       _ => Either::A(tokio_write::write(resource, buf)),
+    },
+  }
+}
+
+type EagerAccept = Either<
+  tokio_util::Accept,
+  FutureResult<(TcpStream, SocketAddr), std::io::Error>,
+>;
+
+#[cfg(windows)]
+pub fn eager_accept(resource: Resource) -> EagerAccept {
+  Either::A(tokio_util::accept(resource)).into()
+}
+
+// This is an optimization that Tokio should do.
+// Attempt to call write() on the main thread.
+#[cfg(not(windows))]
+pub fn eager_accept(resource: Resource) -> EagerAccept {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&resource.rid);
+  match maybe_repr {
+    None => panic!("bad rid"),
+    Some(repr) => match repr {
+      Repr::TcpListener(ref mut listener) => {
+        // Unforunately we can't just call write() on tokio::net::TcpStream
+        use std::os::unix::io::AsRawFd;
+        use std::os::unix::io::FromRawFd;
+        use std::os::unix::io::IntoRawFd;
+        let mut std_listener =
+          unsafe { std::net::TcpListener::from_raw_fd(listener.as_raw_fd()) };
+        let result = std_listener.accept();
+        // std_listener will close when it gets dropped. Thus...
+        let _ = std_listener.into_raw_fd();
+        match result {
+          Ok((std_stream, addr)) => {
+            let result = tokio::net::TcpStream::from_std(
+              std_stream,
+              &tokio::reactor::Handle::default(),
+            );
+            let tokio_stream = result.unwrap();
+            Either::B(futures::future::ok((tokio_stream, addr)))
+          }
+          Err(err) => {
+            if err.kind() == std::io::ErrorKind::WouldBlock {
+              Either::A(tokio_util::accept(resource))
+            } else {
+              Either::B(futures::future::err(err))
+            }
+          }
+        }
+      }
+      _ => Either::A(tokio_util::accept(resource)),
     },
   }
 }
