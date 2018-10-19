@@ -332,3 +332,7 @@ def parse_wrk_output(output):
         if req_per_sec is None:
             req_per_sec = extract_number(r'Requests/sec:\s+(\d+)', line)
     return req_per_sec
+
+
+def platform():
+    return {"linux2": "linux", "darwin": "mac", "win32": "win"}[sys.platform]
