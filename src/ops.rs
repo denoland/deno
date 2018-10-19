@@ -12,7 +12,6 @@ use msg;
 use resources;
 use resources::Resource;
 use tokio_util;
-use tokio_write;
 use version;
 
 use flatbuffers::FlatBufferBuilder;
@@ -704,7 +703,7 @@ fn op_write(
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      let op = tokio_write::write(resource, data)
+      let op = resources::eager_write(resource, data)
         .map_err(|err| DenoError::from(err))
         .and_then(move |(_resource, _buf, nwritten)| {
           let builder = &mut FlatBufferBuilder::new();
