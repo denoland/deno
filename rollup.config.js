@@ -1,4 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+import assert from "assert";
+import * as fs from "fs";
 import path from "path";
 import alias from "rollup-plugin-alias";
 import { plugin as analyze } from "rollup-plugin-analyzer";
@@ -10,19 +12,20 @@ import { createFilter } from "rollup-pluginutils";
 import typescript from "typescript";
 import MagicString from "magic-string";
 
-const mockPath = path.join(__dirname, "js", "mock_builtin.js");
-const platformPath = path.join(__dirname, "js", "platform.ts");
-const tsconfig = path.join(__dirname, "tsconfig.json");
-const typescriptPath = `${
-  process.env.BASEPATH
-}/third_party/node_modules/typescript/lib/typescript.js`;
+const mockPath = path.resolve(__dirname, "js/mock_builtin.js");
+const platformPath = path.resolve(__dirname, "js/platform.ts");
+const tsconfig = path.resolve(__dirname, "tsconfig.json");
+const typescriptPath = path.resolve(
+  __dirname,
+  "third_party/node_modules/typescript/lib/typescript.js"
+);
 
 // We will allow generated modules to be resolvable by TypeScript based on
 // the current build path
 const tsconfigOverride = {
   compilerOptions: {
     paths: {
-      "*": ["*", path.join(process.cwd(), "*")]
+      "*": ["*", path.resolve("*")]
     }
   }
 };
@@ -50,7 +53,7 @@ function strings({ include, exclude } = {}) {
         if (!importee.startsWith("gen/")) {
           // this is a static asset which is located relative to the root of
           // the source project
-          return path.resolve(path.join(process.env.BASEPATH, importee));
+          return path.resolve(path.join(__dirname, importee));
         }
         // this is an asset which has been generated, therefore it will be
         // located within the build path
@@ -122,13 +125,83 @@ function resolveGenerated() {
     name: "resolve-msg-generated",
     resolveId(importee) {
       if (importee.startsWith("gen/msg_generated")) {
-        const resolved = path.resolve(
-          path.join(process.cwd(), `${importee}.ts`)
-        );
-        return resolved;
+        return path.resolve(`${importee}.ts`);
       }
     }
   };
+}
+
+function generateDepFile({ outputFile, sourceFiles = [], configFiles = [] }) {
+  let timestamp = Date.now();
+
+  // Save the depfile just before the node process exits.
+  process.once("beforeExit", () =>
+    writeDepFile({ outputFile, sourceFiles, configFiles, timestamp })
+  );
+
+  return {
+    name: "depfile",
+    load(sourceFile) {
+      // The 'globals' plugin adds generated files that don't exist on disk.
+      // Don't add them to the depfile.
+      if (/^[0-9a-f]{30}$/.test(sourceFile)) {
+        return;
+      }
+      sourceFiles.push(sourceFile);
+      // Remember the time stamp that we last resolved a dependency.
+      // We'll set the last modified time of the depfile to that.
+      timestamp = new Date();
+    }
+  };
+}
+
+function writeDepFile({ outputFile, sourceFiles, configFiles, timestamp }) {
+  const buildDir = process.cwd();
+  const outputDir = path.dirname(outputFile);
+
+  // Assert that the discovered bundle inputs are files that exist on disk.
+  sourceFiles.forEach(f => fs.accessSync(f));
+  // Since we also want to rebuild the bundle if rollup configuration or the the
+  // tooling changes (e.g. when typescript is updated), add the currently loaded
+  // node.js modules to the list of dependencies.
+  let inputs = [...sourceFiles, ...configFiles, ...Object.keys(require.cache)];
+  // Deduplicate the list of inputs.
+  inputs = Array.from(new Set(inputs.map(f => path.resolve(f))));
+  // Turn filenames into relative paths and format/escape them for a Makefile.
+  inputs = inputs.map(formatPath);
+
+  // Build a list of output filenames and normalize those too.
+  const depFile = path.join(
+    outputDir,
+    path.basename(outputFile, path.extname(outputFile)) + ".d"
+  );
+  const outputs = [outputFile, depFile].map(formatPath);
+
+  // Generate depfile contents.
+  const depFileContent = [
+    ...outputs.map(filename => `${filename}: ` + inputs.join(" ") + "\n\n"),
+    ...inputs.map(filename => `${filename}:\n`)
+  ].join("");
+
+  // Since we're writing the depfile when node's "beforeExit" hook triggers,
+  // it's getting written _after_ the regular outputs are saved to disk.
+  // Therefore, after writing the depfile, reset its timestamps to when we last
+  // discovered a dependency, which was certainly before the bundle was built.
+  fs.writeFileSync(depFile, depFileContent);
+  fs.utimesSync(depFile, timestamp, timestamp);
+
+  // Renders path to make it suitable for a depfile.
+  function formatPath(filename) {
+    // Make the path relative to the root build directory.
+    filename = path.relative(buildDir, filename);
+    // Use forward slashes on Windows.
+    if (process.platform === "win32") {
+      filename = filename.replace(/\\/g, "/");
+    }
+    // Escape spaces with a backslash. This is what rust and clang do too.
+    filename = filename.replace(/ /g, "\\ ");
+    return filename;
+  }
 }
 
 export default function makeConfig(commandOptions) {
@@ -243,7 +316,12 @@ export default function makeConfig(commandOptions) {
       // source-map-support, which is required by TypeScript to support source maps, requires Node.js Buffer
       // implementation.  This needs to come at the end of the plugins because of the impact it has on
       // the existing runtime environment, which breaks other plugins and features of the bundler.
-      globals()
+      globals(),
+
+      generateDepFile({
+        outputFile: commandOptions.o,
+        configFiles: [commandOptions.c, tsconfig]
+      })
     ]
   };
 }

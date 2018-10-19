@@ -278,17 +278,17 @@ run_node("deno_runtime_declaration") {
 
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
-  sources = ts_sources + [ "rollup.config.js" ]
   outputs = [
     out_dir + "main.js",
     out_dir + "main.js.map",
   ]
+  depfile = out_dir + "main.d"
   deps = [
     ":deno_runtime_declaration",
     ":msg_ts",
   ]
   args = [
-    "./node_modules/rollup/bin/rollup",
+    rebase_path("third_party/node_modules/rollup/bin/rollup", root_build_dir),
     "-c",
     rebase_path("rollup.config.js", root_build_dir),
     "-i",
@@ -298,8 +298,6 @@ run_node("bundle") {
     "--sourcemapFile",
     rebase_path("."),
     "--silent",
-    "--environment",
-    "BASEPATH:" + rebase_path(".", root_build_dir),
   ]
 }
 
