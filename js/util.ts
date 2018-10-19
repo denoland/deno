@@ -138,7 +138,7 @@ export class CreateIterableIterator<T> implements IterableIterator<T> {
 
   [Symbol.iterator](): IterableIterator<T> {
     return this;
-  }  
+  }
 
   next(): IteratorResult<T> {
     return this._iterators.next();
