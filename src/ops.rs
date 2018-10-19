@@ -11,6 +11,7 @@ use msg;
 use resources;
 use resources::Resource;
 use tokio_util;
+use tokio_write;
 use version;
 
 use flatbuffers::FlatBufferBuilder;
@@ -35,7 +36,6 @@ use std::time::{Duration, Instant};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio_io;
 use tokio_threadpool;
 
 type OpResult = DenoResult<Buf>;
@@ -703,15 +703,14 @@ fn op_write(
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      let len = data.len();
-      let op = tokio_io::io::write_all(resource, data)
+      let op = tokio_write::write(resource, data)
         .map_err(|err| DenoError::from(err))
-        .and_then(move |(_resource, _buf)| {
+        .and_then(move |(_resource, _buf, nwritten)| {
           let builder = &mut FlatBufferBuilder::new();
           let inner = msg::WriteRes::create(
             builder,
             &msg::WriteResArgs {
-              nbyte: len as u32,
+              nbyte: nwritten as u32,
               ..Default::default()
             },
           );
