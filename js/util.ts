@@ -129,12 +129,11 @@ export function deferred(): Deferred {
 /** Create a IterableIterator. */
 // @internal
 export class CreateIterableIterator<T> implements IterableIterator<T> {
-  private readonly _data: T[];
-  private index = 0;
+  private readonly _iterators: IterableIterator<T>;
   readonly [Symbol.toStringTag] = "Iterator";
 
-  constructor(data: T[]) {
-    this._data = data;
+  constructor(iterators: IterableIterator<T>) {
+    this._iterators = iterators;
   }
 
   [Symbol.iterator](): IterableIterator<T> {
@@ -142,9 +141,6 @@ export class CreateIterableIterator<T> implements IterableIterator<T> {
   }  
 
   next(): IteratorResult<T> {
-    return {
-      done: this.index === this._data.length,
-      value: this._data[this.index++]
-    };
+    return this._iterators.next();
   }
 }

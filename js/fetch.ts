@@ -73,8 +73,7 @@ export class DenoHeaders implements domTypes.Headers {
 
   entries(): IterableIterator<[string, string]> {
     const iterators = this.headerMap.entries();
-    const list = Array.from(iterators);
-    return new CreateIterableIterator(list);
+    return new CreateIterableIterator(iterators);
   }
 
   get(name: string): string | null {
@@ -90,8 +89,7 @@ export class DenoHeaders implements domTypes.Headers {
 
   keys(): IterableIterator<string> {
     const iterators = this.headerMap.keys();
-    const list = Array.from(iterators);
-    return new CreateIterableIterator(list); 
+    return new CreateIterableIterator(iterators); 
   }
 
   set(name: string, value: string): void {
@@ -101,8 +99,7 @@ export class DenoHeaders implements domTypes.Headers {
 
   values(): IterableIterator<string> {
     const iterators = this.headerMap.values();
-    const list = Array.from(iterators);
-    return new CreateIterableIterator(list); 
+    return new CreateIterableIterator(iterators); 
   }
 
   forEach(
