@@ -296,8 +296,8 @@ export interface Headers {
   append(name: string, value: string): void;
   /** Deletes a header from a `Headers` object. */
   delete(name: string): void;
-  /** Returns an iterator allowing to go through all key/value pairs 
-   * contained in this Headers object. The both the key and value of each pairs 
+  /** Returns an iterator allowing to go through all key/value pairs
+   * contained in this Headers object. The both the key and value of each pairs
    * are ByteString objects.
    */
   entries(): IterableIterator<[string, string]>;
@@ -309,7 +309,7 @@ export interface Headers {
    * header.
    */
   has(name: string): boolean;
-  /** Returns an iterator allowing to go through all keys contained in 
+  /** Returns an iterator allowing to go through all keys contained in
    * this Headers object. The keys are ByteString objects.
    */
   keys(): IterableIterator<string>;
@@ -317,7 +317,7 @@ export interface Headers {
    * the header if it does not already exist.
    */
   set(name: string, value: string): void;
-  /** Returns an iterator allowing to go through all values contained in 
+  /** Returns an iterator allowing to go through all values contained in
    * this Headers object. The values are ByteString objects.
    */
   values(): IterableIterator<string>;
@@ -326,7 +326,7 @@ export interface Headers {
     // tslint:disable-next-line:no-any
     thisArg?: any
   ): void;
-  /** The Symbol.iterator well-known symbol specifies the default 
+  /** The Symbol.iterator well-known symbol specifies the default
    * iterator for this Headers object
    */
   [Symbol.iterator](): IterableIterator<[string, string]>;
