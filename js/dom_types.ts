@@ -296,6 +296,11 @@ export interface Headers {
   append(name: string, value: string): void;
   /** Deletes a header from a `Headers` object. */
   delete(name: string): void;
+  /** Returns an iterator allowing to go through all key/value pairs 
+   * contained in this Headers object. The both the key and value of each pairs 
+   * are ByteString objects.
+   */
+  entries(): IterableIterator<[string, string]>;
   /** Returns a `ByteString` sequence of all the values of a header within a
    * `Headers` object with a given name.
    */
@@ -304,15 +309,27 @@ export interface Headers {
    * header.
    */
   has(name: string): boolean;
+  /** Returns an iterator allowing to go through all keys contained in 
+   * this Headers object. The keys are ByteString objects.
+   */
+  keys(): IterableIterator<string>;
   /** Sets a new value for an existing header inside a Headers object, or adds
    * the header if it does not already exist.
    */
   set(name: string, value: string): void;
+  /** Returns an iterator allowing to go through all values contained in 
+   * this Headers object. The values are ByteString objects.
+   */
+  values(): IterableIterator<string>;
   forEach(
     callbackfn: (value: string, key: string, parent: Headers) => void,
     // tslint:disable-next-line:no-any
     thisArg?: any
   ): void;
+  /** The Symbol.iterator well-known symbol specifies the default 
+   * iterator for this Headers object
+   */
+  [Symbol.iterator](): IterableIterator<[string, string]>;
 }
 
 type RequestCache =
