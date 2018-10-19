@@ -9,6 +9,7 @@
 // handlers) look up resources by their integer id here.
 
 use errors::DenoError;
+use tokio_write;
 
 use futures;
 use futures::future::Either;
@@ -238,6 +239,55 @@ where
         }
       }
       _ => Either::A(tokio_io::io::read(resource, buf)),
+    },
+  }
+}
+
+type EagerWrite<R, T> =
+  Either<tokio_write::Write<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
+
+#[cfg(windows)]
+pub fn eager_write<T>(resource: Resource, buf: T) -> EagerWrite<Resource, T>
+where
+  T: AsRef<[u8]>,
+{
+  Either::A(tokio_write::write(resource, buf)).into()
+}
+
+// This is an optimization that Tokio should do.
+// Attempt to call write() on the main thread.
+#[cfg(not(windows))]
+pub fn eager_write<T>(resource: Resource, buf: T) -> EagerWrite<Resource, T>
+where
+  T: AsRef<[u8]>,
+{
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&resource.rid);
+  match maybe_repr {
+    None => panic!("bad rid"),
+    Some(repr) => match repr {
+      Repr::TcpStream(ref mut tcp_stream) => {
+        // Unforunately we can't just call write() on tokio::net::TcpStream
+        use std::os::unix::io::AsRawFd;
+        use std::os::unix::io::FromRawFd;
+        use std::os::unix::io::IntoRawFd;
+        let mut std_tcp_stream =
+          unsafe { std::net::TcpStream::from_raw_fd(tcp_stream.as_raw_fd()) };
+        let write_result = std_tcp_stream.write(buf.as_ref());
+        // std_tcp_stream will close when it gets dropped. Thus...
+        let _ = std_tcp_stream.into_raw_fd();
+        match write_result {
+          Ok(nwrite) => Either::B(futures::future::ok((resource, buf, nwrite))),
+          Err(err) => {
+            if err.kind() == std::io::ErrorKind::WouldBlock {
+              Either::A(tokio_write::write(resource, buf))
+            } else {
+              Either::B(futures::future::err(err))
+            }
+          }
+        }
+      }
+      _ => Either::A(tokio_write::write(resource, buf)),
     },
   }
 }
