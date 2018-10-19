@@ -33,12 +33,9 @@ def run(server_cmd):
     # Run deno echo server in the background.
     server = subprocess.Popen(server_cmd)
     time.sleep(5)  # wait for server to wake up. TODO racy.
-    wrk_platform = {
-        "linux2": "linux",
-        "darwin": "mac",
-    }[sys.platform]
     try:
-        cmd = "third_party/wrk/" + wrk_platform + "/wrk -d " + DURATION + " http://" + ADDR + "/"
+        cmd = "third_party/wrk/%s/wrk -d %s http://%s/" % (util.platform(),
+                                                           DURATION, ADDR)
         print cmd
         output = subprocess.check_output(cmd, shell=True)
         req_per_sec = util.parse_wrk_output(output)

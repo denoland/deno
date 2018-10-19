@@ -465,7 +465,7 @@ rust_crate("futures_cpupool") {
     ":futures",
     ":num_cpus",
   ]
-  args = [ "-Adeprecated" ] # futures::Run
+  args = [ "-Adeprecated" ]  # futures::Run
 }
 
 rust_crate("indexmap") {
