@@ -22,21 +22,21 @@ def node_http_benchmark():
     return run(node_cmd)
 
 
-def rust_hyper_http_benchmark(hyper_hello_exe):
-    rust_hyper_cmd = [hyper_hello_exe, ADDR.split(":")[1]]
+def hyper_http_benchmark(hyper_hello_exe):
+    hyper_cmd = [hyper_hello_exe, ADDR.split(":")[1]]
     print "http_benchmark testing RUST hyper."
-    return run(rust_hyper_cmd)
+    return run(hyper_cmd)
 
 
 def http_benchmark(deno_exe, hyper_hello_exe):
     deno_rps = deno_http_benchmark(deno_exe)
     node_rps = node_http_benchmark()
-    rust_hyper_http_rps = rust_hyper_http_benchmark(hyper_hello_exe)
+    hyper_http_rps = hyper_http_benchmark(hyper_hello_exe)
 
     return {
         "deno": deno_rps,
         "node": node_rps,
-        "rust hyper": rust_hyper_http_rps
+        "hyper": hyper_http_rps
     }
 
 
