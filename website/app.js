@@ -126,10 +126,34 @@ export function formatBytes(a, b) {
 
 /**
  * @param {string} id The id of dom element
+ * @param {string[]} categories categories for x-axis values
  * @param {any[][]} columns The columns data
- * @param {string[]} categories The sha1 hashes (which work as x-axis values)
+ * @param {function} onclick action on clicking nodes of chart
+ * @param {string} yLabel label of y axis
+ * @param {function} yTickFormat formatter of y axis ticks
  */
-function gen2(id, categories, columns, onclick) {
+function gen2(
+  id,
+  categories,
+  columns,
+  onclick,
+  yLabel = "",
+  yTickFormat = null
+) {
+  const xFormat = {
+    type: "category",
+    show: false,
+    categories
+  };
+  const yFormat = {
+    label: yLabel
+  };
+  if (yTickFormat) {
+    yFormat.tick = {
+      format: yTickFormat
+    };
+  }
+
   c3.generate({
     bindto: id,
     size: {
@@ -141,14 +165,8 @@ function gen2(id, categories, columns, onclick) {
       onclick
     },
     axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories
-      },
-      y: {
-        label: "seconds"
-      }
+      x: xFormat,
+      y: yFormat
     }
   });
 }
@@ -188,26 +206,23 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
     );
   };
 
-  function gen(id, columns) {
-    gen2(id, sha1ShortList, columns, viewCommitOnClick(sha1List));
+  function gen(id, columns, yLabel = "", yTickFormat = null) {
+    gen2(
+      id,
+      sha1ShortList,
+      columns,
+      viewCommitOnClick(sha1List),
+      yLabel,
+      yTickFormat
+    );
   }
 
-  gen("#exec-time-chart", execTimeColumns);
-  gen("#throughput-chart", throughputColumns);
-  gen("#req-per-sec-chart", reqPerSecColumns);
-
-  /* TODO 
-    axis: {
-      y: {
-        tick: {
-          format: d => formatBytes(d)
-        }
-      }
-    }
-  */
-  gen("#binary-size-chart", binarySizeColumns);
-  gen("#thread-count-chart", threadCountColumns);
-  gen("#syscall-count-chart", syscallCountColumns);
+  gen("#exec-time-chart", execTimeColumns, "seconds");
+  gen("#throughput-chart", throughputColumns, "seconds");
+  gen("#req-per-sec-chart", reqPerSecColumns, "# req/sec");
+  gen("#binary-size-chart", binarySizeColumns, "size", formatBytes);
+  gen("#thread-count-chart", threadCountColumns, "# threads");
+  gen("#syscall-count-chart", syscallCountColumns, "# syscalls");
 }
 
 /**
@@ -228,6 +243,8 @@ export async function drawChartsFromTravisData() {
     "#travis-compile-time-chart",
     prNumberList,
     travisCompileTimeColumns,
-    viewPullRequestOnClick(prNumberList)
+    viewPullRequestOnClick(prNumberList),
+    "time",
+    formatSeconds
   );
 }
