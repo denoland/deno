@@ -9,17 +9,17 @@ name = "deno"
 version = "0.0.0"
 
 [dependencies]
-dirs = "1.0.3"
+dirs = "1.0.4"
 flatbuffers = { path = "third_party/flatbuffers/rust/flatbuffers/" }
-futures = "0.1.23"
-hyper = "0.12.9"
+futures = "0.1.25"
+hyper = "0.12.12"
 # The current version of hyper-rustls, 0.14.0, depends on tokio-core, which is
 # deprecated.
 hyper-rustls = { git = "https://github.com/ctz/hyper-rustls.git" }
-libc = "0.2.42"
-log = "0.4.4"
+libc = "0.2.43"
+log = "0.4.5"
 rand = "0.4.3"
 ring = "0.13.2"
 tempfile = "3"
-tokio = "0.1.8"
+tokio = "0.1.11"
 url = "1.7.1"
