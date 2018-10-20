@@ -134,13 +134,13 @@ function gen2(
   xTickFormat = null,
   yTickFormat = null
 ) {
-  let xFormat = {
+  const xFormat = {
     type: "category",
     show: false,
     categories,
     label: xLabel
   };
-  let yFormat = {
+  const yFormat = {
     label: yLabel
   };
   if (xTickFormat) {
