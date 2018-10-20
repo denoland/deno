@@ -259,7 +259,7 @@ run_node("deno_runtime_declaration") {
     ":msg_ts",
   ]
   args = [
-    rebase_path("node_modules/.bin/ts-node", root_build_dir),
+    rebase_path("node_modules/ts-node/dist/bin.js", root_build_dir),
     "--project",
     rebase_path("tools/ts_library_builder/tsconfig.json"),
     rebase_path("tools/ts_library_builder/main.ts", root_build_dir),
