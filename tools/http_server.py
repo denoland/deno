@@ -53,12 +53,14 @@ def spawn():
     r_thread.daemon = True
     r_thread.start()
     sleep(1)  # TODO I'm too lazy to figure out how to do this properly.
+    return thread
 
 
 if __name__ == '__main__':
     try:
-        spawn()
-        while True:
-            sleep(100)
+        thread = spawn()
+        while thread.is_alive():
+            sleep(10)
     except KeyboardInterrupt:
-        sys.exit()
+        pass
+    sys.exit(1)
