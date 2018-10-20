@@ -60,7 +60,7 @@ rust_crate("unicode_normalization") {
 }
 
 rust_crate("log") {
-  source_root = "$registry_github/log-0.4.4/src/lib.rs"
+  source_root = "$registry_github/log-0.4.5/src/lib.rs"
   extern = [ ":cfg_if" ]
 }
 
@@ -212,7 +212,7 @@ rust_crate("ws2_32") {
 }
 
 rust_crate("futures") {
-  source_root = "$registry_github/futures-0.1.23/src/lib.rs"
+  source_root = "$registry_github/futures-0.1.25/src/lib.rs"
   features = [
     "use_std",
     "with-deprecated",
@@ -397,7 +397,7 @@ rust_crate("num_cpus") {
 }
 
 rust_crate("hyper") {
-  source_root = "$registry_github/hyper-0.12.9/src/lib.rs"
+  source_root = "$registry_github/hyper-0.12.12/src/lib.rs"
   features = [ "runtime" ]
   extern = [
     ":bytes",
@@ -465,6 +465,7 @@ rust_crate("futures_cpupool") {
     ":futures",
     ":num_cpus",
   ]
+  args = [ "-Adeprecated" ] # futures::Run
 }
 
 rust_crate("indexmap") {
@@ -502,10 +503,11 @@ rust_crate("want") {
 }
 
 rust_crate("tokio") {
-  source_root = "$registry_github/tokio-0.1.8/src/lib.rs"
+  source_root = "$registry_github/tokio-0.1.11/src/lib.rs"
   extern = [
     ":futures",
     ":mio",
+    ":bytes",
     ":tokio_codec",
     ":tokio_executor",
     ":tokio_fs",
@@ -521,7 +523,7 @@ rust_crate("tokio") {
 }
 
 rust_crate("tokio_executor") {
-  source_root = "$registry_github/tokio-executor-0.1.4/src/lib.rs"
+  source_root = "$registry_github/tokio-executor-0.1.5/src/lib.rs"
   extern = [ ":futures" ]
 }
 
@@ -634,7 +636,7 @@ rust_crate("tokio_threadpool") {
 }
 
 rust_crate("tokio_current_thread") {
-  source_root = "$registry_github/tokio-current-thread-0.1.1/src/lib.rs"
+  source_root = "$registry_github/tokio-current-thread-0.1.3/src/lib.rs"
   extern = [
     ":futures",
     ":tokio_executor",
@@ -659,7 +661,7 @@ rust_crate("hyper_rustls") {
 }
 
 rust_crate("dirs") {
-  source_root = "$registry_github/dirs-1.0.3/src/lib.rs"
+  source_root = "$registry_github/dirs-1.0.4/src/lib.rs"
   extern = [
     ":libc",
     ":winapi",
