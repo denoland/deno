@@ -47,8 +47,8 @@ https://github.com/denoland/deno/issues/573)
 
 ### Example: An implementation of the unix "cat" program
 
-The copy here is actualy zero-copy. That is, it reads data from the socket and
-writes it back to it without ever calling a memcpy() or similiar.
+The copy here is actually zero-copy. That is, it reads data from the socket and
+writes it back to it without ever calling a memcpy() or similar.
 
 ```ts
 import * as deno from "deno";
@@ -62,8 +62,8 @@ for (let i = 1; i < deno.args.length; i++) {
 
 ### Example: A TCP Server echo server
 
-The copy here is actualy zero-copy. That is, it reads data from the socket and
-writes it back to it without ever calling a memcpy() or similiar.
+The copy here is actually zero-copy. That is, it reads data from the socket and
+writes it back to it without ever calling a memcpy() or similar.
 
 ```ts
 import { listen, accept, copy } from "deno";
