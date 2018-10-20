@@ -1,0 +1,47 @@
+<!-- Copyright 2018 the Deno authors. All rights reserved. MIT license. -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>all benchmark data | deno</title>
+  <link rel="stylesheet" href="https://unpkg.com/c3@0.6.7/c3.min.css">
+  <link rel="stylesheet" href="style.css">
+  <meta content='width=device-width, initial-scale=1.0' name='viewport' />
+</head>
+<body>
+  <main>
+    <h1>all benchmark data</h1>
+
+    <p><a href="./">back</a>
+
+    <h2>Execution time</h2>
+    <div id="exec-time-chart"></div>
+
+    <h2>Throughput</h2>
+    <div id="throughput-chart"></div>
+
+    <h2>Req/Sec</h2>
+    <div id="req-per-sec-chart"></div>
+
+    <h2>Executable size</h2>
+    <div id="binary-size-chart"></div>
+
+    <h2>Thread count</h2>
+    <div id="thread-count-chart"></div>
+
+    <h2>Syscall count</h2>
+    <div id="syscall-count-chart"></div>
+
+    <h2>Travis</h2>
+    <div id="travis-compile-time-chart"></div>
+  </main>
+  <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
+  <script src="https://unpkg.com/c3@0.6.7/c3.min.js"></script>
+
+  <script type="module">
+  import { drawCharts } from "./app.js";
+  window.chartWidth = 800
+  drawCharts("./data.json");
+  </script>
+</body>
+</html>
+
