@@ -8,13 +8,21 @@
   <meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' name='viewport' />
 </head>
 <body>
+  <header class="header">
+      <img src="https://avatars1.githubusercontent.com/u/42048915?s=200&v=4" alt="deno icon">
+      <div class="desc">
+        <h1>deno</h1>
+        <h3>A secure TypeScript runtime on V8</h3>
+      </div>
+      <div class="links">
+        <p><a href="https://github.com/denoland/deno">Github Repo</a></p>
+        <p><a href="https://github.com/denoland/deno/blob/master/Docs.md">Docs</a></p>
+      </div>
+    </header>
   <main>
-    <h1>deno</h1>
 
-    <p> <a href="https://github.com/denoland/deno">github.com/denoland/deno</a>
-
-    <p> <a href="https://github.com/denoland/deno/blob/master/Docs.md">Docs</a>
-
+    <h1>Benchmarks</h1>
+    <hr>
     <h2>Execution time</h2>
     This shows how much time total it takes to run a few simple deno programs:
     <a href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts">tests/002_hello.ts</a>
@@ -24,31 +32,34 @@
     A warm startup is when deno has a cached JS output already, so
     it should be fast because it bypasses the TS compiler.
     A cold startup is when deno must compile from scratch.
-    <div id="exec-time-chart"></div>
+    <div class="chart" id="exec-time-chart"></div>
 
     <h2>Throughput</h2>
-    <div id="throughput-chart"></div>
+    <div class="chart" id="throughput-chart"></div>
 
     <h2>Req/Sec</h2>
     Tests HTTP server performance against Node.
-    <div id="req-per-sec-chart"></div>
+    <div class="chart" id="req-per-sec-chart"></div>
 
     <h2>Executable size</h2>
     deno ships only a single binary. We track its size here.
-    <div id="binary-size-chart"></div>
+    <div class="chart" id="binary-size-chart"></div>
 
     <h2>Thread count</h2>
     How many threads various programs use.
-    <div id="thread-count-chart"></div>
+    <div class="chart" id="thread-count-chart"></div>
 
     <h2>Syscall count</h2>
     How many total syscalls are performed when executing a given script.
-    <div id="syscall-count-chart"></div>
+    <div class="chart" id="syscall-count-chart"></div>
 
     <h2>Travis</h2>
     How long for Travis CI to return a green status for pull requests.
-    <div id="travis-compile-time-chart"></div>
+    <div class="chart" id="travis-compile-time-chart"></div>
   </main>
+  <footer>
+    <p>Copyright 2018 the Deno authors. All rights reserved.</p>
+  </footer>
   <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
   <script src="https://unpkg.com/c3@0.6.7/c3.min.js"></script>
 

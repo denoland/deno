@@ -2,9 +2,9 @@
 body {
   color: #111;
   background: #f0f0f0;
-  margin: 80px 0;
   font-family: Arial;
   font-size: 20px;
+  margin: 0;
 }
 
 main {
@@ -23,19 +23,88 @@ a:hover {
   background: #aee;
 }
 
-@media only screen and (max-device-width: 480px) {
+h1 {
+  font-family: Verdana;
+}
 
-  main {
-    margin: 15px;
-  }
+header {
+  display: flex;
+  flex-direction: row;
+  padding: 5vh 5vw;
+  margin: 0;
+  background-color: darkgray;
+  justify-content: space-around;
+  flex-wrap: wrap;
+}
+
+header img {
+  border-radius: 50%;
+  border: 10px solid white;
+  width: 15vh;
+  height: 15vh;
+  box-shadow: 0px 0px 30px 5px rgba(0, 0, 0, 0.3);
+}
+
+header h1 {
+  margin: 0;
+  font-size: 3rem;
+  color: white;
+  font-family: Verdana;
+  text-shadow: 4px 3px 5px rgba(255,255,255,0.3);
+}
+
+header h3 {
+  font-style: italic;
+  text-shadow: 4px 3px 7px rgba(255,255,255,0.3);
+}
+
+header .desc {
+  margin-left: 5vw;
+  color: white;
+  flex-grow: 2;
+}
+
+header .links {
+  text-align: right;
+  margin-right: 0;
+}
+
+main h2 {
+  border-bottom: 1px dotted black;
+}
+
+footer {
+  margin-top: 2rem;
+  background-color: darkgray;
+  text-align: center;
+}
+
+footer p {
+  font-size: 1rem;
+  padding: 1rem 0;
+  margin: 0;
+}
+
+@media only screen and (max-device-width: 800px) {
 
   body {
     margin: 0;
   }
 
-  svg {
-    max-width: 375px;
+  main {
+    margin: 15px;
+  }
+
+  .chart {
     margin: 25px -15px;
+  }
+
+  header .desc {
+    margin-left: 0;
+  }
+
+  header h1,h3,p {
+    text-align: center;
   }
 }
 
