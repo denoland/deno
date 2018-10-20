@@ -5,6 +5,7 @@ import sys
 import util
 import time
 import subprocess
+import tempfile
 
 ADDR = "127.0.0.1:4544"
 DURATION = "10s"
@@ -16,17 +17,28 @@ def deno_http_benchmark(deno_exe):
     return run(deno_cmd)
 
 
-def node_http_benchmark(deno_exe):
+def node_http_benchmark():
     node_cmd = ["node", "tools/node_http.js", ADDR.split(":")[1]]
     print "http_benchmark testing NODE."
     return run(node_cmd)
 
 
+def go_net_http_benchmark():
+    # Could not easily track process created by simply "go run"
+    tmp_prog = tempfile.mkdtemp() + "/go_net_http" + (".exe" if os.name == "nt"
+                                                      else "")
+    go_build_cmd = ["go", "build", "-o", tmp_prog, "tools/go_net_http.go"]
+    subprocess.call(go_build_cmd)
+    print "http_benchmark testing GO net/http."
+    return run([tmp_prog, ADDR.split(":")[1]])
+
+
 def http_benchmark(deno_exe):
     deno_rps = deno_http_benchmark(deno_exe)
-    node_rps = node_http_benchmark(deno_exe)
+    node_rps = node_http_benchmark()
+    go_net_http_rps = go_net_http_benchmark()
 
-    return {"deno": deno_rps, "node": node_rps}
+    return {"deno": deno_rps, "node": node_rps, "go net/http": go_net_http_rps}
 
 
 def run(server_cmd):

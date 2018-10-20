@@ -74,6 +74,13 @@ install:
       cargo install hyperfine
     fi
     hyperfine --version
+    # Install Go (for benchmarking) using Gimme by Travis
+    mkdir -p $HOME/bin
+    if [ ! $(which go) ]; then
+      curl -sL -o $HOME/bin/gimme https://raw.githubusercontent.com/travis-ci/gimme/master/gimme
+      chmod +x $HOME/bin/gimme
+      $HOME/bin/gimme stable
+    fi
   fi
 - |-
   # Remove unnnecessary cargo and rustup directories.
