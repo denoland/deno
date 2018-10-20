@@ -401,7 +401,11 @@ after_test:
       $dir = "$env:APPVEYOR_BUILD_FOLDER\out\$trap"
       Exec { gn gen $dir | Out-Null }
       $files = Get-Tree $dir -File -Force -Recurse | where Extension -ne ".dll"
-      Select-String $trap -Path $files -SimpleMatch | tee -Variable line_matches
+      Select-String $trap -Path $files -SimpleMatch | where {
+        # V8 took the liberty to produce an absolute path in their ninja
+        # output. We can't do much about that, so we just ignore it.
+        $_.Line -notmatch "v8/builtins-generated/bytecodes-builtins-list.h"
+      } | tee -Variable line_matches
       if ($line_matches) {
         $ctx = $line_matches.Line                                          |
           Select-String "[^\s;,]*[\s=]*[^\s;,=]*$trap[^\s;,]*" -AllMatches |
