@@ -48,13 +48,17 @@
     <h2>Travis</h2>
     How long for Travis CI to return a green status for pull requests.
     <div id="travis-compile-time-chart"></div>
+
+    <h2>References</h2>
+    <p> <a href="./all_benchmark.html">All benchmark data</a>
+
   </main>
   <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
   <script src="https://unpkg.com/c3@0.6.7/c3.min.js"></script>
 
   <script type="module">
-  import { main } from "./app.js";
-  main();
+  import { drawCharts } from "./app.js";
+  drawCharts("./recent.json");
   </script>
 </body>
 </html>

@@ -124,12 +124,17 @@ export function formatBytes(a, b) {
   return parseFloat((a / Math.pow(c, f)).toFixed(d)) + " " + e[f];
 }
 
+/**
+ * @param {string} id The id of dom element
+ * @param {any[][]} columns The columns data
+ * @param {string[]} categories The sha1 hashes (which work as x-axis values)
+ */
 function gen2(id, categories, columns, onclick) {
   c3.generate({
     bindto: id,
     size: {
       height: 300,
-      width: 375
+      width: window.chartWidth || 375 // TODO: do not use global variable
     },
     data: {
       columns,
@@ -154,16 +159,19 @@ export function formatSeconds(t) {
   return a < 30 ? `${min} min` : `${min + 1} min`;
 }
 
-export function main() {
-  drawChartsFromBenchmarkData();
+/**
+ * @param dataUrl The url of benchramk data json.
+ */
+export function drawCharts(dataUrl) {
+  drawChartsFromBenchmarkData(dataUrl);
   drawChartsFromTravisData();
 }
 
 /**
  * Draws the charts from the benchmark data stored in gh-pages branch.
  */
-export async function drawChartsFromBenchmarkData() {
-  const data = await getJson("./data.json");
+export async function drawChartsFromBenchmarkData(dataUrl) {
+  const data = await getJson(dataUrl);
 
   const execTimeColumns = createExecTimeColumns(data);
   const throughputColumns = createThroughputColumns(data);
