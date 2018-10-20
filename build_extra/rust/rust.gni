@@ -47,74 +47,124 @@ rust_test_ldflags = exec_script("get_rust_ldflags.py",
                                 ],
                                 "list lines")
 
-template("run_rustc") {
-  action(target_name) {
-    assert(defined(invoker.source_root), "Must specify source_root")
-    forward_variables_from(invoker,
-                           [
-                             "crate_name",
-                             "crate_type",
-                             "crate_version",
-                             "deps",
-                             "extern_infos",
-                             "features",
-                             "is_test",
-                             "source_root",
-                             "testonly",
-                             "treat_warnings_as_errors",
-                           ])
-    if (!defined(crate_name)) {
-      crate_name = target_name
-    }
-    if (!defined(is_test)) {
-      is_test = false
-    }
-    if (!defined(treat_warnings_as_errors)) {
-      # Use global setting if not explicitly specified for this target.
-      treat_warnings_as_errors = rust_treat_warnings_as_errors
-    }
+template("rust_crate") {
+  config_name = "${target_name}_config"
+  action_name = "${target_name}_rustc"
 
-    if (!defined(crate_version)) {
-      # If there is only a single version of this crate in our tree, there's no
-      # need to set the crate metadata and add a suffix to the file name.
-      metadata = ""
-      crate_suffix = ""
-    } else {
-      # Rustc blows up if a target (directly or indirectly) depends on two+
-      # crates that have the same name *and* the same metadata, so we use the
-      # version number to ensure they have unique metadata.
-      metadata = crate_version
+  forward_variables_from(invoker,
+                         [
+                           "crate_name",
+                           "crate_type",
+                           "crate_version",
+                           "deps",
+                           "features",
+                           "is_test",
+                           "libs",
+                           "source_root",
+                           "testonly",
+                           "treat_warnings_as_errors",
+                         ])
 
-      # In our build setup, all crates are built in the same directory. To avoid
-      # file name conflicts between when multiple versions of the same crate are
-      # built, add a unique suffix to output file names.
-      #
-      # Unfortunately the version number as such can't be used directly:
-      # everything after the first dot (.) is thrown away by rust, so in case of
-      # foo-0.2 vs foo-0.3 only the first '0' would be used, and conflicts would
-      # still occur. Therefore we use a hash of the version number instead.
-      crate_suffix = exec_script("//tools/sha256sum.py",
-                                 [
-                                   "--input=$crate_version",
-                                   "--format=-%.8s",
-                                 ],
-                                 "trim string")
+  if (!defined(crate_name)) {
+    crate_name = target_name
+  }
+  if (!defined(crate_type)) {
+    crate_type = "rlib"
+  }
+  if (!defined(deps)) {
+    deps = []
+  }
+  if (!defined(is_test)) {
+    is_test = false
+  }
+  if (!defined(libs)) {
+    libs = []
+  }
+  if (!defined(treat_warnings_as_errors)) {
+    # Use global setting if not explicitly specified for this target.
+    treat_warnings_as_errors = rust_treat_warnings_as_errors
+  }
+
+  if (defined(crate_version)) {
+    # In our build setup, all crates are built in the same directory. To avoid
+    # file name conflicts between when multiple versions of the same crate are
+    # built, add a unique suffix to output file names.
+    # Unfortunately the version number as such can't be used directly:
+    # everything after the first dot (.) is thrown away by rust, so in case of
+    # foo-0.2 vs foo-0.3 only the first '0' would be used, and conflicts would
+    # still occur. Therefore we use a hash of the version number instead.
+    crate_suffix = exec_script("//tools/sha256sum.py",
+                               [
+                                 "--input=$crate_version",
+                                 "--format=-%.8s",
+                               ],
+                               "trim string")
+  } else {
+    # Of most crates we use only one version; no need for all this difficulty.
+    crate_suffix = ""
+  }
+
+  # Derive filenames for 'extern' and 'extern_version' linked rust libraries.
+  extern_rlibs = []
+  if (defined(invoker.extern)) {
+    foreach(label, invoker.extern) {
+      extern_rlibs += [
+        {
+          label = label
+          crate_name = get_label_info(label, "name")
+          rlib = "$out_dir/lib$crate_name.rlib"
+        },
+      ]
     }
-
-    if (crate_type == "bin") {
-      output_file = "$out_dir/$crate_name$crate_suffix.o"
-      emit_type = "obj"
-    } else if (crate_type == "rlib") {
-      output_file = "$out_dir/lib$crate_name$crate_suffix.rlib"
-      emit_type = "link"
+  }
+  if (defined(invoker.extern_version)) {
+    foreach(info, invoker.extern_version) {
+      extern_rlibs += [
+        {
+          crate_suffix = exec_script("//tools/sha256sum.py",
+                                     [
+                                       "--input=${info.crate_version}",
+                                       "--format=-%.8s",
+                                     ],
+                                     "trim string")
+          label = info.label
+          crate_name = info.crate_name
+          rlib = "$out_dir/lib$crate_name$crate_suffix.rlib"
+        },
+      ]
     }
+  }
 
+  config(config_name) {
+    foreach(extern, extern_rlibs) {
+      libs += [ extern.rlib ]
+    }
+    lib_dirs = [ out_dir ]
+  }
+
+  if (crate_type == "bin") {
+    rustc_output = "$out_dir/$crate_name$crate_suffix.o"
+    emit_type = "obj"
+  } else if (crate_type == "rlib") {
+    rustc_output = "$out_dir/lib$crate_name$crate_suffix.rlib"
+    emit_type = "link"
+  }
+
+  source_set(target_name) {
+    public_deps = [
+      ":$action_name",
+    ]
+    libs += [ rustc_output ]
+    all_dependent_configs = [ ":$config_name" ]
+  }
+
+  action(action_name) {
     script = "//third_party/v8/tools/run.py"
     sources = [
       source_root,
     ]
     outputs = [
-      output_file,
+      rustc_output,
     ]
     depfile = "$out_dir/$crate_name$crate_suffix.d"
 
@@ -134,7 +184,7 @@ template("run_rustc") {
 
       # This is to disambiguate multiple versions of the same crate.
       "-Cextra-filename=$crate_suffix",
-      "-Cmetadata=$metadata",
+      "-Cmetadata=$crate_suffix",
 
       # This is needed for transitive dependencies.
       "-L",
@@ -144,20 +194,20 @@ template("run_rustc") {
       "--color=always",
     ]
 
-    if (treat_warnings_as_errors) {
-      args += [ "-Dwarnings" ]
-    }
-
     if (is_debug) {
       args += [ "-g" ]
     }
-
     if (is_official_build) {
       args += [ "-O" ]
     }
-
     if (is_test) {
       args += [ "--test" ]
+    }
+    if (treat_warnings_as_errors) {
+      args += [ "-Dwarnings" ]
+    }
+    if (defined(invoker.args)) {
+      args += invoker.args
     }
 
     if (defined(features)) {
@@ -169,129 +219,15 @@ template("run_rustc") {
       }
     }
 
-    if (defined(invoker.args)) {
-      args += invoker.args
-    }
-
-    if (!defined(deps)) {
-      deps = []
-    }
-
-    inputs = []
-
-    # Build the list of '--extern' arguments from the 'extern_infos' array.
-    foreach(info, extern_infos) {
-      rlib = "$out_dir/lib${info.crate_name}${info.crate_suffix}.rlib"
+    # Build the list of '--extern' arguments from the 'extern_rlibs' array.
+    foreach(extern, extern_rlibs) {
       args += [
         "--extern",
-        info.crate_name + "=" + rebase_path(rlib, root_build_dir),
+        extern.crate_name + "=" + rebase_path(extern.rlib, root_build_dir),
       ]
-      inputs += [ rlib ]
-      deps += [
-        "${info.label}_rustc",
-        info.label,
-      ]
+      sources += [ extern.rlib ]
+      deps += [ extern.label ]
     }
-  }
-}
-
-template("rust_crate") {
-  rustc_name = target_name + "_rustc"
-  rustc_label = ":" + rustc_name
-  config_name = target_name + "_config"
-
-  # Convert all 'extern' and 'extern_version' items to a single format.
-  extern_infos = []
-  if (defined(invoker.extern)) {
-    foreach(label, invoker.extern) {
-      extern_infos += [
-        {
-          label = label
-          crate_name = get_label_info(label, "name")
-          crate_suffix = ""
-        },
-      ]
-    }
-  }
-  if (defined(invoker.extern_version)) {
-    foreach(info, invoker.extern_version) {
-      extern_infos += [
-        {
-          forward_variables_from(info,
-                                 [
-                                   "label",
-                                   "crate_name",
-                                   "crate_version",
-                                 ])
-          crate_suffix = exec_script("//tools/sha256sum.py",
-                                     [
-                                       "--input=$crate_version",
-                                       "--format=-%.8s",
-                                     ],
-                                     "trim string")
-        },
-      ]
-    }
-  }
-
-  forward_variables_from(invoker,
-                         [
-                           "crate_name",
-                           "crate_type",
-                         ])
-  if (!defined(crate_name)) {
-    crate_name = target_name
-  }
-  if (!defined(crate_type)) {
-    crate_type = "rlib"
-  }
-
-  run_rustc(rustc_name) {
-    forward_variables_from(invoker,
-                           [
-                             "args",
-                             "crate_version",
-                             "deps",
-                             "features",
-                             "is_test",
-                             "source_root",
-                             "testonly",
-                             "treat_warnings_as_errors",
-                           ])
-  }
-
-  crate_outputs = get_target_outputs(rustc_label)
-  crate_obj = crate_outputs[0]
-
-  config(config_name) {
-    lib_dirs = []
-    forward_variables_from(invoker, [ "libs" ])
-    if (!defined(libs)) {
-      libs = []
-    }
-    foreach(info, extern_infos) {
-      rlib = "$out_dir/lib${info.crate_name}${info.crate_suffix}.rlib"
-      libs += [ rlib ]
-    }
-    lib_dirs = [ out_dir ]
-  }
-
-  source_set(target_name) {
-    forward_variables_from(invoker,
-                           [
-                             "deps",
-                             "libs",
-                             "testonly",
-                           ])
-    if (!defined(deps)) {
-      deps = []
-    }
-    if (!defined(libs)) {
-      libs = []
-    }
-    libs += [ crate_obj ]
-    deps += [ rustc_label ]
-    all_dependent_configs = [ ":" + config_name ]
   }
 }
 
