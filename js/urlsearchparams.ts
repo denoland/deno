@@ -23,7 +23,6 @@ export class URLSearchParams {
         const value = pair.slice(name.length + 1);
         this.append(decodeURIComponent(name), decodeURIComponent(value));
       }
-      // Is object
     } else if (Array.isArray(init)) {
       // Overload: sequence<sequence<USVString>>
       for (const tuple of init) {
