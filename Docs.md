@@ -114,10 +114,6 @@ submodule. However, you need to install separately:
    3. Enable `Debugging Tools for Windows`, Goto Control Panel -> Windows 10 SDK
       -> Right-Click -> Change -> Change -> Check Debugging Tools for Windows ->
       Change -> Finish
-6. Before running `./tools/format.py`, make sure you have `yapf` installed for
-   the current Python and `rustfmt` for Rust. They can be installed by:
-
-   pip install yapf rustup component add rustfmt-preview
 
 ### Build:
 
