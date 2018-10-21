@@ -32,7 +32,7 @@ test(function deleteSuccess() {
   const init = "a=54&b=true";
   const searchParams = new URLSearchParams(init);
   searchParams.delete("b");
-  assertEqual(searchParams.toString(), "a=true");
+  assertEqual(searchParams.toString(), "a=54");
 });
 
 test(function getAllSuccess() {

@@ -2,7 +2,7 @@ export class URLSearchParams {
   private params: Array<[string, string]> = [];
 
   public constructor(
-    init: string | Iterable<[string, string]> | Record<string, string> = ""
+    init: string | string[][] | Record<string, string> = ""
   ) {
     if (typeof init === "string") {
       // Overload: USVString
@@ -23,17 +23,15 @@ export class URLSearchParams {
         this.append(decodeURIComponent(name), decodeURIComponent(value));
       }
       // Is object
+    } else if (Array.isArray(init)) {
+      // Overload: sequence<sequence<USVString>>
+      for (const tuple of init) {
+        this.append(tuple[0], tuple[1]);
+      }
     } else if (Object(init) === init) {
-      if (Symbol.iterator in init) {
-        // Overload: sequence<sequence<USVString>>
-        for (const tuple of init[Symbol.iterator]()) {
-          this.append(tuple[0], tuple[1]);
-        }
-      } else {
-        // Overload: record<USVString, USVString>
-        for (const key of Object.keys(init)) {
-          this.append(key, init[key]);
-        }
+      // Overload: record<USVString, USVString>
+      for (const key of Object.keys(init)) {
+        this.append(key, init[key]);
       }
     }
   }
