@@ -107,6 +107,7 @@ ts_sources = [
   "js/trace.ts",
   "js/truncate.ts",
   "js/types.ts",
+  "js/url_search_params.ts",
   "js/util.ts",
   "js/v8_source_maps.ts",
   "js/write_file.ts",
@@ -142,7 +143,7 @@ rust_executable("hyper_hello") {
   source_root = "tools/hyper_hello.rs"
   extern = [
     "$rust_build:hyper",
-    "$rust_build:ring"
+    "$rust_build:ring",
   ]
 }
 
