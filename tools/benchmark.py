@@ -184,8 +184,9 @@ def main(argv):
     # Cannot run throughput benchmark on windows because they don't have nc or
     # pipe.
     if os.name != 'nt':
+        hyper_hello_path = os.path.join(build_dir, "hyper_hello")
         new_data["throughput"] = run_throughput(deno_path)
-        new_data["req_per_sec"] = http_benchmark(deno_path)
+        new_data["req_per_sec"] = http_benchmark(deno_path, hyper_hello_path)
     if "linux" in sys.platform:
         # Thread count test, only on linux
         new_data["thread_count"] = run_thread_count_benchmark(deno_path)

@@ -13,6 +13,7 @@ group("default") {
   deps = [
     ":deno",
     ":deno_ns",
+    ":hyper_hello",
     ":test_cc",
     ":test_rs",
   ]
@@ -134,6 +135,14 @@ rust_executable("deno_ns") {
   extern = main_extern
   deps = [
     ":libdeno_nosnapshot",
+  ]
+}
+
+rust_executable("hyper_hello") {
+  source_root = "tools/hyper_hello.rs"
+  extern = [
+    "$rust_build:hyper",
+    "$rust_build:ring"
   ]
 }
 

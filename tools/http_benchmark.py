@@ -16,17 +16,28 @@ def deno_http_benchmark(deno_exe):
     return run(deno_cmd)
 
 
-def node_http_benchmark(deno_exe):
+def node_http_benchmark():
     node_cmd = ["node", "tools/node_http.js", ADDR.split(":")[1]]
     print "http_benchmark testing NODE."
     return run(node_cmd)
 
 
-def http_benchmark(deno_exe):
-    deno_rps = deno_http_benchmark(deno_exe)
-    node_rps = node_http_benchmark(deno_exe)
+def hyper_http_benchmark(hyper_hello_exe):
+    hyper_cmd = [hyper_hello_exe, ADDR.split(":")[1]]
+    print "http_benchmark testing RUST hyper."
+    return run(hyper_cmd)
 
-    return {"deno": deno_rps, "node": node_rps}
+
+def http_benchmark(deno_exe, hyper_hello_exe):
+    deno_rps = deno_http_benchmark(deno_exe)
+    node_rps = node_http_benchmark()
+    hyper_http_rps = hyper_http_benchmark(hyper_hello_exe)
+
+    return {
+        "deno": deno_rps,
+        "node": node_rps,
+        "hyper": hyper_http_rps
+    }
 
 
 def run(server_cmd):
