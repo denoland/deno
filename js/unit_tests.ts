@@ -7,6 +7,8 @@ import "./console_test.ts";
 import "./fetch_test.ts";
 import "./os_test.ts";
 import "./files_test.ts";
+import "./form_data_test.ts";
+import "./file_test.ts";
 import "./read_file_test.ts";
 import "./read_dir_test.ts";
 import "./write_file_test.ts";

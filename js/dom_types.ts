@@ -31,7 +31,7 @@ type ReferrerPolicy =
   | "origin-when-cross-origin"
   | "unsafe-url";
 export type BlobPart = BufferSource | Blob | string;
-type FormDataEntryValue = File | string;
+export type FormDataEntryValue = File | string;
 export type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
@@ -158,7 +158,7 @@ interface Event {
   readonly NONE: number;
 }
 
-interface File extends Blob {
+export interface File extends Blob {
   readonly lastModified: number;
   readonly name: string;
 }

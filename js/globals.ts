@@ -7,6 +7,8 @@ import { libdeno } from "./libdeno";
 import * as textEncoding from "./text_encoding";
 import * as timers from "./timers";
 import * as urlsearchparams from "./url_search_params";
+import * as formdata from "./form_data";
+import * as file from "./file";
 
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
@@ -40,3 +42,5 @@ window.fetch = fetch_.fetch;
 
 window.Headers = fetch_.DenoHeaders;
 window.Blob = blob.DenoBlob;
+window.File = file.DenoFile;
+window.FormData = formdata.FormData;
