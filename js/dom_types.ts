@@ -90,7 +90,7 @@ export interface ProgressEventInit extends EventInit {
   total?: number;
 }
 
-export interface URLSearchParams {
+export interface URLSearchParams extends DomIterable<string, string> {
   /**
    * Appends a specified key/value pair as a new search parameter.
    */
@@ -100,6 +100,11 @@ export interface URLSearchParams {
    * from the list of all search parameters.
    */
   delete(name: string): void;
+  /** Returns an iterator allowing to go through all key/value pairs
+   * contained in this URLSearchParams object. The both the key and
+   * value of each pairs are ByteString objects.
+   */
+  entries(): IterableIterator<[string, string]>;
   /**
    * Returns the first value associated to the given search parameter.
    */
@@ -112,6 +117,10 @@ export interface URLSearchParams {
    * Returns a Boolean indicating if such a search parameter exists.
    */
   has(name: string): boolean;
+  /** Returns an iterator allowing to go through all keys contained in
+   * this URLSearchParams object. The keys are ByteString objects.
+   */
+  keys(): IterableIterator<string>;
   /**
    * Sets the value associated to a given search parameter to the given value.
    * If there were several values, delete the others.
@@ -127,15 +136,24 @@ export interface URLSearchParams {
    * Returns a query string suitable for use in a URL.
    */
   toString(): string;
+  /** Returns an iterator allowing to go through all values contained in
+   * this URLSearchParams object. The values are ByteString objects.
+   */
+  values(): IterableIterator<string>;
   /**
    * Iterates over each name-value pair in the query
    * and invokes the given function.
    */
   forEach(
-    callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
+    callbackfn: (value: string, key: string, parent: this) => void,
     // tslint:disable-next-line:no-any
     thisArg?: any
   ): void;
+}
+
+export interface URLSearchParamsConstructor {
+  new (init?: URLSearchParamsInit): URLSearchParams;
+  prototype: URLSearchParams;
 }
 
 interface EventListener {

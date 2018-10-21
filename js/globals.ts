@@ -16,7 +16,7 @@ import * as fetchTypes from "./fetch";
 import * as headers from "./headers";
 import * as textEncoding from "./text_encoding";
 import * as timers from "./timers";
-import * as urlSearchParams from "./url_search_params";
+import { URLSearchParams } from "./url_search_params";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -58,8 +58,9 @@ window.Blob = blob.DenoBlob;
 export type Blob = blob.DenoBlob;
 window.File = file.DenoFile;
 export type File = file.DenoFile;
-window.URLSearchParams = urlSearchParams.URLSearchParams;
-export type URLSearchParams = urlSearchParams.URLSearchParams;
+
+window.URLSearchParams = URLSearchParams as domTypes.URLSearchParamsConstructor;
+export { URLSearchParams } from "./url_search_params";
 
 // Using the `as` keyword to use standard compliant interfaces as the Deno
 // implementations contain some implementation details we wouldn't want to
