@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "./test_util.ts";
 
-test(function initString() {
+test(function urlSearchParamsInitString() {
   const init = "c=4&a=2&b=3&%C3%A1=1";
   const searchParams = new URLSearchParams(init);
   assert(
@@ -10,32 +10,32 @@ test(function initString() {
   );
 });
 
-test(function initIterable() {
+test(function urlSearchParamsInitIterable() {
   const init = [["a", "54"], ["b", "true"]];
   const searchParams = new URLSearchParams(init);
   assertEqual(searchParams.toString(), "a=54&b=true");
 });
 
-test(function initRecord() {
+test(function urlSearchParamsInitRecord() {
   const init = { a: "54", b: "true" };
   const searchParams = new URLSearchParams(init);
   assertEqual(searchParams.toString(), "a=54&b=true");
 });
 
-test(function appendSuccess() {
+test(function urlSearchParamsAppendSuccess() {
   const searchParams = new URLSearchParams();
   searchParams.append("a", "true");
   assertEqual(searchParams.toString(), "a=true");
 });
 
-test(function deleteSuccess() {
+test(function urlSearchParamsDeleteSuccess() {
   const init = "a=54&b=true";
   const searchParams = new URLSearchParams(init);
   searchParams.delete("b");
   assertEqual(searchParams.toString(), "a=54");
 });
 
-test(function getAllSuccess() {
+test(function urlSearchParamsGetAllSuccess() {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   assertEqual(searchParams.getAll("a"), ["54", "true"]);
@@ -43,7 +43,7 @@ test(function getAllSuccess() {
   assertEqual(searchParams.getAll("c"), []);
 });
 
-test(function getSuccess() {
+test(function urlSearchParamsGetSuccess() {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   assertEqual(searchParams.get("a"), "54");
@@ -51,7 +51,7 @@ test(function getSuccess() {
   assertEqual(searchParams.get("c"), null);
 });
 
-test(function hasSuccess() {
+test(function urlSearchParamsHasSuccess() {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   assert(searchParams.has("a"));
@@ -59,21 +59,21 @@ test(function hasSuccess() {
   assert(!searchParams.has("c"));
 });
 
-test(function setSuccess() {
+test(function urlSearchParamsSetSuccess() {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   searchParams.set("a", "false");
   assertEqual(searchParams.toString(), "b=true&a=false");
 });
 
-test(function sortSuccess() {
+test(function urlSearchParamsSortSuccess() {
   const init = "c=4&a=2&b=3&a=1";
   const searchParams = new URLSearchParams(init);
   searchParams.sort();
   assertEqual(searchParams.toString(), "a=2&a=1&b=3&c=4");
 });
 
-test(function forEachSuccess() {
+test(function urlSearchParamsForEachSuccess() {
   const init = [["a", "54"], ["b", "true"]];
   const searchParams = new URLSearchParams(init);
   let callNum = 0;
@@ -86,28 +86,28 @@ test(function forEachSuccess() {
   assertEqual(callNum, init.length);
 });
 
-test(function missingName() {
+test(function urlSearchParamsMissingName() {
   const init = "=4";
   const searchParams = new URLSearchParams(init);
   assertEqual(searchParams.get(""), "4");
   assertEqual(searchParams.toString(), "=4");
 });
 
-test(function missingValue() {
+test(function urlSearchParamsMissingValue() {
   const init = "4=";
   const searchParams = new URLSearchParams(init);
   assertEqual(searchParams.get("4"), "");
   assertEqual(searchParams.toString(), "4=");
 });
 
-test(function missingEqualSign() {
+test(function urlSearchParamsMissingEqualSign() {
   const init = "4";
   const searchParams = new URLSearchParams(init);
   assertEqual(searchParams.get("4"), "");
   assertEqual(searchParams.toString(), "4=");
 });
 
-test(function missingPair() {
+test(function urlSearchParamsMissingPair() {
   const init = "c=4&&a=54&";
   const searchParams = new URLSearchParams(init);
   assertEqual(searchParams.toString(), "c=4&a=54");
