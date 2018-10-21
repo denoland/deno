@@ -189,11 +189,7 @@ class FetchResponse implements domTypes.Response {
       headersList.push(header);
     }
 
-    return new FetchResponse(
-      this.status,
-      this.bodyData.slice(0),
-      headersList
-    );
+    return new FetchResponse(this.status, this.bodyData.slice(0), headersList);
   }
 
   onHeader?: (res: FetchResponse) => void;
