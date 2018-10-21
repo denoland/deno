@@ -1,8 +1,8 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
-import { DenoBlob } from "./blob";
+import * as blob from "./blob";
 
-export class DenoFile extends DenoBlob implements domTypes.File {
+export class DenoFile extends blob.DenoBlob implements domTypes.File {
   lastModified: number;
   name: string;
 

@@ -1,8 +1,8 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import { CreateIterableIterator } from "./util";
-import { DenoBlob } from "./blob";
-import { DenoFile } from "./file";
+import * as blob from "./blob";
+import * as file from "./file";
 
 export class FormData implements domTypes.FormData {
   private data: Array<[string, domTypes.FormDataEntryValue]> = [];
@@ -14,11 +14,11 @@ export class FormData implements domTypes.FormData {
    *       formData.append('name', 'second');
    */
   append(name: string, value: string): void;
-  append(name: string, value: DenoBlob, filename?: string): void;
-  append(name: string, value: string | DenoBlob, filename?: string): void {
-    if (value instanceof DenoBlob) {
-      const file = new DenoFile([value], filename || name);
-      this.data.push([name, file]);
+  append(name: string, value: blob.DenoBlob, filename?: string): void;
+  append(name: string, value: string | blob.DenoBlob, filename?: string): void {
+    if (value instanceof blob.DenoBlob) {
+      const dfile = new file.DenoFile([value], filename || name);
+      this.data.push([name, dfile]);
     } else {
       this.data.push([name, value]);
     }
@@ -85,12 +85,12 @@ export class FormData implements domTypes.FormData {
    *       formData.set('name', 'value');
    */
   set(name: string, value: string): void;
-  set(name: string, value: DenoBlob, filename?: string): void;
-  set(name: string, value: string | DenoBlob, filename?: string): void {
+  set(name: string, value: blob.DenoBlob, filename?: string): void;
+  set(name: string, value: string | blob.DenoBlob, filename?: string): void {
     this.delete(name);
-    if (value instanceof DenoBlob) {
-      const file = new DenoFile([value], filename || name);
-      this.data.push([name, file]);
+    if (value instanceof blob.DenoBlob) {
+      const dfile = new file.DenoFile([value], filename || name);
+      this.data.push([name, dfile]);
     } else {
       this.data.push([name, value]);
     }

@@ -1,11 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "./test_util.ts";
-import { DenoFile } from "./file.ts";
-import { DenoBlob } from "./blob.ts";
 
 function testFirstArgument(arg1, expectedSize) {
-  const file = new DenoFile(arg1, "name");
-  assert(file instanceof DenoFile);
+  const file = new File(arg1, "name");
+  assert(file instanceof File);
   assertEqual(file.name, "name");
   assertEqual(file.size, expectedSize);
   assertEqual(file.type, "");
@@ -29,19 +27,19 @@ test(function fileStringObjectFileBits() {
 });
 
 test(function fileEmptyBlobFileBits() {
-  testFirstArgument([new DenoBlob()], 0);
+  testFirstArgument([new Blob()], 0);
 });
 
 test(function fileBlobFileBits() {
-  testFirstArgument([new DenoBlob(["bits"])], 4);
+  testFirstArgument([new Blob(["bits"])], 4);
 });
 
 test(function fileEmptyFileFileBits() {
-  testFirstArgument([new DenoFile([], "world.txt")], 0);
+  testFirstArgument([new File([], "world.txt")], 0);
 });
 
 test(function fileFileFileBits() {
-  testFirstArgument([new DenoFile(["bits"], "world.txt")], 4);
+  testFirstArgument([new File(["bits"], "world.txt")], 4);
 });
 
 test(function fileArrayBufferFileBits() {
@@ -56,8 +54,8 @@ test(function fileVariousFileBits() {
   testFirstArgument(
     [
       "bits",
-      new DenoBlob(["bits"]),
-      new DenoBlob(),
+      new Blob(["bits"]),
+      new Blob(),
       new Uint8Array([0x50, 0x41]),
       new Uint16Array([0x5353]),
       new Uint32Array([0x53534150])
@@ -80,8 +78,8 @@ test(function fileObjectInFileBits() {
 });
 
 function testSecondArgument(arg2, expectedFileName) {
-  const file = new DenoFile(["bits"], arg2);
-  assert(file instanceof DenoFile);
+  const file = new File(["bits"], arg2);
+  assert(file instanceof File);
   assertEqual(file.name, expectedFileName);
 }
 
