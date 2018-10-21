@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
 use errors;
 use errors::permission_denied;
 use errors::{DenoError, DenoResult, ErrorKind};
@@ -11,7 +10,6 @@ use isolate::Op;
 use msg;
 use resources;
 use resources::Resource;
-use tokio_util;
 use version;
 
 use flatbuffers::FlatBufferBuilder;
@@ -36,7 +34,6 @@ use std::time::{Duration, Instant};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio_io;
 use tokio_threadpool;
 
 type OpResult = DenoResult<Buf>;
@@ -75,36 +72,36 @@ pub fn dispatch(
   } else {
     // Handle regular ops.
     let op_creator: OpCreator = match inner_type {
-      msg::Any::Start => op_start,
-      msg::Any::CodeFetch => op_code_fetch,
+      msg::Any::Accept => op_accept,
+      msg::Any::Chdir => op_chdir,
+      msg::Any::Close => op_close,
       msg::Any::CodeCache => op_code_cache,
+      msg::Any::CodeFetch => op_code_fetch,
+      msg::Any::CopyFile => op_copy_file,
+      msg::Any::Cwd => op_cwd,
+      msg::Any::Dial => op_dial,
       msg::Any::Environ => op_env,
+      msg::Any::Exit => op_exit,
       msg::Any::FetchReq => op_fetch_req,
+      msg::Any::Listen => op_listen,
       msg::Any::MakeTempDir => op_make_temp_dir,
+      msg::Any::Metrics => op_metrics,
       msg::Any::Mkdir => op_mkdir,
       msg::Any::Open => op_open,
-      msg::Any::Read => op_read,
-      msg::Any::Write => op_write,
-      msg::Any::Close => op_close,
-      msg::Any::Shutdown => op_shutdown,
-      msg::Any::Remove => op_remove,
-      msg::Any::ReadFile => op_read_file,
       msg::Any::ReadDir => op_read_dir,
-      msg::Any::Rename => op_rename,
+      msg::Any::ReadFile => op_read_file,
       msg::Any::Readlink => op_read_link,
-      msg::Any::Symlink => op_symlink,
+      msg::Any::Read => op_read,
+      msg::Any::Remove => op_remove,
+      msg::Any::Rename => op_rename,
       msg::Any::SetEnv => op_set_env,
+      msg::Any::Shutdown => op_shutdown,
+      msg::Any::Start => op_start,
       msg::Any::Stat => op_stat,
+      msg::Any::Symlink => op_symlink,
       msg::Any::Truncate => op_truncate,
       msg::Any::WriteFile => op_write_file,
-      msg::Any::Exit => op_exit,
-      msg::Any::CopyFile => op_copy_file,
-      msg::Any::Listen => op_listen,
-      msg::Any::Accept => op_accept,
-      msg::Any::Dial => op_dial,
-      msg::Any::Chdir => op_chdir,
-      msg::Any::Cwd => op_cwd,
-      msg::Any::Metrics => op_metrics,
+      msg::Any::Write => op_write,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -665,7 +662,7 @@ fn op_read(
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      let op = tokio_io::io::read(resource, data)
+      let op = resources::eager_read(resource, data)
         .map_err(|err| DenoError::from(err))
         .and_then(move |(_resource, _buf, nread)| {
           let builder = &mut FlatBufferBuilder::new();
@@ -704,15 +701,14 @@ fn op_write(
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      let len = data.len();
-      let op = tokio_io::io::write_all(resource, data)
+      let op = resources::eager_write(resource, data)
         .map_err(|err| DenoError::from(err))
-        .and_then(move |(_resource, _buf)| {
+        .and_then(move |(_resource, _buf, nwritten)| {
           let builder = &mut FlatBufferBuilder::new();
           let inner = msg::WriteRes::create(
             builder,
             &msg::WriteResArgs {
-              nbyte: len as u32,
+              nbyte: nwritten as u32,
               ..Default::default()
             },
           );
@@ -1188,7 +1184,7 @@ fn op_accept(
   match resources::lookup(server_rid) {
     None => odd_future(errors::bad_resource()),
     Some(server_resource) => {
-      let op = tokio_util::accept(server_resource)
+      let op = resources::eager_accept(server_resource)
         .map_err(|err| DenoError::from(err))
         .and_then(move |(tcp_stream, _socket_addr)| {
           new_conn(cmd_id, tcp_stream)

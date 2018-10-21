@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
 import { flatbuffers } from "flatbuffers";
 import * as util from "./util";
 

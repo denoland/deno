@@ -147,6 +147,41 @@ test(function headerGetSuccess() {
   }
 });
 
+test(function headerEntriesSuccess() {
+  const headers = new Headers(headerDict);
+  const iterators = headers.entries();
+  assertEqual(Object.prototype.toString.call(iterators), "[object Iterator]");
+  for (const it of iterators) {
+    const key = it[0];
+    const value = it[1];
+    assert(headers.has(key));
+    assertEqual(value, headers.get(key));
+  }
+});
+
+test(function headerKeysSuccess() {
+  const headers = new Headers(headerDict);
+  const iterators = headers.keys();
+  assertEqual(Object.prototype.toString.call(iterators), "[object Iterator]");
+  for (const it of iterators) {
+    assert(headers.has(it));
+  }
+});
+
+test(function headerValuesSuccess() {
+  const headers = new Headers(headerDict);
+  const iterators = headers.values();
+  const entries = headers.entries();
+  const values = [];
+  for (const pair of entries) {
+    values.push(pair[1]);
+  }
+  assertEqual(Object.prototype.toString.call(iterators), "[object Iterator]");
+  for (const it of iterators) {
+    assert(values.includes(it));
+  }
+});
+
 const headerEntriesDict = {
   name1: "value1",
   Name2: "value2",
@@ -171,4 +206,15 @@ test(function headerForEachSuccess() {
     callNum++;
   });
   assertEqual(callNum, keys.length);
+});
+
+test(function headerSymbolIteratorSuccess() {
+  assert(Symbol.iterator in Headers.prototype);
+  const headers = new Headers(headerEntriesDict);
+  for (const header of headers) {
+    const key = header[0];
+    const value = header[1];
+    assert(headers.has(key));
+    assertEqual(value, headers.get(key));
+  }
 });

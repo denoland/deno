@@ -124,22 +124,72 @@ export function formatBytes(a, b) {
   return parseFloat((a / Math.pow(c, f)).toFixed(d)) + " " + e[f];
 }
 
+/**
+ * @param {string} id The id of dom element
+ * @param {string[]} categories categories for x-axis values
+ * @param {any[][]} columns The columns data
+ * @param {function} onclick action on clicking nodes of chart
+ * @param {string} yLabel label of y axis
+ * @param {function} yTickFormat formatter of y axis ticks
+ */
+function gen2(
+  id,
+  categories,
+  columns,
+  onclick,
+  yLabel = "",
+  yTickFormat = null
+) {
+  const xFormat = {
+    type: "category",
+    show: false,
+    categories
+  };
+  const yFormat = {
+    label: yLabel
+  };
+  if (yTickFormat) {
+    yFormat.tick = {
+      format: yTickFormat
+    };
+  }
+
+  c3.generate({
+    bindto: id,
+    size: {
+      height: 300,
+      width: window.chartWidth || 375 // TODO: do not use global variable
+    },
+    data: {
+      columns,
+      onclick
+    },
+    axis: {
+      x: xFormat,
+      y: yFormat
+    }
+  });
+}
+
 export function formatSeconds(t) {
   const a = t % 60;
   const min = Math.floor(t / 60);
   return a < 30 ? `${min} min` : `${min + 1} min`;
 }
 
-export function main() {
-  drawChartsFromBenchmarkData();
+/**
+ * @param dataUrl The url of benchramk data json.
+ */
+export function drawCharts(dataUrl) {
+  drawChartsFromBenchmarkData(dataUrl);
   drawChartsFromTravisData();
 }
 
 /**
  * Draws the charts from the benchmark data stored in gh-pages branch.
  */
-export async function drawChartsFromBenchmarkData() {
-  const data = await getJson("./data.json");
+export async function drawChartsFromBenchmarkData(dataUrl) {
+  const data = await getJson(dataUrl);
 
   const execTimeColumns = createExecTimeColumns(data);
   const throughputColumns = createThroughputColumns(data);
@@ -156,109 +206,23 @@ export async function drawChartsFromBenchmarkData() {
     );
   };
 
-  c3.generate({
-    bindto: "#exec-time-chart",
-    data: {
-      columns: execTimeColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1List
-      },
-      y: {
-        label: "seconds"
-      }
-    }
-  });
+  function gen(id, columns, yLabel = "", yTickFormat = null) {
+    gen2(
+      id,
+      sha1ShortList,
+      columns,
+      viewCommitOnClick(sha1List),
+      yLabel,
+      yTickFormat
+    );
+  }
 
-  c3.generate({
-    bindto: "#throughput-chart",
-    data: {
-      columns: throughputColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      },
-      y: {
-        label: "seconds"
-      }
-    }
-  });
-
-  c3.generate({
-    bindto: "#req-per-sec-chart",
-    data: {
-      columns: reqPerSecColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      },
-      y: {
-        label: "seconds"
-      }
-    }
-  });
-
-  c3.generate({
-    bindto: "#binary-size-chart",
-    data: {
-      columns: binarySizeColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      },
-      y: {
-        tick: {
-          format: d => formatBytes(d)
-        }
-      }
-    }
-  });
-
-  c3.generate({
-    bindto: "#thread-count-chart",
-    data: {
-      columns: threadCountColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      }
-    }
-  });
-
-  c3.generate({
-    bindto: "#syscall-count-chart",
-    data: {
-      columns: syscallCountColumns,
-      onclick: viewCommitOnClick(sha1List)
-    },
-    axis: {
-      x: {
-        type: "category",
-        show: false,
-        categories: sha1ShortList
-      }
-    }
-  });
+  gen("#exec-time-chart", execTimeColumns, "seconds");
+  gen("#throughput-chart", throughputColumns, "seconds");
+  gen("#req-per-sec-chart", reqPerSecColumns, "# req/sec");
+  gen("#binary-size-chart", binarySizeColumns, "size", formatBytes);
+  gen("#thread-count-chart", threadCountColumns, "# threads");
+  gen("#syscall-count-chart", syscallCountColumns, "# syscalls");
 }
 
 /**
@@ -275,22 +239,12 @@ export async function drawChartsFromTravisData() {
   const travisCompileTimeColumns = createTravisCompileTimeColumns(travisData);
   const prNumberList = travisData.map(d => d.pull_request_number);
 
-  c3.generate({
-    bindto: "#travis-compile-time-chart",
-    data: {
-      columns: travisCompileTimeColumns,
-      onclick: viewPullRequestOnClick(prNumberList)
-    },
-    axis: {
-      x: {
-        type: "category",
-        categories: prNumberList
-      },
-      y: {
-        tick: {
-          format: d => formatSeconds(d)
-        }
-      }
-    }
-  });
+  gen2(
+    "#travis-compile-time-chart",
+    prNumberList,
+    travisCompileTimeColumns,
+    viewPullRequestOnClick(prNumberList),
+    "time",
+    formatSeconds
+  );
 }

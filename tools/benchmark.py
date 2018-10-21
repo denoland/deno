@@ -25,7 +25,8 @@ exec_time_benchmarks = [
 ]
 
 gh_pages_data_file = "gh-pages/data.json"
-data_file = "website/data.json"
+all_data_file = "website/data.json"  # Includes all benchmark data.
+recent_data_file = "website/recent.json"  # Includes recent 20 benchmark data.
 
 
 def read_json(filename):
@@ -39,16 +40,16 @@ def write_json(filename, data):
 
 
 def import_data_from_gh_pages():
-    if os.path.exists(data_file):
+    if os.path.exists(all_data_file):
         return
     try:
         run([
             "git", "clone", "--depth", "1", "-b", "gh-pages",
             "https://github.com/denoland/deno.git", "gh-pages"
         ])
-        shutil.copy(gh_pages_data_file, data_file)
+        shutil.copy(gh_pages_data_file, all_data_file)
     except:
-        write_json(data_file, [])  # writes empty json data
+        write_json(all_data_file, [])  # writes empty json data
 
 
 def get_binary_sizes(build_dir):
@@ -157,7 +158,7 @@ def main(argv):
     run(["hyperfine", "--export-json", benchmark_file, "--warmup", "3"] + [
         deno_path + " " + " ".join(args) for [_, args] in exec_time_benchmarks
     ])
-    all_data = read_json(data_file)
+    all_data = read_json(all_data_file)
     benchmark_data = read_json(benchmark_file)
     sha1 = run_output(["git", "rev-parse", "HEAD"]).strip()
     new_data = {
@@ -183,15 +184,17 @@ def main(argv):
     # Cannot run throughput benchmark on windows because they don't have nc or
     # pipe.
     if os.name != 'nt':
+        hyper_hello_path = os.path.join(build_dir, "hyper_hello")
         new_data["throughput"] = run_throughput(deno_path)
-        new_data["req_per_sec"] = http_benchmark(deno_path)
+        new_data["req_per_sec"] = http_benchmark(deno_path, hyper_hello_path)
     if "linux" in sys.platform:
         # Thread count test, only on linux
         new_data["thread_count"] = run_thread_count_benchmark(deno_path)
         new_data["syscall_count"] = run_syscall_count_benchmark(deno_path)
 
     all_data.append(new_data)
-    write_json(data_file, all_data)
+    write_json(all_data_file, all_data)
+    write_json(recent_data_file, all_data[-20:])
 
 
 if __name__ == '__main__':

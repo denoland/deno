@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 # This script contains helper functions to work with the third_party subrepo.
 
 import os

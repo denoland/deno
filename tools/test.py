@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 # Runs the full test suite.
 # Usage: ./tools/test.py out/Debug
 import os

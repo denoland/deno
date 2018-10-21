@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
 // This test is executed as part of tools/test.py
 // But it can also be run manually: ./out/debug/deno js/unit_tests.ts
 import "./compiler_test.ts";
@@ -27,3 +28,5 @@ import "./truncate_test.ts";
 import "./v8_source_maps_test.ts";
 import "../website/app_test.js";
 import "./metrics_test.ts";
+import "./url_search_params_test.ts";
+import "./util_test.ts";

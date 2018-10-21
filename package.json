@@ -22,7 +22,7 @@
     "source-map-support": "^0.5.6",
     "text-encoding": "0.6.4",
     "ts-node": "^7.0.1",
-    "ts-simple-ast": "^17.0.0",
+    "ts-simple-ast": "17.1.0",
     "tslint": "^5.10.0",
     "tslint-eslint-rules": "^5.3.1",
     "tslint-no-circular-imports": "^0.5.0",

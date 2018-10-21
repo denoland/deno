@@ -1,8 +1,9 @@
 #!/usr/bin/env python
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
 from glob import glob
 import os
 from third_party import third_party_path, fix_symlinks, google_env, clang_format_path
-from util import root_path, run, find_exts
+from util import root_path, run, find_exts, platform
 
 fix_symlinks()
 
@@ -38,5 +39,7 @@ run(["node", prettier, "--write"] +
     find_exts("website/", ".js", ".ts", ".md"))
 # yapf: enable
 
-# Requires rustfmt 0.8.2 (flags were different in previous versions)
-run(["rustfmt", "--config-path", rustfmt_config] + find_exts("src/", ".rs"))
+run([
+    "third_party/rustfmt/" + platform() +
+    "/rustfmt", "--config-path", rustfmt_config
+] + find_exts("src/", ".rs"))

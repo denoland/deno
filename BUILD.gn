@@ -13,6 +13,7 @@ group("default") {
   deps = [
     ":deno",
     ":deno_ns",
+    ":hyper_hello",
     ":test_cc",
     ":test_rs",
   ]
@@ -106,6 +107,7 @@ ts_sources = [
   "js/trace.ts",
   "js/truncate.ts",
   "js/types.ts",
+  "js/url_search_params.ts",
   "js/util.ts",
   "js/v8_source_maps.ts",
   "js/write_file.ts",
@@ -134,6 +136,14 @@ rust_executable("deno_ns") {
   extern = main_extern
   deps = [
     ":libdeno_nosnapshot",
+  ]
+}
+
+rust_executable("hyper_hello") {
+  source_root = "tools/hyper_hello.rs"
+  extern = [
+    "$rust_build:hyper",
+    "$rust_build:ring",
   ]
 }
 
@@ -259,7 +269,7 @@ run_node("deno_runtime_declaration") {
     ":msg_ts",
   ]
   args = [
-    rebase_path("node_modules/.bin/ts-node", root_build_dir),
+    rebase_path("node_modules/ts-node/dist/bin.js", root_build_dir),
     "--project",
     rebase_path("tools/ts_library_builder/tsconfig.json"),
     rebase_path("tools/ts_library_builder/main.ts", root_build_dir),
@@ -278,17 +288,17 @@ run_node("deno_runtime_declaration") {
 
 run_node("bundle") {
   out_dir = "$target_gen_dir/bundle/"
-  sources = ts_sources + [ "rollup.config.js" ]
   outputs = [
     out_dir + "main.js",
     out_dir + "main.js.map",
   ]
+  depfile = out_dir + "main.d"
   deps = [
     ":deno_runtime_declaration",
     ":msg_ts",
   ]
   args = [
-    "./node_modules/rollup/bin/rollup",
+    rebase_path("third_party/node_modules/rollup/bin/rollup", root_build_dir),
     "-c",
     rebase_path("rollup.config.js", root_build_dir),
     "-i",
@@ -298,8 +308,6 @@ run_node("bundle") {
     "--sourcemapFile",
     rebase_path("."),
     "--silent",
-    "--environment",
-    "BASEPATH:" + rebase_path(".", root_build_dir),
   ]
 }
 

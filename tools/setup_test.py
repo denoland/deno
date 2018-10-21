@@ -1,5 +1,4 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
 import os
 from setup import gn_string, read_gn_args, write_gn_args
 from shutil import rmtree
