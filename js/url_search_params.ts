@@ -2,7 +2,7 @@
 export class URLSearchParams {
   private params: Array<[string, string]> = [];
 
-  public constructor(init: string | string[][] | Record<string, string> = "") {
+  constructor(init: string | string[][] | Record<string, string> = "") {
     if (typeof init === "string") {
       // Overload: USVString
       // If init is a string and starts with U+003F (?),
@@ -39,7 +39,7 @@ export class URLSearchParams {
    *       searchParams.append('name', 'first');
    *       searchParams.append('name', 'second');
    */
-  public append(name: string, value: string): void {
+  append(name: string, value: string): void {
     this.params.push([name, value]);
   }
 
@@ -48,7 +48,7 @@ export class URLSearchParams {
    *
    *       searchParams.delete('name');
    */
-  public delete(name: string): void {
+  delete(name: string): void {
     let i = 0;
     while (i < this.params.length) {
       if (this.params[i][0] === name) {
@@ -64,7 +64,7 @@ export class URLSearchParams {
    *
    *       searchParams.getAll('name');
    */
-  public getAll(name: string): string[] {
+  getAll(name: string): string[] {
     const values = [];
     for (const entry of this.params) {
       if (entry[0] === name) {
@@ -79,7 +79,7 @@ export class URLSearchParams {
    *
    *       searchParams.get('name');
    */
-  public get(name: string): string | null {
+  get(name: string): string | null {
     for (const entry of this.params) {
       if (entry[0] === name) {
         return entry[1];
@@ -94,7 +94,7 @@ export class URLSearchParams {
    *
    *       searchParams.has('name');
    */
-  public has(name: string): boolean {
+  has(name: string): boolean {
     return this.params.some(entry => entry[0] === name);
   }
 
@@ -105,7 +105,7 @@ export class URLSearchParams {
    *
    *       searchParams.set('name', 'value');
    */
-  public set(name: string, value: string): void {
+  set(name: string, value: string): void {
     this.delete(name);
     this.append(name, value);
   }
@@ -116,7 +116,7 @@ export class URLSearchParams {
    *
    *       searchParams.sort();
    */
-  public sort(): void {
+  sort(): void {
     this.params = this.params.sort(
       (a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1)
     );
@@ -131,7 +131,7 @@ export class URLSearchParams {
    *       });
    *
    */
-  public forEach(
+  forEach(
     callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
     // tslint:disable-next-line:no-any
     thisArg?: any
@@ -151,7 +151,7 @@ export class URLSearchParams {
    *         console.log(key);
    *       }
    */
-  public *keys(): Iterable<string> {
+  *keys(): Iterable<string> {
     for (const entry of this.params) {
       yield entry[0];
     }
@@ -164,7 +164,7 @@ export class URLSearchParams {
    *         console.log(value);
    *       }
    */
-  public *values(): Iterable<string> {
+  *values(): Iterable<string> {
     for (const entry of this.params) {
       yield entry[1];
     }
@@ -177,7 +177,7 @@ export class URLSearchParams {
    *         console.log(key, value);
    *       }
    */
-  public *entries(): Iterable<[string, string]> {
+  *entries(): Iterable<[string, string]> {
     yield* this.params;
   }
 
@@ -188,7 +188,7 @@ export class URLSearchParams {
    *         console.log(key, value);
    *       }
    */
-  public *[Symbol.iterator](): Iterable<[string, string]> {
+  *[Symbol.iterator](): Iterable<[string, string]> {
     yield* this.params;
   }
 
@@ -196,7 +196,7 @@ export class URLSearchParams {
    *
    *        searchParams.toString();
    */
-  public toString(): string {
+  toString(): string {
     return this.params
       .map(
         tuple =>
