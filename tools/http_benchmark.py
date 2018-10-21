@@ -33,11 +33,7 @@ def http_benchmark(deno_exe, hyper_hello_exe):
     node_rps = node_http_benchmark()
     hyper_http_rps = hyper_http_benchmark(hyper_hello_exe)
 
-    return {
-        "deno": deno_rps,
-        "node": node_rps,
-        "hyper": hyper_http_rps
-    }
+    return {"deno": deno_rps, "node": node_rps, "hyper": hyper_http_rps}
 
 
 def run(server_cmd):

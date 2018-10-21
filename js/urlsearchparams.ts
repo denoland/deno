@@ -2,9 +2,7 @@
 export class URLSearchParams {
   private params: Array<[string, string]> = [];
 
-  public constructor(
-    init: string | string[][] | Record<string, string> = ""
-  ) {
+  public constructor(init: string | string[][] | Record<string, string> = "") {
     if (typeof init === "string") {
       // Overload: USVString
       // If init is a string and starts with U+003F (?),
