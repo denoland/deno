@@ -87,6 +87,7 @@ before_script:
 - ./tools/setup.py
 script:
 - ./tools/lint.py
+- ./tools/test_format.py
 - bash -c "sleep 2100; pkill ninja" &
 - ./tools/build.py -j2
 - ./tools/test.py $DENO_BUILD_PATH
