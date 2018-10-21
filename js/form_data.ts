@@ -1,5 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
+import { CreateIterableIterator } from "./util";
 import { DenoBlob } from "./blob";
 import { DenoFile } from "./file";
 
@@ -127,10 +128,10 @@ export class FormData implements domTypes.FormData {
    *         console.log(key);
    *       }
    */
-  *keys(): Iterable<string> {
-    for (const entry of this.data) {
-      yield entry[0];
-    }
+  keys(): IterableIterator<string> {
+    const list = this.data.map(entry => entry[0]);
+    const iterators = list.values();
+    return new CreateIterableIterator(iterators);
   }
 
   /** Returns an iterator allowing to go through all values contained
@@ -140,10 +141,10 @@ export class FormData implements domTypes.FormData {
    *         console.log(value);
    *       }
    */
-  *values(): Iterable<domTypes.FormDataEntryValue> {
-    for (const entry of this.data) {
-      yield entry[1];
-    }
+  values(): IterableIterator<domTypes.FormDataEntryValue> {
+    const list = this.data.map(entry => entry[1]);
+    const iterators = list.values();
+    return new CreateIterableIterator(iterators);
   }
 
   /** Returns an iterator allowing to go through all key/value
@@ -153,8 +154,9 @@ export class FormData implements domTypes.FormData {
    *         console.log(key, value);
    *       }
    */
-  *entries(): Iterable<[string, domTypes.FormDataEntryValue]> {
-    yield* this.data;
+  entries(): IterableIterator<[string, domTypes.FormDataEntryValue]> {
+    const iterators = this.data.values();
+    return new CreateIterableIterator(iterators);
   }
 
   /** Returns an iterator allowing to go through all key/value
@@ -164,7 +166,8 @@ export class FormData implements domTypes.FormData {
    *         console.log(key, value);
    *       }
    */
-  *[Symbol.iterator](): Iterable<[string, domTypes.FormDataEntryValue]> {
-    yield* this.data;
+  [Symbol.iterator](): IterableIterator<[string, domTypes.FormDataEntryValue]> {
+    const iterators = this.data.values();
+    return new CreateIterableIterator(iterators);
   }
 }
