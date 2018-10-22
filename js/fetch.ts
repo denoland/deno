@@ -128,6 +128,7 @@ class FetchResponse implements domTypes.Response {
   readonly trailer: Promise<domTypes.Headers>;
   //private bodyChunks: Uint8Array[] = [];
   private first = true;
+  private bodyData: ArrayBuffer;
   private bodyWaiter: Resolvable<ArrayBuffer>;
 
   constructor(
@@ -138,6 +139,7 @@ class FetchResponse implements domTypes.Response {
     this.bodyWaiter = createResolvable();
     this.trailer = createResolvable();
     this.headers = new DenoHeaders(headersList);
+    this.bodyData = body_;
     setTimeout(() => {
       this.bodyWaiter.resolve(body_);
     }, 0);
@@ -175,8 +177,19 @@ class FetchResponse implements domTypes.Response {
   }
 
   clone(): domTypes.Response {
-    notImplemented();
-    return {} as domTypes.Response;
+    if (this.bodyUsed) {
+      throw new TypeError(
+        "Failed to execute 'clone' on 'Response': Response body is already used"
+      );
+    }
+
+    const iterators = this.headers.entries();
+    const headersList: Array<[string, string]> = [];
+    for (const header of iterators) {
+      headersList.push(header);
+    }
+
+    return new FetchResponse(this.status, this.bodyData.slice(0), headersList);
   }
 
   onHeader?: (res: FetchResponse) => void;
