@@ -4,6 +4,7 @@
 // But it can also be run manually: ./out/debug/deno js/unit_tests.ts
 import "./compiler_test.ts";
 import "./console_test.ts";
+import "./event_test.ts";
 import "./fetch_test.ts";
 import "./os_test.ts";
 import "./files_test.ts";

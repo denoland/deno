@@ -1,6 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as blob from "./blob";
 import * as console from "./console";
+import * as event from "./event";
 import * as fetch_ from "./fetch";
 import { globalEval } from "./global_eval";
 import { libdeno } from "./libdeno";
@@ -34,6 +35,8 @@ window.TextDecoder = textEncoding.TextDecoder;
 window.atob = textEncoding.atob;
 window.btoa = textEncoding.btoa;
 
+window.Event = event.Event;
+window.EventInit = event.EventInit;
 window.URLSearchParams = urlsearchparams.URLSearchParams;
 
 window.fetch = fetch_.fetch;
