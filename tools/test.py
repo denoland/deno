@@ -23,6 +23,7 @@ def check_exists(filename):
 
 
 def main(build_dir):
+    assert os.path.isdir(build_dir):
     deno_dir = os.path.join(build_dir, ".deno_test")
     if os.path.isdir(deno_dir):
         rmtree(deno_dir)
