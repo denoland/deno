@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser()
 build_option_group = parser.add_mutually_exclusive_group()
 build_option_group.add_argument("--release", action="store_true")
 
+
 def main(argv):
     enable_ansi_colors()
 
