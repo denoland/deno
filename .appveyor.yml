@@ -223,8 +223,6 @@ for:
       APPVEYOR_CACHE_SKIP_SAVE: true
 
 cache:
-  # Python packages installed with `pip --user`.
-  - $(APPDATA)\Python
   # Rust stuff.
   - $(CARGO_HOME)
   - $(RUSTUP_HOME)
@@ -277,22 +275,10 @@ install:
   # Make sure the right Python version is in PATH, and others are not.
   - ps: |-
       # Remove the wrong Python version(s) from PATH.
-      $p = $env:PATH -split ";" | where {
-             -not (Test-Path "$_\python.exe") -and
-             -not (Test-Path "$_\pip.exe")
-           }
-      # Add binary dir for `pip --user` packages.
-      $p += "$env:APPDATA\Python\Scripts"
+      $p = $env:PATH -split ";" | where { -not (Test-Path "$_\python.exe") }
       # Add python27-x64.
       $p += "C:\Python27-x64"
-      $p += "C:\Python27-x64\Scripts"
       $env:PATH = $p -join ";"
-
-  # Pip on Appveyor is too old. Install a recent version in our user dir.
-  - python -m pip install --upgrade --user --no-cache-dir pip
-
-  # Install Python packages.
-  - pip install --upgrade --user --no-cache-dir pywin32 yapf
 
   # Add Rust/Cargo to PATH.
   - ps: $env:PATH += ";$env:CARGO_HOME\bin"
@@ -338,7 +324,6 @@ install:
         "print 'Python', version") -join "`n" | & python -
 
   # Log some more versions.
-  - pip --version
   - rustc --version
   - cargo --version
 
