@@ -253,6 +253,7 @@ fn op_code_fetch(
     let mut msg_args = msg::CodeFetchResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
+      media_type: out.media_type,
       source_code: Some(builder.create_string(&out.source_code)),
       ..Default::default()
     };
