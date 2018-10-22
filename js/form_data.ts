@@ -4,8 +4,10 @@ import { CreateIterableIterator } from "./util";
 import * as blob from "./blob";
 import * as file from "./file";
 
+const dataSymbol = Symbol("data");
+
 export class FormData implements domTypes.FormData {
-  private data: Array<[string, domTypes.FormDataEntryValue]> = [];
+  private [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
 
   /** Appends a new value onto an existing key inside a `FormData`
    * object, or adds the key if it does not already exist.
@@ -18,9 +20,9 @@ export class FormData implements domTypes.FormData {
   append(name: string, value: string | blob.DenoBlob, filename?: string): void {
     if (value instanceof blob.DenoBlob) {
       const dfile = new file.DenoFile([value], filename || name);
-      this.data.push([name, dfile]);
+      this[dataSymbol].push([name, dfile]);
     } else {
-      this.data.push([name, value]);
+      this[dataSymbol].push([name, value]);
     }
   }
 
@@ -30,9 +32,9 @@ export class FormData implements domTypes.FormData {
    */
   delete(name: string): void {
     let i = 0;
-    while (i < this.data.length) {
-      if (this.data[i][0] === name) {
-        this.data.splice(i, 1);
+    while (i < this[dataSymbol].length) {
+      if (this[dataSymbol][i][0] === name) {
+        this[dataSymbol].splice(i, 1);
       } else {
         i++;
       }
@@ -46,7 +48,7 @@ export class FormData implements domTypes.FormData {
    */
   getAll(name: string): domTypes.FormDataEntryValue[] {
     const values = [];
-    for (const entry of this.data) {
+    for (const entry of this[dataSymbol]) {
       if (entry[0] === name) {
         values.push(entry[1]);
       }
@@ -61,7 +63,7 @@ export class FormData implements domTypes.FormData {
    *       formData.get('name');
    */
   get(name: string): domTypes.FormDataEntryValue | null {
-    for (const entry of this.data) {
+    for (const entry of this[dataSymbol]) {
       if (entry[0] === name) {
         return entry[1];
       }
@@ -76,7 +78,7 @@ export class FormData implements domTypes.FormData {
    *       formData.has('name');
    */
   has(name: string): boolean {
-    return this.data.some(entry => entry[0] === name);
+    return this[dataSymbol].some(entry => entry[0] === name);
   }
 
   /** Sets a new value for an existing key inside a `FormData` object, or
@@ -90,9 +92,9 @@ export class FormData implements domTypes.FormData {
     this.delete(name);
     if (value instanceof blob.DenoBlob) {
       const dfile = new file.DenoFile([value], filename || name);
-      this.data.push([name, dfile]);
+      this[dataSymbol].push([name, dfile]);
     } else {
-      this.data.push([name, value]);
+      this[dataSymbol].push([name, value]);
     }
   }
 
@@ -129,7 +131,7 @@ export class FormData implements domTypes.FormData {
    *       }
    */
   keys(): IterableIterator<string> {
-    const list = this.data.map(entry => entry[0]);
+    const list = this[dataSymbol].map(entry => entry[0]);
     const iterators = list.values();
     return new CreateIterableIterator(iterators);
   }
@@ -142,7 +144,7 @@ export class FormData implements domTypes.FormData {
    *       }
    */
   values(): IterableIterator<domTypes.FormDataEntryValue> {
-    const list = this.data.map(entry => entry[1]);
+    const list = this[dataSymbol].map(entry => entry[1]);
     const iterators = list.values();
     return new CreateIterableIterator(iterators);
   }
@@ -155,7 +157,7 @@ export class FormData implements domTypes.FormData {
    *       }
    */
   entries(): IterableIterator<[string, domTypes.FormDataEntryValue]> {
-    const iterators = this.data.values();
+    const iterators = this[dataSymbol].values();
     return new CreateIterableIterator(iterators);
   }
 
@@ -167,7 +169,7 @@ export class FormData implements domTypes.FormData {
    *       }
    */
   [Symbol.iterator](): IterableIterator<[string, domTypes.FormDataEntryValue]> {
-    const iterators = this.data.values();
+    const iterators = this[dataSymbol].values();
     return new CreateIterableIterator(iterators);
   }
 }
