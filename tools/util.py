@@ -19,6 +19,20 @@ def make_env(merge_env={}, env=None):
     return env
 
 
+def add_env_path(add, env, key="PATH", prepend=False):
+    dirs_left = env[key].split(os.pathsep) if key in env else []
+    dirs_right = add.split(os.pathsep) if type(add) is str else add
+
+    if prepend:
+        dirs_left, dirs_right = dirs_right, dirs_left
+
+    for dir in dirs_right:
+        if not dir in dirs_left:
+            dirs_left += [dir]
+
+    env[key] = os.pathsep.join(dirs_left)
+
+
 def run(args, quiet=False, cwd=None, env=None, merge_env={}):
     args[0] = os.path.normpath(args[0])
     if not quiet:
