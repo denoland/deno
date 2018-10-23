@@ -26,6 +26,7 @@ type DenoRecvCb = unsafe extern "C" fn(
   data_buf: deno_buf,
 );
 
+#[link(name = "libdeno", kind = "static")]
 extern "C" {
   pub fn deno_init();
   pub fn deno_v8_version() -> *const c_char;
