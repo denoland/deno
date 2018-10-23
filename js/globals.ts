@@ -7,6 +7,7 @@ import { libdeno } from "./libdeno";
 import * as textEncoding from "./text_encoding";
 import * as timers from "./timers";
 import * as urlSearchParams from "./url_search_params";
+import * as domTypes from "./dom_types";
 
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
@@ -38,5 +39,7 @@ window.URLSearchParams = urlSearchParams.URLSearchParams;
 
 window.fetch = fetch_.fetch;
 
-window.Headers = fetch_.DenoHeaders;
+// using the `as` keyword to mask the internal types when generating the
+// runtime library
+window.Headers = fetch_.Headers as domTypes.HeadersConstructor;
 window.Blob = blob.DenoBlob;

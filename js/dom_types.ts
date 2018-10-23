@@ -13,7 +13,10 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 *******************************************************************************/
 
-export type HeadersInit = Headers | string[][] | Record<string, string>;
+export type HeadersInit =
+  | Headers
+  | Array<[string, string]>
+  | Record<string, string>;
 export type URLSearchParamsInit = string | string[][] | Record<string, string>;
 type BodyInit =
   | Blob
@@ -35,6 +38,18 @@ type FormDataEntryValue = File | string;
 export type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
+
+export interface DomIterable<K, V> {
+  keys(): IterableIterator<K>;
+  values(): IterableIterator<V>;
+  entries(): IterableIterator<[K, V]>;
+  [Symbol.iterator](): IterableIterator<[K, V]>;
+  forEach(
+    callback: (value: V, key: K, parent: this) => void,
+    // tslint:disable-next-line:no-any
+    thisArg?: any
+  ): void;
+}
 
 interface Element {
   // TODO
@@ -289,7 +304,7 @@ interface Body {
   text(): Promise<string>;
 }
 
-export interface Headers {
+export interface Headers extends DomIterable<string, string> {
   /** Appends a new value onto an existing header inside a `Headers` object, or
    * adds the header if it does not already exist.
    */
@@ -322,7 +337,7 @@ export interface Headers {
    */
   values(): IterableIterator<string>;
   forEach(
-    callbackfn: (value: string, key: string, parent: Headers) => void,
+    callbackfn: (value: string, key: string, parent: this) => void,
     // tslint:disable-next-line:no-any
     thisArg?: any
   ): void;
@@ -330,6 +345,11 @@ export interface Headers {
    * iterator for this Headers object
    */
   [Symbol.iterator](): IterableIterator<[string, string]>;
+}
+
+export interface HeadersConstructor {
+  new (init?: HeadersInit): Headers;
+  prototype: Headers;
 }
 
 type RequestCache =
