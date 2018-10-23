@@ -42,8 +42,6 @@ def main(argv):
 
     deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
     check_exists(deno_exe)
-    deno_ns_exe = os.path.join(build_dir, "deno_ns" + executable_suffix)
-    check_exists(deno_ns_exe)
 
     # Internal tools testing
     setup_test()
@@ -61,7 +59,6 @@ def main(argv):
     unit_tests(deno_exe)
 
     check_output_test(deno_exe)
-    check_output_test(deno_ns_exe)
 
     rmtree(deno_dir)
 
