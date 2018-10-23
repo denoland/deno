@@ -1,6 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-#![allow(dead_code)]
-extern crate libc;
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
@@ -11,7 +9,7 @@ pub struct isolate {
 }
 
 #[repr(C)]
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct deno_buf {
   pub alloc_ptr: *mut u8,
   pub alloc_len: usize,
@@ -30,7 +28,7 @@ extern "C" {
   pub fn deno_init();
   pub fn deno_v8_version() -> *const c_char;
   pub fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char);
-  pub fn deno_new(cb: DenoRecvCb) -> *const isolate;
+  pub fn deno_new(snapshot: deno_buf, cb: DenoRecvCb) -> *const isolate;
   pub fn deno_delete(i: *const isolate);
   pub fn deno_last_exception(i: *const isolate) -> *const c_char;
   pub fn deno_check_promise_errors(i: *const isolate);
