@@ -22,6 +22,12 @@ def node_http_benchmark():
     return run(node_cmd)
 
 
+def node_tcp_benchmark():
+    node_cmd = ["node", "tools/node_tcp.js", ADDR.split(":")[1]]
+    print "http_benchmark testing node_tcp.js"
+    return run(node_cmd)
+
+
 def hyper_http_benchmark(hyper_hello_exe):
     hyper_cmd = [hyper_hello_exe, ADDR.split(":")[1]]
     print "http_benchmark testing RUST hyper."
@@ -29,11 +35,13 @@ def hyper_http_benchmark(hyper_hello_exe):
 
 
 def http_benchmark(deno_exe, hyper_hello_exe):
-    deno_rps = deno_http_benchmark(deno_exe)
-    node_rps = node_http_benchmark()
-    hyper_http_rps = hyper_http_benchmark(hyper_hello_exe)
-
-    return {"deno": deno_rps, "node": node_rps, "hyper": hyper_http_rps}
+    r = {}
+    # TODO Rename to "deno_tcp"
+    r["deno"] = deno_http_benchmark(deno_exe)
+    r["node"] = node_http_benchmark()
+    r["node_tcp"] = node_tcp_benchmark()
+    r["hyper"] = hyper_http_benchmark(hyper_hello_exe)
+    return r
 
 
 def run(server_cmd):
