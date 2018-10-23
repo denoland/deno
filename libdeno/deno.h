@@ -30,7 +30,7 @@ void deno_init();
 const char* deno_v8_version();
 void deno_set_v8_flags(int* argc, char** argv);
 
-Deno* deno_new(deno_recv_cb cb);
+Deno* deno_new(deno_buf snapshot, deno_recv_cb cb);
 void deno_delete(Deno* d);
 
 // Returns false on error.

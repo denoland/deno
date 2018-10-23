@@ -124,7 +124,47 @@ rust_executable("deno") {
   extern = main_extern
   deps = [
     ":libdeno",
+    ":snapshot",
   ]
+}
+
+source_set("snapshot") {
+  sources = [
+    "src/snapshot.cc",
+  ]
+  configs += [ ":deno_config" ]
+  data = [
+    "$target_gen_dir/snapshot_deno.bin",
+  ]
+  deps = [
+    ":create_snapshot_deno",
+  ]
+
+  # snapshot.cc doesn't need to depend on libdeno, it just needs deno_buf.
+  include_dirs = [ "libdeno/" ]
+
+  # src/snapshot.cc uses an assembly '.incbin' directive to embed the snapshot.
+  # This causes trouble when using sccache: since the snapshot file is not
+  # inlined by the c preprocessor, sccache doesn't take its contents into
+  # consideration, leading to false-positive cache hits.
+  # Maybe other caching tools have this issue too, but ccache is unaffected.
+  # Therefore, if a cc_wrapper is used that isn't ccache, include a generated
+  # header file that contains the the sha256 hash of the snapshot.
+  if (cc_wrapper != "" && cc_wrapper != "ccache") {
+    hash_h = "$target_gen_dir/bundle/hash.h"
+    inputs = [
+      hash_h,
+    ]
+    deps += [ ":bundle_hash_h" ]
+    if (is_win) {
+      cflags = [ "/FI" + rebase_path(hash_h, target_out_dir) ]
+    } else {
+      cflags = [
+        "-include",
+        rebase_path(hash_h, target_out_dir),
+      ]
+    }
+  }
 }
 
 rust_executable("hyper_hello") {
@@ -140,100 +180,48 @@ rust_test("test_rs") {
   extern = main_extern
   deps = [
     ":libdeno",
+    ":snapshot",
   ]
 }
 
 v8_executable("test_cc") {
   testonly = true
   sources = [
+    "libdeno/file_util_test.cc",
+    "libdeno/libdeno_test.cc",
     "libdeno/test.cc",
   ]
   deps = [
-    ":deno_base_test",
+    ":create_snapshot_libdeno_test",
+    ":libdeno",
     "//testing/gtest:gtest",
   ]
+  data = [
+    "$target_gen_dir/snapshot_libdeno_test.bin",
+  ]
+  snapshot_abs_path = rebase_path(data[0])
+  defines = [ "SNAPSHOT_PATH=\"$snapshot_abs_path\"" ]
   configs = [ ":deno_config" ]
-}
-
-static_library("libdeno") {
-  complete_static_lib = true
-  sources = [
-    "libdeno/from_snapshot.cc",
-  ]
-  inputs = [
-    "$target_gen_dir/snapshot_deno.bin",
-  ]
-  deps = [
-    ":create_snapshot_deno",
-    ":deno_bindings",
-  ]
-  configs += [ ":deno_config" ]
-
-  # from_snapshot.cc uses an assembly '.incbin' directive to embed the snapshot.
-  # This causes trouble when using sccache: since the snapshot file is not
-  # inlined by the c preprocessor, sccache doesn't take its contents into
-  # consideration, leading to false-positive cache hits.
-  # Maybe other caching tools have this issue too, but ccache is unaffected.
-  # Therefore, if a cc_wrapper is used that isn't ccache, include a generated
-  # header file that contains the the sha256 hash of the snapshot.
-  if (cc_wrapper != "" && cc_wrapper != "ccache") {
-    hash_h = "$target_gen_dir/bundle/hash.h"
-    inputs += [ hash_h ]
-    deps += [ ":bundle_hash_h" ]
-    if (is_win) {
-      cflags = [ "/FI" + rebase_path(hash_h, target_out_dir) ]
-    } else {
-      cflags = [
-        "-include",
-        rebase_path(hash_h, target_out_dir),
-      ]
-    }
-  }
 }
 
 # Only functionality needed for libdeno_test and snapshot_creator
 # In particular no flatbuffers, no assets, no rust, no msg handlers.
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
-v8_source_set("deno_base") {
+static_library("libdeno") {
+  complete_static_lib = true
   sources = [
     "libdeno/binding.cc",
     "libdeno/deno.h",
     "libdeno/file_util.cc",
     "libdeno/file_util.h",
     "libdeno/internal.h",
+    "libdeno/new.cc",
   ]
   public_deps = [
     "third_party/v8:v8_monolith",
   ]
-  configs = [ ":deno_config" ]
-}
-
-v8_source_set("deno_base_test") {
-  testonly = true
-  sources = [
-    "libdeno/file_util_test.cc",
-    "libdeno/from_snapshot.cc",
-    "libdeno/libdeno_test.cc",
-    "libdeno/test.cc",
-  ]
-  deps = [
-    ":create_snapshot_libdeno_test",
-    ":deno_base",
-    "//testing/gtest:gtest",
-  ]
-  data = [
-    "$target_gen_dir/snapshot_libdeno_test.bin",
-  ]
-  defines = [ "LIBDENO_TEST" ]
-  configs = [ ":deno_config" ]
-}
-
-v8_source_set("deno_bindings") {
-  deps = [
-    ":deno_base",
-  ]
-  configs = [ ":deno_config" ]
+  configs += [ ":deno_config" ]
 }
 
 executable("snapshot_creator") {
@@ -241,7 +229,7 @@ executable("snapshot_creator") {
     "libdeno/snapshot_creator.cc",
   ]
   deps = [
-    ":deno_base",
+    ":libdeno",
   ]
   configs += [ ":deno_config" ]
 }

@@ -8,6 +8,7 @@ use deno_dir;
 use errors::DenoError;
 use flags;
 use libdeno;
+use snapshot;
 
 use futures::Future;
 use libc::c_void;
@@ -109,7 +110,9 @@ impl Isolate {
       unsafe { libdeno::deno_init() };
     });
 
-    let libdeno_isolate = unsafe { libdeno::deno_new(pre_dispatch) };
+    let libdeno_isolate = unsafe {
+      libdeno::deno_new(snapshot::deno_snapshot.clone(), pre_dispatch)
+    };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
 
