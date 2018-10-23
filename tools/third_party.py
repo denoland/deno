@@ -161,7 +161,6 @@ def run_pip():
         merge_env=pip_env)
 
     # Get yapf.
-    # Install pywin32.
     run([
         sys.executable, "-m", "pip", "install", "--upgrade", "--target",
         python_packages_path, "yapf"
