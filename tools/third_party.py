@@ -160,6 +160,14 @@ def run_pip():
         cwd=third_party_path,
         merge_env=pip_env)
 
+    # Get yapf.
+    # Install pywin32.
+    run([
+        sys.executable, "-m", "pip", "install", "--upgrade", "--target",
+        python_packages_path, "yapf"
+    ],
+        cwd=third_party_path,
+        merge_env=pip_env)
     # Remove the temporary pip installation.
     rmtree(temp_python_home)
 
