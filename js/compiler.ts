@@ -152,7 +152,6 @@ export class DenoCompiler
   // arguments
   private readonly _options: Readonly<ts.CompilerOptions> = {
     allowJs: true,
-    checkJs: true,
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
     // TODO https://github.com/denoland/deno/issues/23
