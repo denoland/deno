@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
+    "allowJs": true,
     "allowUnreachableCode": false,
     "baseUrl": ".",
+    "checkJs": true,
     "module": "esnext",
     "moduleResolution": "node",
     "noImplicitReturns": true,
