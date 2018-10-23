@@ -7,8 +7,6 @@ import {
   createThreadCountColumns,
   createSyscallCountColumns,
   createSha1List,
-  formatBytes,
-  formatSeconds,
   getTravisData
 } from "./app.js";
 
@@ -193,20 +191,6 @@ test(function createSyscallCountColumnsIrregularData() {
 test(function createSha1ListRegularData() {
   const sha1List = createSha1List(regularData);
   assertEqual(sha1List, ["abcdef", "012345"]);
-});
-
-test(function formatBytesPatterns() {
-  assertEqual(formatBytes(18000), "17.58 KB");
-  assertEqual(formatBytes(1800000), "1.72 MB");
-  assertEqual(formatBytes(180000000), "171.66 MB");
-  assertEqual(formatBytes(18000000000), "16.76 GB");
-});
-
-test(function formatSecondsPatterns() {
-  assertEqual(formatSeconds(10), "0 min");
-  assertEqual(formatSeconds(100), "2 min");
-  assertEqual(formatSeconds(1000), "17 min");
-  assertEqual(formatSeconds(10000), "167 min");
 });
 
 testPerm({ net: true }, async function getTravisDataSuccess() {
