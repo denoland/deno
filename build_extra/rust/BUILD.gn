@@ -114,6 +114,7 @@ rust_crate("winapi") {
     "cfg",
     "cfgmgr32",
     "combaseapi",
+    "dbghelp",
     "errhandlingapi",
     "excpt",
     "fileapi",
@@ -919,4 +920,30 @@ rust_crate("parking_lot_core") {
 rust_crate("lock_api") {
   source_root = "$registry_github/lock_api-0.1.3/src/lib.rs"
   extern = [ ":scopeguard" ]
+}
+
+rust_crate("backtrace_sys") {
+  source_root = "$registry_github/backtrace-sys-0.1.24/src/lib.rs"
+  extern = [ ":libc" ]
+}
+
+rust_crate("rustc_demangle") {
+  source_root = "$registry_github/rustc-demangle-0.1.9/src/lib.rs"
+  extern = []
+}
+
+rust_crate("backtrace") {
+  source_root = "$registry_github/backtrace-0.3.9/src/lib.rs"
+  features = [
+    "libunwind",
+    "libbacktrace",
+    "coresymbolication",
+    "dladdr",
+    "dbghelp",
+  ]
+  extern = [
+    ":libc",
+    ":cfg_if",
+    ":rustc_demangle",
+  ]
 }

@@ -17,6 +17,7 @@ extern crate url;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate backtrace;
 extern crate dirs;
 extern crate hyper_rustls;
 extern crate remove_dir_all;
@@ -35,6 +36,7 @@ mod tokio_util;
 mod tokio_write;
 mod version;
 
+use backtrace::Backtrace;
 use std::env;
 
 static LOGGER: Logger = Logger;
@@ -59,11 +61,28 @@ fn main() {
   // https://github.com/rust-lang/cargo/issues/2738
   // Therefore this hack.
   std::panic::set_hook(Box::new(|panic_info| {
+    eprintln!(
+      "PANIC occurred: {:?}",
+      panic_info.payload().downcast_ref::<&str>().unwrap()
+    );
     if let Some(location) = panic_info.location() {
-      eprintln!("PANIC file '{}' line {}", location.file(), location.line());
+      eprintln!(
+        "   at file '{}' line {} column {}",
+        location.file(),
+        location.line(),
+        location.column()
+      );
     } else {
-      eprintln!("PANIC occurred but can't get location information...");
+      eprintln!("   at unknown location...");
     }
+
+    if env::var("RUST_BACKTRACE").is_err() {
+      eprintln!("note: Run with `RUST_BACKTRACE=1` for a backtrace.");
+    } else {
+      eprintln!("Generating backtrace (this may take a while)...");
+      eprintln!("{:#?}", Backtrace::new());
+    }
+
     std::process::abort();
   }));
 
