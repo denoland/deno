@@ -1,0 +1,15 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+const { Server } = require("net");
+const port = process.argv[2] || "4544";
+console.log("port", port);
+
+const response = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n";
+
+Server(socket => {
+  socket.on("data", _ => {
+    socket.write(response);
+  });
+  socket.on("error", _ => {
+    socket.destroy();
+  });
+}).listen(port);
