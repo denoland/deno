@@ -12,7 +12,6 @@ group("default") {
   testonly = true
   deps = [
     ":deno",
-    ":deno_ns",
     ":hyper_hello",
     ":test_cc",
     ":test_rs",
@@ -128,18 +127,6 @@ rust_executable("deno") {
   ]
 }
 
-# This target is for fast incremental development.
-# When modifying the javascript runtime, this target will not go through the
-# extra process of building a snapshot and instead load the bundle from disk.
-# ns = no snapshot
-rust_executable("deno_ns") {
-  source_root = "src/main.rs"
-  extern = main_extern
-  deps = [
-    ":libdeno_nosnapshot",
-  ]
-}
-
 rust_executable("hyper_hello") {
   source_root = "tools/hyper_hello.rs"
   extern = [
@@ -228,14 +215,15 @@ v8_source_set("deno_base_test") {
     "libdeno/file_util_test.cc",
     "libdeno/from_snapshot.cc",
     "libdeno/libdeno_test.cc",
-  ]
-  inputs = [
-    "$target_gen_dir/snapshot_libdeno_test.bin",
+    "libdeno/test.cc",
   ]
   deps = [
     ":create_snapshot_libdeno_test",
     ":deno_base",
     "//testing/gtest:gtest",
+  ]
+  data = [
+    "$target_gen_dir/snapshot_libdeno_test.bin",
   ]
   defines = [ "LIBDENO_TEST" ]
   configs = [ ":deno_config" ]
@@ -333,25 +321,6 @@ action("bundle_hash_h") {
       rebase_path(input, root_build_dir),
     ]
   }
-}
-
-source_set("libdeno_nosnapshot") {
-  bundle_outputs = get_target_outputs(":bundle")
-  bundle_location = rebase_path(bundle_outputs[0], root_build_dir)
-  bundle_map_location = rebase_path(bundle_outputs[1], root_build_dir)
-  inputs = bundle_outputs
-  sources = [
-    "libdeno/from_filesystem.cc",
-  ]
-  deps = [
-    ":bundle",
-    ":deno_bindings",
-  ]
-  configs += [ ":deno_config" ]
-  defines = [
-    "BUNDLE_LOCATION=\"$bundle_location\"",
-    "BUNDLE_MAP_LOCATION=\"$bundle_map_location\"",
-  ]
 }
 
 ts_flatbuffer("msg_ts") {
