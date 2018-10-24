@@ -16,6 +16,17 @@ TEST(LibDenoTest, InitializesCorrectlyWithoutSnapshot) {
   deno_delete(d);
 }
 
+TEST(LibDenoTest, Snapshotter) {
+  Deno* d1 = deno_new_snapshotter(nullptr, "a.js", "a = 1 + 2", nullptr);
+  deno_buf test_snapshot = deno_get_snapshot(d1);
+  // TODO(ry) deno_delete(d1);
+
+  Deno* d2 = deno_new(test_snapshot, nullptr);
+  EXPECT_TRUE(
+      deno_execute(d2, nullptr, "b.js", "if (a != 3) throw Error('x');"));
+  deno_delete(d2);
+}
+
 TEST(LibDenoTest, CanCallFunction) {
   Deno* d = deno_new(snapshot, nullptr);
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js",

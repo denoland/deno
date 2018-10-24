@@ -16,6 +16,7 @@ class DenoIsolate {
   DenoIsolate(deno_buf snapshot, deno_recv_cb cb)
       : isolate_(nullptr),
         current_args_(nullptr),
+        snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
         pending_promise_events_(0),
         cb_(cb),
@@ -30,8 +31,8 @@ class DenoIsolate {
   void AddIsolate(v8::Isolate* isolate);
 
   v8::Isolate* isolate_;
-  // Put v8::Isolate::CreateParams here..
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;
+  v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
   int32_t pending_promise_events_;
   deno_recv_cb cb_;
@@ -86,17 +87,22 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(SetPromiseErrorExaminer),
     0};
 
+static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
+
 Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                       const char* js_filename, const std::string& js_source,
-                       const std::string* source_map);
+                       const char* js_filename, const char* js_source,
+                       const char* source_map);
 
 void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception);
 
 void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
                                v8::StartupData payload, void* data);
+
+v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
+                                        void* data);
 
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf);
 

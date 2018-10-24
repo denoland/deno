@@ -30,6 +30,19 @@ void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
   deserialized_data.push_back(embedder_field);
 }
 
+v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
+                                        void* data) {
+  DCHECK_EQ(data, nullptr);
+  InternalFieldData* embedder_field = static_cast<InternalFieldData*>(
+      holder->GetAlignedPointerFromInternalField(index));
+  if (embedder_field == nullptr) return {nullptr, 0};
+  int size = sizeof(*embedder_field);
+  char* payload = new char[size];
+  // We simply use memcpy to serialize the content.
+  memcpy(payload, embedder_field, size);
+  return {payload, size};
+}
+
 DenoIsolate* FromIsolate(v8::Isolate* isolate) {
   return static_cast<DenoIsolate*>(isolate->GetData(0));
 }
@@ -433,8 +446,10 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
 }
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                       const char* js_filename, const std::string& js_source,
-                       const std::string* source_map) {
+                       const char* js_filename, const char* js_source,
+                       const char* source_map) {
+  CHECK_NE(js_source, nullptr);
+  CHECK_NE(js_filename, nullptr);
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
@@ -483,7 +498,7 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
             .FromJust());
 
   {
-    auto source = deno::v8_str(js_source.c_str());
+    auto source = deno::v8_str(js_source);
     CHECK(
         deno_val->Set(context, deno::v8_str("mainSource"), source).FromJust());
 
@@ -491,10 +506,10 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
     CHECK(r);
 
     if (source_map != nullptr) {
-      CHECK_GT(source_map->length(), 1u);
       v8::TryCatch try_catch(isolate);
       v8::ScriptOrigin origin(v8_str("set_source_map.js"));
-      std::string source_map_parens = "(" + *source_map + ")";
+      std::string source_map_parens =
+          std::string("(") + std::string(source_map) + std::string(")");
       auto source_map_v8_str = deno::v8_str(source_map_parens.c_str());
       auto script = v8::Script::Compile(context, source_map_v8_str, &origin);
       if (script.IsEmpty()) {
