@@ -361,7 +361,7 @@ mod tests {
   #[test]
   fn test_dispatch_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
+    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let mut isolate = Isolate::new(flags, rest_argv, dispatch_sync);
     tokio_util::init(|| {
       isolate
@@ -401,7 +401,7 @@ mod tests {
   #[test]
   fn test_metrics_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
+    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let mut isolate = Isolate::new(flags, rest_argv, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
@@ -436,7 +436,7 @@ mod tests {
   #[test]
   fn test_metrics_async() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
+    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let mut isolate = Isolate::new(flags, rest_argv, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.

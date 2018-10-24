@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use getopts::Options;
 use libc::c_int;
 use libdeno;
 use log;
@@ -28,9 +29,9 @@ pub struct DenoFlags {
   pub types_flag: bool,
 }
 
-pub fn process(flags: &DenoFlags) {
+pub fn process(flags: &DenoFlags, usage_string: String) {
   if flags.help {
-    print_usage();
+    println!("{}", &usage_string);
     exit(0);
   }
 
@@ -41,76 +42,84 @@ pub fn process(flags: &DenoFlags) {
   log::set_max_level(log_level);
 }
 
-pub fn print_usage() {
-  println!(
-    "Usage: deno script.ts
---allow-write      Allow file system write access.
---allow-net        Allow network access.
---allow-env        Allow environment access.
---recompile        Force recompilation of TypeScript code.
--v or --version    Print the version.
--r or --reload     Reload cached remote resources.
--D or --log-debug  Log debug output.
--h or --help       Print this message.
---v8-options       Print V8 command line options.
---deps             Print module dependencies.
---types            Print runtime TypeScript declarations.
-
+pub fn get_usage(opts: &Options) -> String {
+  format!(
+    "Usage: deno script.ts {}
 Environment variables:
-DENO_DIR           Set deno's base directory."
-  );
+        DENO_DIR        Set deno's base directory.",
+    opts.usage("")
+  )
 }
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
 pub fn set_flags(
   args: Vec<String>,
-) -> Result<(DenoFlags, Vec<String>), String> {
+) -> Result<(DenoFlags, Vec<String>, String), String> {
   let args = v8_set_flags(args);
 
-  let mut flags = DenoFlags::default();
-  let mut rest = Vec::new();
-  let mut arg_iter = args.iter();
+  let mut opts = Options::new();
+  // TODO(kevinkassimo): v8_set_flags intercepts '-help' with single '-'
+  // Resolve that and then uncomment line below (enabling Go style -long-flag)
+  // opts.long_only(true);
+  opts.optflag("", "allow-write", "Allow file system write access.");
+  opts.optflag("", "allow-net", "Allow network access.");
+  opts.optflag("", "allow-env", "Allow environment access.");
+  opts.optflag("", "recompile", "Force recompilation of TypeScript code.");
+  opts.optflag("h", "help", "Print this message.");
+  opts.optflag("D", "log-debug", "Log debug output.");
+  opts.optflag("v", "version", "Print the version.");
+  opts.optflag("r", "reload", "Reload cached remote resources.");
+  opts.optflag("", "v8-options", "Print V8 command line options.");
+  opts.optflag("", "deps", "Print module dependencies.");
+  opts.optflag("", "types", "Print runtime TypeScript declarations.");
 
-  while let Some(a) = arg_iter.next() {
-    if a.len() > 1 && &a[0..2] == "--" {
-      match a.as_str() {
-        "--help" => flags.help = true,
-        "--log-debug" => flags.log_debug = true,
-        "--version" => flags.version = true,
-        "--reload" => flags.reload = true,
-        "--recompile" => flags.recompile = true,
-        "--allow-write" => flags.allow_write = true,
-        "--allow-net" => flags.allow_net = true,
-        "--allow-env" => flags.allow_env = true,
-        "--deps" => flags.deps_flag = true,
-        "--types" => flags.types_flag = true,
-        "--" => break,
-        other => return Err(format!("bad option {}", other)),
-      }
-    } else if a.len() > 1 && &a[0..1] == "-" {
-      let mut iter = a.chars().skip(1); // skip the "-"
-      while let Some(f) = iter.next() {
-        match f {
-          'h' => flags.help = true,
-          'D' => flags.log_debug = true,
-          'v' => flags.version = true,
-          'r' => flags.reload = true,
-          other => return Err(format!("bad option -{}", other)),
-        }
-      }
-    } else {
-      rest.push(a.clone());
+  let mut flags = DenoFlags::default();
+
+  let matches = match opts.parse(&args) {
+    Ok(m) => m,
+    Err(f) => {
+      return Err(f.to_string());
     }
+  };
+
+  if matches.opt_present("help") {
+    flags.help = true;
+  }
+  if matches.opt_present("log-debug") {
+    flags.log_debug = true;
+  }
+  if matches.opt_present("version") {
+    flags.version = true;
+  }
+  if matches.opt_present("reload") {
+    flags.reload = true;
+  }
+  if matches.opt_present("recompile") {
+    flags.recompile = true;
+  }
+  if matches.opt_present("allow-write") {
+    flags.allow_write = true;
+  }
+  if matches.opt_present("allow-net") {
+    flags.allow_net = true;
+  }
+  if matches.opt_present("allow-env") {
+    flags.allow_env = true;
+  }
+  if matches.opt_present("deps") {
+    flags.deps_flag = true;
+  }
+  if matches.opt_present("types") {
+    flags.types_flag = true;
   }
 
-  // add any remaining arguments to `rest`
-  rest.extend(arg_iter.map(|s| s.clone()));
-  return Ok((flags, rest));
+  let rest: Vec<_> = matches.free.iter().map(|s| s.clone()).collect();
+  return Ok((flags, rest, get_usage(&opts)));
 }
 
 #[test]
 fn test_set_flags_1() {
-  let (flags, rest) = set_flags(svec!["deno", "--version"]).unwrap();
+  let (flags, rest, _) = set_flags(svec!["deno", "--version"]).unwrap();
   assert_eq!(rest, svec!["deno"]);
   assert_eq!(
     flags,
@@ -123,7 +132,7 @@ fn test_set_flags_1() {
 
 #[test]
 fn test_set_flags_2() {
-  let (flags, rest) =
+  let (flags, rest, _) =
     set_flags(svec!["deno", "-r", "-D", "script.ts"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
@@ -138,7 +147,7 @@ fn test_set_flags_2() {
 
 #[test]
 fn test_set_flags_3() {
-  let (flags, rest) =
+  let (flags, rest, _) =
     set_flags(svec!["deno", "-r", "--deps", "script.ts", "--allow-write"])
       .unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
@@ -155,7 +164,7 @@ fn test_set_flags_3() {
 
 #[test]
 fn test_set_flags_4() {
-  let (flags, rest) =
+  let (flags, rest, _) =
     set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
@@ -171,7 +180,7 @@ fn test_set_flags_4() {
 
 #[test]
 fn test_set_flags_5() {
-  let (flags, rest) = set_flags(svec!["deno", "--types"]).unwrap();
+  let (flags, rest, _) = set_flags(svec!["deno", "--types"]).unwrap();
   assert_eq!(rest, svec!["deno"]);
   assert_eq!(
     flags,
@@ -185,14 +194,14 @@ fn test_set_flags_5() {
 #[test]
 fn test_set_bad_flags_1() {
   let err = set_flags(svec!["deno", "--unknown-flag"]).unwrap_err();
-  assert_eq!(err, "bad option --unknown-flag");
+  assert_eq!(err, "Unrecognized option: 'unknown-flag'");
 }
 
 #[test]
 fn test_set_bad_flags_2() {
   // This needs to be changed if -z is added as a flag
   let err = set_flags(svec!["deno", "-z"]).unwrap_err();
-  assert_eq!(err, "bad option -z");
+  assert_eq!(err, "Unrecognized option: 'z'");
 }
 
 // Returns args passed to V8, followed by args passed to JS
