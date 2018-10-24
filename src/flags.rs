@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use getopts::Options;
 use libc::c_int;
 use libdeno;
 use log;
@@ -26,11 +27,13 @@ pub struct DenoFlags {
   pub allow_env: bool,
   pub deps_flag: bool,
   pub types_flag: bool,
+  // message of usage
+  pub usage_string: String,
 }
 
 pub fn process(flags: &DenoFlags) {
   if flags.help {
-    print_usage();
+    println!("{}", &(flags.usage_string));
     exit(0);
   }
 
@@ -41,24 +44,13 @@ pub fn process(flags: &DenoFlags) {
   log::set_max_level(log_level);
 }
 
-pub fn print_usage() {
-  println!(
-    "Usage: deno script.ts
---allow-write      Allow file system write access.
---allow-net        Allow network access.
---allow-env        Allow environment access.
---recompile        Force recompilation of TypeScript code.
--v or --version    Print the version.
--r or --reload     Reload cached remote resources.
--D or --log-debug  Log debug output.
--h or --help       Print this message.
---v8-options       Print V8 command line options.
---deps             Print module dependencies.
---types            Print runtime TypeScript declarations.
-
+pub fn get_usage(opts: &Options) -> String {
+  format!(
+    "Usage: deno script.ts {}
 Environment variables:
-DENO_DIR           Set deno's base directory."
-  );
+        DENO_DIR        Set deno's base directory.",
+    opts.usage("")
+  )
 }
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
@@ -67,44 +59,62 @@ pub fn set_flags(
 ) -> Result<(DenoFlags, Vec<String>), String> {
   let args = v8_set_flags(args);
 
-  let mut flags = DenoFlags::default();
-  let mut rest = Vec::new();
-  let mut arg_iter = args.iter();
+  let mut opts = Options::new();
+  // TODO(kevinkassimo): v8_set_flags intercepts '-help' with single '-'
+  // Resolve that and then uncomment line below (enabling Go style -long-flag)
+  // opts.long_only(true);
+  opts.optflag("", "allow-write", "Allow file system write access.");
+  opts.optflag("", "allow-net", "Allow network access.");
+  opts.optflag("", "allow-env", "Allow environment access.");
+  opts.optflag("", "recompile", "Force recompilation of TypeScript code.");
+  opts.optflag("h", "help", "Print this message.");
+  opts.optflag("D", "log-debug", "Log debug output.");
+  opts.optflag("v", "version", "Print the version.");
+  opts.optflag("r", "reload", "Reload cached remote resources.");
+  opts.optflag("", "v8-options", "Print V8 command line options.");
+  opts.optflag("", "deps", "Print module dependencies.");
+  opts.optflag("", "types", "Print runtime TypeScript declarations.");
 
-  while let Some(a) = arg_iter.next() {
-    if a.len() > 1 && &a[0..2] == "--" {
-      match a.as_str() {
-        "--help" => flags.help = true,
-        "--log-debug" => flags.log_debug = true,
-        "--version" => flags.version = true,
-        "--reload" => flags.reload = true,
-        "--recompile" => flags.recompile = true,
-        "--allow-write" => flags.allow_write = true,
-        "--allow-net" => flags.allow_net = true,
-        "--allow-env" => flags.allow_env = true,
-        "--deps" => flags.deps_flag = true,
-        "--types" => flags.types_flag = true,
-        "--" => break,
-        other => return Err(format!("bad option {}", other)),
-      }
-    } else if a.len() > 1 && &a[0..1] == "-" {
-      let mut iter = a.chars().skip(1); // skip the "-"
-      while let Some(f) = iter.next() {
-        match f {
-          'h' => flags.help = true,
-          'D' => flags.log_debug = true,
-          'v' => flags.version = true,
-          'r' => flags.reload = true,
-          other => return Err(format!("bad option -{}", other)),
-        }
-      }
-    } else {
-      rest.push(a.clone());
-    }
+  let mut flags = DenoFlags::default();
+
+  let matches = match opts.parse(&args[1..]) {
+    Ok(m) => m,
+    Err(f) => panic!(f.to_string()),
+  };
+
+  if matches.opt_present("help") {
+    flags.help = true;
+  }
+  if matches.opt_present("log-debug") {
+    flags.log_debug = true;
+  }
+  if matches.opt_present("version") {
+    flags.version = true;
+  }
+  if matches.opt_present("reload") {
+    flags.reload = true;
+  }
+  if matches.opt_present("recompile") {
+    flags.recompile = true;
+  }
+  if matches.opt_present("allow-write") {
+    flags.allow_write = true;
+  }
+  if matches.opt_present("allow-net") {
+    flags.allow_net = true;
+  }
+  if matches.opt_present("allow-env") {
+    flags.allow_env = true;
+  }
+  if matches.opt_present("deps") {
+    flags.deps_flag = true;
+  }
+  if matches.opt_present("types") {
+    flags.types_flag = true;
   }
 
-  // add any remaining arguments to `rest`
-  rest.extend(arg_iter.map(|s| s.clone()));
+  let rest: Vec<_> = matches.free.iter().map(|s| s.clone()).collect();
+  flags.usage_string = get_usage(&opts);
   return Ok((flags, rest));
 }
 

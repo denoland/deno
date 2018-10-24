@@ -18,6 +18,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 extern crate dirs;
+extern crate getopts;
 extern crate hyper_rustls;
 extern crate remove_dir_all;
 extern crate ring;
