@@ -13,8 +13,9 @@ namespace deno {
 // deno_s = Wrapped Isolate.
 class DenoIsolate {
  public:
-  DenoIsolate(deno_buf snapshot, deno_recv_cb cb)
+  DenoIsolate(deno_buf snapshot, deno_recv_cb cb, deno_buf shared)
       : isolate_(nullptr),
+        shared_(shared),
         current_args_(nullptr),
         snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
@@ -31,6 +32,7 @@ class DenoIsolate {
   void AddIsolate(v8::Isolate* isolate);
 
   v8::Isolate* isolate_;
+  deno_buf shared_;
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
@@ -48,6 +50,7 @@ class DenoIsolate {
   v8::Persistent<v8::Function> promise_error_examiner_;
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
+  v8::Persistent<v8::ArrayBuffer> shared_ab_;
 };
 
 class UserDataScope {
@@ -75,6 +78,8 @@ struct InternalFieldData {
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
+void Shared(v8::Local<v8::Name> property,
+            const v8::PropertyCallbackInfo<v8::Value>& info);
 void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args);
 void SetPromiseRejectHandler(const v8::FunctionCallbackInfo<v8::Value>& args);
 void SetPromiseErrorExaminer(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -82,6 +87,7 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print),
     reinterpret_cast<intptr_t>(Recv),
     reinterpret_cast<intptr_t>(Send),
+    reinterpret_cast<intptr_t>(Shared),
     reinterpret_cast<intptr_t>(SetGlobalErrorHandler),
     reinterpret_cast<intptr_t>(SetPromiseRejectHandler),
     reinterpret_cast<intptr_t>(SetPromiseErrorExaminer),
