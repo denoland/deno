@@ -257,7 +257,7 @@ fn test_v8_set_flags_preprocess_2() {
 pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
   // deno_set_v8_flags(int* argc, char** argv) mutates argc and argv to remove
   // flags that v8 understands.
-  // First parse core args, then converto to a vector of C strings.
+  // First parse core args, then convert to a vector of C strings.
   let (argv, rest) = v8_set_flags_preprocess(args);
   let mut argv = argv
     .iter()
