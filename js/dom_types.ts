@@ -59,7 +59,7 @@ export interface HTMLFormElement {
   // TODO
 }
 
-type EndingType = "tranparent" | "native";
+type EndingType = "transparent" | "native";
 
 export interface BlobPropertyBag {
   type?: string;
@@ -440,7 +440,7 @@ export interface Request extends Body {
    */
   readonly integrity: string;
   /** Returns a boolean indicating whether or not request is for a history
-   * navigation (a.k.a. back-foward navigation).
+   * navigation (a.k.a. back-forward navigation).
    */
   readonly isHistoryNavigation: boolean;
   /** Returns a boolean indicating whether or not request is for a reload

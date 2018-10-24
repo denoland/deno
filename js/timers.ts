@@ -23,7 +23,7 @@ interface Timer {
 // about a month, this is no longer true, and Deno explodes.
 // TODO(piscisaureus): fix that ^.
 const EPOCH = Date.now();
-const APOCALYPS = 2 ** 32 - 2;
+const APOCALYPSE = 2 ** 32 - 2;
 
 let globalTimeoutDue: number | null = null;
 
@@ -34,7 +34,7 @@ const dueMap: { [due: number]: Timer[] } = Object.create(null);
 function getTime() {
   // TODO: use a monotonic clock.
   const now = Date.now() - EPOCH;
-  assert(now >= 0 && now < APOCALYPS);
+  assert(now >= 0 && now < APOCALYPSE);
   return now;
 }
 
@@ -175,7 +175,7 @@ function setTimer<Args extends Array<unknown>>(
 ): number {
   // If any `args` were provided (which is uncommon), bind them to the callback.
   const callback: () => void = args.length === 0 ? cb : cb.bind(null, ...args);
-  // In the browser, the delay value must be coercable to an integer between 0
+  // In the browser, the delay value must be coercible to an integer between 0
   // and INT32_MAX. Any other value will cause the timer to fire immediately.
   // We emulate this behavior.
   const now = getTime();
