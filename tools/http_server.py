@@ -14,9 +14,33 @@ PORT = 4545
 REDIRECT_PORT = 4546
 
 
+class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+    def guess_type(self, path):
+        if ".t1." in path:
+            return "text/typescript"
+        if ".t2." in path:
+            return "video/vnd.dlna.mpeg-tts"
+        if ".t3." in path:
+            return "video/mp2t"
+        if ".j1." in path:
+            return "text/javascript"
+        if ".j2." in path:
+            return "application/ecmascript"
+        if ".j3." in path:
+            return "text/ecmascript"
+        if ".j4." in path:
+            return "application/x-javascript"
+        return SimpleHTTPServer.SimpleHTTPRequestHandler.guess_type(self, path)
+
+
 def server():
     os.chdir(root_path)  # Hopefully the main thread doesn't also chdir.
-    Handler = SimpleHTTPServer.SimpleHTTPRequestHandler
+    Handler = ContentTypeHandler
+    Handler.extensions_map.update({
+        ".ts": "application/typescript",
+        ".js": "application/javascript",
+        ".json": "application/json",
+    })
     SocketServer.TCPServer.allow_reuse_address = True
     s = SocketServer.TCPServer(("", PORT), Handler)
     print "Deno test server http://localhost:%d/" % PORT

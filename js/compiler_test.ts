@@ -11,6 +11,7 @@ const { DenoCompiler } = (deno as any)._compiler;
 interface ModuleInfo {
   moduleName: string | null;
   filename: string | null;
+  mediaType: MediaType | null;
   sourceCode: string | null;
   outputCode: string | null;
 }
@@ -27,15 +28,24 @@ const originals = {
   _window: (compilerInstance as any)._window
 };
 
+enum MediaType {
+  JavaScript = 0,
+  TypeScript = 1,
+  Json = 2,
+  Unknown = 3
+}
+
 function mockModuleInfo(
   moduleName: string | null,
   filename: string | null,
+  mediaType: MediaType | null,
   sourceCode: string | null,
   outputCode: string | null
 ): ModuleInfo {
   return {
     moduleName,
     filename,
+    mediaType,
     sourceCode,
     outputCode
   };
@@ -61,6 +71,7 @@ export class A {
 const modAModuleInfo = mockModuleInfo(
   "modA",
   "/root/project/modA.ts",
+  MediaType.TypeScript,
   modASource,
   undefined
 );
@@ -75,6 +86,7 @@ export class B {
 const modBModuleInfo = mockModuleInfo(
   "modB",
   "/root/project/modB.ts",
+  MediaType.TypeScript,
   modBSource,
   undefined
 );
@@ -107,21 +119,31 @@ const moduleMap: {
     "foo/bar.ts": mockModuleInfo(
       "/root/project/foo/bar.ts",
       "/root/project/foo/bar.ts",
+      MediaType.TypeScript,
       fooBarTsSource,
       null
     ),
     "foo/baz.ts": mockModuleInfo(
       "/root/project/foo/baz.ts",
       "/root/project/foo/baz.ts",
+      MediaType.TypeScript,
       fooBazTsSource,
       fooBazTsOutput
     ),
-    "modA.ts": modAModuleInfo
+    "modA.ts": modAModuleInfo,
+    "some.txt": mockModuleInfo(
+      "/root/project/some.txt",
+      "/root/project/some.text",
+      MediaType.Unknown,
+      "console.log();",
+      null
+    )
   },
   "/root/project/foo/baz.ts": {
     "./bar.ts": mockModuleInfo(
       "/root/project/foo/bar.ts",
       "/root/project/foo/bar.ts",
+      MediaType.TypeScript,
       fooBarTsSource,
       fooBarTsOutput
     )
@@ -131,6 +153,43 @@ const moduleMap: {
   },
   "/root/project/modB.ts": {
     "./modA.ts": modAModuleInfo
+  },
+  "/moduleKinds": {
+    "foo.ts": mockModuleInfo(
+      "foo",
+      "/moduleKinds/foo.ts",
+      MediaType.TypeScript,
+      "console.log('foo');",
+      undefined
+    ),
+    "foo.d.ts": mockModuleInfo(
+      "foo",
+      "/moduleKinds/foo.d.ts",
+      MediaType.TypeScript,
+      "console.log('foo');",
+      undefined
+    ),
+    "foo.js": mockModuleInfo(
+      "foo",
+      "/moduleKinds/foo.js",
+      MediaType.JavaScript,
+      "console.log('foo');",
+      undefined
+    ),
+    "foo.json": mockModuleInfo(
+      "foo",
+      "/moduleKinds/foo.json",
+      MediaType.Json,
+      "console.log('foo');",
+      undefined
+    ),
+    "foo.txt": mockModuleInfo(
+      "foo",
+      "/moduleKinds/foo.txt",
+      MediaType.JavaScript,
+      "console.log('foo');",
+      undefined
+    )
   }
 };
 
@@ -180,6 +239,7 @@ const osMock = {
       moduleCache[fileName] = mockModuleInfo(
         fileName,
         fileName,
+        MediaType.TypeScript,
         sourceCode,
         outputCode
       );
@@ -192,7 +252,7 @@ const osMock = {
         return moduleMap[containingFile][moduleSpecifier];
       }
     }
-    return mockModuleInfo(null, null, null, null);
+    return mockModuleInfo(null, null, null, null, null);
   },
   exit(code: number): never {
     throw new Error(`os.exit(${code})`);
@@ -405,6 +465,23 @@ test(function compilerResolveModule() {
   teardown();
 });
 
+test(function compilerResolveModuleUnknownMediaType() {
+  setup();
+  let didThrow = false;
+  try {
+    compilerInstance.resolveModule("some.txt", "/root/project");
+  } catch (e) {
+    assert(e instanceof Error);
+    assertEqual(
+      e.message,
+      `Unknown media type for: "some.txt" from "/root/project".`
+    );
+    didThrow = true;
+  }
+  assert(didThrow);
+  teardown();
+});
+
 test(function compilerGetModuleDependencies() {
   setup();
   const bazDeps = ["require", "exports", "./bar.ts"];
@@ -484,11 +561,33 @@ test(function compilerRecompileFlag() {
 });
 
 test(function compilerGetScriptKind() {
-  assertEqual(compilerInstance.getScriptKind("foo.ts"), ts.ScriptKind.TS);
-  assertEqual(compilerInstance.getScriptKind("foo.d.ts"), ts.ScriptKind.TS);
-  assertEqual(compilerInstance.getScriptKind("foo.js"), ts.ScriptKind.JS);
-  assertEqual(compilerInstance.getScriptKind("foo.json"), ts.ScriptKind.JSON);
-  assertEqual(compilerInstance.getScriptKind("foo.txt"), ts.ScriptKind.JS);
+  setup();
+  compilerInstance.resolveModule("foo.ts", "/moduleKinds");
+  compilerInstance.resolveModule("foo.d.ts", "/moduleKinds");
+  compilerInstance.resolveModule("foo.js", "/moduleKinds");
+  compilerInstance.resolveModule("foo.json", "/moduleKinds");
+  compilerInstance.resolveModule("foo.txt", "/moduleKinds");
+  assertEqual(
+    compilerInstance.getScriptKind("/moduleKinds/foo.ts"),
+    ts.ScriptKind.TS
+  );
+  assertEqual(
+    compilerInstance.getScriptKind("/moduleKinds/foo.d.ts"),
+    ts.ScriptKind.TS
+  );
+  assertEqual(
+    compilerInstance.getScriptKind("/moduleKinds/foo.js"),
+    ts.ScriptKind.JS
+  );
+  assertEqual(
+    compilerInstance.getScriptKind("/moduleKinds/foo.json"),
+    ts.ScriptKind.JSON
+  );
+  assertEqual(
+    compilerInstance.getScriptKind("/moduleKinds/foo.txt"),
+    ts.ScriptKind.JS
+  );
+  teardown();
 });
 
 test(function compilerGetScriptVersion() {

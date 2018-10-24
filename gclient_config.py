@@ -37,11 +37,6 @@ solutions = [{
     'cpplint'
 }, {
     'url':
-    'https://github.com/google/yapf.git@32afb3004e0967eab351ee83e3d9d55e3a02fd9b',
-    'name':
-    'yapf'
-}, {
-    'url':
     'https://github.com/google/flatbuffers.git@d840856093fa7b935b0d6378c436bd633d006c8c',
     'name':
     'flatbuffers'

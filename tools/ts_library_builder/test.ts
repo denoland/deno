@@ -4,7 +4,7 @@
 
 import { Project, ts } from "ts-simple-ast";
 import { assert, assertEqual, test } from "../../js/testing/testing";
-import { flatten, merge } from "./build_library";
+import { flatten, mergeGlobal } from "./build_library";
 import { loadDtsFiles } from "./ast_util";
 
 const { ModuleKind, ModuleResolutionKind, ScriptTarget } = ts;
@@ -116,7 +116,7 @@ test(function buildLibraryMerge() {
     outputSourceFile: targetSourceFile
   } = setupFixtures();
 
-  merge({
+  mergeGlobal({
     basePath,
     declarationProject,
     debug,
@@ -124,31 +124,19 @@ test(function buildLibraryMerge() {
     filePath: `${buildPath}/globals.ts`,
     inputProject,
     interfaceName: "FooBar",
-    namespaceName: `"bazqat"`,
     targetSourceFile
   });
 
-  assert(targetSourceFile.getNamespace(`"bazqat"`) != null);
+  assert(targetSourceFile.getNamespace("moduleC") != null);
   assertEqual(targetSourceFile.getNamespaces().length, 1);
-  const namespaceBazqat = targetSourceFile.getNamespaceOrThrow(`"bazqat"`);
-  assert(namespaceBazqat.getNamespace("global") != null);
-  assert(namespaceBazqat.getNamespace("moduleC") != null);
-  assertEqual(namespaceBazqat.getNamespaces().length, 2);
-  assert(namespaceBazqat.getInterface("FooBar") != null);
-  assertEqual(namespaceBazqat.getInterfaces().length, 1);
-  const globalNamespace = namespaceBazqat.getNamespaceOrThrow("global");
-  const variableDeclarations = globalNamespace.getVariableDeclarations();
-  assertEqual(
-    variableDeclarations[0].getType().getText(),
-    `import("bazqat").FooBar`
-  );
-  assertEqual(
-    variableDeclarations[1].getType().getText(),
-    `import("bazqat").moduleC.Bar`
-  );
+  assert(targetSourceFile.getInterface("FooBar") != null);
+  assertEqual(targetSourceFile.getInterfaces().length, 1);
+  const variableDeclarations = targetSourceFile.getVariableDeclarations();
+  assertEqual(variableDeclarations[0].getType().getText(), `FooBar`);
+  assertEqual(variableDeclarations[1].getType().getText(), `moduleC.Bar`);
   assertEqual(
     variableDeclarations[2].getType().getText(),
-    `typeof import("bazqat").moduleC.qat`
+    `typeof moduleC.qat`
   );
   assertEqual(variableDeclarations.length, 3);
 });

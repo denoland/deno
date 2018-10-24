@@ -920,3 +920,12 @@ rust_crate("lock_api") {
   source_root = "$registry_github/lock_api-0.1.3/src/lib.rs"
   extern = [ ":scopeguard" ]
 }
+
+rust_crate("unicode_width") {
+  source_root = "$registry_github/unicode-width-0.1.5/src/lib.rs"
+}
+
+rust_crate("getopts") {
+  source_root = "$registry_github/getopts-0.2.18/src/lib.rs"
+  extern = [ ":unicode_width" ]
+}

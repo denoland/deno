@@ -102,6 +102,13 @@ table CwdRes {
   cwd: string;
 }
 
+enum MediaType: byte {
+  JavaScript = 0,
+  TypeScript,
+  Json,
+  Unknown
+}
+
 table Base {
   cmd_id: uint32;
   sync: bool = true; // TODO(ry) Change default to false.
@@ -137,6 +144,7 @@ table CodeFetchRes {
   // is the location of the locally downloaded source code.
   module_name: string;
   filename: string;
+  media_type: MediaType;
   source_code: string;
   output_code: string; // Non-empty only if cached.
 }

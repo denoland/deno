@@ -47,12 +47,14 @@ export function addVariableDeclaration(
   node: StatementedNode,
   name: string,
   type: string,
+  hasDeclareKeyword?: boolean,
   jsdocs?: JSDoc[]
 ): VariableStatement {
   return node.addVariableStatement({
     declarationKind: VariableDeclarationKind.Const,
     declarations: [{ name, type }],
-    docs: jsdocs && jsdocs.map(jsdoc => jsdoc.getText())
+    docs: jsdocs && jsdocs.map(jsdoc => jsdoc.getText()),
+    hasDeclareKeyword
   });
 }
 
@@ -281,8 +283,17 @@ export function namespaceSourceFile(
     }
   });
 
+  // TODO need to properly unwrap this
   const globalNamespace = sourceFile.getNamespace("global");
-  const globalNamespaceText = globalNamespace && globalNamespace.print();
+  let globalNamespaceText = "";
+  if (globalNamespace) {
+    const structure = globalNamespace.getStructure();
+    if (structure.bodyText && typeof structure.bodyText === "string") {
+      globalNamespaceText = structure.bodyText;
+    } else {
+      throw new TypeError("Unexpected global declaration structure.");
+    }
+  }
   if (globalNamespace) {
     globalNamespace.remove();
   }
@@ -319,7 +330,8 @@ export function namespaceSourceFile(
 
   return `${output}
     ${globalNamespaceText || ""}
-    namespace ${namespace} {
+
+    declare namespace ${namespace} {
       ${debug ? getSourceComment(sourceFile, rootPath) : ""}
       ${sourceFile.getText()}
     }`;
