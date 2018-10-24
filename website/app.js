@@ -113,15 +113,12 @@ export function createSha1List(data) {
   return data.map(d => d.sha1);
 }
 
-// Formats the byte sizes e.g. 19000 -> 18.55 KB
-// Copied from https://stackoverflow.com/a/18650828
-export function formatBytes(a, b) {
-  if (0 == a) return "0 Bytes";
-  var c = 1024,
-    d = b || 2,
-    e = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"],
-    f = Math.floor(Math.log(a) / Math.log(c));
-  return parseFloat((a / Math.pow(c, f)).toFixed(d)) + " " + e[f];
+export function formatMB(bytes) {
+  return Math.round(bytes / (1024 * 1024));
+}
+
+export function formatReqSec(reqPerSec) {
+  return reqPerSec / 1000;
 }
 
 /**
@@ -132,7 +129,7 @@ export function formatBytes(a, b) {
  * @param {string} yLabel label of y axis
  * @param {function} yTickFormat formatter of y axis ticks
  */
-function gen2(
+function generate(
   id,
   categories,
   columns,
@@ -140,16 +137,13 @@ function gen2(
   yLabel = "",
   yTickFormat = null
 ) {
-  const xFormat = {
-    type: "category",
-    show: false,
-    categories
-  };
-  const yFormat = {
+  const yAxis = {
+    padding: { bottom: 0 },
+    min: 0,
     label: yLabel
   };
   if (yTickFormat) {
-    yFormat.tick = {
+    yAxis.tick = {
       format: yTickFormat
     };
   }
@@ -165,16 +159,21 @@ function gen2(
       onclick
     },
     axis: {
-      x: xFormat,
-      y: yFormat
+      x: {
+        type: "category",
+        show: false,
+        categories
+      },
+      y: yAxis
     }
   });
 }
 
-export function formatSeconds(t) {
+function formatSecsAsMins(t) {
+  // TODO use d3.round()
   const a = t % 60;
   const min = Math.floor(t / 60);
-  return a < 30 ? `${min} min` : `${min + 1} min`;
+  return a < 30 ? min : min + 1;
 }
 
 /**
@@ -207,7 +206,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   };
 
   function gen(id, columns, yLabel = "", yTickFormat = null) {
-    gen2(
+    generate(
       id,
       sha1ShortList,
       columns,
@@ -219,10 +218,10 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
 
   gen("#exec-time-chart", execTimeColumns, "seconds");
   gen("#throughput-chart", throughputColumns, "seconds");
-  gen("#req-per-sec-chart", reqPerSecColumns, "# req/sec");
-  gen("#binary-size-chart", binarySizeColumns, "size", formatBytes);
-  gen("#thread-count-chart", threadCountColumns, "# threads");
-  gen("#syscall-count-chart", syscallCountColumns, "# syscalls");
+  gen("#req-per-sec-chart", reqPerSecColumns, "1000 req/sec", formatReqSec);
+  gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
+  gen("#thread-count-chart", threadCountColumns, "threads");
+  gen("#syscall-count-chart", syscallCountColumns, "syscalls");
 }
 
 /**
@@ -239,12 +238,12 @@ export async function drawChartsFromTravisData() {
   const travisCompileTimeColumns = createTravisCompileTimeColumns(travisData);
   const prNumberList = travisData.map(d => d.pull_request_number);
 
-  gen2(
+  generate(
     "#travis-compile-time-chart",
     prNumberList,
     travisCompileTimeColumns,
     viewPullRequestOnClick(prNumberList),
     "time",
-    formatSeconds
+    formatSecsAsMins
   );
 }
