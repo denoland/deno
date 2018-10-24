@@ -5,6 +5,7 @@ use errors::DenoResult;
 use errors::ErrorKind;
 use fs as deno_fs;
 use http_util;
+use msg;
 use ring;
 use std;
 use std::fmt::Write;
@@ -109,21 +110,28 @@ impl DenoDir {
     self: &DenoDir,
     module_name: &str,
     filename: &str,
-  ) -> DenoResult<String> {
+  ) -> DenoResult<(String, msg::MediaType)> {
     let p = Path::new(filename);
+    // We write a special ".mime" file into the `.deno/deps` directory along side the
+    // cached file, containing just the media type.
+    let mut media_type_filename = filename.to_string();
+    media_type_filename.push_str(".mime");
+    let mt = Path::new(&media_type_filename);
 
     let src = if self.reload || !p.exists() {
       println!("Downloading {}", module_name);
-      let source = http_util::fetch_sync_string(module_name)?;
+      let (source, content_type) = http_util::fetch_sync_string(module_name)?;
       match p.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
       }?;
       deno_fs::write_file(&p, source.as_bytes(), 0o666)?;
-      source
+      deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?;
+      (source, map_content_type(&p, Some(&content_type)))
     } else {
       let source = fs::read_to_string(&p)?;
-      source
+      let content_type = fs::read_to_string(&mt)?;
+      (source, map_content_type(&p, Some(&content_type)))
     };
     Ok(src)
   }
@@ -141,18 +149,20 @@ impl DenoDir {
     let use_extension = |ext| {
       let module_name = format!("{}{}", module_name, ext);
       let filename = format!("{}{}", filename, ext);
-      let source_code = if is_module_remote {
+      let (source_code, media_type) = if is_module_remote {
         self.fetch_remote_source(&module_name, &filename)?
       } else {
         assert_eq!(
           module_name, filename,
           "if a module isn't remote, it should have the same filename"
         );
-        fs::read_to_string(Path::new(&filename))?
+        let path = Path::new(&filename);
+        (fs::read_to_string(path)?, map_content_type(path, None))
       };
       return Ok(CodeFetchOutput {
         module_name: module_name.to_string(),
         filename: filename.to_string(),
+        media_type,
         source_code,
         maybe_output_code: None,
       });
@@ -215,6 +225,7 @@ impl DenoDir {
       Ok(output_code) => Ok(CodeFetchOutput {
         module_name: out.module_name,
         filename: out.filename,
+        media_type: out.media_type,
         source_code: out.source_code,
         maybe_output_code: Some(output_code),
       }),
@@ -324,6 +335,7 @@ fn test_get_cache_filename() {
 pub struct CodeFetchOutput {
   pub module_name: String,
   pub filename: String,
+  pub media_type: msg::MediaType,
   pub source_code: String,
   pub maybe_output_code: Option<String>,
 }
@@ -645,4 +657,158 @@ fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
   } else {
     Url::from_file_path(p).map_err(|_err| url::ParseError::IdnaError)
   }
+}
+
+fn map_file_extension(path: &Path) -> msg::MediaType {
+  match path.extension() {
+    None => msg::MediaType::Unknown,
+    Some(os_str) => match os_str.to_str() {
+      Some("ts") => msg::MediaType::TypeScript,
+      Some("js") => msg::MediaType::JavaScript,
+      Some("json") => msg::MediaType::Json,
+      _ => msg::MediaType::Unknown,
+    },
+  }
+}
+
+#[test]
+fn test_map_file_extension() {
+  assert_eq!(
+    map_file_extension(Path::new("foo/bar.ts")),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_file_extension(Path::new("foo/bar.d.ts")),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_file_extension(Path::new("foo/bar.js")),
+    msg::MediaType::JavaScript
+  );
+  assert_eq!(
+    map_file_extension(Path::new("foo/bar.json")),
+    msg::MediaType::Json
+  );
+  assert_eq!(
+    map_file_extension(Path::new("foo/bar.txt")),
+    msg::MediaType::Unknown
+  );
+  assert_eq!(
+    map_file_extension(Path::new("foo/bar")),
+    msg::MediaType::Unknown
+  );
+}
+
+// convert a ContentType string into a enumerated MediaType
+fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
+  match content_type {
+    Some(content_type) => {
+      // sometimes there is additional data after the media type in
+      // Content-Type so we have to do a bit of manipulation so we are only
+      // dealing with the actual media type
+      let ct_vector: Vec<&str> = content_type.split(";").collect();
+      let ct: &str = ct_vector.first().unwrap();
+      match ct.to_lowercase().as_ref() {
+        "application/typescript"
+        | "text/typescript"
+        | "video/vnd.dlna.mpeg-tts"
+        | "video/mp2t" => msg::MediaType::TypeScript,
+        "application/javascript"
+        | "text/javascript"
+        | "application/ecmascript"
+        | "text/ecmascript"
+        | "application/x-javascript" => msg::MediaType::JavaScript,
+        "application/json" | "text/json" => msg::MediaType::Json,
+        "text/plain" => map_file_extension(path),
+        _ => {
+          debug!("unknown content type: {}", content_type);
+          msg::MediaType::Unknown
+        }
+      }
+    }
+    None => map_file_extension(path),
+  }
+}
+
+#[test]
+fn test_map_content_type() {
+  // Extension only
+  assert_eq!(
+    map_content_type(Path::new("foo/bar.ts"), None),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar.d.ts"), None),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar.js"), None),
+    msg::MediaType::JavaScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar.json"), None),
+    msg::MediaType::Json
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar.txt"), None),
+    msg::MediaType::Unknown
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), None),
+    msg::MediaType::Unknown
+  );
+
+  // Media Type
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("application/typescript")),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("text/typescript")),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("video/vnd.dlna.mpeg-tts")),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("video/mp2t")),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("application/javascript")),
+    msg::MediaType::JavaScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("text/javascript")),
+    msg::MediaType::JavaScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("application/ecmascript")),
+    msg::MediaType::JavaScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("text/ecmascript")),
+    msg::MediaType::JavaScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("application/x-javascript")),
+    msg::MediaType::JavaScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("application/json")),
+    msg::MediaType::Json
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("text/json")),
+    msg::MediaType::Json
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar.ts"), Some("text/plain")),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")),
+    msg::MediaType::Unknown
+  );
 }

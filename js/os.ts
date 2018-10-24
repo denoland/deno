@@ -1,10 +1,17 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { ModuleInfo } from "./types";
 import * as msg from "gen/msg_generated";
 import { assert } from "./util";
 import * as util from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
+
+interface CodeInfo {
+  moduleName: string | undefined;
+  filename: string | undefined;
+  mediaType: msg.MediaType;
+  sourceCode: string | undefined;
+  outputCode: string | undefined;
+}
 
 /** Exit the Deno process with optional exit code. */
 export function exit(exitCode = 0): never {
@@ -20,7 +27,7 @@ export function exit(exitCode = 0): never {
 export function codeFetch(
   moduleSpecifier: string,
   containingFile: string
-): ModuleInfo {
+): CodeInfo {
   util.log("os.ts codeFetch", moduleSpecifier, containingFile);
   // Send CodeFetch message
   const builder = flatbuffers.createBuilder();
@@ -38,11 +45,14 @@ export function codeFetch(
   );
   const codeFetchRes = new msg.CodeFetchRes();
   assert(baseRes!.inner(codeFetchRes) != null);
+  // flatbuffers returns `null` for an empty value, this does not fit well with
+  // idiomatic TypeScript under strict null checks, so converting to `undefined`
   return {
-    moduleName: codeFetchRes.moduleName(),
-    filename: codeFetchRes.filename(),
-    sourceCode: codeFetchRes.sourceCode(),
-    outputCode: codeFetchRes.outputCode()
+    moduleName: codeFetchRes.moduleName() || undefined,
+    filename: codeFetchRes.filename() || undefined,
+    mediaType: codeFetchRes.mediaType(),
+    sourceCode: codeFetchRes.sourceCode() || undefined,
+    outputCode: codeFetchRes.outputCode() || undefined
   };
 }
 

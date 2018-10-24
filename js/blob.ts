@@ -20,9 +20,9 @@ export class DenoBlob implements domTypes.Blob {
     }
 
     options = options || {};
-    // Set ending property's default value to "tranparent".
+    // Set ending property's default value to "transparent".
     if (!options.hasOwnProperty("ending")) {
-      options.ending = "tranparent";
+      options.ending = "transparent";
     }
 
     if (options.type && !containsOnlyASCII(options.type)) {

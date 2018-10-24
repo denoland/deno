@@ -62,6 +62,7 @@ main_extern = [
   "$rust_build:url",
   "$rust_build:remove_dir_all",
   "$rust_build:dirs",
+  "$rust_build:getopts",
   "//build_extra/flatbuffers/rust:flatbuffers",
   ":msg_rs",
 ]

@@ -26,16 +26,6 @@ testPerm({ net: true }, async function fetchHeaders() {
   assert(headers.get("Server").startsWith("SimpleHTTP"));
 });
 
-test(async function headersAppend() {
-  let err;
-  try {
-    const headers = new Headers([["foo", "bar", "baz"]]);
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof TypeError);
-});
-
 testPerm({ net: true }, async function fetchBlob() {
   const response = await fetch("http://localhost:4545/package.json");
   const headers = response.headers;
@@ -69,14 +59,10 @@ test(function newHeaderTest() {
   try {
     new Headers(null);
   } catch (e) {
-    assertEqual(e.message, "Failed to construct 'Headers': Invalid value");
-  }
-
-  try {
-    const init = [["a", "b", "c"]];
-    new Headers(init);
-  } catch (e) {
-    assertEqual(e.message, "Failed to construct 'Headers': Invalid value");
+    assertEqual(
+      e.message,
+      "Failed to construct 'Headers'; The provided value was not valid"
+    );
   }
 });
 
@@ -163,7 +149,6 @@ test(function headerGetSuccess() {
 test(function headerEntriesSuccess() {
   const headers = new Headers(headerDict);
   const iterators = headers.entries();
-  assertEqual(Object.prototype.toString.call(iterators), "[object Iterator]");
   for (const it of iterators) {
     const key = it[0];
     const value = it[1];
@@ -175,7 +160,6 @@ test(function headerEntriesSuccess() {
 test(function headerKeysSuccess() {
   const headers = new Headers(headerDict);
   const iterators = headers.keys();
-  assertEqual(Object.prototype.toString.call(iterators), "[object Iterator]");
   for (const it of iterators) {
     assert(headers.has(it));
   }
@@ -189,7 +173,6 @@ test(function headerValuesSuccess() {
   for (const pair of entries) {
     values.push(pair[1]);
   }
-  assertEqual(Object.prototype.toString.call(iterators), "[object Iterator]");
   for (const it of iterators) {
     assert(values.includes(it));
   }

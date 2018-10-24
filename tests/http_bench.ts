@@ -1,6 +1,7 @@
 // Used for benchmarking Deno's networking. See tools/http_benchmark.py
 // TODO Replace this with a real HTTP server once
 // https://github.com/denoland/deno/issues/726 is completed.
+// Note: this is a keep-alive server.
 import * as deno from "deno";
 const addr = deno.args[1] || "127.0.0.1:4500";
 const listener = deno.listen("tcp", addr);
