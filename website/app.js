@@ -148,10 +148,12 @@ function generate(
     };
   }
 
+  // @ts-ignore
   c3.generate({
     bindto: id,
     size: {
       height: 300,
+      // @ts-ignore
       width: window.chartWidth || 375 // TODO: do not use global variable
     },
     data: {
@@ -200,6 +202,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   const sha1ShortList = sha1List.map(sha1 => sha1.substring(0, 6));
 
   const viewCommitOnClick = _sha1List => d => {
+    // @ts-ignore
     window.open(
       `https://github.com/denoland/deno/commit/${_sha1List[d["index"]]}`
     );
@@ -229,6 +232,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
  */
 export async function drawChartsFromTravisData() {
   const viewPullRequestOnClick = _prNumberList => d => {
+    // @ts-ignore
     window.open(
       `https://github.com/denoland/deno/pull/${_prNumberList[d["index"]]}`
     );
