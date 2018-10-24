@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 // Think of Resources as File Descriptors. They are integers that are allocated
-// by the privlaged side of Deno to refer to various resources.  The simplest
+// by the privileged side of Deno to refer to various resources.  The simplest
 // example are standard file system files and stdio - but there will be other
 // resources added in the future that might not correspond to operating system
 // level File Descriptors. To avoid confusion we call them "resources" not "file

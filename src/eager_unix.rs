@@ -17,7 +17,7 @@ pub fn tcp_read<T: AsMut<[u8]>>(
   resource: Resource,
   mut buf: T,
 ) -> EagerRead<Resource, T> {
-  // Unforunately we can't just call read() on tokio::net::TcpStream
+  // Unfortunately we can't just call read() on tokio::net::TcpStream
   let fd = (*tcp_stream).as_raw_fd();
   let mut std_tcp_stream = unsafe { std::net::TcpStream::from_raw_fd(fd) };
   let read_result = std_tcp_stream.read(buf.as_mut());
