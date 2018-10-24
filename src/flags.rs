@@ -27,13 +27,11 @@ pub struct DenoFlags {
   pub allow_env: bool,
   pub deps_flag: bool,
   pub types_flag: bool,
-  // message of usage
-  pub usage_string: String,
 }
 
-pub fn process(flags: &DenoFlags) {
+pub fn process(flags: &DenoFlags, usage_string: String) {
   if flags.help {
-    println!("{}", &(flags.usage_string));
+    println!("{}", &usage_string);
     exit(0);
   }
 
@@ -56,7 +54,7 @@ Environment variables:
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
 pub fn set_flags(
   args: Vec<String>,
-) -> Result<(DenoFlags, Vec<String>), String> {
+) -> Result<(DenoFlags, Vec<String>, String), String> {
   let args = v8_set_flags(args);
 
   let mut opts = Options::new();
@@ -77,9 +75,11 @@ pub fn set_flags(
 
   let mut flags = DenoFlags::default();
 
-  let matches = match opts.parse(&args[1..]) {
+  let matches = match opts.parse(&args) {
     Ok(m) => m,
-    Err(f) => panic!(f.to_string()),
+    Err(f) => {
+      return Err(f.to_string());
+    }
   };
 
   if matches.opt_present("help") {
@@ -114,13 +114,12 @@ pub fn set_flags(
   }
 
   let rest: Vec<_> = matches.free.iter().map(|s| s.clone()).collect();
-  flags.usage_string = get_usage(&opts);
-  return Ok((flags, rest));
+  return Ok((flags, rest, get_usage(&opts)));
 }
 
 #[test]
 fn test_set_flags_1() {
-  let (flags, rest) = set_flags(svec!["deno", "--version"]).unwrap();
+  let (flags, rest, _) = set_flags(svec!["deno", "--version"]).unwrap();
   assert_eq!(rest, svec!["deno"]);
   assert_eq!(
     flags,
@@ -133,7 +132,7 @@ fn test_set_flags_1() {
 
 #[test]
 fn test_set_flags_2() {
-  let (flags, rest) =
+  let (flags, rest, _) =
     set_flags(svec!["deno", "-r", "-D", "script.ts"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
@@ -148,7 +147,7 @@ fn test_set_flags_2() {
 
 #[test]
 fn test_set_flags_3() {
-  let (flags, rest) =
+  let (flags, rest, _) =
     set_flags(svec!["deno", "-r", "--deps", "script.ts", "--allow-write"])
       .unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
@@ -165,7 +164,7 @@ fn test_set_flags_3() {
 
 #[test]
 fn test_set_flags_4() {
-  let (flags, rest) =
+  let (flags, rest, _) =
     set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
@@ -181,7 +180,7 @@ fn test_set_flags_4() {
 
 #[test]
 fn test_set_flags_5() {
-  let (flags, rest) = set_flags(svec!["deno", "--types"]).unwrap();
+  let (flags, rest, _) = set_flags(svec!["deno", "--types"]).unwrap();
   assert_eq!(rest, svec!["deno"]);
   assert_eq!(
     flags,
@@ -195,14 +194,14 @@ fn test_set_flags_5() {
 #[test]
 fn test_set_bad_flags_1() {
   let err = set_flags(svec!["deno", "--unknown-flag"]).unwrap_err();
-  assert_eq!(err, "bad option --unknown-flag");
+  assert_eq!(err, "Unrecognized option: 'unknown-flag'");
 }
 
 #[test]
 fn test_set_bad_flags_2() {
   // This needs to be changed if -z is added as a flag
   let err = set_flags(svec!["deno", "-z"]).unwrap_err();
-  assert_eq!(err, "bad option -z");
+  assert_eq!(err, "Unrecognized option: 'z'");
 }
 
 // Returns args passed to V8, followed by args passed to JS

@@ -72,7 +72,7 @@ export default function denoMain() {
   log("cwd", cwd);
 
   // TODO handle shebang.
-  for (let i = 0; i < startResMsg.argvLength(); i++) {
+  for (let i = 1; i < startResMsg.argvLength(); i++) {
     args.push(startResMsg.argv(i));
   }
   log("args", args);
