@@ -17,7 +17,6 @@ typedef struct {
   size_t data_len;     // Length of logical contents.
 } deno_buf;
 
-struct deno_s;
 typedef struct deno_s Deno;
 
 // A callback to receive a message from a libdeno.send() javascript call.
