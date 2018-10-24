@@ -2,40 +2,38 @@
 #include "test.h"
 
 TEST(LibDenoTest, InitializesCorrectly) {
-  printf("snapshot.data_ptr %p\n", snapshot.data_ptr);
   EXPECT_NE(snapshot.data_ptr, nullptr);
-  Deno* d = deno_new(empty, nullptr);
+  Deno* d = deno_new(snapshot, empty, nullptr);
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "1 + 2"));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, InitializesCorrectlyWithoutSnapshot) {
-  deno_buf empty = {nullptr, 0, nullptr, 0};
-  Deno* d = deno_new(empty, nullptr);
+  Deno* d = deno_new(empty, empty, nullptr);
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "1 + 2"));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, Snapshotter) {
-  Deno* d1 = deno_new_snapshotter(nullptr, "a.js", "a = 1 + 2", nullptr);
+  Deno* d1 = deno_new_snapshotter(empty, nullptr, "a.js", "a = 1 + 2", nullptr);
   deno_buf test_snapshot = deno_get_snapshot(d1);
   // TODO(ry) deno_delete(d1);
 
-  Deno* d2 = deno_new(test_snapshot, nullptr);
+  Deno* d2 = deno_new(test_snapshot, empty, nullptr);
   EXPECT_TRUE(
       deno_execute(d2, nullptr, "b.js", "if (a != 3) throw Error('x');"));
   deno_delete(d2);
 }
 
 TEST(LibDenoTest, CanCallFunction) {
-  Deno* d = deno_new(snapshot, nullptr);
+  Deno* d = deno_new(snapshot, empty, nullptr);
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js",
                            "if (CanCallFunction() != 'foo') throw Error();"));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, ErrorsCorrectly) {
-  Deno* d = deno_new(snapshot, nullptr);
+  Deno* d = deno_new(snapshot, empty, nullptr);
   EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "throw Error()"));
   deno_delete(d);
 }
@@ -72,14 +70,15 @@ void assert_null(deno_buf b) {
 
 TEST(LibDenoTest, RecvReturnEmpty) {
   static int count = 0;
-  Deno* d = deno_new(snapshot, [](auto _, int req_id, auto buf, auto data_buf) {
-    assert_null(data_buf);
-    count++;
-    EXPECT_EQ(static_cast<size_t>(3), buf.data_len);
-    EXPECT_EQ(buf.data_ptr[0], 'a');
-    EXPECT_EQ(buf.data_ptr[1], 'b');
-    EXPECT_EQ(buf.data_ptr[2], 'c');
-  });
+  Deno* d = deno_new(snapshot, empty,
+                     [](auto _, int req_id, auto buf, auto data_buf) {
+                       assert_null(data_buf);
+                       count++;
+                       EXPECT_EQ(static_cast<size_t>(3), buf.data_len);
+                       EXPECT_EQ(buf.data_ptr[0], 'a');
+                       EXPECT_EQ(buf.data_ptr[1], 'b');
+                       EXPECT_EQ(buf.data_ptr[2], 'c');
+                     });
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "RecvReturnEmpty()"));
   EXPECT_EQ(count, 2);
   deno_delete(d);
@@ -87,7 +86,7 @@ TEST(LibDenoTest, RecvReturnEmpty) {
 
 TEST(LibDenoTest, RecvReturnBar) {
   static int count = 0;
-  Deno* d = deno_new(snapshot,
+  Deno* d = deno_new(snapshot, empty,
                      [](auto user_data, int req_id, auto buf, auto data_buf) {
                        auto d = reinterpret_cast<Deno*>(user_data);
                        assert_null(data_buf);
@@ -104,7 +103,7 @@ TEST(LibDenoTest, RecvReturnBar) {
 }
 
 TEST(LibDenoTest, DoubleRecvFails) {
-  Deno* d = deno_new(snapshot, nullptr);
+  Deno* d = deno_new(snapshot, empty, nullptr);
   EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "DoubleRecvFails()"));
   deno_delete(d);
 }
@@ -112,7 +111,7 @@ TEST(LibDenoTest, DoubleRecvFails) {
 TEST(LibDenoTest, SendRecvSlice) {
   static int count = 0;
   Deno* d = deno_new(
-      snapshot, [](auto user_data, int req_id, auto buf, auto data_buf) {
+      snapshot, empty, [](auto user_data, int req_id, auto buf, auto data_buf) {
         auto d = reinterpret_cast<Deno*>(user_data);
         assert_null(data_buf);
         static const size_t alloc_len = 1024;
@@ -146,47 +145,49 @@ TEST(LibDenoTest, SendRecvSlice) {
 
 TEST(LibDenoTest, JSSendArrayBufferViewTypes) {
   static int count = 0;
-  Deno* d = deno_new(snapshot, [](auto _, int req_id, auto buf, auto data_buf) {
-    assert_null(data_buf);
-    count++;
-    size_t data_offset = buf.data_ptr - buf.alloc_ptr;
-    EXPECT_EQ(data_offset, 2468u);
-    EXPECT_EQ(buf.data_len, 1000u);
-    EXPECT_EQ(buf.alloc_len, 4321u);
-    EXPECT_EQ(buf.data_ptr[0], count);
-  });
+  Deno* d = deno_new(snapshot, empty,
+                     [](auto _, int req_id, auto buf, auto data_buf) {
+                       assert_null(data_buf);
+                       count++;
+                       size_t data_offset = buf.data_ptr - buf.alloc_ptr;
+                       EXPECT_EQ(data_offset, 2468u);
+                       EXPECT_EQ(buf.data_len, 1000u);
+                       EXPECT_EQ(buf.alloc_len, 4321u);
+                       EXPECT_EQ(buf.data_ptr[0], count);
+                     });
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "JSSendArrayBufferViewTypes()"));
   EXPECT_EQ(count, 3);
   deno_delete(d);
 }
 
 TEST(LibDenoTest, TypedArraySnapshots) {
-  Deno* d = deno_new(snapshot, nullptr);
+  Deno* d = deno_new(snapshot, empty, nullptr);
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "TypedArraySnapshots()"));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, SnapshotBug) {
-  Deno* d = deno_new(snapshot, nullptr);
+  Deno* d = deno_new(snapshot, empty, nullptr);
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "SnapshotBug()"));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, GlobalErrorHandling) {
   static int count = 0;
-  Deno* d = deno_new(snapshot, [](auto _, int req_id, auto buf, auto data_buf) {
-    assert_null(data_buf);
-    count++;
-    EXPECT_EQ(static_cast<size_t>(1), buf.data_len);
-    EXPECT_EQ(buf.data_ptr[0], 42);
-  });
+  Deno* d = deno_new(snapshot, empty,
+                     [](auto _, int req_id, auto buf, auto data_buf) {
+                       assert_null(data_buf);
+                       count++;
+                       EXPECT_EQ(static_cast<size_t>(1), buf.data_len);
+                       EXPECT_EQ(buf.data_ptr[0], 42);
+                     });
   EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "GlobalErrorHandling()"));
   EXPECT_EQ(count, 1);
   deno_delete(d);
 }
 
 TEST(LibDenoTest, DoubleGlobalErrorHandlingFails) {
-  Deno* d = deno_new(snapshot, nullptr);
+  Deno* d = deno_new(snapshot, empty, nullptr);
   EXPECT_FALSE(
       deno_execute(d, nullptr, "a.js", "DoubleGlobalErrorHandlingFails()"));
   deno_delete(d);
@@ -195,7 +196,7 @@ TEST(LibDenoTest, DoubleGlobalErrorHandlingFails) {
 TEST(LibDenoTest, DataBuf) {
   static int count = 0;
   static deno_buf data_buf_copy;
-  Deno* d = deno_new(snapshot,
+  Deno* d = deno_new(snapshot, empty,
                      [](auto _, int req_id, deno_buf buf, deno_buf data_buf) {
                        count++;
                        data_buf.data_ptr[0] = 4;
@@ -217,12 +218,25 @@ TEST(LibDenoTest, DataBuf) {
 
 TEST(LibDenoTest, PromiseRejectCatchHandling) {
   static int count = 0;
-  Deno* d = deno_new(snapshot, [](auto _, int req_id, auto buf, auto data_buf) {
-    // If no error, nothing should be sent, and count should not increment
-    count++;
-  });
+  Deno* d = deno_new(snapshot, empty,
+                     [](auto _, int req_id, auto buf, auto data_buf) {
+                       // If no error, nothing should be sent, and count should
+                       // not increment
+                       count++;
+                     });
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "PromiseRejectCatchHandling()"));
 
   EXPECT_EQ(count, 0);
+  deno_delete(d);
+}
+
+TEST(LibDenoTest, Shared) {
+  uint8_t s[] = {0, 1, 2};
+  deno_buf shared = {nullptr, 0, s, 3};
+  Deno* d = deno_new(snapshot, shared, nullptr);
+  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "Shared()"));
+  EXPECT_EQ(s[0], 42);
+  EXPECT_EQ(s[1], 43);
+  EXPECT_EQ(s[2], 44);
   deno_delete(d);
 }

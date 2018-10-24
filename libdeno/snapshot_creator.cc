@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
 
   deno_init();
   Deno* d = deno_new_snapshotter(
-      nullptr, js_fn, js_source.c_str(),
+      deno::empty_buf, nullptr, js_fn, js_source.c_str(),
       source_map_fn != nullptr ? source_map.c_str() : nullptr);
 
   auto snapshot = deno_get_snapshot(d);

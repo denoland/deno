@@ -13,8 +13,8 @@
 
 extern "C" {
 
-Deno* deno_new(deno_buf snapshot, deno_recv_cb cb) {
-  deno::DenoIsolate* d = new deno::DenoIsolate(snapshot, cb);
+Deno* deno_new(deno_buf snapshot, deno_buf shared, deno_recv_cb cb) {
+  deno::DenoIsolate* d = new deno::DenoIsolate(snapshot, cb, shared);
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator =
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -42,11 +42,12 @@ Deno* deno_new(deno_buf snapshot, deno_recv_cb cb) {
   return reinterpret_cast<Deno*>(d);
 }
 
-Deno* deno_new_snapshotter(deno_recv_cb cb, const char* js_filename,
-                           const char* js_source, const char* source_map) {
+Deno* deno_new_snapshotter(deno_buf shared, deno_recv_cb cb,
+                           const char* js_filename, const char* js_source,
+                           const char* source_map) {
   auto* creator = new v8::SnapshotCreator(deno::external_references);
   auto* isolate = creator->GetIsolate();
-  auto* d = new deno::DenoIsolate(deno::empty_buf, cb);
+  auto* d = new deno::DenoIsolate(deno::empty_buf, cb, shared);
   d->snapshot_creator_ = creator;
   d->AddIsolate(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
