@@ -1,12 +1,12 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
-import { CreateIterableIterator } from "./util";
 import * as blob from "./blob";
 import * as file from "./file";
+import { DomIterableMixin } from "./mixins/dom_iterable";
 
 const dataSymbol = Symbol("data");
 
-export class FormData implements domTypes.FormData {
+class FormDataBase {
   private [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
 
   /** Appends a new value onto an existing key inside a `FormData`
@@ -97,79 +97,11 @@ export class FormData implements domTypes.FormData {
       this[dataSymbol].push([name, value]);
     }
   }
-
-  /** Calls a function for each element contained in this object in
-   * place and return undefined. Optionally accepts an object to use
-   * as this when executing callback as second argument.
-   *
-   *       formData.forEach((value, key, parent) => {
-   *         console.log(value, key, parent);
-   *       });
-   */
-  forEach(
-    callbackfn: (
-      value: domTypes.FormDataEntryValue,
-      key: string,
-      parent: FormData
-    ) => void,
-    // tslint:disable-next-line:no-any
-    thisArg?: any
-  ) {
-    if (typeof thisArg !== "undefined") {
-      callbackfn = callbackfn.bind(thisArg);
-    }
-    for (const [key, value] of this.entries()) {
-      callbackfn(value, key, this);
-    }
-  }
-
-  /** Returns an iterator allowing to go through all keys contained
-   * in this object.
-   *
-   *       for (const key of formData.keys()) {
-   *         console.log(key);
-   *       }
-   */
-  keys(): IterableIterator<string> {
-    const list = this[dataSymbol].map(entry => entry[0]);
-    const iterators = list.values();
-    return new CreateIterableIterator(iterators);
-  }
-
-  /** Returns an iterator allowing to go through all values contained
-   * in this object.
-   *
-   *       for (const value of formData.values()) {
-   *         console.log(value);
-   *       }
-   */
-  values(): IterableIterator<domTypes.FormDataEntryValue> {
-    const list = this[dataSymbol].map(entry => entry[1]);
-    const iterators = list.values();
-    return new CreateIterableIterator(iterators);
-  }
-
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   *       for (const [key, value] of formData.entries()) {
-   *         console.log(key, value);
-   *       }
-   */
-  entries(): IterableIterator<[string, domTypes.FormDataEntryValue]> {
-    const iterators = this[dataSymbol].values();
-    return new CreateIterableIterator(iterators);
-  }
-
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   *       for (const [key, value] of formData[Symbol.iterator]()) {
-   *         console.log(key, value);
-   *       }
-   */
-  [Symbol.iterator](): IterableIterator<[string, domTypes.FormDataEntryValue]> {
-    const iterators = this[dataSymbol].values();
-    return new CreateIterableIterator(iterators);
-  }
 }
+
+// tslint:disable-next-line:variable-name
+export const FormData = DomIterableMixin<
+  string,
+  domTypes.FormDataEntryValue,
+  typeof FormDataBase
+>(FormDataBase, dataSymbol);

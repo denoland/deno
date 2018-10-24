@@ -24,20 +24,20 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
   // tslint:disable-next-line:variable-name
   const DomIterable = class extends Base {
     *entries(): IterableIterator<[K, V]> {
-      for (const entry of (this as any)[dataSymbol].entries()) {
+      for (const entry of (this as any)[dataSymbol]) {
         yield entry;
       }
     }
 
     *keys(): IterableIterator<K> {
-      for (const key of (this as any)[dataSymbol].keys()) {
-        yield key;
+      for (const entry of (this as any)[dataSymbol]) {
+        yield entry[0];
       }
     }
 
     *values(): IterableIterator<V> {
-      for (const value of (this as any)[dataSymbol].values()) {
-        yield value;
+      for (const entry of (this as any)[dataSymbol]) {
+        yield entry[1];
       }
     }
 
@@ -47,7 +47,7 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
       thisArg?: any
     ): void {
       callbackfn = callbackfn.bind(thisArg == null ? window : Object(thisArg));
-      for (const [key, value] of (this as any)[dataSymbol].entries()) {
+      for (const [key, value] of (this as any)[dataSymbol]) {
         callbackfn(value, key, this);
       }
     }

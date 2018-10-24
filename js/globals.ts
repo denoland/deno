@@ -46,4 +46,4 @@ window.fetch = fetch_.fetch;
 window.Headers = fetch_.Headers as domTypes.HeadersConstructor;
 window.Blob = blob.DenoBlob;
 window.File = file.DenoFile;
-window.FormData = formdata.FormData;
+window.FormData = formdata.FormData as domTypes.FormDataConstructor;
