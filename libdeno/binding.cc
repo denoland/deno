@@ -339,6 +339,26 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
+void Shared(v8::Local<v8::Name> property,
+            const v8::PropertyCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  DenoIsolate* d = FromIsolate(isolate);
+  DCHECK_EQ(d->isolate_, isolate);
+  v8::Locker locker(d->isolate_);
+  v8::EscapableHandleScope handle_scope(isolate);
+  if (d->shared_.data_ptr == nullptr) {
+    return;
+  }
+  v8::Local<v8::ArrayBuffer> ab;
+  if (d->shared_ab_.IsEmpty()) {
+    // Lazily initialize the persistent external ArrayBuffer.
+    ab = v8::ArrayBuffer::New(isolate, d->shared_.data_ptr, d->shared_.data_len,
+                              v8::ArrayBufferCreationMode::kExternalized);
+    d->shared_ab_.Reset(isolate, ab);
+  }
+  info.GetReturnValue().Set(ab);
+}
+
 // Sets the global error handler.
 void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
@@ -469,6 +489,9 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
   auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
+
+  CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
+            .FromJust());
 
   auto set_global_error_handler_tmpl =
       v8::FunctionTemplate::New(isolate, SetGlobalErrorHandler);

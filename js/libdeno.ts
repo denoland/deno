@@ -17,6 +17,8 @@ interface Libdeno {
 
   print(x: string, isErr?: boolean): void;
 
+  shared: ArrayBuffer;
+
   setGlobalErrorHandler: (
     handler: (
       message: string,
