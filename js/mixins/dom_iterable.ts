@@ -21,6 +21,11 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
   // Base class in a way where the Symbol `dataSymbol` is defined.  So the
   // runtime code works, but we do lose a little bit of type safety.
 
+  // Alternatively, we have to not use .keys() nor .values() since the internal
+  // slot differs in type - some have a Map, which yields [K, V] in
+  // Symbol.iterator, and some have an Array, which yields V, in this case
+  // [K, V] too as they are arrays of tuples.
+
   // tslint:disable-next-line:variable-name
   const DomIterable = class extends Base {
     *entries(): IterableIterator<[K, V]> {
