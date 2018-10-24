@@ -36,6 +36,9 @@ mod tokio_util;
 mod tokio_write;
 mod version;
 
+#[cfg(unix)]
+mod eager_unix;
+
 use std::env;
 
 static LOGGER: Logger = Logger;
