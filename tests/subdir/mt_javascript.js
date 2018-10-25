@@ -1,1 +1,3 @@
-export const loaded = true;
+define(["exports"], function(exports) {
+  exports.loaded = true;
+});
