@@ -8,6 +8,7 @@ use deno_dir;
 use errors::DenoError;
 use flags;
 use libdeno;
+use snapshot;
 
 use futures::Future;
 use libc::c_void;
@@ -99,6 +100,15 @@ pub struct Metrics {
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
+fn empty() -> libdeno::deno_buf {
+  libdeno::deno_buf {
+    alloc_ptr: std::ptr::null_mut(),
+    alloc_len: 0,
+    data_ptr: std::ptr::null_mut(),
+    data_len: 0,
+  }
+}
+
 impl Isolate {
   pub fn new(
     flags: flags::DenoFlags,
@@ -108,8 +118,10 @@ impl Isolate {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
-
-    let libdeno_isolate = unsafe { libdeno::deno_new(pre_dispatch) };
+    let shared = empty(); // TODO Use shared for message passing.
+    let libdeno_isolate = unsafe {
+      libdeno::deno_new(snapshot::deno_snapshot.clone(), shared, pre_dispatch)
+    };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
 

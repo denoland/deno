@@ -32,6 +32,7 @@ mod isolate;
 mod libdeno;
 pub mod ops;
 mod resources;
+mod snapshot;
 mod tokio_util;
 mod tokio_write;
 mod version;

@@ -17,7 +17,6 @@ typedef struct {
   size_t data_len;     // Length of logical contents.
 } deno_buf;
 
-struct deno_s;
 typedef struct deno_s Deno;
 
 // A callback to receive a message from a libdeno.send() javascript call.
@@ -30,7 +29,13 @@ void deno_init();
 const char* deno_v8_version();
 void deno_set_v8_flags(int* argc, char** argv);
 
-Deno* deno_new(deno_recv_cb cb);
+Deno* deno_new(deno_buf snapshot, deno_buf shared, deno_recv_cb cb);
+
+Deno* deno_new_snapshotter(deno_buf shared, deno_recv_cb cb,
+                           const char* js_filename, const char* js_source,
+                           const char* source_map);
+deno_buf deno_get_snapshot(Deno* d);
+
 void deno_delete(Deno* d);
 
 // Returns false on error.
