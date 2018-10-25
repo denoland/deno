@@ -94,7 +94,7 @@ D8_PATH=out/release/ ./third_party/v8/tools/linux-tick-processor
 isolate-0x7fad98242400-v8.log
 ```
 
-## Build Instructions *(for advanced users only)*
+## Build Instructions _(for advanced users only)_
 
 ### Prerequisites:
 
@@ -111,9 +111,9 @@ submodule. However, you need to install separately:
    1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
    2. Get [VS Community 2017](https://www.visualstudio.com/downloads/). Make
       sure to select the option to install C++ tools and the Windows SDK.
-   3. Enable `Debugging Tools for Windows`. Go to `Control Panel` -> `Windows 10 SDK`
-      -> Right-Click -> `Change` -> `Change` -> `Check Debugging Tools for Windows` ->
-      `Change` -> `Finish`.
+   3. Enable `Debugging Tools for Windows`. Go to `Control Panel` ->
+      `Windows 10 SDK` -> Right-Click -> `Change` -> `Change` ->
+      `Check Debugging Tools for Windows` -> `Change` -> `Finish`.
 
 ### Build:
 
@@ -155,7 +155,8 @@ Other useful commands:
     ./third_party/depot_tools/gn desc out/debug/ :deno
     ./third_party/depot_tools/gn help
 
-Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`, `DENO_DIR`.
+Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
+`DENO_DIR`.
 
 ## Internals
 
@@ -164,8 +165,8 @@ Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`, 
 Deno's privileged side will primarily be programmed in Rust. However there will
 be a small C API that wraps V8 to 1) define the low-level message passing
 semantics, 2) provide a low-level test target, 3) provide an ANSI C API binding
-interface for Rust. V8 plus this C API is called "libdeno" and the important bits
-of the API is specified here:
+interface for Rust. V8 plus this C API is called "libdeno" and the important
+bits of the API is specified here:
 https://github.com/denoland/deno/blob/master/libdeno/deno.h
 https://github.com/denoland/deno/blob/master/js/libdeno.ts
 
