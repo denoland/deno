@@ -368,6 +368,7 @@ export class DenoCompiler
   private _setupSourceMaps(): void {
     sourceMaps.install({
       installPrepareStackTrace: true,
+
       getGeneratedContents: (fileName: string): string | RawSourceMap => {
         this._log("compiler.getGeneratedContents", fileName);
         if (fileName === "gen/bundle/main.js") {
@@ -387,6 +388,11 @@ export class DenoCompiler
         }
       }
     });
+    // Pre-compute source maps for main.js.map. This will happen at compile-time
+    // as long as Compiler is instanciated before the snapshot is created..
+    const consumer = sourceMaps.loadConsumer("gen/bundle/main.js");
+    assert(consumer != null);
+    consumer!.computeColumnSpans();
   }
 
   private constructor() {

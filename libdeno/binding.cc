@@ -521,13 +521,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
             .FromJust());
 
   {
-    auto source = deno::v8_str(js_source);
-    CHECK(
-        deno_val->Set(context, deno::v8_str("mainSource"), source).FromJust());
-
-    bool r = deno::ExecuteV8StringSource(context, js_filename, source);
-    CHECK(r);
-
     if (source_map != nullptr) {
       v8::TryCatch try_catch(isolate);
       v8::ScriptOrigin origin(v8_str("set_source_map.js"));
@@ -551,6 +544,13 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
                       source_map_obj.ToLocalChecked())
                 .FromJust());
     }
+
+    auto source = deno::v8_str(js_source);
+    CHECK(
+        deno_val->Set(context, deno::v8_str("mainSource"), source).FromJust());
+
+    bool r = deno::ExecuteV8StringSource(context, js_filename, source);
+    CHECK(r);
   }
 }
 

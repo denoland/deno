@@ -186,7 +186,7 @@ function CallSiteToString(frame: CallSite): string {
 // Regex for detecting source maps
 const reSourceMap = /^data:application\/json[^,]+base64,/;
 
-function loadConsumer(source: string): SourceMapConsumer | null {
+export function loadConsumer(source: string): SourceMapConsumer | null {
   let consumer = consumers.get(source);
   if (consumer == null) {
     const code = getGeneratedContents(source);
@@ -210,8 +210,8 @@ function loadConsumer(source: string): SourceMapConsumer | null {
       sourceMapData = arrayToStr(ui8);
       sourceMappingURL = source;
     } else {
-      // Support source map URLs relative to the source URL
-      //sourceMappingURL = supportRelativeURL(source, sourceMappingURL);
+      // TODO Support source map URLs relative to the source URL
+      // sourceMappingURL = supportRelativeURL(source, sourceMappingURL);
       sourceMapData = getGeneratedContents(sourceMappingURL);
     }
 
@@ -219,7 +219,6 @@ function loadConsumer(source: string): SourceMapConsumer | null {
       typeof sourceMapData === "string"
         ? JSON.parse(sourceMapData)
         : sourceMapData;
-    //console.log("sourceMapData", sourceMapData);
     consumer = new SourceMapConsumer(rawSourceMap);
     consumers.set(source, consumer);
   }
@@ -242,7 +241,7 @@ function retrieveSourceMapURL(fileData: string): string | null {
   return lastMatch[1];
 }
 
-function mapSourcePosition(position: Position): MappedPosition {
+export function mapSourcePosition(position: Position): MappedPosition {
   const consumer = loadConsumer(position.source);
   if (consumer == null) {
     return position;
