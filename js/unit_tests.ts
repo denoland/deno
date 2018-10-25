@@ -12,6 +12,7 @@ import "./read_dir_test.ts";
 import "./write_file_test.ts";
 import "./copy_file_test.ts";
 import "./mkdir_test.ts";
+import "./chmod_test.ts";
 import "./dir_test";
 import "./make_temp_dir_test.ts";
 import "./stat_test.ts";
