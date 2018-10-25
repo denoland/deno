@@ -35,14 +35,14 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
     }
 
     *keys(): IterableIterator<K> {
-      for (const entry of (this as any)[dataSymbol]) {
-        yield entry[0];
+      for (const [key] of (this as any)[dataSymbol]) {
+        yield key;
       }
     }
 
     *values(): IterableIterator<V> {
-      for (const entry of (this as any)[dataSymbol]) {
-        yield entry[1];
+      for (const [, value] of (this as any)[dataSymbol]) {
+        yield value;
       }
     }
 
