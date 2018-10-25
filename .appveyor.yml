@@ -210,7 +210,7 @@ environment:
       # Get-SaveCache returns $true if the cache will be saved at the end.
       function Get-SaveCache {
         -not $env:APPVEYOR_PULL_REQUEST_NUMBER -and
-        -not $env:APPVEYOR_CACHE_SKIP_SAVE -eq "true"
+        -not ($env:APPVEYOR_CACHE_SKIP_SAVE -eq "true")
       }
 
 for:
