@@ -11,15 +11,12 @@ testPerm({ write: true }, function chmodSyncSuccess() {
   const filename = tempDir + "/test.txt";
   deno.writeFileSync(filename, data, 0o666);
 
-  let fileInfo = deno.statSync(filename);
-  assertEqual(fileInfo.mode & 0o777, 0o666);
-
-  // On windows, no effect, but should not crash
+  // On windows no effect, but should not crash
   deno.chmodSync(filename, 0o777);
 
   // Check success when not on windows
   if (isNotWindows) {
-    fileInfo = deno.statSync(filename);
+    const fileInfo = deno.statSync(filename);
     assertEqual(fileInfo.mode & 0o777, 0o777);
   }
 });
@@ -36,15 +33,13 @@ if (isNotWindows) {
     const symlinkName = tempDir + "/test_symlink.txt";
     deno.symlink(filename, symlinkName);
 
-    let fileInfo = deno.statSync(filename);
-    assertEqual(fileInfo.mode & 0o777, 0o666);
     let symlinkInfo = deno.lstatSync(symlinkName);
     const symlinkMode = symlinkInfo.mode & 0o777; // plaform dependent
 
     deno.chmodSync(symlinkName, 0o777);
 
     // Change actual file mode, not symlink
-    fileInfo = deno.statSync(filename);
+    const fileInfo = deno.statSync(filename);
     assertEqual(fileInfo.mode & 0o777, 0o777);
     symlinkInfo = deno.lstatSync(symlinkName);
     assertEqual(symlinkInfo.mode & 0o777, symlinkMode);
@@ -66,8 +61,7 @@ testPerm({ write: true }, function chmodSyncFailure() {
 testPerm({ write: false }, function chmodSyncPerm() {
   let err;
   try {
-    const filename = deno.makeTempDirSync() + "/test.txt";
-    deno.chmodSync(filename, 0o777);
+    deno.chmodSync("/somefile.txt", 0o777);
   } catch (e) {
     err = e;
   }
@@ -82,15 +76,12 @@ testPerm({ write: true }, async function chmodSuccess() {
   const filename = tempDir + "/test.txt";
   deno.writeFileSync(filename, data, 0o666);
 
-  let fileInfo = deno.statSync(filename);
-  assertEqual(fileInfo.mode & 0o777, 0o666);
-
-  // On windows, no effect, but should not crash
+  // On windows no effect, but should not crash
   await deno.chmod(filename, 0o777);
 
   // Check success when not on windows
   if (isNotWindows) {
-    fileInfo = deno.statSync(filename);
+    const fileInfo = deno.statSync(filename);
     assertEqual(fileInfo.mode & 0o777, 0o777);
   }
 });
@@ -107,15 +98,13 @@ if (isNotWindows) {
     const symlinkName = tempDir + "/test_symlink.txt";
     deno.symlink(filename, symlinkName);
 
-    let fileInfo = deno.statSync(filename);
-    assertEqual(fileInfo.mode & 0o777, 0o666);
     let symlinkInfo = deno.lstatSync(symlinkName);
     const symlinkMode = symlinkInfo.mode & 0o777; // plaform dependent
 
     await deno.chmod(symlinkName, 0o777);
 
     // Just change actual file mode, not symlink
-    fileInfo = deno.statSync(filename);
+    const fileInfo = deno.statSync(filename);
     assertEqual(fileInfo.mode & 0o777, 0o777);
     symlinkInfo = deno.lstatSync(symlinkName);
     assertEqual(symlinkInfo.mode & 0o777, symlinkMode);
@@ -137,8 +126,7 @@ testPerm({ write: true }, async function chmodFailure() {
 testPerm({ write: false }, async function chmodPerm() {
   let err;
   try {
-    const filename = deno.makeTempDirSync() + "/test.txt";
-    await deno.chmod(filename, 0o777);
+    await deno.chmod("/somefile.txt", 0o777);
   } catch (e) {
     err = e;
   }
