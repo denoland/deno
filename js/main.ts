@@ -11,6 +11,10 @@ import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
 import { replLoop } from "./repl";
 import { version } from "typescript";
 
+// Instantiate compiler at the top-level so it decodes source maps for the main
+// bundle during snapshot.
+const compiler = DenoCompiler.instance();
+
 function sendStart(): msg.StartRes {
   const builder = flatbuffers.createBuilder();
   msg.Start.startStart(builder);
@@ -44,7 +48,6 @@ export default function denoMain() {
   libdeno.setGlobalErrorHandler(onGlobalError);
   libdeno.setPromiseRejectHandler(promiseRejectHandler);
   libdeno.setPromiseErrorExaminer(promiseErrorExaminer);
-  const compiler = DenoCompiler.instance();
 
   // First we send an empty "Start" message to let the privileged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
