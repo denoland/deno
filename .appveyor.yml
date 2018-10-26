@@ -283,22 +283,8 @@ install:
   # Add Rust/Cargo to PATH.
   - ps: $env:PATH += ";$env:CARGO_HOME\bin"
 
-  # Look for Rust updates.
-  # * If there are no updates, rustup will exit cleanly.
-  # * If there are updates, rustup will attempt to install them, and then blow
-  #   up because we removed the 'rust-docs' component.
-  # * The actual update is done by removing and reinstalling with rustup-init.
-  - ps: |-
-      if (Get-SaveCache -and (Test-Path $env:CARGO_HOME)) {
-        try {
-          Exec -NoNewLines { & rustup update stable-x86_64-pc-windows-msvc }
-        } catch {
-          Delete-Tree $env:CARGO_HOME, $env:RUSTUP_HOME
-        }
-      }
-
-  # Install or reinstall Rust via rustup-init.
-  # * After install/update, the rustup directory is very big, with many files,
+  # Install Rust via rustup-init.
+  # * After install, the rustup directory is very big, with many files,
   #   slowing down cache save/restore a lot, so we remove unnecessary stuff.
   # * TODO: Use `rustup component remove docs` instead, when this issue
   #   is resolved: https://github.com/rust-lang-nursery/rustup.rs/issues/998.
@@ -307,7 +293,9 @@ install:
       if (-not (Test-Path $env:CARGO_HOME)) {
         Invoke-WebRequest -Uri "https://win.rustup.rs" `
                           -OutFile "$env:TEMP\rustup-init.exe"
-        Exec -NoNewLines { & "$env:TEMP\rustup-init.exe" -y }
+        Exec -NoNewLines {
+          & "$env:TEMP\rustup-init.exe" -y --default-toolchain 1.30.0
+        }
         Delete-Tree @(
           "$env:RUSTUP_HOME\downloads",
           "$env:RUSTUP_HOME\tmp",
