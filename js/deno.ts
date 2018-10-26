@@ -13,7 +13,7 @@ export {
   Writer,
   Closer,
   Seeker,
-  ReaderCloser,
+  ReadCloser,
   WriteCloser,
   ReadSeeker,
   WriteSeeker,

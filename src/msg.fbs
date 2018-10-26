@@ -206,7 +206,7 @@ table FetchRes {
   status: int;
   header_key: [string];
   header_value: [string];
-  body: [ubyte];
+  body_rid: uint32;
 }
 
 table MakeTempDir {
