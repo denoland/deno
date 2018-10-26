@@ -133,7 +133,7 @@ source_set("snapshot") {
     "src/snapshot.cc",
   ]
   configs += [ ":deno_config" ]
-  data = [
+  inputs = [
     "$target_gen_dir/snapshot_deno.bin",
   ]
   deps = [
@@ -152,9 +152,7 @@ source_set("snapshot") {
   # header file that contains the the sha256 hash of the snapshot.
   if (cc_wrapper != "" && cc_wrapper != "ccache") {
     hash_h = "$target_gen_dir/bundle/hash.h"
-    inputs = [
-      hash_h,
-    ]
+    inputs += [ hash_h ]
     deps += [ ":bundle_hash_h" ]
     if (is_win) {
       cflags = [ "/FI" + rebase_path(hash_h, target_out_dir) ]
