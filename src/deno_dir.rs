@@ -29,6 +29,9 @@ pub struct DenoDir {
   // This is where we cache compilation outputs. Example:
   // /Users/rld/.deno/gen/f39a473452321cacd7c346a870efb0e3e1264b43.js
   pub deps: PathBuf,
+  // This splits to http and https deps
+  pub deps_http: PathBuf,
+  pub deps_https: PathBuf,
   // If remote resources should be reloaded.
   reload: bool,
 }
@@ -50,19 +53,27 @@ impl DenoDir {
     };
     let gen = root.as_path().join("gen");
     let deps = root.as_path().join("deps");
+    let deps_http = deps.join("http");
+    let deps_https = deps.join("https");
 
     let deno_dir = DenoDir {
       root,
       gen,
       deps,
+      deps_http,
+      deps_https,
       reload,
     };
     deno_fs::mkdir(deno_dir.gen.as_ref(), 0o755)?;
     deno_fs::mkdir(deno_dir.deps.as_ref(), 0o755)?;
+    deno_fs::mkdir(deno_dir.deps_http.as_ref(), 0o755)?;
+    deno_fs::mkdir(deno_dir.deps_https.as_ref(), 0o755)?;
 
     debug!("root {}", deno_dir.root.display());
     debug!("gen {}", deno_dir.gen.display());
     debug!("deps {}", deno_dir.deps.display());
+    debug!("deps_http {}", deno_dir.deps_http.display());
+    debug!("deps_https {}", deno_dir.deps_https.display());
 
     Ok(deno_dir)
   }
@@ -236,13 +247,24 @@ impl DenoDir {
   fn src_file_to_url(self: &DenoDir, filename: &str) -> String {
     let filename_path = Path::new(filename);
     if filename_path.starts_with(&self.deps) {
-      let rest = filename_path.strip_prefix(&self.deps).unwrap();
+      let (rest, prefix) = if filename_path.starts_with(&self.deps_https) {
+        let rest = filename_path.strip_prefix(&self.deps_https).unwrap();
+        let prefix = "https://".to_string();
+        (rest, prefix)
+      } else if filename_path.starts_with(&self.deps_http) {
+        let rest = filename_path.strip_prefix(&self.deps_http).unwrap();
+        let prefix = "http://".to_string();
+        (rest, prefix)
+      } else {
+        // TODO(kevinkassimo): change this to support other protocols than http
+        unimplemented!()
+      };
       // Windows doesn't support ":" in filenames, so we represent port using a
       // special string.
       // TODO(ry) This current implementation will break on a URL that has
       // the default port but contains "_PORT" in the path.
       let rest = rest.to_str().unwrap().replacen("_PORT", ":", 1);
-      "http://".to_string() + &rest
+      prefix + &rest
     } else {
       String::from(filename)
     }
@@ -290,12 +312,20 @@ impl DenoDir {
         module_name = p.clone();
         filename = p;
       }
-      _ => {
+      "https" => {
         module_name = j.to_string();
         filename = deno_fs::normalize_path(
-          get_cache_filename(self.deps.as_path(), j).as_ref(),
+          get_cache_filename(self.deps_https.as_path(), j).as_ref(),
         )
       }
+      "http" => {
+        module_name = j.to_string();
+        filename = deno_fs::normalize_path(
+          get_cache_filename(self.deps_http.as_path(), j).as_ref(),
+        )
+      }
+      // TODO(kevinkassimo): change this to support other protocols than http
+      _ => unimplemented!(),
     }
 
     debug!("module_name: {}, filename: {}", module_name, filename);
@@ -492,7 +522,7 @@ fn test_src_file_to_url_1() {
   let (_temp_dir, deno_dir) = test_setup();
   assert_eq!("hello", deno_dir.src_file_to_url("hello"));
   assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
-  let x = deno_dir.deps.join("hello/world.txt");
+  let x = deno_dir.deps_http.join("hello/world.txt");
   assert_eq!(
     "http://hello/world.txt",
     deno_dir.src_file_to_url(x.to_str().unwrap())
@@ -502,9 +532,31 @@ fn test_src_file_to_url_1() {
 #[test]
 fn test_src_file_to_url_2() {
   let (_temp_dir, deno_dir) = test_setup();
-  let x = deno_dir.deps.join("localhost_PORT4545/world.txt");
+  assert_eq!("hello", deno_dir.src_file_to_url("hello"));
+  assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
+  let x = deno_dir.deps_https.join("hello/world.txt");
+  assert_eq!(
+    "https://hello/world.txt",
+    deno_dir.src_file_to_url(x.to_str().unwrap())
+  );
+}
+
+#[test]
+fn test_src_file_to_url_3() {
+  let (_temp_dir, deno_dir) = test_setup();
+  let x = deno_dir.deps_http.join("localhost_PORT4545/world.txt");
   assert_eq!(
     "http://localhost:4545/world.txt",
+    deno_dir.src_file_to_url(x.to_str().unwrap())
+  );
+}
+
+#[test]
+fn test_src_file_to_url_4() {
+  let (_temp_dir, deno_dir) = test_setup();
+  let x = deno_dir.deps_https.join("localhost_PORT4545/world.txt");
+  assert_eq!(
+    "https://localhost:4545/world.txt",
     deno_dir.src_file_to_url(x.to_str().unwrap())
   );
 }
@@ -568,7 +620,7 @@ fn test_resolve_module_2() {
     "http://localhost:4545/testdata/subdir/print_hello.ts";
   let expected_filename = deno_fs::normalize_path(
     deno_dir
-      .deps
+      .deps_http
       .join("localhost_PORT4545/testdata/subdir/print_hello.ts")
       .as_ref(),
   );
@@ -585,14 +637,14 @@ fn test_resolve_module_3() {
   let (_temp_dir, deno_dir) = test_setup();
 
   let module_specifier_ =
-    deno_dir.deps.join("unpkg.com/liltest@0.0.5/index.ts");
+    deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
   let module_specifier = module_specifier_.to_str().unwrap();
   let containing_file = ".";
 
   let expected_module_name = "http://unpkg.com/liltest@0.0.5/index.ts";
   let expected_filename = deno_fs::normalize_path(
     deno_dir
-      .deps
+      .deps_http
       .join("unpkg.com/liltest@0.0.5/index.ts")
       .as_ref(),
   );
@@ -609,12 +661,17 @@ fn test_resolve_module_4() {
   let (_temp_dir, deno_dir) = test_setup();
 
   let module_specifier = "./util";
-  let containing_file_ = deno_dir.deps.join("unpkg.com/liltest@0.0.5/index.ts");
+  let containing_file_ =
+    deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
   let containing_file = containing_file_.to_str().unwrap();
 
+  // http containing files -> load relative import with http
   let expected_module_name = "http://unpkg.com/liltest@0.0.5/util";
   let expected_filename = deno_fs::normalize_path(
-    deno_dir.deps.join("unpkg.com/liltest@0.0.5/util").as_ref(),
+    deno_dir
+      .deps_http
+      .join("unpkg.com/liltest@0.0.5/util")
+      .as_ref(),
   );
 
   let (module_name, filename) = deno_dir
@@ -628,12 +685,37 @@ fn test_resolve_module_4() {
 fn test_resolve_module_5() {
   let (_temp_dir, deno_dir) = test_setup();
 
+  let module_specifier = "./util";
+  let containing_file_ =
+    deno_dir.deps_https.join("unpkg.com/liltest@0.0.5/index.ts");
+  let containing_file = containing_file_.to_str().unwrap();
+
+  // https containing files -> load relative import with https
+  let expected_module_name = "https://unpkg.com/liltest@0.0.5/util";
+  let expected_filename = deno_fs::normalize_path(
+    deno_dir
+      .deps_https
+      .join("unpkg.com/liltest@0.0.5/util")
+      .as_ref(),
+  );
+
+  let (module_name, filename) = deno_dir
+    .resolve_module(module_specifier, containing_file)
+    .unwrap();
+  assert_eq!(module_name, expected_module_name);
+  assert_eq!(filename, expected_filename);
+}
+
+#[test]
+fn test_resolve_module_6() {
+  let (_temp_dir, deno_dir) = test_setup();
+
   let module_specifier = "http://localhost:4545/tests/subdir/mod2.ts";
   let containing_file = add_root!("/deno/tests/006_url_imports.ts");
   let expected_module_name = "http://localhost:4545/tests/subdir/mod2.ts";
   let expected_filename = deno_fs::normalize_path(
     deno_dir
-      .deps
+      .deps_http
       .join("localhost_PORT4545/tests/subdir/mod2.ts")
       .as_ref(),
   );
