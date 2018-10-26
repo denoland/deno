@@ -13,6 +13,7 @@ use eager_unix as eager;
 use errors::bad_resource;
 use errors::DenoError;
 use errors::DenoResult;
+use http_body::HttpBody;
 use repl::Repl;
 use tokio_util;
 use tokio_write;
@@ -20,6 +21,7 @@ use tokio_write;
 use futures;
 use futures::future::{Either, FutureResult};
 use futures::Poll;
+use hyper;
 use std;
 use std::collections::HashMap;
 use std::io::{Error, Read, Write};
@@ -59,6 +61,7 @@ enum Repr {
   FsFile(tokio::fs::File),
   TcpListener(tokio::net::TcpListener),
   TcpStream(tokio::net::TcpStream),
+  HttpBody(HttpBody),
   Repl(Repl),
 }
 
@@ -89,6 +92,7 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::FsFile(_) => "fsFile",
     Repr::TcpListener(_) => "tcpListener",
     Repr::TcpStream(_) => "tcpStream",
+    Repr::HttpBody(_) => "httpBody",
     Repr::Repl(_) => "repl",
   };
 
@@ -155,6 +159,7 @@ impl AsyncRead for Resource {
         Repr::FsFile(ref mut f) => f.poll_read(buf),
         Repr::Stdin(ref mut f) => f.poll_read(buf),
         Repr::TcpStream(ref mut f) => f.poll_read(buf),
+        Repr::HttpBody(ref mut f) => f.poll_read(buf),
         _ => panic!("Cannot read"),
       },
     }
@@ -222,6 +227,15 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   Resource { rid }
 }
 
+pub fn add_hyper_body(body: hyper::Body) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let body = HttpBody::from(body);
+  let r = tg.insert(rid, Repr::HttpBody(body));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
 pub fn add_repl(repl: Repl) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
@@ -243,6 +257,7 @@ pub fn readline(rid: ResourceId, prompt: &str) -> DenoResult<String> {
 }
 
 pub fn lookup(rid: ResourceId) -> Option<Resource> {
+  debug!("resource lookup {}", rid);
   let table = RESOURCE_TABLE.lock().unwrap();
   table.get(&rid).map(|_| Resource { rid })
 }

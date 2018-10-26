@@ -18,7 +18,7 @@ use futures;
 use futures::future::poll_fn;
 use futures::Poll;
 use hyper;
-use hyper::rt::{Future, Stream};
+use hyper::rt::Future;
 use remove_dir_all::remove_dir_all;
 use repl;
 use resources::table_entries;
@@ -417,20 +417,17 @@ fn op_fetch(
       (keys, values)
     };
 
-    // TODO Handle streaming body.
-    res
-      .into_body()
-      .concat2()
-      .map(move |body| (status, body, headers))
+    let body = res.into_body();
+    let body_resource = resources::add_hyper_body(body);
+    Ok((status, headers, body_resource))
   });
 
   let future = future.map_err(|err| -> DenoError { err.into() }).and_then(
-    move |(status, body, headers)| {
+    move |(status, headers, body_resource)| {
       debug!("fetch body ");
       let builder = &mut FlatBufferBuilder::new();
       // Send the first message without a body. This is just to indicate
       // what status code.
-      let body_off = builder.create_vector(body.as_ref());
       let header_keys: Vec<&str> = headers.0.iter().map(|s| &**s).collect();
       let header_keys_off =
         builder.create_vector_of_strings(header_keys.as_slice());
@@ -443,7 +440,7 @@ fn op_fetch(
         &msg::FetchResArgs {
           id,
           status,
-          body: Some(body_off),
+          body_rid: body_resource.rid,
           header_key: Some(header_keys_off),
           header_value: Some(header_values_off),
         },

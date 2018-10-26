@@ -77,7 +77,7 @@ export interface Seeker {
 }
 
 // https://golang.org/pkg/io/#ReadCloser
-export interface ReaderCloser extends Reader, Closer {}
+export interface ReadCloser extends Reader, Closer {}
 
 // https://golang.org/pkg/io/#WriteCloser
 export interface WriteCloser extends Writer, Closer {}

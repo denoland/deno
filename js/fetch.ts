@@ -1,12 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  log,
-  createResolvable,
-  Resolvable,
-  typedArrayToArrayBuffer,
-  notImplemented
-} from "./util";
+import { assert, log, createResolvable, notImplemented } from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
@@ -14,52 +7,65 @@ import * as domTypes from "./dom_types";
 import { TextDecoder } from "./text_encoding";
 import { DenoBlob } from "./blob";
 import { Headers } from "./headers";
+import * as io from "./io";
+import { read, close } from "./files";
+import { Buffer } from "./buffer";
 
-class FetchResponse implements domTypes.Response {
-  readonly url: string = "";
-  body: null;
-  bodyUsed = false; // TODO
-  statusText = "FIXME"; // TODO
-  readonly type = "basic"; // TODO
-  redirected = false; // TODO
-  headers: domTypes.Headers;
-  readonly trailer: Promise<domTypes.Headers>;
-  //private bodyChunks: Uint8Array[] = [];
-  private first = true;
-  private bodyData: ArrayBuffer;
-  private bodyWaiter: Resolvable<ArrayBuffer>;
+class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
+  bodyUsed = false;
+  private _bodyPromise: null | Promise<ArrayBuffer> = null;
+  private _data: ArrayBuffer | null = null;
+  readonly locked: boolean = false; // TODO
+  readonly body: null | Body = this;
 
-  constructor(
-    readonly status: number,
-    readonly body_: ArrayBuffer,
-    headersList: Array<[string, string]>
-  ) {
-    this.bodyWaiter = createResolvable();
-    this.trailer = createResolvable();
-    this.headers = new Headers(headersList);
-    this.bodyData = body_;
-    setTimeout(() => {
-      this.bodyWaiter.resolve(body_);
-    }, 0);
+  constructor(private rid: number, readonly contentType: string) {}
+
+  private async _bodyBuffer(): Promise<ArrayBuffer> {
+    assert(this._bodyPromise == null);
+    const buf = new Buffer();
+    try {
+      const nread = await buf.readFrom(this);
+      const ui8 = buf.bytes();
+      assert(ui8.byteLength === nread);
+      this._data = ui8.buffer.slice(
+        ui8.byteOffset,
+        ui8.byteOffset + nread
+      ) as ArrayBuffer;
+      assert(this._data.byteLength === nread);
+    } finally {
+      this.close();
+    }
+
+    return this._data;
   }
 
-  arrayBuffer(): Promise<ArrayBuffer> {
-    return this.bodyWaiter;
+  async arrayBuffer(): Promise<ArrayBuffer> {
+    // If we've already bufferred the response, just return it.
+    if (this._data != null) {
+      return this._data;
+    }
+
+    // If there is no _bodyPromise yet, start it.
+    if (this._bodyPromise == null) {
+      this._bodyPromise = this._bodyBuffer();
+    }
+
+    return this._bodyPromise;
   }
 
   async blob(): Promise<domTypes.Blob> {
     const arrayBuffer = await this.arrayBuffer();
     return new DenoBlob([arrayBuffer], {
-      type: this.headers.get("content-type") || ""
+      type: this.contentType
     });
   }
 
   async formData(): Promise<domTypes.FormData> {
-    notImplemented();
-    return {} as domTypes.FormData;
+    return notImplemented();
   }
 
-  async json(): Promise<object> {
+  // tslint:disable-next-line:no-any
+  async json(): Promise<any> {
     const text = await this.text();
     return JSON.parse(text);
   }
@@ -68,6 +74,71 @@ class FetchResponse implements domTypes.Response {
     const ab = await this.arrayBuffer();
     const decoder = new TextDecoder("utf-8");
     return decoder.decode(ab);
+  }
+
+  read(p: Uint8Array): Promise<io.ReadResult> {
+    return read(this.rid, p);
+  }
+
+  close(): void {
+    close(this.rid);
+  }
+
+  async cancel(): Promise<void> {
+    return notImplemented();
+  }
+
+  getReader(): domTypes.ReadableStreamReader {
+    return notImplemented();
+  }
+}
+
+class Response implements domTypes.Response {
+  readonly url: string = "";
+  statusText = "FIXME"; // TODO
+  readonly type = "basic"; // TODO
+  redirected = false; // TODO
+  headers: domTypes.Headers;
+  readonly trailer: Promise<domTypes.Headers>;
+  bodyUsed = false;
+  readonly body: Body;
+
+  constructor(
+    readonly status: number,
+    headersList: Array<[string, string]>,
+    rid: number,
+    body_: null | Body = null
+  ) {
+    this.trailer = createResolvable();
+    this.headers = new Headers(headersList);
+    const contentType = this.headers.get("content-type") || "";
+
+    if (body_ == null) {
+      this.body = new Body(rid, contentType);
+    } else {
+      this.body = body_;
+    }
+  }
+
+  async arrayBuffer(): Promise<ArrayBuffer> {
+    return this.body.arrayBuffer();
+  }
+
+  async blob(): Promise<domTypes.Blob> {
+    return this.body.blob();
+  }
+
+  async formData(): Promise<domTypes.FormData> {
+    return this.body.formData();
+  }
+
+  // tslint:disable-next-line:no-any
+  async json(): Promise<any> {
+    return this.body.json();
+  }
+
+  async text(): Promise<string> {
+    return this.body.text();
   }
 
   get ok(): boolean {
@@ -87,25 +158,7 @@ class FetchResponse implements domTypes.Response {
       headersList.push(header);
     }
 
-    return new FetchResponse(this.status, this.bodyData.slice(0), headersList);
-  }
-
-  onHeader?: (res: FetchResponse) => void;
-  onError?: (error: Error) => void;
-
-  onMsg(base: msg.Base) {
-    /*
-    const error = base.error();
-    if (error != null) {
-      assert(this.onError != null);
-      this.onError!(new Error(error));
-      return;
-    }
-    */
-
-    if (this.first) {
-      this.first = false;
-    }
+    return new Response(this.status, headersList, -1, this.body);
   }
 }
 
@@ -113,7 +166,7 @@ class FetchResponse implements domTypes.Response {
 export async function fetch(
   input?: domTypes.Request | string,
   init?: domTypes.RequestInit
-): Promise<domTypes.Response> {
+): Promise<Response> {
   const url = input as string;
   log("dispatch FETCH_REQ", url);
 
@@ -134,9 +187,7 @@ export async function fetch(
   assert(resBase.inner(inner) != null);
 
   const status = inner.status();
-  const bodyArray = inner.bodyArray();
-  assert(bodyArray != null);
-  const body = typedArrayToArrayBuffer(bodyArray!);
+  const bodyRid = inner.bodyRid();
 
   const headersList: Array<[string, string]> = [];
   const len = inner.headerKeyLength();
@@ -146,6 +197,6 @@ export async function fetch(
     headersList.push([key, value]);
   }
 
-  const response = new FetchResponse(status, body, headersList);
+  const response = new Response(status, headersList, bodyRid);
   return response;
 }
