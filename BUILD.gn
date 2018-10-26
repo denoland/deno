@@ -152,7 +152,7 @@ source_set("snapshot") {
   # header file that contains the the sha256 hash of the snapshot.
   if (cc_wrapper != "" && cc_wrapper != "ccache") {
     hash_h = "$target_gen_dir/bundle/hash.h"
-    inputs = [
+    data = [
       hash_h,
     ]
     deps += [ ":bundle_hash_h" ]
