@@ -1,6 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use std;
-use std::fs::{create_dir, DirBuilder, File, OpenOptions};
+use std::fs::{
+  create_dir, read_dir, remove_dir_all, remove_file, DirBuilder, File,
+  OpenOptions,
+};
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -97,4 +100,17 @@ pub fn normalize_path(path: &Path) -> String {
   } else {
     s
   }
+}
+
+pub fn remove_dir_contents_all<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
+  let dir = read_dir(&path)?;
+  for entry in dir {
+    let path = entry?.path();
+    if path.is_dir() {
+      remove_dir_all(path)?;
+    } else {
+      remove_file(path)?;
+    }
+  }
+  Ok(())
 }

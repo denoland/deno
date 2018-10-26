@@ -21,15 +21,15 @@ use url::Url;
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
   pub root: PathBuf,
-  // In the Go code this was called SrcDir.
-  // This is where we cache http resources. Example:
-  // /Users/rld/.deno/deps/github.com/ry/blah.js
-  pub gen: PathBuf,
   // In the Go code this was called CacheDir.
   // This is where we cache compilation outputs. Example:
   // /Users/rld/.deno/gen/f39a473452321cacd7c346a870efb0e3e1264b43.js
+  pub gen: PathBuf,
+  // In the Go code this was called SrcDir.
+  // This is where we cache remote resources. Example:
+  // /Users/rld/.deno/deps/https/github.com/ry/blah.js
   pub deps: PathBuf,
-  // This splits to http and https deps
+  // This splits deps to http and https deps
   pub deps_http: PathBuf,
   pub deps_https: PathBuf,
   // If remote resources should be reloaded.

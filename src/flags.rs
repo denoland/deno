@@ -1,12 +1,16 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use fs as deno_fs;
 use getopts::Options;
+use isolate::IsolateState;
 use libc::c_int;
 use libdeno;
 use log;
+use std::error::Error;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
 use std::process::exit;
+use std::sync::Arc;
 use std::vec::Vec;
 
 // Creates vector of strings, Vec<String>
@@ -27,9 +31,15 @@ pub struct DenoFlags {
   pub allow_env: bool,
   pub deps_flag: bool,
   pub types_flag: bool,
+  pub clear_cache: bool,
+  pub clear_deps: bool,
 }
 
-pub fn process(flags: &DenoFlags, usage_string: String) {
+pub fn process(
+  flags: &DenoFlags,
+  state: Arc<IsolateState>,
+  usage_string: String,
+) {
   if flags.help {
     println!("{}", &usage_string);
     exit(0);
@@ -40,6 +50,26 @@ pub fn process(flags: &DenoFlags, usage_string: String) {
     log_level = log::LevelFilter::Debug;
   }
   log::set_max_level(log_level);
+
+  if flags.clear_cache {
+    if let Err(err) = deno_fs::remove_dir_contents_all(&state.dir.gen) {
+      eprintln!("Failed to clear cache: {}", err.description());
+      exit(1);
+    } else {
+      println!("Successfully cleared cache.");
+      exit(0);
+    }
+  }
+
+  if flags.clear_deps {
+    if let Err(err) = deno_fs::remove_dir_contents_all(&state.dir.deps) {
+      eprintln!("Failed to clear dependencies: {}", err.description());
+      exit(1);
+    } else {
+      println!("Successfully cleared dependencies.");
+      exit(0);
+    }
+  }
 }
 
 pub fn get_usage(opts: &Options) -> String {
@@ -72,6 +102,8 @@ pub fn set_flags(
   opts.optflag("", "v8-options", "Print V8 command line options.");
   opts.optflag("", "deps", "Print module dependencies.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
+  opts.optflag("c", "clear-cache", "Clear cache of compiled code.");
+  opts.optflag("d", "clear-deps", "Clear cache of retrieved dependencies.");
 
   let mut flags = DenoFlags::default();
 
@@ -111,6 +143,12 @@ pub fn set_flags(
   }
   if matches.opt_present("types") {
     flags.types_flag = true;
+  }
+  if matches.opt_present("clear-cache") {
+    flags.clear_cache = true;
+  }
+  if matches.opt_present("clear-deps") {
+    flags.clear_deps = true;
   }
 
   let rest: Vec<_> = matches.free.iter().map(|s| s.clone()).collect();
