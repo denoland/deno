@@ -70,12 +70,12 @@ import { listen, accept, copy } from "deno";
 const listener = listen("tcp", ":8080");
 while (true) {
   const conn = await listener.accept();
-  deno.copy(conn, conn);
+  copy(conn, conn);
 }
 // TODO top level await doesn't work yet.
 ```
 
-## How to Profile Deno.
+## How to Profile Deno
 
 ```sh
 # Make sure we're only building release.
@@ -89,14 +89,14 @@ third_party/wrk/linux/wrk http://localhost:4500/
 kill `pgrep deno`
 # When supplying --prof, V8 will write a file in the current directory that
 # looks like this isolate-0x7fad98242400-v8.log
-# To examine this file
+# To examine this file:
 D8_PATH=out/release/ ./third_party/v8/tools/linux-tick-processor
 isolate-0x7fad98242400-v8.log
 ```
 
-## Build instructions (for advanced users only)
+## Build Instructions _(for advanced users only)_
 
-### Prerequisists:
+### Prerequisites:
 
 To ensure reproducible builds, Deno has most of its dependencies in a git
 submodule. However, you need to install separately:
@@ -106,14 +106,14 @@ submodule. However, you need to install separately:
 3. Python 2.
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 4. [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache)
-   (Optional but helpful for speeding up rebuilds of V8.).
+   (Optional but helpful for speeding up rebuilds of V8.)
 5. Extra steps for Windows users:
-   1. Add `python.exe` to `PATH`. E.g. `set PATH=%PATH%;C:\Python27\python.exe`
-   2. Get [VS Community 2017](https://www.visualstudio.com/downloads/), make
-      sure to select the option to install C++ tools and the Windows SDK
-   3. Enable `Debugging Tools for Windows`, Goto Control Panel -> Windows 10 SDK
-      -> Right-Click -> Change -> Change -> Check Debugging Tools for Windows ->
-      Change -> Finish
+   1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
+   2. Get [VS Community 2017](https://www.visualstudio.com/downloads/). Make
+      sure to select the option to install C++ tools and the Windows SDK.
+   3. Enable `Debugging Tools for Windows`. Go to `Control Panel` ->
+      `Windows 10 SDK` -> Right-Click -> `Change` -> `Change` ->
+      `Check Debugging Tools for Windows` -> `Change` -> `Finish`.
 
 ### Build:
 
@@ -155,17 +155,18 @@ Other useful commands:
     ./third_party/depot_tools/gn desc out/debug/ :deno
     ./third_party/depot_tools/gn help
 
-Env vars: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`, `DENO_DIR`.
+Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
+`DENO_DIR`.
 
 ## Internals
 
-### Interal: libdeno API.
+### Internal: libdeno API.
 
 Deno's privileged side will primarily be programmed in Rust. However there will
 be a small C API that wraps V8 to 1) define the low-level message passing
-semantics 2) provide a low-level test target 3) provide an ANSI C API binding
-interface for Rust. V8 plus this C API is called libdeno and the important bits
-of the API is specified here:
+semantics, 2) provide a low-level test target, 3) provide an ANSI C API binding
+interface for Rust. V8 plus this C API is called "libdeno" and the important
+bits of the API is specified here:
 https://github.com/denoland/deno/blob/master/libdeno/deno.h
 https://github.com/denoland/deno/blob/master/js/libdeno.ts
 
