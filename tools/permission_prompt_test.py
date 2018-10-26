@@ -125,12 +125,6 @@ class Prompt(object):
 
 
 def permission_prompt_test(deno_exe):
-    # TODO We currently skip testing the prompt in Windows completely.
-    # Windows does not support the pty module used for testing the permission
-    # prompt.
-    if os.name == 'nt':
-        return
-
     p = Prompt(deno_exe)
     p.warm_up()
     p.test_write_yes()

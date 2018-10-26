@@ -6,7 +6,6 @@ import os
 import sys
 from check_output_test import check_output_test
 from deno_dir_test import deno_dir_test
-from permission_prompt_test import permission_prompt_test
 from setup_test import setup_test
 from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
 from unit_tests import unit_tests
@@ -61,7 +60,12 @@ def main(argv):
 
     check_output_test(deno_exe)
 
-    permission_prompt_test(deno_exe)
+    # TODO We currently skip testing the prompt in Windows completely.
+    # Windows does not support the pty module used for testing the permission
+    # prompt.
+    if os.name != 'nt':
+        from permission_prompt_test import permission_prompt_test
+        permission_prompt_test(deno_exe)
 
     rmtree(deno_dir)
 
