@@ -126,6 +126,9 @@ def generate_gn_args(mode):
         if os.name == "nt":
             tc = "//build_extra/toolchain/win:win_clang_x64"
             out += ['custom_toolchain="%s"' % tc, 'host_toolchain="%s"' % tc]
+            # Disable treat_warnings_as_errors until this sccache bug is fixed:
+            # https://github.com/mozilla/sccache/issues/264
+            out += ["treat_warnings_as_errors=false"]
 
     # Look for sccache; if found, set rustc_wrapper.
     rustc_wrapper = find_executable("sccache")
