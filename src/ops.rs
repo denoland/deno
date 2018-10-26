@@ -74,6 +74,7 @@ pub fn dispatch(
     let op_creator: OpCreator = match inner_type {
       msg::Any::Accept => op_accept,
       msg::Any::Chdir => op_chdir,
+      msg::Any::Chmod => op_chmod,
       msg::Any::Close => op_close,
       msg::Any::CodeCache => op_code_cache,
       msg::Any::CodeFetch => op_code_fetch,
@@ -568,6 +569,36 @@ fn op_mkdir(
   blocking!(base.sync(), || {
     debug!("op_mkdir {}", path);
     deno_fs::mkdir(Path::new(&path), mode)?;
+    Ok(empty_buf())
+  })
+}
+
+fn op_chmod(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_chmod().unwrap();
+  let _mode = inner.mode();
+  let path = String::from(inner.path().unwrap());
+
+  if !state.flags.allow_write {
+    return odd_future(permission_denied());
+  }
+
+  blocking!(base.sync(), || {
+    debug!("op_chmod {}", &path);
+    let path = PathBuf::from(&path);
+    // Still check file/dir exists on windows
+    let _metadata = fs::metadata(&path)?;
+    // Only work in unix
+    #[cfg(any(unix))]
+    {
+      let mut permissions = _metadata.permissions();
+      permissions.set_mode(_mode);
+      fs::set_permissions(&path, permissions)?;
+    }
     Ok(empty_buf())
   })
 }

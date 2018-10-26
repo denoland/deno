@@ -21,6 +21,7 @@ export {
 } from "./io";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
+export { chmodSync, chmod } from "./chmod";
 export { removeSync, remove, removeAllSync, removeAll } from "./remove";
 export { renameSync, rename } from "./rename";
 export { readFileSync, readFile } from "./read_file";
