@@ -776,6 +776,9 @@ component("ring_primitives") {
       "$ring_root/pregenerated/x86_64-mont-nasm.obj",
       "$ring_root/pregenerated/x86_64-mont5-nasm.obj",
     ]
+
+    # Disable warning: '_addcarry_u64' is not a recognized builtin
+    cflags = [ "-Wno-ignored-pragma-intrinsic" ]
   }
   include_dirs = [ "$ring_root/include/" ]
 }
