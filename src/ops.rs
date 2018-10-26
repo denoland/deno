@@ -581,8 +581,8 @@ fn op_chmod(
   let _mode = inner.mode();
   let path = String::from(inner.path().unwrap());
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_write(&path) {
+    return odd_future(e);
   }
 
   blocking!(base.sync(), || {
