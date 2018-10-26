@@ -3,6 +3,7 @@ use errors;
 use errors::permission_denied;
 use errors::{DenoError, DenoResult, ErrorKind};
 use fs as deno_fs;
+use http_util;
 use isolate::Buf;
 use isolate::Isolate;
 use isolate::IsolateState;
@@ -18,7 +19,6 @@ use futures::future::poll_fn;
 use futures::Poll;
 use hyper;
 use hyper::rt::{Future, Stream};
-use hyper::Client;
 use remove_dir_all::remove_dir_all;
 use std;
 use std::fs;
@@ -403,7 +403,7 @@ fn op_fetch_req(
   }
 
   let url = url.parse::<hyper::Uri>().unwrap();
-  let client = Client::new();
+  let client = http_util::get_client();
 
   debug!("Before fetch {}", url);
   let future = client.get(url).and_then(move |res| {
