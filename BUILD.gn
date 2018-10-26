@@ -105,7 +105,6 @@ ts_sources = [
   "js/symlink.ts",
   "js/text_encoding.ts",
   "js/timers.ts",
-  "js/trace.ts",
   "js/truncate.ts",
   "js/types.ts",
   "js/url_search_params.ts",
