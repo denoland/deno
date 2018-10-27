@@ -31,10 +31,10 @@ if (isNotWindows) {
     const filename = tempDir + "/test.txt";
     deno.writeFileSync(filename, data, 0o666);
     const symlinkName = tempDir + "/test_symlink.txt";
-    deno.symlink(filename, symlinkName);
+    deno.symlinkSync(filename, symlinkName);
 
     let symlinkInfo = deno.lstatSync(symlinkName);
-    const symlinkMode = symlinkInfo.mode & 0o777; // plaform dependent
+    const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
 
     deno.chmodSync(symlinkName, 0o777);
 
@@ -96,10 +96,10 @@ if (isNotWindows) {
     const filename = tempDir + "/test.txt";
     deno.writeFileSync(filename, data, 0o666);
     const symlinkName = tempDir + "/test_symlink.txt";
-    deno.symlink(filename, symlinkName);
+    deno.symlinkSync(filename, symlinkName);
 
     let symlinkInfo = deno.lstatSync(symlinkName);
-    const symlinkMode = symlinkInfo.mode & 0o777; // plaform dependent
+    const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
 
     await deno.chmod(symlinkName, 0o777);
 
