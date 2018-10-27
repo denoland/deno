@@ -6,11 +6,13 @@ from util import shell_quote
 import os
 import re
 import sys
+import shutil
 from distutils.spawn import find_executable
 
 
 def main():
     enable_ansi_colors()
+    set_up_git_hooks()
 
     os.chdir(root_path)
 
@@ -47,6 +49,12 @@ def write_lastchange():
     #    sys.executable, "build/util/lastchange.py", "-o",
     #    "build/util/LASTCHANGE", "--source-dir", root_path, "--filter="
     # ])
+
+
+def set_up_git_hooks():
+    pre_commit_src = os.path.join(root_path, 'tools', 'pre-commit.sh')
+    pre_commit = os.path.join(root_path, '.git', 'hooks', 'pre-commit')
+    shutil.copy2(pre_commit_src, pre_commit)
 
 
 # If this text is found in args.gn, we assume it hasn't been hand edited.
