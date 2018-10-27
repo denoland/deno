@@ -113,14 +113,15 @@ rust_crate("winapi") {
     "basetsd",
     "cfg",
     "cfgmgr32",
+    "consoleapi",
     "combaseapi",
     "errhandlingapi",
     "excpt",
     "fileapi",
     "guiddef",
     "handleapi",
-    "inaddr",
     "in6addr",
+    "inaddr",
     "knownfolders",
     "ktmtypes",
     "libloaderapi",
@@ -134,6 +135,7 @@ rust_crate("winapi") {
     "objbase",
     "objidl",
     "objidlbase",
+    "processenv",
     "processthreadsapi",
     "profileapi",
     "propidl",
@@ -152,8 +154,10 @@ rust_crate("winapi") {
     "vadefs",
     "vcruntime",
     "winbase",
+    "wincon",
     "wincred",
     "windef",
+    "wingdi",
     "winerror",
     "winnt",
     "winreg",
@@ -862,6 +866,14 @@ rust_crate("sct") {
   extern = [
     ":ring",
     ":untrusted",
+  ]
+}
+
+rust_crate("atty") {
+  source_root = "$registry_github/atty-0.2.11/src/lib.rs"
+  extern = [
+    ":libc",
+    ":winapi",
   ]
 }
 
