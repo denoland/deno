@@ -6,8 +6,11 @@
 
 use deno_dir;
 use errors::DenoError;
+use errors::DenoResult;
 use flags;
 use libdeno;
+use permissions::DenoPermissions;
+use snapshot;
 
 use futures::Future;
 use libc::c_void;
@@ -55,6 +58,7 @@ pub struct Isolate {
 pub struct IsolateState {
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
+  pub permissions: Mutex<DenoPermissions>,
   pub flags: flags::DenoFlags,
   tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
   pub metrics: Mutex<Metrics>,
@@ -68,6 +72,21 @@ impl IsolateState {
     assert!(maybe_tx.is_some(), "Expected tx to not be deleted.");
     let tx = maybe_tx.unwrap();
     tx.send((req_id, buf)).expect("tx.send error");
+  }
+
+  pub fn check_write(&self, filename: &str) -> DenoResult<()> {
+    let mut perm = self.permissions.lock().unwrap();
+    perm.check_write(filename)
+  }
+
+  pub fn check_env(&self) -> DenoResult<()> {
+    let mut perm = self.permissions.lock().unwrap();
+    perm.check_env()
+  }
+
+  pub fn check_net(&self, filename: &str) -> DenoResult<()> {
+    let mut perm = self.permissions.lock().unwrap();
+    perm.check_net(filename)
   }
 
   fn metrics_op_dispatched(
@@ -99,6 +118,15 @@ pub struct Metrics {
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
+fn empty() -> libdeno::deno_buf {
+  libdeno::deno_buf {
+    alloc_ptr: std::ptr::null_mut(),
+    alloc_len: 0,
+    data_ptr: std::ptr::null_mut(),
+    data_len: 0,
+  }
+}
+
 impl Isolate {
   pub fn new(
     flags: flags::DenoFlags,
@@ -108,8 +136,10 @@ impl Isolate {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
-
-    let libdeno_isolate = unsafe { libdeno::deno_new(pre_dispatch) };
+    let shared = empty(); // TODO Use shared for message passing.
+    let libdeno_isolate = unsafe {
+      libdeno::deno_new(snapshot::deno_snapshot.clone(), shared, pre_dispatch)
+    };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
 
@@ -131,6 +161,7 @@ impl Isolate {
       state: Arc::new(IsolateState {
         dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
         argv: argv_rest,
+        permissions: Mutex::new(DenoPermissions::new(&flags)),
         flags,
         tx: Mutex::new(Some(tx)),
         metrics: Mutex::new(Metrics::default()),

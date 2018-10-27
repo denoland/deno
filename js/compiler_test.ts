@@ -18,7 +18,7 @@ interface ModuleInfo {
 
 const compilerInstance = DenoCompiler.instance();
 
-// References to orignal items we are going to mock
+// References to original items we are going to mock
 const originals = {
   _globalEval: (compilerInstance as any)._globalEval,
   _log: (compilerInstance as any)._log,

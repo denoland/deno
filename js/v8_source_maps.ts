@@ -149,7 +149,7 @@ function CallSiteToString(frame: CallSite): string {
   const isMethodCall = !(frame.isToplevel() || isConstructor);
   if (isMethodCall) {
     let typeName = frame.getTypeName();
-    // Fixes shim to be backward compatable with Node v0 to v4
+    // Fixes shim to be backward compatible with Node v0 to v4
     if (typeName === "[object Object]") {
       typeName = "null";
     }

@@ -173,3 +173,16 @@ global.PromiseRejectCatchHandling = () => {
     }
   })();
 }
+
+global.Shared = () => {
+  const ab = libdeno.shared;
+  assert(ab instanceof ArrayBuffer);
+  assert(ab.byteLength === 3);
+  const ui8 = new Uint8Array(ab);
+  assert(ui8[0] === 0);
+  assert(ui8[1] === 1);
+  assert(ui8[2] === 2);
+  ui8[0] = 42;
+  ui8[1] = 43;
+  ui8[2] = 44;
+}

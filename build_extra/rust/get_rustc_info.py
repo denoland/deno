@@ -25,28 +25,21 @@
 # this script then reads the linker arguments from that temporary file, and
 # then filters it to remove flags that are irrelevant or undesirable.
 
+import json
+import re
 import sys
 import os
 from os import path
-import re
 import subprocess
 import tempfile
 
 
-def capture_args(argsfile_path):
+def capture_linker_args(argsfile_path):
     with open(argsfile_path, "wb") as argsfile:
         argsfile.write("\n".join(sys.argv[1:]))
 
 
-def main():
-    # If ARGSFILE_PATH is set this script is being invoked by rustc, which
-    # thinks we are a linker. All we do now is write our argv to the specified
-    # file and exit. Further processing is done by our grandparent process,
-    # also this script but invoked by gn.
-    argsfile_path = os.getenv("ARGSFILE_PATH")
-    if argsfile_path is not None:
-        return capture_args(argsfile_path)
-
+def get_ldflags(rustc_args):
     # Prepare the environment for rustc.
     rustc_env = os.environ.copy()
 
@@ -80,12 +73,13 @@ def main():
         # Build the rustc command line.
         #   * `-Clinker=` tells rustc to use our fake linker.
         #   * `-Csave-temps` prevents rustc from deleting object files after
-        #     linking. We need to preserve the file `xx.crate.allocator.rcgu.o`.
+        #     linking. We need to preserve the extra object file with allocator
+        #     symbols (`_rust_alloc` etc.) in it that rustc produces.
         rustc_cmd = [
             "rustc",
             "-Clinker=" + rustc_linker,
             "-Csave-temps",
-        ] + sys.argv[1:]
+        ] + rustc_args
 
         # Spawn the rust compiler.
         rustc_proc = subprocess.Popen(
@@ -143,12 +137,15 @@ def main():
         elif arg.endswith(".rlib"):
             # Built-in Rust library, e.g. `libstd-8524caae8408aac2.rlib`.
             pass
-        elif arg.endswith(".crate.allocator.rcgu.o"):
+        elif re.match(r"^empty_crate\.[a-z0-9]+\.rcgu.o$", arg):
             # This file is needed because it contains certain allocator
             # related symbols (e.g. `__rust_alloc`, `__rust_oom`).
             # The Rust compiler normally generates this file just before
             # linking an executable. We pass `-Csave-temps` to rustc so it
             # doesn't delete the file when it's done linking.
+            pass
+        elif arg.endswith(".crate.allocator.rcgu.o"):
+            # Same as above, but for rustc version 1.29.0 and older.
             pass
         elif arg.endswith(".lib") and not arg.startswith("msvcrt"):
             # Include most Windows static/import libraries (e.g. `ws2_32.lib`).
@@ -172,8 +169,34 @@ def main():
 
         ldflags += [arg]
 
-    # Write the filtered ldflags to stdout, separated by newline characters.
-    sys.stdout.write("\n".join(ldflags))
+    return ldflags
+
+
+def get_version():
+    version = subprocess.check_output(["rustc", "--version"])
+    version = version.strip()  # Remove trailing newline.
+    return version
+
+
+def main():
+    # If ARGSFILE_PATH is set this script is being invoked by rustc, which
+    # thinks we are a linker. All we do now is write our argv to the specified
+    # file and exit. Further processing is done by our grandparent process,
+    # also this script but invoked by gn.
+    argsfile_path = os.getenv("ARGSFILE_PATH")
+    if argsfile_path is not None:
+        return capture_linker_args(argsfile_path)
+
+    empty_crate_source = path.join(path.dirname(__file__), "empty_crate.rs")
+
+    info = {
+        "version": get_version(),
+        "ldflags_bin": get_ldflags([empty_crate_source]),
+        "ldflags_test": get_ldflags([empty_crate_source, "--test"])
+    }
+
+    # Write the information dict as a json object.
+    json.dump(info, sys.stdout)
 
 
 if __name__ == '__main__':
