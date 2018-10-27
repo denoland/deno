@@ -1,6 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use errors;
-use errors::permission_denied;
 use errors::{DenoError, DenoResult, ErrorKind};
 use fs as deno_fs;
 use http_util;
@@ -333,11 +332,9 @@ fn op_set_env(
   let inner = base.inner_as_set_env().unwrap();
   let key = inner.key().unwrap();
   let value = inner.value().unwrap();
-
-  if !state.flags.allow_env {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_env() {
+    return odd_future(e);
   }
-
   std::env::set_var(key, value);
   ok_future(empty_buf())
 }
@@ -350,8 +347,8 @@ fn op_env(
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
-  if !state.flags.allow_env {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_env() {
+    return odd_future(e);
   }
 
   let builder = &mut FlatBufferBuilder::new();
@@ -399,8 +396,9 @@ fn op_fetch_req(
   let id = inner.id();
   let url = inner.url().unwrap();
 
-  if !state.flags.allow_net {
-    return odd_future(permission_denied());
+  // FIXME use domain (or use this inside check_net)
+  if let Err(e) = state.check_net(url) {
+    return odd_future(e);
   }
 
   let url = url.parse::<hyper::Uri>().unwrap();
@@ -513,8 +511,9 @@ fn op_make_temp_dir(
   let inner = base.inner_as_make_temp_dir().unwrap();
   let cmd_id = base.cmd_id();
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  // FIXME
+  if let Err(e) = state.check_write("make_temp") {
+    return odd_future(e);
   }
 
   let dir = inner.dir().map(PathBuf::from);
@@ -562,10 +561,9 @@ fn op_mkdir(
   let mode = inner.mode();
   let path = String::from(inner.path().unwrap());
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_write(&path) {
+    return odd_future(e);
   }
-
   blocking!(base.sync(), || {
     debug!("op_mkdir {}", path);
     deno_fs::mkdir(Path::new(&path), mode)?;
@@ -583,8 +581,8 @@ fn op_chmod(
   let _mode = inner.mode();
   let path = String::from(inner.path().unwrap());
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_write(&path) {
+    return odd_future(e);
   }
 
   blocking!(base.sync(), || {
@@ -766,11 +764,14 @@ fn op_remove(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_remove().unwrap();
-  let path = PathBuf::from(inner.path().unwrap());
+  let path_ = inner.path().unwrap();
+  let path = PathBuf::from(path_);
   let recursive = inner.recursive();
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+
+  if let Err(e) = state.check_write(path.to_str().unwrap()) {
+    return odd_future(e);
   }
+
   blocking!(base.sync(), || {
     debug!("op_remove {}", path.display());
     let metadata = fs::metadata(&path)?;
@@ -831,10 +832,11 @@ fn op_copy_file(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_copy_file().unwrap();
   let from = PathBuf::from(inner.from().unwrap());
-  let to = PathBuf::from(inner.to().unwrap());
+  let to_ = inner.to().unwrap();
+  let to = PathBuf::from(to_);
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_write(&to_) {
+    return odd_future(e);
   }
 
   debug!("op_copy_file {} {}", from.display(), to.display());
@@ -1015,13 +1017,12 @@ fn op_write_file(
   data: &'static mut [u8],
 ) -> Box<Op> {
   let inner = base.inner_as_write_file().unwrap();
-
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
-  }
-
   let filename = String::from(inner.filename().unwrap());
   let perm = inner.perm();
+
+  if let Err(e) = state.check_write(&filename) {
+    return odd_future(e);
+  }
 
   blocking!(base.sync(), || -> OpResult {
     debug!("op_write_file {} {}", filename, data.len());
@@ -1036,12 +1037,13 @@ fn op_rename(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
-  }
   let inner = base.inner_as_rename().unwrap();
   let oldpath = PathBuf::from(inner.oldpath().unwrap());
-  let newpath = PathBuf::from(inner.newpath().unwrap());
+  let newpath_ = inner.newpath().unwrap();
+  let newpath = PathBuf::from(newpath_);
+  if let Err(e) = state.check_write(&newpath_) {
+    return odd_future(e);
+  }
   blocking!(base.sync(), || -> OpResult {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     fs::rename(&oldpath, &newpath)?;
@@ -1055,8 +1057,13 @@ fn op_symlink(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  let inner = base.inner_as_symlink().unwrap();
+  let oldname = PathBuf::from(inner.oldname().unwrap());
+  let newname_ = inner.newname().unwrap();
+  let newname = PathBuf::from(newname_);
+
+  if let Err(e) = state.check_write(&newname_) {
+    return odd_future(e);
   }
   // TODO Use type for Windows.
   if cfg!(windows) {
@@ -1065,10 +1072,6 @@ fn op_symlink(
       "Not implemented".to_string(),
     ));
   }
-
-  let inner = base.inner_as_symlink().unwrap();
-  let oldname = PathBuf::from(inner.oldname().unwrap());
-  let newname = PathBuf::from(inner.newname().unwrap());
   blocking!(base.sync(), || -> OpResult {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
@@ -1118,13 +1121,14 @@ fn op_truncate(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
-  }
-
   let inner = base.inner_as_truncate().unwrap();
   let filename = String::from(inner.name().unwrap());
   let len = inner.len();
+
+  if let Err(e) = state.check_write(&filename) {
+    return odd_future(e);
+  }
+
   blocking!(base.sync(), || {
     debug!("op_truncate {} {}", filename, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
@@ -1139,8 +1143,8 @@ fn op_listen(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_net {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_net("listen") {
+    return odd_future(e);
   }
 
   let cmd_id = base.cmd_id();
@@ -1205,10 +1209,9 @@ fn op_accept(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_net {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_net("accept") {
+    return odd_future(e);
   }
-
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_accept().unwrap();
   let server_rid = inner.rid();
@@ -1232,10 +1235,9 @@ fn op_dial(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_net {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_net("dial") {
+    return odd_future(e);
   }
-
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_dial().unwrap();
   let network = inner.network().unwrap();

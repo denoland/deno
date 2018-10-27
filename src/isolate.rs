@@ -6,8 +6,10 @@
 
 use deno_dir;
 use errors::DenoError;
+use errors::DenoResult;
 use flags;
 use libdeno;
+use permissions::DenoPermissions;
 use snapshot;
 
 use futures::Future;
@@ -56,6 +58,7 @@ pub struct Isolate {
 pub struct IsolateState {
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
+  pub permissions: Mutex<DenoPermissions>,
   pub flags: flags::DenoFlags,
   tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
   pub metrics: Mutex<Metrics>,
@@ -69,6 +72,21 @@ impl IsolateState {
     assert!(maybe_tx.is_some(), "Expected tx to not be deleted.");
     let tx = maybe_tx.unwrap();
     tx.send((req_id, buf)).expect("tx.send error");
+  }
+
+  pub fn check_write(&self, filename: &str) -> DenoResult<()> {
+    let mut perm = self.permissions.lock().unwrap();
+    perm.check_write(filename)
+  }
+
+  pub fn check_env(&self) -> DenoResult<()> {
+    let mut perm = self.permissions.lock().unwrap();
+    perm.check_env()
+  }
+
+  pub fn check_net(&self, filename: &str) -> DenoResult<()> {
+    let mut perm = self.permissions.lock().unwrap();
+    perm.check_net(filename)
   }
 
   fn metrics_op_dispatched(
@@ -143,6 +161,7 @@ impl Isolate {
       state: Arc::new(IsolateState {
         dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
         argv: argv_rest,
+        permissions: Mutex::new(DenoPermissions::new(&flags)),
         flags,
         tx: Mutex::new(Some(tx)),
         metrics: Mutex::new(Metrics::default()),
