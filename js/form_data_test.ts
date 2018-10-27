@@ -32,9 +32,13 @@ test(function formDataParamsGetSuccess() {
   formData.append("a", "true");
   formData.append("b", "false");
   formData.append("a", "null");
+  formData.append("d", undefined);
+  formData.append("e", null);
   assertEqual(formData.get("a"), "true");
   assertEqual(formData.get("b"), "false");
   assertEqual(formData.get("c"), null);
+  assertEqual(formData.get("d"), "undefined");
+  assertEqual(formData.get("e"), "null");
 });
 
 test(function formDataParamsHasSuccess() {
@@ -55,6 +59,20 @@ test(function formDataParamsSetSuccess() {
   assertEqual(formData.getAll("b"), ["false"]);
   formData.set("a", "false");
   assertEqual(formData.getAll("a"), ["false"]);
+  formData.set("d", undefined);
+  assertEqual(formData.get("d"), "undefined");
+  formData.set("e", null);
+  assertEqual(formData.get("e"), "null");
+});
+
+test(function formDataSetEmptyBlobSuccess() {
+  const formData = new FormData();
+  formData.set("a", new Blob([]), "blank.txt");
+  const file = formData.get("a");
+  assert(file instanceof File);
+  if (typeof file !== "string") {
+    assertEqual(file.name, "blank.txt");
+  }
 });
 
 test(function formDataParamsForEachSuccess() {

@@ -22,7 +22,7 @@ class FormDataBase {
       const dfile = new file.DenoFile([value], filename || name);
       this[dataSymbol].push([name, dfile]);
     } else {
-      this[dataSymbol].push([name, value]);
+      this[dataSymbol].push([name, String(value)]);
     }
   }
 
@@ -94,7 +94,7 @@ class FormDataBase {
       const dfile = new file.DenoFile([value], filename || name);
       this[dataSymbol].push([name, dfile]);
     } else {
-      this[dataSymbol].push([name, value]);
+      this[dataSymbol].push([name, String(value)]);
     }
   }
 }
