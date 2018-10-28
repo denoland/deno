@@ -1,8 +1,9 @@
 Downloading http://localhost:4545/tests/subdir/mt_text_typescript.t1.ts
 Downloading http://localhost:4545/tests/subdir/mt_video_vdn.t2.ts
 Downloading http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts
+Downloading http://localhost:4545/tests/subdir/mt_application_x_typescript.t4.ts
 Downloading http://localhost:4545/tests/subdir/mt_text_javascript.j1.js
 Downloading http://localhost:4545/tests/subdir/mt_application_ecmascript.j2.js
 Downloading http://localhost:4545/tests/subdir/mt_text_ecmascript.j3.js
 Downloading http://localhost:4545/tests/subdir/mt_application_x_javascript.j4.js
-success true true true true true true true
+success true true true true true true true true
