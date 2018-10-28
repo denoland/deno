@@ -11,6 +11,7 @@ interface CodeInfo {
   mediaType: msg.MediaType;
   sourceCode: string | undefined;
   outputCode: string | undefined;
+  sourceMap: string | undefined;
 }
 
 /** Exit the Deno process with optional exit code. */
@@ -52,7 +53,8 @@ export function codeFetch(
     filename: codeFetchRes.filename() || undefined,
     mediaType: codeFetchRes.mediaType(),
     sourceCode: codeFetchRes.sourceCode() || undefined,
-    outputCode: codeFetchRes.outputCode() || undefined
+    outputCode: codeFetchRes.outputCode() || undefined,
+    sourceMap: codeFetchRes.sourceMap() || undefined
   };
 }
 
@@ -60,17 +62,20 @@ export function codeFetch(
 export function codeCache(
   filename: string,
   sourceCode: string,
-  outputCode: string
+  outputCode: string,
+  sourceMap: string
 ): void {
   util.log("os.ts codeCache", filename, sourceCode, outputCode);
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
   const sourceCode_ = builder.createString(sourceCode);
   const outputCode_ = builder.createString(outputCode);
+  const sourceMap_ = builder.createString(sourceMap);
   msg.CodeCache.startCodeCache(builder);
   msg.CodeCache.addFilename(builder, filename_);
   msg.CodeCache.addSourceCode(builder, sourceCode_);
   msg.CodeCache.addOutputCode(builder, outputCode_);
+  msg.CodeCache.addSourceMap(builder, sourceMap_);
   const inner = msg.CodeCache.endCodeCache(builder);
   const baseRes = sendSync(builder, msg.Any.CodeCache, inner);
   assert(baseRes == null); // Expect null or error.
