@@ -49,6 +49,8 @@ type ModuleSpecifier = string;
 type OutputCode = string;
 /** The original source code */
 type SourceCode = string;
+/** The output source map */
+type SourceMap = string;
 
 /** Abstraction of the APIs required from the `os` module so they can be
  * easily mocked.
@@ -88,7 +90,8 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
     public readonly fileName: ModuleFileName,
     public readonly mediaType: MediaType,
     public readonly sourceCode: SourceCode = "",
-    public outputCode: OutputCode = ""
+    public outputCode: OutputCode = "",
+    public sourceMap: SourceMap = ""
   ) {
     if (outputCode !== "" || fileName.endsWith(".d.ts")) {
       this.scriptVersion = "1";
@@ -155,9 +158,7 @@ export class DenoCompiler
     checkJs: true,
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
-    // TODO https://github.com/denoland/deno/issues/23
-    inlineSourceMap: true,
-    inlineSources: true,
+    sourceMap: true,
     stripComments: true,
     target: ts.ScriptTarget.ESNext
   };
@@ -366,6 +367,7 @@ export class DenoCompiler
    * compiler instance.
    */
   private _setupSourceMaps(): void {
+    let lastModule: ModuleMetaData | undefined;
     sourceMaps.install({
       installPrepareStackTrace: true,
       getGeneratedContents: (fileName: string): string | RawSourceMap => {
@@ -377,13 +379,25 @@ export class DenoCompiler
           return libdeno.mainSourceMap;
         } else if (fileName === "deno_main.js") {
           return "";
-        } else {
+        } else if (!fileName.endsWith(".map")) {
           const moduleMetaData = this._moduleMetaDataMap.get(fileName);
           if (!moduleMetaData) {
-            this._log("compiler.getGeneratedContents cannot find", fileName);
+            lastModule = undefined;
             return "";
           }
+          lastModule = moduleMetaData;
           return moduleMetaData.outputCode;
+        } else {
+          if (lastModule && lastModule.sourceMap) {
+            // Assuming the the map will always be asked for after the source
+            // code.
+            const { sourceMap } = lastModule;
+            lastModule = undefined;
+            return sourceMap;
+          } else {
+            // Errors thrown here are caught by source-map.
+            throw new Error(`Unable to find source map: "${fileName}"`);
+          }
         }
       }
     });
@@ -431,19 +445,26 @@ export class DenoCompiler
 
     assert(!output.emitSkipped, "The emit was skipped for an unknown reason.");
 
-    // Currently we are inlining source maps, there should be only 1 output file
-    // See: https://github.com/denoland/deno/issues/23
     assert(
-      output.outputFiles.length === 1,
-      "Only single file should be output."
+      output.outputFiles.length === 2,
+      `Expected 2 files to be emitted, got ${output.outputFiles.length}.`
     );
 
-    const [outputFile] = output.outputFiles;
+    const [sourceMapFile, outputFile] = output.outputFiles;
+    assert(
+      sourceMapFile.name.endsWith(".map"),
+      "Expected first emitted file to be a source map"
+    );
+    assert(
+      outputFile.name.endsWith(".js"),
+      "Expected second emitted file to be JavaScript"
+    );
     const outputCode = (moduleMetaData.outputCode = `${
       outputFile.text
     }\n//# sourceURL=${fileName}`);
+    const sourceMap = (moduleMetaData.sourceMap = sourceMapFile.text);
     moduleMetaData.scriptVersion = "1";
-    this._os.codeCache(fileName, sourceCode, outputCode);
+    this._os.codeCache(fileName, sourceCode, outputCode, sourceMap);
     return moduleMetaData.outputCode;
   }
 
@@ -492,6 +513,7 @@ export class DenoCompiler
     let mediaType = MediaType.Unknown;
     let sourceCode: SourceCode | undefined;
     let outputCode: OutputCode | undefined;
+    let sourceMap: SourceMap | undefined;
     if (
       moduleSpecifier.startsWith(ASSETS) ||
       containingFile.startsWith(ASSETS)
@@ -506,6 +528,7 @@ export class DenoCompiler
       sourceCode = assetSourceCode[assetName];
       fileName = `${ASSETS}/${assetName}`;
       outputCode = "";
+      sourceMap = "";
     } else {
       // We query Rust with a CodeFetch message. It will load the sourceCode,
       // and if there is any outputCode cached, will return that as well.
@@ -515,6 +538,7 @@ export class DenoCompiler
       mediaType = fetchResponse.mediaType;
       sourceCode = fetchResponse.sourceCode;
       outputCode = fetchResponse.outputCode;
+      sourceMap = fetchResponse.sourceMap;
     }
     assert(moduleId != null, "No module ID.");
     assert(fileName != null, "No file name.");
@@ -528,6 +552,7 @@ export class DenoCompiler
       sourceCode && sourceCode.length
     );
     this._log("resolveModule has outputCode:", outputCode != null);
+    this._log("resolveModule has source map:", sourceMap != null);
     this._log("resolveModule has media type:", MediaType[mediaType]);
     // fileName is asserted above, but TypeScript does not track so not null
     this._setFileName(moduleSpecifier, containingFile, fileName!);
@@ -539,7 +564,8 @@ export class DenoCompiler
       fileName!,
       mediaType,
       sourceCode,
-      outputCode
+      outputCode,
+      sourceMap
     );
     this._moduleMetaDataMap.set(fileName!, moduleMetaData);
     return moduleMetaData;
