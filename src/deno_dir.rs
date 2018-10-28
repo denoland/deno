@@ -794,7 +794,8 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
         "application/typescript"
         | "text/typescript"
         | "video/vnd.dlna.mpeg-tts"
-        | "video/mp2t" => msg::MediaType::TypeScript,
+        | "video/mp2t"
+        | "application/x-typescript" => msg::MediaType::TypeScript,
         "application/javascript"
         | "text/javascript"
         | "application/ecmascript"
@@ -855,6 +856,10 @@ fn test_map_content_type() {
   );
   assert_eq!(
     map_content_type(Path::new("foo/bar"), Some("video/mp2t")),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("application/x-typescript")),
     msg::MediaType::TypeScript
   );
   assert_eq!(
