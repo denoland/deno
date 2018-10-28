@@ -83,19 +83,28 @@ impl DenoDir {
     self: &DenoDir,
     filename: &str,
     source_code: &str,
-  ) -> PathBuf {
+  ) -> (PathBuf, PathBuf) {
     let cache_key = source_code_hash(filename, source_code);
-    self.gen.join(cache_key + ".js")
+    (
+      self.gen.join(cache_key.to_string() + ".js"),
+      self.gen.join(cache_key.to_string() + ".js.map"),
+    )
   }
 
   fn load_cache(
     self: &DenoDir,
     filename: &str,
     source_code: &str,
-  ) -> std::io::Result<String> {
-    let path = self.cache_path(filename, source_code);
-    debug!("load_cache {}", path.display());
-    fs::read_to_string(&path)
+  ) -> Result<(String, String), std::io::Error> {
+    let (output_code, source_map) = self.cache_path(filename, source_code);
+    debug!(
+      "load_cache code: {} map: {}",
+      output_code.display(),
+      source_map.display()
+    );
+    let read_output_code = fs::read_to_string(&output_code)?;
+    let read_source_map = fs::read_to_string(&source_map)?;
+    Ok((read_output_code, read_source_map))
   }
 
   pub fn code_cache(
@@ -103,16 +112,19 @@ impl DenoDir {
     filename: &str,
     source_code: &str,
     output_code: &str,
+    source_map: &str,
   ) -> std::io::Result<()> {
-    let cache_path = self.cache_path(filename, source_code);
+    let (cache_path, source_map_path) = self.cache_path(filename, source_code);
     // TODO(ry) This is a race condition w.r.t to exists() -- probably should
     // create the file in exclusive mode. A worry is what might happen is there
     // are two processes and one reads the cache file while the other is in the
     // midst of writing it.
-    if cache_path.exists() {
+    if cache_path.exists() && source_map_path.exists() {
       Ok(())
     } else {
-      fs::write(cache_path, output_code.as_bytes())
+      fs::write(cache_path, output_code.as_bytes())?;
+      fs::write(source_map_path, source_map.as_bytes())?;
+      Ok(())
     }
   }
 
@@ -176,6 +188,7 @@ impl DenoDir {
         media_type,
         source_code,
         maybe_output_code: None,
+        maybe_source_map: None,
       });
     };
     let default_attempt = use_extension("");
@@ -233,12 +246,13 @@ impl DenoDir {
           Err(err.into())
         }
       }
-      Ok(output_code) => Ok(CodeFetchOutput {
+      Ok((output_code, source_map)) => Ok(CodeFetchOutput {
         module_name: out.module_name,
         filename: out.filename,
         media_type: out.media_type,
         source_code: out.source_code,
         maybe_output_code: Some(output_code),
+        maybe_source_map: Some(source_map),
       }),
     }
   }
@@ -368,6 +382,7 @@ pub struct CodeFetchOutput {
   pub media_type: msg::MediaType,
   pub source_code: String,
   pub maybe_output_code: Option<String>,
+  pub maybe_source_map: Option<String>,
 }
 
 #[cfg(test)]
@@ -382,9 +397,14 @@ pub fn test_setup() -> (TempDir, DenoDir) {
 fn test_cache_path() {
   let (temp_dir, deno_dir) = test_setup();
   assert_eq!(
-    temp_dir
-      .path()
-      .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js"),
+    (
+      temp_dir
+        .path()
+        .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js"),
+      temp_dir
+        .path()
+        .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js.map")
+    ),
     deno_dir.cache_path("hello.ts", "1+2")
   );
 }
@@ -396,12 +416,18 @@ fn test_code_cache() {
   let filename = "hello.js";
   let source_code = "1+2";
   let output_code = "1+2 // output code";
-  let cache_path = deno_dir.cache_path(filename, source_code);
+  let source_map = "{}";
+  let (cache_path, source_map_path) =
+    deno_dir.cache_path(filename, source_code);
   assert!(
     cache_path.ends_with("gen/e8e3ee6bee4aef2ec63f6ec3db7fc5fdfae910ae.js")
   );
+  assert!(
+    source_map_path
+      .ends_with("gen/e8e3ee6bee4aef2ec63f6ec3db7fc5fdfae910ae.js.map")
+  );
 
-  let r = deno_dir.code_cache(filename, source_code, output_code);
+  let r = deno_dir.code_cache(filename, source_code, output_code, source_map);
   r.expect("code_cache error");
   assert!(cache_path.exists());
   assert_eq!(output_code, fs::read_to_string(&cache_path).unwrap());

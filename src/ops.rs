@@ -257,12 +257,12 @@ fn op_code_fetch(
       source_code: Some(builder.create_string(&out.source_code)),
       ..Default::default()
     };
-    match out.maybe_output_code {
-      Some(ref output_code) => {
-        msg_args.output_code = Some(builder.create_string(output_code));
-      }
-      _ => (),
-    };
+    if let Some(ref output_code) = out.maybe_output_code {
+      msg_args.output_code = Some(builder.create_string(output_code));
+    }
+    if let Some(ref source_map) = out.maybe_source_map {
+      msg_args.source_map = Some(builder.create_string(source_map));
+    }
     let inner = msg::CodeFetchRes::create(builder, &msg_args);
     Ok(serialize_response(
       cmd_id,
@@ -287,8 +287,11 @@ fn op_code_cache(
   let filename = inner.filename().unwrap();
   let source_code = inner.source_code().unwrap();
   let output_code = inner.output_code().unwrap();
+  let source_map = inner.source_map().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
-    state.dir.code_cache(filename, source_code, output_code)?;
+    state
+      .dir
+      .code_cache(filename, source_code, output_code, source_map)?;
     Ok(empty_buf())
   }()))
 }
