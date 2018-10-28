@@ -22,6 +22,8 @@ class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             return "video/vnd.dlna.mpeg-tts"
         if ".t3." in path:
             return "video/mp2t"
+        if ".t4." in path:
+            return "application/x-typescript"
         if ".j1." in path:
             return "text/javascript"
         if ".j2." in path:
