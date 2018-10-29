@@ -31,6 +31,7 @@ default_args = {
   is_cfi = false
 
   is_component_build = false
+
   treat_warnings_as_errors = false
   rust_treat_warnings_as_errors = true
 

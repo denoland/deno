@@ -13,6 +13,7 @@ union Any {
   MakeTempDir,
   MakeTempDirRes,
   Mkdir,
+  Chmod,
   Remove,
   ReadFile,
   ReadFileRes,
@@ -208,6 +209,12 @@ table MakeTempDirRes {
 }
 
 table Mkdir {
+  path: string;
+  mode: uint;
+  // mode specified by https://godoc.org/os#FileMode
+}
+
+table Chmod {
   path: string;
   mode: uint;
   // mode specified by https://godoc.org/os#FileMode

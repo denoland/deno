@@ -29,23 +29,15 @@ out_dir = "$root_out_dir/rust_crates"
 #   * To sidestep rustc weirdness (e.g. on Windows, it always links with the
 #     release C runtime library, even for debug builds).
 #
-# The `get_rust_ldflags` tool outputs the linker flags that are needed to
+# The `get_rustc_info` tool outputs the linker flags that are needed to
 # successfully link rustc object code into an executable.
 # We generate two sets of ldflags:
-#   `rust_bin_ldflags`:  Used for rust_executable targets.
-#   `rust_test_ldflags`: Used for rust_test targets; includes the test harness.
+#   `ldflags_bin` : Used for rust_executable targets.
+#   `ldflags_test`: Used for rust_test targets; includes the test harness.
 #
 # The tool works by compiling and linking something with rustc, and analyzing
 # the arguments it passes to the system linker. That's what dummy.rs is for.
-dummy_rs_path = rebase_path("dummy.rs", root_build_dir)
-rust_bin_ldflags =
-    exec_script("get_rust_ldflags.py", [ dummy_rs_path ], "list lines")
-rust_test_ldflags = exec_script("get_rust_ldflags.py",
-                                [
-                                  dummy_rs_path,
-                                  "--test",
-                                ],
-                                "list lines")
+_rustc_info = exec_script("get_rustc_info.py", [], "json")
 
 template("rust_crate") {
   config_name = "${target_name}_config"
@@ -184,7 +176,10 @@ template("rust_crate") {
 
       # This is to disambiguate multiple versions of the same crate.
       "-Cextra-filename=$crate_suffix",
-      "-Cmetadata=$crate_suffix",
+
+      # Appending the rustc version to the crate metadata ensures that they are
+      # rebuilt when rustc is upgraded, by changing the command line.
+      "-Cmetadata=\"${crate_suffix}_${_rustc_info.version}\"",
 
       # This is needed for transitive dependencies.
       "-L",
@@ -244,9 +239,9 @@ template("rust_executable") {
     forward_variables_from(invoker, "*")
 
     if (defined(is_test) && is_test) {
-      ldflags = rust_test_ldflags
+      ldflags = _rustc_info.ldflags_test
     } else {
-      ldflags = rust_bin_ldflags
+      ldflags = _rustc_info.ldflags_bin
     }
 
     if (!defined(deps)) {

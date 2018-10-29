@@ -125,8 +125,8 @@ def run_cargo():
     # If the lockfile ends up in the git repo, it'll make cargo hang for everyone
     # else who tries to run sync_third_party.
     def delete_lockfile():
-        lockfiles = find_exts(
-            path.join(rust_crates_path, "registry/index"), '.cargo-index-lock')
+        lockfiles = find_exts([path.join(rust_crates_path, "registry/index")],
+                              ['.cargo-index-lock'])
         for lockfile in lockfiles:
             os.remove(lockfile)
 

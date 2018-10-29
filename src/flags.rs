@@ -25,7 +25,6 @@ pub struct DenoFlags {
   pub allow_write: bool,
   pub allow_net: bool,
   pub allow_env: bool,
-  pub deps_flag: bool,
   pub types_flag: bool,
 }
 
@@ -70,7 +69,6 @@ pub fn set_flags(
   opts.optflag("v", "version", "Print the version.");
   opts.optflag("r", "reload", "Reload cached remote resources.");
   opts.optflag("", "v8-options", "Print V8 command line options.");
-  opts.optflag("", "deps", "Print module dependencies.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
 
   let mut flags = DenoFlags::default();
@@ -105,9 +103,6 @@ pub fn set_flags(
   }
   if matches.opt_present("allow-env") {
     flags.allow_env = true;
-  }
-  if matches.opt_present("deps") {
-    flags.deps_flag = true;
   }
   if matches.opt_present("types") {
     flags.types_flag = true;
@@ -148,15 +143,13 @@ fn test_set_flags_2() {
 #[test]
 fn test_set_flags_3() {
   let (flags, rest, _) =
-    set_flags(svec!["deno", "-r", "--deps", "script.ts", "--allow-write"])
-      .unwrap();
+    set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
     DenoFlags {
       reload: true,
       allow_write: true,
-      deps_flag: true,
       ..DenoFlags::default()
     }
   );
