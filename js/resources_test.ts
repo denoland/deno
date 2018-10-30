@@ -5,7 +5,6 @@ import * as deno from "deno";
 test(function stdioResources() {
   const res = deno.resources();
 
-  assertEqual(Object.keys(res).length, 3);
   assertEqual(res[0], "stdin");
   assertEqual(res[1], "stdout");
   assertEqual(res[2], "stderr");
@@ -33,8 +32,17 @@ testPerm({ net: true }, async function netResources() {
 });
 
 test(function fileResources() {
+  const resourcesBefore = deno.resources();
   deno.open("package.json");
-  const res = deno.resources();
-  console.log(res);
-  assertEqual(Object.values(res).filter(r => r === "fsFile").length, 1);
+  const resourcesAfter = deno.resources();
+
+  // check that exactly one new resource (file) was added
+  assertEqual(
+    Object.keys(resourcesAfter).length,
+    Object.keys(resourcesBefore).length + 1
+  );
+  const newRid = Object.keys(resourcesAfter).find(key => {
+    return !resourcesBefore.hasOwnProperty(key);
+  });
+  assertEqual(resourcesAfter[newRid], "fsFile");
 });
