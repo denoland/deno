@@ -13,23 +13,17 @@ test(function resourcesStdio() {
 testPerm({ net: true }, async function resourcesNet() {
   const addr = "127.0.0.1:4501";
   const listener = deno.listen("tcp", addr);
-  let counter = 0;
 
-  listener.accept().then(async conn => {
-    const res = deno.resources();
-    // besides 3 stdio resources, we should have additional 3 from listen(), accept() and dial()
-    assertEqual(Object.keys(res).length, 6);
-    assertEqual(Object.values(res).filter(r => r === "tcpListener").length, 1);
-    assertEqual(Object.values(res).filter(r => r === "tcpStream").length, 2);
+  const dialerConn = await deno.dial("tcp", addr);
+  const listenerConn = await listener.accept();
 
-    conn.close();
-    listener.close();
-    counter++;
-  });
+  const res = deno.resources();
+  assertEqual(Object.values(res).filter(r => r === "tcpListener").length, 1);
+  assertEqual(Object.values(res).filter(r => r === "tcpStream").length, 2);
 
-  const conn = await deno.dial("tcp", addr);
-  conn.close();
-  assertEqual(counter, 1);
+  listenerConn.close();
+  dialerConn.close();
+  listener.close();
 });
 
 test(async function resourcesFile() {

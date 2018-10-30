@@ -19,7 +19,7 @@ use futures::Poll;
 use hyper;
 use hyper::rt::{Future, Stream};
 use remove_dir_all::remove_dir_all;
-use resources::get_resource_table_entries;
+use resources::table_entries;
 use std;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
@@ -1300,7 +1300,7 @@ fn op_resources(
   let cmd_id = base.cmd_id();
 
   let builder = &mut FlatBufferBuilder::new();
-  let serialized_resources = get_resource_table_entries();
+  let serialized_resources = table_entries();
 
   let res: Vec<_> = serialized_resources
     .iter()

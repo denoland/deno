@@ -58,7 +58,7 @@ enum Repr {
   TcpStream(tokio::net::TcpStream),
 }
 
-pub fn get_resource_table_entries() -> Vec<(i32, String)> {
+pub fn table_entries() -> Vec<(i32, String)> {
   let table = RESOURCE_TABLE.lock().unwrap();
 
   let tuples = table
@@ -70,9 +70,13 @@ pub fn get_resource_table_entries() -> Vec<(i32, String)> {
 }
 
 #[test]
-fn test_get_resource_table_entries() {
-  assert_eq!(get_resource_table_entries().len(), 3);
-  // TODO: add asserts for add_fs_file, add_tcp_listener, add_tcp_stream
+fn test_table_entries() {
+  let mut entries = table_entries();
+  entries.sort();
+  assert_eq!(entries.len(), 3);
+  assert_eq!(entries[0], (0, String::from("stdin")));
+  assert_eq!(entries[1], (1, String::from("stdout")));
+  assert_eq!(entries[2], (2, String::from("stderr")));
 }
 
 fn inspect_repr(repr: &Repr) -> String {
