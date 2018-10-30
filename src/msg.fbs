@@ -8,7 +8,7 @@ union Any {
   Exit,
   Environ,
   EnvironRes,
-  FetchReq,
+  Fetch,
   FetchRes,
   MakeTempDir,
   MakeTempDirRes,
@@ -190,9 +190,10 @@ table EnvPair {
   value: string;
 }
 
-table FetchReq {
+table Fetch {
   id: uint;
   url: string;
+  // TODO Supply request headers:
   // header_line: [string];
 }
 
