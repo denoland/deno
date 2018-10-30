@@ -153,6 +153,7 @@ function generate(
     bindto: id,
     size: {
       height: 300,
+      // @ts-ignore
       width: document.title === "deno" ? 375 : 800
     },
     data: {
