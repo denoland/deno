@@ -11,7 +11,7 @@ test(function resourcesStdio() {
 });
 
 testPerm({ net: true }, async function resourcesNet() {
-  const addr = "127.0.0.1:4500";
+  const addr = "127.0.0.1:4501";
   const listener = deno.listen("tcp", addr);
 
   listener.accept().then(async conn => {
