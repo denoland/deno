@@ -16,6 +16,7 @@ use tokio_write;
 
 use futures;
 use futures::future::{Either, FutureResult};
+use futures::Future;
 use futures::Poll;
 use std;
 use std::collections::HashMap;
@@ -67,6 +68,12 @@ pub fn get_resource_table_entries() -> Vec<(i32, String)> {
     .collect();
 
   tuples
+}
+
+#[test]
+fn test_get_resource_table_entries() {
+  assert_eq!(get_resource_table_entries().len(), 3);
+  // TODO: add asserts for add_fs_file, add_tcp_listener, add_tcp_stream
 }
 
 fn inspect_repr(repr: &Repr) -> String {
