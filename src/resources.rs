@@ -16,7 +16,6 @@ use tokio_write;
 
 use futures;
 use futures::future::{Either, FutureResult};
-use futures::Future;
 use futures::Poll;
 use std;
 use std::collections::HashMap;
