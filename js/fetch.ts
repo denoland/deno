@@ -199,15 +199,15 @@ export async function fetch(
   const url = input as string;
   log("dispatch FETCH_REQ", url);
 
-  // Send FetchReq message
+  // Send Fetch message
   const builder = flatbuffers.createBuilder();
   const url_ = builder.createString(url);
-  msg.FetchReq.startFetchReq(builder);
-  msg.FetchReq.addUrl(builder, url_);
+  msg.Fetch.startFetch(builder);
+  msg.Fetch.addUrl(builder, url_);
   const resBase = await sendAsync(
     builder,
-    msg.Any.FetchReq,
-    msg.FetchReq.endFetchReq(builder)
+    msg.Any.Fetch,
+    msg.Fetch.endFetch(builder)
   );
 
   // Decode FetchRes

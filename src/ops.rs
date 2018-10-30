@@ -83,7 +83,7 @@ pub fn dispatch(
       msg::Any::Dial => op_dial,
       msg::Any::Environ => op_env,
       msg::Any::Exit => op_exit,
-      msg::Any::FetchReq => op_fetch_req,
+      msg::Any::Fetch => op_fetch,
       msg::Any::Listen => op_listen,
       msg::Any::MakeTempDir => op_make_temp_dir,
       msg::Any::Metrics => op_metrics,
@@ -390,18 +390,17 @@ fn op_env(
   ))
 }
 
-fn op_fetch_req(
+fn op_fetch(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let inner = base.inner_as_fetch_req().unwrap();
+  let inner = base.inner_as_fetch().unwrap();
   let cmd_id = base.cmd_id();
   let id = inner.id();
   let url = inner.url().unwrap();
 
-  // FIXME use domain (or use this inside check_net)
   if let Err(e) = state.check_net(url) {
     return odd_future(e);
   }
