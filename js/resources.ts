@@ -37,5 +37,5 @@ function res(baseRes: null | msg.Base): Resource[] {
     });
   }
 
-  return resources;
+  return resources.sort((a, b) => a.rid - b.rid);
 }

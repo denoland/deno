@@ -2,31 +2,40 @@
 import { test, testPerm, assert, assertEqual } from "./test_util.ts";
 import * as deno from "deno";
 
-testPerm({ net: true }, async function resources() {
+test(function stdioResources() {
   const res = deno.resources();
-  console.log('resources', res)
-  // there should be only stdio
-  assertEqual(res.length, 3);
 
-  const stdio = [{rid: 0, repr: "stdin"}, {rid: 1, repr: "stdout"}, {rid: 2, repr: "stderr"}];
+  assertEqual(res[0].rid, 0);
+  assertEqual(res[0].repr, "stdin");
 
-  stdio.forEach((stdioItem) => {
-    const found = res.find(resItem => resItem.rid === stdioItem.rid && resItem.repr === stdioItem.repr);
-    assert(!!found);
-  });
+  assertEqual(res[1].rid, 1);
+  assertEqual(res[1].repr, "stdout");
 
+  assertEqual(res[2].rid, 2);
+  assertEqual(res[2].repr, "stderr");
+});
+
+testPerm({ net: true }, async function netResources() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
+
   listener.accept().then(async conn => {
-    // TODO: this is failing, we have 6 resources open intead of 4
-    const res1 = deno.resources();
-    console.log('resources', res1)
-    // there should be only stdio
-    assertEqual(res1.length, 4);
+    const res = deno.resources();
+    // besides 3 stdio resources, we should have additional 3 from listen(), accept() and dial()
+    assertEqual(res.length, 6);
+    assertEqual(res.filter(r => r.repr === "tcpListener").length, 1);
+    assertEqual(res.filter(r => r.repr === "tcpStream").length, 2);
+
     conn.close();
   });
 
   const conn = await deno.dial("tcp", addr);
   const buf = new Uint8Array(1024);
   await conn.read(buf);
+});
+
+test(function fileResources() {
+  deno.readFileSync("package.json");
+  const res = deno.resources();
+  assertEqual(res.filter(r => r.repr === "fsFile").length, 1);
 });

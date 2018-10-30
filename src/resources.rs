@@ -74,7 +74,7 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::Stdin(_) => "stdin",
     Repr::Stdout(_) => "stdout",
     Repr::Stderr(_) => "stderr",
-    Repr::FsFile(_) => "fsfile",
+    Repr::FsFile(_) => "fsFile",
     Repr::TcpListener(_) => "tcpListener",
     Repr::TcpStream(_) => "tcpStream",
   };
