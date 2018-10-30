@@ -1303,15 +1303,14 @@ fn op_resources(
   let serialized_resources = get_resource_table_entries();
 
   let res: Vec<_> = serialized_resources.iter()
-    .map(|key| {
-      // TODO: use actual repr of resource
-      let value = builder.create_string("foobar");
+    .map(|(key, value)| {
+      let s_value = builder.create_string(value);
 
       msg::Resource::create(
         builder,
         &msg::ResourceArgs {
           rid: key.clone(),
-          repr: Some(value),
+          repr: Some(s_value),
           ..Default::default()
         },
       )
