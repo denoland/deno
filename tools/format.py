@@ -16,22 +16,34 @@ rustfmt_config = os.path.join(tools_path, "rustfmt.toml")
 
 os.chdir(root_path)
 
-run([clang_format_path, "-i", "-style", "Google"] +
-    find_exts(["libdeno"], [".cc", ".h"]))
 
+def qrun(cmd, env=None):
+    run(cmd, quiet=True, env=env)
+
+
+print "clang_format"
+qrun([clang_format_path, "-i", "-style", "Google"] +
+     find_exts(["libdeno"], [".cc", ".h"]))
+
+print "gn format"
 for fn in ["BUILD.gn", ".gn"] + find_exts(["build_extra"], [".gn", ".gni"]):
-    run(["third_party/depot_tools/gn", "format", fn], env=google_env())
+    qrun(["third_party/depot_tools/gn", "format", fn], env=google_env())
 
-run([sys.executable, "third_party/python_packages/bin/yapf", "-i"] + find_exts(
-    ["tools", "build_extra"], [".py"], skip=["tools/clang"]),
+print "yapf"
+qrun(
+    [sys.executable, "third_party/python_packages/bin/yapf", "-i"] + find_exts(
+        ["tools", "build_extra"], [".py"], skip=["tools/clang"]),
     env=python_env())
 
-run(["node", prettier, "--write"] + ["rollup.config.js"] + glob("*.json") +
-    glob("*.md") + find_exts([".github", "js", "tests", "tools", "website"],
-                             [".js", ".json", ".ts", ".md"],
-                             skip=["tools/clang"]))
+print "prettier"
+qrun(["node", prettier, "--write", "--loglevel=error"] + ["rollup.config.js"] +
+     glob("*.json") + glob("*.md") +
+     find_exts([".github", "js", "tests", "tools", "website"],
+               [".js", ".json", ".ts", ".md"],
+               skip=["tools/clang"]))
 
-run([
+print "rustfmt"
+qrun([
     "third_party/rustfmt/" + platform() +
     "/rustfmt", "--config-path", rustfmt_config
 ] + find_exts(["src"], [".rs"]))
