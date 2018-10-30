@@ -2,7 +2,7 @@
 import { test, testPerm, assert, assertEqual } from "./test_util.ts";
 import * as deno from "deno";
 
-test(function stdioResources() {
+test(function resourcesStdio() {
   const res = deno.resources();
 
   assertEqual(res[0], "stdin");
@@ -10,7 +10,7 @@ test(function stdioResources() {
   assertEqual(res[2], "stderr");
 });
 
-testPerm({ net: true }, async function netResources() {
+testPerm({ net: true }, async function resourcesNet() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
 
@@ -31,9 +31,9 @@ testPerm({ net: true }, async function netResources() {
   conn.close();
 });
 
-test(function fileResources() {
+test(async function resourcesFile() {
   const resourcesBefore = deno.resources();
-  deno.open("package.json");
+  await deno.open("tests/hello.txt");
   const resourcesAfter = deno.resources();
 
   // check that exactly one new resource (file) was added
@@ -41,8 +41,8 @@ test(function fileResources() {
     Object.keys(resourcesAfter).length,
     Object.keys(resourcesBefore).length + 1
   );
-  const newRid = Object.keys(resourcesAfter).find(key => {
-    return !resourcesBefore.hasOwnProperty(key);
+  const newRid = Object.keys(resourcesAfter).find(rid => {
+    return !resourcesBefore.hasOwnProperty(rid);
   });
   assertEqual(resourcesAfter[newRid], "fsFile");
 });
