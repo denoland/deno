@@ -52,10 +52,10 @@ export class Buffer implements Reader, Writer {
     return this.buf.subarray(this.off);
   }
 
-  /** String returns the contents of the unread portion of the buffer
+  /** toString() returns the contents of the unread portion of the buffer
    * as a string.
    */
-  str(): string {
+  toString(): string {
     const decoder = new TextDecoder();
     return decoder.decode(this.buf.subarray(this.off));
   }

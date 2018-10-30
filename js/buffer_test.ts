@@ -26,7 +26,7 @@ function check(buf: Buffer, s: string) {
   const decoder = new TextDecoder();
   const bytesStr = decoder.decode(bytes);
   assertEqual(bytesStr, s);
-  assertEqual(buf.length, buf.str().length);
+  assertEqual(buf.length, buf.toString().length);
   assertEqual(buf.length, s.length);
 }
 
