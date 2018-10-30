@@ -27,11 +27,13 @@ testPerm({ net: true }, async function netResources() {
     assertEqual(res.filter(r => r.repr === "tcpStream").length, 2);
 
     conn.close();
+    listener.close();
   });
 
   const conn = await deno.dial("tcp", addr);
   const buf = new Uint8Array(1024);
   await conn.read(buf);
+  conn.close();
 });
 
 test(function fileResources() {
