@@ -153,8 +153,7 @@ function generate(
     bindto: id,
     size: {
       height: 300,
-      // @ts-ignore
-      width: window.chartWidth || 375 // TODO: do not use global variable
+      width: document.title === "deno" ? 375 : 800
     },
     data: {
       columns,
@@ -172,10 +171,7 @@ function generate(
 }
 
 function formatSecsAsMins(t) {
-  // TODO use d3.round()
-  const a = t % 60;
-  const min = Math.floor(t / 60);
-  return a < 30 ? min : min + 1;
+  return Math.round(t / 60);
 }
 
 /**
