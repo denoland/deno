@@ -1304,13 +1304,13 @@ fn op_resources(
 
   let res: Vec<_> = serialized_resources.iter()
     .map(|(key, value)| {
-      let s_value = builder.create_string(value);
+      let repr = builder.create_string(value);
 
       msg::Resource::create(
         builder,
         &msg::ResourceArgs {
           rid: key.clone(),
-          repr: Some(s_value),
+          repr: Some(repr),
           ..Default::default()
         },
       )

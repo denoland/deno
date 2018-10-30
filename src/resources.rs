@@ -58,7 +58,7 @@ enum Repr {
   TcpStream(tokio::net::TcpStream),
 }
 
-pub fn get_resource_table_entries() -> HashMap<ResourceId, String> {
+pub fn get_resource_table_entries() -> Vec<(i32, String)> {
   let table = RESOURCE_TABLE.lock().unwrap();
 
   let tuples = table.iter()
