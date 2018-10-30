@@ -129,6 +129,37 @@ function getExtension(
   }
 }
 
+export interface DenoCompilerOptions {
+  /** Do not allow JavaScript modules to be imported into the programme. */
+  disallowJs?: boolean;
+  /** Do not type check JavaScript files.
+   *
+   * Requires `disallowJs` to be false.
+   */
+  noCheckJs?: boolean;
+  /** Do not allow JSON files to be imported as modules. */
+  noResolveJsonModule?: boolean;
+  /** Code will be evaluated in TypeScript's strict mode. */
+  strict?: boolean;
+}
+
+/** A static map of options supported by the Deno compiler. */
+const compilerOptionMap = new Map<
+  keyof DenoCompilerOptions,
+  {
+    tsCompilerOption: keyof ts.CompilerOptions;
+    reverse: boolean;
+  }
+>([
+  ["disallowJs", { tsCompilerOption: "allowJs", reverse: true }],
+  ["noCheckJs", { tsCompilerOption: "checkJs", reverse: true }],
+  [
+    "noResolveJsonModule",
+    { tsCompilerOption: "resolveJsonModule", reverse: true }
+  ],
+  ["strict", { tsCompilerOption: "strict", reverse: false }]
+]);
+
 /** A singleton class that combines the TypeScript Language Service host API
  * with Deno specific APIs to provide an interface for compiling and running
  * TypeScript and JavaScript modules.
@@ -153,7 +184,7 @@ export class DenoCompiler
   >();
   // TODO ideally this are not static and can be influenced by command line
   // arguments
-  private readonly _options: Readonly<ts.CompilerOptions> = {
+  private readonly _options: ts.CompilerOptions = {
     allowJs: true,
     checkJs: true,
     module: ts.ModuleKind.AMD,
@@ -356,6 +387,20 @@ export class DenoCompiler
       this._fileNamesMap.set(containingFile, innerMap);
     }
     innerMap.set(moduleSpecifier, fileName);
+  }
+
+  /** Update the options for the TypeScript compiler. */
+  private _setOptions(options: DenoCompilerOptions) {
+    for (const [option, value] of Object.entries(options) as Array<
+      [keyof DenoCompilerOptions, boolean]
+    >) {
+      this._log("compiler._setOptions", options);
+      const optionInfo = compilerOptionMap.get(option);
+      if (optionInfo) {
+        const { tsCompilerOption, reverse } = optionInfo;
+        this._options[tsCompilerOption] = reverse ? !value : value;
+      }
+    }
   }
 
   /** Setup being able to map back source references back to their source
@@ -596,7 +641,6 @@ export class DenoCompiler
   }
 
   getCompilationSettings(): ts.CompilerOptions {
-    this._log("getCompilationSettings()");
     return this._options;
   }
 
@@ -720,9 +764,12 @@ export class DenoCompiler
   private static _instance: DenoCompiler | undefined;
 
   /** Returns the instance of `DenoCompiler` or creates a new instance. */
-  static instance(): DenoCompiler {
-    return (
-      DenoCompiler._instance || (DenoCompiler._instance = new DenoCompiler())
-    );
+  static instance(options?: DenoCompilerOptions): DenoCompiler {
+    const compiler =
+      DenoCompiler._instance || (DenoCompiler._instance = new DenoCompiler());
+    if (options) {
+      compiler._setOptions(options);
+    }
+    return compiler;
   }
 }

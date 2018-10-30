@@ -17,15 +17,16 @@ macro_rules! svec {
 
 #[derive(Debug, PartialEq, Default)]
 pub struct DenoFlags {
+  pub allow_env: bool,
+  pub allow_net: bool,
+  pub allow_write: bool,
   pub help: bool,
   pub log_debug: bool,
-  pub version: bool,
-  pub reload: bool,
   pub recompile: bool,
-  pub allow_write: bool,
-  pub allow_net: bool,
-  pub allow_env: bool,
+  pub reload: bool,
+  pub strict: bool,
   pub types_flag: bool,
+  pub version: bool,
 }
 
 pub fn process(flags: &DenoFlags, usage_string: String) {
@@ -70,6 +71,7 @@ pub fn set_flags(
   opts.optflag("r", "reload", "Reload cached remote resources.");
   opts.optflag("", "v8-options", "Print V8 command line options.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
+  opts.optflag("s", "strict", "Evaluate TypeScript in strict mode.");
 
   let mut flags = DenoFlags::default();
 
@@ -80,32 +82,38 @@ pub fn set_flags(
     }
   };
 
+  if matches.opt_present("allow-env") {
+    flags.allow_env = true;
+  }
+  if matches.opt_present("allow-net") {
+    flags.allow_net = true;
+  }
+  if matches.opt_present("allow-write") {
+    flags.allow_write = true;
+  }
   if matches.opt_present("help") {
     flags.help = true;
   }
   if matches.opt_present("log-debug") {
     flags.log_debug = true;
   }
-  if matches.opt_present("version") {
-    flags.version = true;
+  if matches.opt_present("recompile") {
+    flags.recompile = true;
   }
   if matches.opt_present("reload") {
     flags.reload = true;
   }
-  if matches.opt_present("recompile") {
-    flags.recompile = true;
-  }
-  if matches.opt_present("allow-write") {
-    flags.allow_write = true;
-  }
-  if matches.opt_present("allow-net") {
-    flags.allow_net = true;
-  }
-  if matches.opt_present("allow-env") {
-    flags.allow_env = true;
+  if matches.opt_present("strict") {
+    flags.strict = true;
   }
   if matches.opt_present("types") {
     flags.types_flag = true;
+  }
+  if matches.opt_present("strict") {
+    flags.strict = true;
+  }
+  if matches.opt_present("version") {
+    flags.version = true;
   }
 
   let rest: Vec<_> = matches.free.iter().map(|s| s.clone()).collect();
@@ -179,6 +187,19 @@ fn test_set_flags_5() {
     flags,
     DenoFlags {
       types_flag: true,
+      ..DenoFlags::default()
+    }
+  )
+}
+
+#[test]
+fn test_set_flags_6() {
+  let (flags, rest, _) = set_flags(svec!["deno", "--strict"]).unwrap();
+  assert_eq!(rest, svec!["deno"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      strict: true,
       ..DenoFlags::default()
     }
   )

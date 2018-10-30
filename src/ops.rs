@@ -187,14 +187,15 @@ fn op_start(
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
-      cwd: Some(cwd_off),
       argv: Some(argv_off),
+      cwd: Some(cwd_off),
       debug_flag: state.flags.log_debug,
-      recompile_flag: state.flags.recompile,
-      types_flag: state.flags.types_flag,
-      version_flag: state.flags.version,
-      v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
+      recompile_flag: state.flags.recompile,
+      strict_flag: state.flags.strict,
+      types_flag: state.flags.types_flag,
+      v8_version: Some(v8_version_off),
+      version_flag: state.flags.version,
       ..Default::default()
     },
   );

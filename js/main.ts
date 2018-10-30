@@ -43,7 +43,6 @@ export default function denoMain() {
   libdeno.setGlobalErrorHandler(onGlobalError);
   libdeno.setPromiseRejectHandler(promiseRejectHandler);
   libdeno.setPromiseErrorExaminer(promiseErrorExaminer);
-  const compiler = DenoCompiler.instance();
 
   // First we send an empty "Start" message to let the privileged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
@@ -51,6 +50,10 @@ export default function denoMain() {
   const startResMsg = sendStart();
 
   setLogDebug(startResMsg.debugFlag());
+
+  const compiler = DenoCompiler.instance({
+    strict: startResMsg.strictFlag()
+  });
 
   // handle `--types`
   if (startResMsg.typesFlag()) {

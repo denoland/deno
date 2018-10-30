@@ -1,0 +1,5 @@
+[96m[WILDCARD]/tests/flags/strict/error_maybe_undefined.ts[0m:[93m3[0m:[93m5[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m3[0m if (map.get("foo").bar) {
+[7m [0m [91m    ~~~~~~~~~~~~~~[0m
+
