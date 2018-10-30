@@ -38,6 +38,7 @@ export { truncateSync, truncate } from "./truncate";
 export { FileInfo } from "./file_info";
 export { connect, dial, listen, Listener, Conn } from "./net";
 export { metrics } from "./metrics";
+export { resources } from "./resources";
 export const args: string[] = [];
 
 // Provide the compiler API in an obfuscated way

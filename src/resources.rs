@@ -58,6 +58,40 @@ enum Repr {
   TcpStream(tokio::net::TcpStream),
 }
 
+pub fn table_entries() -> Vec<(i32, String)> {
+  let table = RESOURCE_TABLE.lock().unwrap();
+
+  let tuples = table
+    .iter()
+    .map(|(key, value)| (key.clone(), inspect_repr(&value)))
+    .collect();
+
+  tuples
+}
+
+#[test]
+fn test_table_entries() {
+  let mut entries = table_entries();
+  entries.sort();
+  assert_eq!(entries.len(), 3);
+  assert_eq!(entries[0], (0, String::from("stdin")));
+  assert_eq!(entries[1], (1, String::from("stdout")));
+  assert_eq!(entries[2], (2, String::from("stderr")));
+}
+
+fn inspect_repr(repr: &Repr) -> String {
+  let h_repr = match repr {
+    Repr::Stdin(_) => "stdin",
+    Repr::Stdout(_) => "stdout",
+    Repr::Stderr(_) => "stderr",
+    Repr::FsFile(_) => "fsFile",
+    Repr::TcpListener(_) => "tcpListener",
+    Repr::TcpStream(_) => "tcpStream",
+  };
+
+  String::from(h_repr)
+}
+
 // Abstract async file interface.
 // Ideally in unix, if Resource represents an OS rid, it will be the same.
 #[derive(Debug)]

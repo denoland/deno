@@ -19,6 +19,7 @@ use futures::Poll;
 use hyper;
 use hyper::rt::{Future, Stream};
 use remove_dir_all::remove_dir_all;
+use resources::table_entries;
 use std;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
@@ -94,6 +95,7 @@ pub fn dispatch(
       msg::Any::Read => op_read,
       msg::Any::Remove => op_remove,
       msg::Any::Rename => op_rename,
+      msg::Any::Resources => op_resources,
       msg::Any::SetEnv => op_set_env,
       msg::Any::Shutdown => op_shutdown,
       msg::Any::Start => op_start,
@@ -1284,6 +1286,52 @@ fn op_metrics(
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
       inner_type: msg::Any::MetricsRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_resources(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+
+  let builder = &mut FlatBufferBuilder::new();
+  let serialized_resources = table_entries();
+
+  let res: Vec<_> = serialized_resources
+    .iter()
+    .map(|(key, value)| {
+      let repr = builder.create_string(value);
+
+      msg::Resource::create(
+        builder,
+        &msg::ResourceArgs {
+          rid: key.clone(),
+          repr: Some(repr),
+          ..Default::default()
+        },
+      )
+    }).collect();
+
+  let resources = builder.create_vector(&res);
+  let inner = msg::ResourcesRes::create(
+    builder,
+    &msg::ResourcesResArgs {
+      resources: Some(resources),
+      ..Default::default()
+    },
+  );
+
+  ok_future(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::ResourcesRes,
       ..Default::default()
     },
   ))
