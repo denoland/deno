@@ -61,27 +61,26 @@ enum Repr {
 pub fn get_resource_table_entries() -> Vec<(i32, String)> {
   let table = RESOURCE_TABLE.lock().unwrap();
 
-  let tuples = table.iter()
-    .map(|(key, value)| {
-      (key.clone(), inspect_repr(&value))
-    }).collect();
+  let tuples = table
+    .iter()
+    .map(|(key, value)| (key.clone(), inspect_repr(&value)))
+    .collect();
 
   tuples
 }
 
 fn inspect_repr(repr: &Repr) -> String {
-    let h_repr = match repr {
-        Repr::Stdin(_) => "stdin",
-        Repr::Stdout(_) => "stdout",
-        Repr::Stderr(_) => "stderr",
-        Repr::FsFile(_) => "fsfile",
-        Repr::TcpListener(_) => "tcpListener",
-        Repr::TcpStream(_) => "tcpStream",
-    };
+  let h_repr = match repr {
+    Repr::Stdin(_) => "stdin",
+    Repr::Stdout(_) => "stdout",
+    Repr::Stderr(_) => "stderr",
+    Repr::FsFile(_) => "fsfile",
+    Repr::TcpListener(_) => "tcpListener",
+    Repr::TcpStream(_) => "tcpStream",
+  };
 
   String::from(h_repr)
 }
-
 
 // Abstract async file interface.
 // Ideally in unix, if Resource represents an OS rid, it will be the same.

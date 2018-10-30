@@ -1302,7 +1302,8 @@ fn op_resources(
   let builder = &mut FlatBufferBuilder::new();
   let serialized_resources = get_resource_table_entries();
 
-  let res: Vec<_> = serialized_resources.iter()
+  let res: Vec<_> = serialized_resources
+    .iter()
     .map(|(key, value)| {
       let repr = builder.create_string(value);
 

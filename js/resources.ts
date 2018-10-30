@@ -32,8 +32,8 @@ function res(baseRes: null | msg.Base): Resource[] {
     const item = res.resources(i)!;
 
     resources.push({
-        rid: item.rid()!,
-        repr: item.repr()!,
+      rid: item.rid()!,
+      repr: item.repr()!
     });
   }
 
