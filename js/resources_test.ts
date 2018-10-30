@@ -13,6 +13,7 @@ test(function resourcesStdio() {
 testPerm({ net: true }, async function resourcesNet() {
   const addr = "127.0.0.1:4501";
   const listener = deno.listen("tcp", addr);
+  let counter = 0;
 
   listener.accept().then(async conn => {
     const res = deno.resources();
@@ -23,12 +24,12 @@ testPerm({ net: true }, async function resourcesNet() {
 
     conn.close();
     listener.close();
+    counter++;
   });
 
   const conn = await deno.dial("tcp", addr);
-  const buf = new Uint8Array(1024);
-  await conn.read(buf);
   conn.close();
+  assertEqual(counter, 1);
 });
 
 test(async function resourcesFile() {
