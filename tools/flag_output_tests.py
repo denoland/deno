@@ -27,7 +27,8 @@ def flag_output_tests(deno_executable):
             if filename.endswith(".out")
         ])
         assert len(outs) > 0
-        tests = [(os.path.splitext(filename)[0], filename) for filename in outs]
+        tests = [(os.path.splitext(filename)[0], filename)
+                 for filename in outs]
         for (script, out_filename) in tests:
             script_abs = os.path.join(tests_path, script)
             out_abs = os.path.join(tests_path, out_filename)
@@ -39,7 +40,8 @@ def flag_output_tests(deno_executable):
             print " ".join(cmd)
             actual_code = 0
             try:
-                actual_out = subprocess.check_output(cmd, universal_newlines=True)
+                actual_out = subprocess.check_output(
+                    cmd, universal_newlines=True)
             except subprocess.CalledProcessError as e:
                 actual_code = e.returncode
                 actual_out = e.output
@@ -62,7 +64,7 @@ def flag_output_tests(deno_executable):
                 sys.exit(1)
 
 
-def main (argv):
+def main(argv):
     flag_output_tests(argv[1])
 
 
