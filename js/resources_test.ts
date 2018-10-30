@@ -5,14 +5,10 @@ import * as deno from "deno";
 test(function stdioResources() {
   const res = deno.resources();
 
-  assertEqual(res[0].rid, 0);
-  assertEqual(res[0].repr, "stdin");
-
-  assertEqual(res[1].rid, 1);
-  assertEqual(res[1].repr, "stdout");
-
-  assertEqual(res[2].rid, 2);
-  assertEqual(res[2].repr, "stderr");
+  assertEqual(Object.keys(res).length, 3);
+  assertEqual(res[0], "stdin");
+  assertEqual(res[1], "stdout");
+  assertEqual(res[2], "stderr");
 });
 
 testPerm({ net: true }, async function netResources() {
@@ -22,9 +18,9 @@ testPerm({ net: true }, async function netResources() {
   listener.accept().then(async conn => {
     const res = deno.resources();
     // besides 3 stdio resources, we should have additional 3 from listen(), accept() and dial()
-    assertEqual(res.length, 6);
-    assertEqual(res.filter(r => r.repr === "tcpListener").length, 1);
-    assertEqual(res.filter(r => r.repr === "tcpStream").length, 2);
+    assertEqual(Object.keys(res).length, 6);
+    assertEqual(Object.values(res).filter(r => r === "tcpListener").length, 1);
+    assertEqual(Object.values(res).filter(r => r === "tcpStream").length, 2);
 
     conn.close();
     listener.close();
@@ -37,7 +33,8 @@ testPerm({ net: true }, async function netResources() {
 });
 
 test(function fileResources() {
-  deno.readFileSync("package.json");
+  deno.open("package.json");
   const res = deno.resources();
-  assertEqual(res.filter(r => r.repr === "fsFile").length, 1);
+  console.log(res);
+  assertEqual(Object.values(res).filter(r => r === "fsFile").length, 1);
 });
