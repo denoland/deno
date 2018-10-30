@@ -24,6 +24,8 @@ union Any {
   Rename,
   Readlink,
   ReadlinkRes,
+  Resources,
+  ResourcesRes,
   Symlink,
   Stat,
   StatRes,
@@ -268,6 +270,17 @@ table Readlink {
 
 table ReadlinkRes {
   path: string;
+}
+
+table Resources {}
+
+table Resource {
+  rid: int;
+  repr: string;
+}
+
+table ResourcesRes {
+  resources: [Resource];
 }
 
 table Symlink {

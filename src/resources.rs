@@ -58,6 +58,17 @@ enum Repr {
   TcpStream(tokio::net::TcpStream),
 }
 
+pub fn get_resource_table_entries() -> Vec<i32> {
+  let table = RESOURCE_TABLE.lock().unwrap();
+
+  let serialized_resources: Vec<i32> = table.iter()
+    .map(|(key, _value)| {
+        key.clone()
+    }).collect();
+
+  serialized_resources
+}
+
 // Abstract async file interface.
 // Ideally in unix, if Resource represents an OS rid, it will be the same.
 #[derive(Debug)]
