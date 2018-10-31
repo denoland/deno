@@ -23,21 +23,21 @@ extern crate log;
 #[macro_use]
 extern crate futures;
 
-mod deno_dir;
-mod errors;
-mod flags;
+pub mod deno_dir;
+pub mod errors;
+pub mod flags;
 mod fs;
 mod http_util;
-mod isolate;
-mod libdeno;
-mod msg;
+pub mod isolate;
+pub mod libdeno;
+pub mod msg;
 pub mod ops;
-mod permissions;
-mod resources;
-mod snapshot;
+pub mod permissions;
+pub mod resources;
+pub mod snapshot;
 mod tokio_util;
 mod tokio_write;
-mod version;
+pub mod version;
 
 #[cfg(unix)]
 mod eager_unix;
