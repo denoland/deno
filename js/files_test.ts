@@ -17,3 +17,16 @@ test(async function filesCopyToStdout() {
   assertEqual(bytesWritten, fileSize);
   console.log("bytes written", bytesWritten);
 });
+
+test(async function filesToAsyncIterator() {
+  const filename = 'tests/hello.txt';
+  const file = await deno.open(filename);
+  const fileSize = deno.statSync(filename).len;
+
+  let totalSize = 0;
+  for await (const buf of deno.toAsyncIterator(file)) {
+    totalSize += buf.byteLength;
+  }
+
+  assertEqual(totalSize, fileSize);
+});

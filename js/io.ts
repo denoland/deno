@@ -15,7 +15,7 @@ export interface Reader {
    * of bytes read (`0` <= `n` <= `p.byteLength`) and any error encountered.
    * Even if `read()` returns `n` < `p.byteLength`, it may use all of `p` as
    * scratch space during the call. If some data is available but not
-   * `p.byteLength`  , `read()` conventionally returns what is available
+   * `p.byteLength` bytes, `read()` conventionally returns what is available
    * instead of waiting for more.
    *
    * When `read()` encounters an error or end-of-file condition after
@@ -123,7 +123,7 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
  *        console.log(chunk)
  *    }
  */
-export function readerIterator(
+export function toAsyncIterator(
   r: Reader
 ): AsyncIterableIterator<ArrayBufferView> {
   const b = new Uint8Array(1024);
