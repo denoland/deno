@@ -7,6 +7,7 @@ export { chdir, cwd } from "./dir";
 export { File, open, stdin, stdout, stderr, read, write, close } from "./files";
 export {
   copy,
+  toAsyncIterator,
   ReadResult,
   Reader,
   Writer,
