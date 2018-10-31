@@ -45,5 +45,5 @@ qrun(["node", prettier, "--write", "--loglevel=error"] + ["rollup.config.js"] +
 print "rustfmt"
 qrun([
     "third_party/rustfmt/" + platform() +
-    "/rustfmt", "--config-path", rustfmt_config
+    "/rustfmt", "--config-path", rustfmt_config, "build.rs"
 ] + find_exts(["src"], [".rs"]))
