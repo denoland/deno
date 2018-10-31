@@ -85,13 +85,6 @@ printHello();
 The next time you import the same file from same uri it will use the cached
 resource instead of downloading it again.
 
-**Note:** The remote resource `print_hello.ts` will be cached at `~/.deno/deps`.
-These dependencies will have to be removed _**manually**_. Also, the `.ts` files
-are compiled to `.js`(source map) at `~/.deno/gen`. These compiled files will
-also have to be removed _**manually**_.
-
-## How to Profile Deno
-
 ```sh
 # Make sure we're only building release.
 export DENO_BUILD_MODE=release
