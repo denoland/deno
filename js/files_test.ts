@@ -19,7 +19,7 @@ test(async function filesCopyToStdout() {
 });
 
 test(async function filesToAsyncIterator() {
-  const filename = 'tests/hello.txt';
+  const filename = "tests/hello.txt";
   const file = await deno.open(filename);
   const fileSize = deno.statSync(filename).len;
 
