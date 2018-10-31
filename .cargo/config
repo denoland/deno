@@ -1,0 +1,7 @@
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
+[build]
+# The location of the cargo build directory can be overridden, but the name of
+# the directory itself is best left at 'target'.
+# https://github.com/rust-lang/cargo/pull/1657#issue-36459101
+target-dir = "out/target"

@@ -13,6 +13,7 @@ environment:
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   MTIME_CACHE_DB: $(APPVEYOR_BUILD_FOLDER)\mtime_cache.xml
   CARGO_HOME: $(USERPROFILE)\.cargo
+  CARGO_TARGET_DIR: $(APPVEYOR_BUILD_FOLDER)\out\target
   RUSTUP_HOME: $(USERPROFILE)\.rustup
   RUST_BACKTRACE: 1
   RELEASE_ARTIFACT: deno_win_x64.zip
@@ -335,6 +336,8 @@ before_build:
 build_script:
   - python tools\build.py
   - ps: Set-FilesNeeded -Auto -Reason "Build finished"
+  - cargo check --release
+  - ps: Set-FilesNeeded -Auto -Reason "Cargo check finished"
 
 test_script:
   - python tools\lint.py

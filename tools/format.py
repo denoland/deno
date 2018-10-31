@@ -46,4 +46,4 @@ print "rustfmt"
 qrun([
     "third_party/rustfmt/" + platform() +
     "/rustfmt", "--config-path", rustfmt_config
-] + find_exts(["src"], [".rs"]))
+] + find_exts(["src", "msg_rs"], [".rs"]))

@@ -1,0 +1,14 @@
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "msg_rs"
+version = "0.0.0"
+
+[lib]
+path = "lib.rs"
+
+[build]
+build = "build.rs"
+
+[dependencies]
+flatbuffers = { path = "../third_party/flatbuffers/rust/flatbuffers/" }
