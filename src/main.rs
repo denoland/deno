@@ -66,11 +66,7 @@ fn main() {
   // https://github.com/rust-lang/cargo/issues/2738
   // Therefore this hack.
   std::panic::set_hook(Box::new(|panic_info| {
-    if let Some(location) = panic_info.location() {
-      eprintln!("PANIC file '{}' line {}", location.file(), location.line());
-    } else {
-      eprintln!("PANIC occurred but can't get location information...");
-    }
+    eprintln!("{}", panic_info.to_string());
     std::process::abort();
   }));
 
