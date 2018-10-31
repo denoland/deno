@@ -49,7 +49,6 @@ template("rust_crate") {
                            "crate_type",
                            "crate_version",
                            "deps",
-                           "data",
                            "features",
                            "is_test",
                            "libs",
@@ -206,9 +205,6 @@ template("rust_crate") {
     }
     if (defined(invoker.args)) {
       args += invoker.args
-    }
-    if (defined(invoker.data)) {
-      data += invoker.data
     }
 
     if (defined(features)) {

@@ -123,9 +123,6 @@ ts_sources = [
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
-  data = [
-    "$target_gen_dir/msg_generated.rs",
-  ]
   deps = [
     ":libdeno",
     ":msg_rs",
