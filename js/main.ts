@@ -7,7 +7,7 @@ import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
-import { readFile } from "./read_file";
+import { readFileSync } from "./read_file";
 import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
 import { version } from "typescript";
 import { TextDecoder } from "text-encoding";
@@ -41,7 +41,7 @@ function onGlobalError(
 }
 
 /* tslint:disable-next-line:no-default-export */
-export default async function denoMain() {
+export default function denoMain() {
   libdeno.recv(handleAsyncMsgFromRust);
   libdeno.setGlobalErrorHandler(onGlobalError);
   libdeno.setPromiseRejectHandler(promiseRejectHandler);
@@ -92,7 +92,7 @@ export default async function denoMain() {
   if (tsconfigFilename) {
     try {
       const decoder = new TextDecoder("utf-8");
-      const tsconfigJson = decoder.decode(await readFile(tsconfigFilename));
+      const tsconfigJson = decoder.decode(readFileSync(tsconfigFilename));
       const ignoredOptions = compiler.configure(tsconfigJson);
       if (ignoredOptions) {
         console.warn(
