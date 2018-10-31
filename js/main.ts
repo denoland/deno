@@ -103,7 +103,10 @@ export default async function denoMain() {
       }
     } catch (e) {
       if (e instanceof DenoError && e.kind === msg.ErrorKind.NotFound) {
-        log("No tsconfig.json.");
+        console.error(
+          `Specified configuration "${tsconfigFilename}" not found.`
+        );
+        os.exit(1);
       } else {
         throw e;
       }
