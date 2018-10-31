@@ -13,9 +13,10 @@ fn main() {
   let mode = env::var("PROFILE").unwrap();
   let deno_build_path = env::var("DENO_BUILD_PATH").unwrap();
 
-  let status = Command::new("./tools/setup.py")
+  let status = Command::new("python")
     .env("DENO_BUILD_PATH", &deno_build_path)
     .env("DENO_BUILD_MODE", &mode)
+    .arg("./tools/setup.py")
     .status()
     .expect("setup.py failed");
   assert!(status.success());
