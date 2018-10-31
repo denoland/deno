@@ -15,7 +15,7 @@ export interface Reader {
    * of bytes read (`0` <= `n` <= `p.byteLength`) and any error encountered.
    * Even if `read()` returns `n` < `p.byteLength`, it may use all of `p` as
    * scratch space during the call. If some data is available but not
-   * `p.byteLength` bytes, `read()` conventionally returns what is available
+   * `p.byteLength`  , `read()` conventionally returns what is available
    * instead of waiting for more.
    *
    * When `read()` encounters an error or end-of-file condition after
@@ -114,4 +114,31 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
     n += await dst.write(b.subarray(0, result.nread));
   }
   return n;
+}
+
+/**
+ * Turns `r` into async iterator.
+ *
+ *    for await (const chunk of readerIterator(reader)) {
+ *        console.log(chunk)
+ *    }
+ */
+export function readerIterator(
+  r: Reader
+): AsyncIterableIterator<ArrayBufferView> {
+  const b = new Uint8Array(1024);
+
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+
+    async next(): Promise<IteratorResult<ArrayBufferView>> {
+      const result = await r.read(b);
+      return {
+        value: b.subarray(0, result.nread),
+        done: result.eof
+      };
+    }
+  };
 }
