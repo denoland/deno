@@ -9,8 +9,6 @@ yarn.lock
 node_modules
 # editor files
 .idea
-# RLS generated files
-/target/
 # export dir for gh-pages
 /gh-pages
 # temp benchmark data
