@@ -85,6 +85,8 @@ printHello();
 The next time you import the same file from same uri it will use the cached
 resource instead of downloading it again.
 
+## How to Profile Deno
+
 ```sh
 # Make sure we're only building release.
 export DENO_BUILD_MODE=release
