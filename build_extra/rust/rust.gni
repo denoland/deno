@@ -169,8 +169,6 @@ template("rust_crate") {
     args += [
       "rustc",
       rebase_path(source_root, root_build_dir),
-      "--env-out-dir",
-      rebase_path(root_out_dir),
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
       "--emit=$emit_type,dep-info",

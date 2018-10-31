@@ -1,17 +1,10 @@
 #!/usr/bin/env python
-# This file just executes its arguments, except that it extracts a special
-# argument --env-out-dir so as to pass it to the given command via environmental
-# variable. This backflip is to have compatibility with cargo.
+# This file just executes its arguments, except that also adds OUT_DIR to the
+# environ. This is for compatibility with cargo.
 import subprocess
-import argparse
 import sys
 import os
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--env-out-dir", dest="env_out_dir")
-flags, args_rest = parser.parse_known_args()
-
-assert os.path.isdir(flags.env_out_dir)
-os.environ["OUT_DIR"] = flags.env_out_dir
-
-sys.exit(subprocess.call(args_rest, env=os.environ))
+os.environ["OUT_DIR"] = os.path.abspath(".")
+assert os.path.isdir(os.environ["OUT_DIR"])
+sys.exit(subprocess.call(sys.argv[1:], env=os.environ))
