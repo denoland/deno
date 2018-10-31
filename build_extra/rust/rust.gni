@@ -151,7 +151,7 @@ template("rust_crate") {
   }
 
   action(action_name) {
-    script = "//third_party/v8/tools/run.py"
+    script = "//build_extra/rust/run.py"
     sources = [
       source_root,
     ]

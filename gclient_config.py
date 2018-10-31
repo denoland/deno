@@ -37,7 +37,7 @@ solutions = [{
     'cpplint'
 }, {
     'url':
-    'https://github.com/google/flatbuffers.git@d840856093fa7b935b0d6378c436bd633d006c8c',
+    'https://github.com/google/flatbuffers.git@160e8f2fdc9d5989e652709fae3fac0bd9aaed14',
     'name':
     'flatbuffers'
 }]
