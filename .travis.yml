@@ -14,6 +14,7 @@ env:
   - HOMEBREW_PATH=$HOME/homebrew/
   - DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false"
   - DENO_BUILD_PATH=$HOME/out/Default
+  - CARGO_TARGET_DIR=$DENO_BUILD_PATH
   - DENO_BUILD_MODE=release
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - CCACHE_CPP2=yes
@@ -88,8 +89,9 @@ before_script:
 script:
 - ./tools/lint.py
 - ./tools/test_format.py
-- bash -c "sleep 2100; pkill ninja" &
+- bash -c "sleep 2100; pkill ninja; pkill cargo" &
 - ./tools/build.py -j2
+- RUSTC_WRAPPER=sccache cargo check -j2 --release
 - ./tools/test.py $DENO_BUILD_PATH
 after_script:
 - ccache --show-stats

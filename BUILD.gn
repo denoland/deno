@@ -124,9 +124,7 @@ rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
   deps = [
-    ":libdeno",
-    ":msg_rs",
-    ":snapshot",
+    ":deno_deps",
   ]
 }
 
@@ -209,7 +207,6 @@ v8_executable("test_cc") {
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
 static_library("libdeno") {
-  complete_static_lib = true
   sources = [
     "libdeno/api.cc",
     "libdeno/binding.cc",
@@ -220,6 +217,16 @@ static_library("libdeno") {
   ]
   public_deps = [
     "third_party/v8:v8_monolith",
+  ]
+  configs += [ ":deno_config" ]
+}
+
+static_library("deno_deps") {
+  complete_static_lib = true
+  public_deps = [
+    ":libdeno",
+    ":msg_rs",
+    ":snapshot",
   ]
   configs += [ ":deno_config" ]
 }

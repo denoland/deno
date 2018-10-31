@@ -1,5 +1,6 @@
 # build
 /out/
+/target/
 *.pyc
 gclient_config.py_entries
 Cargo.lock
