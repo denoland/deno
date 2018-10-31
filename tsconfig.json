@@ -16,6 +16,7 @@
     "preserveConstEnums": true,
     "pretty": true,
     "removeComments": true,
+    "resolveJsonModule": true,
     "sourceMap": true,
     "strict": true,
     "target": "esnext",
