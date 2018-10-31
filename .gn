@@ -30,6 +30,10 @@ default_args = {
   # for now. See http://clang.llvm.org/docs/ControlFlowIntegrity.html
   is_cfi = false
 
+  # To link properly with Cargo built objects, we need to build libc++ and
+  # include it in deno_deps.
+  use_custom_libcxx = true
+
   is_component_build = false
   symbol_level = 1
   treat_warnings_as_errors = true

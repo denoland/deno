@@ -212,6 +212,13 @@ v8_executable("test_cc") {
   configs = [ ":deno_config" ]
 }
 
+v8_deps = [
+  "third_party/v8:v8",
+  "third_party/v8:v8_libbase",
+  "third_party/v8:v8_libplatform",
+  "third_party/v8:v8_libsampler",
+]
+
 # Only functionality needed for libdeno_test and snapshot_creator
 # In particular no flatbuffers, no assets, no rust, no msg handlers.
 # Because snapshots are slow, it's important that snapshot_creator's
@@ -225,19 +232,19 @@ static_library("libdeno") {
     "libdeno/file_util.h",
     "libdeno/internal.h",
   ]
-  public_deps = [
-    "third_party/v8:v8_monolith",
-  ]
+  public_deps = v8_deps
   configs += [ ":deno_config" ]
 }
 
 static_library("deno_deps") {
   complete_static_lib = true
   public_deps = [
-    ":libdeno",
-    ":msg_rs",
-    ":snapshot",
-  ]
+                  ":libdeno",
+                  ":msg_rs",
+                  ":snapshot",
+                  "//build/win:default_exe_manifest",
+                  "//buildtools/third_party/libc++:libc++",
+                ] + v8_deps
   configs += [ ":deno_config" ]
 }
 
