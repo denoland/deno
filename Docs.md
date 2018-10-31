@@ -156,7 +156,7 @@ Other useful commands:
     ./third_party/depot_tools/gn help
 
     # Update third_party modules
-    ```$ git submodule update```
+    git submodule update
 
 Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
 `DENO_DIR`.
