@@ -67,11 +67,6 @@ fn main() {
   // Therefore this hack.
   std::panic::set_hook(Box::new(|panic_info| {
     eprintln!("{}", panic_info.to_string());
-    if let Some(location) = panic_info.location() {
-      eprintln!("PANIC file '{}' line {}", location.file(), location.line());
-    } else {
-      eprintln!("PANIC occurred but can't get location information...");
-    }
     std::process::abort();
   }));
 
