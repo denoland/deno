@@ -22,9 +22,10 @@ fn main() {
   assert!(status.success());
 
   // These configurations must be outputted after tools/setup.py is run.
-  println!("cargo:rustc-env=OUT_DIR={}", deno_build_path);
   println!("cargo:rustc-link-search=native={}/obj", deno_build_path);
   println!("cargo:rustc-link-lib=static=deno_deps");
+  // TODO Remove this and only use OUT_DIR at some point.
+  println!("cargo:rustc-env=DENO_BUILD_PATH={}", deno_build_path);
 
   let status = Command::new("python")
     .env("DENO_BUILD_PATH", &deno_build_path)

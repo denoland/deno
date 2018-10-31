@@ -5,6 +5,9 @@ import subprocess
 import sys
 import os
 
-os.environ["OUT_DIR"] = os.path.abspath(".")
-assert os.path.isdir(os.environ["OUT_DIR"])
+# TODO This is for src/msg.rs to know where to find msg_generated.rs
+# In the future we should use OUT_DIR here.
+os.environ["DENO_BUILD_PATH"] = os.path.abspath(".")
+assert os.path.isdir(os.environ["DENO_BUILD_PATH"])
+
 sys.exit(subprocess.call(sys.argv[1:], env=os.environ))
