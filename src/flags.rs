@@ -26,6 +26,7 @@ pub struct DenoFlags {
   pub allow_net: bool,
   pub allow_env: bool,
   pub types_flag: bool,
+  pub maybe_config: Option<String>,
 }
 
 pub fn process(flags: &DenoFlags, usage_string: &str) {
@@ -71,6 +72,7 @@ pub fn set_flags(
   opts.optflag("r", "reload", "Reload cached remote resources.");
   opts.optflag("", "v8-options", "Print V8 command line options.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
+  opts.optopt("c", "config", "Specify a tsconfig.json file.", "FILE");
 
   let mut flags = DenoFlags::default();
 
@@ -108,6 +110,7 @@ pub fn set_flags(
   if matches.opt_present("types") {
     flags.types_flag = true;
   }
+  flags.maybe_config = matches.opt_str("c");
 
   let rest: Vec<_> = matches.free.to_vec();
   Ok((flags, rest, get_usage(&opts)))
@@ -180,6 +183,20 @@ fn test_set_flags_5() {
     flags,
     DenoFlags {
       types_flag: true,
+      ..DenoFlags::default()
+    }
+  )
+}
+
+#[test]
+fn test_set_flags_6() {
+  let (flags, rest, _) =
+    set_flags(svec!["deno", "--config", "foobar.json"]).unwrap();
+  assert_eq!(rest, svec!["deno"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      maybe_config: Some("foobar.json".to_string()),
       ..DenoFlags::default()
     }
   )

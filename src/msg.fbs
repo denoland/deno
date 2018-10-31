@@ -132,6 +132,7 @@ table StartRes {
   recompile_flag: bool;
   types_flag: bool;
   version_flag: bool;
+  config_file: string;
   deno_version: string;
   v8_version: string;
 }

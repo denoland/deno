@@ -7,8 +7,11 @@ import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
+import { readFile } from "./read_file";
 import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
 import { version } from "typescript";
+import { TextDecoder } from "text-encoding";
+import { DenoError } from "./errors";
 
 function sendStart(): msg.StartRes {
   const builder = flatbuffers.createBuilder();
@@ -38,7 +41,7 @@ function onGlobalError(
 }
 
 /* tslint:disable-next-line:no-default-export */
-export default function denoMain() {
+export default async function denoMain() {
   libdeno.recv(handleAsyncMsgFromRust);
   libdeno.setGlobalErrorHandler(onGlobalError);
   libdeno.setPromiseRejectHandler(promiseRejectHandler);
@@ -82,6 +85,29 @@ export default function denoMain() {
   if (!inputFn) {
     console.log("No input script specified.");
     os.exit(1);
+  }
+
+  // handle `--config FILE`
+  const tsconfigFilename = startResMsg.configFile();
+  if (tsconfigFilename) {
+    try {
+      const decoder = new TextDecoder("utf-8");
+      const tsconfigJson = decoder.decode(await readFile(tsconfigFilename));
+      const ignoredOptions = compiler.configure(tsconfigJson);
+      if (ignoredOptions) {
+        console.warn(
+          `Unsupported compiler options in: "${tsconfigFilename}"\n` +
+            "  The following options were ignored:\n" +
+            `    ${ignoredOptions.join(", ")}`
+        );
+      }
+    } catch (e) {
+      if (e instanceof DenoError && e.kind === msg.ErrorKind.NotFound) {
+        log("No tsconfig.json.");
+      } else {
+        throw e;
+      }
+    }
   }
 
   compiler.recompile = startResMsg.recompileFlag();

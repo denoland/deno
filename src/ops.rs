@@ -181,6 +181,11 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
+  let config_file_off = builder.create_string(match state.flags.maybe_config {
+    Some(ref config_file) => &config_file,
+    None => "",
+  });
+
   let v8_version = version::get_v8_version();
   let v8_version_off = builder.create_string(v8_version);
 
@@ -196,6 +201,7 @@ fn op_start(
       recompile_flag: state.flags.recompile,
       types_flag: state.flags.types_flag,
       version_flag: state.flags.version,
+      config_file: Some(config_file_off),
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
       ..Default::default()

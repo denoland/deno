@@ -67,9 +67,11 @@ export interface Os {
  * @internal
  */
 export interface Ts {
+  convertCompilerOptionsFromJson: typeof ts.convertCompilerOptionsFromJson;
   createLanguageService: typeof ts.createLanguageService;
   /* tslint:disable-next-line:max-line-length */
   formatDiagnosticsWithColorAndContext: typeof ts.formatDiagnosticsWithColorAndContext;
+  parseConfigFileTextToJson: typeof ts.parseConfigFileTextToJson;
 }
 
 /** A simple object structure for caching resolved modules and their contents.
@@ -510,6 +512,43 @@ export class DenoCompiler
     return moduleMetaData.outputCode;
   }
 
+  /** Configure the compiler with the text read from a tsconfig file.
+   * If there are any ignored options, they are returned in an array.
+   */
+  configure(configurationText: string): string[] | undefined {
+    this._log("compiler.configure");
+    const { config, error } = this._ts.parseConfigFileTextToJson(
+      "tsconfig.json",
+      configurationText
+    );
+    if (error) {
+      console.warn(
+        this._ts.formatDiagnosticsWithColorAndContext([error], this)
+      );
+      this._os.exit(1);
+    }
+    const { options, errors } = this._ts.convertCompilerOptionsFromJson(
+      config.compilerOptions,
+      deno.cwd()
+    );
+    if (errors.length) {
+      console.warn(this._ts.formatDiagnosticsWithColorAndContext(errors, this));
+      this._os.exit(1);
+    }
+    const ignoredOptions: string[] = [];
+    for (const key of Object.keys(options)) {
+      if (
+        DenoCompiler._ignoredCompilerOptions.includes(key) &&
+        (!(key in this._options) || options[key] !== this._options[key])
+      ) {
+        ignoredOptions.push(key);
+        delete options[key];
+      }
+    }
+    Object.assign(this._options, options);
+    return ignoredOptions.length ? ignoredOptions : undefined;
+  }
+
   /** For a given module specifier and containing file, return a list of
    * absolute identifiers for dependent modules that are required by this
    * module.
@@ -758,6 +797,61 @@ export class DenoCompiler
     typescript: ts,
     deno
   };
+
+  /** A set of compiler options that either have no impact on Deno or would
+   * cause Deno to not properly function.
+   */
+  private static _ignoredCompilerOptions = [
+    "allowSyntheticDefaultImports",
+    "baseUrl",
+    "build",
+    "declaration",
+    "declarationDir",
+    "declarationMap",
+    "diagnostics",
+    "downlevelIteration",
+    "emitBOM",
+    "emitDeclarationOnly",
+    "esModuleInterop",
+    "extendedDiagnostics",
+    "forceConsistentCasingInFileNames",
+    "help",
+    "importHelpers",
+    "inlineSourceMap",
+    "inlineSources",
+    "init",
+    "isolatedModules",
+    "lib",
+    "listEmittedFiles",
+    "listFiles",
+    "mapRoot",
+    "maxNodeModuleJsDepth",
+    "module",
+    "moduleResolution",
+    "newLine",
+    "noEmit",
+    "noEmitHelpers",
+    "noEmitOnError",
+    "noLib",
+    "noResolve",
+    "out",
+    "outDir",
+    "outFile",
+    "paths",
+    "preserveWatchOutput",
+    "pretty",
+    "rootDir",
+    "rootDirs",
+    "sourceMap",
+    "sourceRoot",
+    "stripInternal",
+    "target",
+    "traceResolution",
+    "types",
+    "typeRoots",
+    "version",
+    "watch"
+  ];
 
   private static _instance: DenoCompiler | undefined;
 

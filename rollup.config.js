@@ -256,9 +256,11 @@ export default function makeConfig(commandOptions) {
           // rollup requires them to be explicitly defined to make them available in the
           // bundle
           [typescriptPath]: [
+            "convertCompilerOptionsFromJson",
             "createLanguageService",
             "formatDiagnosticsWithColorAndContext",
             "ModuleKind",
+            "parseConfigFileTextToJson",
             "ScriptKind",
             "ScriptSnapshot",
             "ScriptTarget",
