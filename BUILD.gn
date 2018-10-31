@@ -216,11 +216,7 @@ static_library("libdeno") {
     "libdeno/internal.h",
   ]
   public_deps = [
-    "third_party/v8:v8",
-    "third_party/v8:v8_libbase",
-    "third_party/v8:v8_libplatform",
-    "third_party/v8:v8_libsampler",
-    "//build/win:default_exe_manifest",
+    "third_party/v8:v8_monolith",
   ]
   configs += [ ":deno_config" ]
 }
@@ -231,11 +227,6 @@ static_library("deno_deps") {
     ":libdeno",
     ":msg_rs",
     ":snapshot",
-    "third_party/v8:v8",
-    "third_party/v8:v8_libbase",
-    "third_party/v8:v8_libplatform",
-    "third_party/v8:v8_libsampler",
-    "//build/win:default_exe_manifest",
   ]
   configs += [ ":deno_config" ]
 }
