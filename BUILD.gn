@@ -64,7 +64,6 @@ main_extern = [
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
   "//build_extra/flatbuffers/rust:flatbuffers",
-  ":msg_rs",
 ]
 
 ts_sources = [
@@ -124,8 +123,12 @@ ts_sources = [
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
+  data = [
+    "$target_gen_dir/msg_generated.rs",
+  ]
   deps = [
     ":libdeno",
+    ":msg_rs_gen",
     ":snapshot",
   ]
 }

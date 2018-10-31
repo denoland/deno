@@ -49,6 +49,7 @@ template("rust_crate") {
                            "crate_type",
                            "crate_version",
                            "deps",
+                           "data",
                            "features",
                            "is_test",
                            "libs",
@@ -151,7 +152,7 @@ template("rust_crate") {
   }
 
   action(action_name) {
-    script = "//third_party/v8/tools/run.py"
+    script = "//build_extra/rust/run.py"
     sources = [
       source_root,
     ]
@@ -169,6 +170,8 @@ template("rust_crate") {
     args += [
       "rustc",
       rebase_path(source_root, root_build_dir),
+      "--env-out-dir",
+      rebase_path(root_out_dir),
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
       "--emit=$emit_type,dep-info",
@@ -203,6 +206,9 @@ template("rust_crate") {
     }
     if (defined(invoker.args)) {
       args += invoker.args
+    }
+    if (defined(invoker.data)) {
+      data += invoker.data
     }
 
     if (defined(features)) {
