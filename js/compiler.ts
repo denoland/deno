@@ -79,7 +79,7 @@ export interface Ts {
  */
 export class ModuleMetaData implements ts.IScriptSnapshot {
   public deps?: ModuleFileName[];
-  public readonly exports = {};
+  public exports = {};
   public factory?: AmdFactory;
   public gatheringDeps = false;
   public hasRun = false;
@@ -129,6 +129,15 @@ function getExtension(
   }
 }
 
+/** Generate output code for a provided JSON string along with its source. */
+export function jsonAmdTemplate(
+  jsonString: string,
+  sourceFileName: string
+): OutputCode {
+  // tslint:disable-next-line:max-line-length
+  return `define([], function() { return JSON.parse(\`${jsonString}\`); });\n//# sourceURL=${sourceFileName}`;
+}
+
 /** A singleton class that combines the TypeScript Language Service host API
  * with Deno specific APIs to provide an interface for compiling and running
  * TypeScript and JavaScript modules.
@@ -153,11 +162,12 @@ export class DenoCompiler
   >();
   // TODO ideally this are not static and can be influenced by command line
   // arguments
-  private readonly _options: Readonly<ts.CompilerOptions> = {
+  private readonly _options: ts.CompilerOptions = {
     allowJs: true,
     checkJs: true,
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
+    resolveJsonModule: true,
     sourceMap: true,
     stripComments: true,
     target: ts.ScriptTarget.ESNext
@@ -198,7 +208,15 @@ export class DenoCompiler
       );
       assert(moduleMetaData.hasRun === false, "Module has already been run.");
       // asserts not tracked by TypeScripts, so using not null operator
-      moduleMetaData.factory!(...this._getFactoryArguments(moduleMetaData));
+      const exports = moduleMetaData.factory!(
+        ...this._getFactoryArguments(moduleMetaData)
+      );
+      // For JSON module support and potential future features.
+      // TypeScript always imports `exports` and mutates it directly, but the
+      // AMD specification allows values to be returned from the factory.
+      if (exports != null) {
+        moduleMetaData.exports = exports;
+      }
       moduleMetaData.hasRun = true;
     }
   }
@@ -421,50 +439,74 @@ export class DenoCompiler
     if (!recompile && moduleMetaData.outputCode) {
       return moduleMetaData.outputCode;
     }
-    const { fileName, sourceCode, moduleId } = moduleMetaData;
+    const { fileName, sourceCode, mediaType, moduleId } = moduleMetaData;
     console.warn("Compiling", moduleId);
     const service = this._service;
-    const output = service.getEmitOutput(fileName);
-
-    // Get the relevant diagnostics - this is 3x faster than
-    // `getPreEmitDiagnostics`.
-    const diagnostics = [
-      ...service.getCompilerOptionsDiagnostics(),
-      ...service.getSyntacticDiagnostics(fileName),
-      ...service.getSemanticDiagnostics(fileName)
-    ];
-    if (diagnostics.length > 0) {
-      const errMsg = this._ts.formatDiagnosticsWithColorAndContext(
-        diagnostics,
-        this
+    // Instead of using TypeScript to transpile JSON modules, we will just do
+    // it directly.
+    if (mediaType === MediaType.Json) {
+      moduleMetaData.outputCode = jsonAmdTemplate(sourceCode, fileName);
+    } else {
+      assert(
+        mediaType === MediaType.TypeScript || mediaType === MediaType.JavaScript
       );
-      console.log(errMsg);
-      // All TypeScript errors are terminal for deno
-      this._os.exit(1);
+      // TypeScript is overly opinionated that only CommonJS modules kinds can
+      // support JSON imports.  Allegedly this was fixed in
+      // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
+      // so we will trick the TypeScript compiler.
+      this._options.module = ts.ModuleKind.AMD;
+      const output = service.getEmitOutput(fileName);
+      this._options.module = ts.ModuleKind.CommonJS;
+
+      // Get the relevant diagnostics - this is 3x faster than
+      // `getPreEmitDiagnostics`.
+      const diagnostics = [
+        ...service.getCompilerOptionsDiagnostics(),
+        ...service.getSyntacticDiagnostics(fileName),
+        ...service.getSemanticDiagnostics(fileName)
+      ];
+      if (diagnostics.length > 0) {
+        const errMsg = this._ts.formatDiagnosticsWithColorAndContext(
+          diagnostics,
+          this
+        );
+        console.log(errMsg);
+        // All TypeScript errors are terminal for deno
+        this._os.exit(1);
+      }
+
+      assert(
+        !output.emitSkipped,
+        "The emit was skipped for an unknown reason."
+      );
+
+      assert(
+        output.outputFiles.length === 2,
+        `Expected 2 files to be emitted, got ${output.outputFiles.length}.`
+      );
+
+      const [sourceMapFile, outputFile] = output.outputFiles;
+      assert(
+        sourceMapFile.name.endsWith(".map"),
+        "Expected first emitted file to be a source map"
+      );
+      assert(
+        outputFile.name.endsWith(".js"),
+        "Expected second emitted file to be JavaScript"
+      );
+      moduleMetaData.outputCode = `${
+        outputFile.text
+      }\n//# sourceURL=${fileName}`;
+      moduleMetaData.sourceMap = sourceMapFile.text;
     }
 
-    assert(!output.emitSkipped, "The emit was skipped for an unknown reason.");
-
-    assert(
-      output.outputFiles.length === 2,
-      `Expected 2 files to be emitted, got ${output.outputFiles.length}.`
-    );
-
-    const [sourceMapFile, outputFile] = output.outputFiles;
-    assert(
-      sourceMapFile.name.endsWith(".map"),
-      "Expected first emitted file to be a source map"
-    );
-    assert(
-      outputFile.name.endsWith(".js"),
-      "Expected second emitted file to be JavaScript"
-    );
-    const outputCode = (moduleMetaData.outputCode = `${
-      outputFile.text
-    }\n//# sourceURL=${fileName}`);
-    const sourceMap = (moduleMetaData.sourceMap = sourceMapFile.text);
     moduleMetaData.scriptVersion = "1";
-    this._os.codeCache(fileName, sourceCode, outputCode, sourceMap);
+    this._os.codeCache(
+      fileName,
+      sourceCode,
+      moduleMetaData.outputCode,
+      moduleMetaData.sourceMap
+    );
     return moduleMetaData.outputCode;
   }
 
