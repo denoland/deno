@@ -197,8 +197,8 @@ v8_executable("test_cc") {
   data = [
     "$target_gen_dir/snapshot_libdeno_test.bin",
   ]
-  snapshot_abs_path = rebase_path(data[0])
-  defines = [ "SNAPSHOT_PATH=\"$snapshot_abs_path\"" ]
+  snapshot_path = rebase_path(data[0], root_build_dir)
+  defines = [ "SNAPSHOT_PATH=\"$snapshot_path\"" ]
   configs = [ ":deno_config" ]
 }
 

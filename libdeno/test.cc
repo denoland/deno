@@ -5,10 +5,18 @@
 deno_buf snapshot = {nullptr, 0, nullptr, 0};
 
 int main(int argc, char** argv) {
+  // Locate the snapshot.
+  std::string exe_path;
+  if (!deno::ExePath(&exe_path)) {
+    std::cerr << "deno::ExePath() failed" << std::endl;
+    return 1;
+  }
+  std::string snapshot_path = deno::Dirname(exe_path) + SNAPSHOT_PATH;
+
   // Load the snapshot.
   std::string contents;
-  if (!deno::ReadFileToString(SNAPSHOT_PATH, &contents)) {
-    printf("Failed to read file %s\n", SNAPSHOT_PATH);
+  if (!deno::ReadFileToString(snapshot_path.c_str(), &contents)) {
+    std::cerr << "Failed to read snapshot from " << snapshot_path << std::endl;
     return 1;
   }
   snapshot.data_ptr =
