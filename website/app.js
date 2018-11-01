@@ -247,7 +247,7 @@ export async function drawChartsFromTravisData() {
     prNumberList,
     travisCompileTimeColumns,
     viewPullRequestOnClick(prNumberList),
-    "time",
+    "minutes",
     formatSecsAsMins
   );
 }
