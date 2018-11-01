@@ -1,18 +1,37 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 // Run "cargo build -vv" if you want to see gn output.
-// TODO For the time being you must set an env var DENO_BUILD_PATH
-// which might be `pwd`/out/debug or `pwd`/out/release.
-// TODO Currently DENO_BUILD_PATH must be absolute.
-// TODO Combine DENO_BUILD_PATH and OUT_DIR.
+
+#![deny(warnings)]
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{self, Path, PathBuf};
 use std::process::Command;
 
 fn main() {
+  // Cargo sets PROFILE to either "debug" or "release", which conveniently
+  // matches the build modes we support.
   let mode = env::var("PROFILE").unwrap();
-  let deno_build_path = env::var("DENO_BUILD_PATH").unwrap();
+
+  // Normally we configure GN+Ninja to build into Cargo's OUT_DIR.
+  // However, when DENO_BUILD_PATH is set, perform the ninja build in that dir
+  // instead. This is used by CI to avoid building V8 etc twice.
+  let out_dir = env::var_os("OUT_DIR").unwrap();
+  let gn_out_dir = match env::var_os("DENO_BUILD_PATH") {
+    None => abs_path(out_dir),
+    Some(deno_build_path) => abs_path(deno_build_path),
+  };
+
+  // Give cargo some instructions. We do this first so the `rerun-if-*-changed`
+  // directives can take effect even if something the build itself fails.
+  println!("cargo:rustc-env=GN_OUT_DIR={}", gn_out_dir);
+  println!("cargo:rustc-link-search=native={}/obj", gn_out_dir);
+  println!("cargo:rustc-link-lib=static=deno_deps");
+
+  println!("cargo:rerun-if-changed={}", abs_path("src/msg.fbs"));
+  println!("cargo:rerun-if-env-changed=DENO_BUILD_PATH");
+  // TODO: this is obviously not appropriate here.
+  println!("cargo:rerun-if-env-changed=APPVEYOR_REPO_COMMIT");
 
   // Detect if we're being invoked by the rust language server (RLS).
   // Unfortunately we can't detect whether we're being run by `cargo check`.
@@ -33,21 +52,15 @@ fn main() {
   };
 
   let status = Command::new("python")
-    .env("DENO_BUILD_PATH", &deno_build_path)
+    .env("DENO_BUILD_PATH", &gn_out_dir)
     .env("DENO_BUILD_MODE", &mode)
     .arg("./tools/setup.py")
     .status()
     .expect("setup.py failed");
   assert!(status.success());
 
-  // These configurations must be outputted after tools/setup.py is run.
-  println!("cargo:rustc-link-search=native={}/obj", deno_build_path);
-  println!("cargo:rustc-link-lib=static=deno_deps");
-  // TODO Remove this and only use OUT_DIR at some point.
-  println!("cargo:rustc-env=DENO_BUILD_PATH={}", deno_build_path);
-
   let status = Command::new("python")
-    .env("DENO_BUILD_PATH", &deno_build_path)
+    .env("DENO_BUILD_PATH", &gn_out_dir)
     .env("DENO_BUILD_MODE", &mode)
     .arg("./tools/build.py")
     .arg(gn_target)
@@ -55,4 +68,18 @@ fn main() {
     .status()
     .expect("build.py failed");
   assert!(status.success());
+}
+
+// Utility function to make a path absolute, normalizing it to use forward
+// slashes only. The returned value is an owned String, otherwise panics.
+fn abs_path<P: AsRef<Path>>(path: P) -> String {
+  env::current_dir()
+    .unwrap()
+    .join(path)
+    .to_str()
+    .unwrap()
+    .to_owned()
+    .chars()
+    .map(|c| if path::is_separator(c) { '/' } else { c })
+    .collect()
 }
