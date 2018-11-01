@@ -18,6 +18,13 @@ group("default") {
   ]
 }
 
+# Set of targets that need to be built for `cargo check` to succeed.
+group("cargo_check_deps") {
+  deps = [
+    ":msg_rs",
+  ]
+}
+
 config("deno_config") {
   include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "third_party/v8:external_config" ]
