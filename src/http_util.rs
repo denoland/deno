@@ -75,7 +75,11 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
       .map_err(DenoError::from);
     body.join(future::ok(content_type))
   }).and_then(|(body_string, maybe_content_type)| {
-    future::ok((body_string, maybe_content_type.unwrap()))
+    let ct = match maybe_content_type {
+      Some(s) => s,
+      None => String::from(""),
+    };
+    future::ok((body_string, ct))
   });
 
   tokio_util::block_on(fetch_future)
