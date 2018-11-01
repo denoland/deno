@@ -381,11 +381,7 @@ after_test:
       Select-String $trap -Path $files -SimpleMatch | where {
         # V8 took the liberty to produce an absolute path in their ninja
         # output. We can't do much about that, so we just ignore it.
-        $_.Line -notmatch "v8/builtins-generated/bytecodes-builtins-list.h" -and
-        # The absolute path to snapshot_libdeno_test.bin is passed to test_cc
-        # via pre-processor variable. It's absolute because we want to be able
-        # to execute test_cc from both the project root and the build root.
-        $_.Line -notmatch "snapshot_libdeno_test.bin"
+        $_.Line -notmatch "v8/builtins-generated/bytecodes-builtins-list.h"
       } | tee -Variable line_matches
       if ($line_matches) {
         $ctx = $line_matches.Line                                          |
