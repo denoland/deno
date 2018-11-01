@@ -184,8 +184,7 @@ rust_test("test_rs") {
   source_root = "src/main.rs"
   extern = main_extern
   deps = [
-    ":libdeno",
-    ":snapshot",
+    ":deno_deps",
   ]
 }
 
