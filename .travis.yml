@@ -14,7 +14,7 @@ env:
   - HOMEBREW_PATH=$HOME/homebrew/
   - DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false"
   - DENO_BUILD_PATH=$HOME/out/Default
-  - CARGO_TARGET_DIR=$DENO_BUILD_PATH
+  - CARGO_TARGET_DIR=$HOME/target
   - DENO_BUILD_MODE=release
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - CCACHE_CPP2=yes
