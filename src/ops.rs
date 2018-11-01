@@ -394,6 +394,7 @@ fn op_fetch(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
+  method: &'static str
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_fetch().unwrap();
@@ -408,8 +409,19 @@ fn op_fetch(
   let url = url.parse::<hyper::Uri>().unwrap();
   let client = http_util::get_client();
 
+  let mut req = hyper::Request::new(hyper::Body::from(&*data));
+  *req.method_mut() = match method {
+    "POST"=> hyper::Method::POST,
+    _ => hyper::Method::GET
+  };
+  *req.uri_mut() = url.clone();
+  req.headers_mut().insert(
+    hyper::header::CONTENT_TYPE, 
+    hyper::header::HeaderValue::from_static("application/json")
+  );
+
   debug!("Before fetch {}", url);
-  let future = client.get(url).and_then(move |res| {
+  let future = client.request(req).and_then(move |res| {
     let status = res.status().as_u16() as i32;
     debug!("fetch {}", status);
 

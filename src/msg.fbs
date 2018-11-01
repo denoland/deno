@@ -193,6 +193,7 @@ table EnvPair {
 table Fetch {
   id: uint;
   url: string;
+  method: string;
   // TODO Supply request headers:
   // header_line: [string];
 }
