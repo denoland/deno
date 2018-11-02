@@ -441,27 +441,27 @@ export class DenoCompiler
     }
     const { fileName, sourceCode, mediaType, moduleId } = moduleMetaData;
     console.warn("Compiling", moduleId);
-    const service = this._service;
     // Instead of using TypeScript to transpile JSON modules, we will just do
     // it directly.
     if (mediaType === MediaType.Json) {
       moduleMetaData.outputCode = jsonAmdTemplate(sourceCode, fileName);
     } else {
+      const service = this._service;
       assert(
         mediaType === MediaType.TypeScript || mediaType === MediaType.JavaScript
       );
-      // TypeScript is overly opinionated that only CommonJS modules kinds can
-      // support JSON imports.  Allegedly this was fixed in
-      // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
-      // so we will trick the TypeScript compiler.
-      this._options.module = ts.ModuleKind.AMD;
       const output = service.getEmitOutput(fileName);
-      this._options.module = ts.ModuleKind.CommonJS;
 
       // Get the relevant diagnostics - this is 3x faster than
       // `getPreEmitDiagnostics`.
       const diagnostics = [
-        ...service.getCompilerOptionsDiagnostics(),
+        // TypeScript is overly opinionated that only CommonJS modules kinds can
+        // support JSON imports.  Allegedly this was fixed in
+        // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
+        // so we will ignore complaints about this compiler setting.
+        ...service
+          .getCompilerOptionsDiagnostics()
+          .filter(diagnostic => diagnostic.code !== 5070),
         ...service.getSyntacticDiagnostics(fileName),
         ...service.getSemanticDiagnostics(fileName)
       ];
