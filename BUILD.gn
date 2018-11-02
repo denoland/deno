@@ -68,6 +68,7 @@ main_extern = [
   "$rust_build:tokio_executor",
   "$rust_build:tokio_fs",
   "$rust_build:tokio_io",
+  "$rust_build:tokio_process",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
   "//build_extra/flatbuffers/rust:flatbuffers",

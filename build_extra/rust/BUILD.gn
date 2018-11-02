@@ -113,8 +113,8 @@ rust_crate("winapi") {
     "basetsd",
     "cfg",
     "cfgmgr32",
-    "consoleapi",
     "combaseapi",
+    "consoleapi",
     "errhandlingapi",
     "excpt",
     "fileapi",
@@ -122,6 +122,7 @@ rust_crate("winapi") {
     "handleapi",
     "in6addr",
     "inaddr",
+    "ioapiset",
     "knownfolders",
     "ktmtypes",
     "libloaderapi",
@@ -129,6 +130,7 @@ rust_crate("winapi") {
     "minwinbase",
     "minwindef",
     "mstcpip",
+    "namedpipeapi",
     "ntdef",
     "ntsecapi",
     "ntstatus",
@@ -148,7 +150,9 @@ rust_crate("winapi") {
     "sspi",
     "std",
     "subauth",
+    "synchapi",
     "sysinfoapi",
+    "threadpoollegacyapiset",
     "timezoneapi",
     "unknwnbase",
     "vadefs",
@@ -157,8 +161,8 @@ rust_crate("winapi") {
     "wincon",
     "wincred",
     "windef",
-    "wingdi",
     "winerror",
+    "wingdi",
     "winnt",
     "winreg",
     "winsock2",
@@ -223,6 +227,10 @@ rust_crate("futures") {
   ]
 }
 
+# TODO: 'mio' currently pulls in dozen of outdated winapi related dependencies.
+# 'miow' has already moved past that, and patches to solve this for Mio's have
+# been available in mio's v0.7 branch, but there are no signs that a release
+# might be coming soon. We should consider floating these patches.
 rust_crate("mio") {
   source_root = "$registry_github/mio-0.6.15/src/lib.rs"
   features = [
@@ -235,7 +243,6 @@ rust_crate("mio") {
     ":lazycell",
     ":libc",
     ":log",
-    ":miow",
     ":net2",
     ":slab",
   ]
@@ -243,6 +250,11 @@ rust_crate("mio") {
   # TODO: Upgrade to a current version of the 'winapi' crate.
   # See https://github.com/denoland/deno/issues/484.
   extern_version = [
+    {
+      label = ":miow-0.2.1"
+      crate_name = "miow"
+      crate_version = "0.2.1"
+    },
     {
       label = ":winapi-0.2"
       crate_name = "winapi"
@@ -260,7 +272,8 @@ rust_crate("mio_uds") {
   ]
 }
 
-rust_crate("miow") {
+# Outdated version of 'miow' - see comments by the 'mio' crate.
+rust_crate("miow_0.2.1") {
   source_root = "$registry_github/miow-0.2.1/src/lib.rs"
   extern = [
     ":kernel32",
@@ -943,4 +956,75 @@ rust_crate("unicode_width") {
 rust_crate("getopts") {
   source_root = "$registry_github/getopts-0.2.18/src/lib.rs"
   extern = [ ":unicode_width" ]
+}
+
+rust_crate("arc_swap") {
+  source_root = "$registry_github/arc_swap-0.3.4/src/lib.rs"
+}
+
+rust_crate("mio_named_pipes") {
+  source_root = "$registry_github/mio_named_pipes-0.1.6/src/lib.rs"
+  extern = [
+    ":log",
+    ":mio",
+    ":miow",
+    ":winapi",
+  ]
+}
+
+rust_crate("miow") {
+  source_root = "$registry_github/miow-0.3.3/src/lib.rs"
+  extern = [
+    ":socket2",
+    ":winapi",
+  ]
+}
+
+rust_crate("signal_hook") {
+  source_root = "$registry_github/signal_hook-0.1.5/src/lib.rs"
+  extern = [
+    ":arc_swap",
+    ":libc",
+  ]
+}
+
+rust_crate("socket2") {
+  source_root = "$registry_github/socket2-0.3.8/src/lib.rs"
+  extern = [ ":winapi" ]
+}
+
+rust_crate("tokio_signal") {
+  source_root = "$registry_github/tokio_signal-0.2.6/src/lib.rs"
+  extern = [
+    ":futures",
+    ":libc",
+    ":mio",
+    ":mio_uds",
+    ":signal_hook",
+    "tokio_executor",
+    "tokio_io",
+    "tokio_reactor",
+  ]
+}
+
+rust_crate("tokio_process") {
+  source_root = "$registry_github/tokio_process-0.2.3/src/lib.rs"
+  extern = [
+    ":futures",
+    ":mio",
+    ":tokio_io",
+    ":tokio_reactor",
+  ]
+
+  if (is_win) {
+    extern += [
+      ":mio_named_pipes",
+      ":winapi",
+    ]
+  } else {
+    extern += [
+      ":libc",
+      ":tokio_signal",
+    ]
+  }
 }
