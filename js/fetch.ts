@@ -198,12 +198,17 @@ export async function fetch(
 ): Promise<domTypes.Response> {
   const url = input as string;
   log("dispatch FETCH_REQ", url);
+  const method = init && init.method ? (init.method as string) : "GET";
 
   // Send Fetch message
   const builder = flatbuffers.createBuilder();
   const url_ = builder.createString(url);
+  const method_ = builder.createString(method);
+
   msg.Fetch.startFetch(builder);
   msg.Fetch.addUrl(builder, url_);
+  msg.Fetch.addMethod(builder, method_);
+
   const resBase = await sendAsync(
     builder,
     msg.Any.Fetch,

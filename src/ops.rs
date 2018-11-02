@@ -394,13 +394,13 @@ fn op_fetch(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
-  method: &'static str
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_fetch().unwrap();
   let cmd_id = base.cmd_id();
   let id = inner.id();
   let url = inner.url().unwrap();
+  let method = inner.method().unwrap_or("GET");
 
   if let Err(e) = state.check_net(url) {
     return odd_future(e);
@@ -411,13 +411,14 @@ fn op_fetch(
 
   let mut req = hyper::Request::new(hyper::Body::from(&*data));
   *req.method_mut() = match method {
-    "POST"=> hyper::Method::POST,
-    _ => hyper::Method::GET
+    "POST" => hyper::Method::POST,
+    "GET" => hyper::Method::GET,
+    _ => panic!("Invalid method"),
   };
   *req.uri_mut() = url.clone();
   req.headers_mut().insert(
-    hyper::header::CONTENT_TYPE, 
-    hyper::header::HeaderValue::from_static("application/json")
+    hyper::header::CONTENT_TYPE,
+    hyper::header::HeaderValue::from_static("application/json"),
   );
 
   debug!("Before fetch {}", url);
