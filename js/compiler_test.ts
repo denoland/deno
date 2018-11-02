@@ -6,7 +6,7 @@ import * as ts from "typescript";
 // We use a silly amount of `any` in these tests...
 // tslint:disable:no-any
 
-const { DenoCompiler, jsonAmdTemplate } = (deno as any)._compiler;
+const { DenoCompiler } = (deno as any)._compiler;
 
 interface ModuleInfo {
   moduleName: string | undefined;
@@ -118,11 +118,6 @@ const fooBazTsOutput = `define(["require", "exports", "./bar.ts"], function (req
 
 // This is not a valid map, just mock data
 const fooBazTsSourcemap = `{"version":3,"file":"baz.js","sourceRoot":"","sources":["file:///root/project/foo/baz.ts"],"names":[],"mappings":""}`;
-
-const loadConfigSource = `import * as config from "./config.json";
-console.log(config.foo.baz);
-`;
-const configJsonSource = `{"foo":{"bar": true,"baz": ["qat", 1]}}`;
 // tslint:enable:max-line-length
 
 const moduleMap: {
@@ -153,14 +148,6 @@ const moduleMap: {
       "console.log();",
       null,
       null
-    ),
-    "loadConfig.ts": mockModuleInfo(
-      "/root/project/loadConfig.ts",
-      "/root/project/loadConfig.ts",
-      MediaType.TypeScript,
-      loadConfigSource,
-      null,
-      null
     )
   },
   "/root/project/foo/baz.ts": {
@@ -178,16 +165,6 @@ const moduleMap: {
   },
   "/root/project/modB.ts": {
     "./modA.ts": modAModuleInfo
-  },
-  "/root/project/loadConfig.ts": {
-    "./config.json": mockModuleInfo(
-      "/root/project/config.json",
-      "/root/project/config.json",
-      MediaType.Json,
-      configJsonSource,
-      null,
-      null
-    )
   },
   "/moduleKinds": {
     "foo.ts": mockModuleInfo(
@@ -303,7 +280,7 @@ const osMock = {
     return mockModuleInfo(null, null, null, null, null, null);
   },
   exit(code: number): never {
-    throw new Error(`Unexpected call to os.exit(${code})`);
+    throw new Error(`os.exit(${code})`);
   }
 };
 const tsMock = {
@@ -312,9 +289,9 @@ const tsMock = {
   },
   formatDiagnosticsWithColorAndContext(
     diagnostics: ReadonlyArray<ts.Diagnostic>,
-    _host: ts.FormatDiagnosticsHost
+    host: ts.FormatDiagnosticsHost
   ): string {
-    return JSON.stringify(diagnostics.map(({ messageText }) => messageText));
+    return "";
   }
 };
 
@@ -396,23 +373,6 @@ function teardown() {
   // restore original properties and methods
   Object.assign(compilerInstance, originals);
 }
-
-test(function testJsonAmdTemplate() {
-  let deps: string[];
-  let factory: Function;
-  function define(d: string[], f: Function) {
-    deps = d;
-    factory = f;
-  }
-
-  const code = jsonAmdTemplate(`{ "hello": "world", "foo": "bar" }`);
-  const result = eval(code);
-  assert(result == null);
-  assertEqual(deps && deps.length, 0);
-  assert(factory != null);
-  const factoryResult = factory();
-  assertEqual(factoryResult, { hello: "world", foo: "bar" });
-});
 
 test(function compilerInstance() {
   assert(DenoCompiler != null);
@@ -519,29 +479,6 @@ test(function compilerRunCircularDependency() {
   teardown();
 });
 
-test(function compilerLoadJsonModule() {
-  setup();
-  const factoryStack: string[] = [];
-  const configJsonDeps: string[] = [];
-  const configJsonFactory = () => {
-    factoryStack.push("configJson");
-    return JSON.parse(configJsonSource);
-  };
-  const loadConfigDeps = ["require", "exports", "./config.json"];
-  const loadConfigFactory = (_require, _exports, _config) => {
-    factoryStack.push("loadConfig");
-    assertEqual(_config, JSON.parse(configJsonSource));
-  };
-
-  mockDepsStack.push(configJsonDeps);
-  mockFactoryStack.push(configJsonFactory);
-  mockDepsStack.push(loadConfigDeps);
-  mockFactoryStack.push(loadConfigFactory);
-  compilerInstance.run("loadConfig.ts", "/root/project");
-  assertEqual(factoryStack, ["configJson", "loadConfig"]);
-  teardown();
-});
-
 test(function compilerResolveModule() {
   setup();
   const moduleMetaData = compilerInstance.resolveModule(
@@ -607,7 +544,6 @@ test(function compilerGetCompilationSettings() {
     "checkJs",
     "module",
     "outDir",
-    "resolveJsonModule",
     "sourceMap",
     "stripComments",
     "target"
