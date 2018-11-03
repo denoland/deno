@@ -15,8 +15,7 @@ test(function eventInitializedWithType() {
 
 test(function eventInitializedWithTypeAndDict() {
   const init = "submit";
-  const eventInitDict = new EventInit(true, true);
-  const event = new Event(init, eventInitDict);
+  const event = new Event(init, {bubbles: true, cancelable: true});
 
   assertEqual(event.isTrusted, false);
   assertEqual(event.target, null);
@@ -38,44 +37,27 @@ test(function eventStopPropagationSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(this.cancelBubble, false);
+  assertEqual(this.stopPropagationFlag, false);
   event.stopPropagation();
-  assertEqual(this.cancelBubble, true);
+  assertEqual(this.stopPropagationFlag, true);
 });
 
 test(function eventStopImmediatePropagationSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(this.cancelBubble, false);
+  assertEqual(this.stopPropagationFlag, false);
+  assertEqual(this.stopImmediatePropagationFlag, false);
   event.stopImmediatePropagation();
-  assertEqual(this.cancelBubble, true);
+  assertEqual(this.stopPropagationFlag, true);
+  assertEqual(this.stopImmediatePropagationFlag, true);
 });
 
 test(function eventPreventDefaultSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(this.returnValue, false);
   assertEqual(this.defaultPrevented, false);
   event.preventDefault();
-  assertEqual(this.returnValue, true);
   assertEqual(this.defaultPrevented, true);
-});
-
-test(function eventInitEventDispatchedSuccess() {
-  const type = "click";
-  const event = new Event(type);
-  event.dispatch = true;
-
-  // assert nothing happens?
-  assertEqual(event.initEvent("submit"), undefined);
-});
-
-test(function eventInitEventSuccess() {
-  const type = "submit";
-  const event = new Event(type);
-
-  // assert nothing happens?
-  assertEqual(event.initEvent("submit", true, true), undefined);
 });

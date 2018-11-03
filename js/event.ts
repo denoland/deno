@@ -1,136 +1,242 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 
+const EVENT_ATTRIBUTES = new WeakMap;
+
+export enum EventPhase {
+  NONE = 0,
+  CAPTURING_PHASE = 1,
+  AT_TARGET = 2,
+  BUBBLING_PHASE = 3,
+}
+
 export class Event {
-  /** Each event has the following associated flags
-   * that are all initially unset.
-   */
-  stopPropagationFlag: boolean;
-  stopImmediatePropagationFlag: boolean;
-  canceledFlag: boolean;
-  inPassiveListenerFlag: boolean = false;
-  composedFlag: boolean = false;
-  initialized: boolean;
-  dispatch: boolean = false;
+  // Each event has the following associated flags
+  private stopPropagationFlag: boolean = false;
+  private stopImmediatePropagationFlag: boolean = false;
+  private canceledFlag: boolean = false;
+  private inPassiveListenerFlag: boolean = false;
+  private composedFlag: boolean = false;
+  private initializedFlag: boolean = true;
+  private dispatchFlag: boolean = false;
 
-  readonly type: string = "";
-  readonly target: domTypes.EventTarget | null;
-  readonly srcElement: domTypes.EventTarget | null = this.target;
-  readonly currentTarget: domTypes.EventTarget | null;
+  // Property for objects on which listeners will be invoked
+  private path: domTypes.EventTarget[] = [];
 
-  constructor(type: string, eventInitDict?: EventInit) {
-    this.initialized = true;
-    this.stopPropagationFlag = false;
-    this.stopImmediatePropagationFlag = false;
-    this.canceledFlag = false;
-    this.isTrusted = false;
-    this.target = null;
-    this.currentTarget = null;
-    this.type = type;
-    this.bubbles = eventInitDict && eventInitDict.bubbles || false;
-    this.cancelable = eventInitDict && eventInitDict.cancelable || false;
+  constructor(type: string, {bubbles=false, cancelable=false, composed=false} = {}) {
+    EVENT_ATTRIBUTES.set(this, {
+      type,
+      bubbles,
+      cancelable,
+      composed,
+      currentTarget: null,
+      eventPhase: EventPhase.NONE,
+      isTrusted: false,
+      target: null,
+      timeStamp: Date.now(),
+    });
+  }
+
+  get bubbles(): boolean | TypeError {
+    if (EVENT_ATTRIBUTES.has(this)) {
+      return EVENT_ATTRIBUTES.get(this).bubbles;
+    }
+
+    throw new TypeError('Illegal invocation');
+  }
+
+  get cancelable(): boolean | TypeError {
+    if (EVENT_ATTRIBUTES.has(this)) {
+      return EVENT_ATTRIBUTES.get(this).cancelable;
+    }
+
+    throw new TypeError('Illegal invocation');
+  }
+
+  get composed(): boolean | TypeError {
+    if (EVENT_ATTRIBUTES.has(this)) {
+      return EVENT_ATTRIBUTES.get(this).composed;
+    }
+
+    throw new TypeError('Illegal invocation');
+  }
+
+  get currentTarget(): boolean | TypeError {
+    if (EVENT_ATTRIBUTES.has(this)) {
+      return EVENT_ATTRIBUTES.get(this).currentTarget;
+    }
+
+    throw new TypeError('Illegal invocation');
+  }
+
+  get defaultPrevented(): boolean {
+    return this.canceledFlag;
+  }
+
+  get eventPhase(): boolean | TypeError {
+    if (EVENT_ATTRIBUTES.has(this)) {
+      return EVENT_ATTRIBUTES.get(this).eventPhase;
+    }
+
+    throw new TypeError('Illegal invocation');
+  }
+
+  get isTrusted(): boolean | TypeError {
+    if (EVENT_ATTRIBUTES.has(this)) {
+      return EVENT_ATTRIBUTES.get(this).isTrusted;
+    }
+
+    throw new TypeError('Illegal invocation');
+  }
+
+  get target(): boolean | TypeError {
+    if (EVENT_ATTRIBUTES.has(this)) {
+      return EVENT_ATTRIBUTES.get(this).target;
+    }
+
+    throw new TypeError('Illegal invocation');
+  }
+
+  get timeStamp(): boolean | TypeError {
+    if (EVENT_ATTRIBUTES.has(this)) {
+      return EVENT_ATTRIBUTES.get(this).timeStamp;
+    }
+
+    throw new TypeError('Illegal invocation');
+  }
+
+  get type(): boolean | TypeError {
+    if (EVENT_ATTRIBUTES.has(this)) {
+      return EVENT_ATTRIBUTES.get(this).type;
+    }
+
+    throw new TypeError('Illegal invocation');
   }
 
   /** Returns the event’s path (objects on which listeners will be
    * invoked). This does not include nodes in shadow trees if the
    * shadow root was created with its ShadowRoot.mode closed.
    *
-   *    event.composedPath();
+   *      event.composedPath();
    */
   composedPath(): domTypes.EventTarget[] {
-    let reversedComposedPath = [];
-    let hiddenSubtreeLevel = 0;
-    let hasSeenCurrentTarget = false;
-    let currentTarget = this.currentTarget;
-    let reversedPath = [];
+    const composedPath = [];
 
-    reversedPath.forEach(struct => {
-      if (struct.item === currentTarget) {
-        hasSeenCurrentTarget = true;
-      } else if (hasSeenCurrentTarget && struct.rootOfClosedTree) {
-        hiddenSubtreeLevel += 1;
+    if (this.path.length === 0) {
+      return composedPath;
+    }
+
+    composedPath.push(this.currentTarget);
+
+    let currentTargetIndex = 0;
+    let currentTargetHiddenSubtreeLevel = 0;
+
+    for (let index = this.path.length - 1; index >= 0; index--) {
+      const { item, rootOfClosedTree, slotInClosedTree } = this.path[index];
+
+      if (rootOfClosedTree) {
+        currentTargetHiddenSubtreeLevel++;
       }
 
-      if (hiddenSubtreeLevel === 0) {
-        reversedComposedPath.push(struct.item);
+      if (item === this.currentTarget) {
+        currentTargetIndex = index;
+        break;
       }
 
-      if (struct.slotInClosedTree && hiddenSubtreeLevel > 0) {
-        hiddenSubtreeLevel += 1;
+      if (slotInClosedTree) {
+        currentTargetHiddenSubtreeLevel--;
       }
-    });
+    }
 
-    return reversedComposedPath;
+    let currentHiddenLevel = currentTargetHiddenSubtreeLevel;
+    let maxHiddenLevel = currentTargetHiddenSubtreeLevel;
+
+    for (let i = currentTargetIndex - 1; i >= 0; i--) {
+      const { item, rootOfClosedTree, slotInClosedTree } = this.path[i];
+
+      if (rootOfClosedTree) {
+        currentHiddenLevel++;
+      }
+
+      if (currentHiddenLevel <= maxHiddenLevel) {
+        composedPath.unshift(item);
+      }
+
+      if (slotInClosedTree) {
+        currentHiddenLevel--;
+
+        if (currentHiddenLevel < maxHiddenLevel) {
+          maxHiddenLevel = currentHiddenLevel;
+        }
+      }
+    }
+
+    currentHiddenLevel = currentTargetHiddenSubtreeLevel;
+    maxHiddenLevel = currentTargetHiddenSubtreeLevel;
+
+    for (let index = currentTargetIndex + 1; index < this.path.length; index++) {
+      const { item, rootOfClosedTree, slotInClosedTree } = this.path[index];
+
+      if (slotInClosedTree) {
+        currentHiddenLevel++;
+      }
+
+      if (currentHiddenLevel <= maxHiddenLevel) {
+        composedPath.push(item);
+      }
+
+      if (rootOfClosedTree) {
+        currentHiddenLevel--;
+
+        if (currentHiddenLevel < maxHiddenLevel) {
+          maxHiddenLevel = currentHiddenLevel;
+        }
+      }
+    }
+
+    return composedPath;
   }
 
-  readonly NONE: number = 0;
-  readonly CAPTURING_PHASE: number = 1;
-  readonly AT_TARGET: number = 2;
-  readonly BUBBLING_PHASE: number = 3;
-  readonly eventPhase: number = this.NONE;
+  /** Cancels the event (if it is cancelable).
+   * See https://dom.spec.whatwg.org/#set-the-canceled-flag
+   *
+   *      event.preventDefault();
+   */
+  preventDefault(): void {
+    if (this.cancelable && !this.inPassiveListenerFlag) {
+      this.canceledFlag = true;
+    }
+  }
 
   /** Stops the propagation of events further along in the DOM.
    *
-   *    event.stopPropagation();
+   *      event.stopPropagation();
    */
   stopPropagation(): void {
     this.stopPropagationFlag = true;
   }
-
-  cancelBubble: boolean = this.stopPropagationFlag;
 
   /** For this particular event, no other listener will be called.
    * Neither those attached on the same element, nor those attached
    * on elements which will be traversed later (in capture phase,
    * for instance).
    *
-   *    event.stopImmediatePropagation();
+   *      event.stopImmediatePropagation();
    */
   stopImmediatePropagation(): void {
     this.stopPropagationFlag = true;
     this.stopImmediatePropagationFlag = true;
   }
-
-  readonly bubbles: boolean;
-  readonly cancelable: boolean;
-  returnValue: boolean = this.canceledFlag;
-
-  /** Cancels the event (if it is cancelable).
-   *
-   *    event.preventDefault();
-   */
-  preventDefault(): void {
-    this.canceledFlag = true;
-  }
-
-  readonly defaultPrevented: boolean = this.canceledFlag;
-  readonly composed: boolean = this.composedFlag;
-
-  readonly isTrusted: boolean;
-  readonly timeStamp: number = 0;
-
-  /** Initializes the value of an Event created. If the event has
-   * already being dispatched, this method does nothing.
-   *
-   *    event.initEvent('type', bubbles, cancelable);
-   */
-  initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void {
-    if (this.dispatch) {
-      return;
-    }
-
-    new Event(type, new EventInit(bubbles, cancelable));
-  }
 }
 
-export class EventInit {
-  bubbles?: boolean = false;
-  cancelable?: boolean = false;
-  composed?: boolean = false;
-
-  constructor(bubbles?: boolean, cancelable?: boolean, composed?: boolean) {
-    this.bubbles = bubbles;
-    this.cancelable = cancelable;
-    this.composed = composed;
-  }
-}
+// Built-in objects providing `get` methods for our interceptable JavaScript operations
+Reflect.defineProperty(Event.prototype, 'bubbles', { enumerable: true });
+Reflect.defineProperty(Event.prototype, 'cancelable', { enumerable: true });
+Reflect.defineProperty(Event.prototype, 'composed', { enumerable: true });
+Reflect.defineProperty(Event.prototype, 'currentTarget', { enumerable: true });
+Reflect.defineProperty(Event.prototype, 'defaultPrevented', { enumerable: true });
+Reflect.defineProperty(Event.prototype, 'eventPhase', { enumerable: true });
+Reflect.defineProperty(Event.prototype, 'isTrusted', { enumerable: true });
+Reflect.defineProperty(Event.prototype, 'target', { enumerable: true });
+Reflect.defineProperty(Event.prototype, 'timeStamp', { enumerable: true });
+Reflect.defineProperty(Event.prototype, 'type', { enumerable: true });

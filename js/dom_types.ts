@@ -69,12 +69,6 @@ export interface EventTarget {
   ): void;
 }
 
-export interface ProgressEventInit extends EventInit {
-  lengthComputable?: boolean;
-  loaded?: number;
-  total?: number;
-}
-
 export interface URLSearchParams {
   /**
    * Appends a specified key/value pair as a new search parameter.
@@ -127,40 +121,25 @@ interface EventListener {
   (evt: Event): void;
 }
 
-export interface EventInit {
-  bubbles?: boolean;
-  cancelable?: boolean;
-  composed?: boolean;
-}
-
 export interface Event {
   readonly type: string;
   readonly target: EventTarget | null;
-  readonly srcElement: EventTarget | null;
   readonly currentTarget: EventTarget | null;
   composedPath(): EventTarget[];
 
-  readonly NONE: number;
-  readonly CAPTURING_PHASE: number;
-  readonly AT_TARGET: number;
-  readonly BUBBLING_PHASE: number;
   readonly eventPhase: number;
 
   stopPropagation(): void;
-  cancelBubble: boolean;
   stopImmediatePropagation(): void;
 
   readonly bubbles: boolean;
   readonly cancelable: boolean;
-  returnValue: boolean;
   preventDefault(): void;
   readonly defaultPrevented: boolean;
   readonly composed: boolean;
 
   readonly isTrusted: boolean;
   readonly timeStamp: number;
-
-  initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void;
 }
 
 interface File extends Blob {

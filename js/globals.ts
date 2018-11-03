@@ -36,7 +36,6 @@ window.atob = textEncoding.atob;
 window.btoa = textEncoding.btoa;
 
 window.Event = event.Event;
-window.EventInit = event.EventInit;
 window.URLSearchParams = urlsearchparams.URLSearchParams;
 
 window.fetch = fetch_.fetch;
