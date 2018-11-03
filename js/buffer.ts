@@ -37,7 +37,7 @@ export class Buffer implements Reader, Writer {
     if (ab == null) {
       this.buf = new Uint8Array(0);
     } else {
-      this.buf = new Uint8Array(ab, 0, ab.byteLength);
+      this.buf = new Uint8Array(ab);
     }
   }
 
