@@ -113,14 +113,15 @@ template("rust_crate") {
     foreach(info, invoker.extern_version) {
       extern_rlibs += [
         {
+          crate_name = info.crate_name
+          crate_version = info.crate_version
           crate_suffix = exec_script("//tools/sha256sum.py",
                                      [
-                                       "--input=${info.crate_version}",
+                                       "--input=$crate_version",
                                        "--format=-%.8s",
                                      ],
                                      "trim string")
-          label = info.label
-          crate_name = info.crate_name
+          label = ":$crate_name-$crate_version"
           rlib = "$out_dir/lib$crate_name$crate_suffix.rlib"
         },
       ]
