@@ -133,7 +133,7 @@ test(async function bufferLargeByteReads() {
 
 test(function bufferCapWithPreallocatedSlice() {
   const buf = new Buffer(new ArrayBuffer(10));
-  assertEqual(buf.cap(), 10);
+  assertEqual(buf.capacity, 10);
 });
 
 test(async function bufferReadFrom() {

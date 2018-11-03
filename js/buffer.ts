@@ -72,10 +72,10 @@ export class Buffer implements Reader, Writer {
     return this.buf.byteLength - this.off;
   }
 
-  /** Cap returns the capacity of the buffer's underlying byte slice, that is,
+  /** Returns the capacity of the buffer's underlying byte slice, that is,
    * the total space allocated for the buffer's data.
    */
-  cap(): number {
+  get capacity: number {
     return this.buf.buffer.byteLength;
   }
 
@@ -97,18 +97,18 @@ export class Buffer implements Reader, Writer {
   /** reset() resets the buffer to be empty, but it retains the underlying
    * storage for use by future writes. reset() is the same as truncate(0)
    */
-  reset() {
+  reset(): void {
     this._reslice(0);
     this.off = 0;
   }
 
-  /** _tryGrowByReslice() is a inlineable version of grow for the fast-case
+  /** _tryGrowByReslice() is a version of grow for the fast-case
    * where the internal buffer only needs to be resliced. It returns the index
    * where bytes should be written and whether it succeeded.
    */
   private _tryGrowByReslice(n: number): [number, boolean] {
     const l = this.buf.byteLength;
-    if (n <= this.cap() - l) {
+    if (n <= this.capacity - l) {
       this._reslice(l + n);
       return [l, true];
     }
@@ -158,7 +158,7 @@ export class Buffer implements Reader, Writer {
     if (ok) {
       return i;
     }
-    const c = this.cap();
+    const c = this.capacity;
     if (n <= c / 2 - m) {
       // We can slide things down instead of allocating a new
       // ArrayBuffer. We only need m+n <= c to slide, but
