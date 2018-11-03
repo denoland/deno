@@ -75,6 +75,16 @@ while (true) {
 // TODO top level await doesn't work yet.
 ```
 
+### Example: Url imports
+
+```ts
+import { printHello } from "https://raw.githubusercontent.com/denoland/deno/master/tests/subdir/print_hello.ts";
+printHello();
+```
+
+The next time you import the same file from same uri it will use the cached
+resource instead of downloading it again.
+
 ## How to Profile Deno
 
 ```sh
