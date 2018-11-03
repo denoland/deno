@@ -12,6 +12,7 @@ import { TextDecoder } from "./text_encoding";
 // what is required to hold the contents of r, readFrom() will not grow the
 // underlying buffer.
 const MIN_READ = 512;
+const MAX_SIZE = 2 ** 32 - 2;
 
 // `off` is the offset into `dst` where it will at which to begin writing values
 // from `src`.
@@ -175,7 +176,7 @@ export class Buffer implements Reader, Writer {
       // we instead let capacity get twice as large so we
       // don't spend all our time copying.
       copyBytes(this.buf, this.buf.subarray(this.off));
-    } else if (c > Number.UINT32_MAX - 2 - c - n) {
+    } else if (c > MAX_SIZE - c - n) {
       throw Error("ErrTooLarge"); // TODO DenoError(TooLarge)
     } else {
       // Not enough space anywhere, we need to allocate.
