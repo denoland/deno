@@ -128,7 +128,10 @@ test(function buildLibraryMerge() {
   });
 
   assert(targetSourceFile.getNamespace("moduleC") != null);
-  assertEqual(targetSourceFile.getNamespaces().length, 1);
+  assert(targetSourceFile.getNamespace("moduleD") != null);
+  assert(targetSourceFile.getNamespace("moduleE") != null);
+  assert(targetSourceFile.getNamespace("moduleF") != null);
+  assertEqual(targetSourceFile.getNamespaces().length, 4);
   assert(targetSourceFile.getInterface("FooBar") != null);
   assertEqual(targetSourceFile.getInterfaces().length, 1);
   const variableDeclarations = targetSourceFile.getVariableDeclarations();
@@ -138,7 +141,15 @@ test(function buildLibraryMerge() {
     variableDeclarations[2].getType().getText(),
     `typeof moduleC.qat`
   );
-  assertEqual(variableDeclarations.length, 3);
+  assertEqual(
+    variableDeclarations[3].getType().getText(),
+    `typeof moduleE.process`
+  );
+  assertEqual(
+    variableDeclarations[4].getType().getText(),
+    `typeof moduleD.reprocess`
+  );
+  assertEqual(variableDeclarations.length, 5);
 });
 
 // TODO author unit tests for `ast_util.ts`
