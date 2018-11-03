@@ -75,7 +75,7 @@ export class Buffer implements Reader, Writer {
   /** Returns the capacity of the buffer's underlying byte slice, that is,
    * the total space allocated for the buffer's data.
    */
-  get capacity: number {
+  get capacity(): number {
     return this.buf.buffer.byteLength;
   }
 
@@ -130,6 +130,8 @@ export class Buffer implements Reader, Writer {
       // Buffer is empty, reset to recover space.
       this.reset();
       if (p.byteLength === 0) {
+        // TODO This edge case should be tested by porting TestReadEmptyAtEOF
+        // from the Go tests.
         return { nread: 0, eof: false };
       }
       return { nread: 0, eof: true };
