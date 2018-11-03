@@ -105,14 +105,15 @@ export class Buffer implements Reader, Writer {
   /** _tryGrowByReslice() is a version of grow for the fast-case
    * where the internal buffer only needs to be resliced. It returns the index
    * where bytes should be written and whether it succeeded.
+   * It returns -1 if a reslice was not needed.
    */
-  private _tryGrowByReslice(n: number): [number, boolean] {
+  private _tryGrowByReslice(n: number): number {
     const l = this.buf.byteLength;
     if (n <= this.capacity - l) {
       this._reslice(l + n);
-      return [l, true];
+      return l;
     }
-    return [0, false];
+    return -1;
   }
 
   private _reslice(len: number): void {
@@ -154,8 +155,8 @@ export class Buffer implements Reader, Writer {
       this.reset();
     }
     // Fast: Try to grow by means of a reslice.
-    const [i, ok] = this._tryGrowByReslice(n);
-    if (ok) {
+    const i = this._tryGrowByReslice(n);
+    if (i >= 0) {
       return i;
     }
     const c = this.capacity;
