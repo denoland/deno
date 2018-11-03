@@ -170,7 +170,7 @@ export class Buffer implements Reader, Writer {
       return i;
     }
     const c = this.capacity;
-    if (n <= parseInt(c / 2) - m) {
+    if (n <= Math.floor(c / 2) - m) {
       // We can slide things down instead of allocating a new
       // ArrayBuffer. We only need m+n <= c to slide, but
       // we instead let capacity get twice as large so we
