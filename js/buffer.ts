@@ -52,7 +52,9 @@ export class Buffer implements Reader, Writer {
   }
 
   /** toString() returns the contents of the unread portion of the buffer
-   * as a string.
+   * as a string. Warning - if multibyte characters are present when data is
+   * flowing through the buffer, this method may result in incorrect strings
+   * due to a character being split.
    */
   toString(): string {
     const decoder = new TextDecoder();
