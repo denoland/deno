@@ -196,7 +196,6 @@ rust_crate("kernel32") {
   source_root = "$registry_github/kernel32-sys-0.2.2/src/lib.rs"
   extern_version = [
     {
-      label = ":winapi-0.2"
       crate_name = "winapi"
       crate_version = "0.2"
     },
@@ -208,7 +207,6 @@ rust_crate("ws2_32") {
   source_root = "$registry_github/ws2_32-sys-0.2.1/src/lib.rs"
   extern_version = [
     {
-      label = ":winapi-0.2"
       crate_name = "winapi"
       crate_version = "0.2"
     },
@@ -244,7 +242,6 @@ rust_crate("mio") {
   # See https://github.com/denoland/deno/issues/484.
   extern_version = [
     {
-      label = ":winapi-0.2"
       crate_name = "winapi"
       crate_version = "0.2"
     },
@@ -272,7 +269,6 @@ rust_crate("miow") {
   # See https://github.com/denoland/deno/issues/484.
   extern_version = [
     {
-      label = ":winapi-0.2"
       crate_name = "winapi"
       crate_version = "0.2"
     },
@@ -288,7 +284,6 @@ rust_crate("iovec") {
   # See https://github.com/denoland/deno/issues/484.
   extern_version = [
     {
-      label = ":winapi-0.2"
       crate_name = "winapi"
       crate_version = "0.2"
     },
