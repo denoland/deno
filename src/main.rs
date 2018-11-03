@@ -31,6 +31,7 @@ mod http_util;
 pub mod isolate;
 pub mod libdeno;
 pub mod msg;
+pub mod msg_util;
 pub mod ops;
 pub mod permissions;
 pub mod resources;

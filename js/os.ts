@@ -81,12 +81,11 @@ export function codeCache(
   assert(baseRes == null); // Expect null or error.
 }
 
-function createEnv(_inner: msg.EnvironRes): { [index: string]: string } {
+function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
   const env: { [index: string]: string } = {};
 
-  for (let i = 0; i < _inner.mapLength(); i++) {
-    const item = _inner.map(i)!;
-
+  for (let i = 0; i < inner.mapLength(); i++) {
+    const item = inner.map(i)!;
     env[item.key()!] = item.value()!;
   }
 
