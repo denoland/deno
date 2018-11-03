@@ -115,3 +115,30 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
   }
   return n;
 }
+
+/**
+ * Turns `r` into async iterator.
+ *
+ *    for await (const chunk of readerIterator(reader)) {
+ *        console.log(chunk)
+ *    }
+ */
+export function toAsyncIterator(
+  r: Reader
+): AsyncIterableIterator<ArrayBufferView> {
+  const b = new Uint8Array(1024);
+
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+
+    async next(): Promise<IteratorResult<ArrayBufferView>> {
+      const result = await r.read(b);
+      return {
+        value: b.subarray(0, result.nread),
+        done: result.eof
+      };
+    }
+  };
+}

@@ -14,6 +14,7 @@ env:
   - HOMEBREW_PATH=$HOME/homebrew/
   - DENO_BUILD_ARGS="use_custom_libcxx=false use_sysroot=false"
   - DENO_BUILD_PATH=$HOME/out/Default
+  - CARGO_TARGET_DIR=$HOME/target
   - DENO_BUILD_MODE=release
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - CCACHE_CPP2=yes
@@ -56,7 +57,7 @@ install:
   # TODO(ry) Include rustc in third_party.
   # https://github.com/denoland/deno/issues/386
   if [ ! $(which rustc) ]; then
-    curl -sSf https://sh.rustup.rs | sh -s -- -y
+    curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.30.0
   fi
   rustc --version
   cargo --version
@@ -88,8 +89,9 @@ before_script:
 script:
 - ./tools/lint.py
 - ./tools/test_format.py
-- bash -c "sleep 2100; pkill ninja" &
+- bash -c "sleep 2100; pkill ninja; pkill cargo" &
 - ./tools/build.py -j2
+- RUSTC_WRAPPER=sccache cargo check -j2 --release
 - ./tools/test.py $DENO_BUILD_PATH
 after_script:
 - ccache --show-stats

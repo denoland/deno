@@ -4,7 +4,7 @@
 [WILDCARD]~~~~~~[0m
 
   [96m$asset$/lib.deno_runtime.d.ts[WILDCARD]
-[WILDCARD]const console: console.Console;
+[WILDCARD]declare const console: console_.Console;
 [WILDCARD]~~~~~~~[0m
 [WILDCARD]'console' is declared here.
 

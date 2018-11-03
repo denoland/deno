@@ -5,8 +5,7 @@ import {
   createResolvable,
   Resolvable,
   typedArrayToArrayBuffer,
-  notImplemented,
-  CreateIterableIterator
+  notImplemented
 } from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
@@ -14,108 +13,7 @@ import * as msg from "gen/msg_generated";
 import * as domTypes from "./dom_types";
 import { TextDecoder } from "./text_encoding";
 import { DenoBlob } from "./blob";
-
-// ref: https://fetch.spec.whatwg.org/#dom-headers
-export class DenoHeaders implements domTypes.Headers {
-  private headerMap: Map<string, string> = new Map();
-
-  constructor(init?: domTypes.HeadersInit) {
-    if (arguments.length === 0 || init === undefined) {
-      return;
-    }
-
-    if (init instanceof DenoHeaders) {
-      // init is the instance of Header
-      init.forEach((value: string, name: string) => {
-        this.headerMap.set(name, value);
-      });
-    } else if (Array.isArray(init)) {
-      // init is a sequence
-      init.forEach(item => {
-        if (item.length !== 2) {
-          throw new TypeError("Failed to construct 'Headers': Invalid value");
-        }
-        const [name, value] = this.normalizeParams(item[0], item[1]);
-        const v = this.headerMap.get(name);
-        const str = v ? `${v}, ${value}` : value;
-        this.headerMap.set(name, str);
-      });
-    } else if (Object.prototype.toString.call(init) === "[object Object]") {
-      // init is a object
-      const names = Object.keys(init);
-      names.forEach(name => {
-        const value = (init as Record<string, string>)[name];
-        const [newname, newvalue] = this.normalizeParams(name, value);
-        this.headerMap.set(newname, newvalue);
-      });
-    } else {
-      throw new TypeError("Failed to construct 'Headers': Invalid value");
-    }
-  }
-
-  private normalizeParams(name: string, value?: string): string[] {
-    name = String(name).toLowerCase();
-    value = String(value).trim();
-    return [name, value];
-  }
-
-  append(name: string, value: string): void {
-    const [newname, newvalue] = this.normalizeParams(name, value);
-    const v = this.headerMap.get(newname);
-    const str = v ? `${v}, ${newvalue}` : newvalue;
-    this.headerMap.set(newname, str);
-  }
-
-  delete(name: string): void {
-    const [newname] = this.normalizeParams(name);
-    this.headerMap.delete(newname);
-  }
-
-  entries(): IterableIterator<[string, string]> {
-    const iterators = this.headerMap.entries();
-    return new CreateIterableIterator(iterators);
-  }
-
-  get(name: string): string | null {
-    const [newname] = this.normalizeParams(name);
-    const value = this.headerMap.get(newname);
-    return value || null;
-  }
-
-  has(name: string): boolean {
-    const [newname] = this.normalizeParams(name);
-    return this.headerMap.has(newname);
-  }
-
-  keys(): IterableIterator<string> {
-    const iterators = this.headerMap.keys();
-    return new CreateIterableIterator(iterators);
-  }
-
-  set(name: string, value: string): void {
-    const [newname, newvalue] = this.normalizeParams(name, value);
-    this.headerMap.set(newname, newvalue);
-  }
-
-  values(): IterableIterator<string> {
-    const iterators = this.headerMap.values();
-    return new CreateIterableIterator(iterators);
-  }
-
-  forEach(
-    callbackfn: (value: string, key: string, parent: domTypes.Headers) => void,
-    // tslint:disable-next-line:no-any
-    thisArg?: any
-  ): void {
-    this.headerMap.forEach((value, name) => {
-      callbackfn(value, name, this);
-    });
-  }
-
-  [Symbol.iterator](): IterableIterator<[string, string]> {
-    return this.entries();
-  }
-}
+import { Headers } from "./headers";
 
 class FetchResponse implements domTypes.Response {
   readonly url: string = "";
@@ -124,7 +22,7 @@ class FetchResponse implements domTypes.Response {
   statusText = "FIXME"; // TODO
   readonly type = "basic"; // TODO
   redirected = false; // TODO
-  headers: DenoHeaders;
+  headers: domTypes.Headers;
   readonly trailer: Promise<domTypes.Headers>;
   //private bodyChunks: Uint8Array[] = [];
   private first = true;
@@ -138,7 +36,7 @@ class FetchResponse implements domTypes.Response {
   ) {
     this.bodyWaiter = createResolvable();
     this.trailer = createResolvable();
-    this.headers = new DenoHeaders(headersList);
+    this.headers = new Headers(headersList);
     this.bodyData = body_;
     setTimeout(() => {
       this.bodyWaiter.resolve(body_);
@@ -219,15 +117,15 @@ export async function fetch(
   const url = input as string;
   log("dispatch FETCH_REQ", url);
 
-  // Send FetchReq message
+  // Send Fetch message
   const builder = flatbuffers.createBuilder();
   const url_ = builder.createString(url);
-  msg.FetchReq.startFetchReq(builder);
-  msg.FetchReq.addUrl(builder, url_);
+  msg.Fetch.startFetch(builder);
+  msg.Fetch.addUrl(builder, url_);
   const resBase = await sendAsync(
     builder,
-    msg.Any.FetchReq,
-    msg.FetchReq.endFetchReq(builder)
+    msg.Any.Fetch,
+    msg.Fetch.endFetch(builder)
   );
 
   // Decode FetchRes

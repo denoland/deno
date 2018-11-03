@@ -40,7 +40,6 @@ import libEsnextIntlDts from "/third_party/node_modules/typescript/lib/lib.esnex
 import libEsnextSymbolDts from "/third_party/node_modules/typescript/lib/lib.esnext.symbol.d.ts!string";
 
 // Static definitions
-import textEncodingDts from "/third_party/node_modules/@types/text-encoding/index.d.ts!string";
 import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
 // tslint:enable:max-line-length
 
@@ -80,6 +79,5 @@ export const assetSourceCode: { [key: string]: string } = {
   "lib.esnext.symbol.d.ts": libEsnextSymbolDts,
 
   // Static definitions
-  "text-encoding.d.ts": textEncodingDts,
   "typescript.d.ts": typescriptDts
 };

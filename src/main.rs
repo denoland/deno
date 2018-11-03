@@ -1,39 +1,48 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+extern crate dirs;
 extern crate flatbuffers;
-#[macro_use]
-extern crate futures;
+extern crate getopts;
 extern crate hyper;
+extern crate hyper_rustls;
 extern crate libc;
-extern crate msg_rs as msg;
 extern crate rand;
+extern crate remove_dir_all;
+extern crate ring;
 extern crate tempfile;
 extern crate tokio;
 extern crate tokio_executor;
 extern crate tokio_fs;
 extern crate tokio_io;
+extern crate tokio_process;
 extern crate tokio_threadpool;
 extern crate url;
+
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
-extern crate dirs;
-extern crate hyper_rustls;
-extern crate remove_dir_all;
-extern crate ring;
+#[macro_use]
+extern crate futures;
 
-mod deno_dir;
-mod errors;
-mod flags;
+pub mod deno_dir;
+pub mod errors;
+pub mod flags;
 mod fs;
 mod http_util;
-mod isolate;
-mod libdeno;
+pub mod isolate;
+pub mod libdeno;
+pub mod msg;
+pub mod msg_util;
 pub mod ops;
-mod resources;
+pub mod permissions;
+pub mod resources;
+pub mod snapshot;
 mod tokio_util;
 mod tokio_write;
-mod version;
+pub mod version;
+
+#[cfg(unix)]
+mod eager_unix;
 
 use std::env;
 
@@ -59,22 +68,19 @@ fn main() {
   // https://github.com/rust-lang/cargo/issues/2738
   // Therefore this hack.
   std::panic::set_hook(Box::new(|panic_info| {
-    if let Some(location) = panic_info.location() {
-      eprintln!("PANIC file '{}' line {}", location.file(), location.line());
-    } else {
-      eprintln!("PANIC occurred but can't get location information...");
-    }
+    eprintln!("{}", panic_info.to_string());
     std::process::abort();
   }));
 
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
-  let (flags, rest_argv) = flags::set_flags(args).unwrap_or_else(|err| {
-    eprintln!("{}", err);
-    std::process::exit(1)
-  });
+  let (flags, rest_argv, usage_string) =
+    flags::set_flags(args).unwrap_or_else(|err| {
+      eprintln!("{}", err);
+      std::process::exit(1)
+    });
   let mut isolate = isolate::Isolate::new(flags, rest_argv, ops::dispatch);
-  flags::process(&isolate.state.flags);
+  flags::process(&isolate.state.flags, usage_string);
   tokio_util::init(|| {
     isolate
       .execute("deno_main.js", "denoMain();")
