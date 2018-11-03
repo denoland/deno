@@ -10,9 +10,15 @@ ADDR = "127.0.0.1:4544"
 DURATION = "10s"
 
 
+def deno_tcp_benchmark(deno_exe):
+    deno_cmd = [deno_exe, "--allow-net", "tests/tcp_bench.ts", ADDR]
+    print "http_benchmark testing DENO TCP."
+    return run(deno_cmd)
+
+
 def deno_http_benchmark(deno_exe):
     deno_cmd = [deno_exe, "--allow-net", "tests/http_bench.ts", ADDR]
-    print "http_benchmark testing DENO."
+    print "http_benchmark testing DENO HTTP."
     return run(deno_cmd)
 
 
@@ -37,7 +43,8 @@ def hyper_http_benchmark(hyper_hello_exe):
 def http_benchmark(deno_exe, hyper_hello_exe):
     r = {}
     # TODO Rename to "deno_tcp"
-    r["deno"] = deno_http_benchmark(deno_exe)
+    r["deno"] = deno_tcp_benchmark(deno_exe)
+    r["deno_http"] = deno_http_benchmark(deno_exe)
     r["node"] = node_http_benchmark()
     r["node_tcp"] = node_tcp_benchmark()
     r["hyper"] = hyper_http_benchmark(hyper_hello_exe)

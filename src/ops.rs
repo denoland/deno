@@ -1190,10 +1190,8 @@ fn op_http_listen(
     // TODO properly parse addr
     let addr = SocketAddr::from_str(address).unwrap();
 
-    let http_server = http_server::create_and_bind(&addr).unwrap();
+    let http_server = http_server::create_and_bind(&addr)?;
     let resource = resources::add_http_server(http_server);
-    // tokio_util::spawn(server_fut);
-    //tokio::spawn(server_fut);
 
     let builder = &mut FlatBufferBuilder::new();
     let inner = msg::HttpListenRes::create(
