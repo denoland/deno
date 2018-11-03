@@ -5,7 +5,6 @@
 //import * as io from "./io";
 import { Reader, Writer, ReadResult } from "./io";
 import { assert } from "./util";
-import { TypedArray } from "./types";
 import { TextDecoder } from "./text_encoding";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
@@ -126,6 +125,9 @@ export class Buffer implements Reader, Writer {
    * buffer has no data to return, eof in the response will be true.
    */
   async read(p: ArrayBufferView): Promise<ReadResult> {
+    if (!(p instanceof Uint8Array)) {
+      throw Error("Only Uint8Array supported");
+    }
     if (this.empty()) {
       // Buffer is empty, reset to recover space.
       this.reset();
@@ -136,14 +138,17 @@ export class Buffer implements Reader, Writer {
       }
       return { nread: 0, eof: true };
     }
-    const nread = copyBytes(p as TypedArray, this.buf.subarray(this.off));
+    const nread = copyBytes(p, this.buf.subarray(this.off));
     this.off += nread;
     return { nread, eof: false };
   }
 
   async write(p: ArrayBufferView): Promise<number> {
     const m = this._grow(p.byteLength);
-    return copyBytes(this.buf, p as TypedArray, m);
+    if (!(p instanceof Uint8Array)) {
+      throw Error("Only Uint8Array supported");
+    }
+    return copyBytes(this.buf, p, m);
   }
 
   /** _grow() grows the buffer to guarantee space for n more bytes.
@@ -162,13 +167,13 @@ export class Buffer implements Reader, Writer {
       return i;
     }
     const c = this.capacity;
-    if (n <= c / 2 - m) {
+    if (n <= parseInt(c / 2) - m) {
       // We can slide things down instead of allocating a new
       // ArrayBuffer. We only need m+n <= c to slide, but
       // we instead let capacity get twice as large so we
       // don't spend all our time copying.
       copyBytes(this.buf, this.buf.subarray(this.off));
-    } else if (c > Number.MAX_SAFE_INTEGER - c - n) {
+    } else if (c > Number.UINT32_MAX - 2 - c - n) {
       throw Error("ErrTooLarge"); // TODO DenoError(TooLarge)
     } else {
       // Not enough space anywhere, we need to allocate.

@@ -4,7 +4,7 @@
 import { test, assert, assertEqual } from "./test_util.ts";
 import { Buffer } from "deno";
 
-// const N = 10000;
+// N controls how many iterations of certain checks are performed.
 const N = 100;
 let testBytes: Uint8Array | null;
 let testString: string | null;
