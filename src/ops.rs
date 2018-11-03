@@ -8,6 +8,7 @@ use isolate::Isolate;
 use isolate::IsolateState;
 use isolate::Op;
 use msg;
+use msg_util;
 use resources;
 use resources::Resource;
 use version;
@@ -358,19 +359,8 @@ fn op_env(
 
   let builder = &mut FlatBufferBuilder::new();
   let vars: Vec<_> = std::env::vars()
-    .map(|(key, value)| {
-      let key = builder.create_string(&key);
-      let value = builder.create_string(&value);
-
-      msg::EnvPair::create(
-        builder,
-        &msg::EnvPairArgs {
-          key: Some(key),
-          value: Some(value),
-          ..Default::default()
-        },
-      )
-    }).collect();
+    .map(|(key, value)| msg_util::serialize_key_value(builder, &key, &value))
+    .collect();
   let tables = builder.create_vector(&vars);
   let inner = msg::EnvironRes::create(
     builder,
