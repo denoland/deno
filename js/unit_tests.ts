@@ -11,6 +11,7 @@ import "./copy_file_test.ts";
 import "./dir_test";
 import "./fetch_test.ts";
 import "./files_test.ts";
+import "./headers_test.ts";
 import "./make_temp_dir_test.ts";
 import "./metrics_test.ts";
 import "./mixins/dom_iterable_test.ts";
