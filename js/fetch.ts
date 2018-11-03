@@ -198,12 +198,20 @@ export async function fetch(
 ): Promise<domTypes.Response> {
   const url = input as string;
   log("dispatch FETCH_REQ", url);
-  const method = init && init.method ? (init.method as string) : "GET";
+
+  let method = "GET";
+  if (typeof input === "string" && init && init.method) {
+    // if input is string then pick method from init
+    method = init.method; 
+  } else if (typeof input !== "string" && input) {
+    // if Input is Request then pick its method
+    method = input.method; 
+  }
 
   // Send Fetch message
   const builder = flatbuffers.createBuilder();
   const url_ = builder.createString(url);
-  const method_ = builder.createString(method);
+  const method_ = builder.createString(method.toUpperCase());
 
   msg.Fetch.startFetch(builder);
   msg.Fetch.addUrl(builder, url_);

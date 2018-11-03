@@ -18,7 +18,7 @@ export type HeadersInit =
   | Array<[string, string]>
   | Record<string, string>;
 export type URLSearchParamsInit = string | string[][] | Record<string, string>;
-type BodyInit =
+export type BodyInit =
   | Blob
   | BufferSource
   | FormData
@@ -34,7 +34,7 @@ type ReferrerPolicy =
   | "origin-when-cross-origin"
   | "unsafe-url";
 export type BlobPart = BufferSource | Blob | string;
-type FormDataEntryValue = File | string;
+export type FormDataEntryValue = File | string;
 export type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
@@ -197,7 +197,7 @@ interface AddEventListenerOptions extends EventListenerOptions {
   passive?: boolean;
 }
 
-interface AbortSignal extends EventTarget {
+export interface AbortSignal extends EventTarget {
   readonly aborted: boolean;
   // tslint:disable-next-line:no-any
   onabort: ((this: AbortSignal, ev: ProgressEvent) => any) | null;
@@ -225,7 +225,7 @@ interface AbortSignal extends EventTarget {
   ): void;
 }
 
-interface ReadableStream {
+export interface ReadableStream {
   readonly locked: boolean;
   cancel(): Promise<void>;
   getReader(): ReadableStreamReader;
@@ -235,7 +235,7 @@ interface EventListenerObject {
   handleEvent(evt: Event): void;
 }
 
-interface ReadableStreamReader {
+export interface ReadableStreamReader {
   cancel(): Promise<void>;
   // tslint:disable-next-line:no-any
   read(): Promise<any>;
@@ -274,7 +274,7 @@ export interface Blob {
   slice(start?: number, end?: number, contentType?: string): Blob;
 }
 
-interface Body {
+export interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
   readonly body: ReadableStream | null;
   /** Stores a `Boolean` that declares whether the body has been used in a

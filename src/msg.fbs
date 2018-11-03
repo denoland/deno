@@ -190,10 +190,16 @@ table EnvPair {
   value: string;
 }
 
+table Header {
+  name: string;
+  value: string;
+}
+
 table Fetch {
   id: uint;
   url: string;
   method: string;
+  headers: [Header];
   // TODO Supply request headers:
   // header_line: [string];
 }

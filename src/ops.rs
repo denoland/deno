@@ -411,8 +411,12 @@ fn op_fetch(
 
   let mut req = hyper::Request::new(hyper::Body::from(&*data));
   *req.method_mut() = match method {
-    "POST" => hyper::Method::POST,
     "GET" => hyper::Method::GET,
+    "POST" => hyper::Method::POST,
+    "PUT" => hyper::Method::PUT,
+    "DELETE" => hyper::Method::DELETE,
+    "HEAD" => hyper::Method::HEAD,
+    "OPTIONS" => hyper::Method::OPTIONS,
     _ => panic!("Invalid method"),
   };
   *req.uri_mut() = url.clone();
