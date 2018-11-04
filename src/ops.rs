@@ -1125,6 +1125,9 @@ fn op_listen(
   assert_eq!(network, "tcp");
   let address = inner.address().unwrap();
 
+  // Ignore this clippy warning until this issue is addressed:
+  // https://github.com/rust-lang-nursery/rust-clippy/issues/1684
+  #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
   Box::new(futures::future::result((move || {
     // TODO properly parse addr
     let addr = SocketAddr::from_str(address).unwrap();
