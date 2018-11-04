@@ -6,6 +6,10 @@ import stat
 import sys
 import subprocess
 
+RESET = "\x1b[0m"
+FG_RED = "\x1b[31m"
+FG_GREEN = "\x1b[32m"
+
 executable_suffix = ".exe" if os.name == "nt" else ""
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
@@ -71,6 +75,14 @@ def shell_quote(arg):
         # Python 2 has posix shell quoting built in, albeit in a weird place.
         from pipes import quote
         return quote(arg)
+
+
+def red_failed():
+    return "%sFAILED%s" % (FG_RED, RESET)
+
+
+def green_ok():
+    return "%sok%s" % (FG_GREEN, RESET)
 
 
 def remove_and_symlink(target, name, target_is_dir=False):

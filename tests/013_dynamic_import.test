@@ -1,0 +1,2 @@
+args: tests/013_dynamic_import.ts --reload
+output: tests/013_dynamic_import.ts.out

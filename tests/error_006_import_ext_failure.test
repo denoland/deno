@@ -1,0 +1,3 @@
+args: tests/error_006_import_ext_failure.ts --reload
+exit_code: 1
+output: tests/error_006_import_ext_failure.ts.out
