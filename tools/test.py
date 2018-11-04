@@ -4,7 +4,7 @@
 # Usage: ./tools/test.py out/Debug
 import os
 import sys
-from check_output_test import check_output_test
+from integration_tests import integration_tests
 from deno_dir_test import deno_dir_test
 from setup_test import setup_test
 from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
@@ -58,7 +58,7 @@ def main(argv):
 
     unit_tests(deno_exe)
 
-    check_output_test(deno_exe)
+    integration_tests(deno_exe)
 
     # TODO We currently skip testing the prompt in Windows completely.
     # Windows does not support the pty module used for testing the permission
