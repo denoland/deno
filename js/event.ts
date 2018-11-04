@@ -1,116 +1,121 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 
-const EVENT_ATTRIBUTES = new WeakMap;
+export const EventAttributes = new WeakMap;
 
-export enum EventPhase {
-  NONE = 0,
-  CAPTURING_PHASE = 1,
-  AT_TARGET = 2,
-  BUBBLING_PHASE = 3,
+export class EventInit implements domTypes.EventInit {
+  bubbles = false;
+  cancelable = false;
+  composed = false;
+
+  constructor({bubbles=false, cancelable=false, composed=false} = {}) {
+    this.bubbles = bubbles;
+    this.cancelable = cancelable;
+    this.composed = composed;
+  }
 }
 
-export class Event {
+export class Event implements domTypes.Event {
   // Each event has the following associated flags
-  private stopPropagationFlag: boolean = false;
-  private stopImmediatePropagationFlag: boolean = false;
-  private canceledFlag: boolean = false;
-  private inPassiveListenerFlag: boolean = false;
-  private composedFlag: boolean = false;
-  private initializedFlag: boolean = true;
-  private dispatchFlag: boolean = false;
+  private _stopPropagationFlag = false;
+  private _stopImmediatePropagationFlag = false;
+  private _canceledFlag = false;
+  private _inPassiveListenerFlag = false;
+  private _composedFlag = false;
+  private _initializedFlag = true;
+  private _dispatchFlag = false;
 
   // Property for objects on which listeners will be invoked
-  private path: domTypes.EventTarget[] = [];
+  private _path: domTypes.EventTarget[] = [];
 
-  constructor(type: string, {bubbles=false, cancelable=false, composed=false} = {}) {
-    EVENT_ATTRIBUTES.set(this, {
+  constructor(type: string = "", eventInitDict?: domTypes.EventInit) {
+    EventAttributes.set(this, {
       type,
-      bubbles,
-      cancelable,
-      composed,
+      bubbles: eventInitDict && eventInitDict.bubbles || false,
+      cancelable: eventInitDict && eventInitDict.cancelable || false,
+      composed: eventInitDict && eventInitDict.composed || false,
       currentTarget: null,
-      eventPhase: EventPhase.NONE,
+      eventPhase: domTypes.EventPhase.NONE,
       isTrusted: false,
       target: null,
       timeStamp: Date.now(),
     });
   }
 
-  get bubbles(): boolean | TypeError {
-    if (EVENT_ATTRIBUTES.has(this)) {
-      return EVENT_ATTRIBUTES.get(this).bubbles;
+  get bubbles(): boolean {
+    if (EventAttributes.has(this)) {
+      return EventAttributes.get(this).bubbles || false;
     }
 
-    throw new TypeError('Illegal invocation');
+    throw new TypeError("Illegal invocation");
   }
 
-  get cancelable(): boolean | TypeError {
-    if (EVENT_ATTRIBUTES.has(this)) {
-      return EVENT_ATTRIBUTES.get(this).cancelable;
+  get cancelable(): boolean {
+    if (EventAttributes.has(this)) {
+      return EventAttributes.get(this).cancelable || false;
     }
 
-    throw new TypeError('Illegal invocation');
+    throw new TypeError("Illegal invocation");
   }
 
-  get composed(): boolean | TypeError {
-    if (EVENT_ATTRIBUTES.has(this)) {
-      return EVENT_ATTRIBUTES.get(this).composed;
+  get composed(): boolean {
+    if (EventAttributes.has(this)) {
+      return EventAttributes.get(this).composed || false;
     }
 
-    throw new TypeError('Illegal invocation');
+    throw new TypeError("Illegal invocation");
   }
 
-  get currentTarget(): boolean | TypeError {
-    if (EVENT_ATTRIBUTES.has(this)) {
-      return EVENT_ATTRIBUTES.get(this).currentTarget;
+  get currentTarget(): domTypes.EventTarget {
+    if (EventAttributes.has(this)) {
+      return EventAttributes.get(this).currentTarget || null;
     }
 
-    throw new TypeError('Illegal invocation');
+    throw new TypeError("Illegal invocation");
   }
 
   get defaultPrevented(): boolean {
-    return this.canceledFlag;
+    return this._canceledFlag;
   }
 
-  get eventPhase(): boolean | TypeError {
-    if (EVENT_ATTRIBUTES.has(this)) {
-      return EVENT_ATTRIBUTES.get(this).eventPhase;
+  get eventPhase(): number {
+    if (EventAttributes.has(this)) {
+      return EventAttributes.get(this).eventPhase || domTypes.EventPhase.NONE;
     }
 
-    throw new TypeError('Illegal invocation');
+    throw new TypeError("Illegal invocation");
   }
 
-  get isTrusted(): boolean | TypeError {
-    if (EVENT_ATTRIBUTES.has(this)) {
-      return EVENT_ATTRIBUTES.get(this).isTrusted;
+  get isTrusted(): boolean {
+    if (EventAttributes.has(this)) {
+      return EventAttributes.get(this).isTrusted || false;
     }
 
-    throw new TypeError('Illegal invocation');
+    throw new TypeError("Illegal invocation");
   }
 
-  get target(): boolean | TypeError {
-    if (EVENT_ATTRIBUTES.has(this)) {
-      return EVENT_ATTRIBUTES.get(this).target;
+  get target(): domTypes.EventTarget {
+    if (EventAttributes.has(this)) {
+      return EventAttributes.get(this).target || null;
     }
 
-    throw new TypeError('Illegal invocation');
+    throw new TypeError("Illegal invocation");
   }
 
-  get timeStamp(): boolean | TypeError {
-    if (EVENT_ATTRIBUTES.has(this)) {
-      return EVENT_ATTRIBUTES.get(this).timeStamp;
+  get timeStamp(): Date {
+    if (EventAttributes.has(this)) {
+      return EventAttributes.get(this).timeStamp || Date.now();
     }
 
-    throw new TypeError('Illegal invocation');
+    throw new TypeError("Illegal invocation");
   }
 
-  get type(): boolean | TypeError {
-    if (EVENT_ATTRIBUTES.has(this)) {
-      return EVENT_ATTRIBUTES.get(this).type;
+  get type(): string {
+    if (EventAttributes.has(this)) {
+      return EventAttributes.get(this).type || "";
     }
 
-    throw new TypeError('Illegal invocation');
+    throw new TypeError("Illegal invocation");
   }
 
   /** Returns the event’s path (objects on which listeners will be
@@ -122,7 +127,7 @@ export class Event {
   composedPath(): domTypes.EventTarget[] {
     const composedPath = [];
 
-    if (this.path.length === 0) {
+    if (this._path.length === 0) {
       return composedPath;
     }
 
@@ -131,8 +136,8 @@ export class Event {
     let currentTargetIndex = 0;
     let currentTargetHiddenSubtreeLevel = 0;
 
-    for (let index = this.path.length - 1; index >= 0; index--) {
-      const { item, rootOfClosedTree, slotInClosedTree } = this.path[index];
+    for (let index = this._path.length - 1; index >= 0; index--) {
+      const { item, rootOfClosedTree, slotInClosedTree } = this._path[index];
 
       if (rootOfClosedTree) {
         currentTargetHiddenSubtreeLevel++;
@@ -152,7 +157,7 @@ export class Event {
     let maxHiddenLevel = currentTargetHiddenSubtreeLevel;
 
     for (let i = currentTargetIndex - 1; i >= 0; i--) {
-      const { item, rootOfClosedTree, slotInClosedTree } = this.path[i];
+      const { item, rootOfClosedTree, slotInClosedTree } = this._path[i];
 
       if (rootOfClosedTree) {
         currentHiddenLevel++;
@@ -174,8 +179,8 @@ export class Event {
     currentHiddenLevel = currentTargetHiddenSubtreeLevel;
     maxHiddenLevel = currentTargetHiddenSubtreeLevel;
 
-    for (let index = currentTargetIndex + 1; index < this.path.length; index++) {
-      const { item, rootOfClosedTree, slotInClosedTree } = this.path[index];
+    for (let index = currentTargetIndex + 1; index < this._path.length; index++) {
+      const { item, rootOfClosedTree, slotInClosedTree } = this._path[index];
 
       if (slotInClosedTree) {
         currentHiddenLevel++;
@@ -203,8 +208,8 @@ export class Event {
    *      event.preventDefault();
    */
   preventDefault(): void {
-    if (this.cancelable && !this.inPassiveListenerFlag) {
-      this.canceledFlag = true;
+    if (this.cancelable && !this._inPassiveListenerFlag) {
+      this._canceledFlag = true;
     }
   }
 
@@ -213,7 +218,7 @@ export class Event {
    *      event.stopPropagation();
    */
   stopPropagation(): void {
-    this.stopPropagationFlag = true;
+    this._stopPropagationFlag = true;
   }
 
   /** For this particular event, no other listener will be called.
@@ -224,8 +229,8 @@ export class Event {
    *      event.stopImmediatePropagation();
    */
   stopImmediatePropagation(): void {
-    this.stopPropagationFlag = true;
-    this.stopImmediatePropagationFlag = true;
+    this._stopPropagationFlag = true;
+    this._stopImmediatePropagationFlag = true;
   }
 }
 

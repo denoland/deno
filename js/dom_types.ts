@@ -69,6 +69,12 @@ export interface EventTarget {
   ): void;
 }
 
+export interface ProgressEventInit extends EventInit {
+  lengthComputable?: boolean;
+  loaded?: number;
+  total?: number;
+}
+
 export interface URLSearchParams {
   /**
    * Appends a specified key/value pair as a new search parameter.
@@ -119,6 +125,19 @@ export interface URLSearchParams {
 
 interface EventListener {
   (evt: Event): void;
+}
+
+export interface EventInit {
+  bubbles?: boolean;
+  cancelable?: boolean;
+  composed?: boolean;
+}
+
+export enum EventPhase {
+  NONE = 0,
+  CAPTURING_PHASE = 1,
+  AT_TARGET = 2,
+  BUBBLING_PHASE = 3,
 }
 
 export interface Event {
