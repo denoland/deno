@@ -6,9 +6,9 @@ import stat
 import sys
 import subprocess
 
-RESET = "\x1b[0m";
-FG_RED = "\x1b[31m";
-FG_GREEN = "\x1b[32m";
+RESET = "\x1b[0m"
+FG_RED = "\x1b[31m"
+FG_GREEN = "\x1b[32m"
 
 executable_suffix = ".exe" if os.name == "nt" else ""
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
