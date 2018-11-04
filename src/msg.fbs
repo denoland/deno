@@ -8,7 +8,7 @@ union Any {
   Exit,
   Environ,
   EnvironRes,
-  FetchReq,
+  Fetch,
   FetchRes,
   MakeTempDir,
   MakeTempDirRes,
@@ -24,6 +24,8 @@ union Any {
   Rename,
   Readlink,
   ReadlinkRes,
+  Resources,
+  ResourcesRes,
   Symlink,
   Stat,
   StatRes,
@@ -146,14 +148,18 @@ table CodeFetchRes {
   module_name: string;
   filename: string;
   media_type: MediaType;
+  // TODO These should be [ubyte].
+  // See: https://github.com/denoland/deno/issues/1113
   source_code: string;
   output_code: string; // Non-empty only if cached.
+  source_map: string; // Non-empty only if cached.
 }
 
 table CodeCache {
   filename: string;
   source_code: string;
   output_code: string;
+  source_map: string;
 }
 
 table Chdir {
@@ -176,17 +182,18 @@ table SetEnv {
 }
 
 table EnvironRes {
-  map: [EnvPair];
+  map: [KeyValue];
 }
 
-table EnvPair {
+table KeyValue {
   key: string;
   value: string;
 }
 
-table FetchReq {
+table Fetch {
   id: uint;
   url: string;
+  // TODO Supply request headers:
   // header_line: [string];
 }
 
@@ -264,6 +271,17 @@ table Readlink {
 
 table ReadlinkRes {
   path: string;
+}
+
+table Resources {}
+
+table Resource {
+  rid: int;
+  repr: string;
+}
+
+table ResourcesRes {
+  resources: [Resource];
 }
 
 table Symlink {

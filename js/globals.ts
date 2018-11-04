@@ -4,6 +4,7 @@ import * as file from "./file";
 import * as formdata from "./form_data";
 import * as console_ from "./console";
 import * as fetch_ from "./fetch";
+import { Headers } from "./headers";
 import { globalEval } from "./global_eval";
 import { libdeno } from "./libdeno";
 import * as textEncoding from "./text_encoding";
@@ -43,7 +44,7 @@ window.fetch = fetch_.fetch;
 
 // using the `as` keyword to mask the internal types when generating the
 // runtime library
-window.Headers = fetch_.Headers as domTypes.HeadersConstructor;
+window.Headers = Headers as domTypes.HeadersConstructor;
 window.Blob = blob.DenoBlob;
 window.File = file.DenoFile;
 window.FormData = formdata.FormData as domTypes.FormDataConstructor;

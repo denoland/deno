@@ -18,6 +18,7 @@ import {
   getSourceComment,
   loadDtsFiles,
   loadFiles,
+  logDiagnostics,
   namespaceSourceFile,
   normalizeSlashes
 } from "./ast_util";
@@ -222,6 +223,7 @@ export function mergeGlobal({
   // declaration source file into a namespace that exists within the merged
   // namespace
   const importDeclarations = sourceFile.getImportDeclarations();
+  const namespaces = new Set<string>();
   for (const declaration of importDeclarations) {
     const declarationSourceFile = declaration.getModuleSpecifierSourceFile();
     if (
@@ -241,6 +243,7 @@ export function mergeGlobal({
         namespaceSourceFile(dtsSourceFile, {
           debug,
           namespace: declaration.getNamespaceImportOrThrow().getText(),
+          namespaces,
           rootPath: basePath,
           sourceFileMap
         })
@@ -307,6 +310,14 @@ export function main({
 
   // emit the project, which will be only the declaration files
   const inputEmitResult = inputProject.emitToMemory();
+
+  const inputDiagnostics = inputEmitResult
+    .getDiagnostics()
+    .map(d => d.compilerObject);
+  logDiagnostics(inputDiagnostics);
+  if (inputDiagnostics.length) {
+    process.exit(1);
+  }
 
   // the declaration project will be the target for the emitted files from
   // the input project, these will be used to transfer information over to

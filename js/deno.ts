@@ -7,6 +7,7 @@ export { chdir, cwd } from "./dir";
 export { File, open, stdin, stdout, stderr, read, write, close } from "./files";
 export {
   copy,
+  toAsyncIterator,
   ReadResult,
   Reader,
   Writer,
@@ -38,6 +39,7 @@ export { truncateSync, truncate } from "./truncate";
 export { FileInfo } from "./file_info";
 export { connect, dial, listen, Listener, Conn } from "./net";
 export { metrics } from "./metrics";
+export { resources } from "./resources";
 export const args: string[] = [];
 
 // Provide the compiler API in an obfuscated way

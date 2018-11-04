@@ -37,7 +37,7 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
     let url = maybe_url.expect("target url should not be None");
     client
       .get(url)
-      .map_err(|err| DenoError::from(err))
+      .map_err(DenoError::from)
       .and_then(|response| {
         if response.status().is_redirection() {
           let new_url_string = response
@@ -72,7 +72,7 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
       .into_body()
       .concat2()
       .map(|body| String::from_utf8(body.to_vec()).unwrap())
-      .map_err(|err| DenoError::from(err));
+      .map_err(DenoError::from);
     body.join(future::ok(content_type))
   }).and_then(|(body_string, maybe_content_type)| {
     future::ok((body_string, maybe_content_type.unwrap()))

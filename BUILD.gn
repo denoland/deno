@@ -18,6 +18,13 @@ group("default") {
   ]
 }
 
+# Set of targets that need to be built for `cargo check` to succeed.
+group("cargo_check_deps") {
+  deps = [
+    ":msg_rs",
+  ]
+}
+
 config("deno_config") {
   include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "third_party/v8:external_config" ]
@@ -61,10 +68,10 @@ main_extern = [
   "$rust_build:tokio_executor",
   "$rust_build:tokio_fs",
   "$rust_build:tokio_io",
+  "$rust_build:tokio_process",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
   "//build_extra/flatbuffers/rust:flatbuffers",
-  ":msg_rs",
 ]
 
 ts_sources = [
@@ -81,6 +88,7 @@ ts_sources = [
   "js/errors.ts",
   "js/fetch.ts",
   "js/file.ts",
+  "js/headers.ts",
   "js/file_info.ts",
   "js/files.ts",
   "js/flatbuffers.ts",
@@ -104,6 +112,7 @@ ts_sources = [
   "js/read_link.ts",
   "js/remove.ts",
   "js/rename.ts",
+  "js/resources.ts",
   "js/stat.ts",
   "js/symlink.ts",
   "js/text_encoding.ts",
@@ -126,8 +135,7 @@ rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
   deps = [
-    ":libdeno",
-    ":snapshot",
+    ":deno_deps",
   ]
 }
 
@@ -180,8 +188,7 @@ rust_test("test_rs") {
   source_root = "src/main.rs"
   extern = main_extern
   deps = [
-    ":libdeno",
-    ":snapshot",
+    ":deno_deps",
   ]
 }
 
@@ -200,8 +207,8 @@ v8_executable("test_cc") {
   data = [
     "$target_gen_dir/snapshot_libdeno_test.bin",
   ]
-  snapshot_abs_path = rebase_path(data[0])
-  defines = [ "SNAPSHOT_PATH=\"$snapshot_abs_path\"" ]
+  snapshot_path = rebase_path(data[0], root_build_dir)
+  defines = [ "SNAPSHOT_PATH=\"$snapshot_path\"" ]
   configs = [ ":deno_config" ]
 }
 
@@ -210,7 +217,6 @@ v8_executable("test_cc") {
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
 static_library("libdeno") {
-  complete_static_lib = true
   sources = [
     "libdeno/api.cc",
     "libdeno/binding.cc",
@@ -221,6 +227,16 @@ static_library("libdeno") {
   ]
   public_deps = [
     "third_party/v8:v8_monolith",
+  ]
+  configs += [ ":deno_config" ]
+}
+
+static_library("deno_deps") {
+  complete_static_lib = true
+  public_deps = [
+    ":libdeno",
+    ":msg_rs",
+    ":snapshot",
   ]
   configs += [ ":deno_config" ]
 }

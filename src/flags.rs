@@ -28,16 +28,17 @@ pub struct DenoFlags {
   pub types_flag: bool,
 }
 
-pub fn process(flags: &DenoFlags, usage_string: String) {
+pub fn process(flags: &DenoFlags, usage_string: &str) {
   if flags.help {
     println!("{}", &usage_string);
     exit(0);
   }
 
-  let mut log_level = log::LevelFilter::Info;
-  if flags.log_debug {
-    log_level = log::LevelFilter::Debug;
-  }
+  let log_level = if flags.log_debug {
+    log::LevelFilter::Debug
+  } else {
+    log::LevelFilter::Info
+  };
   log::set_max_level(log_level);
 }
 
@@ -108,8 +109,8 @@ pub fn set_flags(
     flags.types_flag = true;
   }
 
-  let rest: Vec<_> = matches.free.iter().map(|s| s.clone()).collect();
-  return Ok((flags, rest, get_usage(&opts)));
+  let rest: Vec<_> = matches.free.to_vec();
+  Ok((flags, rest, get_usage(&opts)))
 }
 
 #[test]
@@ -214,12 +215,11 @@ fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
     }).collect();
 
   // Replace args being sent to V8
-  for idx in 0..args.len() {
-    if args[idx] == "--v8-options" {
-      mem::swap(args.get_mut(idx).unwrap(), &mut String::from("--help"));
+  for mut a in &mut args {
+    if a == "--v8-options" {
+      mem::swap(a, &mut String::from("--help"));
     }
   }
-
   (args, rest)
 }
 

@@ -75,6 +75,16 @@ while (true) {
 // TODO top level await doesn't work yet.
 ```
 
+### Example: Url imports
+
+```ts
+import { printHello } from "https://raw.githubusercontent.com/denoland/deno/master/tests/subdir/print_hello.ts";
+printHello();
+```
+
+The next time you import the same file from same uri it will use the cached
+resource instead of downloading it again.
+
 ## How to Profile Deno
 
 ```sh
@@ -154,6 +164,9 @@ Other useful commands:
     # Describe a target.
     ./third_party/depot_tools/gn desc out/debug/ :deno
     ./third_party/depot_tools/gn help
+
+    # Update third_party modules
+    git submodule update
 
 Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
 `DENO_DIR`.

@@ -6,14 +6,15 @@ import * as ts from "typescript";
 // We use a silly amount of `any` in these tests...
 // tslint:disable:no-any
 
-const { DenoCompiler } = (deno as any)._compiler;
+const { DenoCompiler, jsonAmdTemplate } = (deno as any)._compiler;
 
 interface ModuleInfo {
-  moduleName: string | null;
-  filename: string | null;
-  mediaType: MediaType | null;
-  sourceCode: string | null;
-  outputCode: string | null;
+  moduleName: string | undefined;
+  filename: string | undefined;
+  mediaType: MediaType | undefined;
+  sourceCode: string | undefined;
+  outputCode: string | undefined;
+  sourceMap: string | undefined;
 }
 
 const compilerInstance = DenoCompiler.instance();
@@ -36,18 +37,20 @@ enum MediaType {
 }
 
 function mockModuleInfo(
-  moduleName: string | null,
-  filename: string | null,
-  mediaType: MediaType | null,
-  sourceCode: string | null,
-  outputCode: string | null
+  moduleName: string | undefined,
+  filename: string | undefined,
+  mediaType: MediaType | undefined,
+  sourceCode: string | undefined,
+  outputCode: string | undefined,
+  sourceMap: string | undefined
 ): ModuleInfo {
   return {
     moduleName,
     filename,
     mediaType,
     sourceCode,
-    outputCode
+    outputCode,
+    sourceMap
   };
 }
 
@@ -73,6 +76,7 @@ const modAModuleInfo = mockModuleInfo(
   "/root/project/modA.ts",
   MediaType.TypeScript,
   modASource,
+  undefined,
   undefined
 );
 
@@ -88,10 +92,10 @@ const modBModuleInfo = mockModuleInfo(
   "/root/project/modB.ts",
   MediaType.TypeScript,
   modBSource,
+  undefined,
   undefined
 );
 
-// TODO(#23) Remove source map strings from fooBarTsOutput.
 // tslint:disable:max-line-length
 const fooBarTsOutput = `define(["require", "exports", "deno"], function (require, exports, deno) {
     "use strict";
@@ -99,17 +103,26 @@ const fooBarTsOutput = `define(["require", "exports", "deno"], function (require
     console.log(deno);
     exports.foo = "bar";
 });
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiYmFyLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiZmlsZTovLy9yb290L3Byb2plY3QvZm9vL2Jhci50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7SUFDQSxPQUFPLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxDQUFDO0lBQ0wsUUFBQSxHQUFHLEdBQUcsS0FBSyxDQUFDIiwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0ICogYXMgZGVubyBmcm9tIFwiZGVub1wiO1xuY29uc29sZS5sb2coZGVubyk7XG5leHBvcnQgY29uc3QgZm9vID0gXCJiYXJcIjtcbiJdfQ==
+//# sourceMappingURL=bar.js.map
 //# sourceURL=/root/project/foo/bar.ts`;
 
-// TODO(#23) Remove source map strings from fooBazTsOutput.
+const fooBarTsSourcemap = `{"version":3,"file":"bar.js","sourceRoot":"","sources":["file:///root/project/foo/bar.ts"],"names":[],"mappings":";;;IACA,OAAO,CAAC,GAAG,CAAC,IAAI,CAAC,CAAC;IACL,QAAA,GAAG,GAAG,KAAK,CAAC"}`;
+
 const fooBazTsOutput = `define(["require", "exports", "./bar.ts"], function (require, exports, bar_ts_1) {
   "use strict";
   Object.defineProperty(exports, "__esModule", { value: true });
   console.log(bar_ts_1.foo);
 });
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiYmF6LmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiZmlsZTovLy9yb290L3Byb2plY3QvZm9vL2Jhei50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7SUFDQSxPQUFPLENBQUMsR0FBRyxDQUFDLFlBQUcsQ0FBQyxDQUFDIiwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgZm9vIH0gZnJvbSBcIi4vYmFyLnRzXCI7XG5jb25zb2xlLmxvZyhmb28pO1xuIl19
+//# sourceMappingURL=baz.js.map
 //# sourceURL=/root/project/foo/baz.ts`;
+
+// This is not a valid map, just mock data
+const fooBazTsSourcemap = `{"version":3,"file":"baz.js","sourceRoot":"","sources":["file:///root/project/foo/baz.ts"],"names":[],"mappings":""}`;
+
+const loadConfigSource = `import * as config from "./config.json";
+console.log(config.foo.baz);
+`;
+const configJsonSource = `{"foo":{"bar": true,"baz": ["qat", 1]}}`;
 // tslint:enable:max-line-length
 
 const moduleMap: {
@@ -121,6 +134,7 @@ const moduleMap: {
       "/root/project/foo/bar.ts",
       MediaType.TypeScript,
       fooBarTsSource,
+      null,
       null
     ),
     "foo/baz.ts": mockModuleInfo(
@@ -128,7 +142,8 @@ const moduleMap: {
       "/root/project/foo/baz.ts",
       MediaType.TypeScript,
       fooBazTsSource,
-      fooBazTsOutput
+      fooBazTsOutput,
+      fooBazTsSourcemap
     ),
     "modA.ts": modAModuleInfo,
     "some.txt": mockModuleInfo(
@@ -136,6 +151,15 @@ const moduleMap: {
       "/root/project/some.text",
       MediaType.Unknown,
       "console.log();",
+      null,
+      null
+    ),
+    "loadConfig.ts": mockModuleInfo(
+      "/root/project/loadConfig.ts",
+      "/root/project/loadConfig.ts",
+      MediaType.TypeScript,
+      loadConfigSource,
+      null,
       null
     )
   },
@@ -145,7 +169,8 @@ const moduleMap: {
       "/root/project/foo/bar.ts",
       MediaType.TypeScript,
       fooBarTsSource,
-      fooBarTsOutput
+      fooBarTsOutput,
+      fooBarTsSourcemap
     )
   },
   "/root/project/modA.ts": {
@@ -154,12 +179,23 @@ const moduleMap: {
   "/root/project/modB.ts": {
     "./modA.ts": modAModuleInfo
   },
+  "/root/project/loadConfig.ts": {
+    "./config.json": mockModuleInfo(
+      "/root/project/config.json",
+      "/root/project/config.json",
+      MediaType.Json,
+      configJsonSource,
+      null,
+      null
+    )
+  },
   "/moduleKinds": {
     "foo.ts": mockModuleInfo(
       "foo",
       "/moduleKinds/foo.ts",
       MediaType.TypeScript,
       "console.log('foo');",
+      undefined,
       undefined
     ),
     "foo.d.ts": mockModuleInfo(
@@ -167,6 +203,7 @@ const moduleMap: {
       "/moduleKinds/foo.d.ts",
       MediaType.TypeScript,
       "console.log('foo');",
+      undefined,
       undefined
     ),
     "foo.js": mockModuleInfo(
@@ -174,6 +211,7 @@ const moduleMap: {
       "/moduleKinds/foo.js",
       MediaType.JavaScript,
       "console.log('foo');",
+      undefined,
       undefined
     ),
     "foo.json": mockModuleInfo(
@@ -181,6 +219,7 @@ const moduleMap: {
       "/moduleKinds/foo.json",
       MediaType.Json,
       "console.log('foo');",
+      undefined,
       undefined
     ),
     "foo.txt": mockModuleInfo(
@@ -188,6 +227,7 @@ const moduleMap: {
       "/moduleKinds/foo.txt",
       MediaType.JavaScript,
       "console.log('foo');",
+      undefined,
       undefined
     )
   }
@@ -211,6 +251,7 @@ let codeCacheStack: Array<{
   fileName: string;
   sourceCode: string;
   outputCode: string;
+  sourceMap: string;
 }> = [];
 let codeFetchStack: Array<{
   moduleSpecifier: string;
@@ -230,18 +271,25 @@ function logMock(...args: any[]): void {
   logStack.push(args);
 }
 const osMock = {
-  codeCache(fileName: string, sourceCode: string, outputCode: string): void {
-    codeCacheStack.push({ fileName, sourceCode, outputCode });
+  codeCache(
+    fileName: string,
+    sourceCode: string,
+    outputCode: string,
+    sourceMap: string
+  ): void {
+    codeCacheStack.push({ fileName, sourceCode, outputCode, sourceMap });
     if (fileName in moduleCache) {
       moduleCache[fileName].sourceCode = sourceCode;
       moduleCache[fileName].outputCode = outputCode;
+      moduleCache[fileName].sourceMap = sourceMap;
     } else {
       moduleCache[fileName] = mockModuleInfo(
         fileName,
         fileName,
         MediaType.TypeScript,
         sourceCode,
-        outputCode
+        outputCode,
+        sourceMap
       );
     }
   },
@@ -252,10 +300,10 @@ const osMock = {
         return moduleMap[containingFile][moduleSpecifier];
       }
     }
-    return mockModuleInfo(null, null, null, null, null);
+    return mockModuleInfo(null, null, null, null, null, null);
   },
   exit(code: number): never {
-    throw new Error(`os.exit(${code})`);
+    throw new Error(`Unexpected call to os.exit(${code})`);
   }
 };
 const tsMock = {
@@ -264,9 +312,9 @@ const tsMock = {
   },
   formatDiagnosticsWithColorAndContext(
     diagnostics: ReadonlyArray<ts.Diagnostic>,
-    host: ts.FormatDiagnosticsHost
+    _host: ts.FormatDiagnosticsHost
   ): string {
-    return "";
+    return JSON.stringify(diagnostics.map(({ messageText }) => messageText));
   }
 };
 
@@ -349,6 +397,23 @@ function teardown() {
   Object.assign(compilerInstance, originals);
 }
 
+test(function testJsonAmdTemplate() {
+  let deps: string[];
+  let factory: Function;
+  function define(d: string[], f: Function) {
+    deps = d;
+    factory = f;
+  }
+
+  const code = jsonAmdTemplate(`{ "hello": "world", "foo": "bar" }`);
+  const result = eval(code);
+  assert(result == null);
+  assertEqual(deps && deps.length, 0);
+  assert(factory != null);
+  const factoryResult = factory();
+  assertEqual(factoryResult, { hello: "world", foo: "bar" });
+});
+
 test(function compilerInstance() {
   assert(DenoCompiler != null);
   assert(DenoCompiler.instance() != null);
@@ -373,6 +438,7 @@ test(function compilerRun() {
   assert(moduleMetaData.hasRun);
   assertEqual(moduleMetaData.sourceCode, fooBarTsSource);
   assertEqual(moduleMetaData.outputCode, fooBarTsOutput);
+  assertEqual(moduleMetaData.sourceMap, fooBarTsSourcemap);
   assertEqual(moduleMetaData.exports, { foo: "bar" });
 
   assertEqual(
@@ -385,6 +451,11 @@ test(function compilerRun() {
     1,
     "Compiled code should have only been cached once."
   );
+  const [codeCacheCall] = codeCacheStack;
+  assertEqual(codeCacheCall.fileName, "/root/project/foo/bar.ts");
+  assertEqual(codeCacheCall.sourceCode, fooBarTsSource);
+  assertEqual(codeCacheCall.outputCode, fooBarTsOutput);
+  assertEqual(codeCacheCall.sourceMap, fooBarTsSourcemap);
   teardown();
 });
 
@@ -448,6 +519,29 @@ test(function compilerRunCircularDependency() {
   teardown();
 });
 
+test(function compilerLoadJsonModule() {
+  setup();
+  const factoryStack: string[] = [];
+  const configJsonDeps: string[] = [];
+  const configJsonFactory = () => {
+    factoryStack.push("configJson");
+    return JSON.parse(configJsonSource);
+  };
+  const loadConfigDeps = ["require", "exports", "./config.json"];
+  const loadConfigFactory = (_require, _exports, _config) => {
+    factoryStack.push("loadConfig");
+    assertEqual(_config, JSON.parse(configJsonSource));
+  };
+
+  mockDepsStack.push(configJsonDeps);
+  mockFactoryStack.push(configJsonFactory);
+  mockDepsStack.push(loadConfigDeps);
+  mockFactoryStack.push(loadConfigFactory);
+  compilerInstance.run("loadConfig.ts", "/root/project");
+  assertEqual(factoryStack, ["configJson", "loadConfig"]);
+  teardown();
+});
+
 test(function compilerResolveModule() {
   setup();
   const moduleMetaData = compilerInstance.resolveModule(
@@ -456,6 +550,7 @@ test(function compilerResolveModule() {
   );
   assertEqual(moduleMetaData.sourceCode, fooBazTsSource);
   assertEqual(moduleMetaData.outputCode, fooBazTsOutput);
+  assertEqual(moduleMetaData.sourceMap, fooBazTsSourcemap);
   assert(!moduleMetaData.hasRun);
   assert(!moduleMetaData.deps);
   assertEqual(moduleMetaData.exports, {});
@@ -507,18 +602,21 @@ test(function compilerGetModuleDependencies() {
 // TypeScript LanguageServiceHost APIs
 
 test(function compilerGetCompilationSettings() {
-  const result = compilerInstance.getCompilationSettings();
-  for (const key of [
+  const expectedKeys = [
     "allowJs",
+    "checkJs",
     "module",
     "outDir",
-    "inlineSourceMap",
-    "inlineSources",
+    "resolveJsonModule",
+    "sourceMap",
     "stripComments",
     "target"
-  ]) {
+  ];
+  const result = compilerInstance.getCompilationSettings();
+  for (const key of expectedKeys) {
     assert(key in result, `Expected "${key}" in compiler options.`);
   }
+  assertEqual(Object.keys(result).length, expectedKeys.length);
 });
 
 test(function compilerGetNewLine() {

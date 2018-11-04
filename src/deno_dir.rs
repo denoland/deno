@@ -83,19 +83,28 @@ impl DenoDir {
     self: &DenoDir,
     filename: &str,
     source_code: &str,
-  ) -> PathBuf {
+  ) -> (PathBuf, PathBuf) {
     let cache_key = source_code_hash(filename, source_code);
-    self.gen.join(cache_key + ".js")
+    (
+      self.gen.join(cache_key.to_string() + ".js"),
+      self.gen.join(cache_key.to_string() + ".js.map"),
+    )
   }
 
   fn load_cache(
     self: &DenoDir,
     filename: &str,
     source_code: &str,
-  ) -> std::io::Result<String> {
-    let path = self.cache_path(filename, source_code);
-    debug!("load_cache {}", path.display());
-    fs::read_to_string(&path)
+  ) -> Result<(String, String), std::io::Error> {
+    let (output_code, source_map) = self.cache_path(filename, source_code);
+    debug!(
+      "load_cache code: {} map: {}",
+      output_code.display(),
+      source_map.display()
+    );
+    let read_output_code = fs::read_to_string(&output_code)?;
+    let read_source_map = fs::read_to_string(&source_map)?;
+    Ok((read_output_code, read_source_map))
   }
 
   pub fn code_cache(
@@ -103,16 +112,19 @@ impl DenoDir {
     filename: &str,
     source_code: &str,
     output_code: &str,
+    source_map: &str,
   ) -> std::io::Result<()> {
-    let cache_path = self.cache_path(filename, source_code);
+    let (cache_path, source_map_path) = self.cache_path(filename, source_code);
     // TODO(ry) This is a race condition w.r.t to exists() -- probably should
     // create the file in exclusive mode. A worry is what might happen is there
     // are two processes and one reads the cache file while the other is in the
     // midst of writing it.
-    if cache_path.exists() {
+    if cache_path.exists() && source_map_path.exists() {
       Ok(())
     } else {
-      fs::write(cache_path, output_code.as_bytes())
+      fs::write(cache_path, output_code.as_bytes())?;
+      fs::write(source_map_path, source_map.as_bytes())?;
+      Ok(())
     }
   }
 
@@ -170,13 +182,14 @@ impl DenoDir {
         let path = Path::new(&filename);
         (fs::read_to_string(path)?, map_content_type(path, None))
       };
-      return Ok(CodeFetchOutput {
+      Ok(CodeFetchOutput {
         module_name: module_name.to_string(),
         filename: filename.to_string(),
         media_type,
         source_code,
         maybe_output_code: None,
-      });
+        maybe_source_map: None,
+      })
     };
     let default_attempt = use_extension("");
     if default_attempt.is_ok() {
@@ -233,12 +246,13 @@ impl DenoDir {
           Err(err.into())
         }
       }
-      Ok(output_code) => Ok(CodeFetchOutput {
+      Ok((output_code, source_map)) => Ok(CodeFetchOutput {
         module_name: out.module_name,
         filename: out.filename,
         media_type: out.media_type,
         source_code: out.source_code,
         maybe_output_code: Some(output_code),
+        maybe_source_map: Some(source_map),
       }),
     }
   }
@@ -293,7 +307,7 @@ impl DenoDir {
       || Path::new(&module_specifier).is_absolute()
     {
       parse_local_or_remote(&module_specifier)?
-    } else if containing_file.ends_with("/") {
+    } else if containing_file.ends_with('/') {
       let r = Url::from_directory_path(&containing_file);
       // TODO(ry) Properly handle error.
       if r.is_err() {
@@ -315,13 +329,13 @@ impl DenoDir {
       "https" => {
         module_name = j.to_string();
         filename = deno_fs::normalize_path(
-          get_cache_filename(self.deps_https.as_path(), j).as_ref(),
+          get_cache_filename(self.deps_https.as_path(), &j).as_ref(),
         )
       }
       "http" => {
         module_name = j.to_string();
         filename = deno_fs::normalize_path(
-          get_cache_filename(self.deps_http.as_path(), j).as_ref(),
+          get_cache_filename(self.deps_http.as_path(), &j).as_ref(),
         )
       }
       // TODO(kevinkassimo): change this to support other protocols than http
@@ -333,7 +347,7 @@ impl DenoDir {
   }
 }
 
-fn get_cache_filename(basedir: &Path, url: Url) -> PathBuf {
+fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
   let host = url.host_str().unwrap();
   let host_port = match url.port() {
     // Windows doesn't support ":" in filenames, so we represent port using a
@@ -354,7 +368,7 @@ fn get_cache_filename(basedir: &Path, url: Url) -> PathBuf {
 fn test_get_cache_filename() {
   let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
   let basedir = Path::new("/cache/dir/");
-  let cache_file = get_cache_filename(&basedir, url);
+  let cache_file = get_cache_filename(&basedir, &url);
   assert_eq!(
     cache_file,
     Path::new("/cache/dir/example.com_PORT1234/path/to/file.ts")
@@ -368,6 +382,7 @@ pub struct CodeFetchOutput {
   pub media_type: msg::MediaType,
   pub source_code: String,
   pub maybe_output_code: Option<String>,
+  pub maybe_source_map: Option<String>,
 }
 
 #[cfg(test)]
@@ -382,9 +397,14 @@ pub fn test_setup() -> (TempDir, DenoDir) {
 fn test_cache_path() {
   let (temp_dir, deno_dir) = test_setup();
   assert_eq!(
-    temp_dir
-      .path()
-      .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js"),
+    (
+      temp_dir
+        .path()
+        .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js"),
+      temp_dir
+        .path()
+        .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js.map")
+    ),
     deno_dir.cache_path("hello.ts", "1+2")
   );
 }
@@ -396,12 +416,18 @@ fn test_code_cache() {
   let filename = "hello.js";
   let source_code = "1+2";
   let output_code = "1+2 // output code";
-  let cache_path = deno_dir.cache_path(filename, source_code);
+  let source_map = "{}";
+  let (cache_path, source_map_path) =
+    deno_dir.cache_path(filename, source_code);
   assert!(
     cache_path.ends_with("gen/e8e3ee6bee4aef2ec63f6ec3db7fc5fdfae910ae.js")
   );
+  assert!(
+    source_map_path
+      .ends_with("gen/e8e3ee6bee4aef2ec63f6ec3db7fc5fdfae910ae.js.map")
+  );
 
-  let r = deno_dir.code_cache(filename, source_code, output_code);
+  let r = deno_dir.code_cache(filename, source_code, output_code, source_map);
   r.expect("code_cache error");
   assert!(cache_path.exists());
   assert_eq!(output_code, fs::read_to_string(&cache_path).unwrap());
@@ -788,13 +814,14 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
       // sometimes there is additional data after the media type in
       // Content-Type so we have to do a bit of manipulation so we are only
       // dealing with the actual media type
-      let ct_vector: Vec<&str> = content_type.split(";").collect();
+      let ct_vector: Vec<&str> = content_type.split(';').collect();
       let ct: &str = ct_vector.first().unwrap();
       match ct.to_lowercase().as_ref() {
         "application/typescript"
         | "text/typescript"
         | "video/vnd.dlna.mpeg-tts"
-        | "video/mp2t" => msg::MediaType::TypeScript,
+        | "video/mp2t"
+        | "application/x-typescript" => msg::MediaType::TypeScript,
         "application/javascript"
         | "text/javascript"
         | "application/ecmascript"
@@ -855,6 +882,10 @@ fn test_map_content_type() {
   );
   assert_eq!(
     map_content_type(Path::new("foo/bar"), Some("video/mp2t")),
+    msg::MediaType::TypeScript
+  );
+  assert_eq!(
+    map_content_type(Path::new("foo/bar"), Some("application/x-typescript")),
     msg::MediaType::TypeScript
   );
   assert_eq!(

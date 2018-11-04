@@ -8,6 +8,7 @@ use isolate::Isolate;
 use isolate::IsolateState;
 use isolate::Op;
 use msg;
+use msg_util;
 use resources;
 use resources::Resource;
 use version;
@@ -19,6 +20,7 @@ use futures::Poll;
 use hyper;
 use hyper::rt::{Future, Stream};
 use remove_dir_all::remove_dir_all;
+use resources::table_entries;
 use std;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
@@ -40,7 +42,7 @@ type OpResult = DenoResult<Buf>;
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
 type OpCreator =
-  fn(state: Arc<IsolateState>, base: &msg::Base, data: &'static mut [u8])
+  fn(state: &Arc<IsolateState>, base: &msg::Base, data: &'static mut [u8])
     -> Box<Op>;
 
 // Hopefully Rust optimizes this away.
@@ -82,7 +84,7 @@ pub fn dispatch(
       msg::Any::Dial => op_dial,
       msg::Any::Environ => op_env,
       msg::Any::Exit => op_exit,
-      msg::Any::FetchReq => op_fetch_req,
+      msg::Any::Fetch => op_fetch,
       msg::Any::Listen => op_listen,
       msg::Any::MakeTempDir => op_make_temp_dir,
       msg::Any::Metrics => op_metrics,
@@ -94,6 +96,7 @@ pub fn dispatch(
       msg::Any::Read => op_read,
       msg::Any::Remove => op_remove,
       msg::Any::Rename => op_rename,
+      msg::Any::Resources => op_resources,
       msg::Any::SetEnv => op_set_env,
       msg::Any::Shutdown => op_shutdown,
       msg::Any::Start => op_start,
@@ -107,7 +110,7 @@ pub fn dispatch(
         msg::enum_name_any(inner_type)
       )),
     };
-    op_creator(isolate.state.clone(), &base, data)
+    op_creator(&isolate.state.clone(), &base, data)
   };
 
   let boxed_op = Box::new(
@@ -151,11 +154,11 @@ pub fn dispatch(
     msg::enum_name_any(inner_type),
     base.sync()
   );
-  return (base.sync(), boxed_op);
+  (base.sync(), boxed_op)
 }
 
 fn op_exit(
-  _config: Arc<IsolateState>,
+  _config: &Arc<IsolateState>,
   base: &msg::Base,
   _data: &'static mut [u8],
 ) -> Box<Op> {
@@ -164,7 +167,7 @@ fn op_exit(
 }
 
 fn op_start(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -235,7 +238,7 @@ fn odd_future(err: DenoError) -> Box<Op> {
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn op_code_fetch(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -257,12 +260,12 @@ fn op_code_fetch(
       source_code: Some(builder.create_string(&out.source_code)),
       ..Default::default()
     };
-    match out.maybe_output_code {
-      Some(ref output_code) => {
-        msg_args.output_code = Some(builder.create_string(output_code));
-      }
-      _ => (),
-    };
+    if let Some(ref output_code) = out.maybe_output_code {
+      msg_args.output_code = Some(builder.create_string(output_code));
+    }
+    if let Some(ref source_map) = out.maybe_source_map {
+      msg_args.source_map = Some(builder.create_string(source_map));
+    }
     let inner = msg::CodeFetchRes::create(builder, &msg_args);
     Ok(serialize_response(
       cmd_id,
@@ -278,7 +281,7 @@ fn op_code_fetch(
 
 // https://github.com/denoland/deno/blob/golang/os.go#L156-L169
 fn op_code_cache(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -287,14 +290,17 @@ fn op_code_cache(
   let filename = inner.filename().unwrap();
   let source_code = inner.source_code().unwrap();
   let output_code = inner.output_code().unwrap();
+  let source_map = inner.source_map().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
-    state.dir.code_cache(filename, source_code, output_code)?;
+    state
+      .dir
+      .code_cache(filename, source_code, output_code, source_map)?;
     Ok(empty_buf())
   }()))
 }
 
 fn op_chdir(
-  _state: Arc<IsolateState>,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -302,7 +308,7 @@ fn op_chdir(
   let inner = base.inner_as_chdir().unwrap();
   let directory = inner.directory().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
-    let _result = std::env::set_current_dir(&directory)?;
+    std::env::set_current_dir(&directory)?;
     Ok(empty_buf())
   }()))
 }
@@ -324,7 +330,7 @@ fn op_set_timeout(
 }
 
 fn op_set_env(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -340,7 +346,7 @@ fn op_set_env(
 }
 
 fn op_env(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -353,26 +359,12 @@ fn op_env(
 
   let builder = &mut FlatBufferBuilder::new();
   let vars: Vec<_> = std::env::vars()
-    .map(|(key, value)| {
-      let key = builder.create_string(&key);
-      let value = builder.create_string(&value);
-
-      msg::EnvPair::create(
-        builder,
-        &msg::EnvPairArgs {
-          key: Some(key),
-          value: Some(value),
-          ..Default::default()
-        },
-      )
-    }).collect();
+    .map(|(key, value)| msg_util::serialize_key_value(builder, &key, &value))
+    .collect();
   let tables = builder.create_vector(&vars);
   let inner = msg::EnvironRes::create(
     builder,
-    &msg::EnvironResArgs {
-      map: Some(tables),
-      ..Default::default()
-    },
+    &msg::EnvironResArgs { map: Some(tables) },
   );
   ok_future(serialize_response(
     cmd_id,
@@ -385,18 +377,17 @@ fn op_env(
   ))
 }
 
-fn op_fetch_req(
-  state: Arc<IsolateState>,
+fn op_fetch(
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let inner = base.inner_as_fetch_req().unwrap();
+  let inner = base.inner_as_fetch().unwrap();
   let cmd_id = base.cmd_id();
   let id = inner.id();
   let url = inner.url().unwrap();
 
-  // FIXME use domain (or use this inside check_net)
   if let Err(e) = state.check_net(url) {
     return odd_future(e);
   }
@@ -406,7 +397,7 @@ fn op_fetch_req(
 
   debug!("Before fetch {}", url);
   let future = client.get(url).and_then(move |res| {
-    let status = res.status().as_u16() as i32;
+    let status = i32::from(res.status().as_u16());
     debug!("fetch {}", status);
 
     let headers = {
@@ -451,7 +442,6 @@ fn op_fetch_req(
           body: Some(body_off),
           header_key: Some(header_keys_off),
           header_value: Some(header_values_off),
-          ..Default::default()
         },
       );
 
@@ -480,7 +470,7 @@ where
     Ok(Ready(Ok(v))) => Ok(v.into()),
     Ok(Ready(Err(err))) => Err(err),
     Ok(NotReady) => Ok(NotReady),
-    Err(_) => panic!("blocking error"),
+    Err(_err) => panic!("blocking error"),
   }
 }
 
@@ -502,7 +492,7 @@ macro_rules! blocking {
 }
 
 fn op_make_temp_dir(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -536,7 +526,6 @@ fn op_make_temp_dir(
       builder,
       &msg::MakeTempDirResArgs {
         path: Some(path_off),
-        ..Default::default()
       },
     );
     Ok(serialize_response(
@@ -552,7 +541,7 @@ fn op_make_temp_dir(
 }
 
 fn op_mkdir(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -572,7 +561,7 @@ fn op_mkdir(
 }
 
 fn op_chmod(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -602,7 +591,7 @@ fn op_chmod(
 }
 
 fn op_open(
-  _state: Arc<IsolateState>,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -613,17 +602,12 @@ fn op_open(
   // TODO let perm = inner.perm();
 
   let op = tokio::fs::File::open(filename)
-    .map_err(|err| DenoError::from(err))
+    .map_err(DenoError::from)
     .and_then(move |fs_file| -> OpResult {
       let resource = resources::add_fs_file(fs_file);
       let builder = &mut FlatBufferBuilder::new();
-      let inner = msg::OpenRes::create(
-        builder,
-        &msg::OpenResArgs {
-          rid: resource.rid,
-          ..Default::default()
-        },
-      );
+      let inner =
+        msg::OpenRes::create(builder, &msg::OpenResArgs { rid: resource.rid });
       Ok(serialize_response(
         cmd_id,
         builder,
@@ -638,7 +622,7 @@ fn op_open(
 }
 
 fn op_close(
-  _state: Arc<IsolateState>,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -655,7 +639,7 @@ fn op_close(
 }
 
 fn op_shutdown(
-  _state: Arc<IsolateState>,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -681,7 +665,7 @@ fn op_shutdown(
 }
 
 fn op_read(
-  _state: Arc<IsolateState>,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -693,7 +677,7 @@ fn op_read(
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
       let op = resources::eager_read(resource, data)
-        .map_err(|err| DenoError::from(err))
+        .map_err(DenoError::from)
         .and_then(move |(_resource, _buf, nread)| {
           let builder = &mut FlatBufferBuilder::new();
           let inner = msg::ReadRes::create(
@@ -701,7 +685,6 @@ fn op_read(
             &msg::ReadResArgs {
               nread: nread as u32,
               eof: nread == 0,
-              ..Default::default()
             },
           );
           Ok(serialize_response(
@@ -720,7 +703,7 @@ fn op_read(
 }
 
 fn op_write(
-  _state: Arc<IsolateState>,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -732,14 +715,13 @@ fn op_write(
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
       let op = resources::eager_write(resource, data)
-        .map_err(|err| DenoError::from(err))
+        .map_err(DenoError::from)
         .and_then(move |(_resource, _buf, nwritten)| {
           let builder = &mut FlatBufferBuilder::new();
           let inner = msg::WriteRes::create(
             builder,
             &msg::WriteResArgs {
               nbyte: nwritten as u32,
-              ..Default::default()
             },
           );
           Ok(serialize_response(
@@ -758,7 +740,7 @@ fn op_write(
 }
 
 fn op_remove(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -777,12 +759,10 @@ fn op_remove(
     let metadata = fs::metadata(&path)?;
     if metadata.is_file() {
       fs::remove_file(&path)?;
+    } else if recursive {
+      remove_dir_all(&path)?;
     } else {
-      if recursive {
-        remove_dir_all(&path)?;
-      } else {
-        fs::remove_dir(&path)?;
-      }
+      fs::remove_dir(&path)?;
     }
     Ok(empty_buf())
   })
@@ -790,7 +770,7 @@ fn op_remove(
 
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
 fn op_read_file(
-  _config: Arc<IsolateState>,
+  _config: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -809,7 +789,6 @@ fn op_read_file(
       builder,
       &msg::ReadFileResArgs {
         data: Some(data_off),
-        ..Default::default()
       },
     );
     Ok(serialize_response(
@@ -825,7 +804,7 @@ fn op_read_file(
 }
 
 fn op_copy_file(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -867,17 +846,17 @@ macro_rules! to_seconds {
 }
 
 #[cfg(any(unix))]
-fn get_mode(perm: fs::Permissions) -> u32 {
+fn get_mode(perm: &fs::Permissions) -> u32 {
   perm.mode()
 }
 
 #[cfg(not(any(unix)))]
-fn get_mode(_perm: fs::Permissions) -> u32 {
+fn get_mode(_perm: &fs::Permissions) -> u32 {
   0
 }
 
 fn op_cwd(
-  _state: Arc<IsolateState>,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -888,13 +867,8 @@ fn op_cwd(
     let builder = &mut FlatBufferBuilder::new();
     let cwd =
       builder.create_string(&path.into_os_string().into_string().unwrap());
-    let inner = msg::CwdRes::create(
-      builder,
-      &msg::CwdResArgs {
-        cwd: Some(cwd),
-        ..Default::default()
-      },
-    );
+    let inner =
+      msg::CwdRes::create(builder, &msg::CwdResArgs { cwd: Some(cwd) });
     Ok(serialize_response(
       cmd_id,
       builder,
@@ -908,7 +882,7 @@ fn op_cwd(
 }
 
 fn op_stat(
-  _config: Arc<IsolateState>,
+  _config: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -936,7 +910,7 @@ fn op_stat(
         modified: to_seconds!(metadata.modified()),
         accessed: to_seconds!(metadata.accessed()),
         created: to_seconds!(metadata.created()),
-        mode: get_mode(metadata.permissions()),
+        mode: get_mode(&metadata.permissions()),
         has_mode: cfg!(target_family = "unix"),
         ..Default::default()
       },
@@ -955,7 +929,7 @@ fn op_stat(
 }
 
 fn op_read_dir(
-  _state: Arc<IsolateState>,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -996,7 +970,6 @@ fn op_read_dir(
       builder,
       &msg::ReadDirResArgs {
         entries: Some(entries),
-        ..Default::default()
       },
     );
     Ok(serialize_response(
@@ -1012,7 +985,7 @@ fn op_read_dir(
 }
 
 fn op_write_file(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -1032,7 +1005,7 @@ fn op_write_file(
 }
 
 fn op_rename(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -1052,7 +1025,7 @@ fn op_rename(
 }
 
 fn op_symlink(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -1081,7 +1054,7 @@ fn op_symlink(
 }
 
 fn op_read_link(
-  _state: Arc<IsolateState>,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -1099,7 +1072,6 @@ fn op_read_link(
       builder,
       &msg::ReadlinkResArgs {
         path: Some(path_off),
-        ..Default::default()
       },
     );
     Ok(serialize_response(
@@ -1115,7 +1087,7 @@ fn op_read_link(
 }
 
 fn op_truncate(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -1132,13 +1104,13 @@ fn op_truncate(
   blocking!(base.sync(), || {
     debug!("op_truncate {} {}", filename, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
-    f.set_len(len as u64)?;
+    f.set_len(u64::from(len))?;
     Ok(empty_buf())
   })
 }
 
 fn op_listen(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -1153,6 +1125,9 @@ fn op_listen(
   assert_eq!(network, "tcp");
   let address = inner.address().unwrap();
 
+  // Ignore this clippy warning until this issue is addressed:
+  // https://github.com/rust-lang-nursery/rust-clippy/issues/1684
+  #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
   Box::new(futures::future::result((move || {
     // TODO properly parse addr
     let addr = SocketAddr::from_str(address).unwrap();
@@ -1163,10 +1138,7 @@ fn op_listen(
     let builder = &mut FlatBufferBuilder::new();
     let inner = msg::ListenRes::create(
       builder,
-      &msg::ListenResArgs {
-        rid: resource.rid,
-        ..Default::default()
-      },
+      &msg::ListenResArgs { rid: resource.rid },
     );
     Ok(serialize_response(
       cmd_id,
@@ -1204,7 +1176,7 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
 }
 
 fn op_accept(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -1220,7 +1192,7 @@ fn op_accept(
     None => odd_future(errors::bad_resource()),
     Some(server_resource) => {
       let op = resources::eager_accept(server_resource)
-        .map_err(|err| DenoError::from(err))
+        .map_err(DenoError::from)
         .and_then(move |(tcp_stream, _socket_addr)| {
           new_conn(cmd_id, tcp_stream)
         });
@@ -1230,7 +1202,7 @@ fn op_accept(
 }
 
 fn op_dial(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -1254,7 +1226,7 @@ fn op_dial(
 }
 
 fn op_metrics(
-  state: Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
@@ -1272,7 +1244,6 @@ fn op_metrics(
       bytes_sent_control: metrics.bytes_sent_control,
       bytes_sent_data: metrics.bytes_sent_data,
       bytes_received: metrics.bytes_received,
-      ..Default::default()
     },
   );
   ok_future(serialize_response(
@@ -1281,6 +1252,50 @@ fn op_metrics(
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
       inner_type: msg::Any::MetricsRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_resources(
+  _state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+
+  let builder = &mut FlatBufferBuilder::new();
+  let serialized_resources = table_entries();
+
+  let res: Vec<_> = serialized_resources
+    .iter()
+    .map(|(key, value)| {
+      let repr = builder.create_string(value);
+
+      msg::Resource::create(
+        builder,
+        &msg::ResourceArgs {
+          rid: *key,
+          repr: Some(repr),
+        },
+      )
+    }).collect();
+
+  let resources = builder.create_vector(&res);
+  let inner = msg::ResourcesRes::create(
+    builder,
+    &msg::ResourcesResArgs {
+      resources: Some(resources),
+    },
+  );
+
+  ok_future(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::ResourcesRes,
       ..Default::default()
     },
   ))
