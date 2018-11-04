@@ -1,5 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as blob from "./blob";
+import * as file from "./file";
+import * as formdata from "./form_data";
 import * as console_ from "./console";
 import * as fetch_ from "./fetch";
 import { Headers } from "./headers";
@@ -44,3 +46,5 @@ window.fetch = fetch_.fetch;
 // runtime library
 window.Headers = Headers as domTypes.HeadersConstructor;
 window.Blob = blob.DenoBlob;
+window.File = file.DenoFile;
+window.FormData = formdata.FormData as domTypes.FormDataConstructor;

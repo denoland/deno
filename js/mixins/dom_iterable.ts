@@ -21,22 +21,27 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
   // Base class in a way where the Symbol `dataSymbol` is defined.  So the
   // runtime code works, but we do lose a little bit of type safety.
 
+  // Additionally, we have to not use .keys() nor .values() since the internal
+  // slot differs in type - some have a Map, which yields [K, V] in
+  // Symbol.iterator, and some have an Array, which yields V, in this case
+  // [K, V] too as they are arrays of tuples.
+
   // tslint:disable-next-line:variable-name
   const DomIterable = class extends Base {
     *entries(): IterableIterator<[K, V]> {
-      for (const entry of (this as any)[dataSymbol].entries()) {
+      for (const entry of (this as any)[dataSymbol]) {
         yield entry;
       }
     }
 
     *keys(): IterableIterator<K> {
-      for (const key of (this as any)[dataSymbol].keys()) {
+      for (const [key] of (this as any)[dataSymbol]) {
         yield key;
       }
     }
 
     *values(): IterableIterator<V> {
-      for (const value of (this as any)[dataSymbol].values()) {
+      for (const [, value] of (this as any)[dataSymbol]) {
         yield value;
       }
     }
@@ -47,7 +52,7 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
       thisArg?: any
     ): void {
       callbackfn = callbackfn.bind(thisArg == null ? window : Object(thisArg));
-      for (const [key, value] of (this as any)[dataSymbol].entries()) {
+      for (const [key, value] of (this as any)[dataSymbol]) {
         callbackfn(value, key, this);
       }
     }

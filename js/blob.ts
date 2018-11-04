@@ -97,6 +97,12 @@ function toUint8Arrays(
       ret.push(element[bytesSymbol]);
     } else if (element instanceof Uint8Array) {
       ret.push(element);
+    } else if (element instanceof Uint16Array) {
+      const uint8 = new Uint8Array(element.buffer);
+      ret.push(uint8);
+    } else if (element instanceof Uint32Array) {
+      const uint8 = new Uint8Array(element.buffer);
+      ret.push(uint8);
     } else if (ArrayBuffer.isView(element)) {
       // Convert view to Uint8Array.
       const uint8 = new Uint8Array(element.buffer);
@@ -105,6 +111,8 @@ function toUint8Arrays(
       // Create a new Uint8Array view for the given ArrayBuffer.
       const uint8 = new Uint8Array(element);
       ret.push(uint8);
+    } else {
+      ret.push(enc.encode(String(element)));
     }
   }
   return ret;
