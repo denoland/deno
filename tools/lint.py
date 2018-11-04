@@ -13,6 +13,7 @@ cpplint = os.path.join(third_party_path, "cpplint", "cpplint.py")
 tslint = os.path.join(third_party_path, "node_modules", "tslint", "bin",
                       "tslint")
 
+os.environ["DENO_BUILD_PATH"] = os.path.join(root_path, "out", "debug")
 os.chdir(root_path)
 run([
     "python", cpplint, "--filter=-build/include_subdir", "--repository=src",
@@ -24,3 +25,5 @@ run([
     "node", tslint, "./js/**/*_test.ts", "./tests/**/*.ts", "--exclude",
     "**/gen/**/*.ts", "--project", "tsconfig.json"
 ])
+
+run(["cargo", "clippy"])
