@@ -34,7 +34,7 @@ type ReferrerPolicy =
   | "origin-when-cross-origin"
   | "unsafe-url";
 export type BlobPart = BufferSource | Blob | string;
-type FormDataEntryValue = File | string;
+export type FormDataEntryValue = File | string;
 export type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
@@ -173,7 +173,7 @@ interface Event {
   readonly NONE: number;
 }
 
-interface File extends Blob {
+export interface File extends Blob {
   readonly lastModified: number;
   readonly name: string;
 }
@@ -242,22 +242,18 @@ interface ReadableStreamReader {
   releaseLock(): void;
 }
 
-export interface FormData {
+export interface FormData extends DomIterable<string, FormDataEntryValue> {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
   getAll(name: string): FormDataEntryValue[];
   has(name: string): boolean;
   set(name: string, value: string | Blob, fileName?: string): void;
-  forEach(
-    callbackfn: (
-      value: FormDataEntryValue,
-      key: string,
-      parent: FormData
-    ) => void,
-    // tslint:disable-next-line:no-any
-    thisArg?: any
-  ): void;
+}
+
+export interface FormDataConstructor {
+  new (): FormData;
+  prototype: FormData;
 }
 
 /** A blob object represents a file-like object of immutable, raw data. */
