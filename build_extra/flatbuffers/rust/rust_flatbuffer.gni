@@ -5,9 +5,7 @@ import("//build_extra/rust/rust.gni")
 import("//build_extra/flatbuffers/flatbuffer.gni")
 
 template("rust_flatbuffer") {
-  action_name = "${target_name}_gen"
-  source_set_name = target_name
-  compiled_action_foreach(action_name) {
+  compiled_action_foreach(target_name) {
     tool = "$flatbuffers_build_location:flatc"
 
     sources = invoker.sources
@@ -31,14 +29,5 @@ template("rust_flatbuffer") {
     if (defined(invoker.deps)) {
       deps += invoker.deps
     }
-  }
-
-  rust_crate(source_set_name) {
-    sources = get_target_outputs(":$action_name")
-    source_root = sources[0]
-    deps = [
-      ":$action_name",
-    ]
-    extern = [ "//build_extra/flatbuffers/rust:flatbuffers" ]
   }
 }

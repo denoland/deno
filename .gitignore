@@ -1,5 +1,6 @@
 # build
 /out/
+/target/
 *.pyc
 gclient_config.py_entries
 Cargo.lock
@@ -8,8 +9,6 @@ yarn.lock
 node_modules
 # editor files
 .idea
-# RLS generated files
-/target/
 # export dir for gh-pages
 /gh-pages
 # temp benchmark data

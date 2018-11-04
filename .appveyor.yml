@@ -8,14 +8,15 @@ clone_depth: 1
 
 environment:
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+  CARGO_HOME: $(USERPROFILE)\.cargo
+  CARGO_TARGET_DIR: $(APPVEYOR_BUILD_FOLDER)\target
   DENO_BUILD_MODE: release
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\release
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   MTIME_CACHE_DB: $(APPVEYOR_BUILD_FOLDER)\mtime_cache.xml
-  CARGO_HOME: $(USERPROFILE)\.cargo
+  RELEASE_ARTIFACT: deno_win_x64.zip
   RUSTUP_HOME: $(USERPROFILE)\.rustup
   RUST_BACKTRACE: 1
-  RELEASE_ARTIFACT: deno_win_x64.zip
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
   #   -t7z  : Use '7z' format.
@@ -210,7 +211,7 @@ environment:
       # Get-SaveCache returns $true if the cache will be saved at the end.
       function Get-SaveCache {
         -not $env:APPVEYOR_PULL_REQUEST_NUMBER -and
-        -not $env:APPVEYOR_CACHE_SKIP_SAVE -eq "true"
+        -not ($env:APPVEYOR_CACHE_SKIP_SAVE -eq "true")
       }
 
 for:
@@ -223,8 +224,6 @@ for:
       APPVEYOR_CACHE_SKIP_SAVE: true
 
 cache:
-  # Python packages installed with `pip --user`.
-  - $(APPDATA)\Python
   # Rust stuff.
   - $(CARGO_HOME)
   - $(RUSTUP_HOME)
@@ -235,6 +234,7 @@ cache:
   # Cache file mtimes in the main git repo, also to enable incremental builds.
   - $(MTIME_CACHE_DB)
   # Build incrementally.
+  - $(CARGO_TARGET_DIR)
   - $(DENO_BUILD_PATH)
 
 init:
@@ -277,42 +277,16 @@ install:
   # Make sure the right Python version is in PATH, and others are not.
   - ps: |-
       # Remove the wrong Python version(s) from PATH.
-      $p = $env:PATH -split ";" | where {
-             -not (Test-Path "$_\python.exe") -and
-             -not (Test-Path "$_\pip.exe")
-           }
-      # Add binary dir for `pip --user` packages.
-      $p += "$env:APPDATA\Python\Scripts"
+      $p = $env:PATH -split ";" | where { -not (Test-Path "$_\python.exe") }
       # Add python27-x64.
       $p += "C:\Python27-x64"
-      $p += "C:\Python27-x64\Scripts"
       $env:PATH = $p -join ";"
-
-  # Pip on Appveyor is too old. Install a recent version in our user dir.
-  - python -m pip install --upgrade --user --no-cache-dir pip
-
-  # Install Python packages.
-  - pip install --upgrade --user --no-cache-dir pywin32 yapf
 
   # Add Rust/Cargo to PATH.
   - ps: $env:PATH += ";$env:CARGO_HOME\bin"
 
-  # Look for Rust updates.
-  # * If there are no updates, rustup will exit cleanly.
-  # * If there are updates, rustup will attempt to install them, and then blow
-  #   up because we removed the 'rust-docs' component.
-  # * The actual update is done by removing and reinstalling with rustup-init.
-  - ps: |-
-      if (Get-SaveCache -and (Test-Path $env:CARGO_HOME)) {
-        try {
-          Exec -NoNewLines { & rustup update stable-x86_64-pc-windows-msvc }
-        } catch {
-          Delete-Tree $env:CARGO_HOME, $env:RUSTUP_HOME
-        }
-      }
-
-  # Install or reinstall Rust via rustup-init.
-  # * After install/update, the rustup directory is very big, with many files,
+  # Install Rust via rustup-init.
+  # * After install, the rustup directory is very big, with many files,
   #   slowing down cache save/restore a lot, so we remove unnecessary stuff.
   # * TODO: Use `rustup component remove docs` instead, when this issue
   #   is resolved: https://github.com/rust-lang-nursery/rustup.rs/issues/998.
@@ -321,7 +295,9 @@ install:
       if (-not (Test-Path $env:CARGO_HOME)) {
         Invoke-WebRequest -Uri "https://win.rustup.rs" `
                           -OutFile "$env:TEMP\rustup-init.exe"
-        Exec -NoNewLines { & "$env:TEMP\rustup-init.exe" -y }
+        Exec -NoNewLines {
+          & "$env:TEMP\rustup-init.exe" -y --default-toolchain 1.30.0
+        }
         Delete-Tree @(
           "$env:RUSTUP_HOME\downloads",
           "$env:RUSTUP_HOME\tmp",
@@ -338,13 +314,13 @@ install:
         "print 'Python', version") -join "`n" | & python -
 
   # Log some more versions.
-  - pip --version
   - rustc --version
   - cargo --version
 
 before_build:
   # Mark all files in the build dir 'not needed' until proven otherwise.
   # TODO: also track files in third_party that aren't checked into the repo.
+  # TODO: also track files in $CARGO_TARGET_DIR.
   - ps: Start-TraceFilesNeeded $env:DENO_BUILD_PATH -Recurse
 
   # Download clang and gn, generate ninja files.
@@ -362,6 +338,8 @@ before_build:
 build_script:
   - python tools\build.py
   - ps: Set-FilesNeeded -Auto -Reason "Build finished"
+  - cargo check --release
+  - ps: Set-FilesNeeded -Auto -Reason "Cargo check finished"
 
 test_script:
   - python tools\lint.py

@@ -1,13 +1,14 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use errors;
-use errors::permission_denied;
 use errors::{DenoError, DenoResult, ErrorKind};
 use fs as deno_fs;
+use http_util;
 use isolate::Buf;
 use isolate::Isolate;
 use isolate::IsolateState;
 use isolate::Op;
 use msg;
+use msg_util;
 use resources;
 use resources::Resource;
 use version;
@@ -18,8 +19,8 @@ use futures::future::poll_fn;
 use futures::Poll;
 use hyper;
 use hyper::rt::{Future, Stream};
-use hyper::Client;
 use remove_dir_all::remove_dir_all;
+use resources::table_entries;
 use std;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
@@ -74,6 +75,7 @@ pub fn dispatch(
     let op_creator: OpCreator = match inner_type {
       msg::Any::Accept => op_accept,
       msg::Any::Chdir => op_chdir,
+      msg::Any::Chmod => op_chmod,
       msg::Any::Close => op_close,
       msg::Any::CodeCache => op_code_cache,
       msg::Any::CodeFetch => op_code_fetch,
@@ -82,7 +84,7 @@ pub fn dispatch(
       msg::Any::Dial => op_dial,
       msg::Any::Environ => op_env,
       msg::Any::Exit => op_exit,
-      msg::Any::FetchReq => op_fetch_req,
+      msg::Any::Fetch => op_fetch,
       msg::Any::Listen => op_listen,
       msg::Any::MakeTempDir => op_make_temp_dir,
       msg::Any::Metrics => op_metrics,
@@ -94,6 +96,7 @@ pub fn dispatch(
       msg::Any::Read => op_read,
       msg::Any::Remove => op_remove,
       msg::Any::Rename => op_rename,
+      msg::Any::Resources => op_resources,
       msg::Any::SetEnv => op_set_env,
       msg::Any::Shutdown => op_shutdown,
       msg::Any::Start => op_start,
@@ -253,15 +256,16 @@ fn op_code_fetch(
     let mut msg_args = msg::CodeFetchResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
+      media_type: out.media_type,
       source_code: Some(builder.create_string(&out.source_code)),
       ..Default::default()
     };
-    match out.maybe_output_code {
-      Some(ref output_code) => {
-        msg_args.output_code = Some(builder.create_string(output_code));
-      }
-      _ => (),
-    };
+    if let Some(ref output_code) = out.maybe_output_code {
+      msg_args.output_code = Some(builder.create_string(output_code));
+    }
+    if let Some(ref source_map) = out.maybe_source_map {
+      msg_args.source_map = Some(builder.create_string(source_map));
+    }
     let inner = msg::CodeFetchRes::create(builder, &msg_args);
     Ok(serialize_response(
       cmd_id,
@@ -286,8 +290,11 @@ fn op_code_cache(
   let filename = inner.filename().unwrap();
   let source_code = inner.source_code().unwrap();
   let output_code = inner.output_code().unwrap();
+  let source_map = inner.source_map().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
-    state.dir.code_cache(filename, source_code, output_code)?;
+    state
+      .dir
+      .code_cache(filename, source_code, output_code, source_map)?;
     Ok(empty_buf())
   }()))
 }
@@ -331,11 +338,9 @@ fn op_set_env(
   let inner = base.inner_as_set_env().unwrap();
   let key = inner.key().unwrap();
   let value = inner.value().unwrap();
-
-  if !state.flags.allow_env {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_env() {
+    return odd_future(e);
   }
-
   std::env::set_var(key, value);
   ok_future(empty_buf())
 }
@@ -348,25 +353,14 @@ fn op_env(
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
-  if !state.flags.allow_env {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_env() {
+    return odd_future(e);
   }
 
   let builder = &mut FlatBufferBuilder::new();
   let vars: Vec<_> = std::env::vars()
-    .map(|(key, value)| {
-      let key = builder.create_string(&key);
-      let value = builder.create_string(&value);
-
-      msg::EnvPair::create(
-        builder,
-        &msg::EnvPairArgs {
-          key: Some(key),
-          value: Some(value),
-          ..Default::default()
-        },
-      )
-    }).collect();
+    .map(|(key, value)| msg_util::serialize_key_value(builder, &key, &value))
+    .collect();
   let tables = builder.create_vector(&vars);
   let inner = msg::EnvironRes::create(
     builder,
@@ -386,23 +380,23 @@ fn op_env(
   ))
 }
 
-fn op_fetch_req(
+fn op_fetch(
   state: Arc<IsolateState>,
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let inner = base.inner_as_fetch_req().unwrap();
+  let inner = base.inner_as_fetch().unwrap();
   let cmd_id = base.cmd_id();
   let id = inner.id();
   let url = inner.url().unwrap();
 
-  if !state.flags.allow_net {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_net(url) {
+    return odd_future(e);
   }
 
   let url = url.parse::<hyper::Uri>().unwrap();
-  let client = Client::new();
+  let client = http_util::get_client();
 
   debug!("Before fetch {}", url);
   let future = client.get(url).and_then(move |res| {
@@ -511,8 +505,9 @@ fn op_make_temp_dir(
   let inner = base.inner_as_make_temp_dir().unwrap();
   let cmd_id = base.cmd_id();
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  // FIXME
+  if let Err(e) = state.check_write("make_temp") {
+    return odd_future(e);
   }
 
   let dir = inner.dir().map(PathBuf::from);
@@ -560,13 +555,42 @@ fn op_mkdir(
   let mode = inner.mode();
   let path = String::from(inner.path().unwrap());
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_write(&path) {
+    return odd_future(e);
   }
-
   blocking!(base.sync(), || {
     debug!("op_mkdir {}", path);
     deno_fs::mkdir(Path::new(&path), mode)?;
+    Ok(empty_buf())
+  })
+}
+
+fn op_chmod(
+  state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_chmod().unwrap();
+  let _mode = inner.mode();
+  let path = String::from(inner.path().unwrap());
+
+  if let Err(e) = state.check_write(&path) {
+    return odd_future(e);
+  }
+
+  blocking!(base.sync(), || {
+    debug!("op_chmod {}", &path);
+    let path = PathBuf::from(&path);
+    // Still check file/dir exists on windows
+    let _metadata = fs::metadata(&path)?;
+    // Only work in unix
+    #[cfg(any(unix))]
+    {
+      let mut permissions = _metadata.permissions();
+      permissions.set_mode(_mode);
+      fs::set_permissions(&path, permissions)?;
+    }
     Ok(empty_buf())
   })
 }
@@ -734,11 +758,14 @@ fn op_remove(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_remove().unwrap();
-  let path = PathBuf::from(inner.path().unwrap());
+  let path_ = inner.path().unwrap();
+  let path = PathBuf::from(path_);
   let recursive = inner.recursive();
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+
+  if let Err(e) = state.check_write(path.to_str().unwrap()) {
+    return odd_future(e);
   }
+
   blocking!(base.sync(), || {
     debug!("op_remove {}", path.display());
     let metadata = fs::metadata(&path)?;
@@ -799,10 +826,11 @@ fn op_copy_file(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_copy_file().unwrap();
   let from = PathBuf::from(inner.from().unwrap());
-  let to = PathBuf::from(inner.to().unwrap());
+  let to_ = inner.to().unwrap();
+  let to = PathBuf::from(to_);
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_write(&to_) {
+    return odd_future(e);
   }
 
   debug!("op_copy_file {} {}", from.display(), to.display());
@@ -983,13 +1011,12 @@ fn op_write_file(
   data: &'static mut [u8],
 ) -> Box<Op> {
   let inner = base.inner_as_write_file().unwrap();
-
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
-  }
-
   let filename = String::from(inner.filename().unwrap());
   let perm = inner.perm();
+
+  if let Err(e) = state.check_write(&filename) {
+    return odd_future(e);
+  }
 
   blocking!(base.sync(), || -> OpResult {
     debug!("op_write_file {} {}", filename, data.len());
@@ -1004,12 +1031,13 @@ fn op_rename(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
-  }
   let inner = base.inner_as_rename().unwrap();
   let oldpath = PathBuf::from(inner.oldpath().unwrap());
-  let newpath = PathBuf::from(inner.newpath().unwrap());
+  let newpath_ = inner.newpath().unwrap();
+  let newpath = PathBuf::from(newpath_);
+  if let Err(e) = state.check_write(&newpath_) {
+    return odd_future(e);
+  }
   blocking!(base.sync(), || -> OpResult {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     fs::rename(&oldpath, &newpath)?;
@@ -1023,8 +1051,13 @@ fn op_symlink(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
+  let inner = base.inner_as_symlink().unwrap();
+  let oldname = PathBuf::from(inner.oldname().unwrap());
+  let newname_ = inner.newname().unwrap();
+  let newname = PathBuf::from(newname_);
+
+  if let Err(e) = state.check_write(&newname_) {
+    return odd_future(e);
   }
   // TODO Use type for Windows.
   if cfg!(windows) {
@@ -1033,10 +1066,6 @@ fn op_symlink(
       "Not implemented".to_string(),
     ));
   }
-
-  let inner = base.inner_as_symlink().unwrap();
-  let oldname = PathBuf::from(inner.oldname().unwrap());
-  let newname = PathBuf::from(inner.newname().unwrap());
   blocking!(base.sync(), || -> OpResult {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
@@ -1086,13 +1115,14 @@ fn op_truncate(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
 
-  if !state.flags.allow_write {
-    return odd_future(permission_denied());
-  }
-
   let inner = base.inner_as_truncate().unwrap();
   let filename = String::from(inner.name().unwrap());
   let len = inner.len();
+
+  if let Err(e) = state.check_write(&filename) {
+    return odd_future(e);
+  }
+
   blocking!(base.sync(), || {
     debug!("op_truncate {} {}", filename, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
@@ -1107,8 +1137,8 @@ fn op_listen(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_net {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_net("listen") {
+    return odd_future(e);
   }
 
   let cmd_id = base.cmd_id();
@@ -1173,10 +1203,9 @@ fn op_accept(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_net {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_net("accept") {
+    return odd_future(e);
   }
-
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_accept().unwrap();
   let server_rid = inner.rid();
@@ -1200,10 +1229,9 @@ fn op_dial(
   data: &'static mut [u8],
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if !state.flags.allow_net {
-    return odd_future(permission_denied());
+  if let Err(e) = state.check_net("dial") {
+    return odd_future(e);
   }
-
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_dial().unwrap();
   let network = inner.network().unwrap();
@@ -1247,6 +1275,52 @@ fn op_metrics(
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
       inner_type: msg::Any::MetricsRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_resources(
+  _state: Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+
+  let builder = &mut FlatBufferBuilder::new();
+  let serialized_resources = table_entries();
+
+  let res: Vec<_> = serialized_resources
+    .iter()
+    .map(|(key, value)| {
+      let repr = builder.create_string(value);
+
+      msg::Resource::create(
+        builder,
+        &msg::ResourceArgs {
+          rid: key.clone(),
+          repr: Some(repr),
+          ..Default::default()
+        },
+      )
+    }).collect();
+
+  let resources = builder.create_vector(&res);
+  let inner = msg::ResourcesRes::create(
+    builder,
+    &msg::ResourcesResArgs {
+      resources: Some(resources),
+      ..Default::default()
+    },
+  );
+
+  ok_future(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::ResourcesRes,
       ..Default::default()
     },
   ))

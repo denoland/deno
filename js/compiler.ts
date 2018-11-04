@@ -1,5 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as ts from "typescript";
+import { MediaType } from "gen/msg_generated";
 import { assetSourceCode } from "./assets";
 // tslint:disable-next-line:no-circular-imports
 import * as deno from "./deno";
@@ -48,6 +49,8 @@ type ModuleSpecifier = string;
 type OutputCode = string;
 /** The original source code */
 type SourceCode = string;
+/** The output source map */
+type SourceMap = string;
 
 /** Abstraction of the APIs required from the `os` module so they can be
  * easily mocked.
@@ -76,7 +79,7 @@ export interface Ts {
  */
 export class ModuleMetaData implements ts.IScriptSnapshot {
   public deps?: ModuleFileName[];
-  public readonly exports = {};
+  public exports = {};
   public factory?: AmdFactory;
   public gatheringDeps = false;
   public hasRun = false;
@@ -85,8 +88,10 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
   constructor(
     public readonly moduleId: ModuleId,
     public readonly fileName: ModuleFileName,
+    public readonly mediaType: MediaType,
     public readonly sourceCode: SourceCode = "",
-    public outputCode: OutputCode = ""
+    public outputCode: OutputCode = "",
+    public sourceMap: SourceMap = ""
   ) {
     if (outputCode !== "" || fileName.endsWith(".d.ts")) {
       this.scriptVersion = "1";
@@ -105,6 +110,32 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
     // Required `IScriptSnapshot` API, but not implemented/needed in deno
     return undefined;
   }
+}
+
+function getExtension(
+  fileName: ModuleFileName,
+  mediaType: MediaType
+): ts.Extension | undefined {
+  switch (mediaType) {
+    case MediaType.JavaScript:
+      return ts.Extension.Js;
+    case MediaType.TypeScript:
+      return fileName.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts;
+    case MediaType.Json:
+      return ts.Extension.Json;
+    case MediaType.Unknown:
+    default:
+      return undefined;
+  }
+}
+
+/** Generate output code for a provided JSON string along with its source. */
+export function jsonAmdTemplate(
+  jsonString: string,
+  sourceFileName: string
+): OutputCode {
+  // tslint:disable-next-line:max-line-length
+  return `define([], function() { return JSON.parse(\`${jsonString}\`); });\n//# sourceURL=${sourceFileName}`;
 }
 
 /** A singleton class that combines the TypeScript Language Service host API
@@ -131,13 +162,13 @@ export class DenoCompiler
   >();
   // TODO ideally this are not static and can be influenced by command line
   // arguments
-  private readonly _options: Readonly<ts.CompilerOptions> = {
+  private readonly _options: ts.CompilerOptions = {
     allowJs: true,
+    checkJs: true,
     module: ts.ModuleKind.AMD,
     outDir: "$deno$",
-    // TODO https://github.com/denoland/deno/issues/23
-    inlineSourceMap: true,
-    inlineSources: true,
+    resolveJsonModule: true,
+    sourceMap: true,
     stripComments: true,
     target: ts.ScriptTarget.ESNext
   };
@@ -177,7 +208,15 @@ export class DenoCompiler
       );
       assert(moduleMetaData.hasRun === false, "Module has already been run.");
       // asserts not tracked by TypeScripts, so using not null operator
-      moduleMetaData.factory!(...this._getFactoryArguments(moduleMetaData));
+      const exports = moduleMetaData.factory!(
+        ...this._getFactoryArguments(moduleMetaData)
+      );
+      // For JSON module support and potential future features.
+      // TypeScript always imports `exports` and mutates it directly, but the
+      // AMD specification allows values to be returned from the factory.
+      if (exports != null) {
+        moduleMetaData.exports = exports;
+      }
       moduleMetaData.hasRun = true;
     }
   }
@@ -319,17 +358,6 @@ export class DenoCompiler
     return undefined;
   }
 
-  /** Resolve the `fileName` for a given `moduleSpecifier` and
-   * `containingFile`
-   */
-  private _resolveModuleName(
-    moduleSpecifier: ModuleSpecifier,
-    containingFile: ContainingFile
-  ): ModuleFileName | undefined {
-    const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
-    return moduleMetaData ? moduleMetaData.fileName : undefined;
-  }
-
   /** Caches the resolved `fileName` in relationship to the `moduleSpecifier`
    * and `containingFile` in order to reduce calls to the privileged side
    * to retrieve the contents of a module.
@@ -357,6 +385,7 @@ export class DenoCompiler
    * compiler instance.
    */
   private _setupSourceMaps(): void {
+    let lastModule: ModuleMetaData | undefined;
     sourceMaps.install({
       installPrepareStackTrace: true,
       getGeneratedContents: (fileName: string): string | RawSourceMap => {
@@ -368,13 +397,25 @@ export class DenoCompiler
           return libdeno.mainSourceMap;
         } else if (fileName === "deno_main.js") {
           return "";
-        } else {
+        } else if (!fileName.endsWith(".map")) {
           const moduleMetaData = this._moduleMetaDataMap.get(fileName);
           if (!moduleMetaData) {
-            this._log("compiler.getGeneratedContents cannot find", fileName);
+            lastModule = undefined;
             return "";
           }
+          lastModule = moduleMetaData;
           return moduleMetaData.outputCode;
+        } else {
+          if (lastModule && lastModule.sourceMap) {
+            // Assuming the the map will always be asked for after the source
+            // code.
+            const { sourceMap } = lastModule;
+            lastModule = undefined;
+            return sourceMap;
+          } else {
+            // Errors thrown here are caught by source-map.
+            throw new Error(`Unable to find source map: "${fileName}"`);
+          }
         }
       }
     });
@@ -398,43 +439,74 @@ export class DenoCompiler
     if (!recompile && moduleMetaData.outputCode) {
       return moduleMetaData.outputCode;
     }
-    const { fileName, sourceCode, moduleId } = moduleMetaData;
+    const { fileName, sourceCode, mediaType, moduleId } = moduleMetaData;
     console.warn("Compiling", moduleId);
-    const service = this._service;
-    const output = service.getEmitOutput(fileName);
-
-    // Get the relevant diagnostics - this is 3x faster than
-    // `getPreEmitDiagnostics`.
-    const diagnostics = [
-      ...service.getCompilerOptionsDiagnostics(),
-      ...service.getSyntacticDiagnostics(fileName),
-      ...service.getSemanticDiagnostics(fileName)
-    ];
-    if (diagnostics.length > 0) {
-      const errMsg = this._ts.formatDiagnosticsWithColorAndContext(
-        diagnostics,
-        this
+    // Instead of using TypeScript to transpile JSON modules, we will just do
+    // it directly.
+    if (mediaType === MediaType.Json) {
+      moduleMetaData.outputCode = jsonAmdTemplate(sourceCode, fileName);
+    } else {
+      const service = this._service;
+      assert(
+        mediaType === MediaType.TypeScript || mediaType === MediaType.JavaScript
       );
-      console.log(errMsg);
-      // All TypeScript errors are terminal for deno
-      this._os.exit(1);
+      const output = service.getEmitOutput(fileName);
+
+      // Get the relevant diagnostics - this is 3x faster than
+      // `getPreEmitDiagnostics`.
+      const diagnostics = [
+        // TypeScript is overly opinionated that only CommonJS modules kinds can
+        // support JSON imports.  Allegedly this was fixed in
+        // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
+        // so we will ignore complaints about this compiler setting.
+        ...service
+          .getCompilerOptionsDiagnostics()
+          .filter(diagnostic => diagnostic.code !== 5070),
+        ...service.getSyntacticDiagnostics(fileName),
+        ...service.getSemanticDiagnostics(fileName)
+      ];
+      if (diagnostics.length > 0) {
+        const errMsg = this._ts.formatDiagnosticsWithColorAndContext(
+          diagnostics,
+          this
+        );
+        console.log(errMsg);
+        // All TypeScript errors are terminal for deno
+        this._os.exit(1);
+      }
+
+      assert(
+        !output.emitSkipped,
+        "The emit was skipped for an unknown reason."
+      );
+
+      assert(
+        output.outputFiles.length === 2,
+        `Expected 2 files to be emitted, got ${output.outputFiles.length}.`
+      );
+
+      const [sourceMapFile, outputFile] = output.outputFiles;
+      assert(
+        sourceMapFile.name.endsWith(".map"),
+        "Expected first emitted file to be a source map"
+      );
+      assert(
+        outputFile.name.endsWith(".js"),
+        "Expected second emitted file to be JavaScript"
+      );
+      moduleMetaData.outputCode = `${
+        outputFile.text
+      }\n//# sourceURL=${fileName}`;
+      moduleMetaData.sourceMap = sourceMapFile.text;
     }
 
-    assert(!output.emitSkipped, "The emit was skipped for an unknown reason.");
-
-    // Currently we are inlining source maps, there should be only 1 output file
-    // See: https://github.com/denoland/deno/issues/23
-    assert(
-      output.outputFiles.length === 1,
-      "Only single file should be output."
-    );
-
-    const [outputFile] = output.outputFiles;
-    const outputCode = (moduleMetaData.outputCode = `${
-      outputFile.text
-    }\n//# sourceURL=${fileName}`);
     moduleMetaData.scriptVersion = "1";
-    this._os.codeCache(fileName, sourceCode, outputCode);
+    this._os.codeCache(
+      fileName,
+      sourceCode,
+      moduleMetaData.outputCode,
+      moduleMetaData.sourceMap
+    );
     return moduleMetaData.outputCode;
   }
 
@@ -479,9 +551,11 @@ export class DenoCompiler
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
       return this._moduleMetaDataMap.get(fileName)!;
     }
-    let moduleId: ModuleId;
-    let sourceCode: SourceCode;
-    let outputCode: OutputCode | null;
+    let moduleId: ModuleId | undefined;
+    let mediaType = MediaType.Unknown;
+    let sourceCode: SourceCode | undefined;
+    let outputCode: OutputCode | undefined;
+    let sourceMap: SourceMap | undefined;
     if (
       moduleSpecifier.startsWith(ASSETS) ||
       containingFile.startsWith(ASSETS)
@@ -492,32 +566,50 @@ export class DenoCompiler
       moduleId = moduleSpecifier.split("/").pop()!;
       const assetName = moduleId.includes(".") ? moduleId : `${moduleId}.d.ts`;
       assert(assetName in assetSourceCode, `No such asset "${assetName}"`);
+      mediaType = MediaType.TypeScript;
       sourceCode = assetSourceCode[assetName];
       fileName = `${ASSETS}/${assetName}`;
       outputCode = "";
+      sourceMap = "";
     } else {
       // We query Rust with a CodeFetch message. It will load the sourceCode,
       // and if there is any outputCode cached, will return that as well.
       const fetchResponse = this._os.codeFetch(moduleSpecifier, containingFile);
-      moduleId = fetchResponse.moduleName!;
-      fileName = fetchResponse.filename!;
-      sourceCode = fetchResponse.sourceCode!;
-      outputCode = fetchResponse.outputCode!;
+      moduleId = fetchResponse.moduleName;
+      fileName = fetchResponse.filename;
+      mediaType = fetchResponse.mediaType;
+      sourceCode = fetchResponse.sourceCode;
+      outputCode = fetchResponse.outputCode;
+      sourceMap = fetchResponse.sourceMap;
     }
-    assert(sourceCode!.length > 0);
-    this._log("resolveModule sourceCode length:", sourceCode.length);
-    this._log("resolveModule has outputCode:", outputCode! != null);
-    this._setFileName(moduleSpecifier, containingFile, fileName);
+    assert(moduleId != null, "No module ID.");
+    assert(fileName != null, "No file name.");
+    assert(sourceCode ? sourceCode.length > 0 : false, "No source code.");
+    assert(
+      mediaType !== MediaType.Unknown,
+      `Unknown media type for: "${moduleSpecifier}" from "${containingFile}".`
+    );
+    this._log(
+      "resolveModule sourceCode length:",
+      sourceCode && sourceCode.length
+    );
+    this._log("resolveModule has outputCode:", outputCode != null);
+    this._log("resolveModule has source map:", sourceMap != null);
+    this._log("resolveModule has media type:", MediaType[mediaType]);
+    // fileName is asserted above, but TypeScript does not track so not null
+    this._setFileName(moduleSpecifier, containingFile, fileName!);
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
       return this._moduleMetaDataMap.get(fileName)!;
     }
     const moduleMetaData = new ModuleMetaData(
-      moduleId,
-      fileName,
+      moduleId!,
+      fileName!,
+      mediaType,
       sourceCode,
-      outputCode
+      outputCode,
+      sourceMap
     );
-    this._moduleMetaDataMap.set(fileName, moduleMetaData);
+    this._moduleMetaDataMap.set(fileName!, moduleMetaData);
     return moduleMetaData;
   }
 
@@ -563,16 +655,20 @@ export class DenoCompiler
 
   getScriptKind(fileName: ModuleFileName): ts.ScriptKind {
     this._log("getScriptKind()", fileName);
-    const suffix = fileName.substr(fileName.lastIndexOf(".") + 1);
-    switch (suffix) {
-      case "ts":
-        return ts.ScriptKind.TS;
-      case "js":
-        return ts.ScriptKind.JS;
-      case "json":
-        return ts.ScriptKind.JSON;
-      default:
-        return this._options.allowJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+    const moduleMetaData = this._getModuleMetaData(fileName);
+    if (moduleMetaData) {
+      switch (moduleMetaData.mediaType) {
+        case MediaType.TypeScript:
+          return ts.ScriptKind.TS;
+        case MediaType.JavaScript:
+          return ts.ScriptKind.JS;
+        case MediaType.Json:
+          return ts.ScriptKind.JSON;
+        default:
+          return this._options.allowJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+      }
+    } else {
+      return this._options.allowJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
     }
   }
 
@@ -619,17 +715,17 @@ export class DenoCompiler
   resolveModuleNames(
     moduleNames: ModuleSpecifier[],
     containingFile: ContainingFile
-  ): ts.ResolvedModule[] {
+  ): Array<ts.ResolvedModuleFull | ts.ResolvedModule> {
     this._log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(name => {
-      let resolvedFileName;
+      let moduleMetaData: ModuleMetaData;
       if (name === "deno") {
         // builtin modules are part of the runtime lib
-        resolvedFileName = this._resolveModuleName(LIB_RUNTIME, ASSETS);
+        moduleMetaData = this.resolveModule(LIB_RUNTIME, ASSETS);
       } else if (name === "typescript") {
-        resolvedFileName = this._resolveModuleName("typescript.d.ts", ASSETS);
+        moduleMetaData = this.resolveModule("typescript.d.ts", ASSETS);
       } else {
-        resolvedFileName = this._resolveModuleName(name, containingFile);
+        moduleMetaData = this.resolveModule(name, containingFile);
       }
       // According to the interface we shouldn't return `undefined` but if we
       // fail to return the same length of modules to those we cannot resolve
@@ -638,12 +734,15 @@ export class DenoCompiler
       // TODO: all this does is push the problem downstream, and TypeScript
       // will complain it can't identify the type of the file and throw
       // a runtime exception, so we need to handle missing modules better
-      resolvedFileName = resolvedFileName || "";
+      const resolvedFileName = moduleMetaData.fileName || "";
       // This flags to the compiler to not go looking to transpile functional
       // code, anything that is in `/$asset$/` is just library code
       const isExternalLibraryImport = resolvedFileName.startsWith(ASSETS);
-      // TODO: we should be returning a ts.ResolveModuleFull
-      return { resolvedFileName, isExternalLibraryImport };
+      return {
+        resolvedFileName,
+        isExternalLibraryImport,
+        extension: getExtension(resolvedFileName, moduleMetaData.mediaType)
+      };
     });
   }
 
@@ -662,9 +761,7 @@ export class DenoCompiler
 
   private static _instance: DenoCompiler | undefined;
 
-  /**
-   * Returns the instance of `DenoCompiler` or creates a new instance.
-   */
+  /** Returns the instance of `DenoCompiler` or creates a new instance. */
   static instance(): DenoCompiler {
     return (
       DenoCompiler._instance || (DenoCompiler._instance = new DenoCompiler())

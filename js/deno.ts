@@ -7,6 +7,7 @@ export { chdir, cwd } from "./dir";
 export { File, open, stdin, stdout, stderr, read, write, close } from "./files";
 export {
   copy,
+  toAsyncIterator,
   ReadResult,
   Reader,
   Writer,
@@ -21,6 +22,7 @@ export {
 } from "./io";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
+export { chmodSync, chmod } from "./chmod";
 export { removeSync, remove, removeAllSync, removeAll } from "./remove";
 export { renameSync, rename } from "./rename";
 export { readFileSync, readFile } from "./read_file";
@@ -33,11 +35,11 @@ export { writeFileSync, writeFile } from "./write_file";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
 export { platform } from "./platform";
-export { trace } from "./trace";
 export { truncateSync, truncate } from "./truncate";
 export { FileInfo } from "./file_info";
 export { connect, dial, listen, Listener, Conn } from "./net";
 export { metrics } from "./metrics";
+export { resources } from "./resources";
 export const args: string[] = [];
 
 // Provide the compiler API in an obfuscated way

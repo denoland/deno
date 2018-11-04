@@ -3,7 +3,8 @@
 from glob import glob
 import os
 import sys
-from third_party import third_party_path, fix_symlinks, google_env, clang_format_path
+from third_party import fix_symlinks, google_env, python_env
+from third_party import clang_format_path, third_party_path
 from util import root_path, run, find_exts, platform
 
 fix_symlinks()
@@ -15,34 +16,34 @@ rustfmt_config = os.path.join(tools_path, "rustfmt.toml")
 
 os.chdir(root_path)
 
-run([clang_format_path, "-i", "-style", "Google"] +
-    find_exts("libdeno", ".cc", ".h"))
 
-for fn in ["BUILD.gn", ".gn"] + find_exts("build_extra", ".gn", ".gni"):
-    run(["third_party/depot_tools/gn", "format", fn], env=google_env())
+def qrun(cmd, env=None):
+    run(cmd, quiet=True, env=env)
 
-# We use `glob()` instead of `find_exts()` in the tools directory, because:
-#   * On Windows, `os.walk()` (called by `find_exts()`) follows symlinks.
-#   * The tools directory contains a symlink 'clang', pointing at the directory
-#     'third_party/v8/tools/clang', which contains many .py files.
-#   * These third party python files shouldn't be formatted.
-#   * The tools directory has no subdirectories, so `glob()` is sufficient.
 
-run([sys.executable, "third_party/yapf/yapf", "-i"] + glob("tools/*.py") +
-    find_exts("build_extra", ".py"),
-    merge_env={"PYTHONPATH": "third_party/yapf"})
+print "clang_format"
+qrun([clang_format_path, "-i", "-style", "Google"] +
+     find_exts(["libdeno"], [".cc", ".h"]))
 
-# yapf: disable
-run(["node", prettier, "--write"] +
-    ["rollup.config.js"] + glob("*.json") + glob("*.md") +
-    find_exts(".github/", ".md") +
-    find_exts("js/", ".js", ".ts", ".md") +
-    find_exts("tests/", ".js", ".ts", ".md") +
-    find_exts("tools/", ".js", ".json", ".ts", ".md") +
-    find_exts("website/", ".js", ".ts", ".md"))
-# yapf: enable
+print "gn format"
+for fn in ["BUILD.gn", ".gn"] + find_exts(["build_extra"], [".gn", ".gni"]):
+    qrun(["third_party/depot_tools/gn", "format", fn], env=google_env())
 
-run([
+print "yapf"
+qrun(
+    [sys.executable, "third_party/python_packages/bin/yapf", "-i"] + find_exts(
+        ["tools", "build_extra"], [".py"], skip=["tools/clang"]),
+    env=python_env())
+
+print "prettier"
+qrun(["node", prettier, "--write", "--loglevel=error"] + ["rollup.config.js"] +
+     glob("*.json") + glob("*.md") +
+     find_exts([".github", "js", "tests", "tools", "website"],
+               [".js", ".json", ".ts", ".md"],
+               skip=["tools/clang"]))
+
+print "rustfmt"
+qrun([
     "third_party/rustfmt/" + platform() +
-    "/rustfmt", "--config-path", rustfmt_config
-] + find_exts("src/", ".rs"))
+    "/rustfmt", "--config-path", rustfmt_config, "build.rs"
+] + find_exts(["src"], [".rs"]))

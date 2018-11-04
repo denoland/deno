@@ -3,7 +3,7 @@ use libdeno;
 use std::ffi::CStr;
 
 // This is the source of truth for the Deno version. Ignore the value in Cargo.toml.
-pub const DENO_VERSION: &str = "0.1.9";
+pub const DENO_VERSION: &str = "0.1.10";
 
 pub fn get_v8_version() -> &'static str {
   let v = unsafe { libdeno::deno_v8_version() };

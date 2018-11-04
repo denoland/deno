@@ -5,8 +5,6 @@ import * as msg from "gen/msg_generated";
  * `statSync`, `lstatSync`.
  */
 export interface FileInfo {
-  readonly _isFile: boolean;
-  readonly _isSymlink: boolean;
   /** The size of the file, in bytes. */
   len: number;
   /** The last modification time of the file. This corresponds to the `mtime`
@@ -53,8 +51,8 @@ export interface FileInfo {
 
 // @internal
 export class FileInfoImpl implements FileInfo {
-  readonly _isFile: boolean;
-  readonly _isSymlink: boolean;
+  private readonly _isFile: boolean;
+  private readonly _isSymlink: boolean;
   len: number;
   modified: number | null;
   accessed: number | null;

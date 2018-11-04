@@ -20,6 +20,7 @@ from http_benchmark import http_benchmark
 exec_time_benchmarks = [
     ("hello", ["tests/002_hello.ts"]),
     ("relative_import", ["tests/003_relative_import.ts"]),
+    ("error_001", ["tests/error_001.ts"]),
     ("cold_hello", ["tests/002_hello.ts", "--recompile"]),
     ("cold_relative_import", ["tests/003_relative_import.ts", "--recompile"]),
 ]
@@ -155,7 +156,10 @@ def main(argv):
     os.chdir(root_path)
     import_data_from_gh_pages()
     # TODO: Use hyperfine in //third_party
-    run(["hyperfine", "--export-json", benchmark_file, "--warmup", "3"] + [
+    run([
+        "hyperfine", "--ignore-failure", "--export-json", benchmark_file,
+        "--warmup", "3"
+    ] + [
         deno_path + " " + " ".join(args) for [_, args] in exec_time_benchmarks
     ])
     all_data = read_json(all_data_file)
