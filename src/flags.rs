@@ -220,11 +220,6 @@ fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
       mem::swap(a, &mut String::from("--help"));
     }
   }
-  // for idx in 0..args.len() {
-  //   if args[idx] == "--v8-options" {
-  //     mem::swap(args.get_mut(idx).unwrap(), &mut String::from("--help"));
-  //   }
-  // }
   (args, rest)
 }
 
