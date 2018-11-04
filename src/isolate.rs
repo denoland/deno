@@ -226,9 +226,9 @@ impl Isolate {
 
   fn timeout(&mut self) {
     let dummy_buf = libdeno::deno_buf {
-      alloc_ptr: 0 as *mut u8,
+      alloc_ptr: std::ptr::null_mut(),
       alloc_len: 0,
-      data_ptr: 0 as *mut u8,
+      data_ptr: std::ptr::null_mut(),
       data_len: 0,
     };
     unsafe {
@@ -265,11 +265,11 @@ impl Isolate {
 
   fn ntasks_increment(&mut self) {
     assert!(self.ntasks >= 0);
-    self.ntasks = self.ntasks + 1;
+    self.ntasks += 1;
   }
 
   fn ntasks_decrement(&mut self) {
-    self.ntasks = self.ntasks - 1;
+    self.ntasks -= 1;
     assert!(self.ntasks >= 0);
   }
 
@@ -290,7 +290,7 @@ impl From<Buf> for libdeno::deno_buf {
     let len = x.len();
     let ptr = Box::into_raw(x);
     libdeno::deno_buf {
-      alloc_ptr: 0 as *mut u8,
+      alloc_ptr: std::ptr::null_mut(),
       alloc_len: 0,
       data_ptr: ptr as *mut u8,
       data_len: len,

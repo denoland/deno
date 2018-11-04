@@ -27,7 +27,7 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(format!(
+    let r = permission_prompt(&format!(
       "Deno requests write access to \"{}\".",
       filename
     ));;
@@ -42,7 +42,7 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(format!(
+    let r = permission_prompt(&format!(
       "Deno requests network access to \"{}\".",
       domain_name
     ));
@@ -57,9 +57,8 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(
-      "Deno requests access to environment variables.".to_string(),
-    );
+    let r =
+      permission_prompt(&"Deno requests access to environment variables.");
     if r.is_ok() {
       self.allow_env = true;
     }
@@ -67,7 +66,7 @@ impl DenoPermissions {
   }
 }
 
-fn permission_prompt(message: String) -> DenoResult<()> {
+fn permission_prompt(message: &str) -> DenoResult<()> {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return Err(permission_denied());
   };

@@ -32,7 +32,7 @@ where
   T: AsRef<[u8]>,
 {
   Write {
-    state: State::Pending { a: a, buf: buf },
+    state: State::Pending { a, buf },
   }
 }
 

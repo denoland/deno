@@ -182,14 +182,14 @@ impl DenoDir {
         let path = Path::new(&filename);
         (fs::read_to_string(path)?, map_content_type(path, None))
       };
-      return Ok(CodeFetchOutput {
+      Ok(CodeFetchOutput {
         module_name: module_name.to_string(),
         filename: filename.to_string(),
         media_type,
         source_code,
         maybe_output_code: None,
         maybe_source_map: None,
-      });
+      })
     };
     let default_attempt = use_extension("");
     if default_attempt.is_ok() {
@@ -307,7 +307,7 @@ impl DenoDir {
       || Path::new(&module_specifier).is_absolute()
     {
       parse_local_or_remote(&module_specifier)?
-    } else if containing_file.ends_with("/") {
+    } else if containing_file.ends_with('/') {
       let r = Url::from_directory_path(&containing_file);
       // TODO(ry) Properly handle error.
       if r.is_err() {
@@ -329,13 +329,13 @@ impl DenoDir {
       "https" => {
         module_name = j.to_string();
         filename = deno_fs::normalize_path(
-          get_cache_filename(self.deps_https.as_path(), j).as_ref(),
+          get_cache_filename(self.deps_https.as_path(), &j).as_ref(),
         )
       }
       "http" => {
         module_name = j.to_string();
         filename = deno_fs::normalize_path(
-          get_cache_filename(self.deps_http.as_path(), j).as_ref(),
+          get_cache_filename(self.deps_http.as_path(), &j).as_ref(),
         )
       }
       // TODO(kevinkassimo): change this to support other protocols than http
@@ -347,7 +347,7 @@ impl DenoDir {
   }
 }
 
-fn get_cache_filename(basedir: &Path, url: Url) -> PathBuf {
+fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
   let host = url.host_str().unwrap();
   let host_port = match url.port() {
     // Windows doesn't support ":" in filenames, so we represent port using a
@@ -368,7 +368,7 @@ fn get_cache_filename(basedir: &Path, url: Url) -> PathBuf {
 fn test_get_cache_filename() {
   let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
   let basedir = Path::new("/cache/dir/");
-  let cache_file = get_cache_filename(&basedir, url);
+  let cache_file = get_cache_filename(&basedir, &url);
   assert_eq!(
     cache_file,
     Path::new("/cache/dir/example.com_PORT1234/path/to/file.ts")
@@ -814,7 +814,7 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
       // sometimes there is additional data after the media type in
       // Content-Type so we have to do a bit of manipulation so we are only
       // dealing with the actual media type
-      let ct_vector: Vec<&str> = content_type.split(";").collect();
+      let ct_vector: Vec<&str> = content_type.split(';').collect();
       let ct: &str = ct_vector.first().unwrap();
       match ct.to_lowercase().as_ref() {
         "application/typescript"
