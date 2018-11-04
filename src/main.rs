@@ -80,7 +80,7 @@ fn main() {
       std::process::exit(1)
     });
   let mut isolate = isolate::Isolate::new(flags, rest_argv, ops::dispatch);
-  flags::process(&isolate.state.flags, usage_string);
+  flags::process(&isolate.state.flags, &usage_string);
   tokio_util::init(|| {
     isolate
       .execute("deno_main.js", "denoMain();")

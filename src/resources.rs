@@ -61,12 +61,10 @@ enum Repr {
 pub fn table_entries() -> Vec<(i32, String)> {
   let table = RESOURCE_TABLE.lock().unwrap();
 
-  let tuples = table
+  table
     .iter()
-    .map(|(key, value)| (key.clone(), inspect_repr(&value)))
-    .collect();
-
-  tuples
+    .map(|(key, value)| (*key, inspect_repr(&value)))
+    .collect()
 }
 
 #[test]
@@ -128,7 +126,7 @@ impl Resource {
       None => panic!("bad rid"),
       Some(repr) => match repr {
         Repr::TcpStream(ref mut f) => {
-          TcpStream::shutdown(f, how).map_err(|err| DenoError::from(err))
+          TcpStream::shutdown(f, how).map_err(DenoError::from)
         }
         _ => panic!("Cannot shutdown"),
       },

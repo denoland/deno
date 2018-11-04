@@ -15,7 +15,6 @@ pub fn serialize_key_value<'bldr>(
     &msg::KeyValueArgs {
       key: Some(key),
       value: Some(value),
-      ..Default::default()
     },
   )
 }
