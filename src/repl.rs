@@ -61,8 +61,8 @@ pub struct Repl {
 }
 
 impl Repl {
-  pub fn new(history_file: PathBuf) -> Repl {
-    let mut repl = Repl {
+  pub fn new(history_file: PathBuf) -> Self {
+    let mut repl = Self {
       editor: Editor::<()>::new(),
       history_file,
     };

@@ -42,7 +42,7 @@ impl DenoDir {
   pub fn new(
     reload: bool,
     custom_root: Option<&Path>,
-  ) -> std::io::Result<DenoDir> {
+  ) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
     let default = home_dir.join(".deno");
@@ -56,7 +56,7 @@ impl DenoDir {
     let deps_http = deps.join("http");
     let deps_https = deps.join("https");
 
-    let deno_dir = DenoDir {
+    let deno_dir = Self {
       root,
       gen,
       deps,
@@ -80,7 +80,7 @@ impl DenoDir {
 
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L32-L35
   pub fn cache_path(
-    self: &DenoDir,
+    self: &Self,
     filename: &str,
     source_code: &str,
   ) -> (PathBuf, PathBuf) {
@@ -92,7 +92,7 @@ impl DenoDir {
   }
 
   fn load_cache(
-    self: &DenoDir,
+    self: &Self,
     filename: &str,
     source_code: &str,
   ) -> Result<(String, String), std::io::Error> {
@@ -108,7 +108,7 @@ impl DenoDir {
   }
 
   pub fn code_cache(
-    self: &DenoDir,
+    self: &Self,
     filename: &str,
     source_code: &str,
     output_code: &str,
@@ -130,7 +130,7 @@ impl DenoDir {
 
   // Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
   fn fetch_remote_source(
-    self: &DenoDir,
+    self: &Self,
     module_name: &str,
     filename: &str,
   ) -> DenoResult<(String, msg::MediaType)> {
@@ -161,7 +161,7 @@ impl DenoDir {
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L122-L138
   fn get_source_code(
-    self: &DenoDir,
+    self: &Self,
     module_name: &str,
     filename: &str,
   ) -> DenoResult<CodeFetchOutput> {
@@ -205,7 +205,7 @@ impl DenoDir {
   }
 
   pub fn code_fetch(
-    self: &DenoDir,
+    self: &Self,
     module_specifier: &str,
     containing_file: &str,
   ) -> Result<CodeFetchOutput, DenoError> {
@@ -258,7 +258,7 @@ impl DenoDir {
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
-  fn src_file_to_url(self: &DenoDir, filename: &str) -> String {
+  fn src_file_to_url(self: &Self, filename: &str) -> String {
     let filename_path = Path::new(filename);
     if filename_path.starts_with(&self.deps) {
       let (rest, prefix) = if filename_path.starts_with(&self.deps_https) {
@@ -287,7 +287,7 @@ impl DenoDir {
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L70-L98
   // Returns (module name, local filename)
   fn resolve_module(
-    self: &DenoDir,
+    self: &Self,
     module_specifier: &str,
     containing_file: &str,
   ) -> Result<(String, String), url::ParseError> {

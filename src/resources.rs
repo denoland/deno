@@ -24,7 +24,7 @@ use std;
 use std::collections::HashMap;
 use std::io::{Error, Read, Write};
 use std::net::{Shutdown, SocketAddr};
-use std::sync::atomic::AtomicIsize;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tokio;
@@ -32,7 +32,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio_io;
 
-pub type ResourceId = i32; // Sometimes referred to RID.
+pub type ResourceId = u32; // Sometimes referred to RID.
 
 // These store Deno's file descriptors. These are not necessarily the operating
 // system ones.
@@ -40,7 +40,7 @@ type ResourceTable = HashMap<ResourceId, Repr>;
 
 lazy_static! {
   // Starts at 3 because stdio is [0-2].
-  static ref NEXT_RID: AtomicIsize = AtomicIsize::new(3);
+  static ref NEXT_RID: AtomicUsize = AtomicUsize::new(3);
   static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new({
     let mut m = HashMap::new();
     // TODO Load these lazily during lookup?
@@ -62,7 +62,7 @@ enum Repr {
   Repl(Repl),
 }
 
-pub fn table_entries() -> Vec<(i32, String)> {
+pub fn table_entries() -> Vec<(u32, String)> {
   let table = RESOURCE_TABLE.lock().unwrap();
 
   table

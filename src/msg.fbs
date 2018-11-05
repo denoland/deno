@@ -283,11 +283,11 @@ table ReplStart {
 }
 
 table ReplStartRes {
-  rid: int;
+  rid: uint32;
 }
 
 table ReplReadline {
-  rid: int;
+  rid: uint32;
   prompt: string;
 }
 
@@ -298,7 +298,7 @@ table ReplReadlineRes {
 table Resources {}
 
 table Resource {
-  rid: int;
+  rid: uint32;
   repr: string;
 }
 
@@ -340,11 +340,11 @@ table Open {
 }
 
 table OpenRes {
-  rid: int;
+  rid: uint32;
 }
 
 table Read {
-  rid: int;
+  rid: uint32;
   // (ptr, len) is passed as second parameter to libdeno.send().
 }
 
@@ -354,7 +354,7 @@ table ReadRes {
 }
 
 table Write {
-  rid: int;
+  rid: uint32;
 }
 
 table WriteRes {
@@ -362,11 +362,11 @@ table WriteRes {
 }
 
 table Close {
-  rid: int;
+  rid: uint32;
 }
 
 table Shutdown {
-  rid: int;
+  rid: uint32;
   how: uint;
 }
 
@@ -376,11 +376,11 @@ table Listen {
 }
 
 table ListenRes {
-  rid: int;
+  rid: uint32;
 }
 
 table Accept {
-  rid: int;
+  rid: uint32;
 }
 
 table Dial {
@@ -390,7 +390,7 @@ table Dial {
 
 // Response to Accept and Dial.
 table NewConn {
-  rid: int;
+  rid: uint32;
   remote_addr: string;
   local_addr: string;
 }
