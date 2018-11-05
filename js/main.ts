@@ -8,6 +8,7 @@ import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
+import { replLoop } from "./repl";
 import { version } from "typescript";
 
 function sendStart(): msg.StartRes {
@@ -77,13 +78,13 @@ export default function denoMain() {
   }
   log("args", args);
   Object.freeze(args);
-
   const inputFn = args[0];
-  if (!inputFn) {
-    console.log("No input script specified.");
-    os.exit(1);
-  }
 
   compiler.recompile = startResMsg.recompileFlag();
-  compiler.run(inputFn, `${cwd}/`);
+
+  if (inputFn) {
+    compiler.run(inputFn, `${cwd}/`);
+  } else {
+    replLoop();
+  }
 }

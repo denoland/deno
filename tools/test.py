@@ -11,6 +11,7 @@ from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
 from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test
+from repl_test import repl_tests
 import subprocess
 import http_server
 
@@ -66,6 +67,8 @@ def main(argv):
     if os.name != 'nt':
         from permission_prompt_test import permission_prompt_test
         permission_prompt_test(deno_exe)
+
+    repl_tests(deno_exe)
 
     rmtree(deno_dir)
 
