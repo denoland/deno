@@ -173,7 +173,7 @@ export interface Event {
   readonly composed: boolean;
 
   readonly isTrusted: boolean;
-  readonly timeStamp: number;
+  readonly timeStamp: Date;
 }
 
 interface File extends Blob {

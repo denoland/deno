@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 
-export const eventAttributes = new WeakMap;
+export const eventAttributes = new WeakMap();
 
 export class EventInit implements domTypes.EventInit {
   bubbles = false;
@@ -28,7 +28,7 @@ export class Event implements domTypes.Event {
   // Property for objects on which listeners will be invoked
   private _path: domTypes.EventTarget[] = [];
 
-  constructor(type: string = "", eventInitDict?: domTypes.EventInit) {
+  constructor(type: string, eventInitDict?: domTypes.EventInit) {
     eventAttributes.set(this, {
       type,
       bubbles: eventInitDict && eventInitDict.bubbles || false,
@@ -179,7 +179,9 @@ export class Event implements domTypes.Event {
     currentHiddenLevel = currentTargetHiddenSubtreeLevel;
     maxHiddenLevel = currentTargetHiddenSubtreeLevel;
 
-    for (let index = currentTargetIndex + 1; index < this._path.length; index++) {
+    for (
+      let index = currentTargetIndex + 1; index < this._path.length; index++
+     ) {
       const { item, rootOfClosedTree, slotInClosedTree } = this._path[index];
 
       if (slotInClosedTree) {
@@ -234,14 +236,16 @@ export class Event implements domTypes.Event {
   }
 }
 
-// Built-in objects providing `get` methods for our interceptable JavaScript operations
-Reflect.defineProperty(Event.prototype, 'bubbles', { enumerable: true });
-Reflect.defineProperty(Event.prototype, 'cancelable', { enumerable: true });
-Reflect.defineProperty(Event.prototype, 'composed', { enumerable: true });
-Reflect.defineProperty(Event.prototype, 'currentTarget', { enumerable: true });
-Reflect.defineProperty(Event.prototype, 'defaultPrevented', { enumerable: true });
-Reflect.defineProperty(Event.prototype, 'eventPhase', { enumerable: true });
-Reflect.defineProperty(Event.prototype, 'isTrusted', { enumerable: true });
-Reflect.defineProperty(Event.prototype, 'target', { enumerable: true });
-Reflect.defineProperty(Event.prototype, 'timeStamp', { enumerable: true });
-Reflect.defineProperty(Event.prototype, 'type', { enumerable: true });
+/** Built-in objects providing `get` methods for our
+ * interceptable JavaScript operations.
+ */
+Reflect.defineProperty(Event.prototype, "bubbles", { enumerable: true });
+Reflect.defineProperty(Event.prototype, "cancelable", { enumerable: true });
+Reflect.defineProperty(Event.prototype, "composed", { enumerable: true });
+Reflect.defineProperty(Event.prototype, "currentTarget", { enumerable: true });
+Reflect.defineProperty(Event.prototype, "defaultPrevented", { enumerable: true });
+Reflect.defineProperty(Event.prototype, "eventPhase", { enumerable: true });
+Reflect.defineProperty(Event.prototype, "isTrusted", { enumerable: true });
+Reflect.defineProperty(Event.prototype, "target", { enumerable: true });
+Reflect.defineProperty(Event.prototype, "timeStamp", { enumerable: true });
+Reflect.defineProperty(Event.prototype, "type", { enumerable: true });
