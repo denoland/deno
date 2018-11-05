@@ -1,2 +1,2 @@
-args: tests/017_import_redirect.ts --reload
-output: tests/017_import_redirect.ts.out
+args: tests/fixtures/017_import_redirect.ts --reload
+output: tests/outputs/017_import_redirect.ts.out

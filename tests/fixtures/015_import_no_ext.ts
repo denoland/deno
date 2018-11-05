@@ -6,5 +6,5 @@ console.log(phNoExt);
 import { isMod4 } from "./subdir/mod4";
 console.log(isMod4);
 
-import { printHello as ph } from "http://localhost:4545/tests/subdir/mod2";
+import { printHello as ph } from "http://localhost:4545/tests/fixtures/subdir/mod2";
 console.log(ph);

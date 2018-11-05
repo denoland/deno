@@ -1,2 +1,2 @@
-args: tests/016_double_await.ts --reload
-output: tests/016_double_await.ts.out
+args: tests/fixtures/016_double_await.ts --reload
+output: tests/outputs/016_double_await.ts.out

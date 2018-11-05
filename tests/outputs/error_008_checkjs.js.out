@@ -1,4 +1,4 @@
-[96m[WILDCARD]/tests/error_008_checkjs.js[WILDCARD] - [91merror[0m[90m TS2552: [0mCannot find name 'consol'. Did you mean 'console'?
+[96m[WILDCARD]/tests/fixtures/error_008_checkjs.js[WILDCARD] - [91merror[0m[90m TS2552: [0mCannot find name 'consol'. Did you mean 'console'?
 
 [WILDCARD] consol.log("hello world!");
 [WILDCARD]~~~~~~[0m

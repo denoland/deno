@@ -1,2 +1,2 @@
-args: tests/004_set_timeout.ts --reload
-output: tests/004_set_timeout.ts.out
+args: tests/fixtures/004_set_timeout.ts --reload
+output: tests/outputs/004_set_timeout.ts.out

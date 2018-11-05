@@ -2,8 +2,8 @@ hello
 before error
 world
 Error: error
-    at foo ([WILDCARD]tests/async_error.ts:4:9)
-    at eval ([WILDCARD]tests/async_error.ts:7:1)
+    at foo ([WILDCARD]tests/fixtures/async_error.ts:4:9)
+    at eval ([WILDCARD]tests/fixtures/async_error.ts:7:1)
     at DenoCompiler.eval [as _globalEval] (<anonymous>)
     at DenoCompiler._gatherDependencies ([WILDCARD]/js/compiler.ts:[WILDCARD])
     at DenoCompiler.run ([WILDCARD]/js/compiler.ts:[WILDCARD])

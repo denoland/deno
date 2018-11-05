@@ -1,2 +1,2 @@
-args: tests/012_async.ts --reload
-output: tests/012_async.ts.out
+args: tests/fixtures/012_async.ts --reload
+output: tests/outputs/012_async.ts.out

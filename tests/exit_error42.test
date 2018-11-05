@@ -1,3 +1,3 @@
 exit_code: 42
-args: tests/exit_error42.ts --reload
-output: tests/exit_error42.ts.out
+args: tests/fixtures/exit_error42.ts --reload
+output: tests/outputs/exit_error42.ts.out

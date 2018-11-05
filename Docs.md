@@ -136,7 +136,7 @@ submodule. However, you need to install separately:
     ./tools/build.py
 
     # Run.
-    ./out/debug/deno tests/002_hello.ts
+    ./out/debug/deno tests/fixtures/002_hello.ts
 
     # Test.
     ./tools/test.py

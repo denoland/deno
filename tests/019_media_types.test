@@ -1,2 +1,2 @@
-args: tests/019_media_types.ts --reload
-output: tests/019_media_types.ts.out
+args: tests/fixtures/019_media_types.ts --reload
+output: tests/outputs/019_media_types.ts.out

@@ -1,3 +1,3 @@
-args: tests/error_007_any.ts --reload
+args: tests/fixtures/error_007_any.ts --reload
 exit_code: 1
-output: tests/error_007_any.ts.out
+output: tests/outputs/error_007_any.ts.out

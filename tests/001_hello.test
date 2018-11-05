@@ -1,2 +1,2 @@
-args: tests/001_hello.js --reload
-output: tests/002_hello.ts.out
+args: tests/fixtures/001_hello.js --reload
+output: tests/outputs/001_hello.js.out

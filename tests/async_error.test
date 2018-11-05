@@ -1,3 +1,3 @@
 exit_code: 1
-args: tests/async_error.ts --reload
-output: tests/async_error.ts.out
+args: tests/fixtures/async_error.ts --reload
+output: tests/outputs/async_error.ts.out

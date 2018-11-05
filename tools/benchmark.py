@@ -18,11 +18,12 @@ from http_benchmark import http_benchmark
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
-    ("hello", ["tests/002_hello.ts"]),
-    ("relative_import", ["tests/003_relative_import.ts"]),
-    ("error_001", ["tests/error_001.ts"]),
-    ("cold_hello", ["tests/002_hello.ts", "--recompile"]),
-    ("cold_relative_import", ["tests/003_relative_import.ts", "--recompile"]),
+    ("hello", ["tests/fixtures/002_hello.ts"]),
+    ("relative_import", ["tests/fixtures/003_relative_import.ts"]),
+    ("error_001", ["tests/fixtures/error_001.ts"]),
+    ("cold_hello", ["tests/fixtures/002_hello.ts", "--recompile"]),
+    ("cold_relative_import",
+     ["tests/fixtures/003_relative_import.ts", "--recompile"]),
 ]
 
 gh_pages_data_file = "gh-pages/data.json"
@@ -112,7 +113,7 @@ def get_strace_summary(test_args):
 def run_thread_count_benchmark(deno_path):
     thread_count_map = {}
     thread_count_map["set_timeout"] = get_strace_summary([
-        deno_path, "tests/004_set_timeout.ts", "--reload"
+        deno_path, "tests/fixtures/004_set_timeout.ts", "--reload"
     ])["clone"]["calls"] + 1
     thread_count_map["fetch_deps"] = get_strace_summary([
         deno_path, "tests/fetch_deps.ts", "--reload", "--allow-net"
@@ -132,7 +133,8 @@ def run_throughput(deno_exe):
 def run_syscall_count_benchmark(deno_path):
     syscall_count_map = {}
     syscall_count_map["hello"] = get_strace_summary(
-        [deno_path, "tests/002_hello.ts", "--reload"])["total"]["calls"]
+        [deno_path, "tests/fixtures/002_hello.ts",
+         "--reload"])["total"]["calls"]
     syscall_count_map["fetch_deps"] = get_strace_summary(
         [deno_path, "tests/fetch_deps.ts", "--reload",
          "--allow-net"])["total"]["calls"]
