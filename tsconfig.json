@@ -19,6 +19,7 @@
     "resolveJsonModule": true,
     "sourceMap": true,
     "strict": true,
+    "strictPropertyInitialization": false,
     "target": "esnext",
     "types": []
   },

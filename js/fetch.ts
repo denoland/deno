@@ -14,6 +14,7 @@ import * as domTypes from "./dom_types";
 import { TextDecoder } from "./text_encoding";
 import { DenoBlob } from "./blob";
 import { DomIterableMixin } from "./mixins/dom_iterable";
+import { DenoRequest as Request } from "./request";
 
 // tslint:disable-next-line:no-any
 function isHeaders(value: any): value is domTypes.Headers {
@@ -199,23 +200,21 @@ export async function fetch(
   const url = input as string;
   log("dispatch FETCH_REQ", url);
 
-  let method = "GET";
-  if (typeof input === "string" && init && init.method) {
-    // if input is string then pick method from init
-    method = init.method; 
-  } else if (typeof input !== "string" && input) {
-    // if Input is Request then pick its method
-    method = input.method; 
-  }
+  const req = typeof input === "string" ? new Request(input) : input;
+  let method: string = (req && req.method) || "GET";
 
   // Send Fetch message
   const builder = flatbuffers.createBuilder();
   const url_ = builder.createString(url);
   const method_ = builder.createString(method.toUpperCase());
+  const headers = req && req.headers;
+  // any better way to add headers?
+  const headers_ = builder.createString(JSON.stringify(headers));
 
   msg.Fetch.startFetch(builder);
   msg.Fetch.addUrl(builder, url_);
   msg.Fetch.addMethod(builder, method_);
+  msg.Fetch.addHeaders(builder, headers_);
 
   const resBase = await sendAsync(
     builder,

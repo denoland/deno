@@ -400,7 +400,8 @@ fn op_fetch(
   let cmd_id = base.cmd_id();
   let id = inner.id();
   let url = inner.url().unwrap();
-  let method = inner.method().unwrap_or("GET");
+  let method = inner.method().unwrap();
+  let headers = inner.headers().unwrap();
 
   if let Err(e) = state.check_net(url) {
     return odd_future(e);
@@ -410,20 +411,17 @@ fn op_fetch(
   let client = http_util::get_client();
 
   let mut req = hyper::Request::new(hyper::Body::from(&*data));
-  *req.method_mut() = match method {
-    "GET" => hyper::Method::GET,
-    "POST" => hyper::Method::POST,
-    "PUT" => hyper::Method::PUT,
-    "DELETE" => hyper::Method::DELETE,
-    "HEAD" => hyper::Method::HEAD,
-    "OPTIONS" => hyper::Method::OPTIONS,
-    _ => panic!("Invalid method"),
-  };
+  *req.method_mut() = hyper::Method::from_str(method).unwrap();
   *req.uri_mut() = url.clone();
-  req.headers_mut().insert(
-    hyper::header::CONTENT_TYPE,
-    hyper::header::HeaderValue::from_static("application/json"),
-  );
+  for header_i in 0..headers.len() {
+    let header = headers.get(header_i);
+    let name = header.name().unwrap();
+    let value = header.value().unwrap();
+    let header_name = hyper::header::HeaderName::from_str(name).ok().unwrap();
+    let header_value =
+      hyper::header::HeaderValue::from_str(value).ok().unwrap();
+    req.headers_mut().insert(header_name, header_value);
+  }
 
   debug!("Before fetch {}", url);
   let future = client.request(req).and_then(move |res| {

@@ -26,7 +26,7 @@ export type BodyInit =
   | ReadableStream
   | string;
 export type RequestInfo = Request | string;
-type ReferrerPolicy =
+export type ReferrerPolicy =
   | ""
   | "no-referrer"
   | "no-referrer-when-downgrade"
@@ -352,15 +352,15 @@ export interface HeadersConstructor {
   prototype: Headers;
 }
 
-type RequestCache =
+export type RequestCache =
   | "default"
   | "no-store"
   | "reload"
   | "no-cache"
   | "force-cache"
   | "only-if-cached";
-type RequestCredentials = "omit" | "same-origin" | "include";
-type RequestDestination =
+export type RequestCredentials = "omit" | "same-origin" | "include";
+export type RequestDestination =
   | ""
   | "audio"
   | "audioworklet"
@@ -379,8 +379,8 @@ type RequestDestination =
   | "video"
   | "worker"
   | "xslt";
-type RequestMode = "navigate" | "same-origin" | "no-cors" | "cors";
-type RequestRedirect = "follow" | "error" | "manual";
+export type RequestMode = "navigate" | "same-origin" | "no-cors" | "cors";
+export type RequestRedirect = "follow" | "error" | "manual";
 type ResponseType =
   | "basic"
   | "cors"

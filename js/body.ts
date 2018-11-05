@@ -1,54 +1,48 @@
-/** @module fly
+/** @module deno
  */
 import { parse as queryParse } from "query-string";
-import {
-  Blob,
-  FormData,
-  Body,
-  ReadableStream,
-  ReadableStreamReader,
-  BodyInit
-} from "./dom_types";
+import * as domTypes from "./dom_types";
 import { DenoBlob } from "./blob";
 import DenoFormData from "./form_data";
-
-// interface ReadableStreamController {
-//   enqueue(chunk: string | ArrayBuffer): void
-//   close(): void
-// }
+import { TextDecoder } from "text-encoding";
 
 export type BodySource =
-  | Blob
+  | domTypes.Blob
   | BufferSource
-  | FormData
-  | URLSearchParams
-  | ReadableStream
-  | String;
+  | domTypes.FormData
+  | domTypes.URLSearchParams
+  | domTypes.ReadableStream
+  | string;
 
-export default class DenoBody implements Body {
-  protected bodySource: BodyInit;
-  protected stream: ReadableStream | null;
+export class DenoBody implements domTypes.Body {
+  protected bodySource: domTypes.BodyInit;
+  protected stream: domTypes.ReadableStream | null = null;
 
-  constructor(obj: BodyInit) {
-    validateBodyType(this, obj);
-    this.bodySource = obj;
-    this.stream = null;
+  constructor(init: domTypes.BodyInit) {
+    validateBodyType(this, init);
+    this.bodySource = init;
   }
 
-  get body(): ReadableStream | null {
+  get body(): domTypes.ReadableStream {
     if (this.stream) {
       return this.stream;
     }
-    if (this.bodySource instanceof ReadableStream) {
+    if (isReadableStream(this.bodySource)) {
       this.stream = this.bodySource;
     }
     if (
       typeof this.bodySource === "string" ||
       this.bodySource instanceof Uint8Array
     ) {
-      this.stream = new ReadableStream();
+      // this will most definitely throw an error later
+      // TODO: create a new ReadableStream Object
+      this.stream = {} as domTypes.ReadableStream;
     }
-    return this.stream;
+    return this.stream as domTypes.ReadableStream;
+  }
+
+  set body(value: domTypes.ReadableStream) {
+    this.stream = value;
   }
 
   get isStatic(): boolean {
@@ -59,14 +53,13 @@ export default class DenoBody implements Body {
   }
 
   get staticBody(): Uint8Array {
-    if (this.bodySource instanceof Uint8Array) return this.bodySource;
-    else if (typeof this.bodySource === "string")
+    if (this.bodySource instanceof Uint8Array) {
+      return this.bodySource;
+    } else if (typeof this.bodySource === "string") {
       return new TextEncoder().encode(this.bodySource);
-    else throw new TypeError("body is not static");
-  }
-
-  set body(value: ReadableStream) {
-    this.stream = value;
+    } else {
+      throw new TypeError("body is not static");
+    }
   }
 
   get bodyUsed(): boolean {
@@ -76,11 +69,11 @@ export default class DenoBody implements Body {
     return false;
   }
 
-  async blob(): Promise<Blob> {
+  async blob(): Promise<DenoBlob> {
     return new DenoBlob([await this.arrayBuffer()]);
   }
 
-  async formData(): Promise<FormData> {
+  async formData(): Promise<DenoFormData> {
     if (this.bodySource instanceof DenoFormData) {
       return this.bodySource;
     }
@@ -88,10 +81,10 @@ export default class DenoBody implements Body {
     const raw = await this.text();
     const query = queryParse(raw);
     const formdata = new DenoFormData();
-    for (let key in query) {
+    for (const key in query) {
       const value = query[key];
       if (Array.isArray(value)) {
-        for (let val of value) {
+        for (const val of value) {
           formdata.append(key, val);
         }
       } else {
@@ -106,12 +99,15 @@ export default class DenoBody implements Body {
       return this.bodySource;
     }
 
-    const arr = await this.arrayBuffer();
+    const arr:
+      | ArrayBuffer
+      | ArrayBufferView
+      | undefined = await this.arrayBuffer();
     return new TextDecoder("utf-8").decode(arr);
   }
 
   async json(): Promise<any> {
-    const raw = await this.text();
+    const raw: string = await this.text();
     return JSON.parse(raw);
   }
 
@@ -127,17 +123,19 @@ export default class DenoBody implements Body {
       this.bodySource instanceof Float32Array ||
       this.bodySource instanceof Float64Array
     ) {
-      return <ArrayBuffer>this.bodySource.buffer;
+      return this.bodySource.buffer as ArrayBuffer;
     } else if (this.bodySource instanceof ArrayBuffer) {
       return this.bodySource;
     } else if (typeof this.bodySource === "string") {
       const enc = new TextEncoder();
-      return <ArrayBuffer>enc.encode(this.bodySource).buffer;
-    } else if (this.bodySource instanceof ReadableStream) {
-      return bufferFromStream((this.bodySource as ReadableStream).getReader());
+      return enc.encode(this.bodySource).buffer as ArrayBuffer;
+    } else if (isReadableStream(this.bodySource)) {
+      return bufferFromStream(
+        (this.bodySource as domTypes.ReadableStream).getReader()
+      );
     } else if (this.bodySource instanceof DenoFormData) {
       const enc = new TextEncoder();
-      return <ArrayBuffer>enc.encode(this.bodySource.toString()).buffer;
+      return enc.encode(this.bodySource.toString()).buffer as ArrayBuffer;
     } else if (!this.bodySource) {
       return new ArrayBuffer(0);
     }
@@ -147,8 +145,7 @@ export default class DenoBody implements Body {
   }
 }
 
-/** @hidden */
-function validateBodyType(owner: any, bodySource: any) {
+function validateBodyType(owner: DenoBody, bodySource: domTypes.BodyInit) {
   if (
     bodySource instanceof Int8Array ||
     bodySource instanceof Int16Array ||
@@ -165,7 +162,7 @@ function validateBodyType(owner: any, bodySource: any) {
     return true;
   } else if (typeof bodySource === "string") {
     return true;
-  } else if (bodySource instanceof ReadableStream) {
+  } else if (isReadableStream(bodySource)) {
     return true;
   } else if (bodySource instanceof DenoFormData) {
     return true;
@@ -177,8 +174,8 @@ function validateBodyType(owner: any, bodySource: any) {
   );
 }
 
-export function bufferFromStream(
-  stream: ReadableStreamReader
+function bufferFromStream(
+  stream: domTypes.ReadableStreamReader
 ): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     let parts: Array<Uint8Array> = [];
@@ -201,7 +198,6 @@ export function bufferFromStream(
           } else if (!value) {
             // noop for undefined
           } else {
-            console.log("unhandled type on stream read:", value);
             reject("unhandled type on stream read");
           }
 
@@ -214,7 +210,6 @@ export function bufferFromStream(
   });
 }
 
-/** @hidden */
 function concatenate(...arrays: Uint8Array[]): ArrayBuffer {
   let totalLength = 0;
   for (let arr of arrays) {
@@ -222,9 +217,13 @@ function concatenate(...arrays: Uint8Array[]): ArrayBuffer {
   }
   let result = new Uint8Array(totalLength);
   let offset = 0;
-  for (let arr of arrays) {
+  for (const arr of arrays) {
     result.set(arr, offset);
     offset += arr.length;
   }
-  return <ArrayBuffer>result.buffer;
+  return result.buffer as ArrayBuffer;
+}
+
+function isReadableStream(object: any): object is domTypes.ReadableStream {
+  return "getReader" in object;
 }

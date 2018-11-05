@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { assert } from "./util";
+import { assert, notImplemented } from "./util";
 import { Headers, HeadersInit } from "./dom_types";
 
 export type DenoHeadersInit = HeadersInit | DenoHeaders;
@@ -43,9 +43,10 @@ export class DenoHeaders implements Headers {
         this._append([header[0], header[1]]);
       }
     } else {
-      for (const key in init) {
-        this._append([key, init[key]]);
-      }
+      notImplemented();
+      // for (const key in init) {
+      //   this._append([key, init[key]]);
+      // }
     }
   }
 
@@ -119,7 +120,7 @@ class DenoHeadersIterator implements IterableIterator<[string, string]> {
 
   next(): IteratorResult<[string, string]> {
     if (this.index >= this.headers.length) {
-      return { value: undefined, done: true };
+      return { value: ["", ""], done: true };
     }
     return { value: this.headers[this.index++], done: false };
   }
@@ -139,7 +140,7 @@ class DenoKeysIterator implements IterableIterator<string> {
 
   next(): IteratorResult<string> {
     if (this.index >= this.headers.length) {
-      return { value: undefined, done: true };
+      return { value: "", done: true };
     }
     return { value: this.headers[this.index++][0], done: false };
   }
@@ -159,7 +160,7 @@ class DenoValuesIterator implements IterableIterator<string> {
 
   next(): IteratorResult<string> {
     if (this.index >= this.headers.length) {
-      return { value: undefined, done: true };
+      return { value: "", done: true };
     }
     return { value: this.headers[this.index++][1], done: false };
   }

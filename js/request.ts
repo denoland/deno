@@ -1,19 +1,19 @@
 /**
  * @module fetch
  */
-import CookieJar from "./cookie_jar";
-import DenoBody from "./body_mixin";
-import { Request, RequestInit, AbortSignal } from "./dom_types";
+import { CookieJar } from "./cookie_jar";
+import { DenoBody } from "./body";
+import * as domTypes from "./dom_types";
 import { DenoHeaders } from "./headers";
 import { notImplemented } from "./util";
 
-function byteUpperCase(s) {
+function byteUpperCase(s: string) {
   return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
     return c.toUpperCase();
   });
 }
 
-function normalizeMethod(m) {
+function normalizeMethod(m: string) {
   var u = byteUpperCase(m);
   if (
     u === "DELETE" ||
@@ -27,7 +27,7 @@ function normalizeMethod(m) {
   return m;
 }
 
-interface DenoRequestInit extends RequestInit {
+interface DenoRequestInit extends domTypes.RequestInit {
   remoteAddr?: string;
 }
 
@@ -37,27 +37,27 @@ interface DenoRequestInit extends RequestInit {
  * @param {Object} [init]
  * @mixes Body
  */
-export class DenoRequest extends DenoBody implements Request {
+export class DenoRequest extends DenoBody implements domTypes.Request {
   method: string;
   url: string;
   referrer: string;
-  mode: RequestMode;
-  credentials: RequestCredentials;
+  mode: domTypes.RequestMode;
+  credentials: domTypes.RequestCredentials;
   headers: DenoHeaders;
   remoteAddr: string;
-  cache: RequestCache;
-  destination: RequestDestination;
+  cache: domTypes.RequestCache;
+  destination: domTypes.RequestDestination;
   integrity: string;
   isHistoryNavigation: boolean;
   isReloadNavigation: boolean;
   keepalive: boolean;
-  redirect: RequestRedirect;
-  referrerPolicy: ReferrerPolicy;
-  signal: AbortSignal;
+  redirect: domTypes.RequestRedirect;
+  referrerPolicy: domTypes.ReferrerPolicy;
+  signal: domTypes.AbortSignal;
 
   private cookieJar: CookieJar;
 
-  constructor(input: string | Request, init?: DenoRequestInit) {
+  constructor(input: string | domTypes.Request, init?: DenoRequestInit) {
     if (arguments.length < 1) throw TypeError("Not enough arguments");
 
     let body = null;
@@ -70,7 +70,7 @@ export class DenoRequest extends DenoBody implements Request {
       body = input.bodySource;
     }
     // logger.debug('creating request! body typeof:', typeof Body, typeof init.body)
-    super(body);
+    super(body as domTypes.BodyInit);
 
     // readonly attribute ByteString method;
     /**
@@ -90,10 +90,10 @@ export class DenoRequest extends DenoBody implements Request {
     this.url = "";
 
     // readonly attribute DOMString referrer;
-    this.referrer = null; // TODO: Implement.
+    this.referrer = ""; // TODO: Implement.
 
     // readonly attribute RequestMode mode;
-    this.mode = null; // TODO: Implement.
+    this.mode = "same-origin"; // TODO: Implement.
 
     // readonly attribute RequestCredentials credentials;
     this.credentials = "omit";
@@ -115,15 +115,15 @@ export class DenoRequest extends DenoBody implements Request {
 
     init = Object(init);
 
-    if ("remoteAddr" in init) {
+    if (init && init.remoteAddr) {
       this.remoteAddr = init.remoteAddr;
     }
 
-    if ("method" in init) {
+    if (init && init.method) {
       this.method = normalizeMethod(init.method);
     }
 
-    if ("headers" in init) {
+    if (init && "headers" in init) {
       /**
        * Headers sent with the request.
        * @type {Headers}
@@ -132,7 +132,8 @@ export class DenoRequest extends DenoBody implements Request {
     }
 
     if (
-      "credentials" in init &&
+      init &&
+      init.credentials &&
       ["omit", "same-origin", "include"].indexOf(init.credentials) !== -1
     )
       this.credentials = init.credentials;

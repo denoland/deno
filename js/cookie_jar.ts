@@ -3,70 +3,65 @@
  * @private
  */
 import { notImplemented } from "./util";
-// import * as cookie from 'cookie';
+import * as cookie from "cookie";
+import * as domTypes from "./dom_types";
 
-const cookieAttributeNames = [
-  "Max-Age",
-  "Expires",
-  "HttpOnly",
-  "Secure",
-  "Path",
-  "SameSite",
-  "Domain"
-];
+type Cookie = {
+  name: string;
+  value: string;
+};
 
 /**
  * A jar for storing delicious cookies.
  * @class
  * @param {Response|Request} [parent] Underlying resource that contains cookies in headers
  */
-class CookieJar {
-  private cookies: any;
-  private parent: any;
+export class CookieJar {
+  private cookies: Cookie[];
+  private parent: domTypes.Request | domTypes.Response;
 
-  constructor(parent) {
+  constructor(parent: domTypes.Request | domTypes.Response) {
     this.parent = parent;
-    if (parent instanceof Request)
-      this.cookies = parseCookies(parent.headers.get("Cookie"));
-    else if (parent instanceof Response)
-      this.cookies = parseCookies(parent.headers.get("Set-Cookie"));
+    if (isRequest(parent))
+      this.cookies = parseCookies([parent.headers.get("Cookie") as string]);
+    else if (isResponse(parent))
+      this.cookies = parseCookies([parent.headers.get("Set-Cookie") as string]);
   }
 
-  /**
-   * Gets a cookie by name
-   * @param {String} name
-   */
-  get(name) {
-    return this.cookies.find(c => c.name === name);
+  get(name: string) {
+    return this.cookies.find((c: Cookie) => c.name === name);
   }
 
-  /**
-   * Sets a cookie, and applies it to the underlying {@linkcode Request} or {@linkcode Response}
-   * @param {String} name
-   * @param {String} value
-   * @param {Object} [options]
-   */
-  append(name, value, options) {
+  /** Sets a cookie */
+  append(name: string, value: string, options: cookie.CookieSerializeOptions) {
     notImplemented();
-    // const cookieStr = cookie.serialize(name, value, options)
-    // this.cookies = this.cookies.concat(parseCookie(cookieStr))
-    // if (this.parent instanceof Request)
-    // 	this.parent.headers.append("Cookie", cookieStr)
-    // else if (this.parent instanceof Response)
-    // 	this.parent.headers.append("Set-Cookie", cookieStr)
+    const cookieStr = cookie.serialize(name, value, options);
+    this.cookies = this.cookies.concat(parseCookie(cookieStr));
+    if (isRequest(this.parent)) this.parent.headers.append("Cookie", cookieStr);
+    else if (isResponse(this.parent))
+      this.parent.headers.append("Set-Cookie", cookieStr);
   }
 }
 
-function parseCookies(rawCookies) {
-  let cookies = [];
-  for (let c of rawCookies) {
+function parseCookies(rawCookies: string[] | Cookie[]): Cookie[] {
+  let cookies: Cookie[] = [];
+  for (const c of rawCookies) {
     cookies = cookies.concat(parseCookie(c));
   }
   return cookies;
 }
 
-function parseCookie(cookieStr) {
+function parseCookie(cookieStr: string | Cookie): Cookie {
   notImplemented();
+  // const cookieAttributeNames = [
+  //   "Max-Age",
+  //   "Expires",
+  //   "HttpOnly",
+  //   "Secure",
+  //   "Path",
+  //   "SameSite",
+  //   "Domain"
+  // ];
   // let options = {}
   // let cookies = []
   // let parsed = cookie.parse(cookieStr)
@@ -78,7 +73,13 @@ function parseCookie(cookieStr) {
   // 	cookies.push({ name: k, value: parsed[k] })
   // }
   // return cookies.map((c) => Object.assign(c, options))
+  return {} as Cookie;
 }
 
-export { CookieJar };
-export default CookieJar;
+function isResponse(object: any): object is domTypes.Response {
+  return "ok" in object;
+}
+
+function isRequest(object: any): object is domTypes.Request {
+  return "cache" in object;
+}
