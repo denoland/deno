@@ -13,6 +13,7 @@ import {
   addInterfaceProperty,
   addSourceComment,
   addVariableDeclaration,
+  appendSourceFile,
   checkDiagnostics,
   flattenNamespace,
   getSourceComment,
@@ -420,6 +421,16 @@ export function main({
   if (!silent) {
     console.log(`Merged "globals" into global scope.`);
   }
+
+  // Since we flatten the namespaces, we don't attempt to import `text-encoding`
+  // so we then need to concatenate that onto the `libDts` so it can stand on
+  // its own.
+  const textEncodingSourceFile = outputProject.getSourceFileOrThrow(
+    textEncodingFilePath
+  );
+  appendSourceFile(textEncodingSourceFile, libDTs);
+  // Removing it from the project so we know the libDTs can stand on its own.
+  outputProject.removeSourceFile(textEncodingSourceFile);
 
   // Add the preamble
   libDTs.insertStatements(0, libPreamble);

@@ -58,6 +58,14 @@ export function addVariableDeclaration(
   });
 }
 
+/** Copy one source file to the end of another source file. */
+export function appendSourceFile(
+  sourceFile: SourceFile,
+  targetSourceFile: SourceFile
+): void {
+  targetSourceFile.addStatements(`\n${sourceFile.print()}`);
+}
+
 /** Check diagnostics, and if any exist, exit the process */
 export function checkDiagnostics(project: Project, onlyFor?: string[]) {
   const program = project.getProgram();
