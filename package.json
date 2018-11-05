@@ -10,7 +10,7 @@
     "flatbuffers": "^1.9.0",
     "magic-string": "^0.22.5",
     "prettier": "^1.14.0",
-    "rollup": "^0.63.2",
+    "rollup": "0.67.0",
     "rollup-plugin-alias": "^1.4.0",
     "rollup-plugin-analyzer": "^2.1.0",
     "rollup-plugin-commonjs": "^9.1.3",

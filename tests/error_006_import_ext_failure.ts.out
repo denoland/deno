@@ -7,5 +7,5 @@ NotFound: Cannot resolve module "./non-existent" from "[WILDCARD]/tests/error_00
     at moduleNames.map.name ([WILDCARD]/js/compiler.ts:[WILDCARD])
     at Array.map (<anonymous>)
     at DenoCompiler.resolveModuleNames ([WILDCARD]/js/compiler.ts:[WILDCARD])
-    at Object.compilerHost.resolveModuleNames ([WILDCARD]/third_party/node_modules/typescript/lib/typescript.js:[WILDCARD])
-    at resolveModuleNamesWorker ([WILDCARD]/third_party/node_modules/typescript/lib/typescript.js:[WILDCARD])
+    at Object.compilerHost.resolveModuleNames (<anonymous>)
+    at resolveModuleNamesWorker (<anonymous>)
