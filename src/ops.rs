@@ -184,10 +184,10 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
-  let v8_version = version::get_v8_version();
+  let v8_version = version::v8();
   let v8_version_off = builder.create_string(v8_version);
 
-  let deno_version = version::DENO_VERSION;
+  let deno_version = version::DENO;
   let deno_version_off = builder.create_string(deno_version);
 
   let inner = msg::StartRes::create(
@@ -197,7 +197,7 @@ fn op_start(
       argv: Some(argv_off),
       debug_flag: state.flags.log_debug,
       recompile_flag: state.flags.recompile,
-      types_flag: state.flags.types_flag,
+      types_flag: state.flags.types,
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
@@ -323,6 +323,7 @@ fn op_set_timeout(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_set_timeout().unwrap();
+  // FIXME why is timeout a double if it's cast immediately to i64?
   let val = inner.timeout() as i64;
   isolate.timeout_due = if val >= 0 {
     Some(Instant::now() + Duration::from_millis(val as u64))
@@ -585,7 +586,10 @@ fn op_chmod(
     // Only work in unix
     #[cfg(any(unix))]
     {
+      // We need to use underscore to compile in Windows.
+      #[cfg_attr(feature = "cargo-clippy", allow(used_underscore_binding))]
       let mut permissions = _metadata.permissions();
+      #[cfg_attr(feature = "cargo-clippy", allow(used_underscore_binding))]
       permissions.set_mode(_mode);
       fs::set_permissions(&path, permissions)?;
     }

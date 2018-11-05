@@ -55,6 +55,7 @@ pub struct Isolate {
 
 // Isolate cannot be passed between threads but IsolateState can. So any state that
 // needs to be accessed outside the main V8 thread should be inside IsolateState.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct IsolateState {
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
@@ -132,7 +133,7 @@ impl Isolate {
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
     dispatch: Dispatch,
-  ) -> Isolate {
+  ) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -152,7 +153,7 @@ impl Isolate {
       Err(_e) => None,
     };
 
-    Isolate {
+    Self {
       libdeno_isolate,
       dispatch,
       rx,
@@ -173,7 +174,7 @@ impl Isolate {
     self as *mut _ as *mut c_void
   }
 
-  pub fn from_void_ptr<'a>(ptr: *mut c_void) -> &'a mut Isolate {
+  pub fn from_void_ptr<'a>(ptr: *mut c_void) -> &'a mut Self {
     let ptr = ptr as *mut _;
     unsafe { &mut *ptr }
   }
@@ -284,12 +285,12 @@ impl Drop for Isolate {
   }
 }
 
-/// Converts Rust Buf to libdeno deno_buf.
+/// Converts Rust Buf to libdeno `deno_buf`.
 impl From<Buf> for libdeno::deno_buf {
-  fn from(x: Buf) -> libdeno::deno_buf {
+  fn from(x: Buf) -> Self {
     let len = x.len();
     let ptr = Box::into_raw(x);
-    libdeno::deno_buf {
+    Self {
       alloc_ptr: std::ptr::null_mut(),
       alloc_len: 0,
       data_ptr: ptr as *mut u8,
@@ -337,12 +338,12 @@ extern "C" fn pre_dispatch(
     let buf = tokio_util::block_on(op).unwrap();
     let buf_size = buf.len();
 
-    if buf_size != 0 {
-      // Set the synchronous response, the value returned from isolate.send().
-      isolate.respond(req_id, buf);
-    } else {
+    if buf_size == 0 {
       // FIXME
       isolate.state.metrics_op_completed(buf.len() as u64);
+    } else {
+      // Set the synchronous response, the value returned from isolate.send().
+      isolate.respond(req_id, buf);
     }
   } else {
     // Execute op asynchronously.
@@ -522,9 +523,8 @@ mod tests {
     _data: &'static mut [u8],
   ) -> (bool, Box<Op>) {
     // Send back some sync response
-    let vec: Vec<u8> = vec![1, 2, 3, 4];
-    let control = vec.into_boxed_slice();
-    let op = Box::new(futures::future::ok(control));
+    let vec: Box<[u8]> = vec![1, 2, 3, 4].into_boxed_slice();
+    let op = Box::new(futures::future::ok(vec));
     (true, op)
   }
 
@@ -534,9 +534,8 @@ mod tests {
     _data: &'static mut [u8],
   ) -> (bool, Box<Op>) {
     // Send back some sync response
-    let vec: Vec<u8> = vec![1, 2, 3, 4];
-    let control = vec.into_boxed_slice();
-    let op = Box::new(futures::future::ok(control));
+    let vec: Box<[u8]> = vec![1, 2, 3, 4].into_boxed_slice();
+    let op = Box::new(futures::future::ok(vec));
     (false, op)
   }
 }

@@ -6,6 +6,7 @@ use errors::permission_denied;
 use errors::DenoResult;
 use std::io;
 
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, Default, PartialEq)]
 pub struct DenoPermissions {
   pub allow_write: bool,
@@ -14,8 +15,8 @@ pub struct DenoPermissions {
 }
 
 impl DenoPermissions {
-  pub fn new(flags: &DenoFlags) -> DenoPermissions {
-    DenoPermissions {
+  pub fn new(flags: &DenoFlags) -> Self {
+    Self {
       allow_write: flags.allow_write,
       allow_env: flags.allow_env,
       allow_net: flags.allow_net,
