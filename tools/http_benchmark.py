@@ -62,6 +62,6 @@ def run(server_cmd):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print "Usage ./tools/http_benchmark.py out/debug/deno"
+        print "Usage ./tools/http_benchmark.py target/debug/deno"
         sys.exit(1)
     deno_http_benchmark(sys.argv[1])

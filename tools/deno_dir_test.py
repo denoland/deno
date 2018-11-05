@@ -42,7 +42,7 @@ def run_deno(deno_exe, deno_dir=None):
 
 def main(argv):
     if len(sys.argv) != 3:
-        print "Usage ./tools/deno_dir_test.py out/debug/deno out/debug/.deno_dir"
+        print "Usage ./tools/deno_dir_test.py target/debug/deno target/debug/.deno_dir"
         sys.exit(1)
     deno_dir_test(argv[1], argv[2])
 
