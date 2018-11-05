@@ -20,6 +20,7 @@ use futures::Poll;
 use hyper;
 use hyper::rt::{Future, Stream};
 use remove_dir_all::remove_dir_all;
+use repl;
 use resources::table_entries;
 use std;
 use std::fs;
@@ -96,6 +97,8 @@ pub fn dispatch(
       msg::Any::Read => op_read,
       msg::Any::Remove => op_remove,
       msg::Any::Rename => op_rename,
+      msg::Any::ReplReadline => op_repl_readline,
+      msg::Any::ReplStart => op_repl_start,
       msg::Any::Resources => op_resources,
       msg::Any::SetEnv => op_set_env,
       msg::Any::Shutdown => op_shutdown,
@@ -1084,6 +1087,75 @@ fn op_read_link(
       },
     ))
   })
+}
+
+fn op_repl_start(
+  state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_repl_start().unwrap();
+  let cmd_id = base.cmd_id();
+  let history_file = String::from(inner.history_file().unwrap());
+
+  debug!("op_repl_start {}", history_file);
+  let history_path = repl::history_path(&state.dir, &history_file);
+  let repl = repl::Repl::new(history_path);
+  let resource = resources::add_repl(repl);
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::ReplStartRes::create(
+    builder,
+    &msg::ReplStartResArgs { rid: resource.rid },
+  );
+  ok_future(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::ReplStartRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_repl_readline(
+  _state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_repl_readline().unwrap();
+  let cmd_id = base.cmd_id();
+  let rid = inner.rid();
+  let prompt = inner.prompt().unwrap().to_owned();
+  debug!("op_repl_readline {} {}", rid, prompt);
+
+  // Ignore this clippy warning until this issue is addressed:
+  // https://github.com/rust-lang-nursery/rust-clippy/issues/1684
+  #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
+  Box::new(futures::future::result((move || {
+    let line = resources::readline(rid, &prompt)?;
+
+    let builder = &mut FlatBufferBuilder::new();
+    let line_off = builder.create_string(&line);
+    let inner = msg::ReplReadlineRes::create(
+      builder,
+      &msg::ReplReadlineResArgs {
+        line: Some(line_off),
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::ReplReadlineRes,
+        ..Default::default()
+      },
+    ))
+  })()))
 }
 
 fn op_truncate(
