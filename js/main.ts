@@ -103,9 +103,7 @@ export default function denoMain() {
       }
     } catch (e) {
       if (e instanceof DenoError && e.kind === msg.ErrorKind.NotFound) {
-        console.error(
-          `Specified configuration "${tsconfigFilename}" not found.`
-        );
+        console.log(`Specified configuration "${tsconfigFilename}" not found.`);
         os.exit(1);
       } else {
         throw e;

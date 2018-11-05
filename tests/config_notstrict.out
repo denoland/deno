@@ -1,0 +1,7 @@
+TypeError: Cannot read property 'foo' of undefined
+    at eval ([WILDCARD]/tests/fixtures/loose.ts:[WILDCARD])
+    at DenoCompiler.eval [as _globalEval] (<anonymous>)
+    at DenoCompiler._gatherDependencies (deno/js/compiler.ts:[WILDCARD])
+    at DenoCompiler.run (deno/js/compiler.ts:[WILDCARD])
+    at denoMain (deno/js/main.ts:[WILDCARD])
+    at deno_main.js:1:1

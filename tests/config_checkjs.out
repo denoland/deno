@@ -1,0 +1,5 @@
+[96m[WILDCARD]/tests/fixtures/loose.js[0m:[93m2[0m:[93m1[0m - [91merror[0m[90m TS2322: [0mType 'number' is not assignable to type 'Date'.
+
+[7m2[0m timeStamp = Date.now();
+[7m [0m [91m~~~~~~~~~[0m
+

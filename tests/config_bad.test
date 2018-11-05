@@ -1,0 +1,3 @@
+args: --config tests/configs/tsconfig_bad.json tests/fixtures/hello_world.js --recompile
+output: tests/config_bad.out
+exit_code: 1

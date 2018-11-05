@@ -1,0 +1,3 @@
+args: --config missing.json tests/fixtures/hello_world.js
+output: tests/config_missing.out
+exit_code: 1

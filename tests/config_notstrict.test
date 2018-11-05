@@ -1,0 +1,3 @@
+args: tests/fixtures/loose.ts --recompile
+output: tests/config_notstrict.out
+exit_code: 1

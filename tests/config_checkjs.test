@@ -1,0 +1,3 @@
+args: tests/fixtures/loose.js --recompile
+output: tests/config_checkjs.out
+exit_code: 1

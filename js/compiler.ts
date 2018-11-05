@@ -522,9 +522,7 @@ export class DenoCompiler
       configurationText
     );
     if (error) {
-      console.warn(
-        this._ts.formatDiagnosticsWithColorAndContext([error], this)
-      );
+      console.log(this._ts.formatDiagnosticsWithColorAndContext([error], this));
       this._os.exit(1);
     }
     const { options, errors } = this._ts.convertCompilerOptionsFromJson(
@@ -532,7 +530,7 @@ export class DenoCompiler
       deno.cwd()
     );
     if (errors.length) {
-      console.warn(this._ts.formatDiagnosticsWithColorAndContext(errors, this));
+      console.log(this._ts.formatDiagnosticsWithColorAndContext(errors, this));
       this._os.exit(1);
     }
     const ignoredOptions: string[] = [];

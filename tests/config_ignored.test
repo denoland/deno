@@ -1,0 +1,2 @@
+args: -c tests/configs/tsconfig_ignored.json tests/fixtures/hello_world.js --recompile
+output: tests/config_ignored.out

@@ -1,0 +1,2 @@
+args: --config tests/configs/tsconfig_nocheckjs.json tests/fixtures/loose.js --recompile
+output: tests/config_nocheckjs.out
