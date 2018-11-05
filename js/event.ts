@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 
-export const EventAttributes = new WeakMap;
+export const eventAttributes = new WeakMap;
 
 export class EventInit implements domTypes.EventInit {
   bubbles = false;
@@ -29,7 +29,7 @@ export class Event implements domTypes.Event {
   private _path: domTypes.EventTarget[] = [];
 
   constructor(type: string = "", eventInitDict?: domTypes.EventInit) {
-    EventAttributes.set(this, {
+    eventAttributes.set(this, {
       type,
       bubbles: eventInitDict && eventInitDict.bubbles || false,
       cancelable: eventInitDict && eventInitDict.cancelable || false,
@@ -43,32 +43,32 @@ export class Event implements domTypes.Event {
   }
 
   get bubbles(): boolean {
-    if (EventAttributes.has(this)) {
-      return EventAttributes.get(this).bubbles || false;
+    if (eventAttributes.has(this)) {
+      return eventAttributes.get(this).bubbles || false;
     }
 
     throw new TypeError("Illegal invocation");
   }
 
   get cancelable(): boolean {
-    if (EventAttributes.has(this)) {
-      return EventAttributes.get(this).cancelable || false;
+    if (eventAttributes.has(this)) {
+      return eventAttributes.get(this).cancelable || false;
     }
 
     throw new TypeError("Illegal invocation");
   }
 
   get composed(): boolean {
-    if (EventAttributes.has(this)) {
-      return EventAttributes.get(this).composed || false;
+    if (eventAttributes.has(this)) {
+      return eventAttributes.get(this).composed || false;
     }
 
     throw new TypeError("Illegal invocation");
   }
 
   get currentTarget(): domTypes.EventTarget {
-    if (EventAttributes.has(this)) {
-      return EventAttributes.get(this).currentTarget || null;
+    if (eventAttributes.has(this)) {
+      return eventAttributes.get(this).currentTarget || null;
     }
 
     throw new TypeError("Illegal invocation");
@@ -79,40 +79,40 @@ export class Event implements domTypes.Event {
   }
 
   get eventPhase(): number {
-    if (EventAttributes.has(this)) {
-      return EventAttributes.get(this).eventPhase || domTypes.EventPhase.NONE;
+    if (eventAttributes.has(this)) {
+      return eventAttributes.get(this).eventPhase || domTypes.EventPhase.NONE;
     }
 
     throw new TypeError("Illegal invocation");
   }
 
   get isTrusted(): boolean {
-    if (EventAttributes.has(this)) {
-      return EventAttributes.get(this).isTrusted || false;
+    if (eventAttributes.has(this)) {
+      return eventAttributes.get(this).isTrusted || false;
     }
 
     throw new TypeError("Illegal invocation");
   }
 
   get target(): domTypes.EventTarget {
-    if (EventAttributes.has(this)) {
-      return EventAttributes.get(this).target || null;
+    if (eventAttributes.has(this)) {
+      return eventAttributes.get(this).target || null;
     }
 
     throw new TypeError("Illegal invocation");
   }
 
   get timeStamp(): Date {
-    if (EventAttributes.has(this)) {
-      return EventAttributes.get(this).timeStamp || Date.now();
+    if (eventAttributes.has(this)) {
+      return eventAttributes.get(this).timeStamp || Date.now();
     }
 
     throw new TypeError("Illegal invocation");
   }
 
   get type(): string {
-    if (EventAttributes.has(this)) {
-      return EventAttributes.get(this).type || "";
+    if (eventAttributes.has(this)) {
+      return eventAttributes.get(this).type || "";
     }
 
     throw new TypeError("Illegal invocation");
