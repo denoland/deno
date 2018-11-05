@@ -13,6 +13,7 @@ macro_rules! svec {
     ($($x:expr),*) => (vec![$($x.to_string()),*]);
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, PartialEq, Default)]
 pub struct DenoFlags {
   pub help: bool,
@@ -23,7 +24,7 @@ pub struct DenoFlags {
   pub allow_write: bool,
   pub allow_net: bool,
   pub allow_env: bool,
-  pub types_flag: bool,
+  pub types: bool,
 }
 
 pub fn get_usage(opts: &Options) -> String {
@@ -36,6 +37,7 @@ Environment variables:
 }
 
 // Parses flags for deno. This does not do v8_set_flags() - call that separately.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub fn set_flags(
   args: Vec<String>,
 ) -> Result<(DenoFlags, Vec<String>, String), String> {
@@ -90,7 +92,7 @@ pub fn set_flags(
     flags.allow_env = true;
   }
   if matches.opt_present("types") {
-    flags.types_flag = true;
+    flags.types = true;
   }
 
   let rest: Vec<_> = matches.free.to_vec();
@@ -163,7 +165,7 @@ fn test_set_flags_5() {
   assert_eq!(
     flags,
     DenoFlags {
-      types_flag: true,
+      types: true,
       ..DenoFlags::default()
     }
   )
@@ -184,27 +186,16 @@ fn test_set_bad_flags_2() {
 
 // Returns args passed to V8, followed by args passed to JS
 fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
-  let mut rest = vec![];
-
-  // Filter out args that shouldn't be passed to V8
-  let mut args: Vec<String> = args
-    .into_iter()
-    .filter(|arg| {
-      if arg.as_str() == "--help" {
-        rest.push(arg.clone());
-        return false;
-      }
-
-      true
-    }).collect();
+  let (rest, mut v8_args) =
+    args.into_iter().partition(|ref a| a.as_str() == "--help");
 
   // Replace args being sent to V8
-  for mut a in &mut args {
+  for mut a in &mut v8_args {
     if a == "--v8-options" {
       mem::swap(a, &mut String::from("--help"));
     }
   }
-  (args, rest)
+  (v8_args, rest)
 }
 
 #[test]
@@ -231,32 +222,34 @@ fn test_v8_set_flags_preprocess_2() {
 
 // Pass the command line arguments to v8.
 // Returns a vector of command line arguments that v8 did not understand.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
   // deno_set_v8_flags(int* argc, char** argv) mutates argc and argv to remove
   // flags that v8 understands.
   // First parse core args, then convert to a vector of C strings.
-  let (argv, rest) = v8_set_flags_preprocess(args);
-  let mut argv = argv
-    .iter()
-    .map(|arg| CString::new(arg.as_str()).unwrap().into_bytes_with_nul())
-    .collect::<Vec<_>>();
+  let (args, rest) = v8_set_flags_preprocess(args);
 
   // Make a new array, that can be modified by V8::SetFlagsFromCommandLine(),
   // containing mutable raw pointers to the individual command line args.
-  let mut c_argv = argv
+  let mut raw_argv = args
+    .iter()
+    .map(|arg| CString::new(arg.as_str()).unwrap().into_bytes_with_nul())
+    .collect::<Vec<_>>();
+  let mut c_argv = raw_argv
     .iter_mut()
     .map(|arg| arg.as_mut_ptr() as *mut i8)
     .collect::<Vec<_>>();
-  // Store the length of the argv array in a local variable. We'll pass a
-  // pointer to this local variable to deno_set_v8_flags(), which then
+
+  // Store the length of the c_argv array in a local variable. We'll pass
+  // a pointer to this local variable to deno_set_v8_flags(), which then
   // updates its value.
-  let mut c_argc = c_argv.len() as c_int;
+  let mut c_argv_len = c_argv.len() as c_int;
   // Let v8 parse the arguments it recognizes and remove them from c_argv.
   unsafe {
-    libdeno::deno_set_v8_flags(&mut c_argc, c_argv.as_mut_ptr());
+    libdeno::deno_set_v8_flags(&mut c_argv_len, c_argv.as_mut_ptr());
   };
-  // If c_argc was updated we have to change the length of c_argv to match.
-  c_argv.truncate(c_argc as usize);
+  // If c_argv_len was updated we have to change the length of c_argv to match.
+  c_argv.truncate(c_argv_len as usize);
   // Copy the modified arguments list into a proper rust vec and return it.
   c_argv
     .iter()
