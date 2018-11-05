@@ -12,6 +12,7 @@ pub struct DenoPermissions {
   pub allow_write: bool,
   pub allow_net: bool,
   pub allow_env: bool,
+  pub allow_run: bool,
 }
 
 impl DenoPermissions {
@@ -20,7 +21,20 @@ impl DenoPermissions {
       allow_write: flags.allow_write,
       allow_env: flags.allow_env,
       allow_net: flags.allow_net,
+      allow_run: flags.allow_run,
     }
+  }
+
+  pub fn check_run(&mut self) -> DenoResult<()> {
+    if self.allow_run {
+      return Ok(());
+    };
+    // TODO get location (where access occurred)
+    let r = permission_prompt("Deno requests access to run a subprocess.");
+    if r.is_ok() {
+      self.allow_run = true;
+    }
+    r
   }
 
   pub fn check_write(&mut self, filename: &str) -> DenoResult<()> {
