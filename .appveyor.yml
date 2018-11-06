@@ -286,7 +286,9 @@ install:
   - ps: $env:PATH += ";$env:CARGO_HOME\bin"
 
   # Install rust-clippy for linting Rust code
-  - ps: rustup component add clippy-preview
+  - ps: |-
+      rustup update
+      rustup component add clippy-preview
 
   # Install Rust via rustup-init.
   # * After install, the rustup directory is very big, with many files,
@@ -318,6 +320,7 @@ install:
 
   # Log some more versions.
   - rustc --version
+  - rustup --version
   - cargo --version
 
 before_build:

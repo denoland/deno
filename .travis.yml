@@ -60,6 +60,7 @@ install:
     curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.30.0
   fi
   rustc --version
+  rustup --version
   cargo --version
 - |-
   # Install and start sccache.
@@ -77,7 +78,8 @@ install:
     hyperfine --version
   fi
 - |- 
-  # Install rust-clippy for linting rust code
+  # Install rust-clippy for linting rust 
+  rustup update
   rustup component add clippy-preview
 - |-
   # Remove unnnecessary cargo and rustup directories.
