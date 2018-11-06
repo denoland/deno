@@ -2,11 +2,9 @@
 use getopts::Options;
 use libc::c_int;
 use libdeno;
-use log;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
-use std::process::exit;
 use std::vec::Vec;
 
 // Creates vector of strings, Vec<String>
@@ -26,20 +24,6 @@ pub struct DenoFlags {
   pub allow_net: bool,
   pub allow_env: bool,
   pub types_flag: bool,
-}
-
-pub fn process(flags: &DenoFlags, usage_string: &str) {
-  if flags.help {
-    println!("{}", &usage_string);
-    exit(0);
-  }
-
-  let log_level = if flags.log_debug {
-    log::LevelFilter::Debug
-  } else {
-    log::LevelFilter::Info
-  };
-  log::set_max_level(log_level);
 }
 
 pub fn get_usage(opts: &Options) -> String {
