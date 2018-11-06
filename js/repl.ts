@@ -51,15 +51,12 @@ export function replLoop(): void {
   window.deno = deno; // FIXME use a new scope (rather than window).
 
   const historyFile = "deno_history.txt";
-  const prompt = "> ";
-
   const rid = startRepl(historyFile);
 
-  let line = "";
+  let code = "";
   while (true) {
     try {
-      line = readline(rid, prompt);
-      line = line.trim();
+      code = readBlock(rid, "> ", "  ");
     } catch (err) {
       if (err.message === "EOF") {
         break;
@@ -67,23 +64,65 @@ export function replLoop(): void {
       console.error(err);
       exit(1);
     }
-    if (!line) {
+    if (!code) {
       continue;
-    }
-    if (line === ".exit") {
+    } else if (code.trim() === ".exit") {
       break;
     }
-    try {
-      const result = eval.call(window, line); // FIXME use a new scope.
-      console.log(result);
-    } catch (err) {
-      if (err instanceof Error) {
-        console.error(`${err.constructor.name}: ${err.message}`);
-      } else {
-        console.error("Thrown:", err);
-      }
-    }
+
+    evaluate(code);
   }
 
   close(rid);
+}
+
+function evaluate(code: string): void {
+  try {
+    const result = eval.call(window, code); // FIXME use a new scope.
+    console.log(result);
+  } catch (err) {
+    if (err instanceof Error) {
+      console.error(`${err.constructor.name}: ${err.message}`);
+    } else {
+      console.error("Thrown:", err);
+    }
+  }
+}
+
+function readBlock(
+  rid: number,
+  prompt: string,
+  continuedPrompt: string
+): string {
+  let code = "";
+  do {
+    code += readline(rid, prompt);
+    prompt = continuedPrompt;
+  } while (parenthesesAreOpen(code));
+  return code;
+}
+
+// modified from
+// https://codereview.stackexchange.com/a/46039/148556
+function parenthesesAreOpen(code: string): boolean {
+  const parentheses = "[]{}()";
+  const stack = [];
+
+  for (const ch of code) {
+    const bracePosition = parentheses.indexOf(ch);
+
+    if (bracePosition === -1) {
+      // not a paren
+      continue;
+    }
+
+    if (bracePosition % 2 === 0) {
+      stack.push(bracePosition + 1); // push next expected brace position
+    } else {
+      if (stack.length === 0 || stack.pop() !== bracePosition) {
+        return false;
+      }
+    }
+  }
+  return stack.length > 0;
 }
