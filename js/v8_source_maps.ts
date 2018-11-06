@@ -3,9 +3,8 @@
 // Originated from source-map-support but has been heavily modified for deno.
 
 import { SourceMapConsumer, MappedPosition } from "source-map";
-import * as base64 from "base64-js";
-import { arrayToStr } from "./util";
 import { CallSite, RawSourceMap } from "./types";
+import { atob } from "./text_encoding";
 
 const consumers = new Map<string, SourceMapConsumer>();
 
@@ -53,9 +52,9 @@ export function prepareStackTraceWrapper(
 // @internal
 export function prepareStackTrace(error: Error, stack: CallSite[]): string {
   const frames = stack.map(
-    (frame: CallSite) => `\n    at ${wrapCallSite(frame).toString()}`
+    frame => `\n    at ${wrapCallSite(frame).toString()}`
   );
-  return error.toString() + frames.join("");
+  return `${error.toString()}${frames.join("")}`;
 }
 
 // @internal
@@ -74,11 +73,13 @@ export function wrapCallSite(frame: CallSite): CallSite {
     const column = (frame.getColumnNumber() || 1) - 1;
     const position = mapSourcePosition({ source, line, column });
     frame = cloneCallSite(frame);
-    frame.getFileName = () => position.source;
-    frame.getLineNumber = () => position.line;
-    frame.getColumnNumber = () => Number(position.column) + 1;
-    frame.getScriptNameOrSourceURL = () => position.source;
-    frame.toString = () => CallSiteToString(frame);
+    Object.assign(frame, {
+      getFileName: () => position.source,
+      getLineNumber: () => position.line,
+      getColumnNumber: () => Number(position.column) + 1,
+      getScriptNameOrSourceURL: () => position.source,
+      toString: () => CallSiteToString(frame)
+    });
     return frame;
   }
 
@@ -87,8 +88,10 @@ export function wrapCallSite(frame: CallSite): CallSite {
   if (origin) {
     origin = mapEvalOrigin(origin);
     frame = cloneCallSite(frame);
-    frame.getEvalOrigin = () => origin;
-    frame.toString = () => CallSiteToString(frame);
+    Object.assign(frame, {
+      getEvalOrigin: () => origin,
+      toString: () => CallSiteToString(frame)
+    });
     return frame;
   }
 
@@ -96,29 +99,30 @@ export function wrapCallSite(frame: CallSite): CallSite {
   return frame;
 }
 
-function cloneCallSite(frame: CallSite): CallSite {
-  // tslint:disable:no-any
-  const obj: any = {};
-  const frame_ = frame as any;
-  const props = Object.getOwnPropertyNames(Object.getPrototypeOf(frame));
-  props.forEach(name => {
+function cloneCallSite(
+  frame: CallSite
+  // mixin: Partial<CallSite> & { toString: () => string }
+): CallSite {
+  const obj = {} as CallSite;
+  const props = Object.getOwnPropertyNames(
+    Object.getPrototypeOf(frame)
+  ) as Array<keyof CallSite>;
+  for (const name of props) {
     obj[name] = /^(?:is|get)/.test(name)
-      ? () => frame_[name].call(frame)
-      : frame_[name];
-  });
-  return (obj as any) as CallSite;
-  // tslint:enable:no-any
+      ? () => frame[name].call(frame)
+      : frame[name];
+  }
+  return obj;
 }
 
 // Taken from source-map-support, original copied from V8's messages.js
 // MIT License. Copyright (c) 2014 Evan Wallace
 function CallSiteToString(frame: CallSite): string {
-  let fileName;
   let fileLocation = "";
   if (frame.isNative()) {
     fileLocation = "native";
   } else {
-    fileName = frame.getScriptNameOrSourceURL();
+    const fileName = frame.getScriptNameOrSourceURL();
     if (!fileName && frame.isEval()) {
       fileLocation = frame.getEvalOrigin() || "";
       fileLocation += ", "; // Expecting source position to follow.
@@ -134,10 +138,10 @@ function CallSiteToString(frame: CallSite): string {
     }
     const lineNumber = frame.getLineNumber();
     if (lineNumber != null) {
-      fileLocation += ":" + String(lineNumber);
+      fileLocation += `:${lineNumber}`;
       const columnNumber = frame.getColumnNumber();
       if (columnNumber) {
-        fileLocation += ":" + String(columnNumber);
+        fileLocation += `:${columnNumber}`;
       }
     }
   }
@@ -156,7 +160,7 @@ function CallSiteToString(frame: CallSite): string {
     const methodName = frame.getMethodName();
     if (functionName) {
       if (typeName && functionName.indexOf(typeName) !== 0) {
-        line += typeName + ".";
+        line += `${typeName}.`;
       }
       line += functionName;
       if (
@@ -206,8 +210,7 @@ export function loadConsumer(source: string): SourceMapConsumer | null {
     if (reSourceMap.test(sourceMappingURL)) {
       // Support source map URL as a data url
       const rawData = sourceMappingURL.slice(sourceMappingURL.indexOf(",") + 1);
-      const ui8 = base64.toByteArray(rawData);
-      sourceMapData = arrayToStr(ui8);
+      sourceMapData = atob(rawData);
       sourceMappingURL = source;
     } else {
       // TODO Support source map URLs relative to the source URL
@@ -217,7 +220,7 @@ export function loadConsumer(source: string): SourceMapConsumer | null {
 
     const rawSourceMap =
       typeof sourceMapData === "string"
-        ? JSON.parse(sourceMapData)
+        ? (JSON.parse(sourceMapData) as RawSourceMap)
         : sourceMapData;
     consumer = new SourceMapConsumer(rawSourceMap);
     consumers.set(source, consumer);
@@ -225,14 +228,14 @@ export function loadConsumer(source: string): SourceMapConsumer | null {
   return consumer;
 }
 
+// tslint:disable-next-line:max-line-length
+const sourceMapUrlRe = /(?:\/\/[@#][ \t]+sourceMappingURL=([^\s'"]+?)[ \t]*$)|(?:\/\*[@#][ \t]+sourceMappingURL=([^\*]+?)[ \t]*(?:\*\/)[ \t]*$)/gm;
+
 function retrieveSourceMapURL(fileData: string): string | null {
-  // Get the URL of the source map
-  // tslint:disable-next-line:max-line-length
-  const re = /(?:\/\/[@#][ \t]+sourceMappingURL=([^\s'"]+?)[ \t]*$)|(?:\/\*[@#][ \t]+sourceMappingURL=([^\*]+?)[ \t]*(?:\*\/)[ \t]*$)/gm;
   // Keep executing the search to find the *last* sourceMappingURL to avoid
   // picking up sourceMappingURLs from comments, strings, etc.
   let lastMatch, match;
-  while ((match = re.exec(fileData))) {
+  while ((match = sourceMapUrlRe.exec(fileData))) {
     lastMatch = match;
   }
   if (!lastMatch) {
@@ -249,11 +252,14 @@ export function mapSourcePosition(position: Position): MappedPosition {
   return consumer.originalPositionFor(position);
 }
 
+const stackEvalRe = /^eval at ([^(]+) \((.+):(\d+):(\d+)\)$/;
+const nestedEvalRe = /^eval at ([^(]+) \((.+)\)$/;
+
 // Parses code generated by FormatEvalOrigin(), a function inside V8:
 // https://code.google.com/p/v8/source/browse/trunk/src/messages.js
 function mapEvalOrigin(origin: string): string {
   // Most eval() calls are in this format
-  let match = /^eval at ([^(]+) \((.+):(\d+):(\d+)\)$/.exec(origin);
+  let match = stackEvalRe.exec(origin);
   if (match) {
     const position = mapSourcePosition({
       source: match[2],
@@ -269,7 +275,7 @@ function mapEvalOrigin(origin: string): string {
   }
 
   // Parse nested eval() calls using recursion
-  match = /^eval at ([^(]+) \((.+)\)$/.exec(origin);
+  match = nestedEvalRe.exec(origin);
   if (match) {
     return `eval at ${match[1]} (${mapEvalOrigin(match[2])})`;
   }

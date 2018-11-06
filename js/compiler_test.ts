@@ -438,7 +438,7 @@ test(function compilerRun() {
   assert(moduleMetaData.hasRun);
   assertEqual(moduleMetaData.sourceCode, fooBarTsSource);
   assertEqual(moduleMetaData.outputCode, fooBarTsOutput);
-  assertEqual(moduleMetaData.sourceMap, fooBarTsSourcemap);
+  assertEqual(JSON.stringify(moduleMetaData.sourceMap), fooBarTsSourcemap);
   assertEqual(moduleMetaData.exports, { foo: "bar" });
 
   assertEqual(
@@ -550,7 +550,7 @@ test(function compilerResolveModule() {
   );
   assertEqual(moduleMetaData.sourceCode, fooBazTsSource);
   assertEqual(moduleMetaData.outputCode, fooBazTsOutput);
-  assertEqual(moduleMetaData.sourceMap, fooBazTsSourcemap);
+  assertEqual(JSON.stringify(moduleMetaData.sourceMap), fooBazTsSourcemap);
   assert(!moduleMetaData.hasRun);
   assert(!moduleMetaData.deps);
   assertEqual(moduleMetaData.exports, {});
