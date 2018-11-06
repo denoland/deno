@@ -285,6 +285,9 @@ install:
   # Add Rust/Cargo to PATH.
   - ps: $env:PATH += ";$env:CARGO_HOME\bin"
 
+  # Install rust-clippy for linting Rust code
+  - ps: rustup component add clippy-preview
+
   # Install Rust via rustup-init.
   # * After install, the rustup directory is very big, with many files,
   #   slowing down cache save/restore a lot, so we remove unnecessary stuff.
@@ -304,9 +307,6 @@ install:
           "$env:RUSTUP_HOME\toolchains\stable-x86_64-pc-windows-msvc\share\doc"
         )
       }
-
-  # Install rust-clippy for linting Rust code
-  - ps: rustup component add clippy-preview
 
   # Log installed Node.js version + processor architecture.
   - node -p "`Node ${process.version} ${process.arch}`"

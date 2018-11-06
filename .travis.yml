@@ -76,6 +76,9 @@ install:
     fi
     hyperfine --version
   fi
+- |- 
+  # Install rust-clippy for linting rust code
+  rustup component add clippy-preview
 - |-
   # Remove unnnecessary cargo and rustup directories.
   # This keeps the Travis CI cache small and fast.
@@ -85,7 +88,6 @@ install:
   rm -rf "$RUSTUP_HOME"toolchains/*/etc
   rm -rf "$RUSTUP_HOME"toolchains/*/share
 before_script:
-- rustup component add clippy-preview
 - ./tools/setup.py
 script:
 - ./tools/lint.py
