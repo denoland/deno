@@ -9,11 +9,19 @@ import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
 import { replLoop } from "./repl";
+import * as sourceMaps from "./v8_source_maps";
 import { version } from "typescript";
 
-// Instantiate compiler at the top-level so it decodes source maps for the main
-// bundle during snapshot.
+// Install the source maps handler and do some pre-calculations so all of it is
+// available in the snapshot
 const compiler = DenoCompiler.instance();
+sourceMaps.install({
+  installPrepareStackTrace: true,
+  getGeneratedContents: compiler.getGeneratedContents
+});
+const consumer = sourceMaps.loadConsumer("gen/bundle/main.js");
+assert(consumer != null);
+consumer!.computeColumnSpans();
 
 function sendStart(): msg.StartRes {
   const builder = flatbuffers.createBuilder();
