@@ -81,8 +81,19 @@ fn main() {
       eprintln!("{}", err);
       std::process::exit(1)
     });
+
+  if flags.help {
+    println!("{}", &usage_string);
+    std::process::exit(0);
+  }
+
+  log::set_max_level(if flags.log_debug {
+    log::LevelFilter::Debug
+  } else {
+    log::LevelFilter::Info
+  });
+
   let mut isolate = isolate::Isolate::new(flags, rest_argv, ops::dispatch);
-  flags::process(&isolate.state.flags, &usage_string);
   tokio_util::init(|| {
     isolate
       .execute("deno_main.js", "denoMain();")
