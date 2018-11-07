@@ -1,4 +1,6 @@
-import { listen } from "./server.ts";
+//import { listen } from "./server.ts";
+import { test } from "http://deno.land/x/testing/testing.ts";
 
-const s = listen("0.0.0.0:4500");
-s.serve();
+test(function basic() {
+  console.log("ok");
+});
