@@ -478,21 +478,25 @@ export class DenoCompiler
   incrementalCompile(
     sourceCode: SourceCode,
     previousOutput?: OutputCode
-  ): { diagnostics: ts.Diagnostic[], outputCode: OutputCode, additionalCode: OutputCode } {
-    console.log('incCom source', sourceCode);
-    console.log('incCom prev', previousOutput);
-    
+  ): {
+    diagnostics: ts.Diagnostic[];
+    outputCode: OutputCode;
+    additionalCode: OutputCode;
+  } {
+    console.log("incCom source", sourceCode);
+    console.log("incCom prev", previousOutput);
+
     // TODO: use compiler options
     const output = this._ts.transpileModule(sourceCode, {});
-    
+
     // TODO:
     // - diff code with 'previousOutput'
     // - return only new lines as outputCode
-    
+
     return {
       diagnostics: output.diagnostics!,
       outputCode: output.outputText,
-      additionalCode: '',
+      additionalCode: ""
     };
   }
 

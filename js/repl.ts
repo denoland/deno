@@ -47,7 +47,6 @@ export function readline(rid: number, prompt: string): string {
   return line || "";
 }
 
-
 interface ReplContext {
   lines: string[];
   previousOutput: string;
@@ -59,7 +58,7 @@ interface ReplContext {
 // const EVAL_FILENAME = `[eval].ts`
 const REPL_CONTEXT: ReplContext = {
   lines: [],
-  previousOutput: '',
+  previousOutput: ""
 };
 
 // @internal
@@ -100,9 +99,9 @@ function evaluate(code: string): void {
     // 3. output diagnostics
     REPL_CONTEXT.lines.push(code);
     const compiledCode = compileReplCode(REPL_CONTEXT);
-    console.log('compiledCode', compiledCode);
-
-    const result = eval.call(window, compiledCode.outputCode); // FIXME use a new scope.
+    console.log("compiledCode", compiledCode);
+    // FIXME use a new scope.
+    const result = eval.call(window, compiledCode.outputCode); 
     console.log(result);
     REPL_CONTEXT.previousOutput = compiledCode.outputCode;
   } catch (err) {
