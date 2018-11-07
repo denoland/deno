@@ -285,10 +285,10 @@ install:
   # Add Rust/Cargo to PATH.
   - ps: $env:PATH += ";$env:CARGO_HOME\bin"
 
+  # Update rustup
+  - ps: rustup self update
   # Install rust-clippy for linting Rust code
-  - ps: |-
-      rustup update
-      rustup component add clippy-preview
+  - ps: rustup component add rls-preview --toolchain nightly-2017-12-21
 
   # Install Rust via rustup-init.
   # * After install, the rustup directory is very big, with many files,

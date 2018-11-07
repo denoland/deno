@@ -79,7 +79,7 @@ install:
   fi
 - |- 
   # Install rust-clippy for linting rust 
-  rustup update
+  rustup self update
   rustup component add clippy-preview
 - |-
   # Remove unnnecessary cargo and rustup directories.
