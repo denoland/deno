@@ -1,0 +1,15 @@
+language: python
+
+os:
+  - linux
+
+python:
+  - "2.7"
+
+install:
+- |-
+  curl -sSf https://raw.githubusercontent.com/denoland/deno_install/master/install.py | python
+  export PATH="$HOME/.deno/bin:$PATH"
+
+script:
+  - deno test.ts
