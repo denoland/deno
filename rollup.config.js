@@ -265,6 +265,7 @@ export default function makeConfig(commandOptions) {
           [typescriptPath]: [
             "createLanguageService",
             "formatDiagnosticsWithColorAndContext",
+            "transpileModule",
             "ModuleKind",
             "ScriptKind",
             "ScriptSnapshot",

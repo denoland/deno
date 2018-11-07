@@ -117,7 +117,9 @@ function evaluate(code: string): void {
 const compiler = DenoCompiler.instance();
 
 function compileReplCode(context: ReplContext) {
-  const sourceCode = context.lines.join('\n');
+  // TODO: right now only last line is passed, we should pass
+  // all lines, and let `incrementalCompile` return only new lines
+  const sourceCode = context.lines[context.lines.length - 1];
   return compiler.incrementalCompile(sourceCode, context.previousOutput);
 }
 
