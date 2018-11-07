@@ -55,12 +55,12 @@ function readRequest(b: bufio.Reader): ServerRequest {
 
   // First line: GET /index.html HTTP/1.0
   const s = await tp.readLine();
-  const [ method, url, proto ] = parseRequestLine(s);
+  const [method, url, proto] = parseRequestLine(s);
   console.log("readRequest", method, url);
 }
 
 // Returns [method, url, proto]
-function parseRequestLine(line: string): [ string, string, string ] {
+function parseRequestLine(line: string): [string, string, string] {
   return line.split(" ", 3);
 }
 
@@ -69,4 +69,3 @@ export function listen(addr: string): Server {
   const s = new Server(listener);
   return s;
 }
-
