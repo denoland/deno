@@ -7,6 +7,7 @@ import { close } from "./files";
 import * as dispatch from "./dispatch";
 import { exit } from "./os";
 import { window } from "./globals";
+import { DenoCompiler } from "./compiler";
 
 function startRepl(historyFile: string): number {
   const builder = flatbuffers.createBuilder();
@@ -46,6 +47,21 @@ export function readline(rid: number, prompt: string): string {
   return line || "";
 }
 
+
+interface ReplContext {
+  lines: string[];
+  previousOutput: string;
+}
+
+/**
+ * Eval helpers.
+ */
+// const EVAL_FILENAME = `[eval].ts`
+const REPL_CONTEXT: ReplContext = {
+  lines: [],
+  previousOutput: '',
+};
+
 // @internal
 export function replLoop(): void {
   window.deno = deno; // FIXME use a new scope (rather than window).
@@ -78,8 +94,17 @@ export function replLoop(): void {
 
 function evaluate(code: string): void {
   try {
-    const result = eval.call(window, code); // FIXME use a new scope.
+    // TODO:
+    // 1. preserve context between calls
+    // 2. run only incremental lines, not full output
+    // 3. output diagnostics
+    REPL_CONTEXT.lines.push(code);
+    const compiledCode = compileReplCode(REPL_CONTEXT);
+    console.log('compiledCode', compiledCode);
+
+    const result = eval.call(window, compiledCode.outputCode); // FIXME use a new scope.
     console.log(result);
+    REPL_CONTEXT.previousOutput = compiledCode.outputCode;
   } catch (err) {
     if (err instanceof Error) {
       console.error(`${err.constructor.name}: ${err.message}`);
@@ -87,6 +112,13 @@ function evaluate(code: string): void {
       console.error("Thrown:", err);
     }
   }
+}
+
+const compiler = DenoCompiler.instance();
+
+function compileReplCode(context: ReplContext) {
+  const sourceCode = context.lines.join('\n');
+  return compiler.incrementalCompile(sourceCode, context.previousOutput);
 }
 
 function readBlock(

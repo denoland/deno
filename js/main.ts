@@ -96,6 +96,6 @@ export default function denoMain() {
   if (inputFn) {
     compiler.run(inputFn, `${cwd}/`);
   } else {
-    replLoop();
+    replLoop(`${cwd}/`);
   }
 }
