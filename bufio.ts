@@ -1,8 +1,21 @@
+// Ported to Deno from:
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 import * as deno from "deno";
+import { assert, copyBytes } from "./util.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
 const MIN_BUF_SIZE = 16;
 const MAX_CONSECUTIVE_EMPTY_READS = 100;
+
+export class ErrNegativeRead extends Error {
+  constructor() {
+    super("bufio: reader returned negative count from Read");
+    this.name = "ErrNegativeRead";
+  }
+}
 
 export class Reader implements deno.Reader {
   private buf: Uint8Array;
@@ -16,7 +29,7 @@ export class Reader implements deno.Reader {
     if (size < MIN_BUF_SIZE) {
       size = MIN_BUF_SIZE;
     }
-    this._reset(new Uint8Array(size), rd)
+    this._reset(new Uint8Array(size), rd);
   }
 
   /** Returns the size of the underlying buffer in bytes. */
@@ -42,7 +55,7 @@ export class Reader implements deno.Reader {
     for (let i = MAX_CONSECUTIVE_EMPTY_READS; i > 0; i--) {
       const { nread, eof } = await this.rd.read(this.buf.subarray(this.w));
       if (nread < 0) {
-        throw Error("negative read");
+        throw new ErrNegativeRead();
       }
       this.w += nread;
       if (eof) {
@@ -69,9 +82,58 @@ export class Reader implements deno.Reader {
     this.lastCharSize = -1;
   }
 
+  /** reads data into p.
+   * It returns the number of bytes read into p.
+   * The bytes are taken from at most one Read on the underlying Reader,
+   * hence n may be less than len(p).
+   * At EOF, the count will be zero and err will be io.EOF.
+   * To read exactly len(p) bytes, use io.ReadFull(b, p).
+   */
   async read(p: ArrayBufferView): Promise<deno.ReadResult> {
-    throw Error("not implemented");
-    return { nread: 0, eof: false };
+    let rr: deno.ReadResult = { nread: p.byteLength, eof: false };
+    if (rr.nread === 0) {
+      return rr;
+    }
+
+    if (this.r === this.w) {
+      /*
+      if (this.err != null) {
+        throw this.readErr();
+      }
+      */
+      if (p.byteLength >= this.buf.byteLength) {
+        // Large read, empty buffer.
+        // Read directly into p to avoid copy.
+        rr = await this.rd.read(p);
+        if (rr.nread < 0) {
+          throw new ErrNegativeRead();
+        }
+        if (rr.nread > 0) {
+          this.lastByte = p[rr.nread - 1];
+          // this.lastRuneSize = -1;
+        }
+        return rr;
+      }
+      // One read.
+      // Do not use this.fill, which will loop.
+      this.r = 0;
+      this.w = 0;
+      rr = await this.rd.read(this.buf);
+      if (rr.nread < 0) {
+        throw new ErrNegativeRead();
+      }
+      if (rr.nread === 0) {
+        return rr;
+      }
+      this.w += rr.nread;
+    }
+
+    // copy as much as we can
+    rr.nread = copyBytes(p as Uint8Array, this.buf.subarray(this.r, this.w), 0);
+    this.r += rr.nread;
+    this.lastByte = this.buf[this.r - 1];
+    // this.lastRuneSize = -1;
+    return rr;
   }
 
   /** Returns the next byte [0, 255] or -1 if EOF. */
@@ -88,5 +150,3 @@ export class Reader implements deno.Reader {
     return c;
   }
 }
-
-

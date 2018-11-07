@@ -1,8 +1,12 @@
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
-import { test, assert, assertEqual } from "./test_util.ts";
-import { Buffer } from "deno";
+import {
+  test,
+  assert,
+  assertEqual
+} from "http://deno.land/x/testing/testing.ts";
+import { Buffer } from "./buffer.ts";
 
 // N controls how many iterations of certain checks are performed.
 const N = 100;
@@ -13,7 +17,7 @@ function init() {
   if (testBytes == null) {
     testBytes = new Uint8Array(N);
     for (let i = 0; i < N; i++) {
-      testBytes[i] = "a".charCodeAt(0) + (i % 26);
+      testBytes[i] = "a".charCodeAt(0) + i % 26;
     }
     const decoder = new TextDecoder();
     testString = decoder.decode(testBytes);

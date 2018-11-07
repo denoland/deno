@@ -4,7 +4,7 @@
 
 //import * as io from "./io";
 import { Reader, Writer, ReadResult } from "deno";
-import { assert } from "./util.ts";
+import { assert, copyBytes } from "./util.ts";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
@@ -12,18 +12,6 @@ import { assert } from "./util.ts";
 // underlying buffer.
 const MIN_READ = 512;
 const MAX_SIZE = 2 ** 32 - 2;
-
-// `off` is the offset into `dst` where it will at which to begin writing values
-// from `src`.
-// Returns the number of bytes copied.
-function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
-  const r = dst.byteLength - off;
-  if (src.byteLength > r) {
-    src = src.subarray(0, r);
-  }
-  dst.set(src, off);
-  return src.byteLength;
-}
 
 /** A Buffer is a variable-sized buffer of bytes with read() and write()
  * methods. Based on https://golang.org/pkg/bytes/#Buffer
