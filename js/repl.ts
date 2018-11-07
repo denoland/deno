@@ -99,9 +99,15 @@ function evaluate(code: string): void {
     // 3. output diagnostics
     REPL_CONTEXT.lines.push(code);
     const compiledCode = compileReplCode(REPL_CONTEXT);
-    console.log("compiledCode", compiledCode);
+
+    if (compiledCode.diagnostics.length > 0) {
+      for (const diagnostic of compiledCode.diagnostics) {
+        console.log(diagnostic.messageText);
+      }
+    }
+
     // FIXME use a new scope.
-    const result = eval.call(window, compiledCode.outputCode); 
+    const result = eval.call(window, compiledCode.outputCode);
     console.log(result);
     REPL_CONTEXT.previousOutput = compiledCode.outputCode;
   } catch (err) {

@@ -483,11 +483,11 @@ export class DenoCompiler
     outputCode: OutputCode;
     additionalCode: OutputCode;
   } {
-    console.log("incCom source", sourceCode);
-    console.log("incCom prev", previousOutput);
-
     // TODO: use compiler options
-    const output = this._ts.transpileModule(sourceCode, {});
+    const output = this._ts.transpileModule(sourceCode, {
+      compilerOptions: this._options,
+      reportDiagnostics: true
+    });
 
     // TODO:
     // - diff code with 'previousOutput'
