@@ -2,6 +2,6 @@ test:
 	deno test.ts
 
 fmt:
-	prettier *.ts --write
+	prettier *.md *.ts --write
 
 .PHONY: test fmt

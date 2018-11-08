@@ -47,7 +47,6 @@ export class BufReader implements Reader {
   }
 
   // Reads a new chunk into the buffer.
-  // Returns true if EOF, false on successful read.
   private async _fill(): Promise<void> {
     // Slide existing data to beginning.
     if (this.r > 0) {
@@ -286,5 +285,41 @@ export class BufReader implements Reader {
     }
 
     return [line, err];
+  }
+
+  /** Peek returns the next n bytes without advancing the reader. The bytes stop
+   * being valid at the next read call. If Peek returns fewer than n bytes, it
+   * also returns an error explaining why the read is short. The error is
+   * ErrBufferFull if n is larger than b's buffer size.
+   */
+  async peek(n: number): Promise<[Uint8Array, BufState]> {
+    if (n < 0) {
+      throw Error("negative count");
+    }
+
+    while (
+      this.w - this.r < n &&
+      this.w - this.r < this.buf.byteLength &&
+      this.err == null
+    ) {
+      await this._fill(); // this.w - this.r < len(this.buf) => buffer is not full
+    }
+
+    if (n > this.buf.byteLength) {
+      return [this.buf.subarray(this.r, this.w), "BufferFull"];
+    }
+
+    // 0 <= n <= len(this.buf)
+    let err: BufState;
+    let avail = this.w - this.r;
+    if (avail < n) {
+      // not enough data in buffer
+      n = avail;
+      err = this._readErr();
+      if (!err) {
+        err = "BufferFull";
+      }
+    }
+    return [this.buf.subarray(this.r, this.r + n), err];
   }
 }
