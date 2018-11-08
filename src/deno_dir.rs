@@ -753,10 +753,26 @@ fn test_resolve_module_6() {
   assert_eq!(filename, expected_filename);
 }
 
+#[test]
+fn test_resolve_module_7() {
+  let (_temp_dir, deno_dir) = test_setup();
+
+  let module_specifier = "http_test.ts";
+  let containing_file = add_root!("/Users/rld/src/deno_net/");
+  let expected_module_name = add_root!("/Users/rld/src/deno_net/http_test.ts");
+  let expected_filename = add_root!("/Users/rld/src/deno_net/http_test.ts");
+
+  let (module_name, filename) = deno_dir
+    .resolve_module(module_specifier, containing_file)
+    .unwrap();
+  assert_eq!(module_name, expected_module_name);
+  assert_eq!(filename, expected_filename);
+}
+
 const ASSET_PREFIX: &str = "/$asset$/";
 
 fn is_remote(module_name: &str) -> bool {
-  module_name.starts_with("http")
+  module_name.starts_with("http://") || module_name.starts_with("https://")
 }
 
 fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
