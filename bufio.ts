@@ -323,3 +323,13 @@ export class BufReader implements Reader {
     return [this.buf.subarray(this.r, this.r + n), err];
   }
 }
+
+/** BufWriter implements buffering for an deno.Writer object.
+ * If an error occurs writing to a Writer, no more data will be
+ * accepted and all subsequent writes, and flush(), will return the error.
+ * After all data has been written, the client should call the
+ * flush() method to guarantee all data has been forwarded to
+ * the underlying deno.Writer.
+ */
+export class BufWriter implements Writer {
+}

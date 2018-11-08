@@ -33,8 +33,9 @@ class ServerRequest {
   url: string;
   method: string;
   proto: string;
+  headers: Headers;
 
-  respond(r: Response = { status: 200 }): Promise<void> {
+  respond(r: Response): Promise<void> {
     throw Error("not implemented");
   }
 }
@@ -43,25 +44,15 @@ async function readRequest(b: BufReader): Promise<ServerRequest> {
   const tp = new TextProtoReader(b);
   const req = new ServerRequest();
 
-  // First line: GET /index.html HTTP/1.0
   let s: string;
   let err: BufState;
-  [s, err] = await tp.readLine();
-  const { method, url, proto } = parseRequestLine(s);
-  req.method = method;
-  req.url = url;
-  req.proto = proto;
 
-  let headers: Headers;
-  [headers, err] = await tp.readMIMEHeader();
+  // First line: GET /index.html HTTP/1.0
+  [s, err] = await tp.readLine();
+  [req.method, req.url, req.proto] = s.split(" ", 3);
+
+  [req.headers, err] = await tp.readMIMEHeader();
 
   return req;
 }
 
-// Returns [method, url, proto]
-function parseRequestLine(
-  line: string
-): { method: string; url: string; proto: string } {
-  let [method, url, proto] = line.split(" ", 3);
-  return { method, url, proto };
-}
