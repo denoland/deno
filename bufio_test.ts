@@ -5,11 +5,11 @@
 
 import * as deno from "deno";
 import { test, assertEqual } from "http://deno.land/x/testing/testing.ts";
-import * as bufio from "./bufio.ts";
+import { BufReader } from "./bufio.ts";
 import { Buffer } from "./buffer.ts";
 import * as iotest from "./iotest.ts";
 
-async function readBytes(buf: bufio.Reader): Promise<string> {
+async function readBytes(buf: BufReader): Promise<string> {
   const b = new Uint8Array(1000);
   let nb = 0;
   while (true) {
@@ -32,7 +32,7 @@ function stringsReader(s: string): deno.Reader {
 
 test(async function bufioReaderSimple() {
   const data = "hello world";
-  const b = new bufio.Reader(stringsReader(data));
+  const b = new BufReader(stringsReader(data));
   const s = await readBytes(b);
   assertEqual(s, data);
 });
@@ -42,15 +42,15 @@ type ReadMaker = { name: string; fn: (r: deno.Reader) => deno.Reader };
 const readMakers: ReadMaker[] = [
   { name: "full", fn: r => r },
   { name: "byte", fn: r => new iotest.OneByteReader(r) },
-  { name: "half", fn: r => new iotest.HalfReader(r) }
+  { name: "half", fn: r => new iotest.HalfReader(r) },
   // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
   // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
 ];
 
-function readLines(b: bufio.Reader): string {
+function readLines(b: BufReader): string {
   let s = "";
   while (true) {
-    let s1 = b.readString("\n");
+    let s1 = b.readString('\n');
     if (s1 == null) {
       break; // EOF
     }
@@ -60,7 +60,7 @@ function readLines(b: bufio.Reader): string {
 }
 
 // Call read to accumulate the text of a file
-async function reads(buf: bufio.Reader, m: number): Promise<string> {
+async function reads(buf: BufReader, m: number): Promise<string> {
   const b = new Uint8Array(1000);
   let nb = 0;
   while (true) {
@@ -74,16 +74,16 @@ async function reads(buf: bufio.Reader, m: number): Promise<string> {
   return decoder.decode(b.subarray(0, nb));
 }
 
-type BufReader = { name: string; fn: (r: bufio.Reader) => Promise<string> };
+type NamedBufReader = { name: string; fn: (r: BufReader) => Promise<string> };
 
-const bufreaders: BufReader[] = [
-  { name: "1", fn: (b: bufio.Reader) => reads(b, 1) },
-  { name: "2", fn: (b: bufio.Reader) => reads(b, 2) },
-  { name: "3", fn: (b: bufio.Reader) => reads(b, 3) },
-  { name: "4", fn: (b: bufio.Reader) => reads(b, 4) },
-  { name: "5", fn: (b: bufio.Reader) => reads(b, 5) },
-  { name: "7", fn: (b: bufio.Reader) => reads(b, 7) },
-  { name: "bytes", fn: readBytes }
+const bufreaders: NamedBufReader[] = [
+  { name: "1", fn: (b: BufReader) => reads(b, 1) },
+  { name: "2", fn: (b: BufReader) => reads(b, 2) },
+  { name: "3", fn: (b: BufReader) => reads(b, 3) },
+  { name: "4", fn: (b: BufReader) => reads(b, 4) },
+  { name: "5", fn: (b: BufReader) => reads(b, 5) },
+  { name: "7", fn: (b: BufReader) => reads(b, 7) },
+  { name: "bytes", fn: readBytes },
   // { name: "lines", fn: readLines },
 ];
 
@@ -101,7 +101,7 @@ const bufsizes: number[] = [
   4096
 ];
 
-test(async function bufioReader() {
+test(async function bufioBufReader() {
   const texts = new Array<string>(31);
   let str = "";
   let all = "";
@@ -117,7 +117,7 @@ test(async function bufioReader() {
       for (let bufreader of bufreaders) {
         for (let bufsize of bufsizes) {
           const read = readmaker.fn(stringsReader(text));
-          const buf = new bufio.Reader(read, bufsize);
+          const buf = new BufReader(read, bufsize);
           const s = await bufreader.fn(buf);
           const debugStr =
             `reader=${readmaker.name} ` +
