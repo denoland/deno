@@ -12,11 +12,7 @@ const MAX_CONSECUTIVE_EMPTY_READS = 100;
 const CR = charCode("\r");
 const LF = charCode("\n");
 
-export enum BufState {
-  Ok,
-  EOF,
-  BufferFull
-}
+export type BufState = null | "EOF" | "BufferFull" | "NoProgress" | Error;
 
 /** BufReader implements buffering for a Reader object. */
 export class BufReader implements Reader {
@@ -26,7 +22,7 @@ export class BufReader implements Reader {
   private w = 0; // buf write position.
   private lastByte: number;
   private lastCharSize: number;
-  private err: null | Error;
+  private err: BufState;
 
   constructor(rd: Reader, size = DEFAULT_BUF_SIZE) {
     if (size < MIN_BUF_SIZE) {
@@ -44,7 +40,7 @@ export class BufReader implements Reader {
     return this.w - this.r;
   }
 
-  private _readErr(): Error {
+  private _readErr(): BufState {
     const err = this.err;
     this.err = null;
     return err;
@@ -52,7 +48,7 @@ export class BufReader implements Reader {
 
   // Reads a new chunk into the buffer.
   // Returns true if EOF, false on successful read.
-  private async _fill(): Promise<BufState> {
+  private async _fill(): Promise<void> {
     // Slide existing data to beginning.
     if (this.r > 0) {
       this.buf.copyWithin(0, this.r, this.w);
@@ -71,18 +67,19 @@ export class BufReader implements Reader {
         rr = await this.rd.read(this.buf.subarray(this.w));
       } catch (e) {
         this.err = e;
-        return BufState.Ok;
+        return;
       }
       assert(rr.nread >= 0, "negative read");
       this.w += rr.nread;
       if (rr.eof) {
-        return BufState.EOF;
+        this.err = "EOF";
+        return;
       }
       if (rr.nread > 0) {
-        return BufState.Ok;
+        return;
       }
     }
-    throw Error("No Progress");
+    this.err = "NoProgress";
   }
 
   /** Discards any buffered data, resets all state, and switches
@@ -96,7 +93,7 @@ export class BufReader implements Reader {
     this.buf = buf;
     this.rd = rd;
     this.lastByte = -1;
-    this.lastCharSize = -1;
+    // this.lastRuneSize = -1;
   }
 
   /** reads data into p.
@@ -163,12 +160,12 @@ export class BufReader implements Reader {
   /** Returns the next byte [0, 255] or -1 if EOF. */
   async readByte(): Promise<number> {
     while (this.r === this.w) {
-      const eof = await this._fill(); // buffer is empty.
+      await this._fill(); // buffer is empty.
+      if (this.err == "EOF") {
+        return -1;
+      }
       if (this.err != null) {
         throw this._readErr();
-      }
-      if (eof) {
-        return -1;
       }
     }
     const c = this.buf[this.r];
@@ -206,20 +203,10 @@ export class BufReader implements Reader {
    * (possibly a character belonging to the line end) even if that byte is not
    * part of the line returned by ReadLine.
    */
-  async readLine(): Promise<{
-    line?: Uint8Array;
-    isPrefix: boolean;
-    state: BufState;
-  }> {
-    let line: Uint8Array;
-    let state: BufState;
-    try {
-      [line, state] = await this.readSlice(LF);
-    } catch (err) {
-      this.err = err;
-    }
+  async readLine(): Promise<[Uint8Array, boolean, BufState]> {
+    let [line, err] = await this.readSlice(LF);
 
-    if (state === BufState.BufferFull) {
+    if (err === "BufferFull") {
       // Handle the case where "\r\n" straddles the buffer.
       if (line.byteLength > 0 && line[line.byteLength - 1] === CR) {
         // Put the '\r' back on buf and drop it from line.
@@ -228,12 +215,13 @@ export class BufReader implements Reader {
         this.r--;
         line = line.subarray(0, line.byteLength - 1);
       }
-      return { line, isPrefix: true, state };
+      return [line, true, null];
     }
 
     if (line.byteLength === 0) {
-      return { line, isPrefix: false, state };
+      return [line, false, err];
     }
+    err = null;
 
     if (line[line.byteLength - 1] == LF) {
       let drop = 1;
@@ -242,7 +230,7 @@ export class BufReader implements Reader {
       }
       line = line.subarray(0, line.byteLength - drop);
     }
-    return { line, isPrefix: false, state };
+    return [line, false, err];
   }
 
   /** readSlice() reads until the first occurrence of delim in the input,
@@ -258,7 +246,7 @@ export class BufReader implements Reader {
   async readSlice(delim: number): Promise<[Uint8Array, BufState]> {
     let s = 0; // search start index
     let line: Uint8Array;
-    let state = BufState.Ok;
+    let err: BufState;
     while (true) {
       // Search buffer.
       let i = this.buf.subarray(this.r + s, this.w).indexOf(delim);
@@ -273,7 +261,7 @@ export class BufReader implements Reader {
       if (this.err) {
         line = this.buf.subarray(this.r, this.w);
         this.r = this.w;
-        throw this._readErr();
+        err = this._readErr();
         break;
       }
 
@@ -281,7 +269,7 @@ export class BufReader implements Reader {
       if (this.buffered() >= this.buf.byteLength) {
         this.r = this.w;
         line = this.buf;
-        state = BufState.BufferFull;
+        err = "BufferFull";
         break;
       }
 
@@ -297,6 +285,6 @@ export class BufReader implements Reader {
       // this.lastRuneSize = -1
     }
 
-    return [line, state];
+    return [line, err];
   }
 }

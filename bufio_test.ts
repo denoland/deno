@@ -3,12 +3,18 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import * as deno from "deno";
-import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
+import { Reader, ReadResult } from "deno";
+import {
+  test,
+  assert,
+  assertEqual
+} from "https://deno.land/x/testing/testing.ts";
 import { BufReader, BufState } from "./bufio.ts";
 import { Buffer } from "./buffer.ts";
 import * as iotest from "./iotest.ts";
-import { charCode } from "./util.ts";
+import { charCode, copyBytes } from "./util.ts";
+
+const encoder = new TextEncoder();
 
 async function readBytes(buf: BufReader): Promise<string> {
   const b = new Uint8Array(1000);
@@ -25,8 +31,7 @@ async function readBytes(buf: BufReader): Promise<string> {
   return decoder.decode(b.subarray(0, nb));
 }
 
-function stringsReader(s: string): deno.Reader {
-  const encoder = new TextEncoder();
+function stringsReader(s: string): Reader {
   const ui8 = encoder.encode(s);
   return new Buffer(ui8.buffer as ArrayBuffer);
 }
@@ -38,7 +43,7 @@ test(async function bufioReaderSimple() {
   assertEqual(s, data);
 });
 
-type ReadMaker = { name: string; fn: (r: deno.Reader) => deno.Reader };
+type ReadMaker = { name: string; fn: (r: Reader) => Reader };
 
 const readMakers: ReadMaker[] = [
   { name: "full", fn: r => r },
@@ -134,15 +139,81 @@ test(async function bufioBufferFull() {
   const longString =
     "And now, hello, world! It is the time for all good men to come to the aid of their party";
   const buf = new BufReader(stringsReader(longString), MIN_READ_BUFFER_SIZE);
-  let [line, state] = await buf.readSlice(charCode("!"));
+  let [line, err] = await buf.readSlice(charCode("!"));
 
   const decoder = new TextDecoder();
   let actual = decoder.decode(line);
-  assertEqual(state, BufState.BufferFull);
+  assertEqual(err, "BufferFull");
   assertEqual(actual, "And now, hello, ");
 
-  [line, state] = await buf.readSlice(charCode("!"));
+  [line, err] = await buf.readSlice(charCode("!"));
   actual = decoder.decode(line);
   assertEqual(actual, "world!");
-  assertEqual(state, BufState.Ok);
+  assert(err == null);
+});
+
+const testInput = encoder.encode(
+  "012\n345\n678\n9ab\ncde\nfgh\nijk\nlmn\nopq\nrst\nuvw\nxy"
+);
+const testInputrn = encoder.encode(
+  "012\r\n345\r\n678\r\n9ab\r\ncde\r\nfgh\r\nijk\r\nlmn\r\nopq\r\nrst\r\nuvw\r\nxy\r\n\n\r\n"
+);
+const testOutput = encoder.encode("0123456789abcdefghijklmnopqrstuvwxy");
+
+// TestReader wraps a Uint8Array and returns reads of a specific length.
+class TestReader implements Reader {
+  constructor(private data: Uint8Array, private stride: number) {}
+
+  async read(buf: ArrayBufferView): Promise<ReadResult> {
+    let nread = this.stride;
+    if (nread > this.data.byteLength) {
+      nread = this.data.byteLength;
+    }
+    if (nread > buf.byteLength) {
+      nread = buf.byteLength;
+    }
+    copyBytes(buf as Uint8Array, this.data);
+    this.data = this.data.subarray(nread);
+    let eof = false;
+    if (this.data.byteLength == 0) {
+      eof = true;
+    }
+    return { nread, eof };
+  }
+}
+
+async function testReadLine(input: Uint8Array): Promise<void> {
+  for (let stride = 1; stride < 2; stride++) {
+    let done = 0;
+    let reader = new TestReader(input, stride);
+    let l = new BufReader(reader, input.byteLength + 1);
+    while (true) {
+      let [line, isPrefix, err] = await l.readLine();
+      if (line.byteLength > 0 && err != null) {
+        throw Error("readLine returned both data and error");
+      }
+      assertEqual(isPrefix, false);
+      if (err == "EOF") {
+        break;
+      }
+      let want = testOutput.subarray(done, done + line.byteLength);
+      assertEqual(
+        line,
+        want,
+        `Bad line at stride ${stride}: want: ${want} got: ${line}`
+      );
+      done += line.byteLength;
+    }
+    assertEqual(
+      done,
+      testOutput.byteLength,
+      `readLine didn't return everything: got: ${done}, ` +
+        `want: ${testOutput} (stride: ${stride})`
+    );
+  }
+}
+
+test(async function bufioReadLine() {
+  await testReadLine(testInput);
+  await testReadLine(testInputrn);
 });
