@@ -59,6 +59,6 @@ def unit_tests(deno_exe):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print "Usage ./tools/unit_tests.py out/debug/deno"
+        print "Usage ./tools/unit_tests.py target/debug/deno"
         sys.exit(1)
     unit_tests(sys.argv[1])

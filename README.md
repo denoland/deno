@@ -33,10 +33,10 @@
 - Single executable:
 
   ```
-  > ls -lh out/release/deno
-  -rwxr-xr-x  1 rld  staff    48M Aug  2 13:24 out/release/deno
-  > otool -L out/release/deno
-  out/release/deno:
+  > ls -lh target/release/deno
+  -rwxr-xr-x  1 rld  staff    48M Aug  2 13:24 target/release/deno
+  > otool -L target/release/deno
+  target/release/deno:
     /usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1252.50.4)
     /usr/lib/libresolv.9.dylib (compatibility version 1.0.0, current version 1.0.0)
     /System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 58286.51.6)

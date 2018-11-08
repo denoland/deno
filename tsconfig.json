@@ -11,7 +11,7 @@
     "noLib": true,
     "noUnusedLocals": true,
     "paths": {
-      "*": ["*", "out/debug/*", "out/default/*", "out/release/*"]
+      "*": ["*", "target/debug/*", "target/release/*"]
     },
     "preserveConstEnums": true,
     "pretty": true,
