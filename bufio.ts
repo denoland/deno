@@ -24,6 +24,7 @@ export class Reader implements deno.Reader {
   private w = 0; // buf write position.
   private lastByte: number;
   private lastCharSize: number;
+  private err: null | Error;
 
   constructor(rd: deno.Reader, size = DEFAULT_BUF_SIZE) {
     if (size < MIN_BUF_SIZE) {
@@ -37,9 +38,15 @@ export class Reader implements deno.Reader {
     return this.buf.byteLength;
   }
 
+  private _readErr(): Error {
+    const err = this.err;
+    this.err = null;
+    return err;
+  }
+
   // Reads a new chunk into the buffer.
   // Returns true if EOF, false on successful read.
-  async _fill(): Promise<boolean> {
+  private async _fill(): Promise<boolean> {
     // Slide existing data to beginning.
     if (this.r > 0) {
       this.buf.copyWithin(0, this.r, this.w);
@@ -53,15 +60,21 @@ export class Reader implements deno.Reader {
 
     // Read new data: try a limited number of times.
     for (let i = MAX_CONSECUTIVE_EMPTY_READS; i > 0; i--) {
-      const { nread, eof } = await this.rd.read(this.buf.subarray(this.w));
-      if (nread < 0) {
+      let rr: deno.ReadResult;
+      try {
+        rr = await this.rd.read(this.buf.subarray(this.w));
+      } catch (e) {
+        this.err = e;
+        return false;
+      }
+      if (rr.nread < 0) {
         throw new ErrNegativeRead();
       }
-      this.w += nread;
-      if (eof) {
+      this.w += rr.nread;
+      if (rr.eof) {
         return true;
       }
-      if (nread > 0) {
+      if (rr.nread > 0) {
         return false;
       }
     }
@@ -92,15 +105,16 @@ export class Reader implements deno.Reader {
   async read(p: ArrayBufferView): Promise<deno.ReadResult> {
     let rr: deno.ReadResult = { nread: p.byteLength, eof: false };
     if (rr.nread === 0) {
+      if (this.err) {
+        throw this._readErr();
+      }
       return rr;
     }
 
     if (this.r === this.w) {
-      /*
-      if (this.err != null) {
-        throw this.readErr();
+      if (this.err) {
+        throw this._readErr();
       }
-      */
       if (p.byteLength >= this.buf.byteLength) {
         // Large read, empty buffer.
         // Read directly into p to avoid copy.
@@ -111,6 +125,9 @@ export class Reader implements deno.Reader {
         if (rr.nread > 0) {
           this.lastByte = p[rr.nread - 1];
           // this.lastRuneSize = -1;
+        }
+        if (this.err) {
+          throw this._readErr();
         }
         return rr;
       }
@@ -123,6 +140,9 @@ export class Reader implements deno.Reader {
         throw new ErrNegativeRead();
       }
       if (rr.nread === 0) {
+        if (this.err) {
+          throw this._readErr();
+        }
         return rr;
       }
       this.w += rr.nread;
@@ -140,6 +160,9 @@ export class Reader implements deno.Reader {
   async readByte(): Promise<number> {
     while (this.r === this.w) {
       const eof = await this._fill(); // buffer is empty.
+      if (this.err != null) {
+        throw this._readErr();
+      }
       if (eof) {
         return -1;
       }
@@ -148,5 +171,17 @@ export class Reader implements deno.Reader {
     this.r++;
     this.lastByte = c;
     return c;
+  }
+
+  /** readString() reads until the first occurrence of delim in the input,
+   * returning a string containing the data up to and including the delimiter.
+   * If ReadString encounters an error before finding a delimiter,
+   * it returns the data read before the error and the error itself (often io.EOF).
+   * ReadString returns err != nil if and only if the returned data does not end in
+   * delim.
+   * For simple uses, a Scanner may be more convenient.
+   */
+  async readString(delim: string): Promise<string> {
+    throw new Error("Not implemented");
   }
 }
