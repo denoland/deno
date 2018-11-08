@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
 // This test is executed as part of tools/test.py
-// But it can also be run manually: ./out/debug/deno js/unit_tests.ts
+// But it can also be run manually: ./target/debug/deno js/unit_tests.ts
 import "../website/app_test.js";
 import "./blob_test.ts";
 import "./buffer_test.ts";

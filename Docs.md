@@ -93,14 +93,14 @@ export DENO_BUILD_MODE=release
 # Build deno and V8's d8.
 ./tools/build.py d8 deno
 # Start the program we want to benchmark with --prof
-./out/release/deno tests/http_bench.ts --allow-net --prof &
+./target/release/deno tests/http_bench.ts --allow-net --prof &
 # Exercise it.
 third_party/wrk/linux/wrk http://localhost:4500/
 kill `pgrep deno`
 # When supplying --prof, V8 will write a file in the current directory that
 # looks like this isolate-0x7fad98242400-v8.log
 # To examine this file:
-D8_PATH=out/release/ ./third_party/v8/tools/linux-tick-processor
+D8_PATH=target/release/ ./third_party/v8/tools/linux-tick-processor
 isolate-0x7fad98242400-v8.log
 ```
 
@@ -136,7 +136,7 @@ submodule. However, you need to install separately:
     ./tools/build.py
 
     # Run.
-    ./out/debug/deno tests/002_hello.ts
+    ./target/debug/deno tests/002_hello.ts
 
     # Test.
     ./tools/test.py
@@ -147,22 +147,22 @@ submodule. However, you need to install separately:
 Other useful commands:
 
     # Call ninja manually.
-    ./third_party/depot_tools/ninja -C out/debug
+    ./third_party/depot_tools/ninja -C target/debug
 
     # Build a release binary.
     DENO_BUILD_MODE=release ./tools/build.py :deno
 
     # List executable targets.
-    ./third_party/depot_tools/gn ls out/debug //:* --as=output --type=executable
+    ./third_party/depot_tools/gn ls target/debug //:* --as=output --type=executable
 
     # List build configuation.
-    ./third_party/depot_tools/gn args out/debug/ --list
+    ./third_party/depot_tools/gn args target/debug/ --list
 
     # Edit build configuration.
-    ./third_party/depot_tools/gn args out/debug/
+    ./third_party/depot_tools/gn args target/debug/
 
     # Describe a target.
-    ./third_party/depot_tools/gn desc out/debug/ :deno
+    ./third_party/depot_tools/gn desc target/debug/ :deno
     ./third_party/depot_tools/gn help
 
     # Update third_party modules

@@ -182,12 +182,12 @@ def build_mode(default="debug"):
         return default
 
 
-# E.G. "out/debug"
+# E.G. "target/debug"
 def build_path():
     if "DENO_BUILD_PATH" in os.environ:
         return os.environ["DENO_BUILD_PATH"]
     else:
-        return os.path.join(root_path, "out", build_mode())
+        return os.path.join(root_path, "target", build_mode())
 
 
 # Returns True if the expected matches the actual output, allowing variation

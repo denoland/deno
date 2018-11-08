@@ -48,7 +48,7 @@ if __name__ == '__main__':
     deno_exe = sys.argv[1]
     megs = int(sys.argv[2])
     if not deno_exe or not megs:
-        print "Usage ./tools/throughput_benchmark.py out/debug/deno 100"
+        print "Usage ./tools/throughput_benchmark.py target/debug/deno 100"
         sys.exit(1)
     secs = tcp(sys.argv[1], megs)
     print secs, "seconds"
