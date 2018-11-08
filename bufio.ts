@@ -4,17 +4,18 @@
 // license that can be found in the LICENSE file.
 
 import { Reader, ReadResult } from "deno";
-import { assert, copyBytes } from "./util.ts";
+import { assert, charCode, copyBytes } from "./util.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
 const MIN_BUF_SIZE = 16;
 const MAX_CONSECUTIVE_EMPTY_READS = 100;
+const CR = charCode("\r");
+const LF = charCode("\n");
 
-export class ErrNegativeRead extends Error {
-  constructor() {
-    super("bufio: reader returned negative count from Read");
-    this.name = "ErrNegativeRead";
-  }
+export enum BufState {
+  Ok,
+  EOF,
+  BufferFull
 }
 
 /** BufReader implements buffering for a Reader object. */
@@ -51,7 +52,7 @@ export class BufReader implements Reader {
 
   // Reads a new chunk into the buffer.
   // Returns true if EOF, false on successful read.
-  private async _fill(): Promise<boolean> {
+  private async _fill(): Promise<BufState> {
     // Slide existing data to beginning.
     if (this.r > 0) {
       this.buf.copyWithin(0, this.r, this.w);
@@ -70,17 +71,15 @@ export class BufReader implements Reader {
         rr = await this.rd.read(this.buf.subarray(this.w));
       } catch (e) {
         this.err = e;
-        return false;
+        return BufState.Ok;
       }
-      if (rr.nread < 0) {
-        throw new ErrNegativeRead();
-      }
+      assert(rr.nread >= 0, "negative read");
       this.w += rr.nread;
       if (rr.eof) {
-        return true;
+        return BufState.EOF;
       }
       if (rr.nread > 0) {
-        return false;
+        return BufState.Ok;
       }
     }
     throw Error("No Progress");
@@ -124,9 +123,7 @@ export class BufReader implements Reader {
         // Large read, empty buffer.
         // Read directly into p to avoid copy.
         rr = await this.rd.read(p);
-        if (rr.nread < 0) {
-          throw new ErrNegativeRead();
-        }
+        assert(rr.nread >= 0, "negative read");
         if (rr.nread > 0) {
           this.lastByte = p[rr.nread - 1];
           // this.lastRuneSize = -1;
@@ -140,10 +137,12 @@ export class BufReader implements Reader {
       // Do not use this.fill, which will loop.
       this.r = 0;
       this.w = 0;
-      rr = await this.rd.read(this.buf);
-      if (rr.nread < 0) {
-        throw new ErrNegativeRead();
+      try {
+        rr = await this.rd.read(this.buf);
+      } catch (e) {
+        this.err = e;
       }
+      assert(rr.nread >= 0, "negative read");
       if (rr.nread === 0) {
         if (this.err) {
           throw this._readErr();
@@ -188,5 +187,116 @@ export class BufReader implements Reader {
    */
   async readString(delim: string): Promise<string> {
     throw new Error("Not implemented");
+  }
+
+  /** readLine() is a low-level line-reading primitive. Most callers should use
+   * readBytes('\n') or readString('\n') instead or use a Scanner.
+   *
+   * readLine tries to return a single line, not including the end-of-line bytes.
+   * If the line was too long for the buffer then isPrefix is set and the
+   * beginning of the line is returned. The rest of the line will be returned
+   * from future calls. isPrefix will be false when returning the last fragment
+   * of the line. The returned buffer is only valid until the next call to
+   * ReadLine. ReadLine either returns a non-nil line or it returns an error,
+   * never both.
+   *
+   * The text returned from ReadLine does not include the line end ("\r\n" or "\n").
+   * No indication or error is given if the input ends without a final line end.
+   * Calling UnreadByte after ReadLine will always unread the last byte read
+   * (possibly a character belonging to the line end) even if that byte is not
+   * part of the line returned by ReadLine.
+   */
+  async readLine(): Promise<{
+    line?: Uint8Array;
+    isPrefix: boolean;
+    state: BufState;
+  }> {
+    let line: Uint8Array;
+    let state: BufState;
+    try {
+      [line, state] = await this.readSlice(LF);
+    } catch (err) {
+      this.err = err;
+    }
+
+    if (state === BufState.BufferFull) {
+      // Handle the case where "\r\n" straddles the buffer.
+      if (line.byteLength > 0 && line[line.byteLength - 1] === CR) {
+        // Put the '\r' back on buf and drop it from line.
+        // Let the next call to ReadLine check for "\r\n".
+        assert(this.r > 0, "bufio: tried to rewind past start of buffer");
+        this.r--;
+        line = line.subarray(0, line.byteLength - 1);
+      }
+      return { line, isPrefix: true, state };
+    }
+
+    if (line.byteLength === 0) {
+      return { line, isPrefix: false, state };
+    }
+
+    if (line[line.byteLength - 1] == LF) {
+      let drop = 1;
+      if (line.byteLength > 1 && line[line.byteLength - 2] === CR) {
+        drop = 2;
+      }
+      line = line.subarray(0, line.byteLength - drop);
+    }
+    return { line, isPrefix: false, state };
+  }
+
+  /** readSlice() reads until the first occurrence of delim in the input,
+   * returning a slice pointing at the bytes in the buffer. The bytes stop
+   * being valid at the next read. If readSlice() encounters an error before
+   * finding a delimiter, it returns all the data in the buffer and the error
+   * itself (often io.EOF).  readSlice() fails with error ErrBufferFull if the
+   * buffer fills without a delim. Because the data returned from readSlice()
+   * will be overwritten by the next I/O operation, most clients should use
+   * readBytes() or readString() instead. readSlice() returns err != nil if and
+   * only if line does not end in delim.
+   */
+  async readSlice(delim: number): Promise<[Uint8Array, BufState]> {
+    let s = 0; // search start index
+    let line: Uint8Array;
+    let state = BufState.Ok;
+    while (true) {
+      // Search buffer.
+      let i = this.buf.subarray(this.r + s, this.w).indexOf(delim);
+      if (i >= 0) {
+        i += s;
+        line = this.buf.subarray(this.r, this.r + i + 1);
+        this.r += i + 1;
+        break;
+      }
+
+      // Pending error?
+      if (this.err) {
+        line = this.buf.subarray(this.r, this.w);
+        this.r = this.w;
+        throw this._readErr();
+        break;
+      }
+
+      // Buffer full?
+      if (this.buffered() >= this.buf.byteLength) {
+        this.r = this.w;
+        line = this.buf;
+        state = BufState.BufferFull;
+        break;
+      }
+
+      s = this.w - this.r; // do not rescan area we scanned before
+
+      await this._fill(); // buffer is not full
+    }
+
+    // Handle last byte, if any.
+    let i = line.byteLength - 1;
+    if (i >= 0) {
+      this.lastByte = line[i];
+      // this.lastRuneSize = -1
+    }
+
+    return [line, state];
   }
 }
