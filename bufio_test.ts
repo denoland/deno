@@ -7,6 +7,7 @@ import * as deno from "deno";
 import { test, assertEqual } from "http://deno.land/x/testing/testing.ts";
 import * as bufio from "./bufio.ts";
 import { Buffer } from "./buffer.ts";
+import * as iotest from "./iotest.ts";
 
 async function readBytes(buf: bufio.Reader): Promise<string> {
   const b = new Uint8Array(1000);
@@ -39,14 +40,24 @@ test(async function bufioReaderSimple() {
 type ReadMaker = { name: string; fn: (r: deno.Reader) => deno.Reader };
 
 const readMakers: ReadMaker[] = [
-  { name: "full", fn: r => r }
-  /*
-  { name: "byte", fn(r) => new iotest.OneByteReader(r) },
-  { name: "half", fn(r) => new iotest.HalfReader(r) },
-  { name: "data+err", r => new iotest.DataErrReader(r) },
-  { name: "timeout", r => new iotest.TimeoutReader(r) },
-  */
+  { name: "full", fn: r => r },
+  { name: "byte", fn: r => new iotest.OneByteReader(r) },
+  { name: "half", fn: r => new iotest.HalfReader(r) }
+  // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
+  // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
 ];
+
+function readLines(b: bufio.Reader): string {
+  let s = "";
+  while (true) {
+    let s1 = b.readString("\n");
+    if (s1 == null) {
+      break; // EOF
+    }
+    s += s1;
+  }
+  return s;
+}
 
 // Call read to accumulate the text of a file
 async function reads(buf: bufio.Reader, m: number): Promise<string> {
@@ -66,7 +77,14 @@ async function reads(buf: bufio.Reader, m: number): Promise<string> {
 type BufReader = { name: string; fn: (r: bufio.Reader) => Promise<string> };
 
 const bufreaders: BufReader[] = [
-  { name: "1", fn: (b: bufio.Reader) => reads(b, 1) }
+  { name: "1", fn: (b: bufio.Reader) => reads(b, 1) },
+  { name: "2", fn: (b: bufio.Reader) => reads(b, 2) },
+  { name: "3", fn: (b: bufio.Reader) => reads(b, 3) },
+  { name: "4", fn: (b: bufio.Reader) => reads(b, 4) },
+  { name: "5", fn: (b: bufio.Reader) => reads(b, 5) },
+  { name: "7", fn: (b: bufio.Reader) => reads(b, 7) },
+  { name: "bytes", fn: readBytes }
+  // { name: "lines", fn: readLines },
 ];
 
 const MIN_READ_BUFFER_SIZE = 16;
