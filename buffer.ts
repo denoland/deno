@@ -13,6 +13,12 @@ import { assert, copyBytes } from "./util.ts";
 const MIN_READ = 512;
 const MAX_SIZE = 2 ** 32 - 2;
 
+const encoder = new TextEncoder();
+export function stringsReader(s: string): Reader {
+  const ui8 = encoder.encode(s);
+  return new Buffer(ui8.buffer as ArrayBuffer);
+}
+
 /** A Buffer is a variable-sized buffer of bytes with read() and write()
  * methods. Based on https://golang.org/pkg/bytes/#Buffer
  */
