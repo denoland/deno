@@ -1,4 +1,4 @@
-// Ported to Deno from:
+// Based on https://github.com/golang/go/blob/891682/src/bufio/bufio_test.go
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -10,7 +10,7 @@ import {
   assertEqual
 } from "https://deno.land/x/testing/testing.ts";
 import { BufReader, BufState } from "./bufio.ts";
-import { Buffer } from "./buffer.ts";
+import { Buffer, stringsReader } from "./buffer.ts";
 import * as iotest from "./iotest.ts";
 import { charCode, copyBytes } from "./util.ts";
 
@@ -29,11 +29,6 @@ async function readBytes(buf: BufReader): Promise<string> {
   }
   const decoder = new TextDecoder();
   return decoder.decode(b.subarray(0, nb));
-}
-
-function stringsReader(s: string): Reader {
-  const ui8 = encoder.encode(s);
-  return new Buffer(ui8.buffer as ArrayBuffer);
 }
 
 test(async function bufioReaderSimple() {
