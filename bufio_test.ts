@@ -217,3 +217,80 @@ test(async function bufioReadLine() {
   await testReadLine(testInput);
   await testReadLine(testInputrn);
 });
+
+test(async function bufioPeek() {
+  const decoder = new TextDecoder();
+  let p = new Uint8Array(10);
+  // string is 16 (minReadBufferSize) long.
+  let buf = new BufReader(
+    stringsReader("abcdefghijklmnop"),
+    MIN_READ_BUFFER_SIZE
+  );
+
+  let [actual, err] = await buf.peek(1);
+  assertEqual(decoder.decode(actual), "a");
+  assert(err == null);
+
+  [actual, err] = await buf.peek(4);
+  assertEqual(decoder.decode(actual), "abcd");
+  assert(err == null);
+
+  [actual, err] = await buf.peek(32);
+  assertEqual(decoder.decode(actual), "abcdefghijklmnop");
+  assertEqual(err, "BufferFull");
+
+  await buf.read(p.subarray(0, 3));
+  assertEqual(decoder.decode(p.subarray(0, 3)), "abc");
+
+  [actual, err] = await buf.peek(1);
+  assertEqual(decoder.decode(actual), "d");
+  assert(err == null);
+
+  [actual, err] = await buf.peek(1);
+  assertEqual(decoder.decode(actual), "d");
+  assert(err == null);
+
+  [actual, err] = await buf.peek(1);
+  assertEqual(decoder.decode(actual), "d");
+  assert(err == null);
+
+  [actual, err] = await buf.peek(2);
+  assertEqual(decoder.decode(actual), "de");
+  assert(err == null);
+
+  let { eof } = await buf.read(p.subarray(0, 3));
+  assertEqual(decoder.decode(p.subarray(0, 3)), "def");
+  assert(!eof);
+  assert(err == null);
+
+  [actual, err] = await buf.peek(4);
+  assertEqual(decoder.decode(actual), "ghij");
+  assert(err == null);
+
+  await buf.read(p);
+  assertEqual(decoder.decode(p), "ghijklmnop");
+
+  [actual, err] = await buf.peek(0);
+  assertEqual(decoder.decode(actual), "");
+  assert(err == null);
+
+  [actual, err] = await buf.peek(1);
+  assertEqual(decoder.decode(actual), "");
+  assert(err == "EOF");
+  /* TODO
+	// Test for issue 3022, not exposing a reader's error on a successful Peek.
+	buf = NewReaderSize(dataAndEOFReader("abcd"), 32)
+	if s, err := buf.Peek(2); string(s) != "ab" || err != nil {
+		t.Errorf(`Peek(2) on "abcd", EOF = %q, %v; want "ab", nil`, string(s), err)
+	}
+	if s, err := buf.Peek(4); string(s) != "abcd" || err != nil {
+		t.Errorf(`Peek(4) on "abcd", EOF = %q, %v; want "abcd", nil`, string(s), err)
+	}
+	if n, err := buf.Read(p[0:5]); string(p[0:n]) != "abcd" || err != nil {
+		t.Fatalf("Read after peek = %q, %v; want abcd, EOF", p[0:n], err)
+	}
+	if n, err := buf.Read(p[0:1]); string(p[0:n]) != "" || err != io.EOF {
+		t.Fatalf(`second Read after peek = %q, %v; want "", EOF`, p[0:n], err)
+	}
+  */
+});
