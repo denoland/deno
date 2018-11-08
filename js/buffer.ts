@@ -127,10 +127,7 @@ export class Buffer implements Reader, Writer {
    * is drained. The return value n is the number of bytes read. If the
    * buffer has no data to return, eof in the response will be true.
    */
-  async read(p: ArrayBufferView): Promise<ReadResult> {
-    if (!(p instanceof Uint8Array)) {
-      throw Error("Only Uint8Array supported");
-    }
+  async read(p: Uint8Array): Promise<ReadResult> {
     if (this.empty()) {
       // Buffer is empty, reset to recover space.
       this.reset();
@@ -146,11 +143,8 @@ export class Buffer implements Reader, Writer {
     return { nread, eof: false };
   }
 
-  async write(p: ArrayBufferView): Promise<number> {
+  async write(p: Uint8Array): Promise<number> {
     const m = this._grow(p.byteLength);
-    if (!(p instanceof Uint8Array)) {
-      throw Error("Only Uint8Array supported");
-    }
     return copyBytes(this.buf, p, m);
   }
 
