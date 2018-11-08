@@ -3,7 +3,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import * as deno from "deno";
+import { Reader, ReadResult } from "deno";
 import { assert, copyBytes } from "./util.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
@@ -17,16 +17,17 @@ export class ErrNegativeRead extends Error {
   }
 }
 
-export class Reader implements deno.Reader {
+/** BufReader implements buffering for a Reader object. */
+export class BufReader implements Reader {
   private buf: Uint8Array;
-  private rd: deno.Reader; // Reader provided by caller.
+  private rd: Reader; // Reader provided by caller.
   private r = 0; // buf read position.
   private w = 0; // buf write position.
   private lastByte: number;
   private lastCharSize: number;
   private err: null | Error;
 
-  constructor(rd: deno.Reader, size = DEFAULT_BUF_SIZE) {
+  constructor(rd: Reader, size = DEFAULT_BUF_SIZE) {
     if (size < MIN_BUF_SIZE) {
       size = MIN_BUF_SIZE;
     }
@@ -36,6 +37,10 @@ export class Reader implements deno.Reader {
   /** Returns the size of the underlying buffer in bytes. */
   get byteLength(): number {
     return this.buf.byteLength;
+  }
+
+  buffered(): number {
+    return this.w - this.r;
   }
 
   private _readErr(): Error {
@@ -60,7 +65,7 @@ export class Reader implements deno.Reader {
 
     // Read new data: try a limited number of times.
     for (let i = MAX_CONSECUTIVE_EMPTY_READS; i > 0; i--) {
-      let rr: deno.ReadResult;
+      let rr: ReadResult;
       try {
         rr = await this.rd.read(this.buf.subarray(this.w));
       } catch (e) {
@@ -84,11 +89,11 @@ export class Reader implements deno.Reader {
   /** Discards any buffered data, resets all state, and switches
    * the buffered reader to read from r.
    */
-  reset(r: deno.Reader): void {
+  reset(r: Reader): void {
     this._reset(this.buf, r);
   }
 
-  private _reset(buf: Uint8Array, rd: deno.Reader): void {
+  private _reset(buf: Uint8Array, rd: Reader): void {
     this.buf = buf;
     this.rd = rd;
     this.lastByte = -1;
@@ -102,8 +107,8 @@ export class Reader implements deno.Reader {
    * At EOF, the count will be zero and err will be io.EOF.
    * To read exactly len(p) bytes, use io.ReadFull(b, p).
    */
-  async read(p: ArrayBufferView): Promise<deno.ReadResult> {
-    let rr: deno.ReadResult = { nread: p.byteLength, eof: false };
+  async read(p: ArrayBufferView): Promise<ReadResult> {
+    let rr: ReadResult = { nread: p.byteLength, eof: false };
     if (rr.nread === 0) {
       if (this.err) {
         throw this._readErr();
