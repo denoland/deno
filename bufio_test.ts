@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file.
 
 import * as deno from "deno";
-import { test, assertEqual } from "http://deno.land/x/testing/testing.ts";
+import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
 import { BufReader, BufState } from "./bufio.ts";
 import { Buffer } from "./buffer.ts";
 import * as iotest from "./iotest.ts";
