@@ -87,12 +87,14 @@ install:
 before_script:
 - ./tools/setup.py
 script:
-- ./tools/lint.py
-- ./tools/test_format.py
-- bash -c "sleep 2100; pkill ninja; pkill cargo" &
-- ./tools/build.py -j2
-- RUSTC_WRAPPER=sccache cargo check -j2 --release
-- ./tools/test.py $DENO_BUILD_PATH
+- |-
+  set -e
+  ./tools/lint.py
+  ./tools/test_format.py
+  bash -c "sleep 2100; pkill ninja; pkill cargo" &
+  ./tools/build.py -j2
+  RUSTC_WRAPPER=sccache cargo check -j2 --release
+  ./tools/test.py $DENO_BUILD_PATH
 after_script:
 - ccache --show-stats
 - sccache --stop-server
