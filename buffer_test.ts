@@ -5,7 +5,7 @@ import {
   test,
   assert,
   assertEqual
-} from "http://deno.land/x/testing/testing.ts";
+} from "https://deno.land/x/testing/testing.ts";
 import { Buffer } from "./buffer.ts";
 
 // N controls how many iterations of certain checks are performed.
