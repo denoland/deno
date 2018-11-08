@@ -99,7 +99,7 @@ function evaluate(code: string): void {
     // 3. output diagnostics
     REPL_CONTEXT.lines.push(code);
     const compiledCode = compileReplCode(REPL_CONTEXT);
-
+    console.log("compiledCode", compiledCode);
     if (compiledCode.diagnostics.length > 0) {
       for (const diagnostic of compiledCode.diagnostics) {
         console.log(diagnostic.messageText);

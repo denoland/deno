@@ -485,16 +485,32 @@ export class DenoCompiler
   } {
     // TODO: use compiler options
     const output = this._ts.transpileModule(sourceCode, {
-      compilerOptions: this._options,
+      compilerOptions: {
+        allowJs: true,
+        checkJs: true,
+        outDir: "$deno$",
+        resolveJsonModule: true,
+        sourceMap: true,
+        stripComments: true,
+        target: ts.ScriptTarget.ESNext
+      },
       reportDiagnostics: true
     });
+
+    // TypeScript is overly opinionated that only CommonJS modules kinds can
+    // support JSON imports.  Allegedly this was fixed in
+    // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
+    // so we will ignore complaints about this compiler setting.
+    const diagnostics = output.diagnostics!.filter(
+      diagnostic => diagnostic.code !== 5070
+    );
 
     // TODO:
     // - diff code with 'previousOutput'
     // - return only new lines as outputCode
 
     return {
-      diagnostics: output.diagnostics!,
+      diagnostics,
       outputCode: output.outputText,
       additionalCode: ""
     };
