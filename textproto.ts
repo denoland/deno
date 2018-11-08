@@ -5,6 +5,7 @@
 
 import { BufReader, BufState } from "./bufio.ts";
 import { charCode } from "./util.ts";
+import { Headers } from "./headers.ts";
 
 const asciiDecoder = new TextDecoder("ascii");
 function str(buf: Uint8Array): string {
@@ -53,37 +54,38 @@ export class TextProtoReader {
    *		"Long-Key": {"Even Longer Value"},
    *	}
    */
-  /*
-  async readMIMEHeader(): Promise<Headers> {
+  async readMIMEHeader(): Promise<[Headers, BufState]> {
     let m = new Headers();
     let line: Uint8Array;
 
     // The first line cannot start with a leading space.
     let [buf, err] = await this.r.peek(1);
-    if (buf[0] == charCode(' ') || buf[0] == charCode('\t')) {
+    if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       [line, err] = await this.readLineSlice();
     }
 
     [buf, err] = await this.r.peek(1);
-    if (err == null && (buf[0] == charCode(' ') || buf[0] == charCode('\t'))) {
-      throw new ProtocolError(`malformed MIME header initial line: ${str(line)}`)
+    if (err == null && (buf[0] == charCode(" ") || buf[0] == charCode("\t"))) {
+      throw new ProtocolError(
+        `malformed MIME header initial line: ${str(line)}`
+      );
     }
 
     while (true) {
       let [kv, err] = await this.readLineSlice(); // readContinuedLineSlice
       if (kv.byteLength == 0) {
-        return m;
+        return [m, err];
       }
 
       // Key ends at first colon; should not have trailing spaces
       // but they appear in the wild, violating specs, so we remove
       // them if present.
-      let i = kv.indexOf(charCode(':'));
+      let i = kv.indexOf(charCode(":"));
       if (i < 0) {
         throw new ProtocolError(`malformed MIME header line: ${str(kv)}`);
       }
       let endKey = i;
-      while (endKey > 0 && kv[endKey - 1] == charCode(' ')) {
+      while (endKey > 0 && kv[endKey - 1] == charCode(" ")) {
         endKey--;
       }
 
@@ -99,8 +101,10 @@ export class TextProtoReader {
 
       // Skip initial spaces in value.
       i++; // skip colon
-      while (i < kv.byteLength &&
-             (kv[i] == charCode(' ') || kv[i] == charCode('\t'))) {
+      while (
+        i < kv.byteLength &&
+        (kv[i] == charCode(" ") || kv[i] == charCode("\t"))
+      ) {
         i++;
       }
       let value = str(kv.subarray(i));
@@ -112,7 +116,6 @@ export class TextProtoReader {
       }
     }
   }
-  */
 
   async readLineSlice(): Promise<[Uint8Array, BufState]> {
     // this.closeDot();
