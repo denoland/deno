@@ -5,9 +5,10 @@
 
 import * as deno from "deno";
 import { test, assertEqual } from "http://deno.land/x/testing/testing.ts";
-import { BufReader } from "./bufio.ts";
+import { BufReader, BufState } from "./bufio.ts";
 import { Buffer } from "./buffer.ts";
 import * as iotest from "./iotest.ts";
+import { charCode } from "./util.ts";
 
 async function readBytes(buf: BufReader): Promise<string> {
   const b = new Uint8Array(1000);
@@ -42,7 +43,7 @@ type ReadMaker = { name: string; fn: (r: deno.Reader) => deno.Reader };
 const readMakers: ReadMaker[] = [
   { name: "full", fn: r => r },
   { name: "byte", fn: r => new iotest.OneByteReader(r) },
-  { name: "half", fn: r => new iotest.HalfReader(r) },
+  { name: "half", fn: r => new iotest.HalfReader(r) }
   // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
   // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
 ];
@@ -50,7 +51,7 @@ const readMakers: ReadMaker[] = [
 function readLines(b: BufReader): string {
   let s = "";
   while (true) {
-    let s1 = b.readString('\n');
+    let s1 = b.readString("\n");
     if (s1 == null) {
       break; // EOF
     }
@@ -83,7 +84,7 @@ const bufreaders: NamedBufReader[] = [
   { name: "4", fn: (b: BufReader) => reads(b, 4) },
   { name: "5", fn: (b: BufReader) => reads(b, 5) },
   { name: "7", fn: (b: BufReader) => reads(b, 7) },
-  { name: "bytes", fn: readBytes },
+  { name: "bytes", fn: readBytes }
   // { name: "lines", fn: readLines },
 ];
 
@@ -127,4 +128,21 @@ test(async function bufioBufReader() {
       }
     }
   }
+});
+
+test(async function bufioBufferFull() {
+  const longString =
+    "And now, hello, world! It is the time for all good men to come to the aid of their party";
+  const buf = new BufReader(stringsReader(longString), MIN_READ_BUFFER_SIZE);
+  let [line, state] = await buf.readSlice(charCode("!"));
+
+  const decoder = new TextDecoder();
+  let actual = decoder.decode(line);
+  assertEqual(state, BufState.BufferFull);
+  assertEqual(actual, "And now, hello, ");
+
+  [line, state] = await buf.readSlice(charCode("!"));
+  actual = decoder.decode(line);
+  assertEqual(actual, "world!");
+  assertEqual(state, BufState.Ok);
 });
