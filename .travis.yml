@@ -87,8 +87,10 @@ install:
 before_script:
 - ./tools/setup.py
 script:
+- set -e
 - ./tools/lint.py
 - ./tools/test_format.py
+- set +e
 - bash -c "sleep 2100; pkill ninja; pkill cargo" &
 - ./tools/build.py -j2
 - RUSTC_WRAPPER=sccache cargo check -j2 --release
