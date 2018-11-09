@@ -478,6 +478,7 @@ export class DenoCompiler
     sourceCode: SourceCode,
     previousOutput?: OutputCode
   ): {
+    define: AmdDefine,
     diagnostics: ts.Diagnostic[];
     outputCode: OutputCode;
     additionalCode: OutputCode;
@@ -499,6 +500,9 @@ export class DenoCompiler
     this._moduleMetaDataMap.set(fileName, moduleMetaData);
     this._scriptFileNames = [fileName];
 
+    // TODO: temporary solution to be able to resolve modules
+    const define = this._makeDefine(moduleMetaData);
+    
     // TODO: this is mostly copy-pasted from compile()
     const service = this._service;
     assert(
@@ -540,6 +544,7 @@ export class DenoCompiler
     // - return only new lines as outputCode
 
     return {
+      define,
       diagnostics,
       outputCode: moduleMetaData.outputCode,
       additionalCode: ""
@@ -615,10 +620,6 @@ export class DenoCompiler
   ): ModuleMetaData {
     this._log("compiler.resolveModule", { moduleSpecifier, containingFile });
     assert(moduleSpecifier != null && moduleSpecifier.length > 0);
-    if (moduleSpecifier === "[repl].ts") {
-      this._log("repl module");
-      return this._moduleMetaDataMap.get(moduleSpecifier)!;
-    }
     let fileName = this._resolveFileName(moduleSpecifier, containingFile);
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
       return this._moduleMetaDataMap.get(fileName)!;

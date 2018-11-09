@@ -101,7 +101,7 @@ function evaluate(code: string): void {
     const compiledCode = compileReplCode(REPL_CONTEXT);
 
     console.log("compiledCode", compiledCode);
-    
+
     if (compiledCode.diagnostics.length > 0) {
       // TODO: use ts.formatDiagnostic
       for (const diagnostic of compiledCode.diagnostics) {
@@ -109,9 +109,11 @@ function evaluate(code: string): void {
       }
     }
 
+    window.define = compiledCode.define;
     // FIXME use a new scope.
     const result = eval.call(window, compiledCode.outputCode);
     console.log(result);
+    window.define = undefined;
     REPL_CONTEXT.previousOutput = compiledCode.outputCode;
   } catch (err) {
     if (err instanceof Error) {
