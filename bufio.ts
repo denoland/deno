@@ -12,7 +12,13 @@ const MAX_CONSECUTIVE_EMPTY_READS = 100;
 const CR = charCode("\r");
 const LF = charCode("\n");
 
-export type BufState = null | "EOF" | "BufferFull" | "NoProgress" | Error;
+export type BufState =
+  | null
+  | "EOF"
+  | "BufferFull"
+  | "ShortWrite"
+  | "NoProgress"
+  | Error;
 
 /** BufReader implements buffering for a Reader object. */
 export class BufReader implements Reader {
@@ -102,7 +108,7 @@ export class BufReader implements Reader {
    * At EOF, the count will be zero and err will be io.EOF.
    * To read exactly len(p) bytes, use io.ReadFull(b, p).
    */
-  async read(p: ArrayBufferView): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<ReadResult> {
     let rr: ReadResult = { nread: p.byteLength, eof: false };
     if (rr.nread === 0) {
       if (this.err) {
@@ -334,7 +340,7 @@ export class BufReader implements Reader {
 export class BufWriter implements Writer {
   buf: Uint8Array;
   n: number = 0;
-  err: null | Error = null;
+  err: null | BufState = null;
 
   constructor(private wr: Writer, size = DEFAULT_BUF_SIZE) {
     if (size <= 0) {
@@ -358,16 +364,16 @@ export class BufWriter implements Writer {
   }
 
   /** Flush writes any buffered data to the underlying io.Writer. */
-  async flush(): Promise<void> {
+  async flush(): Promise<BufState> {
     if (this.err != null) {
-      throw this.err;
+      return this.err;
     }
     if (this.n == 0) {
-      return;
+      return null;
     }
 
     let n: number;
-    let err: Error = null;
+    let err: BufState = null;
     try {
       n = await this.wr.write(this.buf.subarray(0, this.n));
     } catch (e) {
@@ -375,7 +381,7 @@ export class BufWriter implements Writer {
     }
 
     if (n < this.n && err == null) {
-      err = new Error("ShortWrite");
+      err = "ShortWrite";
     }
 
     if (err != null) {
@@ -384,7 +390,7 @@ export class BufWriter implements Writer {
       }
       this.n -= n;
       this.err = err;
-      return;
+      return err;
     }
     this.n = 0;
   }
