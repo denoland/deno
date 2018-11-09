@@ -116,12 +116,11 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
   return n;
 }
 
-/**
- * Turns `r` into async iterator.
+/** Turns `r` into async iterator.
  *
- *    for await (const chunk of readerIterator(reader)) {
- *        console.log(chunk)
- *    }
+ *      for await (const chunk of readerIterator(reader)) {
+ *          console.log(chunk)
+ *      }
  */
 export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
   const b = new Uint8Array(1024);
