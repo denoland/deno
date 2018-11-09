@@ -3,7 +3,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { Reader, ReadResult } from "deno";
+import { Reader, ReadResult, Writer } from "deno";
 import { assert, charCode, copyBytes } from "./util.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
@@ -32,7 +32,7 @@ export class BufReader implements Reader {
   }
 
   /** Returns the size of the underlying buffer in bytes. */
-  get byteLength(): number {
+  size(): number {
     return this.buf.byteLength;
   }
 
@@ -332,4 +332,104 @@ export class BufReader implements Reader {
  * the underlying deno.Writer.
  */
 export class BufWriter implements Writer {
+  buf: Uint8Array;
+  n: number = 0;
+  err: null | Error = null;
+
+  constructor(private wr: Writer, size = DEFAULT_BUF_SIZE) {
+    if (size <= 0) {
+      size = DEFAULT_BUF_SIZE;
+    }
+    this.buf = new Uint8Array(size);
+  }
+
+  /** Size returns the size of the underlying buffer in bytes. */
+  size(): number {
+    return this.buf.byteLength;
+  }
+
+  /** Discards any unflushed buffered data, clears any error, and
+   * resets b to write its output to w.
+   */
+  reset(w: Writer): void {
+    this.err = null;
+    this.n = 0;
+    this.wr = w;
+  }
+
+  /** Flush writes any buffered data to the underlying io.Writer. */
+  async flush(): Promise<void> {
+    if (this.err != null) {
+      throw this.err;
+    }
+    if (this.n == 0) {
+      return;
+    }
+
+    let n: number;
+    let err: Error = null;
+    try {
+      n = await this.wr.write(this.buf.subarray(0, this.n));
+    } catch (e) {
+      err = e;
+    }
+
+    if (n < this.n && err == null) {
+      err = new Error("ShortWrite");
+    }
+
+    if (err != null) {
+      if (n > 0 && n < this.n) {
+        this.buf.copyWithin(0, n, this.n);
+      }
+      this.n -= n;
+      this.err = err;
+      return;
+    }
+    this.n = 0;
+  }
+
+  /** Returns how many bytes are unused in the buffer. */
+  available(): number {
+    return this.buf.byteLength - this.n;
+  }
+
+  /** buffered returns the number of bytes that have been written into the
+   * current buffer.
+   */
+  buffered(): number {
+    return this.n;
+  }
+
+  /** Writes the contents of p into the buffer.
+   * Returns the number of bytes written.
+   */
+  async write(p: Uint8Array): Promise<number> {
+    let nn = 0;
+    let n: number;
+    while (p.byteLength > this.available() && !this.err) {
+      if (this.buffered() == 0) {
+        // Large write, empty buffer.
+        // Write directly from p to avoid copy.
+        try {
+          n = await this.wr.write(p);
+        } catch (e) {
+          this.err = e;
+        }
+      } else {
+        n = copyBytes(this.buf, p, this.n);
+        this.n += n;
+        this.flush();
+      }
+      nn += n;
+      p = p.subarray(n);
+    }
+    if (this.err) {
+      throw this.err;
+    }
+    n = copyBytes(this.buf, p, this.n);
+    this.n += n;
+    nn += n;
+    return nn;
+  }
 }

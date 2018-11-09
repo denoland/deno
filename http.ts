@@ -55,4 +55,3 @@ async function readRequest(b: BufReader): Promise<ServerRequest> {
 
   return req;
 }
-
