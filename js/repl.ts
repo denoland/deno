@@ -6,7 +6,9 @@ import * as deno from "./deno";
 import { close } from "./files";
 import * as dispatch from "./dispatch";
 import { exit } from "./os";
-import { window } from "./globals";
+import { globalEval } from "./global_eval";
+
+const window = globalEval("this");
 
 function startRepl(historyFile: string): number {
   const builder = flatbuffers.createBuilder();

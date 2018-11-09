@@ -72,17 +72,16 @@ like this:
   - This process assumes that all the modules that feed `js/deno.ts` will have a
     public type API that does not have name conflicts.
 - We process the `js/globals.ts` file to generate the global namespace.
-  - Currently we create a `"globals"` module which will contain the type
-    definitions.
   - We create a `Window` interface and a `global` scope augmentation namespace.
   - We iterate over augmentations to the `window` variable declared in the file,
     extract the type information and apply it to both a global variable
     declaration and a property on the `Window` interface.
+  - We identify any type aliases in the module and declare them globally.
 - We take each namespace import to `js/globals.ts`, we resolve the emitted
-  declaration `.d.ts` file and create it as its own namespace withing the
-  `"globals"` module. It is unsafe to just flatten these, because there is a
-  high risk of collisions, but also, it makes authoring the types easier within
-  the generated interface and variable declarations.
+  declaration `.d.ts` file and create it as its own namespace within the global
+  scope. It is unsafe to just flatten these, because there is a high risk of
+  collisions, but also, it makes authoring the types easier within the generated
+  interface and variable declarations.
 - We then validate the resulting definition file and write it out to the
   appropriate build path.
 
