@@ -9,7 +9,7 @@ import {
   assert,
   assertEqual
 } from "https://deno.land/x/testing/testing.ts";
-import { BufReader, BufState } from "./bufio.ts";
+import { BufReader, BufState, BufWriter } from "./bufio.ts";
 import { Buffer, stringsReader } from "./buffer.ts";
 import * as iotest from "./iotest.ts";
 import { charCode, copyBytes } from "./util.ts";
@@ -288,4 +288,37 @@ test(async function bufioPeek() {
 		t.Fatalf(`second Read after peek = %q, %v; want "", EOF`, p[0:n], err)
 	}
   */
+});
+
+test(async function bufioWriter() {
+  const data = new Uint8Array(8192);
+
+  for (let i = 0; i < data.byteLength; i++) {
+    data[i] = charCode(" ") + i % (charCode("~") - charCode(" "));
+  }
+
+  const w = new Buffer();
+  for (let nwrite of bufsizes) {
+    for (let bs of bufsizes) {
+      // Write nwrite bytes using buffer size bs.
+      // Check that the right amount makes it out
+      // and that the data is correct.
+
+      w.reset();
+      const buf = new BufWriter(w, bs);
+
+      const context = `nwrite=${nwrite} bufsize=${bs}`;
+      const n = await buf.write(data.subarray(0, nwrite));
+      assertEqual(n, nwrite, context);
+
+      await buf.flush();
+
+      const written = w.bytes();
+      assertEqual(written.byteLength, nwrite);
+
+      for (let l = 0; l < written.byteLength; l++) {
+        assertEqual(written[l], data[l]);
+      }
+    }
+  }
 });
