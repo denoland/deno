@@ -1,15 +1,15 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as ts from "typescript";
-import {MediaType} from "gen/msg_generated";
-import {assetSourceCode} from "./assets";
+import { MediaType } from "gen/msg_generated";
+import { assetSourceCode } from "./assets";
 // tslint:disable-next-line:no-circular-imports
 import * as deno from "./deno";
-import {globalEval} from "./global_eval";
-import {libdeno} from "./libdeno";
-import {window} from "./globals";
+import { globalEval } from "./global_eval";
+import { libdeno } from "./libdeno";
+import { window } from "./globals";
 import * as os from "./os";
-import {RawSourceMap} from "./types";
-import {assert, log, notImplemented} from "./util";
+import { RawSourceMap } from "./types";
+import { assert, log, notImplemented } from "./util";
 
 const EOL = "\n";
 const ASSETS = "$asset$";
@@ -276,7 +276,6 @@ export class DenoCompiler
   private _getModuleMetaData(
     fileName: ModuleFileName
   ): ModuleMetaData | undefined {
-    console.log('_getModuleMetaData', fileName);
     return this._moduleMetaDataMap.has(fileName)
       ? this._moduleMetaDataMap.get(fileName)
       : fileName.startsWith(ASSETS)
@@ -406,7 +405,7 @@ export class DenoCompiler
       assert(
         mediaType === MediaType.TypeScript || mediaType === MediaType.JavaScript
       );
-      console.log('pre emit output');
+      console.log("pre emit output");
       const output = service.getEmitOutput(fileName);
 
       // Get the relevant diagnostics - this is 3x faster than
@@ -492,21 +491,21 @@ export class DenoCompiler
       moduleId,
       fileName,
       MediaType.TypeScript,
-      sourceCode,
+      sourceCode
     );
-    this._moduleMetaDataMap.set(fileName, moduleMetaData);
-    console.log('moduleMetaData', moduleMetaData);
+    // TODO: this is poor-boy's cache-buster against TS compiler
+    moduleMetaData.scriptVersion = `${Math.random()}`;
 
-    const { mediaType } = moduleMetaData;
-    console.warn("Compiling", moduleId);
-    
+    this._moduleMetaDataMap.set(fileName, moduleMetaData);
+    this._scriptFileNames = [fileName];
+
     // TODO: this is mostly copy-pasted from compile()
     const service = this._service;
     assert(
-      mediaType === MediaType.TypeScript || mediaType === MediaType.JavaScript
+      moduleMetaData.mediaType === MediaType.TypeScript ||
+        moduleMetaData.mediaType === MediaType.JavaScript
     );
-    console.log('pre emit output');
-    // FIXME: it's throwing `Error: Could not find file: '[repl].ts'.` at the moment
+
     const output = service.getEmitOutput(fileName);
 
     // Get the relevant diagnostics - this is 3x faster than
@@ -523,10 +522,7 @@ export class DenoCompiler
       ...service.getSemanticDiagnostics(fileName)
     ];
 
-    assert(
-      !output.emitSkipped,
-      "The emit was skipped for an unknown reason."
-    );
+    assert(!output.emitSkipped, "The emit was skipped for an unknown reason.");
 
     assert(
       output.outputFiles.length === 2,
@@ -534,9 +530,7 @@ export class DenoCompiler
     );
 
     const [sourceMapFile, outputFile] = output.outputFiles;
-    moduleMetaData.outputCode = `${
-      outputFile.text
-    }\n//# sourceURL=${fileName}`;
+    moduleMetaData.outputCode = `${outputFile.text}\n//# sourceURL=${fileName}`;
     moduleMetaData.sourceMap = JSON.parse(sourceMapFile.text);
 
     moduleMetaData.scriptVersion = "1";
@@ -546,7 +540,7 @@ export class DenoCompiler
     // - return only new lines as outputCode
 
     return {
-      diagnostics: diagnostics,
+      diagnostics,
       outputCode: moduleMetaData.outputCode,
       additionalCode: ""
     };

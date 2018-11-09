@@ -1,6 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import * as ts from 'typescript';
 import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as deno from "./deno";
@@ -100,11 +99,13 @@ function evaluate(code: string): void {
     // 3. output diagnostics
     REPL_CONTEXT.lines.push(code);
     const compiledCode = compileReplCode(REPL_CONTEXT);
+
     console.log("compiledCode", compiledCode);
+    
     if (compiledCode.diagnostics.length > 0) {
-      // TODO: use ts.formatDiagnostic, probably worth moving to compiler.ts anyway
+      // TODO: use ts.formatDiagnostic
       for (const diagnostic of compiledCode.diagnostics) {
-        console.log('[TS diagnostic]', diagnostic.messageText);
+        console.log("[TS diagnostic]", diagnostic.messageText);
       }
     }
 
