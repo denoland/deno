@@ -45,4 +45,5 @@ interface Libdeno {
 }
 
 const window = globalEval("this");
+// @internal
 export const libdeno = window.libdeno as Libdeno;
