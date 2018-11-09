@@ -1,4 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// We need to make sure this module loads, for its side effects.
+import "./globals";
+
 import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import { assert, log, setLogDebug } from "./util";

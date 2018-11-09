@@ -21,7 +21,8 @@ import {
   loadFiles,
   logDiagnostics,
   namespaceSourceFile,
-  normalizeSlashes
+  normalizeSlashes,
+  addTypeAlias
 } from "./ast_util";
 
 export interface BuildLibraryOptions {
@@ -214,6 +215,16 @@ export function mergeGlobal({
     }
     addVariableDeclaration(targetSourceFile, property, type, true);
     addInterfaceProperty(interfaceDeclaration, property, type);
+  }
+
+  // We need to copy over any type aliases
+  for (const typeAlias of sourceFile.getTypeAliases()) {
+    addTypeAlias(
+      targetSourceFile,
+      typeAlias.getName(),
+      typeAlias.getType().getText(sourceFile),
+      true
+    );
   }
 
   // We need to ensure that we only namespace each source file once, so we

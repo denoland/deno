@@ -6,10 +6,11 @@ import { assetSourceCode } from "./assets";
 import * as deno from "./deno";
 import { globalEval } from "./global_eval";
 import { libdeno } from "./libdeno";
-import { window } from "./globals";
 import * as os from "./os";
 import { RawSourceMap } from "./types";
 import { assert, log, notImplemented } from "./util";
+
+const window = globalEval("this");
 
 const EOL = "\n";
 const ASSETS = "$asset$";

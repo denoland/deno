@@ -169,3 +169,11 @@ test(function headerSymbolIteratorSuccess() {
     assertEqual(value, headers.get(key));
   }
 });
+
+test(function headerTypesAvailable() {
+  function newHeaders(): Headers {
+    return new Headers();
+  }
+  const headers = newHeaders();
+  assert(headers instanceof Headers);
+});

@@ -42,6 +42,22 @@ export function addSourceComment(
   );
 }
 
+/** Add a declaration of a type alias to a node */
+export function addTypeAlias(
+  node: StatementedNode,
+  name: string,
+  type: string,
+  hasDeclareKeyword = false,
+  jsdocs?: JSDoc[]
+) {
+  return node.addTypeAlias({
+    name,
+    type,
+    docs: jsdocs && jsdocs.map(jsdoc => jsdoc.getText()),
+    hasDeclareKeyword
+  });
+}
+
 /** Add a declaration of a variable to a node */
 export function addVariableDeclaration(
   node: StatementedNode,
