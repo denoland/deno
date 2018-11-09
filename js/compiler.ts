@@ -69,8 +69,6 @@ export interface Ts {
   createLanguageService: typeof ts.createLanguageService;
   /* tslint:disable-next-line:max-line-length */
   formatDiagnosticsWithColorAndContext: typeof ts.formatDiagnosticsWithColorAndContext;
-
-  transpileModule: typeof ts.transpileModule;
 }
 
 /** A simple object structure for caching resolved modules and their contents.
