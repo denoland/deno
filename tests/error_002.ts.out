@@ -1,8 +1,8 @@
 Error: exception from mod1
-    at Object.throwsError (file://[WILDCARD]/tests/subdir/mod1.ts:16:9)
+    at throwsError (file://[WILDCARD]/tests/subdir/mod1.ts:16:9)
     at foo (file://[WILDCARD]/tests/error_002.ts:4:3)
-    at Module.eval [as factory ] (file://[WILDCARD]/tests/error_002.ts:7:1)
-    at Runner._drainRunQueue ([WILDCARD]/js/runner.ts:[WILDCARD])
-    at Runner.run ([WILDCARD]/js/runner.ts:[WILDCARD])
+    at eval (file://[WILDCARD]/tests/error_002.ts:7:1)
+    at _drainRunQueue ([WILDCARD]/js/runner.ts:[WILDCARD])
+    at run ([WILDCARD]/js/runner.ts:[WILDCARD])
     at denoMain ([WILDCARD]/js/main.ts:[WILDCARD])
     at deno_main.js:1:1
