@@ -76,7 +76,6 @@ void HandleExceptionStr(v8::Local<v8::Context> context,
                         v8::Local<v8::Value> exception,
                         std::string* exception_str) {
   auto* isolate = context->GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
 
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
@@ -87,23 +86,6 @@ void HandleExceptionStr(v8::Local<v8::Context> context,
       v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
   auto column =
       v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
-
-  auto global_error_handler_ = d->global_error_handler_.Get(isolate);
-
-  if (!global_error_handler_.IsEmpty()) {
-    // global_error_handler_ is set so we try to handle the exception in
-    // javascript.
-    v8::Local<v8::Value> args[5];
-    args[0] = exception->ToString(context).ToLocalChecked();
-    args[1] = message->GetScriptResourceName();
-    args[2] = line;
-    args[3] = column;
-    args[4] = exception;
-    global_error_handler_->Call(context->Global(), 5, args);
-    /* message, source, lineno, colno, error */
-
-    return;
-  }
 
   char buf[12 * 1024];
   if (!stack_trace.IsEmpty()) {
@@ -116,10 +98,11 @@ void HandleExceptionStr(v8::Local<v8::Context> context,
 
     for (int i = 0; i < stack_trace->GetFrameCount(); ++i) {
       auto frame = stack_trace->GetFrame(isolate, i);
-      v8::String::Utf8Value script_name(isolate, frame->GetScriptName());
+      v8::String::Utf8Value function_name(isolate, frame->GetFunctionName());
+      v8::String::Utf8Value script_name(isolate, frame->GetScriptNameOrSourceURL());
       int l = frame->GetLineNumber();
       int c = frame->GetColumn();
-      snprintf(buf, sizeof(buf), "%s %d:%d\n", ToCString(script_name), l, c);
+      snprintf(buf, sizeof(buf), "%s (%s) %d:%d\n", ToCString(script_name), ToCString(function_name), l, c);
       msg += buf;
     }
     *exception_str += msg;
@@ -359,27 +342,6 @@ void Shared(v8::Local<v8::Name> property,
   info.GetReturnValue().Set(ab);
 }
 
-// Sets the global error handler.
-void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  v8::Isolate* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
-  DCHECK_EQ(d->isolate_, isolate);
-
-  v8::HandleScope handle_scope(isolate);
-
-  if (!d->global_error_handler_.IsEmpty()) {
-    isolate->ThrowException(
-        v8_str("libdeno.setGlobalErrorHandler already called."));
-    return;
-  }
-
-  v8::Local<v8::Value> v = args[0];
-  CHECK(v->IsFunction());
-  v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
-
-  d->global_error_handler_.Reset(isolate, func);
-}
-
 // Sets the promise uncaught reject handler
 void SetPromiseRejectHandler(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
@@ -466,8 +428,7 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
 }
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                       const char* js_filename, const char* js_source,
-                       const char* source_map) {
+                       const char* js_filename, const char* js_source) {
   CHECK_NE(js_source, nullptr);
   CHECK_NE(js_filename, nullptr);
   v8::HandleScope handle_scope(isolate);
@@ -493,15 +454,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
 
-  auto set_global_error_handler_tmpl =
-      v8::FunctionTemplate::New(isolate, SetGlobalErrorHandler);
-  auto set_global_error_handler_val =
-      set_global_error_handler_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val
-            ->Set(context, deno::v8_str("setGlobalErrorHandler"),
-                  set_global_error_handler_val)
-            .FromJust());
-
   auto set_promise_reject_handler_tmpl =
       v8::FunctionTemplate::New(isolate, SetPromiseRejectHandler);
   auto set_promise_reject_handler_val =
@@ -521,30 +473,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
             .FromJust());
 
   {
-    if (source_map != nullptr) {
-      v8::TryCatch try_catch(isolate);
-      v8::ScriptOrigin origin(v8_str("set_source_map.js"));
-      std::string source_map_parens =
-          std::string("(") + std::string(source_map) + std::string(")");
-      auto source_map_v8_str = deno::v8_str(source_map_parens.c_str());
-      auto script = v8::Script::Compile(context, source_map_v8_str, &origin);
-      if (script.IsEmpty()) {
-        DCHECK(try_catch.HasCaught());
-        HandleException(context, try_catch.Exception());
-        return;
-      }
-      auto source_map_obj = script.ToLocalChecked()->Run(context);
-      if (source_map_obj.IsEmpty()) {
-        DCHECK(try_catch.HasCaught());
-        HandleException(context, try_catch.Exception());
-        return;
-      }
-      CHECK(deno_val
-                ->Set(context, deno::v8_str("mainSourceMap"),
-                      source_map_obj.ToLocalChecked())
-                .FromJust());
-    }
-
     auto source = deno::v8_str(js_source);
     CHECK(
         deno_val->Set(context, deno::v8_str("mainSource"), source).FromJust());
@@ -558,10 +486,10 @@ void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
   isolate_ = isolate;
   // Leaving this code here because it will probably be useful later on, but
   // disabling it now as I haven't got tests for the desired behavior.
-  // d->isolate->SetCaptureStackTraceForUncaughtExceptions(true);
   // d->isolate->SetAbortOnUncaughtExceptionCallback(AbortOnUncaughtExceptionCallback);
   // d->isolate->AddMessageListener(MessageCallback2);
   // d->isolate->SetFatalErrorHandler(FatalErrorCallback2);
+  isolate_->SetCaptureStackTraceForUncaughtExceptions(true, 20);
   isolate_->SetPromiseRejectCallback(deno::PromiseRejectCallback);
   isolate_->SetData(0, this);
 }

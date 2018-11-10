@@ -22,7 +22,7 @@ TEST(LibDenoTest, SnapshotterInitializesCorrectly) {
 
 TEST(LibDenoTest, Snapshotter) {
   Deno* d1 = deno_new_snapshotter(deno_config{empty, nullptr}, "a.js",
-                                  "a = 1 + 2", nullptr);
+                                  "a = 1 + 2");
   deno_buf test_snapshot = deno_get_snapshot(d1);
   deno_delete(d1);
 

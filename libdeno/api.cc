@@ -47,7 +47,7 @@ Deno* deno_new(deno_buf snapshot, deno_config config) {
 }
 
 Deno* deno_new_snapshotter(deno_config config, const char* js_filename,
-                           const char* js_source, const char* source_map) {
+                           const char* js_source) {
   auto* creator = new v8::SnapshotCreator(deno::external_references);
   auto* isolate = creator->GetIsolate();
   auto* d = new deno::DenoIsolate(deno::empty_buf, config);
@@ -61,8 +61,7 @@ Deno* deno_new_snapshotter(deno_config config, const char* js_filename,
     creator->SetDefaultContext(context,
                                v8::SerializeInternalFieldsCallback(
                                    deno::SerializeInternalFields, nullptr));
-    deno::InitializeContext(isolate, context, js_filename, js_source,
-                            source_map);
+    deno::InitializeContext(isolate, context, js_filename, js_source);
   }
   return reinterpret_cast<Deno*>(d);
 }
