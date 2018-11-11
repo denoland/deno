@@ -71,7 +71,7 @@ scripts to be executed._
 Try it:
 
 ```
-> deno http://deno.land/thumb.ts
+> deno https://deno.land/thumb.ts
 ```
 
 See also [deno_install](https://github.com/denoland/deno_install).
