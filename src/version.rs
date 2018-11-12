@@ -2,7 +2,8 @@
 use libdeno;
 use std::ffi::CStr;
 
-pub const DENO: &str = "0.1.11";
+// TODO Extract this version string from Cargo.toml.
+pub const DENO: &str = "0.1.12";
 
 pub fn v8() -> &'static str {
   let version = unsafe { libdeno::deno_v8_version() };
