@@ -3,7 +3,8 @@ use libdeno::deno_buf;
 use std;
 
 pub fn deno_snapshot() -> deno_buf {
-  let data = include_bytes!(concat!(env!("PWD"), "/gen/snapshot_deno.bin"));
+  let data =
+    include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/snapshot_deno.bin"));
   let ptr = data.as_ptr();
   // TODO The transmute is not necessary here. deno_buf specifies mutable
   // pointers when it doesn't necessarally need mutable. So maybe the deno_buf
