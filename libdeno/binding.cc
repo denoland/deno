@@ -82,36 +82,37 @@ void HandleExceptionStr(v8::Local<v8::Context> context,
 
   auto message = v8::Exception::CreateMessage(isolate, exception);
   auto stack_trace = message->GetStackTrace();
-  auto line =
-      v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
-  auto column =
-      v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
+  v8::String::Utf8Value exceptionStr(isolate, exception);
 
   char buf[12 * 1024];
   if (!stack_trace.IsEmpty()) {
-    // No javascript error handler, but we do have a stack trace. Format it
-    // into a string and add to last_exception_.
+    // Format stack trace into a string and add to last_exception_.
     std::string msg;
-    v8::String::Utf8Value exceptionStr(isolate, exception);
     msg += ToCString(exceptionStr);
     msg += "\n";
 
     for (int i = 0; i < stack_trace->GetFrameCount(); ++i) {
       auto frame = stack_trace->GetFrame(isolate, i);
       v8::String::Utf8Value function_name(isolate, frame->GetFunctionName());
-      v8::String::Utf8Value script_name(isolate, frame->GetScriptNameOrSourceURL());
+      v8::String::Utf8Value script_name(isolate,
+                                        frame->GetScriptNameOrSourceURL());
       int l = frame->GetLineNumber();
       int c = frame->GetColumn();
-      snprintf(buf, sizeof(buf), "%s (%s) %d:%d\n", ToCString(script_name), ToCString(function_name), l, c);
+      snprintf(buf, sizeof(buf), "%s (%s) %d:%d\n", ToCString(script_name),
+               ToCString(function_name), l, c);
       msg += buf;
     }
     *exception_str += msg;
   } else {
-    // No javascript error handler, no stack trace. Format the little info we
-    // have into a string and add to last_exception_.
-    v8::String::Utf8Value exceptionStr(isolate, exception);
+    // No stack trace. Format the little info we have into a string and add to
+    // last_exception_.
+
     v8::String::Utf8Value script_name(isolate,
                                       message->GetScriptResourceName());
+    auto line =
+        v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
+    auto column =
+        v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
     v8::String::Utf8Value line_str(isolate, line);
     v8::String::Utf8Value col_str(isolate, column);
     snprintf(buf, sizeof(buf), "%s\n%s %s:%s\n", ToCString(exceptionStr),
@@ -474,8 +475,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
 
   {
     auto source = deno::v8_str(js_source);
-    CHECK(
-        deno_val->Set(context, deno::v8_str("mainSource"), source).FromJust());
 
     bool r = deno::ExecuteV8StringSource(context, js_filename, source);
     CHECK(r);

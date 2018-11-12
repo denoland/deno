@@ -1101,3 +1101,15 @@ rust_crate("tokio_process") {
     ]
   }
 }
+
+rust_crate("vlq") {
+  source_root = "$registry_github/vlq-0.5.1/src/lib.rs"
+}
+
+rust_crate("source_map_mappings") {
+  source_root = "$registry_github/source-map-mappings-0.5.0/src/lib.rs"
+  extern = [
+    ":rand",
+    ":vlq",
+  ]
+}

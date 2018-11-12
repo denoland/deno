@@ -181,27 +181,6 @@ TEST(LibDenoTest, SnapshotBug) {
   deno_delete(d);
 }
 
-TEST(LibDenoTest, GlobalErrorHandling) {
-  static int count = 0;
-  auto recv_cb = [](auto _, int req_id, auto buf, auto data_buf) {
-    assert_null(data_buf);
-    count++;
-    EXPECT_EQ(static_cast<size_t>(1), buf.data_len);
-    EXPECT_EQ(buf.data_ptr[0], 42);
-  };
-  Deno* d = deno_new(snapshot, deno_config{empty, recv_cb});
-  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "GlobalErrorHandling()"));
-  EXPECT_EQ(count, 1);
-  deno_delete(d);
-}
-
-TEST(LibDenoTest, DoubleGlobalErrorHandlingFails) {
-  Deno* d = deno_new(snapshot, deno_config{empty, nullptr});
-  EXPECT_FALSE(
-      deno_execute(d, nullptr, "a.js", "DoubleGlobalErrorHandlingFails()"));
-  deno_delete(d);
-}
-
 TEST(LibDenoTest, DataBuf) {
   static int count = 0;
   static deno_buf data_buf_copy;

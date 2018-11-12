@@ -98,24 +98,6 @@ global.SnapshotBug = () => {
   assert("1,2,3" === String([1, 2, 3]));
 };
 
-global.GlobalErrorHandling = () => {
-  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {
-    libdeno.print(`line ${line} col ${col}`, true);
-    assert("ReferenceError: notdefined is not defined" === message);
-    assert(source === "helloworld.js");
-    assert(line === 3);
-    assert(col === 1);
-    assert(error instanceof Error);
-    libdeno.send(new Uint8Array([42]));
-  });
-  eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
-};
-
-global.DoubleGlobalErrorHandlingFails = () => {
-  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {});
-  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {});
-};
-
 // Allocate this buf at the top level to avoid GC.
 const dataBuf = new Uint8Array([3, 4]);
 
@@ -172,7 +154,7 @@ global.PromiseRejectCatchHandling = () => {
       assertOrSend(count === 2);
     }
   })();
-}
+};
 
 global.Shared = () => {
   const ab = libdeno.shared;
@@ -185,4 +167,4 @@ global.Shared = () => {
   ui8[0] = 42;
   ui8[1] = 43;
   ui8[2] = 44;
-}
+};

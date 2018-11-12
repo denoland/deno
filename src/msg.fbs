@@ -56,7 +56,9 @@ union Any {
   Run,
   RunRes,
   RunStatus,
-  RunStatusRes
+  RunStatusRes,
+  GetSourceMap,
+  GetSourceMapRes,
 }
 
 enum ErrorKind: byte {
@@ -446,6 +448,14 @@ table RunStatusRes {
   got_signal: bool;
   exit_code: int;
   exit_signal: int;
+}
+
+table GetSourceMap {
+  filename: string;
+}
+
+table GetSourceMapRes {
+  source_map: string;
 }
 
 root_type Base;
