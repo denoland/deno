@@ -11,7 +11,7 @@ import { Reader, ReadResult } from "deno";
 export class OneByteReader implements Reader {
   constructor(readonly r: Reader) {}
 
-  async read(p: ArrayBufferView): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<ReadResult> {
     if (p.byteLength === 0) {
       return { nread: 0, eof: false };
     }
@@ -28,7 +28,7 @@ export class OneByteReader implements Reader {
 export class HalfReader implements Reader {
   constructor(readonly r: Reader) {}
 
-  async read(p: ArrayBufferView): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<ReadResult> {
     if (!(p instanceof Uint8Array)) {
       throw Error("expected Uint8Array");
     }
@@ -51,7 +51,7 @@ export class TimeoutReader implements Reader {
   count = 0;
   constructor(readonly r: Reader) {}
 
-  async read(p: ArrayBufferView): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<ReadResult> {
     this.count++;
     if (this.count === 2) {
       throw new ErrTimeout();
