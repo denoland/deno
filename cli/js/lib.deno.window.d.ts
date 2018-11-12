@@ -44,4 +44,7 @@ declare interface Crypto {
   ): T;
 }
 
+declare const sessionStorage: Storage;
+declare const localStorage: Storage;
+
 /* eslint-enable @typescript-eslint/no-explicit-any */

@@ -1400,3 +1400,13 @@ declare const AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
 };
+
+interface Storage {
+  readonly length: number;
+  key: (index: number) => string | null;
+  getItem: (keyName: string) => string | null;
+  setItem: (keyName: string, keyValue: string) => void;
+  removeItem: (keyName: string) => void;
+  clear: () => void;
+  [name: string]: any;
+}

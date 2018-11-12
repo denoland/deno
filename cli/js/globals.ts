@@ -25,6 +25,7 @@ import * as request from "./web/request.ts";
 import * as readableStream from "./web/streams/readable_stream.ts";
 import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
 import * as writableStream from "./web/streams/writable_stream.ts";
+import * as storage from "./web/storage.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -239,6 +240,13 @@ export const windowOrWorkerGlobalScopeProperties = {
   performance: writable(new performanceUtil.Performance()),
   Worker: nonEnumerable(workers.WorkerImpl),
   WritableStream: nonEnumerable(writableStream.WritableStreamImpl),
+};
+
+export const windowGlobalScopeProperties = {
+  localStorage: getterOnly(() => {
+    throw new (class SecurityError extends domException.DOMExceptionImpl {})();
+  }),
+  sessionStorage: readOnly(storage.sessionStorage),
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

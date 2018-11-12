@@ -17,6 +17,7 @@ import {
   writable,
   windowOrWorkerGlobalScopeMethods,
   windowOrWorkerGlobalScopeProperties,
+  windowGlobalScopeProperties,
   eventTargetProperties,
   setEventTargetData,
 } from "./globals.ts";
@@ -79,6 +80,7 @@ export function bootstrapMainRuntime(): void {
   hasBootstrapped = true;
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
+  Object.defineProperties(globalThis, windowGlobalScopeProperties);
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
   setEventTargetData(globalThis);
