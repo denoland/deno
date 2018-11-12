@@ -13,22 +13,34 @@ fn main() {
   // matches the build modes we support.
   let mode = env::var("PROFILE").unwrap();
 
+  let out_dir = env::var_os("OUT_DIR").unwrap();
+  let out_dir = env::current_dir().unwrap().join(out_dir);
+
   // Normally we configure GN+Ninja to build into Cargo's OUT_DIR.
   // However, when DENO_BUILD_PATH is set, perform the ninja build in that dir
   // instead. This is used by CI to avoid building V8 etc twice.
-  let out_dir = env::var_os("OUT_DIR").unwrap();
   let gn_out_dir = match env::var_os("DENO_BUILD_PATH") {
-    None => abs_path(out_dir),
-    Some(deno_build_path) => abs_path(deno_build_path),
+    None => {
+      // out_dir looks like: "target/debug/build/deno-26d2b5325de0f0cf/out"
+      // The gn build is "target/debug"
+      // So we go up two directories. Blame cargo for these hacks.
+      let d = out_dir.parent().unwrap();
+      let d = d.parent().unwrap();
+      let d = d.parent().unwrap();
+      PathBuf::from(d)
+    }
+    Some(deno_build_path) => PathBuf::from(deno_build_path),
   };
 
   // Give cargo some instructions. We do this first so the `rerun-if-*-changed`
   // directives can take effect even if something the build itself fails.
-  println!("cargo:rustc-env=GN_OUT_DIR={}", gn_out_dir);
-  println!("cargo:rustc-link-search=native={}/obj", gn_out_dir);
+  println!("cargo:rustc-env=GN_OUT_DIR={}", normalize_path(&gn_out_dir));
+  println!(
+    "cargo:rustc-link-search=native={}/obj",
+    normalize_path(&gn_out_dir)
+  );
   println!("cargo:rustc-link-lib=static=deno_deps");
 
-  println!("cargo:rerun-if-changed={}", abs_path("src/msg.fbs"));
   println!("cargo:rerun-if-env-changed=DENO_BUILD_PATH");
   // TODO: this is obviously not appropriate here.
   println!("cargo:rerun-if-env-changed=APPVEYOR_REPO_COMMIT");
@@ -72,10 +84,8 @@ fn main() {
 
 // Utility function to make a path absolute, normalizing it to use forward
 // slashes only. The returned value is an owned String, otherwise panics.
-fn abs_path<P: AsRef<Path>>(path: P) -> String {
-  env::current_dir()
-    .unwrap()
-    .join(path)
+fn normalize_path(path: &Path) -> String {
+  path
     .to_str()
     .unwrap()
     .to_owned()
