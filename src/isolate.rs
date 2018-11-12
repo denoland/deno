@@ -139,7 +139,7 @@ impl Isolate {
     });
     let shared = empty(); // TODO Use shared for message passing.
     let libdeno_isolate = unsafe {
-      libdeno::deno_new(snapshot::deno_snapshot.clone(), shared, pre_dispatch)
+      libdeno::deno_new(snapshot::deno_snapshot(), shared, pre_dispatch)
     };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
