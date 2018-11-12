@@ -30,6 +30,7 @@ import "./rename_test.ts";
 import "./resources_test.ts";
 import "./runner_test.ts";
 import "./stat_test.ts";
+import "./storage_test.ts";
 import "./symlink_test.ts";
 import "./text_encoding_test.ts";
 import "./timers_test.ts";

@@ -72,6 +72,15 @@ interface AbortSignalEventMap {
   abort: ProgressEvent;
 }
 
+export interface Storage {
+  length: number;
+  key: (index: number) => string | null;
+  getItem: (keyName: string) => string | null;
+  setItem: (keyName: string, keyValue: string) => void;
+  removeItem: (keyName: string) => void;
+  clear: () => void;
+}
+
 interface EventTarget {
   addEventListener(
     type: string,
