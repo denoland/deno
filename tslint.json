@@ -63,5 +63,5 @@
       "allow-trailing-underscore"
     ]
   },
-  "extends": ["tslint-no-circular-imports"]
+  "extends": ["tslint-no-circular-imports", "tslint-config-prettier"]
 }
