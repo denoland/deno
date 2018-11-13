@@ -111,56 +111,19 @@ ts_sources = [
   "third_party/yarn.lock",
 ]
 
+group("deno_deps") {
+  deps = [
+    ":create_snapshot_deno",
+    ":msg_rs",
+    "libdeno:libdeno",
+  ]
+}
+
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
   deps = [
     ":deno_deps",
-  ]
-}
-
-source_set("snapshot") {
-  sources = [
-    "src/snapshot.cc",
-  ]
-  configs += [ "libdeno:deno_config" ]
-  inputs = [
-    "$target_gen_dir/snapshot_deno.bin",
-  ]
-  deps = [
-    ":create_snapshot_deno",
-  ]
-
-  # snapshot.cc doesn't need to depend on libdeno, it just needs deno_buf.
-  include_dirs = [ "libdeno/" ]
-
-  # src/snapshot.cc uses an assembly '.incbin' directive to embed the snapshot.
-  # This causes trouble when using sccache: since the snapshot file is not
-  # inlined by the c preprocessor, sccache doesn't take its contents into
-  # consideration, leading to false-positive cache hits.
-  # Maybe other caching tools have this issue too, but ccache is unaffected.
-  # Therefore, if a cc_wrapper is used that isn't ccache, include a generated
-  # header file that contains the the sha256 hash of the snapshot.
-  if (cc_wrapper != "" && cc_wrapper != "ccache") {
-    hash_h = "$target_gen_dir/bundle/hash.h"
-    inputs += [ hash_h ]
-    deps += [ ":bundle_hash_h" ]
-    if (is_win) {
-      cflags = [ "/FI" + rebase_path(hash_h, target_out_dir) ]
-    } else {
-      cflags = [
-        "-include",
-        rebase_path(hash_h, target_out_dir),
-      ]
-    }
-  }
-}
-
-rust_executable("hyper_hello") {
-  source_root = "tools/hyper_hello.rs"
-  extern = [
-    "$rust_build:hyper",
-    "$rust_build:ring",
   ]
 }
 
@@ -172,14 +135,12 @@ rust_test("test_rs") {
   ]
 }
 
-v8_static_library("deno_deps") {
-  complete_static_lib = true
-  public_deps = [
-    ":msg_rs",
-    ":snapshot",
-    "libdeno:libdeno",
+rust_executable("hyper_hello") {
+  source_root = "tools/hyper_hello.rs"
+  extern = [
+    "$rust_build:hyper",
+    "$rust_build:ring",
   ]
-  configs = [ "libdeno:deno_config" ]
 }
 
 # Generates the core TypeScript type library for deno that will be
@@ -234,29 +195,6 @@ run_node("bundle") {
     rebase_path("."),
     "--silent",
   ]
-}
-
-action("bundle_hash_h") {
-  script = "//tools/sha256sum.py"
-  inputs = get_target_outputs(":bundle")
-  outputs = [
-    "$target_gen_dir/bundle/hash.h",
-  ]
-  deps = [
-    ":bundle",
-  ]
-  args = [
-    "--format",
-    "__attribute__((__unused__)) static const int dummy_%s = 0;",
-    "--outfile",
-    rebase_path(outputs[0], root_build_dir),
-  ]
-  foreach(input, inputs) {
-    args += [
-      "--infile",
-      rebase_path(input, root_build_dir),
-    ]
-  }
 }
 
 ts_flatbuffer("msg_ts") {

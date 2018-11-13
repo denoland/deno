@@ -97,7 +97,7 @@ fn main() {
   });
 
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv));
-  let snapshot = unsafe { snapshot::deno_snapshot.clone() };
+  let snapshot = snapshot::deno_snapshot();
   let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
   tokio_util::init(|| {
     isolate
