@@ -57,7 +57,8 @@ install:
   # TODO(ry) Include rustc in third_party.
   # https://github.com/denoland/deno/issues/386
   # if [ ! $(which rustc) ]; then
-  curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.30.0
+  curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.30.0\
+  rustup update
   rustup component add clippy-preview
   # fi
   rustc --version
