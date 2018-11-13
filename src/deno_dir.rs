@@ -556,7 +556,7 @@ fn test_src_file_to_url_1() {
 }
 
 #[test]
-fn test_src_file_to_url_3() {
+fn test_src_file_to_url_2() {
   let (_temp_dir, deno_dir) = test_setup();
   let x = deno_dir.deps_http.join("localhost_PORT4545/world.txt");
   assert_eq!(
@@ -686,7 +686,7 @@ fn test_resolve_module_4() {
 }
 
 #[test]
-fn test_resolve_module_6() {
+fn test_resolve_module_5() {
   let (_temp_dir, deno_dir) = test_setup();
 
   let module_specifier = "http://localhost:4545/tests/subdir/mod2.ts";
@@ -707,7 +707,7 @@ fn test_resolve_module_6() {
 }
 
 #[test]
-fn test_resolve_module_7() {
+fn test_resolve_module_6() {
   let (_temp_dir, deno_dir) = test_setup();
 
   let module_specifier = "http_test.ts";
