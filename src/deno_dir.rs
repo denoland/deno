@@ -542,7 +542,7 @@ fn test_code_fetch_no_ext() {
   assert!(code_fetch_output.filename.ends_with("/js/mock_builtin.js"));
   assert!(code_fetch_output.source_code.len() > 10);
 }
-
+#[cfg(test)]
 #[test]
 fn test_src_file_to_url_1() {
   let (_temp_dir, deno_dir) = test_setup();
@@ -556,33 +556,11 @@ fn test_src_file_to_url_1() {
 }
 
 #[test]
-fn test_src_file_to_url_2() {
-  let (_temp_dir, deno_dir) = test_setup();
-  assert_eq!("hello", deno_dir.src_file_to_url("hello"));
-  assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
-  let x = deno_dir.deps_https.join("hello/world.txt");
-  assert_eq!(
-    "https://hello/world.txt",
-    deno_dir.src_file_to_url(x.to_str().unwrap())
-  );
-}
-
-#[test]
 fn test_src_file_to_url_3() {
   let (_temp_dir, deno_dir) = test_setup();
   let x = deno_dir.deps_http.join("localhost_PORT4545/world.txt");
   assert_eq!(
     "http://localhost:4545/world.txt",
-    deno_dir.src_file_to_url(x.to_str().unwrap())
-  );
-}
-
-#[test]
-fn test_src_file_to_url_4() {
-  let (_temp_dir, deno_dir) = test_setup();
-  let x = deno_dir.deps_https.join("localhost_PORT4545/world.txt");
-  assert_eq!(
-    "https://localhost:4545/world.txt",
     deno_dir.src_file_to_url(x.to_str().unwrap())
   );
 }
@@ -696,31 +674,6 @@ fn test_resolve_module_4() {
   let expected_filename = deno_fs::normalize_path(
     deno_dir
       .deps_http
-      .join("unpkg.com/liltest@0.0.5/util")
-      .as_ref(),
-  );
-
-  let (module_name, filename) = deno_dir
-    .resolve_module(module_specifier, containing_file)
-    .unwrap();
-  assert_eq!(module_name, expected_module_name);
-  assert_eq!(filename, expected_filename);
-}
-
-#[test]
-fn test_resolve_module_5() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let module_specifier = "./util";
-  let containing_file_ =
-    deno_dir.deps_https.join("unpkg.com/liltest@0.0.5/index.ts");
-  let containing_file = containing_file_.to_str().unwrap();
-
-  // https containing files -> load relative import with https
-  let expected_module_name = "https://unpkg.com/liltest@0.0.5/util";
-  let expected_filename = deno_fs::normalize_path(
-    deno_dir
-      .deps_https
       .join("unpkg.com/liltest@0.0.5/util")
       .as_ref(),
   );
