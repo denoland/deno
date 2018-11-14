@@ -66,7 +66,7 @@ The copy here is actually zero-copy. That is, it reads data from the socket and
 writes it back to it without ever calling a memcpy() or similar.
 
 ```ts
-import { listen, accept, copy } from "deno";
+import { listen, copy } from "deno";
 const listener = listen("tcp", ":8080");
 while (true) {
   const conn = await listener.accept();
