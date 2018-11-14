@@ -182,6 +182,13 @@ function formatSecsAsMins(t) {
  * @param dataUrl The url of benchramk data json.
  */
 export function drawCharts(dataUrl) {
+  // TODO Using window["location"]["hostname"] instead of
+  // window.location.hostname because when deno runs app_test.js it gets a type
+  // error here, not knowing about window.location.  Ideally Deno would skip
+  // type check entirely on JS files.
+  if (window["location"]["hostname"] != "deno.github.io") {
+    dataUrl = "https://denoland.github.io/deno/" + dataUrl;
+  }
   drawChartsFromBenchmarkData(dataUrl);
   drawChartsFromTravisData();
 }
