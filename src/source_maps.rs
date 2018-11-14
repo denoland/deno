@@ -1,4 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use serde_json;
+use serde_json::Value;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
 use source_map_mappings::Mappings;
@@ -19,11 +21,30 @@ pub struct JavaScriptError {
   pub stack_trace: Vec<StackFrame>,
 }
 
+fn main_map_mappings() -> (String, Vec<Value>) {
+  let main_map_json =
+    include_str!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js.map"));
+  let main_map: serde_json::Value = serde_json::from_str(main_map_json).unwrap();
+  let mappings = main_map["mappings"].as_str().unwrap().to_string();
+  let sources = main_map["sources"].as_array().unwrap().to_vec();
+  (mappings, sources)
+}
+
+fn get_original_source(index: u32) -> String {
+  let (_, sources) = main_map_mappings();
+  sources[index as usize].as_str().unwrap().to_string()
+}
+
 fn parse_map_string(
   source_url: &str,
   get_map: &Fn(&str) -> String,
 ) -> Option<Mappings> {
-  parse_mappings::<()>(get_map(source_url).as_bytes()).ok()
+  let (mappings, _) = main_map_mappings();
+  let source_map = match source_url {
+    "gen/bundle/main.js" => mappings,
+    _ => get_map(source_url),
+  };
+  parse_mappings::<()>(source_map.as_bytes()).ok()
 }
 
 fn get_mappings<'a>(
@@ -42,15 +63,21 @@ fn parse_stack_frame(
   get_map: &Fn(&str) -> String,
 ) -> String {
   let mappings = get_mappings(frame.source_url.as_ref(), mappings_map, get_map);
-  let frame_pos = (frame.line_number, frame.column);
-  let (line_number, column) = match mappings {
+  let frame_pos = (frame.source_url.to_owned(), frame.line_number, frame.column);
+  let (source_url, line_number, column) = match mappings {
     Some(mappings) => match mappings.original_location_for(
       frame.line_number,
       frame.column,
       Bias::default(),
     ) {
       Some(mapping) => match &mapping.original {
-        Some(original) => (original.original_line, original.original_column),
+        Some(original) => {
+          let source_name = match frame.source_url.as_ref() {
+            "gen/bundle/main.js" => get_original_source(original.source),
+            _ => frame.source_url.to_owned()
+          };
+          (source_name, original.original_line, original.original_column)
+        },
         None => frame_pos,
       },
       None => frame_pos,
@@ -60,15 +87,11 @@ fn parse_stack_frame(
   if frame.function_name.len() > 0 {
     format!(
       "\n    at {} ({}:{}:{})",
-      frame.function_name, frame.source_url, line_number, column
+      frame.function_name, source_url, line_number, column
     )
   } else {
-    format!(
-      "\n    at {}:{}:{}",
-      frame.source_url, line_number, column
-    )
+    format!("\n    at {}:{}:{}", source_url, line_number, column)
   }
-  
 }
 
 pub fn parse_javascript_error(
@@ -134,9 +157,30 @@ fn test_parse_javascript_error_02() {
         is_eval: false,
         is_constructor: false,
         is_wasm: false,
-      }
+      },
     ],
   };
   let result = parse_javascript_error(&error, &get_map_stub);
   assert_eq!("Error: foo bar\n    at foo (foo_bar.ts:5:12)\n    at qat (bar_baz.ts:4:14)\n    at deno_main.js:1:1\n", result);
+}
+
+#[test]
+fn test_parse_javascript_error_03() {
+  // Because this is accessing the live bundle, this test might be more fragile
+  let error = JavaScriptError {
+    message: "TypeError: baz".to_string(),
+    stack_trace: vec![
+      StackFrame {
+        line_number: 11,
+        column: 12,
+        source_url: "gen/bundle/main.js".to_string(),
+        function_name: "setLogDebug".to_string(),
+        is_eval: false,
+        is_constructor: false,
+        is_wasm: false,
+      },
+    ],
+  };
+  let result = parse_javascript_error(&error, &get_map_stub);
+  assert_eq!("TypeError: baz\n    at setLogDebug (deno/js/util.ts:7:2)\n", result);
 }

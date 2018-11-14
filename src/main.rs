@@ -10,6 +10,7 @@ extern crate rand;
 extern crate remove_dir_all;
 extern crate ring;
 extern crate rustyline;
+extern crate serde_json;
 extern crate source_map_mappings;
 extern crate tempfile;
 extern crate tokio;
