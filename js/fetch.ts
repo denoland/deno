@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { assert, log, createResolvable, notImplemented } from "./util";
+import { assert, createResolvable, notImplemented } from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
@@ -162,19 +162,73 @@ class Response implements domTypes.Response {
   }
 }
 
+function msgHttpRequest(
+  builder: flatbuffers.Builder,
+  url: string,
+  method: null | string,
+  headers: null | domTypes.Headers
+): flatbuffers.Offset {
+  const methodOffset = !method ? -1 : builder.createString(method);
+  let fieldsOffset: flatbuffers.Offset = -1;
+  const urlOffset = builder.createString(url);
+  if (headers) {
+    const kvOffsets: flatbuffers.Offset[] = [];
+    for (const [key, val] of headers.entries()) {
+      const keyOffset = builder.createString(key);
+      const valOffset = builder.createString(val);
+      msg.KeyValue.startKeyValue(builder);
+      msg.KeyValue.addKey(builder, keyOffset);
+      msg.KeyValue.addValue(builder, valOffset);
+      kvOffsets.push(msg.KeyValue.endKeyValue(builder));
+    }
+    fieldsOffset = msg.HttpHeader.createFieldsVector(builder, kvOffsets);
+  } else {
+  }
+  msg.HttpHeader.startHttpHeader(builder);
+  msg.HttpHeader.addIsRequest(builder, true);
+  msg.HttpHeader.addUrl(builder, urlOffset);
+  if (methodOffset >= 0) {
+    msg.HttpHeader.addMethod(builder, methodOffset);
+  }
+  if (fieldsOffset >= 0) {
+    msg.HttpHeader.addFields(builder, fieldsOffset);
+  }
+  return msg.HttpHeader.endHttpHeader(builder);
+}
+
 /** Fetch a resource from the network. */
 export async function fetch(
-  input?: domTypes.Request | string,
+  input: domTypes.Request | string,
   init?: domTypes.RequestInit
 ): Promise<Response> {
-  const url = input as string;
-  log("dispatch FETCH_REQ", url);
+  let url: string;
+  let method: string | null = null;
+  let headers: domTypes.Headers | null = null;
+
+  if (typeof input === "string") {
+    url = input;
+    if (init != null) {
+      method = init.method || null;
+      if (init.headers) {
+        headers =
+          init.headers instanceof Headers
+            ? init.headers
+            : new Headers(init.headers);
+      } else {
+        headers = null;
+      }
+    }
+  } else {
+    url = input.url;
+    method = input.method;
+    headers = input.headers;
+  }
 
   // Send Fetch message
   const builder = flatbuffers.createBuilder();
-  const url_ = builder.createString(url);
+  const headerOff = msgHttpRequest(builder, url, method, headers);
   msg.Fetch.startFetch(builder);
-  msg.Fetch.addUrl(builder, url_);
+  msg.Fetch.addHeader(builder, headerOff);
   const resBase = await sendAsync(
     builder,
     msg.Any.Fetch,
@@ -186,17 +240,22 @@ export async function fetch(
   const inner = new msg.FetchRes();
   assert(resBase.inner(inner) != null);
 
-  const status = inner.status();
+  const header = inner.header()!;
   const bodyRid = inner.bodyRid();
+  assert(!header.isRequest());
+  const status = header.status();
 
-  const headersList: Array<[string, string]> = [];
-  const len = inner.headerKeyLength();
-  for (let i = 0; i < len; ++i) {
-    const key = inner.headerKey(i);
-    const value = inner.headerValue(i);
-    headersList.push([key, value]);
-  }
+  const headersList = deserializeHeaderFields(header);
 
   const response = new Response(status, headersList, bodyRid);
   return response;
+}
+
+function deserializeHeaderFields(m: msg.HttpHeader): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  for (let i = 0; i < m.fieldsLength(); i++) {
+    const item = m.fields(i)!;
+    out.push([item.key()!, item.value()!]);
+  }
+  return out;
 }

@@ -14,6 +14,7 @@ dirs = "1.0.4"
 flatbuffers = { path = "third_party/flatbuffers/rust/flatbuffers/" }
 futures = "0.1.25"
 getopts = "0.2.18"
+http = "0.1.13"
 hyper = "0.12.13"
 # The current version of hyper-rustls, 0.14.0, depends on tokio-core, which is
 # deprecated.

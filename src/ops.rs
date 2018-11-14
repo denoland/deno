@@ -389,74 +389,49 @@ fn op_fetch(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_fetch().unwrap();
   let cmd_id = base.cmd_id();
-  let id = inner.id();
-  let url = inner.url().unwrap();
+
+  let header = inner.header().unwrap();
+  assert!(header.is_request());
+  let url = header.url().unwrap();
+
+  let body = hyper::Body::empty();
+  let req = msg_util::deserialize_request(header, body);
 
   if let Err(e) = state.check_net(url) {
     return odd_future(e);
   }
 
-  let url = url.parse::<hyper::Uri>().unwrap();
   let client = http_util::get_client();
 
   debug!("Before fetch {}", url);
-  let future = client.get(url).and_then(move |res| {
-    let status = i32::from(res.status().as_u16());
-    debug!("fetch {}", status);
+  let future =
+    client
+      .request(req)
+      .map_err(DenoError::from)
+      .and_then(move |res| {
+        let builder = &mut FlatBufferBuilder::new();
+        let header_off = msg_util::serialize_http_response(builder, &res);
+        let body = res.into_body();
+        let body_resource = resources::add_hyper_body(body);
+        let inner = msg::FetchRes::create(
+          builder,
+          &msg::FetchResArgs {
+            header: Some(header_off),
+            body_rid: body_resource.rid,
+            ..Default::default()
+          },
+        );
 
-    let headers = {
-      let map = res.headers();
-      let keys = map
-        .keys()
-        .map(|s| s.as_str().to_string())
-        .collect::<Vec<_>>();
-      let values = map
-        .values()
-        .map(|s| s.to_str().unwrap().to_string())
-        .collect::<Vec<_>>();
-      (keys, values)
-    };
-
-    let body = res.into_body();
-    let body_resource = resources::add_hyper_body(body);
-    Ok((status, headers, body_resource))
-  });
-
-  let future = future.map_err(|err| -> DenoError { err.into() }).and_then(
-    move |(status, headers, body_resource)| {
-      debug!("fetch body ");
-      let builder = &mut FlatBufferBuilder::new();
-      // Send the first message without a body. This is just to indicate
-      // what status code.
-      let header_keys: Vec<&str> = headers.0.iter().map(|s| &**s).collect();
-      let header_keys_off =
-        builder.create_vector_of_strings(header_keys.as_slice());
-      let header_values: Vec<&str> = headers.1.iter().map(|s| &**s).collect();
-      let header_values_off =
-        builder.create_vector_of_strings(header_values.as_slice());
-
-      let inner = msg::FetchRes::create(
-        builder,
-        &msg::FetchResArgs {
-          id,
-          status,
-          body_rid: body_resource.rid,
-          header_key: Some(header_keys_off),
-          header_value: Some(header_values_off),
-        },
-      );
-
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          inner: Some(inner.as_union_value()),
-          inner_type: msg::Any::FetchRes,
-          ..Default::default()
-        },
-      ))
-    },
-  );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            inner: Some(inner.as_union_value()),
+            inner_type: msg::Any::FetchRes,
+            ..Default::default()
+          },
+        ))
+      });
   Box::new(future)
 }
 
