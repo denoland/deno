@@ -3,22 +3,26 @@
 ## Disclaimer
 
 A word of caution: Deno is very much under development. We encourage brave early
-adopters, but expect bugs large and small. The API is subject to change
-without notice.
+adopters, but expect bugs large and small. The API is subject to change without
+notice.
 
 [Bug reports](https://github.com/denoland/deno/issues) do help!
 
 ## Install
 
-deno works on OSX, Linux, and Windows. We provide binary download scripts:
+Deno works on OSX, Linux, and Windows. Deno is a single binary executable. It
+has no external dependencies.
 
-With Python:
+[deno_install](https://github.com/denoland/deno_install) provides convenience
+scripts to download and install the binary.
+
+Using Python:
 
 ```
 curl -sSf https://raw.githubusercontent.com/denoland/deno_install/master/install.py | python
 ```
 
-With PowerShell:
+Or using PowerShell:
 
 ```powershell
 iex (iwr https://raw.githubusercontent.com/denoland/deno_install/master/install.ps1)
@@ -28,12 +32,10 @@ _Note: Depending on your security settings, you may have to run
 `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` first to allow downloaded
 scripts to be executed._
 
-See also [deno_install](https://github.com/denoland/deno_install).
-
-deno can also be installed manually, by downloading a tarball or zip file
-[here](https://github.com/denoland/deno/releases). The packages contain just a
-single executable file, you will have to set the executable bit on Mac and
-Linux.
+Deno can also be installed manually, by downloading a tarball or zip file at
+[github.com/denoland/deno/releases](https://github.com/denoland/deno/releases).
+These packages contain just a single executable file. You will have to set the
+executable bit on Mac and Linux.
 
 Try it:
 
@@ -47,7 +49,7 @@ To get an exact reference of deno's runtime API, run the following in the
 command line:
 
 ```
-deno --types
+> deno --types
 ```
 
 Or see the [doc website](https://deno.land/typedoc/index.html).
@@ -57,7 +59,7 @@ If you are embedding deno in a Rust program, see
 
 ## Tutorial
 
-### Example: An implementation of the unix "cat" program
+### An implementation of the unix "cat" program
 
 In this program each command-line argument is assumed to be a filename, the file
 is opened, and printed to stdout.
@@ -75,10 +77,10 @@ import * as deno from "deno";
 })();
 ```
 
-The `copy()` function here actually makes no memory copies. That is, the same
-memory from which data is read from the file, is written to stdout. Although
-this isn't important in the case of `cat`, it is a general design goal for I/O
-streams in deno.
+The `copy()` function here actually makes no more than the necessary kernel ->
+userspace -> kernel copies. That is, the same memory from which data is read
+from the file, is written to stdout. This illustrates a general design goal for
+I/O streams in Deno.
 
 Try the program:
 
@@ -86,7 +88,7 @@ Try the program:
 > deno https://deno.land/x/examples/cat.ts /etc/passwd
 ```
 
-### Example: A TCP echo server
+### TCP echo server
 
 This is an example of a simple server which accepts connections on port 8080,
 and returns to the client anything it sends.
@@ -121,7 +123,8 @@ explicit permission. To avoid the console prompt, use a command-line flag:
 > deno https://deno.land/x/examples/echo_server.ts --allow-net
 ```
 
-To test it, try sending an HTTP request to it by using your browser or curl
+To test it, try sending a HTTP request to it by using curl. The request gets
+written directly back to the client.
 
 ```
 > curl http://localhost:8080/
@@ -131,15 +134,15 @@ User-Agent: curl/7.54.0
 Accept: */*
 ```
 
-It's worth noting that like the `cat.ts` example, the `copy()` function does not
-make unnecessary in-memory copies. It receives a packet from the kernel and then
-sends back, without further complexity.
+It's worth noting that like the `cat.ts` example, the `copy()` function here
+also does not make unnecessary memory copies. It receives a packet from the
+kernel and sends back, without further complexity.
 
-### Example: Linking to third party code
+### Linking to third party code
 
-In the above examples, we saw that deno can execute scripts from URLs. Like
-webpages, deno can import libraries from URLs. This example uses a URL to import
-a test runner library:
+In the above examples, we saw that Deno could execute scripts from URLs. Like
+browser JavaScript, Deno can import libraries directly from URLs. This example
+uses a URL to import a test runner library:
 
 ```ts
 import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
@@ -172,31 +175,33 @@ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
 Note that we did not have to provide the `--allow-net` flag for this program,
-and yet it accessed the network. The compiler has special access to download
-imports (and cache them to disk).
+and yet it accessed the network. The runtime has special access to download
+imports and cache them to disk.
 
-Deno caches URL imports in a special directory specified by the `$DENO_DIR`
-environmental variable or `$HOME/.deno` by default. The next time you run the
-program, no downloads will be made.
+Deno caches remote imports in a special directory specified by the `$DENO_DIR`
+environmental variable. It default to `$HOME/.deno` if `$DENO_DIR` is not
+specified. The next time you run the program, no downloads will be made. If the
+program hasn't changed, it won't be recompiled either.
 
 **But what if `https://deno.land/` goes down?** Relying on external servers is
 convenient for development but brittle in production. Production software should
-always bundle its dependencies. This is done by checking the `$DENO_DIR` into
-your source control system, and specifying that path as the `$DENO_DIR`
+always bundle its dependencies. In Deno this is done by checking the `$DENO_DIR`
+into your source control system, and specifying that path as the `$DENO_DIR`
 environmental variable at runtime.
 
-**How do you import to a specific version?** You should specify the version in
-the URL. For example, this URL fully specifies the exact code being run:
-`https://unpkg.com/liltest@0.0.5/dist/liltest.js`. Combined with the above
-technique of setting `$DENO_DIR` in production to pre-cached code, you can fully
-specify the exact code being run.
+**How do you import to a specific version?** Simply specify the version in the
+URL. For example, this URL fully specifies the code being run:
+`https://unpkg.com/liltest@0.0.5/dist/liltest.js`. Combined with the
+aforementioned technique of setting `$DENO_DIR` in production to stored code,
+one can fully specify the exact code being run, and execute the code without
+network access.
 
 **It seems unwieldy to import URLs everywhere. What if one of the URLs links to
-a subtly different version of a library -- isn't it error prone to maintain
-these long URLs everywhere in a project?** The solution is to import and
-re-export your external libraries in a `package.ts` file (which serves the same
-purpose as a `package.json` file). For example, let's say you were using the
-above testing library across a large project. Rather than importing
+a subtly different version of a library? Isn't it error prone to maintain URLs
+everywhere in a large project?** The solution is to import and re-export your
+external libraries in a central `package.ts` file (which serves the same purpose
+as Node's `package.json` file). For example, let's say you were using the above
+testing library across a large project. Rather than importing
 `"https://deno.land/x/testing/testing.ts"` everywhere, you could create a
 `package.ts` file the exports the third-party code:
 
@@ -211,8 +216,8 @@ many references to the same URL:
 import { test, assertEqual } from "./package.ts";
 ```
 
-This design circumvents a plethora of package management software, centralized
-code repositories, and unnecessary file formates.
+This design circumvents a plethora of complexity spawned by package management
+software, centralized code repositories, and superfluous file formates.
 
 ## Useful command line flags
 
