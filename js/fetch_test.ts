@@ -47,24 +47,36 @@ testPerm({ net: true }, async function responseClone() {
   }
 });
 
-testPerm({ net: true }, async function fetchRequest() {
-  const addr = "127.0.0.1:4501";
+function bufferServer(addr: string): deno.Buffer {
   const listener = deno.listen("tcp", addr);
   const buf = new deno.Buffer();
   listener.accept().then(async conn => {
-    buf.readFrom(conn);
-    await conn.write(
+    const p1 = buf.readFrom(conn);
+    const p2 = conn.write(
       new TextEncoder().encode(
         "HTTP/1.0 404 Not Found\r\nContent-Length: 2\r\n\r\nNF"
       )
     );
+    // Wait for both an EOF on the read side of the socket and for the write to
+    // complete before closing it. Due to keep-alive, the EOF won't be sent
+    // until the Connection close (HTTP/1.0) response, so readFrom() can't
+    // proceed write. Conversely, if readFrom() is async, waiting for the
+    // write() to complete is not a guarantee that we've read the incoming
+    // request.
+    await Promise.all([p1, p2]);
     conn.close();
+    listener.close();
   });
+  return buf;
+}
+
+testPerm({ net: true }, async function fetchRequest() {
+  const addr = "127.0.0.1:4501";
+  const buf = bufferServer(addr);
   const response = await fetch(`http://${addr}/blah`, {
     method: "POST",
     headers: [["Hello", "World"], ["Foo", "Bar"]]
   });
-  listener.close();
   assertEqual(response.status, 404);
   assertEqual(response.headers.get("Content-Length"), "2");
 
@@ -74,6 +86,55 @@ testPerm({ net: true }, async function fetchRequest() {
     "hello: World\r\n",
     "foo: Bar\r\n",
     `host: ${addr}\r\n\r\n`
+  ].join("");
+  assertEqual(actual, expected);
+});
+
+testPerm({ net: true }, async function fetchPostBodyString() {
+  const addr = "127.0.0.1:4502";
+  const buf = bufferServer(addr);
+  const body = "hello world";
+  const response = await fetch(`http://${addr}/blah`, {
+    method: "POST",
+    headers: [["Hello", "World"], ["Foo", "Bar"]],
+    body
+  });
+  assertEqual(response.status, 404);
+  assertEqual(response.headers.get("Content-Length"), "2");
+
+  const actual = new TextDecoder().decode(buf.bytes());
+  const expected = [
+    "POST /blah HTTP/1.1\r\n",
+    "hello: World\r\n",
+    "foo: Bar\r\n",
+    `host: ${addr}\r\n`,
+    `content-length: ${body.length}\r\n\r\n`,
+    body
+  ].join("");
+  assertEqual(actual, expected);
+});
+
+testPerm({ net: true }, async function fetchPostBodyTypedArray() {
+  const addr = "127.0.0.1:4503";
+  const buf = bufferServer(addr);
+  const bodyStr = "hello world";
+  const body = new TextEncoder().encode(bodyStr);
+  const response = await fetch(`http://${addr}/blah`, {
+    method: "POST",
+    headers: [["Hello", "World"], ["Foo", "Bar"]],
+    body
+  });
+  assertEqual(response.status, 404);
+  assertEqual(response.headers.get("Content-Length"), "2");
+
+  const actual = new TextDecoder().decode(buf.bytes());
+  const expected = [
+    "POST /blah HTTP/1.1\r\n",
+    "hello: World\r\n",
+    "foo: Bar\r\n",
+    `host: ${addr}\r\n`,
+    `content-length: ${body.byteLength}\r\n\r\n`,
+    bodyStr
   ].join("");
   assertEqual(actual, expected);
 });
