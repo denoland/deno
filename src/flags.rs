@@ -103,7 +103,6 @@ pub fn set_flags(
   }
 
   let rest: Vec<_> = matches.free.to_vec();
-  println!("rest args {:?}", rest);
   Ok((flags, rest, get_usage(&opts)))
 }
 
