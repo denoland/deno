@@ -2,6 +2,7 @@
 extern crate dirs;
 extern crate flatbuffers;
 extern crate getopts;
+extern crate http;
 extern crate hyper;
 extern crate hyper_rustls;
 extern crate libc;

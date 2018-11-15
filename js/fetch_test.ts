@@ -46,3 +46,34 @@ testPerm({ net: true }, async function responseClone() {
     assertEqual(ab[i], ab1[i]);
   }
 });
+
+testPerm({ net: true }, async function fetchRequest() {
+  const addr = "127.0.0.1:4501";
+  const listener = deno.listen("tcp", addr);
+  const buf = new deno.Buffer();
+  listener.accept().then(async conn => {
+    buf.readFrom(conn);
+    await conn.write(
+      new TextEncoder().encode(
+        "HTTP/1.0 404 Not Found\r\nContent-Length: 2\r\n\r\nNF"
+      )
+    );
+    conn.close();
+  });
+  const response = await fetch(`http://${addr}/blah`, {
+    method: "POST",
+    headers: [["Hello", "World"], ["Foo", "Bar"]]
+  });
+  listener.close();
+  assertEqual(response.status, 404);
+  assertEqual(response.headers.get("Content-Length"), "2");
+
+  const actual = new TextDecoder().decode(buf.bytes());
+  const expected = [
+    "POST /blah HTTP/1.1\r\n",
+    "hello: World\r\n",
+    "foo: Bar\r\n",
+    `host: ${addr}\r\n\r\n`
+  ].join("");
+  assertEqual(actual, expected);
+});
