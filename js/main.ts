@@ -86,7 +86,6 @@ export default function denoMain() {
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
 
-  // TODO handle shebang.
   for (let i = 1; i < startResMsg.argvLength(); i++) {
     args.push(startResMsg.argv(i));
   }

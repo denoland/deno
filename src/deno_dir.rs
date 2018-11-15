@@ -218,7 +218,7 @@ impl DenoDir {
       self.resolve_module(module_specifier, containing_file)?;
 
     let result = self.get_source_code(module_name.as_str(), filename.as_str());
-    let out = match result {
+    let mut out = match result {
       Ok(out) => out,
       Err(err) => {
         if err.kind() == ErrorKind::NotFound {
@@ -233,8 +233,10 @@ impl DenoDir {
         } else {
           return Err(err);
         }
-      },
+      }
     };
+
+    out.source_code = filter_shebang(out.source_code);
 
     let result =
       self.load_cache(out.filename.as_str(), out.source_code.as_str());
@@ -940,4 +942,29 @@ fn test_map_content_type() {
     map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")),
     msg::MediaType::Unknown
   );
+}
+
+fn filter_shebang(code: String) -> String {
+  if !code.starts_with("#!") {
+    return code;
+  }
+  match code.find('\n') {
+    None => {
+      return String::from("");
+    }
+    Some(i) => {
+      let (_, rest) = code.split_at(i);
+      return String::from(rest);
+    }
+  }
+}
+
+#[test]
+fn test_filter_shebang() {
+  assert_eq!(filter_shebang("".to_string()), "");
+  assert_eq!(filter_shebang("#".to_string()), "#");
+  assert_eq!(filter_shebang("#!".to_string()), "");
+  assert_eq!(filter_shebang("#!\n\n".to_string()), "\n\n");
+  let code = "#!/usr/bin/env deno\nconsole.log('hello');\n".to_string();
+  assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n");
 }
