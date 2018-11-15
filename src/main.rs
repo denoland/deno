@@ -95,7 +95,12 @@ fn main() {
     log::LevelFilter::Info
   });
 
-  let mut isolate = isolate::Isolate::new(flags, rest_argv, ops::dispatch);
+  let mut isolate = isolate::Isolate::new(
+    snapshot::deno_snapshot(),
+    flags,
+    rest_argv,
+    ops::dispatch,
+  );
   tokio_util::init(|| {
     isolate
       .execute("deno_main.js", "denoMain();")
