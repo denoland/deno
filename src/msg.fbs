@@ -194,18 +194,26 @@ table KeyValue {
   value: string;
 }
 
-table Fetch {
-  id: uint;
+// Note this represents The WHOLE header of an http message, not just the key
+// value pairs. That means it includes method and url for Requests and status
+// for responses. This is why it is singular "Header" instead of "Headers".
+table HttpHeader {
+  is_request: bool;
+  // Request only:
+  method: string;
   url: string;
-  // TODO Supply request headers:
-  // header_line: [string];
+  // Response only:
+  status: uint16;
+  // Both:
+  fields: [KeyValue];
+}
+
+table Fetch {
+  header: HttpHeader;
 }
 
 table FetchRes {
-  id: uint;
-  status: int;
-  header_key: [string];
-  header_value: [string];
+  header: HttpHeader;
   body_rid: uint32;
 }
 
