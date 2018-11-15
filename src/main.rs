@@ -77,7 +77,9 @@ fn main() {
   }));
 
   log::set_logger(&LOGGER).unwrap();
-  let args = env::args().collect();
+  // skip first arg (program name) - it allows for easier parsing
+  // of command line arguments down the road
+  let args = env::args().skip(1).collect();
   let (flags, rest_argv, usage_string) =
     flags::set_flags(args).unwrap_or_else(|err| {
       eprintln!("{}", err);

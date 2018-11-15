@@ -1,5 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use getopts::Options;
+use getopts::ParsingStyle;
 use libc::c_int;
 use libdeno;
 use std::ffi::CStr;
@@ -58,6 +59,12 @@ pub fn set_flags(
   opts.optflag("", "v8-options", "Print V8 command line options.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
 
+  // set proper parsing style - it allows to pass arguments after script name (and do parsing
+  // in userland)
+  //     deno --allow-env foo.ts --foo=bar
+  // parsing will stop when `foo.ts` is encountered
+  opts.parsing_style(ParsingStyle::StopAtFirstFree);
+
   let mut flags = DenoFlags::default();
 
   let matches = match opts.parse(&args) {
@@ -96,6 +103,7 @@ pub fn set_flags(
   }
 
   let rest: Vec<_> = matches.free.to_vec();
+  println!("rest args {:?}", rest);
   Ok((flags, rest, get_usage(&opts)))
 }
 
