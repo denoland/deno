@@ -282,29 +282,6 @@ run_node("bundle") {
   ]
 }
 
-action("bundle_hash_h") {
-  script = "//tools/sha256sum.py"
-  inputs = get_target_outputs(":bundle")
-  outputs = [
-    "$target_gen_dir/bundle/hash.h",
-  ]
-  deps = [
-    ":bundle",
-  ]
-  args = [
-    "--format",
-    "__attribute__((__unused__)) static const int dummy_%s = 0;",
-    "--outfile",
-    rebase_path(outputs[0], root_build_dir),
-  ]
-  foreach(input, inputs) {
-    args += [
-      "--infile",
-      rebase_path(input, root_build_dir),
-    ]
-  }
-}
-
 ts_flatbuffer("msg_ts") {
   sources = [
     "src/msg.fbs",
