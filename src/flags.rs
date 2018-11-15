@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use getopts;
 use getopts::Options;
 use libc::c_int;
 use libdeno;
@@ -36,11 +37,86 @@ Environment variables:
   )
 }
 
-// Parses flags for deno. This does not do v8_set_flags() - call that separately.
+/// Checks provided arguments for known options and sets appropriate Deno flags
+/// for them. Unknown options are returned for further use.
+/// Note:
+///
+/// 1. This assumes that privileged flags do not accept parameters deno --foo bar.
+/// This assumption is currently valid. But if it were to change in the future,
+/// this parsing technique would need to be modified. I think we want to keep the
+/// privileged flags minimal - so having this restriction is maybe a good thing.
+///
+/// 2. Misspelled flags will be forwarded to user code - e.g. --allow-ne would
+/// not cause an error. I also think this is ok because missing any of the
+/// privileged flags is not destructive. Userland flag parsing would catch these
+/// errors.
+fn set_recognized_flags(
+  opts: &Options,
+  flags: &mut DenoFlags,
+  args: Vec<String>,
+) -> Result<Vec<String>, getopts::Fail> {
+  let mut rest = Vec::<String>::new();
+  // getopts doesn't allow parsing unknown options so we check them
+  // one-by-one and handle unrecognized ones manually
+  // better solution welcome!
+  for arg in args {
+    let fake_args = vec![arg];
+    match opts.parse(&fake_args) {
+      Err(getopts::Fail::UnrecognizedOption(_)) => {
+        rest.extend(fake_args);
+      }
+      Err(e) => {
+        return Err(e);
+      }
+      Ok(matches) => {
+        if matches.opt_present("help") {
+          flags.help = true;
+        }
+        if matches.opt_present("log-debug") {
+          flags.log_debug = true;
+        }
+        if matches.opt_present("version") {
+          flags.version = true;
+        }
+        if matches.opt_present("reload") {
+          flags.reload = true;
+        }
+        if matches.opt_present("recompile") {
+          flags.recompile = true;
+        }
+        if matches.opt_present("allow-write") {
+          flags.allow_write = true;
+        }
+        if matches.opt_present("allow-net") {
+          flags.allow_net = true;
+        }
+        if matches.opt_present("allow-env") {
+          flags.allow_env = true;
+        }
+        // TODO: uncomment once https://github.com/denoland/deno/pull/1156 lands on master
+        // if matches.opt_present("allow-run") {
+        //   flags.allow_run = true;
+        // }
+        if matches.opt_present("types") {
+          flags.types = true;
+        }
+
+        if matches.free.len() > 0 {
+          rest.extend(matches.free);
+        }
+      }
+    }
+  }
+  Ok(rest)
+}
+
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub fn set_flags(
   args: Vec<String>,
 ) -> Result<(DenoFlags, Vec<String>, String), String> {
+  // TODO: all flags passed after "--" are swallowed by v8_set_flags
+  // eg. deno --allow-net ./test.ts -- --title foobar
+  // args === ["deno", "--allow-net" "./test.ts"]
   let args = v8_set_flags(args);
 
   let mut opts = Options::new();
@@ -60,42 +136,8 @@ pub fn set_flags(
 
   let mut flags = DenoFlags::default();
 
-  let matches = match opts.parse(&args) {
-    Ok(m) => m,
-    Err(f) => {
-      return Err(f.to_string());
-    }
-  };
-
-  if matches.opt_present("help") {
-    flags.help = true;
-  }
-  if matches.opt_present("log-debug") {
-    flags.log_debug = true;
-  }
-  if matches.opt_present("version") {
-    flags.version = true;
-  }
-  if matches.opt_present("reload") {
-    flags.reload = true;
-  }
-  if matches.opt_present("recompile") {
-    flags.recompile = true;
-  }
-  if matches.opt_present("allow-write") {
-    flags.allow_write = true;
-  }
-  if matches.opt_present("allow-net") {
-    flags.allow_net = true;
-  }
-  if matches.opt_present("allow-env") {
-    flags.allow_env = true;
-  }
-  if matches.opt_present("types") {
-    flags.types = true;
-  }
-
-  let rest: Vec<_> = matches.free.to_vec();
+  let rest =
+    set_recognized_flags(&opts, &mut flags, args).map_err(|e| e.to_string())?;
   Ok((flags, rest, get_usage(&opts)))
 }
 
@@ -172,16 +214,17 @@ fn test_set_flags_5() {
 }
 
 #[test]
-fn test_set_bad_flags_1() {
-  let err = set_flags(svec!["deno", "--unknown-flag"]).unwrap_err();
-  assert_eq!(err, "Unrecognized option: 'unknown-flag'");
-}
-
-#[test]
-fn test_set_bad_flags_2() {
-  // This needs to be changed if -z is added as a flag
-  let err = set_flags(svec!["deno", "-z"]).unwrap_err();
-  assert_eq!(err, "Unrecognized option: 'z'");
+fn test_set_flags_6() {
+  let (flags, rest, _) =
+    set_flags(svec!["deno", "gist.ts", "--title", "X", "--allow-net"]).unwrap();
+  assert_eq!(rest, svec!["deno", "gist.ts", "--title", "X"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      allow_net: true,
+      ..DenoFlags::default()
+    }
+  )
 }
 
 // Returns args passed to V8, followed by args passed to JS
