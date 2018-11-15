@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { assert, createResolvable, notImplemented } from "./util";
+import { assert, createResolvable, notImplemented, isTypedArray } from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
@@ -204,6 +204,7 @@ export async function fetch(
   let url: string;
   let method: string | null = null;
   let headers: domTypes.Headers | null = null;
+  let body: ArrayBufferView | undefined;
 
   if (typeof input === "string") {
     url = input;
@@ -216,6 +217,16 @@ export async function fetch(
             : new Headers(init.headers);
       } else {
         headers = null;
+      }
+
+      if (init.body) {
+        if (typeof init.body === "string") {
+          body = new TextEncoder().encode(init.body);
+        } else if (isTypedArray(init.body)) {
+          body = init.body;
+        } else {
+          notImplemented();
+        }
       }
     }
   } else {
@@ -232,7 +243,8 @@ export async function fetch(
   const resBase = await sendAsync(
     builder,
     msg.Any.Fetch,
-    msg.Fetch.endFetch(builder)
+    msg.Fetch.endFetch(builder),
+    body
   );
 
   // Decode FetchRes

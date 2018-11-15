@@ -125,3 +125,9 @@ export function deferred(): Deferred {
     reject: reject!
   };
 }
+
+// tslint:disable-next-line:variable-name
+const TypedArrayConstructor = Object.getPrototypeOf(Uint8Array);
+export function isTypedArray(x: unknown): x is TypedArray {
+  return x instanceof TypedArrayConstructor;
+}

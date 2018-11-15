@@ -386,7 +386,6 @@ fn op_fetch(
   base: &msg::Base,
   data: &'static mut [u8],
 ) -> Box<Op> {
-  assert_eq!(data.len(), 0);
   let inner = base.inner_as_fetch().unwrap();
   let cmd_id = base.cmd_id();
 
@@ -394,7 +393,12 @@ fn op_fetch(
   assert!(header.is_request());
   let url = header.url().unwrap();
 
-  let body = hyper::Body::empty();
+  let body = if data.len() == 0 {
+    hyper::Body::empty()
+  } else {
+    hyper::Body::from(Vec::from(data))
+  };
+
   let req = msg_util::deserialize_request(header, body);
 
   if let Err(e) = state.check_net(url) {
