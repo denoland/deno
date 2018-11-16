@@ -89,6 +89,11 @@ impl IsolateState {
     perm.check_net(filename)
   }
 
+  pub fn check_run(&self) -> DenoResult<()> {
+    let mut perm = self.permissions.lock().unwrap();
+    perm.check_run()
+  }
+
   fn metrics_op_dispatched(
     &self,
     bytes_sent_control: u64,
