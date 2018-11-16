@@ -1359,11 +1359,11 @@ fn op_resources(
   ))
 }
 
-fn subprocess_stdio_map(v: msg::SubprocessStdio) -> std::process::Stdio {
+fn subprocess_stdio_map(v: msg::ProcessStdio) -> std::process::Stdio {
   match v {
-    msg::SubprocessStdio::Inherit => std::process::Stdio::inherit(),
-    msg::SubprocessStdio::Piped => std::process::Stdio::piped(),
-    msg::SubprocessStdio::Null => std::process::Stdio::null(),
+    msg::ProcessStdio::Inherit => std::process::Stdio::inherit(),
+    msg::ProcessStdio::Piped => std::process::Stdio::piped(),
+    msg::ProcessStdio::Null => std::process::Stdio::null(),
   }
 }
 

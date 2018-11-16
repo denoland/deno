@@ -16,40 +16,40 @@ test(async function runPermissions() {
 });
 
 testPerm({ run: true }, async function runSuccess() {
-  const child = run({
+  const p = run({
     args: ["python", "-c", "print('hello world')"]
   });
-  const status = await child.status();
+  const status = await p.status();
   console.log("status", status);
   assertEqual(status.success, true);
   assertEqual(status.code, 0);
   assertEqual(status.signal, undefined);
-  child.close();
+  p.close();
 });
 
 testPerm({ run: true }, async function runCommandFailedWithCode() {
-  let child = run({
+  let p = run({
     args: ["python", "-c", "import sys;sys.exit(41 + 1)"]
   });
-  let status = await child.status();
+  let status = await p.status();
   assertEqual(status.success, false);
   assertEqual(status.code, 42);
   assertEqual(status.signal, undefined);
-  child.close();
+  p.close();
 });
 
 testPerm({ run: true }, async function runCommandFailedWithSignal() {
   if (deno.platform.os === "win") {
     return; // No signals on windows.
   }
-  const child = run({
+  const p = run({
     args: ["python", "-c", "import os;os.kill(os.getpid(), 9)"]
   });
-  const status = await child.status();
+  const status = await p.status();
   assertEqual(status.success, false);
   assertEqual(status.code, undefined);
   assertEqual(status.signal, 9);
-  child.close();
+  p.close();
 });
 
 testPerm({ run: true }, async function runNotFound() {
@@ -87,7 +87,7 @@ while True:
 `;
 
   deno.writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
-  const child = run({
+  const p = run({
     cwd,
     args: ["python", `${pyProgramFile}.py`]
   });
@@ -97,82 +97,82 @@ while True:
   const code = 84;
   deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
-  const status = await child.status();
+  const status = await p.status();
   assertEqual(status.success, false);
   assertEqual(status.code, code);
   assertEqual(status.signal, undefined);
-  child.close();
+  p.close();
 });
 
 testPerm({ run: true }, async function runStdinPiped() {
-  const child = run({
+  const p = run({
     args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
     stdin: "piped"
   });
-  assert(!child.stdout);
-  assert(!child.stderr);
+  assert(!p.stdout);
+  assert(!p.stderr);
 
   let msg = new TextEncoder().encode("hello");
-  let n = await child.stdin.write(msg);
+  let n = await p.stdin.write(msg);
   assertEqual(n, msg.byteLength);
 
-  child.stdin.close();
+  p.stdin.close();
 
-  const status = await child.status();
+  const status = await p.status();
   assertEqual(status.success, true);
   assertEqual(status.code, 0);
   assertEqual(status.signal, undefined);
-  child.close();
+  p.close();
 });
 
 testPerm({ run: true }, async function runStdoutPiped() {
-  const child = run({
+  const p = run({
     args: ["python", "-c", "import sys; sys.stdout.write('hello')"],
     stdout: "piped"
   });
-  assert(!child.stdin);
-  assert(!child.stderr);
+  assert(!p.stdin);
+  assert(!p.stderr);
 
   const data = new Uint8Array(10);
-  let r = await child.stdout.read(data);
+  let r = await p.stdout.read(data);
   assertEqual(r.nread, 5);
   assertEqual(r.eof, false);
   const s = new TextDecoder().decode(data.subarray(0, r.nread));
   assertEqual(s, "hello");
-  r = await child.stdout.read(data);
+  r = await p.stdout.read(data);
   assertEqual(r.nread, 0);
   assertEqual(r.eof, true);
-  child.stdout.close();
+  p.stdout.close();
 
-  const status = await child.status();
+  const status = await p.status();
   assertEqual(status.success, true);
   assertEqual(status.code, 0);
   assertEqual(status.signal, undefined);
-  child.close();
+  p.close();
 });
 
 testPerm({ run: true }, async function runStderrPiped() {
-  const child = run({
+  const p = run({
     args: ["python", "-c", "import sys; sys.stderr.write('hello')"],
     stderr: "piped"
   });
-  assert(!child.stdin);
-  assert(!child.stdout);
+  assert(!p.stdin);
+  assert(!p.stdout);
 
   const data = new Uint8Array(10);
-  let r = await child.stderr.read(data);
+  let r = await p.stderr.read(data);
   assertEqual(r.nread, 5);
   assertEqual(r.eof, false);
   const s = new TextDecoder().decode(data.subarray(0, r.nread));
   assertEqual(s, "hello");
-  r = await child.stderr.read(data);
+  r = await p.stderr.read(data);
   assertEqual(r.nread, 0);
   assertEqual(r.eof, true);
-  child.stderr.close();
+  p.stderr.close();
 
-  const status = await child.status();
+  const status = await p.status();
   assertEqual(status.success, true);
   assertEqual(status.code, 0);
   assertEqual(status.signal, undefined);
-  child.close();
+  p.close();
 });

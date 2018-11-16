@@ -17,7 +17,7 @@ import { ReadCloser, WriteCloser } from "./io";
  * "null" This stream will be ignored. This is the equivalent of attaching the
  * stream to /dev/null.
  */
-export type SubprocessStdio = "inherit" | "piped" | "null";
+export type ProcessStdio = "inherit" | "piped" | "null";
 
 // TODO Maybe extend VSCode's 'CommandOptions'?
 // tslint:disable-next-line:max-line-length
@@ -25,12 +25,12 @@ export type SubprocessStdio = "inherit" | "piped" | "null";
 export interface RunOptions {
   args: string[];
   cwd?: string;
-  stdout?: SubprocessStdio;
-  stderr?: SubprocessStdio;
-  stdin?: SubprocessStdio;
+  stdout?: ProcessStdio;
+  stderr?: ProcessStdio;
+  stdin?: ProcessStdio;
 }
 
-export class Subprocess {
+export class Process {
   readonly rid: number;
   readonly pid: number;
   readonly stdin?: WriteCloser;
@@ -55,7 +55,7 @@ export class Subprocess {
     }
   }
 
-  async status(): Promise<SubprocessStatus> {
+  async status(): Promise<ProcessStatus> {
     return await runStatus(this.rid);
   }
 
@@ -64,26 +64,26 @@ export class Subprocess {
   }
 }
 
-export interface SubprocessStatus {
+export interface ProcessStatus {
   success: boolean;
   code?: number;
   signal?: number; // TODO: Make this a string, e.g. 'SIGTERM'.
 }
 
-function stdioMap(s: SubprocessStdio): msg.SubprocessStdio {
+function stdioMap(s: ProcessStdio): msg.ProcessStdio {
   switch (s) {
     case "inherit":
-      return msg.SubprocessStdio.Inherit;
+      return msg.ProcessStdio.Inherit;
     case "piped":
-      return msg.SubprocessStdio.Piped;
+      return msg.ProcessStdio.Piped;
     case "null":
-      return msg.SubprocessStdio.Null;
+      return msg.ProcessStdio.Null;
     default:
       return unreachable();
   }
 }
 
-export function run(opt: RunOptions): Subprocess {
+export function run(opt: RunOptions): Process {
   const builder = flatbuffers.createBuilder();
   const argsOffset = msg.Run.createArgsVector(
     builder,
@@ -111,10 +111,10 @@ export function run(opt: RunOptions): Subprocess {
   const res = new msg.RunRes();
   assert(baseRes!.inner(res) != null);
 
-  return new Subprocess(res);
+  return new Process(res);
 }
 
-async function runStatus(rid: number): Promise<SubprocessStatus> {
+async function runStatus(rid: number): Promise<ProcessStatus> {
   const builder = flatbuffers.createBuilder();
   msg.RunStatus.startRunStatus(builder);
   msg.RunStatus.addRid(builder, rid);

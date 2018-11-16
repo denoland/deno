@@ -417,14 +417,14 @@ table MetricsRes {
   bytes_received: uint64;
 }
 
-enum SubprocessStdio: byte { Inherit, Piped, Null }
+enum ProcessStdio: byte { Inherit, Piped, Null }
 
 table Run {
   args: [string];
   cwd: string;
-  stdin: SubprocessStdio;
-  stdout: SubprocessStdio;
-  stderr: SubprocessStdio;
+  stdin: ProcessStdio;
+  stdout: ProcessStdio;
+  stderr: ProcessStdio;
 }
 
 table RunRes {
