@@ -25,10 +25,13 @@ use resources::table_entries;
 use std;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
-#[cfg(any(unix))]
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
@@ -36,6 +39,7 @@ use std::time::{Duration, Instant};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio_process::CommandExt;
 use tokio_threadpool;
 
 type OpResult = DenoResult<Buf>;
@@ -100,6 +104,8 @@ pub fn dispatch(
       msg::Any::ReplReadline => op_repl_readline,
       msg::Any::ReplStart => op_repl_start,
       msg::Any::Resources => op_resources,
+      msg::Any::Run => op_run,
+      msg::Any::RunStatus => op_run_status,
       msg::Any::SetEnv => op_set_env,
       msg::Any::Shutdown => op_shutdown,
       msg::Any::Start => op_start,
@@ -1351,4 +1357,137 @@ fn op_resources(
       ..Default::default()
     },
   ))
+}
+
+fn subprocess_stdio_map(v: msg::ProcessStdio) -> std::process::Stdio {
+  match v {
+    msg::ProcessStdio::Inherit => std::process::Stdio::inherit(),
+    msg::ProcessStdio::Piped => std::process::Stdio::piped(),
+    msg::ProcessStdio::Null => std::process::Stdio::null(),
+  }
+}
+
+fn op_run(
+  state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert!(base.sync());
+  let cmd_id = base.cmd_id();
+
+  if let Err(e) = state.check_run() {
+    return odd_future(e);
+  }
+
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_run().unwrap();
+  let args = inner.args().unwrap();
+  let cwd = inner.cwd();
+
+  let mut cmd = Command::new(args.get(0));
+  (1..args.len()).for_each(|i| {
+    let arg = args.get(i);
+    cmd.arg(arg);
+  });
+  cwd.map(|d| cmd.current_dir(d));
+
+  cmd.stdin(subprocess_stdio_map(inner.stdin()));
+  cmd.stdout(subprocess_stdio_map(inner.stdout()));
+  cmd.stderr(subprocess_stdio_map(inner.stderr()));
+
+  // Spawn the command.
+  let child = match cmd.spawn_async() {
+    Ok(v) => v,
+    Err(err) => {
+      return odd_future(err.into());
+    }
+  };
+
+  let pid = child.id();
+  let resources = resources::add_child(child);
+
+  let mut res_args = msg::RunResArgs {
+    rid: resources.child_rid,
+    pid,
+    ..Default::default()
+  };
+
+  if let Some(stdin_rid) = resources.stdin_rid {
+    res_args.stdin_rid = stdin_rid;
+  }
+  if let Some(stdout_rid) = resources.stdout_rid {
+    res_args.stdout_rid = stdout_rid;
+  }
+  if let Some(stderr_rid) = resources.stderr_rid {
+    res_args.stderr_rid = stderr_rid;
+  }
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::RunRes::create(builder, &res_args);
+  ok_future(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::RunRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_run_status(
+  state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: &'static mut [u8],
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_run_status().unwrap();
+  let rid = inner.rid();
+
+  if let Err(e) = state.check_run() {
+    return odd_future(e);
+  }
+
+  let future = match resources::child_status(rid) {
+    Err(e) => {
+      return odd_future(e);
+    }
+    Ok(f) => f,
+  };
+
+  let future = future.and_then(move |run_status| {
+    let code = run_status.code();
+
+    #[cfg(unix)]
+    let signal = run_status.signal();
+    #[cfg(not(unix))]
+    let signal = None;
+
+    code
+      .or(signal)
+      .expect("Should have either an exit code or a signal.");
+    let got_signal = signal.is_some();
+
+    let builder = &mut FlatBufferBuilder::new();
+    let inner = msg::RunStatusRes::create(
+      builder,
+      &msg::RunStatusResArgs {
+        got_signal,
+        exit_code: code.unwrap_or(-1),
+        exit_signal: signal.unwrap_or(-1),
+        ..Default::default()
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::RunStatusRes,
+        ..Default::default()
+      },
+    ))
+  });
+  Box::new(future)
 }

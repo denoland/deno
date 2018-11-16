@@ -41,10 +41,12 @@ def run_unit_test(deno_exe, permStr, flags=[]):
 # tests by the special string. permW0N0 means allow-write but not allow-net.
 # See js/test_util.ts for more details.
 def unit_tests(deno_exe):
-    run_unit_test(deno_exe, "permW0N0E0")
-    run_unit_test(deno_exe, "permW1N0E0", ["--allow-write"])
-    run_unit_test(deno_exe, "permW0N1E0", ["--allow-net"])
-    run_unit_test(deno_exe, "permW0N0E1", ["--allow-env"])
+    run_unit_test(deno_exe, "permW0N0E0R0")
+    run_unit_test(deno_exe, "permW1N0E0R0", ["--allow-write"])
+    run_unit_test(deno_exe, "permW0N1E0R0", ["--allow-net"])
+    run_unit_test(deno_exe, "permW0N0E1R0", ["--allow-env"])
+    run_unit_test(deno_exe, "permW0N0E0R1", ["--allow-run"])
+    run_unit_test(deno_exe, "permW1N0E0R1", ["--allow-run", "--allow-write"])
     # TODO We might accidentally miss some. We should be smarter about which we
     # run. Maybe we can use the "filtered out" number to check this.
 

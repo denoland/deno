@@ -25,6 +25,7 @@ pub struct DenoFlags {
   pub allow_write: bool,
   pub allow_net: bool,
   pub allow_env: bool,
+  pub allow_run: bool,
   pub types: bool,
 }
 
@@ -93,10 +94,9 @@ fn set_recognized_flags(
         if matches.opt_present("allow-env") {
           flags.allow_env = true;
         }
-        // TODO: uncomment once https://github.com/denoland/deno/pull/1156 lands on master
-        // if matches.opt_present("allow-run") {
-        //   flags.allow_run = true;
-        // }
+        if matches.opt_present("allow-run") {
+          flags.allow_run = true;
+        }
         if matches.opt_present("types") {
           flags.types = true;
         }
@@ -126,6 +126,7 @@ pub fn set_flags(
   opts.optflag("", "allow-write", "Allow file system write access.");
   opts.optflag("", "allow-net", "Allow network access.");
   opts.optflag("", "allow-env", "Allow environment access.");
+  opts.optflag("", "allow-run", "Allow running subprocesses.");
   opts.optflag("", "recompile", "Force recompilation of TypeScript code.");
   opts.optflag("h", "help", "Print this message.");
   opts.optflag("D", "log-debug", "Log debug output.");

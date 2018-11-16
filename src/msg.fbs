@@ -53,6 +53,10 @@ union Any {
   CwdRes,
   Metrics,
   MetricsRes,
+  Run,
+  RunRes,
+  RunStatus,
+  RunStatusRes
 }
 
 enum ErrorKind: byte {
@@ -78,8 +82,8 @@ enum ErrorKind: byte {
   WriteZero,
   Other,
   UnexpectedEof,
-
   BadResource,
+  CommandFailed,
 
   // url errors
 
@@ -411,6 +415,37 @@ table MetricsRes {
   bytes_sent_control: uint64;
   bytes_sent_data: uint64;
   bytes_received: uint64;
+}
+
+enum ProcessStdio: byte { Inherit, Piped, Null }
+
+table Run {
+  args: [string];
+  cwd: string;
+  stdin: ProcessStdio;
+  stdout: ProcessStdio;
+  stderr: ProcessStdio;
+}
+
+table RunRes {
+  rid: uint32;
+  pid: uint32;
+  // The following stdio rids are only valid if "Piped" was specified for the
+  // corresponding stdio stream. The caller MUST issue a close op for all valid
+  // stdio streams.
+  stdin_rid: uint32;
+  stdout_rid: uint32;
+  stderr_rid: uint32;
+}
+
+table RunStatus {
+  rid: uint32;
+}
+
+table RunStatusRes {
+  got_signal: bool;
+  exit_code: int;
+  exit_signal: int;
 }
 
 root_type Base;

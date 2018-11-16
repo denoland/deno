@@ -41,6 +41,7 @@ export { FileInfo } from "./file_info";
 export { connect, dial, listen, Listener, Conn } from "./net";
 export { metrics } from "./metrics";
 export { resources } from "./resources";
+export { run, RunOptions, Process, ProcessStatus } from "./process";
 export const args: string[] = [];
 
 // Provide the compiler API in an obfuscated way
