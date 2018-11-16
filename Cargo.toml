@@ -6,7 +6,7 @@
 # crates.
 [package]
 name = "deno"
-version = "0.1.12"
+version = "0.2.0"
 
 [dependencies]
 atty = "=0.2.11"
