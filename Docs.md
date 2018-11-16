@@ -19,13 +19,13 @@ scripts to download and install the binary.
 Using Python:
 
 ```
-curl -sSf https://raw.githubusercontent.com/denoland/deno_install/master/install.py | python
+curl -L https://deno.land/x/install/install.py | python
 ```
 
 Or using PowerShell:
 
 ```powershell
-iex (iwr https://raw.githubusercontent.com/denoland/deno_install/master/install.ps1)
+iex (iwr https://deno.land/x/install/install.ps1)
 ```
 
 _Note: Depending on your security settings, you may have to run
