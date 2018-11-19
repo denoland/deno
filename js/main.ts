@@ -6,7 +6,8 @@ import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import { assert, log, setLogDebug } from "./util";
 import * as os from "./os";
-import { DenoCompiler } from "./compiler";
+import { Compiler } from "./compiler";
+import { Runner } from "./runner";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
@@ -17,7 +18,7 @@ import { version } from "typescript";
 
 // Install the source maps handler and do some pre-calculations so all of it is
 // available in the snapshot
-const compiler = DenoCompiler.instance();
+const compiler = Compiler.instance();
 sourceMaps.install({
   installPrepareStackTrace: true,
   getGeneratedContents: compiler.getGeneratedContents
@@ -70,8 +71,7 @@ export default function denoMain() {
   // handle `--types`
   if (startResMsg.typesFlag()) {
     const defaultLibFileName = compiler.getDefaultLibFileName();
-    const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
-    console.log(defaultLibModule.sourceCode);
+    console.log(compiler.getSource(defaultLibFileName));
     os.exit(0);
   }
 
@@ -94,9 +94,10 @@ export default function denoMain() {
   const inputFn = args[0];
 
   compiler.recompile = startResMsg.recompileFlag();
+  const runner = new Runner(compiler);
 
   if (inputFn) {
-    compiler.run(inputFn, `${cwd}/`);
+    runner.run(inputFn, `${cwd}/`);
   } else {
     replLoop();
   }
