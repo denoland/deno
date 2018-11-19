@@ -118,6 +118,7 @@ ts_sources = [
   "js/rename.ts",
   "js/repl.ts",
   "js/resources.ts",
+  "js/runner.ts",
   "js/stat.ts",
   "js/symlink.ts",
   "js/text_encoding.ts",
