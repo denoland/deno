@@ -96,7 +96,7 @@ fn main() {
   });
 
   let mut isolate = isolate::Isolate::new(
-    snapshot::deno_snapshot(),
+    unsafe { snapshot::deno_snapshot.clone() },
     flags,
     rest_argv,
     ops::dispatch,
