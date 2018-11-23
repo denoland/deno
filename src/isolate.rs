@@ -400,8 +400,12 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     // TODO Don't use deno_snapshot for these tests.
-    let mut isolate =
-      Isolate::new(snapshot::deno_snapshot(), flags, rest_argv, dispatch_sync);
+    let mut isolate = Isolate::new(
+      unsafe { snapshot::deno_snapshot.clone() },
+      flags,
+      rest_argv,
+      dispatch_sync,
+    );
     tokio_util::init(|| {
       isolate
         .execute(
@@ -443,7 +447,7 @@ mod tests {
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     // TODO Don't use deno_snapshot for these tests.
     let mut isolate = Isolate::new(
-      snapshot::deno_snapshot(),
+      unsafe { snapshot::deno_snapshot.clone() },
       flags,
       rest_argv,
       metrics_dispatch_sync,
@@ -484,7 +488,7 @@ mod tests {
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     // TODO Don't use deno_snapshot for these tests.
     let mut isolate = Isolate::new(
-      snapshot::deno_snapshot(),
+      unsafe { snapshot::deno_snapshot.clone() },
       flags,
       rest_argv,
       metrics_dispatch_async,
