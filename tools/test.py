@@ -8,7 +8,6 @@ from integration_tests import integration_tests
 from deno_dir_test import deno_dir_test
 from setup_test import setup_test
 from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
-from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test
 from repl_test import repl_tests
@@ -57,7 +56,7 @@ def main(argv):
     check_exists(test_rs)
     run([test_rs])
 
-    unit_tests(deno_exe)
+    run([deno_exe, "--allow-run", "js/run_unit_tests.ts", deno_exe])
 
     integration_tests(deno_exe)
 

@@ -5,7 +5,7 @@
 // which appends a special string like "permW1N0" to the end of the test name.
 // Here we run several copies of deno with different permissions, filtering the
 // tests by the special string. permW0N0 means allow-write but not allow-net.
-// See tools/unit_tests.py for more details.
+// See tools/unit_tests.ts for more details.
 
 import * as deno from "deno";
 import * as testing from "./testing/testing.ts";

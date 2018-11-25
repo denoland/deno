@@ -1,7 +1,8 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 
-// This test is executed as part of tools/test.py
-// But it can also be run manually: ./target/debug/deno js/unit_tests.ts
+// This test is executed as part of js/run_unit_tests.ts
+// If you execute this file as main, permission errors will be hit.
+// See test_util.ts for how permissions are filtered.
 import "../website/app_test.js";
 import "./blob_test.ts";
 import "./buffer_test.ts";
