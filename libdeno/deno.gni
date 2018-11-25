@@ -31,7 +31,7 @@ template("create_snapshot") {
                              "testonly",
                              "deps",
                            ])
-    tool = ":snapshot_creator"
+    tool = "//libdeno:snapshot_creator"
     visibility = [ ":*" ]  # Only targets in this file can depend on this.
     snapshot_out_bin = "$target_gen_dir/snapshot_$name.bin"
     inputs = [
