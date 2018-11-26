@@ -393,19 +393,12 @@ fn recv_deadline<T>(
 mod tests {
   use super::*;
   use futures;
-  use snapshot;
 
   #[test]
   fn test_dispatch_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    // TODO Don't use deno_snapshot for these tests.
-    let mut isolate = Isolate::new(
-      unsafe { snapshot::deno_snapshot.clone() },
-      flags,
-      rest_argv,
-      dispatch_sync,
-    );
+    let mut isolate = Isolate::new(empty(), flags, rest_argv, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute(
@@ -445,13 +438,8 @@ mod tests {
   fn test_metrics_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    // TODO Don't use deno_snapshot for these tests.
-    let mut isolate = Isolate::new(
-      unsafe { snapshot::deno_snapshot.clone() },
-      flags,
-      rest_argv,
-      metrics_dispatch_sync,
-    );
+    let mut isolate =
+      Isolate::new(empty(), flags, rest_argv, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -486,13 +474,8 @@ mod tests {
   fn test_metrics_async() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    // TODO Don't use deno_snapshot for these tests.
-    let mut isolate = Isolate::new(
-      unsafe { snapshot::deno_snapshot.clone() },
-      flags,
-      rest_argv,
-      metrics_dispatch_async,
-    );
+    let mut isolate =
+      Isolate::new(empty(), flags, rest_argv, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
