@@ -217,7 +217,7 @@ import { test, assertEqual } from "./package.ts";
 ```
 
 This design circumvents a plethora of complexity spawned by package management
-software, centralized code repositories, and superfluous file formates.
+software, centralized code repositories, and superfluous file formats.
 
 ## Useful command line flags
 
@@ -298,7 +298,7 @@ Other useful commands:
     # List executable targets.
     ./third_party/depot_tools/gn ls target/debug //:* --as=output --type=executable
 
-    # List build configuation.
+    # List build configuration.
     ./third_party/depot_tools/gn args target/debug/ --list
 
     # Edit build configuration.
