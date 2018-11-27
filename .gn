@@ -30,6 +30,9 @@ default_args = {
   # for now. See http://clang.llvm.org/docs/ControlFlowIntegrity.html
   is_cfi = false
 
+  # Cargo uses link.exe which chokes on lld.exe output.
+  use_lld = false
+
   is_component_build = false
   symbol_level = 1
   treat_warnings_as_errors = true
