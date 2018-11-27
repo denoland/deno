@@ -132,8 +132,7 @@ export class Buffer implements Reader, Writer {
       // Buffer is empty, reset to recover space.
       this.reset();
       if (p.byteLength === 0) {
-        // TODO This edge case should be tested by porting TestReadEmptyAtEOF
-        // from the Go tests.
+        // this edge case is tested in 'bufferReadEmptyAtEOF' test
         return { nread: 0, eof: false };
       }
       return { nread: 0, eof: true };
