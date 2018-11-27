@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from distutils.spawn import find_executable
+import prebuilt
 
 
 def main():
@@ -18,6 +19,7 @@ def main():
     third_party.download_gn()
     third_party.download_clang_format()
     third_party.download_clang()
+    prebuilt.load()
     third_party.maybe_download_sysroot()
 
     write_lastchange()
