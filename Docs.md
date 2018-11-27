@@ -343,11 +343,11 @@ See
 
 The resources table was added to abstract various types of I/O streams and other
 allocated state. A resource is an integer identifier which maps to some Rust
-object. It can be used with various ops. Particularly read and write.
+object. It can be used with various ops, particularly read and write.
 
 Stability and usability improvements. `fetch()` is 90% complete now. Basic REPL
 support was added. Shebang support was added. Command-line argument parsing was
-improved. A forwarding service `https://deno.land/x` was setup for Deno code.
+improved. A forwarding service `https://deno.land/x` was set up for Deno code.
 Example code has been posted to
 [deno.land/x/examples](https://github.com/denoland/deno_examples) and
 [deno.land/x/net](https://github.com/denoland/net).
