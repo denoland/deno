@@ -218,11 +218,23 @@ v8_executable("test_cc") {
   configs = [ ":deno_config" ]
 }
 
+v8_static_library("v8") {
+  public_deps = [
+    "third_party/v8:v8",
+    "third_party/v8:v8_libbase",
+    "third_party/v8:v8_libplatform",
+    "third_party/v8:v8_libsampler",
+    "//build/win:default_exe_manifest",
+  ]
+  configs = [ ":deno_config" ]
+}
+
 # Only functionality needed for libdeno_test and snapshot_creator
 # In particular no flatbuffers, no assets, no rust, no msg handlers.
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
-static_library("libdeno") {
+v8_static_library("libdeno") {
+  configs = [ ":deno_config" ]
   sources = [
     "libdeno/api.cc",
     "libdeno/binding.cc",
@@ -231,30 +243,44 @@ static_library("libdeno") {
     "libdeno/file_util.h",
     "libdeno/internal.h",
   ]
-  public_deps = [
-    "third_party/v8:v8_monolith",
-  ]
-  configs += [ ":deno_config" ]
+  if (!use_prebuilt_v8) {
+    public_deps = [
+      ":v8",
+    ]
+  } else {
+    # TODO(ry) It would be nice to have a standalone target for the prebuilt
+    # library that could simply be added to the deps here, but it wasn't
+    # obvious how to accomplish that in gn.
+    if (is_mac) {
+      libs = [ "//prebuilt/mac/libv8.a" ]
+    } else if (is_linux) {
+      libs = [ "//prebuilt/linux64/libv8.a" ]
+    } else if (is_win) {
+      libs = [ "//prebuilt/win/v8.lib" ]
+    } else {
+      assert(false, "We don't have prebuilt binaries for this platform yet.")
+    }
+  }
 }
 
-static_library("deno_deps") {
+v8_static_library("deno_deps") {
   complete_static_lib = true
   public_deps = [
     ":libdeno",
     ":msg_rs",
     ":snapshot",
   ]
-  configs += [ ":deno_config" ]
+  configs = [ ":deno_config" ]
 }
 
-executable("snapshot_creator") {
+v8_executable("snapshot_creator") {
   sources = [
     "libdeno/snapshot_creator.cc",
   ]
   deps = [
     ":libdeno",
   ]
-  configs += [ ":deno_config" ]
+  configs = [ ":deno_config" ]
 }
 
 # Generates the core TypeScript type library for deno that will be
