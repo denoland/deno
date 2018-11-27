@@ -337,7 +337,22 @@ https://github.com/denoland/deno/blob/master/src/msg.fbs
 See
 [CONTRIBUTING.md](https://github.com/denoland/deno/blob/master/.github/CONTRIBUTING.md).
 
-## Change Log
+## Changelog
+
+### 2018.11.27 / v0.2.0 / Mildly usable
+
+The resources table was added to abstract various types of I/O streams and other
+allocated state. A resource is an integer identifier which maps to some Rust
+object. It can be used with various ops. Particularly read and write.
+
+Stability and usability improvements. `fetch()` is 90% complete now. Basic REPL
+support was added. Shebang support was added. Command-line argument parsing was
+improved. A forwarding service `https://deno.land/x` was setup for Deno code.
+Example code has been posted to
+[deno.land/x/examples](https://github.com/denoland/deno_examples) and
+[deno.land/x/net](https://github.com/denoland/net).
+
+[An intro talk was recorded.](https://www.youtube.com/watch?v=FlTG0UXRAkE)
 
 ### 2018.10.18 / v0.1.8 / Connecting to Tokio / Fleshing out APIs
 
