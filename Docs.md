@@ -346,7 +346,7 @@ See
 Stability and usability improvements. `fetch()` is 90% functional now. Basic
 REPL support was added. Shebang support was added. Command-line argument parsing
 was improved. A forwarding service `https://deno.land/x` was set up for Deno
-code.  Example code has been posted to
+code. Example code has been posted to
 [deno.land/x/examples](https://github.com/denoland/deno_examples) and
 [deno.land/x/net](https://github.com/denoland/net).
 
