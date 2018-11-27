@@ -332,6 +332,17 @@ We use Flatbuffers to define common structs and enums between TypeScript and
 Rust. These common data structures are defined in
 https://github.com/denoland/deno/blob/master/src/msg.fbs
 
+### Internal: Updating prebuilt binaries
+
+V8 takes a long time to build - on the order of an hour. We use pre-built V8
+libraries stored in a Google Storage bucket instead of rebuilding it from
+scratch each time. Our build system is however setup such that we can build V8
+as part of the Deno build if necessary (useful for debugging or changing various
+configurations in V8, or building the pre-built binaries themselves). To control
+whether to use a pre-built V8 or not use the `use_v8_prebuilt` GN argument.
+
+Use `tools/gcloud_upload.py` to upload new prebuilt files.
+
 ## Contributing
 
 See
