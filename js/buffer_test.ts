@@ -109,6 +109,16 @@ test(async function bufferBasicOperations() {
   }
 });
 
+test(async function bufferReadEmptyAtEOF() {
+  // check that EOF of 'buf' is not reached (even though it's empty) if
+  // results are written to buffer that has 0 length (ie. it can't store any data)
+  let buf = new Buffer();
+  const zeroLengthTmp = new Uint8Array(0);
+  let result = await buf.read(zeroLengthTmp);
+  assertEqual(result.nread, 0);
+  assertEqual(result.eof, false);
+});
+
 test(async function bufferLargeByteWrites() {
   init();
   const buf = new Buffer();
