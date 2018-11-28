@@ -28,7 +28,7 @@ function startRepl(historyFile: string): number {
 }
 
 // @internal
-export function readline(rid: number, prompt: string): string {
+export async function readline(rid: number, prompt: string): Promise<string> {
   const builder = flatbuffers.createBuilder();
   const prompt_ = builder.createString(prompt);
   msg.ReplReadline.startReplReadline(builder);
@@ -36,8 +36,11 @@ export function readline(rid: number, prompt: string): string {
   msg.ReplReadline.addPrompt(builder, prompt_);
   const inner = msg.ReplReadline.endReplReadline(builder);
 
-  // TODO use async?
-  const baseRes = dispatch.sendSync(builder, msg.Any.ReplReadline, inner);
+  const baseRes = await dispatch.sendAsync(
+    builder,
+    msg.Any.ReplReadline,
+    inner
+  );
 
   assert(baseRes != null);
   assert(msg.Any.ReplReadlineRes === baseRes!.innerType());
@@ -49,7 +52,7 @@ export function readline(rid: number, prompt: string): string {
 }
 
 // @internal
-export function replLoop(): void {
+export async function replLoop(): Promise<void> {
   window.deno = deno; // FIXME use a new scope (rather than window).
 
   const historyFile = "deno_history.txt";
@@ -58,7 +61,7 @@ export function replLoop(): void {
   let code = "";
   while (true) {
     try {
-      code = readBlock(rid, "> ", "  ");
+      code = await readBlock(rid, "> ", "  ");
     } catch (err) {
       if (err.message === "EOF") {
         break;
@@ -91,14 +94,14 @@ function evaluate(code: string): void {
   }
 }
 
-function readBlock(
+async function readBlock(
   rid: number,
   prompt: string,
   continuedPrompt: string
-): string {
+): Promise<string> {
   let code = "";
   do {
-    code += readline(rid, prompt);
+    code += await readline(rid, prompt);
     prompt = continuedPrompt;
   } while (parenthesesAreOpen(code));
   return code;
