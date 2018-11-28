@@ -726,7 +726,7 @@ rust_crate("dirs") {
 
 ring_root = "$registry_github/ring-0.13.2/"
 
-component("ring_primitives") {
+static_library("ring_primitives") {
   sources = [
     "$ring_root/crypto/constant_time_test.c",
     "$ring_root/crypto/cpu-aarch64-linux.c",
