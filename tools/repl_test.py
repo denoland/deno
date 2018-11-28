@@ -86,6 +86,19 @@ class Repl(object):
         assertEqual(err, '')
         assertEqual(code, 0)
 
+    def test_set_timeout(self):
+        # Special treatment
+        p = Popen([self.deno_exe], stdout=PIPE, stderr=PIPE, stdin=PIPE)
+        # Print after 0.1 second
+        p.stdin.write(
+            "setTimeout(() => console.log('HI'), 100)\n".encode("utf-8"))
+        sleep(0.2)  # Wait 0.2 second before proceed
+        out, err = p.communicate()
+        code = p.poll()
+        assertEqual(out.replace('\r\n', '\n'), '1\nHI\n')
+        assertEqual(err.replace('\r\n', '\n'), '')
+        assertEqual(code, 0)
+
     def test_exit_command(self):
         out, err, code = self.input(".exit", "'ignored'", exit=False)
         assertEqual(out, '')
