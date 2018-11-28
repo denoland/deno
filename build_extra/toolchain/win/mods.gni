@@ -9,6 +9,7 @@
 #   (echo -e '# Automatically generated. See mods.gni.\n' |
 #    cat - ../../../build/toolchain/win/BUILD.gn          |
 #    sed '0,/import/s|import|import("mods.gni")\n&|'      |
+#    sed 's|\s*/llvmlibthin\s*||'                         |
 #    sed 's|exec_script("|&$base_toolchain_dir/|'         |
 #    sed 's|${goma_prefix}|&${cc_wrapper_prefix}|'        ) > BUILD.gn
 #   gn format BUILD.gn
