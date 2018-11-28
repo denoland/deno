@@ -122,12 +122,7 @@ def generate_gn_args(mode):
     if cc_wrapper:
         # The gn toolchain does not shell escape cc_wrapper, so do it here.
         out += ['cc_wrapper=%s' % gn_string(shell_quote(cc_wrapper))]
-        # For cc_wrapper to work on Windows, we need to select our own toolchain
-        # by overriding 'custom_toolchain' and 'host_toolchain'.
-        # TODO: Is there a way to use it without the involvement of args.gn?
         if os.name == "nt":
-            tc = "//build_extra/toolchain/win:win_clang_x64"
-            out += ['custom_toolchain="%s"' % tc, 'host_toolchain="%s"' % tc]
             # Disable treat_warnings_as_errors until this sccache bug is fixed:
             # https://github.com/mozilla/sccache/issues/264
             out += ["treat_warnings_as_errors=false"]
@@ -136,6 +131,17 @@ def generate_gn_args(mode):
     rustc_wrapper = find_executable("sccache")
     if rustc_wrapper:
         out += ['rustc_wrapper=%s' % gn_string(rustc_wrapper)]
+
+    # On Windows, we need to use a custom toolchain, for the following reasons:
+    #   * When building a static library, the default chromium toolchain
+    #     produces 'thin archives' when building a static library. These are not
+    #     compatible with Microsoft's link.exe, and therefore rustc can't use
+    #     such libraries out of the box.
+    #   * The default toolchain doesn't support cc_wrapper.
+    # TODO: Is there a way to use it without the involvement of args.gn?
+    if os.name == "nt":
+        tc = "//build_extra/toolchain/win:win_clang_x64"
+        out += ['custom_toolchain="%s"' % tc, 'host_toolchain="%s"' % tc]
 
     return out
 

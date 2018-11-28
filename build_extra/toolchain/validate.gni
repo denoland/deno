@@ -2,18 +2,18 @@
 
 import("//build/toolchain/cc_wrapper.gni")
 
-# Verify that the cc_wrapper/toolchain combo correctly set up on Windows.
-if (is_win && cc_wrapper != "") {
-  cc_wrapper_toolchain = "//build_extra/toolchain/win:win_clang_$target_cpu"
-  toolchain_supports_cc_wrapper = cc_wrapper_toolchain == default_toolchain &&
-                                  cc_wrapper_toolchain == host_toolchain
+# Verify that our custom toolchain is used on windows.
+if (is_win) {
+  win_toolchain = "//build_extra/toolchain/win:win_clang_$target_cpu"
+  win_toolchain_in_use =
+      win_toolchain == default_toolchain && win_toolchain == host_toolchain
 
-  if (!toolchain_supports_cc_wrapper) {
+  if (!win_toolchain_in_use) {
     # Using print instead of assert-with-message for readability of the output.
-    print("The 'cc_wrapper' option isn't supported by the default Windows" +
-          " toolchain. To make it work, add these gn arguments:")
-    print("  custom_toolchain=\"$cc_wrapper_toolchain\"")
-    print("  host_toolchain=\"$cc_wrapper_toolchain\"")
-    assert(toolchain_supports_cc_wrapper)
+    print("The Windows build requires a custom toolchain. " +
+          "Add these gn arguments:")
+    print("  custom_toolchain=\"$win_toolchain\"")
+    print("  host_toolchain=\"$win_toolchain\"")
+    assert(win_toolchain_in_use)
   }
 }
