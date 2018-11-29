@@ -387,8 +387,8 @@ pub struct CodeFetchOutput {
 #[cfg(test)]
 pub fn test_setup() -> (TempDir, DenoDir) {
   let temp_dir = TempDir::new().expect("tempdir fail");
-  let deno_dir =
-    DenoDir::new(false, Some(temp_dir.path())).expect("setup fail");
+  let deno_dir = DenoDir::new(false, Some(temp_dir.path().to_path_buf()))
+    .expect("setup fail");
   (temp_dir, deno_dir)
 }
 

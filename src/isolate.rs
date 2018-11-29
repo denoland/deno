@@ -140,11 +140,10 @@ fn empty() -> libdeno::deno_buf {
 }
 
 impl Isolate {
-  pub fn new(state: Arc<IsolateState>) -> Self {
+  pub fn new(state: Arc<IsolateState>, dispatch: Dispatch) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
-    let dispatch = super::ops::dispatch;
     let shared = empty(); // TODO Use shared for message passing.
     let snapshot = unsafe { super::snapshot::deno_snapshot.clone() };
     let libdeno_isolate =
@@ -388,7 +387,9 @@ mod tests {
   fn test_dispatch_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let mut isolate = Isolate::new(empty(), flags, rest_argv, dispatch_sync);
+
+    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let mut isolate = Isolate::new(state, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute(
@@ -428,17 +429,17 @@ mod tests {
   fn test_metrics_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let mut isolate =
-      Isolate::new(empty(), flags, rest_argv, metrics_dispatch_sync);
+    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let mut isolate = Isolate::new(state, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
-        let metrics = isolate.state.metrics.lock().unwrap();
-        assert_eq!(metrics.ops_dispatched, 0);
-        assert_eq!(metrics.ops_completed, 0);
-        assert_eq!(metrics.bytes_sent_control, 0);
-        assert_eq!(metrics.bytes_sent_data, 0);
-        assert_eq!(metrics.bytes_received, 0);
+        let metrics = &isolate.state.metrics;
+        assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.ops_completed.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_received.load(Ordering::SeqCst), 0);
       }
 
       isolate
@@ -451,12 +452,12 @@ mod tests {
         "#,
         ).expect("execute error");
       isolate.event_loop();
-      let metrics = isolate.state.metrics.lock().unwrap();
-      assert_eq!(metrics.ops_dispatched, 1);
-      assert_eq!(metrics.ops_completed, 1);
-      assert_eq!(metrics.bytes_sent_control, 3);
-      assert_eq!(metrics.bytes_sent_data, 5);
-      assert_eq!(metrics.bytes_received, 4);
+      let metrics = &isolate.state.metrics;
+      assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 1);
+      assert_eq!(metrics.ops_completed.load(Ordering::SeqCst), 1);
+      assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 3);
+      assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 5);
+      assert_eq!(metrics.bytes_received.load(Ordering::SeqCst), 4);
     });
   }
 
@@ -464,17 +465,17 @@ mod tests {
   fn test_metrics_async() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let mut isolate =
-      Isolate::new(empty(), flags, rest_argv, metrics_dispatch_async);
+    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let mut isolate = Isolate::new(state, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
-        let metrics = isolate.state.metrics.lock().unwrap();
-        assert_eq!(metrics.ops_dispatched, 0);
-        assert_eq!(metrics.ops_completed, 0);
-        assert_eq!(metrics.bytes_sent_control, 0);
-        assert_eq!(metrics.bytes_sent_data, 0);
-        assert_eq!(metrics.bytes_received, 0);
+        let metrics = &isolate.state.metrics;
+        assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.ops_completed.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_received.load(Ordering::SeqCst), 0);
       }
 
       isolate
@@ -490,10 +491,10 @@ mod tests {
 
       // Make sure relevant metrics are updated before task is executed.
       {
-        let metrics = isolate.state.metrics.lock().unwrap();
-        assert_eq!(metrics.ops_dispatched, 1);
-        assert_eq!(metrics.bytes_sent_control, 3);
-        assert_eq!(metrics.bytes_sent_data, 5);
+        let metrics = &isolate.state.metrics;
+        assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 1);
+        assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 3);
+        assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 5);
         // Note we cannot check ops_completed nor bytes_received because that
         // would be a race condition. It might be nice to have use a oneshot
         // with metrics_dispatch_async() to properly validate them.
@@ -503,12 +504,12 @@ mod tests {
 
       // Make sure relevant metrics are updated after task is executed.
       {
-        let metrics = isolate.state.metrics.lock().unwrap();
-        assert_eq!(metrics.ops_dispatched, 1);
-        assert_eq!(metrics.ops_completed, 1);
-        assert_eq!(metrics.bytes_sent_control, 3);
-        assert_eq!(metrics.bytes_sent_data, 5);
-        assert_eq!(metrics.bytes_received, 4);
+        let metrics = &isolate.state.metrics;
+        assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 1);
+        assert_eq!(metrics.ops_completed.load(Ordering::SeqCst), 1);
+        assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 3);
+        assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 5);
+        assert_eq!(metrics.bytes_received.load(Ordering::SeqCst), 4);
       }
     });
   }
