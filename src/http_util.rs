@@ -26,6 +26,28 @@ pub fn get_client() -> Client<Connector, hyper::Body> {
   Client::builder().build(c)
 }
 
+// Construct the next uri based on base uri and location header fragment
+fn maybe_uri_from_location(base_uri: &Uri, location: &str) -> Option<Uri> {
+  if location.starts_with("http://") || location.starts_with("https://") {
+    return Some(
+      location
+        .parse::<Uri>()
+        .expect("provided redirect url should be a valid url"),
+    );
+  } else if location.starts_with("/") {
+    let mut new_uri_parts = base_uri.clone().into_parts();
+    new_uri_parts.path_and_query = Some(location.parse().unwrap());
+    return Uri::from_parts(new_uri_parts).ok();
+  } else {
+    // "./...", "../...", or others
+    // TODO(kevinkassimo): check Location header spec
+    let mut new_uri_parts = base_uri.clone().into_parts();
+    new_uri_parts.path_and_query =
+      Some(format!("{}/{}", base_uri.path(), location).parse().unwrap());
+    return Uri::from_parts(new_uri_parts).ok();
+  }
+}
+
 // The CodeFetch message is used to load HTTP javascript resources and expects a
 // synchronous response, this utility method supports that.
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
@@ -35,24 +57,22 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
   // to avoid bouncing between 2 or more urls
   let fetch_future = loop_fn((client, Some(url)), |(client, maybe_url)| {
     let url = maybe_url.expect("target url should not be None");
+    let url_copy = url.clone(); // create a copy for move
     client
       .get(url)
       .map_err(DenoError::from)
-      .and_then(|response| {
+      .and_then(move |response| {
         if response.status().is_redirection() {
-          let new_url_string = response
+          let location_string = response
             .headers()
             .get("location")
             .expect("url redirection should provide 'location' header")
             .to_str()
             .unwrap()
             .to_string();
-          debug!("Redirecting to {}...", &new_url_string);
-          let maybe_new_url = Some(
-            new_url_string
-              .parse::<Uri>()
-              .expect("provided redirect url should be a valid url"),
-          );
+          debug!("Redirecting to {}...", &location_string);
+          let maybe_new_url =
+            maybe_uri_from_location(&url_copy, &location_string);
           return Ok(Loop::Continue((client, maybe_new_url)));
         }
         if !response.status().is_success() {
@@ -103,4 +123,50 @@ fn test_fetch_sync_string_with_redirect() {
     assert!(p.len() > 1);
     assert!(m == "application/json")
   });
+}
+
+#[test]
+fn test_maybe_uri_from_location_full_1() {
+  let url = "http://deno.land".parse::<Uri>().unwrap();
+  let maybe_new_uri = maybe_uri_from_location(&url, "http://golang.org");
+  assert!(maybe_new_uri.is_some());
+  assert_eq!(maybe_new_uri.unwrap().host().unwrap(), "golang.org");
+}
+
+#[test]
+fn test_maybe_uri_from_location_full_2() {
+  let url = "https://deno.land".parse::<Uri>().unwrap();
+  let maybe_new_uri = maybe_uri_from_location(&url, "https://golang.org");
+  assert!(maybe_new_uri.is_some());
+  assert_eq!(maybe_new_uri.unwrap().host().unwrap(), "golang.org");
+}
+
+#[test]
+fn test_maybe_uri_from_location_relative_1() {
+  let url = "http://deno.land/x".parse::<Uri>().unwrap();
+  let maybe_new_uri = maybe_uri_from_location(&url, "../y");
+  assert!(maybe_new_uri.is_some());
+  let new_uri = maybe_new_uri.unwrap();
+  assert_eq!(new_uri.host().unwrap(), "deno.land");
+  assert_eq!(new_uri.path(), "/x/../y"); // TODO(kevinkassimo): condense path
+}
+
+#[test]
+fn test_maybe_uri_from_location_relative_2() {
+  let url = "http://deno.land/x".parse::<Uri>().unwrap();
+  let maybe_new_uri = maybe_uri_from_location(&url, "/z");
+  assert!(maybe_new_uri.is_some());
+  let new_uri = maybe_new_uri.unwrap();
+  assert_eq!(new_uri.host().unwrap(), "deno.land");
+  assert_eq!(new_uri.path(), "/z");
+}
+
+#[test]
+fn test_maybe_uri_from_location_relative_3() {
+  let url = "http://deno.land/x".parse::<Uri>().unwrap();
+  let maybe_new_uri = maybe_uri_from_location(&url, "z");
+  assert!(maybe_new_uri.is_some());
+  let new_uri = maybe_new_uri.unwrap();
+  assert_eq!(new_uri.host().unwrap(), "deno.land");
+  assert_eq!(new_uri.path(), "/x/z");
 }
