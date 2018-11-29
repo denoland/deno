@@ -27,20 +27,29 @@ pub fn get_client() -> Client<Connector, hyper::Body> {
 }
 
 // Construct the next uri based on base uri and location header fragment
+// https://tools.ietf.org/html/rfc3986#section-4.2
 fn maybe_uri_from_location(base_uri: &Uri, location: &str) -> Option<Uri> {
   if location.starts_with("http://") || location.starts_with("https://") {
+    // absolute uri
     return Some(
       location
         .parse::<Uri>()
         .expect("provided redirect url should be a valid url"),
     );
+  } else if location.starts_with("//") {
+    // "//" authority path-abempty
+    return Some(
+      format!("{}:{}", base_uri.scheme_part().unwrap().as_str(), location)
+        .parse::<Uri>()
+        .expect("provided redirect url should be a valid url"),
+    );
   } else if location.starts_with("/") {
+    // path-absolute
     let mut new_uri_parts = base_uri.clone().into_parts();
     new_uri_parts.path_and_query = Some(location.parse().unwrap());
     return Uri::from_parts(new_uri_parts).ok();
   } else {
-    // "./...", "../...", or others
-    // TODO(kevinkassimo): check Location header spec
+    // assuming path-noscheme | path-empty
     let mut new_uri_parts = base_uri.clone().into_parts();
     new_uri_parts.path_and_query =
       Some(format!("{}/{}", base_uri.path(), location).parse().unwrap());
@@ -57,9 +66,8 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
   // to avoid bouncing between 2 or more urls
   let fetch_future = loop_fn((client, Some(url)), |(client, maybe_url)| {
     let url = maybe_url.expect("target url should not be None");
-    let url_copy = url.clone(); // create a copy for move
     client
-      .get(url)
+      .get(url.clone())
       .map_err(DenoError::from)
       .and_then(move |response| {
         if response.status().is_redirection() {
@@ -71,8 +79,7 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
             .unwrap()
             .to_string();
           debug!("Redirecting to {}...", &location_string);
-          let maybe_new_url =
-            maybe_uri_from_location(&url_copy, &location_string);
+          let maybe_new_url = maybe_uri_from_location(&url, &location_string);
           return Ok(Loop::Continue((client, maybe_new_url)));
         }
         if !response.status().is_success() {
@@ -144,21 +151,21 @@ fn test_maybe_uri_from_location_full_2() {
 #[test]
 fn test_maybe_uri_from_location_relative_1() {
   let url = "http://deno.land/x".parse::<Uri>().unwrap();
-  let maybe_new_uri = maybe_uri_from_location(&url, "../y");
+  let maybe_new_uri = maybe_uri_from_location(&url, "//rust-lang.org/en-US");
   assert!(maybe_new_uri.is_some());
   let new_uri = maybe_new_uri.unwrap();
-  assert_eq!(new_uri.host().unwrap(), "deno.land");
-  assert_eq!(new_uri.path(), "/x/../y"); // TODO(kevinkassimo): condense path
+  assert_eq!(new_uri.host().unwrap(), "rust-lang.org");
+  assert_eq!(new_uri.path(), "/en-US");
 }
 
 #[test]
 fn test_maybe_uri_from_location_relative_2() {
   let url = "http://deno.land/x".parse::<Uri>().unwrap();
-  let maybe_new_uri = maybe_uri_from_location(&url, "/z");
+  let maybe_new_uri = maybe_uri_from_location(&url, "/y");
   assert!(maybe_new_uri.is_some());
   let new_uri = maybe_new_uri.unwrap();
   assert_eq!(new_uri.host().unwrap(), "deno.land");
-  assert_eq!(new_uri.path(), "/z");
+  assert_eq!(new_uri.path(), "/y");
 }
 
 #[test]
