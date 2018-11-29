@@ -285,7 +285,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   DCHECK_EQ(d->isolate_, isolate);
 
   v8::Locker locker(d->isolate_);
-  v8::EscapableHandleScope handle_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
 
   CHECK_EQ(d->current_args_, nullptr);  // libdeno.send re-entry forbidden.
   int32_t req_id = d->next_req_id_++;
@@ -343,18 +343,163 @@ void Shared(v8::Local<v8::Name> property,
   info.GetReturnValue().Set(ab);
 }
 
-bool ExecuteV8StringSource(v8::Local<v8::Context> context,
-                           const char* js_filename,
-                           v8::Local<v8::String> source) {
+v8::ScriptOrigin ModuleOrigin(v8::Local<v8::Value> resource_name,
+                              v8::Isolate* isolate) {
+  return v8::ScriptOrigin(resource_name, v8::Local<v8::Integer>(),
+                          v8::Local<v8::Integer>(), v8::Local<v8::Boolean>(),
+                          v8::Local<v8::Integer>(), v8::Local<v8::Value>(),
+                          v8::Local<v8::Boolean>(), v8::Local<v8::Boolean>(),
+                          v8::True(isolate));
+}
+
+void DenoIsolate::ClearModules() {
+  for (auto it = module_map_.begin(); it != module_map_.end(); it++) {
+    it->second.Reset();
+  }
+  module_map_.clear();
+  module_filename_map_.clear();
+}
+
+void DenoIsolate::RegisterModule(const char* filename,
+                                 v8::Local<v8::Module> module) {
+  int id = module->GetIdentityHash();
+
+  // v8.h says that identity hash is not necessarily unique. It seems it's quite
+  // unique enough for the purposes of O(1000) modules, so we use it as a
+  // hashmap key here. The following check is to detect collisions.
+  CHECK_EQ(0, module_filename_map_.count(id));
+
+  module_filename_map_[id] = filename;
+  module_map_.emplace(std::piecewise_construct, std::make_tuple(filename),
+                      std::make_tuple(isolate_, module));
+}
+
+v8::MaybeLocal<v8::Module> CompileModule(v8::Local<v8::Context> context,
+                                         const char* js_filename,
+                                         v8::Local<v8::String> source_text) {
+  auto* isolate = context->GetIsolate();
+
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::EscapableHandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+
+  auto origin = ModuleOrigin(v8_str(js_filename, true), isolate);
+  v8::ScriptCompiler::Source source(source_text, origin);
+
+  auto maybe_module = v8::ScriptCompiler::CompileModule(isolate, &source);
+
+  if (!maybe_module.IsEmpty()) {
+    auto module = maybe_module.ToLocalChecked();
+    CHECK_EQ(v8::Module::kUninstantiated, module->GetStatus());
+    DenoIsolate* d = FromIsolate(isolate);
+    d->RegisterModule(js_filename, module);
+  }
+
+  return handle_scope.EscapeMaybe(maybe_module);
+}
+
+v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
+                                           v8::Local<v8::String> specifier,
+                                           v8::Local<v8::Module> referrer) {
+  auto* isolate = context->GetIsolate();
+  DenoIsolate* d = FromIsolate(isolate);
+
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::EscapableHandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+
+  int ref_id = referrer->GetIdentityHash();
+  std::string referrer_filename = d->module_filename_map_[ref_id];
+
+  v8::String::Utf8Value specifier_(isolate, specifier);
+  const char* specifier_c = ToCString(specifier_);
+
+  CHECK_NE(d->resolve_cb_, nullptr);
+  d->resolve_cb_(d->user_data_, specifier_c, referrer_filename.c_str());
+
+  if (d->resolve_module_.IsEmpty()) {
+    // Resolution Error.
+    isolate->ThrowException(v8_str("module resolution error"));
+    return v8::MaybeLocal<v8::Module>();
+  } else {
+    auto module = d->resolve_module_.Get(isolate);
+    d->resolve_module_.Reset();
+    return handle_scope.Escape(module);
+  }
+}
+
+void DenoIsolate::ResolveOk(const char* filename, const char* source) {
+  CHECK(resolve_module_.IsEmpty());
+  auto count = module_map_.count(filename);
+  if (count == 1) {
+    auto module = module_map_[filename].Get(isolate_);
+    resolve_module_.Reset(isolate_, module);
+  } else {
+    CHECK_EQ(count, 0);
+    v8::HandleScope handle_scope(isolate_);
+    auto context = context_.Get(isolate_);
+    v8::TryCatch try_catch(isolate_);
+    auto maybe_module = CompileModule(context, filename, v8_str(source));
+    if (maybe_module.IsEmpty()) {
+      DCHECK(try_catch.HasCaught());
+      HandleException(context, try_catch.Exception());
+    } else {
+      auto module = maybe_module.ToLocalChecked();
+      resolve_module_.Reset(isolate_, module);
+    }
+  }
+}
+
+bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,
+                const char* js_source) {
   auto* isolate = context->GetIsolate();
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
-
   v8::Context::Scope context_scope(context);
+
+  auto source = v8_str(js_source, true);
 
   v8::TryCatch try_catch(isolate);
 
+  auto maybe_module = CompileModule(context, js_filename, source);
+
+  if (maybe_module.IsEmpty()) {
+    DCHECK(try_catch.HasCaught());
+    HandleException(context, try_catch.Exception());
+    return false;
+  }
+  DCHECK(!try_catch.HasCaught());
+
+  auto module = maybe_module.ToLocalChecked();
+  auto maybe_ok = module->InstantiateModule(context, ResolveCallback);
+  if (maybe_ok.IsNothing()) {
+    return false;
+  }
+
+  CHECK_EQ(v8::Module::kInstantiated, module->GetStatus());
+  auto result = module->Evaluate(context);
+
+  if (result.IsEmpty()) {
+    DCHECK(try_catch.HasCaught());
+    CHECK_EQ(v8::Module::kErrored, module->GetStatus());
+    HandleException(context, module->GetException());
+    return false;
+  }
+
+  return true;
+}
+
+bool Execute(v8::Local<v8::Context> context, const char* js_filename,
+             const char* js_source) {
+  auto* isolate = context->GetIsolate();
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+
+  auto source = v8_str(js_source, true);
   auto name = v8_str(js_filename, true);
+
+  v8::TryCatch try_catch(isolate);
 
   v8::ScriptOrigin origin(name);
 
@@ -375,15 +520,6 @@ bool ExecuteV8StringSource(v8::Local<v8::Context> context,
   }
 
   return true;
-}
-
-bool Execute(v8::Local<v8::Context> context, const char* js_filename,
-             const char* js_source) {
-  auto* isolate = context->GetIsolate();
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  auto source = v8_str(js_source, true);
-  return ExecuteV8StringSource(context, js_filename, source);
 }
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
