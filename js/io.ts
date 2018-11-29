@@ -1,5 +1,3 @@
-import { Buffer } from "./buffer";
-
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
 // Thank you! We love Go!
@@ -140,12 +138,4 @@ export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
       };
     }
   };
-}
-
-/** Read `r` until EOF and return the content as `Uint8Array`.
- */
-export async function readAll(r: Reader): Promise<Uint8Array> {
-  const buf = new Buffer();
-  await buf.readFrom(r);
-  return buf.bytes();
 }

@@ -7,7 +7,6 @@ export { chdir, cwd } from "./dir";
 export { File, open, stdin, stdout, stderr, read, write, close } from "./files";
 export {
   copy,
-  readAll,
   toAsyncIterator,
   ReadResult,
   Reader,
@@ -21,7 +20,7 @@ export {
   ReadWriteCloser,
   ReadWriteSeeker
 } from "./io";
-export { Buffer } from "./buffer";
+export { Buffer, readAll } from "./buffer";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
 export { chmodSync, chmod } from "./chmod";
