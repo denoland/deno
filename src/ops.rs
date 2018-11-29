@@ -23,6 +23,7 @@ use remove_dir_all::remove_dir_all;
 use repl;
 use resources::table_entries;
 use std;
+use std::convert::From;
 use std::fs;
 use std::net::{Shutdown, SocketAddr};
 #[cfg(unix)]
@@ -1291,18 +1292,10 @@ fn op_metrics(
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
-  let metrics = state.metrics.lock().unwrap();
-
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::MetricsRes::create(
     builder,
-    &msg::MetricsResArgs {
-      ops_dispatched: metrics.ops_dispatched,
-      ops_completed: metrics.ops_completed,
-      bytes_sent_control: metrics.bytes_sent_control,
-      bytes_sent_data: metrics.bytes_sent_data,
-      bytes_received: metrics.bytes_received,
-    },
+    &msg::MetricsResArgs::from(&state.metrics),
   );
   ok_future(serialize_response(
     cmd_id,
