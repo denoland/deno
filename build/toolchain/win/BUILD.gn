@@ -6,6 +6,7 @@ import("//build/config/clang/clang.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//build/config/win/visual_studio_version.gni")
+import("//build/toolchain/cc_wrapper.gni")
 import("//build/toolchain/clang_static_analyzer.gni")
 import("//build/toolchain/goma.gni")
 import("//build/toolchain/toolchain.gni")
@@ -24,12 +25,14 @@ tool_wrapper_path = rebase_path("tool_wrapper.py", root_build_dir)
 
 if (use_goma) {
   if (host_os == "win") {
-    goma_prefix = "$goma_dir/gomacc.exe "
+    compiler_prefix = "$goma_dir/gomacc.exe "
   } else {
-    goma_prefix = "$goma_dir/gomacc "
+    compiler_prefix = "$goma_dir/gomacc "
   }
+} else if (cc_wrapper != "") {
+  compiler_prefix = "$cc_wrapper "
 } else {
-  goma_prefix = ""
+  compiler_prefix = ""
 }
 
 # Copy the VS runtime DLL for the default toolchain to the root build directory
@@ -362,7 +365,7 @@ if (win_build_host_cpu != "x64") {
 
   msvc_toolchain(win_build_host_cpu) {
     environment = "environment." + win_build_host_cpu
-    cl = "${goma_prefix}\"${build_cpu_toolchain_data.vc_bin_dir}/cl.exe\""
+    cl = "${compiler_prefix}\"${build_cpu_toolchain_data.vc_bin_dir}/cl.exe\""
     if (host_os != "win") {
       # For win cross build.
       sys_lib_flags = "${build_cpu_toolchain_data.libpath_flags}"
@@ -377,7 +380,7 @@ if (win_build_host_cpu != "x64") {
   msvc_toolchain("win_clang_" + win_build_host_cpu) {
     environment = "environment." + win_build_host_cpu
     prefix = rebase_path("$clang_base_path/bin", root_build_dir)
-    cl = "${goma_prefix}$prefix/${clang_cl}"
+    cl = "${compiler_prefix}$prefix/${clang_cl}"
     sys_include_flags = "${build_cpu_toolchain_data.include_flags_imsvc}"
     if (host_os != "win") {
       # For win cross build.
@@ -407,7 +410,7 @@ x64_toolchain_data = exec_script("setup_toolchain.py",
 template("win_x64_toolchains") {
   msvc_toolchain(target_name) {
     environment = "environment.x64"
-    cl = "${goma_prefix}\"${x64_toolchain_data.vc_bin_dir}/cl.exe\""
+    cl = "${compiler_prefix}\"${x64_toolchain_data.vc_bin_dir}/cl.exe\""
     if (host_os != "win") {
       # For win cross build
       sys_lib_flags = "${x64_toolchain_data.libpath_flags}"
@@ -426,7 +429,7 @@ template("win_x64_toolchains") {
   msvc_toolchain("win_clang_" + target_name) {
     environment = "environment.x64"
     prefix = rebase_path("$clang_base_path/bin", root_build_dir)
-    cl = "${goma_prefix}$prefix/${clang_cl}"
+    cl = "${compiler_prefix}$prefix/${clang_cl}"
     sys_include_flags = "${x64_toolchain_data.include_flags_imsvc}"
     if (host_os != "win") {
       # For win cross build
@@ -479,7 +482,7 @@ if (target_os == "winuwp") {
 
   msvc_toolchain("uwp_" + target_cpu) {
     environment = "environment.store_" + target_cpu
-    cl = "${goma_prefix}\"${store_cpu_toolchain_data.vc_bin_dir}/cl.exe\""
+    cl = "${compiler_prefix}\"${store_cpu_toolchain_data.vc_bin_dir}/cl.exe\""
     toolchain_args = {
       current_os = "winuwp"
       current_cpu = target_cpu
