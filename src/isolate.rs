@@ -140,10 +140,11 @@ fn empty() -> libdeno::deno_buf {
 }
 
 impl Isolate {
-  pub fn new(dispatch: Dispatch, state: Arc<IsolateState>) -> Self {
+  pub fn new(state: Arc<IsolateState>) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
+    let dispatch = super::ops::dispatch;
     let shared = empty(); // TODO Use shared for message passing.
     let snapshot = unsafe { super::snapshot::deno_snapshot.clone() };
     let libdeno_isolate =
