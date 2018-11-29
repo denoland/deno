@@ -25,15 +25,26 @@ typedef struct deno_s Deno;
 typedef void (*deno_recv_cb)(void* user_data, int32_t req_id,
                              deno_buf control_buf, deno_buf data_buf);
 
+// A callback to implement ES Module imports. User must call deno_resolve_ok()
+// at most once during deno_resolve_cb. If deno_resolve_ok() is not called, the
+// specifier is considered invalid and will issue an error in JS. The reason
+// deno_resolve_cb does not return deno_module is to avoid unnecessary heap
+// allocations.
+typedef void (*deno_resolve_cb)(void* user_data, const char* specifier,
+                                const char* referrer);
+
+void deno_resolve_ok(Deno* d, const char* filename, const char* source);
+
 void deno_init();
 const char* deno_v8_version();
 void deno_set_v8_flags(int* argc, char** argv);
 
 typedef struct {
-  int will_snapshot;       // Default 0. If calling deno_get_snapshot 1.
-  deno_buf load_snapshot;  // Optionally: A deno_buf from deno_get_snapshot.
-  deno_buf shared;         // Shared buffer to be mapped to libdeno.shared
-  deno_recv_cb recv_cb;    // Maps to libdeno.send() calls.
+  int will_snapshot;           // Default 0. If calling deno_get_snapshot 1.
+  deno_buf load_snapshot;      // Optionally: A deno_buf from deno_get_snapshot.
+  deno_buf shared;             // Shared buffer to be mapped to libdeno.shared
+  deno_recv_cb recv_cb;        // Maps to libdeno.send() calls.
+  deno_resolve_cb resolve_cb;  // Each import calls this.
 } deno_config;
 
 // Create a new deno isolate.
@@ -47,9 +58,10 @@ deno_buf deno_get_snapshot(Deno* d);
 
 void deno_delete(Deno* d);
 
-// Returns false on error.
+// Compile and execute a traditional JavaScript script that does not use
+// module import statements.
+// Return value: 0 = fail, 1 = success
 // Get error text with deno_last_exception().
-// 0 = fail, 1 = success
 //
 // TODO change return value to be const char*. On success the return
 // value is nullptr, on failure it is the JSON exception text that
@@ -58,6 +70,13 @@ void deno_delete(Deno* d);
 // deno_respond (as deno_last_exception is now).
 int deno_execute(Deno* d, void* user_data, const char* js_filename,
                  const char* js_source);
+
+// Compile and execute an ES module. Caller must have provided a deno_resolve_cb
+// when instantiating the Deno object.
+// Return value: 0 = fail, 1 = success
+// Get error text with deno_last_exception().
+int deno_execute_mod(Deno* d, void* user_data, const char* js_filename,
+                     const char* js_source);
 
 // deno_respond sends up to one message back for every deno_recv_cb made.
 //
