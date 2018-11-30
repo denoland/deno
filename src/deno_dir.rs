@@ -945,14 +945,11 @@ fn filter_shebang(code: String) -> String {
   if !code.starts_with("#!") {
     return code;
   }
-  match code.find('\n') {
-    None => {
-      return String::from("");
-    }
-    Some(i) => {
-      let (_, rest) = code.split_at(i);
-      return String::from(rest);
-    }
+  if let Some(i) = code.find('\n') {
+    let (_, rest) = code.split_at(i);
+    String::from(rest)
+  } else {
+    String::from("")
   }
 }
 
