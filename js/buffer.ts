@@ -221,3 +221,11 @@ export class Buffer implements Reader, Writer {
     }
   }
 }
+
+/** Read `r` until EOF and return the content as `Uint8Array`.
+ */
+export async function readAll(r: Reader): Promise<Uint8Array> {
+  const buf = new Buffer();
+  await buf.readFrom(r);
+  return buf.bytes();
+}
