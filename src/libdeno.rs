@@ -2,6 +2,7 @@
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
+use std::ptr::null_mut;
 
 #[repr(C)]
 pub struct isolate {
@@ -20,9 +21,9 @@ pub struct deno_buf {
 impl deno_buf {
   pub fn empty() -> Self {
     deno_buf {
-      alloc_ptr: std::ptr::null_mut(),
+      alloc_ptr: null_mut(),
       alloc_len: 0,
-      data_ptr: std::ptr::null_mut(),
+      data_ptr: null_mut(),
       data_len: 0,
     }
   }
