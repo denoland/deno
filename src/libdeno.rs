@@ -2,6 +2,7 @@
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
+use std::ptr::null_mut;
 
 #[repr(C)]
 pub struct isolate {
@@ -15,6 +16,17 @@ pub struct deno_buf {
   pub alloc_len: usize,
   pub data_ptr: *mut u8,
   pub data_len: usize,
+}
+
+impl deno_buf {
+  pub fn empty() -> Self {
+    deno_buf {
+      alloc_ptr: null_mut(),
+      alloc_len: 0,
+      data_ptr: null_mut(),
+      data_len: 0,
+    }
+  }
 }
 
 type DenoRecvCb = unsafe extern "C" fn(

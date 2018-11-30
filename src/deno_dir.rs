@@ -41,16 +41,13 @@ impl DenoDir {
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
   pub fn new(
     reload: bool,
-    custom_root: Option<&Path>,
+    custom_root: Option<PathBuf>,
   ) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
     let default = home_dir.join(".deno");
 
-    let root: PathBuf = match custom_root {
-      None => default,
-      Some(path) => path.to_path_buf(),
-    };
+    let root: PathBuf = custom_root.unwrap_or(default);
     let gen = root.as_path().join("gen");
     let deps = root.as_path().join("deps");
     let deps_http = deps.join("http");
@@ -390,8 +387,8 @@ pub struct CodeFetchOutput {
 #[cfg(test)]
 pub fn test_setup() -> (TempDir, DenoDir) {
   let temp_dir = TempDir::new().expect("tempdir fail");
-  let deno_dir =
-    DenoDir::new(false, Some(temp_dir.path())).expect("setup fail");
+  let deno_dir = DenoDir::new(false, Some(temp_dir.path().to_path_buf()))
+    .expect("setup fail");
   (temp_dir, deno_dir)
 }
 
