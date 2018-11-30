@@ -330,7 +330,7 @@ fn op_set_timeout(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_set_timeout().unwrap();
-  // FIXME why is timeout a double if it's cast immediately to i64?
+  // FIXME why is timeout a double if it's cast immediately to i64/u64??
   let val = inner.timeout() as i64;
   isolate.timeout_due = if val >= 0 {
     Some(Instant::now() + Duration::from_millis(val as u64))
@@ -1376,19 +1376,19 @@ fn op_run(
   let args = inner.args().unwrap();
   let cwd = inner.cwd();
 
-  let mut cmd = Command::new(args.get(0));
+  let mut c = Command::new(args.get(0));
   (1..args.len()).for_each(|i| {
     let arg = args.get(i);
-    cmd.arg(arg);
+    c.arg(arg);
   });
-  cwd.map(|d| cmd.current_dir(d));
+  cwd.map(|d| c.current_dir(d));
 
-  cmd.stdin(subprocess_stdio_map(inner.stdin()));
-  cmd.stdout(subprocess_stdio_map(inner.stdout()));
-  cmd.stderr(subprocess_stdio_map(inner.stderr()));
+  c.stdin(subprocess_stdio_map(inner.stdin()));
+  c.stdout(subprocess_stdio_map(inner.stdout()));
+  c.stderr(subprocess_stdio_map(inner.stderr()));
 
   // Spawn the command.
-  let child = match cmd.spawn_async() {
+  let child = match c.spawn_async() {
     Ok(v) => v,
     Err(err) => {
       return odd_future(err.into());

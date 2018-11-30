@@ -258,6 +258,7 @@ pub fn add_repl(repl: Repl) -> Resource {
   Resource { rid }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct ChildResources {
   pub child_rid: ResourceId,
   pub stdin_rid: Option<ResourceId>,

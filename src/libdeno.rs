@@ -20,7 +20,7 @@ pub struct deno_buf {
 
 impl deno_buf {
   pub fn empty() -> Self {
-    deno_buf {
+    Self {
       alloc_ptr: null_mut(),
       alloc_len: 0,
       data_ptr: null_mut(),

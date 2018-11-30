@@ -27,7 +27,7 @@ pub fn get_client() -> Client<Connector, hyper::Body> {
 }
 
 /// Construct the next uri based on base uri and location header fragment
-/// See https://tools.ietf.org/html/rfc3986#section-4.2
+/// See <https://tools.ietf.org/html/rfc3986#section-4.2>
 fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
   if location.starts_with("http://") || location.starts_with("https://") {
     // absolute uri

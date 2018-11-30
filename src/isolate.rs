@@ -68,7 +68,7 @@ pub struct IsolateState {
 impl IsolateState {
   pub fn new(flags: flags::DenoFlags, argv_rest: Vec<String>) -> Self {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
-    IsolateState {
+    Self {
       dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::new(&flags),

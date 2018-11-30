@@ -99,9 +99,9 @@ pub fn deserialize_request(
 
   assert!(header_msg.is_request());
 
-  let url = header_msg.url().unwrap();
-  let uri = Uri::from_str(url).unwrap();
-  *r.uri_mut() = uri;
+  let u = header_msg.url().unwrap();
+  let u = Uri::from_str(u).unwrap();
+  *r.uri_mut() = u;
 
   if let Some(method) = header_msg.method() {
     let method = Method::from_str(method).unwrap();
