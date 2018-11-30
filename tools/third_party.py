@@ -96,6 +96,7 @@ def fix_symlinks():
     remove_and_symlink("../package.json", tp("package.json"))
 
     # TODO(ry) Is it possible to remove these symlinks?
+    remove_and_symlink("../../build", tp("v8/build"), True)
     remove_and_symlink("v8/third_party/googletest", tp("googletest"), True)
     remove_and_symlink("v8/third_party/jinja2", tp("jinja2"), True)
     remove_and_symlink("v8/third_party/llvm-build", tp("llvm-build"), True)
