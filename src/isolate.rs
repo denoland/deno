@@ -17,10 +17,9 @@ use std;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 use tokio;
@@ -47,130 +46,113 @@ pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
+  tx: mpsc::Sender<(i32, Buf)>,
   ntasks: i32,
   pub timeout_due: Option<Instant>,
   pub state: Arc<IsolateState>,
 }
 
-// Isolate cannot be passed between threads but IsolateState can. So any state that
-// needs to be accessed outside the main V8 thread should be inside IsolateState.
+// Isolate cannot be passed between threads but IsolateState can.
+// IsolateState satisfies Send and Sync.
+// So any state that needs to be accessed outside the main V8 thread should be
+// inside IsolateState.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct IsolateState {
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
-  pub permissions: Mutex<DenoPermissions>,
+  pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
-  tx: Mutex<Option<mpsc::Sender<(i32, Buf)>>>,
-  pub metrics: Mutex<Metrics>,
+  pub metrics: Metrics,
 }
 
 impl IsolateState {
-  // Thread safe.
-  fn send_to_js(&self, req_id: i32, buf: Buf) {
-    let mut g = self.tx.lock().unwrap();
-    let maybe_tx = g.as_mut();
-    assert!(maybe_tx.is_some(), "Expected tx to not be deleted.");
-    let tx = maybe_tx.unwrap();
-    tx.send((req_id, buf)).expect("tx.send error");
+  pub fn new(flags: flags::DenoFlags, argv_rest: Vec<String>) -> Self {
+    let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
+    IsolateState {
+      dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
+      argv: argv_rest,
+      permissions: DenoPermissions::new(&flags),
+      flags,
+      metrics: Metrics::default(),
+    }
   }
 
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
-    let mut perm = self.permissions.lock().unwrap();
-    perm.check_write(filename)
+    self.permissions.check_write(filename)
   }
 
   pub fn check_env(&self) -> DenoResult<()> {
-    let mut perm = self.permissions.lock().unwrap();
-    perm.check_env()
+    self.permissions.check_env()
   }
 
   pub fn check_net(&self, filename: &str) -> DenoResult<()> {
-    let mut perm = self.permissions.lock().unwrap();
-    perm.check_net(filename)
+    self.permissions.check_net(filename)
   }
 
   pub fn check_run(&self) -> DenoResult<()> {
-    let mut perm = self.permissions.lock().unwrap();
-    perm.check_run()
+    self.permissions.check_run()
   }
 
   fn metrics_op_dispatched(
     &self,
-    bytes_sent_control: u64,
-    bytes_sent_data: u64,
+    bytes_sent_control: usize,
+    bytes_sent_data: usize,
   ) {
-    let mut metrics = self.metrics.lock().unwrap();
-    metrics.ops_dispatched += 1;
-    metrics.bytes_sent_control += bytes_sent_control;
-    metrics.bytes_sent_data += bytes_sent_data;
+    self.metrics.ops_dispatched.fetch_add(1, Ordering::SeqCst);
+    self
+      .metrics
+      .bytes_sent_control
+      .fetch_add(bytes_sent_control, Ordering::SeqCst);
+    self
+      .metrics
+      .bytes_sent_data
+      .fetch_add(bytes_sent_data, Ordering::SeqCst);
   }
 
-  fn metrics_op_completed(&self, bytes_received: u64) {
-    let mut metrics = self.metrics.lock().unwrap();
-    metrics.ops_completed += 1;
-    metrics.bytes_received += bytes_received;
+  fn metrics_op_completed(&self, bytes_received: usize) {
+    self.metrics.ops_completed.fetch_add(1, Ordering::SeqCst);
+    self
+      .metrics
+      .bytes_received
+      .fetch_add(bytes_received, Ordering::SeqCst);
   }
 }
 
+// AtomicU64 is currently unstable
 #[derive(Default)]
 pub struct Metrics {
-  pub ops_dispatched: u64,
-  pub ops_completed: u64,
-  pub bytes_sent_control: u64,
-  pub bytes_sent_data: u64,
-  pub bytes_received: u64,
+  pub ops_dispatched: AtomicUsize,
+  pub ops_completed: AtomicUsize,
+  pub bytes_sent_control: AtomicUsize,
+  pub bytes_sent_data: AtomicUsize,
+  pub bytes_received: AtomicUsize,
 }
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
-fn empty() -> libdeno::deno_buf {
-  libdeno::deno_buf {
-    alloc_ptr: std::ptr::null_mut(),
-    alloc_len: 0,
-    data_ptr: std::ptr::null_mut(),
-    data_len: 0,
-  }
-}
-
 impl Isolate {
   pub fn new(
     snapshot: libdeno::deno_buf,
-    flags: flags::DenoFlags,
-    argv_rest: Vec<String>,
+    state: Arc<IsolateState>,
     dispatch: Dispatch,
   ) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
-    let shared = empty(); // TODO Use shared for message passing.
+    let shared = libdeno::deno_buf::empty(); // TODO Use shared for message passing.
     let libdeno_isolate =
       unsafe { libdeno::deno_new(snapshot, shared, pre_dispatch) };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
 
-    let custom_root_path;
-    let custom_root = match env::var("DENO_DIR") {
-      Ok(path) => {
-        custom_root_path = path;
-        Some(Path::new(custom_root_path.as_str()))
-      }
-      Err(_e) => None,
-    };
-
     Self {
       libdeno_isolate,
       dispatch,
       rx,
+      tx,
       ntasks: 0,
       timeout_due: None,
-      state: Arc::new(IsolateState {
-        dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
-        argv: argv_rest,
-        permissions: Mutex::new(DenoPermissions::new(&flags)),
-        flags,
-        tx: Mutex::new(Some(tx)),
-        metrics: Mutex::new(Metrics::default()),
-      }),
+      state: state,
     }
   }
 
@@ -207,7 +189,7 @@ impl Isolate {
   }
 
   pub fn respond(&mut self, req_id: i32, buf: Buf) {
-    self.state.metrics_op_completed(buf.len() as u64);
+    self.state.metrics_op_completed(buf.len());
 
     // TODO(zero-copy) Use Buf::leak(buf) to leak the heap allocated buf. And
     // don't do the memcpy in ImportBuf() (in libdeno/binding.cc)
@@ -311,8 +293,8 @@ extern "C" fn pre_dispatch(
   data_buf: libdeno::deno_buf,
 ) {
   // for metrics
-  let bytes_sent_control = control_buf.data_len as u64;
-  let bytes_sent_data = data_buf.data_len as u64;
+  let bytes_sent_control = control_buf.data_len;
+  let bytes_sent_data = data_buf.data_len;
 
   // control_buf is only valid for the lifetime of this call, thus is
   // interpretted as a slice.
@@ -344,14 +326,14 @@ extern "C" fn pre_dispatch(
 
     if buf_size == 0 {
       // FIXME
-      isolate.state.metrics_op_completed(buf.len() as u64);
+      isolate.state.metrics_op_completed(buf.len());
     } else {
       // Set the synchronous response, the value returned from isolate.send().
       isolate.respond(req_id, buf);
     }
   } else {
     // Execute op asynchronously.
-    let state = Arc::clone(&isolate.state);
+    let tx = isolate.tx.clone();
 
     // TODO Ideally Tokio would could tell us how many tasks are executing, but
     // it cannot currently. Therefore we track top-level promises/tasks
@@ -360,7 +342,8 @@ extern "C" fn pre_dispatch(
 
     let task = op
       .and_then(move |buf| {
-        state.send_to_js(req_id, buf);
+        let sender = tx; // tx is moved to new thread
+        sender.send((req_id, buf)).expect("tx.send error");
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);
@@ -398,7 +381,10 @@ mod tests {
   fn test_dispatch_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let mut isolate = Isolate::new(empty(), flags, rest_argv, dispatch_sync);
+
+    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let snapshot = libdeno::deno_buf::empty();
+    let mut isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute(
@@ -438,17 +424,18 @@ mod tests {
   fn test_metrics_sync() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let mut isolate =
-      Isolate::new(empty(), flags, rest_argv, metrics_dispatch_sync);
+    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let snapshot = libdeno::deno_buf::empty();
+    let mut isolate = Isolate::new(snapshot, state, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
-        let metrics = isolate.state.metrics.lock().unwrap();
-        assert_eq!(metrics.ops_dispatched, 0);
-        assert_eq!(metrics.ops_completed, 0);
-        assert_eq!(metrics.bytes_sent_control, 0);
-        assert_eq!(metrics.bytes_sent_data, 0);
-        assert_eq!(metrics.bytes_received, 0);
+        let metrics = &isolate.state.metrics;
+        assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.ops_completed.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_received.load(Ordering::SeqCst), 0);
       }
 
       isolate
@@ -461,12 +448,12 @@ mod tests {
         "#,
         ).expect("execute error");
       isolate.event_loop();
-      let metrics = isolate.state.metrics.lock().unwrap();
-      assert_eq!(metrics.ops_dispatched, 1);
-      assert_eq!(metrics.ops_completed, 1);
-      assert_eq!(metrics.bytes_sent_control, 3);
-      assert_eq!(metrics.bytes_sent_data, 5);
-      assert_eq!(metrics.bytes_received, 4);
+      let metrics = &isolate.state.metrics;
+      assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 1);
+      assert_eq!(metrics.ops_completed.load(Ordering::SeqCst), 1);
+      assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 3);
+      assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 5);
+      assert_eq!(metrics.bytes_received.load(Ordering::SeqCst), 4);
     });
   }
 
@@ -474,17 +461,18 @@ mod tests {
   fn test_metrics_async() {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let mut isolate =
-      Isolate::new(empty(), flags, rest_argv, metrics_dispatch_async);
+    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let snapshot = libdeno::deno_buf::empty();
+    let mut isolate = Isolate::new(snapshot, state, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
-        let metrics = isolate.state.metrics.lock().unwrap();
-        assert_eq!(metrics.ops_dispatched, 0);
-        assert_eq!(metrics.ops_completed, 0);
-        assert_eq!(metrics.bytes_sent_control, 0);
-        assert_eq!(metrics.bytes_sent_data, 0);
-        assert_eq!(metrics.bytes_received, 0);
+        let metrics = &isolate.state.metrics;
+        assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.ops_completed.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 0);
+        assert_eq!(metrics.bytes_received.load(Ordering::SeqCst), 0);
       }
 
       isolate
@@ -500,10 +488,10 @@ mod tests {
 
       // Make sure relevant metrics are updated before task is executed.
       {
-        let metrics = isolate.state.metrics.lock().unwrap();
-        assert_eq!(metrics.ops_dispatched, 1);
-        assert_eq!(metrics.bytes_sent_control, 3);
-        assert_eq!(metrics.bytes_sent_data, 5);
+        let metrics = &isolate.state.metrics;
+        assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 1);
+        assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 3);
+        assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 5);
         // Note we cannot check ops_completed nor bytes_received because that
         // would be a race condition. It might be nice to have use a oneshot
         // with metrics_dispatch_async() to properly validate them.
@@ -513,12 +501,12 @@ mod tests {
 
       // Make sure relevant metrics are updated after task is executed.
       {
-        let metrics = isolate.state.metrics.lock().unwrap();
-        assert_eq!(metrics.ops_dispatched, 1);
-        assert_eq!(metrics.ops_completed, 1);
-        assert_eq!(metrics.bytes_sent_control, 3);
-        assert_eq!(metrics.bytes_sent_data, 5);
-        assert_eq!(metrics.bytes_received, 4);
+        let metrics = &isolate.state.metrics;
+        assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 1);
+        assert_eq!(metrics.ops_completed.load(Ordering::SeqCst), 1);
+        assert_eq!(metrics.bytes_sent_control.load(Ordering::SeqCst), 3);
+        assert_eq!(metrics.bytes_sent_data.load(Ordering::SeqCst), 5);
+        assert_eq!(metrics.bytes_received.load(Ordering::SeqCst), 4);
       }
     });
   }

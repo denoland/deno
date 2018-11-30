@@ -49,6 +49,7 @@ pub mod version;
 mod eager_unix;
 
 use std::env;
+use std::sync::Arc;
 
 static LOGGER: Logger = Logger;
 
@@ -95,12 +96,9 @@ fn main() {
     log::LevelFilter::Info
   });
 
-  let mut isolate = isolate::Isolate::new(
-    unsafe { snapshot::deno_snapshot.clone() },
-    flags,
-    rest_argv,
-    ops::dispatch,
-  );
+  let state = Arc::new(isolate::IsolateState::new(flags, rest_argv));
+  let snapshot = unsafe { snapshot::deno_snapshot.clone() };
+  let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
   tokio_util::init(|| {
     isolate
       .execute("deno_main.js", "denoMain();")
