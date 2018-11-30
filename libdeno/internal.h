@@ -98,8 +98,7 @@ static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
 
 Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);
 
-void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                       const char* js_filename, const char* js_source);
+void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context);
 
 void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception);

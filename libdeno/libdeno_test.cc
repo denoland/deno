@@ -15,14 +15,13 @@ TEST(LibDenoTest, InitializesCorrectlyWithoutSnapshot) {
 }
 
 TEST(LibDenoTest, SnapshotterInitializesCorrectly) {
-  Deno* d =
-      deno_new_snapshotter(deno_config{empty, nullptr}, "a.js", "a = 1 + 2");
+  Deno* d = deno_new_snapshotter(deno_config{empty, nullptr});
   deno_delete(d);
 }
 
 TEST(LibDenoTest, Snapshotter) {
-  Deno* d1 =
-      deno_new_snapshotter(deno_config{empty, nullptr}, "a.js", "a = 1 + 2");
+  Deno* d1 = deno_new_snapshotter(deno_config{empty, nullptr});
+  EXPECT_TRUE(deno_execute(d1, nullptr, "a.js", "a = 1 + 2"));
   deno_buf test_snapshot = deno_get_snapshot(d1);
   deno_delete(d1);
 

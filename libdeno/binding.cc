@@ -154,13 +154,8 @@ void HandleException(v8::Local<v8::Context> context,
   v8::Isolate* isolate = context->GetIsolate();
   DenoIsolate* d = FromIsolate(isolate);
   std::string json_str = EncodeExceptionAsJSON(context, exception);
-  if (d != nullptr) {
-    d->last_exception_ = json_str;
-  } else {
-    // This shouldn't happen in normal circumstances. Added for debugging.
-    std::cerr << "Pre-Deno Exception " << json_str << std::endl;
-    CHECK(false);
-  }
+  CHECK(d != nullptr);
+  d->last_exception_ = json_str;
 }
 
 void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
@@ -396,10 +391,7 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   return ExecuteV8StringSource(context, js_filename, source);
 }
 
-void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                       const char* js_filename, const char* js_source) {
-  CHECK_NE(js_source, nullptr);
-  CHECK_NE(js_filename, nullptr);
+void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
@@ -422,13 +414,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
 
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
-
-  {
-    auto source = deno::v8_str(js_source);
-
-    bool r = deno::ExecuteV8StringSource(context, js_filename, source);
-    CHECK(r);
-  }
 }
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {

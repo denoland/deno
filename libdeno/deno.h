@@ -36,8 +36,7 @@ typedef struct {
 
 Deno* deno_new(deno_buf snapshot, deno_config config);
 
-Deno* deno_new_snapshotter(deno_config config, const char* js_filename,
-                           const char* js_source);
+Deno* deno_new_snapshotter(deno_config config);
 
 // Generate a snapshot. The resulting buf can be used with deno_new.
 // The caller must free the returned data by calling delete[] buf.data_ptr.
