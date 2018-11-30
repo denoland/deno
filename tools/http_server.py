@@ -62,7 +62,7 @@ def redirect_server():
     Handler = RedirectHandler
     SocketServer.TCPServer.allow_reuse_address = True
     s = SocketServer.TCPServer(("", REDIRECT_PORT), Handler)
-    print "Deno redirect server http://localhost:%d/ -> http://localhost:%d/" % (
+    print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
         REDIRECT_PORT, PORT)
     return s
 
@@ -82,7 +82,7 @@ def spawn():
     return thread
 
 
-if __name__ == '__main__':
+def main():
     try:
         thread = spawn()
         while thread.is_alive():
@@ -90,3 +90,7 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
     sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

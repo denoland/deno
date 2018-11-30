@@ -29,7 +29,9 @@ def run_unit_test2(cmd):
         sys.exit(errcode)
 
 
-def run_unit_test(deno_exe, permStr, flags=[]):
+def run_unit_test(deno_exe, permStr, flags=None):
+    if flags is None:
+        flags = []
     cmd = [deno_exe, "--reload", "js/unit_tests.ts", permStr] + flags
     run_unit_test2(cmd)
 

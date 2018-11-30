@@ -138,6 +138,10 @@ def permission_prompt_test(deno_exe):
     p.test_net_no()
 
 
-if __name__ == "__main__":
+def main():
     deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
     permission_prompt_test(deno_exe)
+
+
+if __name__ == "__main__":
+    main()

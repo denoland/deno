@@ -14,7 +14,7 @@ from third_party import tp
 
 
 def print_usage():
-    print "Usage: ./tools/gcloud_upload.py target/release/obj/third_party/v8/libv8.a"
+    print "Usage: ./tools/gcloud_upload.py target/release/libv8.a"
     sys.exit(1)
 
 
