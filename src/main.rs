@@ -97,8 +97,8 @@ fn main() {
   });
 
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv));
-
-  let mut isolate = isolate::Isolate::new(state, ops::dispatch);
+  let snapshot = unsafe { snapshot::deno_snapshot.clone() };
+  let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
   tokio_util::init(|| {
     isolate
       .execute("deno_main.js", "denoMain();")

@@ -140,12 +140,15 @@ fn empty() -> libdeno::deno_buf {
 }
 
 impl Isolate {
-  pub fn new(state: Arc<IsolateState>, dispatch: Dispatch) -> Self {
+  pub fn new(
+    snapshot: libdeno::deno_buf,
+    state: Arc<IsolateState>,
+    dispatch: Dispatch,
+  ) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
     let shared = empty(); // TODO Use shared for message passing.
-    let snapshot = unsafe { super::snapshot::deno_snapshot.clone() };
     let libdeno_isolate =
       unsafe { libdeno::deno_new(snapshot, shared, pre_dispatch) };
     // This channel handles sending async messages back to the runtime.
@@ -389,7 +392,8 @@ mod tests {
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
     let state = Arc::new(IsolateState::new(flags, rest_argv));
-    let mut isolate = Isolate::new(state, dispatch_sync);
+    let snapshot = unsafe { crate::snapshot::deno_snapshot.clone() };
+    let mut isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute(
@@ -430,7 +434,8 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let state = Arc::new(IsolateState::new(flags, rest_argv));
-    let mut isolate = Isolate::new(state, metrics_dispatch_sync);
+    let snapshot = unsafe { crate::snapshot::deno_snapshot.clone() };
+    let mut isolate = Isolate::new(snapshot, state, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -466,7 +471,8 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let state = Arc::new(IsolateState::new(flags, rest_argv));
-    let mut isolate = Isolate::new(state, metrics_dispatch_async);
+    let snapshot = unsafe { crate::snapshot::deno_snapshot.clone() };
+    let mut isolate = Isolate::new(snapshot, state, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
