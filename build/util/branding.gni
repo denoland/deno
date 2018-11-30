@@ -1,0 +1,46 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This exposes the Chrome branding as GN variables for use in build files.
+#
+# PREFER NOT TO USE THESE. The GYP build uses this kind of thing extensively.
+# However, it is far better to write an action to generate a file at
+# build-time with the information you need. This allows better dependency
+# checking and GN will run faster.
+#
+# These values should only be used if you REALLY need to depend on them at
+# build-time, for example, in the computation of output file names.
+
+import("//build/config/chrome_build.gni")
+
+_branding_dictionary_template =
+    "full_name = \"@PRODUCT_FULLNAME@\" " +
+    "short_name = \"@PRODUCT_SHORTNAME@\" " +
+    "bundle_id = \"@MAC_BUNDLE_ID@\" " +
+    "creator_code = \"@MAC_CREATOR_CODE@\" " +
+    "installer_full_name = \"@PRODUCT_INSTALLER_FULLNAME@\" " +
+    "installer_short_name = \"@PRODUCT_INSTALLER_SHORTNAME@\" " +
+    "team_id = \"@MAC_TEAM_ID@\" "
+
+_branding_file = "//chrome/app/theme/$branding_path_component/BRANDING"
+_result = exec_script("version.py",
+                      [
+                        "-f",
+                        rebase_path(_branding_file, root_build_dir),
+                        "-t",
+                        _branding_dictionary_template,
+                      ],
+                      "scope",
+                      [ _branding_file ])
+
+chrome_product_full_name = _result.full_name
+chrome_product_short_name = _result.short_name
+chrome_product_installer_full_name = _result.installer_full_name
+chrome_product_installer_short_name = _result.installer_short_name
+
+if (is_mac) {
+  chrome_mac_bundle_id = _result.bundle_id
+  chrome_mac_creator_code = _result.creator_code
+  chrome_mac_team_id = _result.team_id
+}

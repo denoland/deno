@@ -1,0 +1,89 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_win, "This only runs on Windows.")
+
+# Runs mc.exe over a list of sources. The outputs (a header and rc file) are
+# placed in the target gen dir, and compiled.
+#
+# sources
+#   List of message files to process.
+#
+# user_mode_logging (optional bool)
+#   Generates user-mode logging code. Defaults to false (no logging code).
+#
+# compile_generated_code (optional, deafults = true)
+#   If unset or true, the generated code will be compiled and linked into
+#   targets that depend on it. If set to false, the .h and .rc files will only
+#   be generated.
+#
+# deps, public_deps, visibility
+#   Normal meaning.
+template("message_compiler") {
+  if (defined(invoker.compile_generated_code) &&
+      !invoker.compile_generated_code) {
+    compile_generated_code = false
+    action_name = target_name
+  } else {
+    compile_generated_code = true
+    action_name = "${target_name}_mc"
+    source_set_name = target_name
+  }
+
+  action_foreach(action_name) {
+    if (compile_generated_code) {
+      visibility = [ ":$source_set_name" ]
+    } else {
+      forward_variables_from(invoker, [ "visibility" ])
+    }
+
+    script = "//build/win/message_compiler.py"
+
+    outputs = [
+      "$target_gen_dir/{{source_name_part}}.h",
+      "$target_gen_dir/{{source_name_part}}.rc",
+    ]
+
+    args = [
+      # The first argument is the environment file saved to the build
+      # directory. This is required because the Windows toolchain setup saves
+      # the VC paths and such so that running "mc.exe" will work with the
+      # configured toolchain. This file is in the root build dir.
+      "environment.$current_cpu",
+
+      # Where to put the header.
+      "-h",
+      rebase_path(target_gen_dir, root_build_dir),
+
+      # Where to put the .rc file.
+      "-r",
+      rebase_path(target_gen_dir, root_build_dir),
+
+      # Input is Unicode.
+      "-u",
+    ]
+    if (defined(invoker.user_mode_logging) && invoker.user_mode_logging) {
+      args += [ "-um" ]
+    }
+    args += [ "{{source}}" ]
+
+    forward_variables_from(invoker,
+                           [
+                             "deps",
+                             "public_deps",
+                             "sources",
+                           ])
+  }
+
+  if (compile_generated_code) {
+    # Compile the generated rc file.
+    source_set(source_set_name) {
+      forward_variables_from(invoker, [ "visibility" ])
+      sources = get_target_outputs(":$action_name")
+      deps = [
+        ":$action_name",
+      ]
+    }
+  }
+}

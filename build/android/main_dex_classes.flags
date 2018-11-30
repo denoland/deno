@@ -1,0 +1,65 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Proguard flags for what should be kept in the main dex. Only used
+# during main dex list determination, not during actual proguarding.
+
+-keep @org.chromium.base.annotations.MainDex class * {
+  *;
+}
+
+-keepclasseswithmembers class * {
+  @org.chromium.base.annotations.MainDex <methods>;
+}
+
+# Assume all IDL-generated classes should be kept. They can't reference other
+# non-framework classes, so fairly low-risk.
+-keepclasseswithmembers class * {
+  public static ** asInterface(android.os.IBinder);
+}
+
+# Required when code coverage is enabled.
+-keep class com.vladium.** {
+  *;
+}
+
+# Renderers / GPU process don't load secondary dex.
+-keep public class * extends org.chromium.base.process_launcher.ChildProcessService {
+  *;
+}
+
+# WebView doesn't load secondary dex.
+-keep public class com.android.webview.** {
+  *;
+}
+
+-keep public class org.chromium.android_webview.** {
+  *;
+}
+
+# Used by tests for secondary dex extraction.
+-keep class android.support.v4.content.ContextCompat {
+  *;
+}
+
+# Need test classes to be in the main dex because test listing does not
+# load secondary dex on Dalvik devices.
+-keep @**.RunWith class * {}
+
+# The following are based on $SDK_BUILD_TOOLS/mainDexClasses.rules
+# Ours differ in that:
+# 1. It omits -keeps for application / instrumentation / backupagents (these are
+#    redundant since they are added by aapt's main dex list rules output).
+# 2. Omits keep for Application.attachBaseContext(), which is overly broad.
+# 3. Omits keep for all annotations, which is also overly broad (and pulls in
+#    any class that has an @IntDef).
+
+######## START mainDexClasses.rules ########
+
+# Keep old fashion tests in the main dex or they'll be silently ignored by InstrumentationTestRunner
+-keep public class * extends android.test.InstrumentationTestCase {
+  <init>();
+}
+
+######## END mainDexClasses.rules ########

@@ -1,0 +1,60 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# =============================================
+#   PLEASE DO NOT ADD MORE FLAGS TO THIS FILE
+# =============================================
+#
+# These flags are effectively global. Your feature flag should go near the
+# code it controls. Most of these items are here now because they control
+# legacy global #defines passed to the compiler (now replaced with generated
+# buildflag headers -- see //build/buildflag_header.gni).
+#
+# There is more advice on where to put build flags in the "Build flag" section
+# of //build/config/BUILDCONFIG.gn.
+
+import("//build/config/chrome_build.gni")
+import("//build/config/chromecast_build.gni")
+if (is_android) {
+  import("//build/config/android/config.gni")
+}
+
+declare_args() {
+  # Enables proprietary codecs and demuxers; e.g. H264, AAC, MP3, and MP4.
+  # We always build Google Chrome and Chromecast with proprietary codecs.
+  #
+  # Note: this flag is used by WebRTC which is DEPSed into Chrome. Moving it
+  # out of //build will require using the build_overrides directory.
+  proprietary_codecs = is_chrome_branded || is_chromecast
+
+  # Variable safe_browsing is used to control the build time configuration for
+  # safe browsing feature. Safe browsing can be compiled in 3 different levels:
+  # 0 disables it, 1 enables it fully, and 2 enables mobile protection via an
+  # external API.
+  if (is_ios || is_chromecast) {
+    safe_browsing_mode = 0
+  } else if (is_android) {
+    safe_browsing_mode = 2
+  } else {
+    safe_browsing_mode = 1
+  }
+
+  # Set to true make a build that disables activation of field trial tests
+  # specified in testing/variations/fieldtrial_testing_config_*.json.
+  # Note: this setting is ignored if is_chrome_branded.
+  fieldtrial_testing_like_official_build = is_chrome_branded
+
+  # libudev usage. This currently only affects the content layer.
+  use_udev = is_linux && !is_chromecast
+
+  use_dbus = is_linux && !is_chromecast
+
+  use_gio = is_linux && !is_chromeos && !is_chromecast
+}
+#
+# =============================================
+#   PLEASE DO NOT ADD MORE FLAGS TO THIS FILE
+# =============================================
+#
+# See comment at the top.

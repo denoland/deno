@@ -1,0 +1,103 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+jarrunner = "//build/util/java_action.py"
+
+# Declare a target that runs a java command a single time.
+#
+# This target type allows you to run a java command a single time to produce
+# one or more output files. If you want to run a java command for each of a
+# set of input files, see "java_action_foreach".
+#
+# See "gn help action" for more information on how to use this target. This
+# template is based on the "action" and supports the same variables.
+template("java_action") {
+  assert(defined(invoker.script),
+         "Need script in $target_name listing the .jar file to run.")
+  assert(defined(invoker.outputs),
+         "Need outputs in $target_name listing the generated outputs.")
+
+  jarscript = invoker.script
+  action(target_name) {
+    script = jarrunner
+
+    inputs = [
+      jarscript,
+    ]
+    if (defined(invoker.inputs)) {
+      inputs += invoker.inputs
+    }
+
+    args = [
+      "-jar",
+      rebase_path(jarscript, root_build_dir),
+    ]
+    if (defined(invoker.args)) {
+      args += invoker.args
+    }
+
+    forward_variables_from(invoker,
+                           [
+                             "console",
+                             "data",
+                             "data_deps",
+                             "depfile",
+                             "deps",
+                             "outputs",
+                             "sources",
+                             "testonly",
+                             "visibility",
+                           ])
+  }
+}
+
+# Declare a target that runs a java command over a set of files.
+#
+# This target type allows you to run a java command once-per-file over a set of
+# sources. If you want to run a java command once that takes many files as
+# input, see "java_action".
+#
+# See "gn help action_foreach" for more information on how to use this target.
+# This template is based on the "action_foreach" supports the same variables.
+template("java_action_foreach") {
+  assert(defined(invoker.script),
+         "Need script in $target_name listing the .jar file to run.")
+  assert(defined(invoker.outputs),
+         "Need outputs in $target_name listing the generated outputs.")
+  assert(defined(invoker.sources),
+         "Need sources in $target_name listing the target inputs.")
+
+  jarscript = invoker.script
+  action_foreach(target_name) {
+    script = jarrunner
+
+    inputs = [
+      jarscript,
+    ]
+    if (defined(invoker.inputs)) {
+      inputs += invoker.inputs
+    }
+
+    args = [
+      "-jar",
+      rebase_path(jarscript, root_build_dir),
+    ]
+    if (defined(invoker.args)) {
+      args += invoker.args
+    }
+
+    forward_variables_from(invoker,
+                           [
+                             "console",
+                             "data",
+                             "data_deps",
+                             "depfile",
+                             "deps",
+                             "outputs",
+                             "sources",
+                             "testonly",
+                             "visibility",
+                           ])
+  }
+}

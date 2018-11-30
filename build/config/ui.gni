@@ -1,0 +1,60 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# =============================================
+#   PLEASE DO NOT ADD MORE FLAGS TO THIS FILE
+# =============================================
+#
+# These flags are effectively global. Your feature flag should go near the
+# code it controls. Most of these items are here now because they control
+# legacy global #defines passed to the compiler (now replaced with generated
+# buildflag headers -- see //build/buildflag_header.gni).
+#
+# These flags are ui-related so should eventually be moved to various places
+# in //ui/*.
+#
+# There is more advice on where to put build flags in the "Build flag" section
+# of //build/config/BUILDCONFIG.gn.
+
+import("//build/config/chromecast_build.gni")
+
+declare_args() {
+  # Indicates if Ozone is enabled. Ozone is a low-level library layer for Linux
+  # that does not require X11. Enabling this feature disables use of glib, x11,
+  # Pango, and Cairo.
+  use_ozone = is_chromeos || (is_chromecast && !is_android) || is_fuchsia
+
+  # Indicates if Aura is enabled. Aura is a low-level windowing library, sort
+  # of a replacement for GDI or GTK.
+  use_aura = is_win || is_linux || is_fuchsia
+
+  # Whether we should use glib, a low level C utility library.
+  use_glib = is_linux
+}
+
+declare_args() {
+  # True means the UI is built using the "views" framework.
+  toolkit_views = (is_mac || is_win || is_chromeos || use_aura) &&
+                  !is_chromecast && !is_fuchsia
+}
+
+# Additional dependent variables -----------------------------------------------
+#
+# These variables depend on other variables and can't be set externally.
+
+# Indicates if the UI toolkit depends on X11.
+use_x11 = is_linux && !use_ozone
+
+# Turn off glib if Ozone is enabled.
+if (use_ozone) {
+  use_glib = false
+}
+
+# Whether to use atk, the Accessibility ToolKit library
+use_atk = is_desktop_linux && use_x11
+# =============================================
+#   PLEASE DO NOT ADD MORE FLAGS TO THIS FILE
+# =============================================
+#
+# See comment at the top.

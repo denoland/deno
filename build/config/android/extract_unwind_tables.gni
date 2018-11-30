@@ -1,0 +1,50 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+
+template("unwind_table_asset") {
+  # Note: This file name is used in multiple monochrome build scripts.
+  _asset_path = "${target_gen_dir}/${target_name}/unwind_cfi_32"
+  _unwind_action = "${target_name}__extract"
+
+  action(_unwind_action) {
+    if (defined(invoker.testonly)) {
+      testonly = invoker.testonly
+    }
+
+    script = "//build/android/gyp/extract_unwind_tables.py"
+    outputs = [
+      _asset_path,
+    ]
+    inputs = [
+      "$root_out_dir/lib.unstripped/$shlib_prefix${invoker.library_target}$shlib_extension",
+    ]
+
+    args = [
+      "--input_path",
+      rebase_path(
+          "$root_out_dir/lib.unstripped/$shlib_prefix${invoker.library_target}$shlib_extension",
+          root_build_dir),
+      "--output_path",
+      rebase_path(_asset_path, root_build_dir),
+      "--dump_syms_path",
+      rebase_path("$root_out_dir/dump_syms", root_build_dir),
+    ]
+    deps = invoker.deps
+    deps += [ "//third_party/breakpad:dump_syms" ]
+  }
+  android_assets(target_name) {
+    if (defined(invoker.testonly)) {
+      testonly = invoker.testonly
+    }
+    sources = [
+      _asset_path,
+    ]
+    disable_compression = true
+    deps = [
+      ":$_unwind_action",
+    ]
+  }
+}

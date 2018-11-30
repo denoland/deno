@@ -1,0 +1,13 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/toolchain/toolchain.gni")
+
+declare_args() {
+  # Enable Clang's Source-based Code Coverage.
+  use_clang_coverage = false
+}
+
+assert(!use_clang_coverage || is_clang,
+       "Clang Source-based Code Coverage requires clang.")

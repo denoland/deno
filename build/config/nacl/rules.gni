@@ -1,0 +1,188 @@
+# Copyright 2015 The Native Client Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/nacl/config.gni")
+
+# Generate a nmf file
+#
+# Native Client Manifest (nmf) is a JSON file that tells the browser where to
+# download and load Native Client application files and libraries.
+#
+# Variables:
+#   executables: .nexe/.pexe/.bc executables to generate nmf for
+#   lib_prefix: path to prepend to shared libraries in the nmf
+#   nmf: the name and the path of the output file
+#   nmfflags: additional flags for the nmf generator
+#   stage_dependencies: directory for staging libraries
+template("generate_nmf") {
+  assert(defined(invoker.executables), "Must define executables")
+  assert(defined(invoker.nmf), "Must define nmf")
+
+  action(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "deps",
+                             "data_deps",
+                             "executables",
+                             "lib_prefix",
+                             "nmf",
+                             "nmfflags",
+                             "public_deps",
+                             "stage_dependencies",
+                             "testonly",
+                             "visibility",
+                           ])
+    if (!defined(nmfflags)) {
+      nmfflags = []
+    }
+
+    # TODO(phosek): Remove this conditional once
+    # https://bugs.chromium.org/p/nativeclient/issues/detail?id=4339 is
+    # resolved.
+    if (current_cpu == "pnacl") {
+      objdump = rebase_path("${nacl_toolchain_bindir}/x86_64-nacl-objdump")
+    } else {
+      objdump = rebase_path("${nacl_toolprefix}objdump")
+    }
+    if (host_os == "win") {
+      objdump += ".exe"
+    }
+
+    script = "//native_client_sdk/src/tools/create_nmf.py"
+    inputs = [
+      objdump,
+    ]
+    sources = executables
+    outputs = [
+      nmf,
+    ]
+    if (is_nacl_glibc) {
+      if (defined(stage_dependencies)) {
+        nmfflags += [ "--stage-dependencies=" +
+                      rebase_path(stage_dependencies, root_build_dir) ]
+        lib_path = stage_dependencies
+      } else {
+        lib_path = root_build_dir
+      }
+      if (defined(lib_prefix)) {
+        nmfflags += [ "--lib-prefix=" + lib_prefix ]
+        lib_path += "/${lib_prefix}"
+      }
+
+      # Starts empty so the code below can use += everywhere.
+      data = []
+
+      nmfflags +=
+          [ "--library-path=" + rebase_path(root_out_dir, root_build_dir) ]
+
+      # NOTE: There is no explicit dependency for the lib directory
+      # (lib32 and lib64 for x86/x64) created in the product directory.
+      # They are created as a side-effect of nmf creation.
+      if (current_cpu != "x86" && current_cpu != "x64") {
+        nmfflags +=
+            [ "--library-path=" +
+              rebase_path("${nacl_toolchain_tooldir}/lib", root_build_dir) ]
+        if (current_cpu == "arm") {
+          data += [ "${lib_path}/libarm/" ]
+        } else {
+          data += [ "${lib_path}/lib/" ]
+        }
+      } else {
+        # For x86-32, the lib/ directory is called lib32/ instead.
+        if (current_cpu == "x86") {
+          nmfflags +=
+              [ "--library-path=" +
+                rebase_path("${nacl_toolchain_tooldir}/lib32", root_build_dir) ]
+          data += [ "${lib_path}/lib32/" ]
+        }
+
+        # x86-32 Windows needs to build both x86-32 and x86-64 NaCl
+        # binaries into the same nmf covering both architectures.  That
+        # gets handled at a higher level (see the nacl_test_data template),
+        # so a single generate_nmf invocation gets both x86-32 and x86-64
+        # nexes listed in executables.
+        if (current_cpu == "x64" || target_os == "win") {
+          # For x86-64, the lib/ directory is called lib64/ instead
+          # when copied by create_nmf.py.
+          glibc_tc = "//build/toolchain/nacl:glibc"
+          assert(current_toolchain == "${glibc_tc}_${current_cpu}")
+          if (current_cpu == "x64") {
+            x64_out_dir = root_out_dir
+          } else {
+            x64_out_dir = get_label_info(":${target_name}(${glibc_tc}_x64)",
+                                         "root_out_dir")
+          }
+          nmfflags += [
+            "--library-path=" + rebase_path(x64_out_dir, root_build_dir),
+            "--library-path=" +
+                rebase_path("${nacl_toolchain_tooldir}/lib", root_build_dir),
+          ]
+          data += [ "${lib_path}/lib64/" ]
+        }
+      }
+    }
+    args = [
+             "--no-default-libpath",
+             "--objdump=" + rebase_path(objdump, root_build_dir),
+             "--output=" + rebase_path(nmf, root_build_dir),
+           ] + nmfflags + rebase_path(sources, root_build_dir)
+    if (is_nacl_glibc && current_cpu == "arm") {
+      deps += [ "//native_client/src/untrusted/elf_loader:elf_loader" ]
+    }
+  }
+}
+
+# Generate a nmf file for Non-SFI tests
+#
+# Non-SFI tests use a different manifest format from regular Native Client and
+# as such requires a different generator.
+#
+# Variables:
+#   executable: Non-SFI .nexe executable to generate nmf for
+#   nmf: the name and the path of the output file
+#   nmfflags: additional flags for the nmf generator
+template("generate_nonsfi_test_nmf") {
+  assert(defined(invoker.executable), "Must define executable")
+  assert(defined(invoker.nmf), "Must define nmf")
+
+  action(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "deps",
+                             "data_deps",
+                             "executable",
+                             "nmf",
+                             "testonly",
+                             "public_deps",
+                             "visibility",
+                           ])
+
+    script = "//ppapi/tests/create_nonsfi_test_nmf.py"
+    sources = [
+      executable,
+    ]
+    outputs = [
+      nmf,
+    ]
+
+    # NOTE: We use target_cpu rather than current_cpu on purpose because
+    # current_cpu is always going to be pnacl for Non-SFI, but the Non-SFI
+    # .nexe executable is always translated to run on the target machine.
+    if (target_cpu == "x86") {
+      arch = "x86-32"
+    } else if (target_cpu == "x64") {
+      arch = "x86-64"
+    } else {
+      arch = target_cpu
+    }
+    args = [
+      "--program=" + rebase_path(executable, root_build_dir),
+      "--arch=${arch}",
+      "--output=" + rebase_path(nmf, root_build_dir),
+    ]
+    if (defined(invoker.nmfflags)) {
+      args += invoker.nmfflags
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+global:
+  __bss_start;
+  __data_start;
+  data_start;
+  _edata;
+  _end;
+  _IO_stdin_used;
+
+  # Initialization and finalization functions for static global
+  # variables.
+  _fini;
+  _init;
+  __libc_csu_fini;
+  __libc_csu_init;
+
+  # Chrome's main function.  Exported for historical purposes.
+  ChromeMain;
+
+  # Program entry point.
+  _start;
+
+  # Memory allocation symbols.  We want chrome and any libraries to
+  # share the same heap, so it is correct to export these symbols.
+  calloc;
+  cfree;
+  free;
+  __free_hook;
+  __libc_calloc;
+  __libc_cfree;
+  __libc_free;
+  __libc_malloc;
+  __libc_memalign;
+  __libc_pvalloc;
+  __libc_realloc;
+  __libc_valloc;
+  mallinfo;
+  malloc;
+  __malloc_hook;
+  malloc_size;
+  malloc_stats;
+  malloc_usable_size;
+  mallopt;
+  memalign;
+  __memalign_hook;
+  __posix_memalign;
+  posix_memalign;
+  pvalloc;
+  realloc;
+  __realloc_hook;
+  valloc;
+
+  # Various flavors of operator new and operator delete.
+  _ZdaPv;
+  _ZdaPvm;
+  _ZdaPvmSt11align_val_t;
+  _ZdaPvRKSt9nothrow_t;
+  _ZdaPvSt11align_val_t;
+  _ZdaPvSt11align_val_tRKSt9nothrow_t;
+  _ZdlPv;
+  _ZdlPvm;
+  _ZdlPvmSt11align_val_t;
+  _ZdlPvRKSt9nothrow_t;
+  _ZdlPvSt11align_val_t;
+  _ZdlPvSt11align_val_tRKSt9nothrow_t;
+  _Znam;
+  _ZnamRKSt9nothrow_t;
+  _ZnamSt11align_val_t;
+  _ZnamSt11align_val_tRKSt9nothrow_t;
+  _Znwm;
+  _ZnwmRKSt9nothrow_t;
+  _ZnwmSt11align_val_t;
+  _ZnwmSt11align_val_tRKSt9nothrow_t;
+
+  # Various flavors of localtime().  These are exported by the chrome
+  # sandbox to intercept calls to localtime(), which would otherwise
+  # fail in untrusted processes that don't have permission to read
+  # /etc/localtime.  These overrides forward the request to the browser
+  # process, which uses dlsym(localtime) to make the real calls.
+  localtime;
+  localtime64;
+  localtime64_r;
+  localtime_r;
+
+local:
+  *;
+};

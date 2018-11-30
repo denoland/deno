@@ -1,0 +1,45 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/linux/pkg_config.gni")
+import("//build/shim_headers.gni")
+
+pkg_config("opus_config") {
+  packages = [ "opus" ]
+}
+
+shim_headers("opus_shim") {
+  root_path = "src/include"
+  headers = [
+    "opus.h",
+    "opus_defines.h",
+    "opus_multistream.h",
+    "opus_types.h",
+  ]
+}
+
+source_set("opus") {
+  deps = [
+    ":opus_shim",
+  ]
+  public_configs = [ ":opus_config" ]
+}
+
+source_set("opus_compare") {
+}
+
+source_set("opus_demo") {
+}
+
+source_set("test_opus_api") {
+}
+
+source_set("test_opus_decode") {
+}
+
+source_set("test_opus_encode") {
+}
+
+source_set("test_opus_padding") {
+}

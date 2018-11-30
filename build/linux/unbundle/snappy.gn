@@ -1,0 +1,22 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/shim_headers.gni")
+
+shim_headers("snappy_shim") {
+  root_path = "src"
+  headers = [
+    "snappy-c.h",
+    "snappy-sinksource.h",
+    "snappy-stubs-public.h",
+    "snappy.h",
+  ]
+}
+
+source_set("snappy") {
+  deps = [
+    ":snappy_shim",
+  ]
+  libs = [ "snappy" ]
+}

@@ -1,0 +1,135 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//buildtools/deps_revisions.gni")
+import("//build/config/c++/c++.gni")
+import("//build/config/clang/clang.gni")
+import("//build/config/compiler/compiler.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/config/sysroot.gni")
+import("//build/toolchain/toolchain.gni")
+
+# TODO(crbug.com/830987): Come up with a better name for is POSIX + Fuchsia
+# configuration.
+assert(is_posix || is_fuchsia)
+
+group("posix") {
+  visibility = [ "//:optimize_gn_gen" ]
+}
+
+# This is included by reference in the //build/config/compiler:runtime_library
+# config that is applied to all targets. It is here to separate out the logic
+# that is Posix-only. Please see that target for advice on what should go in
+# :runtime_library vs. :compiler.
+config("runtime_library") {
+  asmflags = []
+  cflags = []
+  cflags_c = []
+  cflags_cc = []
+  cflags_objc = []
+  cflags_objcc = []
+  defines = []
+  ldflags = []
+  lib_dirs = []
+  libs = []
+
+  if (use_custom_libcxx) {
+    if (!is_component_build) {
+      # Don't leak any symbols on a static build.
+      defines += [ "_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS" ]
+      if (!export_libcxxabi_from_executables) {
+        defines += [ "_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS" ]
+      }
+    }
+    if (!is_clang) {
+      # Gcc has a built-in abs() definition with default visibility.
+      # If it was not disabled, it would conflict with libc++'s abs()
+      # with hidden visibility.
+      cflags += [ "-fno-builtin-abs" ]
+    }
+    cflags_cc += [
+      "-nostdinc++",
+      "-isystem" + rebase_path("$libcxx_prefix/include", root_build_dir),
+      "-isystem" + rebase_path("$libcxxabi_prefix/include", root_build_dir),
+    ]
+    defines += [
+      "CR_LIBCXX_REVISION=$libcxx_svn_revision",
+      "CR_LIBCXXABI_REVISION=$libcxxabi_svn_revision",
+    ]
+
+    # Make sure we don't link against libc++ or libstdc++.
+    if (is_clang) {
+      # //build/config/android:runtime_library adds -nostdlib, which suppresses
+      # linking against all system libraries.  -nostdlib++ would be redundant,
+      # and would generate an unused warning in this case.
+      if (!is_android) {
+        ldflags += [ "-nostdlib++" ]
+      }
+    } else {
+      ldflags += [ "-nodefaultlibs" ]
+
+      # Unfortunately, there's no way to disable linking against just libc++
+      # (gcc doesn't have -notstdlib++:
+      # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=83931); -nodefaultlibs
+      # removes all of the default libraries, so add back the ones that we need.
+      libs += [
+        "c",
+        "gcc_s",
+        "m",
+        "rt",
+      ]
+    }
+  }
+
+  if (!is_mac && !is_ios && sysroot != "") {
+    # Pass the sysroot to all C compiler variants, the assembler, and linker.
+    sysroot_flags = [ "--sysroot=" + rebase_path(sysroot, root_build_dir) ]
+    if (is_linux) {
+      # This is here so that all files get recompiled after a sysroot roll and
+      # when turning the sysroot on or off. (defines are passed via the command
+      # line, and build system rebuilds things when their commandline
+      # changes). Nothing should ever read this define.
+      sysroot_hash =
+          exec_script("//build/linux/sysroot_scripts/install-sysroot.py",
+                      [ "--print-hash=$current_cpu" ],
+                      "trim string",
+                      [ "//build/linux/sysroot_scripts/sysroots.json" ])
+      defines += [ "CR_SYSROOT_HASH=$sysroot_hash" ]
+    }
+    asmflags += sysroot_flags
+
+    link_sysroot_flags =
+        [ "--sysroot=" + rebase_path(link_sysroot, root_build_dir) ]
+    ldflags += link_sysroot_flags
+
+    # When use_custom_libcxx=true, some -isystem flags get passed to
+    # cflags_cc to set up libc++ include paths.  We want to make sure
+    # the sysroot includes take lower precendence than the libc++
+    # ones, so they must appear later in the command line.  However,
+    # the gn reference states "These variant-specific versions of
+    # cflags* will be appended on the compiler command line after
+    # 'cflags'."  Because of this, we must set the sysroot flags for
+    # all cflags variants instead of using 'cflags' directly.
+    cflags_c += sysroot_flags
+    cflags_cc += sysroot_flags
+    cflags_objc += sysroot_flags
+    cflags_objcc += sysroot_flags
+
+    # Need to get some linker flags out of the sysroot.
+    ld_paths = exec_script("sysroot_ld_path.py",
+                           [
+                             rebase_path("//build/linux/sysroot_ld_path.sh",
+                                         root_build_dir),
+                             rebase_path(link_sysroot),
+                           ],
+                           "list lines")
+    foreach(ld_path, ld_paths) {
+      ld_path = rebase_path(ld_path, root_build_dir)
+      ldflags += [
+        "-L" + ld_path,
+        "-Wl,-rpath-link=" + ld_path,
+      ]
+    }
+  }
+}

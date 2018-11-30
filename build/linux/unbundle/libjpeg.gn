@@ -1,0 +1,12 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+declare_args() {
+  # Uses system libjpeg. If true, overrides use_libjpeg_turbo.
+  use_system_libjpeg = true
+
+  # Uses libjpeg_turbo as the jpeg implementation. Has no effect if
+  # use_system_libjpeg is set.
+  use_libjpeg_turbo = true
+}

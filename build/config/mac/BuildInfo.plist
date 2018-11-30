@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>BuildMachineOSBuild</key>
+  <string>${BUILD_MACHINE_OS_BUILD}</string>
+  <key>DTCompiler</key>
+  <string>${GCC_VERSION}</string>
+  <key>DTSDKBuild</key>
+  <string>${MAC_SDK_BUILD}</string>
+  <key>DTSDKName</key>
+  <string>${MAC_SDK_NAME}</string>
+  <key>DTXcode</key>
+  <string>${XCODE_VERSION}</string>
+  <key>DTXcodeBuild</key>
+  <string>${XCODE_BUILD}</string>
+</dict>
+</plist>

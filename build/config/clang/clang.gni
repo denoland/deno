@@ -1,0 +1,15 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/toolchain/toolchain.gni")
+
+default_clang_base_path = "//third_party/llvm-build/Release+Asserts"
+
+declare_args() {
+  # Indicates if the build should use the Chrome-specific plugins for enforcing
+  # coding guidelines, etc. Only used when compiling with Clang.
+  clang_use_chrome_plugins = is_clang && !is_nacl && !use_xcode_clang
+
+  clang_base_path = default_clang_base_path
+}

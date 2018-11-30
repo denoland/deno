@@ -1,0 +1,184 @@
+#!/bin/bash
+# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Saves the gdb index for a given binary and its shared library dependencies.
+#
+# This will run gdb index in parallel on a number of binaries using SIGUSR1
+# as the communication mechanism to simulate a semaphore. Because of the
+# nature of this technique, using "set -e" is very difficult. The SIGUSR1
+# terminates a "wait" with an error which we need to interpret.
+#
+# When modifying this code, most of the real logic is in the index_one_file
+# function. The rest is cleanup + sempahore plumbing.
+
+function usage_exit {
+  echo "Usage: $0 [-f] [-r] [-n] <paths-to-binaries>..."
+  echo "  -f forces replacement of an existing index."
+  echo "  -r removes the index section."
+  echo "  -n don't extract the dependencies of each binary with lld."
+  echo "       e.g., $0 -n out/Debug/lib.unstripped/lib*"
+  echo
+  echo "  Set TOOLCHAIN_PREFIX to use a non-default set of binutils."
+  exit 1
+}
+
+# Cleanup temp directory and ensure all child jobs are dead-dead.
+function on_exit {
+  trap "" EXIT USR1  # Avoid reentrancy.
+
+  local jobs=$(jobs -p)
+  if [ -n "$jobs" ]; then
+    echo -n "Killing outstanding index jobs..."
+    kill -KILL $(jobs -p)
+    wait
+    echo "done"
+  fi
+
+  if [ -d "$directory" ]; then
+    echo -n "Removing temp directory $directory..."
+    rm -rf "$directory"
+    echo done
+  fi
+}
+
+# Add index to one binary.
+function index_one_file {
+  local file=$1
+  local basename=$(basename "$file")
+  local should_index_this_file="${should_index}"
+
+  local readelf_out=$(${TOOLCHAIN_PREFIX}readelf -S "$file")
+  if [[ $readelf_out =~ "gdb_index" ]]; then
+    if $remove_index; then
+      ${TOOLCHAIN_PREFIX}objcopy --remove-section .gdb_index "$file"
+      echo "Removed index from $basename."
+    else
+      echo "Skipped $basename -- already contains index."
+      should_index_this_file=false
+    fi
+  fi
+
+  if $should_index_this_file; then
+    local start=$(date +"%s%N")
+    echo "Adding index to $basename..."
+
+    ${TOOLCHAIN_PREFIX}gdb -batch "$file" -ex "save gdb-index $directory" \
+      -ex "quit"
+    local index_file="$directory/$basename.gdb-index"
+    if [ -f "$index_file" ]; then
+      ${TOOLCHAIN_PREFIX}objcopy --add-section .gdb_index="$index_file" \
+        --set-section-flags .gdb_index=readonly "$file" "$file"
+      local finish=$(date +"%s%N")
+      local elapsed=$(((finish - start) / 1000000))
+      echo "   ...$basename indexed. [${elapsed}ms]"
+    else
+      echo "   ...$basename unindexable."
+    fi
+  fi
+}
+
+# Functions that when combined, concurrently index all files in FILES_TO_INDEX
+# array. The global FILES_TO_INDEX is declared in the main body of the script.
+function async_index {
+  # Start a background subshell to run the index command.
+  {
+    index_one_file $1
+    kill -SIGUSR1 $$  # $$ resolves to the parent script.
+    exit 129  # See comment above wait loop at bottom.
+  } &
+}
+
+cur_file_num=0
+function index_next {
+  if ((cur_file_num >= ${#files_to_index[@]})); then
+    return
+  fi
+
+  async_index "${files_to_index[cur_file_num]}"
+  ((cur_file_num += 1)) || true
+}
+
+########
+### Main body of the script.
+
+remove_index=false
+should_index=true
+should_index_deps=true
+files_to_index=()
+while (($# > 0)); do
+  case "$1" in
+    -h)
+      usage_exit
+      ;;
+    -f)
+      remove_index=true
+      ;;
+    -r)
+      remove_index=true
+      should_index=false
+      ;;
+    -n)
+      should_index_deps=false
+      ;;
+    -*)
+      echo "Invalid option: $1" >&2
+      usage_exit
+      ;;
+    *)
+      if [[ ! -f "$1" ]]; then
+        echo "Path $1 does not exist."
+        exit 1
+      fi
+      files_to_index+=("$1")
+      ;;
+  esac
+  shift
+done
+
+if ((${#files_to_index[@]} == 0)); then
+  usage_exit
+fi
+
+dependencies=()
+if $should_index_deps; then
+  for file in "${files_to_index[@]}"; do
+      # Append the shared library dependencies of this file that
+      # have the same dirname. The dirname is a signal that these
+      # shared libraries were part of the same build as the binary.
+      dependencies+=( \
+        $(ldd "$file" 2>/dev/null \
+          | grep $(dirname "$file") \
+          | sed "s/.*[ \t]\(.*\) (.*/\1/") \
+      )
+  done
+fi
+files_to_index+=("${dependencies[@]}")
+
+# Ensure we cleanup on on exit.
+trap on_exit EXIT INT
+
+# We're good to go! Create temp directory for index files.
+directory=$(mktemp -d)
+echo "Made temp directory $directory."
+
+# Start concurrent indexing.
+trap index_next USR1
+
+# 4 is an arbitrary default. When changing, remember we are likely IO bound
+# so basing this off the number of cores is not sensible.
+index_tasks=${INDEX_TASKS:-4}
+for ((i = 0; i < index_tasks; i++)); do
+  index_next
+done
+
+# Do a wait loop. Bash waits that terminate due a trap have an exit
+# code > 128. We also ensure that our subshell's "normal" exit occurs with
+# an exit code > 128. This allows us to do consider a > 128 exit code as
+# an indication that the loop should continue. Unfortunately, it also means
+# we cannot use set -e since technically the "wait" is failing.
+wait
+while (($? > 128)); do
+  wait
+done

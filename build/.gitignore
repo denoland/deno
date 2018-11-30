@@ -1,0 +1,25 @@
+# This file is needed for projects that has this directory as a separate Git
+# mirror in DEPS. Without it, a lot is wiped and re-downloaded for each sync.
+*.pyc
+ciopfs
+/android/bin
+/android/binary_size/apks/**/*.apk
+/config/gclient_args.gni
+/cros_cache/
+/Debug
+/Debug_x64
+/goma
+/gomacc.lock
+/ipch/
+/Release
+/Release_x64
+/win_toolchain.json
+/util/LASTCHANGE*
+/util/support
+/x64/
+/linux/debian_*-sysroot/
+/linux/ubuntu_*-sysroot/
+/ios_files
+/mac_files
+
+!/util/LASTCHANGE.dummy

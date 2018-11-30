@@ -1,0 +1,44 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/toolchain/toolchain.gni")
+
+# Extracts symbols from a binary into a symbol file using dump_app_syms.py.
+#
+# Args:
+#   binary: Path to the binary containing symbols to extract, e.g.:
+#       "$root_out_dir/chrome"
+#   symbol_file: Desired output file for symbols, e.g.:
+#       "$root_out_dir/chrome.breakpad.$current_cpu"
+template("extract_symbols") {
+  forward_variables_from(invoker,
+                         [
+                           "deps",
+                           "testonly",
+                         ])
+  symbol_target_name = "${target_name}_symbols"
+
+  action("${symbol_target_name}") {
+    dump_syms_label = "//third_party/breakpad:dump_syms($host_toolchain)"
+    dump_syms_binary =
+        get_label_info(dump_syms_label, "root_out_dir") + "/" + "dump_syms"
+
+    script = "//build/linux/dump_app_syms.py"
+    inputs = [
+      invoker.binary,
+      dump_syms_binary,
+    ]
+    outputs = [
+      invoker.symbol_file,
+    ]
+    args = [
+      "./" + rebase_path(dump_syms_binary, root_build_dir),
+      "0",  # strip_binary = false
+      rebase_path(invoker.binary, root_build_dir),
+      rebase_path(invoker.symbol_file, root_build_dir),
+    ]
+
+    deps += [ dump_syms_label ]
+  }
+}

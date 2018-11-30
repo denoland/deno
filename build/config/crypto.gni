@@ -1,0 +1,15 @@
+# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This file declares build flags for the SSL library configuration.
+#
+# TODO(brettw) this should probably be moved to src/crypto or somewhere, and
+# the global build dependency on it should be removed.
+#
+# PLEASE TRY TO AVOID ADDING FLAGS TO THIS FILE in cases where grit isn't
+# required. See the declare_args block of BUILDCONFIG.gn for advice on how
+# to set up feature flags.
+
+# True if NSS is used for certificate handling.
+use_nss_certs = is_linux

@@ -1,0 +1,39 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/toolchain/gcc_toolchain.gni")
+import("//build/config/fuchsia/config.gni")
+
+# Fuchsia builds using the Clang toolchain, with most parameters common across
+# the different target architectures.
+template("fuchsia_clang_toolchain") {
+  clang_toolchain(target_name) {
+    assert(host_os == "linux" || host_os == "mac")
+    assert(defined(invoker.toolchain_args),
+           "toolchain_args must be defined for fuchsia_clang_toolchain()")
+
+    # We want to build and strip binaries, but retain the unstripped binaries
+    # in runtime_deps to make them available for isolates.
+    # TODO(https://crbug.com/877080): Switch to llvm-strip.
+    if (host_os == "linux") {
+      strip = rebase_path("//third_party/eu-strip/bin/eu-strip", root_build_dir)
+      use_unstripped_as_runtime_outputs = true
+    }
+
+    toolchain_args = invoker.toolchain_args
+    toolchain_args.current_os = "fuchsia"
+  }
+}
+
+fuchsia_clang_toolchain("x64") {
+  toolchain_args = {
+    current_cpu = "x64"
+  }
+}
+
+fuchsia_clang_toolchain("arm64") {
+  toolchain_args = {
+    current_cpu = "arm64"
+  }
+}

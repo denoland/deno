@@ -1,0 +1,19 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/linux/pangocairo/pangocairo.gni")
+import("//build/config/linux/pkg_config.gni")
+
+if (use_pangocairo) {
+  pkg_config("pangocairo") {
+    packages = [ "pangocairo" ]
+
+    # We don't want pkgconfig for pangocairo to explicitly request FreeType to get
+    # linked, because we control which FreeType to link to.
+    extra_args = [
+      "-v",
+      "freetype",
+    ]
+  }
+}

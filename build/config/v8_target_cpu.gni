@@ -1,0 +1,61 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/sanitizers/sanitizers.gni")
+
+declare_args() {
+  # This arg is used when we want to tell the JIT-generating v8 code
+  # that we want to have it generate for an architecture that is different
+  # than the architecture that v8 will actually run on; we then run the
+  # code under an emulator. For example, we might run v8 on x86, but
+  # generate arm code and run that under emulation.
+  #
+  # This arg is defined here rather than in the v8 project because we want
+  # some of the common architecture-specific args (like arm_float_abi or
+  # mips_arch_variant) to be set to their defaults either if the current_cpu
+  # applies *or* if the v8_current_cpu applies.
+  #
+  # As described below, you can also specify the v8_target_cpu to use
+  # indirectly by specifying a `custom_toolchain` that contains v8_$cpu in the
+  # name after the normal toolchain.
+  #
+  # For example, `gn gen --args="custom_toolchain=...:clang_x64_v8_arm64"`
+  # is equivalent to setting --args=`v8_target_cpu="arm64"`. Setting
+  # `custom_toolchain` is more verbose but makes the toolchain that is
+  # (effectively) being used explicit.
+  #
+  # v8_target_cpu can only be used to target one architecture in a build,
+  # so if you wish to build multiple copies of v8 that are targeting
+  # different architectures, you will need to do something more
+  # complicated involving multiple toolchains along the lines of
+  # custom_toolchain, above.
+  v8_target_cpu = ""
+}
+
+if (v8_target_cpu == "") {
+  if (current_toolchain == "//build/toolchain/linux:clang_x64_v8_arm64") {
+    v8_target_cpu = "arm64"
+  } else if (current_toolchain == "//build/toolchain/linux:clang_x86_v8_arm") {
+    v8_target_cpu = "arm"
+  } else if (current_toolchain ==
+             "//build/toolchain/linux:clang_x86_v8_mips64el") {
+    v8_target_cpu = "mips64el"
+  } else if (current_toolchain ==
+             "//build/toolchain/linux:clang_x86_v8_mipsel") {
+    v8_target_cpu = "mipsel"
+  } else if (is_msan) {
+    # If we're running under a sanitizer, if we configure v8 to generate
+    # code that will be run under a simulator, then the generated code
+    # also gets the benefits of the sanitizer.
+    v8_target_cpu = "arm64"
+  } else {
+    v8_target_cpu = target_cpu
+  }
+}
+
+declare_args() {
+  # This argument is declared here so that it can be overridden in toolchains.
+  # It should never be explicitly set by the user.
+  v8_current_cpu = v8_target_cpu
+}

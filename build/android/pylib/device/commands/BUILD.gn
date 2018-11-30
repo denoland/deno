@@ -1,0 +1,20 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+
+group("commands") {
+  data_deps = [
+    ":chromium_commands_java",
+  ]
+}
+
+android_library("chromium_commands_java") {
+  emma_never_instrument = true
+  java_files = [ "java/src/org/chromium/android/commands/unzip/Unzip.java" ]
+  dex_path = "$root_build_dir/lib.java/chromium_commands.dex.jar"
+  data = [
+    dex_path,
+  ]
+}

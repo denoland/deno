@@ -1,0 +1,37 @@
+# Copyright (c) 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This file contains variables that can be imported into a repo's dotfile (.gn)
+# to make it easier to roll new versions of //build in.
+
+build_dotfile_settings = {
+  exec_script_whitelist = [
+    "//build/config/android/config.gni",
+    "//build/config/android/internal_rules.gni",
+    "//build/config/android/rules.gni",
+    "//build/config/compiler/BUILD.gn",
+    "//build/config/gcc/gcc_version.gni",
+    "//build/config/host_byteorder.gni",
+    "//build/config/ios/ios_sdk.gni",
+    "//build/config/linux/BUILD.gn",
+    "//build/config/linux/pkg_config.gni",
+    "//build/config/linux/atk/BUILD.gn",
+    "//build/config/linux/dri/BUILD.gn",
+    "//build/config/mac/mac_sdk.gni",
+    "//build/config/mac/rules.gni",
+    "//build/config/posix/BUILD.gn",
+    "//build/config/sysroot.gni",
+    "//build/config/win/BUILD.gn",
+    "//build/config/win/visual_studio_version.gni",
+    "//build/timestamp.gni",
+    "//build/toolchain/BUILD.gn",
+    "//build/toolchain/concurrent_links.gni",
+    "//build/toolchain/mac/BUILD.gn",
+    "//build/toolchain/nacl/BUILD.gn",
+    "//build/toolchain/toolchain.gni",
+    "//build/toolchain/win/BUILD.gn",
+    "//build/util/branding.gni",
+    "//build/util/version.gni",
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "features": [ "persistent-storage", "root-ssl-certificates", "system-temp",
+      "vulkan" ],
+  "dev": ["null", "zero"],
+  "services": [
+      "fuchsia.fonts.Provider",
+      "fuchsia.media.Audio",
+      "fuchsia.net.LegacySocketProvider",
+      "fuchsia.netstack.Netstack",
+      "fuchsia.process.Launcher",
+      "fuchsia.ui.input.ImeService",
+      "fuchsia.ui.input.ImeVisibilityService",
+      "fuchsia.ui.policy.Presenter",
+      "fuchsia.ui.scenic.Scenic",
+      "fuchsia.ui.viewsv1.ViewManager",
+      "fuchsia.vulkan.loader.Loader"
+  ]
+}

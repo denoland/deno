@@ -1,0 +1,5 @@
+dpranke@chromium.org
+scottmg@chromium.org
+
+per-file BUILDCONFIG.gn=dpranke@chromium.org
+per-file BUILDCONFIG.gn=set noparent

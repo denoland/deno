@@ -1,0 +1,40 @@
+<html>
+<head>
+  <title>{{ test_name }}</title>
+  <script>
+  function toggleZoom() {
+    for (const img of document.getElementsByTagName("img")) {
+      if (img.hasAttribute('style')) {
+        img.removeAttribute('style');
+      } else {
+        img.style.width = '100%';
+      }
+    }
+  }
+  </script>
+</head>
+<body>
+  <a href="https://cs.chromium.org/search/?q={{ test_name }}&m=100&type=cs">Link to Golden (in repo)</a><br />
+  <a download="{{ test_name }}" href="{{ failure_link }}">Download Failure Image (right click and 'Save link as')</a>
+  <table>
+    <thead>
+      <tr>
+        <th>Failure</th>
+        <th>Golden</th>
+        <th>Diff</th>
+      </tr>
+    </thead>
+    <tbody style="vertical-align: top">
+      <tr onclick="toggleZoom()">
+        <td><img src="{{ failure_link }}" style="width: 100%" /></td>
+        {% if golden_link %}
+        <td><img src="{{ golden_link }}" style="width: 100%" /></td>
+        <td><img src="{{ diff_link }}" style="width: 100%" /></td>
+        {% else %}
+        <td>No Golden Image.</td>
+        {% endif %}
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

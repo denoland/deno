@@ -1,0 +1,15 @@
+[FORMAT]
+
+max-line-length=80
+
+[MESSAGES CONTROL]
+
+disable=abstract-class-not-used,bad-continuation,bad-indentation,duplicate-code,fixme,invalid-name,locally-disabled,locally-enabled,missing-docstring,star-args,too-few-public-methods,too-many-arguments,too-many-branches,too-many-instance-attributes,too-many-lines,too-many-locals,too-many-public-methods,too-many-statements,wrong-import-position
+
+[REPORTS]
+
+reports=no
+
+[VARIABLES]
+
+dummy-variables-rgx=^_.*$|dummy

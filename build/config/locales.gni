@@ -1,0 +1,187 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Android doesn't ship all locales in order to save space (but webview does).
+# http://crbug.com/369218
+if (is_android) {
+  android_chrome_omitted_locales = [
+    "bn",
+    "et",
+    "gu",
+    "kn",
+    "ml",
+    "mr",
+    "ms",
+    "ta",
+    "te",
+  ]
+}
+
+# Chrome on iOS only ships with a subset of the locales supported by other
+# version of Chrome as the corresponding locales are not supported by the
+# operating system (but for simplicity, the corresponding .pak files are
+# still generated).
+if (is_ios) {
+  ios_unsupported_locales = [
+    "am",
+    "bn",
+    "et",
+    "fil",
+    "gu",
+    "kn",
+    "lv",
+    "ml",
+    "mr",
+    "sl",
+    "sw",
+    "ta",
+    "te",
+  ]
+}
+
+# Note: keep in sync with below.
+locales = [
+  "am",
+  "ar",
+  "bg",
+  "bn",
+  "ca",
+  "cs",
+  "da",
+  "de",
+  "el",
+  "en-GB",
+  "en-US",
+  "es",
+  "et",
+  "fa",
+  "fi",
+  "fil",
+  "fr",
+  "gu",
+  "he",
+  "hi",
+  "hr",
+  "hu",
+  "id",
+  "it",
+  "ja",
+  "kn",
+  "ko",
+  "lt",
+  "lv",
+  "ml",
+  "mr",
+  "ms",
+  "nb",
+  "nl",
+  "pl",
+  "pt-PT",
+  "ro",
+  "ru",
+  "sk",
+  "sl",
+  "sr",
+  "sv",
+  "sw",
+  "ta",
+  "te",
+  "th",
+  "tr",
+  "uk",
+  "vi",
+  "zh-CN",
+  "zh-TW",
+]
+
+# Chrome on iOS uses different names for "es-419" and "pt-BR" (called
+# respectively "es-MX" and "pt" on iOS).
+if (!is_ios) {
+  locales += [
+    "es-419",
+    "pt-BR",
+  ]
+} else {
+  locales += [
+    "es-MX",
+    "pt",
+  ]
+
+  ios_packed_locales = locales - ios_unsupported_locales
+}
+
+locales_with_fake_bidi = locales + [ "fake-bidi" ]
+
+# Same as the locales list but in the format Mac expects for output files:
+# it uses underscores instead of hyphens, and "en" instead of "en-US".
+locales_as_mac_outputs = [
+  "am",
+  "ar",
+  "bg",
+  "bn",
+  "ca",
+  "cs",
+  "da",
+  "de",
+  "el",
+  "en_GB",
+  "en",
+  "es",
+  "et",
+  "fa",
+  "fi",
+  "fil",
+  "fr",
+  "gu",
+  "he",
+  "hi",
+  "hr",
+  "hu",
+  "id",
+  "it",
+  "ja",
+  "kn",
+  "ko",
+  "lt",
+  "lv",
+  "ml",
+  "mr",
+  "ms",
+  "nb",
+  "nl",
+  "pl",
+  "pt_PT",
+  "ro",
+  "ru",
+  "sk",
+  "sl",
+  "sr",
+  "sv",
+  "sw",
+  "ta",
+  "te",
+  "th",
+  "tr",
+  "uk",
+  "vi",
+  "zh_CN",
+  "zh_TW",
+]
+
+# Chrome on iOS uses different names for "es-419" and "pt-BR" (called
+# respectively "es-MX" and "pt" on iOS).
+if (!is_ios) {
+  locales_as_mac_outputs += [
+    "es_419",
+    "pt_BR",
+  ]
+} else {
+  locales_as_mac_outputs += [
+    "es_MX",
+    "pt",
+  ]
+
+  ios_packed_locales_as_mac_outputs =
+      locales_as_mac_outputs - ios_unsupported_locales
+}

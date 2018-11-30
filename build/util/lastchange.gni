@@ -1,0 +1,16 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This file is used to inject fixed dummy commit for commit independent
+# reproducible binaries.
+
+declare_args() {
+  use_dummy_lastchange = false
+}
+
+if (use_dummy_lastchange) {
+  lastchange_file = "//build/util/LASTCHANGE.dummy"
+} else {
+  lastchange_file = "//build/util/LASTCHANGE"
+}

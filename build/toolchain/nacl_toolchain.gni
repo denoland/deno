@@ -1,0 +1,59 @@
+# Copyright (c) 2014 The Native Client Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/nacl/config.gni")
+import("//build/toolchain/gcc_toolchain.gni")
+
+# This template defines a NaCl toolchain.
+#
+# It requires the following variables specifying the executables to run:
+#  - cc
+#  - cxx
+#  - ar
+#  - ld
+
+template("nacl_toolchain") {
+  assert(defined(invoker.cc), "nacl_toolchain() must specify a \"cc\" value")
+  assert(defined(invoker.cxx), "nacl_toolchain() must specify a \"cxx\" value")
+  assert(defined(invoker.ar), "nacl_toolchain() must specify a \"ar\" value")
+  assert(defined(invoker.ld), "nacl_toolchain() must specify a \"ld\" value")
+  gcc_toolchain(target_name) {
+    if (defined(invoker.executable_extension)) {
+      executable_extension = invoker.executable_extension
+    } else {
+      executable_extension = ".nexe"
+    }
+    rebuild_define = "NACL_TC_REV=" + invoker.toolchain_revision
+
+    forward_variables_from(invoker,
+                           [
+                             "ar",
+                             "cc",
+                             "cxx",
+                             "deps",
+                             "is_clang_analysis_supported",
+                             "ld",
+                             "link_outputs",
+                             "nm",
+                             "readelf",
+                             "strip",
+                           ])
+
+    toolchain_args = {
+      # Use all values set on the invoker's toolchain_args.
+      forward_variables_from(invoker.toolchain_args, "*")
+
+      current_os = "nacl"
+
+      # We do not support component builds with the NaCl toolchains.
+      is_component_build = false
+
+      # We do not support tcmalloc in the NaCl toolchains.
+      use_allocator = "none"
+
+      # We do not support clang code coverage in the NaCl toolchains.
+      use_clang_coverage = false
+    }
+  }
+}

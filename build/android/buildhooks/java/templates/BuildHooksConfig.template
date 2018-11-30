@@ -1,0 +1,16 @@
+// Copyright 2017 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.build;
+
+/**
+ *  BuildHooks configuration. Generated on a per-target basis.
+ */
+public class BuildHooksConfig {
+#if defined(_REPORT_JAVA_ASSERT)
+    public static final boolean REPORT_JAVA_ASSERT = true;
+#else
+    public static final boolean REPORT_JAVA_ASSERT = false;
+#endif
+}

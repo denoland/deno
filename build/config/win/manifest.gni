@@ -1,0 +1,112 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# HOW MANIFESTS WORK IN THE GN BUILD
+#
+# Use the windows_manifest template to declare a manifest generation step.
+# This will combine all listed .manifest files. To link this manifest, just
+# depend on the manifest target from your executable or shared library.
+#
+# This will define an empty placeholder target on non-Windows platforms so
+# the manifest declarations and dependencies do not need to be inside of OS
+# conditionals.
+#
+# A binary can depend on only one manifest target, but the manifest target
+# can depend on many individual .manifest files which will be merged. As a
+# result, only executables and shared libraries should depend on manifest
+# targets. If you want to add a manifest to a component, put the dependency
+# behind a "if (is_component_build)" conditional.
+#
+# Generally you will just want the defaults for the Chrome build. In this case
+# the binary should just depend on one of the targets in //build/win/. There
+# are also individual manifest files in that directory you can reference via
+# the *_manifest variables defined below to pick and choose only some defaults.
+# You might combine these with a custom manifest file to get specific behavior.
+
+# Reference this manifest as a source from windows_manifest targets to get
+# the default Chrome OS compatibility list.
+default_compatibility_manifest = "//build/win/compatibility.manifest"
+
+# Reference this manifest as a source from windows_manifest targets to get
+# the default Chrome common constrols compatibility.
+common_controls_manifest = "//build/win/common_controls.manifest"
+
+# Reference this manifest to request that Windows not perform any elevation
+# when running your program. Otherwise, it might do some autodetection and
+# request elevated privileges from the user. This is normally what you want.
+as_invoker_manifest = "//build/win/as_invoker.manifest"
+
+# An alternative to as_invoker_manifest when you want the application to always
+# elevate.
+require_administrator_manifest = "//build/win/require_administrator.manifest"
+
+# Construct a target to combine the given manifest files into a .rc file.
+#
+# Variables for the windows_manifest template:
+#
+#   sources: (required)
+#     List of source .manifest files to add.
+#
+#   deps: (optional)
+#   visibility: (optional)
+#     Normal meaning.
+#
+# Example:
+#
+#   windows_manifest("doom_melon_manifest") {
+#     sources = [
+#       "doom_melon.manifest",   # Custom values in here.
+#       default_compatibility_manifest,  # Want the normal OS compat list.
+#     ]
+#   }
+#
+#   executable("doom_melon") {
+#     deps = [ ":doom_melon_manifest" ]
+#     ...
+#   }
+
+if (is_win) {
+  template("windows_manifest") {
+    config_name = "${target_name}__config"
+    source_set_name = target_name
+
+    config(config_name) {
+      visibility = [ ":$source_set_name" ]
+      assert(defined(invoker.sources),
+             "\"sources\" must be defined for a windows_manifest target")
+      manifests = []
+      foreach(i, rebase_path(invoker.sources, root_build_dir)) {
+        manifests += [ "/manifestinput:" + i ]
+      }
+      ldflags = [
+                  "/manifest:embed",
+
+                  # We handle UAC by adding explicit .manifest files instead.
+                  "/manifestuac:no",
+                ] + manifests
+    }
+
+    # This source set only exists to add a dep on the invoker's deps and to
+    # add a public_config that sets ldflags on dependents.
+    source_set(source_set_name) {
+      forward_variables_from(invoker, [ "visibility" ])
+      public_configs = [ ":$config_name" ]
+
+      # Apply any dependencies from the invoker to this target, since those
+      # dependencies may have created the input manifest files.
+      forward_variables_from(invoker, [ "deps" ])
+    }
+  }
+} else {
+  # Make a no-op group on non-Windows platforms so windows_manifest
+  # instantiations don't need to be inside windows blocks.
+  template("windows_manifest") {
+    group(target_name) {
+      # Prevent unused variable warnings on non-Windows platforms.
+      assert(invoker.sources != "")
+      assert(!defined(invoker.deps) || invoker.deps != "")
+      assert(!defined(invoker.visibility) || invoker.visibility != "")
+    }
+  }
+}

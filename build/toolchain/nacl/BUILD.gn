@@ -1,0 +1,270 @@
+# Copyright (c) 2014 The Native Client Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/sysroot.gni")
+import("//build/config/nacl/config.gni")
+import("//build/toolchain/nacl_toolchain.gni")
+
+# Add the toolchain revision as a preprocessor define so that sources are
+# rebuilt when a toolchain is updated.
+# Idea we could use the toolchain deps feature, but currently that feature is
+# bugged and does not trigger a rebuild.
+# https://code.google.com/p/chromium/issues/detail?id=431880
+# Calls to get the toolchain revision are relatively slow, so do them all in a
+# single batch to amortize python startup, etc.
+revisions = exec_script("//native_client/build/get_toolchain_revision.py",
+                        [
+                          "nacl_x86_glibc",
+                          "nacl_arm_glibc",
+                          "pnacl_newlib",
+                        ],
+                        "trim list lines")
+nacl_x86_glibc_rev = revisions[0]
+nacl_arm_glibc_rev = revisions[1]
+
+pnacl_newlib_rev = revisions[2]
+
+if (host_os == "win") {
+  toolsuffix = ".exe"
+} else {
+  toolsuffix = ""
+}
+
+# The PNaCl toolchain tools are all wrapper scripts rather than binary
+# executables.  On POSIX systems, nobody cares what kind of executable
+# file you are.  But on Windows, scripts (.bat files) cannot be run
+# directly and need the Windows shell (cmd.exe) specified explicily.
+if (host_os == "win") {
+  # NOTE!  The //build/toolchain/gcc_*_wrapper.py scripts recognize
+  # this exact prefix string, so they must be updated if this string
+  # is changed in any way.
+  scriptprefix = "cmd /c call "
+  scriptsuffix = ".bat"
+} else {
+  scriptprefix = ""
+  scriptsuffix = ""
+}
+
+# When the compilers are run via goma or ccache rather than directly by
+# GN/Ninja, the goma/ccache wrapper handles .bat files but gets confused
+# by being given the scriptprefix.
+if (host_os == "win" && !use_goma && cc_wrapper == "") {
+  compiler_scriptprefix = scriptprefix
+} else {
+  compiler_scriptprefix = ""
+}
+
+template("pnacl_toolchain") {
+  assert(defined(invoker.executable_extension),
+         "Must define executable_extension")
+
+  nacl_toolchain(target_name) {
+    toolchain_package = "pnacl_newlib"
+    toolchain_revision = pnacl_newlib_rev
+    toolprefix =
+        rebase_path("${nacl_toolchain_dir}/${toolchain_package}/bin/pnacl-",
+                    root_build_dir)
+
+    cc = compiler_scriptprefix + toolprefix + "clang" + scriptsuffix
+    cxx = compiler_scriptprefix + toolprefix + "clang++" + scriptsuffix
+    ar = toolprefix + "ar" + scriptsuffix
+    readelf = scriptprefix + toolprefix + "readelf" + scriptsuffix
+    nm = scriptprefix + toolprefix + "nm" + scriptsuffix
+    if (defined(invoker.strip)) {
+      strip = scriptprefix + toolprefix + invoker.strip + scriptsuffix
+    }
+    forward_variables_from(invoker,
+                           [
+                             "executable_extension",
+                             "is_clang_analysis_supported",
+                           ])
+
+    # Note this is not the usual "ld = cxx" because "ld" uses are
+    # never run via goma, so this needs scriptprefix.
+    ld = scriptprefix + toolprefix + "clang++" + scriptsuffix
+
+    toolchain_args = {
+      is_clang = true
+      current_cpu = "pnacl"
+      use_lld = false
+    }
+  }
+}
+
+pnacl_toolchain("newlib_pnacl") {
+  executable_extension = ".pexe"
+
+  # The pnacl-finalize tool turns a .pexe.debug file into a .pexe file.
+  # It's very similar in purpose to the traditional "strip" utility: it
+  # turns what comes out of the linker into what you actually want to
+  # distribute and run.  PNaCl doesn't have a "strip"-like utility that
+  # you ever actually want to use other than pnacl-finalize, so just
+  # make pnacl-finalize the strip tool rather than adding an additional
+  # step like "postlink" to run pnacl-finalize.
+  strip = "finalize"
+}
+
+pnacl_toolchain("newlib_pnacl_nonsfi") {
+  executable_extension = ""
+  strip = "strip"
+
+  if (use_clang_static_analyzer) {
+    is_clang_analysis_supported = false
+  }
+}
+
+template("nacl_glibc_toolchain") {
+  toolchain_cpu = target_name
+  assert(defined(invoker.toolchain_tuple), "Must define toolchain_tuple")
+  assert(defined(invoker.toolchain_package), "Must define toolchain_package")
+  assert(defined(invoker.toolchain_revision), "Must define toolchain_revision")
+  forward_variables_from(invoker,
+                         [
+                           "toolchain_package",
+                           "toolchain_revision",
+                         ])
+
+  toolprefix = rebase_path("${nacl_toolchain_dir}/${toolchain_package}/bin/" +
+                               invoker.toolchain_tuple + "-",
+                           root_build_dir)
+
+  nacl_toolchain("glibc_" + toolchain_cpu) {
+    cc = toolprefix + "gcc" + toolsuffix
+    cxx = toolprefix + "g++" + toolsuffix
+    ar = toolprefix + "ar" + toolsuffix
+    ld = cxx
+    readelf = toolprefix + "readelf" + toolsuffix
+    nm = toolprefix + "nm" + toolsuffix
+    strip = toolprefix + "strip" + toolsuffix
+
+    toolchain_args = {
+      current_cpu = toolchain_cpu
+      is_clang = false
+      is_nacl_glibc = true
+      use_lld = false
+    }
+  }
+}
+
+nacl_glibc_toolchain("x86") {
+  toolchain_package = "nacl_x86_glibc"
+  toolchain_revision = nacl_x86_glibc_rev
+
+  # Rely on the :compiler_cpu_abi config adding the -m32 flag here rather
+  # than using the i686-nacl binary directly.  This is a because i686-nacl-gcc
+  # is a shell script wrapper around x86_64-nacl-gcc and goma has trouble with
+  # compiler executables that are shell scripts (so the i686 'compiler' is not
+  # currently in goma).
+  toolchain_tuple = "x86_64-nacl"
+}
+
+nacl_glibc_toolchain("x64") {
+  toolchain_package = "nacl_x86_glibc"
+  toolchain_revision = nacl_x86_glibc_rev
+  toolchain_tuple = "x86_64-nacl"
+}
+
+nacl_glibc_toolchain("arm") {
+  toolchain_package = "nacl_arm_glibc"
+  toolchain_revision = nacl_arm_glibc_rev
+  toolchain_tuple = "arm-nacl"
+}
+
+template("nacl_clang_toolchain") {
+  toolchain_cpu = target_name
+  assert(defined(invoker.toolchain_tuple), "Must define toolchain_tuple")
+
+  toolchain_package = "pnacl_newlib"
+  toolchain_revision = pnacl_newlib_rev
+  toolprefix = rebase_path("${nacl_toolchain_dir}/${toolchain_package}/bin/" +
+                               invoker.toolchain_tuple + "-",
+                           root_build_dir)
+
+  nacl_toolchain("clang_newlib_" + toolchain_cpu) {
+    cc = toolprefix + "clang" + toolsuffix
+    cxx = toolprefix + "clang++" + toolsuffix
+    ar = toolprefix + "ar" + toolsuffix
+    ld = cxx
+    readelf = toolprefix + "readelf" + toolsuffix
+    nm = toolprefix + "nm" + toolsuffix
+    strip = toolprefix + "strip" + toolsuffix
+
+    toolchain_args = {
+      current_cpu = toolchain_cpu
+      is_clang = true
+      use_lld = false
+    }
+  }
+}
+
+template("nacl_irt_toolchain") {
+  toolchain_cpu = target_name
+  assert(defined(invoker.toolchain_tuple), "Must define toolchain_tuple")
+
+  toolchain_package = "pnacl_newlib"
+  toolchain_revision = pnacl_newlib_rev
+  toolprefix = rebase_path("${nacl_toolchain_dir}/${toolchain_package}/bin/" +
+                               invoker.toolchain_tuple + "-",
+                           root_build_dir)
+
+  link_irt = rebase_path("//native_client/build/link_irt.py", root_build_dir)
+
+  tls_edit_label =
+      "//native_client/src/tools/tls_edit:tls_edit($host_toolchain)"
+  host_toolchain_out_dir =
+      rebase_path(get_label_info(tls_edit_label, "root_out_dir"),
+                  root_build_dir)
+  tls_edit = "${host_toolchain_out_dir}/tls_edit"
+
+  nacl_toolchain("irt_" + toolchain_cpu) {
+    cc = toolprefix + "clang" + toolsuffix
+    cxx = toolprefix + "clang++" + toolsuffix
+    ar = toolprefix + "ar" + toolsuffix
+    readelf = toolprefix + "readelf" + toolsuffix
+    nm = toolprefix + "nm" + toolsuffix
+    strip = toolprefix + "strip" + toolsuffix
+
+    # Some IRT implementations (notably, Chromium's) contain C++ code,
+    # so we need to link w/ the C++ linker.
+    ld = "${python_path} ${link_irt} --tls-edit=${tls_edit} --link-cmd=${cxx} --readelf-cmd=${readelf}"
+
+    toolchain_args = {
+      current_cpu = toolchain_cpu
+      is_clang = true
+      use_lld = false
+    }
+
+    # TODO(ncbray): depend on link script
+    deps = [
+      tls_edit_label,
+    ]
+  }
+}
+
+template("nacl_clang_toolchains") {
+  assert(defined(invoker.toolchain_tuple), "Must define toolchain_tuple")
+  nacl_clang_toolchain(target_name) {
+    toolchain_tuple = invoker.toolchain_tuple
+  }
+  nacl_irt_toolchain(target_name) {
+    toolchain_tuple = invoker.toolchain_tuple
+  }
+}
+
+nacl_clang_toolchains("x86") {
+  # Rely on :compiler_cpu_abi adding -m32.  See nacl_x86_glibc above.
+  toolchain_tuple = "x86_64-nacl"
+}
+
+nacl_clang_toolchains("x64") {
+  toolchain_tuple = "x86_64-nacl"
+}
+
+nacl_clang_toolchains("arm") {
+  toolchain_tuple = "arm-nacl"
+}
+
+nacl_clang_toolchains("mipsel") {
+  toolchain_tuple = "mipsel-nacl"
+}

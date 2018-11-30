@@ -1,0 +1,50 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/toolchain/toolchain.gni")
+
+# This is included by reference in the //build/config/compiler config that
+# is applied to all targets. It is here to separate out the logic.
+
+config("compiler") {
+  # These flags are shared between the C compiler and linker.
+  defines = [
+    "_LINUX_SOURCE_COMPAT=1",
+    "__STDC_FORMAT_MACROS",
+    "_ALL_SOURCE=1",
+  ]
+
+  cflags = [
+    "-Wall",
+    "-Wno-unused-parameter",
+    "-pthread",
+    "-Wmissing-field-initializers",
+    "-Wno-uninitialized",
+    "-mcpu=power5+",
+    "-mfprnd",
+    "-mno-popcntb",
+    "-maix64",
+    "-fdata-sections",
+    "-ffunction-sections",
+    "-O3",
+
+    # "-Werror"
+    # We need to find a way to fix the TOC warnings if we want to enable this.
+  ]
+
+  cflags_cc = [
+    "-std=gnu++11",
+    "-fno-rtti",
+    "-fno-exceptions",
+    "-Wno-narrowing",
+    "-Wno-non-virtual-dtor",
+  ]
+
+  ldflags = [
+    "-pthread",
+    "-maix64",
+    "-Wl,-bbigtoc",
+  ]
+}

@@ -1,0 +1,22 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(current_os == "fuchsia")
+
+declare_args() {
+  # Path to Fuchsia SDK.
+  fuchsia_sdk = "//third_party/fuchsia-sdk/sdk"
+}
+
+# Compute the arch-specific path to packages' dynamic library dependencies.
+if (current_cpu == "arm64") {
+  dist_libroot = fuchsia_sdk + "/arch/arm64/dist/"
+} else if (current_cpu == "x64") {
+  dist_libroot = fuchsia_sdk + "/arch/x64/dist/"
+} else {
+  assert(false, "No libraries available for architecture: $current_cpu")
+}
+
+# Compute the qemu path.
+qemu_root = "//third_party/qemu-${host_os}-${host_cpu}"

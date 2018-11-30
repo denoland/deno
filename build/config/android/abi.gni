@@ -1,0 +1,80 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Logic separated out from config.gni so that it can be used by compiler.gni
+# without introducing a circular dependency.
+
+# NOTE: Because Chrome OS builds may depend on targets built with the Android
+# toolchain, this GNI file may be read and processed from within Chrome OS
+# toolchains. Checking |is_android| here would therefore be too restrictive.
+assert(is_android || is_chromeos)
+
+declare_args() {
+  # Adds intrumentation to each function. Writes a file with the order that
+  # functions are called at startup.
+  use_order_profiling = false
+
+  # Only effective if use_order_profiling = true. When this is true,
+  # instrumentation switches from startup profiling after a delay, and
+  # then waits for a devtools memory dump request to dump all
+  # profiling information. When false, the same delay is used to switch from
+  # startup, and then after a second delay all profiling information is dumped.
+  # See base::android::orderfile::StartDelayedDump for more information.
+  devtools_instrumentation_dumping = false
+
+  # Builds secondary abi for APKs, supports build 32-bit arch as secondary
+  # abi in 64-bit Monochrome and WebView.
+  build_apk_secondary_abi = true
+}
+
+assert(!devtools_instrumentation_dumping || use_order_profiling,
+       "devtools_instrumentation_dumping requires use_order_profiling")
+
+if (current_cpu == "x86") {
+  android_app_abi = "x86"
+} else if (current_cpu == "arm") {
+  import("//build/config/arm.gni")
+  if (arm_version < 7) {
+    android_app_abi = "armeabi"
+  } else {
+    android_app_abi = "armeabi-v7a"
+  }
+} else if (current_cpu == "mipsel") {
+  android_app_abi = "mips"
+} else if (current_cpu == "x64") {
+  android_app_abi = "x86_64"
+} else if (current_cpu == "arm64") {
+  android_app_abi = "arm64-v8a"
+} else if (current_cpu == "mips64el") {
+  android_app_abi = "mips64"
+} else {
+  assert(false, "Unknown Android ABI: " + current_cpu)
+}
+
+if (target_cpu == "arm64" || target_cpu == "x64" || target_cpu == "mips64el") {
+  android_64bit_target_cpu = true
+} else if (target_cpu == "arm" || target_cpu == "x86" ||
+           target_cpu == "mipsel") {
+  android_64bit_target_cpu = false
+} else {
+  assert(false, "Unknown target CPU: $target_cpu")
+}
+
+# Intentionally do not define android_app_secondary_abi_cpu and
+# android_app_secondary_abi for 32-bit target_cpu, since they are not used.
+if (target_cpu == "arm64") {
+  android_secondary_abi_cpu = "arm"
+  android_app_secondary_abi = "armeabi-v7a"
+} else if (target_cpu == "x64") {
+  android_secondary_abi_cpu = "x86"
+  android_app_secondary_abi = "x86"
+} else if (target_cpu == "mips64el") {
+  android_secondary_abi_cpu = "mipsel"
+  android_app_secondary_abi = "mips"
+}
+
+if (defined(android_secondary_abi_cpu)) {
+  android_secondary_abi_toolchain =
+      "//build/toolchain/android:android_clang_${android_secondary_abi_cpu}"
+}

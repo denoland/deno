@@ -1,0 +1,20 @@
+{
+  "clients": [
+    "play-services-auth-api-phone",
+    "play-services-auth-base",
+    "play-services-auth",
+    "play-services-base",
+    "play-services-basement",
+    "play-services-cast",
+    "play-services-cast-framework",
+    "play-services-fido",
+    "play-services-gcm",
+    "play-services-iid",
+    "play-services-location",
+    "play-services-tasks",
+    "play-services-vision",
+    "play-services-vision-common"
+  ],
+  "version_number": "12.0.1",
+  "version_xml_path": "res/values/version.xml"
+}

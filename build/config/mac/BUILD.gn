@@ -1,0 +1,104 @@
+# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/sysroot.gni")
+import("//build/config/mac/mac_sdk.gni")
+import("//build/config/mac/symbols.gni")
+
+# This is included by reference in the //build/config/compiler config that
+# is applied to all targets. It is here to separate out the logic.
+config("compiler") {
+  # These flags are shared between the C compiler and linker.
+  common_mac_flags = []
+
+  # CPU architecture.
+  if (current_cpu == "x64") {
+    common_mac_flags += [
+      "-arch",
+      "x86_64",
+    ]
+  } else if (current_cpu == "x86") {
+    common_mac_flags += [
+      "-arch",
+      "i386",
+    ]
+  }
+
+  # This is here so that all files get recompiled after an Xcode update.
+  # (defines are passed via the command line, and build system rebuild things
+  # when their commandline changes). Nothing should ever read this define.
+  defines = [ "CR_XCODE_VERSION=$xcode_version" ]
+
+  asmflags = common_mac_flags
+  cflags = common_mac_flags
+
+  # Without this, the constructors and destructors of a C++ object inside
+  # an Objective C struct won't be called, which is very bad.
+  cflags_objcc = [ "-fobjc-call-cxx-cdtors" ]
+
+  ldflags = common_mac_flags
+
+  # Create a new read-only segment for protected memory. The default segments
+  # (__TEXT and __DATA) are mapped read-execute and read-write by default.
+  ldflags += [
+    "-segprot",
+    "PROTECTED_MEMORY",
+    "rw",
+    "r",
+  ]
+
+  if (save_unstripped_output) {
+    ldflags += [ "-Wcrl,unstripped," + rebase_path(root_out_dir) ]
+  }
+}
+
+# This is included by reference in the //build/config/compiler:runtime_library
+# config that is applied to all targets. It is here to separate out the logic
+# that is Mac-only. Please see that target for advice on what should go in
+# :runtime_library vs. :compiler.
+config("runtime_library") {
+  common_flags = [
+    "-isysroot",
+    rebase_path(sysroot, root_build_dir),
+    "-mmacosx-version-min=$mac_deployment_target",
+  ]
+
+  asmflags = common_flags
+  cflags = common_flags
+  ldflags = common_flags
+
+  # Prevent Mac OS X AssertMacros.h (included by system header) from defining
+  # macros that collide with common names, like 'check', 'require', and
+  # 'verify'.
+  # http://opensource.apple.com/source/CarbonHeaders/CarbonHeaders-18.1/AssertMacros.h
+  defines = [ "__ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORE=0" ]
+}
+
+# On Mac, this is used for everything except static libraries.
+config("mac_dynamic_flags") {
+  ldflags = [ "-Wl,-ObjC" ]  # Always load Objective-C categories and classes.
+
+  if (is_component_build) {
+    ldflags += [
+      # Path for loading shared libraries for unbundled binaries.
+      "-Wl,-rpath,@loader_path/.",
+
+      # Path for loading shared libraries for bundled binaries. Get back from
+      # Binary.app/Contents/MacOS.
+      "-Wl,-rpath,@loader_path/../../..",
+    ]
+  }
+}
+
+# The ldflags referenced below are handled by
+# //build/toolchain/mac/linker_driver.py.
+# Remove this config if a target wishes to change the arguments passed to the
+# strip command during linking. This config by default strips all symbols
+# from a binary, but some targets may wish to specify an exports file to
+# preserve specific symbols.
+config("strip_all") {
+  if (enable_stripping) {
+    ldflags = [ "-Wcrl,strip,-x,-S" ]
+  }
+}

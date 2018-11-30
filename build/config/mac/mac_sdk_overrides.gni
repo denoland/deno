@@ -1,0 +1,22 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This file contains arguments that subprojects may choose to override. It
+# asserts that those overrides are used, to prevent unused args warnings.
+
+_sdk_min_from_env = getenv("FORCE_MAC_SDK_MIN")
+declare_args() {
+  # Minimum supported version of the Mac SDK.
+  if (_sdk_min_from_env == "") {
+    mac_sdk_min = "10.12"
+  } else {
+    mac_sdk_min = _sdk_min_from_env
+  }
+}
+
+# Always assert that mac_sdk_min is used on non-macOS platforms to prevent
+# unused args warnings.
+if (!is_mac) {
+  assert(mac_sdk_min == "10.12" || true)
+}

@@ -1,0 +1,14 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/features.gni")
+import("//build/config/linux/pkg_config.gni")
+
+assert(use_dbus)
+
+# Note: if your target also depends on //dbus, you don't need to add this
+# config (it will get added automatically if you depend on //dbus).
+pkg_config("dbus") {
+  packages = [ "dbus-1" ]
+}

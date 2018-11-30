@@ -1,0 +1,148 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This template declares a bundle_data target that references an asset
+# catalog so that it is compiled to the asset catalog of the generated
+# bundle.
+#
+# The create_bundle target requires that all asset catalogs are part of an
+# .xcasset bundle. This requirement comes from actool that only receives
+# the path to the .xcasset bundle directory and not to the individual
+# .imageset directories.
+#
+# The requirement is a bit problematic as it prevents compiling only a
+# subset of the asset catakig that are contained in a .xcasset. This template
+# fixes that by instead copying the content of the asset catalog to temporary
+# .xcasset directory (below $root_out_dir) and defining a bundle_data
+# target that refers to those copies (this is efficient as the "copy" is
+# implemented by hardlinking if possible on macOS).
+#
+# Since the create_data target will only refer to the .xcasset directory
+# and additional "action" target that runs a dummy script is defined. It
+# does nothing but pretends to generate the .xcassets directory (while
+# it is really created as a side-effect of the "copy" step). This allows
+# to workaround the check in "gn" that all inputs below $root_out_dir have
+# to be outputs of another target with a public dependency path.
+#
+# This template also ensures that the file are only copied once when the
+# build targets multiple architectures at the same time (aka "fat build").
+#
+# Arguments
+#
+#     sources:
+#       required, list of strings, paths to the file contained in the
+#       asset catalog directory; this must contain the Contents.json file
+#       and all the image referenced by it (not enforced by the template).
+#
+#     asset_type:
+#       required, string, type of the asset catalog, that is the extension
+#       of the directory containing the images and the Contents.json file.
+#
+template("asset_catalog") {
+  assert(defined(invoker.sources) && invoker.sources != [],
+         "sources must be defined and not empty for $target_name")
+
+  assert(defined(invoker.asset_type) && invoker.asset_type != "",
+         "asset_type must be defined and not empty for $target_name")
+
+  if (current_toolchain != default_toolchain) {
+    group(target_name) {
+      public_deps = [
+        ":$target_name($default_toolchain)",
+      ]
+    }
+  } else {
+    _copy_target_name = target_name + "__copy"
+    _data_target_name = target_name
+
+    _sources = invoker.sources
+    _outputs = []
+
+    # The compilation of resources into Assets.car is enabled automatically
+    # by the "create_bundle" target if any of the "bundle_data" sources's
+    # path is in a .xcassets directory and matches one of the know asset
+    # catalog type.
+    _xcassets_dir = "$target_gen_dir/${target_name}.xcassets"
+    _output_dir = "$_xcassets_dir/" +
+                  get_path_info(get_path_info(_sources[0], "dir"), "file")
+
+    foreach(_source, invoker.sources) {
+      _dir = get_path_info(_source, "dir")
+      _outputs += [ "$_output_dir/" + get_path_info(_source, "file") ]
+
+      assert(get_path_info(_dir, "extension") == invoker.asset_type,
+             "$_source dirname must have .${invoker.asset_type} extension")
+    }
+
+    action(_copy_target_name) {
+      # Forward "deps", "public_deps" and "testonly" in case some of the
+      # source files are generated.
+      forward_variables_from(invoker,
+                             [
+                               "deps",
+                               "public_deps",
+                               "testonly",
+                             ])
+
+      script = "//build/config/ios/hardlink.py"
+
+      visibility = [ ":$_data_target_name" ]
+      sources = _sources
+      outputs = _outputs + [ _xcassets_dir ]
+
+      args = [
+        rebase_path(get_path_info(_sources[0], "dir"), root_out_dir),
+        rebase_path(_output_dir, root_out_dir),
+      ]
+    }
+
+    bundle_data(_data_target_name) {
+      forward_variables_from(invoker,
+                             "*",
+                             [
+                               "deps",
+                               "outputs",
+                               "public_deps",
+                               "sources",
+                             ])
+
+      sources = _outputs
+      outputs = [
+        "{{bundle_resources_dir}}/{{source_file_part}}",
+      ]
+      public_deps = [
+        ":$_copy_target_name",
+      ]
+    }
+  }
+}
+
+# Those templates are specialisation of the asset_catalog template for known
+# types of asset catalog types (imageset, launchimage, appiconset).
+#
+# Arguments
+#
+#     sources:
+#       required, list of strings, paths to the file contained in the
+#       asset catalog directory; this must contain the Contents.json file
+#       and all the image referenced by it (not enforced by the template).
+#
+template("appiconset") {
+  asset_catalog(target_name) {
+    forward_variables_from(invoker, "*", [ "asset_type" ])
+    asset_type = "appiconset"
+  }
+}
+template("imageset") {
+  asset_catalog(target_name) {
+    forward_variables_from(invoker, "*", [ "asset_type" ])
+    asset_type = "imageset"
+  }
+}
+template("launchimage") {
+  asset_catalog(target_name) {
+    forward_variables_from(invoker, "*", [ "asset_type" ])
+    asset_type = "launchimage"
+  }
+}

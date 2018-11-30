@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <style>
+      body {
+        background-color: #fff;
+        color: #333;
+        font-family: Verdana, sans-serif;
+        font-size: 10px;
+        margin-left: 30px;
+        margin-right: 30px;
+        margin-top: 20px;
+        margin-bottom: 50px;
+        padding: 0;
+      }
+      table, th, td {
+        border: 1px solid black;
+        border-collapse: collapse;
+        text-align: center;
+      }
+      table, td {
+        padding: 0.1em 1em 0.1em 1em;
+      }
+      th {
+        cursor: pointer;
+        padding: 0.2em 1.5em 0.2em 1.5em;
+      }
+      table {
+        width: 100%;
+      }
+      .center {
+        text-align: center;
+      }
+      .left {
+        text-align: left;
+      }
+      a {
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      a:link,a:visited,a:active {
+        color: #444;
+      }
+      .row_block:hover {
+        background-color: #F6F6F6;
+      }
+      .skipped, .success, .failure {
+        border-color: #000000;
+      }
+      .success {
+        color: #000;
+        background-color: #8d4;
+      }
+      .failure {
+        color: #000;
+        background-color: #e88;
+      }
+      .skipped {
+        color: #000;
+        background: #AADDEE;
+      }
+    </style>
+    <script type="text/javascript">
+      {% include "javascript/main_html.js" %}
+    </script>
+  </head>
+  <body>
+    <div>
+      <h2 id="summary-header"></h2>
+      {% for tb_value in tb_values %}
+        {% include 'template/table.html' %}
+      {% endfor %}
+    </div>
+  {% if feedback_url %}
+    </br>
+      <a href="{{feedback_url}}" target="_blank"><b>Feedback</b></a>
+    </body>
+  {%- endif %}
+  <script>
+    sortSuiteTableByFailedTestCases();
+    showSuiteTableOnlyWithReplaceState();
+    // Enable sorting for each column of tables.
+    Array.prototype.slice.call(document.getElementsByTagName('th'))
+        .forEach(function(head) {
+            head.addEventListener(
+                "click",
+                function() { sortByColumn(head); });
+        }
+    );
+    setBrowserBackButtonLogic();
+    setTableCellsAsClickable();
+  </script>
+</html>

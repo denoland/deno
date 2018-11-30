@@ -1,0 +1,264 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/chrome_build.gni")
+import("//build/config/chromecast_build.gni")
+import("//build/config/coverage/coverage.gni")
+import("//build/toolchain/toolchain.gni")
+
+declare_args() {
+  # Compile for Address Sanitizer to find memory bugs.
+  is_asan = false
+
+  # Compile for Leak Sanitizer to find leaks.
+  is_lsan = false
+
+  # Compile for Memory Sanitizer to find uninitialized reads.
+  is_msan = false
+
+  # Compile for Thread Sanitizer to find threading bugs.
+  is_tsan = false
+
+  # Compile for Undefined Behaviour Sanitizer to find various types of
+  # undefined behaviour (excludes vptr checks).
+  is_ubsan = false
+
+  # Halt the program if a problem is detected.
+  is_ubsan_no_recover = false
+
+  # Compile for Undefined Behaviour Sanitizer's null pointer checks.
+  is_ubsan_null = false
+
+  # Compile for Undefined Behaviour Sanitizer's vptr checks.
+  is_ubsan_vptr = false
+
+  # Compile with SafeStack shadow stack support.
+  is_safestack = false
+
+  # Track where uninitialized memory originates from. From fastest to slowest:
+  # 0 - no tracking, 1 - track only the initial allocation site, 2 - track the
+  # chain of stores leading from allocation site to use site.
+  msan_track_origins = 2
+
+  # Use dynamic libraries instrumented by one of the sanitizers instead of the
+  # standard system libraries. Set this flag to download prebuilt binaries from
+  # GCS.
+  use_prebuilt_instrumented_libraries = false
+
+  # Use dynamic libraries instrumented by one of the sanitizers instead of the
+  # standard system libraries. Set this flag to build the libraries from source.
+  use_locally_built_instrumented_libraries = false
+
+  # Compile with Control Flow Integrity to protect virtual calls and casts.
+  # See http://clang.llvm.org/docs/ControlFlowIntegrity.html
+  #
+  # TODO(pcc): Remove this flag if/when CFI is enabled in all official builds.
+  is_cfi = target_os == "linux" && !is_chromeos && target_cpu == "x64" &&
+           is_official_build
+
+  # Enable checks for bad casts: derived cast and unrelated cast.
+  # TODO(krasin): remove this, when we're ready to add these checks by default.
+  # https://crbug.com/626794
+  use_cfi_cast = false
+
+  # Enable checks for indirect function calls via a function pointer.
+  # TODO(pcc): remove this when we're ready to add these checks by default.
+  # https://crbug.com/701919
+  use_cfi_icall = target_os == "linux" && !is_chromeos && target_cpu == "x64" &&
+                  is_official_build
+
+  # Print detailed diagnostics when Control Flow Integrity detects a violation.
+  use_cfi_diag = false
+
+  # Let Control Flow Integrity continue execution instead of crashing when
+  # printing diagnostics (use_cfi_diag = true).
+  use_cfi_recover = false
+
+  # Compile for fuzzing with LLVM LibFuzzer.
+  # See http://www.chromium.org/developers/testing/libfuzzer
+  use_libfuzzer = false
+
+  # Compile for fuzzing with AFL.
+  use_afl = false
+
+  # Enables core ubsan security features. Will later be removed once it matches
+  # is_ubsan.
+  is_ubsan_security = false
+
+  # Compile for fuzzing with Dr. Fuzz
+  # See http://www.chromium.org/developers/testing/dr-fuzz
+  use_drfuzz = false
+
+  # Helper variable for testing builds with disabled libfuzzer.
+  # Not for client use.
+  disable_libfuzzer = false
+
+  # Optimize for coverage guided fuzzing (balance between speed and number of
+  # branches). Can be also used to remove non-determinism and other issues.
+  optimize_for_fuzzing = false
+
+  # Value for -fsanitize-coverage flag. Setting this causes
+  # use_sanitizer_coverage to be enabled.
+  # This flag is not used for libFuzzer (use_libfuzzer=true) unless we are on
+  # Mac. Instead, we use:
+  #     -fsanitize=fuzzer-no-link
+  # Default value when unset and use_fuzzing_engine=true:
+  #     trace-pc-guard
+  # Default value when unset and use_sanitizer_coverage=true:
+  #     trace-pc-guard,indirect-calls
+  sanitizer_coverage_flags = ""
+}
+
+# Disable sanitizers for non-default toolchains.
+if (current_toolchain != default_toolchain) {
+  is_asan = false
+  is_cfi = false
+  is_lsan = false
+  is_msan = false
+  is_tsan = false
+  is_ubsan = false
+  is_ubsan_null = false
+  is_ubsan_no_recover = false
+  is_ubsan_security = false
+  is_ubsan_vptr = false
+  msan_track_origins = 0
+  sanitizer_coverage_flags = ""
+  use_afl = false
+  use_cfi_diag = false
+  use_cfi_recover = false
+  use_drfuzz = false
+  use_libfuzzer = false
+  use_prebuilt_instrumented_libraries = false
+  use_locally_built_instrumented_libraries = false
+  use_sanitizer_coverage = false
+}
+
+# Whether we are doing a fuzzer build. Normally this should be checked instead
+# of checking "use_libfuzzer || use_afl" because often developers forget to
+# check for "use_afl".
+use_fuzzing_engine = use_libfuzzer || use_afl
+
+# Args that are in turn dependent on other args must be in a separate
+# declare_args block. User overrides are only applied at the end of a
+# declare_args block.
+declare_args() {
+  use_sanitizer_coverage =
+      !use_clang_coverage &&
+      (use_fuzzing_engine || sanitizer_coverage_flags != "")
+
+  # Detect overflow/underflow for global objects.
+  #
+  # Mac: http://crbug.com/352073
+  asan_globals = !is_mac
+}
+
+if (use_fuzzing_engine && sanitizer_coverage_flags == "") {
+  sanitizer_coverage_flags = "trace-pc-guard"
+} else if (use_sanitizer_coverage && sanitizer_coverage_flags == "") {
+  sanitizer_coverage_flags = "trace-pc-guard,indirect-calls"
+}
+
+# Whether we are linking against a debugging sanitizer runtime library. Among
+# other things, this changes the default symbol level and other settings in
+# order to prepare to create stack traces "live" using the sanitizer runtime.
+using_sanitizer =
+    is_asan || is_lsan || is_tsan || is_msan || is_ubsan || is_ubsan_null ||
+    is_ubsan_vptr || is_ubsan_security || use_sanitizer_coverage || use_cfi_diag
+
+assert(!using_sanitizer || is_clang,
+       "Sanitizers (is_*san) require setting is_clang = true in 'gn args'")
+
+assert(!is_cfi || is_clang,
+       "is_cfi requires setting is_clang = true in 'gn args'")
+
+assert(!is_safestack || is_clang,
+       "is_safestack requires setting is_clang = true in 'gn args'")
+
+prebuilt_instrumented_libraries_available =
+    is_msan && (msan_track_origins == 0 || msan_track_origins == 2)
+
+if (use_libfuzzer && is_linux) {
+  if (is_asan) {
+    # We do leak checking with libFuzzer on Linux. Set is_lsan for code that
+    # relies on LEAK_SANITIZER define to avoid false positives.
+    is_lsan = true
+  }
+  if (is_msan) {
+    use_prebuilt_instrumented_libraries = true
+  }
+}
+
+# MSan only links Chrome properly in release builds (brettw -- 9/1/2015). The
+# same is possibly true for the other non-ASan sanitizers. But regardless of
+# whether it links, one would normally never run a sanitizer in debug mode.
+# Running in debug mode probably indicates you forgot to set the "is_debug =
+# false" flag in the build args. ASan seems to run fine in debug mode.
+#
+# If you find a use-case where you want to compile a sanitizer in debug mode
+# and have verified it works, ask brettw and we can consider removing it from
+# this condition. We may also be able to find another way to enable your case
+# without having people accidentally get broken builds by compiling an
+# unsupported or unadvisable configurations.
+#
+# For one-off testing, just comment this assertion out.
+assert(!is_debug || !(is_msan || is_ubsan || is_ubsan_null || is_ubsan_vptr),
+       "Sanitizers should generally be used in release (set is_debug=false).")
+
+assert(!is_msan || (is_linux && current_cpu == "x64"),
+       "MSan currently only works on 64-bit Linux and ChromeOS builds.")
+
+assert(!is_lsan || is_asan, "is_lsan = true requires is_asan = true also.")
+
+# ASAN build on Windows is not working in debug mode. Intercepting memory
+# allocation functions is hard on Windows and not yet implemented in LLVM.
+assert(!is_win || !is_debug || !is_asan,
+       "ASan on Windows doesn't work in debug (set is_debug=false).")
+
+# Make sure that if we recover on detection (i.e. not crash), diagnostics are
+# printed.
+assert(!use_cfi_recover || use_cfi_diag,
+       "Only use CFI recovery together with diagnostics.")
+
+# TODO(crbug.com/753445): the use_sanitizer_coverage arg is currently
+# not supported by the Chromium mac_clang_x64 toolchain on iOS distribution.
+# The coverage works with iOS toolchain but it is broken when the mac
+# toolchain is used as a secondary one on iOS distribution. E.g., it should be
+# possible to build the "net" target for iOS with the sanitizer coverage
+# enabled.
+assert(
+    !(use_sanitizer_coverage && is_mac && target_os == "ios"),
+    "crbug.com/753445: use_sanitizer_coverage=true is not supported by the " +
+        "Chromium mac_clang_x64 toolchain on iOS distribution. Please set " +
+        "the argument value to false.")
+
+# Use these lists of configs to disable instrumenting code that is part of a
+# fuzzer, but which isn't being targeted (such as libprotobuf-mutator, *.pb.cc
+# and libprotobuf when they are built as part of a proto fuzzer). Adding or
+# removing these lists does not have any effect if use_libfuzzer or use_afl are
+# not passed as arguments to gn.
+not_fuzzed_remove_configs = []
+not_fuzzed_remove_nonasan_configs = []
+
+if (use_fuzzing_engine) {
+  # Removing coverage should always just work.
+  not_fuzzed_remove_configs += [ "//build/config/coverage:default_coverage" ]
+  not_fuzzed_remove_nonasan_configs +=
+      [ "//build/config/coverage:default_coverage" ]
+
+  if (!is_msan) {
+    # Allow sanitizer instrumentation to be removed if we are not using MSan
+    # since binaries cannot be partially instrumented with MSan.
+    not_fuzzed_remove_configs +=
+        [ "//build/config/sanitizers:default_sanitizer_flags" ]
+
+    # Certain parts of binaries must be instrumented with ASan if the rest of
+    # the binary is. For these, only remove non-ASan sanitizer instrumentation.
+    if (!is_asan) {
+      not_fuzzed_remove_nonasan_configs +=
+          [ "//build/config/sanitizers:default_sanitizer_flags" ]
+
+      assert(not_fuzzed_remove_nonasan_configs == not_fuzzed_remove_configs)
+    }
+  }
+}

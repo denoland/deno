@@ -1,0 +1,121 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/c++/c++.gni")
+import("//build/config/compiler/compiler.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/config/sysroot.gni")
+import("//build/toolchain/toolchain.gni")
+
+declare_args() {
+  # When non empty, overrides the target rpath value. This allows a user to
+  # make a Chromium build where binaries and shared libraries are meant to be
+  # installed into separate directories, like /usr/bin/chromium and
+  # /usr/lib/chromium for instance. It is useful when a build system that
+  # generates a whole target root filesystem (like Yocto) is used on top of gn,
+  # especially when cross-compiling.
+  # Note: this gn arg is similar to gyp target_rpath generator flag.
+  gcc_target_rpath = ""
+  ldso_path = ""
+}
+
+# This config causes functions not to be automatically exported from shared
+# libraries. By default, all symbols are exported but this means there are
+# lots of exports that slow everything down. In general we explicitly mark
+# which functiosn we want to export from components.
+#
+# Some third_party code assumes all functions are exported so this is separated
+# into its own config so such libraries can remove this config to make symbols
+# public again.
+#
+# See http://gcc.gnu.org/wiki/Visibility
+config("symbol_visibility_hidden") {
+  cflags = [ "-fvisibility=hidden" ]
+
+  # Visibility attribute is not supported on AIX.
+  if (current_os != "aix") {
+    cflags_cc = [ "-fvisibility-inlines-hidden" ]
+    cflags_objcc = cflags_cc
+  }
+}
+
+# This config is usually set when :symbol_visibility_hidden is removed.
+# It's often a good idea to set visibility explicitly, as there're flags
+# which would error out otherwise (e.g. -fsanitize=cfi-unrelated-cast)
+config("symbol_visibility_default") {
+  cflags = [ "-fvisibility=default" ]
+}
+
+# The rpath is the dynamic library search path. Setting this config on a link
+# step will put the directory where the build generates shared libraries into
+# the rpath.
+#
+# This is required for component builds since the build generates many shared
+# libraries in the build directory that we expect to be automatically loaded.
+# It will be automatically applied in this case by :executable_ldconfig.
+#
+# In non-component builds, certain test binaries may expect to load dynamic
+# libraries from the current directory. As long as these aren't distributed,
+# this is OK. For these cases use something like this:
+#
+#  if (is_linux && !is_component_build) {
+#    configs += [ "//build/config/gcc:rpath_for_built_shared_libraries" ]
+#  }
+config("rpath_for_built_shared_libraries") {
+  if (!is_android) {
+    # Note: Android doesn't support rpath.
+    rpath_link = "."
+    if (current_toolchain != default_toolchain || gcc_target_rpath == "") {
+      ldflags = [
+        # Want to pass "\$". GN will re-escape as required for ninja.
+        "-Wl,-rpath=\$ORIGIN/${rpath_link}",
+        "-Wl,-rpath-link=${rpath_link}",
+      ]
+    } else {
+      ldflags = [
+        "-Wl,-rpath=${gcc_target_rpath}",
+        "-Wl,-rpath-link=${rpath_link}",
+      ]
+    }
+    if (current_toolchain == default_toolchain && ldso_path != "") {
+      ldflags += [ "-Wl,--dynamic-linker=${ldso_path}" ]
+    }
+  }
+}
+
+# Settings for executables.
+config("executable_ldconfig") {
+  ldflags = []
+  if (is_android) {
+    ldflags += [
+      "-Bdynamic",
+      "-Wl,-z,nocopyreloc",
+    ]
+  } else {
+    # See the rpath_for... config above for why this is necessary for component
+    # builds.
+    if (is_component_build) {
+      configs = [ ":rpath_for_built_shared_libraries" ]
+    }
+    if (current_cpu == "mipsel" || current_cpu == "mips64el") {
+      ldflags += [ "-pie" ]
+    }
+  }
+
+  if (!is_android && current_os != "aix") {
+    # Find the path containing shared libraries for this toolchain
+    # relative to the build directory. ${root_out_dir} will be a
+    # subdirectory of ${root_build_dir} when cross compiling.
+    _rpath_link = rebase_path(root_out_dir, root_build_dir)
+    ldflags += [
+      "-Wl,-rpath-link=$_rpath_link",
+
+      # TODO(GYP): Do we need a check on the binutils version here?
+      #
+      # Newer binutils don't set DT_RPATH unless you disable "new" dtags
+      # and the new DT_RUNPATH doesn't work without --no-as-needed flag.
+      "-Wl,--disable-new-dtags",
+    ]
+  }
+}

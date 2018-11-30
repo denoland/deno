@@ -1,0 +1,32 @@
+# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Defines the configuration of Goma.
+
+declare_args() {
+  # Set to true to enable distributed compilation using Goma.
+  use_goma = false
+
+  # This flag is for ChromeOS compiler wrapper.
+  # By passing gomacc path via GOMACC_PATH environment variable, ChromeOS'
+  # compiler wrapper invokes gomacc inside it.
+  has_gomacc_path = false
+
+  # Set the default value based on the platform.
+  if (host_os == "win") {
+    # Absolute directory containing the gomacc.exe binary.
+    goma_dir = "C:\src\goma\goma-win64"
+  } else {
+    if (getenv("GOMA_DIR") != "") {
+      # Absolute directory containing the gomacc binary.
+      goma_dir = getenv("GOMA_DIR")
+    } else {
+      # Absolute directory containing the gomacc binary.
+      goma_dir = getenv("HOME") + "/goma"
+    }
+  }
+}
+
+assert(!(is_win && host_os != "win") || !use_goma,
+       "goma does not yet work in win cross builds, b/64390790")

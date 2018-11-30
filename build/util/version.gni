@@ -1,0 +1,59 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This exposes the Chrome version as GN variables for use in build files.
+#
+# PREFER NOT TO USE THESE. The GYP build uses this kind of thing extensively.
+# However, it is far better to write an action (or use the process_version
+# wrapper in build/util/version.gni) to generate a file at build-time with the
+# information you need. This allows better dependency checking and GN will
+# run faster.
+#
+# These values should only be used if you REALLY need to depend on them at
+# build-time, for example, in the computation of output file names.
+
+# Give version.py a pattern that will expand to a GN scope consisting of
+# all values we need at once.
+_version_dictionary_template = "full = \"@MAJOR@.@MINOR@.@BUILD@.@PATCH@\" " +
+                               "major = \"@MAJOR@\" minor = \"@MINOR@\" " +
+                               "build = \"@BUILD@\" patch = \"@PATCH@\" "
+
+# The file containing the Chrome version number.
+chrome_version_file = "//chrome/VERSION"
+
+_result = exec_script("version.py",
+                      [
+                        "-f",
+                        rebase_path(chrome_version_file, root_build_dir),
+                        "-t",
+                        _version_dictionary_template,
+                      ],
+                      "scope",
+                      [ chrome_version_file ])
+
+# Full version. For example "45.0.12321.0"
+chrome_version_full = _result.full
+
+# The consituent parts of the full version.
+chrome_version_major = _result.major
+chrome_version_minor = _result.minor
+chrome_version_build = _result.build
+chrome_version_patch = _result.patch
+
+if (is_mac) {
+  _result = exec_script("version.py",
+                        [
+                          "-f",
+                          rebase_path(chrome_version_file, root_build_dir),
+                          "-t",
+                          "@BUILD@.@PATCH_HI@.@PATCH_LO@",
+                          "-e",
+                          "PATCH_HI=int(PATCH)/256",
+                          "-e",
+                          "PATCH_LO=int(PATCH)%256",
+                        ],
+                        "trim string",
+                        [ chrome_version_file ])
+  chrome_dylib_version = _result
+}

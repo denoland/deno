@@ -1,0 +1,112 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/chrome_build.gni")
+import("//build/config/mac/mac_sdk_overrides.gni")
+import("//build/toolchain/toolchain.gni")
+
+declare_args() {
+  # The MACOSX_DEPLOYMENT_TARGET variable used when compiling. This partially
+  # controls the minimum supported version of macOS for Chromium by
+  # affecting the symbol availability rules. This may differ from
+  # mac_min_system_version when dropping support for older macOSes but where
+  # additional code changes are required to be compliant with the availability
+  # rules.
+  # Must be of the form x.x.x for Info.plist files.
+  mac_deployment_target = "10.9.0"
+
+  # The value of the LSMinimmumSystemVersion in Info.plist files. This partially
+  # controls the minimum supported version of macOS for Chromium by
+  # affecting the Info.plist. This may differ from mac_deployment_target when
+  # dropping support for older macOSes. This should be greater than or equal to
+  # the mac_deployment_target version.
+  # Must be of the form x.x.x for Info.plist files.
+  mac_min_system_version = "10.10.0"
+
+  # Path to a specific version of the Mac SDK, not including a slash at the end.
+  # If empty, the path to the lowest version greater than or equal to
+  # mac_sdk_min is used.
+  mac_sdk_path = ""
+
+  # The SDK name as accepted by xcodebuild.
+  mac_sdk_name = "macosx"
+}
+
+# Check that the version of macOS SDK used is the one requested when building
+# a version of Chrome shipped to the users. Disable the check if building for
+# iOS as the version macOS SDK used is not relevant for the tool build for the
+# host (they are not shipped) --- this is required as Chrome on iOS is usually
+# build with the latest version of Xcode that may not ship with the version of
+# the macOS SDK used to build Chrome on mac.
+# TODO(crbug.com/635745): the check for target_os should be replaced by a
+# check that current_toolchain is default_toolchain, and the file should
+# assert that current_os is "mac" once this file is no longer included by
+# iOS toolchains.
+_verify_sdk = is_chrome_branded && is_official_build && target_os != "ios"
+
+find_sdk_args = [ "--print_sdk_path" ]
+if (!use_system_xcode) {
+  find_sdk_args += [
+    "--developer_dir",
+    hermetic_xcode_path,
+  ]
+}
+if (_verify_sdk) {
+  find_sdk_args += [
+    "--verify",
+    mac_sdk_min,
+    "--sdk_path=" + mac_sdk_path,
+  ]
+} else {
+  find_sdk_args += [ mac_sdk_min ]
+}
+
+# The tool will print the SDK path on the first line, and the version on the
+# second line.
+find_sdk_lines =
+    exec_script("//build/mac/find_sdk.py", find_sdk_args, "list lines")
+mac_sdk_version = find_sdk_lines[1]
+if (mac_sdk_path == "") {
+  mac_sdk_path = find_sdk_lines[0]
+}
+
+script_name = "//build/config/mac/sdk_info.py"
+sdk_info_args = []
+if (!use_system_xcode) {
+  sdk_info_args += [
+    "--developer_dir",
+    hermetic_xcode_path,
+  ]
+}
+sdk_info_args += [ mac_sdk_name ]
+
+_mac_sdk_result = exec_script(script_name, sdk_info_args, "scope")
+xcode_version = _mac_sdk_result.xcode_version
+xcode_build = _mac_sdk_result.xcode_build
+machine_os_build = _mac_sdk_result.machine_os_build
+
+if (mac_sdk_version != mac_sdk_min &&
+    exec_script("//build/check_return_value.py",
+                [
+                  "test",
+                  xcode_version,
+                  "-ge",
+                  "0730",
+                ],
+                "value") != 1) {
+  print(
+      "********************************************************************************")
+  print(
+      " WARNING: The Mac OS X SDK is incompatible with the version of Xcode. To fix,")
+  print(
+      "          either upgrade Xcode to the latest version or install the Mac OS X")
+  print(
+      "          $mac_sdk_min SDK. For more information, see https://crbug.com/620127.")
+  print()
+  print(" Current SDK Version:   $mac_sdk_version")
+  print(" Current Xcode Version: $xcode_version ($xcode_build)")
+  print(
+      "********************************************************************************")
+  assert(false, "SDK is incompatible with Xcode")
+}

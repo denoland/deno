@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Simple launcher script for gyp_chromium.py.
+# TODO(sbc): This should probably be shell script but for historical
+# reasons (all the python code used to live in this script without a
+# .py extension, and was often run as 'python gyp_chromium') it is
+# currently still python.
+
+execfile(__file__ + '.py')

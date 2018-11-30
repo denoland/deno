@@ -1,0 +1,126 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Runs the version processing script over the given template file to produce
+# an output file. This is used for generating various forms of files that
+# incorporate the product name and version.
+#
+# Unlike GYP, this will actually compile the resulting file, so you don't need
+# to add it separately to the sources, just depend on the target.
+#
+# In GYP this is a rule that runs once per ".ver" file. In GN this just
+# processes one file per invocation of the template so you may have to have
+# multiple targets.
+#
+# Parameters:
+#   sources (optional):
+#     List of file names to read. When converting a GYP target, this should
+#     list the 'source' (see above) as well as any extra_variable_files.
+#     The files will be passed to version.py in the order specified here.
+#
+#   output:
+#     File name of file to write. In GYP this is unspecified and it will
+#     make up a file name for you based on the input name, and tack on
+#     "_version.rc" to the end. But in GN you need to specify the full name.
+#
+#   template_file (optional):
+#     Template file to use (not a list). Most Windows users that want to use
+#     this to process a .rc template should use process_version_rc_template(),
+#     defined in //chrome/process_version_rc_template.gni, instead.
+#
+#   extra_args (optional):
+#     Extra arguments to pass to version.py. Any "-f <filename>" args should
+#     use sources instead.
+#
+#   process_only (optional, defaults to false)
+#     Set to generate only one action that processes the version file and
+#     doesn't attempt to link the result into a source set. This is for if
+#     you are processing the version as data only.
+#
+#   visibility (optional)
+#
+# Example:
+#   process_version("myversion") {
+#     sources = [
+#       "//chrome/VERSION"
+#       "myfile.h.in"
+#     ]
+#     output = "$target_gen_dir/myfile.h"
+#     extra_args = [ "-e", "FOO=42" ]
+#   }
+template("process_version") {
+  assert(defined(invoker.output), "Output must be defined for $target_name")
+
+  process_only = defined(invoker.process_only) && invoker.process_only
+
+  if (process_only) {
+    action_name = target_name
+  } else {
+    action_name = target_name + "_action"
+    source_set_name = target_name
+  }
+
+  action(action_name) {
+    script = "//build/util/version.py"
+
+    inputs = []
+    if (defined(invoker.inputs)) {
+      inputs += invoker.inputs
+    }
+    if (defined(invoker.template_file)) {
+      inputs += [ invoker.template_file ]
+    }
+
+    outputs = [
+      invoker.output,
+    ]
+
+    args = []
+
+    if (is_official_build) {
+      args += [ "--official" ]
+    }
+
+    if (defined(invoker.sources)) {
+      inputs += invoker.sources
+      foreach(i, invoker.sources) {
+        args += [
+          "-f",
+          rebase_path(i, root_build_dir),
+        ]
+      }
+    }
+
+    if (defined(invoker.extra_args)) {
+      args += invoker.extra_args
+    }
+    args += [
+      "-o",
+      rebase_path(invoker.output, root_build_dir),
+    ]
+    if (defined(invoker.template_file)) {
+      args += [ rebase_path(invoker.template_file, root_build_dir) ]
+    }
+
+    forward_variables_from(invoker, [ "deps" ])
+
+    if (process_only) {
+      # When processing only, visibility gets applied to this target.
+      forward_variables_from(invoker, [ "visibility" ])
+    } else {
+      # When linking the result, only the source set can depend on the action.
+      visibility = [ ":$source_set_name" ]
+    }
+  }
+
+  if (!process_only) {
+    source_set(source_set_name) {
+      forward_variables_from(invoker, [ "visibility" ])
+      sources = get_target_outputs(":$action_name")
+      public_deps = [
+        ":$action_name",
+      ]
+    }
+  }
+}

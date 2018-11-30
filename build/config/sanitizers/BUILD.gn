@@ -1,0 +1,624 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build_overrides/build.gni")
+import("//build/config/chrome_build.gni")
+import("//build/config/chromecast_build.gni")
+import("//build/config/clang/clang.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/toolchain/toolchain.gni")
+
+if (is_ios) {
+  import("//build/config/ios/ios_sdk.gni")
+}
+
+# Contains the dependencies needed for sanitizers to link into executables and
+# shared_libraries.
+group("deps") {
+  if (using_sanitizer) {
+    public_configs = [
+      ":sanitizer_options_link_helper",
+
+      # Even when a target removes default_sanitizer_flags, it may be depending
+      # on a library that did not remove default_sanitizer_flags. Thus, we need
+      # to add the ldflags here as well as in default_sanitizer_flags.
+      ":default_sanitizer_ldflags",
+    ]
+    deps = [
+      ":options_sources",
+    ]
+    if (is_win) {
+      exe = ".exe"
+    } else {
+      exe = ""
+    }
+    data = [
+      "//tools/valgrind/asan/",
+      "$clang_base_path/bin/llvm-symbolizer${exe}",
+    ]
+    if (use_prebuilt_instrumented_libraries ||
+        use_locally_built_instrumented_libraries) {
+      deps += [ "//third_party/instrumented_libraries:deps" ]
+    }
+
+    # ASAN is supported on iOS but the runtime library depends on the compiler
+    # used (Chromium version of clang versus Xcode version of clang). Only copy
+    # the ASAN runtime on iOS if building with Chromium clang.
+    if (is_win || is_mac || (is_ios && !use_xcode_clang)) {
+      data_deps = [
+        ":copy_asan_runtime",
+      ]
+    }
+    if (is_mac || (is_ios && !use_xcode_clang)) {
+      public_deps = [
+        ":asan_runtime_bundle_data",
+      ]
+    }
+  }
+}
+
+if ((is_mac || is_win || (is_ios && !use_xcode_clang)) && using_sanitizer) {
+  if (is_mac) {
+    _clang_rt_dso_path = "darwin/libclang_rt.asan_osx_dynamic.dylib"
+  } else if (is_ios) {
+    _clang_rt_dso_path = "darwin/libclang_rt.asan_iossim_dynamic.dylib"
+  } else if (is_win && target_cpu == "x86") {
+    _clang_rt_dso_path = "windows/clang_rt.asan_dynamic-i386.dll"
+  } else if (is_win && target_cpu == "x64") {
+    _clang_rt_dso_path = "windows/clang_rt.asan_dynamic-x86_64.dll"
+  }
+
+  _clang_rt_dso_full_path =
+      "$clang_base_path/lib/clang/$clang_version/lib/$_clang_rt_dso_path"
+
+  if (!is_ios) {
+    copy("copy_asan_runtime") {
+      sources = [
+        _clang_rt_dso_full_path,
+      ]
+      outputs = [
+        "$root_out_dir/{{source_file_part}}",
+      ]
+    }
+  } else {
+    # On iOS, the runtime library need to be code signed (adhoc signature)
+    # starting with Xcode 8, so use an action instead of a copy on iOS.
+    action("copy_asan_runtime") {
+      script = "//build/config/ios/codesign.py"
+      sources = [
+        _clang_rt_dso_full_path,
+      ]
+      outputs = [
+        "$root_out_dir/" + get_path_info(sources[0], "file"),
+      ]
+      args = [
+        "code-sign-file",
+        "--identity=" + ios_code_signing_identity,
+        "--output=" + rebase_path(outputs[0], root_build_dir),
+        rebase_path(sources[0], root_build_dir),
+      ]
+    }
+  }
+
+  if (is_mac || is_ios) {
+    bundle_data("asan_runtime_bundle_data") {
+      sources = get_target_outputs(":copy_asan_runtime")
+      outputs = [
+        "{{bundle_executable_dir}}/{{source_file_part}}",
+      ]
+      public_deps = [
+        ":copy_asan_runtime",
+      ]
+    }
+  }
+}
+
+config("sanitizer_options_link_helper") {
+  if (is_mac || is_ios) {
+    ldflags = [ "-Wl,-U,_sanitizer_options_link_helper" ]
+  } else if (!is_win) {
+    ldflags = [ "-Wl,-u_sanitizer_options_link_helper" ]
+  }
+}
+
+static_library("options_sources") {
+  # This is a static_library instead of a source_set, as it shouldn't be
+  # unconditionally linked into targets.
+  visibility = [
+    ":deps",
+    "//:gn_visibility",
+  ]
+  sources = [
+    "//build/sanitizers/sanitizer_options.cc",
+  ]
+
+  # Don't compile this target with any sanitizer code. It can be called from
+  # the sanitizer runtimes, so instrumenting these functions could cause
+  # recursive calls into the runtime if there is an error.
+  configs -= [ "//build/config/sanitizers:default_sanitizer_flags" ]
+
+  if (is_asan) {
+    if (!defined(asan_suppressions_file)) {
+      asan_suppressions_file = "//build/sanitizers/asan_suppressions.cc"
+    }
+    sources += [ asan_suppressions_file ]
+  }
+
+  if (is_lsan) {
+    if (!defined(lsan_suppressions_file)) {
+      lsan_suppressions_file = "//build/sanitizers/lsan_suppressions.cc"
+    }
+    sources += [ lsan_suppressions_file ]
+  }
+
+  if (is_tsan) {
+    if (!defined(tsan_suppressions_file)) {
+      tsan_suppressions_file = "//build/sanitizers/tsan_suppressions.cc"
+    }
+    sources += [ tsan_suppressions_file ]
+  }
+}
+
+# Applies linker flags necessary when either :deps or :default_sanitizer_flags
+# are used.
+config("default_sanitizer_ldflags") {
+  visibility = [
+    ":default_sanitizer_flags",
+    ":deps",
+  ]
+
+  if (is_posix || is_fuchsia) {
+    ldflags = []
+    if (is_asan) {
+      ldflags += [ "-fsanitize=address" ]
+      if (is_mac) {
+        # https://crbug.com/708707
+        ldflags += [ "-fno-sanitize-address-use-after-scope" ]
+      } else {
+        ldflags += [ "-fsanitize-address-use-after-scope" ]
+      }
+    }
+    if (is_lsan) {
+      ldflags += [ "-fsanitize=leak" ]
+    }
+    if (is_tsan) {
+      ldflags += [ "-fsanitize=thread" ]
+    }
+    if (is_msan) {
+      ldflags += [ "-fsanitize=memory" ]
+    }
+    if (is_ubsan || is_ubsan_security) {
+      ldflags += [ "-fsanitize=undefined" ]
+    }
+    if (is_ubsan_null) {
+      ldflags += [ "-fsanitize=null" ]
+    }
+    if (is_ubsan_vptr) {
+      ldflags += [ "-fsanitize=vptr" ]
+    }
+    if (is_safestack) {
+      ldflags += [ "-fsanitize=safe-stack" ]
+    }
+
+    if (use_sanitizer_coverage) {
+      # TODO(crbug.com/892167): Remove the is_mac check when new instrumentation
+      # works on Mac.
+      if (use_libfuzzer && !is_mac) {
+        ldflags += [ "-fsanitize=fuzzer-no-link" ]
+      } else {
+        ldflags += [ "-fsanitize-coverage=$sanitizer_coverage_flags" ]
+      }
+    }
+
+    if (is_cfi && current_toolchain == default_toolchain) {
+      ldflags += [ "-fsanitize=cfi-vcall" ]
+      if (use_cfi_cast) {
+        ldflags += [
+          "-fsanitize=cfi-derived-cast",
+          "-fsanitize=cfi-unrelated-cast",
+        ]
+      }
+      if (use_cfi_icall) {
+        ldflags += [ "-fsanitize=cfi-icall" ]
+      }
+      if (use_cfi_diag) {
+        ldflags += [ "-fno-sanitize-trap=cfi" ]
+        if (use_cfi_recover) {
+          ldflags += [ "-fsanitize-recover=cfi" ]
+        }
+      }
+    }
+  } else if (is_win) {
+    # Windows directly calls link.exe instead of the compiler driver when
+    # linking.  Hence, pass the runtime libraries instead of -fsanitize=address
+    # or -fsanitize=fuzzer.
+    if (is_asan && is_component_build) {
+      # In the static-library build, ASan libraries are different for
+      # executables and dlls, see link_executable and link_shared_library below.
+      # This here handles only the component build.
+      if (target_cpu == "x64") {
+        # Windows 64-bit.
+        libs = [
+          "clang_rt.asan_dynamic-x86_64.lib",
+          "clang_rt.asan_dynamic_runtime_thunk-x86_64.lib",
+        ]
+      } else {
+        assert(target_cpu == "x86", "WinASan unsupported architecture")
+        libs = [
+          "clang_rt.asan_dynamic-i386.lib",
+          "clang_rt.asan_dynamic_runtime_thunk-i386.lib",
+        ]
+      }
+    }
+    if (use_libfuzzer) {
+      assert(target_cpu == "x64", "LibFuzzer unsupported architecture")
+      assert(!is_component_build,
+             "LibFuzzer only supports non-component builds on Windows")
+
+      # Incremental linking causes padding that messes up SanitizerCoverage.
+      # Don't do it.
+      ldflags = [ "/INCREMENTAL:NO" ]
+      libs = [ "clang_rt.fuzzer_no_main-x86_64.lib" ]
+    }
+  }
+}
+
+config("common_sanitizer_flags") {
+  cflags = []
+
+  if (using_sanitizer) {
+    assert(is_clang, "sanitizers only supported with clang")
+    assert(!is_official_build, "sanitizers not supported in official builds")
+
+    cflags += [
+      # Column info in debug data confuses Visual Studio's debugger, so don't
+      # use this by default.  However, clusterfuzz needs it for good
+      # attribution of reports to CLs, so turn it on there.
+      "-gcolumn-info",
+    ]
+
+    # Frame pointers are controlled in //build/config/compiler:default_stack_frames
+  }
+}
+
+config("asan_flags") {
+  cflags = []
+  if (is_asan) {
+    cflags += [ "-fsanitize=address" ]
+    if (!is_mac) {
+      cflags += [ "-fsanitize-address-use-after-scope" ]
+    } else {
+      # https://crbug.com/708707
+      cflags += [ "-fno-sanitize-address-use-after-scope" ]
+    }
+    if (!asan_globals) {
+      cflags += [
+        "-mllvm",
+        "-asan-globals=0",
+      ]
+    }
+    if (is_win) {
+      if (!defined(asan_win_blacklist_path)) {
+        asan_win_blacklist_path =
+            rebase_path("//tools/memory/asan/blacklist_win.txt", root_build_dir)
+      }
+      cflags += [ "-fsanitize-blacklist=$asan_win_blacklist_path" ]
+    } else {
+      # TODO(rnk): Remove this as discussed in http://crbug.com/427202.
+      if (!defined(asan_blacklist_path)) {
+        asan_blacklist_path =
+            rebase_path("//tools/memory/asan/blacklist.txt", root_build_dir)
+      }
+      cflags += [ "-fsanitize-blacklist=$asan_blacklist_path" ]
+    }
+  }
+}
+
+config("link_executable") {
+  if (is_asan && is_win && !is_component_build) {
+    if (target_cpu == "x64") {
+      ldflags = [ "-wholearchive:clang_rt.asan-x86_64.lib" ]
+    } else {
+      assert(target_cpu == "x86", "WinASan unsupported architecture")
+      ldflags = [ "-wholearchive:clang_rt.asan-i386.lib" ]
+    }
+  }
+}
+
+config("link_shared_library") {
+  if (is_asan && is_win && !is_component_build) {
+    if (target_cpu == "x64") {
+      libs = [ "clang_rt.asan_dll_thunk-x86_64.lib" ]
+    } else {
+      assert(target_cpu == "x86", "WinASan unsupported architecture")
+      libs = [ "clang_rt.asan_dll_thunk-i386.lib" ]
+    }
+  }
+}
+
+config("cfi_flags") {
+  cflags = []
+  if (is_cfi && current_toolchain == default_toolchain) {
+    if (!defined(cfi_blacklist_path)) {
+      cfi_blacklist_path =
+          rebase_path("//tools/cfi/blacklist.txt", root_build_dir)
+    }
+    cflags += [
+      "-fsanitize=cfi-vcall",
+      "-fsanitize-blacklist=$cfi_blacklist_path",
+    ]
+
+    if (use_cfi_cast) {
+      cflags += [
+        "-fsanitize=cfi-derived-cast",
+        "-fsanitize=cfi-unrelated-cast",
+      ]
+    }
+
+    if (use_cfi_icall) {
+      cflags += [ "-fsanitize=cfi-icall" ]
+    }
+
+    if (use_cfi_diag) {
+      cflags += [ "-fno-sanitize-trap=cfi" ]
+      if (is_win) {
+        cflags += [
+          "/Oy-",
+          "/Ob0",
+        ]
+      } else {
+        cflags += [
+          "-fno-inline-functions",
+          "-fno-inline",
+          "-fno-omit-frame-pointer",
+          "-O1",
+        ]
+      }
+      if (use_cfi_recover) {
+        cflags += [ "-fsanitize-recover=cfi" ]
+      }
+    }
+  }
+}
+
+# crbug.com/785442: Fix cfi-icall failures for code that casts pointer argument
+# types in function pointer type signatures.
+config("cfi_icall_generalize_pointers") {
+  if (is_clang && is_cfi && use_cfi_icall) {
+    cflags = [ "-fsanitize-cfi-icall-generalize-pointers" ]
+  }
+}
+
+config("coverage_flags") {
+  cflags = []
+  if (use_sanitizer_coverage) {
+    # Used by sandboxing code to allow coverage dump to be written on the disk.
+    defines = [ "SANITIZER_COVERAGE" ]
+
+    # TODO(crbug.com/892167): Remove the is_mac check when new instrumentation
+    # works on Mac.
+    if (use_libfuzzer && !is_mac) {
+      cflags += [ "-fsanitize=fuzzer-no-link" ]
+    } else {
+      cflags += [
+        "-fsanitize-coverage=$sanitizer_coverage_flags",
+        "-mllvm",
+        "-sanitizer-coverage-prune-blocks=1",
+      ]
+      if (current_cpu == "arm") {
+        # http://crbug.com/517105
+        cflags += [
+          "-mllvm",
+          "-sanitizer-coverage-block-threshold=0",
+        ]
+      }
+    }
+  }
+}
+
+config("lsan_flags") {
+  if (is_lsan) {
+    cflags = [ "-fsanitize=leak" ]
+  }
+}
+
+config("msan_flags") {
+  if (is_msan) {
+    assert(is_linux, "msan only supported on linux x86_64")
+    if (!defined(msan_blacklist_path)) {
+      msan_blacklist_path =
+          rebase_path("//tools/msan/blacklist.txt", root_build_dir)
+    }
+    cflags = [
+      "-fsanitize=memory",
+      "-fsanitize-memory-track-origins=$msan_track_origins",
+      "-fsanitize-blacklist=$msan_blacklist_path",
+    ]
+  }
+}
+
+config("safestack_flags") {
+  if (is_safestack) {
+    cflags = [ "-fsanitize=safe-stack" ]
+  }
+}
+
+config("tsan_flags") {
+  if (is_tsan) {
+    assert(is_linux, "tsan only supported on linux x86_64")
+    if (!defined(tsan_blacklist_path)) {
+      tsan_blacklist_path =
+          rebase_path("//tools/memory/tsan_v2/ignores.txt", root_build_dir)
+    }
+    cflags = [
+      "-fsanitize=thread",
+      "-fsanitize-blacklist=$tsan_blacklist_path",
+    ]
+  }
+}
+
+config("ubsan_flags") {
+  cflags = []
+  if (is_ubsan) {
+    if (!defined(ubsan_blacklist_path)) {
+      ubsan_blacklist_path =
+          rebase_path("//tools/ubsan/blacklist.txt", root_build_dir)
+    }
+    cflags += [
+      # Yasm dies with an "Illegal instruction" error when bounds checking is
+      # enabled. See http://crbug.com/489901
+      # "-fsanitize=bounds",
+      "-fsanitize=float-divide-by-zero",
+      "-fsanitize=integer-divide-by-zero",
+      "-fsanitize=null",
+      "-fsanitize=object-size",
+      "-fsanitize=pointer-overflow",
+      "-fsanitize=return",
+      "-fsanitize=returns-nonnull-attribute",
+      "-fsanitize=shift-exponent",
+      "-fsanitize=signed-integer-overflow",
+      "-fsanitize=unreachable",
+      "-fsanitize=vla-bound",
+      "-fsanitize-blacklist=$ubsan_blacklist_path",
+    ]
+
+    # Chromecast ubsan builds fail to compile with these
+    # experimental flags, so only add them to non-chromecast ubsan builds.
+    if (!is_chromecast) {
+      cflags += [
+        # Employ the experimental PBQP register allocator to avoid slow
+        # compilation on files with too many basic blocks.
+        # See http://crbug.com/426271.
+        "-mllvm",
+        "-regalloc=pbqp",
+
+        # Speculatively use coalescing to slightly improve the code generated
+        # by PBQP regallocator. May increase compile time.
+        "-mllvm",
+        "-pbqp-coalescing",
+      ]
+    }
+  }
+}
+
+config("ubsan_no_recover") {
+  if (is_ubsan_no_recover) {
+    cflags = [ "-fno-sanitize-recover=undefined" ]
+  }
+}
+
+config("ubsan_security_flags") {
+  if (is_ubsan_security) {
+    if (!defined(ubsan_security_blacklist_path)) {
+      ubsan_security_blacklist_path =
+          rebase_path("//tools/ubsan/security_blacklist.txt", root_build_dir)
+    }
+    cflags = [
+      "-fsanitize=function",
+      "-fsanitize=pointer-overflow",
+      "-fsanitize=shift",
+      "-fsanitize=signed-integer-overflow",
+      "-fsanitize=vla-bound",
+      "-fsanitize=vptr",
+      "-fsanitize-blacklist=$ubsan_security_blacklist_path",
+    ]
+  }
+}
+
+config("ubsan_null_flags") {
+  if (is_ubsan_null) {
+    cflags = [ "-fsanitize=null" ]
+  }
+}
+
+config("ubsan_vptr_flags") {
+  if (is_ubsan_vptr) {
+    if (!defined(ubsan_vptr_blacklist_path)) {
+      ubsan_vptr_blacklist_path =
+          rebase_path("//tools/ubsan/vptr_blacklist.txt", root_build_dir)
+    }
+    cflags = [
+      "-fsanitize=vptr",
+      "-fsanitize-blacklist=$ubsan_vptr_blacklist_path",
+    ]
+  }
+}
+
+config("fuzzing_build_mode") {
+  if (use_fuzzing_engine && optimize_for_fuzzing) {
+    defines = [ "FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION" ]
+  }
+}
+
+all_sanitizer_configs = [
+  ":common_sanitizer_flags",
+  ":coverage_flags",
+  ":default_sanitizer_ldflags",
+  ":asan_flags",
+  ":cfi_flags",
+  ":lsan_flags",
+  ":msan_flags",
+  ":safestack_flags",
+  ":tsan_flags",
+  ":ubsan_flags",
+  ":ubsan_no_recover",
+  ":ubsan_null_flags",
+  ":ubsan_security_flags",
+  ":ubsan_vptr_flags",
+  ":fuzzing_build_mode",
+]
+
+# This config is applied by default to all targets. It sets the compiler flags
+# for sanitizer usage, or, if no sanitizer is set, does nothing.
+#
+# This needs to be in a separate config so that targets can opt out of
+# sanitizers (by removing the config) if they desire. Even if a target
+# removes this config, executables & shared libraries should still depend on
+# :deps if any of their dependencies have not opted out of sanitizers.
+# Keep this list in sync with default_sanitizer_flags_but_ubsan_vptr.
+config("default_sanitizer_flags") {
+  configs = all_sanitizer_configs
+}
+
+# This config is equivalent to default_sanitizer_flags, but excludes ubsan_vptr.
+# This allows to selectively disable ubsan_vptr, when needed. In particular,
+# if some third_party code is required to be compiled without rtti, which
+# is a requirement for ubsan_vptr.
+config("default_sanitizer_flags_but_ubsan_vptr") {
+  configs = all_sanitizer_configs - [ ":ubsan_vptr_flags" ]
+}
+
+config("default_sanitizer_flags_but_coverage") {
+  configs = all_sanitizer_configs - [ ":coverage_flags" ]
+}
+
+# This config is used by parts of code that aren't targeted in fuzzers and
+# therefore don't need coverage instrumentation and possibly wont need
+# sanitizer instrumentation either. The config also tells the compiler to
+# perform additional optimizations on the configured code and ensures that
+# linking it to the rest of the binary which is instrumented with sanitizers
+# works. The config only does anything if the build is a fuzzing build.
+config("not_fuzzed") {
+  if (use_fuzzing_engine) {
+    # Since we aren't instrumenting with coverage, code size is less of a
+    # concern, so use a more aggressive optimization level than
+    # optimize_for_fuzzing (-O1). When given multiple optimization flags, clang
+    # obeys the last one, so as long as this flag comes after -O1, it should work.
+    # Since this config will always be depended on after
+    # "//build/config/compiler:default_optimization" (which adds -O1 when
+    # optimize_for_fuzzing is true), -O2 should always be the second flag. Even
+    # though this sounds fragile, it isn't a big deal if it breaks, since proto
+    # fuzzers will still work, they will just be slightly slower.
+    cflags = [ "-O2" ]
+
+    # We need to include this config when we remove default_sanitizer_flags or
+    # else there will be linking errors. We would remove default_sanitizer_flags
+    # here as well, but gn doesn't permit this.
+    if (!is_msan) {
+      # We don't actually remove sanitization when MSan is being used so there
+      # is no need to add default_sanitizer_ldflags in that case
+      configs = [ ":default_sanitizer_ldflags" ]
+    }
+  }
+}

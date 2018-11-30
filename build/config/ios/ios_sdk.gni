@@ -1,0 +1,167 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ios/ios_sdk_overrides.gni")
+import("//build/toolchain/toolchain.gni")
+
+declare_args() {
+  # SDK path to use. When empty this will use the default SDK based on the
+  # value of use_ios_simulator.
+  ios_sdk_path = ""
+  ios_sdk_name = ""
+  ios_sdk_version = ""
+  ios_sdk_platform = ""
+  ios_sdk_platform_path = ""
+  xcode_version = ""
+  xcode_version_int = 0
+  xcode_build = ""
+  machine_os_build = ""
+
+  # The iOS Code signing identity to use
+  # TODO(GYP), TODO(sdfresne): Consider having a separate
+  # ios_enable_code_signing_flag=<bool> flag to make the invocation clearer.
+  ios_enable_code_signing = true
+  ios_code_signing_identity = ""
+  ios_code_signing_identity_description = "iPhone Developer"
+
+  # Prefix for CFBundleIdentifier property of iOS bundles (correspond to the
+  # "Organization Identifier" in Xcode). Code signing will fail if no mobile
+  # provisioning for the selected code signing identify support that prefix.
+  ios_app_bundle_id_prefix = "org.chromium"
+
+  # If true, then allow using Xcode to automatically manage certificates. This
+  # requires loading a separate Xcode project and enable automatically managed
+  # certificates. When true, all test application will use the same bundle id
+  # to avoid running out of certificates if using a free account.
+  ios_automatically_manage_certs = true
+
+  # If non-empty, this list must contain valid cpu architecture, and the final
+  # build will be a multi-architecture build (aka fat build) supporting the
+  # main $target_cpu architecture and all of $additional_target_cpus.
+  #
+  # For example to build an application that will run on both arm64 and armv7
+  # devices, you would use the following in args.gn file when running "gn args":
+  #
+  #   target_os = "ios"
+  #   target_cpu = "arm64"
+  #   additional_target_cpus = [ "arm" ]
+  #
+  # You can also pass the value via "--args" parameter for "gn gen" command by
+  # using the syntax --args='additional_target_cpus=["arm"] target_cpu="arm64"'.
+  additional_target_cpus = []
+}
+
+assert(custom_toolchain == "" || additional_target_cpus == [],
+       "cannot define both custom_toolchain and additional_target_cpus")
+
+use_ios_simulator = current_cpu == "x86" || current_cpu == "x64"
+
+ios_generic_test_bundle_id_suffix = "generic-unit-test"
+
+# Initialize additional_toolchains from additional_target_cpus. Assert here
+# that the list does not contains $target_cpu nor duplicates as this would
+# cause weird errors during the build.
+additional_toolchains = []
+if (additional_target_cpus != []) {
+  foreach(_additional_target_cpu, additional_target_cpus) {
+    assert(_additional_target_cpu != target_cpu,
+           "target_cpu must not be listed in additional_target_cpus")
+
+    _toolchain = "//build/toolchain/mac:ios_clang_$_additional_target_cpu"
+    foreach(_additional_toolchain, additional_toolchains) {
+      assert(_toolchain != _additional_toolchain,
+             "additional_target_cpus must not contains duplicate values")
+    }
+
+    additional_toolchains += [ _toolchain ]
+  }
+}
+
+if (ios_sdk_path == "") {
+  # Compute default target.
+  if (use_ios_simulator) {
+    ios_sdk_name = "iphonesimulator"
+    ios_sdk_platform = "iPhoneSimulator"
+  } else {
+    ios_sdk_name = "iphoneos"
+    ios_sdk_platform = "iPhoneOS"
+  }
+
+  ios_sdk_info_args = []
+  if (!use_system_xcode) {
+    ios_sdk_info_args += [
+      "--developer_dir",
+      hermetic_xcode_path,
+    ]
+  }
+  ios_sdk_info_args += [ ios_sdk_name ]
+  script_name = "//build/config/mac/sdk_info.py"
+  _ios_sdk_result = exec_script(script_name, ios_sdk_info_args, "scope")
+  ios_sdk_path = _ios_sdk_result.sdk_path
+  ios_sdk_version = _ios_sdk_result.sdk_version
+  ios_sdk_platform_path = _ios_sdk_result.sdk_platform_path
+  ios_sdk_build = _ios_sdk_result.sdk_build
+  xcode_version = _ios_sdk_result.xcode_version
+  xcode_version_int = _ios_sdk_result.xcode_version_int
+  xcode_build = _ios_sdk_result.xcode_build
+  machine_os_build = _ios_sdk_result.machine_os_build
+  if (use_ios_simulator) {
+    # This is weird, but Xcode sets DTPlatformBuild to an empty field for
+    # simulator builds.
+    ios_platform_build = ""
+  } else {
+    ios_platform_build = ios_sdk_build
+  }
+}
+
+if (ios_enable_code_signing && !use_ios_simulator) {
+  find_signing_identity_args = [
+    "--identity-description",
+    ios_code_signing_identity_description,
+  ]
+  if (!use_system_xcode) {
+    find_signing_identity_args += [
+      "--developer_dir",
+      hermetic_xcode_path,
+    ]
+  }
+
+  # If an identity is not provided, look for one on the host
+  if (ios_code_signing_identity == "") {
+    _ios_identities = exec_script("find_signing_identity.py",
+                                  find_signing_identity_args,
+                                  "list lines")
+    if (_ios_identities == []) {
+      print("Automatic code signing identity selection was enabled but could")
+      print("not find exactly one code signing identity matching")
+      print("$ios_code_signing_identity_description. Check that your keychain")
+      print("is accessible and that there is a valid code signing identity")
+      print("listed by `xcrun security find-identity -v -p codesigning`")
+      print("TIP: Simulator builds don't require code signing...")
+      assert(false)
+    } else {
+      _ios_identities_len = 0
+      foreach(_, _ios_identities) {
+        _ios_identities_len += 1
+      }
+
+      ios_code_signing_identity = _ios_identities[0]
+      if (_ios_identities_len != 1) {
+        print("Warning: Multiple codesigning identities match " +
+              "\"$ios_code_signing_identity_description\"")
+        foreach(_ios_identity, _ios_identities) {
+          _selected = ""
+          if (ios_code_signing_identity == _ios_identity) {
+            _selected = " (selected)"
+          }
+          print("Warning: - $_ios_identity$_selected")
+        }
+        print("Warning: Please use either ios_code_signing_identity or ")
+        print("Warning: ios_code_signing_identity_description variable to ")
+        print("Warning: control which identity is selected.")
+        print()
+      }
+    }
+  }
+}

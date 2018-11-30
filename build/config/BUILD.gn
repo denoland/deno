@@ -1,0 +1,425 @@
+# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/allocator.gni")
+import("//build/config/c++/c++.gni")
+import("//build/config/chrome_build.gni")
+import("//build/config/chromecast_build.gni")
+import("//build/config/coverage/coverage.gni")
+import("//build/config/crypto.gni")
+import("//build/config/dcheck_always_on.gni")
+import("//build/config/features.gni")
+
+# Subprojects need to override arguments in {mac,ios}_sdk_overrides.gni in their
+# .gn config, but those arguments are only used on macOS. Including
+# mac_sdk_overrides.gni insures that this doesn't trigger an unused argument
+# warning.
+import("//build/config/mac/mac_sdk_overrides.gni")
+import("//build/config/ios/ios_sdk_overrides.gni")
+
+import("//build/config/pch.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/config/ui.gni")
+import("//build/toolchain/goma.gni")
+
+declare_args() {
+  # When set (the default) enables C++ iterator debugging in debug builds.
+  # Iterator debugging is always off in release builds (technically, this flag
+  # affects the "debug" config, which is always available but applied by
+  # default only in debug builds).
+  #
+  # Iterator debugging is generally useful for catching bugs. But it can
+  # introduce extra locking to check the state of an iterator against the state
+  # of the current object. For iterator- and thread-heavy code, this can
+  # significantly slow execution.
+  enable_iterator_debugging = true
+}
+
+# ==============================================
+#   PLEASE DO NOT ADD MORE THINGS TO THIS LIST
+# ==============================================
+#
+# Legacy feature defines applied to all targets.
+#
+# These are applied to every single compile in the build and most of them are
+# only relevant to a few files. This bloats command lines and causes
+# unnecessary recompiles when flags are flipped.
+#
+# To pass defines to source code from the build, use the buildflag system which
+# will write headers containing the defines you need. This isolates the define
+# and means its definition can participate in the build graph, only recompiling
+# things when it actually changes.
+#
+# See //build/buildflag_header.gni for instructions on generating headers.
+#
+# This will also allow you to scope your build flag to a BUILD.gn file (or a
+# .gni file if you need it from more than one place) rather than making global
+# flags. See //build/config/BUILDCONFIG.gn for advice on where to define
+# build flags.
+config("feature_flags") {
+  # Don't use deprecated V8 APIs anywhere.
+  defines = [ "V8_DEPRECATION_WARNINGS" ]
+  if (dcheck_always_on) {
+    defines += [ "DCHECK_ALWAYS_ON=1" ]
+    if (dcheck_is_configurable) {
+      defines += [ "DCHECK_IS_CONFIGURABLE=1" ]
+    }
+  }
+  if (use_udev) {
+    # TODO(brettw) should probably be "=1".
+    defines += [ "USE_UDEV" ]
+  }
+  if (use_aura) {
+    defines += [ "USE_AURA=1" ]
+  }
+  if (use_glib) {
+    defines += [ "USE_GLIB=1" ]
+  }
+  if (use_nss_certs) {
+    defines += [ "USE_NSS_CERTS=1" ]
+  }
+  if (use_ozone && !is_android) {
+    # Note that some Chrome OS builds unconditionally set |use_ozone| to true,
+    # but they also build some targets with the Android toolchain. This ensures
+    # that Android targets still build with USE_OZONE=0 in such cases.
+    #
+    # TODO(crbug.com/837032): Maybe this can be cleaned up if we can avoid
+    # setting use_ozone globally.
+    defines += [ "USE_OZONE=1" ]
+  }
+  if (use_x11) {
+    defines += [ "USE_X11=1" ]
+  }
+  if (use_allocator != "tcmalloc") {
+    defines += [ "NO_TCMALLOC" ]
+  }
+  if (is_asan || is_lsan || is_tsan || is_msan) {
+    defines += [
+      "MEMORY_TOOL_REPLACES_ALLOCATOR",
+      "MEMORY_SANITIZER_INITIAL_SIZE",
+    ]
+  }
+  if (is_asan) {
+    defines += [ "ADDRESS_SANITIZER" ]
+  }
+  if (is_lsan) {
+    defines += [ "LEAK_SANITIZER" ]
+  }
+  if (is_tsan) {
+    defines += [
+      "THREAD_SANITIZER",
+      "DYNAMIC_ANNOTATIONS_EXTERNAL_IMPL=1",
+      "WTF_USE_DYNAMIC_ANNOTATIONS_NOIMPL=1",
+    ]
+  }
+  if (is_msan) {
+    defines += [ "MEMORY_SANITIZER" ]
+  }
+  if (is_ubsan || is_ubsan_null || is_ubsan_vptr || is_ubsan_security) {
+    defines += [ "UNDEFINED_SANITIZER" ]
+  }
+  if (use_clang_coverage) {
+    defines += [ "CLANG_COVERAGE" ]
+  }
+  if (safe_browsing_mode == 1) {
+    defines += [ "FULL_SAFE_BROWSING" ]
+    defines += [ "SAFE_BROWSING_CSD" ]
+    defines += [ "SAFE_BROWSING_DB_LOCAL" ]
+  } else if (safe_browsing_mode == 2) {
+    defines += [ "SAFE_BROWSING_DB_REMOTE" ]
+  }
+  if (is_official_build) {
+    defines += [ "OFFICIAL_BUILD" ]
+  }
+  if (is_chrome_branded) {
+    defines += [ "GOOGLE_CHROME_BUILD" ]
+  } else {
+    defines += [ "CHROMIUM_BUILD" ]
+  }
+  if (!fieldtrial_testing_like_official_build && !is_chrome_branded) {
+    defines += [ "FIELDTRIAL_TESTING_ENABLED" ]
+  }
+
+  # ==============================================
+  #   PLEASE DO NOT ADD MORE THINGS TO THIS LIST
+  # ==============================================
+  #
+  # See the comment at the top.
+}
+
+# Debug/release ----------------------------------------------------------------
+
+config("debug") {
+  defines = [
+    "_DEBUG",
+    "DYNAMIC_ANNOTATIONS_ENABLED=1",
+    "WTF_USE_DYNAMIC_ANNOTATIONS=1",
+  ]
+
+  if (is_nacl) {
+    defines += [ "DYNAMIC_ANNOTATIONS_PREFIX=NACL_" ]
+  }
+
+  if (is_win) {
+    if (!enable_iterator_debugging) {
+      # Iterator debugging is enabled by default by the compiler on debug
+      # builds, and we have to tell it to turn it off.
+      defines += [ "_HAS_ITERATOR_DEBUGGING=0" ]
+    }
+  } else if (is_linux && current_cpu == "x64" && enable_iterator_debugging) {
+    # Enable libstdc++ debugging facilities to help catch problems early, see
+    # http://crbug.com/65151 .
+    # TODO(phajdan.jr): Should we enable this for all of POSIX?
+    defines += [ "_GLIBCXX_DEBUG=1" ]
+  }
+}
+
+config("release") {
+  defines = [ "NDEBUG" ]
+
+  # Sanitizers.
+  if (is_tsan) {
+    defines += [
+      "DYNAMIC_ANNOTATIONS_ENABLED=1",
+      "WTF_USE_DYNAMIC_ANNOTATIONS=1",
+    ]
+  } else {
+    defines += [ "NVALGRIND" ]
+    if (!is_nacl) {
+      # NaCl always enables dynamic annotations. Currently this value is set to
+      # 1 for all .nexes.
+      defines += [ "DYNAMIC_ANNOTATIONS_ENABLED=0" ]
+    }
+  }
+
+  if (is_ios) {
+    # Disable NSAssert and GTMDevAssert (from Google Toolbox for Mac). This
+    # follows XCode's default behavior for Release builds.
+    defines += [ "NS_BLOCK_ASSERTIONS=1" ]
+  }
+}
+
+# Default libraries ------------------------------------------------------------
+
+# This config defines the default libraries applied to all targets.
+config("default_libs") {
+  if (is_win) {
+    # TODO(brettw) this list of defaults should probably be smaller, and
+    # instead the targets that use the less common ones (e.g. wininet or
+    # winspool) should include those explicitly.
+    libs = [
+      "advapi32.lib",
+      "comdlg32.lib",
+      "dbghelp.lib",
+      "dnsapi.lib",
+      "gdi32.lib",
+      "msimg32.lib",
+      "odbc32.lib",
+      "odbccp32.lib",
+      "oleaut32.lib",
+      "psapi.lib",
+      "shell32.lib",
+      "shlwapi.lib",
+      "user32.lib",
+      "usp10.lib",
+      "uuid.lib",
+      "version.lib",
+      "wininet.lib",
+      "winmm.lib",
+      "winspool.lib",
+      "ws2_32.lib",
+
+      # Please don't add more stuff here. We should actually be making this
+      # list smaller, since all common things should be covered. If you need
+      # some extra libraries, please just add a libs = [ "foo.lib" ] to your
+      # target that needs it.
+    ]
+    if (current_os == "winuwp") {
+      # These libraries are needed for Windows UWP (i.e. store apps).
+      libs += [
+        "dloadhelper.lib",
+        "WindowsApp.lib",
+      ]
+    } else {
+      # These libraries are not compatible with Windows UWP (i.e. store apps.)
+      libs += [
+        "delayimp.lib",
+        "kernel32.lib",
+        "ole32.lib",
+      ]
+    }
+  } else if (is_android) {
+    libs = [
+      "dl",
+      "m",
+    ]
+  } else if (is_mac) {
+    # Targets should choose to explicitly link frameworks they require. Since
+    # linking can have run-time side effects, nothing should be listed here.
+    libs = []
+  } else if (is_ios) {
+    # The libraries listed here will be specified for both the target and the
+    # host. Only the common ones should be listed here.
+    libs = [
+      "CoreFoundation.framework",
+      "CoreGraphics.framework",
+      "CoreText.framework",
+      "Foundation.framework",
+    ]
+  } else if (is_linux) {
+    libs = [
+      "dl",
+      "pthread",
+      "rt",
+    ]
+  }
+}
+
+# Only //build/config/BUILDCONFIG.gn should reference this.
+group("common_deps") {
+  public_deps = []
+
+  if (using_sanitizer) {
+    public_deps += [ "//build/config/sanitizers:deps" ]
+  }
+
+  if (use_custom_libcxx) {
+    public_deps += [ "//buildtools/third_party/libc++" ]
+  }
+
+  if (use_afl) {
+    public_deps += [ "//third_party/afl" ]
+  }
+
+  if (is_android && use_order_profiling) {
+    public_deps += [ "//base/android/orderfile:orderfile_instrumentation" ]
+  }
+
+  if (is_win && generate_order_files && !is_nacl) {
+    public_deps += [ "//tools/cygprofile_win" ]
+  }
+}
+
+group("executable_deps") {
+  public_deps = [
+    ":common_deps",
+  ]
+  if (export_libcxxabi_from_executables) {
+    public_deps += [ "//buildtools/third_party/libc++abi" ]
+  }
+}
+
+group("loadable_module_deps") {
+  public_deps = [
+    ":common_deps",
+  ]
+}
+
+group("shared_library_deps") {
+  public_deps = [
+    ":common_deps",
+  ]
+}
+
+# Executable configs -----------------------------------------------------------
+
+# Windows linker setup for EXEs and DLLs.
+if (is_win) {
+  _windows_linker_configs = [
+    "//build/config/win:sdk_link",
+    "//build/config/win:common_linker_setup",
+  ]
+}
+
+# This config defines the configs applied to all executables.
+config("executable_config") {
+  configs = []
+
+  if (is_win) {
+    configs += _windows_linker_configs
+
+    # Currently only turn on linker CFI for executables.
+    configs += [ "//build/config/win:cfi_linker" ]
+  } else if (is_mac) {
+    configs += [ "//build/config/mac:mac_dynamic_flags" ]
+  } else if (is_ios) {
+    configs += [
+      "//build/config/ios:ios_dynamic_flags",
+      "//build/config/ios:ios_executable_flags",
+    ]
+  } else if (is_linux || is_android || current_os == "aix") {
+    configs += [ "//build/config/gcc:executable_ldconfig" ]
+    if (is_android) {
+      configs += [ "//build/config/android:executable_config" ]
+    } else if (is_chromecast) {
+      configs += [ "//build/config/chromecast:executable_config" ]
+    }
+  }
+
+  # If we're using the prebuilt instrumented libraries with the sanitizers, we
+  # need to add ldflags to every binary to make sure they are picked up.
+  if (prebuilt_instrumented_libraries_available) {
+    configs += [ "//third_party/instrumented_libraries:prebuilt_ldflags" ]
+  }
+  if (use_locally_built_instrumented_libraries) {
+    configs += [ "//third_party/instrumented_libraries:locally_built_ldflags" ]
+  }
+  configs += [ "//build/config/sanitizers:link_executable" ]
+}
+
+# Shared library configs -------------------------------------------------------
+
+# This config defines the configs applied to all shared libraries.
+config("shared_library_config") {
+  configs = []
+
+  if (is_win) {
+    configs += _windows_linker_configs
+  } else if (is_mac) {
+    configs += [ "//build/config/mac:mac_dynamic_flags" ]
+  } else if (is_ios) {
+    configs += [ "//build/config/ios:ios_dynamic_flags" ]
+  } else if (is_chromecast) {
+    configs += [ "//build/config/chromecast:shared_library_config" ]
+  }
+
+  # If we're using the prebuilt instrumented libraries with the sanitizers, we
+  # need to add ldflags to every binary to make sure they are picked up.
+  if (prebuilt_instrumented_libraries_available) {
+    configs += [ "//third_party/instrumented_libraries:prebuilt_ldflags" ]
+  }
+  if (use_locally_built_instrumented_libraries) {
+    configs += [ "//third_party/instrumented_libraries:locally_built_ldflags" ]
+  }
+  configs += [ "//build/config/sanitizers:link_shared_library" ]
+}
+
+# Add this config to your target to enable precompiled headers.
+#
+# Precompiled headers are done on a per-target basis. If you have just a couple
+# of files, the time it takes to precompile (~2 seconds) can actually be longer
+# than the time saved. On a Z620, a 100 file target compiles about 2 seconds
+# faster with precompiled headers, with greater savings for larger targets.
+#
+# Recommend precompiled headers for targets with more than 50 .cc files.
+config("precompiled_headers") {
+  if (enable_precompiled_headers) {
+    if (is_win) {
+      # This is a string rather than a file GN knows about. It has to match
+      # exactly what's in the /FI flag below, and what might appear in the
+      # source code in quotes for an #include directive.
+      precompiled_header = "build/precompile.h"
+
+      # This is a file that GN will compile with the above header. It will be
+      # implicitly added to the sources (potentially multiple times, with one
+      # variant for each language used in the target).
+      precompiled_source = "//build/precompile.cc"
+
+      # Force include the header.
+      cflags = [ "/FI$precompiled_header" ]
+    } else if (is_mac) {
+      precompiled_source = "//build/precompile.h"
+    }
+  }
+}
