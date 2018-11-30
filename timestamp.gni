@@ -1,0 +1,23 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Defines the build_timestamp variable.
+
+import("//build/util/lastchange.gni")
+
+if (is_official_build) {
+  official_name = "official"
+} else {
+  official_name = "default"
+}
+
+# This will return a timestamp that's different each day (official builds)
+# or each month (regular builds).  Just rely on gn rerunning due to other
+# changes to keep this up to date.  (Bots run gn on each build, and for devs
+# the timestamp being 100% accurate doesn't matter.)
+# See compute_build_timestamp.py for tradeoffs for picking the timestamp.
+build_timestamp = exec_script("compute_build_timestamp.py",
+                              [ official_name ],
+                              "trim string",
+                              [ lastchange_file ])

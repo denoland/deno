@@ -1,0 +1,18 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/linux/pkg_config.gni")
+
+assert(is_linux, "This file should only be referenced on Linux")
+
+pkg_config("dri") {
+  packages = [ "dri" ]
+  dri_driver_dir = exec_script(pkg_config_script,
+                               pkg_config_args + [
+                                     "--dridriverdir",
+                                     "dri",
+                                   ],
+                               "string")
+  defines = [ "DRI_DRIVER_DIR=\"$dri_driver_dir\"" ]
+}

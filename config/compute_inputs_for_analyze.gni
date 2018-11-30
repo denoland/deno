@@ -1,0 +1,14 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+declare_args() {
+  # Enable this flag when running "gn analyze".
+  #
+  # This causes some gn actions to compute inputs immediately (via exec_script)
+  # where they would normally compute them only when executed (and write them to
+  # a depfile).
+  #
+  # This flag will slow down GN, but is required for analyze to work properly.
+  compute_inputs_for_analyze = false
+}

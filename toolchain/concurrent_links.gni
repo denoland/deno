@@ -1,0 +1,60 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This file should only be imported from files that define toolchains.
+# There's no way to enforce this exactly, but all toolchains are processed
+# in the context of the default_toolchain, so we can at least check for that.
+assert(current_toolchain == default_toolchain)
+
+import("//build/config/compiler/compiler.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/toolchain/toolchain.gni")
+
+declare_args() {
+  # Limit the number of concurrent links; we often want to run fewer
+  # links at once than we do compiles, because linking is memory-intensive.
+  # The default to use varies by platform and by the amount of memory
+  # available, so we call out to a script to get the right value.
+  concurrent_links = -1
+}
+
+if (concurrent_links == -1) {
+  if (use_thin_lto) {
+    _args = [
+      "--mem_per_link_gb=10",
+      "--reserve_mem_gb=10",
+    ]
+  } else if (use_sanitizer_coverage || use_fuzzing_engine) {
+    # Sanitizer coverage instrumentation increases linker memory consumption
+    # significantly.
+    _args = [ "--mem_per_link_gb=16" ]
+  } else if (is_win && symbol_level == 1 && !is_debug) {
+    _args = [ "--mem_per_link_gb=3" ]
+  } else if (is_win) {
+    _args = [ "--mem_per_link_gb=5" ]
+  } else if (is_mac) {
+    _args = [ "--mem_per_link_gb=4" ]
+  } else if (is_android && !is_component_build && symbol_level == 2) {
+    # Full debug symbols require large memory for link.
+    _args = [ "--mem_per_link_gb=25" ]
+  } else if (is_android && !is_debug && !using_sanitizer && symbol_level < 2) {
+    # Increase the number of concurrent links for release bots. Debug builds
+    # make heavier use of ProGuard, and so should not be raised. Sanitizers also
+    # increase the memory overhead.
+    if (symbol_level == 1) {
+      _args = [ "--mem_per_link_gb=6" ]
+    } else {
+      _args = [ "--mem_per_link_gb=4" ]
+    }
+  } else if (is_linux && !is_chromeos && symbol_level == 0) {
+    # Memory consumption on link without debug symbols is low on linux.
+    _args = [ "--mem_per_link_gb=3" ]
+  } else {
+    _args = []
+  }
+
+  # TODO(crbug.com/617429) Pass more build configuration info to the script
+  # so that we can compute better values.
+  concurrent_links = exec_script("get_concurrent_links.py", _args, "value")
+}

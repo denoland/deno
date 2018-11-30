@@ -1,0 +1,40 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# The args declared in this file should be referenced by components outside of
+# //chromecast. Args needed only in //chromecast should be declared in
+# //chromecast/chromecast.gni.
+declare_args() {
+  # Set this true for a Chromecast build. Chromecast builds are supported on
+  # Linux and Android.
+  is_chromecast = false
+
+  # chromecast_branding is used to include or exclude Google-branded components.
+  # Set it to "public" for a Chromium build.
+  chromecast_branding = "public"
+
+  # Set this true for an audio-only Chromecast build.
+  is_cast_audio_only = false
+}
+
+# Note(slan): This arg depends on the value of is_chromecast, and thus must be
+# declared in a separate block. These blocks can be combined when/if
+# crbug.com/542846 is resolved.
+declare_args() {
+  # True if Chromecast build is targeted for linux desktop. This type of build
+  # is useful for testing and development, but currently supports only a subset
+  # of Cast functionality. Though this defaults to true for x86 Linux devices,
+  # this should be overriden manually for an embedded x86 build.
+  # TODO(slan): Remove instances of this when x86 is a fully supported platform.
+  is_cast_desktop_build = is_chromecast && target_os == "linux" &&
+                          (target_cpu == "x86" || target_cpu == "x64")
+}
+
+# Assert that Chromecast is being built for a supported platform.
+assert(is_linux || is_android || is_fuchsia || !is_chromecast,
+       "Chromecast builds are not supported on $target_os")
+
+# Assert that is_cast_audio_only and is_cast_desktop_build are both false on a
+# non-Chromecast build.
+assert(is_chromecast || (!is_cast_audio_only && !is_cast_desktop_build))

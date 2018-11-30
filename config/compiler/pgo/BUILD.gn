@@ -1,0 +1,101 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/clang/clang.gni")
+import("//build/config/compiler/compiler.gni")
+import("//build/config/compiler/pgo/pgo.gni")
+
+# Configuration that enables PGO instrumentation.
+config("pgo_instrumentation_flags") {
+  visibility = [ ":default_pgo_flags" ]
+  cflags = []
+  ldflags = []
+
+  # Only add flags when chrome_pgo_phase == 1, so that variables we would use
+  # are not required to be defined when we're not actually using PGO.
+  if (chrome_pgo_phase == 1) {
+    if (is_clang) {
+      cflags = [ "-fprofile-instr-generate" ]
+      if (is_win) {
+        # Normally, we pass -fprofile-instr-generate to the compiler and it
+        # automatically passes the right flags to the linker.
+        # However, on Windows, we call the linker directly, without going
+        # through the compiler driver. This means we need to pass the right
+        # flags ourselves.
+        _clang_rt_base_path =
+            "$clang_base_path/lib/clang/$clang_version/lib/windows"
+        if (target_cpu == "x86") {
+          _clang_rt_suffix = "-i386.lib"
+        } else if (target_cpu == "x64") {
+          _clang_rt_suffix = "-x86_64.lib"
+        }
+        assert(_clang_rt_suffix != "", "target CPU $target_cpu not supported")
+        ldflags += [ "$_clang_rt_base_path/clang_rt.profile$_clang_rt_suffix" ]
+      } else {
+        ldflags += [ "-fprofile-instr-generate" ]
+      }
+    } else if (is_win) {
+      ldflags = [
+        # In MSVC, we must use /LTCG when using PGO.
+        "/LTCG",
+
+        # Make sure that enough memory gets allocated for the PGO profiling
+        # buffers and also cap this memory. Usually a PGI instrumented build
+        # of chrome_child.dll requires ~55MB of memory for storing its counter
+        # etc, normally the linker should automatically choose an appropriate
+        # amount of memory but it doesn't always do a good estimate and
+        # sometime allocates too little or too much (and so the instrumented
+        # image fails to start). Making sure that the buffer has a size in the
+        # [128 MB, 512 MB] range should prevent this from happening.
+        "/GENPROFILE:MEMMIN=134217728",
+        "/GENPROFILE:MEMMAX=536870912",
+        "/PogoSafeMode",
+      ]
+    }
+  }
+}
+
+# Configuration that enables optimization using profile data.
+config("pgo_optimization_flags") {
+  visibility = [ ":default_pgo_flags" ]
+  cflags = []
+  ldflags = []
+
+  # Only add flags when chrome_pgo_phase == 2, so that variables we would use
+  # are not required to be defined when we're not actually using PGO.
+  if (chrome_pgo_phase == 2) {
+    if (is_clang) {
+      assert(pgo_data_path != "",
+             "Please set pgo_data_path to point at the profile data")
+      cflags += [
+        "-fprofile-instr-use=$pgo_data_path",
+
+        # It's possible to have some profile data legitimately missing,
+        # and at least some profile data always ends up being considered
+        # out of date, so make sure we don't error for those cases.
+        "-Wno-profile-instr-unprofiled",
+        "-Wno-error=profile-instr-out-of-date",
+      ]
+    } else if (is_win) {
+      ldflags += [
+        # In MSVC, we must use /LTCG when using PGO.
+        "/LTCG",
+        "/USEPROFILE",
+      ]
+    }
+  }
+}
+
+# Applies flags necessary when profile-guided optimization is used.
+# Flags are only added if PGO is enabled, so that this config is safe to
+# include by default.
+config("default_pgo_flags") {
+  if (chrome_pgo_phase == 0) {
+    # Nothing. This config should be a no-op when chrome_pgo_phase == 0.
+  } else if (chrome_pgo_phase == 1) {
+    configs = [ ":pgo_instrumentation_flags" ]
+  } else if (chrome_pgo_phase == 2) {
+    configs = [ ":pgo_optimization_flags" ]
+  }
+}

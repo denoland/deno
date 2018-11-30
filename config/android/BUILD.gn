@@ -1,0 +1,216 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/config.gni")
+import("//build/config/compiler/compiler.gni")
+import("//build/config/c++/c++.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+
+assert(is_android)
+
+# This is included by reference in the //build/config/compiler config that
+# is applied to all targets. It is here to separate out the logic that is
+# Android-only.
+config("compiler") {
+  cflags = [
+    "-ffunction-sections",
+    "-fno-short-enums",
+  ]
+  defines = [
+    "ANDROID",
+
+    # The NDK has these things, but doesn't define the constants to say that it
+    # does. Define them here instead.
+    "HAVE_SYS_UIO_H",
+
+    # Forces full rebuilds on NDK rolls. To rebuild everything when NDK version
+    # stays the same, increment the suffix number.
+    "ANDROID_NDK_VERSION_ROLL=${android_ndk_version}_1",
+  ]
+
+  if (current_cpu == "mips64el") {
+    cflags += [
+      # Have to force IAS for mips64.
+      "-fintegrated-as",
+    ]
+  }
+
+  ldflags = [
+    "-Wl,--no-undefined",
+
+    # Don't allow visible symbols from libgcc or libc++ to be
+    # re-exported.
+    "-Wl,--exclude-libs=libgcc.a",
+    "-Wl,--exclude-libs=libc++_static.a",
+
+    # Don't allow visible symbols from libraries that contain
+    # assembly code with symbols that aren't hidden properly.
+    # http://crbug.com/448386
+    "-Wl,--exclude-libs=libvpx_assembly_arm.a",
+  ]
+
+  # $compile_api_level corresponds to the API level used for the sysroot path
+  # calculation in //build/config/android/config.gni
+  if (current_cpu == "arm") {
+    abi_target = "arm-linux-androideabi"
+    compile_api_level = android32_ndk_api_level
+  } else if (current_cpu == "x86") {
+    abi_target = "i686-linux-android"
+    compile_api_level = android32_ndk_api_level
+  } else if (current_cpu == "arm64") {
+    abi_target = "aarch64-linux-android"
+    compile_api_level = android64_ndk_api_level
+  } else if (current_cpu == "x64") {
+    # Place holder for x64 support, not tested.
+    # TODO: Enable clang support for Android x64. http://crbug.com/539781
+    abi_target = "x86_64-linux-android"
+    compile_api_level = android64_ndk_api_level
+  } else if (current_cpu == "mipsel") {
+    abi_target = "mipsel-linux-android"
+    compile_api_level = android32_ndk_api_level
+  } else if (current_cpu == "mips64el") {
+    # Place holder for mips64 support, not tested.
+    abi_target = "mips64el-linux-android"
+    compile_api_level = android64_ndk_api_level
+  } else {
+    assert(false, "Architecture not supported")
+  }
+  cflags += [
+    "--target=$abi_target",
+    "-isystem" +
+        rebase_path("$android_ndk_root/sysroot/usr/include/$abi_target",
+                    root_build_dir),
+    "-D__ANDROID_API__=$compile_api_level",
+  ]
+  ldflags += [ "--target=$abi_target" ]
+
+  # TODO(crbug.com/771171): Remove this define once code that uses it has been
+  # updated to no longer need it. This is leftover from older Android NDK
+  # versions.
+  if (compile_api_level < 20) {
+    cflags += [ "-DHAVE_PTHREAD_COND_TIMEDWAIT_MONOTONIC=1" ]
+  }
+
+  # Assign any flags set for the C compiler to asmflags so that they are sent
+  # to the assembler.
+  asmflags = cflags
+}
+
+# This is included by reference in the //build/config/compiler:runtime_library
+# config that is applied to all targets. It is here to separate out the logic
+# that is Android-only. Please see that target for advice on what should go in
+# :runtime_library vs. :compiler.
+config("runtime_library") {
+  # NOTE: The libc++ header include paths below are specified in cflags_cc
+  # rather than include_dirs because they need to come after include_dirs.
+  # Think of them like system headers, but don't use '-isystem' because the
+  # arm-linux-androideabi-4.4.3 toolchain (circa Gingerbread) will exhibit
+  # strange errors. The include ordering here is important; change with
+  # caution.
+  cflags_cc = []
+  if (!use_custom_libcxx) {
+    cflags_cc = []
+    if (android_ndk_major_version >= 13) {
+      libcxx_include_path =
+          rebase_path("$android_libcpp_root/include", root_build_dir)
+      libcxxabi_include_path = rebase_path(
+              "$android_ndk_root/sources/cxx-stl/llvm-libc++abi/include",
+              root_build_dir)
+    } else {
+      libcxx_include_path =
+          rebase_path("$android_libcpp_root/libcxx/include", root_build_dir)
+      libcxxabi_include_path = rebase_path(
+              "$android_ndk_root/sources/cxx-stl/llvm-libc++abi/libcxxabi/include",
+              root_build_dir)
+    }
+    cflags_cc += [
+      "-isystem" + libcxx_include_path,
+      "-isystem" + libcxxabi_include_path,
+    ]
+  }
+  cflags_cc += [ "-isystem" + rebase_path(
+                     "$android_ndk_root/sources/android/support/include",
+                     root_build_dir) ]
+
+  defines = [
+    "__GNU_SOURCE=1",  # Necessary for clone().
+    "CHROMIUM_CXX_TWEAK_INLINES",  # Saves binary size.
+  ]
+  ldflags = [ "-nostdlib" ]
+  lib_dirs = [ android_libcpp_lib_dir ]
+
+  libs = []
+  if (!use_custom_libcxx) {
+    # The libc++ runtime library (must come first).
+    # ASan needs to dynamically link to libc++ even in static builds so
+    # that it can interpose operator new.
+    if (is_component_build || is_asan) {
+      libs += [ "c++_shared" ]
+    } else {
+      libs += [ "c++_static" ]
+    }
+    libs += [ "c++abi" ]
+  }
+  libs += [ "android_support" ]
+
+  # arm builds of libc++ starting in NDK r12 depend on unwind.
+  if (current_cpu == "arm") {
+    libs += [ "unwind" ]
+  }
+
+  # Manually link the libgcc.a that the cross compiler uses. This is
+  # absolute because the linker will look inside the sysroot if it's not.
+  libs += [
+    rebase_path(android_libgcc_file),
+    "c",
+  ]
+
+  if (current_cpu == "arm" && arm_version == 6) {
+    libs += [ "atomic" ]
+  }
+
+  if (current_cpu == "mipsel") {
+    libs += [ "atomic" ]
+  }
+
+  # TODO(jdduke) Re-enable on mips after resolving linking
+  # issues with libc++ (crbug.com/456380).
+  if (current_cpu != "mipsel" && current_cpu != "mips64el") {
+    ldflags += [ "-Wl,--warn-shared-textrel" ]
+  }
+}
+
+config("executable_config") {
+  cflags = [ "-fPIE" ]
+  asmflags = [ "-fPIE" ]
+  ldflags = [ "-pie" ]
+}
+
+config("hide_all_but_jni_onload") {
+  ldflags = [ "-Wl,--version-script=" + rebase_path(
+                  "//build/android/android_only_explicit_jni_exports.lst",
+                  root_build_dir) ]
+}
+
+config("hide_all_but_jni") {
+  ldflags = [ "-Wl,--version-script=" +
+              rebase_path("//build/android/android_only_jni_exports.lst",
+                          root_build_dir) ]
+}
+
+config("lld_pack_relocations") {
+  ldflags = [ "-Wl,--pack-dyn-relocs=android" ]
+}
+
+# Used for instrumented build to generate the orderfile.
+config("default_orderfile_instrumentation") {
+  if (use_order_profiling) {
+    cflags = [ "-finstrument-function-entry-bare" ]
+    if (use_thin_lto) {
+      # TODO(pcc): This should not be necessary. Remove once
+      # https://reviews.llvm.org/D50017 lands and gets rolled in.
+      ldflags = [ "-Wl,-u,__cyg_profile_func_enter_bare" ]
+    }
+  }
+}

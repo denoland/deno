@@ -1,0 +1,73 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+
+config("cpu_features_include") {
+  include_dirs = [ "$android_ndk_root/sources/android/cpufeatures" ]
+}
+
+config("cpu_features_warnings") {
+  if (is_clang) {
+    # cpu-features.c has few unused functions on x86 b/26403333
+    cflags = [ "-Wno-unused-function" ]
+  }
+}
+
+source_set("cpu_features") {
+  sources = [
+    "$android_ndk_root/sources/android/cpufeatures/cpu-features.c",
+  ]
+  public_configs = [ ":cpu_features_include" ]
+
+  configs -= [ "//build/config/compiler:chromium_code" ]
+  configs += [
+    "//build/config/compiler:no_chromium_code",
+
+    # Must be after no_chromium_code for warning flags to be ordered correctly.
+    ":cpu_features_warnings",
+  ]
+}
+
+if (enable_java_templates) {
+  android_system_java_prebuilt("android_sdk_java") {
+    jar_path = android_sdk_jar
+  }
+
+  # The android test libraries below are part of the main SDK jar
+  # and are linked by default on O and below. Starting in P, they
+  # exist in their own libraries that are present on device and are
+  # available to be linked against but aren't linked by default.
+  android_system_java_prebuilt("android_test_base_java") {
+    jar_path = "${android_sdk}/optional/android.test.base.jar"
+  }
+  android_system_java_prebuilt("android_test_mock_java") {
+    jar_path = "${android_sdk}/optional/android.test.mock.jar"
+  }
+  android_system_java_prebuilt("android_test_runner_java") {
+    jar_path = "${android_sdk}/optional/android.test.runner.jar"
+  }
+
+  android_library("android_support_chromium_java") {
+    testonly = true
+    java_files = [ "//third_party/android_tools/sdk/extras/chromium/support/src/org/chromium/android/support/PackageManagerWrapper.java" ]
+  }
+  android_java_prebuilt("android_gcm_java") {
+    jar_path = "//third_party/android_tools/sdk/extras/google/gcm/gcm-client/dist/gcm.jar"
+  }
+  android_java_prebuilt("emma_device_java") {
+    jar_path = "//third_party/android_tools/sdk/tools/lib/emma_device.jar"
+    include_java_resources = true
+  }
+
+  # The current version of //third_party/byte_buddy relies on an older
+  # version of dx.
+  java_prebuilt("dx_25_0_2_java") {
+    supports_android = true
+    requires_android = true
+    no_build_hooks = true
+    testonly = true
+    jar_path = "//third_party/android_tools/sdk/build-tools/25.0.2/lib/dx.jar"
+  }
+}

@@ -1,0 +1,12 @@
+# Use this file to set a global status message that should be shown whenever
+# git cl owners proposes to add you as a reviewer.
+#
+# The status messages should be somewhat stable, so please don't use this for
+# short term, or frequently changing updates.
+#
+# The format of the file is
+#
+#  you@chromium.org: Single line status message.
+#
+
+jochen@chromium.org: EMEA based reviewer.

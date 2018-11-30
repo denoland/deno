@@ -1,0 +1,55 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Creates a zip archive of the inputs.
+#
+# inputs (required)
+#     List of input files relative to the current directory.
+#
+# output (required)
+#     File name to write.
+#
+# base_dir (optional)
+#     If provided, the archive paths will be relative to this directory.
+#
+# deps, public_deps, data_deps, testonly, visibility (optional)
+#     Normal meaning.
+template("zip") {
+  action(target_name) {
+    script = "//build/android/gn/zip.py"
+    depfile = "$target_gen_dir/$target_name.d"
+    inputs = invoker.inputs
+    outputs = [
+      invoker.output,
+    ]
+
+    assert(defined(invoker.inputs))
+    rebase_inputs = rebase_path(invoker.inputs, root_build_dir)
+
+    assert(defined(invoker.output))
+    rebase_output = rebase_path(invoker.output, root_build_dir)
+
+    args = [
+      "--depfile",
+      rebase_path(depfile, root_build_dir),
+      "--inputs=$rebase_inputs",
+      "--output=$rebase_output",
+    ]
+    if (defined(invoker.base_dir)) {
+      args += [
+        "--base-dir",
+        rebase_path(invoker.base_dir, root_build_dir),
+      ]
+    }
+
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "deps",
+                             "public_deps",
+                             "data_deps",
+                             "visibility",
+                           ])
+  }
+}

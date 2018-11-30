@@ -1,0 +1,22 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/linux/pkg_config.gni")
+
+if (is_linux) {
+  # This is a dependency on NSS with no libssl. On Linux we use a built-in SSL
+  # library but the system NSS libraries. Non-Linux platforms using NSS use the
+  # hermetic one in //third_party/nss.
+  #
+  # Generally you should depend on //crypto:platform instead of using this
+  # config since that will properly pick up NSS or OpenSSL depending on
+  # platform and build config.
+  pkg_config("system_nss_no_ssl_config") {
+    packages = [ "nss" ]
+    extra_args = [
+      "-v",
+      "-lssl3",
+    ]
+  }
+}

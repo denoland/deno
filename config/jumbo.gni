@@ -1,0 +1,281 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/split_static_library.gni")  # When someone uses that target_type
+import("//build/toolchain/goma.gni")
+
+declare_args() {
+  # If true, use a jumbo build (files compiled together) to speed up
+  # compilation.
+  use_jumbo_build = false
+
+  # A list of targets to exclude from jumbo builds, for optimal round trip time
+  # when frequently changing a set of cpp files.
+  jumbo_build_excluded = []
+
+  # How many files to group on average. Smaller numbers give more
+  # parallellism, higher numbers give less total CPU usage. Higher
+  # numbers also give longer single-file recompilation times.
+  #
+  # Recommendations:
+  # Higher numbers than 100 does not reduce wall clock compile times
+  # even for 4 cores or less so no reason to go higher than 100.
+  # Going from 50 to 100 with a 4 core CPU saves about 3% CPU time and
+  # 3% wall clock time in a tree with blink, v8 and content
+  # jumbofied. At the same time it increases the compile time for the
+  # largest jumbo chunks by 10-20% and reduces the chance to use all
+  # available CPU cores. So set the default to 50 to balance between
+  # high and low-core build performance. -1 means do the default which
+  # varies depending on whether goma is enabled.
+  jumbo_file_merge_limit = -1
+}
+
+# Normal builds benefit from lots of jumbification
+jumbo_file_merge_default = 50
+
+# Goma builds benefit from more parallelism
+jumbo_file_merge_goma = 8
+
+# Use one of the targets jumbo_source_set, jumbo_static_library,
+# jumbo_split_static_library or jumbo_component to generate a target
+# which merges sources if possible to compile much faster.
+#
+# Special values.
+#
+#   target_type
+#      The kind of target to build. For example the string
+#      "static_library".
+#
+#   always_build_jumbo
+#      If set and set to true, then use jumbo compile even when it is
+#      globally disabled. Otherwise it has no effect.
+#
+#   never_build_jumbo
+#      If set and set to true, then do not jumbo compile even if it is
+#      globally enabled. Otherwise it has no effect.
+#
+#   jumbo_excluded_sources
+#      If set to a list of files, those files will not be merged with
+#      the rest. This can be necessary if merging the files causes
+#      compilation issues and fixing the issues is impractical.
+template("internal_jumbo_target") {
+  use_jumbo_build_for_target = use_jumbo_build
+  if (defined(invoker.always_build_jumbo) && invoker.always_build_jumbo) {
+    use_jumbo_build_for_target = true
+  }
+  if (defined(invoker.never_build_jumbo) && invoker.never_build_jumbo) {
+    use_jumbo_build_for_target = false
+  }
+  foreach(excluded_target, jumbo_build_excluded) {
+    if (target_name == excluded_target) {
+      use_jumbo_build_for_target = false
+    }
+  }
+
+  excluded_sources = []
+  if (defined(invoker.jumbo_excluded_sources)) {
+    excluded_sources += invoker.jumbo_excluded_sources
+  }
+
+  if (defined(invoker.sources)) {
+    invoker_sources = invoker.sources
+  } else {
+    invoker_sources = []
+  }
+
+  gen_target_dir = invoker.target_gen_dir
+
+  assert(gen_target_dir != "")  # Prevent "unused variable".
+
+  if (use_jumbo_build_for_target) {
+    jumbo_files = []
+
+    # Split the sources list into chunks that are not excessively large
+    current_file_index = 0
+    next_chunk_start = 0
+    next_chunk_number = 1
+    merge_limit = jumbo_file_merge_limit
+    if (merge_limit == -1) {
+      if (use_goma) {
+        merge_limit = jumbo_file_merge_goma
+      } else {
+        merge_limit = jumbo_file_merge_default
+      }
+    }
+    has_c_file = false
+    has_objective_c_file = false
+    has_S_file = false
+    assert(merge_limit > 0)
+    foreach(source_file, invoker_sources) {
+      source_ext = get_path_info(source_file, "extension")
+      if (source_ext == "c") {
+        has_c_file = true
+      } else if (source_ext == "mm") {
+        has_objective_c_file = true
+      } else if (source_ext == "S") {
+        has_S_file = true
+      } else if (source_ext == "cc" || source_ext == "cpp") {
+        if (current_file_index == next_chunk_start) {
+          jumbo_files += [ "$gen_target_dir/" + target_name + "_jumbo_" +
+                           next_chunk_number + ".cc" ]
+          next_chunk_number += 1
+          next_chunk_start += merge_limit
+        }
+        current_file_index += 1
+      }
+    }
+
+    if (jumbo_files == [] || current_file_index == 1) {
+      # Empty sources list or a sources list with only header files or
+      # at most one non-header file.
+      use_jumbo_build_for_target = false
+      assert(current_file_index <= 1)  # Prevent "unused variable"
+      assert(next_chunk_start >= 0)  # Prevent "unused variable"
+      assert(next_chunk_number <= 2)  # Prevent "unused variable"
+    }
+
+    if (has_c_file) {
+      jumbo_files += [ "$gen_target_dir/" + target_name + "_jumbo_c.c" ]
+    }
+    if (has_objective_c_file) {
+      jumbo_files += [ "$gen_target_dir/" + target_name + "_jumbo_mm.mm" ]
+    }
+    if (has_S_file) {
+      jumbo_files += [ "$gen_target_dir/" + target_name + "_jumbo_S.S" ]
+    }
+  }
+
+  if (use_jumbo_build_for_target) {
+    merge_action_name = target_name + "__jumbo_merge"
+
+    # Create an action that calls a script that merges all the source files.
+    action(merge_action_name) {
+      script = "//build/config/merge_for_jumbo.py"
+      response_file_contents =
+          rebase_path(invoker_sources - excluded_sources, root_build_dir)
+      outputs = jumbo_files
+      args = [ "--outputs" ] + rebase_path(outputs, root_build_dir) +
+             [ "--file-list={{response_file_name}}" ]
+    }
+  } else {
+    # If the list subtraction triggers a gn error,
+    # jumbo_excluded_sources lists a file that is not in sources.
+    sources_after_exclusion = invoker_sources - excluded_sources
+    assert(sources_after_exclusion != [] || true)  # Prevent "unused variable".
+  }
+
+  target_type = invoker.target_type
+  if (use_jumbo_build_for_target && target_type == "split_static_library") {
+    # Meaningless and also impossible if split_count > len(jumbo_files)
+    target_type = "static_library"
+
+    # Prevent "unused variable" warning.
+    assert(!defined(invoker.split_count) || invoker.split_count > 0)
+  }
+
+  # Perform the actual operation, either on the original sources or
+  # the sources post-jumbo merging.
+  target(target_type, target_name) {
+    deps = []
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
+    }
+
+    # Take everything else not handled above from the invoker.
+    variables_to_not_forward = [ "deps" ]
+    if (use_jumbo_build_for_target) {
+      deps += [ ":" + merge_action_name ]
+      variables_to_not_forward += [ "sources" ]
+      assert(jumbo_files != [])
+      set_sources_assignment_filter([])  # Prefiltered.
+      sources = jumbo_files + excluded_sources
+
+      # Need to keep the headers in sources so that dependency checks
+      # work.
+      foreach(source_file, invoker_sources) {
+        if (get_path_info(source_file, "extension") == "h") {
+          sources += [ source_file ]
+        }
+      }
+
+      # Change include_dirs to make sure that the jumbo file can find its
+      # #included files.
+      variables_to_not_forward += [ "include_dirs" ]
+      include_dirs = []
+      if (defined(invoker.include_dirs)) {
+        include_dirs = invoker.include_dirs
+      }
+      include_dirs += [ root_build_dir ]
+    }
+    forward_variables_from(invoker, "*", variables_to_not_forward)
+  }
+}
+
+# See documentation above by "internal_jumbo_target".
+template("jumbo_source_set") {
+  internal_jumbo_target(target_name) {
+    target_type = "source_set"
+    forward_variables_from(invoker, "*")
+  }
+}
+
+set_defaults("jumbo_source_set") {
+  # This sets the default list of configs when the jumbo_source_set target
+  # is defined. The default_compiler_configs comes from BUILDCONFIG.gn and
+  # is the list normally applied to static libraries and source sets.
+  configs = default_compiler_configs
+}
+
+# See documentation above by "internal_jumbo_target".
+template("jumbo_static_library") {
+  internal_jumbo_target(target_name) {
+    target_type = "static_library"
+    forward_variables_from(invoker, "*")
+  }
+}
+
+set_defaults("jumbo_static_library") {
+  # This sets the default list of configs when the jumbo_static_library target
+  # is defined. The default_compiler_configs comes from BUILDCONFIG.gn and
+  # is the list normally applied to static libraries and source sets.
+  configs = default_compiler_configs
+}
+
+# See documentation above by "internal_jumbo_target".
+template("jumbo_split_static_library") {
+  internal_jumbo_target(target_name) {
+    target_type = "split_static_library"
+    forward_variables_from(invoker, "*")
+  }
+}
+
+set_defaults("jumbo_split_static_library") {
+  # This sets the default list of configs when the
+  # jumbo_split_static_library target is defined. The
+  # default_compiler_configs comes from BUILDCONFIG.gn and is the list
+  # normally applied to static libraries and source sets.
+  configs = default_compiler_configs
+}
+
+# See documentation above by "internal_jumbo_target".
+template("jumbo_component") {
+  internal_jumbo_target(target_name) {
+    target_type = "component"
+    forward_variables_from(invoker, "*")
+  }
+}
+
+set_defaults("jumbo_component") {
+  # This sets the default list of configs when the jumbo_component
+  # target is defined. This code is a clone of set_defaults for the
+  # ordinary "component" template.
+  if (is_component_build) {
+    configs = default_shared_library_configs
+    if (is_android) {
+      configs -= [ "//build/config/android:hide_all_but_jni_onload" ]
+    }
+  } else {
+    configs = default_compiler_configs
+  }
+}

@@ -1,0 +1,85 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/util/lastchange.gni")
+
+# Template to run the tweak_info_plist.py script on a plist.
+#
+# Arguments:
+#
+#     info_plist:
+#         (optional), string, the plist to tweak.
+#
+#     info_plists:
+#         (optional), list of string, the plist files to merge and tweak.
+#
+#     args:
+#         (optional), list of string, the arguments to pass to the
+#         tweak_info_plist.py script.
+#
+# Callers should use get_target_outputs() to get the output name. One of
+# info_plist or info_plists must be specified.
+template("tweak_info_plist") {
+  _output_name = "$target_gen_dir/${target_name}_tweaked.plist"
+
+  if (defined(invoker.info_plists)) {
+    assert(!defined(invoker.info_plist),
+           "Cannot have both info_plist and info_plists for $target_name")
+
+    _source_name = "$target_gen_dir/${target_name}_merged.plist"
+    _deps = [ ":" + target_name + "_merge_plist" ]
+
+    action(target_name + "_merge_plist") {
+      forward_variables_from(invoker, [ "testonly" ])
+      script = "//build/config/mac/plist_util.py"
+      sources = invoker.info_plists
+      outputs = [
+        _source_name,
+      ]
+      args = [
+               "merge",
+               "-f=xml1",
+               "-o=" + rebase_path(_source_name, root_build_dir),
+             ] + rebase_path(invoker.info_plists, root_build_dir)
+    }
+  } else {
+    assert(defined(invoker.info_plist),
+           "The info_plist must be specified in $target_name")
+
+    _source_name = invoker.info_plist
+    _deps = []
+  }
+
+  action(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "args",
+                             "testonly",
+                           ])
+    script = "//build/mac/tweak_info_plist.py"
+    inputs = [
+      script,
+      "//build/util/version.py",
+      lastchange_file,
+      "//chrome/VERSION",
+    ]
+    sources = [
+      _source_name,
+    ]
+    outputs = [
+      _output_name,
+    ]
+    if (!defined(args)) {
+      args = []
+    }
+    args += [
+      "--plist",
+      rebase_path(_source_name, root_build_dir),
+      "--output",
+      rebase_path(_output_name, root_build_dir),
+      "--platform=$current_os",
+    ]
+    deps = _deps
+  }
+}

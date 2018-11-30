@@ -1,0 +1,85 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Creates a symlink.
+# Args:
+#   source: Path to link to.
+#   output: Where to create the symlink.
+template("symlink") {
+  action(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "data_deps",
+                             "deps",
+                             "testonly",
+                             "visibility",
+                           ])
+    outputs = [
+      invoker.output,
+    ]
+    script = "//build/symlink.py"
+    args = [
+      "-f",
+      rebase_path(invoker.source, get_path_info(invoker.output, "dir")),
+      rebase_path(invoker.output, root_build_dir),
+    ]
+  }
+}
+
+# Creates a symlink from root_build_dir/target_name to |binary_label|. This rule
+# is meant to be used within if (current_toolchain == default_toolchain) blocks
+# and point to targets in the non-default toolchain.
+# Note that for executables, using a copy (as opposed to a symlink) does not
+# work when is_component_build=true, since dependent libraries are found via
+# relative location.
+#
+# Args:
+#   binary_label: Target that builds the file to symlink to. e.g.:
+#       ":$target_name($host_toolchain)".
+#   binary_output_name: The output_name set by the binary_label target
+#       (if applicable).
+#   output_name: Where to create the symlink
+#       (default="$root_out_dir/$binary_output_name").
+#
+# Example:
+#   if (current_toolchain == host_toolchain) {
+#     executable("foo") { ... }
+#   } else if (current_toolchain == default_toolchain) {
+#     binary_symlink("foo") {
+#       binary_label = ":foo($host_toolchain)"
+#     }
+#   }
+template("binary_symlink") {
+  symlink(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "output",
+                             "testonly",
+                             "visibility",
+                           ])
+    deps = [
+      invoker.binary_label,
+    ]
+    data_deps = [
+      invoker.binary_label,
+    ]
+    if (defined(invoker.data_deps)) {
+      data_deps += invoker.data_deps
+    }
+
+    _out_dir = get_label_info(invoker.binary_label, "root_out_dir")
+    if (defined(invoker.binary_output_name)) {
+      _name = invoker.binary_output_name
+    } else {
+      _name = get_label_info(invoker.binary_label, "name")
+    }
+    source = "$_out_dir/$_name"
+
+    _output_name = _name
+    if (defined(invoker.output_name)) {
+      _output_name = invoker.output_name
+    }
+    output = "$root_out_dir/$_output_name"
+  }
+}

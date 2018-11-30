@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>BuildMachineOSBuild</key>
+  <string>${BUILD_MACHINE_OS_BUILD}</string>
+  <key>CFBundleSupportedPlatforms</key>
+  <array>
+    <string>${IOS_SUPPORTED_PLATFORM}</string>
+  </array>
+  <key>DTCompiler</key>
+  <string>${GCC_VERSION}</string>
+  <key>DTPlatformName</key>
+  <string>${IOS_PLATFORM_NAME}</string>
+  <key>DTPlatformVersion</key>
+  <string>${IOS_PLATFORM_VERSION}</string>
+  <key>DTPlatformBuild</key>
+  <string>${IOS_PLATFORM_BUILD}</string>
+  <key>DTSDKBuild</key>
+  <string>${IOS_SDK_BUILD}</string>
+  <key>DTSDKName</key>
+  <string>${IOS_SDK_NAME}</string>
+  <key>MinimumOSVersion</key>
+  <string>${IOS_DEPLOYMENT_TARGET}</string>
+  <key>DTXcode</key>
+  <string>${XCODE_VERSION}</string>
+  <key>DTXcodeBuild</key>
+  <string>${XCODE_BUILD}</string>
+  <key>UIDeviceFamily</key>
+  <array>
+    <integer>1</integer>
+    <integer>2</integer>
+  </array>
+</dict>
+</plist>

@@ -1,0 +1,18 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/sanitizers/sanitizers.gni")
+
+declare_args() {
+  # If true, builds as a console app (rather than a windowed app), which allows
+  # logging to be printed to the user. This will cause a terminal window to pop
+  # up when the executable is not run from the command line, so should only be
+  # used for development. Only has an effect on Windows builds.
+  win_console_app = false
+}
+
+if (is_win && is_asan) {
+  # AddressSanitizer build should be a console app since it writes to stderr.
+  win_console_app = true
+}

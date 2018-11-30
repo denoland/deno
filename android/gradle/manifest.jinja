@@ -1,0 +1,11 @@
+{# Copyright 2017 The Chromium Authors. All rights reserved. #}
+{# Use of this source code is governed by a BSD-style license that can be #}
+{# found in the LICENSE file. #}
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="{{ package }}">
+
+    {# This should be kept in sync with build/android/AndroidManifest.xml. #}
+    <uses-sdk android:minSdkVersion="16" android:targetSdkVersion="{{ compile_sdk_version }}" />
+
+</manifest>

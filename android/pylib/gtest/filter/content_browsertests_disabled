@@ -1,0 +1,50 @@
+# List of suppressions
+# Timeouts
+DatabaseTest.*
+
+# Crashes
+RenderFrameHostManagerTest.IgnoreRendererDebugURLsWhenCrashed
+
+# Plugins are not supported.
+BrowserPluginThreadedCompositorPixelTest.*
+BrowserPluginHostTest.*
+BrowserPluginTest.*
+PluginTest.*
+
+# http://crbug.com/463740
+CrossPlatformAccessibilityBrowserTest.SelectedEditableTextAccessibility
+
+# http://crbug.com/297230
+DumpAccessibilityTreeTest.AccessibilityAriaLevel
+DumpAccessibilityTreeTest.AccessibilityAriaProgressbar
+DumpAccessibilityTreeTest.AccessibilityListMarkers
+DumpAccessibilityTreeTest.AccessibilityUl
+DumpAccessibilityTreeTest.AccessibilityCanvas
+DumpAccessibilityTreeTest.AccessibilityDialog
+DumpAccessibilityTreeTest.AccessibilityModalDialogClosed
+DumpAccessibilityTreeTest.AccessibilityModalDialogInIframeOpened
+RenderAccessibilityImplTest.DetachAccessibilityObject
+
+# http://crbug.com/187500
+RenderViewImplTest.ImeComposition
+RenderViewImplTest.InsertCharacters
+RenderViewImplTest.OnHandleKeyboardEvent
+RenderViewImplTest.OnNavStateChanged
+# ZoomLevel is not used on Android
+RenderFrameImplTest.ZoomLimit
+RendererAccessibilityTest.SendFullAccessibilityTreeOnReload
+RendererAccessibilityTest.HideAccessibilityObject
+RendererAccessibilityTest.ShowAccessibilityObject
+RendererAccessibilityTest.TextSelectionShouldSendRoot
+
+# http://crbug.com/386227
+IndexedDBBrowserTest.VersionChangeCrashResilience
+
+# http://crbug.com/233118
+IndexedDBBrowserTest.NullKeyPathPersistence
+
+# http://crbug.com/338421
+GinBrowserTest.GinAndGarbageCollection
+
+# http://crbug.com/343604
+MSE_ClearKey/EncryptedMediaTest.ConfigChangeVideo/0

@@ -1,0 +1,165 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/config.gni")
+import("//build/config/android/rules.gni")
+import("//build/config/python.gni")
+
+if (enable_java_templates) {
+  sun_tools_jar_path = "$root_gen_dir/sun_tools_jar/tools.jar"
+
+  # Create or update the API versions cache if necessary by running a
+  # functionally empty lint task. This prevents racy creation of the
+  # cache while linting java targets in android_lint.
+  android_lint("prepare_android_lint_cache") {
+    android_manifest = "//build/android/AndroidManifest.xml"
+    create_cache = true
+  }
+
+  action("find_sun_tools_jar") {
+    script = "//build/android/gyp/find_sun_tools_jar.py"
+    depfile = "$target_gen_dir/$target_name.d"
+    outputs = [
+      sun_tools_jar_path,
+    ]
+    args = [
+      "--depfile",
+      rebase_path(depfile, root_build_dir),
+      "--output",
+      rebase_path(sun_tools_jar_path, root_build_dir),
+    ]
+  }
+
+  java_prebuilt("sun_tools_java") {
+    jar_path = sun_tools_jar_path
+    deps = [
+      ":find_sun_tools_jar",
+    ]
+  }
+
+  # Write to a file some GN vars that are useful to scripts that use the output
+  # directory. Format is chosen as easliy importable by both python and bash.
+  CR = "$0x0A"
+  _data = ""
+  _data += "android_sdk_build_tools=" +
+           rebase_path(android_sdk_build_tools, root_build_dir) + CR
+  _data += "android_sdk_build_tools_version=$android_sdk_build_tools_version$CR"
+  _data +=
+      "android_sdk_tools_version_suffix=$android_sdk_tools_version_suffix$CR"
+  _data +=
+      "android_sdk_root=" + rebase_path(android_sdk_root, root_build_dir) + CR
+  _data += "android_sdk_version=$android_sdk_version$CR"
+  _data +=
+      "android_ndk_root=" + rebase_path(android_ndk_root, root_build_dir) + CR
+  _data += "android_tool_prefix=" +
+           rebase_path(android_tool_prefix, root_build_dir) + CR
+  if (defined(android_secondary_abi_cpu)) {
+    _secondary_label_info =
+        get_label_info(":foo($android_secondary_abi_toolchain)", "root_out_dir")
+    _data += "android_secondary_abi_toolchain=" +
+             rebase_path(_secondary_label_info, root_build_dir) + CR
+  }
+  if (defined(build_apk_secondary_abi)) {
+    _data += "build_apk_secondary_abi=$build_apk_secondary_abi" + CR
+  }
+  write_file(android_build_vars, _data)
+}
+
+# Copy to the lib.unstripped directory so that gdb can easily find it.
+copy("cpplib_unstripped") {
+  _soname = "libc++_shared.so"
+  sources = [
+    "${android_libcpp_lib_dir}/${_soname}",
+  ]
+  outputs = [
+    "${root_out_dir}/lib.unstripped/${_soname}",
+  ]
+}
+
+action("cpplib_stripped") {
+  _strip_bin = "${android_tool_prefix}strip"
+  _soname = "libc++_shared.so"
+  _input_so = "${root_out_dir}/lib.unstripped/${_soname}"
+  _output_so = "${root_out_dir}/${_soname}"
+
+  deps = [
+    ":cpplib_unstripped",
+  ]
+
+  script = "//build/gn_run_binary.py"
+  inputs = [
+    _strip_bin,
+  ]
+  sources = [
+    _input_so,
+  ]
+  outputs = [
+    _output_so,
+  ]
+  data = [
+    _output_so,
+  ]
+
+  _rebased_strip_bin = rebase_path(_strip_bin, root_build_dir)
+  _rebased_input_so = rebase_path(_input_so, root_build_dir)
+  _rebased_output_so = rebase_path(_output_so, root_build_dir)
+  args = [
+    _rebased_strip_bin,
+    "-o",
+    _rebased_output_so,
+    _rebased_input_so,
+  ]
+}
+
+python_library("test_runner_py") {
+  pydeps_file = "test_runner.pydeps"
+  data = [
+    "devil_chromium.json",
+    "pylib/gtest/filter/",
+    "pylib/instrumentation/render_test.html.jinja",
+    "test_wrapper/logdog_wrapper.py",
+    "${android_sdk_build_tools}/aapt",
+    "${android_sdk_build_tools}/dexdump",
+    "${android_sdk_build_tools}/lib64/libc++.so",
+    "${android_sdk_build_tools}/split-select",
+    "${android_sdk_root}/platform-tools/adb",
+    "//third_party/catapult/third_party/gsutil/",
+    "//third_party/catapult/devil/devil/devil_dependencies.json",
+  ]
+
+  # Proguard is needed only when using apks (rather than native executables).
+  if (enable_java_templates) {
+    deps = [
+      "//third_party/proguard:proguard603_java",
+    ]
+  }
+}
+
+python_library("logdog_wrapper_py") {
+  pydeps_file = "test_wrapper/logdog_wrapper.pydeps"
+}
+
+python_library("resource_sizes_py") {
+  pydeps_file = "resource_sizes.pydeps"
+}
+
+# Create wrapper scripts in out/bin that takes care of setting the
+# --output-directory.
+_scripts_to_wrap = [
+  "asan_symbolize.py",
+  "tombstones.py",
+]
+
+_wrapper_targets = []
+foreach(script, _scripts_to_wrap) {
+  _target_name = get_path_info(script, "name") + "_wrapper"
+  _wrapper_targets += [ ":$_target_name" ]
+  wrapper_script(_target_name) {
+    target = script
+  }
+}
+
+group("wrapper_scripts") {
+  deps = _wrapper_targets
+}

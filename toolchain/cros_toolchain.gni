@@ -1,0 +1,81 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# CrOS builds must cross-compile on a Linux host for the actual CrOS
+# device target. There are many different CrOS devices so the build
+# system provides configuration variables that permit a CrOS build to
+# control the cross-compilation tool chain. However, requiring such
+# fine-grain specification is tedious for build-bots and developers.
+# Consequently, the CrOS build system defaults to a convenience
+# compilation mode where the compilation host is also the build target.
+#
+# Chrome can be compiled in this way with the gn variable:
+#
+# target_os = "chromeos"
+#
+# To perform a board-specific build, first obtain the correct system
+# root (http://goo.gl/aFB4XH) for the board. Then configure GN to use it
+# by setting appropriate cross-compilation variables.
+#
+# For example, to compile a Chrome source tree in /g/src for an
+# auron_paine CrOS device with the system root cached in /g/.cros_cache,
+# the following GN arguments must be provided to configure
+# cross-compilation with Goma acceleration. (NB: additional variables
+# will be necessary to successfully compile a working CrOS Chrome. See
+# the definition of GYP_DEFINES inside a sysroot shell.)
+#
+# goma_dir = "/g/.cros_cache/common/goma+2"
+# target_sysroot= /g/.cros_cache/chrome-sdk/tarballs/auron_paine+7644.0.0+sysroot_chromeos-base_chromeos-chrome.tar.xz"
+# cros_target_cc = "x86_64-cros-linux-gnu-gcc -B/g/.cros_cache/chrome-sdk/tarballs/auron_paine+7657.0.0+target_toolchain/usr/x86_64-pc-linux-gnu/x86_64-cros-linux-gnu/binutils-bin/2.25.51-gold"
+# cros_target_cxx = "x86_64-cros-linux-gnu-g++ -B/g/.cros_cache/chrome-sdk/tarballs/auron_paine+7657.0.0+target_toolchain/usr/x86_64-pc-linux-gnu/x86_64-cros-linux-gnu/binutils-bin/2.25.51-gold"
+# cros_target_ar = "x86_64-cros-linux-gnu-gcc-ar"
+# target_cpu = "x64"
+
+declare_args() {
+  # These must be specified for a board-specific build.
+  cros_target_ar = "ar"
+  cros_target_cc = "gcc"
+  cros_target_cxx = "g++"
+  cros_target_ld = ""
+  cros_target_nm = ""
+  cros_target_readelf = ""
+
+  # These can be optionally set. The "_cppflags"  will be applied to *both*
+  # C and C++ files; use "_cxxflags" for C++-only flags.
+  cros_target_extra_cflags = ""
+  cros_target_extra_cppflags = ""
+  cros_target_extra_cxxflags = ""
+  cros_target_extra_ldflags = ""
+
+  # is_clang is used instead of cros_target_is_clang
+
+  cros_host_ar = "ar"
+  cros_host_cc = "gcc"
+  cros_host_cxx = "g++"
+  cros_host_ld = ""
+  cros_host_nm = ""
+  cros_host_readelf = ""
+  cros_host_extra_cflags = ""
+  cros_host_extra_cppflags = ""
+  cros_host_extra_cxxflags = ""
+  cros_host_extra_ldflags = ""
+  cros_host_is_clang = false
+
+  cros_v8_snapshot_ar = "ar"
+  cros_v8_snapshot_cc = "gcc"
+  cros_v8_snapshot_cxx = "g++"
+  cros_v8_snapshot_ld = ""
+  cros_v8_snapshot_nm = ""
+  cros_v8_snapshot_readelf = ""
+  cros_v8_snapshot_extra_cflags = ""
+  cros_v8_snapshot_extra_cppflags = ""
+  cros_v8_snapshot_extra_cxxflags = ""
+  cros_v8_snapshot_extra_ldflags = ""
+  cros_v8_snapshot_is_clang = false
+
+  cros_nacl_bootstrap_extra_cflags = ""
+  cros_nacl_bootstrap_extra_cppflags = ""
+  cros_nacl_bootstrap_extra_cxxflags = ""
+  cros_nacl_bootstrap_extra_ldflags = ""
+}

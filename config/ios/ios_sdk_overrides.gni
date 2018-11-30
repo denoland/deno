@@ -1,0 +1,17 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This file contains arguments that subprojects may choose to override. It
+# asserts that those overrides are used, to prevent unused args warnings.
+
+declare_args() {
+  # Version of iOS that we're targeting.
+  ios_deployment_target = "10.0"
+}
+
+# Always assert that ios_deployment_target is used on non-iOS platforms to
+# prevent unused args warnings.
+if (!is_ios) {
+  assert(ios_deployment_target == "10.0" || true)
+}

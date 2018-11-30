@@ -1,0 +1,42 @@
+# GN args template for the Headless Chrome library
+#
+# Add import to arg.gn in out directory and run gn gen on the directory to use.
+# E.g. for out directory out/foo:
+# echo 'import("//build/args/headless.gn")' > out/foo/args.gn
+# gn gen out/foo
+#
+# Use gn args to add your own build preference args.
+
+use_ozone = true
+ozone_auto_platforms = false
+ozone_platform = "headless"
+ozone_platform_headless = true
+
+# Embed resource.pak into binary to simplify deployment.
+headless_use_embedded_resources = true
+
+# Expose headless bindings for freetype library bundled with Chromium.
+headless_fontconfig_utils = true
+
+# Remove a dependency on a system fontconfig library.
+use_bundled_fontconfig = true
+
+# In order to simplify deployment we build ICU data file
+# into binary.
+icu_use_data_file = false
+
+# Use embedded data instead external files for headless in order
+# to simplify deployment.
+v8_use_external_startup_data = false
+
+enable_nacl = false
+enable_print_preview = false
+enable_remoting = false
+use_alsa = false
+use_cups = false
+use_dbus = false
+use_gio = false
+use_kerberos = false
+use_libpci = false
+use_pulseaudio = false
+use_udev = false

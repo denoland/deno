@@ -1,0 +1,37 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/sanitizers/sanitizers.gni")
+
+declare_args() {
+  # Use libc++ (buildtools/third_party/libc++ and
+  # buildtools/third_party/libc++abi) instead of stdlibc++ as standard
+  # library.
+  # Don't check in changes that set this to false for more platforms; doing so
+  # is not supported.
+  use_custom_libcxx =
+      is_msan || is_fuchsia ||
+      (is_linux &&
+       (!is_chromeos || default_toolchain != "//build/toolchain/cros:target"))
+
+  # Use libc++ instead of stdlibc++ when using the host_cpu toolchain, even if
+  # use_custom_libcxx is false. This is useful for cross-compiles where a custom
+  # toolchain for the target_cpu has been set as the default toolchain, but
+  # use_custom_libcxx should still be true when building for the host.  The
+  # expected usage is to set use_custom_libcxx=false and
+  # use_custom_libcxx_for_host=true in the passed in buildargs.
+  use_custom_libcxx_for_host = false
+}
+
+use_custom_libcxx =
+    use_custom_libcxx || (use_custom_libcxx_for_host && current_cpu == host_cpu)
+use_custom_libcxx = use_custom_libcxx && !is_nacl
+
+# libc++abi needs to be exported from executables to be picked up by shared
+# libraries on certian instrumented builds.
+export_libcxxabi_from_executables =
+    use_custom_libcxx && !is_component_build && (is_asan || is_ubsan_vptr)
+
+libcxx_prefix = "//buildtools/third_party/libc++/trunk"
+libcxxabi_prefix = "//buildtools/third_party/libc++abi/trunk"

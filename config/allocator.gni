@@ -1,0 +1,58 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/sanitizers/sanitizers.gni")
+
+# Temporarily disable tcmalloc on arm64 linux to get rid of compilation errors.
+if (is_android || is_mac || is_ios || is_asan || is_lsan || is_tsan ||
+    is_msan || is_win || is_fuchsia || (is_linux && target_cpu == "arm64")) {
+  _default_allocator = "none"
+} else {
+  _default_allocator = "tcmalloc"
+}
+
+# The debug CRT on Windows has some debug features that are incompatible with
+# the shim. NaCl in particular does seem to link some binaries statically
+# against the debug CRT with "is_nacl=false".
+if ((is_linux || is_android || is_mac ||
+     (is_win && !is_component_build && !is_debug)) && !is_asan && !is_lsan &&
+    !is_tsan && !is_msan) {
+  _default_use_allocator_shim = true
+} else {
+  _default_use_allocator_shim = false
+}
+
+declare_args() {
+  # Memory allocator to use. Set to "none" to use default allocator.
+  use_allocator = _default_allocator
+
+  # Causes all the allocations to be routed via allocator_shim.cc.
+  use_allocator_shim = _default_use_allocator_shim
+
+  # Partition alloc is included by default except iOS.
+  use_partition_alloc = !is_ios
+
+  # Use the new tcmalloc. It's relevant only when use_allocator == "tcmalloc".
+  use_new_tcmalloc = false
+}
+
+if (is_nacl) {
+  # Turn off the build flag for NaCL builds to minimize confusion, as NaCL
+  # doesn't support the heap shim.
+  use_allocator_shim = false
+}
+
+assert(use_allocator == "none" || use_allocator == "tcmalloc")
+
+assert(!is_win || use_allocator == "none", "Tcmalloc doesn't work on Windows.")
+assert(!is_mac || use_allocator == "none", "Tcmalloc doesn't work on macOS.")
+
+assert(
+    !use_allocator_shim || is_linux || is_android || is_win || is_mac,
+    "use_allocator_shim is supported only on Linux, Android, Windows and macOS targets")
+
+if (is_win && use_allocator_shim) {
+  assert(!is_component_build,
+         "The allocator shim doesn't work for the component build on Windows.")
+}

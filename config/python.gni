@@ -1,0 +1,166 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Creates a group() that lists Python sources as |data|.
+# Having such targets serves two purposes:
+# 1) Causes files to be included in runtime_deps, so that they are uploaded to
+#    swarming when running tests remotely.
+# 2) Causes "gn analyze" to know about all Python inputs so that tests will be
+#    re-run when relevant Python files change.
+#
+# All non-trivial Python scripts should use a "pydeps" file to track their
+# sources. To create a .pydep file for a target in //example:
+#
+#   build/print_python_deps.py \
+#       --root example \
+#       --output example/$target_name.pydeps \
+#       path/to/your/script.py
+#
+# Keep the .pydep file up-to-date by adding to //PRESUBMIT.py under one of:
+#     _ANDROID_SPECIFIC_PYDEPS_FILES, _GENERIC_PYDEPS_FILES
+#
+# Variables
+#   pydeps_file: Path to .pydeps file to read sources from (optional).
+#   data: Additional files to include in data. E.g. non-.py files needed by the
+#         library, or .py files that are conditionally / lazily imported.
+#
+# Example
+#   python_library("my_library_py") {
+#      pydeps_file = "my_library.pydeps"
+#      data = [ "foo.dat" ]
+#   }
+template("python_library") {
+  group(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "data_deps",
+                             "deps",
+                             "testonly",
+                             "visibility",
+                           ])
+
+    if (defined(invoker.pydeps_file)) {
+      _py_files = read_file(invoker.pydeps_file, "list lines")
+
+      # Filter out comments.
+      set_sources_assignment_filter([ "#*" ])
+      sources = _py_files
+
+      # Even though the .pydep file is not used at runtime, it must be added
+      # so that "gn analyze" will mark the target as changed when .py files
+      # are removed but none are added or modified.
+      data = sources + [ invoker.pydeps_file ]
+    } else {
+      data = []
+    }
+    if (defined(invoker.data)) {
+      data += invoker.data
+    }
+  }
+}
+
+# A template used for actions that execute a Python script, which has an
+# associated .pydeps file. In other words:
+#
+# - This is very similar to just an action(), except that |script| must point
+#   to a Python script (e.g. "//build/.../foo.py") that has a corresponding
+#   .pydeps file in the source tree (e.g. "//build/.../foo.pydeps").
+#
+# - The .pydeps file contains a list of python dependencies (imports really)
+#   and is generated _manually_ by using a command like:
+#
+#     build/print_python_deps.py --inplace build/android/gyp/foo.py
+#
+template("action_with_pydeps") {
+  # Read the .pydeps file now. Note that this is done everytime this
+  # template is called, but benchmarking doesn't show any impact on overall
+  # 'gn gen' speed anyway.
+  _pydeps_file = invoker.script + "deps"
+  _pydeps_raw = read_file(_pydeps_file, "list lines")
+
+  # Filter out comments.
+  # This is a bit convoluted to preserve the value of sources if defined.
+  _old_sources = []
+  if (defined(sources)) {
+    _old_sources = sources
+  }
+  set_sources_assignment_filter([ "#*" ])
+  sources = _pydeps_raw
+  _pydeps = sources
+  set_sources_assignment_filter([])
+  sources = _old_sources
+
+  action(target_name) {
+    # Forward all variables. Ensure that testonly and visibility are forwarded
+    # explicitly, since this performs recursive scope lookups, which is
+    # required to ensure their definition from scopes above the caller are
+    # properly handled. All other variables are forwarded with "*", which
+    # doesn't perform recursive lookups at all. See https://crbug.com/862232
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "visibility",
+                           ])
+    forward_variables_from(invoker,
+                           "*",
+                           [
+                             "testonly",
+                             "visibility",
+                           ])
+
+    if (!defined(inputs)) {
+      inputs = []
+    }
+
+    # Dependencies are listed relative to the script directory, but inputs
+    # expects paths that are relative to the current BUILD.gn
+    _script_dir = get_path_info(script, "dir")
+    inputs += rebase_path(_pydeps, ".", _script_dir)
+  }
+}
+
+template("action_foreach_with_pydeps") {
+  _pydeps_file = invoker.script + "deps"
+  _pydeps_raw = read_file(_pydeps_file, "list lines")
+
+  # Filter out comments.
+  # This is a bit convoluted to preserve the value of sources if defined.
+  _old_sources = []
+  if (defined(sources)) {
+    _old_sources = sources
+  }
+  set_sources_assignment_filter([ "#*" ])
+  sources = _pydeps_raw
+  _pydeps = sources
+  set_sources_assignment_filter([])
+  sources = _old_sources
+
+  action_foreach(target_name) {
+    # Forward all variables. Ensure that testonly and visibility are forwarded
+    # explicitly, since this performs recursive scope lookups, which is
+    # required to ensure their definition from scopes above the caller are
+    # properly handled. All other variables are forwarded with "*", which
+    # doesn't perform recursive lookups at all. See https://crbug.com/862232
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "visibility",
+                           ])
+    forward_variables_from(invoker,
+                           "*",
+                           [
+                             "testonly",
+                             "visibility",
+                           ])
+
+    if (!defined(inputs)) {
+      inputs = []
+    }
+
+    # Dependencies are listed relative to the script directory, but inputs
+    # expects paths that are relative to the current BUILD.gn
+    _script_dir = get_path_info(script, "dir")
+    inputs += rebase_path(_pydeps, ".", _script_dir)
+  }
+}

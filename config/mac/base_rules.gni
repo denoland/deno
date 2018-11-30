@@ -1,0 +1,308 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This file contains rules that are shared between Mac and iOS.
+
+import("//build/toolchain/toolchain.gni")
+import("//build/config/mac/symbols.gni")
+
+if (is_mac) {
+  import("//build/config/mac/mac_sdk.gni")
+} else if (is_ios) {
+  import("//build/config/ios/ios_sdk.gni")
+}
+
+# Convert plist file to given format.
+#
+# Arguments
+#
+#   source:
+#     string, path to the plist file to convert
+#
+#   output:
+#     string, path to the converted plist, must be under $root_build_dir
+#
+#   format:
+#     string, the format to `plutil -convert` the plist to.
+template("convert_plist") {
+  assert(defined(invoker.source), "source must be defined for $target_name")
+  assert(defined(invoker.output), "output must be defined for $target_name")
+  assert(defined(invoker.format), "format must be defined for $target_name")
+
+  action(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "visibility",
+                             "testonly",
+                             "deps",
+                           ])
+
+    script = "//build/config/mac/xcrun.py"
+    sources = [
+      invoker.source,
+    ]
+    outputs = [
+      invoker.output,
+    ]
+    args = []
+    if (!use_system_xcode) {
+      args += [
+        "--developer_dir",
+        hermetic_xcode_path,
+      ]
+    }
+    args += [
+      "plutil",
+      "-convert",
+      invoker.format,
+      "-o",
+      rebase_path(invoker.output, root_build_dir),
+      rebase_path(invoker.source, root_build_dir),
+    ]
+  }
+}
+
+# Template to merge multiple plist files and perform variable substitutions.
+#
+# Arguments
+#
+#     plist_templates:
+#         string array, paths to plist files which will be used for the bundle.
+#
+#     format:
+#         string, the format to `plutil -convert` the plist to when
+#         generating the output.
+#
+#     substitutions:
+#         string array, 'key=value' pairs used to replace ${key} by value
+#         when generating the output plist file.
+#
+#     output_name:
+#         string, name of the generated plist file.
+template("compile_plist") {
+  assert(defined(invoker.plist_templates),
+         "A list of template plist files must be specified for $target_name")
+  assert(defined(invoker.format),
+         "The plist format must be specified for $target_name")
+  assert(defined(invoker.substitutions),
+         "A list of key=value pairs must be specified for $target_name")
+  assert(defined(invoker.output_name),
+         "The name of the output file must be specified for $target_name")
+
+  _output_name = invoker.output_name
+  _merged_name = get_path_info(_output_name, "dir") + "/" +
+                 get_path_info(_output_name, "name") + "_merged." +
+                 get_path_info(_output_name, "extension")
+
+  _merge_target = target_name + "_merge"
+
+  action(_merge_target) {
+    forward_variables_from(invoker,
+                           [
+                             "deps",
+                             "testonly",
+                           ])
+
+    script = "//build/config/mac/plist_util.py"
+    sources = invoker.plist_templates
+    outputs = [
+      _merged_name,
+    ]
+    args = [
+             "merge",
+             "-f=" + invoker.format,
+             "-o=" + rebase_path(_merged_name, root_build_dir),
+           ] + rebase_path(invoker.plist_templates, root_build_dir)
+  }
+
+  action(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "visibility",
+                           ])
+    script = "//build/config/mac/plist_util.py"
+    sources = [
+      _merged_name,
+    ]
+    outputs = [
+      _output_name,
+    ]
+    args = [
+      "substitute",
+      "-f=" + invoker.format,
+      "-o=" + rebase_path(_output_name, root_build_dir),
+      "-t=" + rebase_path(_merged_name, root_build_dir),
+    ]
+    foreach(_substitution, invoker.substitutions) {
+      args += [ "-s=$_substitution" ]
+    }
+    deps = [
+      ":$_merge_target",
+    ]
+  }
+}
+
+# Template to merge multiple .entitlements files performing variable
+# substitutions.
+#
+# Arguments
+#
+#     entitlements_templates:
+#         string array, paths to entitlements files which will be used for the
+#         bundle.
+#
+#     substitutions:
+#         string array, 'key=value' pairs used to replace ${key} by value
+#         when generating the output plist file.
+#
+#     output_name:
+#         string, name of the generated entitlements file.
+template("compile_entitlements") {
+  assert(defined(invoker.entitlements_templates),
+         "A list of template plist files must be specified for $target_name")
+
+  compile_plist(target_name) {
+    forward_variables_from(invoker,
+                           "*",
+                           [
+                             "entitlements_templates",
+                             "format",
+                             "plist_templates",
+                           ])
+
+    plist_templates = invoker.entitlements_templates
+
+    # Entitlements files are always encoded in xml1.
+    format = "xml1"
+
+    # Entitlements files use unsubstitued variables, so define substitutions
+    # to leave those variables untouched.
+    if (!defined(substitutions)) {
+      substitutions = []
+    }
+
+    substitutions += [
+      "AppIdentifierPrefix=\$(AppIdentifierPrefix)",
+      "CFBundleIdentifier=\$(CFBundleIdentifier)",
+    ]
+  }
+}
+
+# The base template used to generate Info.plist files for iOS and Mac apps and
+# frameworks.
+#
+# Arguments
+#
+#     plist_templates:
+#         string array, paths to plist files which will be used for the bundle.
+#
+#     executable_name:
+#         string, name of the generated target used for the product
+#         and executable name as specified in the output Info.plist.
+#
+#     format:
+#         string, the format to `plutil -convert` the plist to when
+#         generating the output.
+#
+#     extra_substitutions:
+#         (optional) string array, 'key=value' pairs for extra fields which are
+#         specified in a source Info.plist template.
+#
+#     output_name:
+#         (optional) string, name of the generated plist file, default to
+#         "$target_gen_dir/$target_name.plist".
+template("info_plist") {
+  assert(defined(invoker.executable_name),
+         "The executable_name must be specified for $target_name")
+  executable_name = invoker.executable_name
+
+  compile_plist(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "plist_templates",
+                             "testonly",
+                             "deps",
+                             "visibility",
+                             "format",
+                           ])
+
+    if (defined(invoker.output_name)) {
+      output_name = invoker.output_name
+    } else {
+      output_name = "$target_gen_dir/$target_name.plist"
+    }
+
+    substitutions = [
+      "BUILD_MACHINE_OS_BUILD=$machine_os_build",
+      "EXECUTABLE_NAME=$executable_name",
+      "GCC_VERSION=com.apple.compilers.llvm.clang.1_0",
+      "PRODUCT_NAME=$executable_name",
+      "XCODE_BUILD=$xcode_build",
+      "XCODE_VERSION=$xcode_version",
+    ]
+    if (is_mac) {
+      substitutions += [
+        "MACOSX_DEPLOYMENT_TARGET=$mac_deployment_target",
+        "CHROMIUM_MIN_SYSTEM_VERSION=$mac_min_system_version",
+      ]
+    } else if (is_ios) {
+      substitutions += [ "IOS_DEPLOYMENT_TARGET=$ios_deployment_target" ]
+    }
+    if (defined(invoker.extra_substitutions)) {
+      substitutions += invoker.extra_substitutions
+    }
+  }
+}
+
+# Template to compile .xib and .storyboard files.
+#
+# Arguments
+#
+#     sources:
+#         list of string, sources to compile
+#
+#     ibtool_flags:
+#         (optional) list of string, additional flags to pass to the ibtool
+template("compile_ib_files") {
+  action_foreach(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "visibility",
+                           ])
+    assert(defined(invoker.sources),
+           "sources must be specified for $target_name")
+    assert(defined(invoker.output_extension),
+           "output_extension must be specified for $target_name")
+
+    ibtool_flags = []
+    if (defined(invoker.ibtool_flags)) {
+      ibtool_flags = invoker.ibtool_flags
+    }
+
+    _output_extension = invoker.output_extension
+
+    script = "//build/config/mac/compile_ib_files.py"
+    sources = invoker.sources
+    outputs = [
+      "$target_gen_dir/$target_name/{{source_name_part}}.$_output_extension",
+    ]
+    args = [
+      "--input",
+      "{{source}}",
+      "--output",
+      rebase_path(
+          "$target_gen_dir/$target_name/{{source_name_part}}.$_output_extension",
+          root_build_dir),
+    ]
+    if (!use_system_xcode) {
+      args += [
+        "--developer_dir",
+        hermetic_xcode_path,
+      ]
+    }
+    args += ibtool_flags
+  }
+}

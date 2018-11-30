@@ -1,0 +1,51 @@
+# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/util/lastchange.gni")
+
+action("webkit_version") {
+  script = "version.py"
+
+  template_file = "webkit_version.h.in"
+  inputs = [
+    lastchange_file,
+    template_file,
+  ]
+
+  output_file = "$target_gen_dir/webkit_version.h"
+  outputs = [
+    output_file,
+  ]
+
+  args = [
+    # LASTCHANGE contains "<build hash>-<ref>".  The user agent only wants the
+    # "<build hash>" bit, so chop off everything after it.
+    "-e",
+    "LASTCHANGE=LASTCHANGE[:LASTCHANGE.find('-')]",
+    "-f",
+    rebase_path(lastchange_file, root_build_dir),
+    rebase_path(template_file, root_build_dir),
+    rebase_path(output_file, root_build_dir),
+  ]
+}
+
+action("chrome_version_json") {
+  script = "version.py"
+  _chrome_version_path = "//chrome/VERSION"
+  inputs = [
+    _chrome_version_path,
+  ]
+  _output_file = "$root_gen_dir/CHROME_VERSION.json"
+  outputs = [
+    _output_file,
+  ]
+  args = [
+    "--file",
+    rebase_path(_chrome_version_path, root_build_dir),
+    "--template",
+    "{\"full-quoted\": \"\\\"@MAJOR@.@MINOR@.@BUILD@.@PATCH@\\\"\"}",
+    "--output",
+    rebase_path(_output_file, root_build_dir),
+  ]
+}

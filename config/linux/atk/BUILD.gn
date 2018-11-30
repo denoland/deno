@@ -1,0 +1,53 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/features.gni")
+import("//build/config/linux/pkg_config.gni")
+import("//build/config/ui.gni")
+
+# CrOS doesn't install GTK or any gnome packages.
+assert(!is_chromeos)
+
+# These packages should _only_ be expected when building for a target.
+assert(current_toolchain == default_toolchain)
+
+if (use_atk) {
+  assert(use_glib, "use_atk=true requires that use_glib=true")
+}
+
+pkg_config("atk_base") {
+  packages = [
+    "atk",
+    "atk-bridge-2.0",
+  ]
+  atk_lib_dir = exec_script(pkg_config_script,
+                            pkg_config_args + [
+                                  "--libdir",
+                                  "atk",
+                                ],
+                            "string")
+  defines = [
+    "ATK_LIB_DIR=\"$atk_lib_dir\"",
+    "USE_ATK_BRIDGE",
+  ]
+}
+
+# gn orders flags on a target before flags from configs. The default config
+# adds -Wall, and these flags have to be after -Wall -- so they need to
+# come from a config and can't be on the target directly.
+config("atk") {
+  configs = [ ":atk_base" ]
+
+  cflags = [
+    # G_DEFINE_TYPE automatically generates a *get_instance_private
+    # inline function after glib 2.37. That's unused. Prevent to
+    # complain about it.
+    "-Wno-unused-function",
+  ]
+
+  if (is_clang) {
+    # glib uses the pre-c++11 typedef-as-static_assert hack.
+    cflags += [ "-Wno-unused-local-typedef" ]
+  }
+}

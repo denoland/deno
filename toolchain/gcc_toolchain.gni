@@ -1,0 +1,621 @@
+# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/clang/clang.gni")
+import("//build/config/compiler/compiler.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/config/v8_target_cpu.gni")
+import("//build/toolchain/cc_wrapper.gni")
+import("//build/toolchain/clang_static_analyzer.gni")
+import("//build/toolchain/goma.gni")
+import("//build/toolchain/toolchain.gni")
+
+if (is_nacl) {
+  # To keep NaCl variables out of builds that don't include NaCl, all
+  # variables defined in nacl/config.gni referenced here should be protected by
+  # is_nacl conditions.
+  import("//build/config/nacl/config.gni")
+}
+
+declare_args() {
+  # Enables whitelist generation for IDR_ grit defines seen by the compiler.
+  # Currently works only on Android and enabled by default for release builds.
+  # Requires debug info, so disabled for symbol_level=0 & strip_debug_info=true.
+  enable_resource_whitelist_generation =
+      is_android && !is_debug &&
+      # Always enable for official builds, but enable for release builds by
+      # default only when other args allow.
+      (is_official_build ||
+       (!strip_debug_info && symbol_level > 0 && !is_component_build))
+}
+
+# When the arg is set via args.gn, it applies to all toolchains. In order to not
+# hit the assert in grit_rule.gni, explicitly disable for host toolchains.
+if (is_linux && target_os == "android") {
+  enable_resource_whitelist_generation = false
+}
+
+# Path to the Clang static analysis wrapper script.
+# REVIEWERS: can you suggest a better location for this?
+# GN is really picky about dead stores of variables except at the global scope.
+analyzer_wrapper =
+    rebase_path("//build/toolchain/clang_static_analyzer_wrapper.py",
+                root_build_dir) + " --mode=clang"
+
+# This template defines a toolchain for something that works like gcc
+# (including clang).
+#
+# It requires the following variables specifying the executables to run:
+#  - ar
+#  - cc
+#  - cxx
+#  - ld
+#
+# Optional parameters that control the tools:
+#
+#  - extra_cflags
+#      Extra flags to be appended when compiling C files (but not C++ files).
+#  - extra_cppflags
+#      Extra flags to be appended when compiling both C and C++ files. "CPP"
+#      stands for "C PreProcessor" in this context, although it can be
+#      used for non-preprocessor flags as well. Not to be confused with
+#      "CXX" (which follows).
+#  - extra_cxxflags
+#      Extra flags to be appended when compiling C++ files (but not C files).
+#  - extra_asmflags
+#      Extra flags to be appended when compiling assembly.
+#  - extra_ldflags
+#      Extra flags to be appended when linking
+#
+#  - libs_section_prefix
+#  - libs_section_postfix
+#      The contents of these strings, if specified, will be placed around
+#      the libs section of the linker line. It allows one to inject libraries
+#      at the beginning and end for all targets in a toolchain.
+#  - solink_libs_section_prefix
+#  - solink_libs_section_postfix
+#      Same as libs_section_{pre,post}fix except used for solink instead of link.
+#  - link_outputs
+#      The content of this array, if specified, will be added to the list of
+#      outputs from the link command. This can be useful in conjunction with
+#      the post_link parameter.
+#  - use_unstripped_as_runtime_outputs
+#      When |strip| is set, mark unstripped executables as runtime deps rather
+#      than stripped ones.
+#  - post_link
+#      The content of this string, if specified, will be run as a separate
+#      command following the the link command.
+#  - deps
+#      Just forwarded to the toolchain definition.
+#  - executable_extension
+#      If this string is specified it will be used for the file extension
+#      for an executable, rather than using no extension; targets will
+#      still be able to override the extension using the output_extension
+#      variable.
+#  - rebuild_define
+#      The contents of this string, if specified, will be passed as a #define
+#      to the toolchain. It can be used to force recompiles whenever a
+#      toolchain is updated.
+#  - shlib_extension
+#      If this string is specified it will be used for the file extension
+#      for a shared library, rather than default value specified in
+#      toolchain.gni
+#  - strip
+#      Location of the strip executable. When specified, strip will be run on
+#      all shared libraries and executables as they are built. The pre-stripped
+#      artifacts will be put in lib.unstripped/ and exe.unstripped/.
+template("gcc_toolchain") {
+  toolchain(target_name) {
+    assert(defined(invoker.ar), "gcc_toolchain() must specify a \"ar\" value")
+    assert(defined(invoker.cc), "gcc_toolchain() must specify a \"cc\" value")
+    assert(defined(invoker.cxx), "gcc_toolchain() must specify a \"cxx\" value")
+    assert(defined(invoker.ld), "gcc_toolchain() must specify a \"ld\" value")
+
+    # This define changes when the toolchain changes, forcing a rebuild.
+    # Nothing should ever use this define.
+    if (defined(invoker.rebuild_define)) {
+      rebuild_string = "-D" + invoker.rebuild_define + " "
+    } else {
+      rebuild_string = ""
+    }
+
+    # GN's syntax can't handle more than one scope dereference at once, like
+    # "invoker.toolchain_args.foo", so make a temporary to hold the toolchain
+    # args so we can do "invoker_toolchain_args.foo".
+    assert(defined(invoker.toolchain_args),
+           "Toolchains must specify toolchain_args")
+    invoker_toolchain_args = invoker.toolchain_args
+    assert(defined(invoker_toolchain_args.current_cpu),
+           "toolchain_args must specify a current_cpu")
+    assert(defined(invoker_toolchain_args.current_os),
+           "toolchain_args must specify a current_os")
+
+    # When invoking this toolchain not as the default one, these args will be
+    # passed to the build. They are ignored when this is the default toolchain.
+    toolchain_args = {
+      # Populate toolchain args from the invoker.
+      forward_variables_from(invoker_toolchain_args, "*")
+
+      # The host toolchain value computed by the default toolchain's setup
+      # needs to be passed through unchanged to all secondary toolchains to
+      # ensure that it's always the same, regardless of the values that may be
+      # set on those toolchains.
+      host_toolchain = host_toolchain
+
+      if (!defined(invoker_toolchain_args.v8_current_cpu)) {
+        v8_current_cpu = invoker_toolchain_args.current_cpu
+      }
+    }
+
+    # When the invoker has explicitly overridden use_goma or cc_wrapper in the
+    # toolchain args, use those values, otherwise default to the global one.
+    # This works because the only reasonable override that toolchains might
+    # supply for these values are to force-disable them.
+    if (defined(toolchain_args.use_goma)) {
+      toolchain_uses_goma = toolchain_args.use_goma
+    } else {
+      toolchain_uses_goma = use_goma
+    }
+    if (defined(toolchain_args.cc_wrapper)) {
+      toolchain_cc_wrapper = toolchain_args.cc_wrapper
+    } else {
+      toolchain_cc_wrapper = cc_wrapper
+    }
+    assert(!(toolchain_cc_wrapper != "" && toolchain_uses_goma),
+           "Goma and cc_wrapper can't be used together.")
+
+    # When the invoker has explicitly overridden use_goma or cc_wrapper in the
+    # toolchain args, use those values, otherwise default to the global one.
+    # This works because the only reasonable override that toolchains might
+    # supply for these values are to force-disable them.
+    # But if has_gomacc_path is set in simple chrome build, we assumes that
+    # *chromeos* compiler wrapper find gomacc from GOMACC_PATH envvar.
+    # Note: In this case, we use gomacc for host toolchain compiling.
+    if (toolchain_uses_goma &&
+        (!has_gomacc_path || invoker_toolchain_args.current_os != "chromeos")) {
+      goma_path = "$goma_dir/gomacc"
+
+      # Use the static analysis script if static analysis is turned on
+      # AND the tool has not opted out by setting
+      # 'is_clang_static_analysis_supported' to false.
+      if (is_clang && use_clang_static_analyzer &&
+          (!defined(invoker.is_clang_analysis_supported) ||
+           invoker.is_clang_analysis_supported)) {
+        compiler_prefix = "${analyzer_wrapper} ${goma_path} "
+
+        # Create a distinct variable for "asm", since analysis runs pass
+        # a bunch of flags to clang/clang++ that are nonsensical on assembler
+        # runs.
+        asm = "${goma_path} ${invoker.cc}"
+      } else {
+        compiler_prefix = "${goma_path} "
+      }
+    } else {
+      if (is_clang && use_clang_static_analyzer &&
+          (!defined(invoker.is_clang_analysis_supported) ||
+           invoker.is_clang_analysis_supported)) {
+        compiler_prefix = "${analyzer_wrapper} "
+        asm = invoker.cc
+      } else {
+        compiler_prefix = "${toolchain_cc_wrapper} "
+      }
+    }
+
+    cc = compiler_prefix + invoker.cc
+    cxx = compiler_prefix + invoker.cxx
+    ar = invoker.ar
+    ld = invoker.ld
+    if (!defined(asm)) {
+      asm = cc
+    }
+    if (defined(invoker.readelf)) {
+      readelf = invoker.readelf
+    } else {
+      readelf = "readelf"
+    }
+    if (defined(invoker.nm)) {
+      nm = invoker.nm
+    } else {
+      nm = "nm"
+    }
+
+    if (defined(invoker.shlib_extension)) {
+      default_shlib_extension = invoker.shlib_extension
+    } else {
+      default_shlib_extension = shlib_extension
+    }
+
+    if (defined(invoker.executable_extension)) {
+      default_executable_extension = invoker.executable_extension
+    } else {
+      default_executable_extension = ""
+    }
+
+    # Bring these into our scope for string interpolation with default values.
+    if (defined(invoker.libs_section_prefix)) {
+      libs_section_prefix = invoker.libs_section_prefix
+    } else {
+      libs_section_prefix = ""
+    }
+
+    if (defined(invoker.libs_section_postfix)) {
+      libs_section_postfix = invoker.libs_section_postfix
+    } else {
+      libs_section_postfix = ""
+    }
+
+    if (defined(invoker.solink_libs_section_prefix)) {
+      solink_libs_section_prefix = invoker.solink_libs_section_prefix
+    } else {
+      solink_libs_section_prefix = ""
+    }
+
+    if (defined(invoker.solink_libs_section_postfix)) {
+      solink_libs_section_postfix = invoker.solink_libs_section_postfix
+    } else {
+      solink_libs_section_postfix = ""
+    }
+
+    if (defined(invoker.extra_cflags) && invoker.extra_cflags != "") {
+      extra_cflags = " " + invoker.extra_cflags
+    } else {
+      extra_cflags = ""
+    }
+
+    if (defined(invoker.extra_cppflags) && invoker.extra_cppflags != "") {
+      extra_cppflags = " " + invoker.extra_cppflags
+    } else {
+      extra_cppflags = ""
+    }
+
+    if (defined(invoker.extra_cxxflags) && invoker.extra_cxxflags != "") {
+      extra_cxxflags = " " + invoker.extra_cxxflags
+    } else {
+      extra_cxxflags = ""
+    }
+
+    if (defined(invoker.extra_asmflags) && invoker.extra_asmflags != "") {
+      extra_asmflags = " " + invoker.extra_asmflags
+    } else {
+      extra_asmflags = ""
+    }
+
+    if (defined(invoker.extra_ldflags) && invoker.extra_ldflags != "") {
+      extra_ldflags = " " + invoker.extra_ldflags
+    } else {
+      extra_ldflags = ""
+    }
+
+    enable_linker_map = defined(invoker.enable_linker_map) &&
+                        invoker.enable_linker_map && generate_linker_map
+
+    # These library switches can apply to all tools below.
+    lib_switch = "-l"
+    lib_dir_switch = "-L"
+
+    # Object files go in this directory.
+    object_subdir = "{{target_out_dir}}/{{label_name}}"
+
+    tool("cc") {
+      depfile = "{{output}}.d"
+      command = "$cc -MMD -MF $depfile ${rebuild_string}{{defines}} {{include_dirs}} {{cflags}} {{cflags_c}}${extra_cppflags}${extra_cflags} -c {{source}} -o {{output}}"
+      depsformat = "gcc"
+      description = "CC {{output}}"
+      outputs = [
+        "$object_subdir/{{source_name_part}}.o",
+      ]
+    }
+
+    tool("cxx") {
+      depfile = "{{output}}.d"
+      command = "$cxx -MMD -MF $depfile ${rebuild_string}{{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}}${extra_cppflags}${extra_cxxflags} -c {{source}} -o {{output}}"
+      depsformat = "gcc"
+      description = "CXX {{output}}"
+      outputs = [
+        "$object_subdir/{{source_name_part}}.o",
+      ]
+    }
+
+    tool("asm") {
+      # For GCC we can just use the C compiler to compile assembly.
+      depfile = "{{output}}.d"
+      command = "$asm -MMD -MF $depfile ${rebuild_string}{{defines}} {{include_dirs}} {{asmflags}}${extra_asmflags} -c {{source}} -o {{output}}"
+      depsformat = "gcc"
+      description = "ASM {{output}}"
+      outputs = [
+        "$object_subdir/{{source_name_part}}.o",
+      ]
+    }
+
+    tool("alink") {
+      if (current_os == "aix") {
+        # AIX does not support either -D (deterministic output) or response
+        # files.
+        command = "$ar -X64 {{arflags}} -r -c -s {{output}} {{inputs}}"
+      } else {
+        rspfile = "{{output}}.rsp"
+        rspfile_content = "{{inputs}}"
+        command = "\"$ar\" {{arflags}} -r -c -s -D {{output}} @\"$rspfile\""
+      }
+
+      # Remove the output file first so that ar doesn't try to modify the
+      # existing file.
+      if (host_os == "win") {
+        tool_wrapper_path =
+            rebase_path("//build/toolchain/win/tool_wrapper.py", root_build_dir)
+        command = "cmd /c $python_path $tool_wrapper_path delete-file {{output}} && $command"
+      } else {
+        command = "rm -f {{output}} && $command"
+      }
+
+      # Almost all targets build with //build/config/compiler:thin_archive which
+      # adds -T to arflags.
+      description = "AR {{output}}"
+      outputs = [
+        "{{output_dir}}/{{target_output_name}}{{output_extension}}",
+      ]
+
+      # Shared libraries go in the target out directory by default so we can
+      # generate different targets with the same name and not have them collide.
+      default_output_dir = "{{target_out_dir}}"
+      default_output_extension = ".a"
+      output_prefix = "lib"
+    }
+
+    tool("solink") {
+      soname = "{{target_output_name}}{{output_extension}}"  # e.g. "libfoo.so".
+      sofile = "{{output_dir}}/$soname"  # Possibly including toolchain dir.
+      rspfile = sofile + ".rsp"
+      pool = "//build/toolchain:link_pool($default_toolchain)"
+
+      if (defined(invoker.strip)) {
+        unstripped_sofile = "{{root_out_dir}}/lib.unstripped/$soname"
+      } else {
+        unstripped_sofile = sofile
+      }
+
+      # These variables are not built into GN but are helpers that
+      # implement (1) linking to produce a .so, (2) extracting the symbols
+      # from that file (3) if the extracted list differs from the existing
+      # .TOC file, overwrite it, otherwise, don't change it.
+      tocfile = sofile + ".TOC"
+
+      link_command = "$ld -shared {{ldflags}}${extra_ldflags} -o \"$unstripped_sofile\" -Wl,-soname=\"$soname\" @\"$rspfile\""
+
+      # Generate a map file to be used for binary size analysis.
+      # Map file adds ~10% to the link time on a z620.
+      # With target_os="android", libchrome.so.map.gz is ~20MB.
+      map_switch = ""
+      if (enable_linker_map && is_official_build) {
+        map_file = "$unstripped_sofile.map.gz"
+        map_switch = " --map-file \"$map_file\""
+      }
+
+      assert(defined(readelf), "to solink you must have a readelf")
+      assert(defined(nm), "to solink you must have an nm")
+      strip_switch = ""
+      if (defined(invoker.strip)) {
+        strip_switch = "--strip=${invoker.strip} "
+      }
+
+      # This needs a Python script to avoid using a complex shell command
+      # requiring sh control structures, pipelines, and POSIX utilities.
+      # The host might not have a POSIX shell and utilities (e.g. Windows).
+      solink_wrapper =
+          rebase_path("//build/toolchain/gcc_solink_wrapper.py", root_build_dir)
+      command = "$python_path \"$solink_wrapper\" --readelf=\"$readelf\" --nm=\"$nm\" $strip_switch--sofile=\"$unstripped_sofile\" --tocfile=\"$tocfile\"$map_switch --output=\"$sofile\" -- $link_command"
+
+      if (target_cpu == "mipsel" && is_component_build && is_android) {
+        rspfile_content = "-Wl,--start-group -Wl,--whole-archive {{inputs}} {{solibs}} -Wl,--no-whole-archive $solink_libs_section_prefix {{libs}} $solink_libs_section_postfix -Wl,--end-group"
+      } else {
+        rspfile_content = "-Wl,--whole-archive {{inputs}} {{solibs}} -Wl,--no-whole-archive $solink_libs_section_prefix {{libs}} $solink_libs_section_postfix"
+      }
+
+      description = "SOLINK $sofile"
+
+      # Use this for {{output_extension}} expansions unless a target manually
+      # overrides it (in which case {{output_extension}} will be what the target
+      # specifies).
+      default_output_extension = default_shlib_extension
+
+      default_output_dir = "{{root_out_dir}}"
+
+      output_prefix = "lib"
+
+      # Since the above commands only updates the .TOC file when it changes, ask
+      # Ninja to check if the timestamp actually changed to know if downstream
+      # dependencies should be recompiled.
+      restat = true
+
+      # Tell GN about the output files. It will link to the sofile but use the
+      # tocfile for dependency management.
+      outputs = [
+        sofile,
+        tocfile,
+      ]
+      if (sofile != unstripped_sofile) {
+        outputs += [ unstripped_sofile ]
+        if (defined(invoker.use_unstripped_as_runtime_outputs) &&
+            invoker.use_unstripped_as_runtime_outputs) {
+          runtime_outputs = [ unstripped_sofile ]
+        }
+      }
+      if (defined(map_file)) {
+        outputs += [ map_file ]
+      }
+      link_output = sofile
+      depend_output = tocfile
+    }
+
+    tool("solink_module") {
+      soname = "{{target_output_name}}{{output_extension}}"  # e.g. "libfoo.so".
+      sofile = "{{output_dir}}/$soname"
+      rspfile = sofile + ".rsp"
+      pool = "//build/toolchain:link_pool($default_toolchain)"
+
+      if (defined(invoker.strip)) {
+        unstripped_sofile = "{{root_out_dir}}/lib.unstripped/$soname"
+      } else {
+        unstripped_sofile = sofile
+      }
+
+      command = "$ld -shared {{ldflags}}${extra_ldflags} -o \"$unstripped_sofile\" -Wl,-soname=\"$soname\" @\"$rspfile\""
+
+      if (defined(invoker.strip)) {
+        strip_command = "${invoker.strip} -o \"$sofile\" \"$unstripped_sofile\""
+        command += " && " + strip_command
+      }
+      rspfile_content = "-Wl,--whole-archive {{inputs}} {{solibs}} -Wl,--no-whole-archive $solink_libs_section_prefix {{libs}} $solink_libs_section_postfix"
+
+      description = "SOLINK_MODULE $sofile"
+
+      # Use this for {{output_extension}} expansions unless a target manually
+      # overrides it (in which case {{output_extension}} will be what the target
+      # specifies).
+      if (defined(invoker.loadable_module_extension)) {
+        default_output_extension = invoker.loadable_module_extension
+      } else {
+        default_output_extension = default_shlib_extension
+      }
+
+      default_output_dir = "{{root_out_dir}}"
+
+      output_prefix = "lib"
+
+      outputs = [
+        sofile,
+      ]
+      if (sofile != unstripped_sofile) {
+        outputs += [ unstripped_sofile ]
+        if (defined(invoker.use_unstripped_as_runtime_outputs) &&
+            invoker.use_unstripped_as_runtime_outputs) {
+          runtime_outputs = [ unstripped_sofile ]
+        }
+      }
+    }
+
+    tool("link") {
+      exename = "{{target_output_name}}{{output_extension}}"
+      outfile = "{{output_dir}}/$exename"
+      rspfile = "$outfile.rsp"
+      unstripped_outfile = outfile
+      pool = "//build/toolchain:link_pool($default_toolchain)"
+
+      # Use this for {{output_extension}} expansions unless a target manually
+      # overrides it (in which case {{output_extension}} will be what the target
+      # specifies).
+      default_output_extension = default_executable_extension
+
+      default_output_dir = "{{root_out_dir}}"
+
+      if (defined(invoker.strip)) {
+        unstripped_outfile = "{{root_out_dir}}/exe.unstripped/$exename"
+      }
+
+      # Generate a map file to be used for binary size analysis.
+      # Map file adds ~10% to the link time on a z620.
+      # With target_os="android", libchrome.so.map.gz is ~20MB.
+      map_switch = ""
+      if (enable_linker_map && is_official_build) {
+        map_file = "$unstripped_outfile.map.gz"
+        map_switch = " --map-file \"$map_file\""
+      }
+
+      start_group_flag = ""
+      end_group_flag = ""
+      if (current_os != "aix") {
+        # the "--start-group .. --end-group" feature isn't available on the aix ld.
+        start_group_flag = "-Wl,--start-group"
+        end_group_flag = "-Wl,--end-group "
+      }
+      link_command = "$ld {{ldflags}}${extra_ldflags} -o \"$unstripped_outfile\" $start_group_flag @\"$rspfile\" {{solibs}} $end_group_flag $libs_section_prefix {{libs}} $libs_section_postfix"
+
+      strip_switch = ""
+
+      if (defined(invoker.strip)) {
+        strip_switch = " --strip=\"${invoker.strip}\" --unstripped-file=\"$unstripped_outfile\""
+      }
+
+      link_wrapper =
+          rebase_path("//build/toolchain/gcc_link_wrapper.py", root_build_dir)
+      command = "$python_path \"$link_wrapper\" --output=\"$outfile\"$strip_switch$map_switch -- $link_command"
+      description = "LINK $outfile"
+      rspfile_content = "{{inputs}}"
+      outputs = [
+        outfile,
+      ]
+      if (outfile != unstripped_outfile) {
+        outputs += [ unstripped_outfile ]
+        if (defined(invoker.use_unstripped_as_runtime_outputs) &&
+            invoker.use_unstripped_as_runtime_outputs) {
+          runtime_outputs = [ unstripped_outfile ]
+        }
+      }
+      if (defined(invoker.link_outputs)) {
+        outputs += invoker.link_outputs
+      }
+      if (defined(map_file)) {
+        outputs += [ map_file ]
+      }
+    }
+
+    # These two are really entirely generic, but have to be repeated in
+    # each toolchain because GN doesn't allow a template to be used here.
+    # See //build/toolchain/toolchain.gni for details.
+    tool("stamp") {
+      command = stamp_command
+      description = stamp_description
+    }
+    tool("copy") {
+      command = copy_command
+      description = copy_description
+    }
+
+    tool("action") {
+      pool = "//build/toolchain:action_pool($default_toolchain)"
+    }
+
+    forward_variables_from(invoker, [ "deps" ])
+  }
+}
+
+# This is a shorthand for gcc_toolchain instances based on the Chromium-built
+# version of Clang. Only the toolchain_cpu and toolchain_os variables need to
+# be specified by the invoker, and optionally toolprefix if it's a
+# cross-compile case. Note that for a cross-compile case this toolchain
+# requires a config to pass the appropriate -target option, or else it will
+# actually just be doing a native compile. The invoker can optionally override
+# use_gold too.
+template("clang_toolchain") {
+  if (defined(invoker.toolprefix)) {
+    toolprefix = invoker.toolprefix
+  } else {
+    toolprefix = ""
+  }
+
+  gcc_toolchain(target_name) {
+    prefix = rebase_path("$clang_base_path/bin", root_build_dir)
+    cc = "$prefix/clang"
+    cxx = "$prefix/clang++"
+    ld = cxx
+    readelf = "${toolprefix}readelf"
+    ar = "${prefix}/llvm-ar"
+    nm = "${toolprefix}nm"
+
+    forward_variables_from(invoker,
+                           [
+                             "strip",
+                             "is_clang_analysis_supported",
+                             "enable_linker_map",
+                             "use_unstripped_as_runtime_outputs",
+                           ])
+
+    toolchain_args = {
+      if (defined(invoker.toolchain_args)) {
+        forward_variables_from(invoker.toolchain_args, "*")
+      }
+      is_clang = true
+    }
+  }
+}

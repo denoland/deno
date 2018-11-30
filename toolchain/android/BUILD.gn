@@ -1,0 +1,128 @@
+# Copyright 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/config.gni")
+import("//build/config/clang/clang.gni")
+import("//build/config/sysroot.gni")  # Imports android/config.gni.
+import("//build/toolchain/gcc_toolchain.gni")
+
+declare_args() {
+  # Whether unstripped binaries, i.e. compiled with debug symbols, should be
+  # considered runtime_deps rather than stripped ones.
+  android_unstripped_runtime_outputs = true
+}
+
+# The Android clang toolchains share most of the same parameters, so we have this
+# wrapper around gcc_toolchain to avoid duplication of logic.
+#
+# Parameters:
+#  - toolchain_root
+#      Path to cpu-specific toolchain within the ndk.
+#  - sysroot
+#      Sysroot for this architecture.
+#  - lib_dir
+#      Subdirectory inside of sysroot where libs go.
+#  - binary_prefix
+#      Prefix of compiler executables.
+template("android_clang_toolchain") {
+  gcc_toolchain(target_name) {
+    assert(defined(invoker.toolchain_args),
+           "toolchain_args must be defined for android_clang_toolchain()")
+    toolchain_args = invoker.toolchain_args
+    toolchain_args.current_os = "android"
+
+    # Output linker map files for binary size analysis.
+    enable_linker_map = true
+
+    # Make our manually injected libs relative to the build dir.
+    _ndk_lib =
+        rebase_path(invoker.sysroot + "/" + invoker.lib_dir, root_build_dir)
+
+    libs_section_prefix = "$_ndk_lib/crtbegin_dynamic.o"
+    libs_section_postfix = "$_ndk_lib/crtend_android.o"
+
+    solink_libs_section_prefix = "$_ndk_lib/crtbegin_so.o"
+    solink_libs_section_postfix = "$_ndk_lib/crtend_so.o"
+
+    _android_tool_prefix =
+        "${invoker.toolchain_root}/bin/${invoker.binary_prefix}-"
+
+    # The tools should be run relative to the build dir.
+    _tool_prefix = rebase_path("$_android_tool_prefix", root_build_dir)
+
+    _prefix = rebase_path("$clang_base_path/bin", root_build_dir)
+    cc = "$_prefix/clang"
+    cxx = "$_prefix/clang++"
+    ar = "$_prefix/llvm-ar"
+    ld = cxx
+    readelf = _tool_prefix + "readelf"
+    nm = _tool_prefix + "nm"
+    strip = rebase_path("//third_party/eu-strip/bin/eu-strip", root_build_dir)
+    use_unstripped_as_runtime_outputs = android_unstripped_runtime_outputs
+
+    # Don't use .cr.so for loadable_modules since they are always loaded via
+    # absolute path.
+    loadable_module_extension = ".so"
+  }
+}
+
+android_clang_toolchain("android_clang_x86") {
+  toolchain_root = x86_android_toolchain_root
+  sysroot = "$android_ndk_root/$x86_android_sysroot_subdir"
+  lib_dir = "usr/lib"
+  binary_prefix = "i686-linux-android"
+  toolchain_args = {
+    current_cpu = "x86"
+  }
+}
+
+android_clang_toolchain("android_clang_arm") {
+  toolchain_root = arm_android_toolchain_root
+  sysroot = "$android_ndk_root/$arm_android_sysroot_subdir"
+  lib_dir = "usr/lib"
+  binary_prefix = "arm-linux-androideabi"
+  toolchain_args = {
+    current_cpu = "arm"
+  }
+}
+
+android_clang_toolchain("android_clang_mipsel") {
+  toolchain_root = mips_android_toolchain_root
+  sysroot = "$android_ndk_root/$mips_android_sysroot_subdir"
+  lib_dir = "usr/lib"
+  binary_prefix = "mipsel-linux-android"
+  toolchain_args = {
+    current_cpu = "mipsel"
+  }
+}
+
+android_clang_toolchain("android_clang_x64") {
+  toolchain_root = x86_64_android_toolchain_root
+  sysroot = "$android_ndk_root/$x86_64_android_sysroot_subdir"
+  lib_dir = "usr/lib64"
+  binary_prefix = "x86_64-linux-android"
+  toolchain_args = {
+    current_cpu = "x64"
+  }
+}
+
+android_clang_toolchain("android_clang_arm64") {
+  toolchain_root = arm64_android_toolchain_root
+  sysroot = "$android_ndk_root/$arm64_android_sysroot_subdir"
+  lib_dir = "usr/lib"
+  binary_prefix = "aarch64-linux-android"
+  toolchain_args = {
+    current_cpu = "arm64"
+  }
+}
+
+android_clang_toolchain("android_clang_mips64el") {
+  toolchain_root = mips64_android_toolchain_root
+  sysroot = "$android_ndk_root/$mips64_android_sysroot_subdir"
+  lib_dir = "usr/lib64"
+  binary_prefix = "mips64el-linux-android"
+  toolchain_args = {
+    current_cpu = "mips64el"
+  }
+}

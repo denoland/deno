@@ -1,0 +1,154 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/clang/clang.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/config/win/manifest.gni")
+
+# Depending on this target will cause the manifests for Chrome's default
+# Windows and common control compatibility and elevation for executables.
+windows_manifest("default_exe_manifest") {
+  sources = [
+    as_invoker_manifest,
+    common_controls_manifest,
+    default_compatibility_manifest,
+  ]
+}
+
+if (is_win) {
+  action("copy_cdb_to_output") {
+    script = "//build/win/copy_cdb_to_output.py"
+    inputs = [
+      script,
+      "//build/vs_toolchain.py",
+    ]
+    outputs = [
+      "$root_out_dir/cdb/cdb.exe",
+      "$root_out_dir/cdb/dbgeng.dll",
+      "$root_out_dir/cdb/dbghelp.dll",
+      "$root_out_dir/cdb/dbgmodel.dll",
+      "$root_out_dir/cdb/winext/ext.dll",
+      "$root_out_dir/cdb/winext/uext.dll",
+      "$root_out_dir/cdb/winxp/exts.dll",
+      "$root_out_dir/cdb/winxp/ntsdexts.dll",
+      "$root_out_dir/cdb/api-ms-win-core-console-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-datetime-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-debug-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-errorhandling-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-file-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-file-l1-2-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-file-l2-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-handle-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-heap-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-interlocked-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-libraryloader-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-localization-l1-2-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-memory-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-namedpipe-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-processenvironment-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-processthreads-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-processthreads-l1-1-1.dll",
+      "$root_out_dir/cdb/api-ms-win-core-profile-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-rtlsupport-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-string-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-synch-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-synch-l1-2-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-sysinfo-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-timezone-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-core-util-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-conio-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-convert-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-environment-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-filesystem-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-heap-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-locale-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-math-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-multibyte-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-private-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-process-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-runtime-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-stdio-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-string-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-time-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-crt-utility-l1-1-0.dll",
+      "$root_out_dir/cdb/api-ms-win-eventing-provider-l1-1-0.dll",
+      "$root_out_dir/cdb/ucrtbase.dll",
+    ]
+    args = [
+      rebase_path("$root_out_dir/cdb", root_out_dir),
+      current_cpu,
+    ]
+  }
+
+  group("runtime_libs") {
+    if (is_component_build) {
+      # Copy the VS runtime DLLs into the isolate so that they don't have to be
+      # preinstalled on the target machine. The debug runtimes have a "d" at
+      # the end.
+      if (is_debug) {
+        vcrt_suffix = "d"
+      } else {
+        vcrt_suffix = ""
+      }
+
+      # These runtime files are copied to the output directory by the
+      # vs_toolchain script that runs as part of toolchain configuration.
+      data = [
+        "$root_out_dir/msvcp140${vcrt_suffix}.dll",
+        "$root_out_dir/vccorlib140${vcrt_suffix}.dll",
+        "$root_out_dir/vcruntime140${vcrt_suffix}.dll",
+
+        # Universal Windows 10 CRT files
+        "$root_out_dir/api-ms-win-core-console-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-datetime-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-debug-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-errorhandling-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-file-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-file-l1-2-0.dll",
+        "$root_out_dir/api-ms-win-core-file-l2-1-0.dll",
+        "$root_out_dir/api-ms-win-core-handle-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-heap-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-interlocked-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-libraryloader-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-localization-l1-2-0.dll",
+        "$root_out_dir/api-ms-win-core-memory-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-namedpipe-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-processenvironment-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-processthreads-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-processthreads-l1-1-1.dll",
+        "$root_out_dir/api-ms-win-core-profile-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-rtlsupport-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-string-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-synch-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-synch-l1-2-0.dll",
+        "$root_out_dir/api-ms-win-core-sysinfo-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-timezone-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-core-util-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-conio-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-convert-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-environment-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-filesystem-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-heap-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-locale-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-math-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-multibyte-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-private-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-process-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-runtime-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-stdio-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-string-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-time-l1-1-0.dll",
+        "$root_out_dir/api-ms-win-crt-utility-l1-1-0.dll",
+        "$root_out_dir/ucrtbase${vcrt_suffix}.dll",
+      ]
+      if (is_asan) {
+        if (current_cpu == "x64") {
+          data += [ "$clang_base_path/lib/clang/$clang_version/lib/windows/clang_rt.asan_dynamic-x86_64.dll" ]
+        } else {
+          data += [ "$clang_base_path/lib/clang/$clang_version/lib/windows/clang_rt.asan_dynamic-i386.dll" ]
+        }
+      }
+    }
+  }
+}

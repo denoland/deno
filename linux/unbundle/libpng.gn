@@ -1,0 +1,25 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/linux/pkg_config.gni")
+import("//build/shim_headers.gni")
+
+pkg_config("libpng_config") {
+  packages = [ "libpng" ]
+}
+
+shim_headers("libpng_shim") {
+  root_path = "."
+  headers = [
+    "png.h",
+    "pngconf.h",
+  ]
+}
+
+source_set("libpng") {
+  deps = [
+    ":libpng_shim",
+  ]
+  public_configs = [ ":libpng_config" ]
+}

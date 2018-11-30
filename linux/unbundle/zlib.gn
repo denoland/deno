@@ -1,0 +1,66 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/shim_headers.gni")
+
+shim_headers("zlib_shim") {
+  root_path = "."
+  headers = [ "zlib.h" ]
+}
+
+config("system_zlib") {
+  defines = [ "USE_SYSTEM_ZLIB=1" ]
+}
+
+source_set("zlib") {
+  deps = [
+    ":zlib_shim",
+  ]
+  libs = [ "z" ]
+  public_configs = [ ":system_zlib" ]
+}
+
+shim_headers("minizip_shim") {
+  root_path = "contrib"
+  headers = [
+    "minizip/crypt.h",
+    "minizip/ioapi.h",
+    "minizip/iowin32.h",
+    "minizip/mztools.h",
+    "minizip/unzip.h",
+    "minizip/zip.h",
+  ]
+}
+
+source_set("minizip") {
+  deps = [
+    ":minizip_shim",
+  ]
+  libs = [ "minizip" ]
+}
+
+static_library("zip") {
+  sources = [
+    "google/zip.cc",
+    "google/zip.h",
+    "google/zip_internal.cc",
+    "google/zip_internal.h",
+    "google/zip_reader.cc",
+    "google/zip_reader.h",
+  ]
+  deps = [
+    ":minizip",
+    "//base",
+  ]
+}
+
+static_library("compression_utils") {
+  sources = [
+    "google/compression_utils.cc",
+    "google/compression_utils.h",
+  ]
+  deps = [
+    ":zlib",
+  ]
+}

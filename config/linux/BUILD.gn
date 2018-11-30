@@ -1,0 +1,116 @@
+# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/c++/c++.gni")
+import("//build/config/linux/pkg_config.gni")
+import("//build/config/ui.gni")
+
+group("linux") {
+  visibility = [ "//:optimize_gn_gen" ]
+}
+
+# This is included by reference in the //build/config/compiler config that
+# is applied to all targets. It is here to separate out the logic that is
+# Linux-only. This is not applied to Android, but is applied to ChromeOS.
+config("compiler") {
+}
+
+# This is included by reference in the //build/config/compiler:runtime_library
+# config that is applied to all targets. It is here to separate out the logic
+# that is Linux-only. Please see that target for advice on what should go in
+# :runtime_library vs. :compiler.
+config("runtime_library") {
+  # Set here because OS_CHROMEOS cannot be autodetected in build_config.h like
+  # OS_LINUX and the like.
+  if (is_chromeos) {
+    defines = [ "OS_CHROMEOS" ]
+  }
+
+  if ((!is_chromeos || default_toolchain != "//build/toolchain/cros:target") &&
+      (!use_custom_libcxx || current_cpu == "mipsel")) {
+    libs = [ "atomic" ]
+  }
+}
+
+config("x11") {
+  libs = [
+    "X11",
+    "X11-xcb",
+    "xcb",
+    "Xcomposite",
+    "Xcursor",
+    "Xdamage",
+    "Xext",
+    "Xfixes",
+    "Xi",
+    "Xrender",
+    "Xtst",
+  ]
+}
+
+config("xcomposite") {
+  libs = [ "Xcomposite" ]
+}
+
+config("xext") {
+  libs = [ "Xext" ]
+}
+
+config("xrandr") {
+  libs = [ "Xrandr" ]
+}
+
+config("xscrnsaver") {
+  libs = [ "Xss" ]
+}
+
+config("xfixes") {
+  libs = [ "Xfixes" ]
+}
+
+config("libcap") {
+  libs = [ "cap" ]
+}
+
+config("xi") {
+  libs = [ "Xi" ]
+}
+
+config("xtst") {
+  libs = [ "Xtst" ]
+}
+
+config("libresolv") {
+  libs = [ "resolv" ]
+}
+
+if (use_glib) {
+  pkg_config("glib") {
+    packages = [
+      "glib-2.0",
+      "gmodule-2.0",
+      "gobject-2.0",
+      "gthread-2.0",
+    ]
+    defines = [
+      "GLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_32",
+      "GLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_26",
+    ]
+  }
+}
+
+if (use_atk) {
+  pkg_config("atspi2") {
+    packages = [ "atspi-2" ]
+  }
+}
+
+# Ensures all exported symbols are added to the dynamic symbol table.  This is
+# necessary to expose Chrome's custom operator new() and operator delete() (and
+# other memory-related symbols) to libraries.  Otherwise, they might
+# (de)allocate memory on a different heap, which would spell trouble if pointers
+# to heap-allocated memory are passed over shared library boundaries.
+config("export_dynamic") {
+  ldflags = [ "-rdynamic" ]
+}

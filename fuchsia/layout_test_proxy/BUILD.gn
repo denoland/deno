@@ -1,0 +1,34 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_fuchsia)
+
+import("//testing/test.gni")
+
+# Binary used to proxy TCP connections from a Fuchsia process. Potentially SSH
+# can be used to forward TCP, but this feature is currently broken on Fuchsia,
+# see ZX-1555. layout_test_proxy can be removed once that issue with sshd is
+# fixed and layout tests are updated to use SSH.
+executable("layout_test_proxy") {
+  testonly = true
+  sources = [
+    "layout_test_proxy.cc",
+  ]
+  deps = [
+    "//net",
+    "//net:test_support",
+  ]
+}
+
+fuchsia_package("layout_test_proxy_pkg") {
+  testonly = true
+  binary = ":layout_test_proxy"
+  package_name_override = "layout_test_proxy"
+}
+
+fuchsia_package_runner("layout_test_proxy_runner") {
+  testonly = true
+  package = ":layout_test_proxy_pkg"
+  package_name_override = "layout_test_proxy"
+}

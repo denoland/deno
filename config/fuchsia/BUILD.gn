@@ -1,0 +1,123 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/fuchsia/config.gni")
+import("//build/config/fuchsia/rules.gni")
+import("//build/config/sysroot.gni")
+
+assert(is_fuchsia)
+assert(!is_posix)
+
+config("compiler") {
+  sdk_version_file = rebase_path("${fuchsia_sdk}/.hash")
+  sdk_version = read_file(sdk_version_file, "trim string")
+  defines = [
+    # To force full builds after SDK updates in case of ABI changes.
+    "FUCHSIA_SDK_VERSION=$sdk_version",
+  ]
+  cflags = []
+  ldflags = []
+  if (current_cpu == "arm64") {
+    cflags += [ "--target=aarch64-fuchsia" ]
+    ldflags += [ "--target=aarch64-fuchsia" ]
+  } else if (current_cpu == "x64") {
+    cflags += [ "--target=x86_64-fuchsia" ]
+    ldflags += [ "--target=x86_64-fuchsia" ]
+  } else {
+    assert(false, "Unsupported architecture")
+  }
+  asmflags = cflags
+
+  ldflags += [
+    # The stack defaults to 256k on Fuchsia (see
+    # https://fuchsia.googlesource.com/zircon/+/master/system/private/zircon/stack.h#9),
+    # but on other platforms it's much higher, so a variety of code assumes more
+    # will be available. Raise to 8M which matches e.g. macOS.
+    "-Wl,-z,stack-size=0x800000",
+
+    # We always want fdio or else e.g. stdio wouldn't be initialized if fdio
+    # happens to not be directly referenced. The common POSIX-y compiler setup
+    # uses -Wl,--as-needed which drops it if it's simply "-lfdio" from a libs
+    # setting. Disable --as-needed, add fdio, and then set back to --as-needed.
+    # https://crbug.com/731217.
+    "-Wl,--no-as-needed",
+    "-lfdio",
+    "-Wl,--as-needed",
+  ]
+
+  # Add SDK lib dir for -lfdio above.
+  lib_dirs = [ rebase_path("${fuchsia_sdk}/arch/${current_cpu}/lib") ]
+
+  # TODO(crbug.com/821951): Clang enables SafeStack by default when targeting
+  # Fuchsia, but it breaks some tests, notably in V8.
+  cflags += [ "-fno-sanitize=safe-stack" ]
+
+  libs = [ "zircon" ]
+}
+
+# Writes an extended version of fvm.blk to fvm.extended.blk.
+blobstore_extended_path = "$root_out_dir/fvm.extended.blk"
+action("blobstore_extended_fvm") {
+  # The file is grown by 1GB, which should be large enough to hold packaged
+  # binaries and assets. The value should be increased if the size becomes a
+  # limitation in the future.
+  _extend_size = "1073741824"  # 1GB
+
+  _target_dir = "${fuchsia_sdk}/target/${current_cpu}"
+
+  script = "//build/config/fuchsia/extend_fvm.py"
+
+  inputs = [
+    "${fuchsia_sdk}/tools/fvm",
+    "${_target_dir}/fvm.blk",
+  ]
+  outputs = [
+    blobstore_extended_path,
+  ]
+
+  args = [
+    rebase_path("${fuchsia_sdk}/tools/fvm"),
+    rebase_path("${_target_dir}/fvm.blk"),
+    rebase_path(blobstore_extended_path),
+    _extend_size,
+  ]
+}
+
+#  _________________________________________
+# / Create a compressed copy-on-write (COW) \
+# \ image based on fvm.blk.                 /
+#  -----------------------------------------
+#         \   ^__^
+#          \  (oo)\_______
+#             (__)\       )\/\
+#                 ||----w |
+#                 ||     ||
+action("blobstore_extended_qcow2") {
+  script = "//build/gn_run_binary.py"
+
+  deps = [
+    ":blobstore_extended_fvm",
+  ]
+  inputs = [
+    blobstore_extended_path,
+  ]
+  outputs = [
+    blobstore_qcow_path,
+  ]
+  data = [
+    blobstore_qcow_path,
+  ]
+
+  args = [
+    rebase_path("${qemu_root}/bin/qemu-img", root_build_dir),
+    "convert",
+    "-f",
+    "raw",
+    "-O",
+    "qcow2",
+    "-c",
+    rebase_path(blobstore_extended_path),
+    rebase_path(blobstore_qcow_path),
+  ]
+}

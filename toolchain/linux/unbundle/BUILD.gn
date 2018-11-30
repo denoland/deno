@@ -1,0 +1,41 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/toolchain/gcc_toolchain.gni")
+
+gcc_toolchain("default") {
+  cc = getenv("CC")
+  cxx = getenv("CXX")
+  ar = getenv("AR")
+  nm = getenv("NM")
+  ld = cxx
+
+  extra_cflags = getenv("CFLAGS")
+  extra_cppflags = getenv("CPPFLAGS")
+  extra_cxxflags = getenv("CXXFLAGS")
+  extra_ldflags = getenv("LDFLAGS")
+
+  toolchain_args = {
+    current_cpu = current_cpu
+    current_os = current_os
+  }
+}
+
+gcc_toolchain("host") {
+  cc = getenv("BUILD_CC")
+  cxx = getenv("BUILD_CXX")
+  ar = getenv("BUILD_AR")
+  nm = getenv("BUILD_NM")
+  ld = cxx
+
+  extra_cflags = getenv("BUILD_CFLAGS")
+  extra_cppflags = getenv("BUILD_CPPFLAGS")
+  extra_cxxflags = getenv("BUILD_CXXFLAGS")
+  extra_ldflags = getenv("BUILD_LDFLAGS")
+
+  toolchain_args = {
+    current_cpu = current_cpu
+    current_os = current_os
+  }
+}

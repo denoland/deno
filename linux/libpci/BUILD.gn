@@ -1,0 +1,22 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//tools/generate_library_loader/generate_library_loader.gni")
+
+# This generates a target named "libpci".
+generate_library_loader("libpci") {
+  name = "LibPciLoader"
+  output_h = "libpci.h"
+  output_cc = "libpci_loader.cc"
+  header = "<pci/pci.h>"
+
+  functions = [
+    "pci_alloc",
+    "pci_init",
+    "pci_cleanup",
+    "pci_scan_bus",
+    "pci_fill_info",
+    "pci_lookup_name",
+  ]
+}

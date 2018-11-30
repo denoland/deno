@@ -1,0 +1,130 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/coverage/coverage.gni")
+import("//build/config/ios/ios_sdk.gni")
+import("//build/config/sysroot.gni")
+import("//build/toolchain/toolchain.gni")
+
+declare_args() {
+  # Enabling this option makes clang compile to an intermediate
+  # representation ("bitcode"), and not to native code. This is preferred
+  # when including WebRTC in the apps that will be sent to Apple's App Store
+  # and mandatory for the apps that run on watchOS or tvOS.
+  # The option only works when building with Xcode (use_xcode_clang = true).
+  # Mimicking how Xcode handles it, the production builds (is_debug = false)
+  # get real bitcode sections added, while the debug builds (is_debug = true)
+  # only get bitcode-section "markers" added in them.
+  # NOTE: This option is ignored when building versions for the iOS simulator,
+  # where a part of libvpx is compiled from the assembly code written using
+  # Intel assembly syntax; Yasm / Nasm do not support emitting bitcode parts.
+  # That is not a limitation for now as Xcode mandates the presence of bitcode
+  # only when building bitcode-enabled projects for real devices (ARM CPUs).
+  enable_ios_bitcode = false
+}
+
+# This is included by reference in the //build/config/compiler config that
+# is applied to all targets. It is here to separate out the logic.
+config("compiler") {
+  # These flags are shared between the C compiler and linker.
+  common_ios_flags = []
+
+  # CPU architecture.
+  if (current_cpu == "x64") {
+    common_ios_flags += [
+      "-arch",
+      "x86_64",
+    ]
+  } else if (current_cpu == "x86") {
+    common_ios_flags += [
+      "-arch",
+      "i386",
+    ]
+  } else if (current_cpu == "armv7" || current_cpu == "arm") {
+    common_ios_flags += [
+      "-arch",
+      "armv7",
+    ]
+  } else if (current_cpu == "arm64") {
+    common_ios_flags += [
+      "-arch",
+      "arm64",
+    ]
+  }
+
+  # This is here so that all files get recompiled after an Xcode update.
+  # (defines are passed via the command line, and build system rebuild things
+  # when their commandline changes). Nothing should ever read this define.
+  defines = [ "CR_XCODE_VERSION=$xcode_version" ]
+
+  asmflags = common_ios_flags
+  cflags = common_ios_flags
+
+  # Without this, the constructors and destructors of a C++ object inside
+  # an Objective C struct won't be called, which is very bad.
+  cflags_objcc = [ "-fobjc-call-cxx-cdtors" ]
+
+  ldflags = common_ios_flags
+}
+
+# This is included by reference in the //build/config/compiler:runtime_library
+# config that is applied to all targets. It is here to separate out the logic
+# that is iOS-only. Please see that target for advice on what should go in
+# :runtime_library vs. :compiler.
+config("runtime_library") {
+  common_flags = [
+    "-isysroot",
+    sysroot,
+
+    "-stdlib=libc++",
+  ]
+
+  if (use_ios_simulator) {
+    common_flags += [ "-mios-simulator-version-min=$ios_deployment_target" ]
+  } else {
+    common_flags += [ "-miphoneos-version-min=$ios_deployment_target" ]
+  }
+
+  if (use_xcode_clang && enable_ios_bitcode && !use_ios_simulator) {
+    if (is_debug) {
+      common_flags += [ "-fembed-bitcode-marker" ]
+    } else {
+      common_flags += [ "-fembed-bitcode" ]
+    }
+  }
+
+  asmflags = common_flags
+  cflags = common_flags
+  ldflags = common_flags
+
+  if (use_clang_coverage) {
+    configs = [ "//build/config/coverage:default_coverage" ]
+  }
+}
+
+config("ios_executable_flags") {
+}
+
+config("ios_dynamic_flags") {
+  ldflags = [ "-Wl,-ObjC" ]  # Always load Objective-C categories and class.
+}
+
+config("xctest_config") {
+  common_flags = [
+    "-F",
+    "$ios_sdk_platform_path/Developer/Library/Frameworks",
+  ]
+
+  cflags = common_flags
+  ldflags = common_flags
+
+  libs = [
+    "Foundation.framework",
+    "XCTest.framework",
+  ]
+}
+
+group("xctest") {
+  public_configs = [ ":xctest_config" ]
+}

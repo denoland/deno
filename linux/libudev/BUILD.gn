@@ -1,0 +1,65 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//tools/generate_library_loader/generate_library_loader.gni")
+
+libudev_functions = [
+  "udev_device_get_action",
+  "udev_device_get_devnode",
+  "udev_device_get_parent",
+  "udev_device_get_parent_with_subsystem_devtype",
+  "udev_device_get_property_value",
+  "udev_device_get_subsystem",
+  "udev_device_get_sysattr_value",
+  "udev_device_get_sysname",
+  "udev_device_get_syspath",
+  "udev_device_new_from_devnum",
+  "udev_device_new_from_subsystem_sysname",
+  "udev_device_new_from_syspath",
+  "udev_device_unref",
+  "udev_enumerate_add_match_subsystem",
+  "udev_enumerate_get_list_entry",
+  "udev_enumerate_new",
+  "udev_enumerate_scan_devices",
+  "udev_enumerate_unref",
+  "udev_list_entry_get_next",
+  "udev_list_entry_get_name",
+  "udev_monitor_enable_receiving",
+  "udev_monitor_filter_add_match_subsystem_devtype",
+  "udev_monitor_get_fd",
+  "udev_monitor_new_from_netlink",
+  "udev_monitor_receive_device",
+  "udev_monitor_unref",
+  "udev_new",
+  "udev_set_log_fn",
+  "udev_set_log_priority",
+  "udev_unref",
+]
+
+# This generates a target named "udev0_loader".
+generate_library_loader("udev0_loader") {
+  name = "LibUdev0Loader"
+  output_h = "libudev0.h"
+  output_cc = "libudev0_loader.cc"
+  header = "\"third_party/libudev/libudev0.h\""
+
+  functions = libudev_functions
+}
+
+# This generates a target named "udev1_loader".
+generate_library_loader("udev1_loader") {
+  name = "LibUdev1Loader"
+  output_h = "libudev1.h"
+  output_cc = "libudev1_loader.cc"
+  header = "\"third_party/libudev/libudev1.h\""
+
+  functions = libudev_functions
+}
+
+group("libudev") {
+  public_deps = [
+    ":udev0_loader",
+    ":udev1_loader",
+  ]
+}

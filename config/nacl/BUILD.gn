@@ -1,0 +1,143 @@
+# Copyright (c) 2014 The Native Client Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/nacl/config.gni")
+
+# Native Client Definitions
+config("nacl_defines") {
+  if (is_linux || is_android || is_nacl) {
+    defines = [
+      "_POSIX_C_SOURCE=199506",
+      "_XOPEN_SOURCE=600",
+      "_GNU_SOURCE=1",
+      "__STDC_LIMIT_MACROS=1",
+    ]
+  } else if (is_win) {
+    defines = [ "__STDC_LIMIT_MACROS=1" ]
+  }
+
+  if (current_cpu == "pnacl" && !is_nacl_nonsfi) {
+    # TODO: Remove the following definition once NACL_BUILD_ARCH and
+    # NACL_BUILD_SUBARCH are defined by the PNaCl toolchain.
+    defines += [ "NACL_BUILD_ARCH=pnacl" ]
+  }
+}
+
+config("nexe_defines") {
+  defines = [
+    "DYNAMIC_ANNOTATIONS_ENABLED=1",
+    "DYNAMIC_ANNOTATIONS_PREFIX=NACL_",
+  ]
+}
+
+config("nacl_warnings") {
+  if (is_win) {
+    # Some NaCl code uses forward declarations of static const variables,
+    # with initialized definitions later on.  (The alternative would be
+    # many, many more forward declarations of everything used in that
+    # const variable's initializer before the definition.)  The Windows
+    # compiler is too stupid to notice that there is an initializer later
+    # in the file, and warns about the forward declaration.
+    cflags = [ "/wd4132" ]
+  }
+}
+
+# The base target that all targets in the NaCl build should depend on.
+# This allows configs to be modified for everything in the NaCl build, even when
+# the NaCl build is composed into the Chrome build.  (GN has no functionality to
+# add flags to everything in //native_client, having a base target works around
+# that limitation.)
+source_set("nacl_base") {
+  public_configs = [
+    ":nacl_defines",
+    ":nacl_warnings",
+  ]
+  if (current_os == "nacl") {
+    public_configs += [ ":nexe_defines" ]
+  }
+}
+
+config("compiler") {
+  configs = []
+  cflags = []
+  ldflags = []
+  libs = []
+
+  if (is_clang && current_cpu != "pnacl") {
+    # -no-integrated-as is the default in nacl-clang for historical
+    # compatibility with inline assembly code and so forth.  But there
+    # are no such cases in Chromium code, and -integrated-as is nicer in
+    # general.  Moreover, the IRT must be built using LLVM's assembler
+    # on x86-64 to preserve sandbox base address hiding.  Use it
+    # everywhere for consistency (and possibly quicker builds).
+    cflags += [ "-integrated-as" ]
+  }
+  if (is_nacl_nonsfi) {
+    cflags += [ "--pnacl-allow-translate" ]
+    ldflags += [
+      "--pnacl-allow-translate",
+      "--pnacl-allow-native",
+      "-Wl,--noirt",
+      "-Wt,--noirt",
+      "-Wt,--noirtshim",
+
+      # The clang driver automatically injects -lpthread when using libc++, but
+      # the toolchain doesn't have it yet.  To get around this, use
+      # -nodefaultlibs and make each executable target depend on
+      # "//native_client/src/nonsfi/irt:nacl_sys_private".
+      "-nodefaultlibs",
+    ]
+    libs += [
+      "c++",
+      "m",
+      "c",
+      "pnaclmm",
+    ]
+    include_dirs = [ "//native_client/src/public/linux_syscalls" ]
+  }
+
+  asmflags = cflags
+}
+
+config("compiler_codegen") {
+  cflags = []
+
+  if (is_nacl_irt) {
+    cflags += [
+      # A debugger should be able to unwind IRT call frames.  This is
+      # the default behavior on x86-64 and when compiling C++ with
+      # exceptions enabled; the change is for the benefit of x86-32 C.
+      # The frame pointer is unnecessary when unwind tables are used.
+      "-fasynchronous-unwind-tables",
+      "-fomit-frame-pointer",
+    ]
+
+    if (current_cpu == "x86") {
+      # The x86-32 IRT needs to be callable with an under-aligned
+      # stack; so we disable SSE instructions, which can fault on
+      # misaligned addresses.  See
+      # https://code.google.com/p/nativeclient/issues/detail?id=3935
+      cflags += [
+        "-mstackrealign",
+        "-mno-sse",
+      ]
+    }
+  }
+
+  asmflags = cflags
+}
+
+config("irt_optimize") {
+  cflags = [
+    # Optimize for space, keep the IRT nexe small.
+    "-Os",
+
+    # These are omitted from non-IRT libraries to keep the libraries
+    # themselves small.
+    "-ffunction-sections",
+    "-fdata-sections",
+  ]
+
+  ldflags = [ "-Wl,--gc-sections" ]
+}

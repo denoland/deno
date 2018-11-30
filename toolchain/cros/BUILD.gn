@@ -1,0 +1,173 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/compiler/compiler.gni")
+import("//build/config/sysroot.gni")
+import("//build/toolchain/gcc_toolchain.gni")
+import("//build/toolchain/cros_toolchain.gni")
+
+# This is the normal toolchain for most targets.
+gcc_toolchain("target") {
+  ar = cros_target_ar
+  cc = cros_target_cc
+  cxx = cros_target_cxx
+
+  # Relativize path if compiler is specified such that not to lookup from $PATH
+  # and cc/cxx does not contain additional flags.
+  if (cc != get_path_info(cc, "file") && string_replace(cc, " ", "") == cc) {
+    cc = rebase_path(cc, root_build_dir)
+  }
+  if (cxx != get_path_info(cxx, "file") && string_replace(cxx, " ", "") == cxx) {
+    cxx = rebase_path(cxx, root_build_dir)
+  }
+
+  ld = cxx
+  if (cros_target_ld != "") {
+    ld = cros_target_ld
+  }
+  if (cros_target_nm != "") {
+    nm = cros_target_nm
+  }
+  if (cros_target_readelf != "") {
+    readelf = cros_target_readelf
+  }
+  extra_cflags = cros_target_extra_cflags
+  extra_cppflags = cros_target_extra_cppflags
+  extra_cxxflags = cros_target_extra_cxxflags
+  extra_ldflags = cros_target_extra_ldflags
+
+  toolchain_args = {
+    cc_wrapper = ""
+    current_cpu = target_cpu
+    current_os = "chromeos"
+    is_clang = is_clang
+    use_debug_fission = use_debug_fission
+    use_gold = use_gold
+    use_sysroot = use_sysroot
+  }
+}
+
+# This is a special toolchain needed just for the nacl_bootstrap target in
+# //native_client/src/trusted/service_runtime/linux. It is identical
+# to ":target" except that it forces use_debug_fission, use_gold, and
+# use_sysroot off, and allows the user to set different sets of extra flags.
+gcc_toolchain("nacl_bootstrap") {
+  ar = cros_target_ar
+  cc = cros_target_cc
+  cxx = cros_target_cxx
+
+  # Relativize path if compiler is specified such that not to lookup from $PATH
+  # and cc/cxx does not contain additional flags.
+  if (cc != get_path_info(cc, "file") && string_replace(cc, " ", "") == cc) {
+    cc = rebase_path(cc, root_build_dir)
+  }
+  if (cxx != get_path_info(cxx, "file") && string_replace(cxx, " ", "") == cxx) {
+    cxx = rebase_path(cxx, root_build_dir)
+  }
+  ld = cxx
+  if (cros_target_ld != "") {
+    ld = cros_target_ld
+  }
+  if (cros_target_nm != "") {
+    nm = cros_target_nm
+  }
+  if (cros_target_readelf != "") {
+    readelf = cros_target_readelf
+  }
+  extra_cflags = cros_nacl_bootstrap_extra_cflags
+  extra_cppflags = cros_nacl_bootstrap_extra_cppflags
+  extra_cxxflags = cros_nacl_bootstrap_extra_cxxflags
+  extra_ldflags = cros_nacl_bootstrap_extra_ldflags
+
+  toolchain_args = {
+    cc_wrapper = ""
+    current_cpu = target_cpu
+    current_os = "chromeos"
+    is_clang = is_clang
+    use_debug_fission = false
+    use_gold = false
+    use_sysroot = false
+  }
+}
+
+gcc_toolchain("host") {
+  # These are args for the template.
+  ar = cros_host_ar
+  cc = cros_host_cc
+  cxx = cros_host_cxx
+
+  # Relativize path if compiler is specified such that not to lookup from $PATH
+  # and cc/cxx does not contain additional flags.
+  if (cc != get_path_info(cc, "file") && string_replace(cc, " ", "") == cc) {
+    cc = rebase_path(cc, root_build_dir)
+  }
+  if (cxx != get_path_info(cxx, "file") && string_replace(cxx, " ", "") == cxx) {
+    cxx = rebase_path(cxx, root_build_dir)
+  }
+  ld = cxx
+  if (cros_host_ld != "") {
+    ld = cros_host_ld
+  }
+  if (cros_host_nm != "") {
+    nm = cros_host_nm
+  }
+  if (cros_host_readelf != "") {
+    readelf = cros_host_readelf
+  }
+  extra_cflags = cros_host_extra_cflags
+  extra_cppflags = cros_host_extra_cppflags
+  extra_cxxflags = cros_host_extra_cxxflags
+  extra_ldflags = cros_host_extra_ldflags
+
+  toolchain_args = {
+    cc_wrapper = ""
+    is_clang = cros_host_is_clang
+    current_cpu = host_cpu
+    current_os = "linux"
+    use_sysroot = false
+  }
+}
+
+gcc_toolchain("v8_snapshot") {
+  # These are args for the template.
+  ar = cros_v8_snapshot_ar
+  cc = cros_v8_snapshot_cc
+  cxx = cros_v8_snapshot_cxx
+
+  # Relativize path if compiler is specified such that not to lookup from $PATH
+  # and cc/cxx does not contain additional flags.
+  if (cc != get_path_info(cc, "file") && string_replace(cc, " ", "") == cc) {
+    cc = rebase_path(cc, root_build_dir)
+  }
+  if (cxx != get_path_info(cxx, "file") && string_replace(cxx, " ", "") == cxx) {
+    cxx = rebase_path(cxx, root_build_dir)
+  }
+  ld = cxx
+  if (cros_v8_snapshot_ld != "") {
+    ld = cros_v8_snapshot_ld
+  }
+  if (cros_v8_snapshot_nm != "") {
+    nm = cros_v8_snapshot_nm
+  }
+  if (cros_v8_snapshot_readelf != "") {
+    readelf = cros_v8_snapshot_readelf
+  }
+  extra_cflags = cros_v8_snapshot_extra_cflags
+  extra_cppflags = cros_v8_snapshot_extra_cppflags
+  extra_cxxflags = cros_v8_snapshot_extra_cxxflags
+  extra_ldflags = cros_v8_snapshot_extra_ldflags
+
+  toolchain_args = {
+    cc_wrapper = ""
+    is_clang = cros_v8_snapshot_is_clang
+    if (target_cpu == "x86" || target_cpu == "arm" || target_cpu == "mipsel") {
+      current_cpu = "x86"
+    } else {
+      current_cpu = "x64"
+    }
+    v8_current_cpu = v8_target_cpu
+    current_os = "linux"
+    use_sysroot = false
+  }
+}

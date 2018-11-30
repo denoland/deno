@@ -1,0 +1,284 @@
+# Copyright 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/sysroot.gni")
+import("//build/toolchain/gcc_toolchain.gni")
+
+clang_toolchain("clang_arm") {
+  toolprefix = "arm-linux-gnueabihf-"
+  toolchain_args = {
+    current_cpu = "arm"
+    current_os = "linux"
+  }
+}
+
+clang_toolchain("clang_arm64") {
+  toolprefix = "aarch64-linux-gnu-"
+  toolchain_args = {
+    current_cpu = "arm64"
+    current_os = "linux"
+  }
+}
+
+gcc_toolchain("arm64") {
+  toolprefix = "aarch64-linux-gnu-"
+
+  cc = "${toolprefix}gcc"
+  cxx = "${toolprefix}g++"
+
+  ar = "${toolprefix}ar"
+  ld = cxx
+  readelf = "${toolprefix}readelf"
+  nm = "${toolprefix}nm"
+
+  toolchain_args = {
+    current_cpu = "arm64"
+    current_os = "linux"
+    is_clang = false
+  }
+}
+
+gcc_toolchain("arm") {
+  toolprefix = "arm-linux-gnueabihf-"
+
+  cc = "${toolprefix}gcc"
+  cxx = "${toolprefix}g++"
+
+  ar = "${toolprefix}ar"
+  ld = cxx
+  readelf = "${toolprefix}readelf"
+  nm = "${toolprefix}nm"
+
+  toolchain_args = {
+    current_cpu = "arm"
+    current_os = "linux"
+    is_clang = false
+  }
+}
+
+clang_toolchain("clang_x86") {
+  # Output linker map files for binary size analysis.
+  enable_linker_map = true
+
+  toolchain_args = {
+    current_cpu = "x86"
+    current_os = "linux"
+  }
+}
+
+clang_toolchain("clang_x86_v8_arm") {
+  toolchain_args = {
+    current_cpu = "x86"
+    v8_current_cpu = "arm"
+    current_os = "linux"
+  }
+}
+
+clang_toolchain("clang_x86_v8_mipsel") {
+  toolchain_args = {
+    current_cpu = "x86"
+    v8_current_cpu = "mipsel"
+    current_os = "linux"
+  }
+}
+
+clang_toolchain("clang_x86_v8_mips") {
+  toolchain_args = {
+    current_cpu = "x86"
+    v8_current_cpu = "mips"
+    current_os = "linux"
+  }
+}
+
+gcc_toolchain("x86") {
+  cc = "gcc"
+  cxx = "g++"
+
+  readelf = "readelf"
+  nm = "nm"
+  ar = "ar"
+  ld = cxx
+
+  # Output linker map files for binary size analysis.
+  enable_linker_map = true
+
+  toolchain_args = {
+    current_cpu = "x86"
+    current_os = "linux"
+    is_clang = false
+  }
+}
+
+clang_toolchain("clang_x64") {
+  # Output linker map files for binary size analysis.
+  enable_linker_map = true
+
+  toolchain_args = {
+    current_cpu = "x64"
+    current_os = "linux"
+  }
+}
+
+clang_toolchain("clang_x64_v8_arm64") {
+  toolchain_args = {
+    current_cpu = "x64"
+    v8_current_cpu = "arm64"
+    current_os = "linux"
+  }
+}
+
+clang_toolchain("clang_x64_v8_mips64el") {
+  toolchain_args = {
+    current_cpu = "x64"
+    v8_current_cpu = "mips64el"
+    current_os = "linux"
+  }
+}
+
+clang_toolchain("clang_x64_v8_mips64") {
+  toolchain_args = {
+    current_cpu = "x64"
+    v8_current_cpu = "mips64"
+    current_os = "linux"
+  }
+}
+
+gcc_toolchain("x64") {
+  cc = "gcc"
+  cxx = "g++"
+
+  readelf = "readelf"
+  nm = "nm"
+  ar = "ar"
+  ld = cxx
+
+  # Output linker map files for binary size analysis.
+  enable_linker_map = true
+
+  toolchain_args = {
+    current_cpu = "x64"
+    current_os = "linux"
+    is_clang = false
+  }
+}
+
+clang_toolchain("clang_mipsel") {
+  toolchain_args = {
+    current_cpu = "mipsel"
+    current_os = "linux"
+  }
+}
+
+clang_toolchain("clang_mips64el") {
+  toolchain_args = {
+    current_cpu = "mips64el"
+    current_os = "linux"
+  }
+}
+
+gcc_toolchain("mipsel") {
+  toolprefix = "mipsel-linux-gnu-"
+
+  cc = "${toolprefix}gcc"
+  cxx = " ${toolprefix}g++"
+  ar = "${toolprefix}ar"
+  ld = cxx
+  readelf = "${toolprefix}readelf"
+  nm = "${toolprefix}nm"
+
+  toolchain_args = {
+    cc_wrapper = ""
+    current_cpu = "mipsel"
+    current_os = "linux"
+    is_clang = false
+    use_goma = false
+  }
+}
+
+gcc_toolchain("mips64el") {
+  toolprefix = "mips64el-linux-gnuabi64-"
+
+  cc = "${toolprefix}gcc"
+  cxx = "${toolprefix}g++"
+  ar = "${toolprefix}ar"
+  ld = cxx
+  readelf = "${toolprefix}readelf"
+  nm = "${toolprefix}nm"
+
+  toolchain_args = {
+    cc_wrapper = ""
+    current_cpu = "mips64el"
+    current_os = "linux"
+    is_clang = false
+    use_goma = false
+  }
+}
+
+gcc_toolchain("s390x") {
+  cc = "gcc"
+  cxx = "g++"
+
+  readelf = "readelf"
+  nm = "nm"
+  ar = "ar"
+  ld = cxx
+
+  toolchain_args = {
+    current_cpu = "s390x"
+    current_os = "linux"
+    is_clang = false
+  }
+}
+
+gcc_toolchain("ppc64") {
+  cc = "gcc"
+  cxx = "g++"
+
+  readelf = "readelf"
+  nm = "nm"
+  ar = "ar"
+  ld = cxx
+
+  toolchain_args = {
+    current_cpu = "ppc64"
+    current_os = "linux"
+    is_clang = false
+  }
+}
+
+gcc_toolchain("mips") {
+  toolprefix = "mips-linux-gnu-"
+
+  cc = "${toolprefix}gcc"
+  cxx = "${toolprefix}g++"
+
+  readelf = "${toolprefix}readelf"
+  nm = "${toolprefix}nm"
+  ar = "${toolprefix}ar"
+  ld = cxx
+
+  toolchain_args = {
+    current_cpu = "mips"
+    current_os = "linux"
+    is_clang = false
+  }
+}
+
+gcc_toolchain("mips64") {
+  toolprefix = "mips64-linux-gnuabi64-"
+
+  cc = "${toolprefix}gcc"
+  cxx = "${toolprefix}g++"
+
+  readelf = "${toolprefix}readelf"
+  nm = "${toolprefix}nm"
+  ar = "${toolprefix}ar"
+  ld = cxx
+
+  toolchain_args = {
+    current_cpu = "mips64"
+    current_os = "linux"
+    is_clang = false
+  }
+}

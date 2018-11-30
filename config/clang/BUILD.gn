@@ -1,0 +1,75 @@
+# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("clang.gni")
+
+config("find_bad_constructs") {
+  if (clang_use_chrome_plugins) {
+    cflags = []
+
+    # On Windows, the plugin is built directly into clang, so there's
+    # no need to load it dynamically.
+    if (host_os == "mac") {
+      cflags += [
+        "-Xclang",
+        "-load",
+        "-Xclang",
+        rebase_path("${clang_base_path}/lib/libFindBadConstructs.dylib",
+                    root_build_dir),
+      ]
+    } else if (host_os == "linux") {
+      cflags += [
+        "-Xclang",
+        "-load",
+        "-Xclang",
+        rebase_path("${clang_base_path}/lib/libFindBadConstructs.so",
+                    root_build_dir),
+      ]
+    }
+
+    cflags += [
+      "-Xclang",
+      "-add-plugin",
+      "-Xclang",
+      "find-bad-constructs",
+    ]
+
+    cflags += [
+      "-Xclang",
+      "-plugin-arg-find-bad-constructs",
+      "-Xclang",
+      "enforce-in-thirdparty-webkit",
+    ]
+
+    # TODO(dcheng): remove this once the plugin is updated and rolled again.
+    cflags += [
+      "-Xclang",
+      "-plugin-arg-find-bad-constructs",
+      "-Xclang",
+      "check-enum-max-value",
+    ]
+
+    if (is_linux || is_android || is_fuchsia) {
+      cflags += [
+        "-Xclang",
+        "-plugin-arg-find-bad-constructs",
+        "-Xclang",
+        "check-ipc",
+      ]
+    }
+  }
+}
+
+# Enables some extra Clang-specific warnings. Some third-party code won't
+# compile with these so may want to remove this config.
+config("extra_warnings") {
+  cflags = [
+    "-Wheader-hygiene",
+
+    # Warns when a const char[] is converted to bool.
+    "-Wstring-conversion",
+
+    "-Wtautological-overlap-compare",
+  ]
+}

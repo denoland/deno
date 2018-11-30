@@ -1,0 +1,258 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/linux/pkg_config.gni")
+import("//build/shim_headers.gni")
+
+group("icu") {
+  public_deps = [
+    ":icui18n",
+    ":icuuc",
+  ]
+}
+
+config("icu_config") {
+  defines = [
+    "USING_SYSTEM_ICU=1",
+    "ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC",
+    "UCHAR_TYPE=uint16_t",
+
+    # U_EXPORT (defined in unicode/platform.h) is used to set public visibility
+    # on classes through the U_COMMON_API and U_I18N_API macros (among others).
+    # When linking against the system ICU library, we want its symbols to have
+    # public LTO visibility. This disables CFI checks for the ICU classes and
+    # allows whole-program optimization to be applied to the rest of Chromium.
+    #
+    # Both U_COMMON_API and U_I18N_API macros would be defined to U_EXPORT only
+    # when U_COMBINED_IMPLEMENTATION is defined (see unicode/utypes.h). Because
+    # we override the default system UCHAR_TYPE (char16_t), it is not possible
+    # to use U_COMBINED_IMPLEMENTATION at this moment, meaning the U_COMMON_API
+    # and U_I18N_API macros are set to U_IMPORT which is an empty definition.
+    #
+    # Until building with UCHAR_TYPE=char16_t is supported, one way to apply
+    # public visibility (and thus public LTO visibility) to all ICU classes is
+    # to define U_IMPORT to have the same value as U_EXPORT. For more details,
+    # please see: https://crbug.com/822820
+    "U_IMPORT=U_EXPORT",
+  ]
+}
+
+pkg_config("system_icui18n") {
+  packages = [ "icu-i18n" ]
+}
+
+pkg_config("system_icuuc") {
+  packages = [ "icu-uc" ]
+}
+
+source_set("icui18n") {
+  deps = [
+    ":icui18n_shim",
+  ]
+  public_configs = [
+    ":icu_config",
+    ":system_icui18n",
+  ]
+}
+
+source_set("icuuc") {
+  deps = [
+    ":icuuc_shim",
+  ]
+  public_configs = [
+    ":icu_config",
+    ":system_icuuc",
+  ]
+}
+
+shim_headers("icui18n_shim") {
+  root_path = "source/i18n"
+  headers = [
+    # This list can easily be updated using the commands below:
+    # cd third_party/icu/source/i18n
+    # find unicode -iname '*.h' -printf '    "%p",\n' | LC_ALL=C sort -u
+    "unicode/alphaindex.h",
+    "unicode/basictz.h",
+    "unicode/calendar.h",
+    "unicode/choicfmt.h",
+    "unicode/coleitr.h",
+    "unicode/coll.h",
+    "unicode/compactdecimalformat.h",
+    "unicode/curramt.h",
+    "unicode/currpinf.h",
+    "unicode/currunit.h",
+    "unicode/datefmt.h",
+    "unicode/dcfmtsym.h",
+    "unicode/decimfmt.h",
+    "unicode/dtfmtsym.h",
+    "unicode/dtitvfmt.h",
+    "unicode/dtitvinf.h",
+    "unicode/dtptngen.h",
+    "unicode/dtrule.h",
+    "unicode/fieldpos.h",
+    "unicode/fmtable.h",
+    "unicode/format.h",
+    "unicode/fpositer.h",
+    "unicode/gender.h",
+    "unicode/gregocal.h",
+    "unicode/measfmt.h",
+    "unicode/measunit.h",
+    "unicode/measure.h",
+    "unicode/msgfmt.h",
+    "unicode/numfmt.h",
+    "unicode/numsys.h",
+    "unicode/plurfmt.h",
+    "unicode/plurrule.h",
+    "unicode/rbnf.h",
+    "unicode/rbtz.h",
+    "unicode/regex.h",
+    "unicode/region.h",
+    "unicode/reldatefmt.h",
+    "unicode/scientificnumberformatter.h",
+    "unicode/search.h",
+    "unicode/selfmt.h",
+    "unicode/simpletz.h",
+    "unicode/smpdtfmt.h",
+    "unicode/sortkey.h",
+    "unicode/stsearch.h",
+    "unicode/tblcoll.h",
+    "unicode/timezone.h",
+    "unicode/tmunit.h",
+    "unicode/tmutamt.h",
+    "unicode/tmutfmt.h",
+    "unicode/translit.h",
+    "unicode/tzfmt.h",
+    "unicode/tznames.h",
+    "unicode/tzrule.h",
+    "unicode/tztrans.h",
+    "unicode/ucal.h",
+    "unicode/ucol.h",
+    "unicode/ucoleitr.h",
+    "unicode/ucsdet.h",
+    "unicode/udat.h",
+    "unicode/udateintervalformat.h",
+    "unicode/udatpg.h",
+    "unicode/ufieldpositer.h",
+    "unicode/uformattable.h",
+    "unicode/ugender.h",
+    "unicode/ulocdata.h",
+    "unicode/umsg.h",
+    "unicode/unirepl.h",
+    "unicode/unum.h",
+    "unicode/unumsys.h",
+    "unicode/upluralrules.h",
+    "unicode/uregex.h",
+    "unicode/uregion.h",
+    "unicode/ureldatefmt.h",
+    "unicode/usearch.h",
+    "unicode/uspoof.h",
+    "unicode/utmscale.h",
+    "unicode/utrans.h",
+    "unicode/vtzone.h",
+  ]
+}
+
+shim_headers("icuuc_shim") {
+  root_path = "source/common"
+  headers = [
+    # This list can easily be updated using the commands below:
+    # cd third_party/icu/source/common
+    # find unicode -iname '*.h' -printf '    "%p",\n' | LC_ALL=C sort -u
+    "unicode/appendable.h",
+    "unicode/brkiter.h",
+    "unicode/bytestream.h",
+    "unicode/bytestrie.h",
+    "unicode/bytestriebuilder.h",
+    "unicode/caniter.h",
+    "unicode/casemap.h",
+    "unicode/char16ptr.h",
+    "unicode/chariter.h",
+    "unicode/dbbi.h",
+    "unicode/docmain.h",
+    "unicode/dtintrv.h",
+    "unicode/edits.h",
+    "unicode/enumset.h",
+    "unicode/errorcode.h",
+    "unicode/filteredbrk.h",
+    "unicode/icudataver.h",
+    "unicode/icuplug.h",
+    "unicode/idna.h",
+    "unicode/listformatter.h",
+    "unicode/localpointer.h",
+    "unicode/locdspnm.h",
+    "unicode/locid.h",
+    "unicode/messagepattern.h",
+    "unicode/normalizer2.h",
+    "unicode/normlzr.h",
+    "unicode/parseerr.h",
+    "unicode/parsepos.h",
+    "unicode/platform.h",
+    "unicode/ptypes.h",
+    "unicode/putil.h",
+    "unicode/rbbi.h",
+    "unicode/rep.h",
+    "unicode/resbund.h",
+    "unicode/schriter.h",
+    "unicode/simpleformatter.h",
+    "unicode/std_string.h",
+    "unicode/strenum.h",
+    "unicode/stringpiece.h",
+    "unicode/stringtriebuilder.h",
+    "unicode/symtable.h",
+    "unicode/ubidi.h",
+    "unicode/ubiditransform.h",
+    "unicode/ubrk.h",
+    "unicode/ucasemap.h",
+    "unicode/ucat.h",
+    "unicode/uchar.h",
+    "unicode/ucharstrie.h",
+    "unicode/ucharstriebuilder.h",
+    "unicode/uchriter.h",
+    "unicode/uclean.h",
+    "unicode/ucnv.h",
+    "unicode/ucnv_cb.h",
+    "unicode/ucnv_err.h",
+    "unicode/ucnvsel.h",
+    "unicode/uconfig.h",
+    "unicode/ucurr.h",
+    "unicode/udata.h",
+    "unicode/udisplaycontext.h",
+    "unicode/uenum.h",
+    "unicode/uidna.h",
+    "unicode/uiter.h",
+    "unicode/uldnames.h",
+    "unicode/ulistformatter.h",
+    "unicode/uloc.h",
+    "unicode/umachine.h",
+    "unicode/umisc.h",
+    "unicode/unifilt.h",
+    "unicode/unifunct.h",
+    "unicode/unimatch.h",
+    "unicode/uniset.h",
+    "unicode/unistr.h",
+    "unicode/unorm.h",
+    "unicode/unorm2.h",
+    "unicode/uobject.h",
+    "unicode/urename.h",
+    "unicode/urep.h",
+    "unicode/ures.h",
+    "unicode/uscript.h",
+    "unicode/uset.h",
+    "unicode/usetiter.h",
+    "unicode/ushape.h",
+    "unicode/usprep.h",
+    "unicode/ustring.h",
+    "unicode/ustringtrie.h",
+    "unicode/utext.h",
+    "unicode/utf.h",
+    "unicode/utf16.h",
+    "unicode/utf32.h",
+    "unicode/utf8.h",
+    "unicode/utf_old.h",
+    "unicode/utrace.h",
+    "unicode/utypes.h",
+    "unicode/uvernum.h",
+    "unicode/uversion.h",
+  ]
+}

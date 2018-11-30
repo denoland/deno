@@ -1,0 +1,20 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+
+android_library("bootstrap_java") {
+  # Use .dex rather than .dex.jar to be usable by package_apk().
+  dex_path = "$target_gen_dir/bootstrap.dex"
+  java_files = [
+    "java/org/chromium/incrementalinstall/BootstrapApplication.java",
+    "java/org/chromium/incrementalinstall/BootstrapInstrumentation.java",
+    "java/org/chromium/incrementalinstall/ClassLoaderPatcher.java",
+    "java/org/chromium/incrementalinstall/LockFile.java",
+    "java/org/chromium/incrementalinstall/Reflect.java",
+    "java/org/chromium/incrementalinstall/SecondInstrumentation.java",
+  ]
+  emma_never_instrument = true
+  no_build_hooks = true
+}

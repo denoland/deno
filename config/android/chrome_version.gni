@@ -1,0 +1,16 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/config.gni")
+import("//build/util/version.gni")
+
+chrome_version_name = android_default_version_name
+if (chrome_version_name == "Developer Build") {
+  # In general, let the versionName attribute in the APK be the real chromium
+  # version number. This is important for WebView/Monochrome, as we expose this
+  # in an API, but we implement this for other Chrome targets for consistency.
+  # We check for "Developer Build" so that we don't interfere with official
+  # builders (which currently set the version number with this GN arg).
+  chrome_version_name = chrome_version_full
+}

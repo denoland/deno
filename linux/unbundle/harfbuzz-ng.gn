@@ -1,0 +1,13 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+declare_args() {
+  # Blink uses a cutting-edge version of Harfbuzz (version listed in
+  # third_party/harfbuzz-ng/README.chromium); most Linux distros do not contain
+  # a new enough version of the code to work correctly. However, ChromeOS
+  # chroots (i.e. real ChromeOS builds for devices) do contain a new enough
+  # version of the library, and so this variable exists so that ChromeOS can
+  # build against the system lib and keep binary sizes smaller.
+  use_system_harfbuzz = true
+}

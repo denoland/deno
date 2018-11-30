@@ -1,0 +1,30 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/chrome_build.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+
+# This file declares arguments and configs that control whether dSYM debug
+# info is produced and whether build products are stripped.
+
+declare_args() {
+  # Produce dSYM files for targets that are configured to do so. dSYM
+  # generation is controlled globally as it is a linker output (produced via
+  # the //build/toolchain/mac/linker_driver.py. Enabling this will result in
+  # all shared library, loadable module, and executable targets having a dSYM
+  # generated.
+  enable_dsyms = is_official_build || using_sanitizer
+
+  # Strip symbols from linked targets by default. If this is enabled, the
+  # //build/config/mac:strip_all config will be applied to all linked targets.
+  # If custom stripping parameters are required, remove that config from a
+  # linked target and apply custom -Wcrl,strip flags. See
+  # //build/toolchain/mac/linker_driver.py for more information.
+  enable_stripping = is_official_build
+}
+
+# Save unstripped copies of targets with a ".unstripped" suffix. This is
+# useful to preserve the original output when enable_stripping=true but
+# we're not actually generating real dSYMs.
+save_unstripped_output = enable_stripping && !enable_dsyms

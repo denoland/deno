@@ -1,0 +1,18 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/linux/pkg_config.gni")
+
+pkg_config("system_libxml") {
+  packages = [ "libxml-2.0" ]
+}
+
+static_library("libxml") {
+  sources = [
+    "chromium/libxml_utils.cc",
+    "chromium/libxml_utils.h",
+  ]
+
+  public_configs = [ ":system_libxml" ]
+}

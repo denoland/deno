@@ -1,0 +1,85 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/chromecast_build.gni")
+
+assert(is_chromecast)
+
+config("static_config") {
+  if (!is_clang) {
+    ldflags = [
+      # Don't allow visible symbols from libraries that contain
+      # assembly code with symbols that aren't hidden properly.
+      # http://b/26390825
+      "-Wl,--exclude-libs=libffmpeg.a",
+    ]
+
+    if (!is_android) {
+      ldflags += [
+        # We want to statically link libstdc++/libgcc on Linux.
+        # (On Android, libstdc++ and libgcc aren't used.)
+        "-static-libstdc++",
+        "-static-libgcc",
+      ]
+    }
+  }
+}
+
+config("ldconfig") {
+  visibility = [ ":*" ]
+
+  # Chromecast executables depend on several shared libraries in
+  # /oem_cast_shlib, $ORIGIN, and $ORIGIN/lib. Add these rpaths to each binary.
+  # This is explicitly disabled in Chrome for security reasons (see comments in
+  # //build/config/gcc/BUILD.gn), but necessary on Chromecast so that OEM's may
+  # override the default libraries shipped in the Cast receiver package.
+  ldflags = [
+    "-Wl,-rpath=/oem_cast_shlib",
+    "-Wl,-rpath=\$ORIGIN/lib",
+    "-Wl,-rpath=\$ORIGIN",
+  ]
+
+  # Binaries which don't live in the same directory as Chrome component
+  # libraries may still depend on them. Explicitly add the component library
+  # directory to the rpath for the component build.
+  if (is_component_build) {
+    ldflags += [ "-Wl,-rpath=/system/chrome" ]
+  }
+}
+
+config("executable_config") {
+  configs = [ ":ldconfig" ]
+
+  if (!is_clang && current_cpu == "arm") {
+    ldflags = [
+      # Export stdlibc++ and libgcc symbols to force shlibs to refer to these
+      # symbols from the executable.
+      "-Wl,--export-dynamic",
+
+      "-lm",  # stdlibc++ requires math.h
+
+      # In case we redefined stdlibc++ symbols (e.g. tc_malloc)
+      "-Wl,--allow-multiple-definition",
+
+      "-Wl,--whole-archive",
+      "-l:libstdc++.a",
+      "-l:libgcc.a",
+      "-Wl,--no-whole-archive",
+    ]
+
+    # Despite including libstdc++/libgcc archives, we still need to specify
+    # static linking for them in order to prevent the executable from having a
+    # dynamic dependency on them.
+    configs += [ ":static_config" ]
+  }
+}
+
+# Shared libaries should not have RPATH or RUNPATH set. This allows the
+# shared libs to inherit RPATH from the parent executable that is loading
+# the shared library. (See internal b/37514052 for more details.)
+config("shared_library_config") {
+  if (current_cpu == "arm") {
+    configs = [ ":static_config" ]
+  }
+}

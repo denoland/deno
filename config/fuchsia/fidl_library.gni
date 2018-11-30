@@ -1,0 +1,243 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/fuchsia/config.gni")
+
+assert(is_fuchsia)
+
+# Template for FIDL libraries. Following parameters can be passed when
+# instantiating this template:
+#   sources        - List of .fidl files.
+#   library_name   - (optional) Name of the library. target_name is used if name
+#                    is not specified explicitly.
+#   namespace      - (optional) Namespace for the library.
+#   deps           - (optional) List of other fidl_library() targets that this
+#                    FIDL library depends on.
+#   languages      - Generate bindings for the given languages, defaults to
+#                    [ "cpp" ]. "js" also supported.
+#
+# $namespace.$library_name must match the the library name specified in the FIDL
+# files.
+
+template("fidl_library") {
+  forward_variables_from(invoker, [ "namespace", "languages" ])
+
+  _library_basename = target_name
+  if (defined(invoker.library_name)) {
+    _library_basename = invoker.library_name
+  }
+
+  if (defined(namespace)) {
+    _library_name = "${namespace}.${_library_basename}"
+    _namespace_path = string_replace(namespace, ".", "/")
+    _library_path = "${_namespace_path}/${_library_basename}"
+  } else {
+    _library_name = _library_basename
+    _library_path = _library_basename
+  }
+
+  if (!defined(invoker.languages)) {
+    languages = [ "cpp" ]
+  }
+
+  _response_file = "$target_gen_dir/$target_name.rsp"
+  _json_representation = "$target_gen_dir/${_library_name}.fidl.json"
+  _output_gen_dir = "$target_gen_dir/fidl"
+  _output_base = "$_output_gen_dir/${_library_path}/cpp/fidl"
+  _tables_file = "$_output_gen_dir/${_library_name}.fidl-tables.cc"
+
+  action("${target_name}_response_file") {
+    script = "//third_party/fuchsia-sdk/gen_fidl_response_file.py"
+
+    forward_variables_from(invoker,
+                           [
+                             "deps",
+                             "public_deps",
+                             "sources",
+                             "testonly",
+                           ])
+
+    _libraries_file = "$target_gen_dir/${invoker.target_name}.fidl_libraries"
+
+    outputs = [
+      _response_file,
+      _libraries_file,
+    ]
+
+    args = [
+             "--out-response-file",
+             rebase_path(_response_file, root_build_dir),
+             "--out-libraries",
+             rebase_path(_libraries_file, root_build_dir),
+             "--tables",
+             rebase_path(_tables_file, root_build_dir),
+             "--json",
+             rebase_path(_json_representation, root_build_dir),
+             "--name",
+             _library_name,
+             "--sources",
+           ] + rebase_path(sources, root_build_dir)
+
+    if (defined(invoker.deps) || defined(invoker.public_deps)) {
+      merged_deps = []
+
+      if (defined(invoker.deps)) {
+        merged_deps += invoker.deps
+      }
+
+      if (defined(invoker.public_deps)) {
+        merged_deps += invoker.public_deps
+      }
+
+      dep_libraries = []
+      deps = []
+
+      foreach(dep, merged_deps) {
+        gen_dir = get_label_info(dep, "target_gen_dir")
+        name = get_label_info(dep, "name")
+        dep_libraries += [ "$gen_dir/$name.fidl_libraries" ]
+        deps += [ "${dep}_response_file" ]
+      }
+
+      inputs = dep_libraries
+
+      args += [ "--dep-libraries" ] + rebase_path(dep_libraries, root_build_dir)
+    }
+  }
+
+  action("${target_name}_compile") {
+    forward_variables_from(invoker, [ "testonly" ])
+
+    visibility = [ ":*" ]
+
+    deps = [
+      ":${invoker.target_name}_response_file",
+    ]
+
+    script = "//build/gn_run_binary.py"
+
+    inputs = [
+      # Depend on the SDK hash, to ensure rebuild if the SDK tools change.
+      rebase_path("$fuchsia_sdk/.hash"),
+      _response_file,
+    ]
+
+    outputs = [
+      _json_representation,
+      _tables_file,
+    ]
+
+    rebased_response_file = rebase_path(_response_file, root_build_dir)
+    args = [
+      rebase_path("//third_party/fuchsia-sdk/sdk/tools/fidlc", root_build_dir),
+      "@$rebased_response_file",
+    ]
+  }
+
+  action("${target_name}_cpp_gen") {
+    visibility = [ ":${invoker.target_name}" ]
+    forward_variables_from(invoker, [ "testonly" ])
+
+    deps = [
+      ":${invoker.target_name}_compile",
+    ]
+
+    inputs = [
+      # Depend on the SDK hash, to ensure rebuild if the SDK tools change.
+      rebase_path("$fuchsia_sdk/.hash"),
+      _json_representation,
+    ]
+
+    outputs = [
+      "${_output_base}.h",
+      "${_output_base}.cc",
+    ]
+
+    script = "//build/gn_run_binary.py"
+    args = [
+      rebase_path("//third_party/fuchsia-sdk/sdk/tools/fidlgen",
+                  root_build_dir),
+      "-generators",
+      "cpp",
+      "-json",
+      rebase_path(_json_representation),
+      "-include-base",
+      rebase_path(_output_gen_dir),
+      "-output-base",
+      rebase_path("${_output_base}"),
+    ]
+  }
+
+  _output_js_path = "$_output_gen_dir/${_library_path}/js/fidl.js"
+  action("${target_name}_js_gen") {
+    visibility = [ ":${invoker.target_name}" ]
+    forward_variables_from(invoker, [ "testonly" ])
+
+    deps = [
+      ":${invoker.target_name}_compile",
+    ]
+
+    inputs = [
+      # Depend on the SDK hash, to ensure rebuild if the SDK tools change.
+      rebase_path("$fuchsia_sdk/.hash"),
+      _json_representation,
+      "//tools/fuchsia/fidlgen_js/fidl.py",  # The schema helper file.
+    ]
+
+    outputs = [
+      _output_js_path,
+    ]
+
+    script = "//tools/fuchsia/fidlgen_js/gen.py"
+
+    args = [
+      rebase_path(_json_representation),
+      "--output",
+      rebase_path("${_output_js_path}"),
+    ]
+
+    data = []
+    foreach(o, outputs) {
+      data += [ rebase_path(o) ]
+    }
+  }
+
+  config("${target_name}_config") {
+    visibility = [ ":${invoker.target_name}" ]
+    include_dirs = [ _output_gen_dir ]
+  }
+
+  source_set("${target_name}") {
+    forward_variables_from(invoker,
+                           [
+                             "deps",
+                             "public_deps",
+                             "testonly",
+                             "visibility",
+                           ])
+
+    sources = [
+      "${_output_base}.cc",
+      "${_output_base}.h",
+      _tables_file,
+    ]
+
+    if (!defined(deps)) {
+      deps = []
+    }
+    deps += [ ":${invoker.target_name}_compile" ]
+
+    foreach(language, languages) {
+      deps += [ ":${invoker.target_name}_${language}_gen" ]
+    }
+
+    if (!defined(public_deps)) {
+      public_deps = []
+    }
+    public_deps += [ "//third_party/fuchsia-sdk:fidl" ]
+    public_deps += [ "//third_party/fuchsia-sdk:fidl_cpp" ]
+
+    public_configs = [ ":${invoker.target_name}_config" ]
+  }
+}

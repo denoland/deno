@@ -1,0 +1,115 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_win)
+
+import("//build/config/win/visual_studio_version.gni")
+
+# This template defines a rule to invoke the MS IDL compiler. The generated
+# source code will be compiled and linked into targets that depend on this.
+#
+# Parameters
+#
+#   sources
+#      List of .idl file to process.
+#
+#   header_file (optional)
+#       File name of generated header file.  Defaults to the basename of the
+#       source idl file with a .h extension.
+#
+#   out_dir (optional)
+#       Directory to write the generated files to. Defaults to target_gen_dir.
+#
+#   dynamic_guid (optional)
+#       If the GUID is not constant across builds, the current GUID.
+#
+#   deps (optional)
+#   visibility (optional)
+
+template("midl") {
+  action_name = "${target_name}_idl_action"
+  source_set_name = target_name
+
+  assert(defined(invoker.sources), "Source must be defined for $target_name")
+
+  if (defined(invoker.out_dir)) {
+    out_dir = invoker.out_dir
+  } else {
+    out_dir = target_gen_dir
+  }
+
+  if (defined(invoker.dynamic_guid)) {
+    dynamic_guid = invoker.dynamic_guid
+  } else {
+    dynamic_guid = "none"
+  }
+
+  if (defined(invoker.header_file)) {
+    header_file = invoker.header_file
+  } else {
+    header_file = "{{source_name_part}}.h"
+  }
+
+  dlldata_file = "{{source_name_part}}.dlldata.c"
+  interface_identifier_file = "{{source_name_part}}_i.c"
+  proxy_file = "{{source_name_part}}_p.c"
+  type_library_file = "{{source_name_part}}.tlb"
+
+  action_foreach(action_name) {
+    visibility = [ ":$source_set_name" ]
+    script = "//build/toolchain/win/midl.py"
+
+    sources = invoker.sources
+
+    # Note that .tlb is not included in the outputs as it is not always
+    # generated depending on the content of the input idl file.
+    outputs = [
+      "$out_dir/$header_file",
+      "$out_dir/$dlldata_file",
+      "$out_dir/$interface_identifier_file",
+      "$out_dir/$proxy_file",
+    ]
+
+    if (current_cpu == "x86") {
+      win_tool_arch = "environment.x86"
+      idl_target_platform = "win32"
+    } else if (current_cpu == "x64") {
+      win_tool_arch = "environment.x64"
+      idl_target_platform = "x64"
+    } else {
+      assert(false, "Need environment for this arch")
+    }
+
+    args = [
+      win_tool_arch,
+      rebase_path(out_dir, root_build_dir),
+      dynamic_guid,
+      type_library_file,
+      header_file,
+      dlldata_file,
+      interface_identifier_file,
+      proxy_file,
+      "{{source}}",
+      "/char",
+      "signed",
+      "/env",
+      idl_target_platform,
+      "/Oicf",
+    ]
+
+    forward_variables_from(invoker, [ "deps" ])
+  }
+
+  source_set(target_name) {
+    forward_variables_from(invoker, [ "visibility" ])
+
+    # We only compile the IID files from the IDL tool rather than all outputs.
+    sources = process_file_template(invoker.sources,
+                                    [ "$out_dir/$interface_identifier_file" ])
+
+    public_deps = [
+      ":$action_name",
+    ]
+  }
+}

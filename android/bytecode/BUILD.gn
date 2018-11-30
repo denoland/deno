@@ -1,0 +1,25 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+
+assert(current_toolchain == default_toolchain)
+
+java_binary("java_bytecode_rewriter") {
+  emma_never_instrument = true
+  java_files = [
+    "java/org/chromium/bytecode/AssertionEnablerClassAdapter.java",
+    "java/org/chromium/bytecode/ByteCodeProcessor.java",
+    "java/org/chromium/bytecode/CustomClassLoaderClassWriter.java",
+    "java/org/chromium/bytecode/CustomResourcesClassAdapter.java",
+    "java/org/chromium/bytecode/TypeUtils.java",
+    "java/org/chromium/bytecode/ThreadAssertionClassAdapter.java",
+  ]
+  main_class = "org.chromium.bytecode.ByteCodeProcessor"
+  deps = [
+    "//third_party/ow2_asm:asm_java",
+    "//third_party/ow2_asm:asm_util_java",
+  ]
+  wrapper_script_name = "helper/java_bytecode_rewriter"
+}

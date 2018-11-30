@@ -1,0 +1,60 @@
+<table id="{{tb_value.table_id}}" style="display:none;">
+  <thead class="heads">
+    <tr>
+      {% for cell in tb_value.table_headers -%}
+        <th class="{{cell.class}}" id="{{cell.data}}" data-asc-sorted=0>
+          {{cell.data}}
+          <span class="up" style="display:none;"> &#8593</span>
+          <span class="down" style="display:none;"> &#8595</span>
+        </th>
+      {%- endfor %}
+    </tr>
+  </thead>
+  {% for block in tb_value.table_row_blocks -%}
+    <tbody class="row_block">
+      {% for row in block -%}
+        <tr class="{{tb_value.table_id}}-body-row">
+          {% for cell in row -%}
+            {% if cell.rowspan -%}
+              <td rowspan="{{cell.rowspan}}" class="{{tb_value.table_id}}-body-column-{{loop.index0}} {{cell.class}}">
+            {%- else -%}
+              <td rowspan="1" class="{{tb_value.table_id}}-body-column-{{loop.index0}} {{cell.class}}">
+            {%- endif %}
+            {% if cell.cell_type == 'pre' -%}
+              <pre>{{cell.data}}</pre>
+            {%- elif cell.cell_type == 'links' -%}
+              {% for link in cell.links -%}
+                <a href="{{link.href}}" target="{{link.target}}">{{link.data}}</a>
+                {% if not loop.last -%}
+                  <br />
+                {%- endif %}
+              {%- endfor %}
+            {%- elif cell.cell_type == 'action' -%}
+              <a onclick="{{cell.action}}">{{cell.data}}</a>
+            {%- else -%}
+              {{cell.data}}
+            {%- endif %}
+            </td>
+          {%- endfor %}
+        </tr>
+      {%- endfor %}
+    </tbody>
+  {%- endfor %}
+  <tfoot>
+    <tr>
+        {% for cell in tb_value.table_footer -%}
+          <td class="{{tb_value.table_id}}-summary-column-{{loop.index0}} {{cell.class}}">
+            {% if cell.cell_type == 'links' -%}
+              {% for link in cell.links -%}
+                <a href="{{link.href}}" target="{{link.target}}"><b>{{link.data}}</b></a>
+              {%- endfor %}
+            {%- elif cell.cell_type == 'action' -%}
+              <a onclick="{{cell.action}}">{{cell.data}}</a>
+            {%- else -%}
+              <b>{{cell.data}}</b>
+            {%- endif %}
+          </td>
+        {%- endfor %}
+      </tr>
+  </tfoot>
+</table>

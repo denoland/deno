@@ -1,0 +1,165 @@
+# Copyright 2018 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_fuchsia)
+
+import("//build/config/chromecast_build.gni")
+import("//build/config/fuchsia/config.gni")
+import("//build/config/fuchsia/package.gni")
+import("//build/config/sysroot.gni")
+
+blobstore_qcow_path = "$root_out_dir/fvm.blk.qcow2"
+
+# Generates a script which deploys and executes a package on a device.
+#
+# Parameters:
+#   package: The package() target which will be run.
+#   package_name_override: Specifies the name of the generated package, if its
+#       name is different than the |package| target name. This value must match
+#       package_name_override in the |package| target.
+#   package_deps: An array of [package, package_name_override] array pairs
+#       which specify additional dependency packages to be installed
+#       prior to execution.
+#   runner_script: The runner script implementation to use, relative to
+#       "build/fuchsia". Defaults to "exe_runner.py".
+#   install_only: If true, executing the script will only install the package
+#       on the device, but not run it.
+template("fuchsia_package_runner") {
+  forward_variables_from(invoker, [ "runner_script" ])
+
+  if (defined(invoker.package_name_override)) {
+    _pkg_shortname = invoker.package_name_override
+  } else {
+    _pkg_shortname = get_label_info(invoker.package, "name")
+  }
+
+  _pkg_dir = "$root_out_dir/gen/" + get_label_info(invoker.package, "dir") +
+             "/" + _pkg_shortname
+  _manifest_path = "$_pkg_dir/${_pkg_shortname}.archive_manifest"
+  _package_path = "$_pkg_dir/${_pkg_shortname}.far"
+
+  if (!defined(runner_script)) {
+    runner_script = "//build/fuchsia/exe_runner.py"
+  }
+
+  generated_run_pkg_script_path = "$root_build_dir/bin/run_${_pkg_shortname}"
+  generated_install_pkg_script_path =
+      "$root_build_dir/bin/install_$_pkg_shortname"
+
+  _generate_runner_target = "${target_name}__generate_runner"
+  _generate_installer_target = "${target_name}__generate_installer"
+  _generate_template = "${target_name}__generate_template"
+
+  # Generates a script to install and optionally run a package.
+  #
+  # Parameters:
+  #   |install_only|: If true, builds a script that only installs a package.
+  #   |script_path|: The path of the script to generate.
+  template(_generate_template) {
+    action(target_name) {
+      forward_variables_from(invoker,
+                             [
+                               "install_only",
+                               "script_path",
+                               "target",
+                               "testonly",
+                             ])
+
+      deps = [
+        "//build/config/fuchsia:blobstore_extended_qcow2",
+        invoker.package,
+      ]
+
+      if (defined(invoker.deps)) {
+        deps += invoker.deps
+      }
+
+      script = "//build/fuchsia/create_runner_script.py"
+
+      outputs = [
+        script_path,
+      ]
+
+      data = [
+        script_path,
+        _manifest_path,
+        "//build/fuchsia/",
+        "//build/util/lib/",
+        "${qemu_root}/",
+        "${fuchsia_sdk}/",
+      ]
+
+      data_deps = [
+        invoker.package,
+      ]
+
+      # Arguments used at build time by the runner script generator.
+      args = [
+        "--script-output-path",
+        rebase_path(script_path, root_build_dir, root_out_dir),
+      ]
+
+      if (defined(invoker.use_test_server) && invoker.use_test_server) {
+        args += [ "--enable-test-server" ]
+      }
+
+      if (defined(invoker.package_deps)) {
+        foreach(cur_package, invoker.package_deps) {
+          deps += [ cur_package[0] ]
+          dep_package_path =
+              "$root_out_dir/gen/" + get_label_info(cur_package[0], "dir") +
+              "/" + cur_package[1] + "/" + cur_package[1] + ".far"
+          args += [
+            "--package-dep",
+            rebase_path(dep_package_path, root_out_dir, root_build_dir),
+          ]
+        }
+      }
+
+      # Arguments used at runtime by the test runner.
+      args += [
+        "--runner-script",
+        rebase_path(runner_script, root_out_dir),
+        "--output-directory",
+        rebase_path(root_build_dir, root_build_dir),
+        "--target-cpu",
+        target_cpu,
+        "--package",
+        rebase_path(_package_path, root_out_dir, root_build_dir),
+        "--package-name",
+        _pkg_shortname,
+        "--package-manifest",
+        rebase_path(_manifest_path),
+      ]
+
+      if (defined(install_only) && install_only) {
+        args += [ "--install-only" ]
+      }
+    }
+  }
+
+  target(_generate_template, _generate_runner_target) {
+    forward_variables_from(invoker, "*")
+    script_path = generated_run_pkg_script_path
+  }
+
+  target(_generate_template, _generate_installer_target) {
+    forward_variables_from(invoker, "*")
+    script_path = generated_install_pkg_script_path
+    install_only = true
+  }
+
+  # Build the installer script, and the runner for non-|install_only| targets.
+  group(target_name) {
+    forward_variables_from(invoker, [ "testonly" ])
+    deps = [
+      ":${_generate_installer_target}",
+    ]
+
+    # Generate a runner script if the target is not install-only.
+    if (!defined(invoker.install_only)) {
+      deps += [ ":${_generate_runner_target}" ]
+    }
+  }
+}
