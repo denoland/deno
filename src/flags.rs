@@ -101,7 +101,7 @@ fn set_recognized_flags(
           flags.types = true;
         }
 
-        if matches.free.len() > 0 {
+        if !matches.free.is_empty() {
           rest.extend(matches.free);
         }
       }

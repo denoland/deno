@@ -66,7 +66,7 @@ enum Repr {
   TcpStream(tokio::net::TcpStream),
   HttpBody(HttpBody),
   Repl(Repl),
-  Child(tokio_process::Child),
+  Child(Box<tokio_process::Child>),
   ChildStdin(tokio_process::ChildStdin),
   ChildStdout(tokio_process::ChildStdout),
   ChildStderr(tokio_process::ChildStderr),
@@ -298,10 +298,10 @@ pub fn add_child(mut c: tokio_process::Child) -> ChildResources {
     resources.stderr_rid = Some(rid);
   }
 
-  let r = tg.insert(child_rid, Repr::Child(c));
+  let r = tg.insert(child_rid, Repr::Child(Box::new(c)));
   assert!(r.is_none());
 
-  return resources;
+  resources
 }
 
 pub struct ChildStatus {

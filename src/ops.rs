@@ -400,7 +400,7 @@ fn op_fetch(
   assert!(header.is_request());
   let url = header.url().unwrap();
 
-  let body = if data.len() == 0 {
+  let body = if data.is_empty() {
     hyper::Body::empty()
   } else {
     hyper::Body::from(Vec::from(data))
@@ -429,7 +429,6 @@ fn op_fetch(
           &msg::FetchResArgs {
             header: Some(header_off),
             body_rid: body_resource.rid,
-            ..Default::default()
           },
         );
 
@@ -1469,7 +1468,6 @@ fn op_run_status(
         got_signal,
         exit_code: code.unwrap_or(-1),
         exit_signal: signal.unwrap_or(-1),
-        ..Default::default()
       },
     );
     Ok(serialize_response(

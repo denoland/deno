@@ -26,7 +26,6 @@ pub fn serialize_key_value<'bldr>(
     &msg::KeyValueArgs {
       key: Some(key),
       value: Some(value),
-      ..Default::default()
     },
   )
 }
@@ -71,7 +70,7 @@ pub fn serialize_fields<'bldr>(
     let kv = serialize_key_value(builder, key.as_ref(), val.to_str().unwrap());
     fields.push(kv);
   }
-  return builder.create_vector(fields.as_ref());
+  builder.create_vector(fields.as_ref())
 }
 
 // Not to be confused with serialize_response which has nothing to do with HTTP.
@@ -98,7 +97,7 @@ pub fn deserialize_request(
 ) -> Request<Body> {
   let mut r = Request::new(body);
 
-  assert!(header_msg.is_request() == true);
+  assert!(header_msg.is_request());
 
   let url = header_msg.url().unwrap();
   let uri = Uri::from_str(url).unwrap();

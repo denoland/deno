@@ -946,12 +946,10 @@ fn filter_shebang(code: String) -> String {
     return code;
   }
   match code.find('\n') {
-    None => {
-      return String::from("");
-    }
+    None => String::from(""),
     Some(i) => {
       let (_, rest) = code.split_at(i);
-      return String::from(rest);
+      String::from(rest)
     }
   }
 }

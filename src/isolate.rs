@@ -152,7 +152,7 @@ impl Isolate {
       tx,
       ntasks: 0,
       timeout_due: None,
-      state: state,
+      state,
     }
   }
 
