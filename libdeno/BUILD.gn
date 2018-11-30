@@ -8,12 +8,6 @@ config("deno_config") {
   if (is_debug) {
     defines = [ "DEBUG" ]
   }
-  if (is_clang) {
-    cflags = [
-      "-fcolor-diagnostics",
-      "-fansi-escape-codes",
-    ]
-  }
 }
 
 v8_static_library("v8") {

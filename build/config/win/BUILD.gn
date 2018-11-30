@@ -85,21 +85,15 @@ config("compiler") {
   ]
 
   if (is_clang) {
-    cflags += [ "-fmsc-version=1911" ]
+    cflags += [
+      "-fansi-escape-codes",
+      "-fmsc-version=1911",
+    ]
 
     if (current_cpu == "x86") {
       cflags += [ "-m32" ]
     } else {
       cflags += [ "-m64" ]
-    }
-
-    if (exec_script("//build/win/use_ansi_codes.py", [], "trim string") ==
-        "True") {
-      cflags += [
-        # cmd.exe doesn't understand ANSI escape codes by default,
-        # so only enable them if something emulating them is around.
-        "-fansi-escape-codes",
-      ]
     }
 
     if (use_clang_diagnostics_format) {
