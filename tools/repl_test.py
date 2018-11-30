@@ -90,9 +90,9 @@ class Repl(object):
 
     def test_set_timeout_interlaced(self):
         out, err, code = self.input(
-            "setTimeout(() => console.log('a'), 250)",
-            "setTimeout(() => console.log('b'), 150)",
-            sleep=0.2)
+            "setTimeout(() => console.log('a'), 500)",
+            "setTimeout(() => console.log('b'), 300)",
+            sleep=0.4)
         assertEqual(out, '1\n2\na\nb\n')
         assertEqual(err, '')
         assertEqual(code, 0)
