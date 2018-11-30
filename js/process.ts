@@ -2,9 +2,11 @@
 import * as dispatch from "./dispatch";
 import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
-import { assert, unreachable } from "./util";
-import { close, File } from "./files";
+
+import { File, close } from "./files";
 import { ReadCloser, WriteCloser } from "./io";
+import { readAll } from "./buffer";
+import { assert, unreachable } from "./util";
 
 /** How to handle subsubprocess stdio.
  *
@@ -57,6 +59,21 @@ export class Process {
 
   async status(): Promise<ProcessStatus> {
     return await runStatus(this.rid);
+  }
+
+  /** Buffer the stdout and return it as Uint8Array after EOF.
+   * You must have set stdout to "piped" in when creating the process.
+   * This calls close() on stdout after its done.
+   */
+  async output(): Promise<Uint8Array> {
+    if (!this.stdout) {
+      throw new Error("Process.output: stdout is undefined");
+    }
+    try {
+      return await readAll(this.stdout);
+    } finally {
+      this.stdout.close();
+    }
   }
 
   close(): void {
