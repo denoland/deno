@@ -117,8 +117,8 @@ export class URLSearchParams {
    *       searchParams.sort();
    */
   sort(): void {
-    this.params = this.params.sort(
-      (a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1)
+    this.params = this.params.sort((a, b) =>
+      a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1
     );
   }
 
