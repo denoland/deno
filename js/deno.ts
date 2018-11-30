@@ -20,7 +20,7 @@ export {
   ReadWriteCloser,
   ReadWriteSeeker
 } from "./io";
-export { Buffer } from "./buffer";
+export { Buffer, readAll } from "./buffer";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
 export { chmodSync, chmod } from "./chmod";

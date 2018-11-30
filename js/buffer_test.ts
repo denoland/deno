@@ -1,8 +1,8 @@
+import { Buffer, readAll } from "deno";
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
-import { test, assert, assertEqual } from "./test_util.ts";
-import { Buffer } from "deno";
+import { assert, assertEqual, test } from "./test_util.ts";
 
 // N controls how many iterations of certain checks are performed.
 const N = 100;
@@ -191,5 +191,15 @@ test(async function bufferTestGrow() {
         yBytes
       );
     }
+  }
+});
+
+test(async function testReadAll() {
+  init();
+  const reader = new Buffer(testBytes.buffer as ArrayBuffer);
+  const actualBytes = await readAll(reader);
+  assertEqual(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEqual(testBytes[i], actualBytes[i]);
   }
 });
