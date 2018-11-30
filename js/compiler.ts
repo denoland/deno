@@ -180,8 +180,8 @@ export class Compiler
     return this._moduleMetaDataMap.has(fileName)
       ? this._moduleMetaDataMap.get(fileName)
       : fileName.startsWith(ASSETS)
-        ? this._resolveModule(fileName, "")
-        : undefined;
+      ? this._resolveModule(fileName, "")
+      : undefined;
   }
 
   /** Given a `moduleSpecifier` and `containingFile` retrieve the cached
