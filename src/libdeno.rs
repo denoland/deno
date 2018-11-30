@@ -17,6 +17,17 @@ pub struct deno_buf {
   pub data_len: usize,
 }
 
+impl deno_buf {
+  pub fn empty() -> Self {
+    deno_buf {
+      alloc_ptr: std::ptr::null_mut(),
+      alloc_len: 0,
+      data_ptr: std::ptr::null_mut(),
+      data_len: 0,
+    }
+  }
+}
+
 type DenoRecvCb = unsafe extern "C" fn(
   user_data: *mut c_void,
   req_id: i32,

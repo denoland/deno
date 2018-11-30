@@ -130,15 +130,6 @@ pub struct Metrics {
 
 static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
-fn empty() -> libdeno::deno_buf {
-  libdeno::deno_buf {
-    alloc_ptr: std::ptr::null_mut(),
-    alloc_len: 0,
-    data_ptr: std::ptr::null_mut(),
-    data_len: 0,
-  }
-}
-
 impl Isolate {
   pub fn new(
     snapshot: libdeno::deno_buf,
@@ -148,7 +139,7 @@ impl Isolate {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
-    let shared = empty(); // TODO Use shared for message passing.
+    let shared = libdeno::deno_buf::empty(); // TODO Use shared for message passing.
     let libdeno_isolate =
       unsafe { libdeno::deno_new(snapshot, shared, pre_dispatch) };
     // This channel handles sending async messages back to the runtime.
@@ -392,7 +383,7 @@ mod tests {
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
     let state = Arc::new(IsolateState::new(flags, rest_argv));
-    let snapshot = unsafe { crate::snapshot::deno_snapshot.clone() };
+    let snapshot = libdeno::deno_buf::empty();
     let mut isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
@@ -434,7 +425,7 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let state = Arc::new(IsolateState::new(flags, rest_argv));
-    let snapshot = unsafe { crate::snapshot::deno_snapshot.clone() };
+    let snapshot = libdeno::deno_buf::empty();
     let mut isolate = Isolate::new(snapshot, state, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
@@ -471,7 +462,7 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let state = Arc::new(IsolateState::new(flags, rest_argv));
-    let snapshot = unsafe { crate::snapshot::deno_snapshot.clone() };
+    let snapshot = libdeno::deno_buf::empty();
     let mut isolate = Isolate::new(snapshot, state, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
