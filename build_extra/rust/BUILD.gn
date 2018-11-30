@@ -45,7 +45,7 @@ rust_crate("unicode_segmentation") {
 }
 
 rust_crate("memchr") {
-  source_root = "$registry_github/memchr-2.1.0/src/lib.rs"
+  source_root = "$registry_github/memchr-2.1.1/src/lib.rs"
   extern = [
     ":cfg_if",
     ":libc",
@@ -57,7 +57,7 @@ rust_crate("utf8parse") {
 }
 
 rust_crate("libc") {
-  source_root = "$registry_github/libc-0.2.43/src/lib.rs"
+  source_root = "$registry_github/libc-0.2.44/src/lib.rs"
   features = [ "use_std" ]
   args = [ "-Aunused_macros" ]  # Unused macro `f` in macros.rs:51.
 }
@@ -114,7 +114,7 @@ rust_crate("cfg_if") {
 }
 
 rust_crate("tempfile") {
-  source_root = "$registry_github/tempfile-3.0.4/src/lib.rs"
+  source_root = "$registry_github/tempfile-3.0.5/src/lib.rs"
   extern = [
     ":cfg_if",
     ":libc",
@@ -125,7 +125,7 @@ rust_crate("tempfile") {
 }
 
 rust_crate("rand") {
-  source_root = "$registry_github/rand-0.5.5/src/lib.rs"
+  source_root = "$registry_github/rand-0.6.1/src/lib.rs"
   features = [
     "std",
     "alloc",
@@ -134,7 +134,37 @@ rust_crate("rand") {
     ":libc",
     ":winapi",
     ":rand_core",
+    ":rand_isaac",
+    ":rand_hc",
+    ":rand_chacha",
+    ":rand_pcg",
+    ":rand_xorshift",
   ]
+}
+
+rust_crate("rand_hc") {
+  source_root = "$registry_github/rand_hc-0.1.0/src/lib.rs"
+  extern = [ ":rand_core" ]
+}
+
+rust_crate("rand_xorshift") {
+  source_root = "$registry_github/rand_xorshift-0.1.0/src/lib.rs"
+  extern = [ ":rand_core" ]
+}
+
+rust_crate("rand_pcg") {
+  source_root = "$registry_github/rand_pcg-0.1.1/src/lib.rs"
+  extern = [ ":rand_core" ]
+}
+
+rust_crate("rand_isaac") {
+  source_root = "$registry_github/rand_isaac-0.1.1/src/lib.rs"
+  extern = [ ":rand_core" ]
+}
+
+rust_crate("rand_chacha") {
+  source_root = "$registry_github/rand_chacha-0.1.0/src/lib.rs"
+  extern = [ ":rand_core" ]
 }
 
 rust_crate("rand_core") {
@@ -373,7 +403,7 @@ rust_crate("slab") {
 }
 
 rust_crate("bytes") {
-  source_root = "$registry_github/bytes-0.4.10/src/lib.rs"
+  source_root = "$registry_github/bytes-0.4.11/src/lib.rs"
   extern = [
     ":byteorder",
     ":iovec",
@@ -385,8 +415,8 @@ rust_crate("byteorder") {
 }
 
 rust_crate("crossbeam_deque") {
-  source_root = "$registry_github/crossbeam-deque-0.6.1/src/lib.rs"
-  features = [ "use_std" ]
+  source_root = "$registry_github/crossbeam-deque-0.6.2/src/lib.rs"
+  features = [ "std" ]
   extern = [
     ":crossbeam_epoch",
     ":crossbeam_utils",
@@ -394,9 +424,9 @@ rust_crate("crossbeam_deque") {
 }
 
 rust_crate("crossbeam_epoch") {
-  source_root = "$registry_github/crossbeam-epoch-0.5.2/src/lib.rs"
+  source_root = "$registry_github/crossbeam-epoch-0.6.1/src/lib.rs"
   features = [
-    "use_std",
+    "std",
     "lazy_static",
     "default",
     "crossbeam-utils",
@@ -412,25 +442,28 @@ rust_crate("crossbeam_epoch") {
 }
 
 rust_crate("crossbeam_utils") {
-  source_root = "$registry_github/crossbeam-utils-0.5.0/src/lib.rs"
+  source_root = "$registry_github/crossbeam-utils-0.6.1/src/lib.rs"
   features = [
-    "use_std",
+    "std",
     "default",
   ]
-  extern = [ ":cfg_if" ]
+  extern = [
+    ":cfg_if",
+    ":memoffset",
+  ]
 }
 
 rust_crate("arrayvec") {
-  source_root = "$registry_github/arrayvec-0.4.7/src/lib.rs"
+  source_root = "$registry_github/arrayvec-0.4.8/src/lib.rs"
   extern = [ ":nodrop" ]
 }
 
 rust_crate("nodrop") {
-  source_root = "$registry_github/nodrop-0.1.12/src/lib.rs"
+  source_root = "$registry_github/nodrop-0.1.13/src/lib.rs"
 }
 
 rust_crate("lazy_static") {
-  source_root = "$registry_github/lazy_static-1.1.0/src/lib.rs"
+  source_root = "$registry_github/lazy_static-1.2.0/src/lib.rs"
   args = [
     "--cfg",
     "lazy_static_inline_impl",
@@ -452,7 +485,7 @@ rust_crate("num_cpus") {
 }
 
 rust_crate("hyper") {
-  source_root = "$registry_github/hyper-0.12.13/src/lib.rs"
+  source_root = "$registry_github/hyper-0.12.16/src/lib.rs"
   features = [ "runtime" ]
   extern = [
     ":bytes",
@@ -534,7 +567,7 @@ rust_crate("itoa") {
 }
 
 rust_crate("string") {
-  source_root = "$registry_github/string-0.1.1/src/lib.rs"
+  source_root = "$registry_github/string-0.1.2/src/lib.rs"
 }
 
 rust_crate("time") {
@@ -559,7 +592,7 @@ rust_crate("want") {
 }
 
 rust_crate("tokio") {
-  source_root = "$registry_github/tokio-0.1.11/src/lib.rs"
+  source_root = "$registry_github/tokio-0.1.13/src/lib.rs"
   extern = [
     ":futures",
     ":mio",
@@ -575,6 +608,7 @@ rust_crate("tokio") {
     ":tokio_timer",
     ":tokio_udp",
     ":tokio_uds",
+    ":num_cpus",
   ]
 }
 
@@ -602,7 +636,7 @@ rust_crate("tokio_io") {
 }
 
 rust_crate("tokio_timer") {
-  source_root = "$registry_github/tokio-timer-0.2.7/src/lib.rs"
+  source_root = "$registry_github/tokio-timer-0.2.8/src/lib.rs"
   extern = [
     ":futures",
     ":tokio_executor",
@@ -612,7 +646,7 @@ rust_crate("tokio_timer") {
 }
 
 rust_crate("tokio_udp") {
-  source_root = "$registry_github/tokio-udp-0.1.2/src/lib.rs"
+  source_root = "$registry_github/tokio-udp-0.1.3/src/lib.rs"
   extern = [
     ":bytes",
     ":futures",
@@ -625,7 +659,7 @@ rust_crate("tokio_udp") {
 }
 
 rust_crate("tokio_uds") {
-  source_root = "$registry_github/tokio-uds-0.2.3/src/lib.rs"
+  source_root = "$registry_github/tokio-uds-0.2.4/src/lib.rs"
   extern = [
     ":bytes",
     ":futures",
@@ -636,6 +670,7 @@ rust_crate("tokio_uds") {
     ":mio_uds",
     ":tokio_reactor",
     ":tokio_io",
+    ":tokio_codec",
     ":tokio_reactor",
   ]
 }
@@ -650,7 +685,7 @@ rust_crate("tokio_codec") {
 }
 
 rust_crate("tokio_reactor") {
-  source_root = "$registry_github/tokio-reactor-0.1.6/src/lib.rs"
+  source_root = "$registry_github/tokio-reactor-0.1.7/src/lib.rs"
   extern = [
     ":crossbeam_utils",
     ":futures",
@@ -679,7 +714,7 @@ rust_crate("tokio_tcp") {
 }
 
 rust_crate("tokio_threadpool") {
-  source_root = "$registry_github/tokio-threadpool-0.1.8/src/lib.rs"
+  source_root = "$registry_github/tokio-threadpool-0.1.9/src/lib.rs"
   extern = [
     ":crossbeam_deque",
     ":crossbeam_utils",
@@ -692,7 +727,7 @@ rust_crate("tokio_threadpool") {
 }
 
 rust_crate("tokio_current_thread") {
-  source_root = "$registry_github/tokio-current-thread-0.1.3/src/lib.rs"
+  source_root = "$registry_github/tokio-current-thread-0.1.4/src/lib.rs"
   extern = [
     ":futures",
     ":tokio_executor",
@@ -700,8 +735,7 @@ rust_crate("tokio_current_thread") {
 }
 
 rust_crate("hyper_rustls") {
-  source_root =
-      "$crates/git/checkouts/hyper-rustls-d4ca51501db57c63/2c536d5/src/lib.rs"
+  source_root = "$registry_github/hyper-rustls-0.15.0/src/lib.rs"
   extern = [
     ":ct_logs",
     ":futures",
@@ -724,7 +758,7 @@ rust_crate("dirs") {
   ]
 }
 
-ring_root = "$registry_github/ring-0.13.2/"
+ring_root = "$registry_github/ring-0.13.5/"
 
 static_library("ring_primitives") {
   sources = [
@@ -856,7 +890,7 @@ rust_crate("ring") {
 }
 
 rust_crate("rustls") {
-  source_root = "$registry_github/rustls-0.13.1/src/lib.rs"
+  source_root = "$registry_github/rustls-0.14.0/src/lib.rs"
   extern = [
     ":untrusted",
     ":base64",
@@ -874,7 +908,7 @@ rust_crate("ct_logs") {
 }
 
 rust_crate("tokio_rustls") {
-  source_root = "$registry_github/tokio-rustls-0.7.2/src/lib.rs"
+  source_root = "$registry_github/tokio-rustls-0.8.0/src/lib.rs"
   extern = [
     ":rustls",
     ":webpki",
@@ -950,7 +984,7 @@ rust_crate("scoped_tls") {
 }
 
 rust_crate("smallvec") {
-  source_root = "$registry_github/smallvec-0.6.5/lib.rs"
+  source_root = "$registry_github/smallvec-0.6.7/lib.rs"
   extern = [ ":unreachable" ]
   features = [ "std" ]
 }
@@ -984,7 +1018,7 @@ rust_crate("parking_lot_core") {
 }
 
 rust_crate("lock_api") {
-  source_root = "$registry_github/lock_api-0.1.4/src/lib.rs"
+  source_root = "$registry_github/lock_api-0.1.5/src/lib.rs"
   extern = [ ":scopeguard" ]
 }
 
@@ -998,7 +1032,7 @@ rust_crate("getopts") {
 }
 
 rust_crate("arc_swap") {
-  source_root = "$registry_github/arc-swap-0.3.4/src/lib.rs"
+  source_root = "$registry_github/arc-swap-0.3.6/src/lib.rs"
 }
 
 rust_crate("mio_named_pipes") {
@@ -1020,7 +1054,7 @@ rust_crate("miow") {
 }
 
 rust_crate("signal_hook") {
-  source_root = "$registry_github/signal-hook-0.1.5/src/lib.rs"
+  source_root = "$registry_github/signal-hook-0.1.6/src/lib.rs"
   extern = [
     ":arc_swap",
     ":libc",
@@ -1033,7 +1067,7 @@ rust_crate("socket2") {
 }
 
 rust_crate("tokio_signal") {
-  source_root = "$registry_github/tokio-signal-0.2.6/src/lib.rs"
+  source_root = "$registry_github/tokio-signal-0.2.7/src/lib.rs"
   extern = [
     ":futures",
     ":libc",
