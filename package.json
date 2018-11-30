@@ -26,6 +26,6 @@
     "tslint": "^5.10.0",
     "tslint-eslint-rules": "^5.3.1",
     "tslint-no-circular-imports": "^0.5.0",
-    "typescript": "3.1.6"
+    "typescript": "3.2.1"
   }
 }
