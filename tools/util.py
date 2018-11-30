@@ -14,10 +14,12 @@ executable_suffix = ".exe" if os.name == "nt" else ""
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 
-def make_env(merge_env={}, env=None):
+def make_env(merge_env=None, env=None):
     if env is None:
         env = os.environ
     env = env.copy()
+    if merge_env is None:
+        merge_env = {}
     for key in merge_env.keys():
         env[key] = merge_env[key]
     return env
@@ -25,19 +27,21 @@ def make_env(merge_env={}, env=None):
 
 def add_env_path(add, env, key="PATH", prepend=False):
     dirs_left = env[key].split(os.pathsep) if key in env else []
-    dirs_right = add.split(os.pathsep) if type(add) is str else add
+    dirs_right = add.split(os.pathsep) if isinstance(add, str) else add
 
     if prepend:
         dirs_left, dirs_right = dirs_right, dirs_left
 
-    for dir in dirs_right:
-        if not dir in dirs_left:
-            dirs_left += [dir]
+    for d in dirs_right:
+        if not d in dirs_left:
+            dirs_left += [d]
 
     env[key] = os.pathsep.join(dirs_left)
 
 
-def run(args, quiet=False, cwd=None, env=None, merge_env={}):
+def run(args, quiet=False, cwd=None, env=None, merge_env=None):
+    if merge_env is None:
+        merge_env = {}
     args[0] = os.path.normpath(args[0])
     if not quiet:
         print " ".join(args)
@@ -48,7 +52,9 @@ def run(args, quiet=False, cwd=None, env=None, merge_env={}):
         sys.exit(rc)
 
 
-def run_output(args, quiet=False, cwd=None, env=None, merge_env={}):
+def run_output(args, quiet=False, cwd=None, env=None, merge_env=None):
+    if merge_env is None:
+        merge_env = {}
     args[0] = os.path.normpath(args[0])
     if not quiet:
         print " ".join(args)
@@ -92,7 +98,7 @@ def remove_and_symlink(target, name, target_is_dir=False):
             os.rmdir(name)
         else:
             os.unlink(name)
-    except:
+    except OSError:
         pass
     symlink(target, name, target_is_dir)
 
@@ -146,7 +152,9 @@ def touch(fname):
 #   * Recursive glob doesn't exist in python 2.7.
 #   * On windows, `os.walk()` unconditionally follows symlinks.
 #     The `skip`  parameter should be used to avoid recursing through those.
-def find_exts(directories, extensions, skip=[]):
+def find_exts(directories, extensions, skip=None):
+    if skip is None:
+        skip = []
     assert isinstance(directories, list)
     assert isinstance(extensions, list)
     skip = [os.path.normpath(i) for i in skip]
@@ -247,7 +255,7 @@ def enable_ansi_colors_win10():
 
     # Function factory for errcheck callbacks that raise WinError on failure.
     def raise_if(error_result):
-        def check(result, func, args):
+        def check(result, _func, args):
             if result == error_result:
                 raise ctypes.WinError(ctypes.get_last_error())
             return args
@@ -321,7 +329,7 @@ def enable_ansi_colors_win10():
     # Try to set the flag that controls ANSI escape code support.
     try:
         SetConsoleMode(conout, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
-    except WindowsError as e:
+    except WindowsError as e:  # pylint:disable=undefined-variable
         if e.winerror == ERROR_INVALID_PARAMETER:
             return False  # Not supported, likely an older version of Windows.
         raise
@@ -332,7 +340,6 @@ def enable_ansi_colors_win10():
 
 
 def parse_unit_test_output(output, print_to_stdout):
-    first = True
     expected = None
     actual = None
     result = None

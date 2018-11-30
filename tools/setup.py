@@ -94,9 +94,9 @@ def write_gn_args(args_filename, args):
     assert gn_args_are_generated(lines)  # With header -> generated.
 
     # Ensure the directory where args.gn goes exists.
-    dir = os.path.dirname(args_filename)
-    if not os.path.isdir(dir):
-        os.makedirs(dir)
+    d = os.path.dirname(args_filename)
+    if not os.path.isdir(d):
+        os.makedirs(d)
 
     with open(args_filename, "w") as f:
         f.write("\n".join(lines) + "\n")

@@ -3,7 +3,8 @@
 # Does google-lint on c++ files and ts-lint on typescript files
 
 import os
-from util import enable_ansi_colors, run
+import sys
+from util import enable_ansi_colors, run, find_exts
 
 enable_ansi_colors()
 
@@ -24,3 +25,6 @@ run([
     "node", tslint, "./js/**/*_test.ts", "./tests/**/*.ts", "--exclude",
     "**/gen/**/*.ts", "--project", "tsconfig.json"
 ])
+
+run([sys.executable, "third_party/depot_tools/pylint.py"] +
+    find_exts(["tools", "build_extra"], [".py"], skip=["tools/clang"]))

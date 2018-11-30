@@ -55,15 +55,15 @@ def main():
     hasher = sha256()
     for data in args.input:
         hasher.update(data)
-    hash = hasher.hexdigest()
+    h = hasher.hexdigest()
 
     # Format and write to specified out file (or the default, stdout).
-    args.outfile.write(args.format % hash)
+    args.outfile.write(args.format % h)
 
 
 def read_file(filename):
-    with open(filename, "rb") as file:
-        return file.read()
+    with open(filename, "rb") as f:
+        return f.read()
 
 
 if __name__ == '__main__':
