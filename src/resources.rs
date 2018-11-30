@@ -66,6 +66,9 @@ enum Repr {
   TcpStream(tokio::net::TcpStream),
   HttpBody(HttpBody),
   Repl(Repl),
+  // Enum size is bounded by the largest variant.
+  // Use `Box` around large `Child` struct.
+  // https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant
   Child(Box<tokio_process::Child>),
   ChildStdin(tokio_process::ChildStdin),
   ChildStdout(tokio_process::ChildStdout),
