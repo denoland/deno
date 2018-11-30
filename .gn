@@ -30,6 +30,10 @@ default_args = {
   # for now. See http://clang.llvm.org/docs/ControlFlowIntegrity.html
   is_cfi = false
 
+  # Disabled due to CRT linking problems in Windows when using prebuilt V8.
+  # Works in other configurations.
+  is_component_build = false
+
   symbol_level = 1
   treat_warnings_as_errors = true
   rust_treat_warnings_as_errors = true
