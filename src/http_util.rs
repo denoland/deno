@@ -27,29 +27,29 @@ pub fn get_client() -> Client<Connector, hyper::Body> {
 }
 
 /// Construct the next uri based on base uri and location header fragment
-/// See https://tools.ietf.org/html/rfc3986#section-4.2
+/// See <https://tools.ietf.org/html/rfc3986#section-4.2>
 fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
   if location.starts_with("http://") || location.starts_with("https://") {
     // absolute uri
-    return location
+    location
       .parse::<Uri>()
-      .expect("provided redirect url should be a valid url");
+      .expect("provided redirect url should be a valid url")
   } else if location.starts_with("//") {
     // "//" authority path-abempty
-    return format!("{}:{}", base_uri.scheme_part().unwrap().as_str(), location)
+    format!("{}:{}", base_uri.scheme_part().unwrap().as_str(), location)
       .parse::<Uri>()
-      .expect("provided redirect url should be a valid url");
-  } else if location.starts_with("/") {
+      .expect("provided redirect url should be a valid url")
+  } else if location.starts_with('/') {
     // path-absolute
     let mut new_uri_parts = base_uri.clone().into_parts();
     new_uri_parts.path_and_query = Some(location.parse().unwrap());
-    return Uri::from_parts(new_uri_parts).unwrap();
+    Uri::from_parts(new_uri_parts).unwrap()
   } else {
     // assuming path-noscheme | path-empty
     let mut new_uri_parts = base_uri.clone().into_parts();
     new_uri_parts.path_and_query =
       Some(format!("{}/{}", base_uri.path(), location).parse().unwrap());
-    return Uri::from_parts(new_uri_parts).unwrap();
+    Uri::from_parts(new_uri_parts).unwrap()
   }
 }
 
