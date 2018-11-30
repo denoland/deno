@@ -4,6 +4,7 @@ solutions = [{
     'name': 'v8',
     'deps_file': 'DEPS',
     'custom_deps': {
+        'v8/build': None,
         'v8/third_party/catapult': None,
         'v8/third_party/colorama/src': None,
         'v8/testing/gmock': None,
