@@ -176,3 +176,14 @@ testPerm({ run: true }, async function runStderrPiped() {
   assertEqual(status.signal, undefined);
   p.close();
 });
+
+testPerm({ run: true }, async function runOutput() {
+  const p = run({
+    args: ["python", "-c", "import sys; sys.stdout.write('hello')"],
+    stdout: "piped"
+  });
+  const output = await p.output();
+  const s = new TextDecoder().decode(output);
+  assertEqual(s, "hello");
+  p.close();
+});
