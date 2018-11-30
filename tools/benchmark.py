@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
-# If //website/data.json doesn't exist, this script tries to import it from gh-pages branch.
+# If //website/data.json doesn't exist, this script tries to import it from
+# gh-pages branch.
 # To view the results locally run ./tools/http_server.py and visit
 # http://localhost:4545/website
 
@@ -49,7 +50,7 @@ def import_data_from_gh_pages():
             "https://github.com/denoland/deno.git", "gh-pages"
         ])
         shutil.copy(gh_pages_data_file, all_data_file)
-    except:
+    except ValueError:
         write_json(all_data_file, [])  # writes empty json data
 
 

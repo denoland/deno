@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
-# If //website/data.json doesn't exist, this script tries to import it from gh-pages branch.
+# If //website/data.json doesn't exist, this script tries to import it from
+# gh-pages branch.
 # To view the results locally run ./tools/http_server.py and visit
 # http://localhost:4545/website
 
@@ -44,7 +45,7 @@ def tcp(deno_exe, megs):
         echo_server.kill()
 
 
-if __name__ == '__main__':
+def main():
     deno_exe = sys.argv[1]
     megs = int(sys.argv[2])
     if not deno_exe or not megs:
@@ -52,3 +53,7 @@ if __name__ == '__main__':
         sys.exit(1)
     secs = tcp(sys.argv[1], megs)
     print secs, "seconds"
+
+
+if __name__ == '__main__':
+    main()

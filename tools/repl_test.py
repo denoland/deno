@@ -35,7 +35,7 @@ class Repl(object):
         except CalledProcessError as e:
             p.kill()
             p.wait()
-            raise
+            raise e
         retcode = p.poll()
         # Ignore Windows CRLF (\r\n).
         return out.replace('\r\n', '\n'), err.replace('\r\n', '\n'), retcode
@@ -125,6 +125,10 @@ def repl_tests(deno_exe):
     Repl(deno_exe).run()
 
 
-if __name__ == "__main__":
+def main():
     deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
     repl_tests(deno_exe)
+
+
+if __name__ == "__main__":
+    main()

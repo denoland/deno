@@ -48,7 +48,7 @@ def get_ldflags(rustc_args):
     # On Posix systems, this file is directly executable thanks to it's shebang.
     # On Windows, we use a .cmd wrapper file.
     if os.name == "nt":
-        rustc_linker_base, rustc_linker_ext = path.splitext(__file__)
+        rustc_linker_base, _rustc_linker_ext = path.splitext(__file__)
         rustc_linker = rustc_linker_base + ".cmd"
     else:
         rustc_linker = __file__

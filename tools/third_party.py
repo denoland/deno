@@ -34,7 +34,9 @@ python_site_env = None
 
 # Creates/modifies an environment so python can find packages that are bundled
 # in the 'third_party' directory.
-def python_env(env=None, merge_env={}, depot_tools_path=depot_tools_path):
+def python_env(env=None, merge_env=None):
+    if merge_env is None:
+        merge_env = {}
     global python_site_env
 
     # Use site.addsitedir() to determine which search paths would be considered
@@ -59,12 +61,14 @@ def python_env(env=None, merge_env={}, depot_tools_path=depot_tools_path):
 
 # This function creates or modifies an environment so that it matches the
 # expectations of various google tools (gn, gclient, etc).
-def google_env(env=None, merge_env={}, depot_tools_path=depot_tools_path):
+def google_env(env=None, merge_env=None, depot_tools_path_=depot_tools_path):
+    if merge_env is None:
+        merge_env = {}
     # Google tools need the python env too.
     env = python_env(env=env, merge_env=merge_env)
 
     # Depot_tools to be in the PATH, before Python.
-    add_env_path(depot_tools_path, env=env, prepend=True)
+    add_env_path(depot_tools_path_, env=env, prepend=True)
 
     if os.name == "nt":  # Windows-only enviroment tweaks.
         # We're not using Google's internal infrastructure.
@@ -89,7 +93,7 @@ def fix_symlinks():
     # Ensure the third_party directory exists.
     try:
         os.makedirs(third_party_path)
-    except:
+    except OSError:
         pass
 
     # Make symlinks to Yarn metadata living in the root repo.
@@ -102,8 +106,8 @@ def fix_symlinks():
     remove_and_symlink("v8/third_party/markupsafe", tp("markupsafe"), True)
 
     # On Windows, git doesn't create the right type of symlink if the symlink
-    # and it's target are in different repos. Here we fix the symlinks that exist
-    # in the root repo while their target is in the third_party repo.
+    # and it's target are in different repos. Here we fix the symlinks that
+    # exist in the root repo while their target is in the third_party repo.
     remove_and_symlink("third_party/node_modules", root("node_modules"), True)
     remove_and_symlink("third_party/v8/buildtools", root("buildtools"), True)
     remove_and_symlink("third_party/v8/build_overrides",
@@ -120,9 +124,9 @@ def run_yarn():
 
 # Run Cargo to install Rust dependencies.
 def run_cargo():
-    # Deletes the cargo index lockfile; it appears that cargo itself doesn't do it.
-    # If the lockfile ends up in the git repo, it'll make cargo hang for everyone
-    # else who tries to run sync_third_party.
+    # Deletes the cargo index lockfile; it appears that cargo itself doesn't do
+    # it.  If the lockfile ends up in the git repo, it'll make cargo hang for
+    # everyone else who tries to run sync_third_party.
     def delete_lockfile():
         lockfiles = find_exts([path.join(rust_crates_path, "registry/index")],
                               ['.cargo-index-lock'])
@@ -186,7 +190,7 @@ def run_gclient_sync():
     # Rename depot_tools to depot_tools_temp.
     try:
         os.rename(depot_tools_path, depot_tools_temp_path)
-    except:
+    except OSError:
         # If renaming failed, and the depot_tools_temp directory already exists,
         # assume that it's still there because a prior run_gclient_sync() call
         # failed half-way, before we got the chance to remove the temp dir.
@@ -204,7 +208,7 @@ def run_gclient_sync():
         'DEPOT_TOOLS_UPDATE': "0",
         'GCLIENT_FILE': root("gclient_config.py")
     }
-    env = google_env(depot_tools_path=depot_tools_temp_path, merge_env=envs)
+    env = google_env(depot_tools_path_=depot_tools_temp_path, merge_env=envs)
     run(args, cwd=third_party_path, env=env)
 
     # Delete the depot_tools_temp directory, but not before verifying that
