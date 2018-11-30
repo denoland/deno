@@ -1,3 +1,7 @@
 [submodule "third_party"]
 	path = third_party
 	url = https://github.com/denoland/deno_third_party.git
+[submodule "build"]
+	path = build
+	url = https://github.com/denoland/chromium_build.git
+	branch = deno
