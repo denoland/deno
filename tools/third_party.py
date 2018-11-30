@@ -105,7 +105,6 @@ def fix_symlinks():
     # and it's target are in different repos. Here we fix the symlinks that exist
     # in the root repo while their target is in the third_party repo.
     remove_and_symlink("third_party/node_modules", root("node_modules"), True)
-    remove_and_symlink("third_party/v8/build", root("build"), True)
     remove_and_symlink("third_party/v8/buildtools", root("buildtools"), True)
     remove_and_symlink("third_party/v8/build_overrides",
                        root("build_overrides"), True)
@@ -260,7 +259,8 @@ def maybe_download_sysroot():
     if sys.platform.startswith('linux'):
         run([
             'python',
-            tp('v8/build/linux/sysroot_scripts/install-sysroot.py'),
+            os.path.join(root_path,
+                         'build/linux/sysroot_scripts/install-sysroot.py'),
             '--arch=amd64'
         ],
             env=google_env())
