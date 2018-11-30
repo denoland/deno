@@ -31,7 +31,7 @@ default_args = {
   is_cfi = false
 
   # Disabled due to CRT linking problems in Windows when using prebuilt V8.
-  # Works on in other configurations.
+  # Works in other configurations.
   is_component_build = false
 
   symbol_level = 1

@@ -6,8 +6,7 @@ from third_party import tp, google_env
 def download_v8_prebuilt():
     if sys.platform == 'win32':
         download_prebuilt("prebuilt/win/v8.lib.sha1")
-        # TODO Ideally we wouldn't have to download both builds of V8. This
-        # can probably be accomplished after use_custom_libcxx is on.
+        # TODO Ideally we wouldn't have to download both builds of V8.
         download_prebuilt("prebuilt/win/v8_debug.lib.sha1")
     elif sys.platform.startswith('linux'):
         download_prebuilt("prebuilt/linux64/libv8.a.sha1")
