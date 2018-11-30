@@ -54,7 +54,11 @@ v8_static_library("libdeno") {
     } else if (is_linux) {
       libs = [ "//prebuilt/linux64/libv8.a" ]
     } else if (is_win) {
-      libs = [ "//prebuilt/win/v8.lib" ]
+      if (is_debug) {
+        libs = [ "//prebuilt/win/v8_debug.lib" ]
+      } else {
+        libs = [ "//prebuilt/win/v8.lib" ]
+      }
     } else {
       assert(false, "We don't have prebuilt binaries for this platform yet.")
     }
