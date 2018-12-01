@@ -113,8 +113,8 @@ ts_sources = [
 
 group("deno_deps") {
   deps = [
-    ":create_snapshot_deno",
     ":msg_rs",
+    ":snapshot_deno",
     "libdeno:libdeno",
   ]
 }
@@ -210,7 +210,7 @@ rust_flatbuffer("msg_rs") {
 }
 
 # Generates $target_gen_dir/snapshot_deno.bin
-create_snapshot("deno") {
+snapshot("snapshot_deno") {
   js = "$target_gen_dir/bundle/main.js"
   source_map = "$target_gen_dir/bundle/main.js.map"
   deps = [
