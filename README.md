@@ -7,7 +7,12 @@ Usage:
 ```typescript
 import { serve } from "https://deno.land/x/net/http.ts";
 const s = serve("0.0.0.0:8000");
-for await (const req of s) {
-  req.respond({ body: "Hello World\n" });
+
+async function main() {
+  for await (const req of s) {
+    req.respond({ body: new TextEncoder().encode("Hello World\n") });
+  }
 }
+
+main();
 ```
