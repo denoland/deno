@@ -30,13 +30,13 @@ Deno* deno_new(deno_buf snapshot, deno_buf shared, deno_recv_cb cb) {
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
   {
-    v8::Local<v8::ObjectTemplate> global_template = deno::CreateGlobalTemplate(isolate);
+    v8::Local<v8::ObjectTemplate> global_template =
+        deno::CreateGlobalTemplate(isolate);
     v8::HandleScope handle_scope(isolate);
-    auto context =
-        v8::Context::New(isolate, nullptr, global_template,
-                         v8::MaybeLocal<v8::Value>(),
-                         v8::DeserializeInternalFieldsCallback(
-                             deno::DeserializeInternalFields, nullptr));
+    auto context = v8::Context::New(
+        isolate, nullptr, global_template, v8::MaybeLocal<v8::Value>(),
+        v8::DeserializeInternalFieldsCallback(deno::DeserializeInternalFields,
+                                              nullptr));
     if (!snapshot.data_ptr) {
       // If no snapshot is provided, we initialize the context with empty
       // main source code and source maps.
