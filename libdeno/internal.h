@@ -117,6 +117,8 @@ void DeleteDataRef(DenoIsolate* d, int32_t req_id);
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
              const char* js_source);
 
+v8::Local<v8::ObjectTemplate> CreateGlobalTemplate(v8::Isolate* isolate);
+
 }  // namespace deno
 
 extern "C" {

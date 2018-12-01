@@ -7,6 +7,7 @@
 
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
+#include "third_party/v8/src/d8.h"
 
 #include "deno.h"
 #include "internal.h"
@@ -564,6 +565,30 @@ void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
   // d->isolate->SetFatalErrorHandler(FatalErrorCallback2);
   isolate_->SetPromiseRejectCallback(deno::PromiseRejectCallback);
   isolate_->SetData(0, this);
+}
+
+v8::Local<v8::ObjectTemplate> CreateGlobalTemplate(v8::Isolate* isolate) {
+  v8::Local<v8::ObjectTemplate> global_template = v8::ObjectTemplate::New(isolate);
+  auto worker_fun_template = v8::FunctionTemplate::New(isolate, v8::Shell::WorkerNew);
+  auto worker_signature = v8::Signature::New(isolate, worker_fun_template);
+  worker_fun_template->SetClassName(deno::v8_str("Worker"));
+  worker_fun_template->ReadOnlyPrototype();
+  worker_fun_template->PrototypeTemplate()
+            ->Set(deno::v8_str("terminate"),
+                  v8::FunctionTemplate::New(isolate, v8::Shell::WorkerTerminate, v8::Local<v8::Value>(),
+                            worker_signature));
+  worker_fun_template->PrototypeTemplate()
+            ->Set(deno::v8_str("postMessage"),
+                  v8::FunctionTemplate::New(isolate, v8::Shell::WorkerPostMessage, v8::Local<v8::Value>(),
+                            worker_signature));
+  worker_fun_template->PrototypeTemplate()
+            ->Set(deno::v8_str("getMessage"),
+                  v8::FunctionTemplate::New(isolate, v8::Shell::WorkerGetMessage, v8::Local<v8::Value>(),
+                            worker_signature));
+  worker_fun_template->InstanceTemplate()->SetInternalFieldCount(1);
+  global_template->Set(deno::v8_str("Worker"), worker_fun_template);
+
+  return global_template;
 }
 
 }  // namespace deno
