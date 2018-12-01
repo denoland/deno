@@ -14,18 +14,8 @@ template("run_node") {
 }
 
 # Template to generate different V8 snapshots based on different runtime flags.
-# Can be invoked with run_mksnapshot(<name>). The target will resolve to
-# run_mksnapshot_<name>. If <name> is "default", no file suffixes will be used.
-# Otherwise files are suffixed, e.g. embedded_<name>.cc and
-# snapshot_blob_<name>.bin.
-#
-# The template exposes the variables:
-#   args: additional flags for mksnapshots
-#   embedded_suffix: a camel case suffix for method names in the embedded
-#       snapshot.
-template("create_snapshot") {
-  name = target_name
-  compiled_action("create_snapshot_" + name) {
+template("snapshot") {
+  compiled_action(target_name) {
     forward_variables_from(invoker,
                            [
                              "testonly",
@@ -33,10 +23,13 @@ template("create_snapshot") {
                            ])
     tool = "//libdeno:snapshot_creator"
     visibility = [ ":*" ]  # Only targets in this file can depend on this.
-    snapshot_out_bin = "$target_gen_dir/snapshot_$name.bin"
+    snapshot_out_bin = "$target_gen_dir/$target_name.bin"
     inputs = [
       invoker.js,
     ]
+
+    # TODO(ry) source_map should not be involved at this layer. Remove the
+    # following.
     if (defined(invoker.source_map)) {
       inputs += [ invoker.source_map ]
     }
