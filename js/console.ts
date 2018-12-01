@@ -105,6 +105,8 @@ function stringify(
     case "undefined":
     case "symbol":
       return String(value);
+    case "bigint":
+      return `${value}n`;
     case "function":
       return createFunctionString(value as Function, ctx);
     case "object":
