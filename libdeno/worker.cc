@@ -9,10 +9,10 @@
 #include <utility>
 #include <vector>
 
-#include "third_party/v8/src/globals.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/d8.h"
 #include "third_party/v8/src/objects.h"
+#include "third_party/v8/src/objects/string.h"
 #include "third_party/v8/src/utils.h"
 
 #include "worker.h"
@@ -105,6 +105,7 @@ v8::Local<v8::String> ReadFile(v8::Isolate* isolate, const char* name) {
   char* chars = ReadChars(name, &size);
   if (chars == nullptr) return v8::Local<v8::String>();
   v8::Local<v8::String> result;
+//  if (i::FLAG_use_external_strings && i::String::IsAscii(chars, size)) {
   if (i::FLAG_use_external_strings && i::String::IsAscii(chars, size)) {
     v8::String::ExternalOneByteStringResource* resource =
         new ExternalOwningOneByteStringResource(
@@ -120,7 +121,7 @@ v8::Local<v8::String> ReadFile(v8::Isolate* isolate, const char* name) {
 
 v8::base::LazyMutex workers_mutex_;
 bool allow_new_workers_ = true;
-std::vector<Worker*> workers_;
+std::vector<deno::Worker*> workers_;
 
 void WorkerNew(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
