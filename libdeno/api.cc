@@ -16,8 +16,7 @@ extern "C" {
 Deno* deno_new(deno_buf snapshot, deno_buf shared, deno_recv_cb cb) {
   deno::DenoIsolate* d = new deno::DenoIsolate(snapshot, cb, shared);
   v8::Isolate::CreateParams params;
-  params.array_buffer_allocator =
-      v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+  params.array_buffer_allocator = d->array_buffer_allocator_;
   params.external_references = deno::external_references;
 
   if (snapshot.data_ptr) {
@@ -55,8 +54,9 @@ Deno* deno_new_snapshotter(deno_buf shared, deno_recv_cb cb,
   auto* d = new deno::DenoIsolate(deno::empty_buf, cb, shared);
   d->snapshot_creator_ = creator;
   d->AddIsolate(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
   {
+    v8::Locker locker(isolate);
+    v8::Isolate::Scope isolate_scope(isolate);
     v8::HandleScope handle_scope(isolate);
     auto context = v8::Context::New(isolate);
     creator->SetDefaultContext(context,
@@ -186,7 +186,6 @@ void deno_check_promise_errors(Deno* d_) {
 
 void deno_delete(Deno* d_) {
   deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
-  d->isolate_->Dispose();
   delete d;
 }
 
