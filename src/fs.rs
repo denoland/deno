@@ -3,7 +3,7 @@ use std;
 use std::fs::{create_dir, DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use rand;
 use rand::Rng;
@@ -89,12 +89,55 @@ fn set_dir_permission(_builder: &mut DirBuilder, _perm: u32) {
   // NOOP on windows
 }
 
-pub fn normalize_path(path: &Path) -> String {
-  let s = String::from(path.to_str().unwrap());
-  if cfg!(windows) {
-    // TODO This isn't correct. Probbly should iterate over components.
-    s.replace("\\", "/")
-  } else {
-    s
+pub fn normalize_path(p: &Path) -> String {
+  let mut stack: Vec<Component> = vec![];
+
+  for component in p.components() {
+    match component {
+      Component::CurDir => {}
+
+      Component::ParentDir => {
+        let top = stack.last().cloned();
+
+        match top {
+          Some(c) => match c {
+            Component::Prefix(_) => {
+              stack.push(component);
+            }
+            Component::RootDir => {}
+            Component::CurDir => {
+              // A CurDir should never be found on the stack,
+              // since they are dropped when seen.
+              unreachable!();
+            }
+            Component::ParentDir => {
+              stack.push(component);
+            }
+            Component::Normal(_) => {
+              let _ = stack.pop();
+            }
+          },
+
+          None => {
+            stack.push(component);
+          }
+        }
+      }
+
+      _ => {
+        stack.push(component);
+      }
+    }
   }
+  let mut norm_path = if stack.is_empty() {
+    PathBuf::from(&Component::CurDir)
+  } else {
+    PathBuf::new()
+  };
+
+  for item in &stack {
+    norm_path.push(item);
+  }
+
+  norm_path.to_str().unwrap().into()
 }
