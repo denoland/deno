@@ -104,6 +104,7 @@ def fix_symlinks():
     remove_and_symlink("v8/third_party/jinja2", tp("jinja2"), True)
     remove_and_symlink("v8/third_party/llvm-build", tp("llvm-build"), True)
     remove_and_symlink("v8/third_party/markupsafe", tp("markupsafe"), True)
+    remove_and_symlink("../../build", tp("v8/build"), True)
 
     # On Windows, git doesn't create the right type of symlink if the symlink
     # and it's target are in different repos. Here we fix the symlinks that
