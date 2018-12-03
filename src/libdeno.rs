@@ -41,7 +41,6 @@ impl<'a> From<&'a [u8]> for deno_buf {
   }
 }
 
-
 type DenoRecvCb = unsafe extern "C" fn(
   user_data: *mut c_void,
   req_id: i32,
