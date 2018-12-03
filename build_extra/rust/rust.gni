@@ -39,6 +39,9 @@ out_dir = "$root_out_dir/rust_crates"
 # the arguments it passes to the system linker. That's what dummy.rs is for.
 _rustc_info = exec_script("get_rustc_info.py", [], "json")
 
+# Reads the cargo info from Cargo.toml
+_cargo_info = exec_script("get_cargo_info.py", [], "json")
+
 template("rust_crate") {
   config_name = "${target_name}_config"
   action_name = "${target_name}_rustc"
@@ -185,6 +188,9 @@ template("rust_crate") {
       # This is needed for transitive dependencies.
       "-L",
       "dependency=" + rebase_path(out_dir, root_build_dir),
+
+      # This is used to set env variables for Cargo build compatibility
+      "--cargo-pkg-version=${_cargo_info.version}",
 
       # Use colorful output even if stdout is redirected and not a tty.
       "--color=always",
