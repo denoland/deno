@@ -6,3 +6,4 @@
 /* symlink=dir
 /website/* symlink=dir
 /tools/clang symlink=dir
+/tools/memory symlink=dir
