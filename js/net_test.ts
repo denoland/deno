@@ -36,7 +36,6 @@ testPerm({ net: true }, async function netDialListen() {
   conn.close();
 });
 
-/* TODO Fix broken test.
 testPerm({ net: true }, async function netCloseReadSuccess() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
@@ -67,9 +66,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
   listener.close();
   conn.close();
 });
-*/
 
-/* TODO Fix broken test.
 testPerm({ net: true }, async function netDoubleCloseRead() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
@@ -95,9 +92,7 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
   listener.close();
   conn.close();
 });
-*/
 
-/* TODO Fix broken test.
 testPerm({ net: true }, async function netCloseWriteSuccess() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
@@ -130,9 +125,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
   listener.close();
   conn.close();
 });
-*/
 
-/* TODO Fix broken test.
 testPerm({ net: true }, async function netDoubleCloseWrite() {
   const addr = "127.0.0.1:4500";
   const listener = deno.listen("tcp", addr);
@@ -157,4 +150,3 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
   listener.close();
   conn.close();
 });
-*/
