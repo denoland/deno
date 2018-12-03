@@ -129,15 +129,16 @@ pub fn normalize_path(p: &Path) -> String {
       }
     }
   }
-  let mut norm_path = if stack.is_empty() {
+
+  let p = if stack.is_empty() {
     PathBuf::from(&Component::CurDir)
   } else {
-    PathBuf::new()
+    let mut norm_path = PathBuf::new();
+    for item in &stack {
+      norm_path.push(item);
+    }
+    norm_path
   };
 
-  for item in &stack {
-    norm_path.push(item);
-  }
-
-  norm_path.to_str().unwrap().into()
+  p.to_str().unwrap().into()
 }
