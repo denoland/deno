@@ -22,6 +22,9 @@ export function promiseRejectHandler(
     case "HandlerAddedAfterReject":
       rejectMap.delete(promise);
       break;
+    case "ResolveAfterResolved":
+      // Should not warn. See #1272
+      break;
     default:
       // error is string here
       otherErrorMap.set(promise, `Promise warning: ${error as string}`);
