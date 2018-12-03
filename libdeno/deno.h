@@ -34,6 +34,8 @@ Deno* deno_new(deno_buf snapshot, deno_buf shared, deno_recv_cb cb);
 Deno* deno_new_snapshotter(deno_buf shared, deno_recv_cb cb,
                            const char* js_filename, const char* js_source,
                            const char* source_map);
+// Generate a snapshot. The resulting buf can be used with deno_new.
+// The caller must free the returned data by calling delete[] buf.data_ptr.
 deno_buf deno_get_snapshot(Deno* d);
 
 void deno_delete(Deno* d);
