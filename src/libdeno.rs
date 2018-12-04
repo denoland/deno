@@ -29,6 +29,18 @@ impl deno_buf {
   }
 }
 
+/// Converts Rust &Buf to libdeno `deno_buf`.
+impl<'a> From<&'a [u8]> for deno_buf {
+  fn from(x: &'a [u8]) -> Self {
+    Self {
+      alloc_ptr: std::ptr::null_mut(),
+      alloc_len: 0,
+      data_ptr: x.as_ref().as_ptr() as *mut u8,
+      data_len: x.len(),
+    }
+  }
+}
+
 type DenoRecvCb = unsafe extern "C" fn(
   user_data: *mut c_void,
   req_id: i32,

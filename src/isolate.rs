@@ -190,15 +190,14 @@ impl Isolate {
 
   pub fn respond(&mut self, req_id: i32, buf: Buf) {
     self.state.metrics_op_completed(buf.len());
-
-    // TODO(zero-copy) Use Buf::leak(buf) to leak the heap allocated buf. And
-    // don't do the memcpy in ImportBuf() (in libdeno/binding.cc)
+    // deno_respond will memcpy the buf into V8's heap,
+    // so borrowing a reference here is sufficient.
     unsafe {
       libdeno::deno_respond(
         self.libdeno_isolate,
         self.as_void_ptr(),
         req_id,
-        buf.into(),
+        buf.as_ref().into(),
       )
     }
   }
@@ -268,20 +267,6 @@ impl Isolate {
 impl Drop for Isolate {
   fn drop(&mut self) {
     unsafe { libdeno::deno_delete(self.libdeno_isolate) }
-  }
-}
-
-/// Converts Rust Buf to libdeno `deno_buf`.
-impl From<Buf> for libdeno::deno_buf {
-  fn from(x: Buf) -> Self {
-    let len = x.len();
-    let ptr = Box::into_raw(x);
-    Self {
-      alloc_ptr: std::ptr::null_mut(),
-      alloc_len: 0,
-      data_ptr: ptr as *mut u8,
-      data_len: len,
-    }
   }
 }
 
