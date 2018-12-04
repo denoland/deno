@@ -93,18 +93,20 @@ script:
   ./tools/test_format.py
 
 - |-
-  # LSAN build of test_cc. We are in the process of getting a
-  # completely clean LSAN build, but it will take some work. So for now
-  # we just run a single test that passes under LSAN.
+  # LSAN build. We are in the process of getting a completely clean LSAN build,
+  # but it will take some work. So for now we just run a subset of the tests.
   echo is_asan=true >> target/debug/args.gn
   echo is_lsan=true >> target/debug/args.gn
-  DENO_BUILD_MODE=debug ./tools/build.py -j2 test_cc
-  ASAN_OPTIONS=detect_leaks=1 ./target/debug/test_cc
+  # We want to detect leaks during the build process as well as when executing
+  # the tests. So set the ASAN_OPTIONS env var before build.py is run.
+  export ASAN_OPTIONS=detect_leaks=1
+  ./tools/build.py -C target/debug -j2
+  ./target/debug/test_cc
 
 - |-
   # Release build and test
   bash -c "sleep 2100; pkill ninja; pkill cargo" &
-  DENO_BUILD_MODE=release ./tools/build.py -j2
+  ./tools/build.py -C target/release -j2
   DENO_BUILD_MODE=release ./tools/test.py
 
 - |-
