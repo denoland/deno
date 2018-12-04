@@ -13,14 +13,14 @@ namespace deno {
 // deno_s = Wrapped Isolate.
 class DenoIsolate {
  public:
-  DenoIsolate(deno_buf snapshot, deno_recv_cb cb, deno_buf shared)
+  DenoIsolate(deno_buf snapshot, deno_config config)
       : isolate_(nullptr),
-        shared_(shared),
+        shared_(config.shared),
         current_args_(nullptr),
         snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
         pending_promise_events_(0),
-        cb_(cb),
+        recv_cb_(config.recv_cb),
         next_req_id_(0),
         user_data_(nullptr) {
     array_buffer_allocator_ = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -48,7 +48,7 @@ class DenoIsolate {
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
   int32_t pending_promise_events_;
-  deno_recv_cb cb_;
+  deno_recv_cb recv_cb_;
   int32_t next_req_id_;
   void* user_data_;
 
@@ -65,20 +65,20 @@ class DenoIsolate {
 };
 
 class UserDataScope {
-  DenoIsolate* deno;
-  void* prev_data;
-  void* data;  // Not necessary; only for sanity checking.
+  DenoIsolate* deno_;
+  void* prev_data_;
+  void* data_;  // Not necessary; only for sanity checking.
 
  public:
-  UserDataScope(DenoIsolate* deno_, void* data_) : deno(deno_), data(data_) {
+  UserDataScope(DenoIsolate* deno, void* data) : deno_(deno), data_(data) {
     CHECK(deno->user_data_ == nullptr || deno->user_data_ == data_);
-    prev_data = deno->user_data_;
+    prev_data_ = deno->user_data_;
     deno->user_data_ = data;
   }
 
   ~UserDataScope() {
-    CHECK(deno->user_data_ == data);
-    deno->user_data_ = prev_data;
+    CHECK(deno_->user_data_ == data_);
+    deno_->user_data_ = prev_data_;
   }
 };
 
