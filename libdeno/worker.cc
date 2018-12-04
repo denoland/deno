@@ -19,6 +19,7 @@
 #include "third_party/v8/src/utils.h"
 
 #include "worker.h"
+#include "file_util.h"
 
 const int kMaxWorkers = 100;
 
@@ -53,62 +54,18 @@ class ExternalOwningOneByteStringResource
   size_t length_;
 };
 
-static FILE* FOpen(const char* path, const char* mode) {
-#if defined(_MSC_VER) && (defined(_WIN32) || defined(_WIN64))
-  FILE* result;
-  if (fopen_s(&result, path, mode) == 0) {
-    return result;
-  } else {
-    return nullptr;
-  }
-#else
-  FILE* file = fopen(path, mode);
-  if (file == nullptr) return nullptr;
-  struct stat file_stat;
-  if (fstat(fileno(file), &file_stat) != 0) return nullptr;
-  bool is_regular_file = ((file_stat.st_mode & S_IFREG) != 0);
-  if (is_regular_file) return file;
-  fclose(file);
-  return nullptr;
-#endif
-}
-
-
-static char* ReadChars(const char* name, int* size_out) {
-//  if (Shell::options.read_from_tcp_port >= 0) {
-//    return Shell::ReadCharsFromTcpPort(name, size_out);
-//  }
-
-  FILE* file = FOpen(name, "rb");
-  if (file == nullptr) return nullptr;
-
-  fseek(file, 0, SEEK_END);
-  size_t size = ftell(file);
-  rewind(file);
-
-  char* chars = new char[size + 1];
-  chars[size] = '\0';
-  for (size_t i = 0; i < size;) {
-    i += fread(&chars[i], 1, size - i, file);
-    if (ferror(file)) {
-      fclose(file);
-      delete[] chars;
-      return nullptr;
-    }
-  }
-  fclose(file);
-  *size_out = static_cast<int>(size);
-  return chars;
-}
-
 
 // Reads a file into a v8 string.
 v8::Local<v8::String> ReadFile(v8::Isolate* isolate, const char* name) {
   int size = 0;
-  char* chars = ReadChars(name, &size);
+
+  std::string file_contents;
+  CHECK(deno::ReadFileToString(name, &file_contents));
+  char* chars = (char*)file_contents.c_str();
+  size = (int)strlen(chars);
   if (chars == nullptr) return v8::Local<v8::String>();
   v8::Local<v8::String> result;
-//  if (i::FLAG_use_external_strings && i::String::IsAscii(chars, size)) {
+
   if (i::FLAG_use_external_strings && i::String::IsAscii(chars, size)) {
     v8::String::ExternalOneByteStringResource* resource =
         new ExternalOwningOneByteStringResource(
