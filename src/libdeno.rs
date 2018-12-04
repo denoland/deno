@@ -96,15 +96,17 @@ type DenoRecvCb = unsafe extern "C" fn(
   data_buf: deno_buf,
 );
 
+#[repr(C)]
+pub struct deno_config {
+  pub shared: deno_buf,
+  pub recv_cb: DenoRecvCb,
+}
+
 extern "C" {
   pub fn deno_init();
   pub fn deno_v8_version() -> *const c_char;
   pub fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char);
-  pub fn deno_new(
-    snapshot: deno_buf,
-    shared: deno_buf,
-    cb: DenoRecvCb,
-  ) -> *const isolate;
+  pub fn deno_new(snapshot: deno_buf, config: deno_config) -> *const isolate;
   pub fn deno_delete(i: *const isolate);
   pub fn deno_last_exception(i: *const isolate) -> *const c_char;
   pub fn deno_check_promise_errors(i: *const isolate);

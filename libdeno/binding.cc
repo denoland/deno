@@ -324,7 +324,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   DCHECK_EQ(d->current_args_, nullptr);
   d->current_args_ = &args;
 
-  d->cb_(d->user_data_, req_id, control, data);
+  d->recv_cb_(d->user_data_, req_id, control, data);
 
   if (d->current_args_ == nullptr) {
     // This indicates that deno_repond() was called already.
