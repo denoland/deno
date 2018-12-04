@@ -2,29 +2,50 @@
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
-use std::ptr::null_mut;
+use std::ops::{Deref, DerefMut};
+use std::ptr::null;
 
+// TODO(F001): change this definition to `extern { pub type isolate; }`
+// After RFC 1861 is stablized. See https://github.com/rust-lang/rust/issues/43467.
 #[repr(C)]
 pub struct isolate {
   _unused: [u8; 0],
 }
 
+/// If "alloc_ptr" is not null, this type represents a buffer which is created
+/// in C side, and then passed to Rust side by `DenoRecvCb`. Finally it should
+/// be moved back to C side by `deno_respond`. If it is not passed to
+/// `deno_respond` in the end, it will be leaked.
+///
+/// If "alloc_ptr" is null, this type represents a borrowed slice.
 #[repr(C)]
-#[derive(Clone, PartialEq)]
 pub struct deno_buf {
-  pub alloc_ptr: *mut u8,
-  pub alloc_len: usize,
-  pub data_ptr: *mut u8,
-  pub data_len: usize,
+  alloc_ptr: *const u8,
+  alloc_len: usize,
+  data_ptr: *const u8,
+  data_len: usize,
 }
+
+/// `deno_buf` can not clone, and there is no interior mutability.
+/// This type satisfies Send bound.
+unsafe impl Send for deno_buf {}
 
 impl deno_buf {
   pub fn empty() -> Self {
     Self {
-      alloc_ptr: null_mut(),
+      alloc_ptr: null(),
       alloc_len: 0,
-      data_ptr: null_mut(),
+      data_ptr: null(),
       data_len: 0,
+    }
+  }
+
+  pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
+    Self {
+      alloc_ptr: null(),
+      alloc_len: 0,
+      data_ptr: ptr,
+      data_len: len,
     }
   }
 }
@@ -33,11 +54,38 @@ impl deno_buf {
 impl<'a> From<&'a [u8]> for deno_buf {
   fn from(x: &'a [u8]) -> Self {
     Self {
-      alloc_ptr: std::ptr::null_mut(),
+      alloc_ptr: null(),
       alloc_len: 0,
-      data_ptr: x.as_ref().as_ptr() as *mut u8,
+      data_ptr: x.as_ref().as_ptr(),
       data_len: x.len(),
     }
+  }
+}
+
+impl Deref for deno_buf {
+  type Target = [u8];
+  fn deref(&self) -> &[u8] {
+    unsafe { std::slice::from_raw_parts(self.data_ptr, self.data_len) }
+  }
+}
+
+impl DerefMut for deno_buf {
+  fn deref_mut(&mut self) -> &mut [u8] {
+    unsafe {
+      std::slice::from_raw_parts_mut(self.data_ptr as *mut u8, self.data_len)
+    }
+  }
+}
+
+impl AsRef<[u8]> for deno_buf {
+  fn as_ref(&self) -> &[u8] {
+    &*self
+  }
+}
+
+impl AsMut<[u8]> for deno_buf {
+  fn as_mut(&mut self) -> &mut [u8] {
+    &mut *self
   }
 }
 
