@@ -29,8 +29,9 @@ int main(int argc, char** argv) {
   }
 
   deno_init();
+  deno_config config = {deno::empty_buf, nullptr};
   Deno* d = deno_new_snapshotter(
-      deno::empty_buf, nullptr, js_fn, js_source.c_str(),
+      config, js_fn, js_source.c_str(),
       source_map_fn != nullptr ? source_map.c_str() : nullptr);
 
   auto snapshot = deno_get_snapshot(d);

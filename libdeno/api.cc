@@ -13,8 +13,8 @@
 
 extern "C" {
 
-Deno* deno_new(deno_buf snapshot, deno_buf shared, deno_recv_cb cb) {
-  deno::DenoIsolate* d = new deno::DenoIsolate(snapshot, cb, shared);
+Deno* deno_new(deno_buf snapshot, deno_config config) {
+  deno::DenoIsolate* d = new deno::DenoIsolate(snapshot, config);
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator = d->array_buffer_allocator_;
   params.external_references = deno::external_references;
@@ -46,12 +46,11 @@ Deno* deno_new(deno_buf snapshot, deno_buf shared, deno_recv_cb cb) {
   return reinterpret_cast<Deno*>(d);
 }
 
-Deno* deno_new_snapshotter(deno_buf shared, deno_recv_cb cb,
-                           const char* js_filename, const char* js_source,
-                           const char* source_map) {
+Deno* deno_new_snapshotter(deno_config config, const char* js_filename,
+                           const char* js_source, const char* source_map) {
   auto* creator = new v8::SnapshotCreator(deno::external_references);
   auto* isolate = creator->GetIsolate();
-  auto* d = new deno::DenoIsolate(deno::empty_buf, cb, shared);
+  auto* d = new deno::DenoIsolate(deno::empty_buf, config);
   d->snapshot_creator_ = creator;
   d->AddIsolate(isolate);
   {
@@ -100,10 +99,10 @@ const char* deno_last_exception(Deno* d_) {
   return d->last_exception_.c_str();
 }
 
-int deno_execute(Deno* d_, void* user_data_, const char* js_filename,
+int deno_execute(Deno* d_, void* user_data, const char* js_filename,
                  const char* js_source) {
   auto* d = unwrap(d_);
-  deno::UserDataScope user_data_scope(d, user_data_);
+  deno::UserDataScope user_data_scope(d, user_data);
   auto* isolate = d->isolate_;
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
@@ -112,7 +111,7 @@ int deno_execute(Deno* d_, void* user_data_, const char* js_filename,
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
 }
 
-int deno_respond(Deno* d_, void* user_data_, int32_t req_id, deno_buf buf) {
+int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
   auto* d = unwrap(d_);
   if (d->current_args_ != nullptr) {
     // Synchronous response.
@@ -123,7 +122,7 @@ int deno_respond(Deno* d_, void* user_data_, int32_t req_id, deno_buf buf) {
   }
 
   // Asynchronous response.
-  deno::UserDataScope user_data_scope(d, user_data_);
+  deno::UserDataScope user_data_scope(d, user_data);
   v8::Locker locker(d->isolate_);
   v8::Isolate::Scope isolate_scope(d->isolate_);
   v8::HandleScope handle_scope(d->isolate_);
