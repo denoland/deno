@@ -29,11 +29,16 @@ void deno_init();
 const char* deno_v8_version();
 void deno_set_v8_flags(int* argc, char** argv);
 
-Deno* deno_new(deno_buf snapshot, deno_buf shared, deno_recv_cb cb);
+typedef struct {
+  deno_buf shared;       // Shared buffer to be mapped to libdeno.shared
+  deno_recv_cb recv_cb;  // Maps to libdeno.send() calls.
+} deno_config;
 
-Deno* deno_new_snapshotter(deno_buf shared, deno_recv_cb cb,
-                           const char* js_filename, const char* js_source,
-                           const char* source_map);
+Deno* deno_new(deno_buf snapshot, deno_config config);
+
+Deno* deno_new_snapshotter(deno_config config, const char* js_filename,
+                           const char* js_source, const char* source_map);
+
 // Generate a snapshot. The resulting buf can be used with deno_new.
 // The caller must free the returned data by calling delete[] buf.data_ptr.
 deno_buf deno_get_snapshot(Deno* d);
