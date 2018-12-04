@@ -38,9 +38,11 @@ pub type Buf = Box<[u8]>;
 pub type Op = Future<Item = Buf, Error = DenoError> + Send;
 
 // Returns (is_sync, op)
-pub type Dispatch =
-  fn(isolate: &mut Isolate, buf: &[u8], data_buf: &'static mut [u8])
-    -> (bool, Box<Op>);
+pub type Dispatch = fn(
+  isolate: &mut Isolate,
+  buf: libdeno::deno_buf,
+  data_buf: libdeno::deno_buf,
+) -> (bool, Box<Op>);
 
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
@@ -211,12 +213,7 @@ impl Isolate {
   }
 
   fn timeout(&mut self) {
-    let dummy_buf = libdeno::deno_buf {
-      alloc_ptr: std::ptr::null_mut(),
-      alloc_len: 0,
-      data_ptr: std::ptr::null_mut(),
-      data_len: 0,
-    };
+    let dummy_buf = libdeno::deno_buf::empty();
     unsafe {
       libdeno::deno_respond(
         self.libdeno_isolate,
@@ -278,27 +275,12 @@ extern "C" fn pre_dispatch(
   data_buf: libdeno::deno_buf,
 ) {
   // for metrics
-  let bytes_sent_control = control_buf.data_len;
-  let bytes_sent_data = data_buf.data_len;
-
-  // control_buf is only valid for the lifetime of this call, thus is
-  // interpretted as a slice.
-  let control_slice = unsafe {
-    std::slice::from_raw_parts(control_buf.data_ptr, control_buf.data_len)
-  };
-
-  // data_buf is valid for the lifetime of the promise, thus a mutable buf with
-  // static lifetime.
-  let data_slice = unsafe {
-    std::slice::from_raw_parts_mut::<'static>(
-      data_buf.data_ptr,
-      data_buf.data_len,
-    )
-  };
+  let bytes_sent_control = control_buf.len();
+  let bytes_sent_data = data_buf.len();
 
   let isolate = Isolate::from_void_ptr(user_data);
   let dispatch = isolate.dispatch;
-  let (is_sync, op) = dispatch(isolate, control_slice, data_slice);
+  let (is_sync, op) = dispatch(isolate, control_buf, data_buf);
 
   isolate
     .state
@@ -391,8 +373,8 @@ mod tests {
 
   fn dispatch_sync(
     _isolate: &mut Isolate,
-    control: &[u8],
-    data: &'static mut [u8],
+    control: libdeno::deno_buf,
+    data: libdeno::deno_buf,
   ) -> (bool, Box<Op>) {
     assert_eq!(control[0], 4);
     assert_eq!(control[1], 5);
@@ -498,8 +480,8 @@ mod tests {
 
   fn metrics_dispatch_sync(
     _isolate: &mut Isolate,
-    _control: &[u8],
-    _data: &'static mut [u8],
+    _control: libdeno::deno_buf,
+    _data: libdeno::deno_buf,
   ) -> (bool, Box<Op>) {
     // Send back some sync response
     let vec: Box<[u8]> = vec![1, 2, 3, 4].into_boxed_slice();
@@ -509,8 +491,8 @@ mod tests {
 
   fn metrics_dispatch_async(
     _isolate: &mut Isolate,
-    _control: &[u8],
-    _data: &'static mut [u8],
+    _control: libdeno::deno_buf,
+    _data: libdeno::deno_buf,
   ) -> (bool, Box<Op>) {
     // Send back some sync response
     let vec: Box<[u8]> = vec![1, 2, 3, 4].into_boxed_slice();
