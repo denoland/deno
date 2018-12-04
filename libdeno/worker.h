@@ -1,6 +1,20 @@
 #include "third_party/v8/include/v8.h"
 
 namespace deno {
+
+
+class SerializationDataQueue {
+ public:
+//  void Enqueue(std::unique_ptr<SerializationData> data);
+//  bool Dequeue(std::unique_ptr<SerializationData>* data);
+  bool IsEmpty();
+  void Clear();
+
+ private:
+  v8::base::Mutex mutex_;
+//  std::vector<std::unique_ptr<SerializationData>> data_;
+};
+
 class Worker {
  public:
   Worker();
@@ -42,14 +56,14 @@ class Worker {
 
   void ExecuteInThread();
 //  static void PostMessageOut(const v8::FunctionCallbackInfo<v8::Value>& args);
-//
-//  base::Semaphore in_semaphore_;
-//  base::Semaphore out_semaphore_;
-//  SerializationDataQueue in_queue_;
-//  SerializationDataQueue out_queue_;
-//  base::Thread* thread_;
-//  char* script_;
-//  base::Atomic32 running_;
+
+  v8::base::Semaphore in_semaphore_;
+  v8::base::Semaphore out_semaphore_;
+  SerializationDataQueue in_queue_;
+  SerializationDataQueue out_queue_;
+  v8::base::Thread* thread_;
+  char* script_;
+  v8::base::Atomic32 running_;
 };
 
   void WorkerNew(const v8::FunctionCallbackInfo<v8::Value>& args);

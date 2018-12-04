@@ -156,7 +156,44 @@ void WorkerNew(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
+bool SerializationDataQueue::IsEmpty() {
+//  base::LockGuard<base::Mutex> lock_guard(&mutex_);
+//  return data_.empty();
+    return true;
+}
 
+
+void SerializationDataQueue::Clear() {
+//  base::LockGuard<base::Mutex> lock_guard(&mutex_);
+//  data_.clear();
+}
+
+Worker::Worker()
+    : in_semaphore_(0),
+      out_semaphore_(0),
+      thread_(nullptr),
+      script_(nullptr),
+      running_(false) {}
+
+Worker::~Worker() {
+  delete thread_;
+  thread_ = nullptr;
+  delete[] script_;
+  script_ = nullptr;
+  in_queue_.Clear();
+  out_queue_.Clear();
+}
+
+void Worker::StartExecuteInThread(const char* script) {
+  running_ = true;
+  script_ = i::StrDup(script);
+  thread_ = new WorkerThread(this);
+  thread_->Start();
+}
+
+void Worker::ExecuteInThread() {
+
+}
 // void WorkerPostMessage(const v8::FunctionCallbackInfo<v8::Value>& args) {
 //   v8::Isolate* isolate = args.GetIsolate();
 //   v8::HandleScope handle_scope(isolate);
