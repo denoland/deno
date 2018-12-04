@@ -190,6 +190,8 @@ impl Isolate {
 
   pub fn respond(&mut self, req_id: i32, buf: Buf) {
     self.state.metrics_op_completed(buf.len());
+    // deno_respond will memcpy the buf into V8's heap,
+    // so borrowing a reference here is sufficient.
     unsafe {
       libdeno::deno_respond(
         self.libdeno_isolate,
