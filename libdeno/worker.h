@@ -52,7 +52,7 @@ class Worker {
 //  base::Atomic32 running_;
 };
 
-  static void WorkerNew(const v8::FunctionCallbackInfo<v8::Value>& args);
+  void WorkerNew(const v8::FunctionCallbackInfo<v8::Value>& args);
 //   static void WorkerPostMessage(
 //       const v8::FunctionCallbackInfo<v8::Value>& args);
 //   static void WorkerGetMessage(const v8::FunctionCallbackInfo<v8::Value>& args);
