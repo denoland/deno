@@ -183,7 +183,7 @@ void WorkerNew(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
     if (!allow_new_workers_) return;
 
-    v8::Worker* worker = new v8::Worker;
+    Worker* worker = new Worker;
     args.Holder()->SetAlignedPointerInInternalField(0, worker);
     workers_.push_back(worker);
 
