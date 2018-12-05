@@ -30,11 +30,11 @@ test(async function filesToAsyncIterator() {
   assertEqual(totalSize, 12);
 });
 
-testPerm({write: true}, async function createFile() {
+testPerm({ write: true }, async function createFile() {
   const tempDir = await deno.makeTempDir();
   const filename = tempDir + "/test.txt";
   // TODO: replace with OpenMode enum
-  let f = await deno.open(filename, 'w');
+  let f = await deno.open(filename, "w");
   let fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile());
   assert(fileInfo.len === 0);
