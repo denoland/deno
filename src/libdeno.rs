@@ -31,6 +31,7 @@ pub struct deno_buf {
 unsafe impl Send for deno_buf {}
 
 impl deno_buf {
+  #[inline]
   pub fn empty() -> Self {
     Self {
       alloc_ptr: null(),
@@ -40,6 +41,7 @@ impl deno_buf {
     }
   }
 
+  #[inline]
   pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
     Self {
       alloc_ptr: null(),
@@ -52,6 +54,7 @@ impl deno_buf {
 
 /// Converts Rust &Buf to libdeno `deno_buf`.
 impl<'a> From<&'a [u8]> for deno_buf {
+  #[inline]
   fn from(x: &'a [u8]) -> Self {
     Self {
       alloc_ptr: null(),
@@ -64,27 +67,37 @@ impl<'a> From<&'a [u8]> for deno_buf {
 
 impl Deref for deno_buf {
   type Target = [u8];
+  #[inline]
   fn deref(&self) -> &[u8] {
     unsafe { std::slice::from_raw_parts(self.data_ptr, self.data_len) }
   }
 }
 
 impl DerefMut for deno_buf {
+  #[inline]
   fn deref_mut(&mut self) -> &mut [u8] {
     unsafe {
+      if self.alloc_ptr.is_null() {
+        panic!("Can't modify the buf");
+      }
       std::slice::from_raw_parts_mut(self.data_ptr as *mut u8, self.data_len)
     }
   }
 }
 
 impl AsRef<[u8]> for deno_buf {
+  #[inline]
   fn as_ref(&self) -> &[u8] {
     &*self
   }
 }
 
 impl AsMut<[u8]> for deno_buf {
+  #[inline]
   fn as_mut(&mut self) -> &mut [u8] {
+    if self.alloc_ptr.is_null() {
+      panic!("Can't modify the buf");
+    }
     &mut *self
   }
 }
@@ -112,13 +125,13 @@ extern "C" {
   pub fn deno_check_promise_errors(i: *const isolate);
   pub fn deno_respond(
     i: *const isolate,
-    user_data: *mut c_void,
+    user_data: *const c_void,
     req_id: i32,
     buf: deno_buf,
   );
   pub fn deno_execute(
     i: *const isolate,
-    user_data: *mut c_void,
+    user_data: *const c_void,
     js_filename: *const c_char,
     js_source: *const c_char,
   ) -> c_int;
