@@ -591,12 +591,16 @@ fn op_open(
   //  let perm = inner.perm();
   let mode = inner.mode().unwrap();
 
-  let op = tokio::fs::OpenOptions::new()
+  let mut open_options = tokio::fs::OpenOptions::new();
+
+  open_options
     .create(mode == "w" || mode == "w+")
     .create_new(mode == "x")
     .read(true)
     .write(mode == "w" || mode == "w+" || mode == "x")
-    .truncate(mode == "w+")
+    .truncate(mode == "w+");
+
+  let op = open_options
     .open(filename)
     .map_err(DenoError::from)
     .and_then(move |fs_file| -> OpResult {
