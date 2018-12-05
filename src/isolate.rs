@@ -14,6 +14,7 @@ use permissions::DenoPermissions;
 use futures::Future;
 use libc::c_void;
 use std;
+use std::cell::Cell;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -38,19 +39,17 @@ pub type Buf = Box<[u8]>;
 pub type Op = Future<Item = Buf, Error = DenoError> + Send;
 
 // Returns (is_sync, op)
-pub type Dispatch = fn(
-  isolate: &mut Isolate,
-  buf: libdeno::deno_buf,
-  data_buf: libdeno::deno_buf,
-) -> (bool, Box<Op>);
+pub type Dispatch =
+  fn(isolate: &Isolate, buf: libdeno::deno_buf, data_buf: libdeno::deno_buf)
+    -> (bool, Box<Op>);
 
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
   tx: mpsc::Sender<(i32, Buf)>,
-  ntasks: i32,
-  pub timeout_due: Option<Instant>,
+  ntasks: Cell<i32>,
+  timeout_due: Cell<Option<Instant>>,
   pub state: Arc<IsolateState>,
 }
 
@@ -79,18 +78,22 @@ impl IsolateState {
     }
   }
 
+  #[inline]
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
     self.permissions.check_write(filename)
   }
 
+  #[inline]
   pub fn check_env(&self) -> DenoResult<()> {
     self.permissions.check_env()
   }
 
+  #[inline]
   pub fn check_net(&self, filename: &str) -> DenoResult<()> {
     self.permissions.check_net(filename)
   }
 
+  #[inline]
   pub fn check_run(&self) -> DenoResult<()> {
     self.permissions.check_run()
   }
@@ -154,23 +157,35 @@ impl Isolate {
       dispatch,
       rx,
       tx,
-      ntasks: 0,
-      timeout_due: None,
+      ntasks: Cell::new(0),
+      timeout_due: Cell::new(None),
       state,
     }
   }
 
-  pub fn as_void_ptr(&mut self) -> *mut c_void {
-    self as *mut _ as *mut c_void
+  #[inline]
+  pub fn as_raw_ptr(&self) -> *const c_void {
+    self as *const _ as *const c_void
   }
 
-  pub fn from_void_ptr<'a>(ptr: *mut c_void) -> &'a mut Self {
-    let ptr = ptr as *mut _;
-    unsafe { &mut *ptr }
+  #[inline]
+  pub unsafe fn from_raw_ptr<'a>(ptr: *const c_void) -> &'a Self {
+    let ptr = ptr as *const _;
+    &*ptr
+  }
+
+  #[inline]
+  pub fn get_timeout_due(&self) -> Option<Instant> {
+    self.timeout_due.clone().into_inner()
+  }
+
+  #[inline]
+  pub fn set_timeout_due(&self, inst: Option<Instant>) {
+    self.timeout_due.set(inst);
   }
 
   pub fn execute(
-    &mut self,
+    &self,
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), DenoException> {
@@ -179,7 +194,7 @@ impl Isolate {
     let r = unsafe {
       libdeno::deno_execute(
         self.libdeno_isolate,
-        self.as_void_ptr(),
+        self.as_raw_ptr(),
         filename.as_ptr(),
         source.as_ptr(),
       )
@@ -192,21 +207,21 @@ impl Isolate {
     Ok(())
   }
 
-  pub fn respond(&mut self, req_id: i32, buf: Buf) {
+  pub fn respond(&self, req_id: i32, buf: Buf) {
     self.state.metrics_op_completed(buf.len());
     // deno_respond will memcpy the buf into V8's heap,
     // so borrowing a reference here is sufficient.
     unsafe {
       libdeno::deno_respond(
         self.libdeno_isolate,
-        self.as_void_ptr(),
+        self.as_raw_ptr(),
         req_id,
         buf.as_ref().into(),
       )
     }
   }
 
-  fn complete_op(&mut self, req_id: i32, buf: Buf) {
+  fn complete_op(&self, req_id: i32, buf: Buf) {
     // Receiving a message on rx exactly corresponds to an async task
     // completing.
     self.ntasks_decrement();
@@ -214,12 +229,12 @@ impl Isolate {
     self.respond(req_id, buf);
   }
 
-  fn timeout(&mut self) {
+  fn timeout(&self) {
     let dummy_buf = libdeno::deno_buf::empty();
     unsafe {
       libdeno::deno_respond(
         self.libdeno_isolate,
-        self.as_void_ptr(),
+        self.as_raw_ptr(),
         -1,
         dummy_buf,
       )
@@ -234,10 +249,10 @@ impl Isolate {
 
   // TODO Use Park abstraction? Note at time of writing Tokio default runtime
   // does not have new_with_park().
-  pub fn event_loop(&mut self) {
+  pub fn event_loop(&self) {
     // Main thread event loop.
     while !self.is_idle() {
-      match recv_deadline(&self.rx, self.timeout_due) {
+      match recv_deadline(&self.rx, self.get_timeout_due()) {
         Ok((req_id, buf)) => self.complete_op(req_id, buf),
         Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
         Err(e) => panic!("recv_deadline() failed: {:?}", e),
@@ -248,18 +263,21 @@ impl Isolate {
     self.check_promise_errors();
   }
 
-  fn ntasks_increment(&mut self) {
-    assert!(self.ntasks >= 0);
-    self.ntasks += 1;
+  #[inline]
+  fn ntasks_increment(&self) {
+    assert!(self.ntasks.get() >= 0);
+    self.ntasks.set(self.ntasks.get() + 1);
   }
 
-  fn ntasks_decrement(&mut self) {
-    self.ntasks -= 1;
-    assert!(self.ntasks >= 0);
+  #[inline]
+  fn ntasks_decrement(&self) {
+    self.ntasks.set(self.ntasks.get() - 1);
+    assert!(self.ntasks.get() >= 0);
   }
 
+  #[inline]
   fn is_idle(&self) -> bool {
-    self.ntasks == 0 && self.timeout_due.is_none()
+    self.ntasks.get() == 0 && self.get_timeout_due().is_none()
   }
 }
 
@@ -280,7 +298,9 @@ extern "C" fn pre_dispatch(
   let bytes_sent_control = control_buf.len();
   let bytes_sent_data = data_buf.len();
 
-  let isolate = Isolate::from_void_ptr(user_data);
+  // We should ensure that there is no other `&mut Isolate` exists.
+  // And also, it should be in the same thread with other `&Isolate`s.
+  let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
   let dispatch = isolate.dispatch;
   let (is_sync, op) = dispatch(isolate, control_buf, data_buf);
 
@@ -353,7 +373,7 @@ mod tests {
 
     let state = Arc::new(IsolateState::new(flags, rest_argv));
     let snapshot = libdeno::deno_buf::empty();
-    let mut isolate = Isolate::new(snapshot, state, dispatch_sync);
+    let isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute(
@@ -374,7 +394,7 @@ mod tests {
   }
 
   fn dispatch_sync(
-    _isolate: &mut Isolate,
+    _isolate: &Isolate,
     control: libdeno::deno_buf,
     data: libdeno::deno_buf,
   ) -> (bool, Box<Op>) {
@@ -395,7 +415,7 @@ mod tests {
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let state = Arc::new(IsolateState::new(flags, rest_argv));
     let snapshot = libdeno::deno_buf::empty();
-    let mut isolate = Isolate::new(snapshot, state, metrics_dispatch_sync);
+    let isolate = Isolate::new(snapshot, state, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -432,7 +452,7 @@ mod tests {
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let state = Arc::new(IsolateState::new(flags, rest_argv));
     let snapshot = libdeno::deno_buf::empty();
-    let mut isolate = Isolate::new(snapshot, state, metrics_dispatch_async);
+    let isolate = Isolate::new(snapshot, state, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -481,7 +501,7 @@ mod tests {
   }
 
   fn metrics_dispatch_sync(
-    _isolate: &mut Isolate,
+    _isolate: &Isolate,
     _control: libdeno::deno_buf,
     _data: libdeno::deno_buf,
   ) -> (bool, Box<Op>) {
@@ -492,7 +512,7 @@ mod tests {
   }
 
   fn metrics_dispatch_async(
-    _isolate: &mut Isolate,
+    _isolate: &Isolate,
     _control: libdeno::deno_buf,
     _data: libdeno::deno_buf,
   ) -> (bool, Box<Op>) {
