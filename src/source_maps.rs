@@ -24,7 +24,8 @@ pub struct JavaScriptError {
 fn main_map_mappings() -> (String, Vec<Value>) {
   let main_map_json =
     include_str!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js.map"));
-  let main_map: serde_json::Value = serde_json::from_str(main_map_json).unwrap();
+  let main_map: serde_json::Value =
+    serde_json::from_str(main_map_json).unwrap();
   let mappings = main_map["mappings"].as_str().unwrap().to_string();
   let sources = main_map["sources"].as_array().unwrap().to_vec();
   (mappings, sources)
@@ -63,7 +64,8 @@ fn parse_stack_frame(
   get_map: &Fn(&str) -> String,
 ) -> String {
   let mappings = get_mappings(frame.source_url.as_ref(), mappings_map, get_map);
-  let frame_pos = (frame.source_url.to_owned(), frame.line_number, frame.column);
+  let frame_pos =
+    (frame.source_url.to_owned(), frame.line_number, frame.column);
   let (source_url, line_number, column) = match mappings {
     Some(mappings) => match mappings.original_location_for(
       frame.line_number,
@@ -74,10 +76,14 @@ fn parse_stack_frame(
         Some(original) => {
           let source_name = match frame.source_url.as_ref() {
             "gen/bundle/main.js" => get_original_source(original.source),
-            _ => frame.source_url.to_owned()
+            _ => frame.source_url.to_owned(),
           };
-          (source_name, original.original_line, original.original_column)
-        },
+          (
+            source_name,
+            original.original_line,
+            original.original_column,
+          )
+        }
         None => frame_pos,
       },
       None => frame_pos,
@@ -169,18 +175,19 @@ fn test_parse_javascript_error_03() {
   // Because this is accessing the live bundle, this test might be more fragile
   let error = JavaScriptError {
     message: "TypeError: baz".to_string(),
-    stack_trace: vec![
-      StackFrame {
-        line_number: 11,
-        column: 12,
-        source_url: "gen/bundle/main.js".to_string(),
-        function_name: "setLogDebug".to_string(),
-        is_eval: false,
-        is_constructor: false,
-        is_wasm: false,
-      },
-    ],
+    stack_trace: vec![StackFrame {
+      line_number: 11,
+      column: 12,
+      source_url: "gen/bundle/main.js".to_string(),
+      function_name: "setLogDebug".to_string(),
+      is_eval: false,
+      is_constructor: false,
+      is_wasm: false,
+    }],
   };
   let result = parse_javascript_error(&error, &get_map_stub);
-  assert_eq!("TypeError: baz\n    at setLogDebug (deno/js/util.ts:7:2)\n", result);
+  assert_eq!(
+    "TypeError: baz\n    at setLogDebug (deno/js/util.ts:15:16)\n",
+    result
+  );
 }

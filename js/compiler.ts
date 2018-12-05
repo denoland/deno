@@ -3,8 +3,6 @@ import * as ts from "typescript";
 import { MediaType } from "gen/msg_generated";
 
 import { assetSourceCode } from "./assets";
-import { libdeno } from "./libdeno";
-import { globalEval } from "./global_eval";
 import * as os from "./os";
 import { CodeProvider } from "./runner";
 import { assert, log, notImplemented } from "./util";
@@ -131,8 +129,6 @@ export class Compiler
     ContainingFile,
     Map<ModuleSpecifier, ModuleFileName>
   >();
-  // A reference to global eval, so it can be monkey patched during testing
-  private _globalEval = globalEval;
   // A reference to the log utility, so it can be monkey patched during testing
   private _log = log;
   // A map of module file names to module meta data
@@ -397,34 +393,6 @@ export class Compiler
   getGeneratedSourceMap(fileName: string): string {
     const moduleMetaData = this._moduleMetaDataMap.get(fileName);
     return moduleMetaData ? moduleMetaData.sourceMap : "";
-  }
-
-  /** For a given module specifier and containing file, return a list of
-   * absolute identifiers for dependent modules that are required by this
-   * module.
-   */
-  getModuleDependencies(
-    moduleSpecifier: ModuleSpecifier,
-    containingFile: ContainingFile
-  ): ModuleFileName[] {
-    assert(
-      this._runQueue.length === 0,
-      "Cannot get dependencies with modules queued to be run."
-    );
-    const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
-    assert(
-      !moduleMetaData.hasRun,
-      "Cannot get dependencies for a module that has already been run."
-    );
-    this._gatherDependencies(moduleMetaData);
-    const dependencies = this._runQueue.map(
-      moduleMetaData => moduleMetaData.moduleId
-    );
-    // empty the run queue, to free up references to factories we have collected
-    // and to ensure that if there is a further invocation of `.run()` the
-    // factories don't get called
-    this._runQueue = [];
-    return dependencies;
   }
 
   /** Get the output code for a module based on its filename. A call to

@@ -40,7 +40,7 @@ export default function denoMain() {
 
   setLogDebug(startResMsg.debugFlag());
 
-  const compiler = DenoCompiler.instance();
+  const compiler = Compiler.instance();
 
   // handle `--types`
   if (startResMsg.typesFlag()) {
