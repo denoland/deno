@@ -588,9 +588,16 @@ fn op_open(
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
   let filename = PathBuf::from(inner.filename().unwrap());
-  // TODO let perm = inner.perm();
+  //  let perm = inner.perm();
+  let mode = inner.mode().unwrap();
 
-  let op = tokio::fs::File::open(filename)
+  let op = tokio::fs::OpenOptions::new()
+    .create(mode == "w" || mode == "w+")
+    .create_new(mode == "x")
+    .read(true)
+    .write(mode == "w" || mode == "w+" || mode == "x")
+    .truncate(mode == "w+")
+    .open(filename)
     .map_err(DenoError::from)
     .and_then(move |fs_file| -> OpResult {
       let resource = resources::add_fs_file(fs_file);

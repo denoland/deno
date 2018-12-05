@@ -349,6 +349,7 @@ table Truncate {
 table Open {
   filename: string;
   perm: uint;
+  mode: string;
 }
 
 table OpenRes {

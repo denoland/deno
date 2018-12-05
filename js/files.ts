@@ -52,8 +52,10 @@ export async function open(
 ): Promise<File> {
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
+  const mode_ = builder.createString(mode);
   msg.Open.startOpen(builder);
   msg.Open.addFilename(builder, filename_);
+  msg.Open.addMode(builder, mode_);
   const inner = msg.Open.endOpen(builder);
   const baseRes = await dispatch.sendAsync(builder, msg.Any.Open, inner);
   assert(baseRes != null);
