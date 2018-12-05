@@ -29,8 +29,6 @@ import { libdeno } from "./libdeno";
 declare global {
   const console: consoleTypes.Console;
   const setTimeout: typeof timers.setTimeout;
-  // tslint:disable-next-line:variable-name
-  const TextEncoder: typeof textEncoding.TextEncoder;
 }
 
 // A reference to the global object.
@@ -69,7 +67,7 @@ export type Headers = domTypes.Headers;
 window.FormData = formData.FormData as domTypes.FormDataConstructor;
 export type FormData = domTypes.FormData;
 
-// While these are classes, they have their global instance types created in
-// other type definitions, therefore we do not have to include them here.
 window.TextEncoder = textEncoding.TextEncoder;
+export type TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
+export type TextDecoder = textEncoding.TextDecoder;
