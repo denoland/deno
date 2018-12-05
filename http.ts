@@ -70,7 +70,7 @@ class ServerRequest {
       throw Error("bad status code");
     }
 
-    let out = `HTTP/${protoMajor}.${protoMinor} ${r.status} ${statusText}\r\n`;
+    let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
 
     setContentLength(r);
 
