@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as deno from "deno";
-import { test, assert, assertEqual } from "./test_util.ts";
+import { test, testPerm, assert, assertEqual } from "./test_util.ts";
 
 test(function filesStdioFileDescriptors() {
   assertEqual(deno.stdin.rid, 0);
@@ -28,4 +28,23 @@ test(async function filesToAsyncIterator() {
   }
 
   assertEqual(totalSize, 12);
+});
+
+testPerm({write: true}, async function createFile() {
+  const tempDir = await deno.makeTempDir();
+  const filename = tempDir + "/test.txt";
+  // TODO: replace with OpenMode enum
+  let f = await deno.open(filename, 'w');
+  let fileInfo = deno.statSync(filename);
+  assert(fileInfo.isFile());
+  assert(fileInfo.len === 0);
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  await f.write(data);
+  fileInfo = deno.statSync(filename);
+  assert(fileInfo.len === 5);
+  f.close();
+
+  // TODO: test different modes
+  await deno.removeAll(tempDir);
 });
