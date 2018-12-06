@@ -67,8 +67,12 @@ export function btoa(s: string): string {
   return result;
 }
 
+interface DecoderOptions {
+  fatal?: boolean;
+}
+
 interface Decoder {
-  handler(stream: Stream, byte: number): number | number[] | null;
+  handler(stream: Stream, byte: number): number | null;
 }
 
 interface Encoder {
@@ -78,6 +82,59 @@ interface Encoder {
 const CONTINUE = null;
 const END_OF_STREAM = -1;
 const FINISHED = -1;
+
+// The encodingMap is a hash of labels that are indexed by the conical
+// encoding.
+const encodingMap: { [key: string]: string[] } = {
+  "windows-1252": [
+    "ansi_x3.4-1968",
+    "ascii",
+    "cp1252",
+    "cp819",
+    "csisolatin1",
+    "ibm819",
+    "iso-8859-1",
+    "iso-ir-100",
+    "iso8859-1",
+    "iso88591",
+    "iso_8859-1",
+    "iso_8859-1:1987",
+    "l1",
+    "latin1",
+    "us-ascii",
+    "windows-1252",
+    "x-cp1252"
+  ],
+  "utf-8": ["unicode-1-1-utf-8", "utf-8", "utf8"]
+};
+// We convert these into a Map where every label resolves to its canonical
+// encoding type.
+const encodings = new Map<string, string>();
+for (const key of Object.keys(encodingMap)) {
+  const labels = encodingMap[key];
+  for (const label of labels) {
+    encodings.set(label, key);
+  }
+}
+
+// A map of functions that return new instances of a decoder indexed by the
+// encoding type.
+const decoders = new Map<string, (options: DecoderOptions) => Decoder>();
+decoders.set("utf-8", (options: DecoderOptions) => {
+  return new UTF8Decoder(options);
+});
+
+// Single byte decoders are an array of code point lookups
+const encodingIndexes = new Map<string, number[]>();
+// tslint:disable:max-line-length
+// prettier-ignore
+encodingIndexes.set("windows-1252", [8364,129,8218,402,8222,8230,8224,8225,710,8240,352,8249,338,141,381,143,144,8216,8217,8220,8221,8226,8211,8212,732,8482,353,8250,339,157,382,376,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255]);
+// tslint:enable
+for (const [key, index] of encodingIndexes) {
+  decoders.set(key, (options: DecoderOptions) => {
+    return new SingleByteDecoder(index, options);
+  });
+}
 
 function codePointsToString(codePoints: number[]): string {
   let s = "";
@@ -96,6 +153,10 @@ function decoderError(fatal: boolean): number | never {
 
 function inRange(a: number, min: number, max: number) {
   return min <= a && a <= max;
+}
+
+function isASCIIByte(a: number) {
+  return inRange(a, 0x00, 0x7f);
 }
 
 function stringToCodePoints(input: string): number[] {
@@ -142,6 +203,31 @@ class Stream {
   }
 }
 
+class SingleByteDecoder implements Decoder {
+  private _index: number[];
+  private _fatal: boolean;
+
+  constructor(index: number[], options: DecoderOptions) {
+    this._fatal = options.fatal || false;
+    this._index = index;
+  }
+  handler(stream: Stream, byte: number): number {
+    if (byte === END_OF_STREAM) {
+      return FINISHED;
+    }
+    if (isASCIIByte(byte)) {
+      return byte;
+    }
+    const codePoint = this._index[byte - 0x80];
+
+    if (codePoint == null) {
+      return decoderError(this._fatal);
+    }
+
+    return codePoint;
+  }
+}
+
 class UTF8Decoder implements Decoder {
   private _codePoint = 0;
   private _bytesSeen = 0;
@@ -150,8 +236,8 @@ class UTF8Decoder implements Decoder {
   private _lowerBoundary = 0x80;
   private _upperBoundary = 0xbf;
 
-  constructor(options = { fatal: false }) {
-    this._fatal = options.fatal;
+  constructor(options: DecoderOptions) {
+    this._fatal = options.fatal || false;
   }
 
   handler(stream: Stream, byte: number): number | null {
@@ -165,7 +251,7 @@ class UTF8Decoder implements Decoder {
     }
 
     if (this._bytesNeeded === 0) {
-      if (inRange(byte, 0x00, 0x7f)) {
+      if (isASCIIByte(byte)) {
         // Single byte code point
         return byte;
       } else if (inRange(byte, 0xc2, 0xdf)) {
@@ -272,26 +358,37 @@ export interface TextDecoderOptions {
 }
 
 export class TextDecoder {
+  private _encoding: string;
+
   /** Returns encoding's name, lowercased. */
-  readonly encoding = "utf-8";
+  get encoding(): string {
+    return this._encoding;
+  }
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean = false;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
   readonly ignoreBOM = false;
 
-  constructor(
-    label: "utf-8" = "utf-8",
-    options: TextDecoderOptions = { fatal: false }
-  ) {
-    if (label !== "utf-8") {
-      throw new TypeError("Only UTF8 decoding supported.");
-    }
+  constructor(label = "utf-8", options: TextDecoderOptions = { fatal: false }) {
     if (options.ignoreBOM) {
       throw new TypeError("Ignoring the BOM not supported.");
     }
     if (options.fatal) {
       this.fatal = true;
     }
+    label = String(label)
+      .trim()
+      .toLowerCase();
+    const encoding = encodings.get(label);
+    if (!encoding) {
+      throw new RangeError(
+        `The encoding label provided ('${label}') is invalid.`
+      );
+    }
+    if (!decoders.has(encoding)) {
+      throw new TypeError(`Internal decoder ('${encoding}') not found.`);
+    }
+    this._encoding = encoding;
   }
 
   /** Returns the result of running encoding's decoder. */
@@ -316,7 +413,7 @@ export class TextDecoder {
       bytes = new Uint8Array(0);
     }
 
-    const decoder = new UTF8Decoder({ fatal: this.fatal });
+    const decoder = decoders.get(this._encoding)!({ fatal: this.fatal });
     const inputStream = new Stream(bytes);
     const output: number[] = [];
 
