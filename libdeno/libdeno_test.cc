@@ -181,6 +181,22 @@ TEST(LibDenoTest, SnapshotBug) {
   deno_delete(d);
 }
 
+TEST(LibDenoTest, GlobalErrorHandling) {
+  Deno* d = deno_new(snapshot, deno_config{empty, nullptr});
+  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "GlobalErrorHandling()"));
+  // We only check that it starts with this string, so we don't have to check
+  // the second frame, which contains line numbers in libdeno_test.js and may
+  // change over time.
+  std::string expected =
+      "{\"message\":\"ReferenceError: notdefined is not defined\","
+      "\"frames\":[{\"line\":3,\"column\":2,\"functionName\":\"\","
+      "\"scriptName\":\"helloworld.js\",\"isEval\":true,"
+      "\"isConstructor\":false,\"isWasm\":false},";
+  std::string actual(deno_last_exception(d), 0, expected.length());
+  EXPECT_STREQ(expected.c_str(), actual.c_str());
+  deno_delete(d);
+}
+
 TEST(LibDenoTest, DataBuf) {
   static int count = 0;
   static deno_buf data_buf_copy;

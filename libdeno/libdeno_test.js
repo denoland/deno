@@ -98,6 +98,10 @@ global.SnapshotBug = () => {
   assert("1,2,3" === String([1, 2, 3]));
 };
 
+global.GlobalErrorHandling = () => {
+  eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
+};
+
 // Allocate this buf at the top level to avoid GC.
 const dataBuf = new Uint8Array([3, 4]);
 
