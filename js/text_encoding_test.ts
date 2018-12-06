@@ -48,6 +48,23 @@ test(function textDecoder2() {
   assertEqual(decoder.decode(fixture), "𝓽𝓮𝔁𝓽");
 });
 
+test(function textDecoderASCII() {
+  const fixture = new Uint8Array([0x89, 0x95, 0x9f, 0xbf]);
+  const decoder = new TextDecoder("ascii");
+  assertEqual(decoder.decode(fixture), "‰•Ÿ¿");
+});
+
+test(function textDecoderErrorEncoding() {
+  let didThrow = false;
+  try {
+    const decoder = new TextDecoder("foo");
+  } catch (e) {
+    didThrow = true;
+    assertEqual(e.message, "The encoding label provided ('foo') is invalid.");
+  }
+  assert(didThrow);
+});
+
 test(function textEncoder() {
   const fixture = "������";
   const encoder = new TextEncoder();
