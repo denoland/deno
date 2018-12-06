@@ -17,9 +17,17 @@ def deno_http_benchmark(deno_exe):
 
 
 def deno_net_http_benchmark(deno_exe):
-    deno_cmd = [deno_exe, "--allow-net", "tools/net_http_bench.ts", ADDR]
+    deno_cmd = [
+        deno_exe, "--allow-net", "js/deps/https/deno.land/x/net/http_bench.ts",
+        ADDR
+    ]
     print "http_benchmark testing DENO using net/http."
-    return run(deno_cmd)
+    return run(
+        deno_cmd,
+        merge_env={
+            # Load from //js/deps/https/deno.land/net/ submodule.
+            "DENO_DIR": os.path.join(util.root_path, "js")
+        })
 
 
 def node_http_benchmark():
@@ -51,9 +59,16 @@ def http_benchmark(deno_exe, hyper_hello_exe):
     return r
 
 
-def run(server_cmd):
+def run(server_cmd, merge_env=None):
     # Run deno echo server in the background.
-    server = subprocess.Popen(server_cmd)
+    if merge_env is None:
+        env = None
+    else:
+        env = os.environ.copy()
+        for key, value in merge_env.iteritems():
+            env[key] = value
+
+    server = subprocess.Popen(server_cmd, env=env)
     time.sleep(5)  # wait for server to wake up. TODO racy.
     try:
         cmd = "third_party/wrk/%s/wrk -d %s http://%s/" % (util.platform(),
@@ -71,4 +86,4 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print "Usage ./tools/http_benchmark.py target/debug/deno"
         sys.exit(1)
-    deno_http_benchmark(sys.argv[1])
+    deno_net_http_benchmark(sys.argv[1])
