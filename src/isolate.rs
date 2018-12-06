@@ -40,11 +40,11 @@ pub type Op = Future<Item = Buf, Error = DenoError> + Send;
 
 // Returns (is_sync, op)
 pub type Dispatch =
-  fn(isolate: &Isolate, buf: libdeno::deno_buf, data_buf: libdeno::deno_buf)
+  fn(isolate: &Isolate, buf: libdeno::DenoBuf, data_buf: libdeno::DenoBuf)
     -> (bool, Box<Op>);
 
 pub struct Isolate {
-  libdeno_isolate: *const libdeno::isolate,
+  libdeno_isolate: *const libdeno::RawIsolate,
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
   tx: mpsc::Sender<(i32, Buf)>,
@@ -137,15 +137,15 @@ static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
 
 impl Isolate {
   pub fn new(
-    snapshot: libdeno::deno_buf,
+    snapshot: libdeno::DenoBuf,
     state: Arc<IsolateState>,
     dispatch: Dispatch,
   ) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
-    let config = libdeno::deno_config {
-      shared: libdeno::deno_buf::empty(), // TODO Use for message passing.
+    let config = libdeno::DenoConfig {
+      shared: libdeno::DenoBuf::empty(), // TODO Use for message passing.
       recv_cb: pre_dispatch,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(snapshot, config) };
@@ -230,7 +230,7 @@ impl Isolate {
   }
 
   fn timeout(&self) {
-    let dummy_buf = libdeno::deno_buf::empty();
+    let dummy_buf = libdeno::DenoBuf::empty();
     unsafe {
       libdeno::deno_respond(
         self.libdeno_isolate,
@@ -291,8 +291,8 @@ impl Drop for Isolate {
 extern "C" fn pre_dispatch(
   user_data: *mut c_void,
   req_id: i32,
-  control_buf: libdeno::deno_buf,
-  data_buf: libdeno::deno_buf,
+  control_buf: libdeno::DenoBuf,
+  data_buf: libdeno::DenoBuf,
 ) {
   // for metrics
   let bytes_sent_control = control_buf.len();
@@ -372,7 +372,7 @@ mod tests {
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
     let state = Arc::new(IsolateState::new(flags, rest_argv));
-    let snapshot = libdeno::deno_buf::empty();
+    let snapshot = libdeno::DenoBuf::empty();
     let isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
@@ -395,8 +395,8 @@ mod tests {
 
   fn dispatch_sync(
     _isolate: &Isolate,
-    control: libdeno::deno_buf,
-    data: libdeno::deno_buf,
+    control: libdeno::DenoBuf,
+    data: libdeno::DenoBuf,
   ) -> (bool, Box<Op>) {
     assert_eq!(control[0], 4);
     assert_eq!(control[1], 5);
@@ -414,7 +414,7 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let state = Arc::new(IsolateState::new(flags, rest_argv));
-    let snapshot = libdeno::deno_buf::empty();
+    let snapshot = libdeno::DenoBuf::empty();
     let isolate = Isolate::new(snapshot, state, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
@@ -451,7 +451,7 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     let state = Arc::new(IsolateState::new(flags, rest_argv));
-    let snapshot = libdeno::deno_buf::empty();
+    let snapshot = libdeno::DenoBuf::empty();
     let isolate = Isolate::new(snapshot, state, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
@@ -502,8 +502,8 @@ mod tests {
 
   fn metrics_dispatch_sync(
     _isolate: &Isolate,
-    _control: libdeno::deno_buf,
-    _data: libdeno::deno_buf,
+    _control: libdeno::DenoBuf,
+    _data: libdeno::DenoBuf,
   ) -> (bool, Box<Op>) {
     // Send back some sync response
     let vec: Box<[u8]> = vec![1, 2, 3, 4].into_boxed_slice();
@@ -513,8 +513,8 @@ mod tests {
 
   fn metrics_dispatch_async(
     _isolate: &Isolate,
-    _control: libdeno::deno_buf,
-    _data: libdeno::deno_buf,
+    _control: libdeno::DenoBuf,
+    _data: libdeno::DenoBuf,
   ) -> (bool, Box<Op>) {
     // Send back some sync response
     let vec: Box<[u8]> = vec![1, 2, 3, 4].into_boxed_slice();

@@ -5,10 +5,10 @@ use libc::c_void;
 use std::ops::{Deref, DerefMut};
 use std::ptr::null;
 
-// TODO(F001): change this definition to `extern { pub type isolate; }`
+// TODO(F001): change this definition to `extern { pub type RawIsolate; }`
 // After RFC 1861 is stablized. See https://github.com/rust-lang/rust/issues/43467.
 #[repr(C)]
-pub struct isolate {
+pub struct RawIsolate {
   _unused: [u8; 0],
 }
 
@@ -19,18 +19,18 @@ pub struct isolate {
 ///
 /// If "alloc_ptr" is null, this type represents a borrowed slice.
 #[repr(C)]
-pub struct deno_buf {
+pub struct DenoBuf {
   alloc_ptr: *const u8,
   alloc_len: usize,
   data_ptr: *const u8,
   data_len: usize,
 }
 
-/// `deno_buf` can not clone, and there is no interior mutability.
+/// `DenoBuf` can not clone, and there is no interior mutability.
 /// This type satisfies Send bound.
-unsafe impl Send for deno_buf {}
+unsafe impl Send for DenoBuf {}
 
-impl deno_buf {
+impl DenoBuf {
   #[inline]
   pub fn empty() -> Self {
     Self {
@@ -52,8 +52,8 @@ impl deno_buf {
   }
 }
 
-/// Converts Rust &Buf to libdeno `deno_buf`.
-impl<'a> From<&'a [u8]> for deno_buf {
+/// Converts Rust &Buf to libdeno `DenoBuf`.
+impl<'a> From<&'a [u8]> for DenoBuf {
   #[inline]
   fn from(x: &'a [u8]) -> Self {
     Self {
@@ -65,7 +65,7 @@ impl<'a> From<&'a [u8]> for deno_buf {
   }
 }
 
-impl Deref for deno_buf {
+impl Deref for DenoBuf {
   type Target = [u8];
   #[inline]
   fn deref(&self) -> &[u8] {
@@ -73,7 +73,7 @@ impl Deref for deno_buf {
   }
 }
 
-impl DerefMut for deno_buf {
+impl DerefMut for DenoBuf {
   #[inline]
   fn deref_mut(&mut self) -> &mut [u8] {
     unsafe {
@@ -85,14 +85,14 @@ impl DerefMut for deno_buf {
   }
 }
 
-impl AsRef<[u8]> for deno_buf {
+impl AsRef<[u8]> for DenoBuf {
   #[inline]
   fn as_ref(&self) -> &[u8] {
     &*self
   }
 }
 
-impl AsMut<[u8]> for deno_buf {
+impl AsMut<[u8]> for DenoBuf {
   #[inline]
   fn as_mut(&mut self) -> &mut [u8] {
     if self.alloc_ptr.is_null() {
@@ -105,13 +105,13 @@ impl AsMut<[u8]> for deno_buf {
 type DenoRecvCb = unsafe extern "C" fn(
   user_data: *mut c_void,
   req_id: i32,
-  buf: deno_buf,
-  data_buf: deno_buf,
+  buf: DenoBuf,
+  data_buf: DenoBuf,
 );
 
 #[repr(C)]
-pub struct deno_config {
-  pub shared: deno_buf,
+pub struct DenoConfig {
+  pub shared: DenoBuf,
   pub recv_cb: DenoRecvCb,
 }
 
@@ -119,18 +119,18 @@ extern "C" {
   pub fn deno_init();
   pub fn deno_v8_version() -> *const c_char;
   pub fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char);
-  pub fn deno_new(snapshot: deno_buf, config: deno_config) -> *const isolate;
-  pub fn deno_delete(i: *const isolate);
-  pub fn deno_last_exception(i: *const isolate) -> *const c_char;
-  pub fn deno_check_promise_errors(i: *const isolate);
+  pub fn deno_new(snapshot: DenoBuf, config: DenoConfig) -> *const RawIsolate;
+  pub fn deno_delete(i: *const RawIsolate);
+  pub fn deno_last_exception(i: *const RawIsolate) -> *const c_char;
+  pub fn deno_check_promise_errors(i: *const RawIsolate);
   pub fn deno_respond(
-    i: *const isolate,
+    i: *const RawIsolate,
     user_data: *const c_void,
     req_id: i32,
-    buf: deno_buf,
+    buf: DenoBuf,
   );
   pub fn deno_execute(
-    i: *const isolate,
+    i: *const RawIsolate,
     user_data: *const c_void,
     js_filename: *const c_char,
     js_source: *const c_char,
