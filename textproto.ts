@@ -6,7 +6,7 @@
 import { BufReader, BufState } from "./bufio.ts";
 import { charCode } from "./util.ts";
 
-const asciiDecoder = new TextDecoder("ascii");
+const asciiDecoder = new TextDecoder();
 function str(buf: Uint8Array): string {
   if (buf == null) {
     return "";
