@@ -16,6 +16,12 @@ def deno_http_benchmark(deno_exe):
     return run(deno_cmd)
 
 
+def deno_net_http_benchmark(deno_exe):
+    deno_cmd = [deno_exe, "--allow-net", "tools/net_http_bench.ts", ADDR]
+    print "http_benchmark testing DENO using net/http."
+    return run(deno_cmd)
+
+
 def node_http_benchmark():
     node_cmd = ["node", "tools/node_http.js", ADDR.split(":")[1]]
     print "http_benchmark testing NODE."
@@ -38,6 +44,7 @@ def http_benchmark(deno_exe, hyper_hello_exe):
     r = {}
     # TODO Rename to "deno_tcp"
     r["deno"] = deno_http_benchmark(deno_exe)
+    r["deno_net_http"] = deno_net_http_benchmark(deno_exe)
     r["node"] = node_http_benchmark()
     r["node_tcp"] = node_tcp_benchmark()
     r["hyper"] = hyper_http_benchmark(hyper_hello_exe)
