@@ -1,5 +1,5 @@
 import * as deno from "deno";
-import { serve } from "https://deno.land/x/net/http.ts";
+import { serve } from "./http.ts";
 
 const addr = deno.args[1] || "127.0.0.1:4500";
 const server = serve(addr);
