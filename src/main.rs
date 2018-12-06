@@ -73,7 +73,7 @@ impl log::Log for Logger {
 
 fn print_err_and_exit(err: js_errors::JSError) {
   // TODO Currently tests depend on exception going to stdout. It should go
-  // to stderr.
+  // to stderr. https://github.com/denoland/deno/issues/964
   println!("{}", err.to_string());
   std::process::exit(1);
 }

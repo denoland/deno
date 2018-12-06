@@ -182,25 +182,17 @@ void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
       d->pending_promise_map_.emplace(std::piecewise_construct,
                                       std::make_tuple(promise_id),
                                       std::make_tuple(d->isolate_, error));
-      // rejectMap.set(promise, (error as Error).stack ||
-      // "RejectWithNoHandler");
       break;
 
     case v8::kPromiseHandlerAddedAfterReject:
-      // unhandled event cancelled
       d->pending_promise_map_.erase(promise_id);
-      // rejectMap.delete(promise);
       break;
 
     case v8::kPromiseRejectAfterResolved:
-      // Should not warn. See #1272
-      // d->pending_promise_events_++;
       break;
 
     case v8::kPromiseResolveAfterResolved:
-      // d->pending_promise_events_++;
-      // error is string here
-      // otherErrorMap.set(promise, `Promise warning: ${error as string}`);
+      // Should not warn. See #1272
       break;
 
     default:
