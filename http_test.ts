@@ -5,8 +5,7 @@ const addr = "0.0.0.0:8000";
 const s = serve(addr);
 console.log(`listening on http://${addr}/`);
 
-const body = (new TextEncoder()).encode("Hello World\n");
-
+const body = new TextEncoder().encode("Hello World\n");
 
 async function main() {
   for await (const req of s) {
