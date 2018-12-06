@@ -13,7 +13,6 @@ import {
   addInterfaceProperty,
   addSourceComment,
   addVariableDeclaration,
-  appendSourceFile,
   checkDiagnostics,
   flattenNamespace,
   getSourceComment,
@@ -370,18 +369,13 @@ export function main({
       moduleResolution: ModuleResolutionKind.NodeJs,
       noLib: true,
       strict: true,
-      target: ScriptTarget.ESNext,
-      types: ["text-encoding"]
+      target: ScriptTarget.ESNext
     },
     useVirtualFileSystem: true
   });
 
   // There are files we need to load into memory, so that the project "compiles"
   loadDtsFiles(outputProject);
-  // tslint:disable-next-line:max-line-length
-  const textEncodingFilePath = `${buildPath}/node_modules/@types/text-encoding/index.d.ts`;
-  loadFiles(outputProject, [textEncodingFilePath]);
-  outputProject.addExistingSourceFileIfExists(textEncodingFilePath);
 
   // libDts is the final output file we are looking to build and we are not
   // actually creating it, only in memory at this stage.
@@ -432,16 +426,6 @@ export function main({
   if (!silent) {
     console.log(`Merged "globals" into global scope.`);
   }
-
-  // Since we flatten the namespaces, we don't attempt to import `text-encoding`
-  // so we then need to concatenate that onto the `libDts` so it can stand on
-  // its own.
-  const textEncodingSourceFile = outputProject.getSourceFileOrThrow(
-    textEncodingFilePath
-  );
-  appendSourceFile(textEncodingSourceFile, libDTs);
-  // Removing it from the project so we know the libDTs can stand on its own.
-  outputProject.removeSourceFile(textEncodingSourceFile);
 
   // Add the preamble
   libDTs.insertStatements(0, libPreamble);

@@ -4,7 +4,7 @@ import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
 import * as domTypes from "./dom_types";
-import { TextDecoder } from "./text_encoding";
+import { TextDecoder, TextEncoder } from "./text_encoding";
 import { DenoBlob } from "./blob";
 import { Headers } from "./headers";
 import * as io from "./io";
