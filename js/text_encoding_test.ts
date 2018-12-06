@@ -24,3 +24,49 @@ test(function btoaFailed() {
   assert(!!err);
   assertEqual(err.name, "InvalidInput");
 });
+
+test(function textDecoder() {
+  // prettier-ignore
+  const fixture = new Uint8Array([
+    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd,
+    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd,
+    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd
+  ]);
+  const decoder = new TextDecoder();
+  assertEqual(decoder.decode(fixture), "������");
+});
+
+test(function textDecoder2() {
+  // prettier-ignore
+  const fixture = new Uint8Array([
+    0xf0, 0x9d, 0x93, 0xbd,
+    0xf0, 0x9d, 0x93, 0xae,
+    0xf0, 0x9d, 0x94, 0x81,
+    0xf0, 0x9d, 0x93, 0xbd
+  ]);
+  const decoder = new TextDecoder();
+  assertEqual(decoder.decode(fixture), "𝓽𝓮𝔁𝓽");
+});
+
+test(function textEncoder() {
+  const fixture = "������";
+  const encoder = new TextEncoder();
+  // prettier-ignore
+  assertEqual(Array.from(encoder.encode(fixture)), [
+    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd,
+    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd,
+    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd
+  ]);
+});
+
+test(function textEncoder2() {
+  const fixture = "𝓽𝓮𝔁𝓽";
+  const encoder = new TextEncoder();
+  // prettier-ignore
+  assertEqual(Array.from(encoder.encode(fixture)), [
+    0xf0, 0x9d, 0x93, 0xbd,
+    0xf0, 0x9d, 0x93, 0xae,
+    0xf0, 0x9d, 0x94, 0x81,
+    0xf0, 0x9d, 0x93, 0xbd
+  ]);
+});
