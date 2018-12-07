@@ -152,8 +152,12 @@ impl DenoDir {
       (source, map_content_type(&p, Some(&content_type)))
     } else {
       let source = fs::read_to_string(&p)?;
-      let content_type = fs::read_to_string(&mt)?;
-      (source, map_content_type(&p, Some(&content_type)))
+      // .mime file might not exists with bundled deps
+      let maybe_content_type_string = fs::read_to_string(&mt).ok();
+      // Option<String> -> Option<&str>
+      let maybe_content_type_str =
+        maybe_content_type_string.as_ref().map(String::as_str);
+      (source, map_content_type(&p, maybe_content_type_str))
     };
     Ok(src)
   }
