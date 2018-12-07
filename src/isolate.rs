@@ -43,7 +43,10 @@ pub type Dispatch =
     -> (bool, Box<Op>);
 
 pub struct Isolate {
-  libdeno_isolate: *const libdeno::isolate,
+  // We used share reference type `&Self` for the methods, but several methods
+  // will modify the internal data in "libdeno_isolate".
+  // Therefore, there is interior mutability in this field.
+  libdeno_isolate: Cell<*const libdeno::isolate>,
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
   tx: mpsc::Sender<(i32, Buf)>,
@@ -147,7 +150,8 @@ impl Isolate {
       shared: libdeno::deno_buf::empty(), // TODO Use for message passing.
       recv_cb: pre_dispatch,
     };
-    let libdeno_isolate = unsafe { libdeno::deno_new(snapshot, config) };
+    let libdeno_isolate =
+      unsafe { Cell::new(libdeno::deno_new(snapshot, config)) };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
 
@@ -184,7 +188,8 @@ impl Isolate {
   }
 
   pub fn last_exception(&self) -> Option<JSError> {
-    let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
+    let ptr =
+      unsafe { libdeno::deno_last_exception(self.libdeno_isolate.get()) };
     if ptr == std::ptr::null() {
       None
     } else {
@@ -206,7 +211,7 @@ impl Isolate {
     let source = CString::new(js_source).unwrap();
     let r = unsafe {
       libdeno::deno_execute(
-        self.libdeno_isolate,
+        self.libdeno_isolate.get(),
         self.as_raw_ptr(),
         filename.as_ptr(),
         source.as_ptr(),
@@ -225,7 +230,7 @@ impl Isolate {
     // so borrowing a reference here is sufficient.
     unsafe {
       libdeno::deno_respond(
-        self.libdeno_isolate,
+        self.libdeno_isolate.get(),
         self.as_raw_ptr(),
         req_id,
         buf.as_ref().into(),
@@ -245,7 +250,7 @@ impl Isolate {
     let dummy_buf = libdeno::deno_buf::empty();
     unsafe {
       libdeno::deno_respond(
-        self.libdeno_isolate,
+        self.libdeno_isolate.get(),
         self.as_raw_ptr(),
         -1,
         dummy_buf,
@@ -255,7 +260,7 @@ impl Isolate {
 
   fn check_promise_errors(&self) {
     unsafe {
-      libdeno::deno_check_promise_errors(self.libdeno_isolate);
+      libdeno::deno_check_promise_errors(self.libdeno_isolate.get());
     }
   }
 
@@ -302,7 +307,7 @@ impl Isolate {
 
 impl Drop for Isolate {
   fn drop(&mut self) {
-    unsafe { libdeno::deno_delete(self.libdeno_isolate) }
+    unsafe { libdeno::deno_delete(self.libdeno_isolate.get()) }
   }
 }
 
