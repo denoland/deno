@@ -2,8 +2,7 @@ Error: bad
     at foo (file://[WILDCARD]tests/error_001.ts:2:9)
     at bar (file://[WILDCARD]tests/error_001.ts:6:3)
     at eval (file://[WILDCARD]tests/error_001.ts:9:1)
-    at Runner.eval [as _globalEval] (<anonymous>)
-    at Runner._gatherDependencies ([WILDCARD]/js/runner.ts:[WILDCARD])
-    at Runner.run ([WILDCARD]/js/runner.ts:[WILDCARD])
+    at _gatherDependencies ([WILDCARD]/js/runner.ts:[WILDCARD])
+    at run ([WILDCARD]/js/runner.ts:[WILDCARD])
     at denoMain ([WILDCARD]/js/main.ts:[WILDCARD])
     at deno_main.js:1:1

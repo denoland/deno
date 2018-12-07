@@ -37,7 +37,7 @@ typedef struct {
 Deno* deno_new(deno_buf snapshot, deno_config config);
 
 Deno* deno_new_snapshotter(deno_config config, const char* js_filename,
-                           const char* js_source, const char* source_map);
+                           const char* js_source);
 
 // Generate a snapshot. The resulting buf can be used with deno_new.
 // The caller must free the returned data by calling delete[] buf.data_ptr.
@@ -48,6 +48,12 @@ void deno_delete(Deno* d);
 // Returns false on error.
 // Get error text with deno_last_exception().
 // 0 = fail, 1 = success
+//
+// TODO change return value to be const char*. On success the return
+// value is nullptr, on failure it is the JSON exception text that
+// is returned by deno_last_exception(). Remove deno_last_exception().
+// The return string is valid until the next execution of deno_execute or
+// deno_respond (as deno_last_exception is now).
 int deno_execute(Deno* d, void* user_data, const char* js_filename,
                  const char* js_source);
 
@@ -69,6 +75,12 @@ int deno_execute(Deno* d, void* user_data, const char* js_filename,
 //
 // A non-zero return value, means a JS exception was encountered during the
 // libdeno.recv() callback. Check deno_last_exception() for exception text.
+//
+// TODO change return value to be const char*. On success the return
+// value is nullptr, on failure it is the JSON exception text that
+// is returned by deno_last_exception(). Remove deno_last_exception().
+// The return string is valid until the next execution of deno_execute or
+// deno_respond (as deno_last_exception is now).
 int deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf);
 
 void deno_check_promise_errors(Deno* d);

@@ -11,21 +11,8 @@ import { Runner } from "./runner";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
-import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
 import { replLoop } from "./repl";
-import * as sourceMaps from "./v8_source_maps";
 import { version } from "typescript";
-
-// Install the source maps handler and do some pre-calculations so all of it is
-// available in the snapshot
-const compiler = Compiler.instance();
-sourceMaps.install({
-  installPrepareStackTrace: true,
-  getGeneratedContents: compiler.getGeneratedContents
-});
-const consumer = sourceMaps.loadConsumer("gen/bundle/main.js");
-assert(consumer != null);
-consumer!.computeColumnSpans();
 
 function sendStart(): msg.StartRes {
   const builder = flatbuffers.createBuilder();
@@ -39,27 +26,9 @@ function sendStart(): msg.StartRes {
   return startRes;
 }
 
-function onGlobalError(
-  message: string,
-  source: string,
-  lineno: number,
-  colno: number,
-  error: any // tslint:disable-line:no-any
-) {
-  if (error instanceof Error) {
-    console.log(error.stack);
-  } else {
-    console.log(`Thrown: ${String(error)}`);
-  }
-  os.exit(1);
-}
-
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
   libdeno.recv(handleAsyncMsgFromRust);
-  libdeno.setGlobalErrorHandler(onGlobalError);
-  libdeno.setPromiseRejectHandler(promiseRejectHandler);
-  libdeno.setPromiseErrorExaminer(promiseErrorExaminer);
 
   // First we send an empty "Start" message to let the privileged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
@@ -67,6 +36,8 @@ export default function denoMain() {
   const startResMsg = sendStart();
 
   setLogDebug(startResMsg.debugFlag());
+
+  const compiler = Compiler.instance();
 
   // handle `--types`
   if (startResMsg.typesFlag()) {

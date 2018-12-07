@@ -1101,3 +1101,45 @@ rust_crate("tokio_process") {
     ]
   }
 }
+
+rust_crate("vlq") {
+  source_root = "$registry_github/vlq-0.5.1/src/lib.rs"
+}
+
+rust_crate("source_map_mappings") {
+  source_root = "$registry_github/source-map-mappings-0.5.0/src/lib.rs"
+  extern = [
+    ":rand",
+    ":vlq",
+  ]
+}
+
+rust_crate("ryu") {
+  source_root = "$registry_github/ryu-0.2.7/src/lib.rs"
+  features = [ "small" ]
+}
+
+rust_crate("serde") {
+  source_root = "$registry_github/serde-1.0.80/src/lib.rs"
+  features = [
+    "default",
+    "std",
+  ]
+}
+
+rust_crate("serde_json") {
+  source_root = "$registry_github/serde_json-1.0.33/src/lib.rs"
+  features = [
+    "arbitrary_precision",
+    "default",
+    "preserve_order",
+    "indexmap",
+    "raw_value",
+  ]
+  extern = [
+    ":indexmap",
+    ":itoa",
+    ":ryu",
+    ":serde",
+  ]
+}
