@@ -593,12 +593,39 @@ fn op_open(
 
   let mut open_options = tokio::fs::OpenOptions::new();
 
-  open_options
-    .create(mode == "w" || mode == "w+")
-    .create_new(mode == "x")
-    .read(true)
-    .write(mode == "w" || mode == "w+" || mode == "x")
-    .truncate(mode == "w+");
+  match mode {
+    "r" => {
+      open_options.read(true);
+    }
+    "r+" => {
+      open_options.read(true).write(true);
+    }
+    "w" => {
+      open_options.create(true).write(true).truncate(true);
+    }
+    "w+" => {
+      open_options
+        .read(true)
+        .create(true)
+        .write(true)
+        .truncate(true);
+    }
+    "a" => {
+      open_options.create(true).append(true);
+    }
+    "a+" => {
+      open_options.read(true).create(true).append(true);
+    }
+    "x" => {
+      open_options.create_new(true).write(true);
+    }
+    "x+" => {
+      open_options.create_new(true).read(true).write(true);
+    }
+    &_ => {
+      panic!("Unknown file open mode.");
+    }
+  }
 
   let op = open_options
     .open(filename)

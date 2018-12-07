@@ -4,7 +4,7 @@
 /// <amd-module name="deno"/>
 export { env, exit } from "./os";
 export { chdir, cwd } from "./dir";
-export { File, open, stdin, stdout, stderr, read, write, close } from "./files";
+export { File, OpenMode, open, stdin, stdout, stderr, read, write, close } from "./files";
 export {
   copy,
   toAsyncIterator,

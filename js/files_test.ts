@@ -34,7 +34,7 @@ testPerm({ write: true }, async function createFile() {
   const tempDir = await deno.makeTempDir();
   const filename = tempDir + "/test.txt";
   // TODO: replace with OpenMode enum
-  let f = await deno.open(filename, "w");
+  let f = await deno.open(filename, deno.OpenMode.Write);
   let fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile());
   assert(fileInfo.len === 0);
