@@ -152,8 +152,12 @@ impl DenoDir {
       (source, map_content_type(&p, Some(&content_type)))
     } else {
       let source = fs::read_to_string(&p)?;
-      let content_type = fs::read_to_string(&mt)?;
-      (source, map_content_type(&p, Some(&content_type)))
+      // .mime file might not exists with bundled deps
+      let maybe_content_type_string = fs::read_to_string(&mt).ok();
+      // Option<String> -> Option<&str>
+      let maybe_content_type_str =
+        maybe_content_type_string.as_ref().map(String::as_str);
+      (source, map_content_type(&p, maybe_content_type_str))
     };
     Ok(src)
   }
@@ -496,6 +500,56 @@ macro_rules! add_root {
       $path
     }
   };
+}
+
+#[test]
+fn test_fetch_remote_source_1() {
+  use tokio_util;
+  // http_util::fetch_sync_string requires tokio
+  tokio_util::init(|| {
+    let (_temp_dir, deno_dir) = test_setup();
+    let module_name = "http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts";
+    let filename = deno_fs::normalize_path(
+      deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts")
+        .as_ref(),
+    );
+    let mime_file_name = format!("{}.mime", &filename);
+
+    let result = deno_dir.fetch_remote_source(module_name, &filename);
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(&(r.0), "export const loaded = true;\n");
+    assert_eq!(&(r.1), &msg::MediaType::TypeScript);
+    assert_eq!(fs::read_to_string(&mime_file_name).unwrap(), "video/mp2t");
+
+    // Modify .mime, make sure still read from local
+    let _ = fs::write(&mime_file_name, "text/javascript");
+    let result2 = deno_dir.fetch_remote_source(module_name, &filename);
+    assert!(result2.is_ok());
+    let r2 = result2.unwrap();
+    assert_eq!(&(r2.0), "export const loaded = true;\n");
+    // Not MediaType::TypeScript due to .mime modification
+    assert_eq!(&(r2.1), &msg::MediaType::JavaScript);
+  });
+}
+
+#[test]
+fn test_fetch_remote_source_2() {
+  // only local, no http_util::fetch_sync_string called
+  let (_temp_dir, deno_dir) = test_setup();
+  let cwd = std::env::current_dir().unwrap();
+  let cwd_string = cwd.to_str().unwrap();
+  let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
+  let filename =
+    format!("{}/tests/subdir/mt_text_typescript.t1.ts", &cwd_string);
+
+  let result = deno_dir.fetch_remote_source(module_name, &filename);
+  assert!(result.is_ok());
+  let r = result.unwrap();
+  assert_eq!(&(r.0), "export const loaded = true;\n");
+  assert_eq!(&(r.1), &msg::MediaType::TypeScript);
 }
 
 #[test]
