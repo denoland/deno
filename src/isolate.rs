@@ -8,6 +8,7 @@ use deno_dir;
 use errors::DenoError;
 use errors::DenoResult;
 use flags;
+use js_errors::JSError;
 use libdeno;
 use permissions::DenoPermissions;
 
@@ -25,8 +26,6 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio;
 use tokio_util;
-
-type DenoException<'a> = &'a str;
 
 // Buf represents a byte array returned from a "Op".
 // The message might be empty (which will be translated into a null object on
@@ -184,11 +183,25 @@ impl Isolate {
     self.timeout_due.set(inst);
   }
 
+  pub fn last_exception(&self) -> Option<JSError> {
+    let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
+    if ptr == std::ptr::null() {
+      None
+    } else {
+      let cstr = unsafe { CStr::from_ptr(ptr) };
+      let v8_exception = cstr.to_str().unwrap();
+      debug!("v8_exception\n{}\n", v8_exception);
+      let js_error = JSError::from_v8_exception(v8_exception).unwrap();
+      let js_error_mapped = js_error.apply_source_map(&self.state.dir);
+      return Some(js_error_mapped);
+    }
+  }
+
   pub fn execute(
     &self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), DenoException> {
+  ) -> Result<(), JSError> {
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
     let r = unsafe {
@@ -200,9 +213,8 @@ impl Isolate {
       )
     };
     if r == 0 {
-      let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
-      let cstr = unsafe { CStr::from_ptr(ptr) };
-      return Err(cstr.to_str().unwrap());
+      let js_error = self.last_exception().unwrap();
+      return Err(js_error);
     }
     Ok(())
   }
@@ -249,7 +261,7 @@ impl Isolate {
 
   // TODO Use Park abstraction? Note at time of writing Tokio default runtime
   // does not have new_with_park().
-  pub fn event_loop(&self) {
+  pub fn event_loop(&self) -> Result<(), JSError> {
     // Main thread event loop.
     while !self.is_idle() {
       match recv_deadline(&self.rx, self.get_timeout_due()) {
@@ -258,9 +270,16 @@ impl Isolate {
         Err(e) => panic!("recv_deadline() failed: {:?}", e),
       }
       self.check_promise_errors();
+      if let Some(err) = self.last_exception() {
+        return Err(err);
+      }
     }
     // Check on done
     self.check_promise_errors();
+    if let Some(err) = self.last_exception() {
+      return Err(err);
+    }
+    Ok(())
   }
 
   #[inline]
@@ -389,7 +408,7 @@ mod tests {
           }
         "#,
         ).expect("execute error");
-      isolate.event_loop();
+      isolate.event_loop().ok();
     });
   }
 
@@ -435,8 +454,8 @@ mod tests {
           const data = new Uint8Array([42, 43, 44, 45, 46]);
           libdeno.send(control, data);
         "#,
-        ).expect("execute error");
-      isolate.event_loop();
+        ).expect("execute error");;
+      isolate.event_loop().unwrap();
       let metrics = &isolate.state.metrics;
       assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 1);
       assert_eq!(metrics.ops_completed.load(Ordering::SeqCst), 1);
@@ -471,6 +490,7 @@ mod tests {
           const control = new Uint8Array([4, 5, 6]);
           const data = new Uint8Array([42, 43, 44, 45, 46]);
           let r = libdeno.send(control, data);
+          libdeno.recv(() => {});
           if (r != null) throw Error("expected null");
         "#,
         ).expect("execute error");
@@ -486,7 +506,7 @@ mod tests {
         // with metrics_dispatch_async() to properly validate them.
       }
 
-      isolate.event_loop();
+      isolate.event_loop().unwrap();
 
       // Make sure relevant metrics are updated after task is executed.
       {

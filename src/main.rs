@@ -10,6 +10,8 @@ extern crate rand;
 extern crate remove_dir_all;
 extern crate ring;
 extern crate rustyline;
+extern crate serde_json;
+extern crate source_map_mappings;
 extern crate tempfile;
 extern crate tokio;
 extern crate tokio_executor;
@@ -33,6 +35,7 @@ mod fs;
 mod http_body;
 mod http_util;
 pub mod isolate;
+pub mod js_errors;
 pub mod libdeno;
 pub mod msg;
 pub mod msg_util;
@@ -66,6 +69,13 @@ impl log::Log for Logger {
     }
   }
   fn flush(&self) {}
+}
+
+fn print_err_and_exit(err: js_errors::JSError) {
+  // TODO Currently tests depend on exception going to stdout. It should go
+  // to stderr. https://github.com/denoland/deno/issues/964
+  println!("{}", err.to_string());
+  std::process::exit(1);
 }
 
 fn main() {
@@ -102,10 +112,7 @@ fn main() {
   tokio_util::init(|| {
     isolate
       .execute("deno_main.js", "denoMain();")
-      .unwrap_or_else(|err| {
-        error!("{}", err);
-        std::process::exit(1);
-      });
-    isolate.event_loop();
+      .unwrap_or_else(print_err_and_exit);
+    isolate.event_loop().unwrap_or_else(print_err_and_exit);
   });
 }

@@ -4,8 +4,7 @@ world
 Error: error
     at foo ([WILDCARD]tests/async_error.ts:4:9)
     at eval ([WILDCARD]tests/async_error.ts:7:1)
-    at Runner.eval [as _globalEval] (<anonymous>)
-    at Runner._gatherDependencies ([WILDCARD]/js/runner.ts:[WILDCARD])
-    at Runner.run ([WILDCARD]/js/runner.ts:[WILDCARD])
+    at _gatherDependencies ([WILDCARD]/js/runner.ts:[WILDCARD])
+    at run ([WILDCARD]/js/runner.ts:[WILDCARD])
     at denoMain ([WILDCARD]/js/main.ts:[WILDCARD])
     at deno_main.js:1:1

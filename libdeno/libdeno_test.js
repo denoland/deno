@@ -99,21 +99,7 @@ global.SnapshotBug = () => {
 };
 
 global.GlobalErrorHandling = () => {
-  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {
-    libdeno.print(`line ${line} col ${col}`, true);
-    assert("ReferenceError: notdefined is not defined" === message);
-    assert(source === "helloworld.js");
-    assert(line === 3);
-    assert(col === 1);
-    assert(error instanceof Error);
-    libdeno.send(new Uint8Array([42]));
-  });
   eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
-};
-
-global.DoubleGlobalErrorHandlingFails = () => {
-  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {});
-  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {});
 };
 
 // Allocate this buf at the top level to avoid GC.
@@ -134,33 +120,7 @@ global.DataBuf = () => {
   b[1] = 8;
 };
 
-global.PromiseRejectCatchHandling = () => {
-  let count = 0;
-  let promiseRef = null;
-  // When we have an error, libdeno sends something
-  function assertOrSend(cond) {
-    if (!cond) {
-      libdeno.send(new Uint8Array([42]));
-    }
-  }
-  libdeno.setPromiseErrorExaminer(() => {
-    assertOrSend(count === 2);
-  });
-  libdeno.setPromiseRejectHandler((error, event, promise) => {
-    count++;
-    if (event === "RejectWithNoHandler") {
-      assertOrSend(error instanceof Error);
-      assertOrSend(error.message === "message");
-      assertOrSend(count === 1);
-      promiseRef = promise;
-    } else if (event === "HandlerAddedAfterReject") {
-      assertOrSend(count === 2);
-      assertOrSend(promiseRef === promise);
-    }
-    // Should never reach 3!
-    assertOrSend(count !== 3);
-  });
-
+global.CheckPromiseErrors = () => {
   async function fn() {
     throw new Error("message");
   }
@@ -169,10 +129,10 @@ global.PromiseRejectCatchHandling = () => {
     try {
       await fn();
     } catch (e) {
-      assertOrSend(count === 2);
+      libdeno.send(new Uint8Array([42]));
     }
   })();
-}
+};
 
 global.Shared = () => {
   const ab = libdeno.shared;
@@ -185,4 +145,4 @@ global.Shared = () => {
   ui8[0] = 42;
   ui8[1] = 43;
   ui8[2] = 44;
-}
+};

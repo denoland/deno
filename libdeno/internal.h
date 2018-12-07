@@ -19,7 +19,6 @@ class DenoIsolate {
         current_args_(nullptr),
         snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
-        pending_promise_events_(0),
         recv_cb_(config.recv_cb),
         next_req_id_(0),
         user_data_(nullptr) {
@@ -47,13 +46,13 @@ class DenoIsolate {
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
-  int32_t pending_promise_events_;
   deno_recv_cb recv_cb_;
   int32_t next_req_id_;
   void* user_data_;
 
   v8::Persistent<v8::Context> context_;
   std::map<int32_t, v8::Persistent<v8::Value>> async_data_map_;
+  std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   std::string last_exception_;
   v8::Persistent<v8::Function> recv_;
   v8::Persistent<v8::Function> global_error_handler_;
@@ -91,26 +90,16 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
-void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args);
-void SetPromiseRejectHandler(const v8::FunctionCallbackInfo<v8::Value>& args);
-void SetPromiseErrorExaminer(const v8::FunctionCallbackInfo<v8::Value>& args);
 static intptr_t external_references[] = {
-    reinterpret_cast<intptr_t>(Print),
-    reinterpret_cast<intptr_t>(Recv),
-    reinterpret_cast<intptr_t>(Send),
-    reinterpret_cast<intptr_t>(Shared),
-    reinterpret_cast<intptr_t>(SetGlobalErrorHandler),
-    reinterpret_cast<intptr_t>(SetPromiseRejectHandler),
-    reinterpret_cast<intptr_t>(SetPromiseErrorExaminer),
-    0};
+    reinterpret_cast<intptr_t>(Print), reinterpret_cast<intptr_t>(Recv),
+    reinterpret_cast<intptr_t>(Send), reinterpret_cast<intptr_t>(Shared), 0};
 
 static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
 
 Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                       const char* js_filename, const char* js_source,
-                       const char* source_map);
+                       const char* js_filename, const char* js_source);
 
 void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception);

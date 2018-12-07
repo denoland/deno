@@ -15,14 +15,14 @@ TEST(LibDenoTest, InitializesCorrectlyWithoutSnapshot) {
 }
 
 TEST(LibDenoTest, SnapshotterInitializesCorrectly) {
-  Deno* d = deno_new_snapshotter(deno_config{empty, nullptr}, "a.js",
-                                 "a = 1 + 2", nullptr);
+  Deno* d =
+      deno_new_snapshotter(deno_config{empty, nullptr}, "a.js", "a = 1 + 2");
   deno_delete(d);
 }
 
 TEST(LibDenoTest, Snapshotter) {
-  Deno* d1 = deno_new_snapshotter(deno_config{empty, nullptr}, "a.js",
-                                  "a = 1 + 2", nullptr);
+  Deno* d1 =
+      deno_new_snapshotter(deno_config{empty, nullptr}, "a.js", "a = 1 + 2");
   deno_buf test_snapshot = deno_get_snapshot(d1);
   deno_delete(d1);
 
@@ -182,23 +182,18 @@ TEST(LibDenoTest, SnapshotBug) {
 }
 
 TEST(LibDenoTest, GlobalErrorHandling) {
-  static int count = 0;
-  auto recv_cb = [](auto _, int req_id, auto buf, auto data_buf) {
-    assert_null(data_buf);
-    count++;
-    EXPECT_EQ(static_cast<size_t>(1), buf.data_len);
-    EXPECT_EQ(buf.data_ptr[0], 42);
-  };
-  Deno* d = deno_new(snapshot, deno_config{empty, recv_cb});
-  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "GlobalErrorHandling()"));
-  EXPECT_EQ(count, 1);
-  deno_delete(d);
-}
-
-TEST(LibDenoTest, DoubleGlobalErrorHandlingFails) {
   Deno* d = deno_new(snapshot, deno_config{empty, nullptr});
-  EXPECT_FALSE(
-      deno_execute(d, nullptr, "a.js", "DoubleGlobalErrorHandlingFails()"));
+  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "GlobalErrorHandling()"));
+  // We only check that it starts with this string, so we don't have to check
+  // the second frame, which contains line numbers in libdeno_test.js and may
+  // change over time.
+  std::string expected =
+      "{\"message\":\"ReferenceError: notdefined is not defined\","
+      "\"frames\":[{\"line\":3,\"column\":2,\"functionName\":\"\","
+      "\"scriptName\":\"helloworld.js\",\"isEval\":true,"
+      "\"isConstructor\":false,\"isWasm\":false},";
+  std::string actual(deno_last_exception(d), 0, expected.length());
+  EXPECT_STREQ(expected.c_str(), actual.c_str());
   deno_delete(d);
 }
 
@@ -225,17 +220,31 @@ TEST(LibDenoTest, DataBuf) {
   deno_delete(d);
 }
 
-TEST(LibDenoTest, PromiseRejectCatchHandling) {
+TEST(LibDenoTest, CheckPromiseErrors) {
   static int count = 0;
-  auto recv_cb = [](auto _, int req_id, auto buf, auto data_buf) {
-    // If no error, nothing should be sent, and count should
-    // not increment
-    count++;
-  };
+  auto recv_cb = [](auto _, int req_id, auto buf, auto data_buf) { count++; };
   Deno* d = deno_new(snapshot, deno_config{empty, recv_cb});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "PromiseRejectCatchHandling()"));
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "CheckPromiseErrors()"));
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  EXPECT_EQ(count, 1);
+  // We caught the exception. So still no errors after calling
+  // deno_check_promise_errors().
+  deno_check_promise_errors(d);
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  deno_delete(d);
+}
 
-  EXPECT_EQ(count, 0);
+TEST(LibDenoTest, LastException) {
+  Deno* d = deno_new(empty, deno_config{empty, nullptr});
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "\n\nthrow Error('boo');\n\n"));
+  EXPECT_STREQ(deno_last_exception(d),
+               "{\"message\":\"Error: boo\","
+               "\"frames\":[{\"line\":3,\"column\":7,"
+               "\"functionName\":\"\",\"scriptName\":\"a.js\","
+               "\"isEval\":false,"
+               "\"isConstructor\":false,\"isWasm\":false}]}");
   deno_delete(d);
 }
 
