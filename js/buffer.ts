@@ -173,7 +173,7 @@ export class Buffer implements Reader, Writer {
     } else if (c > MAX_SIZE - c - n) {
       throw new DenoError(
         ErrorKind.TooLarge,
-        "The buffer can't grow because it becomes too large"
+        "The buffer cannot be grown beyond the maximum size."
       );
     } else {
       // Not enough space anywhere, we need to allocate.

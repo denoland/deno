@@ -1,9 +1,9 @@
 import { Buffer, readAll } from "deno";
+import * as deno from "deno";
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 import { assert, assertEqual, test } from "./test_util.ts";
-import { stringifyArgs } from "./console.ts";
 // N controls how many iterations of certain checks are performed.
 const N = 100;
 let testBytes: Uint8Array | null;
@@ -63,10 +63,6 @@ async function empty(buf: Buffer, s: string, fub: Uint8Array): Promise<void> {
     check(buf, s);
   }
   check(buf, "");
-}
-
-function stringify(...args: any[]): string {
-  return stringifyArgs(args);
 }
 
 test(function bufferNewBuffer() {
@@ -141,14 +137,16 @@ test(async function bufferTooLargeByteWrites() {
   const xBytes = repeat("x", 0);
   const buf = new Buffer(xBytes.buffer as ArrayBuffer);
   const { nread, eof } = await buf.read(tmp);
+
+  let err;
   try {
     buf.grow(growLen);
   } catch (e) {
-    assertEqual(
-      stringify(e).split("\n")[0],
-      "TooLarge: The buffer can't grow because it becomes too large"
-    );
+    err = e;
   }
+
+  assertEqual(err.kind, deno.ErrorKind.TooLarge);
+  assertEqual(err.name, "TooLarge");
 });
 
 test(async function bufferLargeByteReads() {
