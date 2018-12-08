@@ -230,6 +230,8 @@ are a few particularly useful ones:
 
 ## How to Profile deno
 
+To start profiling,
+
 ```sh
 # Make sure we're only building release.
 export DENO_BUILD_MODE=release
@@ -240,11 +242,64 @@ export DENO_BUILD_MODE=release
 # Exercise it.
 third_party/wrk/linux/wrk http://localhost:4500/
 kill `pgrep deno`
-# When supplying --prof, V8 will write a file in the current directory that
-# looks like this isolate-0x7fad98242400-v8.log
-# To examine this file:
+```
+
+V8 will write a file in the current directory that looks like this:
+`isolate-0x7fad98242400-v8.log`. To examine this file:
+
+```sh
 D8_PATH=target/release/ ./third_party/v8/tools/linux-tick-processor
-isolate-0x7fad98242400-v8.log
+isolate-0x7fad98242400-v8.log > prof.log
+# on macOS, use ./third_party/v8/tools/mac-tick-processor instead
+```
+
+`prof.log` will contain information about tick distribution of different calls.
+
+To view the log with Web UI, generate JSON file of the log:
+
+```sh
+D8_PATH=target/release/ ./third_party/v8/tools/linux-tick-processor
+isolate-0x7fad98242400-v8.log --preprocess > prof.json
+```
+
+Open `third_party/v8/tools/profview/index.html` in your brower, and select
+`prof.json` to view the distribution graphically.
+
+To learn more about `d8` and profiling, check out the following links:
+
+- [https://v8.dev/docs/d8](https://v8.dev/docs/d8)
+- [https://v8.dev/docs/profile](https://v8.dev/docs/profile)
+
+## How to Debug deno
+
+We can use LLDB to debug deno.
+
+```sh
+lldb -- target/debug/deno tests/worker.js
+> run
+> bt
+> up
+> up
+> l
+```
+
+To debug Rust code, we can use `rust-lldb`. It should come with `rustc` and is a
+wrapper around LLDB.
+
+```sh
+rust-lldb -- ./target/debug/deno tests/http_bench.ts --allow-net
+# On macOS, you might get warnings like
+# `ImportError: cannot import name _remove_dead_weakref`
+# In that case, use system python by setting PATH, e.g.
+# PATH=/System/Library/Frameworks/Python.framework/Versions/2.7/bin:$PATH
+(lldb) command script import "/Users/kevinqian/.rustup/toolchains/1.30.0-x86_64-apple-darwin/lib/rustlib/etc/lldb_rust_formatters.py"
+(lldb) type summary add --no-value --python-function lldb_rust_formatters.print_val -x ".*" --category Rust
+(lldb) type category enable Rust
+(lldb) target create "../deno/target/debug/deno"
+Current executable set to '../deno/target/debug/deno' (x86_64).
+(lldb) settings set -- target.run-args  "tests/http_bench.ts" "--allow-net"
+(lldb) b op_start
+(lldb) r
 ```
 
 ## Build Instructions _(for advanced users only)_
