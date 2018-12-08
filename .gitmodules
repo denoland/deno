@@ -4,7 +4,6 @@
 [submodule "build"]
 	path = build
 	url = https://github.com/denoland/chromium_build.git
-	branch = deno
 [submodule "js/deps/https/deno.land/x/net"]
 	path = js/deps/https/deno.land/x/net
 	url = https://github.com/denoland/deno_net.git
