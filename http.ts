@@ -89,13 +89,12 @@ interface Response {
 }
 
 function setContentLength(r: Response): void {
-  if (r.body) {
-    if (!r.headers) {
-      r.headers = new Headers();
-    }
-    if (!r.headers.has("content-length")) {
-      r.headers.append("Content-Length", r.body.byteLength.toString());
-    }
+  if (!r.headers) {
+    r.headers = new Headers();
+  }
+  if (!r.headers.has("content-length")) {
+    const bodyLength = r.body ? r.body.byteLength : 0
+    r.headers.append("Content-Length", bodyLength.toString());
   }
 }
 
