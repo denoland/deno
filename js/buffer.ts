@@ -6,6 +6,7 @@
 import { Reader, Writer, ReadResult } from "./io";
 import { assert } from "./util";
 import { TextDecoder } from "./text_encoding";
+import { DenoError, ErrorKind } from "./errors";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
@@ -170,7 +171,10 @@ export class Buffer implements Reader, Writer {
       // don't spend all our time copying.
       copyBytes(this.buf, this.buf.subarray(this.off));
     } else if (c > MAX_SIZE - c - n) {
-      throw Error("ErrTooLarge"); // TODO DenoError(TooLarge)
+      throw new DenoError(
+        ErrorKind.TooLarge,
+        "The buffer cannot be grown beyond the maximum size."
+      );
     } else {
       // Not enough space anywhere, we need to allocate.
       const buf = new Uint8Array(2 * c + n);
