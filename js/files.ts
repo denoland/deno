@@ -73,7 +73,7 @@ export enum OpenMode {
  * supplied file name.
  */
 export function create(filename: string): Promise<File> {
-  return open(filename, OpenMode.ExclusiveCreate);
+  return open(filename, OpenMode.WriteRead);
 }
 
 /** Open a file and return an instance of the `File` object.
