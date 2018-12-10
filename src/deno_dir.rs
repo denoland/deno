@@ -141,7 +141,7 @@ impl DenoDir {
     let mt = Path::new(&media_type_filename);
 
     let src = if self.reload || !p.exists() {
-      println!("Downloading {}", module_name);
+      eprintln!("Downloading {}", module_name);
       let (source, content_type) = http_util::fetch_sync_string(module_name)?;
       match p.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
