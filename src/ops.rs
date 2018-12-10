@@ -16,7 +16,6 @@ use version;
 
 use flatbuffers::FlatBufferBuilder;
 use futures;
-use futures::future::poll_fn;
 use futures::Poll;
 use hyper;
 use hyper::rt::Future;
@@ -236,11 +235,13 @@ fn serialize_response(
   data.into()
 }
 
+#[inline]
 fn ok_future(buf: Buf) -> Box<Op> {
   Box::new(futures::future::ok(buf))
 }
 
 // Shout out to Earl Sweatshirt.
+#[inline]
 fn odd_future(err: DenoError) -> Box<Op> {
   Box::new(futures::future::err(err))
 }
@@ -460,21 +461,42 @@ where
   }
 }
 
-// TODO Do not use macro for the blocking function.. We should instead be able
-// to do this with a normal function, but there seems to some type system
-// issues. The type of this function should be something like this:
-//   fn blocking<F>(is_sync: bool, f: F) -> Box<Op>
-//   where F: FnOnce() -> DenoResult<Buf>
-macro_rules! blocking {
-  ($is_sync:expr, $fn:expr) => {
-    if $is_sync {
-      // If synchronous, execute the function immediately on the main thread.
-      Box::new(futures::future::result($fn()))
-    } else {
-      // Otherwise dispatch to thread pool.
-      Box::new(poll_fn(move || convert_blocking($fn)))
-    }
-  };
+fn blocking<F>(is_sync: bool, f: F) -> Box<Op>
+where
+  F: 'static + Send + FnOnce() -> DenoResult<Buf>,
+{
+  if is_sync {
+    Box::new(futures::future::result(f()))
+  } else {
+    Box::new(poll_fn(move || convert_blocking(f)))
+  }
+}
+
+/// `futures::future::poll_fn` only support `F: FnMut()->Poll<T, E>`
+/// However, we require that `F: FnOnce()->Poll<T, E>`.
+/// Therefore, we created our version of `poll_fn`.
+fn poll_fn<T, E, F>(f: F) -> PollFn<F>
+where
+  F: FnOnce() -> Poll<T, E>,
+{
+  PollFn { inner: Some(f) }
+}
+
+struct PollFn<F> {
+  inner: Option<F>,
+}
+
+impl<T, E, F> Future for PollFn<F>
+where
+  F: FnOnce() -> Poll<T, E>,
+{
+  type Item = T;
+  type Error = E;
+
+  fn poll(&mut self) -> Poll<T, E> {
+    let f = self.inner.take().expect("Inner fn has been taken.");
+    f()
+  }
 }
 
 fn op_make_temp_dir(
@@ -496,7 +518,7 @@ fn op_make_temp_dir(
   let prefix = inner.prefix().map(String::from);
   let suffix = inner.suffix().map(String::from);
 
-  blocking!(base.sync(), || -> OpResult {
+  blocking(base.sync(), move || -> OpResult {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
@@ -539,7 +561,7 @@ fn op_mkdir(
   if let Err(e) = state.check_write(&path) {
     return odd_future(e);
   }
-  blocking!(base.sync(), || {
+  blocking(base.sync(), move || {
     debug!("op_mkdir {}", path);
     deno_fs::mkdir(Path::new(&path), mode)?;
     Ok(empty_buf())
@@ -560,7 +582,7 @@ fn op_chmod(
     return odd_future(e);
   }
 
-  blocking!(base.sync(), || {
+  blocking(base.sync(), move || {
     debug!("op_chmod {}", &path);
     let path = PathBuf::from(&path);
     // Still check file/dir exists on windows
@@ -644,7 +666,7 @@ fn op_shutdown(
         1 => Shutdown::Write,
         _ => unimplemented!(),
       };
-      blocking!(base.sync(), || {
+      blocking(base.sync(), move || {
         // Use UFCS for disambiguation
         Resource::shutdown(&mut resource, shutdown_mode)?;
         Ok(empty_buf())
@@ -743,7 +765,7 @@ fn op_remove(
     return odd_future(e);
   }
 
-  blocking!(base.sync(), || {
+  blocking(base.sync(), move || {
     debug!("op_remove {}", path.display());
     let metadata = fs::metadata(&path)?;
     if metadata.is_file() {
@@ -768,7 +790,7 @@ fn op_read_file(
   let cmd_id = base.cmd_id();
   let filename = PathBuf::from(inner.filename().unwrap());
   debug!("op_read_file {}", filename.display());
-  blocking!(base.sync(), || {
+  blocking(base.sync(), move || {
     let vec = fs::read(&filename)?;
     // Build the response message. memcpy data into inner.
     // TODO(ry) zero-copy.
@@ -808,7 +830,7 @@ fn op_copy_file(
   }
 
   debug!("op_copy_file {} {}", from.display(), to.display());
-  blocking!(base.sync(), || {
+  blocking(base.sync(), move || {
     // On *nix, Rust deem non-existent path as invalid input
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is reolved, we should remove this workaround.
@@ -881,7 +903,7 @@ fn op_stat(
   let filename = PathBuf::from(inner.filename().unwrap());
   let lstat = inner.lstat();
 
-  blocking!(base.sync(), || {
+  blocking(base.sync(), move || {
     let builder = &mut FlatBufferBuilder::new();
     debug!("op_stat {} {}", filename.display(), lstat);
     let metadata = if lstat {
@@ -927,7 +949,7 @@ fn op_read_dir(
   let cmd_id = base.cmd_id();
   let path = String::from(inner.path().unwrap());
 
-  blocking!(base.sync(), || -> OpResult {
+  blocking(base.sync(), move || -> OpResult {
     debug!("op_read_dir {}", path);
     let builder = &mut FlatBufferBuilder::new();
     let entries: Vec<_> = fs::read_dir(Path::new(&path))?
@@ -986,9 +1008,9 @@ fn op_write_file(
     return odd_future(e);
   }
 
-  blocking!(base.sync(), || -> OpResult {
+  blocking(base.sync(), move || -> OpResult {
     debug!("op_write_file {} {}", filename, data.len());
-    deno_fs::write_file(Path::new(&filename), &data, perm)?;
+    deno_fs::write_file(Path::new(&filename), data, perm)?;
     Ok(empty_buf())
   })
 }
@@ -1006,7 +1028,7 @@ fn op_rename(
   if let Err(e) = state.check_write(&newpath_) {
     return odd_future(e);
   }
-  blocking!(base.sync(), || -> OpResult {
+  blocking(base.sync(), move || -> OpResult {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     fs::rename(&oldpath, &newpath)?;
     Ok(empty_buf())
@@ -1034,7 +1056,7 @@ fn op_symlink(
       "Not implemented".to_string(),
     ));
   }
-  blocking!(base.sync(), || -> OpResult {
+  blocking(base.sync(), move || -> OpResult {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
     std::os::unix::fs::symlink(&oldname, &newname)?;
@@ -1052,7 +1074,7 @@ fn op_read_link(
   let cmd_id = base.cmd_id();
   let name = PathBuf::from(inner.name().unwrap());
 
-  blocking!(base.sync(), || -> OpResult {
+  blocking(base.sync(), move || -> OpResult {
     debug!("op_read_link {}", name.display());
     let path = fs::read_link(&name)?;
     let builder = &mut FlatBufferBuilder::new();
@@ -1121,7 +1143,7 @@ fn op_repl_readline(
   // Ignore this clippy warning until this issue is addressed:
   // https://github.com/rust-lang-nursery/rust-clippy/issues/1684
   #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
-  blocking!(base.sync(), || -> OpResult {
+  blocking(base.sync(), move || -> OpResult {
     let line = resources::readline(rid, &prompt)?;
 
     let builder = &mut FlatBufferBuilder::new();
@@ -1159,7 +1181,7 @@ fn op_truncate(
     return odd_future(e);
   }
 
-  blocking!(base.sync(), || {
+  blocking(base.sync(), move || {
     debug!("op_truncate {} {}", filename, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
     f.set_len(u64::from(len))?;

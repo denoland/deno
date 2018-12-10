@@ -13,9 +13,9 @@ use std::os::unix::fs::DirBuilderExt;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 
-pub fn write_file(
+pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
-  data: &[u8],
+  data: T,
   perm: u32,
 ) -> std::io::Result<()> {
   let is_append = perm & (1 << 31) != 0;
@@ -28,7 +28,7 @@ pub fn write_file(
     .open(filename)?;
 
   set_permissions(&mut file, perm)?;
-  file.write_all(data)
+  file.write_all(data.as_ref())
 }
 
 #[cfg(any(unix))]
