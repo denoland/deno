@@ -1,4 +1,4 @@
-NotFound: Cannot resolve module "bad-module.ts" from "[WILDCARD]/tests/error_005_missing_dynamic_import.ts"
+[WILDCARD]NotFound: Cannot resolve module "bad-module.ts" from "[WILDCARD]/tests/error_005_missing_dynamic_import.ts"
     at DenoError ([WILDCARD]/js/errors.ts:[WILDCARD])
     at maybeError ([WILDCARD]/js/errors.ts:[WILDCARD])
     at maybeThrowError ([WILDCARD]/js/errors.ts:[WILDCARD])
