@@ -29,51 +29,30 @@ export const stdout = new File(1);
 /** An instance of `File` for stderr. */
 export const stderr = new File(2);
 
-export enum OpenMode {
-  /** Read-only, default mode.
-   * Starts at beginning of file.
-   */
-  Read = "r",
-  /** Read-write
-   * Start at beginning of file.
-   */
-  ReadWrite = "r+",
-  /** Write-only
-   * Opens and truncates existing file or creates new one
-   * for writing only.
-   */
-  Write = "w",
-  /** Write-read
-   * Opens and truncates existing file or creates new one
-   * for writing and reading.
-   */
-  WriteRead = "w+",
-  /** Append-only
-   * Opens existing file or creates new one.
-   * Each write appends content to file and doesn't overwrite
-   * already existing content.
-   */
-  Append = "a",
-  /** Append-read
-   * Behaves like `OpenMode.Append` and allows to read from file.
-   */
-  AppendRead = "a+",
-  /** Exclusive create
-   * Creates new file only if one doesn't exist already.
-   * Allows to write to file.
-   */
-  ExclusiveCreate = "x",
-  /** Exclusive create - read
-   * Behaves like `OpenMode.ExclusiveCreate` and allows to read from file.
-   */
-  ExclusiveCreateRead = "x+"
-}
+type OpenMode =
+  /** Read-only, default mode. Starts at beginning of file. */
+  "r" |
+  /** Read-write. Start at beginning of file. */
+  "r+" |
+  /** Write-only. Opens and truncates existing file or creates new one for writing only. */
+  "w" |
+  /** Read-write. Opens and truncates existing file or creates new one for writing and reading. */
+  "w+" |
+  /** Write-only. Opens existing file or creates new one. Each write appends content to the end of file. */
+  "a" |
+  /** Read-write. Behaves like "a" and allows to read from file. */
+  "a+" |
+  /** Write-only. Exclusive create - creates new file only if one doesn't exist already */
+  "x" |
+  /** Read-write. Behaves like `x` and allows to read from file. */
+  "x+";
+
 
 /** A factory function for creating instances of `File` associated with the
  * supplied file name.
  */
 export function create(filename: string): Promise<File> {
-  return open(filename, OpenMode.WriteRead);
+  return open(filename, "w+");
 }
 
 /** Open a file and return an instance of the `File` object.
@@ -85,7 +64,7 @@ export function create(filename: string): Promise<File> {
  */
 export async function open(
   filename: string,
-  mode: OpenMode = OpenMode.Read
+  mode: OpenMode = "r"
 ): Promise<File> {
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);

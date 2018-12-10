@@ -6,7 +6,6 @@ export { env, exit } from "./os";
 export { chdir, cwd } from "./dir";
 export {
   File,
-  OpenMode,
   open,
   stdin,
   stdout,

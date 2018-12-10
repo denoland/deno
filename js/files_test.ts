@@ -33,7 +33,7 @@ test(async function filesToAsyncIterator() {
 testPerm({ write: true }, async function createFile() {
   const tempDir = await deno.makeTempDir();
   const filename = tempDir + "/test.txt";
-  let f = await deno.open(filename, deno.OpenMode.Write);
+  let f = await deno.open(filename, "w");
   let fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile());
   assert(fileInfo.len === 0);
@@ -54,7 +54,7 @@ testPerm({ write: true }, async function openModeWrite() {
   const filename = tempDir + "hello.txt";
   const data = encoder.encode("Hello world!\n");
 
-  let file = await deno.open(filename, deno.OpenMode.Write);
+  let file = await deno.open(filename, "w");
   // assert file was created
   let fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile());
@@ -71,11 +71,11 @@ testPerm({ write: true }, async function openModeWrite() {
   } catch (e) {
     thrown = true;
   } finally {
-    assert(thrown, "OpenMode.Write shouldn't allow to read file");
+    assert(thrown, "'w' mode shouldn't allow to read file");
   }
   file.close();
   // assert that existing file is truncated on open
-  file = await deno.open(filename, deno.OpenMode.Write);
+  file = await deno.open(filename, "w");
   file.close();
   const fileSize = deno.statSync(filename).len;
   assertEqual(fileSize, 0);
@@ -88,7 +88,7 @@ testPerm({ write: true }, async function openModeWriteRead() {
   const filename = tempDir + "hello.txt";
   const data = encoder.encode("Hello world!\n");
 
-  let file = await deno.open(filename, deno.OpenMode.WriteRead);
+  let file = await deno.open(filename, "w+");
   // assert file was created
   let fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile());
