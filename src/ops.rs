@@ -17,6 +17,7 @@ use version;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::lazy;
+use futures::Poll;
 use hyper;
 use hyper::rt::Future;
 use remove_dir_all::remove_dir_all;
@@ -40,7 +41,7 @@ use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_process::CommandExt;
-use tokio_threadpool::ThreadPool;
+use tokio_threadpool;
 
 type OpResult = DenoResult<Buf>;
 
@@ -446,15 +447,61 @@ fn op_fetch(
   Box::new(future)
 }
 
-fn blocking<F>(is_sync: bool, thread_pool: &ThreadPool, f: F) -> Box<Op>
+// This is just type conversion. Implement From trait?
+// See https://github.com/tokio-rs/tokio/blob/ffd73a64e7ec497622b7f939e38017afe7124dc4/tokio-fs/src/lib.rs#L76-L85
+fn convert_blocking<F>(f: F) -> Poll<Buf, DenoError>
+where
+  F: FnOnce() -> DenoResult<Buf>,
+{
+  use futures::Async::*;
+  match tokio_threadpool::blocking(f) {
+    Ok(Ready(Ok(v))) => Ok(v.into()),
+    Ok(Ready(Err(err))) => Err(err),
+    Ok(NotReady) => Ok(NotReady),
+    Err(_err) => panic!("blocking error"),
+  }
+}
+
+fn blocking<F>(
+  is_sync: bool,
+  thread_pool: &tokio_threadpool::ThreadPool,
+  f: F,
+) -> Box<Op>
 where
   F: 'static + Send + FnOnce() -> DenoResult<Buf>,
 {
   if is_sync {
     Box::new(futures::future::result(f()))
   } else {
-    let h = thread_pool.spawn_handle(lazy(move || f()));
+    let h = thread_pool
+      .spawn_handle(lazy(move || poll_fn(move || convert_blocking(f))));
     Box::new(h)
+  }
+}
+
+/// `futures::future::poll_fn` only support `F: FnMut()->Poll<T, T>`
+/// However, we require that `F: FnOnce()->Poll<T, T>`
+fn poll_fn<T, E, F>(f: F) -> PollFn<F>
+where
+  F: FnOnce() -> Poll<T, E>,
+{
+  PollFn { inner: Some(f) }
+}
+
+struct PollFn<F> {
+  inner: Option<F>,
+}
+
+impl<T, E, F> Future for PollFn<F>
+where
+  F: FnOnce() -> Poll<T, E>,
+{
+  type Item = T;
+  type Error = E;
+
+  fn poll(&mut self) -> Poll<T, E> {
+    let f = self.inner.take().expect("Inner fn has been taken.");
+    f()
   }
 }
 
