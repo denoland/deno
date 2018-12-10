@@ -67,12 +67,30 @@ test(function consoleTestStringifyCircular() {
 
   nestedObj.o = circularObj;
   // tslint:disable-next-line:max-line-length
-  const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], asyncMethod: [AsyncFunction: asyncMethod], generatorMethod: [GeneratorFunction: generatorMethod], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: [object], arr: [object], baseClass: [object] } }`;
+  const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], asyncMethod: [AsyncFunction: asyncMethod], generatorMethod: [GeneratorFunction: generatorMethod], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: {}, arr: [ 1, "s", false, null, [Circular] ], baseClass: Base { a: 1 } } }`;
 
   assertEqual(stringify(1), "1");
   assertEqual(stringify(1n), "1n");
   assertEqual(stringify("s"), "s");
   assertEqual(stringify(false), "false");
+  // tslint:disable-next-line:no-construct
+  assertEqual(stringify(new Number(1)), "[Number: 1]");
+  // tslint:disable-next-line:no-construct
+  assertEqual(stringify(new Boolean(true)), "[Boolean: true]");
+  // tslint:disable-next-line:no-construct
+  assertEqual(stringify(new String("deno")), `[String: "deno"]`);
+  assertEqual(stringify(/[0-9]*/), "/[0-9]*/");
+  assertEqual(
+    stringify(new Date("2018-12-10T02:26:59.002Z")),
+    "2018-12-10T02:26:59.002Z"
+  );
+  assertEqual(stringify(new Set([1, 2, 3])), "Set { 1, 2, 3 }");
+  assertEqual(
+    stringify(new Map([[1, "one"], [2, "two"]])),
+    `Map { 1 => "one", 2 => "two" }`
+  );
+  assertEqual(stringify(new WeakSet()), "WeakSet { [items unknown] }");
+  assertEqual(stringify(new WeakMap()), "WeakMap { [items unknown] }");
   assertEqual(stringify(Symbol(1)), "Symbol(1)");
   assertEqual(stringify(null), "null");
   assertEqual(stringify(undefined), "undefined");
@@ -83,6 +101,11 @@ test(function consoleTestStringifyCircular() {
   assertEqual(
     stringify(async function* agf() {}),
     "[AsyncGeneratorFunction: agf]"
+  );
+  assertEqual(stringify(new Uint8Array([1, 2, 3])), "Uint8Array [ 1, 2, 3 ]");
+  assertEqual(
+    stringify({ a: { b: { c: { d: new Set([1]) } } } }),
+    "{ a: { b: { c: { d: [Set] } } } }"
   );
   assertEqual(stringify(nestedObj), nestedObjExpected);
   assertEqual(stringify(JSON), "{}");
@@ -98,16 +121,16 @@ test(function consoleTestStringifyWithDepth() {
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEqual(
     stringifyArgs([nestedObj], { depth: 3 }),
-    "{ a: { b: { c: [object] } } }"
+    "{ a: { b: { c: [Object] } } }"
   );
   assertEqual(
     stringifyArgs([nestedObj], { depth: 4 }),
-    "{ a: { b: { c: { d: [object] } } } }"
+    "{ a: { b: { c: { d: [Object] } } } }"
   );
-  assertEqual(stringifyArgs([nestedObj], { depth: 0 }), "[object]");
+  assertEqual(stringifyArgs([nestedObj], { depth: 0 }), "[Object]");
   assertEqual(
     stringifyArgs([nestedObj], { depth: null }),
-    "{ a: { b: [object] } }"
+    "{ a: { b: { c: { d: [Object] } } } }"
   );
 });
 
