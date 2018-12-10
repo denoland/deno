@@ -1,4 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+import { isTypedArray } from "./util";
 
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
@@ -10,18 +11,6 @@ type ConsoleOptions = Partial<{
 
 // Default depth of logging nested objects
 const DEFAULT_MAX_DEPTH = 4;
-
-const TYPEDARRAY_TYPES = [
-  Int8Array,
-  Uint8Array,
-  Uint8ClampedArray,
-  Int16Array,
-  Uint16Array,
-  Int32Array,
-  Uint32Array,
-  Float32Array,
-  Float64Array
-];
 
 // tslint:disable-next-line:no-any
 function getClassInstanceName(instance: any): string {
@@ -50,8 +39,7 @@ function createFunctionString(value: Function, ctx: ConsoleContext): string {
 interface IterablePrintConfig {
   typeName: string;
   displayName: string;
-  leftDelim: string;
-  rightDelim: string;
+  delims: [string, string];
   entryHandler: (
     // tslint:disable-next-line:no-any
     entry: any,
@@ -81,7 +69,7 @@ function createIterableString(
   ctx.delete(value);
   const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
   const iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
-  return `${iPrefix}${config.leftDelim}${iContent}${config.rightDelim}`;
+  return `${iPrefix}${config.delims[0]}${iContent}${config.delims[1]}`;
 }
 
 function createArrayString(
@@ -94,8 +82,7 @@ function createArrayString(
   const printConfig: IterablePrintConfig = {
     typeName: "Array",
     displayName: "",
-    leftDelim: "[",
-    rightDelim: "]",
+    delims: ["[", "]"],
     entryHandler: (el, ctx, level, maxLevel) =>
       stringifyWithQuotes(el, ctx, level + 1, maxLevel)
   };
@@ -113,8 +100,7 @@ function createTypedArrayString(
   const printConfig: IterablePrintConfig = {
     typeName: typedArrayName,
     displayName: typedArrayName,
-    leftDelim: "[",
-    rightDelim: "]",
+    delims: ["[", "]"],
     entryHandler: (el, ctx, level, maxLevel) =>
       stringifyWithQuotes(el, ctx, level + 1, maxLevel)
   };
@@ -131,8 +117,7 @@ function createSetString(
   const printConfig: IterablePrintConfig = {
     typeName: "Set",
     displayName: "Set",
-    leftDelim: "{",
-    rightDelim: "}",
+    delims: ["{", "}"],
     entryHandler: (el, ctx, level, maxLevel) =>
       stringifyWithQuotes(el, ctx, level + 1, maxLevel)
   };
@@ -149,8 +134,7 @@ function createMapString(
   const printConfig: IterablePrintConfig = {
     typeName: "Map",
     displayName: "Map",
-    leftDelim: "{",
-    rightDelim: "}",
+    delims: ["{", "}"],
     entryHandler: (el, ctx, level, maxLevel) => {
       const [key, val] = el;
       return `${stringifyWithQuotes(
@@ -273,18 +257,13 @@ function createObjectString(
     return createWeakSetString();
   } else if (value instanceof WeakMap) {
     return createWeakMapString();
+  } else if (isTypedArray(value)) {
+    return createTypedArrayString(
+      Object.getPrototypeOf(value).constructor.name,
+      value,
+      ...args
+    );
   } else {
-    // Check if it is a typed array
-    for (const cstr of TYPEDARRAY_TYPES) {
-      if (value instanceof cstr) {
-        return createTypedArrayString(
-          cstr.prototype.constructor.name,
-          value,
-          ...args
-        );
-      }
-    }
-
     // Otherwise, default object formatting
     return createRawObjectString(value, ...args);
   }
