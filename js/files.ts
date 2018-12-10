@@ -29,24 +29,25 @@ export const stdout = new File(1);
 /** An instance of `File` for stderr. */
 export const stderr = new File(2);
 
+// tslint:disable:max-line-length
 type OpenMode =
   /** Read-only, default mode. Starts at beginning of file. */
-  "r" |
+  | "r"
   /** Read-write. Start at beginning of file. */
-  "r+" |
+  | "r+"
   /** Write-only. Opens and truncates existing file or creates new one for writing only. */
-  "w" |
+  | "w"
   /** Read-write. Opens and truncates existing file or creates new one for writing and reading. */
-  "w+" |
+  | "w+"
   /** Write-only. Opens existing file or creates new one. Each write appends content to the end of file. */
-  "a" |
+  | "a"
   /** Read-write. Behaves like "a" and allows to read from file. */
-  "a+" |
+  | "a+"
   /** Write-only. Exclusive create - creates new file only if one doesn't exist already */
-  "x" |
+  | "x"
   /** Read-write. Behaves like `x` and allows to read from file. */
-  "x+";
-
+  | "x+";
+// tslint:enable:max-line-length
 
 /** A factory function for creating instances of `File` associated with the
  * supplied file name.
