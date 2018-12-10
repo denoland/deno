@@ -29,10 +29,9 @@ def read_test(file_name):
 
 
 def str2bool(v):
-    v = v.lower()
-    if v in ("yes", "true", "t", "1"):
+    if v == "true":
         return True
-    elif v in ("", "no", "false", "f", "0"):
+    elif v == "false":
         return False
     else:
         raise ValueError("Bad boolean value")
@@ -51,7 +50,7 @@ def integration_tests(deno_executable):
         exit_code = int(test.get("exit_code", 0))
         args = test.get("args", "").split(" ")
 
-        check_stderr = str2bool(test.get("check_stderr", ""))
+        check_stderr = str2bool(test.get("check_stderr", "false"))
         stderr = subprocess.STDOUT if check_stderr else None
 
         output_abs = os.path.join(root_path, test.get("output", ""))
