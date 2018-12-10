@@ -28,6 +28,10 @@ def read_test(file_name):
     return test_dict
 
 
+def str2bool(v):
+    return v.lower() in ("yes", "true", "t", "1")
+
+
 def integration_tests(deno_executable):
     assert os.path.isfile(deno_executable)
     tests = sorted([
@@ -40,6 +44,10 @@ def integration_tests(deno_executable):
         test = read_test(test_abs)
         exit_code = int(test.get("exit_code", 0))
         args = test.get("args", "").split(" ")
+
+        check_stderr = str2bool(test.get("check_stderr", ""))
+        stderr = subprocess.STDOUT if check_stderr else None
+
         output_abs = os.path.join(root_path, test.get("output", ""))
         with open(output_abs, 'r') as f:
             expected_out = f.read()
@@ -48,7 +56,8 @@ def integration_tests(deno_executable):
         print " ".join(cmd)
         actual_code = 0
         try:
-            actual_out = subprocess.check_output(cmd, universal_newlines=True)
+            actual_out = subprocess.check_output(
+                cmd, universal_newlines=True, stderr=stderr)
         except subprocess.CalledProcessError as e:
             actual_code = e.returncode
             actual_out = e.output
