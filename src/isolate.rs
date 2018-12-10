@@ -25,6 +25,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use tokio;
+use tokio_threadpool::ThreadPool;
 use tokio_util;
 
 // Buf represents a byte array returned from a "Op".
@@ -58,6 +59,7 @@ pub struct Isolate {
 // inside IsolateState.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct IsolateState {
+  pub thread_pool: ThreadPool,
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
@@ -69,6 +71,7 @@ impl IsolateState {
   pub fn new(flags: flags::DenoFlags, argv_rest: Vec<String>) -> Self {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
     Self {
+      thread_pool: ThreadPool::new(),
       dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::new(&flags),
