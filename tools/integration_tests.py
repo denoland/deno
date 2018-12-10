@@ -29,7 +29,13 @@ def read_test(file_name):
 
 
 def str2bool(v):
-    return v.lower() in ("yes", "true", "t", "1")
+    v = v.lower()
+    if v in ("yes", "true", "t", "1"):
+        return True
+    elif v in ("", "no", "false", "f", "0"):
+        return False
+    else:
+        raise ValueError("Bad boolean value")
 
 
 def integration_tests(deno_executable):
