@@ -1,5 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use std;
+use std::fs;
 use std::fs::{create_dir, DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
@@ -57,11 +58,13 @@ pub fn make_temp_dir(
   loop {
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{}{:08x}{}", prefix_, unique, suffix_));
-    // TODO: on posix, set mode flags to 0o700.
     let r = create_dir(buf.as_path());
     match r {
       Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
-      Ok(_) => return Ok(buf),
+      Ok(_) => {
+          fs::set_permissions(buf.as_path(), PermissionsExt::from_mode(0o700))?;
+          return Ok(buf);
+      },
       Err(e) => return Err(e),
     }
   }
