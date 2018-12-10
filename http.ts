@@ -82,7 +82,7 @@ export async function* serve(addr: string) {
   listener.close();
 }
 
-export async function listenAndServe(addr: string, handler: (ServerRequest) => void) {
+export async function listenAndServe(addr: string, handler: (req: ServerRequest) => void) {
   const server = serve(addr);
 
   for await (const request of server) {

@@ -1,20 +1,22 @@
 #!/usr/bin/env deno --allow-net
 
 // This program serves files in the current directory over HTTP.
-// TODO Supply the directory to serve as a CLI argument.
 // TODO Stream responses instead of reading them into memory.
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-import { listenAndServe } from "./http.ts";
-import { cwd, readFile, DenoError, ErrorKind } from "deno";
+import { listenAndServe } from "./http";
+import { cwd, readFile, DenoError, ErrorKind, args } from "deno";
 
 const addr = "0.0.0.0:4500";
-const currentDir = cwd();
-
+let currentDir = cwd();
+const target = args[1];
+if (target) {
+  currentDir = `${currentDir}/${target}`;
+}
 const encoder = new TextEncoder();
 
-listenAndServe(addr, async req => {  
+listenAndServe(addr, async req => {
   const fileName = req.url.replace(/\/$/, '/index.html');
   const filePath = currentDir + fileName;
   let file;
@@ -25,7 +27,7 @@ listenAndServe(addr, async req => {
     if (e instanceof DenoError && e.kind === ErrorKind.NotFound) {
       await req.respond({ status: 404, body: encoder.encode("Not found") });  
     } else {
-      await req.response({ status: 500, body: encoder.encode("Internal server error") });
+      await req.respond({ status: 500, body: encoder.encode("Internal server error") });
     }
     return;
   }
