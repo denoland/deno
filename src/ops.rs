@@ -479,8 +479,9 @@ where
   }
 }
 
-/// `futures::future::poll_fn` only support `F: FnMut()->Poll<T, T>`
-/// However, we require that `F: FnOnce()->Poll<T, T>`
+/// `futures::future::poll_fn` only support `F: FnMut()->Poll<T, E>`
+/// However, we require that `F: FnOnce()->Poll<T, E>`.
+/// Therefore, we created our version of `poll_fn`.
 fn poll_fn<T, E, F>(f: F) -> PollFn<F>
 where
   F: FnOnce() -> Poll<T, E>,
