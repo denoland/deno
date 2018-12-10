@@ -79,7 +79,7 @@ class Prompt(object):
         assert stderr == b''
 
     def test_write_no(self):
-        code, stdout, stderr = self.run('needsWrite', b'N\n')
+        code, _stdout, stderr = self.run('needsWrite', b'N\n')
         assert code == 1
         # FIXME this error message should be in stderr
         assert b'PermissionDenied: permission denied' in stderr
@@ -98,7 +98,7 @@ class Prompt(object):
         assert stderr == b''
 
     def test_env_no(self):
-        code, stdout, stderr = self.run('needsEnv', b'N\n')
+        code, _stdout, stderr = self.run('needsEnv', b'N\n')
         assert code == 1
         # FIXME this error message should be in stderr
         assert b'PermissionDenied: permission denied' in stderr
@@ -117,7 +117,7 @@ class Prompt(object):
         assert stderr == b''
 
     def test_net_no(self):
-        code, stdout, stderr = self.run('needsNet', b'N\n')
+        code, _stdout, stderr = self.run('needsNet', b'N\n')
         assert code == 1
         # FIXME this error message should be in stderr
         assert b'PermissionDenied: permission denied' in stderr
