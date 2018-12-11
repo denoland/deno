@@ -57,6 +57,7 @@ install:
   if [ ! $(rustc --version | grep 1.30.0) ]; then
     curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.30.0
     rustup default 1.30.0
+    rustup component add clippy-preview
   fi
   rustc --version
   rustup --version
