@@ -176,9 +176,6 @@ impl DenoDir {
     module_name: &str,
     filename: &str,
   ) -> DenoResult<CodeFetchOutput> {
-    if module_name.starts_with(ASSET_PREFIX) {
-      panic!("Asset resolution should be done in JS, not Rust.");
-    }
     let is_module_remote = is_remote(module_name);
     let use_extension = |ext| {
       let module_name = format!("{}{}", module_name, ext);
@@ -404,8 +401,6 @@ fn source_code_hash(filename: &str, source_code: &str) -> String {
   }
   out
 }
-
-const ASSET_PREFIX: &str = "/$asset$/";
 
 fn is_remote(module_name: &str) -> bool {
   module_name.starts_with("http://") || module_name.starts_with("https://")
