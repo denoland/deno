@@ -20,7 +20,8 @@ import {
   loadFiles,
   logDiagnostics,
   namespaceSourceFile,
-  normalizeSlashes
+  normalizeSlashes,
+  addTypeAlias
 } from "./ast_util";
 
 export interface BuildLibraryOptions {
@@ -215,6 +216,16 @@ export function mergeGlobal({
     addInterfaceProperty(interfaceDeclaration, property, type);
   }
 
+  // We need to copy over any type aliases
+  for (const typeAlias of sourceFile.getTypeAliases()) {
+    addTypeAlias(
+      targetSourceFile,
+      typeAlias.getName(),
+      typeAlias.getType().getText(sourceFile),
+      true
+    );
+  }
+
   // We need to ensure that we only namespace each source file once, so we
   // will use this map for tracking that.
   const sourceFileMap = new Map<SourceFile, string>();
@@ -358,18 +369,13 @@ export function main({
       moduleResolution: ModuleResolutionKind.NodeJs,
       noLib: true,
       strict: true,
-      target: ScriptTarget.ESNext,
-      types: ["text-encoding"]
+      target: ScriptTarget.ESNext
     },
     useVirtualFileSystem: true
   });
 
   // There are files we need to load into memory, so that the project "compiles"
   loadDtsFiles(outputProject);
-  // tslint:disable-next-line:max-line-length
-  const textEncodingFilePath = `${buildPath}/node_modules/@types/text-encoding/index.d.ts`;
-  loadFiles(outputProject, [textEncodingFilePath]);
-  outputProject.addExistingSourceFileIfExists(textEncodingFilePath);
 
   // libDts is the final output file we are looking to build and we are not
   // actually creating it, only in memory at this stage.

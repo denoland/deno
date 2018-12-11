@@ -10,26 +10,34 @@
 
 #[cfg(unix)]
 use eager_unix as eager;
+use errors::bad_resource;
 use errors::DenoError;
+use errors::DenoResult;
+use http_body::HttpBody;
+use repl::Repl;
 use tokio_util;
 use tokio_write;
 
 use futures;
 use futures::future::{Either, FutureResult};
+use futures::Future;
 use futures::Poll;
+use hyper;
 use std;
 use std::collections::HashMap;
 use std::io::{Error, Read, Write};
 use std::net::{Shutdown, SocketAddr};
-use std::sync::atomic::AtomicIsize;
+use std::process::ExitStatus;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio_io;
+use tokio_process;
 
-pub type ResourceId = i32; // Sometimes referred to RID.
+pub type ResourceId = u32; // Sometimes referred to RID.
 
 // These store Deno's file descriptors. These are not necessarily the operating
 // system ones.
@@ -37,7 +45,7 @@ type ResourceTable = HashMap<ResourceId, Repr>;
 
 lazy_static! {
   // Starts at 3 because stdio is [0-2].
-  static ref NEXT_RID: AtomicIsize = AtomicIsize::new(3);
+  static ref NEXT_RID: AtomicUsize = AtomicUsize::new(3);
   static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new({
     let mut m = HashMap::new();
     // TODO Load these lazily during lookup?
@@ -56,9 +64,18 @@ enum Repr {
   FsFile(tokio::fs::File),
   TcpListener(tokio::net::TcpListener),
   TcpStream(tokio::net::TcpStream),
+  HttpBody(HttpBody),
+  Repl(Repl),
+  // Enum size is bounded by the largest variant.
+  // Use `Box` around large `Child` struct.
+  // https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant
+  Child(Box<tokio_process::Child>),
+  ChildStdin(tokio_process::ChildStdin),
+  ChildStdout(tokio_process::ChildStdout),
+  ChildStderr(tokio_process::ChildStderr),
 }
 
-pub fn table_entries() -> Vec<(i32, String)> {
+pub fn table_entries() -> Vec<(u32, String)> {
   let table = RESOURCE_TABLE.lock().unwrap();
 
   table
@@ -85,6 +102,12 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::FsFile(_) => "fsFile",
     Repr::TcpListener(_) => "tcpListener",
     Repr::TcpStream(_) => "tcpStream",
+    Repr::HttpBody(_) => "httpBody",
+    Repr::Repl(_) => "repl",
+    Repr::Child(_) => "child",
+    Repr::ChildStdin(_) => "childStdin",
+    Repr::ChildStdout(_) => "childStdout",
+    Repr::ChildStderr(_) => "childStderr",
   };
 
   String::from(h_repr)
@@ -150,10 +173,10 @@ impl AsyncRead for Resource {
         Repr::FsFile(ref mut f) => f.poll_read(buf),
         Repr::Stdin(ref mut f) => f.poll_read(buf),
         Repr::TcpStream(ref mut f) => f.poll_read(buf),
-        Repr::Stdout(_) | Repr::Stderr(_) => {
-          panic!("Cannot read from stdout/stderr")
-        }
-        Repr::TcpListener(_) => panic!("Cannot read"),
+        Repr::HttpBody(ref mut f) => f.poll_read(buf),
+        Repr::ChildStdout(ref mut f) => f.poll_read(buf),
+        Repr::ChildStderr(ref mut f) => f.poll_read(buf),
+        _ => panic!("Cannot read"),
       },
     }
   }
@@ -180,8 +203,8 @@ impl AsyncWrite for Resource {
         Repr::Stdout(ref mut f) => f.poll_write(buf),
         Repr::Stderr(ref mut f) => f.poll_write(buf),
         Repr::TcpStream(ref mut f) => f.poll_write(buf),
-        Repr::Stdin(_) => panic!("Cannot write to stdin"),
-        Repr::TcpListener(_) => panic!("Cannot write"),
+        Repr::ChildStdin(ref mut f) => f.poll_write(buf),
+        _ => panic!("Cannot write"),
       },
     }
   }
@@ -221,7 +244,112 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   Resource { rid }
 }
 
+pub fn add_hyper_body(body: hyper::Body) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let body = HttpBody::from(body);
+  let r = tg.insert(rid, Repr::HttpBody(body));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
+pub fn add_repl(repl: Repl) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(rid, Repr::Repl(repl));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub struct ChildResources {
+  pub child_rid: ResourceId,
+  pub stdin_rid: Option<ResourceId>,
+  pub stdout_rid: Option<ResourceId>,
+  pub stderr_rid: Option<ResourceId>,
+}
+
+pub fn add_child(mut c: tokio_process::Child) -> ChildResources {
+  let child_rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+
+  let mut resources = ChildResources {
+    child_rid,
+    stdin_rid: None,
+    stdout_rid: None,
+    stderr_rid: None,
+  };
+
+  if c.stdin().is_some() {
+    let stdin = c.stdin().take().unwrap();
+    let rid = new_rid();
+    let r = tg.insert(rid, Repr::ChildStdin(stdin));
+    assert!(r.is_none());
+    resources.stdin_rid = Some(rid);
+  }
+  if c.stdout().is_some() {
+    let stdout = c.stdout().take().unwrap();
+    let rid = new_rid();
+    let r = tg.insert(rid, Repr::ChildStdout(stdout));
+    assert!(r.is_none());
+    resources.stdout_rid = Some(rid);
+  }
+  if c.stderr().is_some() {
+    let stderr = c.stderr().take().unwrap();
+    let rid = new_rid();
+    let r = tg.insert(rid, Repr::ChildStderr(stderr));
+    assert!(r.is_none());
+    resources.stderr_rid = Some(rid);
+  }
+
+  let r = tg.insert(child_rid, Repr::Child(Box::new(c)));
+  assert!(r.is_none());
+
+  resources
+}
+
+pub struct ChildStatus {
+  rid: ResourceId,
+}
+
+// Invert the dumbness that tokio_process causes by making Child itself a future.
+impl Future for ChildStatus {
+  type Item = ExitStatus;
+  type Error = DenoError;
+
+  fn poll(&mut self) -> Poll<ExitStatus, DenoError> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&self.rid);
+    match maybe_repr {
+      Some(Repr::Child(ref mut child)) => child.poll().map_err(DenoError::from),
+      _ => Err(bad_resource()),
+    }
+  }
+}
+
+pub fn child_status(rid: ResourceId) -> DenoResult<ChildStatus> {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&rid);
+  match maybe_repr {
+    Some(Repr::Child(ref mut _child)) => Ok(ChildStatus { rid }),
+    _ => Err(bad_resource()),
+  }
+}
+
+pub fn readline(rid: ResourceId, prompt: &str) -> DenoResult<String> {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&rid);
+  match maybe_repr {
+    Some(Repr::Repl(ref mut r)) => {
+      let line = r.readline(&prompt)?;
+      Ok(line)
+    }
+    _ => Err(bad_resource()),
+  }
+}
+
 pub fn lookup(rid: ResourceId) -> Option<Resource> {
+  debug!("resource lookup {}", rid);
   let table = RESOURCE_TABLE.lock().unwrap();
   table.get(&rid).map(|_| Resource { rid })
 }

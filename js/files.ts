@@ -9,11 +9,11 @@ import * as flatbuffers from "./flatbuffers";
 export class File implements Reader, Writer, Closer {
   constructor(readonly rid: number) {}
 
-  write(p: ArrayBufferView): Promise<number> {
+  write(p: Uint8Array): Promise<number> {
     return write(this.rid, p);
   }
 
-  read(p: ArrayBufferView): Promise<ReadResult> {
+  read(p: Uint8Array): Promise<ReadResult> {
     return read(this.rid, p);
   }
 
@@ -68,10 +68,7 @@ export async function open(
  *
  * Resolves with the `ReadResult` for the operation.
  */
-export async function read(
-  rid: number,
-  p: ArrayBufferView
-): Promise<ReadResult> {
+export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
   const builder = flatbuffers.createBuilder();
   msg.Read.startRead(builder);
   msg.Read.addRid(builder, rid);
@@ -88,7 +85,7 @@ export async function read(
  *
  * Resolves with the number of bytes written.
  */
-export async function write(rid: number, p: ArrayBufferView): Promise<number> {
+export async function write(rid: number, p: Uint8Array): Promise<number> {
   const builder = flatbuffers.createBuilder();
   msg.Write.startWrite(builder);
   msg.Write.addRid(builder, rid);

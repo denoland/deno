@@ -149,7 +149,15 @@ test(function buildLibraryMerge() {
     variableDeclarations[4].getType().getText(),
     `typeof moduleD.reprocess`
   );
-  assertEqual(variableDeclarations.length, 5);
+  assertEqual(
+    variableDeclarations[5].getType().getText(),
+    `typeof moduleC.Bar`
+  );
+  assertEqual(variableDeclarations.length, 6);
+  const typeAliases = targetSourceFile.getTypeAliases();
+  assertEqual(typeAliases[0].getName(), "Bar");
+  assertEqual(typeAliases[0].getType().getText(), "moduleC.Bar");
+  assertEqual(typeAliases.length, 1);
 });
 
 // TODO author unit tests for `ast_util.ts`

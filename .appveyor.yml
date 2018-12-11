@@ -8,14 +8,15 @@ clone_depth: 1
 
 environment:
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
-  CARGO_HOME: $(USERPROFILE)\.cargo
   CARGO_TARGET_DIR: $(APPVEYOR_BUILD_FOLDER)\target
   DENO_BUILD_MODE: release
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\release
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   MTIME_CACHE_DB: $(APPVEYOR_BUILD_FOLDER)\mtime_cache.xml
   RELEASE_ARTIFACT: deno_win_x64.zip
-  RUSTUP_HOME: $(USERPROFILE)\.rustup
+  RUST_DIR: $(USERPROFILE)\rust
+  CARGO_HOME: $(RUST_DIR)\cargo
+  RUSTUP_HOME: $(RUST_DIR)\rustup
   RUST_BACKTRACE: 1
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
@@ -225,8 +226,7 @@ for:
 
 cache:
   # Rust stuff.
-  - $(CARGO_HOME)
-  - $(RUSTUP_HOME)
+  - $(RUST_DIR)
   # Cache the third_party submodule to preserve binaries downloaded by setup.py,
   # and to make incremental builds work.
   - $(APPVEYOR_BUILD_FOLDER)\.git\modules\third_party

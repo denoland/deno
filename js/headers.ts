@@ -79,7 +79,8 @@ class HeadersBase {
 
 // @internal
 // tslint:disable-next-line:variable-name
-export const Headers = DomIterableMixin<string, string, typeof HeadersBase>(
-  HeadersBase,
-  headerMap
-);
+export class Headers extends DomIterableMixin<
+  string,
+  string,
+  typeof HeadersBase
+>(HeadersBase, headerMap) {}

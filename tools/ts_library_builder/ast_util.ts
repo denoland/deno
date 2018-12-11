@@ -42,6 +42,22 @@ export function addSourceComment(
   );
 }
 
+/** Add a declaration of a type alias to a node */
+export function addTypeAlias(
+  node: StatementedNode,
+  name: string,
+  type: string,
+  hasDeclareKeyword = false,
+  jsdocs?: JSDoc[]
+) {
+  return node.addTypeAlias({
+    name,
+    type,
+    docs: jsdocs && jsdocs.map(jsdoc => jsdoc.getText()),
+    hasDeclareKeyword
+  });
+}
+
 /** Add a declaration of a variable to a node */
 export function addVariableDeclaration(
   node: StatementedNode,
@@ -56,6 +72,14 @@ export function addVariableDeclaration(
     docs: jsdocs && jsdocs.map(jsdoc => jsdoc.getText()),
     hasDeclareKeyword
   });
+}
+
+/** Copy one source file to the end of another source file. */
+export function appendSourceFile(
+  sourceFile: SourceFile,
+  targetSourceFile: SourceFile
+): void {
+  targetSourceFile.addStatements(`\n${sourceFile.print()}`);
 }
 
 /** Check diagnostics, and if any exist, exit the process */

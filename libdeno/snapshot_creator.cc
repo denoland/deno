@@ -29,16 +29,17 @@ int main(int argc, char** argv) {
   }
 
   deno_init();
-  Deno* d = deno_new_snapshotter(
-      deno::empty_buf, nullptr, js_fn, js_source.c_str(),
-      source_map_fn != nullptr ? source_map.c_str() : nullptr);
+  deno_config config = {deno::empty_buf, nullptr};
+  Deno* d = deno_new_snapshotter(config, js_fn, js_source.c_str());
 
   auto snapshot = deno_get_snapshot(d);
-  std::string snapshot_str(reinterpret_cast<char*>(snapshot.data_ptr),
-                           snapshot.data_len);
 
   std::ofstream file_(snapshot_out_bin, std::ios::binary);
-  file_ << snapshot_str;
+  file_.write(reinterpret_cast<char*>(snapshot.data_ptr), snapshot.data_len);
   file_.close();
+
+  delete[] snapshot.data_ptr;
+  deno_delete(d);
+
   return file_.bad();
 }

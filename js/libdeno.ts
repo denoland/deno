@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { RawSourceMap } from "./types";
 import { globalEval } from "./global_eval";
 
 // The libdeno functions are moved so that users can't access them.
@@ -39,10 +38,8 @@ interface Libdeno {
   ) => void;
 
   setPromiseErrorExaminer: (handler: () => boolean) => void;
-
-  mainSource: string;
-  mainSourceMap: RawSourceMap;
 }
 
 const window = globalEval("this");
+// @internal
 export const libdeno = window.libdeno as Libdeno;

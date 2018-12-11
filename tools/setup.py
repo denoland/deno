@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from distutils.spawn import find_executable
+import prebuilt
 
 
 def main():
@@ -18,6 +19,7 @@ def main():
     third_party.download_gn()
     third_party.download_clang_format()
     third_party.download_clang()
+    prebuilt.load()
     third_party.maybe_download_sysroot()
 
     write_lastchange()
@@ -92,9 +94,9 @@ def write_gn_args(args_filename, args):
     assert gn_args_are_generated(lines)  # With header -> generated.
 
     # Ensure the directory where args.gn goes exists.
-    dir = os.path.dirname(args_filename)
-    if not os.path.isdir(dir):
-        os.makedirs(dir)
+    d = os.path.dirname(args_filename)
+    if not os.path.isdir(d):
+        os.makedirs(d)
 
     with open(args_filename, "w") as f:
         f.write("\n".join(lines) + "\n")
@@ -120,12 +122,7 @@ def generate_gn_args(mode):
     if cc_wrapper:
         # The gn toolchain does not shell escape cc_wrapper, so do it here.
         out += ['cc_wrapper=%s' % gn_string(shell_quote(cc_wrapper))]
-        # For cc_wrapper to work on Windows, we need to select our own toolchain
-        # by overriding 'custom_toolchain' and 'host_toolchain'.
-        # TODO: Is there a way to use it without the involvement of args.gn?
         if os.name == "nt":
-            tc = "//build_extra/toolchain/win:win_clang_x64"
-            out += ['custom_toolchain="%s"' % tc, 'host_toolchain="%s"' % tc]
             # Disable treat_warnings_as_errors until this sccache bug is fixed:
             # https://github.com/mozilla/sccache/issues/264
             out += ["treat_warnings_as_errors=false"]

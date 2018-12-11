@@ -4,6 +4,7 @@ solutions = [{
     'name': 'v8',
     'deps_file': 'DEPS',
     'custom_deps': {
+        'v8/build': None,
         'v8/third_party/catapult': None,
         'v8/third_party/colorama/src': None,
         'v8/testing/gmock': None,
@@ -37,7 +38,7 @@ solutions = [{
     'cpplint'
 }, {
     'url':
-    'https://github.com/google/flatbuffers.git@160e8f2fdc9d5989e652709fae3fac0bd9aaed14',
+    'https://github.com/google/flatbuffers.git@80d148b1757f0fab9305616d69d876378405843a',
     'name':
     'flatbuffers'
 }]

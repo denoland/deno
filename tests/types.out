@@ -1,0 +1,15 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
+/// <reference no-default-lib="true" />
+/// <reference lib="esnext" />
+[WILDCARD]
+declare module "deno" {
+[WILDCARD]
+}
+
+declare interface Window {
+[WILDCARD]
+}
+
+declare const window: Window;
+[WILDCARD]

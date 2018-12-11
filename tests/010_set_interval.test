@@ -1,0 +1,2 @@
+args: tests/010_set_interval.ts --reload
+output: tests/010_set_interval.ts.out

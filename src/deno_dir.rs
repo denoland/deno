@@ -1,11 +1,13 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use dirs;
-use errors::DenoError;
+use errors;
 use errors::DenoResult;
 use errors::ErrorKind;
 use fs as deno_fs;
 use http_util;
+use js_errors::SourceMapGetter;
 use msg;
+
 use ring;
 use std;
 use std::fmt::Write;
@@ -41,22 +43,19 @@ impl DenoDir {
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
   pub fn new(
     reload: bool,
-    custom_root: Option<&Path>,
-  ) -> std::io::Result<DenoDir> {
+    custom_root: Option<PathBuf>,
+  ) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
     let default = home_dir.join(".deno");
 
-    let root: PathBuf = match custom_root {
-      None => default,
-      Some(path) => path.to_path_buf(),
-    };
+    let root: PathBuf = custom_root.unwrap_or(default);
     let gen = root.as_path().join("gen");
     let deps = root.as_path().join("deps");
     let deps_http = deps.join("http");
     let deps_https = deps.join("https");
 
-    let deno_dir = DenoDir {
+    let deno_dir = Self {
       root,
       gen,
       deps,
@@ -80,7 +79,7 @@ impl DenoDir {
 
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L32-L35
   pub fn cache_path(
-    self: &DenoDir,
+    self: &Self,
     filename: &str,
     source_code: &str,
   ) -> (PathBuf, PathBuf) {
@@ -92,7 +91,7 @@ impl DenoDir {
   }
 
   fn load_cache(
-    self: &DenoDir,
+    self: &Self,
     filename: &str,
     source_code: &str,
   ) -> Result<(String, String), std::io::Error> {
@@ -108,7 +107,7 @@ impl DenoDir {
   }
 
   pub fn code_cache(
-    self: &DenoDir,
+    self: &Self,
     filename: &str,
     source_code: &str,
     output_code: &str,
@@ -130,7 +129,7 @@ impl DenoDir {
 
   // Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
   fn fetch_remote_source(
-    self: &DenoDir,
+    self: &Self,
     module_name: &str,
     filename: &str,
   ) -> DenoResult<(String, msg::MediaType)> {
@@ -142,7 +141,7 @@ impl DenoDir {
     let mt = Path::new(&media_type_filename);
 
     let src = if self.reload || !p.exists() {
-      println!("Downloading {}", module_name);
+      eprintln!("Downloading {}", module_name);
       let (source, content_type) = http_util::fetch_sync_string(module_name)?;
       match p.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
@@ -153,15 +152,19 @@ impl DenoDir {
       (source, map_content_type(&p, Some(&content_type)))
     } else {
       let source = fs::read_to_string(&p)?;
-      let content_type = fs::read_to_string(&mt)?;
-      (source, map_content_type(&p, Some(&content_type)))
+      // .mime file might not exists with bundled deps
+      let maybe_content_type_string = fs::read_to_string(&mt).ok();
+      // Option<String> -> Option<&str>
+      let maybe_content_type_str =
+        maybe_content_type_string.as_ref().map(String::as_str);
+      (source, map_content_type(&p, maybe_content_type_str))
     };
     Ok(src)
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L122-L138
   fn get_source_code(
-    self: &DenoDir,
+    self: &Self,
     module_name: &str,
     filename: &str,
   ) -> DenoResult<CodeFetchOutput> {
@@ -205,10 +208,10 @@ impl DenoDir {
   }
 
   pub fn code_fetch(
-    self: &DenoDir,
+    self: &Self,
     module_specifier: &str,
     containing_file: &str,
-  ) -> Result<CodeFetchOutput, DenoError> {
+  ) -> Result<CodeFetchOutput, errors::DenoError> {
     debug!(
       "code_fetch. module_specifier {} containing_file {}",
       module_specifier, containing_file
@@ -218,23 +221,25 @@ impl DenoDir {
       self.resolve_module(module_specifier, containing_file)?;
 
     let result = self.get_source_code(module_name.as_str(), filename.as_str());
-    let out = match result {
+    let mut out = match result {
+      Ok(out) => out,
       Err(err) => {
         if err.kind() == ErrorKind::NotFound {
           // For NotFound, change the message to something better.
-          return Err(DenoError::from(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
+          return Err(errors::new(
+            ErrorKind::NotFound,
             format!(
               "Cannot resolve module \"{}\" from \"{}\"",
               module_specifier, containing_file
             ),
-          )));
+          ));
         } else {
           return Err(err);
         }
       }
-      Ok(out) => out,
     };
+
+    out.source_code = filter_shebang(out.source_code);
 
     let result =
       self.load_cache(out.filename.as_str(), out.source_code.as_str());
@@ -258,7 +263,7 @@ impl DenoDir {
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
-  fn src_file_to_url(self: &DenoDir, filename: &str) -> String {
+  fn src_file_to_url(self: &Self, filename: &str) -> String {
     let filename_path = Path::new(filename);
     if filename_path.starts_with(&self.deps) {
       let (rest, prefix) = if filename_path.starts_with(&self.deps_https) {
@@ -287,7 +292,7 @@ impl DenoDir {
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L70-L98
   // Returns (module name, local filename)
   fn resolve_module(
-    self: &DenoDir,
+    self: &Self,
     module_specifier: &str,
     containing_file: &str,
   ) -> Result<(String, String), url::ParseError> {
@@ -347,6 +352,24 @@ impl DenoDir {
   }
 }
 
+impl SourceMapGetter for DenoDir {
+  fn get_source_map(&self, script_name: &str) -> Option<String> {
+    match self.code_fetch(script_name, ".") {
+      Err(_e) => {
+        return None;
+      }
+      Ok(out) => match out.maybe_source_map {
+        None => {
+          return None;
+        }
+        Some(source_map) => {
+          return Some(source_map);
+        }
+      },
+    }
+  }
+}
+
 fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
   let host = url.host_str().unwrap();
   let host_port = match url.port() {
@@ -388,8 +411,8 @@ pub struct CodeFetchOutput {
 #[cfg(test)]
 pub fn test_setup() -> (TempDir, DenoDir) {
   let temp_dir = TempDir::new().expect("tempdir fail");
-  let deno_dir =
-    DenoDir::new(false, Some(temp_dir.path())).expect("setup fail");
+  let deno_dir = DenoDir::new(false, Some(temp_dir.path().to_path_buf()))
+    .expect("setup fail");
   (temp_dir, deno_dir)
 }
 
@@ -477,6 +500,56 @@ macro_rules! add_root {
       $path
     }
   };
+}
+
+#[test]
+fn test_fetch_remote_source_1() {
+  use tokio_util;
+  // http_util::fetch_sync_string requires tokio
+  tokio_util::init(|| {
+    let (_temp_dir, deno_dir) = test_setup();
+    let module_name = "http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts";
+    let filename = deno_fs::normalize_path(
+      deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts")
+        .as_ref(),
+    );
+    let mime_file_name = format!("{}.mime", &filename);
+
+    let result = deno_dir.fetch_remote_source(module_name, &filename);
+    assert!(result.is_ok());
+    let r = result.unwrap();
+    assert_eq!(&(r.0), "export const loaded = true;\n");
+    assert_eq!(&(r.1), &msg::MediaType::TypeScript);
+    assert_eq!(fs::read_to_string(&mime_file_name).unwrap(), "video/mp2t");
+
+    // Modify .mime, make sure still read from local
+    let _ = fs::write(&mime_file_name, "text/javascript");
+    let result2 = deno_dir.fetch_remote_source(module_name, &filename);
+    assert!(result2.is_ok());
+    let r2 = result2.unwrap();
+    assert_eq!(&(r2.0), "export const loaded = true;\n");
+    // Not MediaType::TypeScript due to .mime modification
+    assert_eq!(&(r2.1), &msg::MediaType::JavaScript);
+  });
+}
+
+#[test]
+fn test_fetch_remote_source_2() {
+  // only local, no http_util::fetch_sync_string called
+  let (_temp_dir, deno_dir) = test_setup();
+  let cwd = std::env::current_dir().unwrap();
+  let cwd_string = cwd.to_str().unwrap();
+  let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
+  let filename =
+    format!("{}/tests/subdir/mt_text_typescript.t1.ts", &cwd_string);
+
+  let result = deno_dir.fetch_remote_source(module_name, &filename);
+  assert!(result.is_ok());
+  let r = result.unwrap();
+  assert_eq!(&(r.0), "export const loaded = true;\n");
+  assert_eq!(&(r.1), &msg::MediaType::TypeScript);
 }
 
 #[test]
@@ -753,10 +826,26 @@ fn test_resolve_module_6() {
   assert_eq!(filename, expected_filename);
 }
 
+#[test]
+fn test_resolve_module_7() {
+  let (_temp_dir, deno_dir) = test_setup();
+
+  let module_specifier = "http_test.ts";
+  let containing_file = add_root!("/Users/rld/src/deno_net/");
+  let expected_module_name = add_root!("/Users/rld/src/deno_net/http_test.ts");
+  let expected_filename = add_root!("/Users/rld/src/deno_net/http_test.ts");
+
+  let (module_name, filename) = deno_dir
+    .resolve_module(module_specifier, containing_file)
+    .unwrap();
+  assert_eq!(module_name, expected_module_name);
+  assert_eq!(filename, expected_filename);
+}
+
 const ASSET_PREFIX: &str = "/$asset$/";
 
 fn is_remote(module_name: &str) -> bool {
-  module_name.starts_with("http")
+  module_name.starts_with("http://") || module_name.starts_with("https://")
 }
 
 fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
@@ -924,4 +1013,26 @@ fn test_map_content_type() {
     map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")),
     msg::MediaType::Unknown
   );
+}
+
+fn filter_shebang(code: String) -> String {
+  if !code.starts_with("#!") {
+    return code;
+  }
+  if let Some(i) = code.find('\n') {
+    let (_, rest) = code.split_at(i);
+    String::from(rest)
+  } else {
+    String::from("")
+  }
+}
+
+#[test]
+fn test_filter_shebang() {
+  assert_eq!(filter_shebang("".to_string()), "");
+  assert_eq!(filter_shebang("#".to_string()), "#");
+  assert_eq!(filter_shebang("#!".to_string()), "");
+  assert_eq!(filter_shebang("#!\n\n".to_string()), "\n\n");
+  let code = "#!/usr/bin/env deno\nconsole.log('hello');\n".to_string();
+  assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n");
 }

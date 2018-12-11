@@ -1,13 +1,17 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// We need to make sure this module loads, for its side effects.
+import "./globals";
+
 import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import { assert, log, setLogDebug } from "./util";
 import * as os from "./os";
-import { DenoCompiler } from "./compiler";
+import { Compiler } from "./compiler";
+import { Runner } from "./runner";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
-import { promiseErrorExaminer, promiseRejectHandler } from "./promise_util";
+import { replLoop } from "./repl";
 import { version } from "typescript";
 
 function sendStart(): msg.StartRes {
@@ -22,28 +26,9 @@ function sendStart(): msg.StartRes {
   return startRes;
 }
 
-function onGlobalError(
-  message: string,
-  source: string,
-  lineno: number,
-  colno: number,
-  error: any // tslint:disable-line:no-any
-) {
-  if (error instanceof Error) {
-    console.log(error.stack);
-  } else {
-    console.log(`Thrown: ${String(error)}`);
-  }
-  os.exit(1);
-}
-
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
   libdeno.recv(handleAsyncMsgFromRust);
-  libdeno.setGlobalErrorHandler(onGlobalError);
-  libdeno.setPromiseRejectHandler(promiseRejectHandler);
-  libdeno.setPromiseErrorExaminer(promiseErrorExaminer);
-  const compiler = DenoCompiler.instance();
 
   // First we send an empty "Start" message to let the privileged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
@@ -52,11 +37,12 @@ export default function denoMain() {
 
   setLogDebug(startResMsg.debugFlag());
 
+  const compiler = Compiler.instance();
+
   // handle `--types`
   if (startResMsg.typesFlag()) {
     const defaultLibFileName = compiler.getDefaultLibFileName();
-    const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
-    console.log(defaultLibModule.sourceCode);
+    console.log(compiler.getSource(defaultLibFileName));
     os.exit(0);
   }
 
@@ -71,19 +57,19 @@ export default function denoMain() {
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
 
-  // TODO handle shebang.
   for (let i = 1; i < startResMsg.argvLength(); i++) {
     args.push(startResMsg.argv(i));
   }
   log("args", args);
   Object.freeze(args);
-
   const inputFn = args[0];
-  if (!inputFn) {
-    console.log("No input script specified.");
-    os.exit(1);
-  }
 
   compiler.recompile = startResMsg.recompileFlag();
-  compiler.run(inputFn, `${cwd}/`);
+  const runner = new Runner(compiler);
+
+  if (inputFn) {
+    runner.run(inputFn, `${cwd}/`);
+  } else {
+    replLoop();
+  }
 }

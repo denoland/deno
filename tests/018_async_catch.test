@@ -1,0 +1,2 @@
+args: tests/018_async_catch.ts --reload
+output: tests/018_async_catch.ts.out
