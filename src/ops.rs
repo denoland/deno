@@ -256,14 +256,14 @@ fn op_code_fetch(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_code_fetch().unwrap();
   let cmd_id = base.cmd_id();
-  let module_specifier = inner.module_specifier().unwrap();
-  let containing_file = inner.containing_file().unwrap();
+  let specifier = inner.specifier().unwrap();
+  let referrer = inner.referrer().unwrap();
 
   assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
-    let out = state.dir.code_fetch(module_specifier, containing_file)?;
+    let out = state.dir.code_fetch(specifier, referrer)?;
     let mut msg_args = msg::CodeFetchResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
