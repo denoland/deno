@@ -12,7 +12,6 @@ namespace deno {}  // namespace deno
 int main(int argc, char** argv) {
   const char* snapshot_out_bin = argv[1];
   const char* js_fn = argv[2];
-  const char* source_map_fn = argv[3];  // Optional.
 
   v8::V8::SetFlagsFromCommandLine(&argc, argv, true);
 
@@ -21,12 +20,6 @@ int main(int argc, char** argv) {
 
   std::string js_source;
   CHECK(deno::ReadFileToString(js_fn, &js_source));
-
-  std::string source_map;
-  if (source_map_fn != nullptr) {
-    CHECK_EQ(argc, 4);
-    CHECK(deno::ReadFileToString(source_map_fn, &source_map));
-  }
 
   deno_init();
   deno_config config = {deno::empty_buf, nullptr};
