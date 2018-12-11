@@ -92,6 +92,8 @@ def green_ok():
 
 
 def remove_and_symlink(target, name, target_is_dir=False):
+    if os.name != "nt" and os.path.islink(name):
+        return
     try:
         # On Windows, directory symlink can only be removed with rmdir().
         if os.name == "nt" and os.path.isdir(name):
