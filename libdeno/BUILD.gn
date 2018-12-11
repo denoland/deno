@@ -98,5 +98,5 @@ v8_executable("test_cc") {
 # Generates $target_gen_dir/snapshot_test.bin
 snapshot("snapshot_test") {
   testonly = true
-  js = "libdeno_test.js"
+  source_root = "libdeno_test.js"
 }

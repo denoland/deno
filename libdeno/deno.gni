@@ -25,14 +25,9 @@ template("snapshot") {
     visibility = [ ":*" ]  # Only targets in this file can depend on this.
     snapshot_out_bin = "$target_gen_dir/$target_name.bin"
     inputs = [
-      invoker.js,
+      invoker.source_root,
     ]
 
-    # TODO(ry) source_map should not be involved at this layer. Remove the
-    # following.
-    if (defined(invoker.source_map)) {
-      inputs += [ invoker.source_map ]
-    }
     outputs = [
       snapshot_out_bin,
     ]
