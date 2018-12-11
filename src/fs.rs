@@ -62,9 +62,9 @@ pub fn make_temp_dir(
     match r {
       Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
       Ok(_) => {
-          fs::set_permissions(buf.as_path(), PermissionsExt::from_mode(0o700))?;
-          return Ok(buf);
-      },
+        fs::set_permissions(buf.as_path(), PermissionsExt::from_mode(0o700))?;
+        return Ok(buf);
+      }
       Err(e) => return Err(e),
     }
   }
