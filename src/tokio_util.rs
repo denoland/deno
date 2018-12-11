@@ -73,3 +73,30 @@ impl Future for Accept {
     }
   }
 }
+
+/// `futures::future::poll_fn` only support `F: FnMut()->Poll<T, E>`
+/// However, we require that `F: FnOnce()->Poll<T, E>`.
+/// Therefore, we created our version of `poll_fn`.
+pub fn poll_fn<T, E, F>(f: F) -> PollFn<F>
+where
+  F: FnOnce() -> Poll<T, E>,
+{
+  PollFn { inner: Some(f) }
+}
+
+pub struct PollFn<F> {
+  inner: Option<F>,
+}
+
+impl<T, E, F> Future for PollFn<F>
+where
+  F: FnOnce() -> Poll<T, E>,
+{
+  type Item = T;
+  type Error = E;
+
+  fn poll(&mut self) -> Poll<T, E> {
+    let f = self.inner.take().expect("Inner fn has been taken.");
+    f()
+  }
+}
