@@ -3,12 +3,12 @@ extern crate rustyline;
 
 use rustyline::error::ReadlineError::Interrupted;
 
-use msg::ErrorKind;
+use crate::msg::ErrorKind;
 use std::error::Error;
 
-use deno_dir::DenoDir;
-use errors::new as deno_error;
-use errors::DenoResult;
+use crate::deno_dir::DenoDir;
+use crate::errors::new as deno_error;
+use crate::errors::DenoResult;
 use std::path::PathBuf;
 use std::process::exit;
 

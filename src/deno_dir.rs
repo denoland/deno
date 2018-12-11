@@ -1,13 +1,12 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-use dirs;
-use errors;
-use errors::DenoError;
-use errors::DenoResult;
-use errors::ErrorKind;
-use fs as deno_fs;
-use http_util;
-use js_errors::SourceMapGetter;
-use msg;
+use crate::errors;
+use crate::errors::DenoError;
+use crate::errors::DenoResult;
+use crate::errors::ErrorKind;
+use crate::fs as deno_fs;
+use crate::http_util;
+use crate::js_errors::SourceMapGetter;
+use crate::msg;
 
 use ring;
 use std;

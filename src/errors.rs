@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+pub use crate::msg::ErrorKind;
 use hyper;
-pub use msg::ErrorKind;
 use std;
 use std::fmt;
 use std::io;

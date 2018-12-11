@@ -1,7 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 // Helpers for serialization.
-use errors;
-use errors::DenoResult;
+use crate::errors;
+use crate::errors::DenoResult;
+use crate::msg;
+
 use flatbuffers;
 use http::header::HeaderName;
 use http::uri::Uri;
@@ -11,7 +13,6 @@ use hyper::header::HeaderValue;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
-use msg;
 use std::str::FromStr;
 
 type Headers = HeaderMap<HeaderValue>;

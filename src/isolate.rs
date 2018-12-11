@@ -4,14 +4,15 @@
 // TODO Currently this module uses Tokio, but it would be nice if they were
 // decoupled.
 
-use deno_dir;
-use errors::DenoError;
-use errors::DenoResult;
-use flags;
-use js_errors::JSError;
-use libdeno;
-use permissions::DenoPermissions;
+use crate::deno_dir;
+use crate::errors::DenoError;
+use crate::errors::DenoResult;
+use crate::flags;
+use crate::js_errors::JSError;
+use crate::libdeno;
+use crate::permissions::DenoPermissions;
 
+use crate::tokio_util;
 use futures::Future;
 use libc::c_void;
 use std;
@@ -25,7 +26,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use tokio;
-use tokio_util;
 
 // Buf represents a byte array returned from a "Op".
 // The message might be empty (which will be translated into a null object on

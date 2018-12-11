@@ -9,14 +9,14 @@
 // handlers) look up resources by their integer id here.
 
 #[cfg(unix)]
-use eager_unix as eager;
-use errors::bad_resource;
-use errors::DenoError;
-use errors::DenoResult;
-use http_body::HttpBody;
-use repl::Repl;
-use tokio_util;
-use tokio_write;
+use crate::eager_unix as eager;
+use crate::errors::bad_resource;
+use crate::errors::DenoError;
+use crate::errors::DenoResult;
+use crate::http_body::HttpBody;
+use crate::repl::Repl;
+use crate::tokio_util;
+use crate::tokio_write;
 
 use futures;
 use futures::future::{Either, FutureResult};
