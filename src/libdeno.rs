@@ -111,6 +111,7 @@ type DenoRecvCb = unsafe extern "C" fn(
 
 #[repr(C)]
 pub struct deno_config {
+  pub will_snapshot: c_int,
   pub shared: deno_buf,
   pub recv_cb: DenoRecvCb,
 }

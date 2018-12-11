@@ -23,8 +23,8 @@ int main(int argc, char** argv) {
   CHECK(deno::ReadFileToString(js_fn, &js_source));
 
   deno_init();
-  deno_config config = {deno::empty_buf, nullptr};
-  Deno* d = deno_new_snapshotter(config);
+  deno_config config = {1, deno::empty_buf, nullptr};
+  Deno* d = deno_new(deno::empty_buf, config);
 
   int r = deno_execute(d, nullptr, js_fn, js_source.c_str());
   if (!r) {

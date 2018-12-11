@@ -144,6 +144,7 @@ impl Isolate {
       unsafe { libdeno::deno_init() };
     });
     let config = libdeno::deno_config {
+      will_snapshot: 0,
       shared: libdeno::deno_buf::empty(), // TODO Use for message passing.
       recv_cb: pre_dispatch,
     };

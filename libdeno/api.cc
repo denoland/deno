@@ -13,7 +13,33 @@
 
 extern "C" {
 
+Deno* deno_new_snapshotter(deno_config config) {
+  CHECK(config.will_snapshot);
+  auto* creator = new v8::SnapshotCreator(deno::external_references);
+  auto* isolate = creator->GetIsolate();
+  auto* d = new deno::DenoIsolate(deno::empty_buf, config);
+  d->snapshot_creator_ = creator;
+  d->AddIsolate(isolate);
+  {
+    v8::Locker locker(isolate);
+    v8::Isolate::Scope isolate_scope(isolate);
+    v8::HandleScope handle_scope(isolate);
+    auto context = v8::Context::New(isolate);
+    d->context_.Reset(isolate, context);
+
+    creator->SetDefaultContext(context,
+                               v8::SerializeInternalFieldsCallback(
+                                   deno::SerializeInternalFields, nullptr));
+    deno::InitializeContext(isolate, context);
+  }
+  return reinterpret_cast<Deno*>(d);
+}
+
 Deno* deno_new(deno_buf snapshot, deno_config config) {
+  if (config.will_snapshot) {
+    CHECK_NULL(snapshot.data_ptr);
+    return deno_new_snapshotter(config);
+  }
   deno::DenoIsolate* d = new deno::DenoIsolate(snapshot, config);
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator = d->array_buffer_allocator_;
@@ -46,26 +72,6 @@ Deno* deno_new(deno_buf snapshot, deno_config config) {
   return reinterpret_cast<Deno*>(d);
 }
 
-Deno* deno_new_snapshotter(deno_config config) {
-  auto* creator = new v8::SnapshotCreator(deno::external_references);
-  auto* isolate = creator->GetIsolate();
-  auto* d = new deno::DenoIsolate(deno::empty_buf, config);
-  d->snapshot_creator_ = creator;
-  d->AddIsolate(isolate);
-  {
-    v8::Locker locker(isolate);
-    v8::Isolate::Scope isolate_scope(isolate);
-    v8::HandleScope handle_scope(isolate);
-    auto context = v8::Context::New(isolate);
-    d->context_.Reset(isolate, context);
-
-    creator->SetDefaultContext(context,
-                               v8::SerializeInternalFieldsCallback(
-                                   deno::SerializeInternalFields, nullptr));
-    deno::InitializeContext(isolate, context);
-  }
-  return reinterpret_cast<Deno*>(d);
-}
 
 deno::DenoIsolate* unwrap(Deno* d_) {
   return reinterpret_cast<deno::DenoIsolate*>(d_);
