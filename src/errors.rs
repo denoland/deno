@@ -1,5 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 pub use crate::msg::ErrorKind;
+
 use hyper;
 use std;
 use std::fmt;
@@ -92,7 +93,7 @@ impl DenoError {
 }
 
 impl fmt::Display for DenoError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self.repr {
       Repr::Simple(_kind, ref err_str) => f.pad(err_str),
       Repr::IoErr(ref err) => err.fmt(f),
@@ -112,7 +113,7 @@ impl std::error::Error for DenoError {
     }
   }
 
-  fn cause(&self) -> Option<&std::error::Error> {
+  fn cause(&self) -> Option<&dyn std::error::Error> {
     match self.repr {
       Repr::Simple(_kind, ref _msg) => None,
       Repr::IoErr(ref err) => Some(err),

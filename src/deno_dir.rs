@@ -8,6 +8,7 @@ use crate::http_util;
 use crate::js_errors::SourceMapGetter;
 use crate::msg;
 
+use dirs;
 use ring;
 use std;
 use std::fs;
@@ -393,7 +394,7 @@ impl DenoDir {
 
     match j.scheme() {
       "file" => {
-        let mut p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
+        let p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
         module_name = p.clone();
         filename = p;
       }

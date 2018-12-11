@@ -1,14 +1,12 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-extern crate rustyline;
-
-use rustyline::error::ReadlineError::Interrupted;
-
-use crate::msg::ErrorKind;
-use std::error::Error;
-
 use crate::deno_dir::DenoDir;
 use crate::errors::new as deno_error;
 use crate::errors::DenoResult;
+use crate::msg::ErrorKind;
+
+use rustyline;
+use rustyline::error::ReadlineError::Interrupted;
+use std::error::Error;
 use std::path::PathBuf;
 use std::process::exit;
 

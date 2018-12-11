@@ -1,9 +1,9 @@
-extern crate atty;
-
-use crate::flags::DenoFlags;
-
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use crate::errors::permission_denied;
 use crate::errors::DenoResult;
+use crate::flags::DenoFlags;
+
+use atty;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 

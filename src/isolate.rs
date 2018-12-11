@@ -11,8 +11,8 @@ use crate::flags;
 use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::permissions::DenoPermissions;
-
 use crate::tokio_util;
+
 use futures::Future;
 use libc::c_void;
 use std;
@@ -35,7 +35,7 @@ pub type Buf = Box<[u8]>;
 
 // JS promises in Deno map onto a specific Future
 // which yields either a DenoError or a byte array.
-pub type Op = Future<Item = Buf, Error = DenoError> + Send;
+pub type Op = dyn Future<Item = Buf, Error = DenoError> + Send;
 
 // Returns (is_sync, op)
 pub type Dispatch =

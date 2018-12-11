@@ -149,7 +149,7 @@ impl StackFrame {
   fn apply_source_map(
     &self,
     mappings_map: &mut CachedMaps,
-    getter: &SourceMapGetter,
+    getter: &dyn SourceMapGetter,
   ) -> StackFrame {
     let maybe_sm =
       get_mappings(self.script_name.as_ref(), mappings_map, getter);
@@ -260,7 +260,7 @@ impl JSError {
     Some(JSError { message, frames })
   }
 
-  pub fn apply_source_map(&self, getter: &SourceMapGetter) -> Self {
+  pub fn apply_source_map(&self, getter: &dyn SourceMapGetter) -> Self {
     let message = self.message.clone();
     let mut mappings_map: CachedMaps = HashMap::new();
     let mut frames = Vec::<StackFrame>::new();
@@ -274,7 +274,7 @@ impl JSError {
 
 fn parse_map_string(
   script_name: &str,
-  getter: &SourceMapGetter,
+  getter: &dyn SourceMapGetter,
 ) -> Option<SourceMap> {
   match script_name {
     // The bundle does not get built for 'cargo check', so we don't embed the
@@ -297,7 +297,7 @@ fn parse_map_string(
 fn get_mappings<'a>(
   script_name: &str,
   mappings_map: &'a mut CachedMaps,
-  getter: &SourceMapGetter,
+  getter: &dyn SourceMapGetter,
 ) -> &'a Option<SourceMap> {
   mappings_map
     .entry(script_name.to_string())

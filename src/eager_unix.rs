@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
 use crate::resources::{EagerAccept, EagerRead, EagerWrite, Resource};
 use crate::tokio_util;
 use crate::tokio_write;

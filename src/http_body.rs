@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
 use futures::Async;
 use futures::Poll;
 use hyper::body::Payload;

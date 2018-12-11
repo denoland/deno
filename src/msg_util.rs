@@ -95,7 +95,7 @@ pub fn serialize_http_response<'bldr>(
 }
 
 pub fn deserialize_request(
-  header_msg: msg::HttpHeader,
+  header_msg: msg::HttpHeader<'_>,
   body: Body,
 ) -> DenoResult<Request<Body>> {
   let mut r = Request::new(body);

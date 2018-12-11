@@ -1,12 +1,11 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+use rand;
+use rand::Rng;
 use std;
 use std::fs::{create_dir, DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-
-use rand;
-use rand::Rng;
 
 #[cfg(any(unix))]
 use std::os::unix::fs::DirBuilderExt;
