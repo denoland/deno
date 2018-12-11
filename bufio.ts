@@ -425,7 +425,7 @@ export class BufWriter implements Writer {
       } else {
         n = copyBytes(this.buf, p, this.n);
         this.n += n;
-        this.flush();
+        await this.flush();
       }
       nn += n;
       p = p.subarray(n);

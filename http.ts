@@ -82,7 +82,10 @@ export async function* serve(addr: string) {
   listener.close();
 }
 
-export async function listenAndServe(addr: string, handler: (req: ServerRequest) => void) {
+export async function listenAndServe(
+  addr: string,
+  handler: (req: ServerRequest) => void
+) {
   const server = serve(addr);
 
   for await (const request of server) {
@@ -90,23 +93,23 @@ export async function listenAndServe(addr: string, handler: (req: ServerRequest)
   }
 }
 
-interface Response {
+export interface Response {
   status?: number;
   headers?: Headers;
   body?: Uint8Array;
 }
 
-function setContentLength(r: Response): void {
+export function setContentLength(r: Response): void {
   if (!r.headers) {
     r.headers = new Headers();
   }
   if (!r.headers.has("content-length")) {
-    const bodyLength = r.body ? r.body.byteLength : 0
+    const bodyLength = r.body ? r.body.byteLength : 0;
     r.headers.append("Content-Length", bodyLength.toString());
   }
 }
 
-class ServerRequest {
+export class ServerRequest {
   url: string;
   method: string;
   proto: string;
