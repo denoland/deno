@@ -211,8 +211,7 @@ rust_flatbuffer("msg_rs") {
 
 # Generates $target_gen_dir/snapshot_deno.bin
 snapshot("snapshot_deno") {
-  js = "$target_gen_dir/bundle/main.js"
-  source_map = "$target_gen_dir/bundle/main.js.map"
+  source_root = "$target_gen_dir/bundle/main.js"
   deps = [
     ":bundle",
   ]
