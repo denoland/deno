@@ -13,7 +13,7 @@ namespace deno {
 // deno_s = Wrapped Isolate.
 class DenoIsolate {
  public:
-  DenoIsolate(deno_buf snapshot, deno_config config)
+  DenoIsolate(deno_config config)
       : isolate_(nullptr),
         shared_(config.shared),
         current_args_(nullptr),
@@ -23,9 +23,10 @@ class DenoIsolate {
         next_req_id_(0),
         user_data_(nullptr) {
     array_buffer_allocator_ = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-    if (snapshot.data_ptr) {
-      snapshot_.data = reinterpret_cast<const char*>(snapshot.data_ptr);
-      snapshot_.raw_size = static_cast<int>(snapshot.data_len);
+    if (config.load_snapshot.data_ptr) {
+      snapshot_.data =
+          reinterpret_cast<const char*>(config.load_snapshot.data_ptr);
+      snapshot_.raw_size = static_cast<int>(config.load_snapshot.data_len);
     }
   }
 

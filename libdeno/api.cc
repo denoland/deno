@@ -15,9 +15,11 @@ extern "C" {
 
 Deno* deno_new_snapshotter(deno_config config) {
   CHECK(config.will_snapshot);
+  // TODO Support loading snapshots before snapshotting.
+  CHECK_NULL(config.load_snapshot.data_ptr);
   auto* creator = new v8::SnapshotCreator(deno::external_references);
   auto* isolate = creator->GetIsolate();
-  auto* d = new deno::DenoIsolate(deno::empty_buf, config);
+  auto* d = new deno::DenoIsolate(config);
   d->snapshot_creator_ = creator;
   d->AddIsolate(isolate);
   {
@@ -35,17 +37,16 @@ Deno* deno_new_snapshotter(deno_config config) {
   return reinterpret_cast<Deno*>(d);
 }
 
-Deno* deno_new(deno_buf snapshot, deno_config config) {
+Deno* deno_new(deno_config config) {
   if (config.will_snapshot) {
-    CHECK_NULL(snapshot.data_ptr);
     return deno_new_snapshotter(config);
   }
-  deno::DenoIsolate* d = new deno::DenoIsolate(snapshot, config);
+  deno::DenoIsolate* d = new deno::DenoIsolate(config);
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator = d->array_buffer_allocator_;
   params.external_references = deno::external_references;
 
-  if (snapshot.data_ptr) {
+  if (config.load_snapshot.data_ptr) {
     params.snapshot_blob = &d->snapshot_;
   }
 
@@ -61,7 +62,7 @@ Deno* deno_new(deno_buf snapshot, deno_config config) {
                          v8::MaybeLocal<v8::Value>(),
                          v8::DeserializeInternalFieldsCallback(
                              deno::DeserializeInternalFields, nullptr));
-    if (!snapshot.data_ptr) {
+    if (!config.load_snapshot.data_ptr) {
       // If no snapshot is provided, we initialize the context with empty
       // main source code and source maps.
       deno::InitializeContext(isolate, context);
@@ -71,7 +72,6 @@ Deno* deno_new(deno_buf snapshot, deno_config config) {
 
   return reinterpret_cast<Deno*>(d);
 }
-
 
 deno::DenoIsolate* unwrap(Deno* d_) {
   return reinterpret_cast<deno::DenoIsolate*>(d_);
