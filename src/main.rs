@@ -109,7 +109,7 @@ fn main() {
   let isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
   tokio_util::init(|| {
     isolate
-      .execute("deno_main.js", "denoMain();")
+      .execute("denoMain();")
       .unwrap_or_else(print_err_and_exit);
     isolate.event_loop().unwrap_or_else(print_err_and_exit);
   });
