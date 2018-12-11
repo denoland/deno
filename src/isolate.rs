@@ -197,7 +197,14 @@ impl Isolate {
     }
   }
 
-  pub fn execute(
+  /// Same as execute2() but the filename defaults to "<anonymous>".
+  pub fn execute(&self, js_source: &str) -> Result<(), JSError> {
+    self.execute2("<anonymous>", js_source)
+  }
+
+  /// Executes the provided JavaScript source code. The js_filename argument is
+  /// provided only for debugging purposes.
+  pub fn execute2(
     &self,
     js_filename: &str,
     js_source: &str,
@@ -396,7 +403,6 @@ mod tests {
     tokio_util::init(|| {
       isolate
         .execute(
-          "y.js",
           r#"
           const m = new Uint8Array([4, 5, 6]);
           let n = libdeno.send(m);
@@ -448,7 +454,6 @@ mod tests {
 
       isolate
         .execute(
-          "y.js",
           r#"
           const control = new Uint8Array([4, 5, 6]);
           const data = new Uint8Array([42, 43, 44, 45, 46]);
@@ -485,7 +490,6 @@ mod tests {
 
       isolate
         .execute(
-          "y.js",
           r#"
           const control = new Uint8Array([4, 5, 6]);
           const data = new Uint8Array([42, 43, 44, 45, 46]);
