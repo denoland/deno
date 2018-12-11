@@ -77,14 +77,6 @@ fn print_err_and_exit(err: js_errors::JSError) {
 }
 
 fn main() {
-  // Rust does not die on panic by default. And -Cpanic=abort is broken.
-  // https://github.com/rust-lang/cargo/issues/2738
-  // Therefore this hack.
-  std::panic::set_hook(Box::new(|panic_info| {
-    eprintln!("{}", panic_info.to_string());
-    std::process::abort();
-  }));
-
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
   let (flags, rest_argv, usage_string) =
