@@ -5,7 +5,8 @@ import tempfile
 from util import run, root_path
 
 target_path = os.path.join(root_path, "target/")
-
+tsconfig_path = os.path.join(root_path, "tsconfig.docs.json")
+print(tsconfig_path)
 os.chdir(root_path)
 
 # Builds into target/doc
@@ -15,12 +16,9 @@ run(["cargo", "doc", "--no-deps", "-vv"])
 # We want to run typedoc on that declaration file only.
 os.chdir(os.path.join(target_path, "debug/gen/lib/"))
 
-# You must have typedoc installed seprately.
-# TODO Replace typedoc with something else ASAP. It's very awful.
+# You must have compodoc installed seprately.
+# TODO Replace compodoc with something else ASAP. It's very awful.
 run([
-    "typedoc", "lib.deno_runtime.d.ts", "--out",
-    os.path.join(target_path, "typedoc"), "--entryPoint", "\"deno\"",
-    "--ignoreCompilerErrors", "--includeDeclarations", "--excludeExternals",
-    "--excludePrivate", "--excludeProtected", "--mode", "file", "--name",
-    "deno", "--theme", "minimal", "--readme", "none"
-])
+    "compodoc", "-p", tsconfig_path, "--output",
+    os.path.join(target_path, "compodoc")
+], None, root_path)
