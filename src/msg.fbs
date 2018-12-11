@@ -146,8 +146,8 @@ table StartRes {
 }
 
 table CodeFetch {
-  module_specifier: string;
-  containing_file: string;
+  specifier: string;
+  referrer: string;
 }
 
 table CodeFetchRes {
