@@ -16,7 +16,10 @@ use version;
 
 use flatbuffers::FlatBufferBuilder;
 use futures;
+use futures::Async;
 use futures::Poll;
+use futures::Sink;
+use futures::Stream;
 use hyper;
 use hyper::rt::Future;
 use remove_dir_all::remove_dir_all;
@@ -34,6 +37,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
 use tokio;
@@ -48,7 +52,7 @@ type OpResult = DenoResult<Buf>;
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
 type OpCreator =
-  fn(state: &IsolateState, base: &msg::Base, data: libdeno::deno_buf)
+  fn(state: &Arc<IsolateState>, base: &msg::Base, data: libdeno::deno_buf)
     -> Box<Op>;
 
 #[inline]
@@ -113,8 +117,10 @@ pub fn dispatch(
       msg::Any::Stat => op_stat,
       msg::Any::Symlink => op_symlink,
       msg::Any::Truncate => op_truncate,
-      msg::Any::WriteFile => op_write_file,
+      msg::Any::WorkerGetMessage => op_worker_get_message,
+      msg::Any::WorkerPostMessage => op_worker_post_message,
       msg::Any::Write => op_write,
+      msg::Any::WriteFile => op_write_file,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -168,7 +174,7 @@ pub fn dispatch(
 }
 
 fn op_exit(
-  _config: &IsolateState,
+  _config: &Arc<IsolateState>,
   base: &msg::Base,
   _data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -177,7 +183,7 @@ fn op_exit(
 }
 
 fn op_start(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -237,19 +243,19 @@ fn serialize_response(
 }
 
 #[inline]
-fn ok_future(buf: Buf) -> Box<Op> {
+pub fn ok_future(buf: Buf) -> Box<Op> {
   Box::new(futures::future::ok(buf))
 }
 
 // Shout out to Earl Sweatshirt.
 #[inline]
-fn odd_future(err: DenoError) -> Box<Op> {
+pub fn odd_future(err: DenoError) -> Box<Op> {
   Box::new(futures::future::err(err))
 }
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn op_code_fetch(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -292,7 +298,7 @@ fn op_code_fetch(
 
 // https://github.com/denoland/deno/blob/golang/os.go#L156-L169
 fn op_code_cache(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -311,7 +317,7 @@ fn op_code_cache(
 }
 
 fn op_chdir(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -343,7 +349,7 @@ fn op_set_timeout(
 }
 
 fn op_set_env(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -359,7 +365,7 @@ fn op_set_env(
 }
 
 fn op_env(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -391,7 +397,7 @@ fn op_env(
 }
 
 fn op_fetch(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -478,7 +484,7 @@ where
 }
 
 fn op_make_temp_dir(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -527,7 +533,7 @@ fn op_make_temp_dir(
 }
 
 fn op_mkdir(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -547,7 +553,7 @@ fn op_mkdir(
 }
 
 fn op_chmod(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -580,7 +586,7 @@ fn op_chmod(
 }
 
 fn op_open(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -656,7 +662,7 @@ fn op_open(
 }
 
 fn op_close(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -673,7 +679,7 @@ fn op_close(
 }
 
 fn op_shutdown(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -699,7 +705,7 @@ fn op_shutdown(
 }
 
 fn op_read(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -737,7 +743,7 @@ fn op_read(
 }
 
 fn op_write(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -774,7 +780,7 @@ fn op_write(
 }
 
 fn op_remove(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -804,7 +810,7 @@ fn op_remove(
 
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
 fn op_read_file(
-  _config: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -838,7 +844,7 @@ fn op_read_file(
 }
 
 fn op_copy_file(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -890,7 +896,7 @@ fn get_mode(_perm: &fs::Permissions) -> u32 {
 }
 
 fn op_cwd(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -916,7 +922,7 @@ fn op_cwd(
 }
 
 fn op_stat(
-  _config: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -963,7 +969,7 @@ fn op_stat(
 }
 
 fn op_read_dir(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1021,7 +1027,7 @@ fn op_read_dir(
 }
 
 fn op_write_file(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1041,7 +1047,7 @@ fn op_write_file(
 }
 
 fn op_rename(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1061,7 +1067,7 @@ fn op_rename(
 }
 
 fn op_symlink(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1090,7 +1096,7 @@ fn op_symlink(
 }
 
 fn op_read_link(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1123,7 +1129,7 @@ fn op_read_link(
 }
 
 fn op_repl_start(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1154,7 +1160,7 @@ fn op_repl_start(
 }
 
 fn op_repl_readline(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1192,7 +1198,7 @@ fn op_repl_readline(
 }
 
 fn op_truncate(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1215,7 +1221,7 @@ fn op_truncate(
 }
 
 fn op_listen(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1281,7 +1287,7 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
 }
 
 fn op_accept(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1307,7 +1313,7 @@ fn op_accept(
 }
 
 fn op_dial(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1331,7 +1337,7 @@ fn op_dial(
 }
 
 fn op_metrics(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1355,7 +1361,7 @@ fn op_metrics(
 }
 
 fn op_resources(
-  _state: &IsolateState,
+  _state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1407,7 +1413,7 @@ fn subprocess_stdio_map(v: msg::ProcessStdio) -> std::process::Stdio {
 }
 
 fn op_run(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1475,7 +1481,7 @@ fn op_run(
 }
 
 fn op_run_status(
-  state: &IsolateState,
+  state: &Arc<IsolateState>,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -1528,4 +1534,91 @@ fn op_run_status(
     ))
   });
   Box::new(future)
+}
+
+struct GetMessageFuture {
+  pub state: Arc<IsolateState>,
+}
+
+impl Future for GetMessageFuture {
+  type Item = Option<Buf>;
+  type Error = ();
+
+  fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
+    assert!(self.state.worker_channels.is_some());
+    match self.state.worker_channels {
+      None => panic!("expected worker_channels"),
+      Some(ref wc) => {
+        let mut wc = wc.lock().unwrap();
+        wc.1.poll()
+      }
+    }
+  }
+}
+
+fn op_worker_get_message(
+  state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+
+  let op = GetMessageFuture {
+    state: state.clone(),
+  };
+  let op = op.map_err(move |_| -> DenoError { unimplemented!() });
+  let op = op.and_then(move |maybe_buf| -> DenoResult<Buf> {
+    debug!("op_worker_get_message");
+    let builder = &mut FlatBufferBuilder::new();
+
+    let data = maybe_buf.as_ref().map(|buf| builder.create_vector(buf));
+    let inner = msg::WorkerGetMessageRes::create(
+      builder,
+      &msg::WorkerGetMessageResArgs { data },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::WorkerGetMessageRes,
+        ..Default::default()
+      },
+    ))
+  });
+  Box::new(op)
+}
+
+fn op_worker_post_message(
+  state: &Arc<IsolateState>,
+  base: &msg::Base,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  let cmd_id = base.cmd_id();
+
+  let d = Vec::from(data.as_ref()).into_boxed_slice();
+
+  assert!(state.worker_channels.is_some());
+  let tx = match state.worker_channels {
+    None => panic!("expected worker_channels"),
+    Some(ref wc) => {
+      let mut wc = wc.lock().unwrap();
+      wc.0.clone()
+    }
+  };
+  let op = tx.send(d);
+  let op = op.map_err(|e| errors::new(ErrorKind::Other, e.to_string()));
+  let op = op.and_then(move |_| -> DenoResult<Buf> {
+    let builder = &mut FlatBufferBuilder::new();
+
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        ..Default::default()
+      },
+    ))
+  });
+  Box::new(op)
 }

@@ -1,6 +1,9 @@
 union Any {
   Start,
   StartRes,
+  WorkerGetMessage,
+  WorkerGetMessageRes,
+  WorkerPostMessage,
   CodeFetch,
   CodeFetchRes,
   CodeCache,
@@ -124,6 +127,13 @@ enum MediaType: byte {
   Unknown
 }
 
+table Shared {
+  lock: bool;
+  head: int;
+  tail: int;
+  ring: [Base];
+}
+
 table Base {
   cmd_id: uint32;
   sync: bool = false;
@@ -146,6 +156,18 @@ table StartRes {
   version_flag: bool;
   deno_version: string;
   v8_version: string;
+}
+
+table WorkerGetMessage {
+  unused: int8;
+}
+
+table WorkerGetMessageRes {
+  data: [ubyte];
+}
+
+table WorkerPostMessage {
+  // data passed thru the zero-copy data parameter.
 }
 
 table CodeFetch {

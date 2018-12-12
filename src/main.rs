@@ -28,6 +28,7 @@ extern crate log;
 #[macro_use]
 extern crate futures;
 
+pub mod compiler;
 pub mod deno_dir;
 pub mod errors;
 pub mod flags;
@@ -47,6 +48,7 @@ pub mod snapshot;
 mod tokio_util;
 mod tokio_write;
 pub mod version;
+pub mod workers;
 
 #[cfg(unix)]
 mod eager_unix;
@@ -96,13 +98,24 @@ fn main() {
     log::LevelFilter::Warn
   });
 
-  let state = Arc::new(isolate::IsolateState::new(flags, rest_argv));
+  let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
   let snapshot = snapshot::deno_snapshot();
   let isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
+
   tokio_util::init(|| {
+    // Setup runtime.
     isolate
       .execute("denoMain();")
       .unwrap_or_else(print_err_and_exit);
+
+    // Execute input file.
+    if isolate.state.argv.len() > 1 {
+      let input_filename = &isolate.state.argv[1];
+      isolate
+        .execute_mod(input_filename)
+        .unwrap_or_else(print_err_and_exit);
+    }
+
     isolate.event_loop().unwrap_or_else(print_err_and_exit);
   });
 }

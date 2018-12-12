@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
+#![allow(unreachable_code)]
+#![allow(unused_variables)]
 // Do not use FlatBuffers in this module.
 // TODO Currently this module uses Tokio, but it would be nice if they were
 // decoupled.
@@ -12,6 +13,7 @@ use js_errors::JSError;
 use libdeno;
 use permissions::DenoPermissions;
 
+use futures::sync::mpsc as async_mpsc;
 use futures::Future;
 use libc::c_char;
 use libc::c_void;
@@ -23,6 +25,7 @@ use std::ffi::CString;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 use tokio;
@@ -53,6 +56,10 @@ pub struct Isolate {
   pub state: Arc<IsolateState>,
 }
 
+pub type WorkerSender = async_mpsc::Sender<Buf>;
+pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
+pub type WorkerChannels = (WorkerSender, WorkerReceiver);
+
 // Isolate cannot be passed between threads but IsolateState can.
 // IsolateState satisfies Send and Sync.
 // So any state that needs to be accessed outside the main V8 thread should be
@@ -64,18 +71,36 @@ pub struct IsolateState {
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
   pub metrics: Metrics,
+  pub worker_channels: Option<Mutex<WorkerChannels>>,
 }
 
 impl IsolateState {
-  pub fn new(flags: flags::DenoFlags, argv_rest: Vec<String>) -> Self {
+  pub fn new(
+    flags: flags::DenoFlags,
+    argv_rest: Vec<String>,
+    worker_channels: Option<WorkerChannels>,
+  ) -> Self {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
+
     Self {
       dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::new(&flags),
       flags,
       metrics: Metrics::default(),
+      worker_channels: worker_channels.map(|wc| Mutex::new(wc)),
     }
+  }
+
+  #[cfg(test)]
+  pub fn mock() -> Arc<IsolateState> {
+    let argv = vec![
+      String::from("./deno"),
+      String::from("hello.js"),
+      String::from("-D"),
+    ];
+    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
+    Arc::new(IsolateState::new(flags, rest_argv, None))
   }
 
   #[inline]
@@ -232,18 +257,21 @@ impl Isolate {
 
   /// Executes the provided JavaScript module.
   pub fn execute_mod(&self, js_filename: &str) -> Result<(), JSError> {
-    let out = self.state.dir.code_fetch(js_filename, ".").unwrap();
-    debug!("module_resolve complete {}", out.filename);
+    let out =
+      code_fetch_and_maybe_compile(&self.state, js_filename, ".").unwrap();
 
-    // TODO js_source is not null terminated, therefore the clone.
-    let js_source = CString::new(out.js_source().clone()).unwrap();
+    let filename = CString::new(out.filename.as_bytes()).unwrap();
+    let filename_ptr = out.filename.as_ptr() as *const i8;
+
+    let js_source = out.js_source().clone();
+    let js_source = CString::new(js_source.as_bytes()).unwrap();
     let js_source_ptr = js_source.as_ptr() as *const i8;
 
     let r = unsafe {
       libdeno::deno_execute_mod(
         self.libdeno_isolate,
         self.as_raw_ptr(),
-        js_filename.as_ptr() as *const i8,
+        filename_ptr,
         js_source_ptr,
       )
     };
@@ -341,6 +369,25 @@ impl Drop for Isolate {
   }
 }
 
+use compiler::compile_sync;
+use compiler::CodeFetchOutput;
+use msg;
+fn code_fetch_and_maybe_compile(
+  state: &Arc<IsolateState>,
+  specifier: &str,
+  referrer: &str,
+) -> Result<CodeFetchOutput, DenoError> {
+  let mut out = state.dir.code_fetch(specifier, referrer)?;
+  if out.media_type == msg::MediaType::TypeScript
+    && out.maybe_output_code.is_none()
+  {
+    debug!(">>>>> compile_sync START");
+    out = compile_sync(state, specifier, &referrer).unwrap();
+    debug!(">>>>> compile_sync END");
+  }
+  Ok(out)
+}
+
 extern "C" fn resolve_cb(
   user_data: *mut c_void,
   specifier_ptr: *const c_char,
@@ -355,16 +402,21 @@ extern "C" fn resolve_cb(
   debug!("module_resolve callback {} {}", specifier, referrer);
   let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-  let out = isolate.state.dir.code_fetch(specifier, referrer).unwrap();
-  debug!("module_resolve complete {}", out.filename);
+  let out =
+    code_fetch_and_maybe_compile(&isolate.state, specifier, referrer).unwrap();
 
-  // TODO js_source is not null terminated, therefore the clone.
-  let js_source = CString::new(out.js_source().clone()).unwrap();
-  let filename = out.filename.as_ptr() as *const i8;
+  let filename = CString::new(out.filename.as_bytes()).unwrap();
+  let filename_ptr = out.filename.as_ptr() as *const i8;
+
+  let js_source = CString::new(out.js_source().as_bytes()).unwrap();
   let js_source_ptr = js_source.as_ptr() as *const i8;
 
   unsafe {
-    libdeno::deno_resolve_ok(isolate.libdeno_isolate, filename, js_source_ptr)
+    libdeno::deno_resolve_ok(
+      isolate.libdeno_isolate,
+      filename_ptr,
+      js_source_ptr,
+    )
   };
 }
 
@@ -449,10 +501,7 @@ mod tests {
 
   #[test]
   fn test_dispatch_sync() {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
     let isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
@@ -491,9 +540,7 @@ mod tests {
 
   #[test]
   fn test_metrics_sync() {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
     let isolate = Isolate::new(snapshot, state, metrics_dispatch_sync);
     tokio_util::init(|| {
@@ -527,9 +574,7 @@ mod tests {
 
   #[test]
   fn test_metrics_async() {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
     let isolate = Isolate::new(snapshot, state, metrics_dispatch_async);
     tokio_util::init(|| {
@@ -617,7 +662,7 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from(filename)];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let snapshot = libdeno::deno_buf::empty();
     let isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
