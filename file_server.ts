@@ -109,8 +109,7 @@ async function serveDir(req: ServerRequest, dirPath: string, dirName: string) {
   for (const info of fileInfos) {
     if (info.name === "index.html" && info.isFile()) {
       // in case index.html as dir...
-      await serveFile(req, info.path);
-      return;
+      return await serveFile(req, info.path);
     }
     // Yuck!
     let mode = null;
