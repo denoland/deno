@@ -945,6 +945,8 @@ fn op_read_dir(
             created: to_seconds!(metadata.created()),
             name: Some(name),
             path: Some(path),
+            mode: get_mode(&metadata.permissions()),
+            has_mode: cfg!(target_family = "unix"),
             ..Default::default()
           },
         )
