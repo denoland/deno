@@ -31,9 +31,9 @@ type CachedMaps = HashMap<String, Option<SourceMap>>;
 
 #[derive(Debug, PartialEq)]
 pub struct StackFrame {
-  pub line: u32,          // zero indexed
-  pub column: u32,        // zero indexed
-  pub source_url: String, // TODO rename to 'script_name'
+  pub line: u32,   // zero indexed
+  pub column: u32, // zero indexed
+  pub script_name: String,
   pub function_name: String,
   pub is_eval: bool,
   pub is_constructor: bool,
@@ -53,12 +53,12 @@ impl ToString for StackFrame {
     if self.function_name.len() > 0 {
       format!(
         "    at {} ({}:{}:{})",
-        self.function_name, self.source_url, line, column
+        self.function_name, self.script_name, line, column
       )
     } else if self.is_eval {
-      format!("    at eval ({}:{}:{})", self.source_url, line, column)
+      format!("    at eval ({}:{}:{})", self.script_name, line, column)
     } else {
-      format!("    at {}:{}:{}", self.source_url, line, column)
+      format!("    at {}:{}:{}", self.script_name, line, column)
     }
   }
 }
@@ -138,7 +138,7 @@ impl StackFrame {
     Some(StackFrame {
       line: line - 1,
       column: column - 1,
-      source_url: script_name,
+      script_name: script_name,
       function_name,
       is_eval,
       is_constructor,
@@ -151,9 +151,10 @@ impl StackFrame {
     mappings_map: &mut CachedMaps,
     getter: &SourceMapGetter,
   ) -> StackFrame {
-    let maybe_sm = get_mappings(self.source_url.as_ref(), mappings_map, getter);
-    let frame_pos = (self.source_url.to_owned(), self.line, self.column);
-    let (source_url, line, column) = match maybe_sm {
+    let maybe_sm =
+      get_mappings(self.script_name.as_ref(), mappings_map, getter);
+    let frame_pos = (self.script_name.to_owned(), self.line, self.column);
+    let (script_name, line, column) = match maybe_sm {
       None => frame_pos,
       Some(sm) => match sm.mappings.original_location_for(
         self.line,
@@ -176,7 +177,7 @@ impl StackFrame {
     };
 
     StackFrame {
-      source_url,
+      script_name,
       function_name: self.function_name.clone(),
       line,
       column,
@@ -272,16 +273,16 @@ impl JSError {
 }
 
 fn parse_map_string(
-  source_url: &str,
+  script_name: &str,
   getter: &SourceMapGetter,
 ) -> Option<SourceMap> {
-  match source_url {
+  match script_name {
     "gen/bundle/main.js" => {
       let s =
         include_str!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js.map"));
       SourceMap::from_json(s)
     }
-    _ => match getter.get_source_map(source_url) {
+    _ => match getter.get_source_map(script_name) {
       None => None,
       Some(raw_source_map) => SourceMap::from_json(
         &String::from_utf8(raw_source_map).expect("SourceMap is not utf-8"),
@@ -291,13 +292,13 @@ fn parse_map_string(
 }
 
 fn get_mappings<'a>(
-  source_url: &str,
+  script_name: &str,
   mappings_map: &'a mut CachedMaps,
   getter: &SourceMapGetter,
 ) -> &'a Option<SourceMap> {
   mappings_map
-    .entry(source_url.to_string())
-    .or_insert_with(|| parse_map_string(source_url, getter))
+    .entry(script_name.to_string())
+    .or_insert_with(|| parse_map_string(script_name, getter))
 }
 
 #[cfg(test)]
@@ -311,7 +312,7 @@ mod tests {
         StackFrame {
           line: 4,
           column: 16,
-          source_url: "foo_bar.ts".to_string(),
+          script_name: "foo_bar.ts".to_string(),
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
@@ -320,7 +321,7 @@ mod tests {
         StackFrame {
           line: 5,
           column: 20,
-          source_url: "bar_baz.ts".to_string(),
+          script_name: "bar_baz.ts".to_string(),
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
@@ -329,7 +330,7 @@ mod tests {
         StackFrame {
           line: 1,
           column: 1,
-          source_url: "deno_main.js".to_string(),
+          script_name: "deno_main.js".to_string(),
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
@@ -371,7 +372,7 @@ mod tests {
       Some(StackFrame {
         line: 1,
         column: 10,
-        source_url: "/Users/rld/src/deno/tests/error_001.ts".to_string(),
+        script_name: "/Users/rld/src/deno/tests/error_001.ts".to_string(),
         function_name: "foo".to_string(),
         is_eval: true,
         is_constructor: false,
@@ -394,7 +395,7 @@ mod tests {
     let f = r.unwrap();
     assert_eq!(f.line, 1);
     assert_eq!(f.column, 10);
-    assert_eq!(f.source_url, "/Users/rld/src/deno/tests/error_001.ts");
+    assert_eq!(f.script_name, "/Users/rld/src/deno/tests/error_001.ts");
   }
 
   #[test]
@@ -431,7 +432,7 @@ mod tests {
       StackFrame {
         line: 1,
         column: 10,
-        source_url: "/Users/rld/src/deno/tests/error_001.ts".to_string(),
+        script_name: "/Users/rld/src/deno/tests/error_001.ts".to_string(),
         function_name: "foo".to_string(),
         is_eval: true,
         is_constructor: false,
@@ -464,7 +465,7 @@ mod tests {
         StackFrame {
           line: 5,
           column: 12,
-          source_url: "foo_bar.ts".to_string(),
+          script_name: "foo_bar.ts".to_string(),
           function_name: "foo".to_string(),
           is_eval: false,
           is_constructor: false,
@@ -473,7 +474,7 @@ mod tests {
         StackFrame {
           line: 4,
           column: 14,
-          source_url: "bar_baz.ts".to_string(),
+          script_name: "bar_baz.ts".to_string(),
           function_name: "qat".to_string(),
           is_eval: false,
           is_constructor: false,
@@ -482,7 +483,7 @@ mod tests {
         StackFrame {
           line: 1,
           column: 1,
-          source_url: "deno_main.js".to_string(),
+          script_name: "deno_main.js".to_string(),
           function_name: "".to_string(),
           is_eval: false,
           is_constructor: false,
@@ -501,7 +502,7 @@ mod tests {
       frames: vec![StackFrame {
         line: 11,
         column: 12,
-        source_url: "gen/bundle/main.js".to_string(),
+        script_name: "gen/bundle/main.js".to_string(),
         function_name: "setLogDebug".to_string(),
         is_eval: false,
         is_constructor: false,
@@ -514,7 +515,7 @@ mod tests {
     assert_eq!(actual.frames.len(), 1);
     assert_eq!(actual.frames[0].line, 15);
     assert_eq!(actual.frames[0].column, 16);
-    assert_eq!(actual.frames[0].source_url, "deno/js/util.ts");
+    assert_eq!(actual.frames[0].script_name, "deno/js/util.ts");
   }
 
   #[test]
