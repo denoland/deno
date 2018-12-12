@@ -153,10 +153,10 @@ impl DenoDir {
       let mut media_type_filename = filename.to_string();
       media_type_filename.push_str(".mime");
       let mt = Path::new(&media_type_filename);
-      eprint!("Downloading {}... ", &module_name);
+      eprint!("Downloading {}...", &module_name); // no newline
       let maybe_source = http_util::fetch_sync_string(&module_name);
       if let Ok((source, content_type)) = maybe_source {
-        eprintln!("✅");
+        eprintln!(""); // next line
         match p.parent() {
           Some(ref parent) => fs::create_dir_all(parent),
           None => Ok(()),
@@ -172,7 +172,7 @@ impl DenoDir {
           maybe_source_map: None,
         }));
       } else {
-        eprintln!("❗");
+        eprintln!(" NOT FOUND");
       }
     }
     Ok(None)
