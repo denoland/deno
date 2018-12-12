@@ -233,6 +233,7 @@ export class Compiler
       // We query Rust with a CodeFetch message. It will load the sourceCode,
       // and if there is any outputCode cached, will return that as well.
       const fetchResponse = this._os.codeFetch(moduleSpecifier, containingFile);
+      assert(fetchResponse != null, "fetchResponse is null");
       moduleId = fetchResponse.moduleName;
       fileName = fetchResponse.filename;
       mediaType = fetchResponse.mediaType;
