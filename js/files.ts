@@ -29,14 +29,37 @@ export const stdout = new File(1);
 /** An instance of `File` for stderr. */
 export const stderr = new File(2);
 
-// TODO This is just a placeholder - not final API.
-export type OpenMode = "r" | "w" | "w+" | "x";
+type OpenMode =
+  /** Read-only. Default. Starts at beginning of file. */
+  | "r"
+  /** Read-write. Start at beginning of file. */
+  | "r+"
+  /** Write-only. Opens and truncates existing file or creates new one for
+   * writing only.
+   */
+  | "w"
+  /** Read-write. Opens and truncates existing file or creates new one for
+   * writing and reading.
+   */
+  | "w+"
+  /** Write-only. Opens existing file or creates new one. Each write appends
+   * content to the end of file.
+   */
+  | "a"
+  /** Read-write. Behaves like "a" and allows to read from file. */
+  | "a+"
+  /** Write-only. Exclusive create - creates new file only if one doesn't exist
+   * already.
+   */
+  | "x"
+  /** Read-write. Behaves like `x` and allows to read from file. */
+  | "x+";
 
 /** A factory function for creating instances of `File` associated with the
  * supplied file name.
  */
 export function create(filename: string): Promise<File> {
-  return open(filename, "x");
+  return open(filename, "w+");
 }
 
 /** Open a file and return an instance of the `File` object.
@@ -52,8 +75,10 @@ export async function open(
 ): Promise<File> {
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
+  const mode_ = builder.createString(mode);
   msg.Open.startOpen(builder);
   msg.Open.addFilename(builder, filename_);
+  msg.Open.addMode(builder, mode_);
   const inner = msg.Open.endOpen(builder);
   const baseRes = await dispatch.sendAsync(builder, msg.Any.Open, inner);
   assert(baseRes != null);
