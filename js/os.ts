@@ -4,6 +4,7 @@ import { assert } from "./util";
 import * as util from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
+import { TextDecoder } from "./text_encoding";
 
 interface CodeInfo {
   moduleName: string | undefined;
@@ -45,13 +46,17 @@ export function codeFetch(specifier: string, referrer: string): CodeInfo {
   assert(baseRes!.inner(codeFetchRes) != null);
   // flatbuffers returns `null` for an empty value, this does not fit well with
   // idiomatic TypeScript under strict null checks, so converting to `undefined`
+  const sourceCode = codeFetchRes.sourceCodeArray() || undefined;
+  const outputCode = codeFetchRes.outputCodeArray() || undefined;
+  const sourceMap = codeFetchRes.sourceMapArray() || undefined;
+  const decoder = new TextDecoder();
   return {
     moduleName: codeFetchRes.moduleName() || undefined,
     filename: codeFetchRes.filename() || undefined,
     mediaType: codeFetchRes.mediaType(),
-    sourceCode: codeFetchRes.sourceCode() || undefined,
-    outputCode: codeFetchRes.outputCode() || undefined,
-    sourceMap: codeFetchRes.sourceMap() || undefined
+    sourceCode: sourceCode && decoder.decode(sourceCode),
+    outputCode: outputCode && decoder.decode(outputCode),
+    sourceMap: sourceMap && decoder.decode(sourceMap)
   };
 }
 
