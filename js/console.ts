@@ -63,9 +63,12 @@ function createIterableString(
   ctx.add(value);
 
   const entries: string[] = [];
-  for (const el of value) {
-    entries.push(config.entryHandler(el, ctx, level + 1, maxLevel));
-  }
+  // In cases e.g. Uint8Array.prototype
+  try {
+    for (const el of value) {
+      entries.push(config.entryHandler(el, ctx, level + 1, maxLevel));
+    }
+  } catch (e) {}
   ctx.delete(value);
   const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
   const iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
