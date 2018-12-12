@@ -145,8 +145,8 @@ impl DenoDir {
   ) -> DenoResult<Option<CodeFetchOutput>> {
     let extensions = ["", ".ts", ".js"];
     for ext in extensions.iter() {
-      let filename = format!("{}{}", filename, ext);
-      let module_name = format!("{}{}", module_name, ext);
+      let filename = [filename, ext].concat();
+      let module_name = [module_name, ext].concat();
       let p = Path::new(&filename);
       // We write a special ".mime" file into the `.deno/deps` directory along side the
       // cached file, containing just the media type.
@@ -186,8 +186,8 @@ impl DenoDir {
   ) -> DenoResult<Option<CodeFetchOutput>> {
     let extensions = ["", ".ts", ".js"];
     for ext in extensions.iter() {
-      let filename = format!("{}{}", filename, ext);
-      let module_name = format!("{}{}", module_name, ext);
+      let filename = [filename, ext].concat();
+      let module_name = [module_name, ext].concat();
       let p = Path::new(&filename);
       if !p.exists() {
         continue;
