@@ -150,8 +150,7 @@ impl DenoDir {
       let p = Path::new(&filename);
       // We write a special ".mime" file into the `.deno/deps` directory along side the
       // cached file, containing just the media type.
-      let mut media_type_filename = filename.to_string();
-      media_type_filename.push_str(".mime");
+      let media_type_filename = [&filename, ".mime"].concat();
       let mt = Path::new(&media_type_filename);
       eprint!("Downloading {}...", &module_name); // no newline
       let maybe_source = http_util::fetch_sync_string(&module_name);
@@ -164,8 +163,8 @@ impl DenoDir {
         deno_fs::write_file(&p, source.as_bytes(), 0o666)?;
         deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?;
         return Ok(Some(CodeFetchOutput {
-          module_name: module_name.clone(),
-          filename: filename.clone(),
+          module_name,
+          filename: filename.clone(), // TODO: no clone after NLL rfc
           media_type: map_content_type(&p, Some(&content_type)),
           source_code: source,
           maybe_output_code: None,
@@ -192,8 +191,7 @@ impl DenoDir {
       if !p.exists() {
         continue;
       }
-      let mut media_type_filename = filename.to_string();
-      media_type_filename.push_str(".mime");
+      let media_type_filename = [&filename, ".mime"].concat();
       let mt = Path::new(&media_type_filename);
       let source_code = fs::read_to_string(&p)?;
       // .mime file might not exists
@@ -203,8 +201,8 @@ impl DenoDir {
       let maybe_content_type_str =
         maybe_content_type_string.as_ref().map(String::as_str);
       return Ok(Some(CodeFetchOutput {
-        module_name: module_name.clone(),
-        filename: filename.clone(),
+        module_name,
+        filename: filename.clone(), // TODO: no clone after NLL rfc
         media_type: map_content_type(&p, maybe_content_type_str),
         source_code,
         maybe_output_code: None,
