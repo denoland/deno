@@ -49,13 +49,14 @@ export function codeFetch(specifier: string, referrer: string): CodeInfo {
   const sourceCode = codeFetchRes.sourceCodeArray() || undefined;
   const outputCode = codeFetchRes.outputCodeArray() || undefined;
   const sourceMap = codeFetchRes.sourceMapArray() || undefined;
+  const decoder = new TextDecoder();
   return {
     moduleName: codeFetchRes.moduleName() || undefined,
     filename: codeFetchRes.filename() || undefined,
     mediaType: codeFetchRes.mediaType(),
-    sourceCode: sourceCode && new TextDecoder().decode(sourceCode),
-    outputCode: outputCode && new TextDecoder().decode(outputCode),
-    sourceMap: sourceMap && new TextDecoder().decode(sourceMap)
+    sourceCode: sourceCode && decoder.decode(sourceCode),
+    outputCode: outputCode && decoder.decode(outputCode),
+    sourceMap: sourceMap && decoder.decode(sourceMap)
   };
 }
 
