@@ -32,10 +32,33 @@
     <div id="exec-time-chart"></div>
 
     <h2>Throughput</h2>
+    Time it takes to pipe a certain amount of data through Deno.
+    <a href="https://github.com/denoland/deno/blob/master/tests/echo_server.ts">echo_server.ts</a>
+    and
+    <a href="https://github.com/denoland/deno/blob/master/tests/cat.ts">cat.ts</a>
+    Smaller is better.
+
     <div id="throughput-chart"></div>
 
     <h2>Req/Sec</h2>
-    Tests HTTP server performance against Node.
+    Tests HTTP server performance. 10 keep-alive connections
+    do as many hello-world requests as possible. Bigger is better.
+    <ul>
+      <!-- TODO rename "deno" to "deno_tcp". -->
+      <li><a
+         href="https://github.com/denoland/deno/blob/master/tests/http_bench.ts">deno</a>
+        is a fake http server that doesn't parse HTTP. It is comparable to <a
+         href="https://github.com/denoland/deno/blob/master/tools/node_tcp.js">node_tcp</a>.
+      <li><a
+         href="https://github.com/denoland/deno_net/blob/master/http_bench.ts">deno_net_http</a>
+        is a web server written in TypeScript.  It
+        is comparable to <a
+         href="https://github.com/denoland/deno/blob/master/tools/node_http.js">node_http</a>.
+      <li><a
+         href="https://github.com/denoland/deno/blob/master/tools/hyper_hello.rs">hyper</a>
+        is a Rust HTTP server and represents an upper bound.
+    </ul>
+
     <div id="req-per-sec-chart"></div>
 
     <h2>Executable size</h2>
