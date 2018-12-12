@@ -5,7 +5,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-import { listenAndServe, ServerRequest, setContentLength } from "./http";
+import { listenAndServe, ServerRequest, setContentLength, Response } from "./http";
 import { cwd, readFile, DenoError, ErrorKind, args, stat, readDir } from "deno";
 
 const dirViewerTemplate = `
@@ -143,7 +143,7 @@ async function serveDir(req: ServerRequest, dirPath: string, dirName: string) {
     headers
   };
   setContentLength(res);
-  await req.respond(res);
+  return res;
 }
 
 async function serveFile(req: ServerRequest, filename: string) {
@@ -156,7 +156,7 @@ async function serveFile(req: ServerRequest, filename: string) {
     body: file,
     headers
   };
-  await req.respond(res);
+  return res;
 }
 
 async function serveFallback(req: ServerRequest, e: Error) {
@@ -164,31 +164,45 @@ async function serveFallback(req: ServerRequest, e: Error) {
     e instanceof DenoError &&
     (e as DenoError<any>).kind === ErrorKind.NotFound
   ) {
-    await req.respond({ status: 404, body: encoder.encode("Not found") });
+    return { 
+      status: 404, 
+      body: encoder.encode("Not found") 
+    };
   } else {
-    await req.respond({
+    return {
       status: 500,
       body: encoder.encode("Internal server error")
-    });
+    };
   }
+}
+
+function serverLog(req: ServerRequest, res: Response) {
+  const d = new Date().toISOString();
+  const dateFmt = `[${d.slice(0, 10)} ${d.slice(11, 19)}]`;
+  const s = `${dateFmt} "${req.method} ${req.url} ${req.proto}" ${res.status}`;
+  console.log(s);
 }
 
 listenAndServe(addr, async req => {
   const fileName = req.url.replace(/\/$/, "");
   const filePath = currentDir + fileName;
 
+  let response: Response;
+
   try {
     const fileInfo = await stat(filePath);
     if (fileInfo.isDirectory()) {
       // Bug with deno.stat: name and path not populated
       // Yuck!
-      await serveDir(req, filePath, fileName);
+      response = await serveDir(req, filePath, fileName);
     } else {
-      await serveFile(req, filePath);
+      response = await serveFile(req, filePath);
     }
   } catch (e) {
-    await serveFallback(req, e);
-    return;
+    response = await serveFallback(req, e);
+  } finally {
+    serverLog(req, response);
+    req.respond(response);
   }
 });
 
