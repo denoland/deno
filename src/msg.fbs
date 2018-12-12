@@ -123,7 +123,7 @@ enum MediaType: byte {
 
 table Base {
   cmd_id: uint32;
-  sync: bool = true; // TODO(ry) Change default to false.
+  sync: bool = false;
   error_kind: ErrorKind = NoError;
   error: string;
   inner: Any;
