@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
   if (!r) {
     std::cerr << "Snapshot Exception " << std::endl;
     std::cerr << deno_last_exception(d) << std::endl;
+    deno_delete(d);
     return 1;
   }
 
