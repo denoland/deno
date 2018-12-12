@@ -103,6 +103,7 @@ test(function consoleTestStringifyCircular() {
     "[AsyncGeneratorFunction: agf]"
   );
   assertEqual(stringify(new Uint8Array([1, 2, 3])), "Uint8Array [ 1, 2, 3 ]");
+  assertEqual(stringify(Uint8Array.prototype), "TypedArray []");
   assertEqual(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
     "{ a: { b: { c: { d: [Set] } } } }"
