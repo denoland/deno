@@ -31,8 +31,8 @@ type CachedMaps = HashMap<String, Option<SourceMap>>;
 
 #[derive(Debug, PartialEq)]
 pub struct StackFrame {
-  pub line: u32,          // zero indexed
-  pub column: u32,        // zero indexed
+  pub line: u32,   // zero indexed
+  pub column: u32, // zero indexed
   pub script_name: String,
   pub function_name: String,
   pub is_eval: bool,
@@ -151,7 +151,8 @@ impl StackFrame {
     mappings_map: &mut CachedMaps,
     getter: &SourceMapGetter,
   ) -> StackFrame {
-    let maybe_sm = get_mappings(self.script_name.as_ref(), mappings_map, getter);
+    let maybe_sm =
+      get_mappings(self.script_name.as_ref(), mappings_map, getter);
     let frame_pos = (self.script_name.to_owned(), self.line, self.column);
     let (script_name, line, column) = match maybe_sm {
       None => frame_pos,
