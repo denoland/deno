@@ -41,28 +41,9 @@ v8_static_library("libdeno") {
     "file_util.h",
     "internal.h",
   ]
-  if (!use_prebuilt_v8) {
-    public_deps = [
-      ":v8",
-    ]
-  } else {
-    # TODO(ry) It would be nice to have a standalone target for the prebuilt
-    # library that could simply be added to the deps here, but it wasn't
-    # obvious how to accomplish that in gn.
-    if (is_mac) {
-      libs = [ "//prebuilt/mac/libv8.a" ]
-    } else if (is_linux) {
-      libs = [ "//prebuilt/linux64/libv8.a" ]
-    } else if (is_win) {
-      if (is_debug) {
-        libs = [ "//prebuilt/win/v8_debug.lib" ]
-      } else {
-        libs = [ "//prebuilt/win/v8.lib" ]
-      }
-    } else {
-      assert(false, "We don't have prebuilt binaries for this platform yet.")
-    }
-  }
+  public_deps = [
+    ":v8",
+  ]
 }
 
 v8_executable("snapshot_creator") {

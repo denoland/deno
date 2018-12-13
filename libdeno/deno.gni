@@ -1,11 +1,6 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import("//build/compiled_action.gni")
 
-declare_args() {
-  # Use prebuilt V8 libraries from //prebuilt/
-  use_prebuilt_v8 = true
-}
-
 template("run_node") {
   action(target_name) {
     forward_variables_from(invoker, "*")
