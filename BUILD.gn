@@ -119,11 +119,24 @@ group("deno_deps") {
   ]
 }
 
+# Reads the cargo info from Cargo.toml
+deno_cargo_info = exec_script("build_extra/rust/get_cargo_info.py",
+                              [ rebase_path("Cargo.toml", root_build_dir) ],
+                              "json")
+
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
   deps = [
     ":deno_deps",
+  ]
+
+  # Extract version from Cargo.toml
+  # TODO integrate this into rust.gni by allowing the rust_executable template
+  # to specify a cargo.toml from which it will extract a version.
+  crate_version = deno_cargo_info.version
+  inputs = [
+    "Cargo.toml",
   ]
 }
 
@@ -132,6 +145,12 @@ rust_test("test_rs") {
   extern = main_extern
   deps = [
     ":deno_deps",
+  ]
+
+  # Extract version from Cargo.toml
+  crate_version = deno_cargo_info.version
+  inputs = [
+    "Cargo.toml",
   ]
 }
 
