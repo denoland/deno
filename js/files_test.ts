@@ -30,10 +30,26 @@ test(async function filesToAsyncIterator() {
   assertEqual(totalSize, 12);
 });
 
+testPerm({ write: false }, async function writePermFailure() {
+  const filename = "tests/hello.txt";
+  const writeModes: deno.OpenMode[] = ["r+", "w", "w+", "a", "a+", "x", "x+"];
+  for (const mode of writeModes) {
+    let err;
+    try {
+      await deno.open(filename, mode);
+    } catch (e) {
+      err = e;
+    }
+    assert(!!err);
+    assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(err.name, "PermissionDenied");
+  }
+});
+
 testPerm({ write: true }, async function createFile() {
   const tempDir = await deno.makeTempDir();
   const filename = tempDir + "/test.txt";
-  let f = await deno.open(filename, "w");
+  const f = await deno.open(filename, "w");
   let fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile());
   assert(fileInfo.len === 0);
@@ -88,7 +104,7 @@ testPerm({ write: true }, async function openModeWriteRead() {
   const filename = tempDir + "hello.txt";
   const data = encoder.encode("Hello world!\n");
 
-  let file = await deno.open(filename, "w+");
+  const file = await deno.open(filename, "w+");
   // assert file was created
   let fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile());
