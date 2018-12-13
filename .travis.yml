@@ -111,7 +111,7 @@ script:
 
 - |-
   # Cargo check
-  RUSTC_WRAPPER=sccache cargo check -j2 --release
+  RUSTC_WRAPPER=sccache cargo build -vv -j2 --release
 
 after_script:
 - ccache --show-stats
