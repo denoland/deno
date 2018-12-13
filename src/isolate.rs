@@ -547,4 +547,10 @@ mod tests {
     let op = Box::new(futures::future::ok(vec));
     (false, op)
   }
+
+  #[test]
+  fn thread_safety() {
+    fn is_thread_safe<T: Sync + Send>() {}
+    is_thread_safe::<IsolateState>();
+  }
 }
