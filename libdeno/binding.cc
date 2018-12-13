@@ -350,14 +350,13 @@ void MakeContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   function_template->SetClassName(sandbox_object->GetConstructorName());
   auto object_template = function_template->InstanceTemplate();
 
-  auto context = v8::Context::New(isolate, nullptr, object_template,
-                        v8::MaybeLocal<v8::Value>(),
-                        v8::DeserializeInternalFieldsCallback(
-                            deno::DeserializeInternalFields, nullptr));
+  auto context = v8::Context::New(
+      isolate, nullptr, object_template, v8::MaybeLocal<v8::Value>(),
+      v8::DeserializeInternalFieldsCallback(deno::DeserializeInternalFields,
+                                            nullptr));
   // TODO: This looks like a horrible idea...
   context->SetSecurityToken(d->context_.Get(isolate)->GetSecurityToken());
-  d->context_map_.emplace(std::piecewise_construct,
-                          std::make_tuple(context_id),
+  d->context_map_.emplace(std::piecewise_construct, std::make_tuple(context_id),
                           std::make_tuple(d->isolate_, context));
   auto context_info = v8::Array::New(isolate, 2);
   context_info->Set(0, v8::Integer::New(d->isolate_, context_id));
@@ -494,12 +493,16 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
 
   auto make_context_tmpl = v8::FunctionTemplate::New(isolate, MakeContext);
-  auto make_context_val = make_context_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("makeContext"), make_context_val).FromJust());
+  auto make_context_val =
+      make_context_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("makeContext"), make_context_val)
+            .FromJust());
 
   auto run_in_context_tmpl = v8::FunctionTemplate::New(isolate, RunInContext);
-  auto run_in_context_val = run_in_context_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("runInContext"), run_in_context_val).FromJust());
+  auto run_in_context_val =
+      run_in_context_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("runInContext"), run_in_context_val)
+            .FromJust());
 
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());

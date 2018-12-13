@@ -96,9 +96,13 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
 static intptr_t external_references[] = {
-    reinterpret_cast<intptr_t>(Print), reinterpret_cast<intptr_t>(Recv),
-    reinterpret_cast<intptr_t>(Send), reinterpret_cast<intptr_t>(MakeContext),
-    reinterpret_cast<intptr_t>(RunInContext), reinterpret_cast<intptr_t>(Shared), 0};
+    reinterpret_cast<intptr_t>(Print),
+    reinterpret_cast<intptr_t>(Recv),
+    reinterpret_cast<intptr_t>(Send),
+    reinterpret_cast<intptr_t>(MakeContext),
+    reinterpret_cast<intptr_t>(RunInContext),
+    reinterpret_cast<intptr_t>(Shared),
+    0};
 
 static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
 
