@@ -13,13 +13,40 @@
 
 extern "C" {
 
-Deno* deno_new(deno_buf snapshot, deno_config config) {
-  deno::DenoIsolate* d = new deno::DenoIsolate(snapshot, config);
+Deno* deno_new_snapshotter(deno_config config) {
+  CHECK(config.will_snapshot);
+  // TODO Support loading snapshots before snapshotting.
+  CHECK_NULL(config.load_snapshot.data_ptr);
+  auto* creator = new v8::SnapshotCreator(deno::external_references);
+  auto* isolate = creator->GetIsolate();
+  auto* d = new deno::DenoIsolate(config);
+  d->snapshot_creator_ = creator;
+  d->AddIsolate(isolate);
+  {
+    v8::Locker locker(isolate);
+    v8::Isolate::Scope isolate_scope(isolate);
+    v8::HandleScope handle_scope(isolate);
+    auto context = v8::Context::New(isolate);
+    d->context_.Reset(isolate, context);
+
+    creator->SetDefaultContext(context,
+                               v8::SerializeInternalFieldsCallback(
+                                   deno::SerializeInternalFields, nullptr));
+    deno::InitializeContext(isolate, context);
+  }
+  return reinterpret_cast<Deno*>(d);
+}
+
+Deno* deno_new(deno_config config) {
+  if (config.will_snapshot) {
+    return deno_new_snapshotter(config);
+  }
+  deno::DenoIsolate* d = new deno::DenoIsolate(config);
   v8::Isolate::CreateParams params;
   params.array_buffer_allocator = d->array_buffer_allocator_;
   params.external_references = deno::external_references;
 
-  if (snapshot.data_ptr) {
+  if (config.load_snapshot.data_ptr) {
     params.snapshot_blob = &d->snapshot_;
   }
 
@@ -35,34 +62,14 @@ Deno* deno_new(deno_buf snapshot, deno_config config) {
                          v8::MaybeLocal<v8::Value>(),
                          v8::DeserializeInternalFieldsCallback(
                              deno::DeserializeInternalFields, nullptr));
-    if (!snapshot.data_ptr) {
+    if (!config.load_snapshot.data_ptr) {
       // If no snapshot is provided, we initialize the context with empty
       // main source code and source maps.
-      deno::InitializeContext(isolate, context, "", "");
+      deno::InitializeContext(isolate, context);
     }
     d->context_.Reset(isolate, context);
   }
 
-  return reinterpret_cast<Deno*>(d);
-}
-
-Deno* deno_new_snapshotter(deno_config config, const char* js_filename,
-                           const char* js_source) {
-  auto* creator = new v8::SnapshotCreator(deno::external_references);
-  auto* isolate = creator->GetIsolate();
-  auto* d = new deno::DenoIsolate(deno::empty_buf, config);
-  d->snapshot_creator_ = creator;
-  d->AddIsolate(isolate);
-  {
-    v8::Locker locker(isolate);
-    v8::Isolate::Scope isolate_scope(isolate);
-    v8::HandleScope handle_scope(isolate);
-    auto context = v8::Context::New(isolate);
-    creator->SetDefaultContext(context,
-                               v8::SerializeInternalFieldsCallback(
-                                   deno::SerializeInternalFields, nullptr));
-    deno::InitializeContext(isolate, context, js_filename, js_source);
-  }
   return reinterpret_cast<Deno*>(d);
 }
 
@@ -73,6 +80,7 @@ deno::DenoIsolate* unwrap(Deno* d_) {
 deno_buf deno_get_snapshot(Deno* d_) {
   auto* d = unwrap(d_);
   CHECK_NE(d->snapshot_creator_, nullptr);
+  d->context_.Reset();
   auto blob = d->snapshot_creator_->CreateBlob(
       v8::SnapshotCreator::FunctionCodeHandling::kClear);
   return {nullptr, 0, reinterpret_cast<uint8_t*>(const_cast<char*>(blob.data)),
@@ -111,6 +119,7 @@ int deno_execute(Deno* d_, void* user_data, const char* js_filename,
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = d->context_.Get(d->isolate_);
+  CHECK(!context.IsEmpty());
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
 }
 
