@@ -1,6 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 // Hint: --trace_serializer is a useful debugging flag.
 #include <fstream>
+#include <iostream>
 #include "deno.h"
 #include "file_util.h"
 #include "internal.h"
@@ -22,8 +23,16 @@ int main(int argc, char** argv) {
   CHECK(deno::ReadFileToString(js_fn, &js_source));
 
   deno_init();
-  deno_config config = {deno::empty_buf, nullptr};
-  Deno* d = deno_new_snapshotter(config, js_fn, js_source.c_str());
+  deno_config config = {1, deno::empty_buf, deno::empty_buf, nullptr};
+  Deno* d = deno_new(config);
+
+  int r = deno_execute(d, nullptr, js_fn, js_source.c_str());
+  if (!r) {
+    std::cerr << "Snapshot Exception " << std::endl;
+    std::cerr << deno_last_exception(d) << std::endl;
+    deno_delete(d);
+    return 1;
+  }
 
   auto snapshot = deno_get_snapshot(d);
 
