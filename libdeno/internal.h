@@ -21,6 +21,7 @@ class DenoIsolate {
         global_import_buf_ptr_(nullptr),
         recv_cb_(config.recv_cb),
         next_req_id_(0),
+        next_context_id_(0),
         user_data_(nullptr) {
     array_buffer_allocator_ = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (snapshot.data_ptr) {
@@ -48,9 +49,11 @@ class DenoIsolate {
   void* global_import_buf_ptr_;
   deno_recv_cb recv_cb_;
   int32_t next_req_id_;
+  int32_t next_context_id_;
   void* user_data_;
 
   v8::Persistent<v8::Context> context_;
+  std::map<int32_t, v8::Persistent<v8::Context>> context_map_;
   std::map<int32_t, v8::Persistent<v8::Value>> async_data_map_;
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   std::string last_exception_;
@@ -88,11 +91,14 @@ struct InternalFieldData {
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
+void MakeContext(const v8::FunctionCallbackInfo<v8::Value>& args);
+void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
 static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print), reinterpret_cast<intptr_t>(Recv),
-    reinterpret_cast<intptr_t>(Send), reinterpret_cast<intptr_t>(Shared), 0};
+    reinterpret_cast<intptr_t>(Send), reinterpret_cast<intptr_t>(MakeContext),
+    reinterpret_cast<intptr_t>(RunInContext), reinterpret_cast<intptr_t>(Shared), 0};
 
 static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
 
@@ -116,6 +122,10 @@ void DeleteDataRef(DenoIsolate* d, int32_t req_id);
 
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
              const char* js_source);
+
+bool ExecuteV8StringSource(v8::Local<v8::Context> context,
+                           const char* js_filename,
+                           v8::Local<v8::String> source);
 
 }  // namespace deno
 

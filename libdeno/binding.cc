@@ -333,6 +333,79 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
+void MakeContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+  DenoIsolate* d = FromIsolate(isolate);
+  DCHECK_EQ(d->isolate_, isolate);
+
+  v8::Locker locker(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::EscapableHandleScope handle_scope(isolate);
+
+  int32_t context_id = d->next_context_id_++;
+  CHECK(args[0]->IsObject());
+  auto sandbox_object = args[0].As<v8::Object>();
+
+  auto function_template = v8::FunctionTemplate::New(isolate);
+  function_template->SetClassName(sandbox_object->GetConstructorName());
+  auto object_template = function_template->InstanceTemplate();
+
+  auto context = v8::Context::New(isolate, nullptr, object_template,
+                        v8::MaybeLocal<v8::Value>(),
+                        v8::DeserializeInternalFieldsCallback(
+                            deno::DeserializeInternalFields, nullptr));
+  // TODO: This looks like a horrible idea...
+  context->SetSecurityToken(d->context_.Get(isolate)->GetSecurityToken());
+  d->context_map_.emplace(std::piecewise_construct,
+                          std::make_tuple(context_id),
+                          std::make_tuple(d->isolate_, context));
+  auto context_info = v8::Array::New(isolate, 2);
+  context_info->Set(0, v8::Integer::New(d->isolate_, context_id));
+  context_info->Set(1, context->Global());
+  args.GetReturnValue().Set(context_info);
+}
+
+void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+  DenoIsolate* d = FromIsolate(isolate);
+  DCHECK_EQ(d->isolate_, isolate);
+
+  v8::Locker locker(d->isolate_);
+  v8::EscapableHandleScope handle_scope(isolate);
+
+  CHECK(args[0]->IsNumber());
+  int32_t context_id = static_cast<int32_t>(args[0].As<v8::Integer>()->Value());
+  CHECK(args[1]->IsString());
+  auto code = args[1].As<v8::String>();
+  auto entry = d->context_map_.find(context_id);
+  if (entry != d->context_map_.end()) {
+    auto context = entry->second.Get(isolate);
+    v8::Context::Scope context_scope(context);
+
+    v8::TryCatch try_catch(isolate);
+    v8::ScriptOrigin origin(v8_str("<sandbox>"));
+
+    auto script = v8::Script::Compile(context, code, &origin);
+
+    if (script.IsEmpty()) {
+      DCHECK(try_catch.HasCaught());
+      HandleException(context, try_catch.Exception());
+      return;
+    }
+
+    auto result = script.ToLocalChecked()->Run(context);
+
+    if (result.IsEmpty()) {
+      DCHECK(try_catch.HasCaught());
+      HandleException(context, try_catch.Exception());
+      return;
+    }
+    args.GetReturnValue().Set(result.ToLocalChecked());
+    // deno::ExecuteV8StringSource(context, "<sandbox>", code);
+    // args.GetReturnValue().Set(context->Global());
+  }
+}
+
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
@@ -419,6 +492,14 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
   auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
+
+  auto make_context_tmpl = v8::FunctionTemplate::New(isolate, MakeContext);
+  auto make_context_val = make_context_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("makeContext"), make_context_val).FromJust());
+
+  auto run_in_context_tmpl = v8::FunctionTemplate::New(isolate, RunInContext);
+  auto run_in_context_val = run_in_context_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("runInContext"), run_in_context_val).FromJust());
 
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());

@@ -18,26 +18,10 @@ interface Libdeno {
 
   shared: ArrayBuffer;
 
-  setGlobalErrorHandler: (
-    handler: (
-      message: string,
-      source: string,
-      line: number,
-      col: number,
-      error: Error
-    ) => void
-  ) => void;
+  makeContext(sandbox: {}): [number, {}];
 
-  setPromiseRejectHandler: (
-    handler: (
-      error: Error | string,
-      event: PromiseRejectEvent,
-      /* tslint:disable-next-line:no-any */
-      promise: Promise<any>
-    ) => void
-  ) => void;
-
-  setPromiseErrorExaminer: (handler: () => boolean) => void;
+  // tslint:disable-next-line:no-any
+  runInContext(contextId: number, code: string): any;
 }
 
 const window = globalEval("this");
