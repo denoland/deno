@@ -17,13 +17,6 @@ group("default") {
   ]
 }
 
-# Set of targets that need to be built for `cargo check` to succeed.
-group("cargo_check_deps") {
-  deps = [
-    ":msg_rs",
-  ]
-}
-
 main_extern = [
   "$rust_build:atty",
   "$rust_build:dirs",
@@ -112,6 +105,8 @@ ts_sources = [
   "third_party/yarn.lock",
 ]
 
+# When Cargo is driving the build, GN/Ninja are used to produce these non-Rust
+# targets. Cargo handles all Rust source files and the final linking step.
 group("deno_deps") {
   deps = [
     ":msg_rs",

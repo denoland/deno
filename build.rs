@@ -9,38 +9,23 @@ use std::path::{self, Path, PathBuf};
 use std::process::Command;
 
 fn main() {
-  // Cargo sets PROFILE to either "debug" or "release", which conveniently
-  // matches the build modes we support.
-  let mode = env::var("PROFILE").unwrap();
-
-  let out_dir = env::var_os("OUT_DIR").unwrap();
-  let out_dir = env::current_dir().unwrap().join(out_dir);
-
-  // Normally we configure GN+Ninja to build into Cargo's OUT_DIR.
-  // However, when DENO_BUILD_PATH is set, perform the ninja build in that dir
-  // instead. This is used by CI to avoid building V8 etc twice.
-  let gn_out_dir = match env::var_os("DENO_BUILD_PATH") {
-    None => {
-      // out_dir looks like: "target/debug/build/deno-26d2b5325de0f0cf/out"
-      // The gn build is "target/debug"
-      // So we go up two directories. Blame cargo for these hacks.
-      let d = out_dir.parent().unwrap();
-      let d = d.parent().unwrap();
-      let d = d.parent().unwrap();
-      PathBuf::from(d)
-    }
-    Some(deno_build_path) => PathBuf::from(deno_build_path),
+  let gn_mode = if cfg!(target_os = "windows") {
+    // On Windows, we need to link with a release build of libdeno, because
+    // rust always uses the release CRT.
+    // TODO(piscisaureus): make linking with debug libdeno possible.
+    String::from("release")
+  } else {
+    // Cargo sets PROFILE to either "debug" or "release", which conveniently
+    // matches the build modes we support.
+    env::var("PROFILE").unwrap()
   };
 
-  // Give cargo some instructions. We do this first so the `rerun-if-*-changed`
-  // directives can take effect even if something the build itself fails.
-  println!("cargo:rustc-env=GN_OUT_DIR={}", normalize_path(&gn_out_dir));
-  println!(
-    "cargo:rustc-link-search=native={}/obj",
-    normalize_path(&gn_out_dir)
-  );
-  println!("cargo:rustc-link-lib=static=deno_deps");
+  let gn_out_dir = env::current_dir().unwrap();
+  let gn_out_dir = gn_out_dir.join(format!("target/{}", gn_mode));
+  let gn_out_dir = normalize_path(gn_out_dir);
 
+  // Tell Cargo when to re-run this file. We do this first, so these directives
+  // can take effect even if something goes wrong later in the build process.
   println!("cargo:rerun-if-env-changed=DENO_BUILD_PATH");
   // TODO: this is obviously not appropriate here.
   println!("cargo:rerun-if-env-changed=APPVEYOR_REPO_COMMIT");
@@ -55,21 +40,45 @@ fn main() {
     .map(|s| s.starts_with("rls"))
     .unwrap_or(false);
 
-  // If we're being invoked by the RLS, build only the targets that are needed
-  // for `cargo check` to succeed.
-  let gn_target = if check_only {
-    "cargo_check_deps"
-  } else {
-    "deno_deps"
-  };
+  // This helps Rust source files locate the snapshot, source map etc.
+  println!("cargo:rustc-env=GN_OUT_DIR={}", gn_out_dir);
+
+  let gn_target;
 
   if check_only {
+    // When RLS is running "cargo check" to analyze the source code, we're not
+    // trying to build a working executable, rather we're just compiling all
+    // rust code. Therefore, make ninja build only 'msg_generated.rs'.
+    gn_target = "msg_rs";
+
+    // Enable the 'check_only' feature, which enables some workarounds in the
+    // rust source code to compile successfully without a bundle and snapshot
     println!("cargo:rustc-cfg=feature=\"check-only\"");
+  } else {
+    // "Full" (non-RLS) build.
+    gn_target = "deno_deps";
+
+    // Link with libdeno.a/.lib, which includes V8.
+    println!("cargo:rustc-link-search=native={}/obj/libdeno", gn_out_dir);
+    if cfg!(target_os = "windows") {
+      println!("cargo:rustc-link-lib=static=libdeno");
+    } else {
+      println!("cargo:rustc-link-lib=static=deno");
+    }
+
+    // Link the system libraries that libdeno and V8 depend on.
+    if cfg!(any(target_os = "macos", target_os = "freebsd")) {
+      println!("cargo:rustc-link-lib=dylib=c++");
+    } else if cfg!(target_os = "windows") {
+      for lib in vec!["dbghelp", "shlwapi", "winmm", "ws2_32"] {
+        println!("cargo:rustc-link-lib={}", lib);
+      }
+    }
   }
 
   let status = Command::new("python")
     .env("DENO_BUILD_PATH", &gn_out_dir)
-    .env("DENO_BUILD_MODE", &mode)
+    .env("DENO_BUILD_MODE", &gn_mode)
     .arg("./tools/setup.py")
     .status()
     .expect("setup.py failed");
@@ -77,7 +86,7 @@ fn main() {
 
   let status = Command::new("python")
     .env("DENO_BUILD_PATH", &gn_out_dir)
-    .env("DENO_BUILD_MODE", &mode)
+    .env("DENO_BUILD_MODE", &gn_mode)
     .arg("./tools/build.py")
     .arg(gn_target)
     .arg("-v")
@@ -88,8 +97,9 @@ fn main() {
 
 // Utility function to make a path absolute, normalizing it to use forward
 // slashes only. The returned value is an owned String, otherwise panics.
-fn normalize_path(path: &Path) -> String {
+fn normalize_path<T: AsRef<Path>>(path: T) -> String {
   path
+    .as_ref()
     .to_str()
     .unwrap()
     .to_owned()
