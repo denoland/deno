@@ -338,7 +338,7 @@ before_build:
 build_script:
   - python tools\build.py
   - ps: Set-FilesNeeded -Auto -Reason "Build finished"
-  - cargo check --release
+  - cargo build -vv --release
   - ps: Set-FilesNeeded -Auto -Reason "Cargo check finished"
 
 test_script:
