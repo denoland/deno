@@ -39,7 +39,7 @@ qrun(
 print "prettier"
 qrun(["node", prettier, "--write", "--loglevel=error"] + ["rollup.config.js"] +
      glob("*.json") + glob("*.md") +
-     find_exts([".github", "js", "tests", "tools", "website"],
+     find_exts([".github", "js", "tests", "tools", "website", "registry"],
                [".js", ".json", ".ts", ".md"],
                skip=["tools/clang"]))
 

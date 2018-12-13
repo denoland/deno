@@ -18,6 +18,6 @@ assert.equal(
 
 // Just check that indexPage() doesn't crash and the body looks like html.
 const r = indexPage();
-assert(r.body.match(/html/i)); 
+assert(r.body.match(/html/i));
 
 console.log("ok");
