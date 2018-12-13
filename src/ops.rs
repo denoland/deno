@@ -576,15 +576,15 @@ fn op_chmod(
 }
 
 fn op_open(
-  _state: &IsolateState,
+  state: &IsolateState,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let filename = PathBuf::from(inner.filename().unwrap());
-  //  let perm = inner.perm();
+  let filename_str = inner.filename().unwrap();
+  let filename = PathBuf::from(&filename_str);
   let mode = inner.mode().unwrap();
 
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -594,12 +594,21 @@ fn op_open(
       open_options.read(true);
     }
     "r+" => {
+      if let Err(e) = state.check_write(&filename_str) {
+        return odd_future(e);
+      }
       open_options.read(true).write(true);
     }
     "w" => {
+      if let Err(e) = state.check_write(&filename_str) {
+        return odd_future(e);
+      }
       open_options.create(true).write(true).truncate(true);
     }
     "w+" => {
+      if let Err(e) = state.check_write(&filename_str) {
+        return odd_future(e);
+      }
       open_options
         .read(true)
         .create(true)
@@ -607,15 +616,27 @@ fn op_open(
         .truncate(true);
     }
     "a" => {
+      if let Err(e) = state.check_write(&filename_str) {
+        return odd_future(e);
+      }
       open_options.create(true).append(true);
     }
     "a+" => {
+      if let Err(e) = state.check_write(&filename_str) {
+        return odd_future(e);
+      }
       open_options.read(true).create(true).append(true);
     }
     "x" => {
+      if let Err(e) = state.check_write(&filename_str) {
+        return odd_future(e);
+      }
       open_options.create_new(true).write(true);
     }
     "x+" => {
+      if let Err(e) = state.check_write(&filename_str) {
+        return odd_future(e);
+      }
       open_options.create_new(true).read(true).write(true);
     }
     &_ => {
