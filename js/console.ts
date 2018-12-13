@@ -383,7 +383,7 @@ export class Console {
 
   /** Writes an error message to stdout if the assertion is `false`. If the
    * assertion is `true`, nothing happens.
-   * 
+   *
    * ref: https://console.spec.whatwg.org/#assert
    */
   // tslint:disable-next-line:no-any
@@ -393,7 +393,7 @@ export class Console {
     }
 
     if (args.length === 0) {
-      this.error("Assertion failed")
+      this.error("Assertion failed");
       return;
     }
 
