@@ -29,7 +29,7 @@ export const stdout = new File(1);
 /** An instance of `File` for stderr. */
 export const stderr = new File(2);
 
-type OpenMode =
+export type OpenMode =
   /** Read-only. Default. Starts at beginning of file. */
   | "r"
   /** Read-write. Start at beginning of file. */
