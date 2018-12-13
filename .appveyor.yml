@@ -8,9 +8,8 @@ clone_depth: 1
 
 environment:
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
-  CARGO_TARGET_DIR: $(APPVEYOR_BUILD_FOLDER)\target
   DENO_BUILD_MODE: release
-  DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\release
+  DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\target\release
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   MTIME_CACHE_DB: $(APPVEYOR_BUILD_FOLDER)\mtime_cache.xml
   RELEASE_ARTIFACT: deno_win_x64.zip
@@ -239,7 +238,6 @@ cache:
   # Cache file mtimes in the main git repo, also to enable incremental builds.
   - $(MTIME_CACHE_DB)
   # Build incrementally.
-  - $(CARGO_TARGET_DIR)
   - $(DENO_BUILD_PATH)
 
 init:
@@ -328,7 +326,6 @@ install:
 before_build:
   # Mark all files in the build dir 'not needed' until proven otherwise.
   # TODO: also track files in third_party that aren't checked into the repo.
-  # TODO: also track files in $CARGO_TARGET_DIR.
   - ps: Start-TraceFilesNeeded $env:DENO_BUILD_PATH -Recurse
 
   # Download clang and gn, generate ninja files.
@@ -346,7 +343,7 @@ before_build:
 build_script:
   - python tools\build.py
   - ps: Set-FilesNeeded -Auto -Reason "Build finished"
-  - cargo check --release
+  - cargo build -vv --release
   - ps: Set-FilesNeeded -Auto -Reason "Cargo check finished"
 
 test_script:

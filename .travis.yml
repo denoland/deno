@@ -80,7 +80,7 @@ script:
 
 - |-
   # Cargo check
-  cargo check -j2 --release --locked
+  cargo build --release -vv -j2
 
 before_deploy:
 - gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_x64.gz
