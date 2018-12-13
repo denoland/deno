@@ -12,7 +12,6 @@ env:
   - RUSTUP_HOME=$HOME/.rustup/
   - RUST_BACKTRACE=1
   - HOMEBREW_PATH=$HOME/homebrew/
-  - DENO_BUILD_ARGS="use_sysroot=false"
   - CARGO_TARGET_DIR=$HOME/target
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - CCACHE_CPP2=yes
