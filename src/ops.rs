@@ -594,21 +594,12 @@ fn op_open(
       open_options.read(true);
     }
     "r+" => {
-      if let Err(e) = state.check_write(&filename_str) {
-        return odd_future(e);
-      }
       open_options.read(true).write(true);
     }
     "w" => {
-      if let Err(e) = state.check_write(&filename_str) {
-        return odd_future(e);
-      }
       open_options.create(true).write(true).truncate(true);
     }
     "w+" => {
-      if let Err(e) = state.check_write(&filename_str) {
-        return odd_future(e);
-      }
       open_options
         .read(true)
         .create(true)
@@ -616,31 +607,26 @@ fn op_open(
         .truncate(true);
     }
     "a" => {
-      if let Err(e) = state.check_write(&filename_str) {
-        return odd_future(e);
-      }
       open_options.create(true).append(true);
     }
     "a+" => {
-      if let Err(e) = state.check_write(&filename_str) {
-        return odd_future(e);
-      }
       open_options.read(true).create(true).append(true);
     }
     "x" => {
-      if let Err(e) = state.check_write(&filename_str) {
-        return odd_future(e);
-      }
       open_options.create_new(true).write(true);
     }
     "x+" => {
-      if let Err(e) = state.check_write(&filename_str) {
-        return odd_future(e);
-      }
       open_options.create_new(true).read(true).write(true);
     }
     &_ => {
       panic!("Unknown file open mode.");
+    }
+  }
+
+  if mode != "r" {
+    // Write permission is needed except "r" mode
+    if let Err(e) = state.check_write(&filename_str) {
+      return odd_future(e);
     }
   }
 
