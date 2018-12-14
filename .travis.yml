@@ -104,7 +104,7 @@ script:
 #  ./tools/build.py -C target/debug -j2
 #  ./target/debug/test_cc
 
-- bash -c "sleep 600; pkill ninja" &
+- bash -c "sleep 2400; pkill ninja" &
 
 - export DENO_BUILD_MODE=release
 - ./tools/build.py -C target/release -j2 && \
