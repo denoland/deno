@@ -11,6 +11,7 @@ env:
   - CARGO_HOME=$HOME/.cargo/
   - RUSTUP_HOME=$HOME/.rustup/
   - RUST_BACKTRACE=1
+  - RUSTC_WRAPPER=sccache
   - HOMEBREW_PATH=$HOME/homebrew/
   - DENO_BUILD_ARGS="use_sysroot=false"
   - CARGO_TARGET_DIR=$HOME/target
@@ -103,14 +104,12 @@ script:
 #  ./tools/build.py -C target/debug -j2
 #  ./target/debug/test_cc
 
-- |-
-  # Release build and test
-  bash -c "sleep 600; pkill ninja" &
-  ./tools/build.py -C target/release -j2
-  DENO_BUILD_MODE=release ./tools/test.py
+- bash -c "sleep 600; pkill ninja" &
 
-  # Cargo check
-  RUSTC_WRAPPER=sccache cargo build -vv -j2 --release
+- export DENO_BUILD_MODE=release
+- ./tools/build.py -C target/release -j2 && \
+  ./tools/test.py && \
+  cargo build -vv -j2 --release
 
 after_script:
 - ccache --show-stats
