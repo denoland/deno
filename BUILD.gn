@@ -94,6 +94,7 @@ ts_sources = [
   "js/repl.ts",
   "js/resources.ts",
   "js/runner.ts",
+  "js/sandbox.ts",
   "js/stat.ts",
   "js/symlink.ts",
   "js/text_encoding.ts",
