@@ -386,9 +386,15 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
     auto script = v8::Script::Compile(context, code, &origin);
 
+    auto output_pair = v8::Array::New(isolate, 2);
+
     if (script.IsEmpty()) {
       DCHECK(try_catch.HasCaught());
-      HandleException(context, try_catch.Exception());
+      // TODO: this feels wrong...
+      output_pair->Set(0, v8::Null(isolate));
+      output_pair->Set(
+          1, try_catch.Exception()->ToString(context).ToLocalChecked());
+      args.GetReturnValue().Set(output_pair);
       return;
     }
 
@@ -396,12 +402,16 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
     if (result.IsEmpty()) {
       DCHECK(try_catch.HasCaught());
-      HandleException(context, try_catch.Exception());
+      // TODO: this feels wrong...
+      output_pair->Set(0, v8::Null(isolate));
+      output_pair->Set(
+          1, try_catch.Exception()->ToString(context).ToLocalChecked());
+      args.GetReturnValue().Set(output_pair);
       return;
     }
-    args.GetReturnValue().Set(result.ToLocalChecked());
-    // deno::ExecuteV8StringSource(context, "<sandbox>", code);
-    // args.GetReturnValue().Set(context->Global());
+    output_pair->Set(0, result.ToLocalChecked());
+    output_pair->Set(1, v8::Null(isolate));
+    args.GetReturnValue().Set(output_pair);
   }
 }
 

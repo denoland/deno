@@ -18,10 +18,11 @@ interface Libdeno {
 
   shared: ArrayBuffer;
 
-  makeContext(sandbox: {}): [number, {}];
+  // tslint:disable-next-line:no-any
+  makeContext(sandbox: {}): [number, any];
 
   // tslint:disable-next-line:no-any
-  runInContext(contextId: number, code: string): any;
+  runInContext(contextId: number, code: string): [any, any];
 }
 
 const window = globalEval("this");

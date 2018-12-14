@@ -6,10 +6,10 @@ import * as deno from "./deno";
 import { close } from "./files";
 import * as dispatch from "./dispatch";
 import { exit } from "./os";
-// import { globalEval } from "./global_eval";
+import { globalEval } from "./global_eval";
 import { sandbox, DenoSandbox } from "./sandbox";
 
-// const window = globalEval("this");
+const window = globalEval("this");
 let replSandbox: DenoSandbox;
 
 function startRepl(historyFile: string): number {
@@ -55,12 +55,10 @@ export async function readline(rid: number, prompt: string): Promise<string> {
 
 // @internal
 export async function replLoop(): Promise<void> {
-  // window.deno = deno; // FIXME use a new scope (rather than window).
-
   const historyFile = "deno_history.txt";
   const rid = startRepl(historyFile);
 
-  replSandbox = sandbox();
+  replSandbox = sandbox(window);
   replSandbox.context.deno = deno;
 
   let code = "";
@@ -92,7 +90,8 @@ function evaluate(code: string): void {
     console.log(result);
   } catch (err) {
     if (err instanceof Error) {
-      console.error(`${err.constructor.name}: ${err.message}`);
+      console.error(err.message);
+      // console.error(`${err.constructor.name}: ${err.message}`);
     } else {
       console.error("Thrown:", err);
     }
