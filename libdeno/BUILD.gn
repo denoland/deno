@@ -53,10 +53,23 @@ v8_static_library("libdeno") {
     "file_util.h",
     "internal.h",
   ]
-  deps = [
-    ":v8",
-    "//build/config:shared_library_deps",
-  ]
+  if (!use_prebuilt_v8 || is_win) {
+    deps = [
+      ":v8",
+      "//build/config:shared_library_deps",
+    ]
+  } else {
+    # TODO(ry) It would be nice to have a standalone target for the prebuilt
+    # library that could simply be added to the deps here, but it wasn't
+    # obvious how to accomplish that in gn.
+    if (is_mac) {
+      arflags = [ rebase_path("//prebuilt/mac/libv8.a", root_build_dir) ]
+    } else if (is_linux) {
+      arflags = [ rebase_path("//prebuilt/linux64/libv8.a", root_build_dir) ]
+    } else {
+      assert(false, "We don't have prebuilt binaries for this platform yet.")
+    }
+  }
 }
 
 v8_executable("snapshot_creator") {
