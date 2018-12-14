@@ -15,7 +15,7 @@ import { open } from "./files";
  */
 export function readFileSync(filename: string): Uint8Array {
   const buf = prepared_buf(filename);
-  if (buf.length == 0) {
+  if (buf.length === 0) {
     return buf;
   }
   const builder = flatbuffers.createBuilder();
@@ -36,7 +36,7 @@ export function readFileSync(filename: string): Uint8Array {
  */
 export async function readFile(filename: string): Promise<Uint8Array> {
   const buf = prepared_buf(filename);
-  if (buf.length == 0) {
+  if (buf.length === 0) {
     return buf;
   }
   const file = await open(filename, "r");
