@@ -105,7 +105,7 @@ script:
 
 - |-
   # Release build and test
-  bash -c "sleep 2100; pkill ninja; pkill cargo" &
+  bash -c "sleep 600; pkill ninja" &
   ./tools/build.py -C target/release -j2
   DENO_BUILD_MODE=release ./tools/test.py
 
