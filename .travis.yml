@@ -109,7 +109,6 @@ script:
   ./tools/build.py -C target/release -j2
   DENO_BUILD_MODE=release ./tools/test.py
 
-- |-
   # Cargo check
   RUSTC_WRAPPER=sccache cargo build -vv -j2 --release
 
