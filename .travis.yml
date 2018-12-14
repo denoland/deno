@@ -105,11 +105,7 @@ script:
 #  ./target/debug/test_cc
 
 - bash -c "sleep 2400; pkill ninja" &
-
-- export DENO_BUILD_MODE=release
-- ./tools/build.py -C target/release -j2 && \
-  ./tools/test.py && \
-  cargo build -vv -j2 --release
+- ./tools/build_test_all.py
 
 after_script:
 - ccache --show-stats
