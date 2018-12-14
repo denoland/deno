@@ -25,6 +25,7 @@ use resources::table_entries;
 use std;
 use std::convert::From;
 use std::fs;
+use std::io::prelude::*;
 use std::net::{Shutdown, SocketAddr};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -816,34 +817,17 @@ fn op_remove(
 fn op_read_file(
   _config: &IsolateState,
   base: &msg::Base,
-  data: libdeno::deno_buf,
+  mut data: libdeno::deno_buf,
 ) -> Box<Op> {
-  assert_eq!(data.len(), 0);
   let inner = base.inner_as_read_file().unwrap();
-  let cmd_id = base.cmd_id();
-  let filename = PathBuf::from(inner.filename().unwrap());
-  debug!("op_read_file {}", filename.display());
+  let filename = inner.filename().unwrap().to_string();
+  debug!("op_read_file {}", filename);
   blocking(base.sync(), move || {
-    let vec = fs::read(&filename)?;
-    // Build the response message. memcpy data into inner.
-    // TODO(ry) zero-copy.
-    let builder = &mut FlatBufferBuilder::new();
-    let data_off = builder.create_vector(vec.as_slice());
-    let inner = msg::ReadFileRes::create(
-      builder,
-      &msg::ReadFileResArgs {
-        data: Some(data_off),
-      },
-    );
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::ReadFileRes,
-        ..Default::default()
-      },
-    ))
+    // read directly to pre-allocated Uint8Array
+    let mut file = fs::File::open(filename)?;
+    let len = file.read(&mut data)?;
+    assert_eq!(len, data.len());
+    Ok(empty_buf())
   })
 }
 

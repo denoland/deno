@@ -16,7 +16,6 @@ union Any {
   Chmod,
   Remove,
   ReadFile,
-  ReadFileRes,
   ReadDir,
   ReadDirRes,
   WriteFile,
@@ -249,10 +248,6 @@ table Remove {
 
 table ReadFile {
   filename: string;
-}
-
-table ReadFileRes {
-  data: [ubyte];
 }
 
 table ReadDir {
