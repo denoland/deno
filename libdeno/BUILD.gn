@@ -22,7 +22,7 @@ config("win_crt_agnostic") {
   }
 }
 
-v8_source_set("v8") {
+v8_static_library("v8") {
   configs = [
     ":deno_config",
     ":win_crt_agnostic",
