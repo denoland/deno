@@ -66,7 +66,7 @@ v8_static_library("libdeno") {
     "file_util.h",
     "internal.h",
   ]
-  if (!use_prebuilt_v8 && is_win) {
+  if (!use_prebuilt_v8 || is_win) {
     deps = [
       ":v8",
       "//build/config:shared_library_deps",
