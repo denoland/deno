@@ -88,7 +88,6 @@ before_script:
 script:
 - |-
   # Check lint and format.
-  set -e # Fail immediately if any of the following fail.
   ./tools/lint.py
   ./tools/test_format.py
 
