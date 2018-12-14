@@ -19,10 +19,10 @@ interface Libdeno {
   shared: ArrayBuffer;
 
   // tslint:disable-next-line:no-any
-  makeContext(sandbox: {}): [number, any];
+  makeContext(): any;
 
   // tslint:disable-next-line:no-any
-  runInContext(contextId: number, code: string): [any, any];
+  runInContext(contextGlobal: any, code: string): [any, any];
 }
 
 const window = globalEval("this");

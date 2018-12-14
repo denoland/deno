@@ -21,7 +21,6 @@ class DenoIsolate {
         global_import_buf_ptr_(nullptr),
         recv_cb_(config.recv_cb),
         next_req_id_(0),
-        next_context_id_(0),
         user_data_(nullptr) {
     array_buffer_allocator_ = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (snapshot.data_ptr) {
@@ -49,11 +48,10 @@ class DenoIsolate {
   void* global_import_buf_ptr_;
   deno_recv_cb recv_cb_;
   int32_t next_req_id_;
-  int32_t next_context_id_;
   void* user_data_;
 
   v8::Persistent<v8::Context> context_;
-  std::map<int32_t, v8::Persistent<v8::Context>> context_map_;
+  v8::Persistent<v8::Private> context_private_symbol_;
   std::map<int32_t, v8::Persistent<v8::Value>> async_data_map_;
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   std::string last_exception_;
@@ -64,6 +62,21 @@ class DenoIsolate {
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Persistent<v8::ArrayBuffer> shared_ab_;
+};
+
+class ContextInfo {
+ public:
+  ContextInfo(v8::Isolate* isolate, v8::Local<v8::Context> context) {
+    context_.Reset(isolate, context);
+    context_.SetWeak(this, WeakCallback, v8::WeakCallbackType::kParameter);
+  }
+
+  static void WeakCallback(const v8::WeakCallbackInfo<ContextInfo>& data) {
+    auto context = data.GetParameter();
+    delete context;
+  }
+
+  v8::Persistent<v8::Context> context_;
 };
 
 class UserDataScope {

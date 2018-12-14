@@ -41,6 +41,11 @@ Deno* deno_new(deno_buf snapshot, deno_config config) {
       deno::InitializeContext(isolate, context, "", "");
     }
     d->context_.Reset(isolate, context);
+
+    d->context_private_symbol_.Reset(
+        isolate,
+        v8::Private::New(
+            isolate, v8::String::NewFromUtf8(isolate, "deno:context:symbol")));
   }
 
   return reinterpret_cast<Deno*>(d);

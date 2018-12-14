@@ -8,9 +8,9 @@ export interface DenoSandbox {
 }
 
 class DenoSandboxImpl implements DenoSandbox {
-  constructor(private id: number, public context: {}) {}
+  constructor(public context: {}) {}
   execute(code: string) {
-    const [result, errMsg] = libdeno.runInContext(this.id, code);
+    const [result, errMsg] = libdeno.runInContext(this.context, code);
     if (errMsg) {
       throw new Error(errMsg);
     }
@@ -20,10 +20,10 @@ class DenoSandboxImpl implements DenoSandbox {
 
 // tslint:disable-next-line:no-any
 export function sandbox(model: any): DenoSandbox {
-  const [id, context] = libdeno.makeContext(model);
+  const context = libdeno.makeContext();
   for (const key in model) {
     context[key] = model[key];
   }
 
-  return new DenoSandboxImpl(id, context);
+  return new DenoSandboxImpl(context);
 }

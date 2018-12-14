@@ -342,26 +342,24 @@ void MakeContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate::Scope isolate_scope(isolate);
   v8::EscapableHandleScope handle_scope(isolate);
 
-  int32_t context_id = d->next_context_id_++;
-  CHECK(args[0]->IsObject());
-  auto sandbox_object = args[0].As<v8::Object>();
+  auto ctx =
+      v8::Context::New(isolate, nullptr, v8::MaybeLocal<v8::ObjectTemplate>(),
+                       v8::MaybeLocal<v8::Value>(),
+                       v8::DeserializeInternalFieldsCallback(
+                           deno::DeserializeInternalFields, nullptr));
 
-  auto function_template = v8::FunctionTemplate::New(isolate);
-  function_template->SetClassName(sandbox_object->GetConstructorName());
-  auto object_template = function_template->InstanceTemplate();
+  // Node does the same thing
+  ctx->SetSecurityToken(d->context_.Get(isolate)->GetSecurityToken());
 
-  auto context = v8::Context::New(
-      isolate, nullptr, object_template, v8::MaybeLocal<v8::Value>(),
-      v8::DeserializeInternalFieldsCallback(deno::DeserializeInternalFields,
-                                            nullptr));
-  // TODO: This looks like a horrible idea...
-  context->SetSecurityToken(d->context_.Get(isolate)->GetSecurityToken());
-  d->context_map_.emplace(std::piecewise_construct, std::make_tuple(context_id),
-                          std::make_tuple(d->isolate_, context));
-  auto context_info = v8::Array::New(isolate, 2);
-  context_info->Set(0, v8::Integer::New(d->isolate_, context_id));
-  context_info->Set(1, context->Global());
-  args.GetReturnValue().Set(context_info);
+  auto ctx_info = new ContextInfo(isolate, ctx);
+
+  auto ctx_global_obj = ctx->Global();
+
+  ctx_global_obj->SetPrivate(d->context_.Get(isolate),
+                             d->context_private_symbol_.Get(isolate),
+                             v8::External::New(isolate, ctx_info));
+
+  args.GetReturnValue().Set(ctx->Global());
 }
 
 void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -372,19 +370,27 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Locker locker(d->isolate_);
   v8::EscapableHandleScope handle_scope(isolate);
 
-  CHECK(args[0]->IsNumber());
-  int32_t context_id = static_cast<int32_t>(args[0].As<v8::Integer>()->Value());
+  CHECK(args[0]->IsObject());
+  auto context_global_obj = args[0].As<v8::Object>();
   CHECK(args[1]->IsString());
   auto code = args[1].As<v8::String>();
-  auto entry = d->context_map_.find(context_id);
-  if (entry != d->context_map_.end()) {
-    auto context = entry->second.Get(isolate);
-    v8::Context::Scope context_scope(context);
+  auto external_v = context_global_obj
+                        ->GetPrivate(d->context_.Get(isolate),
+                                     d->context_private_symbol_.Get(isolate))
+                        .ToLocalChecked();
+
+  if (!external_v.IsEmpty()) {
+    auto ctx_info =
+        static_cast<ContextInfo*>(external_v.As<v8::External>()->Value());
+
+    auto ctx = ctx_info->context_.Get(isolate);
+
+    v8::Context::Scope context_scope(ctx);
 
     v8::TryCatch try_catch(isolate);
     v8::ScriptOrigin origin(v8_str("<sandbox>"));
 
-    auto script = v8::Script::Compile(context, code, &origin);
+    auto script = v8::Script::Compile(ctx, code, &origin);
 
     auto output_pair = v8::Array::New(isolate, 2);
 
@@ -392,20 +398,20 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
       DCHECK(try_catch.HasCaught());
       // TODO: this feels wrong...
       output_pair->Set(0, v8::Null(isolate));
-      output_pair->Set(
-          1, try_catch.Exception()->ToString(context).ToLocalChecked());
+      output_pair->Set(1,
+                       try_catch.Exception()->ToString(ctx).ToLocalChecked());
       args.GetReturnValue().Set(output_pair);
       return;
     }
 
-    auto result = script.ToLocalChecked()->Run(context);
+    auto result = script.ToLocalChecked()->Run(ctx);
 
     if (result.IsEmpty()) {
       DCHECK(try_catch.HasCaught());
       // TODO: this feels wrong...
       output_pair->Set(0, v8::Null(isolate));
-      output_pair->Set(
-          1, try_catch.Exception()->ToString(context).ToLocalChecked());
+      output_pair->Set(1,
+                       try_catch.Exception()->ToString(ctx).ToLocalChecked());
       args.GetReturnValue().Set(output_pair);
       return;
     }
