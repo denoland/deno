@@ -7,16 +7,17 @@ function stringify(...args: any[]): string {
   return stringifyArgs(args);
 }
 
-test(function consoleTestAssert() {
+test(function consoleTestAssertShouldNotThrowError() {
   console.assert(true);
 
-  let hasThrown = false;
+  let hasThrown = undefined;
   try {
     console.assert(false);
+    hasThrown = false;
   } catch {
     hasThrown = true;
   }
-  assertEqual(hasThrown, true);
+  assertEqual(hasThrown, false);
 });
 
 test(function consoleTestStringifyComplexObjects() {

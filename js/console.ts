@@ -383,11 +383,27 @@ export class Console {
 
   /** Writes an error message to stdout if the assertion is `false`. If the
    * assertion is `true`, nothing happens.
+   *
+   * ref: https://console.spec.whatwg.org/#assert
    */
   // tslint:disable-next-line:no-any
-  assert = (condition: boolean, ...args: any[]): void => {
-    if (!condition) {
-      throw new Error(`Assertion failed: ${stringifyArgs(args)}`);
+  assert = (condition?: boolean, ...args: any[]): void => {
+    if (condition) {
+      return;
     }
+
+    if (args.length === 0) {
+      this.error("Assertion failed");
+      return;
+    }
+
+    const [first, ...rest] = args;
+
+    if (typeof first === "string") {
+      this.error(`Assertion failed: ${first}`, ...rest);
+      return;
+    }
+
+    this.error(`Assertion failed:`, ...args);
   };
 }
