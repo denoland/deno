@@ -397,6 +397,13 @@ export class Console {
       return;
     }
 
-    this.error("Assertion failed:", ...args);
+    const [first, ...rest] = args;
+
+    if (typeof first === "string") {
+      this.error(`Assertion failed: ${first}`, ...rest);
+      return;
+    }
+
+    this.error(`Assertion failed:`, ...args);
   };
 }
