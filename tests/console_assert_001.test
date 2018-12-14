@@ -1,2 +1,0 @@
-args: tests/console_assert_001.ts --reload
-output: tests/console_assert_001.ts.out

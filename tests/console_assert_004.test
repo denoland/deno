@@ -1,4 +1,0 @@
-args: tests/console_assert_004.ts --reload
-check_stderr: true
-exit_code: 0
-output: tests/console_assert_004.ts.out
