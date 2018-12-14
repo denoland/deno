@@ -2,9 +2,7 @@
 import("./deno.gni")
 import("//third_party/v8/gni/v8.gni")
 
-config("deno_config") {
-  include_dirs = [ "//third_party/v8" ]  # This allows us to v8/src/base/ libraries.
-  configs = [ "//third_party/v8:external_config" ]
+config("common_config") {
   if (is_debug) {
     defines = [ "DEBUG" ]
   }
@@ -16,6 +14,21 @@ config("deno_config") {
   }
 }
 
+config("deno_config") {
+  include_dirs = [ "//third_party/v8" ]  # This allows us to v8/src/base/ libraries.
+  configs = [
+    ":common_config",
+    "//third_party/v8:external_config",
+  ]
+}
+
+config("v8_config") {
+  configs = [
+    ":common_config",
+    "//third_party/v8:internal_config",
+  ]
+}
+
 config("win_crt_agnostic") {
   if (is_win) {
     cflags = [ "/Zl" ]
@@ -24,7 +37,7 @@ config("win_crt_agnostic") {
 
 v8_static_library("v8") {
   configs = [
-    ":deno_config",
+    ":v8_config",
     ":win_crt_agnostic",
   ]
   deps = [
