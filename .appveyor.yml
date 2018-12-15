@@ -231,7 +231,6 @@ cache:
   # Cache file mtimes in the main git repo, also to enable incremental builds.
   - $(MTIME_CACHE_DB)
   # Build incrementally.
-  - $(CARGO_TARGET_DIR)
   - target
 
 init:
@@ -317,8 +316,7 @@ install:
 before_build:
   # Mark all files in the build dir 'not needed' until proven otherwise.
   # TODO: also track files in third_party that aren't checked into the repo.
-  # TODO: also track files in $CARGO_TARGET_DIR.
-  - ps: Start-TraceFilesNeeded -Recurse
+  - ps: Start-TraceFilesNeeded target -Recurse
 
   # Download clang and gn, generate ninja files.
   - python tools\setup.py
@@ -394,7 +392,7 @@ after_test:
   - ps: |-
       if ($env:APPVEYOR_REPO_TAG -eq "true") {
         Compress-Archive -CompressionLevel Optimal -Force `
-          -Path "$env:target\release\deno.exe" `
+          -Path "target\release\deno.exe" `
           -DestinationPath "$env:APPVEYOR_BUILD_FOLDER\$env:RELEASE_ARTIFACT"
       }
 

@@ -17,19 +17,14 @@ fn main() {
   let out_dir = env::current_dir().unwrap().join(out_dir);
 
   // Normally we configure GN+Ninja to build into Cargo's OUT_DIR.
-  // However, when DENO_BUILD_PATH is set, perform the ninja build in that dir
-  // instead. This is used by CI to avoid building V8 etc twice.
-  let gn_out_dir = match env::var_os("DENO_BUILD_PATH") {
-    None => {
-      // out_dir looks like: "target/debug/build/deno-26d2b5325de0f0cf/out"
-      // The gn build is "target/debug"
-      // So we go up two directories. Blame cargo for these hacks.
-      let d = out_dir.parent().unwrap();
-      let d = d.parent().unwrap();
-      let d = d.parent().unwrap();
-      PathBuf::from(d)
-    }
-    Some(deno_build_path) => PathBuf::from(deno_build_path),
+  let gn_out_dir = {
+    // out_dir looks like: "target/debug/build/deno-26d2b5325de0f0cf/out"
+    // The gn build is "target/debug"
+    // So we go up two directories. Blame cargo for these hacks.
+    let d = out_dir.parent().unwrap();
+    let d = d.parent().unwrap();
+    let d = d.parent().unwrap();
+    PathBuf::from(d)
   };
 
   // Give cargo some instructions. We do this first so the `rerun-if-*-changed`
@@ -41,7 +36,6 @@ fn main() {
   );
   println!("cargo:rustc-link-lib=static=deno_deps");
 
-  println!("cargo:rerun-if-env-changed=DENO_BUILD_PATH");
   // TODO: this is obviously not appropriate here.
   println!("cargo:rerun-if-env-changed=APPVEYOR_REPO_COMMIT");
 
@@ -64,17 +58,16 @@ fn main() {
   };
 
   let status = Command::new("python")
-    .env("DENO_BUILD_PATH", &gn_out_dir)
-    .env("DENO_BUILD_MODE", &mode)
     .arg("./tools/setup.py")
     .status()
     .expect("setup.py failed");
   assert!(status.success());
 
+  // TODO(ry) call ninja directly instead of build.py.
   let status = Command::new("python")
-    .env("DENO_BUILD_PATH", &gn_out_dir)
-    .env("DENO_BUILD_MODE", &mode)
     .arg("./tools/build.py")
+    .arg("-C")
+    .arg(&gn_out_dir)
     .arg(gn_target)
     .arg("-v")
     .status()
