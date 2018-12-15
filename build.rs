@@ -9,10 +9,6 @@ use std::path::{self, Path, PathBuf};
 use std::process::Command;
 
 fn main() {
-  // Cargo sets PROFILE to either "debug" or "release", which conveniently
-  // matches the build modes we support.
-  let mode = env::var("PROFILE").unwrap();
-
   let out_dir = env::var_os("OUT_DIR").unwrap();
   let out_dir = env::current_dir().unwrap().join(out_dir);
 
