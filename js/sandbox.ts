@@ -1,16 +1,17 @@
+// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { libdeno } from "./libdeno";
 
 export interface DenoSandbox {
   // tslint:disable-next-line:no-any
-  context: any;
+  env: any;
   // tslint:disable-next-line:no-any
-  execute: (code: string) => any;
+  eval: (code: string) => any;
 }
 
 class DenoSandboxImpl implements DenoSandbox {
-  constructor(public context: {}) {}
-  execute(code: string) {
-    const [result, errMsg] = libdeno.runInContext(this.context, code);
+  constructor(public env: {}) {}
+  eval(code: string) {
+    const [result, errMsg] = libdeno.runInContext(this.env, code);
     if (errMsg) {
       throw new Error(errMsg);
     }
@@ -18,12 +19,25 @@ class DenoSandboxImpl implements DenoSandbox {
   }
 }
 
-// tslint:disable-next-line:no-any
-export function sandbox(model: any): DenoSandbox {
-  const context = libdeno.makeContext();
+/** Create a sandboxed context (with a model) to execute code inside.
+ *
+ *       import * as deno from "deno";
+ *       const s = deno.sandbox({a: 1});
+ *       s.b = 2;
+ *       s.eval("const c = a + b");
+ *       console.log(s.c) // prints "3"
+ */
+export function sandbox(
+  model: any // tslint:disable-line:no-any
+): DenoSandbox {
+  if (typeof model !== "object") {
+    throw new Error("Sandbox model has to be an object!");
+  }
+  // env is the global object of context
+  const env = libdeno.makeContext();
   for (const key in model) {
-    context[key] = model[key];
+    env[key] = model[key];
   }
 
-  return new DenoSandboxImpl(context);
+  return new DenoSandboxImpl(env);
 }

@@ -354,7 +354,7 @@ void MakeContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   auto ctx_info = new ContextInfo(isolate, ctx);
 
   auto ctx_global_obj = ctx->Global();
-
+  // Store context info as a private field on the returned global object
   ctx_global_obj->SetPrivate(d->context_.Get(isolate),
                              d->context_private_symbol_.Get(isolate),
                              v8::External::New(isolate, ctx_info));
@@ -374,12 +374,16 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   auto context_global_obj = args[0].As<v8::Object>();
   CHECK(args[1]->IsString());
   auto code = args[1].As<v8::String>();
+  // retrieve externalized context from (maybe) context's global object
   auto external_v = context_global_obj
                         ->GetPrivate(d->context_.Get(isolate),
                                      d->context_private_symbol_.Get(isolate))
                         .ToLocalChecked();
 
-  if (!external_v.IsEmpty()) {
+  auto output_pair = v8::Array::New(isolate, 2);
+
+  if (external_v->IsExternal() && !external_v.IsEmpty()) {
+    // Retrieve context from external
     auto ctx_info =
         static_cast<ContextInfo*>(external_v.As<v8::External>()->Value());
 
@@ -392,31 +396,30 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
     auto script = v8::Script::Compile(ctx, code, &origin);
 
-    auto output_pair = v8::Array::New(isolate, 2);
-
-    if (script.IsEmpty()) {
-      DCHECK(try_catch.HasCaught());
-      // TODO: this feels wrong...
-      output_pair->Set(0, v8::Null(isolate));
-      output_pair->Set(1,
-                       try_catch.Exception()->ToString(ctx).ToLocalChecked());
-      args.GetReturnValue().Set(output_pair);
-      return;
+    if (!script.IsEmpty()) {
+      auto result = script.ToLocalChecked()->Run(ctx);
+      if (!result.IsEmpty()) {
+        // No exception
+        output_pair->Set(0, result.ToLocalChecked());
+        output_pair->Set(1, v8::Null(isolate));
+        args.GetReturnValue().Set(output_pair);
+        return;
+      }
     }
 
-    auto result = script.ToLocalChecked()->Run(ctx);
-
-    if (result.IsEmpty()) {
-      DCHECK(try_catch.HasCaught());
-      // TODO: this feels wrong...
-      output_pair->Set(0, v8::Null(isolate));
-      output_pair->Set(1,
-                       try_catch.Exception()->ToString(ctx).ToLocalChecked());
-      args.GetReturnValue().Set(output_pair);
-      return;
-    }
-    output_pair->Set(0, result.ToLocalChecked());
-    output_pair->Set(1, v8::Null(isolate));
+    // Handle exception
+    DCHECK(try_catch.HasCaught());
+    // TODO(kevinkassimo): currently we just provide exception msg string (w/o
+    // stack) Stack formatting has been moved to Rust and I want to avoid about
+    // dup code... Should return an object { message: string, stack: string }
+    // instead (Node VM returns such object -- not an instance of Error)
+    output_pair->Set(0, v8::Null(isolate));
+    output_pair->Set(1, try_catch.Exception()->ToString(ctx).ToLocalChecked());
+    args.GetReturnValue().Set(output_pair);
+    return;
+  } else {
+    output_pair->Set(0, v8::Null(isolate));
+    output_pair->Set(1, v8_str("ContextError: code not running in context"));
     args.GetReturnValue().Set(output_pair);
   }
 }

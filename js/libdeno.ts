@@ -9,6 +9,11 @@ export type PromiseRejectEvent =
   | "ResolveAfterResolved"
   | "RejectAfterResolved";
 
+// TODO: Currently left as "any" due to TS symbol key issue
+// See https://github.com/Microsoft/TypeScript/issues/1863
+// tslint:disable-next-line:no-any
+type ContextGlobalObject = any;
+
 interface Libdeno {
   recv(cb: MessageCallback): void;
 
@@ -19,10 +24,10 @@ interface Libdeno {
   shared: ArrayBuffer;
 
   // tslint:disable-next-line:no-any
-  makeContext(): any;
+  makeContext(): ContextGlobalObject;
 
   // tslint:disable-next-line:no-any
-  runInContext(contextGlobal: any, code: string): [any, any];
+  runInContext(env: ContextGlobalObject, code: string): [any, string | null];
 }
 
 const window = globalEval("this");

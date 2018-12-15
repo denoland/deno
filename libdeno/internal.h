@@ -68,6 +68,7 @@ class ContextInfo {
  public:
   ContextInfo(v8::Isolate* isolate, v8::Local<v8::Context> context) {
     context_.Reset(isolate, context);
+    // Calls on finalization to delete self
     context_.SetWeak(this, WeakCallback, v8::WeakCallbackType::kParameter);
   }
 

@@ -59,7 +59,7 @@ export async function replLoop(): Promise<void> {
   const rid = startRepl(historyFile);
 
   replSandbox = sandbox(window);
-  replSandbox.context.deno = deno;
+  replSandbox.env.deno = deno;
 
   let code = "";
   while (true) {
@@ -86,12 +86,11 @@ export async function replLoop(): Promise<void> {
 
 function evaluate(code: string): void {
   try {
-    const result = replSandbox.execute(code);
+    const result = replSandbox.eval(code);
     console.log(result);
   } catch (err) {
     if (err instanceof Error) {
       console.error(err.message);
-      // console.error(`${err.constructor.name}: ${err.message}`);
     } else {
       console.error("Thrown:", err);
     }
