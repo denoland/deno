@@ -9,8 +9,6 @@ clone_depth: 1
 environment:
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
   CARGO_TARGET_DIR: $(APPVEYOR_BUILD_FOLDER)\target
-  DENO_BUILD_MODE: release
-  DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\release
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   MTIME_CACHE_DB: $(APPVEYOR_BUILD_FOLDER)\mtime_cache.xml
   RELEASE_ARTIFACT: deno_win_x64.zip
@@ -235,7 +233,7 @@ cache:
   - $(MTIME_CACHE_DB)
   # Build incrementally.
   - $(CARGO_TARGET_DIR)
-  - $(DENO_BUILD_PATH)
+  - target
 
 init:
   # Load utility functions
@@ -321,7 +319,7 @@ before_build:
   # Mark all files in the build dir 'not needed' until proven otherwise.
   # TODO: also track files in third_party that aren't checked into the repo.
   # TODO: also track files in $CARGO_TARGET_DIR.
-  - ps: Start-TraceFilesNeeded $env:DENO_BUILD_PATH -Recurse
+  - ps: Start-TraceFilesNeeded -Recurse
 
   # Download clang and gn, generate ninja files.
   - python tools\setup.py
@@ -330,9 +328,9 @@ before_build:
   # Mark files that are produced during the build, and are known to ninja, as
   # needed. We obtain this list by dry-running `ninja -t clean`.
   - ps: |-
-      $outputs = ninja -C $env:DENO_BUILD_PATH -n -t clean -g |
+      $outputs = ninja -C target\release -n -t clean -g |
         where   { $_ -match "^Remove (.*)$" }                 |
-        foreach { "$env:DENO_BUILD_PATH\$($Matches[1])" }
+        foreach { "target\release\$($Matches[1])" }
       Set-FilesNeeded -Auto -Path $outputs -Reason "Build dependency graph"
 
 build_script:
@@ -344,12 +342,12 @@ build_script:
 test_script:
   - python tools\lint.py
   - python tools\test_format.py
-  - ps: Exec { & python tools\test.py $env:DENO_BUILD_PATH }
+  - ps: Exec { & python tools\test.py target\release }
 
 after_test:
   # Delete the the rollup cache, which is unreliable, so that it doesn't get
   # persisted in the appveyor cache.
-  - ps: if (Get-SaveCache) { Delete-Tree "$env:DENO_BUILD_PATH\.rpt2_cache" }
+  - ps: if (Get-SaveCache) { Delete-Tree "target\release\.rpt2_cache" }
 
   # Remove stale files and empty dirs from the build directory.
   - ps: Stop-TraceFilesNeeded
@@ -357,7 +355,7 @@ after_test:
   # Verify that the build is fully up-to-date. Running ninja should be a no-op.
   # This catches erroneous file cleanup, and incorrectly set up build deps.
   - ps: |-
-      $out = ninja -C $env:DENO_BUILD_PATH -n -d explain
+      $out = ninja -C target\release -n -d explain
       if ($out -notcontains "ninja: no work to do.") {
         throw "Build should be up-to-date but isn't."
       }
@@ -397,7 +395,7 @@ after_test:
   - ps: |-
       if ($env:APPVEYOR_REPO_TAG -eq "true") {
         Compress-Archive -CompressionLevel Optimal -Force `
-          -Path "$env:DENO_BUILD_PATH\deno.exe" `
+          -Path "$env:target\release\deno.exe" `
           -DestinationPath "$env:APPVEYOR_BUILD_FOLDER\$env:RELEASE_ARTIFACT"
       }
 
