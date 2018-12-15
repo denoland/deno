@@ -72,14 +72,15 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
       .ToLocalChecked();
 }
 
-std::string JSONtoString(v8::Local<v8::Context> context, v8::Local<v8::String> json_string) {
+std::string JSONtoString(v8::Local<v8::Context> context,
+                         v8::Local<v8::String> json_string) {
   auto* isolate = context->GetIsolate();
   v8::String::Utf8Value json_string_(isolate, json_string);
   return std::string(ToCString(json_string_));
 }
 
 v8::Local<v8::String> EncodeExceptionAsJSON(v8::Local<v8::Context> context,
-                                  v8::Local<v8::Value> exception) {
+                                            v8::Local<v8::Value> exception) {
   auto* isolate = context->GetIsolate();
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
@@ -157,7 +158,8 @@ void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception) {
   v8::Isolate* isolate = context->GetIsolate();
   DenoIsolate* d = FromIsolate(isolate);
-  std::string json_str = JSONtoString(context, EncodeExceptionAsJSON(context, exception));
+  std::string json_str =
+      JSONtoString(context, EncodeExceptionAsJSON(context, exception));
   CHECK(d != nullptr);
   d->last_exception_ = json_str;
 }
@@ -413,9 +415,8 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
     args.GetReturnValue().Set(output_pair);
     return;
   } else {
-    output_pair->Set(0, v8::Null(isolate));
-    output_pair->Set(1, v8_str("ContextError: code not running in context"));
-    args.GetReturnValue().Set(output_pair);
+    isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(
+        isolate, "ContextError: code not running in context")));
   }
 }
 

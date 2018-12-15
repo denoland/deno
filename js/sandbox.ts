@@ -1,5 +1,8 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { libdeno } from "./libdeno";
+import { globalEval } from "./global_eval";
+
+const window = globalEval("this");
 
 export interface DenoSandbox {
   // tslint:disable-next-line:no-any
@@ -13,7 +16,23 @@ class DenoSandboxImpl implements DenoSandbox {
   eval(code: string) {
     const [result, errMsg] = libdeno.runInContext(this.env, code);
     if (errMsg) {
-      throw new Error(errMsg);
+      let err;
+      try {
+        const errInfo = JSON.parse(errMsg);
+        err = new Error();
+        err.message = errInfo.message;
+        err.stack = `${errInfo.message}\n${errInfo.frames
+          .map(
+            (frame: { [key: string]: string }) =>
+              `    at ${frame.functionName || "<anonymous>"} (${
+                frame.scriptName
+              }:${frame.line}:${frame.column})`
+          )
+          .join("\n")}`;
+      } catch (e) {
+        err = new Error("Unknown sandbox error");
+      }
+      throw err;
     }
     return result;
   }
@@ -35,6 +54,14 @@ export function sandbox(
   }
   // env is the global object of context
   const env = libdeno.makeContext();
+  // Copy necessary window properties first
+  // To avoid `window.Error !== Error` that causes unexpected behavior
+  for (const key of Object.getOwnPropertyNames(window)) {
+    try {
+      env[key] = model[key];
+    } catch (e) {}
+  }
+  // Then the actual model
   for (const key in model) {
     env[key] = model[key];
   }

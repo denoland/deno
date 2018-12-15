@@ -259,19 +259,19 @@ TEST(LibDenoTest, Shared) {
 }
 
 TEST(LibDenoTest, ContextMakeAndRun) {
-  Deno* d = deno_new(snapshot, deno_config{empty, nullptr});
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "ContextMakeAndRun()"));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, ContextMakeAndRunError) {
-  Deno* d = deno_new(snapshot, deno_config{empty, nullptr});
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "ContextMakeAndRunError()"));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, ContextInvalid) {
-  Deno* d = deno_new(snapshot, deno_config{empty, nullptr});
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
   EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "ContextInvalid()"));
   deno_delete(d);
 }

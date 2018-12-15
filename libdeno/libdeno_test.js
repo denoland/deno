@@ -157,17 +157,22 @@ global.ContextMakeAndRun = () => {
   assert(result2 === 2);
   assert(!err2);
   assert(contextGlobalObject.a === 2);
-}
+};
 
 global.ContextMakeAndRunError = () => {
   const contextGlobalObject = libdeno.makeContext();
   const [result, err] = libdeno.runInContext(contextGlobalObject, "not_a_variable");
   assert(!result);
-  assert(err === "ReferenceError: not_a_variable is not defined");
-}
+  assert(JSON.parse(err).message === "ReferenceError: not_a_variable is not defined");
+};
 
 global.ContextInvalid = () => {
-  const [result, err] = libdeno.runInContext({}, "1");
-  assert(!result);
-  assert(err === "ContextError: code not running in context");
-}
+  let err;
+  try {
+    libdeno.runInContext({}, "1");
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assert(err.message === "ContextError: code not running in context");
+};
