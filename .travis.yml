@@ -87,7 +87,7 @@ before_script:
 - ./tools/setup.py
 script:
 # Check lint and format.
-- ./tools/lint.py
+- ./tools/lint.py &&
   ./tools/test_format.py
 
 # Sometimes, if we're doing a full rebuild of V8, our build takes longer than
@@ -99,13 +99,13 @@ script:
 # LSAN build. We are in the process of getting a completely clean LSAN build,
 # but it will take some work. So for now we just run a subset of the tests.
 # Note ASAN_OPTIONS is set above.
-- echo is_asan=true >> target/debug/args.gn
+- |-
+  echo is_asan=true >> target/debug/args.gn
   echo is_lsan=true >> target/debug/args.gn
-  ./tools/build.py -C target/debug -j2
-  ./target/debug/test_cc
+  ./tools/build.py -C target/debug -j2 && ./target/debug/test_cc
 
 # Release build and test
-- ./tools/build.py -C target/release -j2
+- ./tools/build.py -C target/release -j2 && 
   ./tools/test.py target/release
 
 # Cargo check
