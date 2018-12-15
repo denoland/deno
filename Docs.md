@@ -234,9 +234,8 @@ To start profiling,
 
 ```sh
 # Make sure we're only building release.
-export DENO_BUILD_MODE=release
 # Build deno and V8's d8.
-./tools/build.py d8 deno
+./tools/build.py -C target/release d8 deno
 # Start the program we want to benchmark with --prof
 ./target/release/deno tests/http_bench.ts --allow-net --prof &
 # Exercise it.
@@ -348,7 +347,7 @@ Other useful commands:
     ./third_party/depot_tools/ninja -C target/debug
 
     # Build a release binary.
-    DENO_BUILD_MODE=release ./tools/build.py :deno
+    ./tools/build.py -C target/release deno
 
     # List executable targets.
     ./third_party/depot_tools/gn ls target/debug //:* --as=output --type=executable
@@ -366,8 +365,7 @@ Other useful commands:
     # Update third_party modules
     git submodule update
 
-Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`.
+Environment variables: `DENO_BUILD_ARGS`, `DENO_DIR`.
 
 ## Internals
 

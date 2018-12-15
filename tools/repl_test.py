@@ -3,8 +3,8 @@ import os
 from subprocess import CalledProcessError, PIPE, Popen
 import sys
 import time
-
-from util import build_path, executable_suffix, green_ok
+from util import executable_suffix, green_ok
+from util import gn_out_from_argv
 
 
 class Repl(object):
@@ -125,10 +125,11 @@ def repl_tests(deno_exe):
     Repl(deno_exe).run()
 
 
-def main():
-    deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
+def main(argv):
+    gn_out = gn_out_from_argv(argv)
+    deno_exe = os.path.join(gn_out, "deno" + executable_suffix)
     repl_tests(deno_exe)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)

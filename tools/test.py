@@ -7,7 +7,8 @@ import sys
 from integration_tests import integration_tests
 from deno_dir_test import deno_dir_test
 from setup_test import setup_test
-from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
+from util import enable_ansi_colors, executable_suffix, run, rmtree
+from util import gn_out_from_argv
 from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test
@@ -24,15 +25,9 @@ def check_exists(filename):
 
 
 def main(argv):
-    if len(argv) == 2:
-        build_dir = sys.argv[1]
-    elif len(argv) == 1:
-        build_dir = build_path()
-    else:
-        print "Usage: tools/test.py [build_dir]"
-        sys.exit(1)
+    gn_out = gn_out_from_argv(argv)
 
-    deno_dir = os.path.join(build_dir, ".deno_test")
+    deno_dir = os.path.join(gn_out, ".deno_test")
     if os.path.isdir(deno_dir):
         rmtree(deno_dir)
     os.environ["DENO_DIR"] = deno_dir
@@ -41,19 +36,19 @@ def main(argv):
 
     http_server.spawn()
 
-    deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
+    deno_exe = os.path.join(gn_out, "deno" + executable_suffix)
     check_exists(deno_exe)
 
     # Internal tools testing
     setup_test()
     util_test()
-    benchmark_test(build_dir, deno_exe)
+    benchmark_test(gn_out, deno_exe)
 
-    test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
+    test_cc = os.path.join(gn_out, "test_cc" + executable_suffix)
     check_exists(test_cc)
     run([test_cc])
 
-    test_rs = os.path.join(build_dir, "test_rs" + executable_suffix)
+    test_rs = os.path.join(gn_out, "test_rs" + executable_suffix)
     check_exists(test_rs)
     run([test_rs])
 

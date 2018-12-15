@@ -11,7 +11,8 @@ import sys
 import json
 import time
 import shutil
-from util import run, run_output, root_path, build_path, executable_suffix
+from util import run, run_output, root_path, executable_suffix
+from util import gn_out_from_argv
 import tempfile
 import http_server
 import throughput_benchmark
@@ -54,12 +55,12 @@ def import_data_from_gh_pages():
         write_json(all_data_file, [])  # writes empty json data
 
 
-def get_binary_sizes(build_dir):
+def get_binary_sizes(gn_out):
     path_dict = {
-        "deno": os.path.join(build_dir, "deno" + executable_suffix),
-        "main.js": os.path.join(build_dir, "gen/bundle/main.js"),
-        "main.js.map": os.path.join(build_dir, "gen/bundle/main.js.map"),
-        "snapshot_deno.bin": os.path.join(build_dir, "gen/snapshot_deno.bin")
+        "deno": os.path.join(gn_out, "deno" + executable_suffix),
+        "main.js": os.path.join(gn_out, "gen/bundle/main.js"),
+        "main.js.map": os.path.join(gn_out, "gen/bundle/main.js.map"),
+        "snapshot_deno.bin": os.path.join(gn_out, "gen/snapshot_deno.bin")
     }
     sizes = {}
     for name, path in path_dict.items():
@@ -141,18 +142,15 @@ def run_syscall_count_benchmark(deno_path):
 
 
 def main(argv):
-    if len(argv) == 2:
-        build_dir = sys.argv[1]
-    elif len(argv) == 1:
-        build_dir = build_path()
-    else:
-        print "Usage: tools/benchmark.py [build_dir]"
+    gn_out = gn_out_from_argv(argv)
+    if gn_out is None:
+        print "Usage: tools/benchmark.py [gn_out]"
         sys.exit(1)
 
     http_server.spawn()
 
-    deno_path = os.path.join(build_dir, "deno")
-    benchmark_file = os.path.join(build_dir, "benchmark.json")
+    deno_path = os.path.join(gn_out, "deno")
+    benchmark_file = os.path.join(gn_out, "benchmark.json")
 
     os.chdir(root_path)
     import_data_from_gh_pages()
@@ -185,11 +183,11 @@ def main(argv):
             "max": data["max"]
         }
 
-    new_data["binary_size"] = get_binary_sizes(build_dir)
+    new_data["binary_size"] = get_binary_sizes(gn_out)
     # Cannot run throughput benchmark on windows because they don't have nc or
     # pipe.
     if os.name != 'nt':
-        hyper_hello_path = os.path.join(build_dir, "hyper_hello")
+        hyper_hello_path = os.path.join(gn_out, "hyper_hello")
         new_data["throughput"] = run_throughput(deno_path)
         new_data["req_per_sec"] = http_benchmark(deno_path, hyper_hello_path)
     if "linux" in sys.platform:

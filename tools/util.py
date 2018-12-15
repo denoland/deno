@@ -185,21 +185,6 @@ def rmtree(directory):
     shutil.rmtree(directory, onerror=rm_readonly)
 
 
-def build_mode(default="debug"):
-    if "DENO_BUILD_MODE" in os.environ:
-        return os.environ["DENO_BUILD_MODE"]
-    else:
-        return default
-
-
-# E.G. "target/debug"
-def build_path():
-    if "DENO_BUILD_PATH" in os.environ:
-        return os.environ["DENO_BUILD_PATH"]
-    else:
-        return os.path.join(root_path, "target", build_mode())
-
-
 # Returns True if the expected matches the actual output, allowing variation
 # from actual where expected has the wildcard (e.g. matches /.*/)
 def pattern_match(pattern, string, wildcard="[WILDCARD]"):
@@ -380,3 +365,13 @@ def parse_wrk_output(output):
 
 def platform():
     return {"linux2": "linux", "darwin": "mac", "win32": "win"}[sys.platform]
+
+
+def gn_out_from_argv(argv):
+    if len(argv) == 2:
+        return sys.argv[1]
+    elif len(argv) == 1:
+        return "target/debug"
+    else:
+        print "Usage: %s target/release" % argv[0]
+        sys.exit(1)

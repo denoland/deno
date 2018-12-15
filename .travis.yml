@@ -8,14 +8,15 @@ matrix:
   - os: osx
 env:
   global:
+  - ASAN_OPTIONS=detect_leaks=1
   - CARGO_HOME=$HOME/.cargo/
   - RUSTUP_HOME=$HOME/.rustup/
   - RUST_BACKTRACE=1
   - HOMEBREW_PATH=$HOME/homebrew/
-  - CARGO_TARGET_DIR=$HOME/target
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - CCACHE_CPP2=yes
   - CCACHE_SLOPPINESS=time_macros
+  - RUSTC_WRAPPER=sccache
   - SCCACHE_DIR=$HOME/.sccache/
   - SCCACHE_CACHE_SIZE=1G
   - SCCACHE_IDLE_TIMEOUT=0
@@ -85,32 +86,30 @@ install:
 before_script:
 - ./tools/setup.py
 script:
-- |-
-  # Check lint and format.
-  set -e # Fail immediately if any of the following fail.
-  ./tools/lint.py
+# Check lint and format.
+- ./tools/lint.py
   ./tools/test_format.py
 
-- |-
-  # LSAN build. We are in the process of getting a completely clean LSAN build,
-  # but it will take some work. So for now we just run a subset of the tests.
-  echo is_asan=true >> target/debug/args.gn
+# Sometimes, if we're doing a full rebuild of V8, our build takes longer than
+# the 50 minutes alotted by Travis.  When that happens, the ccache is not saved.
+# However if we preemptively timeout before the 50 minute mark, the ccache does
+# get saved and restarting the build will allow it to complete.
+- bash -c "sleep 2100; pkill ninja" &
+
+# LSAN build. We are in the process of getting a completely clean LSAN build,
+# but it will take some work. So for now we just run a subset of the tests.
+# Note ASAN_OPTIONS is set above.
+- echo is_asan=true >> target/debug/args.gn
   echo is_lsan=true >> target/debug/args.gn
-  # We want to detect leaks during the build process as well as when executing
-  # the tests. So set the ASAN_OPTIONS env var before build.py is run.
-  export ASAN_OPTIONS=detect_leaks=1
   ./tools/build.py -C target/debug -j2
   ./target/debug/test_cc
 
-- |-
-  # Release build and test
-  bash -c "sleep 2100; pkill ninja; pkill cargo" &
-  ./tools/build.py -C target/release -j2
-  DENO_BUILD_MODE=release ./tools/test.py
+# Release build and test
+- ./tools/build.py -C target/release -j2
+  ./tools/test.py target/release
 
-- |-
-  # Cargo check
-  RUSTC_WRAPPER=sccache cargo check -j2 --release
+# Cargo check
+- cargo check -j2 --release
 
 after_script:
 - ccache --show-stats
