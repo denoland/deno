@@ -8,7 +8,7 @@ from integration_tests import integration_tests
 from deno_dir_test import deno_dir_test
 from setup_test import setup_test
 from util import enable_ansi_colors, executable_suffix, run, rmtree
-from util import gn_out_from_argv
+from util import root_path, gn_out_from_argv
 from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test

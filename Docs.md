@@ -341,6 +341,12 @@ submodule. However, you need to install separately:
     # Format code.
     ./tools/format.py
 
+    # Build & test debug
+    ./tools/build.py && ./tools/test.py
+
+    # Build & test release
+    ./tools/build.py -C target/release/ && ./tools/test.py target/release/
+
 Other useful commands:
 
     # Call ninja manually.

@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 import os
+import sys
 import pty
 import select
 import subprocess
 
-from util import build_path, executable_suffix
+from util import deno_exe_from_argv
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/permission_prompt_test.ts"
 
@@ -135,10 +136,10 @@ def permission_prompt_test(deno_exe):
     p.test_net_no()
 
 
-def main():
-    deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
+def main(argv):
+    deno_exe = deno_exe_from_argv(argv)
     permission_prompt_test(deno_exe)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)

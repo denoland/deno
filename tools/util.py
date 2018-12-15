@@ -368,10 +368,24 @@ def platform():
 
 
 def gn_out_from_argv(argv):
+    gn_out = None
     if len(argv) == 2:
-        return sys.argv[1]
+        gn_out = sys.argv[1]
     elif len(argv) == 1:
-        return "target/debug"
-    else:
+        gn_out = "target/debug"
+    if not gn_out or not os.path.isdir(gn_out):
         print "Usage: %s target/release" % argv[0]
         sys.exit(1)
+    return gn_out
+
+
+def deno_exe_from_argv(argv):
+    deno_exe = None
+    if len(argv) == 2:
+        deno_exe = sys.argv[1]
+    elif len(argv) == 1:
+        deno_exe = "target/debug/deno" + executable_suffix
+    if not deno_exe or not os.path.exists(deno_exe):
+        print "Usage: %s target/release/deno" % argv[0]
+        sys.exit(1)
+    return deno_exe

@@ -143,9 +143,6 @@ def run_syscall_count_benchmark(deno_path):
 
 def main(argv):
     gn_out = gn_out_from_argv(argv)
-    if gn_out is None:
-        print "Usage: tools/benchmark.py [gn_out]"
-        sys.exit(1)
 
     http_server.spawn()
 
