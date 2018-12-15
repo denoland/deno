@@ -72,7 +72,13 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
       .ToLocalChecked();
 }
 
-std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
+std::string JSONtoString(v8::Local<v8::Context> context, v8::Local<v8::String> json_string) {
+  auto* isolate = context->GetIsolate();
+  v8::String::Utf8Value json_string_(isolate, json_string);
+  return std::string(ToCString(json_string_));
+}
+
+v8::Local<v8::String> EncodeExceptionAsJSON(v8::Local<v8::Context> context,
                                   v8::Local<v8::Value> exception) {
   auto* isolate = context->GetIsolate();
   v8::HandleScope handle_scope(isolate);
@@ -144,16 +150,15 @@ std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
 
   CHECK(json_obj->Set(context, v8_str("frames"), frames).FromJust());
 
-  auto json_string = v8::JSON::Stringify(context, json_obj).ToLocalChecked();
-  v8::String::Utf8Value json_string_(isolate, json_string);
-  return std::string(ToCString(json_string_));
+  return v8::JSON::Stringify(context, json_obj).ToLocalChecked();
 }
 
 void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception) {
   v8::Isolate* isolate = context->GetIsolate();
   DenoIsolate* d = FromIsolate(isolate);
-  std::string json_str = EncodeExceptionAsJSON(context, exception);
+
+  std::string json_str = JSONtoString(context, EncodeExceptionAsJSON(context, exception));
   if (d != nullptr) {
     d->last_exception_ = json_str;
   } else {
@@ -409,12 +414,8 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
     // Handle exception
     DCHECK(try_catch.HasCaught());
-    // TODO(kevinkassimo): currently we just provide exception msg string (w/o
-    // stack) Stack formatting has been moved to Rust and I want to avoid about
-    // dup code... Should return an object { message: string, stack: string }
-    // instead (Node VM returns such object -- not an instance of Error)
     output_pair->Set(0, v8::Null(isolate));
-    output_pair->Set(1, try_catch.Exception()->ToString(ctx).ToLocalChecked());
+    output_pair->Set(1, EncodeExceptionAsJSON(ctx, try_catch.Exception()));
     args.GetReturnValue().Set(output_pair);
     return;
   } else {

@@ -74,7 +74,7 @@ export async function replLoop(): Promise<void> {
     }
     if (!code) {
       continue;
-    } else if (code.trim() === ".exit") {
+    } else if (code.trim() === ".exit" || code.trim() === ".e") {
       break;
     }
 
