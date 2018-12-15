@@ -331,7 +331,7 @@ before_build:
       Set-FilesNeeded -Auto -Path $outputs -Reason "Build dependency graph"
 
 build_script:
-  - python tools\build.py
+  - python tools\build.py -C target\release
   - ps: Set-FilesNeeded -Auto -Reason "Build finished"
   - cargo check --release
   - ps: Set-FilesNeeded -Auto -Reason "Cargo check finished"
