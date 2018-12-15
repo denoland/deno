@@ -268,14 +268,14 @@ fn op_code_fetch(
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
       media_type: out.media_type,
-      source_code: Some(builder.create_string(&out.source_code)),
+      source_code: Some(builder.create_vector(&out.source_code)),
       ..Default::default()
     };
     if let Some(ref output_code) = out.maybe_output_code {
-      msg_args.output_code = Some(builder.create_string(output_code));
+      msg_args.output_code = Some(builder.create_vector(output_code));
     }
     if let Some(ref source_map) = out.maybe_source_map {
-      msg_args.source_map = Some(builder.create_string(source_map));
+      msg_args.source_map = Some(builder.create_vector(source_map));
     }
     let inner = msg::CodeFetchRes::create(builder, &msg_args);
     Ok(serialize_response(
@@ -305,7 +305,7 @@ fn op_code_cache(
   Box::new(futures::future::result(|| -> OpResult {
     state
       .dir
-      .code_cache(filename, source_code, output_code, source_map)?;
+      .code_cache(filename, &source_code, &output_code, &source_map)?;
     Ok(empty_buf())
   }()))
 }
@@ -576,17 +576,62 @@ fn op_chmod(
 }
 
 fn op_open(
-  _state: &IsolateState,
+  state: &IsolateState,
   base: &msg::Base,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let filename = PathBuf::from(inner.filename().unwrap());
-  // TODO let perm = inner.perm();
+  let filename_str = inner.filename().unwrap();
+  let filename = PathBuf::from(&filename_str);
+  let mode = inner.mode().unwrap();
 
-  let op = tokio::fs::File::open(filename)
+  let mut open_options = tokio::fs::OpenOptions::new();
+
+  match mode {
+    "r" => {
+      open_options.read(true);
+    }
+    "r+" => {
+      open_options.read(true).write(true);
+    }
+    "w" => {
+      open_options.create(true).write(true).truncate(true);
+    }
+    "w+" => {
+      open_options
+        .read(true)
+        .create(true)
+        .write(true)
+        .truncate(true);
+    }
+    "a" => {
+      open_options.create(true).append(true);
+    }
+    "a+" => {
+      open_options.read(true).create(true).append(true);
+    }
+    "x" => {
+      open_options.create_new(true).write(true);
+    }
+    "x+" => {
+      open_options.create_new(true).read(true).write(true);
+    }
+    &_ => {
+      panic!("Unknown file open mode.");
+    }
+  }
+
+  if mode != "r" {
+    // Write permission is needed except "r" mode
+    if let Err(e) = state.check_write(&filename_str) {
+      return odd_future(e);
+    }
+  }
+
+  let op = open_options
+    .open(filename)
     .map_err(DenoError::from)
     .and_then(move |fs_file| -> OpResult {
       let resource = resources::add_fs_file(fs_file);
@@ -945,6 +990,8 @@ fn op_read_dir(
             created: to_seconds!(metadata.created()),
             name: Some(name),
             path: Some(path),
+            mode: get_mode(&metadata.permissions()),
+            has_mode: cfg!(target_family = "unix"),
             ..Default::default()
           },
         )

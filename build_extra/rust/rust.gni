@@ -49,6 +49,7 @@ template("rust_crate") {
                            "crate_type",
                            "crate_version",
                            "deps",
+                           "inputs",
                            "features",
                            "is_test",
                            "libs",
@@ -189,6 +190,13 @@ template("rust_crate") {
       # Use colorful output even if stdout is redirected and not a tty.
       "--color=always",
     ]
+
+    if (defined(crate_version)) {
+      args += [
+        # This is used to set env variables for Cargo build compatibility
+        "--cargo-pkg-version=$crate_version",
+      ]
+    }
 
     if (is_debug) {
       args += [ "-g" ]

@@ -7,16 +7,17 @@ function stringify(...args: any[]): string {
   return stringifyArgs(args);
 }
 
-test(function consoleTestAssert() {
+test(function consoleTestAssertShouldNotThrowError() {
   console.assert(true);
 
-  let hasThrown = false;
+  let hasThrown = undefined;
   try {
     console.assert(false);
+    hasThrown = false;
   } catch {
     hasThrown = true;
   }
-  assertEqual(hasThrown, true);
+  assertEqual(hasThrown, false);
 });
 
 test(function consoleTestStringifyComplexObjects() {
@@ -103,6 +104,7 @@ test(function consoleTestStringifyCircular() {
     "[AsyncGeneratorFunction: agf]"
   );
   assertEqual(stringify(new Uint8Array([1, 2, 3])), "Uint8Array [ 1, 2, 3 ]");
+  assertEqual(stringify(Uint8Array.prototype), "TypedArray []");
   assertEqual(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
     "{ a: { b: { c: { d: [Set] } } } }"

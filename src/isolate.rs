@@ -144,10 +144,12 @@ impl Isolate {
       unsafe { libdeno::deno_init() };
     });
     let config = libdeno::deno_config {
+      will_snapshot: 0,
+      load_snapshot: snapshot,
       shared: libdeno::deno_buf::empty(), // TODO Use for message passing.
       recv_cb: pre_dispatch,
     };
-    let libdeno_isolate = unsafe { libdeno::deno_new(snapshot, config) };
+    let libdeno_isolate = unsafe { libdeno::deno_new(config) };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
 
@@ -544,5 +546,11 @@ mod tests {
     let vec: Box<[u8]> = vec![1, 2, 3, 4].into_boxed_slice();
     let op = Box::new(futures::future::ok(vec));
     (false, op)
+  }
+
+  #[test]
+  fn thread_safety() {
+    fn is_thread_safe<T: Sync + Send>() {}
+    is_thread_safe::<IsolateState>();
   }
 }

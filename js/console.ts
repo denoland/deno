@@ -63,9 +63,12 @@ function createIterableString(
   ctx.add(value);
 
   const entries: string[] = [];
-  for (const el of value) {
-    entries.push(config.entryHandler(el, ctx, level + 1, maxLevel));
-  }
+  // In cases e.g. Uint8Array.prototype
+  try {
+    for (const el of value) {
+      entries.push(config.entryHandler(el, ctx, level + 1, maxLevel));
+    }
+  } catch (e) {}
   ctx.delete(value);
   const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
   const iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
@@ -380,11 +383,27 @@ export class Console {
 
   /** Writes an error message to stdout if the assertion is `false`. If the
    * assertion is `true`, nothing happens.
+   *
+   * ref: https://console.spec.whatwg.org/#assert
    */
   // tslint:disable-next-line:no-any
-  assert = (condition: boolean, ...args: any[]): void => {
-    if (!condition) {
-      throw new Error(`Assertion failed: ${stringifyArgs(args)}`);
+  assert = (condition?: boolean, ...args: any[]): void => {
+    if (condition) {
+      return;
     }
+
+    if (args.length === 0) {
+      this.error("Assertion failed");
+      return;
+    }
+
+    const [first, ...rest] = args;
+
+    if (typeof first === "string") {
+      this.error(`Assertion failed: ${first}`, ...rest);
+      return;
+    }
+
+    this.error(`Assertion failed:`, ...args);
   };
 }
