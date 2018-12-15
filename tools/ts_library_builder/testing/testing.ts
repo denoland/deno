@@ -13,7 +13,6 @@
    limitations under the License.
 */
 
-import { stdout } from "deno";
 export { assert, assertEqual, equal } from "./util";
 
 export type TestFunction = () => void | Promise<void>;
@@ -73,7 +72,7 @@ function green_ok() {
 
 // Prints to stdout without newline.
 async function print(s: string): Promise<void> {
-  await stdout.write(new TextEncoder().encode(s));
+  process.stdout.write(s);
 }
 
 async function runTests() {

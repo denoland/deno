@@ -43,7 +43,6 @@ pub type ResourceId = u32; // Sometimes referred to RID.
 // system ones.
 type ResourceTable = HashMap<ResourceId, Repr>;
 
-
 use std::os::unix::io::FromRawFd;
 
 lazy_static! {
