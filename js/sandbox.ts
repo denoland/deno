@@ -11,6 +11,18 @@ export interface DenoSandbox {
   eval: (code: string) => any;
 }
 
+function formatFrameAtMessage(frame: { [key: string]: string }) {
+  if (frame.functionName) {
+    return `    at ${frame.functionName} (${frame.scriptName}:${frame.line}:${
+      frame.column
+    })`;
+  } else if (frame.isEval) {
+    return `    at eval (${frame.scriptName}:${frame.line}:${frame.column})`;
+  } else {
+    return `    at ${frame.scriptName}:${frame.line}:${frame.column}`;
+  }
+}
+
 class DenoSandboxImpl implements DenoSandbox {
   constructor(public env: {}) {}
   eval(code: string) {
@@ -20,13 +32,10 @@ class DenoSandboxImpl implements DenoSandbox {
       try {
         const errInfo = JSON.parse(errMsg);
         err = new Error();
-        err.message = errInfo.message;
+        err.message = errInfo.message; // Don't prefix with "Error"
         err.stack = `${errInfo.message}\n${errInfo.frames
-          .map(
-            (frame: { [key: string]: string }) =>
-              `    at ${frame.functionName || "<anonymous>"} (${
-                frame.scriptName
-              }:${frame.line}:${frame.column})`
+          .map((frame: { [key: string]: string }) =>
+            formatFrameAtMessage(frame)
           )
           .join("\n")}`;
       } catch (e) {
