@@ -260,13 +260,18 @@ TEST(LibDenoTest, Shared) {
 
 TEST(LibDenoTest, ContextMakeAndRun) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "ContextMakeAndRun()"));
+  // Calling gc() is a must here to release context and avoid LSAN check
+  // failure!
+  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "ContextMakeAndRun(); gc()"));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, ContextMakeAndRunError) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "ContextMakeAndRunError()"));
+  // Calling gc() is a must here to release context and avoid LSAN check
+  // failure!
+  EXPECT_TRUE(
+      deno_execute(d, nullptr, "a.js", "ContextMakeAndRunError(); gc()"));
   deno_delete(d);
 }
 

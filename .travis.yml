@@ -100,7 +100,7 @@ script:
   # the tests. So set the ASAN_OPTIONS env var before build.py is run.
   export ASAN_OPTIONS=detect_leaks=1
   ./tools/build.py -C target/debug -j2
-  ./target/debug/test_cc
+  ./target/debug/test_cc --expose-gc
 
 - |-
   # Release build and test

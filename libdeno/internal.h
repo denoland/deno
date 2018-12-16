@@ -75,6 +75,7 @@ class ContextInfo {
 
   static void WeakCallback(const v8::WeakCallbackInfo<ContextInfo>& data) {
     auto context = data.GetParameter();
+    context->context_.Reset();
     delete context;
   }
 

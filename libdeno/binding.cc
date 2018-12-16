@@ -375,7 +375,8 @@ void RunInContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   auto context_global_obj = args[0].As<v8::Object>();
   CHECK(args[1]->IsString());
   auto code = args[1].As<v8::String>();
-  // retrieve externalized context from (maybe) context's global object
+  // Retrieve externalized context from (maybe) context's global object
+  // This also ties lifetime of context to its returned global proxy
   auto external_v = context_global_obj
                         ->GetPrivate(d->context_.Get(isolate),
                                      d->context_private_symbol_.Get(isolate))
