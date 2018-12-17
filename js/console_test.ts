@@ -2,6 +2,10 @@
 import { test, assert, assertEqual } from "./test_util.ts";
 import { stringifyArgs } from "./console.ts";
 
+import { Console } from "./console.ts";
+import { libdeno } from "./libdeno";
+const console = new Console(libdeno.print);
+
 // tslint:disable-next-line:no-any
 function stringify(...args: any[]): string {
   return stringifyArgs(args);
@@ -114,7 +118,7 @@ test(function consoleTestStringifyCircular() {
   assertEqual(
     stringify(console),
     // tslint:disable-next-line:max-line-length
-    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function] }"
+    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function] }"
   );
 });
 
@@ -159,6 +163,8 @@ test(function consoleDetachedLog() {
   const warn = console.warn;
   const error = console.error;
   const consoleAssert = console.assert;
+  const consoleCount = console.count;
+  const consoleCountReset = console.countReset;
   log("Hello world");
   dir("Hello world");
   debug("Hello world");
@@ -166,4 +172,6 @@ test(function consoleDetachedLog() {
   warn("Hello world");
   error("Hello world");
   consoleAssert(true);
+  consoleCount("Hello world");
+  consoleCountReset("Hello world");
 });
