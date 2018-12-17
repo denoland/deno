@@ -585,7 +585,7 @@ export class Console {
   clear = (): void => {
     cursorTo(stdout, 0, 0);
     clearScreenDown(stdout);
-  }
+  };
 }
 
 /**
