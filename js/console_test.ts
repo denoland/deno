@@ -116,7 +116,7 @@ test(function consoleTestStringifyCircular() {
   assertEqual(
     stringify(console),
     // tslint:disable-next-line:max-line-length
-    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function], group: [Function], groupCollapsed: [Function], groupEnd: [Function], indentLevel: 0, collapsedAt: null }"
+    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function], group: [Function], groupCollapsed: [Function], groupEnd: [Function], indentLevel: 0, collapsedAt: null, clear: [Function] }"
   );
   // test inspect is working the same
   assertEqual(inspect(nestedObj), nestedObjExpected);
