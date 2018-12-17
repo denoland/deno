@@ -54,6 +54,8 @@ def integration_tests(deno_executable):
             continue
         if test_filename == "017_import_redirect.test":
             continue
+        if test_filename == "019_media_types.test":
+            continue
 
         test_abs = os.path.join(tests_path, test_filename)
         test = read_test(test_abs)
