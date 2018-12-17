@@ -1,5 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { isTypedArray } from "./util";
+import { TextEncoder } from "./text_encoding";
+import { File, stdout } from "./files";
 
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
@@ -13,6 +15,43 @@ type ConsoleOptions = Partial<{
 
 // Default depth of logging nested objects
 const DEFAULT_MAX_DEPTH = 4;
+
+const kEscape = "\x1b";
+
+function CSI(strings: TemplateStringsArray, ...args: number[]): string {
+  let ret = `${kEscape}[`;
+  for (let n = 0; n < strings.length; n++) {
+    ret += strings[n];
+    if (n < args.length) {
+      ret += args[n];
+    }
+  }
+  return ret;
+}
+
+CSI.kEscape = kEscape;
+CSI.kClearToBeginning = CSI`1K`;
+CSI.kClearToEnd = CSI`0K`;
+CSI.kClearLine = CSI`2K`;
+CSI.kClearScreenDown = CSI`0J`;
+
+function cursorTo(stream: File, x: number, y?: number) {
+  let csiCode = "";
+
+  if (y === undefined) {
+    csiCode = CSI`${x + 1}G`;
+  } else {
+    csiCode = CSI`${y + 1};${x + 1}H`;
+  }
+  const uint8 = new TextEncoder().encode(csiCode);
+
+  stream.write(uint8);
+}
+
+function clearScreenDown(stream: File) {
+  const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
+  stream.write(uint8);
+}
 
 // tslint:disable-next-line:no-any
 function getClassInstanceName(instance: any): string {
@@ -542,6 +581,11 @@ export class Console {
       this.log(); // When the collapsed state ended, outputs a sinle new line.
     }
   };
+
+  clear = (): void => {
+    cursorTo(stdout, 0, 0);
+    clearScreenDown(stdout);
+  }
 }
 
 /**
