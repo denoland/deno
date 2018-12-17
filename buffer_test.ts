@@ -17,7 +17,7 @@ function init() {
   if (testBytes == null) {
     testBytes = new Uint8Array(N);
     for (let i = 0; i < N; i++) {
-      testBytes[i] = "a".charCodeAt(0) + (i % 26);
+      testBytes[i] = "a".charCodeAt(0) + i % 26;
     }
     const decoder = new TextDecoder();
     testString = decoder.decode(testBytes);

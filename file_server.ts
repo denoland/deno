@@ -5,8 +5,13 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-import { listenAndServe, ServerRequest, setContentLength, Response } from "./http";
-import { cwd, readFile, DenoError, ErrorKind, args, stat, readDir } from "deno";
+import {
+  listenAndServe,
+  ServerRequest,
+  setContentLength,
+  Response
+} from "./http";
+import { cwd, DenoError, ErrorKind, args, stat, readDir, open } from "deno";
 
 const dirViewerTemplate = `
 <!DOCTYPE html>
@@ -146,9 +151,10 @@ async function serveDir(req: ServerRequest, dirPath: string, dirName: string) {
 }
 
 async function serveFile(req: ServerRequest, filename: string) {
-  let file = await readFile(filename);
+  const file = await open(filename);
+  const fileInfo = await stat(filename);
   const headers = new Headers();
-  headers.set("content-type", "octet-stream");
+  headers.set("content-length", fileInfo.len.toString());
 
   const res = {
     status: 200,
@@ -163,9 +169,9 @@ async function serveFallback(req: ServerRequest, e: Error) {
     e instanceof DenoError &&
     (e as DenoError<any>).kind === ErrorKind.NotFound
   ) {
-    return { 
-      status: 404, 
-      body: encoder.encode("Not found") 
+    return {
+      status: 404,
+      body: encoder.encode("Not found")
     };
   } else {
     return {

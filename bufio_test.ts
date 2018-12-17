@@ -109,7 +109,7 @@ test(async function bufioBufReader() {
   for (let i = 0; i < texts.length - 1; i++) {
     texts[i] = str + "\n";
     all += texts[i];
-    str += String.fromCharCode((i % 26) + 97);
+    str += String.fromCharCode(i % 26 + 97);
   }
   texts[texts.length - 1] = all;
 
@@ -294,7 +294,7 @@ test(async function bufioWriter() {
   const data = new Uint8Array(8192);
 
   for (let i = 0; i < data.byteLength; i++) {
-    data[i] = charCode(" ") + (i % (charCode("~") - charCode(" ")));
+    data[i] = charCode(" ") + i % (charCode("~") - charCode(" "));
   }
 
   const w = new Buffer();
