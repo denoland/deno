@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import { readFileSync, _compiler, File, open } from "./deno";
-import { TextDecoder, btoa } from "./text_encoding";
+import { TextEncoder, TextDecoder, btoa } from "./text_encoding";
 
 class Storage implements domTypes.Storage {
   protected data: Map<string, string> = new Map();
@@ -81,6 +81,6 @@ let localStorage: LocalStorage | null = null;
 export const getLocaleStorage: () => Storage = () =>
   localStorage ||
   (localStorage = new LocalStorage(
-    _compiler.DenoCompiler.instance().getScriptFileNames()[0]
+    _compiler.Compiler.instance().getScriptFileNames()[0]
   ));
 export const sessionStorage = new Storage();
