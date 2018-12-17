@@ -411,6 +411,8 @@ export class Console {
   };
 
   count = (label = "default"): void => {
+    label = String(label);
+
     if (countMap.has(label)) {
       const current = countMap.get(label) || 0;
       countMap.set(label, current + 1);
@@ -422,6 +424,8 @@ export class Console {
   };
 
   countReset = (label = "default"): void => {
+    label = String(label);
+
     if (countMap.has(label)) {
       countMap.set(label, 0);
     } else {
@@ -430,6 +434,8 @@ export class Console {
   };
 
   time = (label = "default"): void => {
+    label = String(label);
+
     if (timerMap.has(label)) {
       this.warn(`Timer '${label}' already exists`);
       return;
@@ -440,6 +446,8 @@ export class Console {
 
   // tslint:disable-next-line:no-any
   timeLog = (label = "default", ...args: any[]): void => {
+    label = String(label);
+
     if (!timerMap.has(label)) {
       this.warn(`Timer '${label}' does not exists`);
       return;
@@ -452,6 +460,8 @@ export class Console {
   };
 
   timeEnd = (label = "default"): void => {
+    label = String(label);
+    
     if (!timerMap.has(label)) {
       this.warn(`Timer '${label}' does not exists`);
       return;

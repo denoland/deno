@@ -140,6 +140,22 @@ test(function consoleTestStringifyWithDepth() {
   );
 });
 
+test(function consoleTestCallToStringOnLabel() {
+  const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
+
+  for (const method of methods) {
+    let hasCalled = false;
+
+    console[method]({
+      toString() {
+        hasCalled = true;
+      }
+    });
+
+    assertEqual(hasCalled, true);
+  }
+});
+
 test(function consoleTestError() {
   class MyError extends Error {
     constructor(errStr: string) {
