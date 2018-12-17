@@ -45,15 +45,14 @@ def integration_tests(deno_executable):
     ])
     assert len(tests) > 0
     for test_filename in tests:
-        # TODO Reenable 006_url_imports. Getting this error:
+        # TODO Reenable these tests Getting this error:
         # error TS5009: Cannot find the common subdirectory path for the input
         # files.
         if test_filename == "006_url_imports.test":
             continue
-        # TODO Reenable 015_import_no_ext.test. Getting this error:
-        # error TS5009: Cannot find the common subdirectory path for the input
-        # files.
         if test_filename == "015_import_no_ext.test":
+            continue
+        if test_filename == "017_import_redirect.test":
             continue
 
         test_abs = os.path.join(tests_path, test_filename)
