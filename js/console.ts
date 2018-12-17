@@ -461,7 +461,7 @@ export class Console {
 
   timeEnd = (label = "default"): void => {
     label = String(label);
-    
+
     if (!timerMap.has(label)) {
       this.warn(`Timer '${label}' does not exists`);
       return;
