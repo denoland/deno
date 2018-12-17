@@ -428,4 +428,39 @@ export class Console {
       this.warn(`Count for '${label}' does not exist`);
     }
   };
+
+  time = (label = "default"): void => {
+    if (timerMap.has(label)) {
+      this.warn(`Timer '${label}' already exists`);
+      return;
+    }
+
+    timerMap.set(label, Date.now());
+  };
+
+  // tslint:disable-next-line:no-any
+  timeLog = (label = "default", ...args: any[]): void => {
+    if (!timerMap.has(label)) {
+      this.warn(`Timer '${label}' does not exists`);
+      return;
+    }
+
+    const startTime = timerMap.get(label) as number;
+    const duration = Date.now() - startTime;
+
+    this.info(`${label}: ${duration}ms`, ...args);
+  };
+
+  timeEnd = (label = "default"): void => {
+    if (!timerMap.has(label)) {
+      this.warn(`Timer '${label}' does not exists`);
+      return;
+    }
+
+    const startTime = timerMap.get(label) as number;
+    timerMap.delete(label);
+    const duration = Date.now() - startTime;
+
+    this.info(`${label}: ${duration}ms`);
+  };
 }

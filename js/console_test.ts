@@ -118,7 +118,7 @@ test(function consoleTestStringifyCircular() {
   assertEqual(
     stringify(console),
     // tslint:disable-next-line:max-line-length
-    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function] }"
+    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function] }"
   );
 });
 
@@ -165,6 +165,9 @@ test(function consoleDetachedLog() {
   const consoleAssert = console.assert;
   const consoleCount = console.count;
   const consoleCountReset = console.countReset;
+  const consoleTime = console.time;
+  const consoleTimeLog = console.timeLog;
+  const consoleTimeEnd = console.timeEnd;
   log("Hello world");
   dir("Hello world");
   debug("Hello world");
@@ -174,4 +177,7 @@ test(function consoleDetachedLog() {
   consoleAssert(true);
   consoleCount("Hello world");
   consoleCountReset("Hello world");
+  consoleTime("Hello world");
+  consoleTimeLog("Hello world");
+  consoleTimeEnd("Hello world");
 });
