@@ -16,6 +16,7 @@ import * as fetchTypes from "./fetch";
 import * as headers from "./headers";
 import * as textEncoding from "./text_encoding";
 import * as timers from "./timers";
+import * as url from "./url";
 import * as urlSearchParams from "./url_search_params";
 
 // These imports are not exposed and therefore are fine to just import the
@@ -56,6 +57,8 @@ window.Blob = blob.DenoBlob;
 export type Blob = blob.DenoBlob;
 window.File = file.DenoFile;
 export type File = file.DenoFile;
+window.URL = url.URL;
+export type URL = url.URL;
 window.URLSearchParams = urlSearchParams.URLSearchParams;
 export type URLSearchParams = urlSearchParams.URLSearchParams;
 
