@@ -5,7 +5,7 @@
 
 import { BufReader } from "./bufio.ts";
 import { TextProtoReader } from "./textproto.ts";
-import { stringsReader } from "./buffer.ts";
+import { stringsReader } from "./util.ts";
 import {
   test,
   assert,
