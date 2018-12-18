@@ -16,6 +16,7 @@ env:
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - CCACHE_CPP2=yes
   - CCACHE_SLOPPINESS=time_macros
+  - SCCACHE_BUCKET=deno-cache
   - SCCACHE_DIR=$HOME/.sccache/
   - SCCACHE_CACHE_SIZE=1G
   - SCCACHE_IDLE_TIMEOUT=0
