@@ -114,7 +114,7 @@ def generate_gn_args(mode):
         out += os.environ["DENO_BUILD_ARGS"].split()
 
     # Check if ccache or sccache are in the path, and if so we set cc_wrapper.
-    cc_wrapper = find_executable("ccache") or find_executable("sccache")
+    cc_wrapper = find_executable("sccache") or find_executable("ccache")
     if cc_wrapper:
         # The gn toolchain does not shell escape cc_wrapper, so do it here.
         out += ['cc_wrapper=%s' % gn_string(shell_quote(cc_wrapper))]

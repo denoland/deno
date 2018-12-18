@@ -18,6 +18,11 @@ environment:
   CARGO_HOME: $(RUST_DIR)\cargo
   RUSTUP_HOME: $(RUST_DIR)\rustup
   RUST_BACKTRACE: 1
+  SCCACHE_BUCKET: deno-sccache
+  AWS_ACCESS_KEY_ID: AKIAIPOYFUDOPCMWRVZA
+  AWS_SECRET_ACCESS_KEY:
+    secure: hJTikmTx6ycPqajFnj59WzOaF4xUe8M96+ECcskSIqT0s6BCIrwxZgFTT70Qma1o
+
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
   #   -t7z  : Use '7z' format.
@@ -245,6 +250,11 @@ init:
   - git config --global core.symlinks true
 
 install:
+  # Download and install sccache
+  - appveyor DownloadFile https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2018-04-26-sccache-x86_64-pc-windows-msvc
+  - mv 2018-04-26-sccache-x86_64-pc-windows-msvc sccache.exe
+  - set PATH=%PATH%;%CD%
+
   # Clone the third_party submodule.
   - ps: |-
       try {
