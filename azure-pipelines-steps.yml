@@ -1,0 +1,19 @@
+steps:
+
+- checkout: self
+  submodules: true
+
+- script: |
+    echo '##vso[task.prependpath]$(CARGO_HOME)/bin'
+  displayName: 'Setup Paths'
+
+- script: |
+    curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
+    export PATH=$PATH:$HOME/.cargo/bin
+  displayName: 'Install rustc'
+
+- script: python ./tools/setup.py
+  displayName: 'setup.py'
+
+- script: python ./tools/build.py
+  displayName: 'build.py'
