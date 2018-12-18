@@ -1,6 +1,4 @@
-// import * as msg from "gen/msg_generated";
-import { args, cwd, exit, run, chdir } from "deno";
-// import { symlink } from "./symlink";
+import { cwd, run } from "deno";
 
 function qrun(args: string[]) {
   run({
@@ -11,14 +9,19 @@ function qrun(args: string[]) {
 const rootPath = (): string => {
   // remove '/js' in end of cwd to go on root path
   return cwd().slice(0, -3);
-};
+}
+
+const clangFormatPath = (): string => {
+  return rootPath() + '/third_party/depot_tools/clang-format'
+}
 
 const joinPath = (joinSet: string[]): string => {
-  return joinSet.join("/");
-};
+  return joinSet.join('/')
+}
 
 const clangFormat = () => {
   console.log("clang_format");
+// qrun([clangFormatPath(), "-i", "-style", "Google"] + find_exts(["libdeno"], [".cc", ".h"]))
 };
 
 const gnFormat = () => {
@@ -38,15 +41,9 @@ const rustfmt = () => {
 };
 
 function format() {
-  const prettier = joinPath([
-    rootPath(),
-    "third_party",
-    "node_modules",
-    "prettier",
-    "bin-prettier.js"
-  ]);
-  const toolsPath = joinPath([rootPath(), "tools"]);
-  const rustfmtConfig = joinPath([toolsPath, "rustfmt.toml"]);
+  const prettier = joinPath([rootPath(), 'third_party', 'node_modules', "prettier", "bin-prettier.js"]);
+  const toolsPath = joinPath([rootPath(), 'tools']);
+  const rustfmtConfig = joinPath([toolsPath, 'rustfmt.toml']);
   console.log(rustfmtConfig);
 }
 
