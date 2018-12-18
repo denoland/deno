@@ -118,7 +118,7 @@ test(function consoleTestStringifyCircular() {
   assertEqual(
     stringify(console),
     // tslint:disable-next-line:max-line-length
-    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function] }"
+    "Console { log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function] }"
   );
 });
 

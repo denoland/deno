@@ -354,14 +354,20 @@ type PrintFunc = (x: string, isErr?: boolean) => void;
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
 
+const printFuncSymbol: unique symbol = Symbol("printer");
+
 export class Console {
   // @internal
-  constructor(private printFunc: PrintFunc) {}
+  [printFuncSymbol]!: PrintFunc;
+
+  constructor(printFunc: PrintFunc) {
+    this[printFuncSymbol] = printFunc;
+  }
 
   /** Writes the arguments to stdout */
   // tslint:disable-next-line:no-any
   log = (...args: any[]): void => {
-    this.printFunc(stringifyArgs(args));
+    this[printFuncSymbol](stringifyArgs(args));
   };
 
   /** Writes the arguments to stdout */
@@ -372,13 +378,13 @@ export class Console {
   /** Writes the properties of the supplied `obj` to stdout */
   // tslint:disable-next-line:no-any
   dir = (obj: any, options: ConsoleOptions = {}) => {
-    this.printFunc(stringifyArgs([obj], options));
+    this[printFuncSymbol](stringifyArgs([obj], options));
   };
 
   /** Writes the arguments to stdout */
   // tslint:disable-next-line:no-any
   warn = (...args: any[]): void => {
-    this.printFunc(stringifyArgs(args), true);
+    this[printFuncSymbol](stringifyArgs(args), true);
   };
 
   /** Writes the arguments to stdout */
