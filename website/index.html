@@ -20,6 +20,35 @@
 
     <p> <a href="typedoc/index.html">API Reference</a>
 
+    <p>Install Deno into ~/.deno/bin
+<pre>
+curl -L https://deno.land/x/install/install.py | python
+export PATH=$HOME/.deno/bin:$PATH
+</pre>
+
+Try a Deno program. Install by bash alias.
+This one serves a local directory in HTTP.
+<pre>
+alias file_server="deno \
+  https://deno.land/x/net/file_server.ts --allow-net"
+</pre>
+
+Run it:
+<pre>
+% file_server .
+Downloading https://deno.land/x/net/file_server.ts...
+[...]
+HTTP server listening on http://0.0.0.0:4500/
+</pre>
+
+And if you ever want to upgrade to the latest published version:
+<pre>
+file_server --reload
+</pre>
+
+<a href="https://deno.land/x/">Other Deno modules are served here.</a>
+
+
     <h2>Execution time</h2>
     This shows how much time total it takes to run a few simple deno programs:
     <a href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts">tests/002_hello.ts</a>
