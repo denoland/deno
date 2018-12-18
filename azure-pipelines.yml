@@ -1,0 +1,36 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- master
+
+variables:
+  SCCACHE_BUCKET: deno-sccache
+  AWS_ACCESS_KEY_ID: AKIAIPOYFUDOPCMWRVZA
+  # AWS_SECRET_ACCESS_KEY=...
+
+jobs:
+
+- job: 'Linux'
+  pool:
+    vmImage: 'Ubuntu-16.04'
+  steps:
+  - script: |
+      curl -fo $HOME/bin/sccache https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2018-04-02-sccache-x86_64-unknown-linux-musl
+      chmod +x $HOME/bin/sccache
+    displayName: 'install sccache'
+  - template: azure-pipelines-steps.yml
+
+- job: 'Windows'
+  pool:
+    vmImage: 'vs2017-win2016'
+  steps:
+  - template: azure-pipelines-steps.yml
+
+- job: 'Mac'
+  pool:
+    vmImage: 'macOS-10.13'
+  steps:
+  - template: azure-pipelines-steps.yml
