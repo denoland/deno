@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file.
 
 import { BufReader } from "./bufio.ts";
-import { TextProtoReader } from "./textproto.ts";
+import { TextProtoReader, append } from "./textproto.ts";
 import { stringsReader } from "./util.ts";
 import {
   test,
@@ -81,4 +81,13 @@ test(async function textprotoReadMIMEHeaderNonCompliant() {
 		t.Fatalf("ReadMIMEHeader =\n%v, %v; want:\n%v", m, err, want)
 	}
   */
+});
+
+test(async function textprotoAppend() {
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const u1 = enc.encode("Hello ");
+  const u2 = enc.encode("World");
+  const joined = append(u1, u2);
+  assertEqual(dec.decode(joined), "Hello World");
 });

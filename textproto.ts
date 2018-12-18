@@ -137,10 +137,13 @@ export class TextProtoReader {
   }
 }
 
-function append(a: Uint8Array, b: Uint8Array): Uint8Array {
+export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
   if (a == null) {
     return b;
   } else {
-    throw Error("Not implemented");
+    const output = new Uint8Array(a.length + b.length);
+    output.set(a, 0);
+    output.set(b, a.length);
+    return output;
   }
 }
