@@ -346,7 +346,14 @@ export function stringifyArgs(
       );
     }
   }
-  return `${groupIndent}${out.join(" ")}`;
+  let outstr = out.join(" ");
+  if (groupIndent.length !== 0) {
+    if (outstr.indexOf("\n") !== -1) {
+      outstr = outstr.replace(/\n/g, `\n${groupIndent}`);
+    }
+    outstr = groupIndent + outstr;
+  }
+  return outstr;
 }
 
 type PrintFunc = (x: string, isErr?: boolean) => void;
@@ -476,7 +483,8 @@ export class Console {
     this.info(`${label}: ${duration}ms`);
   };
 
-  group = (...label: string[]): void => {
+  // tslint:disable-next-line:no-any
+  group = (...label: any[]): void => {
     groupIndent += "  ";
     if (label.length > 0) {
       this.log(...label);
