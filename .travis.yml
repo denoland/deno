@@ -39,26 +39,10 @@ install:
   rustc --version
   cargo --version
 - |-
-  # Install and start sccache.
-  mkdir -p $HOME/bin
-  export PATH="$HOME/bin:$PATH"
-  if [ ! $(which sccache) ]; then
-    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-      curl -fo $HOME/bin/sccache https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2018-04-02-sccache-x86_64-apple-darwin
-    else
-      curl -fo $HOME/bin/sccache https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2018-04-02-sccache-x86_64-unknown-linux-musl
-    fi
-    chmod +x $HOME/bin/sccache
-  fi
-  sccache --version
-  sccache --start-server
-- |-
-  # Install hyperfine (if benchmarking is enabled for this build).
-  if [ $BENCHMARK ]; then
-    if [ ! $(which hyperfine) ]; then
-      cargo install hyperfine
-    fi
-    hyperfine --version
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    export PATH="`pwd`/prebuilt/mac:$PATH"
+  else
+    export PATH="`pwd`/prebuilt/linux64:$PATH"
   fi
 - |-
   # Remove unnnecessary cargo and rustup directories.

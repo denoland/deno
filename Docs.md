@@ -387,6 +387,15 @@ We use Flatbuffers to define common structs and enums between TypeScript and
 Rust. These common data structures are defined in
 https://github.com/denoland/deno/blob/master/src/msg.fbs
 
+### Internal: Updating prebuilt binaries
+
+```
+./third_party/depot_tools/upload_to_google_storage.py -b denoland  \
+  -e ~/.config/gcloud/legacy_credentials/ry@tinyclouds.org/.boto `which sccache`
+mv `which sccache`.sha1 prebuilt/linux64/
+gsutil acl ch -u AllUsers:R gs://denoland/608be47bf01004aa11d4ed06955414e93934516e
+```
+
 ## Contributing
 
 See

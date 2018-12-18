@@ -16,6 +16,7 @@ import tempfile
 import http_server
 import throughput_benchmark
 from http_benchmark import http_benchmark
+import prebuilt
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -156,7 +157,9 @@ def main(argv):
 
     os.chdir(root_path)
     import_data_from_gh_pages()
-    # TODO: Use hyperfine in //third_party
+
+    prebuilt.load_hyperfine()
+
     run([
         "hyperfine", "--ignore-failure", "--export-json", benchmark_file,
         "--warmup", "3"

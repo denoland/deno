@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from distutils.spawn import find_executable
+import prebuilt
 
 
 def main():
@@ -19,7 +20,6 @@ def main():
     third_party.download_clang_format()
     third_party.download_clang()
     third_party.maybe_download_sysroot()
-
     write_lastchange()
 
     mode = build_mode(default=None)
@@ -113,8 +113,12 @@ def generate_gn_args(mode):
     if "DENO_BUILD_ARGS" in os.environ:
         out += os.environ["DENO_BUILD_ARGS"].split()
 
+    cacher = prebuilt.load_sccache()
+    if not os.path.exists(cacher):
+        cacher = find_executable("sccache") or find_executable("ccache")
+
     # Check if ccache or sccache are in the path, and if so we set cc_wrapper.
-    cc_wrapper = find_executable("sccache") or find_executable("ccache")
+    cc_wrapper = cacher
     if cc_wrapper:
         # The gn toolchain does not shell escape cc_wrapper, so do it here.
         out += ['cc_wrapper=%s' % gn_string(shell_quote(cc_wrapper))]
@@ -124,7 +128,7 @@ def generate_gn_args(mode):
             out += ["treat_warnings_as_errors=false"]
 
     # Look for sccache; if found, set rustc_wrapper.
-    rustc_wrapper = find_executable("sccache")
+    rustc_wrapper = cacher
     if rustc_wrapper:
         out += ['rustc_wrapper=%s' % gn_string(rustc_wrapper)]
 
