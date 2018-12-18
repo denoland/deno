@@ -1,4 +1,4 @@
-import { Reader } from "deno";
+import { Buffer, Reader } from "deno";
 
 export function assert(cond: boolean, msg = "assert") {
   if (!cond) {
@@ -20,4 +20,10 @@ export function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
 
 export function charCode(s: string): number {
   return s.charCodeAt(0);
+}
+
+const encoder = new TextEncoder();
+export function stringsReader(s: string): Reader {
+  const ui8 = encoder.encode(s);
+  return new Buffer(ui8.buffer as ArrayBuffer);
 }

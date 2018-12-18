@@ -17,7 +17,7 @@ import {
   setContentLength,
   Response
 } from "./http";
-import { Buffer } from "./buffer";
+import { Buffer } from "deno";
 import { BufWriter } from "./bufio";
 
 interface ResponseTest {

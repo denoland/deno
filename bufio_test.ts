@@ -3,16 +3,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { Reader, ReadResult } from "deno";
+import { Buffer, Reader, ReadResult } from "deno";
 import {
   test,
   assert,
   assertEqual
 } from "https://deno.land/x/testing/testing.ts";
 import { BufReader, BufState, BufWriter } from "./bufio.ts";
-import { Buffer, stringsReader } from "./buffer.ts";
 import * as iotest from "./iotest.ts";
-import { charCode, copyBytes } from "./util.ts";
+import { charCode, copyBytes, stringsReader } from "./util.ts";
 
 const encoder = new TextEncoder();
 
