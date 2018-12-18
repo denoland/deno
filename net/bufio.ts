@@ -185,7 +185,6 @@ export class BufReader implements Reader {
     return [nread, nread < p.length ? "EOF" : null];
   }
 
-
   /** Returns the next byte [0, 255] or -1 if EOF. */
   async readByte(): Promise<number> {
     while (this.r === this.w) {
