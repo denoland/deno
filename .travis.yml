@@ -80,7 +80,7 @@ script:
 
 - |-
   # Cargo check
-  cargo check -j2 --release
+  cargo check -j2 --release --locked
 
 after_success:
 - |
