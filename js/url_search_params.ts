@@ -122,13 +122,12 @@ export class URLSearchParams {
         if (!found) {
           this.params[i][1] = value;
           found = true;
-          i++;
         } else {
           this.params.splice(i, 1);
+          continue;
         }
-      } else {
-        i++;
       }
+      i++;
     }
 
     // Otherwise, append a new name-value pair whose name is name
