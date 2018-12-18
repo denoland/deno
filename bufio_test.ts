@@ -321,3 +321,25 @@ test(async function bufioWriter() {
     }
   }
 });
+
+test(async function bufReaderReadFull() {
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const text = "Hello World";
+  const data = new Buffer(enc.encode(text));
+  const bufr = new BufReader(data, 3);
+  {
+    const buf = new Uint8Array(6);
+    const [nread, err] = await bufr.readFull(buf);
+    assertEqual(nread, 6);
+    assert(!err);
+    assertEqual(dec.decode(buf), "Hello ");
+  }
+  {
+    const buf = new Uint8Array(6);
+    const [nread, err] = await bufr.readFull(buf);
+    assertEqual(nread, 5);
+    assertEqual(err, "EOF");
+    assertEqual(dec.decode(buf.subarray(0, 5)), "World");
+  }
+});

@@ -162,6 +162,30 @@ export class BufReader implements Reader {
     return rr;
   }
 
+  /** reads exactly len(p) bytes into p.
+   * Ported from https://golang.org/pkg/io/#ReadFull
+   * It returns the number of bytes copied and an error if fewer bytes were read.
+   * The error is EOF only if no bytes were read.
+   * If an EOF happens after reading some but not all the bytes,
+   * readFull returns ErrUnexpectedEOF. ("EOF" for current impl)
+   * On return, n == len(p) if and only if err == nil.
+   * If r returns an error having read at least len(buf) bytes,
+   * the error is dropped.
+   */
+  async readFull(p: Uint8Array): Promise<[number, BufState]> {
+    let rr = await this.read(p);
+    let nread = rr.nread;
+    if (rr.eof) {
+      return [nread, nread < p.length ? "EOF" : null];
+    }
+    while (!rr.eof && nread < p.length) {
+      rr = await this.read(p.subarray(nread));
+      nread += rr.nread;
+    }
+    return [nread, nread < p.length ? "EOF" : null];
+  }
+
+
   /** Returns the next byte [0, 255] or -1 if EOF. */
   async readByte(): Promise<number> {
     while (this.r === this.w) {
