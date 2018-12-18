@@ -3,7 +3,7 @@ import("//build/compiled_action.gni")
 
 declare_args() {
   # Use prebuilt V8 libraries from //prebuilt/
-  use_prebuilt_v8 = true
+  use_prebuilt_v8 = false
 }
 
 template("run_node") {
