@@ -14,13 +14,15 @@ env:
   - HOMEBREW_PATH=$HOME/homebrew/
   - CARGO_TARGET_DIR=$HOME/target
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
-  - CCACHE_CPP2=yes
-  - CCACHE_SLOPPINESS=time_macros
+  - RUSTC_WRAPPER=sccache
   - SCCACHE_DIR=$HOME/.sccache/
   - SCCACHE_CACHE_SIZE=1G
   - SCCACHE_IDLE_TIMEOUT=0
+  - SCCACHE_BUCKET=deno-sccache
+  - AWS_ACCESS_KEY_ID=AKIAIPOYFUDOPCMWRVZA
+  # AWS_SECRET_ACCESS_KEY=...
+  - secure: "dhfLwOad3hbVyF6hyf8PJup80aNR6cQqbv+ITM4mKEbCYOcaEvCf6IOEokfvBAig5l808rupTp2mqT6fChpNpa3OIJNwg7sfNKF0taeRS/wCdmiDBSQFXBCMVg17Ty3SIHGj4eWhZ8acvJzmn+pDlGpfEgs5UW+b74IFT0RCtCuw887PeL5y2XDrYNf6TD8jfQGCasMLrUKfxVNbVA5bg2MuSzQqTjO+xiipwyFj9XyuFWJcZaUTXhVEGEx4mPAviJthc3GAS4m+XSkfpgduw7nQpJn28X+kRReqL85LJ4nMZMpRN4nRWUJQJtNvYKoOTeoNjpVBVzsCtA331TDT2Mld8nKLzB7OKQc/++ZeWt/jkisg20C88X+IObT8BDAYU3zgwpklNooqJuw+D4/Svv700fsWrYyDEIk18oKjZxoARodINcwAzCvCVzZyMpuiea35AAar3InzPaxTBIE4RxAF3kgHkNCW4jB+N8ADwg1TkiwPjNOL4q3l7UKDJY5/7oBn6OAOwfEqxnJl9U4KRipyYmuZNen7YCyHPyDCGk5ou5J5ypRDY7+9Rma0+KIFweoZif7cfHIk89w9/t1k7XDJB7PLtDY+wj+yBcv1Hgrd4ZnoRfESRxWTecueJkFKi5iPxnWJO/B41nkl5+KtUfZHfIAZixcLpQLJc2iliWM="
 cache:
-  ccache: true
   directories:
   - "$CARGO_HOME"
   - "$RUSTUP_HOME"
@@ -42,13 +44,6 @@ install:
     fi
     "$BREW" --version
   fi
-- |-
-  # Install ccache (if necessary) and set it up.
-  if [[ "$TRAVIS_OS_NAME" == "osx" && ! $(which ccache) ]]; then
-    "$BREW" install ccache
-  fi
-  ccache --version | head -n 1
-  ccache --max-size=1G
 - |-
   # Install Rust.
   # TODO(ry) Include rustc in third_party.
@@ -110,7 +105,7 @@ script:
 
 - |-
   # Cargo check
-  RUSTC_WRAPPER=sccache cargo check -j2 --release
+  cargo check -j2 --release
 
 after_script:
 - ccache --show-stats
