@@ -116,7 +116,7 @@ test(function consoleTestStringifyCircular() {
   assertEqual(
     stringify(console),
     // tslint:disable-next-line:max-line-length
-    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function] }"
+    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function], group: [Function], groupEnd: [Function] }"
   );
   // test inspect is working the same
   assertEqual(inspect(nestedObj), nestedObjExpected);
@@ -143,6 +143,39 @@ test(function consoleTestStringifyWithDepth() {
     inspect(nestedObj, { depth: 4 }),
     "{ a: { b: { c: { d: [Object] } } } }"
   );
+});
+
+test(function consoleStringifyWithGroup() {
+  const outstrs = [
+    "This is the outer level",
+    "Level 2",
+    "Level 3",
+    "More of level 3",
+    "Back to level 2",
+    "Back to the outer level",
+    "Still at the outer level"
+  ];
+  const expectedOut = `${outstrs[0]}  ${outstrs[1]}    ${outstrs[2]}  ${
+    outstrs[3]
+  }${outstrs[4]}${outstrs[5]}`;
+
+  const expectedErr = `    More of level 3`;
+  let out = "";
+  let outErr = "";
+  out += stringifyArgs([outstrs[0]]);
+  console.group();
+  out += stringifyArgs([outstrs[1]]);
+  console.group();
+  out += stringifyArgs([outstrs[2]]);
+  outErr += stringifyArgs([outstrs[3]]);
+  console.groupEnd();
+  out += stringifyArgs([outstrs[3]]);
+  console.groupEnd();
+  out += stringifyArgs([outstrs[4]]);
+  console.groupEnd();
+  out += stringifyArgs([outstrs[5]]);
+  assertEqual(out, expectedOut);
+  assertEqual(outErr, expectedErr);
 });
 
 test(function consoleTestCallToStringOnLabel() {
@@ -189,6 +222,8 @@ test(function consoleDetachedLog() {
   const consoleTime = console.time;
   const consoleTimeLog = console.timeLog;
   const consoleTimeEnd = console.timeEnd;
+  const consoleGroup = console.group;
+  const consoleGroupEnd = console.groupEnd;
   log("Hello world");
   dir("Hello world");
   debug("Hello world");
@@ -201,4 +236,6 @@ test(function consoleDetachedLog() {
   consoleTime("Hello world");
   consoleTimeLog("Hello world");
   consoleTimeEnd("Hello world");
+  consoleGroup("Hello world");
+  consoleGroupEnd();
 });

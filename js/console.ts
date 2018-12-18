@@ -346,7 +346,14 @@ export function stringifyArgs(
       );
     }
   }
-  return out.join(" ");
+  let outstr = out.join(" ");
+  if (groupIndent.length !== 0) {
+    if (outstr.indexOf("\n") !== -1) {
+      outstr = outstr.replace(/\n/g, `\n${groupIndent}`);
+    }
+    outstr = groupIndent + outstr;
+  }
+  return outstr;
 }
 
 type PrintFunc = (x: string, isErr?: boolean) => void;
@@ -354,7 +361,8 @@ type PrintFunc = (x: string, isErr?: boolean) => void;
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
 
-/** TODO Do not expose this from "deno". */
+let groupIndent = "";
+
 export class Console {
   constructor(private printFunc: PrintFunc) {}
 
@@ -472,6 +480,18 @@ export class Console {
     const duration = Date.now() - startTime;
 
     this.info(`${label}: ${duration}ms`);
+  };
+
+  // tslint:disable-next-line:no-any
+  group = (...label: any[]): void => {
+    groupIndent += "  ";
+    if (label.length > 0) {
+      this.log(...label);
+    }
+  };
+
+  groupEnd = (): void => {
+    groupIndent = groupIndent.slice(0, groupIndent.length - 2);
   };
 }
 
