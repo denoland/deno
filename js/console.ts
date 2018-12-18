@@ -346,13 +346,15 @@ export function stringifyArgs(
       );
     }
   }
-  return out.join(" ");
+  return `${groupIndent}${out.join(" ")}`;
 }
 
 type PrintFunc = (x: string, isErr?: boolean) => void;
 
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
+
+let groupIndent = "";
 
 export class Console {
   // @internal
@@ -472,5 +474,16 @@ export class Console {
     const duration = Date.now() - startTime;
 
     this.info(`${label}: ${duration}ms`);
+  };
+
+  group = (...label: string[]): void => {
+    groupIndent += "  ";
+    if (label.length > 0) {
+      this.log(...label);
+    }
+  };
+
+  groupEnd = (): void => {
+    groupIndent = groupIndent.slice(0, groupIndent.length - 2);
   };
 }
