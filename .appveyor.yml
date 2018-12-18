@@ -251,10 +251,9 @@ init:
 
 install:
   # Download and install sccache
-  - ps: appveyor DownloadFile https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2018-04-26-sccache-x86_64-pc
--windows-msvc
-  - ps: mv 2018-04-26-sccache-x86_64-pc-windows-msvc sccache.exe
-  - ps: set PATH=%PATH%;%CD%
+  - appveyor DownloadFile https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2018-04-26-sccache-x86_64-pc-windows-msvc
+  - mv 2018-04-26-sccache-x86_64-pc-windows-msvc sccache.exe
+  - set PATH=%PATH%;%CD%
 
   # Clone the third_party submodule.
   - ps: |-
