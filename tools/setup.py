@@ -107,9 +107,7 @@ def generate_gn_args(mode):
     if mode == "release":
         out += ["is_official_build=true"]
     elif mode == "debug":
-        # Enable Jumbo build by default in debug mode for faster build.
-        # https://chromium.googlesource.com/chromium/src/+/master/docs/jumbo.md
-        out += ["use_jumbo_build=true"]
+        out += ["is_debug=true"]
     else:
         print "Bad mode {}. Use 'release' or 'debug' (default)" % mode
         sys.exit(1)
