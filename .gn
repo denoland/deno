@@ -34,7 +34,7 @@ default_args = {
   # Works in other configurations.
   is_component_build = false
 
-  # Enable Jumbo build by default in debug mode for faster build.
+  # Enable Jumbo build for a faster build.
   # https://chromium.googlesource.com/chromium/src/+/master/docs/jumbo.md
   use_jumbo_build = true
 
