@@ -1,13 +1,14 @@
+#!/usr/bin/env deno --allow-run --allow-net
 import { run } from "deno";
 
-import "./bufio_test.ts";
-import "./http_test.ts";
-import "./textproto_test.ts";
-import { runTests, completePromise } from "./file_server_test.ts";
+import "net/bufio_test.ts";
+import "net/http_test.ts";
+import "net/textproto_test.ts";
+import { runTests, completePromise } from "net/file_server_test.ts";
 
 // file server test
 const fileServer = run({
-  args: ["deno", "--allow-net", "file_server.ts", "."]
+  args: ["deno", "--allow-net", "net/file_server.ts", "."]
 });
 // I am also too lazy to do this properly LOL
 runTests(new Promise(res => setTimeout(res, 5000)));
@@ -15,5 +16,3 @@ runTests(new Promise(res => setTimeout(res, 5000)));
   await completePromise;
   fileServer.close();
 })();
-
-// TODO import "./http_test.ts";

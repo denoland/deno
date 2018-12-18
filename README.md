@@ -1,6 +1,6 @@
-# Deno Networking Libraries
+# Deno Standard Modules
 
-[![Build Status](https://travis-ci.com/denoland/deno_net.svg?branch=master)](https://travis-ci.com/denoland/deno_net)
+[![Build Status](https://travis-ci.com/denoland/deno_std.svg?branch=master)](https://travis-ci.com/denoland/deno_std)
 
 Usage:
 
