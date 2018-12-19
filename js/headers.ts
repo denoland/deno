@@ -3,6 +3,7 @@ import * as domTypes from "./dom_types";
 import { DomIterableMixin } from "./mixins/dom_iterable";
 
 // From node-fetch
+// Copyright (c) 2016 David Frank. MIT License.
 const invalidTokenRegex = /[^\^_`a-zA-Z\-0-9!#$%&'*+.|~]/;
 const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
 
@@ -12,7 +13,6 @@ function isHeaders(value: any): value is domTypes.Headers {
 }
 
 const headerMap = Symbol("header map");
-export const headersGuard = Symbol("headers guard"); // for
 
 // ref: https://fetch.spec.whatwg.org/#dom-headers
 class HeadersBase {
@@ -28,6 +28,7 @@ class HeadersBase {
 
   // The following name/value validations are copied from
   // https://github.com/bitinn/node-fetch/blob/master/src/headers.js
+  // Copyright (c) 2016 David Frank. MIT License.
   private _validateName(name: string) {
     if (invalidTokenRegex.test(name)) {
       throw new TypeError(`${name} is not a legal HTTP header name`);

@@ -180,6 +180,7 @@ test(function headerTypesAvailable() {
 
 // tslint:disable-next-line:max-line-length
 // Modified from https://github.com/bitinn/node-fetch/blob/7d3293200a91ad52b5ca7962f9d6fd1c04983edb/test/test.js#L2001-L2014
+// Copyright (c) 2016 David Frank. MIT License.
 test(function headerIllegalReject() {
   let errorCount = 0;
   try {
