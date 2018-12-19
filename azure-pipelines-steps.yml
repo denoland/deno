@@ -5,15 +5,17 @@ steps:
 
 - script: |
     echo '##vso[task.prependpath]$(CARGO_HOME)/bin'
-  displayName: 'Setup Paths'
+    echo '##vso[task.prependpath]$(HOME)/.cargo/bin'
 
 - script: |
-    curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
-    export PATH=$PATH:$HOME/.cargo/bin
+    bash -c "curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable"
   displayName: 'Install rustc'
 
 - script: python ./tools/setup.py
-  displayName: 'setup.py'
+  displayName: 'setup'
 
 - script: python ./tools/build.py
-  displayName: 'build.py'
+  displayName: 'build'
+
+- script: python ./tools/test.py
+  displayName: 'test'
