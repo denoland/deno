@@ -63,6 +63,10 @@ fn main() {
     "deno_deps"
   };
 
+  if check_only {
+    println!("cargo:rustc-cfg=feature=\"check-only\"");
+  }
+
   let status = Command::new("python")
     .env("DENO_BUILD_PATH", &gn_out_dir)
     .env("DENO_BUILD_MODE", &mode)
