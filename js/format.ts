@@ -1,28 +1,35 @@
 import { cwd, run } from "deno";
 
-function qrun(args: string[]) {
-  run({
-    args
-  });
-}
-
 const rootPath = (): string => {
   // remove '/js' in end of cwd to go on root path
-  return cwd().slice(0, -3);
-}
+  return cwd();
+};
 
 const clangFormatPath = (): string => {
-  return rootPath() + '/third_party/depot_tools/clang-format'
-}
+  return rootPath() + "/third_party/depot_tools/clang-format";
+};
 
 const joinPath = (joinSet: string[]): string => {
-  return joinSet.join('/')
-}
+  return joinSet.join("/");
+};
 
 const clangFormat = () => {
   console.log("clang_format");
-// qrun([clangFormatPath(), "-i", "-style", "Google"] + find_exts(["libdeno"], [".cc", ".h"]))
+  run({
+    args: [
+      clangFormatPath(),
+      "-i",
+      "-style",
+      "Google",
+      findExts(rootPath + '/libdeno', ['cc', 'h'])
+    ]
+  });
 };
+
+// this should return array of file path which has certain extensions
+const findExts = (path: string, ext: string[]): string => {
+  return ''
+}
 
 const gnFormat = () => {
   console.log("gn Format");
@@ -41,10 +48,16 @@ const rustfmt = () => {
 };
 
 function format() {
-  const prettier = joinPath([rootPath(), 'third_party', 'node_modules', "prettier", "bin-prettier.js"]);
-  const toolsPath = joinPath([rootPath(), 'tools']);
-  const rustfmtConfig = joinPath([toolsPath, 'rustfmt.toml']);
-  console.log(rustfmtConfig);
+  const prettier = joinPath([
+    rootPath(),
+    "third_party",
+    "node_modules",
+    "prettier",
+    "bin-prettier.js"
+  ]);
+  const toolsPath = joinPath([rootPath(), "tools"]);
+  const rustfmtConfig = joinPath([toolsPath, "rustfmt.toml"]);
+  clangFormat();
 }
 
 format();
