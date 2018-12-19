@@ -21,7 +21,7 @@ export function assertEqual(actual: any, expected: any, msg?: string) {
   }
   if (!equal(actual, expected)) {
     console.error(
-      "assertEqual failed. actual = ",
+      "assertEqual failed. actual =",
       actual,
       "expected =",
       expected
