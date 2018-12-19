@@ -24,6 +24,12 @@ export class URLSearchParams {
     } else if (Array.isArray(init)) {
       // Overload: sequence<sequence<USVString>>
       for (const tuple of init) {
+        // If pair does not contain exactly two items, then throw a TypeError.
+        if (tuple.length !== 2) {
+          const errMsg =
+            "Each query pair must be an iterable [name, value] tuple";
+          throw new TypeError(errMsg);
+        }
         this.append(tuple[0], tuple[1]);
       }
     } else if (Object(init) === init) {
@@ -106,8 +112,29 @@ export class URLSearchParams {
    *       searchParams.set('name', 'value');
    */
   set(name: string, value: string): void {
-    this.delete(name);
-    this.append(name, value);
+    // If there are any name-value pairs whose name is name, in list,
+    // set the value of the first such name-value pair to value
+    // and remove the others.
+    let found = false;
+    let i = 0;
+    while (i < this.params.length) {
+      if (this.params[i][0] === name) {
+        if (!found) {
+          this.params[i][1] = value;
+          found = true;
+        } else {
+          this.params.splice(i, 1);
+          continue;
+        }
+      }
+      i++;
+    }
+
+    // Otherwise, append a new name-value pair whose name is name
+    // and value is value, to list.
+    if (!found) {
+      this.append(name, value);
+    }
   }
 
   /** Sort all key/value pairs contained in this object in place and
