@@ -8,7 +8,7 @@ matrix:
   - os: osx
 env:
   global:
-  - CARGO_HOME=$HOME/.cargo/
+  - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
   - RUSTUP_HOME=$HOME/.rustup/
   - RUST_BACKTRACE=1
   - CARGO_TARGET_DIR=$HOME/target
@@ -20,8 +20,10 @@ env:
   - secure: "hlQoMNDWgsdFPDAIwE4VCr21w6ftD8BGLNE8w23+9wCqMs8TXCGzdzpTYzSePmToUfF1WjGQTF3advifzg7pdrUp41ThWzRkEjiRoXEORkKFuZENgLdi4ZZsvOYIfX5dfTcw7wkLEuGkywy1D9s/4uJydiVqYYM3fWI7U2ax8+wpenRH59moUeHqGGzPk8Hy4wcD7SoP+fvuOYJ+KjU2urbddwrVus9jnmXbx0Srq/L/ayBr0aLpZXcYZ3nSMnXpc9mo3YuVZQR42+ARHI5R7V1wrCa/025/O4kpSry/bipyN7Oyry/WY+9Hu3EDdlIUosJsWVHhv5s8ZuZWJG/0VITUP+MnDexGNkbbbDzzwk/7dDhTo1DRpT7fmSFVzr6J9bw4JEU9k//znLuCOnRLoWagysQUVUZQXDh7TTfMmGP0wdsUggfr8azrkZF3hjg+g+aOlz0ZpVtYQ8hdhvLQRp4pmxyQlsKygf0fFXWJvAp40KXIkrKXJ6hXIGdfWirZ3dgc8rCgVdOKi6Hy39EKOiIdP3j2J2tv3NTPkUi7z+BaDc5cPCaarR8ZvLLkv1lvYTFap/fk+TXpM3AS0hs1o91fyJ0l/P0KKTp7V8MoNC7iXhzCK/InNgpcs0rK7w7QOlEHihRlY3Ya4m3KvSRbL/P55TneX5xwr6yP719ARs4="
 cache:
   directories:
-  - "$CARGO_HOME"
   - "$RUSTUP_HOME"
+  - $CARGO_HOME/registry/index/
+  - $CARGO_HOME/registry/cache/
+  - prebuilt/
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
   - third_party/v8/third_party/llvm-build/
 install:
@@ -39,31 +41,14 @@ install:
   rustc --version
   cargo --version
 - |-
-  # Install and start sccache.
-  mkdir -p $HOME/bin
-  export PATH="$HOME/bin:$PATH"
-  if [ ! $(which sccache) ]; then
-    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-      curl -fo $HOME/bin/sccache https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2018-04-02-sccache-x86_64-apple-darwin
-    else
-      curl -fo $HOME/bin/sccache https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2018-04-02-sccache-x86_64-unknown-linux-musl
-    fi
-    chmod +x $HOME/bin/sccache
-  fi
-  sccache --version
-  sccache --start-server
-- |-
-  # Install hyperfine (if benchmarking is enabled for this build).
-  if [ $BENCHMARK ]; then
-    if [ ! $(which hyperfine) ]; then
-      cargo install hyperfine
-    fi
-    hyperfine --version
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    export PATH="`pwd`/prebuilt/mac:$PATH"
+  else
+    export PATH="`pwd`/prebuilt/linux64:$PATH"
   fi
 - |-
   # Remove unnnecessary cargo and rustup directories.
   # This keeps the Travis CI cache small and fast.
-  rm -rf "$CARGO_HOME"registry
   rm -rf "$RUSTUP_HOME"downloads
   rm -rf "$RUSTUP_HOME"tmp
   rm -rf "$RUSTUP_HOME"toolchains/*/etc
@@ -85,7 +70,7 @@ script:
   # We want to detect leaks during the build process as well as when executing
   # the tests. So set the ASAN_OPTIONS env var before build.py is run.
   export ASAN_OPTIONS=detect_leaks=1
-  ./tools/build.py -C target/debug -j2
+  ./tools/build.py -C target/debug -j2 test_cc
   ./target/debug/test_cc
 
 - |-
@@ -95,15 +80,8 @@ script:
 
 - |-
   # Cargo check
-  cargo check -j2 --release
+  cargo check -j2 --release --locked
 
-after_success:
-- |
-  # Run benchmarks and publish the result to github pages.
-  if [ $BENCHMARK ]; then
-    ./tools/benchmark.py target/release &&
-    cp -r website/* gh-pages/
-  fi
 before_deploy:
 - gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_x64.gz
 deploy:
@@ -115,7 +93,9 @@ deploy:
     tags: true
     repo: denoland/deno
   skip-cleanup: true
+# Run benchmarks and publish the result to github pages.
 - provider: pages
+  script: ./tools/benchmark.py target/release && cp -r website/* gh-pages/
   github-token: *github-token
   keep-history: true
   local-dir: gh-pages

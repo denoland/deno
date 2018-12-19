@@ -4,7 +4,6 @@
 /target/
 *.pyc
 gclient_config.py_entries
-Cargo.lock
 yarn.lock
 # npm deps
 node_modules
