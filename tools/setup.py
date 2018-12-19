@@ -107,7 +107,7 @@ def generate_gn_args(mode):
     elif mode == "debug":
         out += ["is_debug=true"]
     else:
-        print "Bad mode {}. Use 'release' or 'debug' (default)" % mode
+        print "Bad mode %s. Use 'release' or 'debug' (default)" % mode
         sys.exit(1)
 
     if "DENO_BUILD_ARGS" in os.environ:

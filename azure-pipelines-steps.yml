@@ -14,6 +14,10 @@ steps:
 - script: python ./tools/setup.py
   displayName: 'setup'
 
+#- script: |
+#    echo is_asan=true >> target/debug/args.gn
+#    echo is_lsan=true >> target/debug/args.gn
+
 - script: python ./tools/build.py
   displayName: 'build'
 
