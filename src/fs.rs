@@ -1,6 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 use std;
+
+#[cfg(any(unix))]
 use std::fs;
+
 use std::fs::{create_dir, DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
@@ -62,7 +65,7 @@ pub fn make_temp_dir(
     match r {
       Err(ref e) if e.kind() == ErrorKind::AlreadyExists => continue,
       Ok(_) => {
-        #[cfg(unix)]
+        #[cfg(any(unix))]
         fs::set_permissions(buf.as_path(), PermissionsExt::from_mode(0o700))?;
         return Ok(buf);
       }
