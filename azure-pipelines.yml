@@ -10,6 +10,7 @@ variables:
   CARGO_HOME: '$(system.defaultWorkingDirectory)/third_party/rust_crates/'
   PREBUILT: '$(system.defaultWorkingDirectory)/prebuilt/'
   RUST_BACKTRACE: 1
+  ASAN_OPTIONS: 'detect_leaks=1'
   RUSTC_WRAPPER: sccache
   SCCACHE_BUCKET: deno-sccache
   AWS_ACCESS_KEY_ID: AKIAIPOYFUDOPCMWRVZA
