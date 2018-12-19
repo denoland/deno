@@ -891,6 +891,7 @@ rust_crate("ring") {
 
 rust_crate("rustls") {
   source_root = "$registry_github/rustls-0.14.0/src/lib.rs"
+  features = [ "default" ]
   extern = [
     ":untrusted",
     ":base64",
