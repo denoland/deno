@@ -1,11 +1,8 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
+sudo: false
 language: c++
-matrix:
-  include:
-  - os: linux
-    env: BENCHMARK=1
-    sudo: required
-  - os: osx
+git:
+  depth: 1
 env:
   global:
   - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
@@ -26,6 +23,7 @@ cache:
   - prebuilt/
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
   - third_party/v8/third_party/llvm-build/
+
 install:
 - nvm install v8
 - nvm use --delete-prefix v8
@@ -53,66 +51,77 @@ install:
   rm -rf "$RUSTUP_HOME"tmp
   rm -rf "$RUSTUP_HOME"toolchains/*/etc
   rm -rf "$RUSTUP_HOME"toolchains/*/share
+
 before_script:
 - ./tools/setup.py
 # Start sccache, then throw away the S3 access key.
 - |-
   sccache --start-server
   unset AWS_SECRET_ACCESS_KEY
-script:
-- |-
-  # Check lint and format.
-  set -e # Fail immediately if any of the following fail.
+
+# Default script for release builds.
+script: |-
   ./tools/lint.py
   ./tools/test_format.py
-
-- |-
-  # LSAN build. We are in the process of getting a completely clean LSAN build,
-  # but it will take some work. So for now we just run a subset of the tests.
-  echo is_asan=true >> target/debug/args.gn
-  echo is_lsan=true >> target/debug/args.gn
-  # We want to detect leaks during the build process as well as when executing
-  # the tests. So set the ASAN_OPTIONS env var before build.py is run.
-  export ASAN_OPTIONS=detect_leaks=1
-  ./tools/build.py -C target/debug -j2 test_cc
-  ./target/debug/test_cc
-
-- |-
-  # Build deno.exe with Cargo first. Both builds write their output to the same
-  # directory. We want the final one (which gets tested and released) to be
-  # built by Ninja.
-  cargo build --release -vv -j2
-
-- |-
-  # Release build and test
   ./tools/build.py -C target/release -j2
   DENO_BUILD_MODE=release ./tools/test.py
 
-- sccache --stop-server
-after_success:
-- |
-  # Run benchmarks and publish the result to github pages.
-  if [ $BENCHMARK ]; then
-    ./tools/benchmark.py target/release &&
-    cp -r website/* gh-pages/
-  fi
-before_deploy:
-- gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_x64.gz
-deploy:
-- provider: releases
-  api_key: &github-token
-    secure: RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps=
-  file: "target/release/deno_${TRAVIS_OS_NAME}_x64.gz"
-  on:
-    tags: true
-    repo: denoland/deno
-  skip-cleanup: true
-- provider: pages
-  github-token: *github-token
-  keep-history: true
-  local-dir: gh-pages
-  on:
-    branch: master
-    condition: $BENCHMARK == 1
-    repo: denoland/deno
-  skip-cleanup: true
+jobs:
+  fast_finish: true
+  include:
+    - name: "gn release mac"
+      os: osx
+      after_success:
+        - &gzip_release
+          gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_x64.gz
+      deploy:
+      - &release_provider
+        provider: releases
+        script:
+        api_key: &github-token
+          secure: RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps=
+        file: "target/release/deno_${TRAVIS_OS_NAME}_x64.gz"
+        on:
+          tags: true
+          repo: denoland/deno
+        skip-cleanup: true
+
+    - name: "gn release linux"
+      os: linux
+      after_success:
+        - *gzip_release
+        - ./tools/benchmark.py target/release && cp -r website/* gh-pages/
+      deploy:
+      - *release_provider
+      # Run benchmarks and publish the result to github pages.
+      - provider: pages
+        github-token: *github-token
+        keep-history: true
+        local-dir: gh-pages
+        on:
+          branch: master
+          repo: denoland/deno
+        skip-cleanup: true
+
+    - name: "cargo release linux"
+      os: linux
+      script:
+        - cargo build -vv --release -j2
+
+    # LSAN: We are in the process of getting a completely clean LSAN build,
+    # but it will take some work. So for now we just run a subset of the
+    # tests.  We want to detect leaks during the build process as well as
+    # when executing the tests. So set the ASAN_OPTIONS env var before
+    # build.py is run.
+    - name: "lsan debug linux"
+      os: linux
+      script:
+        - |-
+          echo is_asan=true >> target/debug/args.gn
+          echo is_lsan=true >> target/debug/args.gn
+          # Call gn gen again to make sure new args are recognized.
+          third_party/depot_tools/gn gen target/debug
+          export ASAN_OPTIONS=detect_leaks=1
+          ./tools/build.py test_cc -j2
+          ./target/debug/test_cc
+
