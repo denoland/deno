@@ -277,6 +277,9 @@ fn parse_map_string(
   getter: &SourceMapGetter,
 ) -> Option<SourceMap> {
   match script_name {
+    // The bundle does not get built for 'cargo check', so we don't embed the
+    // bundle source map.
+    #[cfg(not(feature = "check-only"))]
     "gen/bundle/main.js" => {
       let s =
         include_str!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js.map"));

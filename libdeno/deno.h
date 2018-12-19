@@ -36,6 +36,9 @@ typedef struct {
   deno_recv_cb recv_cb;    // Maps to libdeno.send() calls.
 } deno_config;
 
+// Create a new deno isolate.
+// Warning: If config.will_snapshot is set, deno_get_snapshot() must be called
+// or an error will result.
 Deno* deno_new(deno_config config);
 
 // Generate a snapshot. The resulting buf can be used with deno_new.

@@ -351,6 +351,9 @@ export function stringifyArgs(
 
 type PrintFunc = (x: string, isErr?: boolean) => void;
 
+const countMap = new Map<string, number>();
+const timerMap = new Map<string, number>();
+
 export class Console {
   // @internal
   constructor(private printFunc: PrintFunc) {}
@@ -387,7 +390,7 @@ export class Console {
    * ref: https://console.spec.whatwg.org/#assert
    */
   // tslint:disable-next-line:no-any
-  assert = (condition?: boolean, ...args: any[]): void => {
+  assert = (condition = false, ...args: any[]): void => {
     if (condition) {
       return;
     }
@@ -405,5 +408,69 @@ export class Console {
     }
 
     this.error(`Assertion failed:`, ...args);
+  };
+
+  count = (label = "default"): void => {
+    label = String(label);
+
+    if (countMap.has(label)) {
+      const current = countMap.get(label) || 0;
+      countMap.set(label, current + 1);
+    } else {
+      countMap.set(label, 1);
+    }
+
+    this.info(`${label}: ${countMap.get(label)}`);
+  };
+
+  countReset = (label = "default"): void => {
+    label = String(label);
+
+    if (countMap.has(label)) {
+      countMap.set(label, 0);
+    } else {
+      this.warn(`Count for '${label}' does not exist`);
+    }
+  };
+
+  time = (label = "default"): void => {
+    label = String(label);
+
+    if (timerMap.has(label)) {
+      this.warn(`Timer '${label}' already exists`);
+      return;
+    }
+
+    timerMap.set(label, Date.now());
+  };
+
+  // tslint:disable-next-line:no-any
+  timeLog = (label = "default", ...args: any[]): void => {
+    label = String(label);
+
+    if (!timerMap.has(label)) {
+      this.warn(`Timer '${label}' does not exists`);
+      return;
+    }
+
+    const startTime = timerMap.get(label) as number;
+    const duration = Date.now() - startTime;
+
+    this.info(`${label}: ${duration}ms`, ...args);
+  };
+
+  timeEnd = (label = "default"): void => {
+    label = String(label);
+
+    if (!timerMap.has(label)) {
+      this.warn(`Timer '${label}' does not exists`);
+      return;
+    }
+
+    const startTime = timerMap.get(label) as number;
+    timerMap.delete(label);
+    const duration = Date.now() - startTime;
+
+    this.info(`${label}: ${duration}ms`);
   };
 }

@@ -389,14 +389,12 @@ https://github.com/denoland/deno/blob/master/src/msg.fbs
 
 ### Internal: Updating prebuilt binaries
 
-V8 takes a long time to build - on the order of an hour. We use pre-built V8
-libraries stored in a Google Storage bucket instead of rebuilding it from
-scratch each time. Our build system is however setup such that we can build V8
-as part of the Deno build if necessary (useful for debugging or changing various
-configurations in V8, or building the pre-built binaries themselves). To control
-whether to use a pre-built V8 or not use the `use_v8_prebuilt` GN argument.
-
-Use `tools/gcloud_upload.py` to upload new prebuilt files.
+```
+./third_party/depot_tools/upload_to_google_storage.py -b denoland  \
+  -e ~/.config/gcloud/legacy_credentials/ry@tinyclouds.org/.boto `which sccache`
+mv `which sccache`.sha1 prebuilt/linux64/
+gsutil acl ch -u AllUsers:R gs://denoland/608be47bf01004aa11d4ed06955414e93934516e
+```
 
 ## Contributing
 

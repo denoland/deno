@@ -19,6 +19,12 @@ a {
   color: #333;
 }
 
+pre {
+  background: #ddd;
+  padding: 15px;
+  word-wrap: normal
+}
+
 a:hover {
   background: #aee;
 }
