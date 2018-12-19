@@ -10,6 +10,7 @@ for Deno.
 | [colors](./colors/README.md) | Modules that generate ANSI color codes for the console.         |
 | [net](./net/README.md)       | A framework for creating HTTP/HTTPS servers inspired by GoLang. |
 | [path](./path/README.md)     | A path manipulation library.                                    |
+| [flags](./flags/README.md)   | Command line arguments parser based on minimist.                |
 
 ---
 
