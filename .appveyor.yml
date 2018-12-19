@@ -341,6 +341,11 @@ before_build:
         foreach { "$env:DENO_BUILD_PATH\$($Matches[1])" }
       Set-FilesNeeded -Auto -Path $outputs -Reason "Build dependency graph"
 
+  # Start sccache, then throw away the S3 access key.
+  - ps: |-
+      sccache --start-server
+      $env:AWS_SECRET_ACCESS_KEY = $null
+
 build_script:
   # Build with Cargo first. Both builds produce a deno.exe in the same dir. We
   # want the final one (which gets tested and released) to be built by Ninja.
@@ -362,6 +367,9 @@ after_test:
 
   # Remove stale files and empty dirs from the build directory.
   - ps: Stop-TraceFilesNeeded
+
+  # Stop sccache and show stats.
+  - ps: sccache --stop-server
 
   # Verify that the build is fully up-to-date. Running ninja should be a no-op.
   # This catches erroneous file cleanup, and incorrectly set up build deps.
