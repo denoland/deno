@@ -13,6 +13,9 @@ import "net/http_test.ts";
 import "net/textproto_test.ts";
 import { runTests, completePromise } from "net/file_server_test.ts";
 
+// logging tests
+import "logging/test.ts";
+
 // file server test
 const fileServer = run({
   args: ["deno", "--allow-net", "net/file_server.ts", "."]
