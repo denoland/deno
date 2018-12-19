@@ -1,6 +1,10 @@
 #!/usr/bin/env deno --allow-run --allow-net
-import { run, exit } from "deno";
+import { run } from "deno";
 
+// colors tests
+import "colors/main_test.ts";
+
+// net tests
 import "net/bufio_test.ts";
 import "net/http_test.ts";
 import "net/textproto_test.ts";
