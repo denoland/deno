@@ -177,3 +177,54 @@ test(function headerTypesAvailable() {
   const headers = newHeaders();
   assert(headers instanceof Headers);
 });
+
+// tslint:disable-next-line:max-line-length
+// Modified from https://github.com/bitinn/node-fetch/blob/7d3293200a91ad52b5ca7962f9d6fd1c04983edb/test/test.js#L2001-L2014
+// Copyright (c) 2016 David Frank. MIT License.
+test(function headerIllegalReject() {
+  let errorCount = 0;
+  try {
+    new Headers({ "He y": "ok" });
+  } catch (e) {
+    errorCount++;
+  }
+  try {
+    new Headers({ "Hé-y": "ok" });
+  } catch (e) {
+    errorCount++;
+  }
+  try {
+    new Headers({ "He-y": "ăk" });
+  } catch (e) {
+    errorCount++;
+  }
+  const headers = new Headers();
+  try {
+    headers.append("Hé-y", "ok");
+  } catch (e) {
+    errorCount++;
+  }
+  try {
+    headers.delete("Hé-y");
+  } catch (e) {
+    errorCount++;
+  }
+  try {
+    headers.get("Hé-y");
+  } catch (e) {
+    errorCount++;
+  }
+  try {
+    headers.has("Hé-y");
+  } catch (e) {
+    errorCount++;
+  }
+  try {
+    headers.set("Hé-y", "ok");
+  } catch (e) {
+    errorCount++;
+  }
+  assertEqual(errorCount, 8);
+  // 'o k' is valid value but invalid name
+  new Headers({ "He-y": "o k" });
+});
