@@ -1,17 +1,7 @@
 import sys
-from util import run
+import os
+from util import run, root_path
 from third_party import tp, google_env
-
-
-def download_v8_prebuilt():
-    if sys.platform == 'win32':
-        download_prebuilt("prebuilt/win/v8.lib.sha1")
-        # TODO Ideally we wouldn't have to download both builds of V8.
-        download_prebuilt("prebuilt/win/v8_debug.lib.sha1")
-    elif sys.platform.startswith('linux'):
-        download_prebuilt("prebuilt/linux64/libv8.a.sha1")
-    elif sys.platform == 'darwin':
-        download_prebuilt("prebuilt/mac/libv8.a.sha1")
 
 
 def download_prebuilt(sha1_file):
@@ -27,9 +17,21 @@ def download_prebuilt(sha1_file):
         env=google_env())
 
 
-def load():
-    download_v8_prebuilt()
+def load_sccache():
+    if sys.platform == 'win32':
+        p = "prebuilt/win/sccache.exe"
+    elif sys.platform.startswith('linux'):
+        p = "prebuilt/linux64/sccache"
+    elif sys.platform == 'darwin':
+        p = "prebuilt/mac/sccache"
+    download_prebuilt(p + ".sha1")
+    return os.path.join(root_path, p)
 
 
-if __name__ == '__main__':
-    sys.exit(load())
+def load_hyperfine():
+    if sys.platform == 'win32':
+        download_prebuilt("prebuilt/win/hyperfine.exe.sha1")
+    elif sys.platform.startswith('linux'):
+        download_prebuilt("prebuilt/linux64/hyperfine.sha1")
+    elif sys.platform == 'darwin':
+        download_prebuilt("prebuilt/mac/hyperfine.sha1")
