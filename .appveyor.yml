@@ -341,10 +341,13 @@ before_build:
       Set-FilesNeeded -Auto -Path $outputs -Reason "Build dependency graph"
 
 build_script:
-  - python tools\build.py
-  - ps: Set-FilesNeeded -Auto -Reason "Build finished"
+  # Build with Cargo first. Both builds produce a deno.exe in the same dir. We
+  # want the final one (which gets tested and released) to be built by Ninja.
   - cargo build -vv --release
-  - ps: Set-FilesNeeded -Auto -Reason "Cargo check finished"
+  - ps: Set-FilesNeeded -Auto -Reason "Cargo build finished"
+
+  - python tools\build.py
+  - ps: Set-FilesNeeded -Auto -Reason "Ninja build finished"
 
 test_script:
   - python tools\lint.py

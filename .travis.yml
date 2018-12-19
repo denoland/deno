@@ -74,13 +74,15 @@ script:
   ./target/debug/test_cc
 
 - |-
+  # Build deno.exe with Cargo first. Both builds write their output to the same
+  # directory. We want the final one (which gets tested and released) to be
+  # built by Ninja.
+  cargo build --release -vv -j2
+
+- |-
   # Release build and test
   ./tools/build.py -C target/release -j2
   DENO_BUILD_MODE=release ./tools/test.py
-
-- |-
-  # Cargo check
-  cargo build --release -vv -j2
 
 before_deploy:
 - gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_x64.gz
