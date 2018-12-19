@@ -93,7 +93,7 @@ fn main() {
   log::set_max_level(if flags.log_debug {
     log::LevelFilter::Debug
   } else {
-    log::LevelFilter::Info
+    log::LevelFilter::Warn
   });
 
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv));
