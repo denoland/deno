@@ -19,9 +19,9 @@ environment:
   RUST_BACKTRACE: 1
   RUSTC_WRAPPER: sccache
   SCCACHE_BUCKET: deno-sccache
-  AWS_ACCESS_KEY_ID: AKIAIPOYFUDOPCMWRVZA
+  AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
   AWS_SECRET_ACCESS_KEY:
-    secure: hJTikmTx6ycPqajFnj59WzOaF4xUe8M96+ECcskSIqT0s6BCIrwxZgFTT70Qma1o
+    secure: 8ybpi/y5qE2baChsCBhNHmykng3FitELAtTYOiqZd0mw38i88dzdAX8ETNtBogMV
 
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
