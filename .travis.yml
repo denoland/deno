@@ -89,6 +89,13 @@ script:
   DENO_BUILD_MODE=release ./tools/test.py
 
 - sccache --stop-server
+after_success:
+- |
+  # Run benchmarks and publish the result to github pages.
+  if [ $BENCHMARK ]; then
+    ./tools/benchmark.py target/release &&
+    cp -r website/* gh-pages/
+  fi
 before_deploy:
 - gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_x64.gz
 deploy:
@@ -100,9 +107,7 @@ deploy:
     tags: true
     repo: denoland/deno
   skip-cleanup: true
-# Run benchmarks and publish the result to github pages.
 - provider: pages
-  script: ./tools/benchmark.py target/release && cp -r website/* gh-pages/
   github-token: *github-token
   keep-history: true
   local-dir: gh-pages
