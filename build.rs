@@ -20,9 +20,9 @@ fn main() {
     env::var("PROFILE").unwrap()
   };
 
-  let gn_out_dir = env::current_dir().unwrap();
-  let gn_out_dir = gn_out_dir.join(format!("target/{}", gn_mode));
-  let gn_out_dir = normalize_path(gn_out_dir);
+  let cwd = env::current_dir().unwrap();
+  let gn_out_path = cwd.join(format!("target/{}", gn_mode));
+  let gn_out_dir = normalize_path(&gn_out_path);
 
   // Tell Cargo when to re-run this file. We do this first, so these directives
   // can take effect even if something goes wrong later in the build process.
@@ -76,13 +76,15 @@ fn main() {
     }
   }
 
-  let status = Command::new("python")
-    .env("DENO_BUILD_PATH", &gn_out_dir)
-    .env("DENO_BUILD_MODE", &gn_mode)
-    .arg("./tools/setup.py")
-    .status()
-    .expect("setup.py failed");
-  assert!(status.success());
+  if !gn_out_path.join("build.ninja").exists() {
+    let status = Command::new("python")
+      .env("DENO_BUILD_PATH", &gn_out_dir)
+      .env("DENO_BUILD_MODE", &gn_mode)
+      .arg("./tools/setup.py")
+      .status()
+      .expect("setup.py failed");
+    assert!(status.success());
+  }
 
   let status = Command::new("python")
     .env("DENO_BUILD_PATH", &gn_out_dir)
