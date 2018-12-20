@@ -5,30 +5,28 @@ import("//third_party/v8/gni/v8.gni")
 config("deno_config") {
   include_dirs = [ "//third_party/v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "//third_party/v8:external_config" ]
+  cflags = []
+
   if (is_debug) {
     defines = [ "DEBUG" ]
   }
+
   if (is_clang) {
-    cflags = [
+    cflags += [
       "-fcolor-diagnostics",
       "-fansi-escape-codes",
     ]
   }
-}
 
-# The `/Zl` ("omit default library name") flag makes the compiler produce object
-# files that can link with both static and dynamic libc.
-config("win_crt_agnostic") {
   if (is_win) {
-    cflags = [ "/Zl" ]
+    # The `/Zl` ("omit default library name") flag makes the compiler produce
+    # object files that can link with both the static and dynamic CRT.
+    cflags += [ "/Zl" ]
   }
 }
 
 v8_source_set("v8") {
-  configs = [
-    ":deno_config",
-    ":win_crt_agnostic",
-  ]
+  configs = [ ":deno_config" ]
   deps = [
     "//third_party/v8:v8",
     "//third_party/v8:v8_libbase",
@@ -43,10 +41,7 @@ v8_source_set("v8") {
 # dependencies are minimal.
 # The cargo-driven build links with libdeno to pull in all non-rust code.
 v8_static_library("libdeno") {
-  configs = [
-    ":deno_config",
-    ":win_crt_agnostic",
-  ]
+  configs = [ ":deno_config" ]
   sources = [
     "api.cc",
     "binding.cc",
