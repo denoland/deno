@@ -1,7 +1,7 @@
 #!/usr/bin/env deno --allow-net --allow-env
 
 import { args, env, exit, readFile } from "deno";
-import parseArgs from "https://deno.land/x/parseargs/index.ts";
+import parseArgs from "https://deno.land/x/flags/index.ts";
 
 function pathBase(p: string): string {
   const parts = p.split("/");

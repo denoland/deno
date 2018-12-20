@@ -6,7 +6,7 @@ Command line arguments parser for Deno based on minimist
 
 ``` ts
 import { args } from "deno";
-import parseArgs from "https://deno.land/x/parseargs/index.ts";
+import parseArgs from "https://deno.land/x/flags/index.ts";
 
 console.dir(parseArgs(args));
 ```
