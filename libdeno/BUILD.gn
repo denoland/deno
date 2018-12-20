@@ -26,22 +26,20 @@ config("deno_config") {
 }
 
 v8_source_set("v8") {
-  configs = [ ":deno_config" ]
   deps = [
     "//third_party/v8:v8",
     "//third_party/v8:v8_libbase",
     "//third_party/v8:v8_libplatform",
     "//third_party/v8:v8_libsampler",
   ]
+  configs = [ ":deno_config" ]
 }
 
 # Only functionality needed for libdeno_test and snapshot_creator
 # In particular no flatbuffers, no assets, no rust, no msg handlers.
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
-# The cargo-driven build links with libdeno to pull in all non-rust code.
-v8_static_library("libdeno") {
-  configs = [ ":deno_config" ]
+v8_source_set("libdeno") {
   sources = [
     "api.cc",
     "binding.cc",
@@ -52,8 +50,18 @@ v8_static_library("libdeno") {
   ]
   deps = [
     ":v8",
+  ]
+  configs = [ ":deno_config" ]
+}
+
+# The cargo-driven build links with libdeno to pull in all non-rust code.
+v8_static_library("libdeno_static_lib") {
+  output_name = "libdeno"
+  deps = [
+    ":libdeno",
     "//build/config:shared_library_deps",
   ]
+  configs = [ ":deno_config" ]
 }
 
 v8_executable("snapshot_creator") {
