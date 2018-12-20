@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "./test_util.ts";
-import { stringifyArgs } from "./console.ts";
+import { stringifyArgs, inspect } from "./console.ts";
 
 import { Console } from "./console.ts";
 import { libdeno } from "./libdeno";
@@ -120,6 +120,8 @@ test(function consoleTestStringifyCircular() {
     // tslint:disable-next-line:max-line-length
     "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function] }"
   );
+  // test inspect is working the same
+  assertEqual(inspect(nestedObj), nestedObjExpected);
 });
 
 test(function consoleTestStringifyWithDepth() {
@@ -136,6 +138,11 @@ test(function consoleTestStringifyWithDepth() {
   assertEqual(stringifyArgs([nestedObj], { depth: 0 }), "[Object]");
   assertEqual(
     stringifyArgs([nestedObj], { depth: null }),
+    "{ a: { b: { c: { d: [Object] } } } }"
+  );
+  // test inspect is working the same way
+  assertEqual(
+    inspect(nestedObj, { depth: 4 }),
     "{ a: { b: { c: { d: [Object] } } } }"
   );
 });

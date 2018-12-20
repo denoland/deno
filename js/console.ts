@@ -474,3 +474,26 @@ export class Console {
     this.info(`${label}: ${duration}ms`);
   };
 }
+
+/**
+ * inspect() converts input into string that has the same format
+ * as printed by console.log(...);
+ */
+export function inspect(
+  value: any, // tslint:disable-line:no-any
+  options?: ConsoleOptions
+) {
+  const opts = options || {};
+  if (typeof value === "string") {
+    return value;
+  } else {
+    return stringify(
+      value,
+      // tslint:disable-next-line:no-any
+      new Set<any>(),
+      0,
+      // tslint:disable-next-line:triple-equals
+      opts.depth != undefined ? opts.depth : DEFAULT_MAX_DEPTH
+    );
+  }
+}
