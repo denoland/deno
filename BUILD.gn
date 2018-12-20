@@ -111,7 +111,7 @@ group("deno_deps") {
   deps = [
     ":msg_rs",
     ":snapshot_deno",
-    "libdeno:libdeno",
+    "libdeno:libdeno_static_lib",
   ]
 }
 
