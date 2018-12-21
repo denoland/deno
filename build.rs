@@ -7,8 +7,8 @@
 
 use std::env;
 use std::path::{self, Path, PathBuf};
-use std::process::Command;
 use std::process::exit;
+use std::process::Command;
 
 fn main() {
   let gn_mode = if cfg!(target_os = "windows") {
@@ -41,6 +41,12 @@ fn main() {
     }
   }
 
+  /*
+  for (key, value) in env::vars_os() {
+    println!("{:?}: {:?}", key, value);
+  }
+  */
+
   match env::var_os("CARGO_PACKAGE") {
     None => {
       cargo_build(&gn_out_dir, &gn_out_path, &gn_mode);
@@ -62,9 +68,7 @@ fn cargo_package(gn_out_dir: &String, gn_out_path: &Path, gn_mode: &String) {
   // This helps Rust source files locate the snapshot, source map etc.
   println!("cargo:rustc-env=GN_OUT_DIR={}", root_str);
 
-
   println!("cargo:rustc-link-search=native={}", gen_dir_str);
-
 
   /*
   println!("cargo:rustc-link-search=native=/Users/rld/src/deno/target/debug/obj/libdeno");
@@ -74,6 +78,20 @@ fn cargo_package(gn_out_dir: &String, gn_out_path: &Path, gn_mode: &String) {
 }
 
 fn cargo_build(gn_out_dir: &String, gn_out_path: &Path, gn_mode: &String) {
+  let root = gn_out_path.join("../..").to_owned();
+  let is_packaged_goods = !root.join("target/build.ninja").exists();
+  if is_packaged_goods {
+    println!("cargo_build2");
+    // Building from a package.
+    // We load libdeno from the //gen dir created by tools/package.sh
+    cargo_package(gn_out_dir, gn_out_path, gn_mode)
+  } else {
+    println!("cargo_build1");
+    cargo_build1(gn_out_dir, gn_out_path, gn_mode)
+  }
+}
+
+fn cargo_build1(gn_out_dir: &String, gn_out_path: &Path, gn_mode: &String) {
   // Tell Cargo when to re-run this file. We do this first, so these directives
   // can take effect even if something goes wrong later in the build process.
   println!("cargo:rerun-if-env-changed=DENO_BUILD_PATH");

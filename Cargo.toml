@@ -8,6 +8,7 @@
 name = "deno"
 version = "0.2.3"
 
+authors = ["see Authors file"]
 description = "A JavaScript/TypeScript VM"
 license = "MIT"
 homepage = "https://deno.land/"
