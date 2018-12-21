@@ -8,10 +8,14 @@
 name = "deno"
 version = "0.2.3"
 
+description = "A JavaScript/TypeScript VM"
+license = "MIT"
+homepage = "https://deno.land/"
+
 [dependencies]
 atty = "=0.2.11"
 dirs = "=1.0.4"
-flatbuffers = { path = "third_party/flatbuffers/rust/flatbuffers/" }
+flatbuffers = "=0.5.0"
 futures = "=0.1.25"
 getopts = "=0.2.18"
 http = "=0.1.13"
@@ -22,8 +26,8 @@ libc = "=0.2.44"
 log = "=0.4.6"
 rand = "=0.6.1"
 remove_dir_all = "=0.5.1"
-rustyline = "=2.1.0"
 ring = "=0.13.5"
+rustyline = "=2.1.0"
 serde_json = "1.0.33"
 source-map-mappings = "0.5.0"
 tempfile = "=3.0.5"
