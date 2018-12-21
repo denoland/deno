@@ -46,6 +46,14 @@ export class URLSearchParams {
    *       searchParams.append('name', 'second');
    */
   append(name: string, value: string): void {
+    if (arguments.length < 2) {
+      // tslint:disable-next-line:max-line-length
+      const errMsg = `URLSearchParams.append requires at least 2 arguments, but only ${
+        arguments.length
+      } present`;
+      throw new TypeError(errMsg);
+    }
+
     this.params.push([name, value]);
   }
 
@@ -55,6 +63,14 @@ export class URLSearchParams {
    *       searchParams.delete('name');
    */
   delete(name: string): void {
+    if (arguments.length < 1) {
+      // tslint:disable-next-line:max-line-length
+      const errMsg = `URLSearchParams.delete requires at least 1 argument, but only ${
+        arguments.length
+      } present`;
+      throw new TypeError(errMsg);
+    }
+
     let i = 0;
     while (i < this.params.length) {
       if (this.params[i][0] === name) {
@@ -71,6 +87,14 @@ export class URLSearchParams {
    *       searchParams.getAll('name');
    */
   getAll(name: string): string[] {
+    if (arguments.length < 1) {
+      // tslint:disable-next-line:max-line-length
+      const errMsg = `URLSearchParams.getAll requires at least 1 argument, but only ${
+        arguments.length
+      } present`;
+      throw new TypeError(errMsg);
+    }
+
     const values = [];
     for (const entry of this.params) {
       if (entry[0] === name) {
@@ -86,6 +110,14 @@ export class URLSearchParams {
    *       searchParams.get('name');
    */
   get(name: string): string | null {
+    if (arguments.length < 1) {
+      // tslint:disable-next-line:max-line-length
+      const errMsg = `URLSearchParams.get requires at least 1 argument, but only ${
+        arguments.length
+      } present`;
+      throw new TypeError(errMsg);
+    }
+
     for (const entry of this.params) {
       if (entry[0] === name) {
         return entry[1];
@@ -101,6 +133,14 @@ export class URLSearchParams {
    *       searchParams.has('name');
    */
   has(name: string): boolean {
+    if (arguments.length < 1) {
+      // tslint:disable-next-line:max-line-length
+      const errMsg = `URLSearchParams.has requires at least 1 argument, but only ${
+        arguments.length
+      } present`;
+      throw new TypeError(errMsg);
+    }
+
     return this.params.some(entry => entry[0] === name);
   }
 
@@ -112,6 +152,14 @@ export class URLSearchParams {
    *       searchParams.set('name', 'value');
    */
   set(name: string, value: string): void {
+    if (arguments.length < 2) {
+      // tslint:disable-next-line:max-line-length
+      const errMsg = `URLSearchParams.set requires at least 2 arguments, but only ${
+        arguments.length
+      } present`;
+      throw new TypeError(errMsg);
+    }
+
     // If there are any name-value pairs whose name is name, in list,
     // set the value of the first such name-value pair to value
     // and remove the others.
@@ -122,12 +170,13 @@ export class URLSearchParams {
         if (!found) {
           this.params[i][1] = value;
           found = true;
+          i++;
         } else {
           this.params.splice(i, 1);
-          continue;
         }
+      } else {
+        i++;
       }
-      i++;
     }
 
     // Otherwise, append a new name-value pair whose name is name
@@ -163,6 +212,14 @@ export class URLSearchParams {
     // tslint:disable-next-line:no-any
     thisArg?: any
   ) {
+    if (arguments.length < 1) {
+      // tslint:disable-next-line:max-line-length
+      const errMsg = `URLSearchParams.forEach requires at least 1 argument, but only ${
+        arguments.length
+      } present`;
+      throw new TypeError(errMsg);
+    }
+
     if (typeof thisArg !== "undefined") {
       callbackfn = callbackfn.bind(thisArg);
     }
