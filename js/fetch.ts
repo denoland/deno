@@ -11,27 +11,23 @@ import * as io from "./io";
 import { read, close } from "./files";
 import { Buffer } from "./buffer";
 import { FormData } from "./form_data";
-import { DenoFile } from "./file";
 
-function getMediaTypeParams(mediaType: string): Map<string, string> {
+function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
   // Forced to do so for some Map constructor param mismatch
-  mediaType
+  value
     .split(";")
     .slice(1)
     .map(s => s.trim().split("="))
     .filter(arr => arr.length > 1)
-    .map(([k, v]) => [k, v.replace(/^"([^"])"$/, "$1")])
+    .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
     .forEach(([k, v]) => params.set(k, v));
   return params;
 }
 
-function hasMediaTypeOf(s: string, type: string) {
-  return new RegExp(`^${type}[\t\s]*;?`).test(s);
+function hasHeaderValueOf(s: string, value: string) {
+  return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
-
-const getHeaderValueParams = getMediaTypeParams;
-const hasHeaderValueOf = hasMediaTypeOf;
 
 class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   bodyUsed = false;
@@ -86,8 +82,8 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   async formData(): Promise<domTypes.FormData> {
     const formData = new FormData();
     const enc = new TextEncoder();
-    if (hasMediaTypeOf(this.contentType, "multipart/form-data")) {
-      const params = getMediaTypeParams(this.contentType);
+    if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
+      const params = getHeaderValueParams(this.contentType);
       if (!params.has("boundary")) {
         // TypeError is required by spec
         throw new TypeError("multipart/form-data must provide a boundary");
@@ -100,12 +96,13 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 
       const body = await this.text();
       let bodyParts: string[];
-      const bodyTailTrimmed = body.split(closeDelimiter);
-      if (bodyTailTrimmed.length < 2) {
+      const bodyEpilogueSplit = body.split(closeDelimiter);
+      if (bodyEpilogueSplit.length < 2) {
         bodyParts = [];
       } else {
+        // discard epilogue
+        const bodyEpilogueTrimmed = bodyEpilogueSplit[0];
         // first boundary treated special due to optional prefixed \r\n
-        const bodyEpilogueTrimmed = bodyTailTrimmed[0];
         const firstBoundaryIndex = bodyEpilogueTrimmed.indexOf(dashBoundary);
         if (firstBoundaryIndex < 0) {
           throw new TypeError("Invalid boundary");
@@ -134,7 +131,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 
         const rawHeaders = headerText.split("\r\n");
         for (const rawHeader of rawHeaders) {
-          const sepIndex = rawHeader.indexOf("=");
+          const sepIndex = rawHeader.indexOf(":");
           if (sepIndex < 0) {
             continue; // Skip this header
           }
@@ -146,9 +143,11 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
           continue; // Skip unknown part
         }
         // Content-Transfer-Encoding Deprecated
-        // TODO: custom encoding (needs TextEncoder support)
         const contentDisposition = headers.get("content-disposition")!;
         const partContentType = headers.get("content-type") || "text/plain";
+        // TODO: custom charset encoding (needs TextEncoder support)
+        // const contentTypeCharset =
+        //   getHeaderValueParams(partContentType).get("charset") || "";
         if (!hasHeaderValueOf(contentDisposition, "form-data")) {
           continue; // Skip, might not be form-data
         }
@@ -162,15 +161,19 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
           const blob = new DenoBlob([enc.encode(octets)], {
             type: partContentType
           });
-          const file = new DenoFile([blob], filename);
-          formData.append(dispositionName, file, filename);
+          // TODO: based on spec
+          // https://xhr.spec.whatwg.org/#dom-formdata-append
+          // https://xhr.spec.whatwg.org/#create-an-entry
+          // Currently it does not meantion how I could pass content-type
+          // to the internally created file object...
+          formData.append(dispositionName, blob, filename);
         } else {
           formData.append(dispositionName, octets);
         }
       }
       return formData;
     } else if (
-      hasMediaTypeOf(this.contentType, "application/x-www-form-urlencoded")
+      hasHeaderValueOf(this.contentType, "application/x-www-form-urlencoded")
     ) {
       // From https://github.com/github/fetch/blob/master/fetch.js
       // Copyright (c) 2014-2016 GitHub, Inc. MIT License

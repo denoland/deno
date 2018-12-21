@@ -32,6 +32,10 @@ class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             return "text/ecmascript"
         if ".j4." in path:
             return "application/x-javascript"
+        if "multipart_form_data" in path:
+            return "multipart/form-data;boundary=boundary"
+        if "form_urlencoded" in path:
+            return "application/x-www-form-urlencoded"
         return SimpleHTTPServer.SimpleHTTPRequestHandler.guess_type(self, path)
 
 
