@@ -107,6 +107,7 @@ jobs:
       os: linux
       script:
         - cargo build -vv --release -j2
+        - cargo package
 
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
