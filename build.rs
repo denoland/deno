@@ -2,11 +2,13 @@
 
 // Run "cargo build -vv" if you want to see gn output.
 
-#![deny(warnings)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
 
 use std::env;
 use std::path::{self, Path, PathBuf};
 use std::process::Command;
+use std::process::exit;
 
 fn main() {
   let gn_mode = if cfg!(target_os = "windows") {
@@ -43,6 +45,18 @@ fn main() {
   // This helps Rust source files locate the snapshot, source map etc.
   println!("cargo:rustc-env=GN_OUT_DIR={}", gn_out_dir);
 
+  match env::var_os("CARGO_PKG_NAME") {
+    None => {
+      println!("cargo build");
+      exit(1);
+    }
+    Some(name) => {
+      println!("cargo package {:?}", name);
+      exit(1);
+    }
+  }
+
+  /*
   let gn_target;
 
   if check_only {
@@ -95,6 +109,7 @@ fn main() {
     .status()
     .expect("build.py failed");
   assert!(status.success());
+  */
 }
 
 // Utility function to make a path absolute, normalizing it to use forward

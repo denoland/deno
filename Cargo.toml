@@ -12,6 +12,18 @@ description = "A JavaScript/TypeScript VM"
 license = "MIT"
 homepage = "https://deno.land/"
 
+exclude = [
+ "build/*",
+ "build_overrides",
+ "buildtools",
+ "node_modules",
+ "testing",
+ "third_party/*",
+ "tools/clang",
+ "tools/memory",
+ "website/*",
+]
+
 [dependencies]
 atty = "=0.2.11"
 dirs = "=1.0.4"
@@ -38,3 +50,4 @@ tokio-io = "=0.1.10"
 tokio-process = "=0.2.3"
 tokio-threadpool = "=0.1.9"
 url = "=1.7.1"
+
