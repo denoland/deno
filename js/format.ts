@@ -5,9 +5,28 @@ const rootPath = (): string => {
   return cwd();
 };
 
+// this should return array of file path which has extension in 'exts'
+const findExts = (path: string, exts: string[]): string[] => {
+  const files = readDirSync(path)
+  let fileWithTargetExts = []
+  files.forEach((file) => {
+    for (let ext of exts) {
+      if (file.name.endsWith(ext)) {
+        fileWithTargetExts.push(path + '/' + file.name)
+      }
+    }
+  })
+
+  return fileWithTargetExts
+}
+
 const clangFormatPath = (): string => {
   return rootPath() + "/third_party/depot_tools/clang-format";
 };
+
+const gnFormatPath = (): string => {
+  return rootPath() + "/third_party/depot_tools/gn";
+}
 
 const joinPath = (joinSet: string[]): string => {
   return joinSet.join("/");
@@ -15,30 +34,46 @@ const joinPath = (joinSet: string[]): string => {
 
 const clangFormat = () => {
   console.log("clang Format");
+  /*
   run({
     args: [
       clangFormatPath(),
       "-i",
       "-style",
       "Google",
-    ].concat(findExts(rootPath() + '/libdeno'))
+    ].concat(findExts(rootPath() + '/libdeno', ['.cc', '.h']))
   });
+  */
 };
 
-// this should return array of file path which has extension '.cc' and '.h'
-const findExts = (path: string): string[] => {
-  const files = readDirSync(path)
-  const fileWithTargetExts = files.filter((item) => {
-    return item.name.endsWith('.cc') || item.name.endsWith('.h')
-  }).map((item) => {
-    return path + '/' + item.name
-  })
-
-  return fileWithTargetExts
-}
+const gnFilePaths = [
+  '',
+  '/build_extra/rust',
+  '/build_extra/flatbuffers',
+  '/build_extra/flatbuffers/rust',
+  '/libdeno'
+]
 
 const gnFormat = () => {
   console.log("gn Format");
+  let filesToFormat = [];
+  gnFilePaths.forEach((path) => {
+    filesToFormat = filesToFormat.concat(findExts(rootPath() + path, ['.gn', '.gni']))
+  })
+  
+  for (let file of filesToFormat) {
+    console.log(file)
+    /*
+    run({
+      args: [
+        gnFormatPath(),
+        "format",
+        file
+      ]
+      // TODO: google_env
+    });
+    */
+  }
 };
 
 const yapf = () => {
@@ -63,7 +98,8 @@ function format() {
   ]);
   const toolsPath = joinPath([rootPath(), "tools"]);
   const rustfmtConfig = joinPath([toolsPath, "rustfmt.toml"]);
-  clangFormat();
+  // clangFormat();
+  gnFormat();
 }
 
 format();
