@@ -1,8 +1,8 @@
 import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
-import parseArgs from "../index.ts";
+import { parse } from "../index.ts";
 
 test(function flagBooleanDefaultFalse() {
-    const argv = parseArgs(['moo'], {
+    const argv = parse(['moo'], {
         boolean: ['t', 'verbose'],
         default: { verbose: false, t: false }
     });
@@ -18,7 +18,7 @@ test(function flagBooleanDefaultFalse() {
 });
 
 test(function booleanGroups() {
-    const argv = parseArgs([ '-x', '-z', 'one', 'two', 'three' ], {
+    const argv = parse([ '-x', '-z', 'one', 'two', 'three' ], {
         boolean: ['x','y','z']
     });
     
@@ -40,11 +40,11 @@ test(function booleanAndAliasWithChainableApi() {
     const opts = {
         herp: { alias: 'h', boolean: true }
     };
-    const aliasedArgv = parseArgs(aliased, {
+    const aliasedArgv = parse(aliased, {
         boolean: 'herp',
         alias: { h: 'herp' }
     });
-    const propertyArgv = parseArgs(regular, {
+    const propertyArgv = parse(regular, {
         boolean: 'herp',
         alias: { h: 'herp' }
     });
@@ -65,8 +65,8 @@ test(function booleanAndAliasWithOptionsHash() {
         alias: { 'h': 'herp' },
         boolean: 'herp'
     };
-    const aliasedArgv = parseArgs(aliased, opts);
-    const propertyArgv = parseArgs(regular, opts);
+    const aliasedArgv = parse(aliased, opts);
+    const propertyArgv = parse(regular, opts);
     const expected = {
         herp: true,
         h: true,
@@ -84,9 +84,9 @@ test(function booleanAndAliasArrayWithOptionsHash() {
         alias: { 'h': ['herp', 'harp'] },
         boolean: 'h'
     };
-    const aliasedArgv = parseArgs(aliased, opts);
-    const propertyArgv = parseArgs(regular, opts);
-    const altPropertyArgv = parseArgs(alt, opts);
+    const aliasedArgv = parse(aliased, opts);
+    const propertyArgv = parse(regular, opts);
+    const altPropertyArgv = parse(alt, opts);
     const expected = {
         harp: true,
         herp: true,
@@ -105,8 +105,8 @@ test(function booleanAndAliasUsingExplicitTrue() {
         alias: { h: 'herp' },
         boolean: 'h'
     };
-    const aliasedArgv = parseArgs(aliased, opts);
-    const propertyArgv = parseArgs(regular, opts);
+    const aliasedArgv = parse(aliased, opts);
+    const propertyArgv = parse(regular, opts);
     const expected = {
         herp: true,
         h: true,
@@ -120,14 +120,14 @@ test(function booleanAndAliasUsingExplicitTrue() {
 // regression, see https://github.com/substack/node-optimist/issues/71
 // boolean and --x=true
 test(function booleanAndNonBoolean() {
-    const parsed = parseArgs(['--boool', '--other=true'], {
+    const parsed = parse(['--boool', '--other=true'], {
         boolean: 'boool'
     });
 
     assertEqual(parsed.boool, true);
     assertEqual(parsed.other, 'true');
 
-    const parsed2 = parseArgs(['--boool', '--other=false'], {
+    const parsed2 = parse(['--boool', '--other=false'], {
         boolean: 'boool'
     });
     
@@ -136,7 +136,7 @@ test(function booleanAndNonBoolean() {
 });
 
 test(function booleanParsingTrue() {
-    const parsed = parseArgs(['--boool=true'], {
+    const parsed = parse(['--boool=true'], {
         default: {
             boool: false
         },
@@ -147,7 +147,7 @@ test(function booleanParsingTrue() {
 });
 
 test(function booleanParsingFalse() {
-    const parsed = parseArgs(['--boool=false'], {
+    const parsed = parse(['--boool=false'], {
         default: {
           boool: true
         },

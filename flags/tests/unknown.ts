@@ -1,5 +1,5 @@
 import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
-import parseArgs from "../index.ts";
+import { parse } from "../index.ts";
 
 test(function booleanAndAliasIsNotUnknown() {
     const unknown = [];
@@ -14,8 +14,8 @@ test(function booleanAndAliasIsNotUnknown() {
         boolean: 'h',
         unknown: unknownFn
     };
-    const aliasedArgv = parseArgs(aliased, opts);
-    const propertyArgv = parseArgs(regular, opts);
+    const aliasedArgv = parse(aliased, opts);
+    const propertyArgv = parse(regular, opts);
 
     assertEqual(unknown, ['--derp', '-d']);
 });
@@ -26,7 +26,7 @@ test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown() {
         unknown.push(arg);
         return false;
     }
-    const argv = parseArgs(['--honk', '--tacos=good', 'cow', '-p', '55'], {
+    const argv = parse(['--honk', '--tacos=good', 'cow', '-p', '55'], {
         boolean: true,
         unknown: unknownFn
     });
@@ -50,8 +50,8 @@ test(function stringAndAliasIsNotUnkown() {
         string: 'h',
         unknown: unknownFn
     };
-    const aliasedArgv = parseArgs(aliased, opts);
-    const propertyArgv = parseArgs(regular, opts);
+    const aliasedArgv = parse(aliased, opts);
+    const propertyArgv = parse(regular, opts);
 
     assertEqual(unknown, ['--derp', '-d']);
 });
@@ -69,8 +69,8 @@ test(function defaultAndAliasIsNotUnknown() {
         alias: { 'h': 'herp' },
         unknown: unknownFn
     };
-    const aliasedArgv = parseArgs(aliased, opts);
-    const propertyArgv = parseArgs(regular, opts);
+    const aliasedArgv = parse(aliased, opts);
+    const propertyArgv = parse(regular, opts);
 
     assertEqual(unknown, []);
 });
@@ -86,7 +86,7 @@ test(function valueFollowingDoubleHyphenIsNotUnknown() {
         '--': true,
         unknown: unknownFn
     };
-    const argv = parseArgs(aliased, opts);
+    const argv = parse(aliased, opts);
 
     assertEqual(unknown, ['--bad']);
     assertEqual(argv, {

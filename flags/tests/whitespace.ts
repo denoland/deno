@@ -1,6 +1,6 @@
 import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
-import parseArgs from "../index.ts";
+import { parse } from "../index.ts";
 
 test(function whitespaceShouldBeWhitespace() {
-    assertEqual(parseArgs([ '-x', '\t' ]).x, '\t');
+    assertEqual(parse([ '-x', '\t' ]).x, '\t');
 });

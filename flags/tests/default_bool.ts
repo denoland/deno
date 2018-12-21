@@ -1,8 +1,8 @@
 import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
-import parseArgs from "../index.ts";
+import { parse } from "../index.ts";
 
 test(function booleanDefaultTrue() {
-    const argv = parseArgs([], {
+    const argv = parse([], {
         boolean: 'sometrue',
         default: { sometrue: true }
     });
@@ -10,7 +10,7 @@ test(function booleanDefaultTrue() {
 });
 
 test(function booleanDefaultFalse() {
-    const argv = parseArgs([], {
+    const argv = parse([], {
         boolean: 'somefalse',
         default: { somefalse: false }
     });
@@ -18,12 +18,12 @@ test(function booleanDefaultFalse() {
 });
 
 test(function booleanDefaultNull() {
-    const argv = parseArgs([], {
+    const argv = parse([], {
         boolean: 'maybe',
         default: { maybe: null }
     });
     assertEqual(argv.maybe, null);
-    const argv2 = parseArgs(['--maybe'], {
+    const argv2 = parse(['--maybe'], {
         boolean: 'maybe',
         default: { maybe: null }
     });

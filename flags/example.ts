@@ -1,4 +1,4 @@
 import { args } from "deno";
-import parseArgs from "./index.ts";
+import { parse } from "./index.ts";
 
-console.dir(parseArgs(args));
+console.dir(parse(args));
