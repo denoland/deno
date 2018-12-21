@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # TODO Port this to deno.
 cargo build --release -vv
+rm -rf gen gen.tar.gz
 mkdir -p gen/bundle
 cp target/release/gen/bundle/main.js gen/bundle/
 cp target/release/gen/bundle/main.js.map gen/bundle/
 cp target/release/gen/msg_generated.rs gen/
 cp target/release/gen/snapshot_deno.bin gen/
 cp target/release/obj/libdeno/libdeno.a gen/
-CARGO_PACKAGE=1 cargo package --allow-dirty -vv
+
+tar cjvf gen.tar.bz2 gen/
+#
+#tar -cf gen.tar gen/
+#bzip2 gen.tar

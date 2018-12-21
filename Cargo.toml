@@ -19,11 +19,16 @@ exclude = [
  "build_overrides",
  "buildtools",
  "node_modules",
+ "target/",
  "testing",
  "third_party/*",
  "tools/clang",
  "tools/memory",
  "website/*",
+
+ # gen.tar.bz2 for extra compression (actually necessary as crates.io has a
+ # 100mb limit. TODO rename this to target/pkg/gen
+ "gen/",
 ]
 
 [dependencies]
