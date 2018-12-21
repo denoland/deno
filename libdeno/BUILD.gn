@@ -5,20 +5,28 @@ import("//third_party/v8/gni/v8.gni")
 config("deno_config") {
   include_dirs = [ "//third_party/v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "//third_party/v8:external_config" ]
+  cflags = []
+
   if (is_debug) {
     defines = [ "DEBUG" ]
   }
+
   if (is_clang) {
-    cflags = [
+    cflags += [
       "-fcolor-diagnostics",
       "-fansi-escape-codes",
     ]
   }
+
+  if (is_win) {
+    # The `/Zl` ("omit default library name") flag makes the compiler produce
+    # object files that can link with both the static and dynamic CRT.
+    cflags += [ "/Zl" ]
+  }
 }
 
-v8_static_library("v8") {
-  public_deps = [
-    "//build/win:default_exe_manifest",
+v8_source_set("v8") {
+  deps = [
     "//third_party/v8:v8",
     "//third_party/v8:v8_libbase",
     "//third_party/v8:v8_libplatform",
@@ -31,8 +39,7 @@ v8_static_library("v8") {
 # In particular no flatbuffers, no assets, no rust, no msg handlers.
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
-v8_static_library("libdeno") {
-  configs = [ ":deno_config" ]
+v8_source_set("libdeno") {
   sources = [
     "api.cc",
     "binding.cc",
@@ -41,9 +48,20 @@ v8_static_library("libdeno") {
     "file_util.h",
     "internal.h",
   ]
-  public_deps = [
+  deps = [
     ":v8",
   ]
+  configs = [ ":deno_config" ]
+}
+
+# The cargo-driven build links with libdeno to pull in all non-rust code.
+v8_static_library("libdeno_static_lib") {
+  output_name = "libdeno"
+  deps = [
+    ":libdeno",
+    "//build/config:shared_library_deps",
+  ]
+  configs = [ ":deno_config" ]
 }
 
 v8_executable("snapshot_creator") {

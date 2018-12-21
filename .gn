@@ -30,8 +30,8 @@ default_args = {
   # for now. See http://clang.llvm.org/docs/ControlFlowIntegrity.html
   is_cfi = false
 
-  # Disabled due to CRT linking problems in Windows when using prebuilt V8.
-  # Works in other configurations.
+  # TODO(ry) Remove this so debug builds can link faster. Currently removing
+  # this breaks cargo build in debug mode in OSX.
   is_component_build = false
 
   # Enable Jumbo build for a faster build.
