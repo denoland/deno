@@ -473,6 +473,16 @@ export class Console {
 
     this.info(`${label}: ${duration}ms`);
   };
+
+  /** Writes the properties of the supplied `obj` to stdout */
+  // tslint:disable-next-line:no-any
+  table = (obj: any, options: ConsoleOptions = {}) => {
+    let rows = Object.entries(obj).map(([key, val]) => {
+      return `| ${key} | ${val} |`;
+    });
+    rows = ["| (index) | value |"].concat(rows);
+    this.printFunc(stringifyArgs([rows.join("\n")], options));
+  };
 }
 
 /**
