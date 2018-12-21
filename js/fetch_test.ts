@@ -47,6 +47,17 @@ testPerm({ net: true }, async function responseClone() {
   }
 });
 
+testPerm({ net: true }, async function fetchEmptyInvalid() {
+  let err;
+  try {
+    await fetch("");
+  } catch (err_) {
+    err = err_;
+  }
+  assertEqual(err.kind, deno.ErrorKind.InvalidUri);
+  assertEqual(err.name, "InvalidUri");
+});
+
 // TODO(ry) The following tests work but are flaky. There's a race condition
 // somewhere. Here is what one of these flaky failures looks like:
 //

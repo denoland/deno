@@ -106,6 +106,9 @@ enum ErrorKind: byte {
   HttpParse,
   HttpOther,
   TooLarge,
+
+  // custom errors
+  InvalidUri,
 }
 
 table Cwd {}

@@ -408,7 +408,11 @@ fn op_fetch(
     hyper::Body::from(Vec::from(&*data))
   };
 
-  let req = msg_util::deserialize_request(header, body);
+  let maybe_req = msg_util::deserialize_request(header, body);
+  if let Err(e) = maybe_req {
+    return odd_future(e);
+  }
+  let req = maybe_req.unwrap();
 
   if let Err(e) = state.check_net(url) {
     return odd_future(e);
