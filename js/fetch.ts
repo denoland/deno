@@ -10,6 +10,24 @@ import { Headers } from "./headers";
 import * as io from "./io";
 import { read, close } from "./files";
 import { Buffer } from "./buffer";
+import { FormData } from "./form_data";
+
+function getHeaderValueParams(value: string): Map<string, string> {
+  const params = new Map();
+  // Forced to do so for some Map constructor param mismatch
+  value
+    .split(";")
+    .slice(1)
+    .map(s => s.trim().split("="))
+    .filter(arr => arr.length > 1)
+    .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
+    .forEach(([k, v]) => params.set(k, v));
+  return params;
+}
+
+function hasHeaderValueOf(s: string, value: string) {
+  return new RegExp(`^${value}[\t\s]*;?`).test(s);
+}
 
 class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   bodyUsed = false;
@@ -60,8 +78,129 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     });
   }
 
+  // ref: https://fetch.spec.whatwg.org/#body-mixin
   async formData(): Promise<domTypes.FormData> {
-    return notImplemented();
+    const formData = new FormData();
+    const enc = new TextEncoder();
+    if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
+      const params = getHeaderValueParams(this.contentType);
+      if (!params.has("boundary")) {
+        // TypeError is required by spec
+        throw new TypeError("multipart/form-data must provide a boundary");
+      }
+      // ref: https://tools.ietf.org/html/rfc2046#section-5.1
+      const boundary = params.get("boundary")!;
+      const dashBoundary = `--${boundary}`;
+      const delimiter = `\r\n${dashBoundary}`;
+      const closeDelimiter = `${delimiter}--`;
+
+      const body = await this.text();
+      let bodyParts: string[];
+      const bodyEpilogueSplit = body.split(closeDelimiter);
+      if (bodyEpilogueSplit.length < 2) {
+        bodyParts = [];
+      } else {
+        // discard epilogue
+        const bodyEpilogueTrimmed = bodyEpilogueSplit[0];
+        // first boundary treated special due to optional prefixed \r\n
+        const firstBoundaryIndex = bodyEpilogueTrimmed.indexOf(dashBoundary);
+        if (firstBoundaryIndex < 0) {
+          throw new TypeError("Invalid boundary");
+        }
+        const bodyPreambleTrimmed = bodyEpilogueTrimmed
+          .slice(firstBoundaryIndex + dashBoundary.length)
+          .replace(/^[\s\r\n\t]+/, ""); // remove transport-padding CRLF
+        // trimStart might not be available
+        // Be careful! body-part allows trailing \r\n!
+        // (as long as it is not part of `delimiter`)
+        bodyParts = bodyPreambleTrimmed
+          .split(delimiter)
+          .map(s => s.replace(/^[\s\r\n\t]+/, ""));
+        // TODO: LWSP definition is actually trickier,
+        // but should be fine in our case since without headers
+        // we should just discard the part
+      }
+      for (const bodyPart of bodyParts) {
+        const headers = new Headers();
+        const headerOctetSeperatorIndex = bodyPart.indexOf("\r\n\r\n");
+        if (headerOctetSeperatorIndex < 0) {
+          continue; // Skip unknown part
+        }
+        const headerText = bodyPart.slice(0, headerOctetSeperatorIndex);
+        const octets = bodyPart.slice(headerOctetSeperatorIndex + 4);
+
+        // TODO: use textproto.readMIMEHeader from deno_std
+        const rawHeaders = headerText.split("\r\n");
+        for (const rawHeader of rawHeaders) {
+          const sepIndex = rawHeader.indexOf(":");
+          if (sepIndex < 0) {
+            continue; // Skip this header
+          }
+          const key = rawHeader.slice(0, sepIndex);
+          const value = rawHeader.slice(sepIndex + 1);
+          headers.set(key, value);
+        }
+        if (!headers.has("content-disposition")) {
+          continue; // Skip unknown part
+        }
+        // Content-Transfer-Encoding Deprecated
+        const contentDisposition = headers.get("content-disposition")!;
+        const partContentType = headers.get("content-type") || "text/plain";
+        // TODO: custom charset encoding (needs TextEncoder support)
+        // const contentTypeCharset =
+        //   getHeaderValueParams(partContentType).get("charset") || "";
+        if (!hasHeaderValueOf(contentDisposition, "form-data")) {
+          continue; // Skip, might not be form-data
+        }
+        const dispositionParams = getHeaderValueParams(contentDisposition);
+        if (!dispositionParams.has("name")) {
+          continue; // Skip, unknown name
+        }
+        const dispositionName = dispositionParams.get("name")!;
+        if (dispositionParams.has("filename")) {
+          const filename = dispositionParams.get("filename")!;
+          const blob = new DenoBlob([enc.encode(octets)], {
+            type: partContentType
+          });
+          // TODO: based on spec
+          // https://xhr.spec.whatwg.org/#dom-formdata-append
+          // https://xhr.spec.whatwg.org/#create-an-entry
+          // Currently it does not meantion how I could pass content-type
+          // to the internally created file object...
+          formData.append(dispositionName, blob, filename);
+        } else {
+          formData.append(dispositionName, octets);
+        }
+      }
+      return formData;
+    } else if (
+      hasHeaderValueOf(this.contentType, "application/x-www-form-urlencoded")
+    ) {
+      // From https://github.com/github/fetch/blob/master/fetch.js
+      // Copyright (c) 2014-2016 GitHub, Inc. MIT License
+      const body = await this.text();
+      try {
+        body
+          .trim()
+          .split("&")
+          .forEach(bytes => {
+            if (bytes) {
+              const split = bytes.split("=");
+              const name = split.shift()!.replace(/\+/g, " ");
+              const value = split.join("=").replace(/\+/g, " ");
+              formData.append(
+                decodeURIComponent(name),
+                decodeURIComponent(value)
+              );
+            }
+          });
+      } catch (e) {
+        throw new TypeError("Invalid form urlencoded format");
+      }
+      return formData;
+    } else {
+      throw new TypeError("Invalid form data");
+    }
   }
 
   // tslint:disable-next-line:no-any
