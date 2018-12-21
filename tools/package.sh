@@ -10,6 +10,7 @@ cp target/release/gen/snapshot_deno.bin gen/
 cp target/release/obj/libdeno/libdeno.a gen/
 
 tar cjvf gen.tar.bz2 gen/
+#rm -rf target
 #
 #tar -cf gen.tar gen/
 #bzip2 gen.tar

@@ -20,14 +20,16 @@ exclude = [
  "buildtools",
  "node_modules",
  "target/",
+ "target/debug/",
+ "target/release/",
  "testing",
  "third_party/*",
  "tools/clang",
  "tools/memory",
  "website/*",
 
- # gen.tar.bz2 for extra compression (actually necessary as crates.io has a
- # 100mb limit. TODO rename this to target/pkg/gen
+ # gen.tar.bz2 for extra compression. (Actually necessary as crates.io has a
+ # 100mb limit.) TODO(ry) rename this to target/pkg/gen
  "gen/",
 ]
 

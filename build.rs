@@ -11,8 +11,10 @@ use std::process::exit;
 use std::process::Command;
 
 fn is_packaged_goods(gn_out_path: &Path) -> bool {
-  gn_out_path.join("../../gen.tar.bz2").exists()
-    && gn_out_path.join("ninja.build").exists() == false
+  let root = gn_out_path.join("../..").canonicalize().unwrap().to_owned();
+
+  root.join("gen.tar.bz2").exists() &&
+  gn_out_path.join("ninja.build").exists() == false
 }
 
 fn main() {
@@ -55,35 +57,40 @@ fn main() {
   if !is_packaged_goods(&gn_out_path) {
     println!("normal_git_checkout");
     normal_git_checkout(&gn_out_dir, &gn_out_path, &gn_mode)
+
   } else {
     println!("is_packaged_goods");
-    // Building from a package.
-    // We load libdeno from the //gen dir created by tools/package.sh
-    // TODO create gen.tar.bz2 in gn
-
-    // Must unpack the gen.tar.bz2
-    let tarball = gn_out_path.join("gen.tar.bz2");
-    if is_packaged_goods(&gn_out_path) {
-      cargo_package(&gn_out_dir, &gn_out_path, &gn_mode);
-    } else {
-      unimplemented!("does this happen?");
-    }
+    cargo_package(&gn_out_dir, &gn_out_path, &gn_mode);
   }
 }
 
 fn cargo_package(gn_out_dir: &String, gn_out_path: &Path, gn_mode: &String) {
   // Link with libdeno.a/.lib, which includes V8.
-  let root = gn_out_path.join("../..").to_owned();
+  let root = gn_out_path.join("../..").canonicalize().unwrap().to_owned();
   let gen_dir = (&root).join("gen").to_owned();
 
-  let root_str = &root.as_os_str().to_str().unwrap();
-  let gen_dir_str = gen_dir.into_os_string().into_string().unwrap();
+  // Building from a package.
+  // We load libdeno from the //gen dir created by tools/package.sh
+  // TODO create gen.tar.bz2 in gn
 
+  // Must unpack the gen.tar.bz2
   let status = Command::new("tar")
     .arg("xvjf")
     .arg("gen.tar.bz2")
     .status()
     .expect("tar xvjf");
+
+  // To reduce size - delete the target directory.
+  /*
+  let target = root.join("target");
+  if target.exists() {
+    std::fs::remove_dir_all(target).expect("ok");
+  }
+  */
+
+  let root_str = &root.as_os_str().to_str().unwrap();
+  let gen_dir_str = gen_dir.into_os_string().into_string().unwrap();
+
   assert!(root.join("gen").exists());
 
   // This helps Rust source files locate the snapshot, source map etc.
@@ -154,6 +161,8 @@ fn normal_git_checkout(
     .status()
     .expect("build.py failed");
   assert!(status.success());
+
+  // Delete the target directory?
 
   /*
   should call ninja here.

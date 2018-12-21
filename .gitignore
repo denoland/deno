@@ -1,7 +1,7 @@
 # build
 *.swp
 /out/
-/target/
+target/
 *.pyc
 gclient_config.py_entries
 yarn.lock
