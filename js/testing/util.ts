@@ -13,19 +13,29 @@
    limitations under the License.
  */
 
-// TODO(ry) Use unknown here for parameters types.
-// tslint:disable-next-line:no-any
-export function assertEqual(actual: any, expected: any, msg?: string) {
-  if (!msg) {
-    msg = `actual: ${actual} expected: ${expected}`;
-  }
+export function assertEqual(actual: unknown, expected: unknown, msg?: string) {
   if (!equal(actual, expected)) {
+    let actualString: string;
+    let expectedString: string;
+    try {
+      actualString = String(actual);
+    } catch (e) {
+      actualString = "[Cannot display]";
+    }
+    try {
+      expectedString = String(expected);
+    } catch (e) {
+      expectedString = "[Cannot display]";
+    }
     console.error(
       "assertEqual failed. actual =",
-      actual,
+      actualString,
       "expected =",
-      expected
+      expectedString
     );
+    if (!msg) {
+      msg = `actual: ${actualString} expected: ${expectedString}`;
+    }
     throw new Error(msg);
   }
 }

@@ -17,7 +17,7 @@ import { test } from "./testing.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 
-test(async function util_equal() {
+test(function util_equal() {
   assert(util.equal("world", "world"));
   assert(!util.equal("hello", "world"));
   assert(util.equal(5, 5));
@@ -37,4 +37,36 @@ test(async function util_equal() {
       { hello: "world", hi: { there: "everyone else" } }
     )
   );
+});
+
+test(function util_assertEqual() {
+  const a = Object.create(null);
+  a.b = "foo";
+  util.assertEqual(a, a);
+});
+
+test(function util_assertEqualActualUncoercable() {
+  let didThrow = false;
+  const a = Object.create(null);
+  try {
+    util.assertEqual(a, "bar");
+  } catch (e) {
+    didThrow = true;
+    console.log(e.message);
+    assert(e.message === "actual: [Cannot display] expected: bar");
+  }
+  assert(didThrow);
+});
+
+test(function util_assertEqualExpectedUncoercable() {
+  let didThrow = false;
+  const a = Object.create(null);
+  try {
+    util.assertEqual("bar", a);
+  } catch (e) {
+    didThrow = true;
+    console.log(e.message);
+    assert(e.message === "actual: bar expected: [Cannot display]");
+  }
+  assert(didThrow);
 });
