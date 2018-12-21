@@ -54,7 +54,7 @@ export class URLSearchParams {
       throw new TypeError(errMsg);
     }
 
-    this.params.push([name, value]);
+    this.params.push([String(name), value]);
   }
 
   /** Deletes the given search parameter and its associated value,
@@ -71,6 +71,7 @@ export class URLSearchParams {
       throw new TypeError(errMsg);
     }
 
+    name = String(name);
     let i = 0;
     while (i < this.params.length) {
       if (this.params[i][0] === name) {
@@ -95,6 +96,7 @@ export class URLSearchParams {
       throw new TypeError(errMsg);
     }
 
+    name = String(name);
     const values = [];
     for (const entry of this.params) {
       if (entry[0] === name) {
@@ -118,6 +120,7 @@ export class URLSearchParams {
       throw new TypeError(errMsg);
     }
 
+    name = String(name);
     for (const entry of this.params) {
       if (entry[0] === name) {
         return entry[1];
@@ -141,6 +144,7 @@ export class URLSearchParams {
       throw new TypeError(errMsg);
     }
 
+    name = String(name);
     return this.params.some(entry => entry[0] === name);
   }
 
@@ -163,6 +167,7 @@ export class URLSearchParams {
     // If there are any name-value pairs whose name is name, in list,
     // set the value of the first such name-value pair to value
     // and remove the others.
+    name = String(name);
     let found = false;
     let i = 0;
     while (i < this.params.length) {
