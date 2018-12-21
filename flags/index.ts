@@ -18,7 +18,7 @@ const DEFAULT_OPTIONS = {
   stopEarly: false
 };
 
-export default function parseArgs(
+export function parse(
   args,
   initialOptions?: ArgParsingOptions
 ): { [key: string]: any } {

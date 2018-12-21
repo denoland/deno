@@ -1,8 +1,8 @@
 import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
-import parseArgs from "../index.ts";
+import { parse } from "../index.ts";
 
 test(function nums() {
-    const argv = parseArgs([
+    const argv = parse([
         '-x', '1234',
         '-y', '5.67',
         '-z', '1e7',
@@ -27,7 +27,7 @@ test(function nums() {
 });
 
 test(function alreadyNumber() {
-    const argv = parseArgs([ '-x', 1234, 789 ]);
+    const argv = parse([ '-x', 1234, 789 ]);
     assertEqual(argv, { x : 1234, _ : [ 789 ] });
     assertEqual(typeof argv.x, 'number');
     assertEqual(typeof argv._[0], 'number');

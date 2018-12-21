@@ -1,21 +1,21 @@
 import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
-import parseArgs from "../index.ts";
+import { parse } from "../index.ts";
 
 
 test(function _arseArgs() {
     assertEqual(
-        parseArgs([ '--no-moo' ]),
+        parse([ '--no-moo' ]),
         { moo : false, _ : [] },
     );
     assertEqual(
-        parseArgs([ '-v', 'a', '-v', 'b', '-v', 'c' ]),
+        parse([ '-v', 'a', '-v', 'b', '-v', 'c' ]),
         { v : ['a','b','c'], _ : [] },
     );
 });
  
 test(function comprehensive() {
     assertEqual(
-        parseArgs([
+        parse([
             '--name=meowmers', 'bare', '-cats', 'woo',
             '-h', 'awesome', '--multi=quux',
             '--key', 'value',
@@ -40,13 +40,13 @@ test(function comprehensive() {
 });
 
 test(function flagBoolean() {
-    const argv = parseArgs([ '-t', 'moo' ], { boolean: 't' });
+    const argv = parse([ '-t', 'moo' ], { boolean: 't' });
     assertEqual(argv, { t : true, _ : [ 'moo' ] });
     assertEqual(typeof argv.t, 'boolean');
 });
 
 test(function flagBooleanValue() {
-    const argv = parseArgs(['--verbose', 'false', 'moo', '-t', 'true'], {
+    const argv = parse(['--verbose', 'false', 'moo', '-t', 'true'], {
         boolean: [ 't', 'verbose' ],
         default: { verbose: true }
     });
@@ -62,29 +62,29 @@ test(function flagBooleanValue() {
 });
 
 test(function newlinesInParams() {
-    const args = parseArgs([ '-s', "X\nX" ])
+    const args = parse([ '-s', "X\nX" ])
     assertEqual(args, { _ : [], s : "X\nX" });
     
     // reproduce in bash:
     // VALUE="new
     // line"
     // deno program.js --s="$VALUE"
-    const args2 = parseArgs([ "--s=X\nX" ])
+    const args2 = parse([ "--s=X\nX" ])
     assertEqual(args2, { _ : [], s : "X\nX" });
 });
 
 test(function strings() {
-    const s = parseArgs([ '-s', '0001234' ], { string: 's' }).s;
+    const s = parse([ '-s', '0001234' ], { string: 's' }).s;
     assertEqual(s, '0001234');
     assertEqual(typeof s, 'string');
     
-    const x = parseArgs([ '-x', '56' ], { string: 'x' }).x;
+    const x = parse([ '-x', '56' ], { string: 'x' }).x;
     assertEqual(x, '56');
     assertEqual(typeof x, 'string');
 });
 
 test(function stringArgs() {
-    const s = parseArgs([ '  ', '  ' ], { string: '_' })._;
+    const s = parse([ '  ', '  ' ], { string: '_' })._;
     assertEqual(s.length, 2);
     assertEqual(typeof s[0], 'string');
     assertEqual(s[0], '  ');
@@ -93,15 +93,15 @@ test(function stringArgs() {
 });
 
 test(function emptyStrings() {
-    const s = parseArgs([ '-s' ], { string: 's' }).s;
+    const s = parse([ '-s' ], { string: 's' }).s;
     assertEqual(s, '');
     assertEqual(typeof s, 'string');
 
-    const str = parseArgs([ '--str' ], { string: 'str' }).str;
+    const str = parse([ '--str' ], { string: 'str' }).str;
     assertEqual(str, '');
     assertEqual(typeof str, 'string');
 
-    const letters = parseArgs([ '-art' ], {
+    const letters = parse([ '-art' ], {
         string: [ 'a', 't' ]
     });
 
@@ -112,7 +112,7 @@ test(function emptyStrings() {
 
 
 test(function stringAndAlias() {
-    const x = parseArgs([ '--str',  '000123' ], {
+    const x = parse([ '--str',  '000123' ], {
         string: 's',
         alias: { s: 'str' }
     });
@@ -122,7 +122,7 @@ test(function stringAndAlias() {
     assertEqual(x.s, '000123');
     assertEqual(typeof x.s, 'string');
 
-    const y = parseArgs([ '-s',  '000123' ], {
+    const y = parse([ '-s',  '000123' ], {
         string: 'str',
         alias: { str: 's' }
     });
@@ -135,17 +135,17 @@ test(function stringAndAlias() {
 
 test(function slashBreak() {
     assertEqual(
-        parseArgs([ '-I/foo/bar/baz' ]),
+        parse([ '-I/foo/bar/baz' ]),
         { I : '/foo/bar/baz', _ : [] }
     );
     assertEqual(
-        parseArgs([ '-xyz/foo/bar/baz' ]),
+        parse([ '-xyz/foo/bar/baz' ]),
         { x : true, y : true, z : '/foo/bar/baz', _ : [] }
     );
 });
 
 test(function alias() {
-    const argv = parseArgs([ '-f', '11', '--zoom', '55' ], {
+    const argv = parse([ '-f', '11', '--zoom', '55' ], {
         alias: { z: 'zoom' }
     });
     assertEqual(argv.zoom, 55);
@@ -154,7 +154,7 @@ test(function alias() {
 });
 
 test(function multiAlias() {
-    const argv = parseArgs([ '-f', '11', '--zoom', '55' ], {
+    const argv = parse([ '-f', '11', '--zoom', '55' ], {
         alias: { z: [ 'zm', 'zoom' ] }
     });
     assertEqual(argv.zoom, 55);
@@ -164,7 +164,7 @@ test(function multiAlias() {
 });
 
 test(function nestedDottedObjects() {
-    const argv = parseArgs([
+    const argv = parse([
         '--foo.bar', '3', '--foo.baz', '4',
         '--foo.quux.quibble', '5', '--foo.quux.o_O',
         '--beep.boop'

@@ -6,9 +6,9 @@ Command line arguments parser for Deno based on minimist
 
 ``` ts
 import { args } from "deno";
-import parseArgs from "https://deno.land/x/flags/index.ts";
+import { parse } from "https://deno.land/x/flags/index.ts";
 
-console.dir(parseArgs(args));
+console.dir(parse(args));
 ```
 
 ```
@@ -30,7 +30,7 @@ $ deno example.ts -x 3 -y 4 -n5 -abc --beep=boop foo bar baz
 
 # API
 
-## const parsedArgs = parseArgs(args, options = {});
+## const parsedArgs = parse(args, options = {});
 
 `parsedArgs._` contains all the arguments that didn't have an option associated with
 them.
