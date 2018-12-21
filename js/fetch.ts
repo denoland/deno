@@ -129,6 +129,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
         const headerText = bodyPart.slice(0, headerOctetSeperatorIndex);
         const octets = bodyPart.slice(headerOctetSeperatorIndex + 4);
 
+        // TODO: use textproto.readMIMEHeader from deno_std
         const rawHeaders = headerText.split("\r\n");
         for (const rawHeader of rawHeaders) {
           const sepIndex = rawHeader.indexOf(":");
