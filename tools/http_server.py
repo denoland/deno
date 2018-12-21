@@ -23,19 +23,19 @@ class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
                              'multipart/form-data;boundary=boundary')
             self.end_headers()
             self.wfile.write(
-                bytes(
-                    'Preamble\r\n'
-                    '--boundary\t \r\n'
-                    'Content-Disposition: form-data; name="field_1"\r\n'
-                    '\r\n'
-                    'value_1 \r\n'
-                    '\r\n--boundary\r\n'
-                    'Content-Disposition: form-data; name="field_2"; filename="file.js"\r\n'
-                    'Content-Type: text/javascript\r\n'
-                    '\r\n'
-                    'console.log("Hi")'
-                    '\r\n--boundary--\r\n'
-                    'Epilogue'))
+                bytes('Preamble\r\n'
+                      '--boundary\t \r\n'
+                      'Content-Disposition: form-data; name="field_1"\r\n'
+                      '\r\n'
+                      'value_1 \r\n'
+                      '\r\n--boundary\r\n'
+                      'Content-Disposition: form-data; name="field_2"; '
+                      'filename="file.js"\r\n'
+                      'Content-Type: text/javascript\r\n'
+                      '\r\n'
+                      'console.log("Hi")'
+                      '\r\n--boundary--\r\n'
+                      'Epilogue'))
             return
         return SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
 
