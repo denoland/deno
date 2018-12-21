@@ -1,6 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "../test_util.ts";
-import { DomIterableMixin } from "./dom_iterable.ts";
+import { DomIterableMixin } from "deno";
 
 function setup() {
   const dataSymbol = Symbol("data symbol");

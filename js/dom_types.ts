@@ -36,7 +36,7 @@ type ReferrerPolicy =
   | "origin-when-cross-origin"
   | "unsafe-url";
 export type BlobPart = BufferSource | Blob | string;
-export type FormDataEntryValue = File | string;
+export type FormDataEntryValue = DomFile | string;
 export type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
@@ -175,7 +175,10 @@ interface Event {
   readonly NONE: number;
 }
 
-export interface File extends Blob {
+/* TODO(ry) Re-expose this interface. There is currently some interference
+ * between deno's File and this one.
+ */
+export interface DomFile extends Blob {
   readonly lastModified: number;
   readonly name: string;
 }

@@ -10,7 +10,7 @@
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
 import * as domTypes from "./dom_types";
-import * as file from "./file";
+// import * as file from "./file";
 import * as formData from "./form_data";
 import * as fetchTypes from "./fetch";
 import * as headers from "./headers";
@@ -55,8 +55,12 @@ window.setInterval = timers.setInterval;
 // being used, which it cannot statically determine within this module.
 window.Blob = blob.DenoBlob;
 export type Blob = blob.DenoBlob;
-window.File = file.DenoFile;
-export type File = file.DenoFile;
+
+// TODO(ry) Do not export a class implementing the DOM, export the DOM
+// interface.
+// window.File = file.DenoFile;
+// export type File = file.DenoFile;
+
 window.URL = url.URL;
 export type URL = url.URL;
 window.URLSearchParams = urlSearchParams.URLSearchParams;

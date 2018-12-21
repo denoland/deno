@@ -322,7 +322,6 @@ function stringifyWithQuotes(
   }
 }
 
-// @internal
 export function stringifyArgs(
   // tslint:disable-next-line:no-any
   args: any[],
@@ -355,7 +354,6 @@ const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
 
 export class Console {
-  // @internal
   constructor(private printFunc: PrintFunc) {}
 
   /** Writes the arguments to stdout */
