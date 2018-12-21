@@ -1,4 +1,4 @@
-import { cwd, run } from "deno";
+import { cwd, readDirSync, run } from "deno";
 
 const rootPath = (): string => {
   // remove '/js' in end of cwd to go on root path
@@ -14,21 +14,27 @@ const joinPath = (joinSet: string[]): string => {
 };
 
 const clangFormat = () => {
-  console.log("clang_format");
+  console.log("clang Format");
   run({
     args: [
       clangFormatPath(),
       "-i",
       "-style",
       "Google",
-      findExts(rootPath + '/libdeno', ['cc', 'h'])
-    ]
+    ].concat(findExts(rootPath() + '/libdeno'))
   });
 };
 
-// this should return array of file path which has certain extensions
-const findExts = (path: string, ext: string[]): string => {
-  return ''
+// this should return array of file path which has extension '.cc' and '.h'
+const findExts = (path: string): string[] => {
+  const files = readDirSync(path)
+  const fileWithTargetExts = files.filter((item) => {
+    return item.name.endsWith('.cc') || item.name.endsWith('.h')
+  }).map((item) => {
+    return path + '/' + item.name
+  })
+
+  return fileWithTargetExts
 }
 
 const gnFormat = () => {
