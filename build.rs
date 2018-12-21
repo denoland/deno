@@ -26,11 +26,65 @@ fn main() {
   let gn_out_path = cwd.join(format!("target/{}", gn_mode));
   let gn_out_dir = normalize_path(&gn_out_path);
 
+  if cfg!(target_os = "windows") {
+    println!("cargo:rustc-link-lib=static=libdeno");
+  } else {
+    println!("cargo:rustc-link-lib=static=deno");
+  }
+
+  // Link the system libraries that libdeno and V8 depend on.
+  if cfg!(any(target_os = "macos", target_os = "freebsd")) {
+    println!("cargo:rustc-link-lib=dylib=c++");
+  } else if cfg!(target_os = "windows") {
+    for lib in vec!["dbghelp", "shlwapi", "winmm", "ws2_32"] {
+      println!("cargo:rustc-link-lib={}", lib);
+    }
+  }
+
+  match env::var_os("CARGO_PACKAGE") {
+    None => {
+      cargo_build(&gn_out_dir, &gn_out_path, &gn_mode);
+    }
+    Some(_) => {
+      cargo_package(&gn_out_dir, &gn_out_path, &gn_mode);
+    }
+  }
+}
+
+fn cargo_package(gn_out_dir: &String, gn_out_path: &Path, gn_mode: &String) {
+  // Link with libdeno.a/.lib, which includes V8.
+  let root = gn_out_path.join("../..").to_owned();
+  let gen_dir = root.join("gen").to_owned();
+
+  let root_str = root.into_os_string().into_string().unwrap();
+  let gen_dir_str = gen_dir.into_os_string().into_string().unwrap();
+
+  // This helps Rust source files locate the snapshot, source map etc.
+  println!("cargo:rustc-env=GN_OUT_DIR={}", root_str);
+
+
+  println!("cargo:rustc-link-search=native={}", gen_dir_str);
+
+
+  /*
+  println!("cargo:rustc-link-search=native=/Users/rld/src/deno/target/debug/obj/libdeno");
+  println!("cargo:rustc-link-lib=static=deno");
+  println!("cargo:rustc-link-lib=dylib=c++");
+  */
+}
+
+fn cargo_build(gn_out_dir: &String, gn_out_path: &Path, gn_mode: &String) {
   // Tell Cargo when to re-run this file. We do this first, so these directives
   // can take effect even if something goes wrong later in the build process.
   println!("cargo:rerun-if-env-changed=DENO_BUILD_PATH");
   // TODO: this is obviously not appropriate here.
   println!("cargo:rerun-if-env-changed=APPVEYOR_REPO_COMMIT");
+
+  // Link with libdeno.a/.lib, which includes V8.
+  println!("cargo:rustc-link-search=native={}/obj/libdeno", gn_out_dir);
+
+  // This helps Rust source files locate the snapshot, source map etc.
+  println!("cargo:rustc-env=GN_OUT_DIR={}", gn_out_dir);
 
   // Detect if we're being invoked by the rust language server (RLS).
   // Unfortunately we can't detect whether we're being run by `cargo check`.
@@ -42,21 +96,6 @@ fn main() {
     .map(|s| s.starts_with("rls"))
     .unwrap_or(false);
 
-  // This helps Rust source files locate the snapshot, source map etc.
-  println!("cargo:rustc-env=GN_OUT_DIR={}", gn_out_dir);
-
-  match env::var_os("CARGO_PKG_NAME") {
-    None => {
-      println!("cargo build");
-      exit(1);
-    }
-    Some(name) => {
-      println!("cargo package {:?}", name);
-      exit(1);
-    }
-  }
-
-  /*
   let gn_target;
 
   if check_only {
@@ -71,23 +110,6 @@ fn main() {
   } else {
     // "Full" (non-RLS) build.
     gn_target = "deno_deps";
-
-    // Link with libdeno.a/.lib, which includes V8.
-    println!("cargo:rustc-link-search=native={}/obj/libdeno", gn_out_dir);
-    if cfg!(target_os = "windows") {
-      println!("cargo:rustc-link-lib=static=libdeno");
-    } else {
-      println!("cargo:rustc-link-lib=static=deno");
-    }
-
-    // Link the system libraries that libdeno and V8 depend on.
-    if cfg!(any(target_os = "macos", target_os = "freebsd")) {
-      println!("cargo:rustc-link-lib=dylib=c++");
-    } else if cfg!(target_os = "windows") {
-      for lib in vec!["dbghelp", "shlwapi", "winmm", "ws2_32"] {
-        println!("cargo:rustc-link-lib={}", lib);
-      }
-    }
   }
 
   if !gn_out_path.join("build.ninja").exists() {
@@ -109,7 +131,6 @@ fn main() {
     .status()
     .expect("build.py failed");
   assert!(status.success());
-  */
 }
 
 // Utility function to make a path absolute, normalizing it to use forward

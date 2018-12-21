@@ -12,6 +12,7 @@ description = "A JavaScript/TypeScript VM"
 license = "MIT"
 homepage = "https://deno.land/"
 
+#include = [ "gen" ]
 exclude = [
  "build/*",
  "build_overrides",
