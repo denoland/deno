@@ -180,7 +180,16 @@ impl DenoDir {
     let p = Path::new(&filename);
     let media_type_filename = [&filename, ".mime"].concat();
     let mt = Path::new(&media_type_filename);
-    let source_code = fs::read(p)?;
+    let source_code = match fs::read(p) {
+      Err(e) => {
+        if e.kind() == std::io::ErrorKind::NotFound {
+          return Ok(None);
+        } else {
+          return Err(e.into());
+        }
+      }
+      Ok(c) => c,
+    };
     // .mime file might not exists
     // this is okay for local source: maybe_content_type_str will be None
     let maybe_content_type_string = fs::read_to_string(&mt).ok();
@@ -212,16 +221,13 @@ impl DenoDir {
         "fetch local or reload {} is_module_remote {}",
         module_name, is_module_remote
       );
-      match self.fetch_local_source(&module_name, &filename) {
-        Ok(Some(output)) => {
+      match self.fetch_local_source(&module_name, &filename)? {
+        Some(output) => {
           debug!("found local source ");
           return Ok(output);
         }
-        Ok(None) => {
-          debug!("NOT found local source ");
-        }
-        Err(err) => {
-          debug!(" Got Error from fetch_local_source {}", err);
+        None => {
+          debug!("fetch_local_source returned None");
         }
       }
     }
