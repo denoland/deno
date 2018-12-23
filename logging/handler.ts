@@ -1,4 +1,4 @@
-import { getLevelByName } from "./levels";
+import { getLevelByName } from "./levels.ts";
 
 export class BaseHandler {
   level: number;

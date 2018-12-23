@@ -1,5 +1,5 @@
 import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
-import * as path from "./index";
+import * as path from "./index.ts";
 
 const backslashRE = /\\/g;
 

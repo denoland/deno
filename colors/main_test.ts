@@ -1,6 +1,6 @@
 import { assertEqual, test } from "https://deno.land/x/testing/testing.ts";
-import { color } from "./main";
-import "example";
+import { color } from "main.ts";
+import "example.ts";
 
 test(function singleColor() {
   assertEqual(color.red("Hello world"), "[31mHello world[39m");

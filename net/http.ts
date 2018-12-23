@@ -1,8 +1,8 @@
 import { listen, Conn, toAsyncIterator, Reader, copy } from "deno";
 import { BufReader, BufState, BufWriter } from "./bufio.ts";
 import { TextProtoReader } from "./textproto.ts";
-import { STATUS_TEXT } from "./http_status";
-import { assert } from "./util";
+import { STATUS_TEXT } from "./http_status.ts";
+import { assert } from "./util.ts";
 
 interface Deferred {
   promise: Promise<{}>;

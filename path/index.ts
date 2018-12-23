@@ -11,9 +11,9 @@ import {
   CHAR_BACKWARD_SLASH,
   CHAR_COLON,
   CHAR_QUESTION_MARK
-} from "./constants";
+} from "./constants.ts";
 import { cwd, env, platform } from "deno";
-import { FormatInputPathObject, ParsedPath } from "./interface";
+import { FormatInputPathObject, ParsedPath } from "./interface.ts";
 
 function assertPath(path: string) {
   if (typeof path !== "string") {
