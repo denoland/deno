@@ -10,7 +10,7 @@ import {
   ServerRequest,
   setContentLength,
   Response
-} from "./http";
+} from "./http.ts";
 import { cwd, DenoError, ErrorKind, args, stat, readDir, open } from "deno";
 
 const dirViewerTemplate = `

@@ -2,7 +2,7 @@
 // Ported from https://github.com/browserify/path-browserify/
 
 import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
-import * as path from "./index";
+import * as path from "./index.ts";
 
 test(function isAbsolute() {
   assertEqual(path.posix.isAbsolute("/home/foo"), true);
