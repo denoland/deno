@@ -66,8 +66,10 @@ testPerm({ net: true }, async function fetchMultipartFormDataSuccess() {
   assert(formData.has("field_1"));
   assertEqual(formData.get("field_1").toString(), "value_1 \r\n");
   assert(formData.has("field_2"));
+  /* TODO(ry) Re-enable this test once we bring back the global File type.
   const file = formData.get("field_2") as File;
   assertEqual(file.name, "file.js");
+  */
   // Currently we cannot read from file...
 });
 

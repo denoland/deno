@@ -1,9 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+import { Console, libdeno, stringifyArgs, inspect } from "deno";
 import { test, assert, assertEqual } from "./test_util.ts";
-import { stringifyArgs, inspect } from "./console.ts";
 
-import { Console } from "./console.ts";
-import { libdeno } from "./libdeno";
 const console = new Console(libdeno.print);
 
 // tslint:disable-next-line:no-any

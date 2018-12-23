@@ -13,43 +13,41 @@
    limitations under the License.
  */
 
-import { test } from "./testing.ts";
-import { assert } from "./util.ts";
-import * as util from "./util.ts";
+import { test, assert, assertEqual, equal } from "./testing.ts";
 
-test(function util_equal() {
-  assert(util.equal("world", "world"));
-  assert(!util.equal("hello", "world"));
-  assert(util.equal(5, 5));
-  assert(!util.equal(5, 6));
-  assert(util.equal(NaN, NaN));
-  assert(util.equal({ hello: "world" }, { hello: "world" }));
-  assert(!util.equal({ world: "hello" }, { hello: "world" }));
+test(function testingEqual() {
+  assert(equal("world", "world"));
+  assert(!equal("hello", "world"));
+  assert(equal(5, 5));
+  assert(!equal(5, 6));
+  assert(equal(NaN, NaN));
+  assert(equal({ hello: "world" }, { hello: "world" }));
+  assert(!equal({ world: "hello" }, { hello: "world" }));
   assert(
-    util.equal(
+    equal(
       { hello: "world", hi: { there: "everyone" } },
       { hello: "world", hi: { there: "everyone" } }
     )
   );
   assert(
-    !util.equal(
+    !equal(
       { hello: "world", hi: { there: "everyone" } },
       { hello: "world", hi: { there: "everyone else" } }
     )
   );
 });
 
-test(function util_assertEqual() {
+test(function testingAssertEqual() {
   const a = Object.create(null);
   a.b = "foo";
-  util.assertEqual(a, a);
+  assertEqual(a, a);
 });
 
-test(function util_assertEqualActualUncoercable() {
+test(function testingAssertEqualActualUncoercable() {
   let didThrow = false;
   const a = Object.create(null);
   try {
-    util.assertEqual(a, "bar");
+    assertEqual(a, "bar");
   } catch (e) {
     didThrow = true;
     console.log(e.message);
@@ -58,11 +56,11 @@ test(function util_assertEqualActualUncoercable() {
   assert(didThrow);
 });
 
-test(function util_assertEqualExpectedUncoercable() {
+test(function testingAssertEqualExpectedUncoercable() {
   let didThrow = false;
   const a = Object.create(null);
   try {
-    util.assertEqual("bar", a);
+    assertEqual("bar", a);
   } catch (e) {
     didThrow = true;
     console.log(e.message);

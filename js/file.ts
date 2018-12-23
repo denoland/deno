@@ -1,8 +1,12 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// TODO Rename this file to js/dom_file.ts it's currently too similarly named to
+// js/files.ts
+
 import * as domTypes from "./dom_types";
 import * as blob from "./blob";
 
-export class DenoFile extends blob.DenoBlob implements domTypes.File {
+// TODO Rename this to DomFileImpl
+export class DenoFile extends blob.DenoBlob implements domTypes.DomFile {
   lastModified: number;
   name: string;
 
