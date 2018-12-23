@@ -546,7 +546,7 @@ fn filter_shebang(code: Vec<u8>) -> Vec<u8> {
 mod tests {
   use super::*;
   use tempfile::TempDir;
-  use tokio_util;
+  use crate::tokio_util;
 
   fn test_setup() -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
@@ -755,7 +755,7 @@ mod tests {
 
   #[test]
   fn test_fetch_source_1() {
-    use tokio_util;
+    use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();

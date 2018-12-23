@@ -49,6 +49,7 @@ template("rust_crate") {
                            "crate_type",
                            "crate_version",
                            "deps",
+                           "edition",
                            "inputs",
                            "features",
                            "is_test",
@@ -60,6 +61,9 @@ template("rust_crate") {
 
   if (!defined(crate_name)) {
     crate_name = target_name
+  }
+  if (!defined(edition)) {
+    edition = "2015"
   }
   if (!defined(crate_type)) {
     crate_type = "rlib"
@@ -171,6 +175,7 @@ template("rust_crate") {
     args += [
       "rustc",
       rebase_path(source_root, root_build_dir),
+      "--edition=$edition",
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
       "--emit=$emit_type,dep-info",
@@ -241,6 +246,7 @@ template("rust_executable") {
 
   rust_crate(bin_name) {
     crate_type = "bin"
+    edition = "2018"
     forward_variables_from(invoker, "*")
   }
 
