@@ -58,13 +58,14 @@ before_script:
 - |-
   sccache --start-server
   unset AWS_SECRET_ACCESS_KEY
+- set -e
 
 # Default script for release builds.
-script: |-
-  ./tools/lint.py
-  ./tools/test_format.py
-  ./tools/build.py -C target/release -j2
-  DENO_BUILD_MODE=release ./tools/test.py
+script:
+- ./tools/lint.py
+- ./tools/test_format.py
+- ./tools/build.py -C target/release -j2
+- DENO_BUILD_MODE=release ./tools/test.py
 
 jobs:
   fast_finish: true
@@ -77,7 +78,6 @@ jobs:
       deploy:
       - &release_provider
         provider: releases
-        script:
         api_key: &github-token
           secure: RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps=
         file: "target/release/deno_${TRAVIS_OS_NAME}_x64.gz"
@@ -106,7 +106,7 @@ jobs:
     - name: "cargo release linux"
       os: linux
       script:
-        - cargo build -vv --release -j2
+      - cargo build -vv --release -j2
 
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
@@ -116,12 +116,11 @@ jobs:
     - name: "lsan debug linux"
       os: linux
       script:
-        - |-
-          echo is_asan=true >> target/debug/args.gn
-          echo is_lsan=true >> target/debug/args.gn
-          # Call gn gen again to make sure new args are recognized.
-          third_party/depot_tools/gn gen target/debug
-          export ASAN_OPTIONS=detect_leaks=1
-          ./tools/build.py test_cc -j2
-          ./target/debug/test_cc
+      - echo is_asan=true >> target/debug/args.gn
+      - echo is_lsan=true >> target/debug/args.gn
+      # Call gn gen again to make sure new args are recognized.
+      - third_party/depot_tools/gn gen target/debug
+      - export ASAN_OPTIONS=detect_leaks=1
+      - ./tools/build.py test_cc -j2
+      - ./target/debug/test_cc
 
