@@ -46,7 +46,8 @@ code. Example code has been posted to
 
 The resources table was added to abstract various types of I/O streams and other
 allocated state. A resource is an integer identifier which maps to some Rust
-object. It can be used with various ops, particularly read and write.   
+object. It can be used with various ops, particularly read and write.
+
 Changes since v0.1.12:
 
 - First pass at running subprocesses (#1156)
