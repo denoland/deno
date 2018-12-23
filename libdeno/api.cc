@@ -154,7 +154,9 @@ int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
 
   v8::Local<v8::Value> args[1];
   args[0] = deno::ImportBuf(d, buf);
-  recv_->Call(context->Global(), 1, args);
+  v8::MaybeLocal<v8::Value> v =
+      recv_->Call(context, context->Global(), 1, args);
+  CHECK(!v.IsEmpty());
 
   if (try_catch.HasCaught()) {
     deno::HandleException(context, try_catch.Exception());
