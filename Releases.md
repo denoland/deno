@@ -17,7 +17,7 @@ https://github.com/denoland/deno_install
 - Expose TooLarge error code for buffers (#1298)
 
 ### v0.2.2 / 2018.12.07
-    
+
 - Don't crash when .mime file not exist in cache (#1291)
 - Process source maps in Rust instead of JS (#1280)
 - Use alternate TextEncoder/TextDecoder implementation (#1281)
@@ -46,8 +46,7 @@ code. Example code has been posted to
 
 The resources table was added to abstract various types of I/O streams and other
 allocated state. A resource is an integer identifier which maps to some Rust
-object. It can be used with various ops, particularly read and write.
-    
+object. It can be used with various ops, particularly read and write.   
 Changes since v0.1.12:
 
 - First pass at running subprocesses (#1156)
@@ -64,7 +63,7 @@ Changes since v0.1.12:
 - build: Use target/ instead of out/ (#1153)
 - Support repl multiline input (#1165)
 
-### v0.1.11 /  2018.11.05
+### v0.1.11 / 2018.11.05
 
 - Performance and stability improvements on all platforms.
 - Add repl (#998)
@@ -81,8 +80,8 @@ Changes since v0.1.12:
 - Add URLSearchParams (#1049)
 - Implement clone for FetchResponse (#1054)
 - Use content-type headers when importing from URLs. (#1020)
-- Use checkJs option, JavaScript will be type checked and users can
-  supply JSDoc type annotations that will be enforced by Deno (#1068)
+- Use checkJs option, JavaScript will be type checked and users can supply JSDoc
+  type annotations that will be enforced by Deno (#1068)
 - Add separate http/https cache dirs to DENO_DIR (#971)
 - Support https in fetch. (#1100)
 - Add chmod/chmodSync on unix (#1088)
@@ -117,14 +116,15 @@ Working towards https://github.com/denoland/deno/milestone/2 We expect v0.2 to
 be released in last October or early November.
 
 Changes since v0.1.7:
+
 - Fix promise reject issue (#936)
 - Add --types command line flag.
 - Add metrics()
 - Add redirect follow feature #934
 - Fix clearTimer bug #942
 - Improve error printing #935
-- Expose I/O interfaces Closer, Seeker, ReaderCloser, WriteCloser,
-  ReadSeeker, WriteSeeker, ReadWriteCloser, ReadWriteSeeker
+- Expose I/O interfaces Closer, Seeker, ReaderCloser, WriteCloser, ReadSeeker,
+  WriteSeeker, ReadWriteCloser, ReadWriteSeeker
 - Fix silent death on double await #919
 - Add Conn.closeRead() and Conn.closeWrite() #903
 
@@ -133,16 +133,14 @@ Changes since v0.1.7:
 - Improve fetch headers (#853)
 - Add deno.truncate (#805)
 - Add copyFile/copyFileSync (#863)
-- Limit depth of output in console.log for nested objects, and add
-  console.dir (#826)
+- Limit depth of output in console.log for nested objects, and add console.dir
+  (#826)
 - Guess extensions on extension not provided (#859)
-- Renames:
-  deno.platform -> deno.platform.os
-  deno.arch -> deno.platform.arch
+- Renames: deno.platform -> deno.platform.os deno.arch -> deno.platform.arch
 - Upgrade TS to 3.0.3
 - Add readDirSync(), readDir()
-- Add support for TCP servers and clients. (#884)
-  Adds deno.listen(), deno.dial(), deno.Listener and deno.Conn.
+- Add support for TCP servers and clients. (#884) Adds deno.listen(),
+  deno.dial(), deno.Listener and deno.Conn.
 
 ### v0.1.6 / 2018.09.28
 
@@ -175,10 +173,9 @@ Changes since v0.1.7:
 ### v0.1.4 / 2018.09.12
 
 - Support headers in fetch()
-- Adds many async fs functions:
-  deno.rename() deno.remove(), deno.removeAll(), deno.removeSync(),
-  deno.removeAllSync(), deno.mkdir(), deno.stat(), deno.lstat()
-  deno.readFile() and deno.writeFile().
+- Adds many async fs functions: deno.rename() deno.remove(), deno.removeAll(),
+  deno.removeSync(), deno.removeAllSync(), deno.mkdir(), deno.stat(),
+  deno.lstat() deno.readFile() and deno.writeFile().
 - Add mode in FileInfo
 - Access error codes via error.kind
 - Check --allow-net permissions when using fetch()
@@ -198,6 +195,7 @@ http. Additionally we are working on CI, release, and benchmarking
 infrastructure to scale development.
 
 Changes since v0.1.2:
+
 - Fixes module resolution error #645
 - Better flag parsing
 - lStatSync -> lstatSync
