@@ -10,7 +10,6 @@
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
 import * as domTypes from "./dom_types";
-// import * as file from "./file";
 import * as formData from "./form_data";
 import * as fetchTypes from "./fetch";
 import * as headers from "./headers";
