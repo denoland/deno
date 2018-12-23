@@ -11,6 +11,7 @@ type Constructor<T = {}> = new (...args: any[]) => T;
 /** Mixes in a DOM iterable methods into a base class, assumes that there is
  * a private data iterable that is part of the base class, located at
  * `[dataSymbol]`.
+ * TODO Don't expose DomIterableMixin from "deno" namespace.
  */
 export function DomIterableMixin<K, V, TBase extends Constructor>(
   // tslint:disable-next-line:variable-name

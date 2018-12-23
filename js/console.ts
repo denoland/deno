@@ -322,6 +322,7 @@ function stringifyWithQuotes(
   }
 }
 
+/** TODO Do not expose this from "deno" namespace. */
 export function stringifyArgs(
   // tslint:disable-next-line:no-any
   args: any[],
@@ -353,6 +354,7 @@ type PrintFunc = (x: string, isErr?: boolean) => void;
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
 
+/** TODO Do not expose this from "deno". */
 export class Console {
   constructor(private printFunc: PrintFunc) {}
 

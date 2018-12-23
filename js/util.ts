@@ -109,7 +109,9 @@ export interface Deferred {
   reject: Function;
 }
 
-/** Create a wrapper around a promise that could be resolved externally. */
+/** Create a wrapper around a promise that could be resolved externally.
+ * TODO Do not expose this from "deno" namespace.
+ */
 export function deferred(): Deferred {
   let resolve: Function | undefined;
   let reject: Function | undefined;
