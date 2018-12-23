@@ -42,6 +42,8 @@ main_extern = [
   "$rust_build:tokio_process",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
+  "$rust_build:kernel32",
+  "$rust_build:winapi",
   "//build_extra/flatbuffers/rust:flatbuffers",
 ]
 
