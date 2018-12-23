@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have a one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.2.4 / 2018.12.23
+
+- "cargo build" support (#1369 #1296 #1377 #1379)
+- Remove support for extensionless import (#1396)
+- Upgrade V8 to 7.2.502.16 (#1403)
+- make stdout unbuffered (#1355)
+- Implement `Body.formData` for fetch (#1393)
+- Improve handling of non-coercable objects in assertEqual (#1385)
+- Avoid fetch segfault on empty Uri (#1394)
+- Expose deno.inspect (#1378)
+- Add illegal header name and value guards (#1375)
+- Fix URLSearchParams set() and constructor() (#1368)
+- Remove prebuilt v8 support (#1369)
+- Enable jumbo build in release. (#1362)
+- Add URL implementation (#1359)
+- Add console.count and console.time (#1358)
+- runtime arg check `URLSearchParams` (#1390)
+
 ### v0.2.3 / 2018.12.14
 
 - console.assert should not throw error (#1335)
