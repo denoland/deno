@@ -2,16 +2,18 @@
 
 // This test is executed as part of tools/test.py
 // But it can also be run manually: ./target/debug/deno js/unit_tests.ts
-import "../website/app_test.js";
+
 import "./blob_test.ts";
 import "./buffer_test.ts";
 import "./chmod_test.ts";
 import "./compiler_test.ts";
 import "./console_test.ts";
 import "./copy_file_test.ts";
-import "./dir_test";
+import "./dir_test.ts";
 import "./fetch_test.ts";
-import "./file_test.ts";
+// TODO The global "File" has been temporarily disabled. See the note in
+// js/globals.ts
+// import "./file_test.ts";
 import "./files_test.ts";
 import "./form_data_test.ts";
 import "./headers_test.ts";
@@ -37,3 +39,5 @@ import "./truncate_test.ts";
 import "./url_test.ts";
 import "./url_search_params_test.ts";
 import "./write_file_test.ts";
+
+// TODO import "../website/app_test.js";
