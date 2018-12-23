@@ -56,9 +56,6 @@ class DenoIsolate {
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   std::string last_exception_;
   v8::Persistent<v8::Function> recv_;
-  v8::Persistent<v8::Function> global_error_handler_;
-  v8::Persistent<v8::Function> promise_reject_handler_;
-  v8::Persistent<v8::Function> promise_error_examiner_;
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Persistent<v8::ArrayBuffer> shared_ab_;
