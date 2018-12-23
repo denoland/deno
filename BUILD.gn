@@ -20,11 +20,13 @@ group("default") {
 main_extern = [
   "$rust_build:atty",
   "$rust_build:dirs",
+  "$rust_build:flatbuffers",
   "$rust_build:futures",
   "$rust_build:getopts",
   "$rust_build:http",
   "$rust_build:hyper",
   "$rust_build:hyper_rustls",
+  "$rust_build:kernel32",
   "$rust_build:lazy_static",
   "$rust_build:libc",
   "$rust_build:log",
@@ -42,9 +44,7 @@ main_extern = [
   "$rust_build:tokio_process",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
-  "$rust_build:kernel32",
   "$rust_build:winapi",
-  "//build_extra/flatbuffers/rust:flatbuffers",
 ]
 
 ts_sources = [
