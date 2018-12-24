@@ -100,8 +100,8 @@ class FormDataBase {
 }
 
 // tslint:disable-next-line:variable-name
-export const FormData = DomIterableMixin<
+export class FormData extends DomIterableMixin<
   string,
   domTypes.FormDataEntryValue,
   typeof FormDataBase
->(FormDataBase, dataSymbol);
+>(FormDataBase, dataSymbol) {}
