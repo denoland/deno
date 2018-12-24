@@ -137,3 +137,17 @@ export function isTypedArray(x: unknown): x is TypedArray {
 export function isObject(o: unknown): o is object {
   return o != null && typeof o === "object";
 }
+
+// @internal
+export function requiredArguments(
+  name: string,
+  length: number,
+  required: number
+): void {
+  if (length < required) {
+    const errMsg = `${name} requires at least ${required} argument${
+      required === 1 ? "" : "s"
+    }, but only ${length} present`;
+    throw new TypeError(errMsg);
+  }
+}
