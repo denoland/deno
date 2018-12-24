@@ -18,6 +18,9 @@ interface Libdeno {
 
   shared: ArrayBuffer;
 
+  /* tslint:disable-next-line:no-any */
+  eval(code: string): any[];
+
   setGlobalErrorHandler: (
     handler: (
       message: string,

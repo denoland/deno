@@ -146,3 +146,34 @@ global.Shared = () => {
   ui8[1] = 43;
   ui8[2] = 44;
 };
+
+global.ExecuteInThisContext = () => {
+  const [result, err] = libdeno.eval("let a = 1; a");
+  assert(result === 1);
+  assert(!err);
+  const [result2, err2] = libdeno.eval("a = a + 1; a");
+  assert(result2 === 2);
+  assert(!err2);
+};
+
+global.ExecuteInThisContextError = () => {
+  const [result, err, isNativeError] = libdeno.eval("not_a_variable");
+  assert(!result);
+  assert(!!err);
+  assert(err.message === "ReferenceError: not_a_variable is not defined");
+  assert(isNativeError);
+
+  const [result2, err2, isNativeError2] = libdeno.eval("throw 1");
+  assert(!result2);
+  assert(!!err2);
+  console.log(err2);
+  assert(err2 === 1);
+  assert(!isNativeError2); // not a native error
+
+  const [result3, err3, isNativeError3] =
+    libdeno.eval("class AError extends Error {}; throw new AError('e')");
+  assert(!result3);
+  assert(!!err3);
+  assert(err3.message === "Error: e");
+  assert(isNativeError3); // extend from native error, still native error
+};

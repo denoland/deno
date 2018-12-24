@@ -115,6 +115,12 @@ class Repl(object):
         assertEqual(err, '')
         assertEqual(code, 0)
 
+    def test_lexical_scoped_variable(self):
+        out, err, code = self.input("let a = 123;", "a")
+        assertEqual(out, 'undefined\n123\n')
+        assertEqual(err, '')
+        assertEqual(code, 0)
+
 
 def assertEqual(left, right):
     if left != right:

@@ -7,6 +7,7 @@ import { close } from "./files";
 import * as dispatch from "./dispatch";
 import { exit } from "./os";
 import { globalEval } from "./global_eval";
+import { libdeno } from "./libdeno";
 
 const window = globalEval("this");
 
@@ -83,8 +84,17 @@ export async function replLoop(): Promise<void> {
 
 function evaluate(code: string): void {
   try {
-    const result = eval.call(window, code); // FIXME use a new scope.
-    console.log(result);
+    // TODO: use sandbox in the future
+    const [result, err, isNativeError] = libdeno.eval(code);
+    if (err === null) {
+      console.log(result);
+    } else {
+      if (isNativeError) {
+        console.error(err.message);
+      } else {
+        console.error("Thrown:", err);
+      }
+    }
   } catch (err) {
     if (err instanceof Error) {
       console.error(`${err.constructor.name}: ${err.message}`);

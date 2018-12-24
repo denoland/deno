@@ -59,6 +59,7 @@ class DenoIsolate {
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Persistent<v8::ArrayBuffer> shared_ab_;
+  v8::Persistent<v8::Context> repl_context_;
 };
 
 class UserDataScope {
@@ -88,9 +89,14 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
+void ExecuteInThisContext(const v8::FunctionCallbackInfo<v8::Value>& args);
 static intptr_t external_references[] = {
-    reinterpret_cast<intptr_t>(Print), reinterpret_cast<intptr_t>(Recv),
-    reinterpret_cast<intptr_t>(Send), reinterpret_cast<intptr_t>(Shared), 0};
+    reinterpret_cast<intptr_t>(Print),
+    reinterpret_cast<intptr_t>(Recv),
+    reinterpret_cast<intptr_t>(Send),
+    reinterpret_cast<intptr_t>(Shared),
+    reinterpret_cast<intptr_t>(ExecuteInThisContext),
+    0};
 
 static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
 
