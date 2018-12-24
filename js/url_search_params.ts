@@ -1,4 +1,4 @@
-import { requiredArguments } from './util';
+import { requiredArguments } from "./util";
 
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 export class URLSearchParams {
@@ -48,7 +48,7 @@ export class URLSearchParams {
    *       searchParams.append('name', 'second');
    */
   append(name: string, value: string): void {
-    requiredArguments('URLSearchParams.append', arguments.length, 2);
+    requiredArguments("URLSearchParams.append", arguments.length, 2);
     this.params.push([String(name), value]);
   }
 
@@ -58,7 +58,7 @@ export class URLSearchParams {
    *       searchParams.delete('name');
    */
   delete(name: string): void {
-    requiredArguments('URLSearchParams.delete', arguments.length, 1);
+    requiredArguments("URLSearchParams.delete", arguments.length, 1);
     name = String(name);
     let i = 0;
     while (i < this.params.length) {
@@ -76,7 +76,7 @@ export class URLSearchParams {
    *       searchParams.getAll('name');
    */
   getAll(name: string): string[] {
-    requiredArguments('URLSearchParams.getAll', arguments.length, 1);
+    requiredArguments("URLSearchParams.getAll", arguments.length, 1);
     name = String(name);
     const values = [];
     for (const entry of this.params) {
@@ -93,7 +93,7 @@ export class URLSearchParams {
    *       searchParams.get('name');
    */
   get(name: string): string | null {
-    requiredArguments('URLSearchParams.get', arguments.length, 1);
+    requiredArguments("URLSearchParams.get", arguments.length, 1);
     name = String(name);
     for (const entry of this.params) {
       if (entry[0] === name) {
@@ -110,7 +110,7 @@ export class URLSearchParams {
    *       searchParams.has('name');
    */
   has(name: string): boolean {
-    requiredArguments('URLSearchParams.has', arguments.length, 1);
+    requiredArguments("URLSearchParams.has", arguments.length, 1);
     name = String(name);
     return this.params.some(entry => entry[0] === name);
   }
@@ -123,7 +123,7 @@ export class URLSearchParams {
    *       searchParams.set('name', 'value');
    */
   set(name: string, value: string): void {
-    requiredArguments('URLSearchParams.set', arguments.length, 2);
+    requiredArguments("URLSearchParams.set", arguments.length, 2);
 
     // If there are any name-value pairs whose name is name, in list,
     // set the value of the first such name-value pair to value
@@ -178,7 +178,7 @@ export class URLSearchParams {
     // tslint:disable-next-line:no-any
     thisArg?: any
   ) {
-    requiredArguments('URLSearchParams.forEach', arguments.length, 1);
+    requiredArguments("URLSearchParams.forEach", arguments.length, 1);
 
     if (typeof thisArg !== "undefined") {
       callbackfn = callbackfn.bind(thisArg);
