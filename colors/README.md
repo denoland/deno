@@ -6,8 +6,8 @@ inspired by packages like [chalk](https://www.npmjs.com/package/chalk) and
 
 ## Usage
 
-The main modules exports a single function name `color` which is a function
-that provides chaining to stack colors. Basic usage looks like this:
+The main modules exports a single function name `color` which is a function that
+provides chaining to stack colors. Basic usage looks like this:
 
 ```ts
 import { color } from "https://deno.land/x/colors/main.ts";
@@ -18,8 +18,8 @@ console.log(color.bgBlue.red.bold("Hello world!"));
 ## TODO
 
 - Currently, it just assumes it is running in an environment that supports ANSI
-  escape code terminal coloring. It should actually detect, specifically
-  windows and adjust properly.
+  escape code terminal coloring. It should actually detect, specifically windows
+  and adjust properly.
 
 - Test coverage is very basic at the moment.
 
