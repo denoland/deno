@@ -66,10 +66,14 @@ const char* ToCString(const v8::String::Utf8Value& value) {
   return *value ? *value : "<string conversion failed>";
 }
 
-std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
-                                  v8::Local<v8::Value> exception) {
+static inline v8::Local<v8::Boolean> v8_bool(bool v) {
+  return v8::Boolean::New(v8::Isolate::GetCurrent(), v);
+}
+
+v8::Local<v8::Object> EncodeExceptionAsObject(v8::Local<v8::Context> context,
+                                              v8::Local<v8::Value> exception) {
   auto* isolate = context->GetIsolate();
-  v8::HandleScope handle_scope(isolate);
+  v8::EscapableHandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
   auto message = v8::Exception::CreateMessage(isolate, exception);
@@ -140,7 +144,16 @@ std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
   }
 
   CHECK(json_obj->Set(context, v8_str("frames"), frames).FromJust());
+  json_obj = handle_scope.Escape(json_obj);
+  return json_obj;
+}
 
+std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
+                                  v8::Local<v8::Value> exception) {
+  auto* isolate = context->GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+  auto json_obj = EncodeExceptionAsObject(context, exception);
   auto json_string = v8::JSON::Stringify(context, json_obj).ToLocalChecked();
   v8::String::Utf8Value json_string_(isolate, json_string);
   return std::string(ToCString(json_string_));
@@ -568,6 +581,86 @@ bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,
   return true;
 }
 
+void Eval(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+  DenoIsolate* d = FromIsolate(isolate);
+  v8::EscapableHandleScope handleScope(isolate);
+  auto context = d->context_.Get(isolate);
+  v8::Context::Scope context_scope(context);
+
+  CHECK(args[0]->IsString());
+  auto source = args[0].As<v8::String>();
+
+  auto output = v8::Array::New(isolate, 2);
+  /**
+   * output[0] = result
+   * output[1] = ErrorInfo | null
+   *   ErrorInfo = {
+   *     thrown: Error | any,
+   *     isNativeError: boolean,
+   *     isCompileError: boolean,
+   *   }
+   */
+
+  v8::TryCatch try_catch(isolate);
+
+  auto name = v8_str("<unknown>");
+  v8::ScriptOrigin origin(name);
+  auto script = v8::Script::Compile(context, source, &origin);
+
+  if (script.IsEmpty()) {
+    DCHECK(try_catch.HasCaught());
+    auto exception = try_catch.Exception();
+
+    output->Set(0, v8::Null(isolate));
+
+    auto errinfo_obj = v8::Object::New(isolate);
+    errinfo_obj->Set(v8_str("isCompileError"), v8_bool(true));
+    if (exception->IsNativeError()) {
+      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(true));
+      errinfo_obj->Set(v8_str("thrown"),
+                       EncodeExceptionAsObject(context, exception));
+    } else {
+      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(false));
+      errinfo_obj->Set(v8_str("thrown"), exception);
+    }
+
+    output->Set(1, errinfo_obj);
+
+    args.GetReturnValue().Set(output);
+    return;
+  }
+
+  auto result = script.ToLocalChecked()->Run(context);
+
+  if (result.IsEmpty()) {
+    DCHECK(try_catch.HasCaught());
+    auto exception = try_catch.Exception();
+
+    output->Set(0, v8::Null(isolate));
+
+    auto errinfo_obj = v8::Object::New(isolate);
+    errinfo_obj->Set(v8_str("isCompileError"), v8_bool(false));
+    if (exception->IsNativeError()) {
+      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(true));
+      errinfo_obj->Set(v8_str("thrown"),
+                       EncodeExceptionAsObject(context, exception));
+    } else {
+      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(false));
+      errinfo_obj->Set(v8_str("thrown"), exception);
+    }
+
+    output->Set(1, errinfo_obj);
+
+    args.GetReturnValue().Set(output);
+    return;
+  }
+
+  output->Set(0, result.ToLocalChecked());
+  output->Set(1, v8::Null(isolate));
+  args.GetReturnValue().Set(output);
+}
+
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
              const char* js_source) {
   auto* isolate = context->GetIsolate();
@@ -624,6 +717,10 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
 
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
+
+  auto eval_tmpl = v8::FunctionTemplate::New(isolate, Eval);
+  auto eval_val = eval_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("eval"), eval_val).FromJust());
 
   CHECK(
       deno_val

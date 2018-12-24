@@ -322,6 +322,18 @@ TEST(LibDenoTest, ModuleSnapshot) {
   delete[] test_snapshot.data_ptr;
 }
 
+TEST(LibDenoTest, LibDenoEval) {
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr, nullptr});
+  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "LibDenoEval();"));
+  deno_delete(d);
+}
+
+TEST(LibDenoTest, LibDenoEvalError) {
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr, nullptr});
+  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "LibDenoEvalError();"));
+  deno_delete(d);
+}
+
 TEST(LibDenoTest, BuiltinModules) {
   static int count = 0;
   auto resolve_cb = [](void* user_data, const char* specifier,
