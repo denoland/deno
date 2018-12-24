@@ -19,7 +19,7 @@ import "logging/test.ts";
 
 // file server test
 const fileServer = run({
-  args: ["deno", "--allow-net", "net/file_server.ts", "."]
+  args: ["deno", "--allow-net", "net/file_server.ts", ".", "--cors"]
 });
 // path test
 import "path/basename_test.ts";

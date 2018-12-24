@@ -40,12 +40,22 @@ const dirViewerTemplate = `
 </html>
 `;
 
+const serverArgs = args.slice();
+let CORSEnabled = false;
+// TODO: switch to flags if we later want to add more options
+for (let i = 0; i < serverArgs.length; i++) {
+  if (serverArgs[i] === "--cors") {
+    CORSEnabled = true;
+    serverArgs.splice(i, 1);
+    break;
+  }
+}
 let currentDir = cwd();
-const target = args[1];
+const target = serverArgs[1];
 if (target) {
   currentDir = `${currentDir}/${target}`;
 }
-const addr = `0.0.0.0:${args[2] || 4500}`;
+const addr = `0.0.0.0:${serverArgs[2] || 4500}`;
 const encoder = new TextEncoder();
 
 function modeToString(isDir: boolean, maybeMode: number | null) {
@@ -188,6 +198,17 @@ function serverLog(req: ServerRequest, res: Response) {
   console.log(s);
 }
 
+function setCORS(res: Response) {
+  if (!res.headers) {
+    res.headers = new Headers();
+  }
+  res.headers!.append("access-control-allow-origin", "*");
+  res.headers!.append(
+    "access-control-allow-headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Range"
+  );
+}
+
 listenAndServe(addr, async req => {
   const fileName = req.url.replace(/\/$/, "");
   const filePath = currentDir + fileName;
@@ -206,6 +227,9 @@ listenAndServe(addr, async req => {
   } catch (e) {
     response = await serveFallback(req, e);
   } finally {
+    if (CORSEnabled) {
+      setCORS(response);
+    }
     serverLog(req, response);
     req.respond(response);
   }
