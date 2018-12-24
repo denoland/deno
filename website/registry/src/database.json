@@ -1,0 +1,15 @@
+{
+  "net": "https://raw.githubusercontent.com/denoland/deno_std/${b}/net/",
+  "std": "https://raw.githubusercontent.com/denoland/deno_std/${b}/",
+  "examples": "https://raw.githubusercontent.com/denoland/deno_std/${b}/examples/",
+  "install": "https://raw.githubusercontent.com/denoland/deno_install/${b}/",
+  "parseargs": "https://raw.githubusercontent.com/bartlomieju/parseargs/${b}/",
+  "flags": "https://raw.githubusercontent.com/denoland/deno_std/${b}/flags/",
+  "leftspread": "https://gist.githubusercontent.com/piscisaureus/a4fa24a16eb12663472a62cc2b0b602f/raw/${b}/leftspread.d.ts",
+  "testing": "https://raw.githubusercontent.com/denoland/deno/${b}/js/testing/",
+  "dotenv": "https://raw.githubusercontent.com/pietvanzoen/deno-dotenv/${b}/",
+  "path": "https://raw.githubusercontent.com/denoland/deno_std/${b}/path/",
+  "colors": "https://raw.githubusercontent.com/denoland/deno_std/${b}/colors/",
+  "logging": "https://raw.githubusercontent.com/denoland/deno_std/${b}/logging/",
+  "abc": "https://raw.githubusercontent.com/zhmushan/abc/${b}/"
+}

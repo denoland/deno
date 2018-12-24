@@ -1,0 +1,34 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: deno.land/x redirect server.
+Globals:
+    Function:
+        Timeout: 3
+
+Resources:
+    DenoLandFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            CodeUri: src/
+            Handler: app.lambdaHandler
+            Runtime: nodejs8.10
+            Events:
+                DenoLand:
+                    Type: Api
+                    Properties:
+                        Path: /x
+                        Method: get
+
+Outputs:
+
+    DenoLandApi:
+      Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+      Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+
+    DenoLandFunction:
+      Description: "Hello World Lambda Function ARN"
+      Value: !GetAtt DenoLandFunction.Arn
+
+    DenoLandFunctionIamRole:
+      Description: "Implicit IAM Role created for Hello World function"
+      Value: !GetAtt DenoLandFunctionRole.Arn

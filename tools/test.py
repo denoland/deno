@@ -74,6 +74,9 @@ def main(argv):
 
     deno_dir_test(deno_exe, deno_dir)
 
+    # Test for the registry AWS lambda function.
+    run(["node", "website/registry/src/test.js"])
+
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
