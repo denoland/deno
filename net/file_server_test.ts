@@ -23,6 +23,8 @@ export function runTests(serverReadyPromise: Promise<any>) {
   test(async function serveFile() {
     await serverReadyPromise;
     const res = await fetch("http://localhost:4500/.travis.yml");
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(await readFile("./.travis.yml"));
     assertEqual(downloadedFile, localFile);
@@ -32,6 +34,8 @@ export function runTests(serverReadyPromise: Promise<any>) {
   test(async function serveDirectory() {
     await serverReadyPromise;
     const res = await fetch("http://localhost:4500/");
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
     const page = await res.text();
     assert(page.includes(".travis.yml"));
     maybeCompleteTests();
@@ -40,6 +44,8 @@ export function runTests(serverReadyPromise: Promise<any>) {
   test(async function serveFallback() {
     await serverReadyPromise;
     const res = await fetch("http://localhost:4500/badfile.txt");
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
     assertEqual(res.status, 404);
     maybeCompleteTests();
   });
