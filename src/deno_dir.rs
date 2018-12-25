@@ -11,6 +11,7 @@ use msg;
 
 use ring;
 use std;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -26,6 +27,17 @@ pub struct CodeFetchOutput {
   pub source_code: Vec<u8>,
   pub maybe_output_code: Option<Vec<u8>>,
   pub maybe_source_map: Option<Vec<u8>>,
+}
+
+lazy_static! {
+  // Using str as key, since MediaType does not impl Eq and Hash
+  static ref EXTENSION_MAP: HashMap<&'static str, msg::MediaType> = {
+    let mut m = HashMap::new();
+    m.insert(".ts", msg::MediaType::TypeScript);
+    m.insert(".js", msg::MediaType::JavaScript);
+    m.insert(".json", msg::MediaType::Json);
+    m
+  };
 }
 
 pub struct DenoDir {
@@ -156,7 +168,19 @@ impl DenoDir {
         None => Ok(()),
       }?;
       deno_fs::write_file(&p, &source, 0o666)?;
-      deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?;
+      // Remove possibly existing stale .mime file
+      // may not exist. DON'T unwrap
+      let _ = std::fs::remove_file(&media_type_filename);
+      // Create .mime file only when content type different from extension
+      let resolved_content_type = map_content_type(&p, Some(&content_type));
+      let dot_index = filename.rfind(".").unwrap_or(0);
+      let ext = filename.chars().skip(dot_index).collect::<String>();
+      match EXTENSION_MAP.get::<str>(&ext) {
+        Some(media_type) => if *media_type != resolved_content_type {
+          deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?;
+        },
+        None => deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?,
+      }
       return Ok(Some(CodeFetchOutput {
         module_name: module_name.to_string(),
         filename: filename.to_string(),
@@ -614,7 +638,7 @@ mod tests {
   }
 
   #[test]
-  fn test_get_source_code() {
+  fn test_get_source_code_1() {
     let (temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
@@ -635,10 +659,8 @@ mod tests {
         b"export { printHello } from \"./print_hello.ts\";\n";
       assert_eq!(r.source_code, expected);
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      assert_eq!(
-        fs::read_to_string(&mime_file_name).unwrap(),
-        "application/typescript"
-      );
+      // Should not create .mime file due to matching ext
+      assert!(fs::read_to_string(&mime_file_name).is_err());
 
       // Modify .mime
       let _ = fs::write(&mime_file_name, "text/javascript");
@@ -665,12 +687,68 @@ mod tests {
       let expected3: &[u8] =
         b"export { printHello } from \"./print_hello.ts\";\n";
       assert_eq!(r3.source_code, expected3);
-      // Now the .mime file should be overwritten back to TypeScript!
-      // (due to http fetch)
+      // Now the old .mime file should have gone! Resolved back to TypeScript
       assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
+      assert!(fs::read_to_string(&mime_file_name).is_err());
+    });
+  }
+
+  #[test]
+  fn test_get_source_code_2() {
+    let (temp_dir, deno_dir) = test_setup();
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
+          .as_ref(),
+      );
+      let mime_file_name = format!("{}.mime", &filename);
+
+      let result = deno_dir.get_source_code(module_name, &filename);
+      println!("module_name {} filename {}", module_name, filename);
+      assert!(result.is_ok());
+      let r = result.unwrap();
+      let expected: &[u8] = b"export const loaded = true;\n";
+      assert_eq!(r.source_code, expected);
+      // Mismatch ext with content type, create .mime
+      assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
         fs::read_to_string(&mime_file_name).unwrap(),
-        "application/typescript"
+        "text/javascript"
+      );
+
+      // Modify .mime
+      let _ = fs::write(&mime_file_name, "text/typescript");
+      let result2 = deno_dir.get_source_code(module_name, &filename);
+      assert!(result2.is_ok());
+      let r2 = result2.unwrap();
+      let expected2: &[u8] = b"export const loaded = true;\n";
+      assert_eq!(r2.source_code, expected2);
+      // If get_source_code does not call remote, this should be TypeScript
+      // as we modified before! (we do not overwrite .mime due to no http fetch)
+      assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
+      assert_eq!(
+        fs::read_to_string(&mime_file_name).unwrap(),
+        "text/typescript"
+      );
+
+      // Force self.reload
+      let deno_dir = DenoDir::new(true, Some(temp_dir.path().to_path_buf()))
+        .expect("setup fail");
+      let result3 = deno_dir.get_source_code(module_name, &filename);
+      assert!(result3.is_ok());
+      let r3 = result3.unwrap();
+      let expected3: &[u8] = b"export const loaded = true;\n";
+      assert_eq!(r3.source_code, expected3);
+      // Now the old .mime file should be overwritten back to JavaScript!
+      // (due to http fetch)
+      assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
+      assert_eq!(
+        fs::read_to_string(&mime_file_name).unwrap(),
+        "text/javascript"
       );
     });
   }
@@ -696,7 +774,8 @@ mod tests {
       let r = result.unwrap().unwrap();
       assert_eq!(&(r.source_code), b"export const loaded = true;\n");
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      assert_eq!(fs::read_to_string(&mime_file_name).unwrap(), "video/mp2t");
+      // matching ext, no .mime file created
+      assert!(fs::read_to_string(&mime_file_name).is_err());
 
       // Modify .mime, make sure read from local
       let _ = fs::write(&mime_file_name, "text/javascript");
@@ -711,6 +790,52 @@ mod tests {
 
   #[test]
   fn test_fetch_source_2() {
+    use tokio_util;
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let (_temp_dir, deno_dir) = test_setup();
+      let module_name = "http://localhost:4545/tests/subdir/no_ext";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/no_ext")
+          .as_ref(),
+      );
+      let mime_file_name = format!("{}.mime", &filename);
+      let result = deno_dir.fetch_remote_source(module_name, &filename);
+      assert!(result.is_ok());
+      let r = result.unwrap().unwrap();
+      assert_eq!(&(r.source_code), b"export const loaded = true;\n");
+      assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+      // no ext, should create .mime file
+      assert_eq!(
+        fs::read_to_string(&mime_file_name).unwrap(),
+        "text/typescript"
+      );
+
+      let module_name_2 = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let filename_2 = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
+          .as_ref(),
+      );
+      let mime_file_name_2 = format!("{}.mime", &filename_2);
+      let result_2 = deno_dir.fetch_remote_source(module_name_2, &filename_2);
+      assert!(result_2.is_ok());
+      let r2 = result_2.unwrap().unwrap();
+      assert_eq!(&(r2.source_code), b"export const loaded = true;\n");
+      assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+      // mismatch ext, should create .mime file
+      assert_eq!(
+        fs::read_to_string(&mime_file_name_2).unwrap(),
+        "text/javascript"
+      );
+    });
+  }
+
+  #[test]
+  fn test_fetch_source_3() {
     // only local, no http_util::fetch_sync_string called
     let (_temp_dir, deno_dir) = test_setup();
     let cwd = std::env::current_dir().unwrap();
