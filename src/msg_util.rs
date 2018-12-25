@@ -1,5 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 // Helpers for serialization.
+use errors;
+use errors::DenoResult;
 use flatbuffers;
 use http::header::HeaderName;
 use http::uri::Uri;
@@ -94,13 +96,14 @@ pub fn serialize_http_response<'bldr>(
 pub fn deserialize_request(
   header_msg: msg::HttpHeader,
   body: Body,
-) -> Request<Body> {
+) -> DenoResult<Request<Body>> {
   let mut r = Request::new(body);
 
   assert!(header_msg.is_request());
 
   let u = header_msg.url().unwrap();
-  let u = Uri::from_str(u).unwrap();
+  let u = Uri::from_str(u)
+    .map_err(|e| errors::new(msg::ErrorKind::InvalidUri, e.to_string()))?;
   *r.uri_mut() = u;
 
   if let Some(method) = header_msg.method() {
@@ -119,5 +122,5 @@ pub fn deserialize_request(
       headers.insert(name, v);
     }
   }
-  r
+  Ok(r)
 }

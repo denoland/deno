@@ -1,4 +1,4 @@
-import { test, assert, assertEqual } from "./test_util";
+import { test, assert, assertEqual } from "./test_util.ts";
 import * as deno from "deno";
 
 // tslint:disable-next-line:no-any

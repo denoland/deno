@@ -41,7 +41,7 @@ qrun(["node", prettier, "--write", "--loglevel=error"] + ["rollup.config.js"] +
      glob("*.json") + glob("*.md") +
      find_exts([".github", "js", "tests", "tools", "website"],
                [".js", ".json", ".ts", ".md"],
-               skip=["tools/clang"]))
+               skip=["tools/clang", "js/deps"]))
 
 print "rustfmt"
 qrun([

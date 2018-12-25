@@ -138,3 +138,41 @@ test(function urlSearchParamsShouldThrowTypeError() {
 
   assertEqual(hasThrown, 2);
 });
+
+test(function urlSearchParamsAppendArgumentsCheck() {
+  const methodRequireOneParam = ["delete", "getAll", "get", "has", "forEach"];
+
+  const methodRequireTwoParams = ["append", "set"];
+
+  methodRequireOneParam.concat(methodRequireTwoParams).forEach(method => {
+    const searchParams = new URLSearchParams();
+    let hasThrown = 0;
+    try {
+      searchParams[method]();
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+  });
+
+  methodRequireTwoParams.forEach(method => {
+    const searchParams = new URLSearchParams();
+    let hasThrown = 0;
+    try {
+      searchParams[method]("foo");
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+  });
+});

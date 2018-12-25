@@ -47,6 +47,43 @@ testPerm({ net: true }, async function responseClone() {
   }
 });
 
+testPerm({ net: true }, async function fetchEmptyInvalid() {
+  let err;
+  try {
+    await fetch("");
+  } catch (err_) {
+    err = err_;
+  }
+  assertEqual(err.kind, deno.ErrorKind.InvalidUri);
+  assertEqual(err.name, "InvalidUri");
+});
+
+testPerm({ net: true }, async function fetchMultipartFormDataSuccess() {
+  const response = await fetch(
+    "http://localhost:4545/tests/subdir/multipart_form_data.txt"
+  );
+  const formData = await response.formData();
+  assert(formData.has("field_1"));
+  assertEqual(formData.get("field_1").toString(), "value_1 \r\n");
+  assert(formData.has("field_2"));
+  /* TODO(ry) Re-enable this test once we bring back the global File type.
+  const file = formData.get("field_2") as File;
+  assertEqual(file.name, "file.js");
+  */
+  // Currently we cannot read from file...
+});
+
+testPerm({ net: true }, async function fetchURLEncodedFormDataSuccess() {
+  const response = await fetch(
+    "http://localhost:4545/tests/subdir/form_urlencoded.txt"
+  );
+  const formData = await response.formData();
+  assert(formData.has("field_1"));
+  assertEqual(formData.get("field_1").toString(), "Hi");
+  assert(formData.has("field_2"));
+  assertEqual(formData.get("field_2").toString(), "<Deno>");
+});
+
 // TODO(ry) The following tests work but are flaky. There's a race condition
 // somewhere. Here is what one of these flaky failures looks like:
 //

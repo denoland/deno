@@ -142,36 +142,31 @@ impl DenoDir {
     module_name: &str,
     filename: &str,
   ) -> DenoResult<Option<CodeFetchOutput>> {
-    let extensions = ["", ".ts", ".js"];
-    for ext in extensions.iter() {
-      let filename = [filename, ext].concat();
-      let module_name = [module_name, ext].concat();
-      let p = Path::new(&filename);
-      // We write a special ".mime" file into the `.deno/deps` directory along side the
-      // cached file, containing just the media type.
-      let media_type_filename = [&filename, ".mime"].concat();
-      let mt = Path::new(&media_type_filename);
-      eprint!("Downloading {}...", &module_name); // no newline
-      let maybe_source = http_util::fetch_sync_string(&module_name);
-      if let Ok((source, content_type)) = maybe_source {
-        eprintln!(""); // next line
-        match p.parent() {
-          Some(ref parent) => fs::create_dir_all(parent),
-          None => Ok(()),
-        }?;
-        deno_fs::write_file(&p, &source, 0o666)?;
-        deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?;
-        return Ok(Some(CodeFetchOutput {
-          module_name,
-          filename: filename.clone(), // TODO: no clone after NLL rfc
-          media_type: map_content_type(&p, Some(&content_type)),
-          source_code: source,
-          maybe_output_code: None,
-          maybe_source_map: None,
-        }));
-      } else {
-        eprintln!(" NOT FOUND");
-      }
+    let p = Path::new(&filename);
+    // We write a special ".mime" file into the `.deno/deps` directory along side the
+    // cached file, containing just the media type.
+    let media_type_filename = [&filename, ".mime"].concat();
+    let mt = Path::new(&media_type_filename);
+    eprint!("Downloading {}...", &module_name); // no newline
+    let maybe_source = http_util::fetch_sync_string(&module_name);
+    if let Ok((source, content_type)) = maybe_source {
+      eprintln!(""); // next line
+      match p.parent() {
+        Some(ref parent) => fs::create_dir_all(parent),
+        None => Ok(()),
+      }?;
+      deno_fs::write_file(&p, &source, 0o666)?;
+      deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?;
+      return Ok(Some(CodeFetchOutput {
+        module_name: module_name.to_string(),
+        filename: filename.to_string(),
+        media_type: map_content_type(&p, Some(&content_type)),
+        source_code: source,
+        maybe_output_code: None,
+        maybe_source_map: None,
+      }));
+    } else {
+      eprintln!(" NOT FOUND");
     }
     Ok(None)
   }
@@ -182,33 +177,33 @@ impl DenoDir {
     module_name: &str,
     filename: &str,
   ) -> DenoResult<Option<CodeFetchOutput>> {
-    let extensions = ["", ".ts", ".js"];
-    for ext in extensions.iter() {
-      let filename = [filename, ext].concat();
-      let module_name = [module_name, ext].concat();
-      let p = Path::new(&filename);
-      if !p.exists() {
-        continue;
+    let p = Path::new(&filename);
+    let media_type_filename = [&filename, ".mime"].concat();
+    let mt = Path::new(&media_type_filename);
+    let source_code = match fs::read(p) {
+      Err(e) => {
+        if e.kind() == std::io::ErrorKind::NotFound {
+          return Ok(None);
+        } else {
+          return Err(e.into());
+        }
       }
-      let media_type_filename = [&filename, ".mime"].concat();
-      let mt = Path::new(&media_type_filename);
-      let source_code = fs::read(&p)?;
-      // .mime file might not exists
-      // this is okay for local source: maybe_content_type_str will be None
-      let maybe_content_type_string = fs::read_to_string(&mt).ok();
-      // Option<String> -> Option<&str>
-      let maybe_content_type_str =
-        maybe_content_type_string.as_ref().map(String::as_str);
-      return Ok(Some(CodeFetchOutput {
-        module_name,
-        filename: filename.clone(), // TODO: no clone after NLL rfc
-        media_type: map_content_type(&p, maybe_content_type_str),
-        source_code,
-        maybe_output_code: None,
-        maybe_source_map: None,
-      }));
-    }
-    Ok(None) // cannot find locally
+      Ok(c) => c,
+    };
+    // .mime file might not exists
+    // this is okay for local source: maybe_content_type_str will be None
+    let maybe_content_type_string = fs::read_to_string(&mt).ok();
+    // Option<String> -> Option<&str>
+    let maybe_content_type_str =
+      maybe_content_type_string.as_ref().map(String::as_str);
+    Ok(Some(CodeFetchOutput {
+      module_name: module_name.to_string(),
+      filename: filename.to_string(),
+      media_type: map_content_type(&p, maybe_content_type_str),
+      source_code,
+      maybe_output_code: None,
+      maybe_source_map: None,
+    }))
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L122-L138
@@ -222,19 +217,32 @@ impl DenoDir {
     // 1. This is a remote module, but no reload provided
     // 2. This is a local module
     if !is_module_remote || !self.reload {
-      let maybe_local_source =
-        self.fetch_local_source(&module_name, &filename)?;
-      if let Some(output) = maybe_local_source {
-        return Ok(output);
+      debug!(
+        "fetch local or reload {} is_module_remote {}",
+        module_name, is_module_remote
+      );
+      match self.fetch_local_source(&module_name, &filename)? {
+        Some(output) => {
+          debug!("found local source ");
+          return Ok(output);
+        }
+        None => {
+          debug!("fetch_local_source returned None");
+        }
       }
     }
+
     // If not remote file, stop here!
     if !is_module_remote {
+      debug!("not remote file stop here");
       return Err(DenoError::from(std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!("cannot find local file '{}'", filename),
       )));
     }
+
+    debug!("is remote but didn't find module");
+
     // not cached/local, try remote
     let maybe_remote_source =
       self.fetch_remote_source(&module_name, &filename)?;
@@ -514,6 +522,7 @@ fn filter_shebang(code: Vec<u8>) -> Vec<u8> {
 mod tests {
   use super::*;
   use tempfile::TempDir;
+  use tokio_util;
 
   fn test_setup() -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
@@ -606,10 +615,9 @@ mod tests {
 
   #[test]
   fn test_get_source_code() {
-    use tokio_util;
+    let (temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let (temp_dir, deno_dir) = test_setup();
       let module_name = "http://localhost:4545/tests/subdir/mod2.ts";
       let filename = deno_fs::normalize_path(
         deno_dir
@@ -620,6 +628,7 @@ mod tests {
       let mime_file_name = format!("{}.mime", &filename);
 
       let result = deno_dir.get_source_code(module_name, &filename);
+      println!("module_name {} filename {}", module_name, filename);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected: &[u8] =
@@ -737,48 +746,6 @@ mod tests {
     assert!(r.is_ok());
     //let code_fetch_output = r.unwrap();
     //println!("code_fetch_output {:?}", code_fetch_output);
-  }
-
-  #[test]
-  fn test_code_fetch_no_ext() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let cwd = std::env::current_dir().unwrap();
-    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
-
-    // Assuming cwd is the deno repo root.
-    let specifier = "./js/main";
-    let referrer = cwd_string.as_str();
-    let r = deno_dir.code_fetch(specifier, referrer);
-    assert!(r.is_ok());
-
-    // Test .ts extension
-    // Assuming cwd is the deno repo root.
-    let specifier = "./js/main";
-    let referrer = cwd_string.as_str();
-    let r = deno_dir.code_fetch(specifier, referrer);
-    assert!(r.is_ok());
-    let code_fetch_output = r.unwrap();
-    // could only test .ends_with to avoid include local abs path
-    assert!(code_fetch_output.module_name.ends_with("/js/main.ts"));
-    assert!(code_fetch_output.filename.ends_with("/js/main.ts"));
-    assert!(code_fetch_output.source_code.len() > 10);
-
-    // Test .js extension
-    // Assuming cwd is the deno repo root.
-    let specifier = "./js/mock_builtin";
-    let referrer = cwd_string.as_str();
-    let r = deno_dir.code_fetch(specifier, referrer);
-    assert!(r.is_ok());
-    let code_fetch_output = r.unwrap();
-    // could only test .ends_with to avoid include local abs path
-    assert!(
-      code_fetch_output
-        .module_name
-        .ends_with("/js/mock_builtin.js")
-    );
-    assert!(code_fetch_output.filename.ends_with("/js/mock_builtin.js"));
-    assert!(code_fetch_output.source_code.len() > 10);
   }
 
   #[test]

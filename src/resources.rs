@@ -43,6 +43,18 @@ pub type ResourceId = u32; // Sometimes referred to RID.
 // system ones.
 type ResourceTable = HashMap<ResourceId, Repr>;
 
+#[cfg(not(windows))]
+use std::os::unix::io::FromRawFd;
+
+#[cfg(windows)]
+use std::os::windows::io::FromRawHandle;
+
+#[cfg(windows)]
+extern crate kernel32;
+
+#[cfg(windows)]
+extern crate winapi;
+
 lazy_static! {
   // Starts at 3 because stdio is [0-2].
   static ref NEXT_RID: AtomicUsize = AtomicUsize::new(3);
@@ -50,7 +62,18 @@ lazy_static! {
     let mut m = HashMap::new();
     // TODO Load these lazily during lookup?
     m.insert(0, Repr::Stdin(tokio::io::stdin()));
-    m.insert(1, Repr::Stdout(tokio::io::stdout()));
+
+    m.insert(1, Repr::Stdout({
+      #[cfg(not(windows))]
+      let stdout = unsafe { std::fs::File::from_raw_fd(1) };
+      #[cfg(windows)]
+      let stdout = unsafe {
+        std::fs::File::from_raw_handle(kernel32::GetStdHandle(
+            winapi::um::winbase::STD_OUTPUT_HANDLE))
+      };
+      tokio::fs::File::from_std(stdout)
+    }));
+
     m.insert(2, Repr::Stderr(tokio::io::stderr()));
     m
   });
@@ -59,7 +82,7 @@ lazy_static! {
 // Internal representation of Resource.
 enum Repr {
   Stdin(tokio::io::Stdin),
-  Stdout(tokio::io::Stdout),
+  Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
   FsFile(tokio::fs::File),
   TcpListener(tokio::net::TcpListener),

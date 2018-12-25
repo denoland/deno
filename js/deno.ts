@@ -55,6 +55,13 @@ export { run, RunOptions, Process, ProcessStatus } from "./process";
 export { inspect } from "./console";
 export const args: string[] = [];
 
+// TODO Don't expose Console nor stringifyArgs.
+export { Console, stringifyArgs } from "./console";
+// TODO Don't expose DomIterableMixin.
+export { DomIterableMixin } from "./mixins/dom_iterable";
+// TODO Don't expose deferred.
+export { deferred } from "./util";
+
 // Provide the compiler API in an obfuscated way
 import * as compiler from "./compiler";
 // @internal
