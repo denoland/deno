@@ -72,6 +72,11 @@ class Repl(object):
         assertEqual(out, '3\n')
         assertEqual(err, '')
         assertEqual(code, 0)
+        # ensure eval("{") is not mistakenly recognized...
+        out, err, code = self.input("eval('{')")
+        assertEqual(out, '')
+        assertEqual(err, 'SyntaxError: Unexpected end of input\n')
+        assertEqual(code, 0)
 
     def test_reference_error(self):
         out, err, code = self.input("not_a_variable")

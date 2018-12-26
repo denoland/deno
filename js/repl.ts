@@ -54,15 +54,23 @@ export async function readline(rid: number, prompt: string): Promise<string> {
 
 // @internal
 export async function replLoop(): Promise<void> {
-  window.deno = deno; // FIXME use a new scope (rather than window).
+  window.deno = deno;
 
   const historyFile = "deno_history.txt";
   const rid = startRepl(historyFile);
 
-  let code = "";
   while (true) {
+    let code = "";
     try {
-      code = await readBlock(rid, "> ", "  ");
+      code = await readline(rid, "> ");
+      if (!code) {
+        continue;
+      } else if (code.trim() === ".exit") {
+        break;
+      }
+      while (!evaluate(code)) {
+        code += await readline(rid, "... ");
+      }
     } catch (err) {
       if (err.message === "EOF") {
         break;
@@ -70,30 +78,32 @@ export async function replLoop(): Promise<void> {
       console.error(err);
       exit(1);
     }
-    if (!code) {
-      continue;
-    } else if (code.trim() === ".exit") {
-      break;
-    }
-
-    evaluate(code);
   }
 
   close(rid);
 }
 
-function evaluate(code: string): void {
+// @internal
+function evaluate(code: string): boolean {
+  // returns true if code is consumed
   try {
     // TODO: use sandbox in the future
     const [result, errInfo] = libdeno.eval(code);
     if (!errInfo) {
       console.log(result);
     } else {
-      if (errInfo.isNativeError) {
-        console.error((errInfo.thrown as Error).message);
+      if (
+        errInfo.isCompileError &&
+        errInfo.thrown.message === "SyntaxError: Unexpected end of input"
+      ) {
+        return false; // don't consume code.
       } else {
-        // TODO: make Node-like multiline support a separate PR
-        console.error("Thrown:", errInfo.thrown);
+        // non-compiler error
+        if (errInfo.isNativeError) {
+          console.error((errInfo.thrown as Error).message);
+        } else {
+          console.error("Thrown:", errInfo.thrown);
+        }
       }
     }
   } catch (err) {
@@ -103,42 +113,5 @@ function evaluate(code: string): void {
       console.error("Thrown:", err);
     }
   }
-}
-
-async function readBlock(
-  rid: number,
-  prompt: string,
-  continuedPrompt: string
-): Promise<string> {
-  let code = "";
-  do {
-    code += await readline(rid, prompt);
-    prompt = continuedPrompt;
-  } while (parenthesesAreOpen(code));
-  return code;
-}
-
-// modified from
-// https://codereview.stackexchange.com/a/46039/148556
-function parenthesesAreOpen(code: string): boolean {
-  const parentheses = "[]{}()";
-  const stack = [];
-
-  for (const ch of code) {
-    const bracePosition = parentheses.indexOf(ch);
-
-    if (bracePosition === -1) {
-      // not a paren
-      continue;
-    }
-
-    if (bracePosition % 2 === 0) {
-      stack.push(bracePosition + 1); // push next expected brace position
-    } else {
-      if (stack.length === 0 || stack.pop() !== bracePosition) {
-        return false;
-      }
-    }
-  }
-  return stack.length > 0;
+  return true; // code consumed
 }
