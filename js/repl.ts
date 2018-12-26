@@ -69,6 +69,7 @@ export async function replLoop(): Promise<void> {
         break;
       }
       while (!evaluate(code)) {
+        code += "\n";
         code += await readline(rid, "... ");
       }
     } catch (err) {
