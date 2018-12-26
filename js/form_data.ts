@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import * as blob from "./blob";
-import * as file from "./file";
+import * as domFile from "./dom_file";
 import { DomIterableMixin } from "./mixins/dom_iterable";
 import { requiredArguments } from "./util";
 
@@ -22,7 +22,7 @@ class FormDataBase {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
     if (value instanceof blob.DenoBlob) {
-      const dfile = new file.DenoFile([value], filename || name);
+      const dfile = new domFile.DenoFile([value], filename || name);
       this[dataSymbol].push([name, dfile]);
     } else {
       this[dataSymbol].push([name, String(value)]);
@@ -112,7 +112,7 @@ class FormDataBase {
       if (this[dataSymbol][i][0] === name) {
         if (!found) {
           if (value instanceof blob.DenoBlob) {
-            const dfile = new file.DenoFile([value], filename || name);
+            const dfile = new domFile.DenoFile([value], filename || name);
             this[dataSymbol][i][1] = dfile;
           } else {
             this[dataSymbol][i][1] = String(value);
@@ -129,7 +129,7 @@ class FormDataBase {
     // Otherwise, append entry to the context object’s entry list.
     if (!found) {
       if (value instanceof blob.DenoBlob) {
-        const dfile = new file.DenoFile([value], filename || name);
+        const dfile = new domFile.DenoFile([value], filename || name);
         this[dataSymbol].push([name, dfile]);
       } else {
         this[dataSymbol].push([name, String(value)]);
