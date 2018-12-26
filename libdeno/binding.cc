@@ -72,6 +72,10 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
       .ToLocalChecked();
 }
 
+static inline v8::Local<v8::Boolean> v8_bool(bool v) {
+  return v8::Boolean::New(v8::Isolate::GetCurrent(), v);
+}
+
 v8::Local<v8::Object> EncodeExceptionAsObject(v8::Local<v8::Context> context,
                                               v8::Local<v8::Value> exception) {
   auto* isolate = context->GetIsolate();
@@ -391,7 +395,7 @@ bool ExecuteV8StringSource(v8::Local<v8::Context> context,
   return true;
 }
 
-void ExecuteInThisContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
+void Eval(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   DenoIsolate* d = FromIsolate(isolate);
   v8::EscapableHandleScope handleScope(isolate);
@@ -401,27 +405,42 @@ void ExecuteInThisContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   CHECK(args[0]->IsString());
   auto source = args[0].As<v8::String>();
 
+  auto output = v8::Array::New(isolate, 2);
+  /**
+   * output[0] = result
+   * output[1] = ErrorInfo | null
+   *   ErrorInfo = {
+   *     thrown: Error | any,
+   *     isNativeError: boolean,
+   *     isCompileError: boolean,
+   *   }
+   */
+
   v8::TryCatch try_catch(isolate);
 
   auto name = v8_str("<unknown>");
   v8::ScriptOrigin origin(name);
   auto script = v8::Script::Compile(context, source, &origin);
-  auto output = v8::Array::New(isolate, 3);
-  // output[0] = result
-  // output[1] = Error | any | null
-  // output[2] = isNativeError (boolean)
 
   if (script.IsEmpty()) {
     DCHECK(try_catch.HasCaught());
-    output->Set(0, v8::Null(isolate));
     auto exception = try_catch.Exception();
+
+    output->Set(0, v8::Null(isolate));
+
+    auto errinfo_obj = v8::Object::New(isolate);
+    errinfo_obj->Set(v8_str("isCompileError"), v8_bool(true));
     if (exception->IsNativeError()) {
-      output->Set(1, EncodeExceptionAsObject(context, exception));
-      output->Set(2, v8::Boolean::New(isolate, true));
+      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(true));
+      errinfo_obj->Set(v8_str("thrown"),
+                       EncodeExceptionAsObject(context, exception));
     } else {
-      output->Set(1, exception);
-      output->Set(2, v8::Boolean::New(isolate, false));
+      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(false));
+      errinfo_obj->Set(v8_str("thrown"), exception);
     }
+
+    output->Set(1, errinfo_obj);
+
     args.GetReturnValue().Set(output);
     return;
   }
@@ -430,23 +449,29 @@ void ExecuteInThisContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   if (result.IsEmpty()) {
     DCHECK(try_catch.HasCaught());
-    output->Set(0, v8::Null(isolate));
-    output->Set(0, v8::Null(isolate));
     auto exception = try_catch.Exception();
+
+    output->Set(0, v8::Null(isolate));
+
+    auto errinfo_obj = v8::Object::New(isolate);
+    errinfo_obj->Set(v8_str("isCompileError"), v8_bool(false));
     if (exception->IsNativeError()) {
-      output->Set(1, EncodeExceptionAsObject(context, exception));
-      output->Set(2, v8::Boolean::New(isolate, true));
+      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(true));
+      errinfo_obj->Set(v8_str("thrown"),
+                       EncodeExceptionAsObject(context, exception));
     } else {
-      output->Set(1, exception);
-      output->Set(2, v8::Boolean::New(isolate, false));
+      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(false));
+      errinfo_obj->Set(v8_str("thrown"), exception);
     }
+
+    output->Set(1, errinfo_obj);
+
     args.GetReturnValue().Set(output);
     return;
   }
 
   output->Set(0, result.ToLocalChecked());
   output->Set(1, v8::Null(isolate));
-  output->Set(2, v8::Boolean::New(isolate, false));
   args.GetReturnValue().Set(output);
 }
 
@@ -483,7 +508,7 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
 
-  auto eval_tmpl = v8::FunctionTemplate::New(isolate, ExecuteInThisContext);
+  auto eval_tmpl = v8::FunctionTemplate::New(isolate, Eval);
   auto eval_val = eval_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("eval"), eval_val).FromJust());
 }

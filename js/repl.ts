@@ -85,14 +85,15 @@ export async function replLoop(): Promise<void> {
 function evaluate(code: string): void {
   try {
     // TODO: use sandbox in the future
-    const [result, err, isNativeError] = libdeno.eval(code);
-    if (err === null) {
+    const [result, errInfo] = libdeno.eval(code);
+    if (!errInfo) {
       console.log(result);
     } else {
-      if (isNativeError) {
-        console.error(err.message);
+      if (errInfo.isNativeError) {
+        console.error((errInfo.thrown as Error).message);
       } else {
-        console.error("Thrown:", err);
+        // TODO: make Node-like multiline support a separate PR
+        console.error("Thrown:", errInfo.thrown);
       }
     }
   } catch (err) {

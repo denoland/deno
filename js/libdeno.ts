@@ -9,6 +9,12 @@ export type PromiseRejectEvent =
   | "ResolveAfterResolved"
   | "RejectAfterResolved";
 
+interface EvalErrorInfo {
+  isNativeError: boolean;
+  isCompileError: boolean;
+  thrown: any; // tslint:disable-line:no-any
+}
+
 interface Libdeno {
   recv(cb: MessageCallback): void;
 
@@ -19,7 +25,7 @@ interface Libdeno {
   shared: ArrayBuffer;
 
   /* tslint:disable-next-line:no-any */
-  eval(code: string): any[];
+  eval(code: string): [any, EvalErrorInfo | null];
 
   setGlobalErrorHandler: (
     handler: (

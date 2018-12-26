@@ -253,14 +253,14 @@ TEST(LibDenoTest, Shared) {
   deno_delete(d);
 }
 
-TEST(LibDenoTest, ExecuteInThisContext) {
+TEST(LibDenoTest, LibDenoEval) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "ExecuteInThisContext();"));
+  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "LibDenoEval();"));
   deno_delete(d);
 }
 
-TEST(LibDenoTest, ExecuteInThisContextError) {
+TEST(LibDenoTest, LibDenoEvalError) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "ExecuteInThisContextError();"));
+  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "LibDenoEvalError();"));
   deno_delete(d);
 }
