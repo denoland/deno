@@ -11,7 +11,6 @@ use msg;
 
 use ring;
 use std;
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -29,15 +28,15 @@ pub struct CodeFetchOutput {
   pub maybe_source_map: Option<Vec<u8>>,
 }
 
-lazy_static! {
-  // Using str as key, since MediaType does not impl Eq and Hash
-  static ref EXTENSION_MAP: HashMap<&'static str, msg::MediaType> = {
-    let mut m = HashMap::new();
-    m.insert(".ts", msg::MediaType::TypeScript);
-    m.insert(".js", msg::MediaType::JavaScript);
-    m.insert(".json", msg::MediaType::Json);
-    m
-  };
+/// Gets corresponding MediaType given extension
+/// (ext should be prefixed with '.')
+fn extmap(ext: &str) -> msg::MediaType {
+  match ext {
+    ".ts" => msg::MediaType::TypeScript,
+    ".js" => msg::MediaType::JavaScript,
+    ".json" => msg::MediaType::Json,
+    _ => msg::MediaType::Unknown,
+  }
 }
 
 pub struct DenoDir {
@@ -175,11 +174,14 @@ impl DenoDir {
       let resolved_content_type = map_content_type(&p, Some(&content_type));
       let dot_index = filename.rfind(".").unwrap_or(0);
       let ext = filename.chars().skip(dot_index).collect::<String>();
-      match EXTENSION_MAP.get::<str>(&ext) {
-        Some(media_type) => if *media_type != resolved_content_type {
+      let media_type = extmap(&ext);
+      match media_type {
+        msg::MediaType::Unknown => {
+          deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?
+        }
+        _ => if media_type != resolved_content_type {
           deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?;
         },
-        None => deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?,
       }
       return Ok(Some(CodeFetchOutput {
         module_name: module_name.to_string(),
