@@ -1,4 +1,4 @@
-import { cwd, readDirSync, run } from "deno";
+import { cwd, platform, readDirSync, run } from "deno";
 
 const rootPath = (): string => {
   return cwd();
@@ -57,28 +57,22 @@ const findExtsSync = (path: string, exts: string[]): string[] => {
   return fileWithTargetExts;
 };
 
-const clangFormatPath = (): string => {
-  return rootPath() + "/third_party/depot_tools/clang-format";
-};
-
-const gnFormatPath = (): string => {
-  return rootPath() + "/third_party/depot_tools/gn";
-};
-
 const joinPath = (joinSet: string[]): string => {
   return joinSet.join("/");
 };
 
 const clangFormat = () => {
   console.log("clang Format");
+  const clangFormatPath = rootPath() + "/third_party/depot_tools/clang-format";
   const fileList = walkExtSync(rootPath() + "/libdeno", [".cc", ".h"], []);
   run({
-    args: [clangFormatPath(), "-i", "-style", "Google"].concat(fileList)
+    args: [clangFormatPath, "-i", "-style", "Google"].concat(fileList)
   });
 };
 
 const gnFormat = () => {
   console.log("gn Format");
+  const gnFormatPath = rootPath() + "/third_party/depot_tools/gn";
   const fileList = walkExtSync(
     rootPath() + "/build_extra",
     [".gn", ".gni"],
@@ -86,7 +80,7 @@ const gnFormat = () => {
   ).concat(walkExtSync(rootPath() + "/libdeno", [".gn", ".gni"], []));
   for (let file of fileList) {
     run({
-      args: [gnFormatPath(), "format", file]
+      args: [gnFormatPath, "format", file]
     });
   }
 };
@@ -151,15 +145,29 @@ const prettierFormat = () => {
 
 const rustfmt = () => {
   console.log("rustfmt");
+  const rustFmtPath = joinPath([
+    rootPath(),
+    "third_party",
+    "rustfmt",
+    platform.os,
+    "rustfmt"
+  ]);
+
+  const rustFmtConfig = joinPath([rootPath(), "tools", "rustfmt.toml"]);
+
+  run({
+    args: [rustFmtPath, "--config-path", rustFmtConfig, "build.rs"].concat(
+      walkExtSync(rootPath() + "/src", [".rs"], [])
+    )
+  });
 };
 
 function format() {
-  // const toolsPath = joinPath([rootPath(), "tools"]);
-  // const rustfmtConfig = joinPath([toolsPath, "rustfmt.toml"]);
   clangFormat();
   gnFormat();
   yapf();
   prettierFormat();
+  rustfmt();
 }
 
 format();
