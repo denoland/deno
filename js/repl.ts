@@ -70,7 +70,7 @@ export async function replLoop(): Promise<void> {
       }
       while (!evaluate(code)) {
         code += "\n";
-        code += await readline(rid, "... ");
+        code += await readline(rid, "  ");
       }
     } catch (err) {
       if (err.message === "EOF") {
