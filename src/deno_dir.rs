@@ -29,12 +29,11 @@ pub struct CodeFetchOutput {
 }
 
 /// Gets corresponding MediaType given extension
-/// (ext should be prefixed with '.')
 fn extmap(ext: &str) -> msg::MediaType {
   match ext {
-    ".ts" => msg::MediaType::TypeScript,
-    ".js" => msg::MediaType::JavaScript,
-    ".json" => msg::MediaType::Json,
+    "ts" => msg::MediaType::TypeScript,
+    "js" => msg::MediaType::JavaScript,
+    "json" => msg::MediaType::Json,
     _ => msg::MediaType::Unknown,
   }
 }
@@ -172,16 +171,15 @@ impl DenoDir {
       let _ = std::fs::remove_file(&media_type_filename);
       // Create .mime file only when content type different from extension
       let resolved_content_type = map_content_type(&p, Some(&content_type));
-      let dot_index = filename.rfind(".").unwrap_or(0);
-      let ext = filename.chars().skip(dot_index).collect::<String>();
+      let ext = p
+        .extension()
+        .map(|x| x.to_str().unwrap_or(""))
+        .unwrap_or("");
       let media_type = extmap(&ext);
-      match media_type {
-        msg::MediaType::Unknown => {
-          deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?
-        }
-        _ => if media_type != resolved_content_type {
-          deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?;
-        },
+      if media_type == msg::MediaType::Unknown
+        || media_type != resolved_content_type
+      {
+        deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?
       }
       return Ok(Some(CodeFetchOutput {
         module_name: module_name.to_string(),
@@ -832,6 +830,26 @@ mod tests {
       assert_eq!(
         fs::read_to_string(&mime_file_name_2).unwrap(),
         "text/javascript"
+      );
+
+      // test unknown extension
+      let module_name_3 = "http://localhost:4545/tests/subdir/unknown_ext.deno";
+      let filename_3 = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/unknown_ext.deno")
+          .as_ref(),
+      );
+      let mime_file_name_3 = format!("{}.mime", &filename_3);
+      let result_3 = deno_dir.fetch_remote_source(module_name_3, &filename_3);
+      assert!(result_3.is_ok());
+      let r3 = result_3.unwrap().unwrap();
+      assert_eq!(&(r3.source_code), b"export const loaded = true;\n");
+      assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
+      // unknown ext, should create .mime file
+      assert_eq!(
+        fs::read_to_string(&mime_file_name_3).unwrap(),
+        "text/typescript"
       );
     });
   }

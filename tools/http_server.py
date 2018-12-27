@@ -60,6 +60,8 @@ class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             return "application/x-www-form-urlencoded"
         if "no_ext" in path:
             return "text/typescript"
+        if "unknown_ext" in path:
+            return "text/typescript"
         if "mismatch_ext" in path:
             return "text/javascript"
         return SimpleHTTPServer.SimpleHTTPRequestHandler.guess_type(self, path)
