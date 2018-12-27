@@ -61,7 +61,7 @@ ts_sources = [
   "js/dom_types.ts",
   "js/errors.ts",
   "js/fetch.ts",
-  "js/file.ts",
+  "js/dom_file.ts",
   "js/file_info.ts",
   "js/files.ts",
   "js/flatbuffers.ts",
