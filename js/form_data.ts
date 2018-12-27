@@ -3,6 +3,7 @@ import * as domTypes from "./dom_types";
 import * as blob from "./blob";
 import * as file from "./file";
 import { DomIterableMixin } from "./mixins/dom_iterable";
+import { requiredArguments } from "./util";
 
 const dataSymbol = Symbol("data");
 
@@ -18,6 +19,8 @@ class FormDataBase {
   append(name: string, value: string): void;
   append(name: string, value: blob.DenoBlob, filename?: string): void;
   append(name: string, value: string | blob.DenoBlob, filename?: string): void {
+    requiredArguments("FormData.append", arguments.length, 2);
+    name = String(name);
     if (value instanceof blob.DenoBlob) {
       const dfile = new file.DenoFile([value], filename || name);
       this[dataSymbol].push([name, dfile]);
@@ -31,6 +34,8 @@ class FormDataBase {
    *       formData.delete('name');
    */
   delete(name: string): void {
+    requiredArguments("FormData.delete", arguments.length, 1);
+    name = String(name);
     let i = 0;
     while (i < this[dataSymbol].length) {
       if (this[dataSymbol][i][0] === name) {
@@ -47,6 +52,8 @@ class FormDataBase {
    *       formData.getAll('name');
    */
   getAll(name: string): domTypes.FormDataEntryValue[] {
+    requiredArguments("FormData.getAll", arguments.length, 1);
+    name = String(name);
     const values = [];
     for (const entry of this[dataSymbol]) {
       if (entry[0] === name) {
@@ -63,6 +70,8 @@ class FormDataBase {
    *       formData.get('name');
    */
   get(name: string): domTypes.FormDataEntryValue | null {
+    requiredArguments("FormData.get", arguments.length, 1);
+    name = String(name);
     for (const entry of this[dataSymbol]) {
       if (entry[0] === name) {
         return entry[1];
@@ -78,23 +87,53 @@ class FormDataBase {
    *       formData.has('name');
    */
   has(name: string): boolean {
+    requiredArguments("FormData.has", arguments.length, 1);
+    name = String(name);
     return this[dataSymbol].some(entry => entry[0] === name);
   }
 
   /** Sets a new value for an existing key inside a `FormData` object, or
    * adds the key/value if it does not already exist.
+   * ref: https://xhr.spec.whatwg.org/#dom-formdata-set
    *
    *       formData.set('name', 'value');
    */
   set(name: string, value: string): void;
   set(name: string, value: blob.DenoBlob, filename?: string): void;
   set(name: string, value: string | blob.DenoBlob, filename?: string): void {
-    this.delete(name);
-    if (value instanceof blob.DenoBlob) {
-      const dfile = new file.DenoFile([value], filename || name);
-      this[dataSymbol].push([name, dfile]);
-    } else {
-      this[dataSymbol].push([name, String(value)]);
+    requiredArguments("FormData.set", arguments.length, 2);
+    name = String(name);
+
+    // If there are any entries in the context object’s entry list whose name
+    // is name, replace the first such entry with entry and remove the others
+    let found = false;
+    let i = 0;
+    while (i < this[dataSymbol].length) {
+      if (this[dataSymbol][i][0] === name) {
+        if (!found) {
+          if (value instanceof blob.DenoBlob) {
+            const dfile = new file.DenoFile([value], filename || name);
+            this[dataSymbol][i][1] = dfile;
+          } else {
+            this[dataSymbol][i][1] = String(value);
+          }
+          found = true;
+        } else {
+          this[dataSymbol].splice(i, 1);
+          continue;
+        }
+      }
+      i++;
+    }
+
+    // Otherwise, append entry to the context object’s entry list.
+    if (!found) {
+      if (value instanceof blob.DenoBlob) {
+        const dfile = new file.DenoFile([value], filename || name);
+        this[dataSymbol].push([name, dfile]);
+      } else {
+        this[dataSymbol].push([name, String(value)]);
+      }
     }
   }
 }

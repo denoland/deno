@@ -1,5 +1,6 @@
 import { DomIterable } from "../dom_types";
 import { globalEval } from "../global_eval";
+import { requiredArguments } from "../util";
 
 // if we import it directly from "globals" it will break the unit tests so we
 // have to grab a reference to the global scope a different way
@@ -52,6 +53,11 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
       // tslint:disable-next-line:no-any
       thisArg?: any
     ): void {
+      requiredArguments(
+        `${this.constructor.name}.forEach`,
+        arguments.length,
+        1
+      );
       callbackfn = callbackfn.bind(thisArg == null ? window : Object(thisArg));
       for (const [key, value] of (this as any)[dataSymbol]) {
         callbackfn(value, key, this);
