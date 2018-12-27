@@ -228,3 +228,73 @@ test(function headerIllegalReject() {
   // 'o k' is valid value but invalid name
   new Headers({ "He-y": "o k" });
 });
+
+test(function headerParamsArgumentsCheck() {
+  const methodRequireOneParam = ["delete", "get", "has", "forEach"];
+
+  const methodRequireTwoParams = ["append", "set"];
+
+  methodRequireOneParam.forEach(method => {
+    const headers = new Headers();
+    let hasThrown = 0;
+    let errMsg = "";
+    try {
+      headers[method]();
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+    assertEqual(
+      errMsg,
+      `Headers.${method} requires at least 1 argument, but only 0 present`
+    );
+  });
+
+  methodRequireTwoParams.forEach(method => {
+    const headers = new Headers();
+    let hasThrown = 0;
+    let errMsg = "";
+
+    try {
+      headers[method]();
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+    assertEqual(
+      errMsg,
+      `Headers.${method} requires at least 2 arguments, but only 0 present`
+    );
+
+    hasThrown = 0;
+    errMsg = "";
+    try {
+      headers[method]("foo");
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+    assertEqual(
+      errMsg,
+      `Headers.${method} requires at least 2 arguments, but only 1 present`
+    );
+  });
+});
