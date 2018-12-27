@@ -1,6 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import { DomIterableMixin } from "./mixins/dom_iterable";
+import { requiredArguments } from "./util";
 
 // From node-fetch
 // Copyright (c) 2016 David Frank. MIT License.
@@ -75,6 +76,7 @@ class HeadersBase {
 
   // ref: https://fetch.spec.whatwg.org/#concept-headers-append
   append(name: string, value: string): void {
+    requiredArguments("Headers.append", arguments.length, 2);
     const [newname, newvalue] = this._normalizeParams(name, value);
     this._validateName(newname);
     this._validateValue(newvalue);
@@ -84,12 +86,14 @@ class HeadersBase {
   }
 
   delete(name: string): void {
+    requiredArguments("Headers.delete", arguments.length, 1);
     const [newname] = this._normalizeParams(name);
     this._validateName(newname);
     this[headerMap].delete(newname);
   }
 
   get(name: string): string | null {
+    requiredArguments("Headers.get", arguments.length, 1);
     const [newname] = this._normalizeParams(name);
     this._validateName(newname);
     const value = this[headerMap].get(newname);
@@ -97,12 +101,14 @@ class HeadersBase {
   }
 
   has(name: string): boolean {
+    requiredArguments("Headers.has", arguments.length, 1);
     const [newname] = this._normalizeParams(name);
     this._validateName(newname);
     return this[headerMap].has(newname);
   }
 
   set(name: string, value: string): void {
+    requiredArguments("Headers.set", arguments.length, 2);
     const [newname, newvalue] = this._normalizeParams(name, value);
     this._validateName(newname);
     this._validateValue(newvalue);

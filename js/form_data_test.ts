@@ -96,3 +96,73 @@ test(function formDataParamsForEachSuccess() {
   });
   assertEqual(callNum, init.length);
 });
+
+test(function formDataParamsArgumentsCheck() {
+  const methodRequireOneParam = ["delete", "getAll", "get", "has", "forEach"];
+
+  const methodRequireTwoParams = ["append", "set"];
+
+  methodRequireOneParam.forEach(method => {
+    const formData = new FormData();
+    let hasThrown = 0;
+    let errMsg = "";
+    try {
+      formData[method]();
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+    assertEqual(
+      errMsg,
+      `FormData.${method} requires at least 1 argument, but only 0 present`
+    );
+  });
+
+  methodRequireTwoParams.forEach(method => {
+    const formData = new FormData();
+    let hasThrown = 0;
+    let errMsg = "";
+
+    try {
+      formData[method]();
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+    assertEqual(
+      errMsg,
+      `FormData.${method} requires at least 2 arguments, but only 0 present`
+    );
+
+    hasThrown = 0;
+    errMsg = "";
+    try {
+      formData[method]("foo");
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+    assertEqual(
+      errMsg,
+      `FormData.${method} requires at least 2 arguments, but only 1 present`
+    );
+  });
+});
