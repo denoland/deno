@@ -755,7 +755,6 @@ mod tests {
 
   #[test]
   fn test_fetch_source_1() {
-    use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
@@ -790,7 +789,6 @@ mod tests {
 
   #[test]
   fn test_fetch_source_2() {
-    use tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
