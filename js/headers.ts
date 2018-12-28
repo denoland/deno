@@ -51,8 +51,17 @@ class HeadersBase {
     } else {
       this[headerMap] = new Map();
       if (Array.isArray(init)) {
-        for (const [rawName, rawValue] of init) {
-          const [name, value] = this._normalizeParams(rawName, rawValue);
+        for (const tuple of init) {
+          // If header does not contain exactly two items,
+          // then throw a TypeError.
+          // ref: https://fetch.spec.whatwg.org/#concept-headers-fill
+          if (tuple.length !== 2) {
+            // tslint:disable:max-line-length
+            // prettier-ignore
+            throw new TypeError("Failed to construct 'Headers'; Each header pair must be an iterable [name, value] tuple");
+          }
+
+          const [name, value] = this._normalizeParams(tuple[0], tuple[1]);
           this._validateName(name);
           this._validateValue(value);
           const existingValue = this[headerMap].get(name);
