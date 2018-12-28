@@ -224,7 +224,12 @@ test(function headerIllegalReject() {
   } catch (e) {
     errorCount++;
   }
-  assertEqual(errorCount, 8);
+  try {
+    headers.set("", "ok");
+  } catch (e) {
+    errorCount++;
+  }
+  assertEqual(errorCount, 9);
   // 'o k' is valid value but invalid name
   new Headers({ "He-y": "o k" });
 });

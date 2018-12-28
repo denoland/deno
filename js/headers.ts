@@ -31,10 +31,11 @@ class HeadersBase {
   // https://github.com/bitinn/node-fetch/blob/master/src/headers.js
   // Copyright (c) 2016 David Frank. MIT License.
   private _validateName(name: string) {
-    if (invalidTokenRegex.test(name)) {
+    if (invalidTokenRegex.test(name) || name === "") {
       throw new TypeError(`${name} is not a legal HTTP header name`);
     }
   }
+
   private _validateValue(value: string) {
     if (invalidHeaderCharRegex.test(value)) {
       throw new TypeError(`${value} is not a legal HTTP header value`);
