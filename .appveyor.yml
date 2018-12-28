@@ -299,7 +299,7 @@ install:
   #   is resolved: https://github.com/rust-lang-nursery/rustup.rs/issues/998.
   # * TODO: Ship Rust in the third_party repo. See issue #386.
   - ps: |-
-      if (-not $(rustc --version | Out-String -Stream | Select-String -Pattern "1.31.0" -quiet -SimpleMatch)) {
+      if (-not $(rustc --version | Out-String -Stream | Select-String -quiet -SimpleMatch -NotMatch -Pattern "1.31.0")) {
         Invoke-WebRequest -Uri "https://win.rustup.rs" `
                           -OutFile "$env:TEMP\rustup-init.exe"
         Exec -NoNewLines {
