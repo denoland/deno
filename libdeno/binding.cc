@@ -209,6 +209,7 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   FILE* file = is_err ? stderr : stdout;
   fwrite(*str, sizeof(**str), str.length(), file);
   fprintf(file, "\n");
+  fflush(file);
 }
 
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
