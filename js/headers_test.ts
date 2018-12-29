@@ -239,7 +239,7 @@ test(function headerParamsShouldThrowTypeError() {
   let hasThrown = 0;
 
   try {
-    new Headers([["1"]]);
+    new Headers(([["1"]] as unknown) as Array<[string, string]>);
     hasThrown = 1;
   } catch (err) {
     if (err instanceof TypeError) {
