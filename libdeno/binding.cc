@@ -205,7 +205,6 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::String::Utf8Value str(isolate, args[0]);
   bool is_err =
       args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
-  // const char* cstr = ToCString(str);
   FILE* file = is_err ? stderr : stdout;
   fwrite(*str, sizeof(**str), str.length(), file);
   fprintf(file, "\n");
