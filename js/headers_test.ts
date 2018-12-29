@@ -224,9 +224,32 @@ test(function headerIllegalReject() {
   } catch (e) {
     errorCount++;
   }
-  assertEqual(errorCount, 8);
+  try {
+    headers.set("", "ok");
+  } catch (e) {
+    errorCount++;
+  }
+  assertEqual(errorCount, 9);
   // 'o k' is valid value but invalid name
   new Headers({ "He-y": "o k" });
+});
+
+// If pair does not contain exactly two items,then throw a TypeError.
+test(function headerParamsShouldThrowTypeError() {
+  let hasThrown = 0;
+
+  try {
+    new Headers(([["1"]] as unknown) as Array<[string, string]>);
+    hasThrown = 1;
+  } catch (err) {
+    if (err instanceof TypeError) {
+      hasThrown = 2;
+    } else {
+      hasThrown = 3;
+    }
+  }
+
+  assertEqual(hasThrown, 2);
 });
 
 test(function headerParamsArgumentsCheck() {
