@@ -205,9 +205,10 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::String::Utf8Value str(isolate, args[0]);
   bool is_err =
       args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
-  const char* cstr = ToCString(str);
-  auto& stream = is_err ? std::cerr : std::cout;
-  stream << cstr << std::endl;
+  FILE* file = is_err ? stderr : stdout;
+  fwrite(*str, sizeof(**str), str.length(), file);
+  fprintf(file, "\n");
+  fflush(file);
 }
 
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
