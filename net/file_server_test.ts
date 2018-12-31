@@ -25,6 +25,7 @@ export function runTests(serverReadyPromise: Promise<any>) {
     const res = await fetch("http://localhost:4500/.travis.yml");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
+    assertEqual(res.headers.get("content-type"), "text/yaml");
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(await readFile("./.travis.yml"));
     assertEqual(downloadedFile, localFile);
