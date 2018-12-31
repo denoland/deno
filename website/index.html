@@ -13,6 +13,21 @@
 
     <h1>Deno</h1>
 
+    <table>
+      <tr>
+        <th>Linux &amp; Mac</th>
+        <th>Windows</th>
+      </tr>
+      <tr>
+        <td>
+          <img src="https://travis-ci.com/denoland/deno.svg?branch=master"/>
+        </td>
+        <td>
+          <img src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"/>
+        </td>
+      </tr>
+    </table>
+
     <p>Deno is a program for executing JavaScript and TypeScript outside of the
     web browser.
 
@@ -23,6 +38,8 @@
     <p> <a href="typedoc/index.html">API Reference</a>
 
     <p><a href="https://github.com/denoland/deno_std">Deno standard modules</a>
+
+    <h2>Getting started</h2>
 
     <p>Install Deno into ~/.deno/bin
 <pre>
@@ -50,8 +67,9 @@ And if you ever want to upgrade to the latest published version:
 file_server --reload
 </pre>
 
+    <h2>Benchmarks</h2>
 
-    <h2>Execution time</h2>
+    <h3>Execution time</h3>
     This shows how much time total it takes to run a few simple deno programs:
     <a href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts">tests/002_hello.ts</a>
     and
@@ -62,7 +80,7 @@ file_server --reload
     A cold startup is when deno must compile from scratch.
     <div id="exec-time-chart"></div>
 
-    <h2>Throughput</h2>
+    <h3>Throughput</h3>
     Time it takes to pipe a certain amount of data through Deno.
     <a href="https://github.com/denoland/deno/blob/master/tests/echo_server.ts">echo_server.ts</a>
     and
@@ -71,7 +89,7 @@ file_server --reload
 
     <div id="throughput-chart"></div>
 
-    <h2>Req/Sec</h2>
+    <h3>Req/Sec</h3>
     Tests HTTP server performance. 10 keep-alive connections
     do as many hello-world requests as possible. Bigger is better.
     <ul>
@@ -92,23 +110,23 @@ file_server --reload
 
     <div id="req-per-sec-chart"></div>
 
-    <h2>Executable size</h2>
+    <h3>Executable size</h3>
     deno ships only a single binary. We track its size here.
     <div id="binary-size-chart"></div>
 
-    <h2>Thread count</h2>
+    <h3>Thread count</h3>
     How many threads various programs use.
     <div id="thread-count-chart"></div>
 
-    <h2>Syscall count</h2>
+    <h3>Syscall count</h3>
     How many total syscalls are performed when executing a given script.
     <div id="syscall-count-chart"></div>
 
-    <h2>Travis</h2>
+    <h3>Travis</h3>
     How long for Travis CI to return a green status for pull requests.
     <div id="travis-compile-time-chart"></div>
 
-    <h2>References</h2>
+    <h3>References</h3>
     <p> <a href="./all_benchmark.html">All benchmark data</a>
 
   </main>

@@ -22,11 +22,24 @@ a {
 pre {
   background: #ddd;
   padding: 15px;
-  word-wrap: normal
+  word-wrap: normal;
+  overflow-x: auto;
 }
 
 a:hover {
   background: #aee;
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+td, th {
+  text-align: center;
+  vertical-align: middle;
+  border: 1px solid #aaa;
+  padding: 6px;
 }
 
 @media only screen and (max-device-width: 480px) {
@@ -37,11 +50,6 @@ a:hover {
 
   body {
     margin: 0;
-  }
-
-  svg {
-    max-width: 375px;
-    margin: 25px -15px;
   }
 }
 
