@@ -6,6 +6,13 @@ https://github.com/denoland/deno/releases
 We also have a one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.2.5 / 2018.12.31
+
+- Runtime argument checks (#1427 #1415)
+- Lazily create .mime files only with mismatch/no extension (#1417)
+- Fix FormData.name (#1412)
+- Print string with NULL '\0' (#1428)
+
 ### v0.2.4 / 2018.12.23
 
 - "cargo build" support (#1369 #1296 #1377 #1379)
