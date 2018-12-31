@@ -118,11 +118,12 @@ export class TextProtoReader {
 
   async readLineSlice(): Promise<[Uint8Array, BufState]> {
     // this.closeDot();
-    let line: null | Uint8Array;
+    let line: Uint8Array;
     while (true) {
       let [l, more, err] = await this.r.readLine();
       if (err != null) {
-        return [null, err];
+        // Go's len(typed nil) works fine, but not in JS
+        return [new Uint8Array(0), err];
       }
       // Avoid the copy if the first call produced a full line.
       if (line == null && !more) {
