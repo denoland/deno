@@ -93,3 +93,10 @@ test(async function textprotoAppend() {
   const joined = append(u1, u2);
   assertEqual(dec.decode(joined), "Hello World");
 });
+
+test(async function textprotoReadEmpty() {
+  let r = reader("");
+  let [m, err] = await r.readMIMEHeader();
+  // Should not crash!
+  assertEqual(err, "EOF");
+});
