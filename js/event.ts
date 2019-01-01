@@ -175,7 +175,15 @@ export class Event implements domTypes.Event {
       }
 
       if (currentHiddenLevel <= maxHiddenLevel) {
-        composedPath.unshift(item);
+        composedPath.unshift({
+          item,
+          itemInShadowTree: false,
+          relatedTarget: null,
+          rootOfClosedTree: false,
+          slotInClosedTree: false,
+          target: null,
+          touchTargetList: [],
+        });
       }
 
       if (slotInClosedTree) {
@@ -200,7 +208,15 @@ export class Event implements domTypes.Event {
       }
 
       if (currentHiddenLevel <= maxHiddenLevel) {
-        composedPath.push(item);
+        composedPath.push({
+          item,
+          itemInShadowTree: false,
+          relatedTarget: null,
+          rootOfClosedTree: false,
+          slotInClosedTree: false,
+          target: null,
+          touchTargetList: [],
+        });
       }
 
       if (rootOfClosedTree) {
