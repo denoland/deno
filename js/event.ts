@@ -21,9 +21,6 @@ export class Event implements domTypes.Event {
   private _stopImmediatePropagationFlag = false;
   private _canceledFlag = false;
   private _inPassiveListenerFlag = false;
-  private _composedFlag = false;
-  private _initializedFlag = true;
-  private _dispatchFlag = false;
 
   // Property for objects on which listeners will be invoked
   private _path: domTypes.EventTarget[] = [];
@@ -125,13 +122,11 @@ export class Event implements domTypes.Event {
    *      event.composedPath();
    */
   composedPath(): domTypes.EventTarget[] {
-    const composedPath = [];
-
     if (this._path.length === 0) {
-      return composedPath;
+      return [];
     }
 
-    composedPath.push(this.currentTarget);
+    const composedPath: domTypes.EventTarget[] = [this.currentTarget];
 
     let currentTargetIndex = 0;
     let currentTargetHiddenSubtreeLevel = 0;
@@ -181,7 +176,7 @@ export class Event implements domTypes.Event {
 
     for (
       let index = currentTargetIndex + 1; index < this._path.length; index++
-     ) {
+    ) {
       const { item, rootOfClosedTree, slotInClosedTree } = this._path[index];
 
       if (slotInClosedTree) {

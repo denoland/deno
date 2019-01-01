@@ -138,7 +138,7 @@ export interface URLSearchParams {
   ): void;
 }
 
-interface EventListener {
+export interface EventListener {
   (evt: Event): void;
 }
 
@@ -191,11 +191,11 @@ interface ProgressEvent extends Event {
   readonly total: number;
 }
 
-interface EventListenerOptions {
+export interface EventListenerOptions {
   capture?: boolean;
 }
 
-interface AddEventListenerOptions extends EventListenerOptions {
+export interface AddEventListenerOptions extends EventListenerOptions {
   once?: boolean;
   passive?: boolean;
 }
@@ -234,7 +234,7 @@ interface ReadableStream {
   getReader(): ReadableStreamReader;
 }
 
-interface EventListenerObject {
+export interface EventListenerObject {
   handleEvent(evt: Event): void;
 }
 
