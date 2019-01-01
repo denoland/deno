@@ -47,6 +47,14 @@ export class Event implements domTypes.Event {
     throw new TypeError("Illegal invocation");
   }
 
+  get cancelBubble(): boolean {
+    return this._stopPropagationFlag;
+  }
+
+  get cancelBubbleImmediately(): boolean {
+    return this._stopImmediatePropagationFlag;
+  }
+
   get cancelable(): boolean {
     if (eventAttributes.has(this)) {
       return eventAttributes.get(this).cancelable || false;
@@ -238,7 +246,11 @@ Reflect.defineProperty(Event.prototype, "bubbles", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "cancelable", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "composed", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "currentTarget", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "defaultPrevented", { enumerable: true });
+Reflect.defineProperty(
+  Event.prototype,
+  "defaultPrevented",
+  { enumerable: true }
+);
 Reflect.defineProperty(Event.prototype, "eventPhase", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "isTrusted", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "target", { enumerable: true });
