@@ -1,6 +1,0 @@
-import("//build_extra/rust/rust.gni")
-
-rust_crate("flatbuffers") {
-  source_root = "//third_party/flatbuffers/rust/flatbuffers/src/lib.rs"
-  extern = [ "//build_extra/rust:smallvec" ]
-}

@@ -103,15 +103,15 @@ export function containsOnlyASCII(str: string): boolean {
   return /^[\x00-\x7F]*$/.test(str);
 }
 
-// @internal
 export interface Deferred {
   promise: Promise<void>;
   resolve: Function;
   reject: Function;
 }
 
-/** Create a wrapper around a promise that could be resolved externally. */
-// @internal
+/** Create a wrapper around a promise that could be resolved externally.
+ * TODO Do not expose this from "deno" namespace.
+ */
 export function deferred(): Deferred {
   let resolve: Function | undefined;
   let reject: Function | undefined;
@@ -124,4 +124,30 @@ export function deferred(): Deferred {
     resolve: resolve!,
     reject: reject!
   };
+}
+
+// tslint:disable-next-line:variable-name
+const TypedArrayConstructor = Object.getPrototypeOf(Uint8Array);
+export function isTypedArray(x: unknown): x is TypedArray {
+  return x instanceof TypedArrayConstructor;
+}
+
+// Returns whether o is an object, not null, and not a function.
+// @internal
+export function isObject(o: unknown): o is object {
+  return o != null && typeof o === "object";
+}
+
+// @internal
+export function requiredArguments(
+  name: string,
+  length: number,
+  required: number
+): void {
+  if (length < required) {
+    const errMsg = `${name} requires at least ${required} argument${
+      required === 1 ? "" : "s"
+    }, but only ${length} present`;
+    throw new TypeError(errMsg);
+  }
 }

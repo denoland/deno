@@ -59,11 +59,18 @@ test(function urlSearchParamsHasSuccess() {
   assert(!searchParams.has("c"));
 });
 
-test(function urlSearchParamsSetSuccess() {
+test(function urlSearchParamsSetReplaceFirstAndRemoveOthers() {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   searchParams.set("a", "false");
-  assertEqual(searchParams.toString(), "b=true&a=false");
+  assertEqual(searchParams.toString(), "a=false&b=true");
+});
+
+test(function urlSearchParamsSetAppendNew() {
+  const init = "a=54&b=true&a=true";
+  const searchParams = new URLSearchParams(init);
+  searchParams.set("c", "foo");
+  assertEqual(searchParams.toString(), "a=54&b=true&a=true&c=foo");
 });
 
 test(function urlSearchParamsSortSuccess() {
@@ -111,4 +118,61 @@ test(function urlSearchParamsMissingPair() {
   const init = "c=4&&a=54&";
   const searchParams = new URLSearchParams(init);
   assertEqual(searchParams.toString(), "c=4&a=54");
+});
+
+// If pair does not contain exactly two items, then throw a TypeError.
+// ref https://url.spec.whatwg.org/#interface-urlsearchparams
+test(function urlSearchParamsShouldThrowTypeError() {
+  let hasThrown = 0;
+
+  try {
+    new URLSearchParams([["1"]]);
+    hasThrown = 1;
+  } catch (err) {
+    if (err instanceof TypeError) {
+      hasThrown = 2;
+    } else {
+      hasThrown = 3;
+    }
+  }
+
+  assertEqual(hasThrown, 2);
+});
+
+test(function urlSearchParamsAppendArgumentsCheck() {
+  const methodRequireOneParam = ["delete", "getAll", "get", "has", "forEach"];
+
+  const methodRequireTwoParams = ["append", "set"];
+
+  methodRequireOneParam.concat(methodRequireTwoParams).forEach(method => {
+    const searchParams = new URLSearchParams();
+    let hasThrown = 0;
+    try {
+      searchParams[method]();
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+  });
+
+  methodRequireTwoParams.forEach(method => {
+    const searchParams = new URLSearchParams();
+    let hasThrown = 0;
+    try {
+      searchParams[method]("foo");
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEqual(hasThrown, 2);
+  });
 });

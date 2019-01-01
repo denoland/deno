@@ -26,7 +26,8 @@ qrun([clang_format_path, "-i", "-style", "Google"] +
      find_exts(["libdeno"], [".cc", ".h"]))
 
 print "gn format"
-for fn in ["BUILD.gn", ".gn"] + find_exts(["build_extra"], [".gn", ".gni"]):
+for fn in ["BUILD.gn", ".gn"] + find_exts(["build_extra", "libdeno"],
+                                          [".gn", ".gni"]):
     qrun(["third_party/depot_tools/gn", "format", fn], env=google_env())
 
 print "yapf"
@@ -40,7 +41,7 @@ qrun(["node", prettier, "--write", "--loglevel=error"] + ["rollup.config.js"] +
      glob("*.json") + glob("*.md") +
      find_exts([".github", "js", "tests", "tools", "website"],
                [".js", ".json", ".ts", ".md"],
-               skip=["tools/clang"]))
+               skip=["tools/clang", "js/deps"]))
 
 print "rustfmt"
 qrun([

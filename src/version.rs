@@ -2,12 +2,10 @@
 use libdeno;
 use std::ffi::CStr;
 
-// This is the source of truth for the Deno version. Ignore the value in Cargo.toml.
-pub const DENO_VERSION: &str = "0.1.10";
+pub const DENO: &str = env!("CARGO_PKG_VERSION");
 
-pub fn get_v8_version() -> &'static str {
-  let v = unsafe { libdeno::deno_v8_version() };
-  let c_str = unsafe { CStr::from_ptr(v) };
-  let version = c_str.to_str().unwrap();
-  version
+pub fn v8() -> &'static str {
+  let version = unsafe { libdeno::deno_v8_version() };
+  let c_str = unsafe { CStr::from_ptr(version) };
+  c_str.to_str().unwrap()
 }

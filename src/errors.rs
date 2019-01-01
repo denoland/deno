@@ -124,8 +124,8 @@ impl std::error::Error for DenoError {
 
 impl From<io::Error> for DenoError {
   #[inline]
-  fn from(err: io::Error) -> DenoError {
-    DenoError {
+  fn from(err: io::Error) -> Self {
+    Self {
       repr: Repr::IoErr(err),
     }
   }
@@ -133,8 +133,8 @@ impl From<io::Error> for DenoError {
 
 impl From<url::ParseError> for DenoError {
   #[inline]
-  fn from(err: url::ParseError) -> DenoError {
-    DenoError {
+  fn from(err: url::ParseError) -> Self {
+    Self {
       repr: Repr::UrlErr(err),
     }
   }
@@ -142,8 +142,8 @@ impl From<url::ParseError> for DenoError {
 
 impl From<hyper::Error> for DenoError {
   #[inline]
-  fn from(err: hyper::Error) -> DenoError {
-    DenoError {
+  fn from(err: hyper::Error) -> Self {
+    Self {
       repr: Repr::HyperErr(err),
     }
   }

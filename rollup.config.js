@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import assert from "assert";
+// @ts-check
 import * as fs from "fs";
 import path from "path";
 import alias from "rollup-plugin-alias";
@@ -30,10 +30,14 @@ const tsconfigOverride = {
   }
 };
 
-// this is a rollup plugin which will look for imports ending with `!string` and resolve
-// them with a module that will inline the contents of the file as a string.  Needed to
-// support `js/assets.ts`.
-function strings({ include, exclude } = {}) {
+/** this is a rollup plugin which will look for imports ending with `!string` and resolve
+ * them with a module that will inline the contents of the file as a string.  Needed to
+ * support `js/assets.ts`.
+ * @param {any} param0
+ */
+function strings(
+  { include, exclude } = { include: undefined, exclude: undefined }
+) {
   if (!include) {
     throw new Error("include option must be passed");
   }
@@ -85,7 +89,9 @@ const osNodeToDeno = {
   linux: "linux"
 };
 
-// Inject deno.platform.arch and deno.platform.os
+/** Inject deno.platform.arch and deno.platform.os
+ * @param {any} param0
+ */
 function platform({ include, exclude } = {}) {
   if (!include) {
     throw new Error("include option must be passed");
@@ -132,7 +138,7 @@ function resolveGenerated() {
 }
 
 function generateDepFile({ outputFile, sourceFiles = [], configFiles = [] }) {
-  let timestamp = Date.now();
+  let timestamp = new Date();
 
   // Save the depfile just before the node process exits.
   process.once("beforeExit", () =>
@@ -209,7 +215,8 @@ export default function makeConfig(commandOptions) {
     output: {
       format: "iife",
       name: "denoMain",
-      sourcemap: true
+      sourcemap: true,
+      sourcemapExcludeSources: true
     },
 
     plugins: [

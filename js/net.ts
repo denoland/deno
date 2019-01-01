@@ -74,11 +74,11 @@ class ConnImpl implements Conn {
     readonly localAddr: string
   ) {}
 
-  write(p: ArrayBufferView): Promise<number> {
+  write(p: Uint8Array): Promise<number> {
     return write(this.rid, p);
   }
 
-  read(p: ArrayBufferView): Promise<ReadResult> {
+  read(p: Uint8Array): Promise<ReadResult> {
     return read(this.rid, p);
   }
 

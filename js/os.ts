@@ -4,6 +4,7 @@ import { assert } from "./util";
 import * as util from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
+import { TextDecoder } from "./text_encoding";
 
 interface CodeInfo {
   moduleName: string | undefined;
@@ -25,18 +26,15 @@ export function exit(exitCode = 0): never {
 }
 
 // @internal
-export function codeFetch(
-  moduleSpecifier: string,
-  containingFile: string
-): CodeInfo {
-  util.log("os.ts codeFetch", moduleSpecifier, containingFile);
+export function codeFetch(specifier: string, referrer: string): CodeInfo {
+  util.log("os.ts codeFetch", specifier, referrer);
   // Send CodeFetch message
   const builder = flatbuffers.createBuilder();
-  const moduleSpecifier_ = builder.createString(moduleSpecifier);
-  const containingFile_ = builder.createString(containingFile);
+  const specifier_ = builder.createString(specifier);
+  const referrer_ = builder.createString(referrer);
   msg.CodeFetch.startCodeFetch(builder);
-  msg.CodeFetch.addModuleSpecifier(builder, moduleSpecifier_);
-  msg.CodeFetch.addContainingFile(builder, containingFile_);
+  msg.CodeFetch.addSpecifier(builder, specifier_);
+  msg.CodeFetch.addReferrer(builder, referrer_);
   const inner = msg.CodeFetch.endCodeFetch(builder);
   const baseRes = sendSync(builder, msg.Any.CodeFetch, inner);
   assert(baseRes != null);
@@ -48,13 +46,17 @@ export function codeFetch(
   assert(baseRes!.inner(codeFetchRes) != null);
   // flatbuffers returns `null` for an empty value, this does not fit well with
   // idiomatic TypeScript under strict null checks, so converting to `undefined`
+  const sourceCode = codeFetchRes.sourceCodeArray() || undefined;
+  const outputCode = codeFetchRes.outputCodeArray() || undefined;
+  const sourceMap = codeFetchRes.sourceMapArray() || undefined;
+  const decoder = new TextDecoder();
   return {
     moduleName: codeFetchRes.moduleName() || undefined,
     filename: codeFetchRes.filename() || undefined,
     mediaType: codeFetchRes.mediaType(),
-    sourceCode: codeFetchRes.sourceCode() || undefined,
-    outputCode: codeFetchRes.outputCode() || undefined,
-    sourceMap: codeFetchRes.sourceMap() || undefined
+    sourceCode: sourceCode && decoder.decode(sourceCode),
+    outputCode: outputCode && decoder.decode(outputCode),
+    sourceMap: sourceMap && decoder.decode(sourceMap)
   };
 }
 

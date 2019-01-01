@@ -3,7 +3,8 @@
 # Run this script if you are changing Deno's dependencies.
 # To update the deno_third_party git repo after running this, try the following:
 # cd third_party
-# find . -type f | grep -v "\.git" | xargs -I% git add -f --no-warn-embedded-repo "%"
+# find . -type f | grep -v "\.git" | \
+#   xargs -I% git add -f --no-warn-embedded-repo "%"
 
 import third_party
 import util

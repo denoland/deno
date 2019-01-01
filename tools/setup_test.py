@@ -40,22 +40,22 @@ def read_gn_args_test():
 
 def write_gn_args_test():
     # Build a nonexistent path; write_gn_args() should call mkdir as needed.
-    dir = mktemp()
-    filename = os.path.join(dir, "args.gn")
-    assert not os.path.exists(dir)
+    d = mktemp()
+    filename = os.path.join(d, "args.gn")
+    assert not os.path.exists(d)
     assert not os.path.exists(filename)
     # Write some args.
     args = ['lalala=42', 'foo_bar_baz="lorem ipsum dolor#amet"']
     write_gn_args(filename, args)
     # Directory and args file should now be created.
-    assert os.path.isdir(dir)
+    assert os.path.isdir(d)
     assert os.path.isfile(filename)
     # Validate that the right contents were written.
     (check_args, hand_edited) = read_gn_args(filename)
     assert check_args == args
     assert hand_edited == False
     # Clean up.
-    rmtree(dir)
+    rmtree(d)
 
 
 def setup_test():

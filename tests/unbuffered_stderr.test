@@ -1,0 +1,3 @@
+args: tests/unbuffered_stderr.ts --reload
+check_stderr: true
+output: tests/unbuffered_stderr.ts.out

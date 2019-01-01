@@ -8,15 +8,21 @@ clone_depth: 1
 
 environment:
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
-  CARGO_HOME: $(USERPROFILE)\.cargo
-  CARGO_TARGET_DIR: $(APPVEYOR_BUILD_FOLDER)\target
   DENO_BUILD_MODE: release
-  DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\out\release
+  DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\target\release
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   MTIME_CACHE_DB: $(APPVEYOR_BUILD_FOLDER)\mtime_cache.xml
   RELEASE_ARTIFACT: deno_win_x64.zip
-  RUSTUP_HOME: $(USERPROFILE)\.rustup
+  RUST_DIR: $(USERPROFILE)\rust
+  CARGO_HOME: $(RUST_DIR)\cargo
+  RUSTUP_HOME: $(RUST_DIR)\rustup
   RUST_BACKTRACE: 1
+  RUSTC_WRAPPER: sccache
+  SCCACHE_BUCKET: deno-sccache
+  AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
+  AWS_SECRET_ACCESS_KEY:
+    secure: 8ybpi/y5qE2baChsCBhNHmykng3FitELAtTYOiqZd0mw38i88dzdAX8ETNtBogMV
+
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
   #   -t7z  : Use '7z' format.
@@ -225,8 +231,7 @@ for:
 
 cache:
   # Rust stuff.
-  - $(CARGO_HOME)
-  - $(RUSTUP_HOME)
+  - $(RUST_DIR)
   # Cache the third_party submodule to preserve binaries downloaded by setup.py,
   # and to make incremental builds work.
   - $(APPVEYOR_BUILD_FOLDER)\.git\modules\third_party
@@ -234,7 +239,6 @@ cache:
   # Cache file mtimes in the main git repo, also to enable incremental builds.
   - $(MTIME_CACHE_DB)
   # Build incrementally.
-  - $(CARGO_TARGET_DIR)
   - $(DENO_BUILD_PATH)
 
 init:
@@ -245,6 +249,9 @@ init:
   - git config --global core.symlinks true
 
 install:
+  # Make sure the PATH includes the prebuilt files (downloaded during setup.py)
+  - set PATH=%PATH%;%CD%\prebuilt\win\
+
   # Clone the third_party submodule.
   - ps: |-
       try {
@@ -320,7 +327,6 @@ install:
 before_build:
   # Mark all files in the build dir 'not needed' until proven otherwise.
   # TODO: also track files in third_party that aren't checked into the repo.
-  # TODO: also track files in $CARGO_TARGET_DIR.
   - ps: Start-TraceFilesNeeded $env:DENO_BUILD_PATH -Recurse
 
   # Download clang and gn, generate ninja files.
@@ -335,11 +341,19 @@ before_build:
         foreach { "$env:DENO_BUILD_PATH\$($Matches[1])" }
       Set-FilesNeeded -Auto -Path $outputs -Reason "Build dependency graph"
 
+  # Start sccache, then throw away the S3 access key.
+  - ps: |-
+      sccache --start-server
+      $env:AWS_SECRET_ACCESS_KEY = $null
+
 build_script:
+  # Build with Cargo first. Both builds produce a deno.exe in the same dir. We
+  # want the final one (which gets tested and released) to be built by Ninja.
+  - cargo build -vv --release
+  - ps: Set-FilesNeeded -Auto -Reason "Cargo build finished"
+
   - python tools\build.py
-  - ps: Set-FilesNeeded -Auto -Reason "Build finished"
-  - cargo check --release
-  - ps: Set-FilesNeeded -Auto -Reason "Cargo check finished"
+  - ps: Set-FilesNeeded -Auto -Reason "Ninja build finished"
 
 test_script:
   - python tools\lint.py
@@ -353,6 +367,9 @@ after_test:
 
   # Remove stale files and empty dirs from the build directory.
   - ps: Stop-TraceFilesNeeded
+
+  # Stop sccache and show stats.
+  - ps: sccache --stop-server
 
   # Verify that the build is fully up-to-date. Running ninja should be a no-op.
   # This catches erroneous file cleanup, and incorrectly set up build deps.

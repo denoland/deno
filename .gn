@@ -30,7 +30,14 @@ default_args = {
   # for now. See http://clang.llvm.org/docs/ControlFlowIntegrity.html
   is_cfi = false
 
+  # TODO(ry) Remove this so debug builds can link faster. Currently removing
+  # this breaks cargo build in debug mode in OSX.
   is_component_build = false
+
+  # Enable Jumbo build for a faster build.
+  # https://chromium.googlesource.com/chromium/src/+/master/docs/jumbo.md
+  use_jumbo_build = true
+
   symbol_level = 1
   treat_warnings_as_errors = true
   rust_treat_warnings_as_errors = true
@@ -44,7 +51,7 @@ default_args = {
   v8_experimental_extra_library_files = []
   v8_extra_library_files = []
   v8_imminent_deprecation_warnings = false
-  v8_monolithic = true
+  v8_monolithic = false
   v8_untrusted_code_mitigations = false
   v8_use_external_startup_data = false
   v8_use_snapshot = true

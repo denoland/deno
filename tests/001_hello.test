@@ -1,0 +1,2 @@
+args: tests/001_hello.js --reload
+output: tests/001_hello.js.out

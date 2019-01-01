@@ -42,6 +42,22 @@ export function addSourceComment(
   );
 }
 
+/** Add a declaration of a type alias to a node */
+export function addTypeAlias(
+  node: StatementedNode,
+  name: string,
+  type: string,
+  hasDeclareKeyword = false,
+  jsdocs?: JSDoc[]
+) {
+  return node.addTypeAlias({
+    name,
+    type,
+    docs: jsdocs && jsdocs.map(jsdoc => jsdoc.getText()),
+    hasDeclareKeyword
+  });
+}
+
 /** Add a declaration of a variable to a node */
 export function addVariableDeclaration(
   node: StatementedNode,
@@ -56,6 +72,14 @@ export function addVariableDeclaration(
     docs: jsdocs && jsdocs.map(jsdoc => jsdoc.getText()),
     hasDeclareKeyword
   });
+}
+
+/** Copy one source file to the end of another source file. */
+export function appendSourceFile(
+  sourceFile: SourceFile,
+  targetSourceFile: SourceFile
+): void {
+  targetSourceFile.addStatements(`\n${sourceFile.print()}`);
 }
 
 /** Check diagnostics, and if any exist, exit the process */
@@ -75,12 +99,22 @@ export function checkDiagnostics(project: Project, onlyFor?: string[]) {
     })
     .map(diagnostic => diagnostic.compilerObject);
 
+  logDiagnostics(diagnostics);
+
   if (diagnostics.length) {
-    console.log(
-      ts.formatDiagnosticsWithColorAndContext(diagnostics, formatDiagnosticHost)
-    );
     process.exit(1);
   }
+}
+
+function createDeclarationError(
+  msg: string,
+  declaration: ImportDeclaration | ExportDeclaration
+): Error {
+  return new Error(
+    `${msg}\n` +
+      `  In: "${declaration.getSourceFile().getFilePath()}"\n` +
+      `  Text: "${declaration.getText()}"`
+  );
 }
 
 export interface FlattenNamespaceOptions {
@@ -151,7 +185,12 @@ export function flattenNamespace({
   }
 
   sourceFile.getExportDeclarations().forEach(exportDeclaration => {
-    processSourceFile(exportDeclaration.getModuleSpecifierSourceFileOrThrow());
+    const exportedSourceFile = exportDeclaration.getModuleSpecifierSourceFile();
+    if (exportedSourceFile) {
+      processSourceFile(exportedSourceFile);
+    } else {
+      throw createDeclarationError("Missing source file.", exportDeclaration);
+    }
     exportDeclaration.remove();
   });
 
@@ -254,9 +293,19 @@ export function loadFiles(project: Project, filePaths: string[]) {
   }
 }
 
+/** Log diagnostics to the console with colour. */
+export function logDiagnostics(diagnostics: ts.Diagnostic[]): void {
+  if (diagnostics.length) {
+    console.log(
+      ts.formatDiagnosticsWithColorAndContext(diagnostics, formatDiagnosticHost)
+    );
+  }
+}
+
 export interface NamespaceSourceFileOptions {
   debug?: boolean;
   namespace?: string;
+  namespaces: Set<string>;
   rootPath: string;
   sourceFileMap: Map<SourceFile, string>;
 }
@@ -267,7 +316,13 @@ export interface NamespaceSourceFileOptions {
  */
 export function namespaceSourceFile(
   sourceFile: SourceFile,
-  { debug, namespace, rootPath, sourceFileMap }: NamespaceSourceFileOptions
+  {
+    debug,
+    namespace,
+    namespaces,
+    rootPath,
+    sourceFileMap
+  }: NamespaceSourceFileOptions
 ): string {
   if (sourceFileMap.has(sourceFile)) {
     return "";
@@ -300,22 +355,42 @@ export function namespaceSourceFile(
 
   const output = sourceFile
     .getImportDeclarations()
+    .filter(declaration => {
+      const dsf = declaration.getModuleSpecifierSourceFile();
+      if (dsf == null) {
+        try {
+          const namespaceName = declaration
+            .getNamespaceImportOrThrow()
+            .getText();
+          if (!namespaces.has(namespaceName)) {
+            throw createDeclarationError(
+              "Already defined source file under different namespace.",
+              declaration
+            );
+          }
+        } catch (e) {
+          throw createDeclarationError(
+            "Unsupported import clause.",
+            declaration
+          );
+        }
+        declaration.remove();
+      }
+      return dsf;
+    })
     .map(declaration => {
       if (
         declaration.getNamedImports().length ||
         !declaration.getNamespaceImport()
       ) {
-        throw new Error(
-          "Unsupported import clause.\n" +
-            `  In: "${declaration.getSourceFile().getFilePath()}"\n` +
-            `  Text: "${declaration.getText()}"`
-        );
+        throw createDeclarationError("Unsupported import clause.", declaration);
       }
       const text = namespaceSourceFile(
         declaration.getModuleSpecifierSourceFileOrThrow(),
         {
           debug,
           namespace: declaration.getNamespaceImportOrThrow().getText(),
+          namespaces,
           rootPath,
           sourceFileMap
         }
@@ -327,6 +402,8 @@ export function namespaceSourceFile(
   sourceFile
     .getExportDeclarations()
     .forEach(declaration => declaration.remove());
+
+  namespaces.add(namespace);
 
   return `${output}
     ${globalNamespaceText || ""}

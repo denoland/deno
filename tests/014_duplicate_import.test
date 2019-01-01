@@ -1,0 +1,2 @@
+args: tests/014_duplicate_import.ts --reload
+output: tests/014_duplicate_import.ts.out
