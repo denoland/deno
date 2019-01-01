@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
-# If //website/data.json doesn't exist, this script tries to import it from gh-pages branch.
+# If //website/data.json doesn't exist, this script tries to import it from
+# gh-pages branch.
 # To view the results locally run ./tools/http_server.py and visit
 # http://localhost:4545/website
 
@@ -15,6 +16,7 @@ import tempfile
 import http_server
 import throughput_benchmark
 from http_benchmark import http_benchmark
+import prebuilt
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -49,7 +51,7 @@ def import_data_from_gh_pages():
             "https://github.com/denoland/deno.git", "gh-pages"
         ])
         shutil.copy(gh_pages_data_file, all_data_file)
-    except:
+    except ValueError:
         write_json(all_data_file, [])  # writes empty json data
 
 
@@ -155,7 +157,9 @@ def main(argv):
 
     os.chdir(root_path)
     import_data_from_gh_pages()
-    # TODO: Use hyperfine in //third_party
+
+    prebuilt.load_hyperfine()
+
     run([
         "hyperfine", "--ignore-failure", "--export-json", benchmark_file,
         "--warmup", "3"

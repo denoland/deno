@@ -5,69 +5,84 @@ use flags::DenoFlags;
 use errors::permission_denied;
 use errors::DenoResult;
 use std::io;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-#[derive(Debug, Default, PartialEq)]
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+#[derive(Debug, Default)]
 pub struct DenoPermissions {
-  pub allow_write: bool,
-  pub allow_net: bool,
-  pub allow_env: bool,
+  pub allow_write: AtomicBool,
+  pub allow_net: AtomicBool,
+  pub allow_env: AtomicBool,
+  pub allow_run: AtomicBool,
 }
 
 impl DenoPermissions {
-  pub fn new(flags: &DenoFlags) -> DenoPermissions {
-    DenoPermissions {
-      allow_write: flags.allow_write,
-      allow_env: flags.allow_env,
-      allow_net: flags.allow_net,
+  pub fn new(flags: &DenoFlags) -> Self {
+    Self {
+      allow_write: AtomicBool::new(flags.allow_write),
+      allow_env: AtomicBool::new(flags.allow_env),
+      allow_net: AtomicBool::new(flags.allow_net),
+      allow_run: AtomicBool::new(flags.allow_run),
     }
   }
 
-  pub fn check_write(&mut self, filename: &str) -> DenoResult<()> {
-    if self.allow_write {
+  pub fn check_run(&self) -> DenoResult<()> {
+    if self.allow_run.load(Ordering::SeqCst) {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(format!(
+    let r = permission_prompt("Deno requests access to run a subprocess.");
+    if r.is_ok() {
+      self.allow_run.store(true, Ordering::SeqCst);
+    }
+    r
+  }
+
+  pub fn check_write(&self, filename: &str) -> DenoResult<()> {
+    if self.allow_write.load(Ordering::SeqCst) {
+      return Ok(());
+    };
+    // TODO get location (where access occurred)
+    let r = permission_prompt(&format!(
       "Deno requests write access to \"{}\".",
       filename
     ));;
     if r.is_ok() {
-      self.allow_write = true;
+      self.allow_write.store(true, Ordering::SeqCst);
     }
     r
   }
 
-  pub fn check_net(&mut self, domain_name: &str) -> DenoResult<()> {
-    if self.allow_net {
+  pub fn check_net(&self, domain_name: &str) -> DenoResult<()> {
+    if self.allow_net.load(Ordering::SeqCst) {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(format!(
+    let r = permission_prompt(&format!(
       "Deno requests network access to \"{}\".",
       domain_name
     ));
     if r.is_ok() {
-      self.allow_net = true;
+      self.allow_net.store(true, Ordering::SeqCst);
     }
     r
   }
 
-  pub fn check_env(&mut self) -> DenoResult<()> {
-    if self.allow_env {
+  pub fn check_env(&self) -> DenoResult<()> {
+    if self.allow_env.load(Ordering::SeqCst) {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(
-      "Deno requests access to environment variables.".to_string(),
-    );
+    let r =
+      permission_prompt(&"Deno requests access to environment variables.");
     if r.is_ok() {
-      self.allow_env = true;
+      self.allow_env.store(true, Ordering::SeqCst);
     }
     r
   }
 }
 
-fn permission_prompt(message: String) -> DenoResult<()> {
+fn permission_prompt(message: &str) -> DenoResult<()> {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return Err(permission_denied());
   };

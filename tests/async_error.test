@@ -1,0 +1,4 @@
+exit_code: 1
+args: tests/async_error.ts --reload
+check_stderr: true
+output: tests/async_error.ts.out

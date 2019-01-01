@@ -1,68 +1,41 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import("//build/toolchain/cc_wrapper.gni")
-import("//third_party/v8/gni/v8.gni")
-import("//third_party/v8/snapshot_toolchain.gni")
 import("//build_extra/flatbuffers/flatbuffer.gni")
 import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
-import("//build_extra/deno.gni")
 import("//build_extra/rust/rust.gni")
-import("//build_extra/toolchain/validate.gni")
+import("//third_party/v8/gni/v8.gni")
+import("//third_party/v8/snapshot_toolchain.gni")
+import("libdeno/deno.gni")
 
 group("default") {
   testonly = true
   deps = [
     ":deno",
     ":hyper_hello",
-    ":test_cc",
     ":test_rs",
+    "libdeno:test_cc",
   ]
-}
-
-# Set of targets that need to be built for `cargo check` to succeed.
-group("cargo_check_deps") {
-  deps = [
-    ":msg_rs",
-  ]
-}
-
-config("deno_config") {
-  include_dirs = [ "third_party/v8" ]  # This allows us to v8/src/base/ libraries.
-  configs = [ "third_party/v8:external_config" ]
-  if (is_debug) {
-    defines = [ "DEBUG" ]
-  }
-
-  # Targets built with the `rust_executable()` template automatically pick up
-  # these dependencies, but those built with `executable()` need them when they
-  # have Rust inputs. Currently, there's only one such target, `test_cc`.
-  if (is_mac) {
-    libs = [ "resolv" ]
-  }
-  if (is_win) {
-    libs = [ "userenv.lib" ]
-  }
-
-  if (is_clang) {
-    cflags = [
-      "-fcolor-diagnostics",
-      "-fansi-escape-codes",
-    ]
-  }
 }
 
 main_extern = [
   "$rust_build:atty",
   "$rust_build:dirs",
+  "$rust_build:flatbuffers",
   "$rust_build:futures",
   "$rust_build:getopts",
+  "$rust_build:http",
   "$rust_build:hyper",
   "$rust_build:hyper_rustls",
+  "$rust_build:kernel32",
   "$rust_build:lazy_static",
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:rand",
   "$rust_build:remove_dir_all",
   "$rust_build:ring",
+  "$rust_build:rustyline",
+  "$rust_build:serde_json",
+  "$rust_build:source_map_mappings",
   "$rust_build:tempfile",
   "$rust_build:tokio",
   "$rust_build:tokio_executor",
@@ -71,12 +44,13 @@ main_extern = [
   "$rust_build:tokio_process",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
-  "//build_extra/flatbuffers/rust:flatbuffers",
+  "$rust_build:winapi",
 ]
 
 ts_sources = [
   "js/assets.ts",
   "js/blob.ts",
+  "js/buffer.ts",
   "js/chmod.ts",
   "js/compiler.ts",
   "js/console.ts",
@@ -88,12 +62,14 @@ ts_sources = [
   "js/errors.ts",
   "js/event.ts",
   "js/fetch.ts",
-  "js/headers.ts",
+  "js/dom_file.ts",
   "js/file_info.ts",
   "js/files.ts",
   "js/flatbuffers.ts",
+  "js/form_data.ts",
   "js/global_eval.ts",
   "js/globals.ts",
+  "js/headers.ts",
   "js/io.ts",
   "js/libdeno.ts",
   "js/main.ts",
@@ -105,22 +81,24 @@ ts_sources = [
   "js/os.ts",
   "js/platform.ts",
   "js/plugins.d.ts",
-  "js/promise_util.ts",
+  "js/process.ts",
   "js/read_dir.ts",
   "js/read_file.ts",
   "js/read_link.ts",
   "js/remove.ts",
   "js/rename.ts",
+  "js/repl.ts",
   "js/resources.ts",
+  "js/runner.ts",
   "js/stat.ts",
   "js/symlink.ts",
   "js/text_encoding.ts",
   "js/timers.ts",
   "js/truncate.ts",
   "js/types.ts",
+  "js/url.ts",
   "js/url_search_params.ts",
   "js/util.ts",
-  "js/v8_source_maps.ts",
   "js/write_file.ts",
   "tsconfig.json",
 
@@ -130,56 +108,34 @@ ts_sources = [
   "third_party/yarn.lock",
 ]
 
+# When Cargo is driving the build, GN/Ninja are used to produce these non-Rust
+# targets. Cargo handles all Rust source files and the final linking step.
+group("deno_deps") {
+  deps = [
+    ":msg_rs",
+    ":snapshot_deno",
+    "libdeno:libdeno_static_lib",
+  ]
+}
+
+# Reads the cargo info from Cargo.toml
+deno_cargo_info = exec_script("build_extra/rust/get_cargo_info.py",
+                              [ rebase_path("Cargo.toml", root_build_dir) ],
+                              "json")
+
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
   deps = [
     ":deno_deps",
   ]
-}
 
-source_set("snapshot") {
-  sources = [
-    "src/snapshot.cc",
-  ]
-  configs += [ ":deno_config" ]
+  # Extract version from Cargo.toml
+  # TODO integrate this into rust.gni by allowing the rust_executable template
+  # to specify a cargo.toml from which it will extract a version.
+  crate_version = deno_cargo_info.version
   inputs = [
-    "$target_gen_dir/snapshot_deno.bin",
-  ]
-  deps = [
-    ":create_snapshot_deno",
-  ]
-
-  # snapshot.cc doesn't need to depend on libdeno, it just needs deno_buf.
-  include_dirs = [ "libdeno/" ]
-
-  # src/snapshot.cc uses an assembly '.incbin' directive to embed the snapshot.
-  # This causes trouble when using sccache: since the snapshot file is not
-  # inlined by the c preprocessor, sccache doesn't take its contents into
-  # consideration, leading to false-positive cache hits.
-  # Maybe other caching tools have this issue too, but ccache is unaffected.
-  # Therefore, if a cc_wrapper is used that isn't ccache, include a generated
-  # header file that contains the the sha256 hash of the snapshot.
-  if (cc_wrapper != "" && cc_wrapper != "ccache") {
-    hash_h = "$target_gen_dir/bundle/hash.h"
-    inputs += [ hash_h ]
-    deps += [ ":bundle_hash_h" ]
-    if (is_win) {
-      cflags = [ "/FI" + rebase_path(hash_h, target_out_dir) ]
-    } else {
-      cflags = [
-        "-include",
-        rebase_path(hash_h, target_out_dir),
-      ]
-    }
-  }
-}
-
-rust_executable("hyper_hello") {
-  source_root = "tools/hyper_hello.rs"
-  extern = [
-    "$rust_build:hyper",
-    "$rust_build:ring",
+    "Cargo.toml",
   ]
 }
 
@@ -189,65 +145,20 @@ rust_test("test_rs") {
   deps = [
     ":deno_deps",
   ]
+
+  # Extract version from Cargo.toml
+  crate_version = deno_cargo_info.version
+  inputs = [
+    "Cargo.toml",
+  ]
 }
 
-v8_executable("test_cc") {
-  testonly = true
-  sources = [
-    "libdeno/file_util_test.cc",
-    "libdeno/libdeno_test.cc",
-    "libdeno/test.cc",
+rust_executable("hyper_hello") {
+  source_root = "tools/hyper_hello.rs"
+  extern = [
+    "$rust_build:hyper",
+    "$rust_build:ring",
   ]
-  deps = [
-    ":create_snapshot_libdeno_test",
-    ":libdeno",
-    "//testing/gtest:gtest",
-  ]
-  data = [
-    "$target_gen_dir/snapshot_libdeno_test.bin",
-  ]
-  snapshot_path = rebase_path(data[0], root_build_dir)
-  defines = [ "SNAPSHOT_PATH=\"$snapshot_path\"" ]
-  configs = [ ":deno_config" ]
-}
-
-# Only functionality needed for libdeno_test and snapshot_creator
-# In particular no flatbuffers, no assets, no rust, no msg handlers.
-# Because snapshots are slow, it's important that snapshot_creator's
-# dependencies are minimal.
-static_library("libdeno") {
-  sources = [
-    "libdeno/api.cc",
-    "libdeno/binding.cc",
-    "libdeno/deno.h",
-    "libdeno/file_util.cc",
-    "libdeno/file_util.h",
-    "libdeno/internal.h",
-  ]
-  public_deps = [
-    "third_party/v8:v8_monolith",
-  ]
-  configs += [ ":deno_config" ]
-}
-
-static_library("deno_deps") {
-  complete_static_lib = true
-  public_deps = [
-    ":libdeno",
-    ":msg_rs",
-    ":snapshot",
-  ]
-  configs += [ ":deno_config" ]
-}
-
-executable("snapshot_creator") {
-  sources = [
-    "libdeno/snapshot_creator.cc",
-  ]
-  deps = [
-    ":libdeno",
-  ]
-  configs += [ ":deno_config" ]
 }
 
 # Generates the core TypeScript type library for deno that will be
@@ -304,29 +215,6 @@ run_node("bundle") {
   ]
 }
 
-action("bundle_hash_h") {
-  script = "//tools/sha256sum.py"
-  inputs = get_target_outputs(":bundle")
-  outputs = [
-    "$target_gen_dir/bundle/hash.h",
-  ]
-  deps = [
-    ":bundle",
-  ]
-  args = [
-    "--format",
-    "__attribute__((__unused__)) static const int dummy_%s = 0;",
-    "--outfile",
-    rebase_path(outputs[0], root_build_dir),
-  ]
-  foreach(input, inputs) {
-    args += [
-      "--infile",
-      rebase_path(input, root_build_dir),
-    ]
-  }
-}
-
 ts_flatbuffer("msg_ts") {
   sources = [
     "src/msg.fbs",
@@ -340,16 +228,9 @@ rust_flatbuffer("msg_rs") {
 }
 
 # Generates $target_gen_dir/snapshot_deno.bin
-create_snapshot("deno") {
-  js = "$target_gen_dir/bundle/main.js"
-  source_map = "$target_gen_dir/bundle/main.js.map"
+snapshot("snapshot_deno") {
+  source_root = "$target_gen_dir/bundle/main.js"
   deps = [
     ":bundle",
   ]
-}
-
-# Generates $target_gen_dir/snapshot_libdeno_test.bin
-create_snapshot("libdeno_test") {
-  testonly = true
-  js = "libdeno/libdeno_test.js"
 }

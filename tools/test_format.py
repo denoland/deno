@@ -7,7 +7,7 @@ import sys
 import subprocess
 
 
-def main(argv):
+def main():
     util.run([sys.executable, "tools/format.py"])
     output = util.run_output(
         ["git", "status", "-uno", "--porcelain", "--ignore-submodules"])
@@ -18,4 +18,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()

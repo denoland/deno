@@ -167,7 +167,9 @@ function fireTimers() {
   setGlobalTimeout(nextTimerDue, now);
 }
 
-function setTimer<Args extends Array<unknown>>(
+export type Args = any[]; // tslint:disable-line:no-any
+
+function setTimer(
   cb: (...args: Args) => void,
   delay: number,
   args: Args,
@@ -198,7 +200,7 @@ function setTimer<Args extends Array<unknown>>(
 }
 
 /** Sets a timer which executes a function once after the timer expires. */
-export function setTimeout<Args extends Array<unknown>>(
+export function setTimeout(
   cb: (...args: Args) => void,
   delay: number,
   ...args: Args
@@ -207,7 +209,7 @@ export function setTimeout<Args extends Array<unknown>>(
 }
 
 /** Repeatedly calls a function , with a fixed time delay between each call. */
-export function setInterval<Args extends Array<unknown>>(
+export function setInterval(
   cb: (...args: Args) => void,
   delay: number,
   ...args: Args

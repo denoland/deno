@@ -1,0 +1,4 @@
+args: tests/error_005_missing_dynamic_import.ts --reload
+check_stderr: true
+exit_code: 1
+output: tests/error_005_missing_dynamic_import.ts.out

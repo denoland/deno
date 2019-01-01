@@ -18,8 +18,10 @@ import {
   getSourceComment,
   loadDtsFiles,
   loadFiles,
+  logDiagnostics,
   namespaceSourceFile,
-  normalizeSlashes
+  normalizeSlashes,
+  addTypeAlias
 } from "./ast_util";
 
 export interface BuildLibraryOptions {
@@ -214,6 +216,16 @@ export function mergeGlobal({
     addInterfaceProperty(interfaceDeclaration, property, type);
   }
 
+  // We need to copy over any type aliases
+  for (const typeAlias of sourceFile.getTypeAliases()) {
+    addTypeAlias(
+      targetSourceFile,
+      typeAlias.getName(),
+      typeAlias.getType().getText(sourceFile),
+      true
+    );
+  }
+
   // We need to ensure that we only namespace each source file once, so we
   // will use this map for tracking that.
   const sourceFileMap = new Map<SourceFile, string>();
@@ -222,6 +234,7 @@ export function mergeGlobal({
   // declaration source file into a namespace that exists within the merged
   // namespace
   const importDeclarations = sourceFile.getImportDeclarations();
+  const namespaces = new Set<string>();
   for (const declaration of importDeclarations) {
     const declarationSourceFile = declaration.getModuleSpecifierSourceFile();
     if (
@@ -241,6 +254,7 @@ export function mergeGlobal({
         namespaceSourceFile(dtsSourceFile, {
           debug,
           namespace: declaration.getNamespaceImportOrThrow().getText(),
+          namespaces,
           rootPath: basePath,
           sourceFileMap
         })
@@ -308,6 +322,14 @@ export function main({
   // emit the project, which will be only the declaration files
   const inputEmitResult = inputProject.emitToMemory();
 
+  const inputDiagnostics = inputEmitResult
+    .getDiagnostics()
+    .map(d => d.compilerObject);
+  logDiagnostics(inputDiagnostics);
+  if (inputDiagnostics.length) {
+    process.exit(1);
+  }
+
   // the declaration project will be the target for the emitted files from
   // the input project, these will be used to transfer information over to
   // the final library file
@@ -347,18 +369,13 @@ export function main({
       moduleResolution: ModuleResolutionKind.NodeJs,
       noLib: true,
       strict: true,
-      target: ScriptTarget.ESNext,
-      types: ["text-encoding"]
+      target: ScriptTarget.ESNext
     },
     useVirtualFileSystem: true
   });
 
   // There are files we need to load into memory, so that the project "compiles"
   loadDtsFiles(outputProject);
-  // tslint:disable-next-line:max-line-length
-  const textEncodingFilePath = `${buildPath}/node_modules/@types/text-encoding/index.d.ts`;
-  loadFiles(outputProject, [textEncodingFilePath]);
-  outputProject.addExistingSourceFileIfExists(textEncodingFilePath);
 
   // libDts is the final output file we are looking to build and we are not
   // actually creating it, only in memory at this stage.

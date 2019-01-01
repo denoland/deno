@@ -9,7 +9,7 @@ export { ErrorKind } from "gen/msg_generated";
  *     try {
  *       somethingThatMightThrow();
  *     } catch (e) {
- *       if (e instanceof DenoError && e.kind === DenoError.Overflow) {
+ *       if (e instanceof DenoError && e.kind === ErrorKind.Overflow) {
  *         console.error("Overflow error!");
  *       }
  *     }
