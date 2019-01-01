@@ -53,14 +53,6 @@ export interface DomIterable<K, V> {
   ): void;
 }
 
-interface Element {
-  // TODO
-}
-
-export interface HTMLFormElement {
-  // TODO
-}
-
 type EndingType = "transparent" | "native";
 
 export interface BlobPropertyBag {
