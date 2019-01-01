@@ -110,12 +110,20 @@ type deno_recv_cb = unsafe extern "C" fn(
   data_buf: deno_buf,
 );
 
+#[allow(non_camel_case_types)]
+type deno_resolve_cb = unsafe extern "C" fn(
+  user_data: *mut c_void,
+  specifier: *const c_char,
+  referrer: *const c_char,
+);
+
 #[repr(C)]
 pub struct deno_config {
   pub will_snapshot: c_int,
   pub load_snapshot: deno_buf,
   pub shared: deno_buf,
   pub recv_cb: deno_recv_cb,
+  pub resolve_cb: deno_resolve_cb,
 }
 
 extern "C" {
@@ -138,4 +146,15 @@ extern "C" {
     js_filename: *const c_char,
     js_source: *const c_char,
   ) -> c_int;
+  pub fn deno_execute_mod(
+    i: *const isolate,
+    user_data: *const c_void,
+    js_filename: *const c_char,
+    js_source: *const c_char,
+  ) -> c_int;
+  pub fn deno_resolve_ok(
+    i: *const isolate,
+    js_filename: *const c_char,
+    js_source: *const c_char,
+  );
 }

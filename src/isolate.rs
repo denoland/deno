@@ -13,6 +13,7 @@ use libdeno;
 use permissions::DenoPermissions;
 
 use futures::Future;
+use libc::c_char;
 use libc::c_void;
 use std;
 use std::cell::Cell;
@@ -148,6 +149,7 @@ impl Isolate {
       load_snapshot: snapshot,
       shared: libdeno::deno_buf::empty(), // TODO Use for message passing.
       recv_cb: pre_dispatch,
+      resolve_cb,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
     // This channel handles sending async messages back to the runtime.
@@ -219,6 +221,30 @@ impl Isolate {
         self.as_raw_ptr(),
         filename.as_ptr(),
         source.as_ptr(),
+      )
+    };
+    if r == 0 {
+      let js_error = self.last_exception().unwrap();
+      return Err(js_error);
+    }
+    Ok(())
+  }
+
+  /// Executes the provided JavaScript module.
+  pub fn execute_mod(&self, js_filename: &str) -> Result<(), JSError> {
+    let out = self.state.dir.code_fetch(js_filename, ".").unwrap();
+    debug!("module_resolve complete {}", out.filename);
+
+    // TODO js_source is not null terminated, therefore the clone.
+    let js_source = CString::new(out.js_source().clone()).unwrap();
+    let js_source_ptr = js_source.as_ptr() as *const i8;
+
+    let r = unsafe {
+      libdeno::deno_execute_mod(
+        self.libdeno_isolate,
+        self.as_raw_ptr(),
+        js_filename.as_ptr() as *const i8,
+        js_source_ptr,
       )
     };
     if r == 0 {
@@ -313,6 +339,33 @@ impl Drop for Isolate {
   fn drop(&mut self) {
     unsafe { libdeno::deno_delete(self.libdeno_isolate) }
   }
+}
+
+extern "C" fn resolve_cb(
+  user_data: *mut c_void,
+  specifier_ptr: *const c_char,
+  referrer_ptr: *const c_char,
+) {
+  let specifier_c: &CStr = unsafe { CStr::from_ptr(specifier_ptr) };
+  let specifier: &str = specifier_c.to_str().unwrap();
+
+  let referrer_c: &CStr = unsafe { CStr::from_ptr(referrer_ptr) };
+  let referrer: &str = referrer_c.to_str().unwrap();
+
+  debug!("module_resolve callback {} {}", specifier, referrer);
+  let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
+
+  let out = isolate.state.dir.code_fetch(specifier, referrer).unwrap();
+  debug!("module_resolve complete {}", out.filename);
+
+  // TODO js_source is not null terminated, therefore the clone.
+  let js_source = CString::new(out.js_source().clone()).unwrap();
+  let filename = out.filename.as_ptr() as *const i8;
+  let js_source_ptr = js_source.as_ptr() as *const i8;
+
+  unsafe {
+    libdeno::deno_resolve_ok(isolate.libdeno_isolate, filename, js_source_ptr)
+  };
 }
 
 // Dereferences the C pointer into the Rust Isolate object.
@@ -552,5 +605,24 @@ mod tests {
   fn thread_safety() {
     fn is_thread_safe<T: Sync + Send>() {}
     is_thread_safe::<IsolateState>();
+  }
+
+  #[test]
+  fn execute_mod() {
+    let filename = std::env::current_dir()
+      .unwrap()
+      .join("tests/esm_imports_a.js");
+    let filename = filename.to_str().unwrap();
+
+    let argv = vec![String::from("./deno"), String::from(filename)];
+    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
+
+    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let snapshot = libdeno::deno_buf::empty();
+    let isolate = Isolate::new(snapshot, state, dispatch_sync);
+    tokio_util::init(|| {
+      isolate.execute_mod(filename).expect("execute_mod error");
+      isolate.event_loop().ok();
+    });
   }
 }
