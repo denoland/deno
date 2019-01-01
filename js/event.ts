@@ -23,7 +23,7 @@ export class Event implements domTypes.Event {
   private _inPassiveListenerFlag = false;
 
   // Property for objects on which listeners will be invoked
-  private _path: domTypes.EventTarget[] = [];
+  private _path: domTypes.EventPath[] = [];
 
   constructor(type: string, eventInitDict?: domTypes.EventInit) {
     eventAttributes.set(this, {
@@ -134,7 +134,15 @@ export class Event implements domTypes.Event {
       return [];
     }
 
-    const composedPath: domTypes.EventPath[] = [this.currentTarget];
+    const composedPath: domTypes.EventPath[] = [{
+      item: this.currentTarget,
+      itemInShadowTree: false,
+      relatedTarget: null,
+      rootOfClosedTree: false,
+      slotInClosedTree: false,
+      target: null,
+      touchTargetList: [],
+    } as domTypes.EventPath];
 
     let currentTargetIndex = 0;
     let currentTargetHiddenSubtreeLevel = 0;
