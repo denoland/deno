@@ -66,12 +66,6 @@ const char* ToCString(const v8::String::Utf8Value& value) {
   return *value ? *value : "<string conversion failed>";
 }
 
-static inline v8::Local<v8::String> v8_str(const char* x) {
-  return v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), x,
-                                 v8::NewStringType::kNormal)
-      .ToLocalChecked();
-}
-
 std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
                                   v8::Local<v8::Value> exception) {
   auto* isolate = context->GetIsolate();
@@ -360,7 +354,7 @@ bool ExecuteV8StringSource(v8::Local<v8::Context> context,
 
   v8::TryCatch try_catch(isolate);
 
-  auto name = v8_str(js_filename);
+  auto name = v8_str(js_filename, true);
 
   v8::ScriptOrigin origin(name);
 
@@ -388,7 +382,7 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   auto* isolate = context->GetIsolate();
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
-  auto source = v8_str(js_source);
+  auto source = v8_str(js_source, true);
   return ExecuteV8StringSource(context, js_filename, source);
 }
 
