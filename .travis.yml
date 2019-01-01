@@ -63,8 +63,8 @@ before_script:
 # Default script for release builds.
 script:
 - ./tools/build.py -C target/release -j2
-- ./target/release/deno ./tools/lint.ts
-- ./target/release/deno ./tools/test_format.ts
+- ./target/release/deno --allow-run ./tools/contrib-tools.ts lint
+- ./target/release/deno --allow-run ./tools/contrib-tools.ts test_format
 - DENO_BUILD_MODE=release ./tools/test.py
 
 jobs:

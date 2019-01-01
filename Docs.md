@@ -340,7 +340,7 @@ submodule. However, you need to install separately:
     ./tools/test.py
 
     # Format code.
-    ./tools/format.ts
+    ./tools/contrib-tools.ts format
 
 Other useful commands:
 

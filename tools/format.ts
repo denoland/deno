@@ -1,14 +1,4 @@
-#!/usr/bin/env deno --allow-run
-import {
-  cwd,
-  exit,
-  platform,
-  Process,
-  readAll,
-  readDirSync,
-  run,
-  RunOptions
-} from "deno";
+import { cwd, exit, platform, RunOptions } from "deno";
 import {
   findFiles,
   ProcessOptions,
@@ -100,7 +90,7 @@ function formatRust(): ProcessOptions {
   return ["rustfmt", options];
 }
 
-async function main() {
+export async function format() {
   // TODO: we might need a fix_symlinks() equivalent (eg in third_party.py).
 
   const processOptions: ProcessOptions[] = [
@@ -129,4 +119,29 @@ async function main() {
   }
 }
 
-main();
+export async function testFormat() {
+  // Format code
+  console.log("Format:");
+  await format();
+
+  // Check for git changes
+  const { message, success, stdout } = await resolveProcess([
+    "git status",
+    {
+      args: ["git", "status", "-uno", "--porcelain", "--ignore-submodules"]
+    }
+  ]);
+
+  console.log("Git changes:");
+  console.log(message);
+
+  if (!success) {
+    exit(1);
+  }
+  if (await stdout) {
+    console.log("✖ validate no changes");
+    console.log(await stdout);
+    exit(1);
+  }
+  console.log("✔ validdate no changes");
+}

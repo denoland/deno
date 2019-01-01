@@ -1,4 +1,3 @@
-#!/usr/bin/env deno --allow-run
 import { cwd, exit, RunOptions } from "deno";
 import {
   findFiles,
@@ -53,7 +52,7 @@ function lintTS(): ProcessOptions[] {
   return [["tslint", lintOptions], ["tslint tests", lintTestOptions]];
 }
 
-async function main() {
+export async function lint() {
   // TODO: possibly need enable_ansi_colors()
   const processOptions: ProcessOptions[] = [
     lintCpp(),
@@ -78,5 +77,3 @@ async function main() {
     exit(1);
   }
 }
-
-main();
