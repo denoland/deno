@@ -177,7 +177,7 @@ function guessContentType(filename: string): string {
     return contentType;
   }
 
-  return extensionsMap[''];
+  return extensionsMap[""];
 }
 
 async function serveFile(req: ServerRequest, filename: string) {
