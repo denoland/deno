@@ -356,7 +356,7 @@ build_script:
   - ps: Set-FilesNeeded -Auto -Reason "Ninja build finished"
 
 test_script:
-  - python tools\lint.py
+  - tools\lint.ts
   - python tools\test_format.py
   - ps: Exec { & python tools\test.py $env:DENO_BUILD_PATH }
 

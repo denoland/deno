@@ -62,9 +62,9 @@ before_script:
 
 # Default script for release builds.
 script:
-- ./tools/lint.py
-- ./tools/test_format.py
 - ./tools/build.py -C target/release -j2
+- ./target/release/deno ./tools/lint.ts
+- ./target/release/deno ./tools/test_format.py
 - DENO_BUILD_MODE=release ./tools/test.py
 
 jobs:
