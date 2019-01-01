@@ -1,9 +1,5 @@
 #!/usr/bin/env deno --allow-run
-import {
-  cwd,
-  exit,
-  RunOptions
-} from "deno";
+import { cwd, exit, RunOptions } from "deno";
 import {
   findFiles,
   ProcessOptions,

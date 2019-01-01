@@ -65,6 +65,8 @@ export type ProcessOptions = [string, RunOptions];
 export type ProcessResult = {
   success: boolean;
   message: string;
+  stdout: Promise<string>;
+  stderr: Promise<string>;
 };
 
 function runp(runOpts: RunOptions) {
@@ -85,26 +87,34 @@ export async function resolveProcess([name, runOpts]: ProcessOptions): Promise<
   const process: Process = runp(runOpts);
   const status = await process.status();
   const failed = status.code !== 0 || status.success !== true;
+  const decoder = new TextDecoder("utf-8");
 
-  if (failed) {
-    const stdout = await readAll(process.stdout);
-    const stderr = await readAll(process.stderr);
-    const decoder = new TextDecoder("utf-8");
-    const message = [
-      `✖ ${name}`,
-      decoder.decode(stdout).trim(),
-      decoder.decode(stderr).trim()
-    ]
-      .filter(Boolean)
-      .join("\n");
+  let stdoutStr = null;
+  const stdout = async () => {
+    if (!stdoutStr) {
+      stdoutStr = decoder.decode(await readAll(process.stdout)).trim();
+    }
+    return stdoutStr;
+  };
+  let stderrStr = null;
+  const stderr = async () => {
+    if (!stderrStr) {
+      stderrStr = decoder.decode(await readAll(process.stderr)).trim();
+    }
+    return stderrStr;
+  };
+  const message: string = !failed
+    ? `✔ ${name}`
+    : [`✖ ${name}`, await stdout(), await stderr()].filter(Boolean).join("\n");
 
-    return {
-      success: false,
-      message
-    };
-  }
   return {
-    success: true,
-    message: `✔ ${name}`
+    success: !failed,
+    message,
+    get stdout() {
+      return stdout();
+    },
+    get stderr() {
+      return stderr();
+    }
   };
 }

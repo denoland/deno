@@ -357,7 +357,7 @@ build_script:
 
 test_script:
   - tools\lint.ts
-  - python tools\test_format.py
+  - tools\test_format.ts
   - ps: Exec { & python tools\test.py $env:DENO_BUILD_PATH }
 
 after_test:

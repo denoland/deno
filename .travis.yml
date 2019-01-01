@@ -64,7 +64,7 @@ before_script:
 script:
 - ./tools/build.py -C target/release -j2
 - ./target/release/deno ./tools/lint.ts
-- ./target/release/deno ./tools/test_format.py
+- ./target/release/deno ./tools/test_format.ts
 - DENO_BUILD_MODE=release ./tools/test.py
 
 jobs:
