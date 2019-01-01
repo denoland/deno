@@ -1,4 +1,4 @@
-#!/usr/bin/env deno --allow-run --allow-net
+#!/usr/bin/env deno --allow-run --allow-net --allow-write
 import { run } from "deno";
 
 // colors tests
@@ -31,6 +31,9 @@ import "path/parse_format_test.ts";
 import "path/relative_test.ts";
 import "path/resolve_test.ts";
 import "path/zero_length_strings_test.ts";
+
+// mkdirp tests
+import "mkdirp/test.ts";
 
 // I am also too lazy to do this properly LOL
 runTests(new Promise(res => setTimeout(res, 5000)));

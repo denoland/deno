@@ -12,6 +12,7 @@ for Deno.
 | [path](./path/)       | File path manipulation.                                         |
 | [flags](./flags/)     | Command line arguments parser.                                  |
 | [logging](./logging/) | Command line logging                                            |
+| [mkdirp](./mkdirp/)   | Make directory branches.                                        |
 
 ---
 

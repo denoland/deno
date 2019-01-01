@@ -5,4 +5,4 @@ install:
 - export PATH="$HOME/.deno/bin:$PATH"
 
 script:
-- deno test.ts --allow-run --allow-net
+- deno test.ts --allow-run --allow-net --allow-write
