@@ -157,11 +157,21 @@ export enum EventPhase {
   BUBBLING_PHASE = 3,
 }
 
+export interface EventPath {
+  item: EventTarget;
+  itemInShadowTree: boolean;
+  relatedTarget: EventTarget | null;
+  rootOfClosedTree: boolean;
+  slotInClosedTree: boolean;
+  target: EventTarget | null;
+  touchTargetList: EventTarget[];
+}
+
 export interface Event {
   readonly type: string;
   readonly target: EventTarget | null;
   readonly currentTarget: EventTarget | null;
-  composedPath(): EventTarget[];
+  composedPath(): EventPath[];
 
   readonly eventPhase: number;
 

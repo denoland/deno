@@ -3,12 +3,6 @@ import * as domTypes from "./dom_types";
 
 export const eventAttributes = new WeakMap();
 
-interface EventPath {
-  item: domTypes.EventTarget;
-  rootOfClosedTree: boolean;
-  slotInClosedTree: boolean;
-}
-
 export class EventInit implements domTypes.EventInit {
   bubbles = false;
   cancelable = false;
@@ -135,12 +129,12 @@ export class Event implements domTypes.Event {
    *
    *      event.composedPath();
    */
-  composedPath(): EventPath[] {
+  composedPath(): domTypes.EventPath[] {
     if (this._path.length === 0) {
       return [];
     }
 
-    const composedPath: EventPath[] = [this.currentTarget];
+    const composedPath: domTypes.EventPath[] = [this.currentTarget];
 
     let currentTargetIndex = 0;
     let currentTargetHiddenSubtreeLevel = 0;
