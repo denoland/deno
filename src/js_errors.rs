@@ -518,7 +518,7 @@ mod tests {
     assert_eq!(actual.frames.len(), 1);
     assert_eq!(actual.frames[0].line, 15);
     assert_eq!(actual.frames[0].column, 16);
-    assert_eq!(actual.frames[0].script_name, "deno/js/util.ts");
+    assert!(actual.frames[0].script_name.ends_with("js/util.ts"));
   }
 
   #[test]
