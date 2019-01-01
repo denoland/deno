@@ -13,7 +13,7 @@ pub struct isolate {
 }
 
 /// If "alloc_ptr" is not null, this type represents a buffer which is created
-/// in C side, and then passed to Rust side by `DenoRecvCb`. Finally it should
+/// in C side, and then passed to Rust side by `deno_recv_cb`. Finally it should
 /// be moved back to C side by `deno_respond`. If it is not passed to
 /// `deno_respond` in the end, it will be leaked.
 ///
@@ -102,7 +102,8 @@ impl AsMut<[u8]> for deno_buf {
   }
 }
 
-type DenoRecvCb = unsafe extern "C" fn(
+#[allow(non_camel_case_types)]
+type deno_recv_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
   req_id: i32,
   buf: deno_buf,
@@ -114,7 +115,7 @@ pub struct deno_config {
   pub will_snapshot: c_int,
   pub load_snapshot: deno_buf,
   pub shared: deno_buf,
-  pub recv_cb: DenoRecvCb,
+  pub recv_cb: deno_recv_cb,
 }
 
 extern "C" {
