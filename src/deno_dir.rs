@@ -28,6 +28,15 @@ pub struct CodeFetchOutput {
   pub maybe_source_map: Option<Vec<u8>>,
 }
 
+impl CodeFetchOutput {
+  pub fn js_source<'a>(&'a self) -> &'a Vec<u8> {
+    match self.maybe_output_code {
+      None => &self.source_code,
+      Some(ref output_code) => output_code,
+    }
+  }
+}
+
 /// Gets corresponding MediaType given extension
 fn extmap(ext: &str) -> msg::MediaType {
   match ext {
