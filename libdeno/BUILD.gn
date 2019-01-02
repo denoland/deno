@@ -15,8 +15,10 @@ config("deno_config") {
     cflags += [
       "-fcolor-diagnostics",
       "-fansi-escape-codes",
-      "-glldb",
     ]
+    if (is_debug) {
+      cflags += [ "-glldb" ]
+    }
   }
 
   if (is_win) {
