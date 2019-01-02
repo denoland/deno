@@ -7,7 +7,7 @@ env:
   global:
   - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
   - RUSTUP_HOME=$HOME/.rustup/
-  - RUST_BACKTRACE=1
+  - RUST_BACKTRACE=full
   - CARGO_TARGET_DIR=$HOME/target
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - RUSTC_WRAPPER=sccache
