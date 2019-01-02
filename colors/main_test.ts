@@ -1,4 +1,4 @@
-import { assertEqual, test } from "https://deno.land/x/testing/testing.ts";
+import { assertEqual, test } from "../testing/mod.ts";
 import { color } from "main.ts";
 import "example.ts";
 

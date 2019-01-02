@@ -4,7 +4,7 @@ import {
   test,
   assert,
   assertEqual
-} from "https://deno.land/x/testing/testing.ts";
+} from "../testing/mod.ts";
 
 // Promise to completeResolve when all tests completes
 let completeResolve;

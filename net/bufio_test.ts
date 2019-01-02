@@ -8,7 +8,7 @@ import {
   test,
   assert,
   assertEqual
-} from "https://deno.land/x/testing/testing.ts";
+} from "../testing/mod.ts";
 import { BufReader, BufState, BufWriter } from "./bufio.ts";
 import * as iotest from "./iotest.ts";
 import { charCode, copyBytes, stringsReader } from "./util.ts";
