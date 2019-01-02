@@ -64,7 +64,7 @@ before_script:
 script:
 - ./tools/lint.py
 - ./tools/test_format.py
-- ./tools/build.py -C target/release -j2
+- ./tools/build.py -C target/release
 - DENO_BUILD_MODE=release ./tools/test.py
 
 jobs:
@@ -106,7 +106,7 @@ jobs:
     - name: "cargo release linux"
       os: linux
       script:
-      - cargo build -vv --release -j2
+      - cargo build -vv --release
 
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
@@ -121,6 +121,6 @@ jobs:
       # Call gn gen again to make sure new args are recognized.
       - third_party/depot_tools/gn gen target/debug
       - export ASAN_OPTIONS=detect_leaks=1
-      - ./tools/build.py test_cc -j2
+      - ./tools/build.py test_cc
       - ./target/debug/test_cc
 
