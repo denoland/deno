@@ -1,4 +1,5 @@
 export const LogLevel = {
+  NOTSET: 0,
   DEBUG: 10,
   INFO: 20,
   WARNING: 30,
@@ -7,14 +8,16 @@ export const LogLevel = {
 };
 
 const byName = {
+  NOTSET: LogLevel.NOTSET,
   DEBUG: LogLevel.DEBUG,
   INFO: LogLevel.INFO,
   WARNING: LogLevel.WARNING,
   ERROR: LogLevel.ERROR,
-  CRITICAL: LogLevel.DEBUG
+  CRITICAL: LogLevel.CRITICAL
 };
 
 const byLevel = {
+  [LogLevel.NOTSET]: "NOTSET",
   [LogLevel.DEBUG]: "DEBUG",
   [LogLevel.INFO]: "INFO",
   [LogLevel.WARNING]: "WARNING",
@@ -22,10 +25,10 @@ const byLevel = {
   [LogLevel.CRITICAL]: "CRITICAL"
 };
 
-export function getLevelByName(name) {
+export function getLevelByName(name: string): number {
   return byName[name];
 }
 
-export function getLevelName(level) {
+export function getLevelName(level: number): string {
   return byLevel[level];
 }
