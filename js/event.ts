@@ -2,7 +2,7 @@
 import * as domTypes from "./dom_types";
 
 // WeakMaps are recommended for private attributes
-// https://developer.mozilla.org/en-US/docs/Archive/Add-ons/Add-on_SDK/Guides/Contributor_s_Guide/Private_Properties#Using_WeakMaps
+// See Private Properties (Using WeakMaps) on MDN
 export const eventAttributes = new WeakMap();
 
 export class EventInit implements domTypes.EventInit {
