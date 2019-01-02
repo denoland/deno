@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use libdeno::deno_buf;
 
 pub fn deno_snapshot() -> deno_buf {
