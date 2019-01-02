@@ -15,6 +15,7 @@ config("deno_config") {
     cflags += [
       "-fcolor-diagnostics",
       "-fansi-escape-codes",
+      "-glldb",
     ]
   }
 
