@@ -1,44 +1,62 @@
 import { LogLevel, getLevelByName, getLevelName } from "./levels.ts";
+import { BaseHandler } from "./handlers.ts";
+
+export interface LogRecord {
+  msg: string;
+  args: any[];
+  datetime: Date;
+  level: number;
+  levelName: string;
+};
 
 export class Logger {
   level: number;
   levelName: string;
   handlers: any[];
 
-  constructor(levelName, handlers) {
+  constructor(levelName: string, handlers?: BaseHandler[]) {
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
-    this.handlers = handlers;
+    
+    this.handlers = handlers || [];
   }
 
-  _log(level, ...args) {
+  _log(level: number, msg: string, ...args: any[]) {
+    if (this.level > level) return;
+
+    // TODO: it'd be a good idea to make it immutable, so 
+    // no handler mangles it by mistake
+    // TODO: iterpolate msg with values
+    const record: LogRecord = {
+      msg: msg,
+      args: args,
+      datetime: new Date(),
+      level: level,
+      levelName: getLevelName(level),
+    }
+
     this.handlers.forEach(handler => {
-      handler.handle(level, ...args);
+      handler.handle(record);
     });
   }
 
-  log(level, ...args) {
-    if (this.level > level) return;
-    return this._log(level, ...args);
+  debug(msg: string, ...args: any[]) {
+    return this._log(LogLevel.DEBUG, msg, ...args);
   }
 
-  debug(...args) {
-    return this.log(LogLevel.DEBUG, ...args);
+  info(msg: string, ...args: any[]) {
+    return this._log(LogLevel.INFO, msg, ...args);
   }
 
-  info(...args) {
-    return this.log(LogLevel.INFO, ...args);
+  warning(msg: string, ...args: any[]) {
+    return this._log(LogLevel.WARNING, msg, ...args);
   }
 
-  warning(...args) {
-    return this.log(LogLevel.WARNING, ...args);
+  error(msg: string, ...args: any[]) {
+    return this._log(LogLevel.ERROR, msg, ...args);
   }
 
-  error(...args) {
-    return this.log(LogLevel.ERROR, ...args);
-  }
-
-  critical(...args) {
-    return this.log(LogLevel.CRITICAL, ...args);
+  critical(msg: string, ...args: any[]) {
+    return this._log(LogLevel.CRITICAL, msg, ...args);
   }
 }

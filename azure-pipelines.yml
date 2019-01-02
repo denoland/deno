@@ -26,4 +26,4 @@ jobs:
 #  steps:
 #  - powershell: iex (iwr https://deno.land/x/install/install.ps1)
 #  - script: echo '##vso[task.prependpath]C:\Users\VssAdministrator\.deno\bin\'
-#  - script: 'C:\Users\VssAdministrator\.deno\bin\deno.exe test.ts --allow-run --allow-net'
+#  - script: 'C:\Users\VssAdministrator\.deno\bin\deno.exe test.ts --allow-run --allow-net --allow-write'
