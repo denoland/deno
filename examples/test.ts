@@ -1,5 +1,5 @@
 import { run } from "deno";
-import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
+import { test, assertEqual } from "../testing/mod.ts";
 
 /** Example of how to do basic tests */
 test(function t1() {

@@ -10,7 +10,7 @@ import {
   test,
   assert,
   assertEqual
-} from "https://deno.land/x/testing/testing.ts";
+} from "../testing/mod.ts";
 import {
   listenAndServe,
   ServerRequest,

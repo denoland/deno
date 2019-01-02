@@ -1,7 +1,7 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
 
-import { test, assertEqual } from "https://deno.land/x/testing/testing.ts";
+import { test, assertEqual } from "../testing/mod.ts";
 import * as path from "./index.ts";
 
 const relativeTests = {

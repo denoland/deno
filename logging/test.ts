@@ -1,6 +1,5 @@
 import { remove, open, readAll } from "deno";
-import { assertEqual, test } from "https://deno.land/x/testing/testing.ts";
-
+import { assertEqual, test } from "../testing/mod.ts";
 import * as log from "index.ts";
 import { FileHandler } from "./handlers.ts";
 
