@@ -63,6 +63,7 @@ export type Blob = blob.DenoBlob;
 // export type File = file.DenoFile;
 
 window.Event = event.Event;
+export type Event = event.Event;
 window.URL = url.URL;
 export type URL = url.URL;
 window.URLSearchParams = urlSearchParams.URLSearchParams;

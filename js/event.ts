@@ -1,6 +1,8 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 
+// WeakMaps are recommended for private attributes
+// https://developer.mozilla.org/en-US/docs/Archive/Add-ons/Add-on_SDK/Guides/Contributor_s_Guide/Private_Properties#Using_WeakMaps
 export const eventAttributes = new WeakMap();
 
 export class EventInit implements domTypes.EventInit {
@@ -17,20 +19,20 @@ export class EventInit implements domTypes.EventInit {
 
 export class Event implements domTypes.Event {
   // Each event has the following associated flags
-  private _stopPropagationFlag = false;
-  private _stopImmediatePropagationFlag = false;
   private _canceledFlag = false;
   private _inPassiveListenerFlag = false;
+  private _stopImmediatePropagationFlag = false;
+  private _stopPropagationFlag = false;
 
   // Property for objects on which listeners will be invoked
   private _path: domTypes.EventPath[] = [];
 
-  constructor(type: string, eventInitDict?: domTypes.EventInit) {
+  constructor(type: string, eventInitDict: domTypes.EventInit = {}) {
     eventAttributes.set(this, {
       type,
-      bubbles: eventInitDict && eventInitDict.bubbles || false,
-      cancelable: eventInitDict && eventInitDict.cancelable || false,
-      composed: eventInitDict && eventInitDict.composed || false,
+      bubbles: eventInitDict.bubbles || false,
+      cancelable: eventInitDict.cancelable || false,
+      composed: eventInitDict.composed || false,
       currentTarget: null,
       eventPhase: domTypes.EventPhase.NONE,
       isTrusted: false,
@@ -41,7 +43,7 @@ export class Event implements domTypes.Event {
 
   get bubbles(): boolean {
     if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).bubbles || false;
+      return eventAttributes.get(this).bubbles;
     }
 
     throw new TypeError("Illegal invocation");
@@ -57,7 +59,7 @@ export class Event implements domTypes.Event {
 
   get cancelable(): boolean {
     if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).cancelable || false;
+      return eventAttributes.get(this).cancelable;
     }
 
     throw new TypeError("Illegal invocation");
@@ -65,7 +67,7 @@ export class Event implements domTypes.Event {
 
   get composed(): boolean {
     if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).composed || false;
+      return eventAttributes.get(this).composed;
     }
 
     throw new TypeError("Illegal invocation");
@@ -142,7 +144,7 @@ export class Event implements domTypes.Event {
       slotInClosedTree: false,
       target: null,
       touchTargetList: [],
-    } as domTypes.EventPath];
+    }];
 
     let currentTargetIndex = 0;
     let currentTargetHiddenSubtreeLevel = 0;
