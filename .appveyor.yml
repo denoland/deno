@@ -238,8 +238,8 @@ cache:
   - $(APPVEYOR_BUILD_FOLDER)\third_party
   # Cache file mtimes in the main git repo, also to enable incremental builds.
   - $(MTIME_CACHE_DB)
-  # Build incrementally.
-  - $(DENO_BUILD_PATH)
+  # TODO Incremental build disabled because there are some bugs.
+  #- $(DENO_BUILD_PATH)
 
 init:
   # Load utility functions
