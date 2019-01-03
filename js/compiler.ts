@@ -244,7 +244,6 @@ export class Compiler
     }
     assert(moduleId != null, "No module ID.");
     assert(fileName != null, "No file name.");
-    assert(sourceCode ? sourceCode.length > 0 : false, "No source code.");
     assert(
       mediaType !== MediaType.Unknown,
       `Unknown media type for: "${moduleSpecifier}" from "${containingFile}".`
