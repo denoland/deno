@@ -41,33 +41,21 @@ test(function anEventTargetCanBeSubclassed() {
     off(type, callback?, options?) {
       this.removeEventListener(type, callback, options);
     }
-
-    dispatch(type, detail) {
-      this.dispatchEvent(new Event("foo"));
-    }
   }
 
   const target = new NicerEventTarget();
   const event = new Event("foo", { bubbles: true, cancelable: false });
-  const detail = "some data";
   let callCount = 0;
 
-  function listener(e) {
-    assertEqual(e.detail, detail);
+  function listener() {
     ++callCount;
   }
 
   target.on("foo", listener);
-
-  target.dispatch("foo", detail);
   assertEqual(callCount, 1);
 
-  target.dispatch("foo", detail);
-  assertEqual(callCount, 2);
-
   target.off("foo", listener);
-  target.dispatch("foo", detail);
-  assertEqual(callCount, 2);
+  assertEqual(callCount, 1);
 });
 
 test(function dispatchEventReturnValueAffectedByPreventDefault() {
