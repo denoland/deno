@@ -48,11 +48,9 @@ export function assert(expr: boolean, msg = "") {
   }
 }
 
-// TODO(ry) Use unknown here for parameters types.
-// tslint:disable-next-line:no-any
-export function equal(c: any, d: any): boolean {
+export function equal(c: unknown, d: unknown): boolean {
   const seen = new Map();
-  return (function compare(a, b) {
+  return (function compare(a: unknown, b: unknown) {
     if (Object.is(a, b)) {
       return true;
     }
@@ -60,11 +58,13 @@ export function equal(c: any, d: any): boolean {
       if (seen.get(a) === b) {
         return true;
       }
-      if (Object.keys(a).length !== Object.keys(b).length) {
+      if (Object.keys(a || {}).length !== Object.keys(b || {}).length) {
         return false;
       }
-      for (const key in { ...a, ...b }) {
-        if (!compare(a[key], b[key])) {
+      const merged = { ...a, ...b };
+      for (const key in merged) {
+        type Key = keyof typeof merged;
+        if (!compare(a && a[key as Key], b && b[key as Key])) {
           return false;
         }
       }

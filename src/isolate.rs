@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // Do not use FlatBuffers in this module.
 // TODO Currently this module uses Tokio, but it would be nice if they were
