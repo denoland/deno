@@ -382,7 +382,7 @@ export async function fetch(
           // TODO: FormData, ReadableStream
           notImplemented();
         }
-        if (!headers.has("content-type") && contentType) {
+        if (contentType && !headers.has("content-type")) {
           headers.set("content-type", contentType);
         }
       }
