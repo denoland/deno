@@ -60,5 +60,11 @@ test(function eventPreventDefaultSuccess() {
 
   assertEqual(event.defaultPrevented, false);
   event.preventDefault();
-  assertEqual(event.defaultPrevented, true);
+  assertEqual(event.defaultPrevented, false);
+
+  const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
+  const cancelableEvent = new Event(type, eventInitDict);
+  assertEqual(cancelableEvent.defaultPrevented, false);
+  cancelableEvent.preventDefault();
+  assertEqual(cancelableEvent.defaultPrevented, true);
 });
