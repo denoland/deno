@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
+    "allowJs": true,
     "allowUnreachableCode": false,
     "baseUrl": ".",
+    "checkJs": true,
     "module": "esnext",
     "moduleResolution": "node",
     "noImplicitReturns": true,
@@ -9,11 +11,12 @@
     "noLib": true,
     "noUnusedLocals": true,
     "paths": {
-      "*": ["*", "out/debug/*", "out/default/*", "out/release/*"]
+      "*": ["*", "target/debug/*", "target/release/*"]
     },
     "preserveConstEnums": true,
     "pretty": true,
     "removeComments": true,
+    "resolveJsonModule": true,
     "sourceMap": true,
     "strict": true,
     "target": "esnext",

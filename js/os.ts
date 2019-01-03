@@ -1,10 +1,19 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { ModuleInfo } from "./types";
 import * as msg from "gen/msg_generated";
 import { assert } from "./util";
 import * as util from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
+import { TextDecoder } from "./text_encoding";
+
+interface CodeInfo {
+  moduleName: string | undefined;
+  filename: string | undefined;
+  mediaType: msg.MediaType;
+  sourceCode: string | undefined;
+  outputCode: string | undefined;
+  sourceMap: string | undefined;
+}
 
 /** Exit the Deno process with optional exit code. */
 export function exit(exitCode = 0): never {
@@ -17,18 +26,15 @@ export function exit(exitCode = 0): never {
 }
 
 // @internal
-export function codeFetch(
-  moduleSpecifier: string,
-  containingFile: string
-): ModuleInfo {
-  util.log("os.ts codeFetch", moduleSpecifier, containingFile);
+export function codeFetch(specifier: string, referrer: string): CodeInfo {
+  util.log("os.ts codeFetch", specifier, referrer);
   // Send CodeFetch message
   const builder = flatbuffers.createBuilder();
-  const moduleSpecifier_ = builder.createString(moduleSpecifier);
-  const containingFile_ = builder.createString(containingFile);
+  const specifier_ = builder.createString(specifier);
+  const referrer_ = builder.createString(referrer);
   msg.CodeFetch.startCodeFetch(builder);
-  msg.CodeFetch.addModuleSpecifier(builder, moduleSpecifier_);
-  msg.CodeFetch.addContainingFile(builder, containingFile_);
+  msg.CodeFetch.addSpecifier(builder, specifier_);
+  msg.CodeFetch.addReferrer(builder, referrer_);
   const inner = msg.CodeFetch.endCodeFetch(builder);
   const baseRes = sendSync(builder, msg.Any.CodeFetch, inner);
   assert(baseRes != null);
@@ -38,11 +44,19 @@ export function codeFetch(
   );
   const codeFetchRes = new msg.CodeFetchRes();
   assert(baseRes!.inner(codeFetchRes) != null);
+  // flatbuffers returns `null` for an empty value, this does not fit well with
+  // idiomatic TypeScript under strict null checks, so converting to `undefined`
+  const sourceCode = codeFetchRes.sourceCodeArray() || undefined;
+  const outputCode = codeFetchRes.outputCodeArray() || undefined;
+  const sourceMap = codeFetchRes.sourceMapArray() || undefined;
+  const decoder = new TextDecoder();
   return {
-    moduleName: codeFetchRes.moduleName(),
-    filename: codeFetchRes.filename(),
-    sourceCode: codeFetchRes.sourceCode(),
-    outputCode: codeFetchRes.outputCode()
+    moduleName: codeFetchRes.moduleName() || undefined,
+    filename: codeFetchRes.filename() || undefined,
+    mediaType: codeFetchRes.mediaType(),
+    sourceCode: sourceCode && decoder.decode(sourceCode),
+    outputCode: outputCode && decoder.decode(outputCode),
+    sourceMap: sourceMap && decoder.decode(sourceMap)
   };
 }
 
@@ -50,28 +64,30 @@ export function codeFetch(
 export function codeCache(
   filename: string,
   sourceCode: string,
-  outputCode: string
+  outputCode: string,
+  sourceMap: string
 ): void {
   util.log("os.ts codeCache", filename, sourceCode, outputCode);
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
   const sourceCode_ = builder.createString(sourceCode);
   const outputCode_ = builder.createString(outputCode);
+  const sourceMap_ = builder.createString(sourceMap);
   msg.CodeCache.startCodeCache(builder);
   msg.CodeCache.addFilename(builder, filename_);
   msg.CodeCache.addSourceCode(builder, sourceCode_);
   msg.CodeCache.addOutputCode(builder, outputCode_);
+  msg.CodeCache.addSourceMap(builder, sourceMap_);
   const inner = msg.CodeCache.endCodeCache(builder);
   const baseRes = sendSync(builder, msg.Any.CodeCache, inner);
   assert(baseRes == null); // Expect null or error.
 }
 
-function createEnv(_inner: msg.EnvironRes): { [index: string]: string } {
+function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
   const env: { [index: string]: string } = {};
 
-  for (let i = 0; i < _inner.mapLength(); i++) {
-    const item = _inner.map(i)!;
-
+  for (let i = 0; i < inner.mapLength(); i++) {
+    const item = inner.map(i)!;
     env[item.key()!] = item.value()!;
   }
 

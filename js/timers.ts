@@ -23,7 +23,7 @@ interface Timer {
 // about a month, this is no longer true, and Deno explodes.
 // TODO(piscisaureus): fix that ^.
 const EPOCH = Date.now();
-const APOCALYPS = 2 ** 32 - 2;
+const APOCALYPSE = 2 ** 32 - 2;
 
 let globalTimeoutDue: number | null = null;
 
@@ -34,7 +34,7 @@ const dueMap: { [due: number]: Timer[] } = Object.create(null);
 function getTime() {
   // TODO: use a monotonic clock.
   const now = Date.now() - EPOCH;
-  assert(now >= 0 && now < APOCALYPS);
+  assert(now >= 0 && now < APOCALYPSE);
   return now;
 }
 
@@ -167,7 +167,9 @@ function fireTimers() {
   setGlobalTimeout(nextTimerDue, now);
 }
 
-function setTimer<Args extends Array<unknown>>(
+export type Args = any[]; // tslint:disable-line:no-any
+
+function setTimer(
   cb: (...args: Args) => void,
   delay: number,
   args: Args,
@@ -175,7 +177,7 @@ function setTimer<Args extends Array<unknown>>(
 ): number {
   // If any `args` were provided (which is uncommon), bind them to the callback.
   const callback: () => void = args.length === 0 ? cb : cb.bind(null, ...args);
-  // In the browser, the delay value must be coercable to an integer between 0
+  // In the browser, the delay value must be coercible to an integer between 0
   // and INT32_MAX. Any other value will cause the timer to fire immediately.
   // We emulate this behavior.
   const now = getTime();
@@ -198,7 +200,7 @@ function setTimer<Args extends Array<unknown>>(
 }
 
 /** Sets a timer which executes a function once after the timer expires. */
-export function setTimeout<Args extends Array<unknown>>(
+export function setTimeout(
   cb: (...args: Args) => void,
   delay: number,
   ...args: Args
@@ -207,7 +209,7 @@ export function setTimeout<Args extends Array<unknown>>(
 }
 
 /** Repeatedly calls a function , with a fixed time delay between each call. */
-export function setInterval<Args extends Array<unknown>>(
+export function setInterval(
   cb: (...args: Args) => void,
   delay: number,
   ...args: Args

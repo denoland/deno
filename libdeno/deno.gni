@@ -1,0 +1,35 @@
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+import("//build/compiled_action.gni")
+
+template("run_node") {
+  action(target_name) {
+    forward_variables_from(invoker, "*")
+    script = "//tools/run_node.py"
+  }
+}
+
+# Template to generate different V8 snapshots based on different runtime flags.
+template("snapshot") {
+  compiled_action(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "deps",
+                           ])
+    tool = "//libdeno:snapshot_creator"
+    visibility = [ ":*" ]  # Only targets in this file can depend on this.
+    snapshot_out_bin = "$target_gen_dir/$target_name.bin"
+    inputs = [
+      invoker.source_root,
+    ]
+
+    outputs = [
+      snapshot_out_bin,
+    ]
+    args = rebase_path(outputs, root_build_dir) +
+           rebase_path(inputs, root_build_dir)
+
+    # To debug snapshotting problems:
+    #  args += ["--trace-serializer"]
+  }
+}

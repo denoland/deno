@@ -6,8 +6,8 @@
 
 ## A secure TypeScript runtime built on V8
 
-- Supports TypeScript 3.0 out of the box. Uses V8 7.0. That is, it's very modern
-  JavaScript.
+- Supports TypeScript out of the box. Uses a recent version of V8. That is, it's
+  very modern JavaScript.
 
 - No `package.json`. No npm. Not explicitly compatible with Node.
 
@@ -33,10 +33,10 @@
 - Single executable:
 
   ```
-  > ls -lh out/release/deno
-  -rwxr-xr-x  1 rld  staff    48M Aug  2 13:24 out/release/deno
-  > otool -L out/release/deno
-  out/release/deno:
+  > ls -lh target/release/deno
+  -rwxr-xr-x  1 rld  staff    48M Aug  2 13:24 target/release/deno
+  > otool -L target/release/deno
+  target/release/deno:
     /usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1252.50.4)
     /usr/lib/libresolv.9.dylib (compatibility version 1.0.0, current version 1.0.0)
     /System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 58286.51.6)
@@ -55,13 +55,13 @@
 With Python:
 
 ```
-curl -sSf https://raw.githubusercontent.com/denoland/deno_install/master/install.py | python
+curl -L https://deno.land/x/install/install.py | python
 ```
 
 With PowerShell:
 
 ```powershell
-iex (iwr https://raw.githubusercontent.com/denoland/deno_install/master/install.ps1)
+iex (iwr https://deno.land/x/install/install.ps1)
 ```
 
 _Note: Depending on your security settings, you may have to run
@@ -71,7 +71,7 @@ scripts to be executed._
 Try it:
 
 ```
-> deno http://deno.land/thumb.ts
+> deno https://deno.land/thumb.ts
 ```
 
 See also [deno_install](https://github.com/denoland/deno_install).

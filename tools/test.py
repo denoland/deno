@@ -4,13 +4,14 @@
 # Usage: ./tools/test.py out/Debug
 import os
 import sys
-from check_output_test import check_output_test
+from integration_tests import integration_tests
 from deno_dir_test import deno_dir_test
 from setup_test import setup_test
 from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
 from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test
+from repl_test import repl_tests
 import subprocess
 import http_server
 
@@ -42,8 +43,6 @@ def main(argv):
 
     deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
     check_exists(deno_exe)
-    deno_ns_exe = os.path.join(build_dir, "deno_ns" + executable_suffix)
-    check_exists(deno_ns_exe)
 
     # Internal tools testing
     setup_test()
@@ -60,8 +59,16 @@ def main(argv):
 
     unit_tests(deno_exe)
 
-    check_output_test(deno_exe)
-    check_output_test(deno_ns_exe)
+    integration_tests(deno_exe)
+
+    # TODO We currently skip testing the prompt in Windows completely.
+    # Windows does not support the pty module used for testing the permission
+    # prompt.
+    if os.name != 'nt':
+        from permission_prompt_test import permission_prompt_test
+        permission_prompt_test(deno_exe)
+
+    repl_tests(deno_exe)
 
     rmtree(deno_dir)
 

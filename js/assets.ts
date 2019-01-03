@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // tslint:disable-next-line:no-reference
 /// <reference path="./plugins.d.ts" />
@@ -35,12 +35,12 @@ import libEs2018RegexpDts from "/third_party/node_modules/typescript/lib/lib.es2
 import libEs5Dts from "/third_party/node_modules/typescript/lib/lib.es5.d.ts!string";
 import libEsnextArrayDts from "/third_party/node_modules/typescript/lib/lib.esnext.array.d.ts!string";
 import libEsnextAsynciterablesDts from "/third_party/node_modules/typescript/lib/lib.esnext.asynciterable.d.ts!string";
+import libEsnextBigintDts from "/third_party/node_modules/typescript/lib/lib.esnext.bigint.d.ts!string";
 import libEsnextDts from "/third_party/node_modules/typescript/lib/lib.esnext.d.ts!string";
 import libEsnextIntlDts from "/third_party/node_modules/typescript/lib/lib.esnext.intl.d.ts!string";
 import libEsnextSymbolDts from "/third_party/node_modules/typescript/lib/lib.esnext.symbol.d.ts!string";
 
 // Static definitions
-import textEncodingDts from "/third_party/node_modules/@types/text-encoding/index.d.ts!string";
 import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
 // tslint:enable:max-line-length
 
@@ -76,10 +76,10 @@ export const assetSourceCode: { [key: string]: string } = {
   "lib.esnext.d.ts": libEsnextDts,
   "lib.esnext.array.d.ts": libEsnextArrayDts,
   "lib.esnext.asynciterable.d.ts": libEsnextAsynciterablesDts,
+  "lib.esnext.bigint.d.ts": libEsnextBigintDts,
   "lib.esnext.intl.d.ts": libEsnextIntlDts,
   "lib.esnext.symbol.d.ts": libEsnextSymbolDts,
 
   // Static definitions
-  "text-encoding.d.ts": textEncodingDts,
   "typescript.d.ts": typescriptDts
 };

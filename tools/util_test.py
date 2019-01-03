@@ -21,7 +21,8 @@ def pattern_match_test():
     # Iterate through the fixture lists, testing each one
     for (pattern, string, expected) in fixtures:
         actual = pattern_match(pattern, string)
-        assert expected == actual, "expected %s for\nExpected:\n%s\nTo equal actual:\n%s" % (
+        assert expected == actual, \
+            "expected %s for\nExpected:\n%s\nTo equal actual:\n%s" % (
             expected, pattern, string)
 
     assert pattern_match("foo[BAR]baz", "foobarbaz",

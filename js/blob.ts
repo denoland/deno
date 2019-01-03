@@ -1,6 +1,7 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import { containsOnlyASCII } from "./util";
+import { TextEncoder } from "./text_encoding";
 
 const bytesSymbol = Symbol("bytes");
 
@@ -20,9 +21,9 @@ export class DenoBlob implements domTypes.Blob {
     }
 
     options = options || {};
-    // Set ending property's default value to "tranparent".
+    // Set ending property's default value to "transparent".
     if (!options.hasOwnProperty("ending")) {
-      options.ending = "tranparent";
+      options.ending = "transparent";
     }
 
     if (options.type && !containsOnlyASCII(options.type)) {
@@ -97,6 +98,12 @@ function toUint8Arrays(
       ret.push(element[bytesSymbol]);
     } else if (element instanceof Uint8Array) {
       ret.push(element);
+    } else if (element instanceof Uint16Array) {
+      const uint8 = new Uint8Array(element.buffer);
+      ret.push(uint8);
+    } else if (element instanceof Uint32Array) {
+      const uint8 = new Uint8Array(element.buffer);
+      ret.push(uint8);
     } else if (ArrayBuffer.isView(element)) {
       // Convert view to Uint8Array.
       const uint8 = new Uint8Array(element.buffer);
@@ -105,6 +112,8 @@ function toUint8Arrays(
       // Create a new Uint8Array view for the given ArrayBuffer.
       const uint8 = new Uint8Array(element);
       ret.push(uint8);
+    } else {
+      ret.push(enc.encode(String(element)));
     }
   }
   return ret;

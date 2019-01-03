@@ -14,9 +14,67 @@ PORT = 4545
 REDIRECT_PORT = 4546
 
 
+class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if "multipart_form_data.txt" in self.path:
+            self.protocol_version = 'HTTP/1.1'
+            self.send_response(200, 'OK')
+            self.send_header('Content-type',
+                             'multipart/form-data;boundary=boundary')
+            self.end_headers()
+            self.wfile.write(
+                bytes('Preamble\r\n'
+                      '--boundary\t \r\n'
+                      'Content-Disposition: form-data; name="field_1"\r\n'
+                      '\r\n'
+                      'value_1 \r\n'
+                      '\r\n--boundary\r\n'
+                      'Content-Disposition: form-data; name="field_2"; '
+                      'filename="file.js"\r\n'
+                      'Content-Type: text/javascript\r\n'
+                      '\r\n'
+                      'console.log("Hi")'
+                      '\r\n--boundary--\r\n'
+                      'Epilogue'))
+            return
+        return SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+
+    def guess_type(self, path):
+        if ".t1." in path:
+            return "text/typescript"
+        if ".t2." in path:
+            return "video/vnd.dlna.mpeg-tts"
+        if ".t3." in path:
+            return "video/mp2t"
+        if ".t4." in path:
+            return "application/x-typescript"
+        if ".j1." in path:
+            return "text/javascript"
+        if ".j2." in path:
+            return "application/ecmascript"
+        if ".j3." in path:
+            return "text/ecmascript"
+        if ".j4." in path:
+            return "application/x-javascript"
+        if "form_urlencoded" in path:
+            return "application/x-www-form-urlencoded"
+        if "no_ext" in path:
+            return "text/typescript"
+        if "unknown_ext" in path:
+            return "text/typescript"
+        if "mismatch_ext" in path:
+            return "text/javascript"
+        return SimpleHTTPServer.SimpleHTTPRequestHandler.guess_type(self, path)
+
+
 def server():
     os.chdir(root_path)  # Hopefully the main thread doesn't also chdir.
-    Handler = SimpleHTTPServer.SimpleHTTPRequestHandler
+    Handler = ContentTypeHandler
+    Handler.extensions_map.update({
+        ".ts": "application/typescript",
+        ".js": "application/javascript",
+        ".json": "application/json",
+    })
     SocketServer.TCPServer.allow_reuse_address = True
     s = SocketServer.TCPServer(("", PORT), Handler)
     print "Deno test server http://localhost:%d/" % PORT
@@ -36,7 +94,7 @@ def redirect_server():
     Handler = RedirectHandler
     SocketServer.TCPServer.allow_reuse_address = True
     s = SocketServer.TCPServer(("", REDIRECT_PORT), Handler)
-    print "Deno redirect server http://localhost:%d/ -> http://localhost:%d/" % (
+    print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
         REDIRECT_PORT, PORT)
     return s
 
@@ -56,7 +114,7 @@ def spawn():
     return thread
 
 
-if __name__ == '__main__':
+def main():
     try:
         thread = spawn()
         while thread.is_alive():
@@ -64,3 +122,7 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
     sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

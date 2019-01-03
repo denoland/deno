@@ -13,7 +13,67 @@
    limitations under the License.
 */
 
-export { assert, assertEqual, equal } from "./util";
+// Do not add imports in this file in order to be compatible with Node.
+
+export function assertEqual(actual: unknown, expected: unknown, msg?: string) {
+  if (!equal(actual, expected)) {
+    let actualString: string;
+    let expectedString: string;
+    try {
+      actualString = String(actual);
+    } catch (e) {
+      actualString = "[Cannot display]";
+    }
+    try {
+      expectedString = String(expected);
+    } catch (e) {
+      expectedString = "[Cannot display]";
+    }
+    console.error(
+      "assertEqual failed. actual =",
+      actualString,
+      "expected =",
+      expectedString
+    );
+    if (!msg) {
+      msg = `actual: ${actualString} expected: ${expectedString}`;
+    }
+    throw new Error(msg);
+  }
+}
+
+export function assert(expr: boolean, msg = "") {
+  if (!expr) {
+    throw new Error(msg);
+  }
+}
+
+export function equal(c: unknown, d: unknown): boolean {
+  const seen = new Map();
+  return (function compare(a: unknown, b: unknown) {
+    if (Object.is(a, b)) {
+      return true;
+    }
+    if (a && typeof a === "object" && b && typeof b === "object") {
+      if (seen.get(a) === b) {
+        return true;
+      }
+      if (Object.keys(a || {}).length !== Object.keys(b || {}).length) {
+        return false;
+      }
+      const merged = { ...a, ...b };
+      for (const key in merged) {
+        type Key = keyof typeof merged;
+        if (!compare(a && a[key as Key], b && b[key as Key])) {
+          return false;
+        }
+      }
+      seen.set(a, b);
+      return true;
+    }
+    return false;
+  })(c, d);
+}
 
 export type TestFunction = () => void | Promise<void>;
 

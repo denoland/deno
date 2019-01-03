@@ -13,7 +13,12 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 *******************************************************************************/
 
-export type HeadersInit = Headers | string[][] | Record<string, string>;
+export type BufferSource = ArrayBufferView | ArrayBuffer;
+
+export type HeadersInit =
+  | Headers
+  | Array<[string, string]>
+  | Record<string, string>;
 export type URLSearchParamsInit = string | string[][] | Record<string, string>;
 type BodyInit =
   | Blob
@@ -31,10 +36,22 @@ type ReferrerPolicy =
   | "origin-when-cross-origin"
   | "unsafe-url";
 export type BlobPart = BufferSource | Blob | string;
-type FormDataEntryValue = File | string;
+export type FormDataEntryValue = DomFile | string;
 export type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
+
+export interface DomIterable<K, V> {
+  keys(): IterableIterator<K>;
+  values(): IterableIterator<V>;
+  entries(): IterableIterator<[K, V]>;
+  [Symbol.iterator](): IterableIterator<[K, V]>;
+  forEach(
+    callback: (value: V, key: K, parent: this) => void,
+    // tslint:disable-next-line:no-any
+    thisArg?: any
+  ): void;
+}
 
 interface Element {
   // TODO
@@ -44,7 +61,7 @@ export interface HTMLFormElement {
   // TODO
 }
 
-type EndingType = "tranparent" | "native";
+type EndingType = "transparent" | "native";
 
 export interface BlobPropertyBag {
   type?: string;
@@ -158,7 +175,10 @@ interface Event {
   readonly NONE: number;
 }
 
-interface File extends Blob {
+/* TODO(ry) Re-expose this interface. There is currently some interference
+ * between deno's File and this one.
+ */
+export interface DomFile extends Blob {
   readonly lastModified: number;
   readonly name: string;
 }
@@ -210,7 +230,7 @@ interface AbortSignal extends EventTarget {
   ): void;
 }
 
-interface ReadableStream {
+export interface ReadableStream {
   readonly locked: boolean;
   cancel(): Promise<void>;
   getReader(): ReadableStreamReader;
@@ -220,29 +240,25 @@ interface EventListenerObject {
   handleEvent(evt: Event): void;
 }
 
-interface ReadableStreamReader {
+export interface ReadableStreamReader {
   cancel(): Promise<void>;
   // tslint:disable-next-line:no-any
   read(): Promise<any>;
   releaseLock(): void;
 }
 
-export interface FormData {
+export interface FormData extends DomIterable<string, FormDataEntryValue> {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
   getAll(name: string): FormDataEntryValue[];
   has(name: string): boolean;
   set(name: string, value: string | Blob, fileName?: string): void;
-  forEach(
-    callbackfn: (
-      value: FormDataEntryValue,
-      key: string,
-      parent: FormData
-    ) => void,
-    // tslint:disable-next-line:no-any
-    thisArg?: any
-  ): void;
+}
+
+export interface FormDataConstructor {
+  new (): FormData;
+  prototype: FormData;
 }
 
 /** A blob object represents a file-like object of immutable, raw data. */
@@ -259,7 +275,7 @@ export interface Blob {
   slice(start?: number, end?: number, contentType?: string): Blob;
 }
 
-interface Body {
+export interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
   readonly body: ReadableStream | null;
   /** Stores a `Boolean` that declares whether the body has been used in a
@@ -289,7 +305,7 @@ interface Body {
   text(): Promise<string>;
 }
 
-export interface Headers {
+export interface Headers extends DomIterable<string, string> {
   /** Appends a new value onto an existing header inside a `Headers` object, or
    * adds the header if it does not already exist.
    */
@@ -322,7 +338,7 @@ export interface Headers {
    */
   values(): IterableIterator<string>;
   forEach(
-    callbackfn: (value: string, key: string, parent: Headers) => void,
+    callbackfn: (value: string, key: string, parent: this) => void,
     // tslint:disable-next-line:no-any
     thisArg?: any
   ): void;
@@ -330,6 +346,11 @@ export interface Headers {
    * iterator for this Headers object
    */
   [Symbol.iterator](): IterableIterator<[string, string]>;
+}
+
+export interface HeadersConstructor {
+  new (init?: HeadersInit): Headers;
+  prototype: Headers;
 }
 
 type RequestCache =
@@ -420,7 +441,7 @@ export interface Request extends Body {
    */
   readonly integrity: string;
   /** Returns a boolean indicating whether or not request is for a history
-   * navigation (a.k.a. back-foward navigation).
+   * navigation (a.k.a. back-forward navigation).
    */
   readonly isHistoryNavigation: boolean;
   /** Returns a boolean indicating whether or not request is for a reload

@@ -1,0 +1,4 @@
+args: tests/error_004_missing_module.ts --reload
+check_stderr: true
+exit_code: 1
+output: tests/error_004_missing_module.ts.out

@@ -37,7 +37,7 @@ export interface Reader {
    *
    * Implementations must not retain `p`.
    */
-  read(p: ArrayBufferView): Promise<ReadResult>;
+  read(p: Uint8Array): Promise<ReadResult>;
 }
 
 // Writer is the interface that wraps the basic write() method.
@@ -51,7 +51,7 @@ export interface Writer {
    *
    * Implementations must not retain `p`.
    */
-  write(p: ArrayBufferView): Promise<number>;
+  write(p: Uint8Array): Promise<number>;
 }
 
 // https://golang.org/pkg/io/#Closer
@@ -77,7 +77,7 @@ export interface Seeker {
 }
 
 // https://golang.org/pkg/io/#ReadCloser
-export interface ReaderCloser extends Reader, Closer {}
+export interface ReadCloser extends Reader, Closer {}
 
 // https://golang.org/pkg/io/#WriteCloser
 export interface WriteCloser extends Writer, Closer {}
@@ -114,4 +114,28 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
     n += await dst.write(b.subarray(0, result.nread));
   }
   return n;
+}
+
+/** Turns `r` into async iterator.
+ *
+ *      for await (const chunk of readerIterator(reader)) {
+ *          console.log(chunk)
+ *      }
+ */
+export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
+  const b = new Uint8Array(1024);
+
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+
+    async next(): Promise<IteratorResult<Uint8Array>> {
+      const result = await r.read(b);
+      return {
+        value: b.subarray(0, result.nread),
+        done: result.eof
+      };
+    }
+  };
 }

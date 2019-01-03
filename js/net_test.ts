@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as deno from "deno";
 import { testPerm, assert, assertEqual } from "./test_util.ts";
-import { deferred } from "./util.ts";
+import { deferred } from "deno";
 
 testPerm({ net: true }, function netListenClose() {
   const listener = deno.listen("tcp", "127.0.0.1:4500");

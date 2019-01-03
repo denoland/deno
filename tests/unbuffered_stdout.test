@@ -1,0 +1,2 @@
+args: tests/unbuffered_stdout.ts --reload
+output: tests/unbuffered_stdout.ts.out
