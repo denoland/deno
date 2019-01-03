@@ -1133,8 +1133,8 @@ mod tests {
 
     let cwd = std::env::current_dir().unwrap();
     let expected_path = cwd.join(specifier);
-    let expected_module_name = expected_path.to_str().unwrap();
-    let expected_filename = expected_module_name;
+    let expected_module_name = deno_fs::normalize_path(&expected_path);
+    let expected_filename = expected_module_name.clone();
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, ".").unwrap();
@@ -1155,8 +1155,8 @@ mod tests {
 
     let cwd = std::env::current_dir().unwrap();
     let expected_path = cwd.join("..").join(specifier);
-    let expected_module_name = expected_path.to_str().unwrap();
-    let expected_filename = expected_module_name;
+    let expected_module_name = deno_fs::normalize_path(&expected_path);
+    let expected_filename = expected_module_name.clone();
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, "..").unwrap();
