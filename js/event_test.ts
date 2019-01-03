@@ -21,7 +21,7 @@ test(function eventInitializedWithTypeAndDict() {
   assertEqual(event.isTrusted, false);
   assertEqual(event.target, null);
   assertEqual(event.currentTarget, null);
-  assertEqual(event.type, "click");
+  assertEqual(event.type, "submit");
   assertEqual(event.bubbles, true);
   assertEqual(event.cancelable, true);
 });
