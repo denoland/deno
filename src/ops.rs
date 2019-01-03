@@ -22,6 +22,7 @@ use hyper::rt::Future;
 use remove_dir_all::remove_dir_all;
 use repl;
 use resources::table_entries;
+use ring::{digest};
 use std;
 use std::convert::From;
 use std::fs;
@@ -115,6 +116,7 @@ pub fn dispatch(
       msg::Any::Truncate => op_truncate,
       msg::Any::WriteFile => op_write_file,
       msg::Any::Write => op_write,
+      msg::Any::WebCryptoDigest => op_webcrypto_digest,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -1528,4 +1530,40 @@ fn op_run_status(
     ))
   });
   Box::new(future)
+}
+
+fn op_webcrypto_digest(
+  _state: &IsolateState,
+  base: &msg::Base,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_web_crypto_digest().unwrap();
+  let cmd_id = base.cmd_id();
+  let algorithm = inner.algorithm().unwrap();
+  let data = inner.data().unwrap();
+  let builder = &mut FlatBufferBuilder::new();
+  let hash = match algorithm {
+    "SHA-1" => digest::digest(&digest::SHA1, data),
+    "SHA-256" => digest::digest(&digest::SHA256, data),
+    "SHA-384" => digest::digest(&digest::SHA384, data),
+    "SHA-512" => digest::digest(&digest::SHA512, data),
+    _ => panic!("unsupported hash function"),
+  };
+  let result = builder.create_vector(hash.as_ref());
+  let inner = msg::WebCryptoDigestRes::create(
+    builder,
+    &msg::WebCryptoDigestResArgs {
+      result: Some(result),
+    }
+  );
+  ok_future(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::WebCryptoDigestRes,
+      ..Default::default()
+    }
+  ))
 }

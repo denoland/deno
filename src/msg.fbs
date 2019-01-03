@@ -56,7 +56,9 @@ union Any {
   Run,
   RunRes,
   RunStatus,
-  RunStatusRes
+  RunStatusRes,
+  WebCryptoDigest,
+  WebCryptoDigestRes
 }
 
 enum ErrorKind: byte {
@@ -449,6 +451,15 @@ table RunStatusRes {
   got_signal: bool;
   exit_code: int;
   exit_signal: int;
+}
+
+table WebCryptoDigest {
+  algorithm: string;
+  data: [ubyte];
+}
+
+table WebCryptoDigestRes {
+  result: [ubyte];
 }
 
 root_type Base;
