@@ -38,27 +38,27 @@ test(function eventStopPropagationSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(this.cancelBubble, false);
+  assertEqual(event.cancelBubble, false);
   event.stopPropagation();
-  assertEqual(this.cancelBubble, true);
+  assertEqual(event.cancelBubble, true);
 });
 
 test(function eventStopImmediatePropagationSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(this.cancelBubble, false);
-  assertEqual(this.cancelBubbleImmediately, false);
+  assertEqual(event.cancelBubble, false);
+  assertEqual(event.cancelBubbleImmediately, false);
   event.stopImmediatePropagation();
-  assertEqual(this.cancelBubble, true);
-  assertEqual(this.cancelBubbleImmediately, true);
+  assertEqual(event.cancelBubble, true);
+  assertEqual(event.cancelBubbleImmediately, true);
 });
 
 test(function eventPreventDefaultSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(this.defaultPrevented, false);
+  assertEqual(event.defaultPrevented, false);
   event.preventDefault();
-  assertEqual(this.defaultPrevented, true);
+  assertEqual(event.defaultPrevented, true);
 });
