@@ -3,7 +3,11 @@
 //  ./node_modules/.bin/ts-node --project tools/ts_library_builder/tsconfig.json tools/ts_library_builder/test.ts
 
 import { Project, ts } from "ts-simple-ast";
-import { assert, assertEqual, test } from "../../js/testing/testing";
+import {
+  assert,
+  assertEqual,
+  test
+} from "../../js/deps/https/deno.land/x/std/testing/mod";
 import { flatten, mergeGlobal } from "./build_library";
 import { loadDtsFiles } from "./ast_util";
 
