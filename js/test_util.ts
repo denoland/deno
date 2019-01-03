@@ -8,8 +8,11 @@
 // See tools/unit_tests.py for more details.
 
 import * as deno from "deno";
-import * as testing from "./testing/testing.ts";
-export { assert, assertEqual } from "./testing/testing.ts";
+import * as testing from "./deps/https/deno.land/x/std/testing/mod.ts";
+export {
+  assert,
+  assertEqual
+} from "./deps/https/deno.land/x/std/testing/mod.ts";
 
 // testing.setFilter must be run before any tests are defined.
 testing.setFilter(deno.args[1]);
