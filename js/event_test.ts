@@ -38,20 +38,20 @@ test(function eventStopPropagationSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(this._stopPropagationFlag, false);
+  assertEqual(this.cancelBubble, false);
   event.stopPropagation();
-  assertEqual(this._stopPropagationFlag, true);
+  assertEqual(this.cancelBubble, true);
 });
 
 test(function eventStopImmediatePropagationSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(this._stopPropagationFlag, false);
-  assertEqual(this._stopImmediatePropagationFlag, false);
+  assertEqual(this.cancelBubble, false);
+  assertEqual(this.cancelBubbleImmediately, false);
   event.stopImmediatePropagation();
-  assertEqual(this._stopPropagationFlag, true);
-  assertEqual(this._stopImmediatePropagationFlag, true);
+  assertEqual(this.cancelBubble, true);
+  assertEqual(this.cancelBubbleImmediately, true);
 });
 
 test(function eventPreventDefaultSuccess() {
