@@ -376,16 +376,20 @@ impl DenoDir {
     let filename;
 
     let specifier = self.src_file_to_url(specifier);
-    let referrer = self.src_file_to_url(referrer);
+    let mut referrer = self.src_file_to_url(referrer);
 
     debug!(
       "resolve_module specifier {} referrer {}",
       specifier, referrer
     );
 
-    let j: Url = if referrer == "."
-      || is_remote(&specifier)
-      || Path::new(&specifier).is_absolute()
+    if referrer.starts_with(".") {
+      let cwd = std::env::current_dir().unwrap();
+      let referrer_path = cwd.join(referrer);
+      referrer = referrer_path.to_str().unwrap().to_string() + "/";
+    }
+
+    let j: Url = if is_remote(&specifier) || Path::new(&specifier).is_absolute()
     {
       parse_local_or_remote(&specifier)?
     } else if referrer.ends_with('/') {
@@ -1117,6 +1121,50 @@ mod tests {
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, referrer).unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_referrer_dot() {
+    let (_temp_dir, deno_dir) = test_setup();
+
+    let specifier = "tests/001_hello.js";
+
+    let cwd = std::env::current_dir().unwrap();
+    let expected_path = cwd.join(specifier);
+    let expected_module_name = deno_fs::normalize_path(&expected_path);
+    let expected_filename = expected_module_name.clone();
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, ".").unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, "./").unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_referrer_dotdot() {
+    let (_temp_dir, deno_dir) = test_setup();
+
+    let specifier = "tests/001_hello.js";
+
+    let cwd = std::env::current_dir().unwrap();
+    let expected_path = cwd.join("..").join(specifier);
+    let expected_module_name = deno_fs::normalize_path(&expected_path);
+    let expected_filename = expected_module_name.clone();
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, "..").unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, "../").unwrap();
     assert_eq!(module_name, expected_module_name);
     assert_eq!(filename, expected_filename);
   }
