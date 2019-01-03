@@ -43,7 +43,7 @@ test(function anEventTargetCanBeSubclassed() {
     }
 
     dispatch(type, detail) {
-      this.dispatchEvent(new CustomEvent(type, { detail }));
+      this.dispatchEvent(new Event("foo"));
     }
   }
 
