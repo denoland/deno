@@ -12,7 +12,7 @@ export class EventInit implements domTypes.EventInit {
   cancelable = false;
   composed = false;
 
-  constructor({bubbles=false, cancelable=false, composed=false} = {}) {
+  constructor({ bubbles = false, cancelable = false, composed = false } = {}) {
     this.bubbles = bubbles;
     this.cancelable = cancelable;
     this.composed = composed;
@@ -39,7 +39,7 @@ export class Event implements domTypes.Event {
       eventPhase: domTypes.EventPhase.NONE,
       isTrusted: false,
       target: null,
-      timeStamp: Date.now(),
+      timeStamp: Date.now()
     });
   }
 
@@ -102,15 +102,17 @@ export class Event implements domTypes.Event {
       return [];
     }
 
-    const composedPath: domTypes.EventPath[] = [{
-      item: this.currentTarget,
-      itemInShadowTree: false,
-      relatedTarget: null,
-      rootOfClosedTree: false,
-      slotInClosedTree: false,
-      target: null,
-      touchTargetList: [],
-    }];
+    const composedPath: domTypes.EventPath[] = [
+      {
+        item: this.currentTarget,
+        itemInShadowTree: false,
+        relatedTarget: null,
+        rootOfClosedTree: false,
+        slotInClosedTree: false,
+        target: null,
+        touchTargetList: []
+      }
+    ];
 
     let currentTargetIndex = 0;
     let currentTargetHiddenSubtreeLevel = 0;
@@ -150,7 +152,7 @@ export class Event implements domTypes.Event {
           rootOfClosedTree: false,
           slotInClosedTree: false,
           target: null,
-          touchTargetList: [],
+          touchTargetList: []
         });
       }
 
@@ -167,7 +169,9 @@ export class Event implements domTypes.Event {
     maxHiddenLevel = currentTargetHiddenSubtreeLevel;
 
     for (
-      let index = currentTargetIndex + 1; index < this._path.length; index++
+      let index = currentTargetIndex + 1;
+      index < this._path.length;
+      index++
     ) {
       const { item, rootOfClosedTree, slotInClosedTree } = this._path[index];
 
@@ -183,7 +187,7 @@ export class Event implements domTypes.Event {
           rootOfClosedTree: false,
           slotInClosedTree: false,
           target: null,
-          touchTargetList: [],
+          touchTargetList: []
         });
       }
 
@@ -238,11 +242,9 @@ Reflect.defineProperty(Event.prototype, "bubbles", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "cancelable", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "composed", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "currentTarget", { enumerable: true });
-Reflect.defineProperty(
-  Event.prototype,
-  "defaultPrevented",
-  { enumerable: true }
-);
+Reflect.defineProperty(Event.prototype, "defaultPrevented", {
+  enumerable: true
+});
 Reflect.defineProperty(Event.prototype, "eventPhase", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "isTrusted", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "target", { enumerable: true });

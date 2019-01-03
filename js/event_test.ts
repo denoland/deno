@@ -15,7 +15,7 @@ test(function eventInitializedWithType() {
 
 test(function eventInitializedWithTypeAndDict() {
   const init = "submit";
-  const eventInitDict = new EventInit({bubbles: true, cancelable: true});
+  const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
   const event = new Event(init, eventInitDict);
 
   assertEqual(event.isTrusted, false);
