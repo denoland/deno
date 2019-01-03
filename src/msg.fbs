@@ -160,16 +160,18 @@ table CodeFetchRes {
   module_name: string;
   filename: string;
   media_type: MediaType;
-  source_code: [ubyte];
-  output_code: [ubyte]; // Non-empty only if cached.
-  source_map: [ubyte]; // Non-empty only if cached.
+  // TODO These should be [ubyte].
+  // See: https://github.com/denoland/deno/issues/1113
+  source_code: string;
+  output_code: string; // Non-empty only if cached.
+  source_map: string; // Non-empty only if cached.
 }
 
 table CodeCache {
   filename: string;
-  source_code: [ubyte];
-  output_code: [ubyte];
-  source_map: [ubyte];
+  source_code: string;
+  output_code: string;
+  source_map: string;
 }
 
 table Chdir {
