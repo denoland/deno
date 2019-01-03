@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
+import * as domTypes from "./dom_types";
 
 /* TODO: This is an incomplete implementation to provide functionality
  * for Event. A proper spec is still required for a proper Web API.
