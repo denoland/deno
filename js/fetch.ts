@@ -5,12 +5,13 @@ import { sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
 import * as domTypes from "./dom_types";
 import { TextDecoder, TextEncoder } from "./text_encoding";
-import { DenoBlob } from "./blob";
+import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob";
 import { Headers } from "./headers";
 import * as io from "./io";
 import { read, close } from "./files";
 import { Buffer } from "./buffer";
 import { FormData } from "./form_data";
+import { URLSearchParams } from "./url_search_params";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -165,7 +166,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
           // TODO: based on spec
           // https://xhr.spec.whatwg.org/#dom-formdata-append
           // https://xhr.spec.whatwg.org/#create-an-entry
-          // Currently it does not meantion how I could pass content-type
+          // Currently it does not mention how I could pass content-type
           // to the internally created file object...
           formData.append(dispositionName, blob, filename);
         } else {
@@ -358,13 +359,31 @@ export async function fetch(
         headers = null;
       }
 
+      // ref: https://fetch.spec.whatwg.org/#body-mixin
+      // Body should have been a mixin
+      // but we are treating it as a separate class
       if (init.body) {
+        if (!headers) {
+          headers = new Headers();
+        }
+        let contentType = "";
         if (typeof init.body === "string") {
           body = new TextEncoder().encode(init.body);
+          contentType = "text/plain;charset=UTF-8";
         } else if (isTypedArray(init.body)) {
           body = init.body;
+        } else if (init.body instanceof URLSearchParams) {
+          body = new TextEncoder().encode(init.body.toString());
+          contentType = "application/x-www-form-urlencoded;charset=UTF-8";
+        } else if (init.body instanceof DenoBlob) {
+          body = init.body[blobBytesSymbol];
+          contentType = init.body.type;
         } else {
+          // TODO: FormData, ReadableStream
           notImplemented();
+        }
+        if (contentType && !headers.has("content-type")) {
+          headers.set("content-type", contentType);
         }
       }
     }

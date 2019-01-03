@@ -39,6 +39,24 @@ class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             return
         return SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
 
+    def do_POST(self):
+        # Simple echo server for request reflection
+        if "echo_server" in self.path:
+            self.protocol_version = 'HTTP/1.1'
+            self.send_response(200, 'OK')
+            if self.headers.has_key('content-type'):
+                self.send_header('content-type',
+                                 self.headers.getheader('content-type'))
+            self.end_headers()
+            data_string = self.rfile.read(int(self.headers['Content-Length']))
+            self.wfile.write(bytes(data_string))
+            return
+        self.protocol_version = 'HTTP/1.1'
+        self.send_response(501)
+        self.send_header('content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(bytes('Server does not support this operation'))
+
     def guess_type(self, path):
         if ".t1." in path:
             return "text/typescript"
