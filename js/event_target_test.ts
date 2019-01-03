@@ -75,24 +75,21 @@ test(function dispatchEventReturnValueAffectedByPreventDefault() {
   const target = new EventTarget();
   const parent = new EventTarget();
   let defaultPrevented;
-  let returnValue;
   parent.addEventListener(eventType, e => {}, true);
   target.addEventListener(
     eventType,
     e => {
       evt.preventDefault();
       defaultPrevented = evt.defaultPrevented;
-      returnValue = evt.returnValue;
     },
     true
   );
   target.addEventListener(eventType, e => {}, true);
-  const evt = new Event("Event");
-  evt.initEvent(eventType, true, true);
+  const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
+  const evt = new Event("Event", eventInitDict);
   assert(parent.dispatchEvent(evt));
   assert(!target.dispatchEvent(evt));
   assert(defaultPrevented);
-  assert(!returnValue);
 });
 
 test(function dispatchEventReturnValueAffectedByReturnValueProperty() {
@@ -100,24 +97,20 @@ test(function dispatchEventReturnValueAffectedByReturnValueProperty() {
   const target = new EventTarget();
   const parent = new EventTarget();
   let defaultPrevented;
-  let returnValue;
   parent.addEventListener(eventType, e => {}, true);
   target.addEventListener(
     eventType,
     e => {
-      evt.returnValue = false;
       defaultPrevented = evt.defaultPrevented;
-      returnValue = evt.returnValue;
     },
     true
   );
   target.addEventListener(eventType, e => {}, true);
-  const evt = new Event("Event");
-  evt.initEvent(eventType, true, true);
+  const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
+  const evt = new Event("Event", eventInitDict);
   assert(parent.dispatchEvent(evt));
   assert(!target.dispatchEvent(evt));
   assert(defaultPrevented);
-  assert(!returnValue);
 });
 
 test(function removingNullEventListenerShouldSucceed() {
