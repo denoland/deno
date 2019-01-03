@@ -3,7 +3,7 @@ import * as domTypes from "./dom_types";
 import { containsOnlyASCII } from "./util";
 import { TextEncoder } from "./text_encoding";
 
-const bytesSymbol = Symbol("bytes");
+export const bytesSymbol = Symbol("bytes");
 
 export class DenoBlob implements domTypes.Blob {
   private readonly [bytesSymbol]: Uint8Array;
