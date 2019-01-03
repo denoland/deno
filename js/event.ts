@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types";
+import * as domTypes from "./dom_types.ts";
 import { getPrivateValue } from "./util";
 
 // WeakMaps are recommended for private attributes (see MDN link below)
