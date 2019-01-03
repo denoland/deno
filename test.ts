@@ -2,6 +2,7 @@
 import { run } from "deno";
 
 import "colors/main_test.ts";
+import "datetime/test.ts";
 import "examples/test.ts";
 import "flags/test.ts";
 import "logging/test.ts";
