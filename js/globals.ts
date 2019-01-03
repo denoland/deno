@@ -62,6 +62,7 @@ export type Blob = blob.DenoBlob;
 // window.File = file.DenoFile;
 // export type File = file.DenoFile;
 
+window.EventInit = event.EventInit;
 export type EventInit = event.EventInit;
 window.Event = event.Event;
 export type Event = event.Event;

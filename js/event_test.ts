@@ -1,6 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assertEqual } from "./test_util.ts";
-import { EventInit } from "./event.ts";
 
 test(function eventInitializedWithType() {
   const type = "click";
