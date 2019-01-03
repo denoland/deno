@@ -1,0 +1,3 @@
+args: tests/console_group_warn.ts --reload
+check_stderr: true
+output: tests/console_group_warn.ts.out
