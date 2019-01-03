@@ -1,10 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "./test_util";
 
-if (!Event) {
-  let Event = function() {};
-}
-
 test(function addEventListenerTest() {
   const document = new EventTarget();
 

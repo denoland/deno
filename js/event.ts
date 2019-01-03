@@ -1,5 +1,6 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
+import { getPrivateValue } from "./util";
 
 // WeakMaps are recommended for private attributes (see MDN link below)
 // tslint:disable-next-line:max-line-length
@@ -43,11 +44,7 @@ export class Event implements domTypes.Event {
   }
 
   get bubbles(): boolean {
-    if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).bubbles;
-    }
-
-    throw new TypeError("Illegal invocation");
+    return getPrivateValue(this, eventAttributes, "bubbles");
   }
 
   get cancelBubble(): boolean {
@@ -59,27 +56,15 @@ export class Event implements domTypes.Event {
   }
 
   get cancelable(): boolean {
-    if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).cancelable;
-    }
-
-    throw new TypeError("Illegal invocation");
+    return getPrivateValue(this, eventAttributes, "cancelable");
   }
 
   get composed(): boolean {
-    if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).composed;
-    }
-
-    throw new TypeError("Illegal invocation");
+    return getPrivateValue(this, eventAttributes, "composed");
   }
 
   get currentTarget(): domTypes.EventTarget {
-    if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).currentTarget || null;
-    }
-
-    throw new TypeError("Illegal invocation");
+    return getPrivateValue(this, eventAttributes, "currentTarget");
   }
 
   get defaultPrevented(): boolean {
@@ -87,43 +72,23 @@ export class Event implements domTypes.Event {
   }
 
   get eventPhase(): number {
-    if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).eventPhase || domTypes.EventPhase.NONE;
-    }
-
-    throw new TypeError("Illegal invocation");
+    return getPrivateValue(this, eventAttributes, "eventPhase");
   }
 
   get isTrusted(): boolean {
-    if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).isTrusted || false;
-    }
-
-    throw new TypeError("Illegal invocation");
+    return getPrivateValue(this, eventAttributes, "isTrusted");
   }
 
   get target(): domTypes.EventTarget {
-    if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).target || null;
-    }
-
-    throw new TypeError("Illegal invocation");
+    return getPrivateValue(this, eventAttributes, "target");
   }
 
   get timeStamp(): Date {
-    if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).timeStamp || Date.now();
-    }
-
-    throw new TypeError("Illegal invocation");
+    return getPrivateValue(this, eventAttributes, "timeStamp");
   }
 
   get type(): string {
-    if (eventAttributes.has(this)) {
-      return eventAttributes.get(this).type || "";
-    }
-
-    throw new TypeError("Illegal invocation");
+    return getPrivateValue(this, eventAttributes, "type");
   }
 
   /** Returns the event’s path (objects on which listeners will be
