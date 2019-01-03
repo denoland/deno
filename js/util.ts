@@ -159,8 +159,7 @@ export function getPrivateValue<
   W extends keyof V
 >(instance: K, weakMap: WeakMap<K, V>, key: W, defaultValue: V[W]): V[W] {
   if (weakMap.has(instance)) {
-    const privateProperty = weakMap.get(instance);
-    return privateProperty ? privateProperty[key] : defaultValue;
+    return weakMap.get(instance)![key];
   }
   throw new TypeError("Illegal invocation");
 }
