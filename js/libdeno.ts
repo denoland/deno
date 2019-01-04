@@ -18,6 +18,8 @@ interface Libdeno {
 
   shared: ArrayBuffer;
 
+  builtinModules: { [s: string]: object };
+
   setGlobalErrorHandler: (
     handler: (
       message: string,
