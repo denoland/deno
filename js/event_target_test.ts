@@ -58,49 +58,6 @@ test(function anEventTargetCanBeSubclassed() {
   assertEqual(callCount, 0);
 });
 
-// test(function dispatchEventReturnValueAffectedByPreventDefault() {
-//   const eventType = "foo";
-//   const target = new EventTarget();
-//   const parent = new EventTarget();
-//   let defaultPrevented;
-//   parent.addEventListener(eventType, e => {}, true);
-//   target.addEventListener(
-//     eventType,
-//     e => {
-//       e.preventDefault();
-//       defaultPrevented = e.defaultPrevented;
-//     },
-//     true
-//   );
-//   target.addEventListener(eventType, e => {}, true);
-//   const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
-//   const evt = new Event("Event", eventInitDict);
-//   assert(parent.dispatchEvent(evt));
-//   assert(!target.dispatchEvent(evt));
-//   assert(defaultPrevented);
-// });
-
-test(function dispatchEventReturnValueAffectedByReturnValueProperty() {
-  const eventType = "foo";
-  const target = new EventTarget();
-  const parent = new EventTarget();
-  let defaultPrevented;
-  parent.addEventListener(eventType, e => {}, true);
-  target.addEventListener(
-    eventType,
-    e => {
-      defaultPrevented = e.defaultPrevented;
-    },
-    true
-  );
-  target.addEventListener(eventType, e => {}, true);
-  const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
-  const evt = new Event("Event", eventInitDict);
-  assert(parent.dispatchEvent(evt));
-  assert(!target.dispatchEvent(evt));
-  assert(defaultPrevented);
-});
-
 test(function removingNullEventListenerShouldSucceed() {
   const document = new EventTarget();
   assertEqual(document.removeEventListener("x", null, false), undefined);
