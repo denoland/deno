@@ -2,7 +2,7 @@
     at throwsError (file://[WILDCARD]/tests/subdir/mod1.ts:16:9)
     at foo (file://[WILDCARD]/tests/error_002.ts:4:3)
     at eval (file://[WILDCARD]/tests/error_002.ts:7:1)
-    at _drainRunQueue ([WILDCARD]/js/runner.ts:[WILDCARD])
-    at run ([WILDCARD]/js/runner.ts:[WILDCARD])
+    at _drainRunQueue ([WILDCARD]/js/compiler.ts:[WILDCARD])
+    at run ([WILDCARD]/js/compiler.ts:[WILDCARD])
     at denoMain ([WILDCARD]/js/main.ts:[WILDCARD])
     at <anonymous>:1:1
