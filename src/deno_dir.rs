@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use compiler::CodeFetchOutput;
 use dirs;
 use errors;
 use errors::DenoError;
@@ -18,25 +19,6 @@ use std::path::PathBuf;
 use std::result::Result;
 use url;
 use url::Url;
-
-#[derive(Debug)]
-pub struct CodeFetchOutput {
-  pub module_name: String,
-  pub filename: String,
-  pub media_type: msg::MediaType,
-  pub source_code: String,
-  pub maybe_output_code: Option<String>,
-  pub maybe_source_map: Option<String>,
-}
-
-impl CodeFetchOutput {
-  pub fn js_source<'a>(&'a self) -> &'a String {
-    match self.maybe_output_code {
-      None => &self.source_code,
-      Some(ref output_code) => output_code,
-    }
-  }
-}
 
 /// Gets corresponding MediaType given extension
 fn extmap(ext: &str) -> msg::MediaType {
@@ -318,6 +300,10 @@ impl DenoDir {
     };
 
     out.source_code = filter_shebang(out.source_code);
+
+    if out.media_type != msg::MediaType::TypeScript {
+      return Ok(out);
+    }
 
     let result =
       self.load_cache(out.filename.as_str(), out.source_code.as_str());

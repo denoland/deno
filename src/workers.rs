@@ -1,7 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
-#![allow(dead_code)]
-
 use isolate::Buf;
 use isolate::Isolate;
 use isolate::IsolateState;
@@ -53,7 +50,10 @@ impl Worker {
   }
 }
 
-fn spawn(state: Arc<IsolateState>, js_source: String) -> resources::Resource {
+pub fn spawn(
+  state: Arc<IsolateState>,
+  js_source: String,
+) -> resources::Resource {
   // TODO This function should return a Future, so that the caller can retrieve
   // the JSError if one is thrown. Currently it just prints to stderr and calls
   // exit(1).
@@ -64,11 +64,12 @@ fn spawn(state: Arc<IsolateState>, js_source: String) -> resources::Resource {
     .spawn(move || {
       let (worker, external_channels) = Worker::new(&state);
 
-      let mut resource = resources::add_worker(external_channels);
+      let resource = resources::add_worker(external_channels);
       p.send(resource.clone()).unwrap();
 
       tokio_util::init(|| {
         (|| -> Result<(), JSError> {
+          worker.execute("denoMain()")?;
           worker.execute("workerMain()")?;
           worker.execute(&js_source)?;
           worker.event_loop()?;
@@ -142,7 +143,8 @@ mod tests {
 
     // TODO Need a way to get a future for when a resource closes.
     // For now, just sleep for a bit.
-    thread::sleep(std::time::Duration::from_millis(100));
+    // resource.close();
+    thread::sleep(std::time::Duration::from_millis(1000));
     assert_eq!(resources::get_type(resource.rid), None);
   }
 }
