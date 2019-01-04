@@ -1,7 +1,7 @@
 # colors
 
-Is a basic console color library intended for [Deno](https://deno.land/). It is
-inspired by packages like [chalk](https://www.npmjs.com/package/chalk) and
+Is a basic console color module intended for [Deno](https://deno.land/). It is
+inspired by [chalk](https://www.npmjs.com/package/chalk) and
 [colors](https://www.npmjs.com/package/colors) on npm.
 
 ## Usage
