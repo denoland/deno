@@ -52,7 +52,7 @@ function mockModuleInfo(
   };
 }
 
-// Some fixtures we will us in testing
+// Some fixtures we will use in testing
 const fooBarTsSource = `import * as deno from "deno";
 console.log(deno);
 export const foo = "bar";
@@ -225,6 +225,14 @@ const moduleMap: {
       "/moduleKinds/foo.txt",
       MediaType.JavaScript,
       "console.log('foo');",
+      undefined,
+      undefined
+    ),
+    "empty_file.ts": mockModuleInfo(
+      "/moduleKinds/empty_file.ts",
+      "/moduleKinds/empty_file.ts",
+      MediaType.TypeScript,
+      "",
       undefined,
       undefined
     )
@@ -635,5 +643,15 @@ test(function compilerResolveModuleNames() {
     assertEqual(result.resolvedFileName, resolvedFileName);
     assertEqual(result.isExternalLibraryImport, isExternalLibraryImport);
   }
+  teardown();
+});
+
+test(function compilerResolveEmptyFile() {
+  setup();
+  const result = compilerInstance.resolveModuleNames(
+    ["empty_file.ts"],
+    "/moduleKinds"
+  );
+  assertEqual(result[0].resolvedFileName, "/moduleKinds/empty_file.ts");
   teardown();
 });
