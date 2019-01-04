@@ -268,14 +268,14 @@ fn op_code_fetch(
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
       media_type: out.media_type,
-      source_code: Some(builder.create_vector(&out.source_code)),
+      source_code: Some(builder.create_string(&out.source_code)),
       ..Default::default()
     };
     if let Some(ref output_code) = out.maybe_output_code {
-      msg_args.output_code = Some(builder.create_vector(output_code));
+      msg_args.output_code = Some(builder.create_string(output_code));
     }
     if let Some(ref source_map) = out.maybe_source_map {
-      msg_args.source_map = Some(builder.create_vector(source_map));
+      msg_args.source_map = Some(builder.create_string(source_map));
     }
     let inner = msg::CodeFetchRes::create(builder, &msg_args);
     Ok(serialize_response(
@@ -305,7 +305,7 @@ fn op_code_cache(
   Box::new(futures::future::result(|| -> OpResult {
     state
       .dir
-      .code_cache(filename, &source_code, &output_code, &source_map)?;
+      .code_cache(filename, source_code, output_code, source_map)?;
     Ok(empty_buf())
   }()))
 }
