@@ -3,7 +3,7 @@
 ## Usage
 
 ```ts
-import { test, assert, equal, assertEqual } from 'https://deno.land/x/testing/testing.ts';
+import { test, assert, equal, assertEqual } from 'https://deno.land/x/testing/mod.ts';
 
 test({
   name: 'testing example',
