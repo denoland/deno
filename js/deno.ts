@@ -66,6 +66,3 @@ export { deferred } from "./util";
 import * as compiler from "./compiler";
 // @internal
 export const _compiler = compiler;
-import * as runner from "./runner";
-// @internal
-export const _runner = runner;
