@@ -22,3 +22,8 @@ test(async function envFailure() {
 
   assert(caughtError);
 });
+
+test(function osPid() {
+  console.log("pid", deno.pid);
+  assert(deno.pid > 0);
+});

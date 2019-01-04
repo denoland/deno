@@ -2,7 +2,7 @@
 
 // Public deno module.
 /// <amd-module name="deno"/>
-export { env, exit } from "./os";
+export { pid, env, exit } from "./os";
 export { chdir, cwd } from "./dir";
 export {
   File,

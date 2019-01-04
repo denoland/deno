@@ -138,6 +138,7 @@ table Start {
 
 table StartRes {
   cwd: string;
+  pid: uint32;
   argv: [string];
   debug_flag: bool;
   deps_flag: bool;
