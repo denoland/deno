@@ -19,11 +19,10 @@ jobs:
   - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
   - script: deno test.ts --allow-run --allow-net --allow-write
 
-# TODO Windows is broken on a bug: https://github.com/denoland/deno/issues/1384
-#- job: 'Windows'
-#  pool:
-#    vmImage: 'vs2017-win2016'
-#  steps:
-#  - powershell: iex (iwr https://deno.land/x/install/install.ps1)
-#  - script: echo '##vso[task.prependpath]C:\Users\VssAdministrator\.deno\bin\'
-#  - script: 'C:\Users\VssAdministrator\.deno\bin\deno.exe test.ts --allow-run --allow-net --allow-write'
+- job: 'Windows'
+  pool:
+    vmImage: 'vs2017-win2016'
+  steps:
+  - powershell: iex (iwr https://deno.land/x/install/install.ps1)
+  - script: echo '##vso[task.prependpath]C:\Users\VssAdministrator\.deno\bin\'
+  - script: 'C:\Users\VssAdministrator\.deno\bin\deno.exe test.ts --allow-run --allow-net --allow-write'
