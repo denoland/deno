@@ -22,12 +22,12 @@ function maybeCompleteTests() {
 export function runTests(serverReadyPromise: Promise<any>) {
   test(async function serveFile() {
     await serverReadyPromise;
-    const res = await fetch("http://localhost:4500/.travis.yml");
+    const res = await fetch("http://localhost:4500/azure-pipelines.yml");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEqual(res.headers.get("content-type"), "text/yaml");
     const downloadedFile = await res.text();
-    const localFile = new TextDecoder().decode(await readFile("./.travis.yml"));
+    const localFile = new TextDecoder().decode(await readFile("./azure-pipelines.yml"));
     assertEqual(downloadedFile, localFile);
     maybeCompleteTests();
   });
@@ -38,7 +38,7 @@ export function runTests(serverReadyPromise: Promise<any>) {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     const page = await res.text();
-    assert(page.includes(".travis.yml"));
+    assert(page.includes("azure-pipelines.yml"));
     maybeCompleteTests();
   });
 

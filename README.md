@@ -1,6 +1,6 @@
 # Deno Standard Modules
 
-[![Build Status](https://travis-ci.com/denoland/deno_std.svg?branch=master)](https://travis-ci.com/denoland/deno_std)
+[![Build Status](https://dev.azure.com/denoland/deno_std/_apis/build/status/denoland.deno_std?branchName=master)](https://dev.azure.com/denoland/deno_std/_build/latest?definitionId=2?branchName=master)
 
 This repository contains collections of modules that create a standard library
 for Deno.
