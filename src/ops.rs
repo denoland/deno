@@ -22,7 +22,7 @@ use hyper::rt::Future;
 use remove_dir_all::remove_dir_all;
 use repl;
 use resources::table_entries;
-use ring::{digest};
+use ring::digest;
 use std;
 use std::convert::From;
 use std::fs;
@@ -1555,7 +1555,7 @@ fn op_webcrypto_digest(
     builder,
     &msg::WebCryptoDigestResArgs {
       result: Some(result),
-    }
+    },
   );
   ok_future(serialize_response(
     cmd_id,
@@ -1564,6 +1564,6 @@ fn op_webcrypto_digest(
       inner: Some(inner.as_union_value()),
       inner_type: msg::Any::WebCryptoDigestRes,
       ..Default::default()
-    }
+    },
   ))
 }
