@@ -151,3 +151,15 @@ export function requiredArguments(
     throw new TypeError(errMsg);
   }
 }
+
+// Returns values from a WeakMap to emulate private properties in JavaScript
+export function getPrivateValue<
+  K extends object,
+  V extends object,
+  W extends keyof V
+>(instance: K, weakMap: WeakMap<K, V>, key: W): V[W] {
+  if (weakMap.has(instance)) {
+    return weakMap.get(instance)![key];
+  }
+  throw new TypeError("Illegal invocation");
+}
