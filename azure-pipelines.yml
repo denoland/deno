@@ -23,6 +23,6 @@ jobs:
   pool:
     vmImage: 'vs2017-win2016'
   steps:
-  - powershell: iex (iwr https://deno.land/x/install/install.ps1)
+  - powershell: iwr https://deno.land/x/install/install.ps1 -Outfile 'install.ps1'; ./install.ps1 $(DENO_VERSION)
   - script: echo '##vso[task.prependpath]C:\Users\VssAdministrator\.deno\bin\'
   - script: 'C:\Users\VssAdministrator\.deno\bin\deno.exe test.ts --allow-run --allow-net --allow-write'
