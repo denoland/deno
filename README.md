@@ -68,6 +68,12 @@ _Note: Depending on your security settings, you may have to run
 `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` first to allow downloaded
 scripts to be executed._
 
+With [Scoop](https://scoop.sh/):
+
+```
+scoop install deno
+```
+
 Try it:
 
 ```
