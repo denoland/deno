@@ -60,6 +60,8 @@ ts_sources = [
   "js/dispatch.ts",
   "js/dom_types.ts",
   "js/errors.ts",
+  "js/event.ts",
+  "js/event_target.ts",
   "js/fetch.ts",
   "js/dom_file.ts",
   "js/file_info.ts",

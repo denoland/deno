@@ -10,6 +10,8 @@ import "./compiler_test.ts";
 import "./console_test.ts";
 import "./copy_file_test.ts";
 import "./dir_test.ts";
+import "./event_test.ts";
+import "./event_target_test.ts";
 import "./fetch_test.ts";
 // TODO The global "File" has been temporarily disabled. See the note in
 // js/globals.ts

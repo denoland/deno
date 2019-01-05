@@ -53,14 +53,6 @@ export interface DomIterable<K, V> {
   ): void;
 }
 
-interface Element {
-  // TODO
-}
-
-export interface HTMLFormElement {
-  // TODO
-}
-
 type EndingType = "transparent" | "native";
 
 export interface BlobPropertyBag {
@@ -72,7 +64,7 @@ interface AbortSignalEventMap {
   abort: ProgressEvent;
 }
 
-interface EventTarget {
+export interface EventTarget {
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
@@ -140,39 +132,52 @@ export interface URLSearchParams {
   ): void;
 }
 
-interface EventListener {
+export interface EventListener {
   (evt: Event): void;
 }
 
-interface EventInit {
+export interface EventInit {
   bubbles?: boolean;
   cancelable?: boolean;
   composed?: boolean;
 }
 
-interface Event {
-  readonly bubbles: boolean;
-  cancelBubble: boolean;
-  readonly cancelable: boolean;
-  readonly composed: boolean;
-  readonly currentTarget: EventTarget | null;
-  readonly defaultPrevented: boolean;
-  readonly eventPhase: number;
-  readonly isTrusted: boolean;
-  returnValue: boolean;
-  readonly srcElement: Element | null;
-  readonly target: EventTarget | null;
-  readonly timeStamp: number;
+export enum EventPhase {
+  NONE = 0,
+  CAPTURING_PHASE = 1,
+  AT_TARGET = 2,
+  BUBBLING_PHASE = 3
+}
+
+export interface EventPath {
+  item: EventTarget;
+  itemInShadowTree: boolean;
+  relatedTarget: EventTarget | null;
+  rootOfClosedTree: boolean;
+  slotInClosedTree: boolean;
+  target: EventTarget | null;
+  touchTargetList: EventTarget[];
+}
+
+export interface Event {
   readonly type: string;
-  deepPath(): EventTarget[];
-  initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void;
-  preventDefault(): void;
-  stopImmediatePropagation(): void;
+  readonly target: EventTarget | null;
+  readonly currentTarget: EventTarget | null;
+  composedPath(): EventPath[];
+
+  readonly eventPhase: number;
+
   stopPropagation(): void;
-  readonly AT_TARGET: number;
-  readonly BUBBLING_PHASE: number;
-  readonly CAPTURING_PHASE: number;
-  readonly NONE: number;
+  stopImmediatePropagation(): void;
+
+  readonly bubbles: boolean;
+  readonly cancelable: boolean;
+  preventDefault(): void;
+  readonly defaultPrevented: boolean;
+  readonly composed: boolean;
+
+  readonly isTrusted: boolean;
+  readonly timeStamp: Date;
 }
 
 /* TODO(ry) Re-expose this interface. There is currently some interference
@@ -193,11 +198,11 @@ interface ProgressEvent extends Event {
   readonly total: number;
 }
 
-interface EventListenerOptions {
+export interface EventListenerOptions {
   capture?: boolean;
 }
 
-interface AddEventListenerOptions extends EventListenerOptions {
+export interface AddEventListenerOptions extends EventListenerOptions {
   once?: boolean;
   passive?: boolean;
 }
@@ -236,7 +241,7 @@ export interface ReadableStream {
   getReader(): ReadableStreamReader;
 }
 
-interface EventListenerObject {
+export interface EventListenerObject {
   handleEvent(evt: Event): void;
 }
 

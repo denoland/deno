@@ -10,6 +10,8 @@
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
 import * as domTypes from "./dom_types";
+import * as event from "./event";
+import * as eventTarget from "./event_target";
 import * as formData from "./form_data";
 import * as fetchTypes from "./fetch";
 import * as headers from "./headers";
@@ -61,6 +63,12 @@ export type Blob = blob.DenoBlob;
 // window.File = file.DenoFile;
 // export type File = file.DenoFile;
 
+window.EventInit = event.EventInit;
+export type EventInit = event.EventInit;
+window.Event = event.Event;
+export type Event = event.Event;
+window.EventTarget = eventTarget.EventTarget;
+export type EventTarget = eventTarget.EventTarget;
 window.URL = url.URL;
 export type URL = url.URL;
 window.URLSearchParams = urlSearchParams.URLSearchParams;
