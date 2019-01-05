@@ -32,6 +32,12 @@ _Note: Depending on your security settings, you may have to run
 `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` first to allow downloaded
 scripts to be executed._
 
+With [Scoop](https://scoop.sh/):
+
+```
+scoop install deno
+```
+
 Deno can also be installed manually, by downloading a tarball or zip file at
 [github.com/denoland/deno/releases](https://github.com/denoland/deno/releases).
 These packages contain just a single executable file. You will have to set the
