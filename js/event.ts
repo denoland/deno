@@ -44,7 +44,7 @@ export class Event implements domTypes.Event {
   }
 
   get bubbles(): boolean {
-    return getPrivateValue(this, eventAttributes, "bubbles", false);
+    return getPrivateValue(this, eventAttributes, "bubbles");
   }
 
   get cancelBubble(): boolean {
@@ -56,15 +56,15 @@ export class Event implements domTypes.Event {
   }
 
   get cancelable(): boolean {
-    return getPrivateValue(this, eventAttributes, "cancelable", false);
+    return getPrivateValue(this, eventAttributes, "cancelable");
   }
 
   get composed(): boolean {
-    return getPrivateValue(this, eventAttributes, "composed", false);
+    return getPrivateValue(this, eventAttributes, "composed");
   }
 
   get currentTarget(): domTypes.EventTarget {
-    return getPrivateValue(this, eventAttributes, "currentTarget", null);
+    return getPrivateValue(this, eventAttributes, "currentTarget");
   }
 
   get defaultPrevented(): boolean {
@@ -72,28 +72,23 @@ export class Event implements domTypes.Event {
   }
 
   get eventPhase(): number {
-    return getPrivateValue(
-      this,
-      eventAttributes,
-      "eventPhase",
-      domTypes.EventPhase.NONE
-    );
+    return getPrivateValue(this, eventAttributes, "eventPhase");
   }
 
   get isTrusted(): boolean {
-    return getPrivateValue(this, eventAttributes, "isTrusted", false);
+    return getPrivateValue(this, eventAttributes, "isTrusted");
   }
 
   get target(): domTypes.EventTarget {
-    return getPrivateValue(this, eventAttributes, "target", null);
+    return getPrivateValue(this, eventAttributes, "target");
   }
 
   get timeStamp(): Date {
-    return getPrivateValue(this, eventAttributes, "timeStamp", Date.now());
+    return getPrivateValue(this, eventAttributes, "timeStamp");
   }
 
   get type(): string {
-    return getPrivateValue(this, eventAttributes, "type", "");
+    return getPrivateValue(this, eventAttributes, "type");
   }
 
   /** Returns the event’s path (objects on which listeners will be

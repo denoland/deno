@@ -157,7 +157,7 @@ export function getPrivateValue<
   K extends object,
   V extends object,
   W extends keyof V
->(instance: K, weakMap: WeakMap<K, V>, key: W, defaultValue: V[W]): V[W] {
+>(instance: K, weakMap: WeakMap<K, V>, key: W): V[W] {
   if (weakMap.has(instance)) {
     return weakMap.get(instance)![key];
   }
