@@ -5,6 +5,14 @@ import * as util from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
 
+/** process id */
+export let pid: number;
+
+export function setPid(pid_: number): void {
+  assert(!pid);
+  pid = pid_;
+}
+
 interface CodeInfo {
   moduleName: string | undefined;
   filename: string | undefined;

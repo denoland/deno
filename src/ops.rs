@@ -201,6 +201,7 @@ fn op_start(
     &mut builder,
     &msg::StartResArgs {
       cwd: Some(cwd_off),
+      pid: std::process::id(),
       argv: Some(argv_off),
       debug_flag: state.flags.log_debug,
       recompile_flag: state.flags.recompile,
