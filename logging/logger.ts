@@ -7,7 +7,7 @@ export interface LogRecord {
   datetime: Date;
   level: number;
   levelName: string;
-};
+}
 
 export class Logger {
   level: number;
@@ -17,14 +17,14 @@ export class Logger {
   constructor(levelName: string, handlers?: BaseHandler[]) {
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
-    
+
     this.handlers = handlers || [];
   }
 
   _log(level: number, msg: string, ...args: any[]) {
     if (this.level > level) return;
 
-    // TODO: it'd be a good idea to make it immutable, so 
+    // TODO: it'd be a good idea to make it immutable, so
     // no handler mangles it by mistake
     // TODO: iterpolate msg with values
     const record: LogRecord = {
@@ -32,8 +32,8 @@ export class Logger {
       args: args,
       datetime: new Date(),
       level: level,
-      levelName: getLevelName(level),
-    }
+      levelName: getLevelName(level)
+    };
 
     this.handlers.forEach(handler => {
       handler.handle(record);

@@ -1,5 +1,10 @@
 import { Logger } from "./logger.ts";
-import { BaseHandler, ConsoleHandler, WriterHandler, FileHandler } from "./handlers.ts";
+import {
+  BaseHandler,
+  ConsoleHandler,
+  WriterHandler,
+  FileHandler
+} from "./handlers.ts";
 
 export class LoggerConfig {
   level?: string;
@@ -18,14 +23,12 @@ export interface LogConfig {
 const DEFAULT_LEVEL = "INFO";
 const DEFAULT_NAME = "";
 const DEFAULT_CONFIG: LogConfig = {
-  handlers: {
-    
-  },
+  handlers: {},
 
   loggers: {
     "": {
       level: "INFO",
-      handlers: [""],
+      handlers: [""]
     }
   }
 };
@@ -38,21 +41,26 @@ const state = {
   defaultLogger,
   handlers: new Map(),
   loggers: new Map(),
-  config: DEFAULT_CONFIG,
+  config: DEFAULT_CONFIG
 };
 
 export const handlers = {
   BaseHandler,
   ConsoleHandler,
   WriterHandler,
-  FileHandler,
+  FileHandler
 };
 
-export const debug = (msg: string, ...args: any[]) => defaultLogger.debug(msg, ...args);
-export const info = (msg: string, ...args: any[]) => defaultLogger.info(msg, ...args);
-export const warning = (msg: string, ...args: any[]) => defaultLogger.warning(msg, ...args);
-export const error = (msg: string, ...args: any[]) => defaultLogger.error(msg, ...args);
-export const critical = (msg: string, ...args: any[]) => defaultLogger.critical(msg, ...args);
+export const debug = (msg: string, ...args: any[]) =>
+  defaultLogger.debug(msg, ...args);
+export const info = (msg: string, ...args: any[]) =>
+  defaultLogger.info(msg, ...args);
+export const warning = (msg: string, ...args: any[]) =>
+  defaultLogger.warning(msg, ...args);
+export const error = (msg: string, ...args: any[]) =>
+  defaultLogger.error(msg, ...args);
+export const critical = (msg: string, ...args: any[]) =>
+  defaultLogger.critical(msg, ...args);
 
 export function getLogger(name?: string) {
   if (!name) {

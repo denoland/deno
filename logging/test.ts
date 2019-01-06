@@ -23,7 +23,6 @@ test(function testDefaultlogMethods() {
   log.error("Foobar");
   log.critical("Foobar");
 
-  const logger = log.getLogger('');
+  const logger = log.getLogger("");
   console.log(logger);
 });
-
