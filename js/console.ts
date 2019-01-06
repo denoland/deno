@@ -7,6 +7,8 @@ type ConsoleOptions = Partial<{
   showHidden: boolean;
   depth: number;
   colors: boolean;
+  indentLevel: number;
+  collapsedAt: number | null;
 }>;
 
 // Default depth of logging nested objects
@@ -322,6 +324,18 @@ function stringifyWithQuotes(
   }
 }
 
+// Returns true when the console is collapsed.
+function isCollapsed(
+  collapsedAt: number | null | undefined,
+  indentLevel: number | null | undefined
+) {
+  if (collapsedAt == null || indentLevel == null) {
+    return false;
+  }
+
+  return collapsedAt <= indentLevel;
+}
+
 /** TODO Do not expose this from "deno" namespace. */
 export function stringifyArgs(
   // tslint:disable-next-line:no-any
@@ -329,6 +343,7 @@ export function stringifyArgs(
   options: ConsoleOptions = {}
 ): string {
   const out: string[] = [];
+  const { collapsedAt, indentLevel } = options;
   for (const a of args) {
     if (typeof a === "string") {
       out.push(a);
@@ -346,22 +361,45 @@ export function stringifyArgs(
       );
     }
   }
-  return out.join(" ");
+  let outstr = out.join(" ");
+  if (
+    !isCollapsed(collapsedAt, indentLevel) &&
+    indentLevel != null &&
+    indentLevel > 0
+  ) {
+    const groupIndent = " ".repeat(indentLevel);
+    if (outstr.indexOf("\n") !== -1) {
+      outstr = outstr.replace(/\n/g, `\n${groupIndent}`);
+    }
+    outstr = groupIndent + outstr;
+  }
+  return outstr;
 }
 
-type PrintFunc = (x: string, isErr?: boolean) => void;
+type PrintFunc = (x: string, isErr?: boolean, printsNewline?: boolean) => void;
 
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
 
-/** TODO Do not expose this from "deno". */
 export class Console {
-  constructor(private printFunc: PrintFunc) {}
+  indentLevel: number;
+  collapsedAt: number | null;
+  constructor(private printFunc: PrintFunc) {
+    this.indentLevel = 0;
+    this.collapsedAt = null;
+  }
 
   /** Writes the arguments to stdout */
   // tslint:disable-next-line:no-any
   log = (...args: any[]): void => {
-    this.printFunc(stringifyArgs(args));
+    this.printFunc(
+      stringifyArgs(args, {
+        indentLevel: this.indentLevel,
+        collapsedAt: this.collapsedAt
+      }),
+      false,
+      !isCollapsed(this.collapsedAt, this.indentLevel)
+    );
   };
 
   /** Writes the arguments to stdout */
@@ -372,13 +410,20 @@ export class Console {
   /** Writes the properties of the supplied `obj` to stdout */
   // tslint:disable-next-line:no-any
   dir = (obj: any, options: ConsoleOptions = {}) => {
-    this.printFunc(stringifyArgs([obj], options));
+    this.log(stringifyArgs([obj], options));
   };
 
   /** Writes the arguments to stdout */
   // tslint:disable-next-line:no-any
   warn = (...args: any[]): void => {
-    this.printFunc(stringifyArgs(args), true);
+    this.printFunc(
+      stringifyArgs(args, {
+        indentLevel: this.indentLevel,
+        collapsedAt: this.collapsedAt
+      }),
+      true,
+      !isCollapsed(this.collapsedAt, this.indentLevel)
+    );
   };
 
   /** Writes the arguments to stdout */
@@ -472,6 +517,30 @@ export class Console {
     const duration = Date.now() - startTime;
 
     this.info(`${label}: ${duration}ms`);
+  };
+
+  group = (...label: Array<unknown>): void => {
+    if (label.length > 0) {
+      this.log(...label);
+    }
+    this.indentLevel += 2;
+  };
+
+  groupCollapsed = (...label: Array<unknown>): void => {
+    if (this.collapsedAt == null) {
+      this.collapsedAt = this.indentLevel;
+    }
+    this.group(...label);
+  };
+
+  groupEnd = (): void => {
+    if (this.indentLevel > 0) {
+      this.indentLevel -= 2;
+    }
+    if (this.collapsedAt != null && this.collapsedAt >= this.indentLevel) {
+      this.collapsedAt = null;
+      this.log(); // When the collapsed state ended, outputs a sinle new line.
+    }
   };
 }
 

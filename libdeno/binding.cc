@@ -191,7 +191,7 @@ void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   CHECK_GE(args.Length(), 1);
-  CHECK_LE(args.Length(), 2);
+  CHECK_LE(args.Length(), 3);
   auto* isolate = args.GetIsolate();
   DenoIsolate* d = FromIsolate(isolate);
   auto context = d->context_.Get(d->isolate_);
@@ -199,9 +199,13 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::String::Utf8Value str(isolate, args[0]);
   bool is_err =
       args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
+  bool prints_newline =
+      args.Length() >= 3 ? args[2]->BooleanValue(context).ToChecked() : true;
   FILE* file = is_err ? stderr : stdout;
   fwrite(*str, sizeof(**str), str.length(), file);
-  fprintf(file, "\n");
+  if (prints_newline) {
+    fprintf(file, "\n");
+  }
   fflush(file);
 }
 
