@@ -6,6 +6,13 @@ https://github.com/denoland/deno/releases
 We also have a one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.2.6 / 2019.01.06
+
+- Implement console.groupCollapsed (#1452)
+- Add deno.pid (#1464)
+- Add Event web API (#1059)
+- Support more fetch init body types (#1449)
+
 ### v0.2.5 / 2018.12.31
 
 - Runtime argument checks (#1427 #1415)
