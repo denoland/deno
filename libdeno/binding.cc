@@ -430,13 +430,14 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
 
   auto builtin_modules = d->GetBuiltinModules();
   bool has_builtin = builtin_modules->Has(context, specifier).ToChecked();
-
-  // printf("has_builtin %s %d\n", specifier_cstr, has_builtin);
   if (has_builtin) {
     auto val = builtin_modules->Get(context, specifier).ToLocalChecked();
     CHECK(val->IsObject());
     auto obj = val->ToObject(isolate);
 
+    // In order to export obj as a module, we must iterate over its properties
+    // and export them each individually.
+    // TODO Find a better way to do this.
     std::string src = "let globalEval = eval\nlet g = globalEval('this');\n";
     auto names = obj->GetOwnPropertyNames(context).ToLocalChecked();
     for (uint32_t i = 0; i < names->Length(); i++) {
@@ -452,11 +453,10 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
       src.append(name_cstr);
       src.append(";\n");
     }
+    auto export_str = v8_str(src.c_str(), true);
 
-    // printf("src\n####\n%s\n###\n", src.c_str());
-    auto src_ = v8_str(src.c_str(), true);
-
-    auto module = CompileModule(context, specifier_cstr, src_).ToLocalChecked();
+    auto module =
+        CompileModule(context, specifier_cstr, export_str).ToLocalChecked();
     auto maybe_ok = module->InstantiateModule(context, ResolveCallback);
     CHECK(!maybe_ok.IsNothing());
 
@@ -486,7 +486,6 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
 void DenoIsolate::ResolveOk(const char* filename, const char* source) {
   CHECK(resolve_module_.IsEmpty());
   auto count = module_map_.count(filename);
-  // printf("DenoIsolate::ResolveOk <<%s>> <<%s>>\n", filename, source);
   if (count == 1) {
     auto module = module_map_[filename].Get(isolate_);
     resolve_module_.Reset(isolate_, module);
