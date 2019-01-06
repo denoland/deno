@@ -6,13 +6,14 @@ import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import { assert, log, setLogDebug } from "./util";
 import * as os from "./os";
-import { Compiler } from "./compiler";
-import { Runner } from "./runner";
+import { DenoCompiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 import { replLoop } from "./repl";
 import { version } from "typescript";
+
+const compiler = DenoCompiler.instance();
 
 function sendStart(): msg.StartRes {
   const builder = flatbuffers.createBuilder();
@@ -37,12 +38,11 @@ export default function denoMain() {
 
   setLogDebug(startResMsg.debugFlag());
 
-  const compiler = Compiler.instance();
-
   // handle `--types`
   if (startResMsg.typesFlag()) {
     const defaultLibFileName = compiler.getDefaultLibFileName();
-    console.log(compiler.getSource(defaultLibFileName));
+    const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
+    console.log(defaultLibModule.sourceCode);
     os.exit(0);
   }
 
@@ -67,10 +67,9 @@ export default function denoMain() {
   const inputFn = args[0];
 
   compiler.recompile = startResMsg.recompileFlag();
-  const runner = new Runner(compiler);
 
   if (inputFn) {
-    runner.run(inputFn, `${cwd}/`);
+    compiler.run(inputFn, `${cwd}/`);
   } else {
     replLoop();
   }

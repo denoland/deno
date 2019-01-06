@@ -32,7 +32,6 @@ import "./read_file_test.ts";
 import "./read_link_test.ts";
 import "./rename_test.ts";
 import "./resources_test.ts";
-import "./runner_test.ts";
 import "./stat_test.ts";
 import "./symlink_test.ts";
 import "./text_encoding_test.ts";
