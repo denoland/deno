@@ -45,6 +45,8 @@ class DenoIsolate {
   void ResolveOk(const char* filename, const char* source);
   void ClearModules();
 
+  v8::Local<v8::Object> GetBuiltinModules();
+
   v8::Isolate* isolate_;
   v8::ArrayBuffer::Allocator* array_buffer_allocator_;
   deno_buf shared_;
@@ -62,6 +64,8 @@ class DenoIsolate {
   std::map<std::string, v8::Persistent<v8::Module>> module_map_;
   // Set by deno_resolve_ok
   v8::Persistent<v8::Module> resolve_module_;
+
+  v8::Persistent<v8::Object> builtin_modules_;
 
   v8::Persistent<v8::Context> context_;
   std::map<int32_t, v8::Persistent<v8::Value>> async_data_map_;
@@ -108,9 +112,15 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
+void BuiltinModules(v8::Local<v8::Name> property,
+                    const v8::PropertyCallbackInfo<v8::Value>& info);
 static intptr_t external_references[] = {
-    reinterpret_cast<intptr_t>(Print), reinterpret_cast<intptr_t>(Recv),
-    reinterpret_cast<intptr_t>(Send), reinterpret_cast<intptr_t>(Shared), 0};
+    reinterpret_cast<intptr_t>(Print),
+    reinterpret_cast<intptr_t>(Recv),
+    reinterpret_cast<intptr_t>(Send),
+    reinterpret_cast<intptr_t>(Shared),
+    reinterpret_cast<intptr_t>(BuiltinModules),
+    0};
 
 static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
 

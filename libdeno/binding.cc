@@ -323,6 +323,23 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
+v8::Local<v8::Object> DenoIsolate::GetBuiltinModules() {
+  v8::EscapableHandleScope handle_scope(isolate_);
+  if (builtin_modules_.IsEmpty()) {
+    builtin_modules_.Reset(isolate_, v8::Object::New(isolate_));
+  }
+  return handle_scope.Escape(builtin_modules_.Get(isolate_));
+}
+
+void BuiltinModules(v8::Local<v8::Name> property,
+                    const v8::PropertyCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  DenoIsolate* d = FromIsolate(isolate);
+  DCHECK_EQ(d->isolate_, isolate);
+  v8::Locker locker(d->isolate_);
+  info.GetReturnValue().Set(d->GetBuiltinModules());
+}
+
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
@@ -408,6 +425,44 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
   v8::EscapableHandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
+  v8::String::Utf8Value specifier_utf8val(isolate, specifier);
+  const char* specifier_cstr = ToCString(specifier_utf8val);
+
+  auto builtin_modules = d->GetBuiltinModules();
+  bool has_builtin = builtin_modules->Has(context, specifier).ToChecked();
+  if (has_builtin) {
+    auto val = builtin_modules->Get(context, specifier).ToLocalChecked();
+    CHECK(val->IsObject());
+    auto obj = val->ToObject(isolate);
+
+    // In order to export obj as a module, we must iterate over its properties
+    // and export them each individually.
+    // TODO Find a better way to do this.
+    std::string src = "let globalEval = eval\nlet g = globalEval('this');\n";
+    auto names = obj->GetOwnPropertyNames(context).ToLocalChecked();
+    for (uint32_t i = 0; i < names->Length(); i++) {
+      auto name = names->Get(context, i).ToLocalChecked();
+      v8::String::Utf8Value name_utf8val(isolate, name);
+      const char* name_cstr = ToCString(name_utf8val);
+      // TODO use format string.
+      src.append("export const ");
+      src.append(name_cstr);
+      src.append(" = g.libdeno.builtinModules.");
+      src.append(specifier_cstr);
+      src.append(".");
+      src.append(name_cstr);
+      src.append(";\n");
+    }
+    auto export_str = v8_str(src.c_str(), true);
+
+    auto module =
+        CompileModule(context, specifier_cstr, export_str).ToLocalChecked();
+    auto maybe_ok = module->InstantiateModule(context, ResolveCallback);
+    CHECK(!maybe_ok.IsNothing());
+
+    return handle_scope.Escape(module);
+  }
+
   int ref_id = referrer->GetIdentityHash();
   std::string referrer_filename = d->module_filename_map_[ref_id];
 
@@ -439,7 +494,7 @@ void DenoIsolate::ResolveOk(const char* filename, const char* source) {
     v8::HandleScope handle_scope(isolate_);
     auto context = context_.Get(isolate_);
     v8::TryCatch try_catch(isolate_);
-    auto maybe_module = CompileModule(context, filename, v8_str(source));
+    auto maybe_module = CompileModule(context, filename, v8_str(source, true));
     if (maybe_module.IsEmpty()) {
       DCHECK(try_catch.HasCaught());
       HandleException(context, try_catch.Exception());
@@ -545,6 +600,11 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
 
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
+
+  CHECK(
+      deno_val
+          ->SetAccessor(context, deno::v8_str("builtinModules"), BuiltinModules)
+          .FromJust());
 }
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
