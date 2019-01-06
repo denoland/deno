@@ -177,7 +177,7 @@ table Chdir {
 }
 
 table SetTimeout {
-  timeout: double;
+  timeout: int;
 }
 
 table Exit {
