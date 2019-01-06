@@ -306,3 +306,28 @@ TEST(LibDenoTest, ModuleSnapshot) {
 
   delete[] test_snapshot.data_ptr;
 }
+
+TEST(LibDenoTest, BuiltinModules) {
+  static int count = 0;
+  auto resolve_cb = [](void* user_data, const char* specifier,
+                       const char* referrer) {
+    EXPECT_STREQ(specifier, "b.js");
+    EXPECT_STREQ(referrer, "c.js");
+    count++;
+    auto d = reinterpret_cast<Deno*>(user_data);
+    deno_resolve_ok(d, "b.js", mod_b);
+  };
+  Deno* d = deno_new(deno_config{0, empty, empty, nullptr, resolve_cb});
+  EXPECT_TRUE(deno_execute(
+      d, d, "setup.js", "libdeno.builtinModules['deno'] = { foo: 'bar' }; \n"));
+  EXPECT_EQ(count, 0);
+  EXPECT_TRUE(
+      deno_execute_mod(d, d, "c.js",
+                       "import { retb } from 'b.js'\n"
+                       "import * as deno from 'deno'\n"
+                       "if (retb() != 'b') throw Error('retb');\n"
+                       // "   libdeno.print('deno ' + JSON.stringify(deno));\n"
+                       "if (deno.foo != 'bar') throw Error('foo');\n"));
+  EXPECT_EQ(count, 1);
+  deno_delete(d);
+}
