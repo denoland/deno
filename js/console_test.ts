@@ -116,7 +116,7 @@ test(function consoleTestStringifyCircular() {
   assertEqual(
     stringify(console),
     // tslint:disable-next-line:max-line-length
-    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function] }"
+    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function], group: [Function], groupCollapsed: [Function], groupEnd: [Function], indentLevel: 0, collapsedAt: null }"
   );
   // test inspect is working the same
   assertEqual(inspect(nestedObj), nestedObjExpected);
@@ -189,6 +189,8 @@ test(function consoleDetachedLog() {
   const consoleTime = console.time;
   const consoleTimeLog = console.timeLog;
   const consoleTimeEnd = console.timeEnd;
+  const consoleGroup = console.group;
+  const consoleGroupEnd = console.groupEnd;
   log("Hello world");
   dir("Hello world");
   debug("Hello world");
@@ -201,4 +203,6 @@ test(function consoleDetachedLog() {
   consoleTime("Hello world");
   consoleTimeLog("Hello world");
   consoleTimeEnd("Hello world");
+  consoleGroup("Hello world");
+  consoleGroupEnd();
 });
