@@ -54,6 +54,8 @@ export default function denoMain() {
     os.exit(0);
   }
 
+  os.setPid(startResMsg.pid());
+
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
 
