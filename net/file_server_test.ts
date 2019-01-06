@@ -1,10 +1,6 @@
 import { readFile } from "deno";
 
-import {
-  test,
-  assert,
-  assertEqual
-} from "../testing/mod.ts";
+import { test, assert, assertEqual } from "../testing/mod.ts";
 
 // Promise to completeResolve when all tests completes
 let completeResolve;
@@ -27,7 +23,9 @@ export function runTests(serverReadyPromise: Promise<any>) {
     assert(res.headers.has("access-control-allow-headers"));
     assertEqual(res.headers.get("content-type"), "text/yaml");
     const downloadedFile = await res.text();
-    const localFile = new TextDecoder().decode(await readFile("./azure-pipelines.yml"));
+    const localFile = new TextDecoder().decode(
+      await readFile("./azure-pipelines.yml")
+    );
     assertEqual(downloadedFile, localFile);
     maybeCompleteTests();
   });

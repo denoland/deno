@@ -20,18 +20,16 @@ export class BaseHandler {
     return this.log(msg);
   }
 
-  log(msg: string) { }
-  async setup() { }
-  async destroy() { }
+  log(msg: string) {}
+  async setup() {}
+  async destroy() {}
 }
-
 
 export class ConsoleHandler extends BaseHandler {
   log(msg: string) {
     console.log(msg);
   }
 }
-
 
 export abstract class WriterHandler extends BaseHandler {
   protected _writer: Writer;
@@ -42,7 +40,6 @@ export abstract class WriterHandler extends BaseHandler {
     this._writer.write(encoder.encode(msg + "\n"));
   }
 }
-
 
 export class FileHandler extends WriterHandler {
   private _file: File;
@@ -55,7 +52,7 @@ export class FileHandler extends WriterHandler {
 
   async setup() {
     // open file in append mode - write only
-    this._file = await open(this._filename, 'a');
+    this._file = await open(this._filename, "a");
     this._writer = this._file;
   }
 

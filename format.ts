@@ -27,7 +27,11 @@ async function main() {
   await checkVersion();
 
   const prettier = run({
-    args: ["bash", "-c", "prettier --write *.ts */**/*.ts *.md */**/*.md"]
+    args: [
+      "bash",
+      "-c",
+      "prettier --write *.ts */*.ts */**/*.ts *.md */**/*.md"
+    ]
   });
   const s = await prettier.status();
   exit(s.code);
