@@ -50,7 +50,7 @@ rust_crate("unicode_segmentation") {
 }
 
 rust_crate("memchr") {
-  source_root = "$registry_github/memchr-2.1.1/src/lib.rs"
+  source_root = "$registry_github/memchr-2.1.2/src/lib.rs"
   extern = [
     ":cfg_if",
     ":libc",
@@ -62,13 +62,12 @@ rust_crate("utf8parse") {
 }
 
 rust_crate("libc") {
-  source_root = "$registry_github/libc-0.2.44/src/lib.rs"
+  source_root = "$registry_github/libc-0.2.46/src/lib.rs"
   features = [ "use_std" ]
-  args = [ "-Aunused_macros" ]  # Unused macro `f` in macros.rs:51.
 }
 
 rust_crate("url") {
-  source_root = "$registry_github/url-1.7.1/src/lib.rs"
+  source_root = "$registry_github/url-1.7.2/src/lib.rs"
   extern = [
     ":matches",
     ":idna",
@@ -130,10 +129,11 @@ rust_crate("tempfile") {
 }
 
 rust_crate("rand") {
-  source_root = "$registry_github/rand-0.6.1/src/lib.rs"
+  source_root = "$registry_github/rand-0.6.3/src/lib.rs"
   features = [
     "std",
     "alloc",
+    "rand_os",
   ]
   extern = [
     ":libc",
@@ -141,9 +141,20 @@ rust_crate("rand") {
     ":rand_core",
     ":rand_isaac",
     ":rand_hc",
+    ":rand_os",
     ":rand_chacha",
     ":rand_pcg",
     ":rand_xorshift",
+  ]
+}
+
+rust_crate("rand_os") {
+  source_root = "$registry_github/rand_os-0.1.0/src/lib.rs"
+  extern = [
+    ":rand_core",
+    ":libc",
+    ":log",
+    ":winapi",
   ]
 }
 
@@ -382,12 +393,7 @@ rust_crate("iovec") {
 }
 
 rust_crate("lazycell") {
-  source_root = "$registry_github/lazycell-1.2.0/src/lib.rs"
-  args = [
-    # TODO Remove these:
-    "-Aunused_unsafe",
-    "-Aunused_mut",
-  ]
+  source_root = "$registry_github/lazycell-1.2.1/src/lib.rs"
 }
 
 rust_crate("net2") {
@@ -420,7 +426,7 @@ rust_crate("byteorder") {
 }
 
 rust_crate("crossbeam_deque") {
-  source_root = "$registry_github/crossbeam-deque-0.6.2/src/lib.rs"
+  source_root = "$registry_github/crossbeam-deque-0.6.3/src/lib.rs"
   features = [ "std" ]
   extern = [
     ":crossbeam_epoch",
@@ -429,7 +435,7 @@ rust_crate("crossbeam_deque") {
 }
 
 rust_crate("crossbeam_epoch") {
-  source_root = "$registry_github/crossbeam-epoch-0.6.1/src/lib.rs"
+  source_root = "$registry_github/crossbeam-epoch-0.7.0/src/lib.rs"
   features = [
     "std",
     "lazy_static",
@@ -447,7 +453,7 @@ rust_crate("crossbeam_epoch") {
 }
 
 rust_crate("crossbeam_utils") {
-  source_root = "$registry_github/crossbeam-utils-0.6.1/src/lib.rs"
+  source_root = "$registry_github/crossbeam-utils-0.6.3/src/lib.rs"
   features = [
     "std",
     "default",
@@ -459,7 +465,7 @@ rust_crate("crossbeam_utils") {
 }
 
 rust_crate("arrayvec") {
-  source_root = "$registry_github/arrayvec-0.4.8/src/lib.rs"
+  source_root = "$registry_github/arrayvec-0.4.9/src/lib.rs"
   extern = [ ":nodrop" ]
 }
 
@@ -485,12 +491,12 @@ rust_crate("scopeguard") {
 }
 
 rust_crate("num_cpus") {
-  source_root = "$registry_github/num_cpus-1.8.0/src/lib.rs"
+  source_root = "$registry_github/num_cpus-1.9.0/src/lib.rs"
   extern = [ ":libc" ]
 }
 
 rust_crate("hyper") {
-  source_root = "$registry_github/hyper-0.12.16/src/lib.rs"
+  source_root = "$registry_github/hyper-0.12.19/src/lib.rs"
   features = [ "runtime" ]
   extern = [
     ":bytes",
@@ -513,15 +519,10 @@ rust_crate("hyper") {
     ":tokio_timer",
     ":want",
   ]
-  args = [
-    # TODO Remove these.
-    "-Adeprecated",
-    "-Aunused_imports",
-  ]
 }
 
 rust_crate("h2") {
-  source_root = "$registry_github/h2-0.1.13/src/lib.rs"
+  source_root = "$registry_github/h2-0.1.14/src/lib.rs"
   extern = [
     ":byteorder",
     ":bytes",
@@ -537,7 +538,7 @@ rust_crate("h2") {
 }
 
 rust_crate("http") {
-  source_root = "$registry_github/http-0.1.13/src/lib.rs"
+  source_root = "$registry_github/http-0.1.14/src/lib.rs"
   extern = [
     ":bytes",
     ":fnv",
@@ -576,7 +577,7 @@ rust_crate("string") {
 }
 
 rust_crate("time") {
-  source_root = "$registry_github/time-0.1.40/src/lib.rs"
+  source_root = "$registry_github/time-0.1.41/src/lib.rs"
   extern = [
     ":libc",
     ":winapi",
@@ -1126,7 +1127,7 @@ rust_crate("ryu") {
 }
 
 rust_crate("serde") {
-  source_root = "$registry_github/serde-1.0.80/src/lib.rs"
+  source_root = "$registry_github/serde-1.0.82/src/lib.rs"
   features = [
     "default",
     "std",
@@ -1134,7 +1135,7 @@ rust_crate("serde") {
 }
 
 rust_crate("serde_json") {
-  source_root = "$registry_github/serde_json-1.0.33/src/lib.rs"
+  source_root = "$registry_github/serde_json-1.0.34/src/lib.rs"
   features = [
     "arbitrary_precision",
     "default",
