@@ -119,7 +119,7 @@ function _format(sep: string, pathObject: FormatInputPathObject) {
   return dir + sep + base;
 }
 
-const win32 = {
+export const win32 = {
   // path.resolve([from ...], to)
   resolve: function resolve(...pathSegments: string[]) {
     let resolvedDevice = "";
@@ -1004,7 +1004,7 @@ const win32 = {
   posix: null
 };
 
-const posix = {
+export const posix = {
   // path.resolve([from ...], to)
   resolve: function resolve(...pathSegments: string[]) {
     let resolvedPath = "";
@@ -1422,4 +1422,17 @@ posix.win32 = win32.win32 = win32;
 posix.posix = win32.posix = posix;
 
 const module = platform.os === "win" ? win32 : posix;
-export = module;
+
+export const resolve = module.resolve;
+export const normalize = module.normalize;
+export const isAbsolute = module.isAbsolute;
+export const join = module.join;
+export const relative = module.relative;
+export const toNamespacedPath = module.toNamespacedPath;
+export const dirname = module.dirname;
+export const basename = module.basename;
+export const extname = module.extname;
+export const format = module.format;
+export const parse = module.parse;
+export const sep = module.sep;
+export const delimiter = module.delimiter;

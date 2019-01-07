@@ -161,7 +161,7 @@ function checkFormat(path, testCases) {
 
 test(function parseTrailingWin32() {
   windowsTrailingTests.forEach(function(p) {
-    const actual = path.win32.parse(p[0]);
+    const actual = path.win32.parse(p[0] as string);
     const expected = p[1];
     assertEqual(actual, expected);
   });
@@ -169,7 +169,7 @@ test(function parseTrailingWin32() {
 
 test(function parseTrailing() {
   posixTrailingTests.forEach(function(p) {
-    const actual = path.posix.parse(p[0]);
+    const actual = path.posix.parse(p[0] as string);
     const expected = p[1];
     assertEqual(actual, expected);
   });
