@@ -408,11 +408,24 @@ https://github.com/denoland/deno/blob/master/src/msg.fbs
 
 ### Internal: Updating prebuilt binaries
 
+sccache
+
 ```
 ./third_party/depot_tools/upload_to_google_storage.py -b denoland  \
   -e ~/.config/gcloud/legacy_credentials/ry@tinyclouds.org/.boto `which sccache`
 mv `which sccache`.sha1 prebuilt/linux64/
 gsutil acl ch -u AllUsers:R gs://denoland/608be47bf01004aa11d4ed06955414e93934516e
+```
+
+rust
+
+```
+(cd ~/.rustup/toolchains/stable-x86_64-apple-darwin/; mkdir rust && cp -r bin lib rust/)
+mv ~/.rustup/toolchains/stable-x86_64-apple-darwin/rust ./prebuilt/mac/rust
+cd ./prebuilt/mac/
+../../third_party/depot_tools/upload_to_google_storage.py -a -b denoland  \
+  -e ~/.config/gcloud/legacy_credentials/ry@tinyclouds.org/.boto rust
+gsutil acl ch -u AllUsers:R gs://denoland/0b4709ae559db331e18e66f605805c0cfb6ace88
 ```
 
 ## Contributing

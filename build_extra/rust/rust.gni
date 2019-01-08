@@ -3,6 +3,15 @@ declare_args() {
   # Absolute path of rust build files.
   rust_build = "//build_extra/rust/"
 
+  # Absolute path of rust prebuilt files.
+  if (is_linux) {
+    rust_path = "//prebuilt/${target_os}64/rust"
+    rustc_path = "$rust_path/bin/rustc"
+  } else {
+    rust_path = "//prebuilt/$target_os/rust"
+    rustc_path = "$rust_path/bin/rustc"
+  }
+
   # Wrapper executable for rustc invocations. This can be used for a caching
   # utility, e.g. sccache.
   rustc_wrapper = ""
@@ -38,7 +47,9 @@ out_dir = "$root_out_dir/rust_crates"
 #
 # The tool works by compiling and linking something with rustc, and analyzing
 # the arguments it passes to the system linker. That's what dummy.rs is for.
-_rustc_info = exec_script("get_rustc_info.py", [], "json")
+_rustc_info = exec_script("get_rustc_info.py",
+                          [ rebase_path(rustc_path, root_build_dir) ],
+                          "json")
 
 template("rust_crate") {
   config_name = "${target_name}_config"
@@ -175,7 +186,7 @@ template("rust_crate") {
     }
 
     args += [
-      "rustc",
+      rebase_path(rustc_path, root_build_dir),
       rebase_path(source_root, root_build_dir),
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",

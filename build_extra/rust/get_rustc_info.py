@@ -39,7 +39,7 @@ def capture_linker_args(argsfile_path):
         argsfile.write("\n".join(sys.argv[1:]))
 
 
-def get_ldflags(rustc_args):
+def get_ldflags(rustc_path, rustc_args):
     # Prepare the environment for rustc.
     rustc_env = os.environ.copy()
 
@@ -76,7 +76,7 @@ def get_ldflags(rustc_args):
         #     linking. We need to preserve the extra object file with allocator
         #     symbols (`_rust_alloc` etc.) in it that rustc produces.
         rustc_cmd = [
-            "rustc",
+            rustc_path,
             "-Clinker=" + rustc_linker,
             "-Csave-temps",
         ] + rustc_args
@@ -172,8 +172,8 @@ def get_ldflags(rustc_args):
     return ldflags
 
 
-def get_version():
-    version = subprocess.check_output(["rustc", "--version"])
+def get_version(rustc_path):
+    version = subprocess.check_output([rustc_path, "--version"])
     version = version.strip()  # Remove trailing newline.
     return version
 
@@ -183,6 +183,7 @@ def main():
     # thinks we are a linker. All we do now is write our argv to the specified
     # file and exit. Further processing is done by our grandparent process,
     # also this script but invoked by gn.
+    rustc_path = sys.argv[1]
     argsfile_path = os.getenv("ARGSFILE_PATH")
     if argsfile_path is not None:
         return capture_linker_args(argsfile_path)
@@ -190,9 +191,9 @@ def main():
     empty_crate_source = path.join(path.dirname(__file__), "empty_crate.rs")
 
     info = {
-        "version": get_version(),
-        "ldflags_bin": get_ldflags([empty_crate_source]),
-        "ldflags_test": get_ldflags([empty_crate_source, "--test"])
+        "version": get_version(rustc_path),
+        "ldflags_bin": get_ldflags(rustc_path, [empty_crate_source]),
+        "ldflags_test": get_ldflags(rustc_path, [empty_crate_source, "--test"])
     }
 
     # Write the information dict as a json object.

@@ -6,10 +6,9 @@ git:
 env:
   global:
   - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
-  - RUSTUP_HOME=$HOME/.rustup/
   - RUST_BACKTRACE=full
   - CARGO_TARGET_DIR=$HOME/target
-  - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
+  - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$PATH
   - RUSTC_WRAPPER=sccache
   - SCCACHE_BUCKET=deno-sccache
   - AWS_ACCESS_KEY_ID=AKIAIVRN52PLDBP55LBQ
@@ -17,7 +16,6 @@ env:
   - secure: "ugSLNiUOQs53Oyy78EQyr2bu+//uoskbuoucenUUHM5I11M15yq1XuBJ26fIK1Jatza9pOGJNI8+4dSMWZW1GMFqgOZTKXv4kZFqU915/L1gsfS2bljB8pD1Qoq68ieGCQ49vBSFOWP24gtWBfKVJqU3HGHJgA5Ia/ujW3e37jr20xGqaBEcTjgin2fjm7VTao+hOOAMf47YkZNTEuLEHVPbDZM2tCCSlUdLpdyPB6mzX7XVmRxO26mtaHEeecivtaS6xXJXmns7OkntOzwgJi46B5uMgZz42UZ9qy1fCq8yCOyADb/Hu2WaJm7MIehHVhdC/siRzUUSOJ4N9gOPaFFAy5D28sDEa/IvlVriOwXirmDdPSlkTpwZ1NiisZXdZMaK6CWroaCHv9hYrJ7wKcntLQjLnnnskcyqxIVC7uEdlKHyLTNziyxol6oU/2Ym1NDoYWPDzcIeCkCr+xBapLXTVcg60YvcL/h+6wy5rp1v2h9R5B8HCCvmyc2X/FyaAmi8P7DYYHQL8+g+B0nGmzrrSGJzsEL7vChyiKfeNG7nnJKrU1+V8/+bPGsuPOK1XDTx80Uq56EzjHUPXy59zqtYL7ZZAIL0BQPxgm43yUCJfYSIKiwB9Odu+vb2DLDk5CLi45OHh2K7yi9m/lxlXla945az5OYO2l7a5m7rWF8="
 cache:
   directories:
-  - "$RUSTUP_HOME"
   - $CARGO_HOME/registry/index/
   - $CARGO_HOME/registry/cache/
   - prebuilt/mac
@@ -33,31 +31,19 @@ install:
 - nvm use --delete-prefix v8
 - node -v
 - |-
-  # Install Rust.
-  # TODO(ry) Include rustc in third_party.
-  # https://github.com/denoland/deno/issues/386
-  if [ ! $(rustc --version | grep 1.31.1) ]; then
-    curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.31.1
-    rustup default 1.31.1
-  fi
-  rustc --version
-  cargo --version
-- |-
   if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
     export PATH="`pwd`/prebuilt/mac:$PATH"
+    export PATH="`pwd`/prebuilt/mac/rust/bin:$PATH"
   else
     export PATH="`pwd`/prebuilt/linux64:$PATH"
+    export PATH="`pwd`/prebuilt/linux64/rust/bin:$PATH"
   fi
-- |-
-  # Remove unnnecessary cargo and rustup directories.
-  # This keeps the Travis CI cache small and fast.
-  rm -rf "$RUSTUP_HOME"downloads
-  rm -rf "$RUSTUP_HOME"tmp
-  rm -rf "$RUSTUP_HOME"toolchains/*/etc
-  rm -rf "$RUSTUP_HOME"toolchains/*/share
 
 before_script:
 - ./tools/setup.py
+- |-
+  rustc --version
+  cargo --version
 # Start sccache, then throw away the S3 access key.
 - |-
   sccache --start-server
