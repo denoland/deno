@@ -53,28 +53,20 @@ impl Worker {
   }
 }
 
-pub fn spawn(
-  state: Arc<IsolateState>,
-  js_source: String,
-) -> resources::Resource {
-  let (_t, wc) = spawn_internal(state, js_source);
-  resources::add_worker(wc)
-}
-
-fn spawn_internal(
-  state: Arc<IsolateState>,
-  js_source: String,
-) -> (thread::JoinHandle<()>, WorkerChannels) {
+fn spawn(state: Arc<IsolateState>, js_source: String) -> resources::Resource {
   // TODO This function should return a Future, so that the caller can retrieve
   // the JSError if one is thrown. Currently it just prints to stderr and calls
   // exit(1).
   // let (js_error_tx, js_error_rx) = oneshot::channel::<JSError>();
-  let (p, c) = oneshot::channel::<WorkerChannels>();
+  let (p, c) = oneshot::channel::<resources::Resource>();
   let builder = thread::Builder::new().name("worker".to_string());
-  let t = builder
+  let _tid = builder
     .spawn(move || {
       let (worker, external_channels) = Worker::new(&state);
-      p.send(external_channels).unwrap();
+
+      let mut resource = resources::add_worker(external_channels);
+      p.send(resource.clone()).unwrap();
+
       tokio_util::init(|| {
         (|| -> Result<(), JSError> {
           worker.execute("workerMain()")?;
@@ -86,20 +78,24 @@ fn spawn_internal(
           std::process::exit(1)
         }).unwrap();
       });
+
+      resource.close();
     }).unwrap();
 
-  let external_channels = c.wait().unwrap();
+  let resource = c.wait().unwrap();
 
-  (t, external_channels)
+  resource
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use futures::Sink;
-  use futures::Stream;
 
-  const SRC: &str = r#"
+  #[test]
+  fn test_spawn() {
+    let resource = spawn(
+      IsolateState::mock(),
+      r#"
       onmessage = function(e) {
         let s = new TextDecoder().decode(e.data);;
         console.log("msg from main script", s);
@@ -112,31 +108,8 @@ mod tests {
         postMessage(new Uint8Array([1, 2, 3]));
         console.log("after postMessage");
       }
-    "#;
-
-  #[test]
-  fn test_spawn_internal() {
-    let (t, worker_channels) = spawn_internal(IsolateState::mock(), SRC.into());
-    let msg = String::from("hi").into_boxed_str().into_boxed_bytes();
-    let mut sender = worker_channels.0.wait();
-    let r = sender.send(msg);
-    assert!(r.is_ok());
-
-    let mut it = worker_channels.1.wait();
-    let m = it.next();
-    assert!(m.is_some());
-    assert_eq!(*m.unwrap().unwrap(), [1, 2, 3]);
-
-    let msg = String::from("exit").into_boxed_str().into_boxed_bytes();
-    let r = sender.send(msg);
-    assert!(r.is_ok());
-
-    t.join().unwrap();
-  }
-
-  #[test]
-  fn test_spawn() {
-    let resource = spawn(IsolateState::mock(), SRC.into());
+    "#.into(),
+    );
     let msg = String::from("hi").into_boxed_str().into_boxed_bytes();
 
     let r = resources::worker_post_message(resource.rid, msg).wait();
@@ -150,5 +123,26 @@ mod tests {
     let msg = String::from("exit").into_boxed_str().into_boxed_bytes();
     let r = resources::worker_post_message(resource.rid, msg).wait();
     assert!(r.is_ok());
+  }
+
+  #[test]
+  fn removed_from_resource_table_on_close() {
+    let resource =
+      spawn(IsolateState::mock(), "onmessage = () => close();".into());
+
+    assert_eq!(
+      resources::get_type(resource.rid),
+      Some("worker".to_string())
+    );
+
+    let msg = String::from("hi").into_boxed_str().into_boxed_bytes();
+    let r = resources::worker_post_message(resource.rid, msg).wait();
+    assert!(r.is_ok());
+    println!("rid {:?}", resource.rid);
+
+    // TODO Need a way to get a future for when a resource closes.
+    // For now, just sleep for a bit.
+    thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(resources::get_type(resource.rid), None);
   }
 }

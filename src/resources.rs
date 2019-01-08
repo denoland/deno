@@ -104,6 +104,13 @@ enum Repr {
   Worker(WorkerChannels),
 }
 
+/// If the given rid is open, this returns the type of resource, E.G. "worker".
+/// If the rid is closed or was never open, it returns None.
+pub fn get_type(rid: ResourceId) -> Option<String> {
+  let table = RESOURCE_TABLE.lock().unwrap();
+  table.get(&rid).map(inspect_repr)
+}
+
 pub fn table_entries() -> Vec<(u32, String)> {
   let table = RESOURCE_TABLE.lock().unwrap();
 
@@ -117,7 +124,7 @@ pub fn table_entries() -> Vec<(u32, String)> {
 fn test_table_entries() {
   let mut entries = table_entries();
   entries.sort();
-  // assert_eq!(entries.len(), 3);
+  assert_eq!(entries.len(), 3);
   assert_eq!(entries[0], (0, String::from("stdin")));
   assert_eq!(entries[1], (1, String::from("stdout")));
   assert_eq!(entries[2], (2, String::from("stderr")));
@@ -145,7 +152,7 @@ fn inspect_repr(repr: &Repr) -> String {
 
 // Abstract async file interface.
 // Ideally in unix, if Resource represents an OS rid, it will be the same.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Resource {
   pub rid: ResourceId,
 }
