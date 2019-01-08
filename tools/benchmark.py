@@ -70,7 +70,11 @@ def get_binary_sizes(build_dir):
 
 def get_strace_summary_text(test_args):
     f = tempfile.NamedTemporaryFile()
-    run(["strace", "-c", "-f", "-o", f.name] + test_args)
+    run(["strace", "-c", "-f", "-o", f.name] + test_args,
+        merge_env={
+            "LSAN_OPTIONS": "",
+            "ASAN_OPTIONS": "",
+        })
     return f.read()
 
 
@@ -149,6 +153,12 @@ def main(argv):
     else:
         print "Usage: tools/benchmark.py [build_dir]"
         sys.exit(1)
+
+    # Disable ASAN/LSAN.
+    if 'ASAN_OPTIONS' in os.environ:
+        del os.environ['ASAN_OPTIONS']
+    if 'LSAN_OPTIONS' in os.environ:
+        del os.environ['LSAN_OPTIONS']
 
     http_server.spawn()
 
