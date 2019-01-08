@@ -1,5 +1,7 @@
 *.a
 *.lib
 *.exe
+*.tar.gz
+rust
 sccache
 hyperfine
