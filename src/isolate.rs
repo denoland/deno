@@ -12,6 +12,7 @@ use js_errors::JSError;
 use libdeno;
 use permissions::DenoPermissions;
 
+use futures::sync::mpsc as async_mpsc;
 use futures::Future;
 use libc::c_char;
 use libc::c_void;
@@ -23,6 +24,7 @@ use std::ffi::CString;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 use tokio;
@@ -53,6 +55,10 @@ pub struct Isolate {
   pub state: Arc<IsolateState>,
 }
 
+pub type WorkerSender = async_mpsc::Sender<Buf>;
+pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
+pub type WorkerChannels = (WorkerSender, WorkerReceiver);
+
 // Isolate cannot be passed between threads but IsolateState can.
 // IsolateState satisfies Send and Sync.
 // So any state that needs to be accessed outside the main V8 thread should be
@@ -64,18 +70,33 @@ pub struct IsolateState {
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
   pub metrics: Metrics,
+  pub worker_channels: Option<Mutex<WorkerChannels>>,
 }
 
 impl IsolateState {
-  pub fn new(flags: flags::DenoFlags, argv_rest: Vec<String>) -> Self {
+  pub fn new(
+    flags: flags::DenoFlags,
+    argv_rest: Vec<String>,
+    worker_channels: Option<WorkerChannels>,
+  ) -> Self {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
+
     Self {
       dir: deno_dir::DenoDir::new(flags.reload, custom_root).unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::new(&flags),
       flags,
       metrics: Metrics::default(),
+      worker_channels: worker_channels.map(|wc| Mutex::new(wc)),
     }
+  }
+
+  #[cfg(test)]
+  pub fn mock() -> Arc<IsolateState> {
+    let argv = vec![String::from("./deno"), String::from("hello.js")];
+    // For debugging: argv.push_back(String::from("-D"));
+    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
+    Arc::new(IsolateState::new(flags, rest_argv, None))
   }
 
   #[inline]
@@ -451,10 +472,7 @@ mod tests {
 
   #[test]
   fn test_dispatch_sync() {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
     let isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
@@ -493,9 +511,7 @@ mod tests {
 
   #[test]
   fn test_metrics_sync() {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
     let isolate = Isolate::new(snapshot, state, metrics_dispatch_sync);
     tokio_util::init(|| {
@@ -529,9 +545,7 @@ mod tests {
 
   #[test]
   fn test_metrics_async() {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
-    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
     let isolate = Isolate::new(snapshot, state, metrics_dispatch_async);
     tokio_util::init(|| {
@@ -619,7 +633,7 @@ mod tests {
     let argv = vec![String::from("./deno"), String::from(filename)];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let snapshot = libdeno::deno_buf::empty();
     let isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {

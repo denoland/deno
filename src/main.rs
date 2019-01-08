@@ -47,6 +47,7 @@ pub mod snapshot;
 mod tokio_util;
 mod tokio_write;
 pub mod version;
+mod workers;
 
 #[cfg(unix)]
 mod eager_unix;
@@ -96,7 +97,7 @@ fn main() {
     log::LevelFilter::Warn
   });
 
-  let state = Arc::new(isolate::IsolateState::new(flags, rest_argv));
+  let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
   let snapshot = snapshot::deno_snapshot();
   let isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
   tokio_util::init(|| {

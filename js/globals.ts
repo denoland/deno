@@ -19,6 +19,7 @@ import * as textEncoding from "./text_encoding";
 import * as timers from "./timers";
 import * as url from "./url";
 import * as urlSearchParams from "./url_search_params";
+import * as workers from "./workers";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -86,3 +87,8 @@ window.TextEncoder = textEncoding.TextEncoder;
 export type TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
 export type TextDecoder = textEncoding.TextDecoder;
+
+window.workerMain = workers.workerMain;
+// TODO These shouldn't be available in main isolate.
+window.postMessage = workers.postMessage;
+window.close = workers.workerClose;

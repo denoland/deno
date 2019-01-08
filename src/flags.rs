@@ -15,7 +15,7 @@ macro_rules! svec {
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-#[derive(Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct DenoFlags {
   pub help: bool,
   pub log_debug: bool,
