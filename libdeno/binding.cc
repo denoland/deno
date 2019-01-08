@@ -367,10 +367,12 @@ void DenoIsolate::RegisterModule(const char* filename,
                                  v8::Local<v8::Module> module) {
   int id = module->GetIdentityHash();
 
-  // v8.h says that identity hash is not necessarily unique
-
   module_map_.emplace(std::piecewise_construct, std::make_tuple(filename),
                       std::make_tuple(isolate_, module));
+
+  // Identity hash is not necessarily unique
+  // Therefore, we store a persistent handle along with filenames
+  // such that we can compare the identites and select the correct module
   module_info_map_.emplace(
       std::piecewise_construct, std::make_tuple(id),
       std::make_tuple(std::piecewise_construct, std::make_tuple(filename),
@@ -413,8 +415,12 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
 
   int ref_id = referrer->GetIdentityHash();
   auto range = d->module_info_map_.equal_range(ref_id);
-  std::string referrer_filename = "";
+  std::string referrer_filename;
   for (auto it = range.first; it != range.second; ++it) {
+    // it->second: <string, v8::Persistent<v8::Module>>
+    // operator== compares value identities stored in the handles
+    // https://denolib.github.io/v8-docs/include_2v8_8h_source.html#l00487
+    // Due to possibilities of identity hash collision, this is necessary
     if (it->second.second == referrer) {
       referrer_filename = it->second.first;
       break;
