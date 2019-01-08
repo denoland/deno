@@ -13,6 +13,12 @@
 
 #define GLOBAL_IMPORT_BUF_SIZE 1024
 
+#ifdef WIN32
+#include <malloc.h>
+#include <wchar.h>
+#include <windows.h>
+#endif
+
 namespace deno {
 
 std::vector<InternalFieldData*> deserialized_data;
@@ -201,12 +207,43 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
       args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
   bool prints_newline =
       args.Length() >= 3 ? args[2]->BooleanValue(context).ToChecked() : true;
+#ifdef _WIN32
+  HANDLE std_handle =
+      GetStdHandle(is_err ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE);
+
+  // does not have associated standard handles,
+  // or has not redirected to a associated standard handles
+  if (std_handle == nullptr || std_handle == INVALID_HANDLE_VALUE) {
+    return;
+  }
+
+  DWORD mode;
+  // `WriteConsole` only works with console screen, not files nor pipes.
+  // if the handle is redirected to a file, use `WriteFile`
+  if (!GetConsoleMode(std_handle, &mode)) {
+    WriteFile(std_handle, *str, str.length() * sizeof(**str), nullptr, nullptr);
+  } else {
+    const int n = MultiByteToWideChar(CP_UTF8, 0, *str, -1, nullptr, 0);
+    wchar_t* wbuf = (wchar_t*)malloc(n * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, *str, -1, wbuf, n);
+
+    // Don't include the null character in the output
+    CHECK_GT(args.Length(), 0);
+    WriteConsoleW(std_handle, wbuf, n - 1, nullptr, nullptr);
+    free(wbuf);
+  }
+
+  if (prints_newline) {
+    WriteFile(std_handle, "\n", 1, nullptr, nullptr);
+  }
+#else
   FILE* file = is_err ? stderr : stdout;
   fwrite(*str, sizeof(**str), str.length(), file);
   if (prints_newline) {
     fprintf(file, "\n");
   }
   fflush(file);
+#endif
 }
 
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
