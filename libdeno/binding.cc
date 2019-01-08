@@ -378,21 +378,26 @@ void DenoIsolate::ClearModules() {
     it->second.Reset();
   }
   module_map_.clear();
-  module_filename_map_.clear();
+  for (auto it = module_info_map_.begin(); it != module_info_map_.end(); it++) {
+    it->second.second.Reset();
+  }
+  module_info_map_.clear();
 }
 
 void DenoIsolate::RegisterModule(const char* filename,
                                  v8::Local<v8::Module> module) {
   int id = module->GetIdentityHash();
 
-  // v8.h says that identity hash is not necessarily unique. It seems it's quite
-  // unique enough for the purposes of O(1000) modules, so we use it as a
-  // hashmap key here. The following check is to detect collisions.
-  CHECK_EQ(0, module_filename_map_.count(id));
-
-  module_filename_map_[id] = filename;
   module_map_.emplace(std::piecewise_construct, std::make_tuple(filename),
                       std::make_tuple(isolate_, module));
+
+  // Identity hash is not necessarily unique
+  // Therefore, we store a persistent handle along with filenames
+  // such that we can compare the identites and select the correct module
+  module_info_map_.emplace(
+      std::piecewise_construct, std::make_tuple(id),
+      std::make_tuple(std::piecewise_construct, std::make_tuple(filename),
+                      std::make_tuple(isolate_, module)));
 }
 
 v8::MaybeLocal<v8::Module> CompileModule(v8::Local<v8::Context> context,
@@ -468,7 +473,19 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
   }
 
   int ref_id = referrer->GetIdentityHash();
-  std::string referrer_filename = d->module_filename_map_[ref_id];
+  auto range = d->module_info_map_.equal_range(ref_id);
+  std::string referrer_filename;
+  for (auto it = range.first; it != range.second; ++it) {
+    // it->second: <string, v8::Persistent<v8::Module>>
+    // operator== compares value identities stored in the handles
+    // https://denolib.github.io/v8-docs/include_2v8_8h_source.html#l00487
+    // Due to possibilities of identity hash collision, this is necessary
+    if (it->second.second == referrer) {
+      referrer_filename = it->second.first;
+      break;
+    }
+  }
+  CHECK(referrer_filename.size() != 0);
 
   v8::String::Utf8Value specifier_(isolate, specifier);
   const char* specifier_c = ToCString(specifier_);

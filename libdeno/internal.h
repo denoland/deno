@@ -58,8 +58,9 @@ class DenoIsolate {
   int32_t next_req_id_;
   void* user_data_;
 
-  // identity hash -> filename
-  std::map<int, std::string> module_filename_map_;
+  // identity hash -> filename, module (avoid hash collision)
+  std::multimap<int, std::pair<std::string, v8::Persistent<v8::Module>>>
+      module_info_map_;
   // filename -> Module
   std::map<std::string, v8::Persistent<v8::Module>> module_map_;
   // Set by deno_resolve_ok
