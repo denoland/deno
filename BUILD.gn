@@ -99,6 +99,7 @@ ts_sources = [
   "js/url.ts",
   "js/url_search_params.ts",
   "js/util.ts",
+  "js/workers.ts",
   "js/write_file.ts",
   "tsconfig.json",
 
