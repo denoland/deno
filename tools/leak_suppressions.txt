@@ -1,0 +1,12 @@
+# Surpressions for Address Sanitizer (ASAN) Leak Sanitizer (LSAN)
+# https://github.com/google/sanitizers/wiki/AddressSanitizerLeakSanitizer
+
+# Append the following to target/debug/args.gn:
+#    is_lsan=true
+#    is_asan=true
+# Recompile and set the following env vars:
+#    export ASAN_OPTIONS=detect_leaks=1
+#    export LSAN_OPTIONS=print_suppressions=0,suppressions=$DENO_SRC/tools/leak_suppressions.txt
+
+# thred local variable.
+leak:rand::rngs::thread::thread_rng
