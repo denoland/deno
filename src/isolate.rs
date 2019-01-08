@@ -235,7 +235,9 @@ impl Isolate {
     let out = self.state.dir.code_fetch(js_filename, ".").unwrap();
     debug!("module_resolve complete {}", out.filename);
 
-    // TODO js_source is not null terminated, therefore the clone.
+    let filename = CString::new(js_filename).unwrap();
+    let filename_ptr = filename.as_ptr() as *const i8;
+
     let js_source = CString::new(out.js_source().clone()).unwrap();
     let js_source_ptr = js_source.as_ptr() as *const i8;
 
@@ -243,7 +245,7 @@ impl Isolate {
       libdeno::deno_execute_mod(
         self.libdeno_isolate,
         self.as_raw_ptr(),
-        js_filename.as_ptr() as *const i8,
+        filename_ptr,
         js_source_ptr,
       )
     };
