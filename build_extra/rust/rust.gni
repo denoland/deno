@@ -45,6 +45,7 @@ template("rust_crate") {
 
   forward_variables_from(invoker,
                          [
+                           "cfg",
                            "crate_name",
                            "crate_type",
                            "crate_version",
@@ -212,6 +213,15 @@ template("rust_crate") {
     }
     if (defined(invoker.args)) {
       args += invoker.args
+    }
+
+    if (defined(cfg)) {
+      foreach(c, cfg) {
+        args += [
+          "--cfg",
+          "c",
+        ]
+      }
     }
 
     if (defined(features)) {
