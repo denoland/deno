@@ -187,8 +187,9 @@ function setTimer(
   const now = getTime();
   if (delay > TIMEOUT_MAX) {
     console.warn(
-      `${delay} does not fit into a 32-bit signed integer.
-Timeout duration was set to 1.`
+      `${delay} does not fit into` +
+        " a 32-bit signed integer." +
+        "\nTimeout duration was set to 1."
     );
     delay = 1;
   }
