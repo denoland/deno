@@ -125,20 +125,24 @@ async function runTests() {
   for (let i = 0; i < tests.length; i++) {
     const { fn, name } = tests[i];
     let result = green_ok();
-    console.log("test", name);
+    // See https://github.com/denoland/deno/pull/1452
+    // about this usage of groupCollapsed
+    console.groupCollapsed(`test ${name} `);
     try {
       await fn();
       passed++;
+      console.log("...", result);
+      console.groupEnd();
     } catch (e) {
       result = red_failed();
+      console.log("...", result);
+      console.groupEnd();
       console.error((e && e.stack) || e);
       failed++;
       if (exitOnFail) {
         break;
       }
     }
-    // TODO Do this on the same line as test name is printed.
-    console.log("...", result);
   }
 
   // Attempting to match the output of Rust's test runner.
