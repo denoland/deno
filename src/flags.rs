@@ -97,6 +97,12 @@ fn set_recognized_flags(
         if matches.opt_present("allow-run") {
           flags.allow_run = true;
         }
+        if matches.opt_present("allow-all") {
+          flags.allow_env = true;
+          flags.allow_net = true;
+          flags.allow_run = true;
+          flags.allow_write = true;
+        }
         if matches.opt_present("types") {
           flags.types = true;
         }
@@ -127,6 +133,7 @@ pub fn set_flags(
   opts.optflag("", "allow-net", "Allow network access.");
   opts.optflag("", "allow-env", "Allow environment access.");
   opts.optflag("", "allow-run", "Allow running subprocesses.");
+  opts.optflag("A", "allow-all", "Allow all permissions");
   opts.optflag("", "recompile", "Force recompilation of TypeScript code.");
   opts.optflag("h", "help", "Print this message.");
   opts.optflag("D", "log-debug", "Log debug output.");
@@ -223,6 +230,23 @@ fn test_set_flags_6() {
     flags,
     DenoFlags {
       allow_net: true,
+      ..DenoFlags::default()
+    }
+  )
+}
+
+#[test]
+fn test_set_flags_7() {
+  let (flags, rest, _) =
+    set_flags(svec!["deno", "gist.ts", "--allow-all"]).unwrap();
+  assert_eq!(rest, svec!["deno", "gist.ts"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      allow_net: true,
+      allow_env: true,
+      allow_run: true,
+      allow_write: true,
       ..DenoFlags::default()
     }
   )
