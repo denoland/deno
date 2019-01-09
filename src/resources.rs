@@ -124,7 +124,6 @@ pub fn table_entries() -> Vec<(u32, String)> {
 fn test_table_entries() {
   let mut entries = table_entries();
   entries.sort();
-  // assert_eq!(entries.len(), 3);
   assert_eq!(entries[0], (0, String::from("stdin")));
   assert_eq!(entries[1], (1, String::from("stdout")));
   assert_eq!(entries[2], (2, String::from("stderr")));

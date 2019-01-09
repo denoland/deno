@@ -537,21 +537,6 @@ export class DenoCompiler
     });
   }
 
-  // Deno specific static properties and methods
-
-  /** Built in modules which can be returned to external modules
-   *
-   * Placed as a private static otherwise we get use before
-   * declared with the `DenoCompiler`
-   */
-  // tslint:disable-next-line:no-any,no-unused-variable
-  /*
-  private static _builtins: { [mid: string]: any } = {
-    typescript: ts,
-    deno
-  };
-  */
-
   private static _instance: DenoCompiler | undefined;
 
   /** Returns the instance of `DenoCompiler` or creates a new instance. */
