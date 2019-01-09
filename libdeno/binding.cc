@@ -14,7 +14,6 @@
 #define GLOBAL_IMPORT_BUF_SIZE 1024
 
 #ifdef _WIN32
-#include <malloc.h>
 #include <wchar.h>
 #include <windows.h>
 #endif
