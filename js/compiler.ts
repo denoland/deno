@@ -3,34 +3,20 @@ import * as ts from "typescript";
 import { MediaType } from "gen/msg_generated";
 import { assetSourceCode } from "./assets";
 import * as os from "./os";
-// tslint:disable-next-line:no-circular-imports
-import * as deno from "./deno";
-import { globalEval } from "./global_eval";
 import { assert, log, notImplemented } from "./util";
 
-const window = globalEval("this");
+// tslint:disable-next-line:no-circular-imports
+// import * as deno from "./deno";
 
 const EOL = "\n";
 const ASSETS = "$asset$";
 const LIB_RUNTIME = "lib.deno_runtime.d.ts";
 
-// tslint:disable:no-any
-type AmdCallback = (...args: any[]) => void;
-type AmdErrback = (err: any) => void;
-export type AmdFactory = (...args: any[]) => object | void;
-// tslint:enable:no-any
-export type AmdDefine = (deps: ModuleSpecifier[], factory: AmdFactory) => void;
-type AMDRequire = (
-  deps: ModuleSpecifier[],
-  callback: AmdCallback,
-  errback: AmdErrback
-) => void;
-
 /** The location that a module is being loaded from. This could be a directory,
  * like `.`, or it could be a module specifier like
  * `http://gist.github.com/somefile.ts`
  */
-type ContainingFile = string;
+export type ContainingFile = string;
 /** The internal local filename of a compiled module. It will often be something
  * like `/home/ry/.deno/gen/f7b4605dfbc4d3bb356e98fda6ceb1481e4a8df5.js`
  */
@@ -42,7 +28,7 @@ type ModuleId = string;
 /** The external name of a module - could be a URL or could be a relative path.
  * Examples `http://gist.github.com/somefile.ts` or `./somefile.ts`
  */
-type ModuleSpecifier = string;
+export type ModuleSpecifier = string;
 /** The compiled source code which is cached in `.deno/gen/` */
 type OutputCode = string;
 /** The original source code */
@@ -78,7 +64,6 @@ export interface Ts {
 export class ModuleMetaData implements ts.IScriptSnapshot {
   public deps?: ModuleFileName[];
   public exports = {};
-  public factory?: AmdFactory;
   public gatheringDeps = false;
   public hasRun = false;
   public scriptVersion = "";
@@ -149,8 +134,6 @@ export class DenoCompiler
     ContainingFile,
     Map<ModuleSpecifier, ModuleFileName>
   >();
-  // A reference to global eval, so it can be monkey patched during testing
-  private _globalEval = globalEval;
   // A reference to the log utility, so it can be monkey patched during testing
   private _log = log;
   // A map of module file names to module meta data
@@ -163,7 +146,7 @@ export class DenoCompiler
   private readonly _options: ts.CompilerOptions = {
     allowJs: true,
     checkJs: true,
-    module: ts.ModuleKind.AMD,
+    module: ts.ModuleKind.ESNext,
     outDir: "$deno$",
     resolveJsonModule: true,
     sourceMap: true,
@@ -173,9 +156,6 @@ export class DenoCompiler
   // A reference to the `./os.ts` module, so it can be monkey patched during
   // testing
   private _os: Os = os;
-  // Contains a queue of modules that have been resolved, but not yet
-  // run
-  private _runQueue: ModuleMetaData[] = [];
   // Used to contain the script file we are currently running
   private _scriptFileNames: string[] = [];
   // A reference to the TypeScript LanguageService instance so it can be
@@ -184,83 +164,8 @@ export class DenoCompiler
   // A reference to `typescript` module so it can be monkey patched during
   // testing
   private _ts: Ts = ts;
-  // A reference to the global scope so it can be monkey patched during
-  // testing
-  private _window = window;
   // Flags forcing recompilation of TS code
   public recompile = false;
-
-  /** Drain the run queue, retrieving the arguments for the module
-   * factory and calling the module's factory.
-   */
-  private _drainRunQueue(): void {
-    this._log(
-      "compiler._drainRunQueue",
-      this._runQueue.map(metaData => metaData.fileName)
-    );
-    let moduleMetaData: ModuleMetaData | undefined;
-    while ((moduleMetaData = this._runQueue.shift())) {
-      assert(
-        moduleMetaData.factory != null,
-        "Cannot run module without factory."
-      );
-      assert(moduleMetaData.hasRun === false, "Module has already been run.");
-      // asserts not tracked by TypeScripts, so using not null operator
-      const exports = moduleMetaData.factory!(
-        ...this._getFactoryArguments(moduleMetaData)
-      );
-      // For JSON module support and potential future features.
-      // TypeScript always imports `exports` and mutates it directly, but the
-      // AMD specification allows values to be returned from the factory.
-      if (exports != null) {
-        moduleMetaData.exports = exports;
-      }
-      moduleMetaData.hasRun = true;
-    }
-  }
-
-  /** Get the dependencies for a given module, but don't run the module,
-   * just add the module factory to the run queue.
-   */
-  private _gatherDependencies(moduleMetaData: ModuleMetaData): void {
-    this._log("compiler._resolveDependencies", moduleMetaData.fileName);
-
-    // if the module has already run, we can short circuit.
-    // it is intentional though that if we have already resolved dependencies,
-    // we won't short circuit, as something may have changed, or we might have
-    // only collected the dependencies to be able to able to obtain the graph of
-    // dependencies
-    if (moduleMetaData.hasRun) {
-      return;
-    }
-
-    this._window.define = this._makeDefine(moduleMetaData);
-    this._globalEval(this.compile(moduleMetaData));
-    this._window.define = undefined;
-  }
-
-  /** Retrieve the arguments to pass a module's factory function. */
-  // tslint:disable-next-line:no-any
-  private _getFactoryArguments(moduleMetaData: ModuleMetaData): any[] {
-    if (!moduleMetaData.deps) {
-      throw new Error("Cannot get arguments until dependencies resolved.");
-    }
-    return moduleMetaData.deps.map(dep => {
-      if (dep === "require") {
-        return this._makeLocalRequire(moduleMetaData);
-      }
-      if (dep === "exports") {
-        return moduleMetaData.exports;
-      }
-      if (dep in DenoCompiler._builtins) {
-        return DenoCompiler._builtins[dep];
-      }
-      const dependencyMetaData = this._getModuleMetaData(dep);
-      assert(dependencyMetaData != null, `Missing dependency "${dep}".`);
-      // TypeScript does not track assert, therefore using not null operator
-      return dependencyMetaData!.exports;
-    });
-  }
 
   /** The TypeScript language service often refers to the resolved fileName of
    * a module, this is a shortcut to avoid unnecessary module resolution logic
@@ -270,74 +175,12 @@ export class DenoCompiler
    * TypeScript compiler, but the TypeScript compiler shouldn't be asking about
    * external modules that we haven't told it about yet.
    */
-  private _getModuleMetaData(
-    fileName: ModuleFileName
-  ): ModuleMetaData | undefined {
+  getModuleMetaData(fileName: ModuleFileName): ModuleMetaData | undefined {
     return this._moduleMetaDataMap.has(fileName)
       ? this._moduleMetaDataMap.get(fileName)
       : fileName.startsWith(ASSETS)
       ? this.resolveModule(fileName, "")
       : undefined;
-  }
-
-  /** Create a localized AMD `define` function and return it. */
-  private _makeDefine(moduleMetaData: ModuleMetaData): AmdDefine {
-    return (deps: ModuleSpecifier[], factory: AmdFactory): void => {
-      this._log("compiler.localDefine", moduleMetaData.fileName);
-      moduleMetaData.factory = factory;
-      // when there are circular dependencies, we need to skip recursing the
-      // dependencies
-      moduleMetaData.gatheringDeps = true;
-      // we will recursively resolve the dependencies for any modules
-      moduleMetaData.deps = deps.map(dep => {
-        if (
-          dep === "require" ||
-          dep === "exports" ||
-          dep in DenoCompiler._builtins
-        ) {
-          return dep;
-        }
-        const dependencyMetaData = this.resolveModule(
-          dep,
-          moduleMetaData.fileName
-        );
-        if (!dependencyMetaData.gatheringDeps) {
-          this._gatherDependencies(dependencyMetaData);
-        }
-        return dependencyMetaData.fileName;
-      });
-      moduleMetaData.gatheringDeps = false;
-      if (!this._runQueue.includes(moduleMetaData)) {
-        this._runQueue.push(moduleMetaData);
-      }
-    };
-  }
-
-  /** Returns a require that specifically handles the resolution of a transpiled
-   * emit of a dynamic ES `import()` from TypeScript.
-   */
-  private _makeLocalRequire(moduleMetaData: ModuleMetaData): AMDRequire {
-    return (
-      deps: ModuleSpecifier[],
-      callback: AmdCallback,
-      errback: AmdErrback
-    ): void => {
-      log("localRequire", deps);
-      assert(
-        deps.length === 1,
-        "Local require requires exactly one dependency."
-      );
-      const [moduleSpecifier] = deps;
-      try {
-        const requiredMetaData = this.run(
-          moduleSpecifier,
-          moduleMetaData.fileName
-        );
-        callback(requiredMetaData.exports);
-      } catch (e) {
-        errback(e);
-      }
-    };
   }
 
   /** Given a `moduleSpecifier` and `containingFile` retrieve the cached
@@ -468,32 +311,11 @@ export class DenoCompiler
     return moduleMetaData ? moduleMetaData.sourceMap : "";
   }
 
-  /** For a given module specifier and containing file, return a list of
-   * absolute identifiers for dependent modules that are required by this
-   * module.
-   */
-  getModuleDependencies(
-    moduleSpecifier: ModuleSpecifier,
-    containingFile: ContainingFile
-  ): ModuleFileName[] {
-    assert(
-      this._runQueue.length === 0,
-      "Cannot get dependencies with modules queued to be run."
-    );
-    const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
-    assert(
-      !moduleMetaData.hasRun,
-      "Cannot get dependencies for a module that has already been run."
-    );
-    this._gatherDependencies(moduleMetaData);
-    const dependencies = this._runQueue.map(
-      moduleMetaData => moduleMetaData.moduleId
-    );
-    // empty the run queue, to free up references to factories we have collected
-    // and to ensure that if there is a further invocation of `.run()` the
-    // factories don't get called
-    this._runQueue = [];
-    return dependencies;
+  getOutput(filename: ModuleFileName): OutputCode {
+    const moduleMetaData = this.getModuleMetaData(filename)!;
+    assert(moduleMetaData != null, `Module not loaded: "${filename}"`);
+    this._scriptFileNames = [moduleMetaData.fileName];
+    return this.compile(moduleMetaData);
   }
 
   /** Given a `moduleSpecifier` and `containingFile`, resolve the module and
@@ -543,6 +365,7 @@ export class DenoCompiler
     }
     assert(moduleId != null, "No module ID.");
     assert(fileName != null, "No file name.");
+    assert(sourceCode ? sourceCode.length > 0 : false, "No source code.");
     assert(
       mediaType !== MediaType.Unknown,
       `Unknown media type for: "${moduleSpecifier}" from "${containingFile}".`
@@ -581,11 +404,21 @@ export class DenoCompiler
     this._log("compiler.run", { moduleSpecifier, containingFile });
     const moduleMetaData = this.resolveModule(moduleSpecifier, containingFile);
     this._scriptFileNames = [moduleMetaData.fileName];
-    if (!moduleMetaData.deps) {
-      this._gatherDependencies(moduleMetaData);
-    }
-    this._drainRunQueue();
     return moduleMetaData;
+  }
+
+  getSource(filename: ModuleFileName): SourceCode {
+    const moduleMetaData = this.getModuleMetaData(filename)!;
+    assert(moduleMetaData != null, `Module not loaded: "${filename}"`);
+    return moduleMetaData.sourceCode;
+  }
+
+  getJavaScriptSource(filename: ModuleFileName): OutputCode {
+    let s = this.getOutput(filename);
+    if (!s) {
+      s = this.getSource(filename);
+    }
+    return s;
   }
 
   // TypeScript Language Service and Format Diagnostic Host API
@@ -613,7 +446,7 @@ export class DenoCompiler
 
   getScriptKind(fileName: ModuleFileName): ts.ScriptKind {
     this._log("getScriptKind()", fileName);
-    const moduleMetaData = this._getModuleMetaData(fileName);
+    const moduleMetaData = this.getModuleMetaData(fileName);
     if (moduleMetaData) {
       switch (moduleMetaData.mediaType) {
         case MediaType.TypeScript:
@@ -632,13 +465,13 @@ export class DenoCompiler
 
   getScriptVersion(fileName: ModuleFileName): string {
     this._log("getScriptVersion()", fileName);
-    const moduleMetaData = this._getModuleMetaData(fileName);
+    const moduleMetaData = this.getModuleMetaData(fileName);
     return (moduleMetaData && moduleMetaData.scriptVersion) || "";
   }
 
   getScriptSnapshot(fileName: ModuleFileName): ts.IScriptSnapshot | undefined {
     this._log("getScriptSnapshot()", fileName);
-    return this._getModuleMetaData(fileName);
+    return this.getModuleMetaData(fileName);
   }
 
   getCurrentDirectory(): string {
@@ -664,7 +497,7 @@ export class DenoCompiler
   }
 
   fileExists(fileName: string): boolean {
-    const moduleMetaData = this._getModuleMetaData(fileName);
+    const moduleMetaData = this.getModuleMetaData(fileName);
     const exists = moduleMetaData != null;
     this._log("fileExists()", fileName, exists);
     return exists;
@@ -703,19 +536,6 @@ export class DenoCompiler
       };
     });
   }
-
-  // Deno specific static properties and methods
-
-  /** Built in modules which can be returned to external modules
-   *
-   * Placed as a private static otherwise we get use before
-   * declared with the `DenoCompiler`
-   */
-  // tslint:disable-next-line:no-any
-  private static _builtins: { [mid: string]: any } = {
-    typescript: ts,
-    deno
-  };
 
   private static _instance: DenoCompiler | undefined;
 

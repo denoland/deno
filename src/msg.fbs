@@ -127,6 +127,13 @@ enum MediaType: byte {
   Unknown
 }
 
+table Shared {
+  lock: bool;
+  head: int;
+  tail: int;
+  ring: [Base];
+}
+
 table Base {
   cmd_id: uint32;
   sync: bool = false;

@@ -1,8 +1,4 @@
 [WILDCARD]Error: bad
     at foo (file://[WILDCARD]tests/error_001.ts:2:9)
     at bar (file://[WILDCARD]tests/error_001.ts:6:3)
-    at eval (file://[WILDCARD]tests/error_001.ts:9:1)
-    at _gatherDependencies ([WILDCARD]/js/compiler.ts:[WILDCARD])
-    at run ([WILDCARD]/js/compiler.ts:[WILDCARD])
-    at denoMain ([WILDCARD]/js/main.ts:[WILDCARD])
-    at <anonymous>:1:1
+    at file://[WILDCARD]tests/error_001.ts:9:1
