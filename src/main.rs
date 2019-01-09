@@ -1,60 +1,109 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+extern crate dirs;
+extern crate flatbuffers;
+extern crate getopts;
+extern crate http;
+extern crate hyper;
+extern crate hyper_rustls;
 extern crate libc;
-use libc::c_char;
-use libc::c_int;
-use std::ffi::CStr;
-use std::ffi::CString;
+extern crate rand;
+extern crate remove_dir_all;
+extern crate ring;
+extern crate rustyline;
+extern crate serde_json;
+extern crate source_map_mappings;
+extern crate tempfile;
+extern crate tokio;
+extern crate tokio_executor;
+extern crate tokio_fs;
+extern crate tokio_io;
+extern crate tokio_process;
+extern crate tokio_threadpool;
+extern crate url;
 
-#[link(name = "deno", kind = "static")]
-extern "C" {
-    fn deno_v8_version() -> *const c_char;
-    fn deno_init();
-    fn deno_set_flags(argc: *mut c_int, argv: *mut *mut c_char);
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate futures;
+
+pub mod deno_dir;
+pub mod errors;
+pub mod flags;
+mod fs;
+mod http_body;
+mod http_util;
+pub mod isolate;
+pub mod js_errors;
+pub mod libdeno;
+pub mod msg;
+pub mod msg_util;
+pub mod ops;
+pub mod permissions;
+mod repl;
+pub mod resources;
+pub mod snapshot;
+mod tokio_util;
+mod tokio_write;
+pub mod version;
+mod workers;
+
+#[cfg(unix)]
+mod eager_unix;
+
+use std::env;
+use std::sync::Arc;
+
+static LOGGER: Logger = Logger;
+
+struct Logger;
+
+impl log::Log for Logger {
+  fn enabled(&self, metadata: &log::Metadata) -> bool {
+    metadata.level() <= log::max_level()
+  }
+
+  fn log(&self, record: &log::Record) {
+    if self.enabled(record.metadata()) {
+      println!("{} RS - {}", record.level(), record.args());
+    }
+  }
+  fn flush(&self) {}
 }
 
-// Pass the command line arguments to v8.
-// Returns a vector of command line arguments that v8 did not understand.
-fn set_flags() -> Vec<String> {
-    // deno_set_flags(int* argc, char** argv) mutates argc and argv to remove
-    // flags that v8 understands.
-    // Convert command line arguments to a vector of C strings.
-    let mut argv = std::env::args()
-        .map(|arg| CString::new(arg).unwrap().into_bytes_with_nul())
-        .collect::<Vec<_>>();
-    // Make a new array, that can be modified by V8::SetFlagsFromCommandLine(),
-    // containing mutable raw pointers to the individual command line args.
-    let mut c_argv = argv.iter_mut()
-        .map(|arg| arg.as_mut_ptr() as *mut i8)
-        .collect::<Vec<_>>();
-    // Store the length of the argv array in a local variable. We'll pass a
-    // pointer to this local variable to deno_set_flags(), which then
-    // updates its value.
-    let mut c_argc = argv.len() as c_int;
-    // Let v8 parse the arguments it recognizes and remove them from c_argv.
-    unsafe {
-        deno_set_flags(&mut c_argc, c_argv.as_mut_ptr());
-    };
-    // If c_argc was updated we have to change the length of c_argv to match.
-    c_argv.truncate(c_argc as usize);
-    // Copy the modified arguments list into a proper rust vec and return it.
-    c_argv
-        .iter()
-        .map(|ptr| unsafe {
-            let cstr = CStr::from_ptr(*ptr as *const i8);
-            let slice = cstr.to_str().unwrap();
-            slice.to_string()
-        })
-        .collect::<Vec<_>>()
+fn print_err_and_exit(err: js_errors::JSError) {
+  eprintln!("{}", err.to_string());
+  std::process::exit(1);
 }
 
 fn main() {
-    println!("Hi");
-    let args = set_flags();
-    unsafe { deno_init() };
-    let v = unsafe { deno_v8_version() };
-    let c_str = unsafe { CStr::from_ptr(v) };
-    let version = c_str.to_str().unwrap();
-    println!("version: {}", version);
-    for arg in args {
-        println!("arg: {}", arg);
-    }
+  log::set_logger(&LOGGER).unwrap();
+  let args = env::args().collect();
+  let (flags, rest_argv, usage_string) =
+    flags::set_flags(args).unwrap_or_else(|err| {
+      eprintln!("{}", err);
+      std::process::exit(1)
+    });
+
+  if flags.help {
+    println!("{}", &usage_string);
+    std::process::exit(0);
+  }
+
+  log::set_max_level(if flags.log_debug {
+    log::LevelFilter::Debug
+  } else {
+    log::LevelFilter::Warn
+  });
+
+  let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
+  let snapshot = snapshot::deno_snapshot();
+  let isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
+  tokio_util::init(|| {
+    isolate
+      .execute("denoMain();")
+      .unwrap_or_else(print_err_and_exit);
+    isolate.event_loop().unwrap_or_else(print_err_and_exit);
+  });
 }

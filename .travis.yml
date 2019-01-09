@@ -1,52 +1,126 @@
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+sudo: false
 language: c++
-branches:
-  only:
-  - master
-cache:
-  ccache: true
-  directories:
-   - src/js/node_modules/
-   - $DEPOT_TOOLS_PATH
-   - $BUILD_PATH
+git:
+  depth: 1
 env:
   global:
-    - BUILD_PATH=$HOME/out/Default
-    - DEPOT_TOOLS_PATH=$HOME/depot_tools
-before_install: |
-  if ! [ -x $DEPOT_TOOLS_PATH/gclient ]; then
-    rm -rf $DEPOT_TOOLS_PATH
-    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $DEPOT_TOOLS_PATH
-  fi
+  - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
+  - RUSTUP_HOME=$HOME/.rustup/
+  - RUST_BACKTRACE=full
+  - CARGO_TARGET_DIR=$HOME/target
+  - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
+  - RUSTC_WRAPPER=sccache
+  - SCCACHE_BUCKET=deno-sccache
+  - AWS_ACCESS_KEY_ID=AKIAIVRN52PLDBP55LBQ
+  # AWS_SECRET_ACCESS_KEY=...
+  - secure: "ugSLNiUOQs53Oyy78EQyr2bu+//uoskbuoucenUUHM5I11M15yq1XuBJ26fIK1Jatza9pOGJNI8+4dSMWZW1GMFqgOZTKXv4kZFqU915/L1gsfS2bljB8pD1Qoq68ieGCQ49vBSFOWP24gtWBfKVJqU3HGHJgA5Ia/ujW3e37jr20xGqaBEcTjgin2fjm7VTao+hOOAMf47YkZNTEuLEHVPbDZM2tCCSlUdLpdyPB6mzX7XVmRxO26mtaHEeecivtaS6xXJXmns7OkntOzwgJi46B5uMgZz42UZ9qy1fCq8yCOyADb/Hu2WaJm7MIehHVhdC/siRzUUSOJ4N9gOPaFFAy5D28sDEa/IvlVriOwXirmDdPSlkTpwZ1NiisZXdZMaK6CWroaCHv9hYrJ7wKcntLQjLnnnskcyqxIVC7uEdlKHyLTNziyxol6oU/2Ym1NDoYWPDzcIeCkCr+xBapLXTVcg60YvcL/h+6wy5rp1v2h9R5B8HCCvmyc2X/FyaAmi8P7DYYHQL8+g+B0nGmzrrSGJzsEL7vChyiKfeNG7nnJKrU1+V8/+bPGsuPOK1XDTx80Uq56EzjHUPXy59zqtYL7ZZAIL0BQPxgm43yUCJfYSIKiwB9Odu+vb2DLDk5CLi45OHh2K7yi9m/lxlXla945az5OYO2l7a5m7rWF8="
+cache:
+  directories:
+  - "$RUSTUP_HOME"
+  - $CARGO_HOME/registry/index/
+  - $CARGO_HOME/registry/cache/
+  - prebuilt/
+  - third_party/v8/build/linux/debian_sid_amd64-sysroot/
+  - third_party/v8/third_party/llvm-build/
+
 install:
- - export PATH=$PATH:$DEPOT_TOOLS_PATH
- - cd src
- # Sync dependencies.
- # TODO(ry) These sync steps are very terrible and only here temporarily.
- # A single deno_deps git submodule should be created which contains V8,
- # node_modules, depot_tools, rustc, and other deps.
- # Building Deno *should not* depend on yarn, gclient, rustup, cargo, nor any
- # internet connection.
- - curl -sSf https://sh.rustup.rs | sh -s -- -y
- - export PATH=$HOME/.cargo/bin:$PATH
- - rustc --version
- - (cd js; yarn)
- - gclient sync -j2 --no-history
- # ccache needs the custom LLVM to be in PATH and other variables.
- - export PATH=`pwd`/third_party/llvm-build/Release+Asserts/bin:$PATH
- - export CCACHE_CPP2=yes
- - export CCACHE_SLOPPINESS=time_macros
- # In case gn gen args change, delete args.gn to avoid using cached values.
- - rm -f $BUILD_PATH/args.gn
- # is_debug, use_allocator, and ccache are used to speed travis.
- # use_custom_libcxx=false and use_sysroot=false seem to be required to build on
- # Ubuntu 14.04
- - gn gen $BUILD_PATH --args='is_debug=false use_allocator="none" cc_wrapper="ccache" use_custom_libcxx=false use_sysroot=false'
- - gn args $BUILD_PATH --list
- - ccache -s
- # Travis hangs without -j2 argument to ninja.
- - ninja -j2 -C $BUILD_PATH mock_runtime_test mock_main
- - ninja -j2 -C $BUILD_PATH deno
+- nvm install v8
+- nvm use --delete-prefix v8
+- node -v
+- |-
+  # Install Rust.
+  # TODO(ry) Include rustc in third_party.
+  # https://github.com/denoland/deno/issues/386
+  if [ ! $(rustc --version | grep 1.30.0) ]; then
+    curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.30.0
+    rustup default 1.30.0
+  fi
+  rustc --version
+  cargo --version
+- |-
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    export PATH="`pwd`/prebuilt/mac:$PATH"
+  else
+    export PATH="`pwd`/prebuilt/linux64:$PATH"
+  fi
+- |-
+  # Remove unnnecessary cargo and rustup directories.
+  # This keeps the Travis CI cache small and fast.
+  rm -rf "$RUSTUP_HOME"downloads
+  rm -rf "$RUSTUP_HOME"tmp
+  rm -rf "$RUSTUP_HOME"toolchains/*/etc
+  rm -rf "$RUSTUP_HOME"toolchains/*/share
+
+before_script:
+- ./tools/setup.py
+# Start sccache, then throw away the S3 access key.
+- |-
+  sccache --start-server
+  unset AWS_SECRET_ACCESS_KEY
+- set -e
+
+# Default script for release builds.
 script:
- - $BUILD_PATH/mock_runtime_test
- - $BUILD_PATH/mock_main foo bar
- - $BUILD_PATH/deno meow
+- ./tools/lint.py
+- ./tools/test_format.py
+- ./tools/build.py -C target/release
+- DENO_BUILD_MODE=release ./tools/test.py
+
+jobs:
+  fast_finish: true
+  include:
+    - name: "gn release mac"
+      os: osx
+      after_success:
+        - &gzip_release
+          gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_x64.gz
+      deploy:
+      - &release_provider
+        provider: releases
+        api_key: &github-token
+          secure: RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps=
+        file: "target/release/deno_${TRAVIS_OS_NAME}_x64.gz"
+        on:
+          tags: true
+          repo: denoland/deno
+        skip-cleanup: true
+
+    - name: "gn release linux"
+      os: linux
+      after_success:
+        - *gzip_release
+        - ./tools/benchmark.py target/release && cp -r website/* gh-pages/
+      deploy:
+      - *release_provider
+      # Run benchmarks and publish the result to github pages.
+      - provider: pages
+        github-token: *github-token
+        keep-history: true
+        local-dir: gh-pages
+        on:
+          branch: master
+          repo: denoland/deno
+        skip-cleanup: true
+
+    - name: "cargo release linux"
+      os: linux
+      script:
+      - cargo build -vv --release
+
+    # LSAN: We are in the process of getting a completely clean LSAN build,
+    # but it will take some work. So for now we just run a subset of the
+    # tests.  We want to detect leaks during the build process as well as
+    # when executing the tests. So set the ASAN_OPTIONS env var before
+    # build.py is run.
+    - name: "lsan debug linux"
+      os: linux
+      script:
+      - echo is_asan=true >> target/debug/args.gn
+      - echo is_lsan=true >> target/debug/args.gn
+      # Call gn gen again to make sure new args are recognized.
+      - third_party/depot_tools/gn gen target/debug
+      - export ASAN_OPTIONS=detect_leaks=1
+      - ./tools/build.py test_cc
+      - ./target/debug/test_cc
+

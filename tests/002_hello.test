@@ -1,0 +1,2 @@
+args: tests/002_hello.ts --reload
+output: tests/002_hello.ts.out

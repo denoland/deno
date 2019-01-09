@@ -1,0 +1,3 @@
+args: tests/error_008_checkjs.js --reload
+exit_code: 1
+output: tests/error_008_checkjs.js.out

@@ -1,0 +1,2 @@
+args: tests/005_more_imports.ts --reload
+output: tests/005_more_imports.ts.out

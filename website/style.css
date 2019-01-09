@@ -1,0 +1,55 @@
+
+body {
+  color: #111;
+  background: #f0f0f0;
+  margin: 80px 0;
+  font-family: Arial;
+  font-size: 20px;
+}
+
+main {
+  max-width: 800px;
+  margin: 0px auto;
+}
+svg {
+  margin: 0px auto;
+}
+
+a {
+  color: #333;
+}
+
+pre {
+  background: #ddd;
+  padding: 15px;
+  word-wrap: normal;
+  overflow-x: auto;
+}
+
+a:hover {
+  background: #aee;
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+td, th {
+  text-align: center;
+  vertical-align: middle;
+  border: 1px solid #aaa;
+  padding: 6px;
+}
+
+@media only screen and (max-device-width: 480px) {
+
+  main {
+    margin: 15px;
+  }
+
+  body {
+    margin: 0;
+  }
+}
+

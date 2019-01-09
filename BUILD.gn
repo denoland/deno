@@ -1,0 +1,237 @@
+# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+import("//build/toolchain/cc_wrapper.gni")
+import("//build_extra/flatbuffers/flatbuffer.gni")
+import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
+import("//build_extra/rust/rust.gni")
+import("//third_party/v8/gni/v8.gni")
+import("//third_party/v8/snapshot_toolchain.gni")
+import("libdeno/deno.gni")
+
+group("default") {
+  testonly = true
+  deps = [
+    ":deno",
+    ":hyper_hello",
+    ":test_rs",
+    "libdeno:test_cc",
+  ]
+}
+
+main_extern = [
+  "$rust_build:atty",
+  "$rust_build:dirs",
+  "$rust_build:flatbuffers",
+  "$rust_build:futures",
+  "$rust_build:getopts",
+  "$rust_build:http",
+  "$rust_build:hyper",
+  "$rust_build:hyper_rustls",
+  "$rust_build:kernel32",
+  "$rust_build:lazy_static",
+  "$rust_build:libc",
+  "$rust_build:log",
+  "$rust_build:rand",
+  "$rust_build:remove_dir_all",
+  "$rust_build:ring",
+  "$rust_build:rustyline",
+  "$rust_build:serde_json",
+  "$rust_build:source_map_mappings",
+  "$rust_build:tempfile",
+  "$rust_build:tokio",
+  "$rust_build:tokio_executor",
+  "$rust_build:tokio_fs",
+  "$rust_build:tokio_io",
+  "$rust_build:tokio_process",
+  "$rust_build:tokio_threadpool",
+  "$rust_build:url",
+  "$rust_build:winapi",
+]
+
+ts_sources = [
+  "js/assets.ts",
+  "js/blob.ts",
+  "js/buffer.ts",
+  "js/chmod.ts",
+  "js/compiler.ts",
+  "js/console.ts",
+  "js/copy_file.ts",
+  "js/deno.ts",
+  "js/dir.ts",
+  "js/dispatch.ts",
+  "js/dom_types.ts",
+  "js/errors.ts",
+  "js/event.ts",
+  "js/event_target.ts",
+  "js/fetch.ts",
+  "js/dom_file.ts",
+  "js/file_info.ts",
+  "js/files.ts",
+  "js/flatbuffers.ts",
+  "js/form_data.ts",
+  "js/global_eval.ts",
+  "js/globals.ts",
+  "js/headers.ts",
+  "js/io.ts",
+  "js/libdeno.ts",
+  "js/main.ts",
+  "js/make_temp_dir.ts",
+  "js/metrics.ts",
+  "js/mkdir.ts",
+  "js/mock_builtin.js",
+  "js/net.ts",
+  "js/os.ts",
+  "js/platform.ts",
+  "js/plugins.d.ts",
+  "js/process.ts",
+  "js/read_dir.ts",
+  "js/read_file.ts",
+  "js/read_link.ts",
+  "js/remove.ts",
+  "js/rename.ts",
+  "js/repl.ts",
+  "js/resources.ts",
+  "js/stat.ts",
+  "js/symlink.ts",
+  "js/text_encoding.ts",
+  "js/timers.ts",
+  "js/truncate.ts",
+  "js/types.ts",
+  "js/url.ts",
+  "js/url_search_params.ts",
+  "js/util.ts",
+  "js/workers.ts",
+  "js/write_file.ts",
+  "tsconfig.json",
+
+  # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
+  # when npm packages are added/removed or their contents changes.
+  "package.json",
+  "third_party/yarn.lock",
+]
+
+# When Cargo is driving the build, GN/Ninja are used to produce these non-Rust
+# targets. Cargo handles all Rust source files and the final linking step.
+group("deno_deps") {
+  deps = [
+    ":msg_rs",
+    ":snapshot_deno",
+    "libdeno:libdeno_static_lib",
+  ]
+}
+
+# Reads the cargo info from Cargo.toml
+deno_cargo_info = exec_script("build_extra/rust/get_cargo_info.py",
+                              [ rebase_path("Cargo.toml", root_build_dir) ],
+                              "json")
+
+rust_executable("deno") {
+  source_root = "src/main.rs"
+  extern = main_extern
+  deps = [
+    ":deno_deps",
+  ]
+
+  # Extract version from Cargo.toml
+  # TODO integrate this into rust.gni by allowing the rust_executable template
+  # to specify a cargo.toml from which it will extract a version.
+  crate_version = deno_cargo_info.version
+  inputs = [
+    "Cargo.toml",
+  ]
+}
+
+rust_test("test_rs") {
+  source_root = "src/main.rs"
+  extern = main_extern
+  deps = [
+    ":deno_deps",
+  ]
+
+  # Extract version from Cargo.toml
+  crate_version = deno_cargo_info.version
+  inputs = [
+    "Cargo.toml",
+  ]
+}
+
+rust_executable("hyper_hello") {
+  source_root = "tools/hyper_hello.rs"
+  extern = [
+    "$rust_build:hyper",
+    "$rust_build:ring",
+  ]
+}
+
+# Generates the core TypeScript type library for deno that will be
+# included in the runtime bundle
+run_node("deno_runtime_declaration") {
+  out_dir = target_gen_dir
+  sources = ts_sources
+  outputs = [
+    "$out_dir/lib/lib.deno_runtime.d.ts",
+  ]
+  deps = [
+    ":msg_ts",
+  ]
+  args = [
+    rebase_path("node_modules/ts-node/dist/bin.js", root_build_dir),
+    "--project",
+    rebase_path("tools/ts_library_builder/tsconfig.json"),
+    rebase_path("tools/ts_library_builder/main.ts", root_build_dir),
+    "--basePath",
+    rebase_path(".", root_build_dir),
+    "--buildPath",
+    rebase_path(root_build_dir, root_build_dir),
+    "--outFile",
+    rebase_path("$out_dir/lib/lib.deno_runtime.d.ts", root_build_dir),
+    "--silent",
+  ]
+  if (is_debug) {
+    args += [ "--debug" ]
+  }
+}
+
+run_node("bundle") {
+  out_dir = "$target_gen_dir/bundle/"
+  outputs = [
+    out_dir + "main.js",
+    out_dir + "main.js.map",
+  ]
+  depfile = out_dir + "main.d"
+  deps = [
+    ":deno_runtime_declaration",
+    ":msg_ts",
+  ]
+  args = [
+    rebase_path("third_party/node_modules/rollup/bin/rollup", root_build_dir),
+    "-c",
+    rebase_path("rollup.config.js", root_build_dir),
+    "-i",
+    rebase_path("js/main.ts", root_build_dir),
+    "-o",
+    rebase_path(out_dir + "main.js", root_build_dir),
+    "--sourcemapFile",
+    rebase_path("."),
+    "--silent",
+  ]
+}
+
+ts_flatbuffer("msg_ts") {
+  sources = [
+    "src/msg.fbs",
+  ]
+}
+
+rust_flatbuffer("msg_rs") {
+  sources = [
+    "src/msg.fbs",
+  ]
+}
+
+# Generates $target_gen_dir/snapshot_deno.bin
+snapshot("snapshot_deno") {
+  source_root = "$target_gen_dir/bundle/main.js"
+  deps = [
+    ":bundle",
+  ]
+}

@@ -1,0 +1,11 @@
+[WILDCARD]NotFound: Cannot resolve module "bad-module.ts" from "[WILDCARD]/tests/error_005_missing_dynamic_import.ts"
+    at DenoError ([WILDCARD]/js/errors.ts:[WILDCARD])
+    at maybeError ([WILDCARD]/js/errors.ts:[WILDCARD])
+    at maybeThrowError ([WILDCARD]/js/errors.ts:[WILDCARD])
+    at sendSync ([WILDCARD]/js/dispatch.ts:[WILDCARD])
+    at codeFetch ([WILDCARD]/js/os.ts:[WILDCARD])
+    at resolveModule ([WILDCARD]/js/compiler.ts:[WILDCARD])
+    at moduleNames.map.name ([WILDCARD]/js/compiler.ts:[WILDCARD])
+    at resolveModuleNames ([WILDCARD]/js/compiler.ts:[WILDCARD])
+    at compilerHost.resolveModuleNames ([WILDCARD])
+    at resolveModuleNamesWorker ([WILDCARD])

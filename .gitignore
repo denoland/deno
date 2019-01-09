@@ -1,0 +1,17 @@
+# build
+*.swp
+/out/
+/target/
+*.pyc
+gclient_config.py_entries
+yarn.lock
+# npm deps
+node_modules
+# editor files
+.idea
+# export dir for gh-pages
+/gh-pages
+# temp benchmark data
+/website/data.json
+/website/recent.json
+/js/gen

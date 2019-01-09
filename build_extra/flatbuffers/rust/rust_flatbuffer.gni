@@ -1,0 +1,33 @@
+import("//build_extra/rust/rust.gni")
+
+# TODO(ry) "flatbuffer.gni" should be "flatbuffers.gni" we should be consistent
+# in our pluralization.
+import("//build_extra/flatbuffers/flatbuffer.gni")
+
+template("rust_flatbuffer") {
+  compiled_action_foreach(target_name) {
+    tool = "$flatbuffers_build_location:flatc"
+
+    sources = invoker.sources
+    deps = []
+    out_dir = target_gen_dir
+
+    outputs = [
+      "$out_dir/{{source_name_part}}_generated.rs",
+    ]
+
+    args = [
+      "--rust",
+      "-o",
+      rebase_path(out_dir, root_build_dir),
+      "-I",
+      rebase_path("//", root_build_dir),
+    ]
+    args += [ "{{source}}" ]
+
+    # The deps may have steps that have to run before running flatc.
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
+    }
+  }
+}

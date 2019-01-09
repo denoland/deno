@@ -1,0 +1,472 @@
+union Any {
+  Start,
+  StartRes,
+  WorkerGetMessage,
+  WorkerGetMessageRes,
+  WorkerPostMessage,
+  CodeFetch,
+  CodeFetchRes,
+  CodeCache,
+  SetTimeout,
+  Exit,
+  Environ,
+  EnvironRes,
+  Fetch,
+  FetchRes,
+  MakeTempDir,
+  MakeTempDirRes,
+  Mkdir,
+  Chmod,
+  Remove,
+  ReadFile,
+  ReadFileRes,
+  ReadDir,
+  ReadDirRes,
+  WriteFile,
+  CopyFile,
+  Rename,
+  Readlink,
+  ReadlinkRes,
+  ReplStart,
+  ReplStartRes,
+  ReplReadline,
+  ReplReadlineRes,
+  Resources,
+  ResourcesRes,
+  Symlink,
+  Stat,
+  StatRes,
+  SetEnv,
+  Truncate,
+  Open,
+  OpenRes,
+  Read,
+  ReadRes,
+  Write,
+  WriteRes,
+  Close,
+  Shutdown,
+  Listen,
+  ListenRes,
+  Accept,
+  Dial,
+  NewConn,
+  Chdir,
+  Cwd,
+  CwdRes,
+  Metrics,
+  MetricsRes,
+  Run,
+  RunRes,
+  RunStatus,
+  RunStatusRes
+}
+
+enum ErrorKind: byte {
+  NoError = 0,
+
+  // io errors
+
+  NotFound,
+  PermissionDenied,
+  ConnectionRefused,
+  ConnectionReset,
+  ConnectionAborted,
+  NotConnected,
+  AddrInUse,
+  AddrNotAvailable,
+  BrokenPipe,
+  AlreadyExists,
+  WouldBlock,
+  InvalidInput,
+  InvalidData,
+  TimedOut,
+  Interrupted,
+  WriteZero,
+  Other,
+  UnexpectedEof,
+  BadResource,
+  CommandFailed,
+
+  // url errors
+
+  EmptyHost,
+  IdnaError,
+  InvalidPort,
+  InvalidIpv4Address,
+  InvalidIpv6Address,
+  InvalidDomainCharacter,
+  RelativeUrlWithoutBase,
+  RelativeUrlWithCannotBeABaseBase,
+  SetHostOnCannotBeABaseUrl,
+  Overflow,
+
+  // hyper errors
+
+  HttpUser,
+  HttpClosed,
+  HttpCanceled,
+  HttpParse,
+  HttpOther,
+  TooLarge,
+
+  // custom errors
+  InvalidUri,
+}
+
+table Cwd {}
+
+table CwdRes {
+  cwd: string;
+}
+
+enum MediaType: byte {
+  JavaScript = 0,
+  TypeScript,
+  Json,
+  Unknown
+}
+
+table Base {
+  cmd_id: uint32;
+  sync: bool = false;
+  error_kind: ErrorKind = NoError;
+  error: string;
+  inner: Any;
+}
+
+table Start {
+  unused: int8;
+}
+
+table StartRes {
+  cwd: string;
+  pid: uint32;
+  argv: [string];
+  debug_flag: bool;
+  deps_flag: bool;
+  recompile_flag: bool;
+  types_flag: bool;
+  version_flag: bool;
+  deno_version: string;
+  v8_version: string;
+}
+
+table WorkerGetMessage {
+  unused: int8;
+}
+
+table WorkerGetMessageRes {
+  data: [ubyte];
+}
+
+table WorkerPostMessage {
+  // data passed thru the zero-copy data parameter.
+}
+
+table CodeFetch {
+  specifier: string;
+  referrer: string;
+}
+
+table CodeFetchRes {
+  // If it's a non-http module, moduleName and filename will be the same.
+  // For http modules, moduleName is its resolved http URL, and filename
+  // is the location of the locally downloaded source code.
+  module_name: string;
+  filename: string;
+  media_type: MediaType;
+  // TODO These should be [ubyte].
+  // See: https://github.com/denoland/deno/issues/1113
+  source_code: string;
+  output_code: string; // Non-empty only if cached.
+  source_map: string; // Non-empty only if cached.
+}
+
+table CodeCache {
+  filename: string;
+  source_code: string;
+  output_code: string;
+  source_map: string;
+}
+
+table Chdir {
+  directory: string;
+}
+
+table SetTimeout {
+  timeout: double;
+}
+
+table Exit {
+  code: int;
+}
+
+table Environ {}
+
+table SetEnv {
+  key: string;
+  value: string;
+}
+
+table EnvironRes {
+  map: [KeyValue];
+}
+
+table KeyValue {
+  key: string;
+  value: string;
+}
+
+// Note this represents The WHOLE header of an http message, not just the key
+// value pairs. That means it includes method and url for Requests and status
+// for responses. This is why it is singular "Header" instead of "Headers".
+table HttpHeader {
+  is_request: bool;
+  // Request only:
+  method: string;
+  url: string;
+  // Response only:
+  status: uint16;
+  // Both:
+  fields: [KeyValue];
+}
+
+table Fetch {
+  header: HttpHeader;
+}
+
+table FetchRes {
+  header: HttpHeader;
+  body_rid: uint32;
+}
+
+table MakeTempDir {
+  dir: string;
+  prefix: string;
+  suffix: string;
+}
+
+table MakeTempDirRes {
+  path: string;
+}
+
+table Mkdir {
+  path: string;
+  mode: uint;
+  // mode specified by https://godoc.org/os#FileMode
+}
+
+table Chmod {
+  path: string;
+  mode: uint;
+  // mode specified by https://godoc.org/os#FileMode
+}
+
+table Remove {
+  path: string;
+  recursive: bool;
+}
+
+table ReadFile {
+  filename: string;
+}
+
+table ReadFileRes {
+  data: [ubyte];
+}
+
+table ReadDir {
+  path: string;
+}
+
+table ReadDirRes {
+  entries: [StatRes];
+}
+
+table WriteFile {
+  filename: string;
+  data: [ubyte];
+  perm: uint;
+  // perm specified by https://godoc.org/os#FileMode
+}
+
+table CopyFile {
+  from: string;
+  to: string;
+}
+
+table Rename {
+  oldpath: string;
+  newpath: string;
+}
+
+table Readlink {
+  name: string;
+}
+
+table ReadlinkRes {
+  path: string;
+}
+
+table ReplStart {
+  history_file: string;
+  // TODO add config
+}
+
+table ReplStartRes {
+  rid: uint32;
+}
+
+table ReplReadline {
+  rid: uint32;
+  prompt: string;
+}
+
+table ReplReadlineRes {
+  line: string;
+}
+
+table Resources {}
+
+table Resource {
+  rid: uint32;
+  repr: string;
+}
+
+table ResourcesRes {
+  resources: [Resource];
+}
+
+table Symlink {
+  oldname: string;
+  newname: string;
+}
+
+table Stat {
+  filename: string;
+  lstat: bool;
+}
+
+table StatRes {
+  is_file: bool;
+  is_symlink: bool;
+  len: ulong;
+  modified:ulong;
+  accessed:ulong;
+  created:ulong;
+  mode: uint;
+  has_mode: bool; // false on windows
+  name: string;
+  path: string;
+}
+
+table Truncate {
+  name: string;
+  len: uint;
+}
+
+table Open {
+  filename: string;
+  perm: uint;
+  mode: string;
+}
+
+table OpenRes {
+  rid: uint32;
+}
+
+table Read {
+  rid: uint32;
+  // (ptr, len) is passed as second parameter to libdeno.send().
+}
+
+table ReadRes {
+  nread: uint;
+  eof: bool;
+}
+
+table Write {
+  rid: uint32;
+}
+
+table WriteRes {
+  nbyte: uint;
+}
+
+table Close {
+  rid: uint32;
+}
+
+table Shutdown {
+  rid: uint32;
+  how: uint;
+}
+
+table Listen {
+  network: string;
+  address: string;
+}
+
+table ListenRes {
+  rid: uint32;
+}
+
+table Accept {
+  rid: uint32;
+}
+
+table Dial {
+  network: string;
+  address: string;
+}
+
+// Response to Accept and Dial.
+table NewConn {
+  rid: uint32;
+  remote_addr: string;
+  local_addr: string;
+}
+
+table Metrics {}
+
+table MetricsRes {
+  ops_dispatched: uint64;
+  ops_completed: uint64;
+  bytes_sent_control: uint64;
+  bytes_sent_data: uint64;
+  bytes_received: uint64;
+}
+
+enum ProcessStdio: byte { Inherit, Piped, Null }
+
+table Run {
+  args: [string];
+  cwd: string;
+  stdin: ProcessStdio;
+  stdout: ProcessStdio;
+  stderr: ProcessStdio;
+}
+
+table RunRes {
+  rid: uint32;
+  pid: uint32;
+  // The following stdio rids are only valid if "Piped" was specified for the
+  // corresponding stdio stream. The caller MUST issue a close op for all valid
+  // stdio streams.
+  stdin_rid: uint32;
+  stdout_rid: uint32;
+  stderr_rid: uint32;
+}
+
+table RunStatus {
+  rid: uint32;
+}
+
+table RunStatusRes {
+  got_signal: bool;
+  exit_code: int;
+  exit_signal: int;
+}
+
+root_type Base;

@@ -1,0 +1,58 @@
+# This file is used by the GN meta build system to find the root of the source
+# tree and to set startup options. For documentation on the values set in this
+# file, run "gn help dotfile" at the command line.
+
+# The location of the build configuration file.
+buildconfig = "//build/config/BUILDCONFIG.gn"
+
+# These are the targets to check headers for by default. The files in targets
+# matching these patterns (see "gn help label_pattern" for format) will have
+# their includes checked for proper dependencies when you run either
+# "gn check" or "gn gen --check".
+check_targets = []
+
+default_args = {
+  # Various global chrome args that are unrelated to deno.
+  proprietary_codecs = false
+  safe_browsing_mode = 0
+  toolkit_views = false
+  use_aura = false
+  use_dbus = false
+  use_gio = false
+  use_glib = false
+  use_ozone = false
+  use_udev = false
+
+  # To disable "use_atk" and other features that we don't need.
+  is_desktop_linux = false
+
+  # TODO(ry) We may want to turn on CFI at some point. Disabling for simplicity
+  # for now. See http://clang.llvm.org/docs/ControlFlowIntegrity.html
+  is_cfi = false
+
+  # TODO(ry) Remove this so debug builds can link faster. Currently removing
+  # this breaks cargo build in debug mode in OSX.
+  is_component_build = false
+
+  # Enable Jumbo build for a faster build.
+  # https://chromium.googlesource.com/chromium/src/+/master/docs/jumbo.md
+  use_jumbo_build = true
+
+  symbol_level = 1
+  treat_warnings_as_errors = true
+  rust_treat_warnings_as_errors = true
+
+  # https://cs.chromium.org/chromium/src/docs/ccache_mac.md
+  clang_use_chrome_plugins = false
+
+  v8_deprecation_warnings = false
+  v8_enable_gdbjit = false
+  v8_enable_i18n_support = false
+  v8_experimental_extra_library_files = []
+  v8_extra_library_files = []
+  v8_imminent_deprecation_warnings = false
+  v8_monolithic = false
+  v8_untrusted_code_mitigations = false
+  v8_use_external_startup_data = false
+  v8_use_snapshot = true
+}

@@ -1,0 +1,2 @@
+args: tests/003_relative_import.ts --reload
+output: tests/003_relative_import.ts.out

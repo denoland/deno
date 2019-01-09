@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "allowUnreachableCode": false,
+    "baseUrl": ".",
+    "checkJs": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noLib": true,
+    "noUnusedLocals": true,
+    "paths": {
+      "*": ["*", "target/debug/*", "target/release/*"]
+    },
+    "preserveConstEnums": true,
+    "pretty": true,
+    "removeComments": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "strict": true,
+    "target": "esnext",
+    "types": []
+  },
+  "files": ["node_modules/typescript/lib/lib.esnext.d.ts", "js/main.ts"]
+}

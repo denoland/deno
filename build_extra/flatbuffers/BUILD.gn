@@ -1,0 +1,131 @@
+# Copyright 2016 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("flatbuffer.gni")
+
+fb_src = flatbuffers_source_location
+
+config("flatbuffers_config") {
+  include_dirs = [ "$fb_src/include" ]
+
+  if (is_clang) {
+    cflags = [
+      "-Wno-exit-time-destructors",
+      "-Wno-header-hygiene",
+
+      # TODO: rust branch of flatbuffers has this warning.
+      # This should be removed when the branch fixed.
+      "-Wno-return-type",
+
+      "-fcolor-diagnostics",
+      "-fansi-escape-codes",
+    ]
+  }
+}
+
+# The part of FlatBuffers that Chrome is interested in.
+source_set("flatbuffers") {
+  sources = [
+    "$fb_src/include/flatbuffers/flatbuffers.h",
+  ]
+
+  configs -= [ "//build/config/compiler:chromium_code" ]
+  configs += [ "//build/config/compiler:no_chromium_code" ]
+
+  public_configs = [ ":flatbuffers_config" ]
+}
+
+# The complete FlatBuffers library, as required to build the flatc compiler and
+# some of the tests.
+source_set("compiler_files") {
+  include_dirs = [ "$fb_src/grpc" ]
+  sources = [
+    "$fb_src/grpc/src/compiler/config.h",
+    "$fb_src/grpc/src/compiler/config.h",
+    "$fb_src/grpc/src/compiler/cpp_generator.cc",
+    "$fb_src/grpc/src/compiler/cpp_generator.h",
+    "$fb_src/grpc/src/compiler/go_generator.cc",
+    "$fb_src/grpc/src/compiler/go_generator.h",
+    "$fb_src/grpc/src/compiler/java_generator.cc",
+    "$fb_src/grpc/src/compiler/java_generator.h",
+    "$fb_src/grpc/src/compiler/schema_interface.h",
+    "$fb_src/include/flatbuffers/code_generators.h",
+    "$fb_src/include/flatbuffers/flatc.h",
+    "$fb_src/include/flatbuffers/flexbuffers.h",
+    "$fb_src/include/flatbuffers/grpc.h",
+    "$fb_src/include/flatbuffers/hash.h",
+    "$fb_src/include/flatbuffers/idl.h",
+    "$fb_src/include/flatbuffers/reflection.h",
+    "$fb_src/include/flatbuffers/reflection_generated.h",
+    "$fb_src/include/flatbuffers/util.h",
+    "$fb_src/src/code_generators.cpp",
+    "$fb_src/src/flatc.cpp",
+    "$fb_src/src/idl_gen_cpp.cpp",
+    "$fb_src/src/idl_gen_dart.cpp",
+    "$fb_src/src/idl_gen_fbs.cpp",
+    "$fb_src/src/idl_gen_general.cpp",
+    "$fb_src/src/idl_gen_go.cpp",
+    "$fb_src/src/idl_gen_grpc.cpp",
+    "$fb_src/src/idl_gen_js.cpp",
+    "$fb_src/src/idl_gen_json_schema.cpp",
+    "$fb_src/src/idl_gen_lobster.cpp",
+    "$fb_src/src/idl_gen_lua.cpp",
+    "$fb_src/src/idl_gen_php.cpp",
+    "$fb_src/src/idl_gen_python.cpp",
+    "$fb_src/src/idl_gen_rust.cpp",
+    "$fb_src/src/idl_gen_text.cpp",
+    "$fb_src/src/idl_parser.cpp",
+    "$fb_src/src/reflection.cpp",
+    "$fb_src/src/util.cpp",
+  ]
+  configs -= [ "//build/config/compiler:chromium_code" ]
+  configs += [ "//build/config/compiler:no_chromium_code" ]
+  visibility = [ ":*" ]
+  deps = [
+    ":flatbuffers",
+  ]
+}
+
+executable("flatc") {
+  sources = [
+    "$fb_src/src/flatc_main.cpp",
+  ]
+  deps = [
+    ":compiler_files",
+    ":flatbuffers",
+  ]
+}
+
+# The following is just for testing.
+
+flatbuffer("flatbuffers_samplebuffer") {
+  testonly = true
+  sources = [
+    "$fb_src/tests/include_test/include_test1.fbs",
+    "$fb_src/tests/include_test/sub/include_test2.fbs",
+    "$fb_src/tests/monster_test.fbs",
+    "$fb_src/tests/namespace_test/namespace_test1.fbs",
+    "$fb_src/tests/namespace_test/namespace_test2.fbs",
+  ]
+  flatc_include_dirs = [ "$fb_src/tests/include_test" ]
+}
+# test("flatbuffers_unittest") {
+#   sources = [
+#     "src/tests/test.cpp",
+#   ]
+#   deps = [
+#     ":compiler_files",
+#     ":flatbuffers",
+#     ":flatbuffers_samplebuffer",
+#   ]
+#   data = [
+#     "src/tests/",
+#   ]
+#
+#   if (is_win) {
+#     # Suppress "object allocated on the heap may not be aligned 16".
+#     cflags = [ "/wd4316" ]
+#   }
+#   defines = [ "FLATBUFFERS_TRACK_VERIFIER_BUFFER_SIZE" ]
+# }

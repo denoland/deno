@@ -1,0 +1,9 @@
+# Use Unix line endings in all text files.
+* text=auto eol=lf
+
+# Tell git which symlinks point to files, and which ones point to directories.
+# This is revelevant for Windows only, and requires git >= 2.19.2 to work.
+/* symlink=dir
+/website/* symlink=dir
+/tools/clang symlink=dir
+/tools/memory symlink=dir
