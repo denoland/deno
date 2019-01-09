@@ -236,6 +236,21 @@ TEST(LibDenoTest, LastException) {
   deno_delete(d);
 }
 
+TEST(LibDenoTest, EncodeErrorBug) {
+  Deno* d = deno_new(deno_config{0, empty, empty, nullptr, nullptr});
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "eval('a')"));
+  EXPECT_STREQ(deno_last_exception(d),
+               "{\"message\":\"ReferenceError: a is not defined\","
+               "\"frames\":[{\"line\":1,\"column\":1,"
+               "\"functionName\":\"\",\"scriptName\":\"<unknown>\","
+               "\"isEval\":true,"
+               "\"isConstructor\":false,\"isWasm\":false},{\"line\":1,"
+               "\"column\":1,\"functionName\":\"\",\"scriptName\":\"a.js\","
+               "\"isEval\":false,\"isConstructor\":false,\"isWasm\":false}]}");
+  deno_delete(d);
+}
+
 TEST(LibDenoTest, Shared) {
   uint8_t s[] = {0, 1, 2};
   deno_buf shared = {nullptr, 0, s, 3};

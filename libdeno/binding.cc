@@ -99,10 +99,13 @@ std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
       CHECK(frame_obj
                 ->Set(context, v8_str("functionName"), frame->GetFunctionName())
                 .FromJust());
-      CHECK(frame_obj
-                ->Set(context, v8_str("scriptName"),
-                      frame->GetScriptNameOrSourceURL())
-                .FromJust());
+      // scriptName can be empty in special conditions e.g. eval
+      auto scriptName = frame->GetScriptNameOrSourceURL();
+      if (scriptName.IsEmpty()) {
+        scriptName = v8_str("<unknown>");
+      }
+      CHECK(
+          frame_obj->Set(context, v8_str("scriptName"), scriptName).FromJust());
       CHECK(frame_obj
                 ->Set(context, v8_str("isEval"),
                       v8::Boolean::New(isolate, frame->IsEval()))
