@@ -11,14 +11,14 @@ import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 import { replLoop } from "./repl";
 import { version } from "typescript";
-
 import { postMessage } from "./workers";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { ModuleSpecifier, ContainingFile } from "./compiler";
-type CompilerLookup = { specifier: ModuleSpecifier; referrer: ContainingFile };
 
 // builtin modules
 import * as deno from "./deno";
+
+type CompilerLookup = { specifier: ModuleSpecifier; referrer: ContainingFile };
 
 // Global reference to StartRes so it can be shared between compilerMain and
 // denoMain.
