@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as dispatch from "./dispatch";
-import { libdeno } from "./libdeno";
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import { assert, log } from "./util";
@@ -53,7 +52,6 @@ export function workerClose(): void {
 
 export async function workerMain() {
   log("workerMain");
-  libdeno.recv(dispatch.handleAsyncMsgFromRust);
 
   // TODO avoid using globalEval to get Window. But circular imports if getting
   // it from globals.ts

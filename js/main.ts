@@ -1,6 +1,5 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
-// We need to make sure this module loads, for its side effects.
-import "./globals";
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { window } from "./globals";
 
 import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
@@ -13,7 +12,8 @@ import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 import { replLoop } from "./repl";
 import { version } from "typescript";
 
-const compiler = DenoCompiler.instance();
+// builtin modules
+import * as deno from "./deno";
 
 function sendStart(): msg.StartRes {
   const builder = flatbuffers.createBuilder();
@@ -27,9 +27,36 @@ function sendStart(): msg.StartRes {
   return startRes;
 }
 
+import { postMessage } from "./workers";
+import { TextDecoder, TextEncoder } from "./text_encoding";
+import { ModuleSpecifier, ContainingFile } from "./compiler";
+type CompilerLookup = { specifier: ModuleSpecifier; referrer: ContainingFile };
+
+function compilerMain() {
+  // workerMain should have already been called since a compiler is a worker.
+  const compiler = DenoCompiler.instance();
+  // compiler.recompile = startResMsg.recompileFlag();
+  window.onmessage = (e: { data: Uint8Array }) => {
+    const json = new TextDecoder().decode(e.data);
+    const lookup = JSON.parse(json) as CompilerLookup;
+
+    const moduleMetaData = compiler.run(lookup.specifier, lookup.referrer);
+    moduleMetaData.outputCode = compiler.compile(moduleMetaData);
+
+    const responseJson = JSON.stringify(moduleMetaData);
+    const response = new TextEncoder().encode(responseJson);
+    postMessage(response);
+  };
+}
+window["compilerMain"] = compilerMain;
+
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
   libdeno.recv(handleAsyncMsgFromRust);
+
+  libdeno.builtinModules["deno"] = deno;
+  // libdeno.builtinModules["typescript"] = typescript;
+  Object.freeze(libdeno.builtinModules);
 
   // First we send an empty "Start" message to let the privileged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
@@ -40,6 +67,7 @@ export default function denoMain() {
 
   // handle `--types`
   if (startResMsg.typesFlag()) {
+    const compiler = DenoCompiler.instance();
     const defaultLibFileName = compiler.getDefaultLibFileName();
     const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
     console.log(defaultLibModule.sourceCode);
@@ -64,13 +92,9 @@ export default function denoMain() {
   }
   log("args", args);
   Object.freeze(args);
+
   const inputFn = args[0];
-
-  compiler.recompile = startResMsg.recompileFlag();
-
-  if (inputFn) {
-    compiler.run(inputFn, `${cwd}/`);
-  } else {
+  if (!inputFn) {
     replLoop();
   }
 }

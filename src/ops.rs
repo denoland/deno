@@ -672,7 +672,7 @@ fn op_close(
   let rid = inner.rid();
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
-    Some(mut resource) => {
+    Some(resource) => {
       resource.close();
       ok_future(empty_buf())
     }

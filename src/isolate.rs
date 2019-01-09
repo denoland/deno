@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
 // Do not use FlatBuffers in this module.
 // TODO Currently this module uses Tokio, but it would be nice if they were
 // decoupled.
@@ -253,13 +252,14 @@ impl Isolate {
 
   /// Executes the provided JavaScript module.
   pub fn execute_mod(&self, js_filename: &str) -> Result<(), JSError> {
-    let out = self.state.dir.code_fetch(js_filename, ".").unwrap();
-    debug!("module_resolve complete {}", out.filename);
+    let out =
+      code_fetch_and_maybe_compile(&self.state, js_filename, ".").unwrap();
 
-    let filename = CString::new(js_filename).unwrap();
+    let filename = CString::new(out.filename.clone()).unwrap();
     let filename_ptr = filename.as_ptr() as *const i8;
 
     let js_source = CString::new(out.js_source().clone()).unwrap();
+    let js_source = CString::new(js_source).unwrap();
     let js_source_ptr = js_source.as_ptr() as *const i8;
 
     let r = unsafe {
@@ -364,6 +364,25 @@ impl Drop for Isolate {
   }
 }
 
+use compiler::compile_sync;
+use compiler::CodeFetchOutput;
+use msg;
+fn code_fetch_and_maybe_compile(
+  state: &Arc<IsolateState>,
+  specifier: &str,
+  referrer: &str,
+) -> Result<CodeFetchOutput, DenoError> {
+  let mut out = state.dir.code_fetch(specifier, referrer)?;
+  if out.media_type == msg::MediaType::TypeScript
+    && out.maybe_output_code.is_none()
+  {
+    debug!(">>>>> compile_sync START");
+    out = compile_sync(state, specifier, &referrer).unwrap();
+    debug!(">>>>> compile_sync END");
+  }
+  Ok(out)
+}
+
 extern "C" fn resolve_cb(
   user_data: *mut c_void,
   specifier_ptr: *const c_char,
@@ -378,16 +397,21 @@ extern "C" fn resolve_cb(
   debug!("module_resolve callback {} {}", specifier, referrer);
   let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-  let out = isolate.state.dir.code_fetch(specifier, referrer).unwrap();
-  debug!("module_resolve complete {}", out.filename);
+  let out =
+    code_fetch_and_maybe_compile(&isolate.state, specifier, referrer).unwrap();
 
-  // TODO js_source is not null terminated, therefore the clone.
+  let filename = CString::new(out.filename.clone()).unwrap();
+  let filename_ptr = filename.as_ptr() as *const i8;
+
   let js_source = CString::new(out.js_source().clone()).unwrap();
-  let filename = out.filename.as_ptr() as *const i8;
   let js_source_ptr = js_source.as_ptr() as *const i8;
 
   unsafe {
-    libdeno::deno_resolve_ok(isolate.libdeno_isolate, filename, js_source_ptr)
+    libdeno::deno_resolve_ok(
+      isolate.libdeno_isolate,
+      filename_ptr,
+      js_source_ptr,
+    )
   };
 }
 

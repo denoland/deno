@@ -25,17 +25,6 @@ test(function btoaFailed() {
   assertEqual(err.name, "InvalidInput");
 });
 
-test(function textDecoder() {
-  // prettier-ignore
-  const fixture = new Uint8Array([
-    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd,
-    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd,
-    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd
-  ]);
-  const decoder = new TextDecoder();
-  assertEqual(decoder.decode(fixture), "������");
-});
-
 test(function textDecoder2() {
   // prettier-ignore
   const fixture = new Uint8Array([
@@ -63,17 +52,6 @@ test(function textDecoderErrorEncoding() {
     assertEqual(e.message, "The encoding label provided ('foo') is invalid.");
   }
   assert(didThrow);
-});
-
-test(function textEncoder() {
-  const fixture = "������";
-  const encoder = new TextEncoder();
-  // prettier-ignore
-  assertEqual(Array.from(encoder.encode(fixture)), [
-    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd,
-    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd,
-    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd
-  ]);
 });
 
 test(function textEncoder2() {
