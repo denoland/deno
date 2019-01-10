@@ -12,7 +12,7 @@ import {
   Response
 } from "./http.ts";
 import { cwd, DenoError, ErrorKind, args, stat, readDir, open } from "deno";
-import { extname } from "../path/index.ts";
+import { extname } from "../fs/path.ts";
 import * as extensionsMap from "./extension_map.json";
 
 const dirViewerTemplate = `

@@ -1,8 +1,8 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
 
-import { test, assertEqual } from "../testing/mod.ts";
-import * as path from "./index.ts";
+import { test, assertEqual } from "../../testing/mod.ts";
+import * as path from "./mod.ts";
 import { cwd } from "deno";
 
 const windowsTests =
