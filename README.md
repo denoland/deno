@@ -4,7 +4,7 @@
 | :------------------------: | :------------------------: |
 | [![][tci badge]][tci link] | [![][avy badge]][avy link] |
 
-## A secure TypeScript runtime built on V8
+## A secure JavaScript / TypeScript runtime built on V8
 
 - Supports TypeScript out of the box. Uses a recent version of V8. That is, it's
   very modern JavaScript.
@@ -50,6 +50,8 @@
 
 - Aims to be browser compatible.
 
+See the website for more info [deno.land](https://deno.land).
+
 ## Install
 
 With Python:
@@ -80,15 +82,8 @@ Try it:
 > deno https://deno.land/thumb.ts
 ```
 
-See also [deno_install](https://github.com/denoland/deno_install).
-
-## Status
-
-Under development.
-
-We make binary releases [here](https://github.com/denoland/deno/releases).
-
-Docs are [here](https://github.com/denoland/deno/blob/master/Docs.md).
+See [deno_install](https://github.com/denoland/deno_install) for more
+installation methods..
 
 <!-- prettier-ignore -->
 [avy badge]: https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true
