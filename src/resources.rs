@@ -55,9 +55,6 @@ use std::os::unix::io::FromRawFd;
 use std::os::windows::io::FromRawHandle;
 
 #[cfg(windows)]
-extern crate kernel32;
-
-#[cfg(windows)]
 extern crate winapi;
 
 lazy_static! {
@@ -73,7 +70,7 @@ lazy_static! {
       let stdout = unsafe { std::fs::File::from_raw_fd(1) };
       #[cfg(windows)]
       let stdout = unsafe {
-        std::fs::File::from_raw_handle(kernel32::GetStdHandle(
+        std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
             winapi::um::winbase::STD_OUTPUT_HANDLE))
       };
       tokio::fs::File::from_std(stdout)
