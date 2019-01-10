@@ -22,7 +22,7 @@
 
   A framework for creating HTTP/HTTPS servers inspired by GoLang.
 
-- **[path](./path/)**
+- **[path](./fs/path)**
 
   File path manipulation.
 
