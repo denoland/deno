@@ -60,6 +60,8 @@ def main(argv):
 
     unit_tests(deno_exe)
 
+    prefetch_test(deno_exe)
+
     integration_tests(deno_exe)
 
     # TODO We currently skip testing the prompt in Windows completely.
@@ -70,7 +72,6 @@ def main(argv):
         permission_prompt_test(deno_exe)
 
     repl_tests(deno_exe)
-    prefetch_test(deno_exe)
 
     rmtree(deno_dir)
 

@@ -275,7 +275,7 @@ impl Isolate {
         self.as_raw_ptr(),
         filename_ptr,
         js_source_ptr,
-        is_prefetch,
+        if is_prefetch { 1 } else { 0 },
       )
     };
     if r == 0 {

@@ -1,0 +1,3 @@
+args: tests/prefetch.ts --reload --prefetch
+check_stderr: true
+output: tests/prefetch.ts.out

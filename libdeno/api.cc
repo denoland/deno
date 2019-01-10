@@ -127,7 +127,7 @@ int deno_execute(Deno* d_, void* user_data, const char* js_filename,
 }
 
 int deno_execute_mod(Deno* d_, void* user_data, const char* js_filename,
-                     const char* js_source, bool resolve_only) {
+                     const char* js_source, int resolve_only) {
   auto* d = unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
   auto* isolate = d->isolate_;
