@@ -28,6 +28,7 @@ pub struct DenoFlags {
   pub allow_env: bool,
   pub allow_run: bool,
   pub types: bool,
+  pub prefetch: bool,
 }
 
 pub fn get_usage(opts: &Options) -> String {
@@ -107,6 +108,9 @@ fn set_recognized_flags(
         if matches.opt_present("types") {
           flags.types = true;
         }
+        if matches.opt_present("prefetch") {
+          flags.prefetch = true;
+        }
 
         if !matches.free.is_empty() {
           rest.extend(matches.free);
@@ -142,6 +146,7 @@ pub fn set_flags(
   opts.optflag("r", "reload", "Reload cached remote resources.");
   opts.optflag("", "v8-options", "Print V8 command line options.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
+  opts.optflag("", "prefetch", "Prefetch the dependencies.");
 
   let mut flags = DenoFlags::default();
 

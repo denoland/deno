@@ -590,7 +590,7 @@ void DenoIsolate::ResolveOk(const char* filename, const char* source) {
 }
 
 bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,
-                const char* js_source) {
+                const char* js_source, int is_prefetch) {
   auto* isolate = context->GetIsolate();
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
@@ -616,6 +616,11 @@ bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,
   }
 
   CHECK_EQ(v8::Module::kInstantiated, module->GetStatus());
+
+  if (is_prefetch) {
+    return true;
+  }
+
   auto result = module->Evaluate(context);
 
   if (result.IsEmpty()) {

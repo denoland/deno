@@ -76,7 +76,7 @@ int deno_execute(Deno* d, void* user_data, const char* js_filename,
 // Return value: 0 = fail, 1 = success
 // Get error text with deno_last_exception().
 int deno_execute_mod(Deno* d, void* user_data, const char* js_filename,
-                     const char* js_source);
+                     const char* js_source, int is_prefetch);
 
 // deno_respond sends up to one message back for every deno_recv_cb made.
 //

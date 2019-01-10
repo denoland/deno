@@ -151,6 +151,7 @@ extern "C" {
     user_data: *const c_void,
     js_filename: *const c_char,
     js_source: *const c_char,
+    is_prefetch: i32,
   ) -> c_int;
   pub fn deno_resolve_ok(
     i: *const isolate,

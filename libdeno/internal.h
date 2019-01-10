@@ -145,7 +145,7 @@ void DeleteDataRef(DenoIsolate* d, int32_t req_id);
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
              const char* js_source);
 bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,
-                const char* js_source);
+                const char* js_source, int is_prefetch);
 
 }  // namespace deno
 

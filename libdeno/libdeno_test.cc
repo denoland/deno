@@ -284,7 +284,7 @@ TEST(LibDenoTest, ModuleResolution) {
     deno_resolve_ok(d, "b.js", mod_b);
   };
   Deno* d = deno_new(deno_config{0, empty, empty, nullptr, resolve_cb});
-  EXPECT_TRUE(deno_execute_mod(d, d, "a.js", mod_a));
+  EXPECT_TRUE(deno_execute_mod(d, d, "a.js", mod_a, 0));
   EXPECT_EQ(count, 1);
   deno_delete(d);
 }
@@ -299,7 +299,7 @@ TEST(LibDenoTest, ModuleResolutionFail) {
     // Do not call deno_resolve_ok();
   };
   Deno* d = deno_new(deno_config{0, empty, empty, nullptr, resolve_cb});
-  EXPECT_FALSE(deno_execute_mod(d, d, "a.js", mod_a));
+  EXPECT_FALSE(deno_execute_mod(d, d, "a.js", mod_a, 0));
   EXPECT_EQ(count, 1);
   deno_delete(d);
 }
@@ -309,7 +309,8 @@ TEST(LibDenoTest, ModuleSnapshot) {
   EXPECT_TRUE(deno_execute_mod(d1, nullptr, "x.js",
                                "const globalEval = eval\n"
                                "const global = globalEval('this')\n"
-                               "global.a = 1 + 2"));
+                               "global.a = 1 + 2",
+                               0));
   deno_buf test_snapshot = deno_get_snapshot(d1);
   deno_delete(d1);
 
@@ -321,7 +322,7 @@ TEST(LibDenoTest, ModuleSnapshot) {
   deno_delete(d2);
 
   Deno* d3 = deno_new(config);
-  EXPECT_TRUE(deno_execute_mod(d3, nullptr, "y.js", y_src));
+  EXPECT_TRUE(deno_execute_mod(d3, nullptr, "y.js", y_src, 0));
   deno_delete(d3);
 
   delete[] test_snapshot.data_ptr;
@@ -347,7 +348,8 @@ TEST(LibDenoTest, BuiltinModules) {
                        "import * as deno from 'deno'\n"
                        "if (retb() != 'b') throw Error('retb');\n"
                        // "   libdeno.print('deno ' + JSON.stringify(deno));\n"
-                       "if (deno.foo != 'bar') throw Error('foo');\n"));
+                       "if (deno.foo != 'bar') throw Error('foo');\n",
+                       0));
   EXPECT_EQ(count, 1);
   deno_delete(d);
 }
