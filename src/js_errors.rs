@@ -13,7 +13,11 @@ use serde_json;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
 use source_map_mappings::Mappings;
+
 use std::collections::HashMap;
+use std::error::Error;
+
+use errors::DenoError;
 
 pub trait SourceMapGetter {
   /// Returns the raw source map file.
@@ -29,7 +33,7 @@ struct SourceMap {
 /// find a SourceMap.
 type CachedMaps = HashMap<String, Option<SourceMap>>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct StackFrame {
   pub line: u32,   // zero indexed
   pub column: u32, // zero indexed
@@ -40,7 +44,7 @@ pub struct StackFrame {
   pub is_wasm: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct JSError {
   pub message: String,
 
@@ -54,6 +58,16 @@ pub struct JSError {
   pub end_column: Option<i64>,
 
   pub frames: Vec<StackFrame>,
+}
+
+impl From<DenoError> for JSError {
+  fn from(error: DenoError) -> Self {
+    JSError {
+      message: [error.kind_str(), ": ", error.description()].join(""),
+      frames: vec![],
+      ..JSError::default()
+    }
+  }
 }
 
 impl ToString for StackFrame {

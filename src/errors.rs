@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use hyper;
+use msg::enum_name_error_kind;
 pub use msg::ErrorKind;
 use std;
 use std::fmt;
@@ -88,6 +89,10 @@ impl DenoError {
         }
       }
     }
+  }
+
+  pub fn kind_str(&self) -> &str {
+    enum_name_error_kind(self.kind())
   }
 }
 

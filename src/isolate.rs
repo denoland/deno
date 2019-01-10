@@ -255,8 +255,8 @@ impl Isolate {
 
   /// Executes the provided JavaScript module.
   pub fn execute_mod(&self, js_filename: &str) -> Result<(), JSError> {
-    let out =
-      code_fetch_and_maybe_compile(&self.state, js_filename, ".").unwrap();
+    let out = code_fetch_and_maybe_compile(&self.state, js_filename, ".")
+      .map_err(JSError::from)?;
 
     let filename = CString::new(out.filename.clone()).unwrap();
     let filename_ptr = filename.as_ptr() as *const i8;
