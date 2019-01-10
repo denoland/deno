@@ -11,31 +11,35 @@ import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
 import { replLoop } from "./repl";
 import { version } from "typescript";
+import { postMessage } from "./workers";
+import { TextDecoder, TextEncoder } from "./text_encoding";
+import { ModuleSpecifier, ContainingFile } from "./compiler";
 
 // builtin modules
 import * as deno from "./deno";
 
-function sendStart(): msg.StartRes {
+type CompilerLookup = { specifier: ModuleSpecifier; referrer: ContainingFile };
+
+// Global reference to StartRes so it can be shared between compilerMain and
+// denoMain.
+let startResMsg: msg.StartRes;
+
+function sendStart(): void {
   const builder = flatbuffers.createBuilder();
   msg.Start.startStart(builder);
   const startOffset = msg.Start.endStart(builder);
   const baseRes = sendSync(builder, msg.Any.Start, startOffset);
   assert(baseRes != null);
   assert(msg.Any.StartRes === baseRes!.innerType());
-  const startRes = new msg.StartRes();
-  assert(baseRes!.inner(startRes) != null);
-  return startRes;
+  startResMsg = new msg.StartRes();
+  assert(baseRes!.inner(startResMsg) != null);
 }
-
-import { postMessage } from "./workers";
-import { TextDecoder, TextEncoder } from "./text_encoding";
-import { ModuleSpecifier, ContainingFile } from "./compiler";
-type CompilerLookup = { specifier: ModuleSpecifier; referrer: ContainingFile };
 
 function compilerMain() {
   // workerMain should have already been called since a compiler is a worker.
   const compiler = DenoCompiler.instance();
-  // compiler.recompile = startResMsg.recompileFlag();
+  compiler.recompile = startResMsg.recompileFlag();
+  log(`recompile ${compiler.recompile}`);
   window.onmessage = (e: { data: Uint8Array }) => {
     const json = new TextDecoder().decode(e.data);
     const lookup = JSON.parse(json) as CompilerLookup;
@@ -61,7 +65,7 @@ export default function denoMain() {
   // First we send an empty "Start" message to let the privileged side know we
   // are ready. The response should be a "StartRes" message containing the CLI
   // args and other info.
-  const startResMsg = sendStart();
+  sendStart();
 
   setLogDebug(startResMsg.debugFlag());
 

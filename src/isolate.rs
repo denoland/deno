@@ -3,12 +3,15 @@
 // TODO Currently this module uses Tokio, but it would be nice if they were
 // decoupled.
 
+use compiler::compile_sync;
+use compiler::CodeFetchOutput;
 use deno_dir;
 use errors::DenoError;
 use errors::DenoResult;
 use flags;
 use js_errors::JSError;
 use libdeno;
+use msg;
 use permissions::DenoPermissions;
 
 use futures::sync::mpsc as async_mpsc;
@@ -364,17 +367,15 @@ impl Drop for Isolate {
   }
 }
 
-use compiler::compile_sync;
-use compiler::CodeFetchOutput;
-use msg;
 fn code_fetch_and_maybe_compile(
   state: &Arc<IsolateState>,
   specifier: &str,
   referrer: &str,
 ) -> Result<CodeFetchOutput, DenoError> {
   let mut out = state.dir.code_fetch(specifier, referrer)?;
-  if out.media_type == msg::MediaType::TypeScript
-    && out.maybe_output_code.is_none()
+  if (out.media_type == msg::MediaType::TypeScript
+    && out.maybe_output_code.is_none())
+    || state.flags.recompile
   {
     debug!(">>>>> compile_sync START");
     out = compile_sync(state, specifier, &referrer).unwrap();
