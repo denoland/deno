@@ -269,14 +269,13 @@ impl Isolate {
     let js_source = CString::new(js_source).unwrap();
     let js_source_ptr = js_source.as_ptr() as *const i8;
 
-    let prefetch_int = if is_prefetch { 1 } else { 0 };
     let r = unsafe {
       libdeno::deno_execute_mod(
         self.libdeno_isolate,
         self.as_raw_ptr(),
         filename_ptr,
         js_source_ptr,
-        prefetch_int,
+        is_prefetch,
       )
     };
     if r == 0 {
