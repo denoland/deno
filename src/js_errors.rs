@@ -43,6 +43,16 @@ pub struct StackFrame {
 #[derive(Debug, PartialEq)]
 pub struct JSError {
   pub message: String,
+
+  pub source_line: Option<String>,
+  pub script_resource_name: Option<String>,
+  pub line_number: Option<i64>,
+  pub start_position: Option<i64>,
+  pub end_position: Option<i64>,
+  pub error_level: Option<i64>,
+  pub start_column: Option<i64>,
+  pub end_column: Option<i64>,
+
   pub frames: Vec<StackFrame>,
 }
 
@@ -65,7 +75,29 @@ impl ToString for StackFrame {
 
 impl ToString for JSError {
   fn to_string(&self) -> String {
-    let mut s = self.message.clone();
+    // TODO use fewer clones.
+    // TODO Improve the formatting of these error messages.
+    let mut s = String::new();
+
+    if self.script_resource_name.is_some() {
+      s.push_str(&self.script_resource_name.clone().unwrap());
+    }
+    if self.line_number.is_some() {
+      s.push_str(&format!(
+        ":{}:{}",
+        self.line_number.unwrap(),
+        self.start_column.unwrap()
+      ));
+      assert!(self.start_column.is_some());
+    }
+    if self.source_line.is_some() {
+      s.push_str("\n");
+      s.push_str(&self.source_line.clone().unwrap());
+      s.push_str("\n\n");
+    }
+
+    s.push_str(&self.message.clone());
+
     for frame in &self.frames {
       s.push_str("\n");
       s.push_str(&frame.to_string());
@@ -243,6 +275,19 @@ impl JSError {
     }
     let message = String::from(message_v.as_str().unwrap());
 
+    let source_line = obj
+      .get("sourceLine")
+      .and_then(|v| v.as_str().map(String::from));
+    let script_resource_name = obj
+      .get("scriptResourceName")
+      .and_then(|v| v.as_str().map(String::from));
+    let line_number = obj.get("lineNumber").and_then(|v| v.as_i64());
+    let start_position = obj.get("startPosition").and_then(|v| v.as_i64());
+    let end_position = obj.get("endPosition").and_then(|v| v.as_i64());
+    let error_level = obj.get("errorLevel").and_then(|v| v.as_i64());
+    let start_column = obj.get("startColumn").and_then(|v| v.as_i64());
+    let end_column = obj.get("endColumn").and_then(|v| v.as_i64());
+
     let frames_v = &obj["frames"];
     if !frames_v.is_array() {
       return None;
@@ -257,18 +302,40 @@ impl JSError {
       }
     }
 
-    Some(JSError { message, frames })
+    Some(JSError {
+      message,
+      source_line,
+      script_resource_name,
+      line_number,
+      start_position,
+      end_position,
+      error_level,
+      start_column,
+      end_column,
+      frames,
+    })
   }
 
   pub fn apply_source_map(&self, getter: &SourceMapGetter) -> Self {
-    let message = self.message.clone();
     let mut mappings_map: CachedMaps = HashMap::new();
     let mut frames = Vec::<StackFrame>::new();
     for frame in &self.frames {
       let f = frame.apply_source_map(&mut mappings_map, getter);
       frames.push(f);
     }
-    JSError { message, frames }
+    JSError {
+      message: self.message.clone(),
+      frames,
+      error_level: self.error_level,
+      source_line: self.source_line.clone(),
+      // TODO the following need to be source mapped:
+      script_resource_name: self.script_resource_name.clone(),
+      line_number: self.line_number,
+      start_position: self.start_position,
+      end_position: self.end_position,
+      start_column: self.start_column,
+      end_column: self.end_column,
+    }
   }
 }
 
@@ -309,6 +376,14 @@ mod tests {
   fn error1() -> JSError {
     JSError {
       message: "Error: foo bar".to_string(),
+      source_line: None,
+      script_resource_name: None,
+      line_number: None,
+      start_position: None,
+      end_position: None,
+      error_level: None,
+      start_column: None,
+      end_column: None,
       frames: vec![
         StackFrame {
           line: 4,
@@ -443,6 +518,25 @@ mod tests {
   }
 
   #[test]
+  fn js_error_from_v8_exception2() {
+    let r = JSError::from_v8_exception(
+      "{\"message\":\"Error: boo\",\"sourceLine\":\"throw Error('boo');\",\"scriptResourceName\":\"a.js\",\"lineNumber\":3,\"startPosition\":8,\"endPosition\":9,\"errorLevel\":8,\"startColumn\":6,\"endColumn\":7,\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":7,\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":false,\"isConstructor\":false,\"isWasm\":false}]}"
+    );
+    assert!(r.is_some());
+    let e = r.unwrap();
+    assert_eq!(e.message, "Error: boo");
+    assert_eq!(e.source_line, Some("throw Error('boo');".to_string()));
+    assert_eq!(e.script_resource_name, Some("a.js".to_string()));
+    assert_eq!(e.line_number, Some(3));
+    assert_eq!(e.start_position, Some(8));
+    assert_eq!(e.end_position, Some(9));
+    assert_eq!(e.error_level, Some(8));
+    assert_eq!(e.start_column, Some(6));
+    assert_eq!(e.end_column, Some(7));
+    assert_eq!(e.frames.len(), 1);
+  }
+
+  #[test]
   fn stack_frame_to_string() {
     let e = error1();
     assert_eq!("    at foo (foo_bar.ts:5:17)", e.frames[0].to_string());
@@ -462,6 +556,14 @@ mod tests {
     let actual = e.apply_source_map(&getter);
     let expected = JSError {
       message: "Error: foo bar".to_string(),
+      source_line: None,
+      script_resource_name: None,
+      line_number: None,
+      start_position: None,
+      end_position: None,
+      error_level: None,
+      start_column: None,
+      end_column: None,
       frames: vec![
         StackFrame {
           line: 5,
@@ -499,6 +601,14 @@ mod tests {
   fn js_error_apply_source_map_2() {
     let e = JSError {
       message: "TypeError: baz".to_string(),
+      source_line: None,
+      script_resource_name: None,
+      line_number: None,
+      start_position: None,
+      end_position: None,
+      error_level: None,
+      start_column: None,
+      end_column: None,
       frames: vec![StackFrame {
         line: 11,
         column: 12,
