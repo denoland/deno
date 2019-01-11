@@ -1,6 +1,6 @@
 import { assertEqual, test } from "../testing/mod.ts";
-import { color } from "main.ts";
-import "example.ts";
+import { color } from "./mod.ts";
+import "./example.ts";
 
 test(function singleColor() {
   assertEqual(color.red("Hello world"), "[31mHello world[39m");

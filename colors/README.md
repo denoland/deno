@@ -10,7 +10,7 @@ The main modules exports a single function name `color` which is a function that
 provides chaining to stack colors. Basic usage looks like this:
 
 ```ts
-import { color } from "https://deno.land/x/colors/main.ts";
+import { color } from "https://deno.land/x/std/colors/mod.ts";
 
 console.log(color.bgBlue.red.bold("Hello world!"));
 ```
