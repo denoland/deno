@@ -83,6 +83,66 @@ std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
   // auto exception_str = message->Get();
   CHECK(json_obj->Set(context, v8_str("message"), exception_str).FromJust());
 
+  auto maybe_source_line = message->GetSourceLine(context);
+  if (!maybe_source_line.IsEmpty()) {
+    CHECK(json_obj
+              ->Set(context, v8_str("sourceLine"),
+                    maybe_source_line.ToLocalChecked())
+              .FromJust());
+  }
+
+  CHECK(json_obj
+            ->Set(context, v8_str("scriptResourceName"),
+                  message->GetScriptResourceName())
+            .FromJust());
+
+  auto maybe_line_number = message->GetLineNumber(context);
+  if (maybe_line_number.IsJust()) {
+    CHECK(json_obj
+              ->Set(context, v8_str("lineNumber"),
+                    v8::Integer::New(isolate, maybe_line_number.FromJust()))
+              .FromJust());
+  }
+
+  CHECK(json_obj
+            ->Set(context, v8_str("startPosition"),
+                  v8::Integer::New(isolate, message->GetStartPosition()))
+            .FromJust());
+
+  CHECK(json_obj
+            ->Set(context, v8_str("endPosition"),
+                  v8::Integer::New(isolate, message->GetEndPosition()))
+            .FromJust());
+
+  CHECK(json_obj
+            ->Set(context, v8_str("errorLevel"),
+                  v8::Integer::New(isolate, message->ErrorLevel()))
+            .FromJust());
+
+  auto maybe_start_column = message->GetStartColumn(context);
+  if (maybe_start_column.IsJust()) {
+    auto start_column =
+        v8::Integer::New(isolate, maybe_start_column.FromJust());
+    CHECK(
+        json_obj->Set(context, v8_str("startColumn"), start_column).FromJust());
+  }
+
+  auto maybe_end_column = message->GetEndColumn(context);
+  if (maybe_end_column.IsJust()) {
+    auto end_column = v8::Integer::New(isolate, maybe_end_column.FromJust());
+    CHECK(json_obj->Set(context, v8_str("endColumn"), end_column).FromJust());
+  }
+
+  CHECK(json_obj
+            ->Set(context, v8_str("isSharedCrossOrigin"),
+                  v8::Boolean::New(isolate, message->IsSharedCrossOrigin()))
+            .FromJust());
+
+  CHECK(json_obj
+            ->Set(context, v8_str("isOpaque"),
+                  v8::Boolean::New(isolate, message->IsOpaque()))
+            .FromJust());
+
   v8::Local<v8::Array> frames;
   if (!stack_trace.IsEmpty()) {
     uint32_t count = static_cast<uint32_t>(stack_trace->GetFrameCount());
