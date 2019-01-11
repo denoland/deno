@@ -172,13 +172,14 @@ TEST(LibDenoTest, SnapshotBug) {
 TEST(LibDenoTest, GlobalErrorHandling) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr, nullptr});
   EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "GlobalErrorHandling()"));
-  // We only check that it starts with this string, so we don't have to check
-  // the second frame, which contains line numbers in libdeno_test.js and may
-  // change over time.
   std::string expected =
       "{\"message\":\"ReferenceError: notdefined is not defined\","
-      "\"frames\":[{\"line\":3,\"column\":2,\"functionName\":\"\","
-      "\"scriptName\":\"helloworld.js\",\"isEval\":true,"
+      "\"sourceLine\":\" "
+      "notdefined()\",\"scriptResourceName\":\"helloworld.js\","
+      "\"lineNumber\":3,\"startPosition\":3,\"endPosition\":4,\"errorLevel\":8,"
+      "\"startColumn\":1,\"endColumn\":2,\"isSharedCrossOrigin\":false,"
+      "\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":2,"
+      "\"functionName\":\"\",\"scriptName\":\"helloworld.js\",\"isEval\":true,"
       "\"isConstructor\":false,\"isWasm\":false},";
   std::string actual(deno_last_exception(d), 0, expected.length());
   EXPECT_STREQ(expected.c_str(), actual.c_str());
@@ -228,10 +229,12 @@ TEST(LibDenoTest, LastException) {
   EXPECT_EQ(deno_last_exception(d), nullptr);
   EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "\n\nthrow Error('boo');\n\n"));
   EXPECT_STREQ(deno_last_exception(d),
-               "{\"message\":\"Error: boo\","
-               "\"frames\":[{\"line\":3,\"column\":7,"
-               "\"functionName\":\"\",\"scriptName\":\"a.js\","
-               "\"isEval\":false,"
+               "{\"message\":\"Error: boo\",\"sourceLine\":\"throw "
+               "Error('boo');\",\"scriptResourceName\":\"a.js\",\"lineNumber\":"
+               "3,\"startPosition\":8,\"endPosition\":9,\"errorLevel\":8,"
+               "\"startColumn\":6,\"endColumn\":7,\"isSharedCrossOrigin\":"
+               "false,\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":7,"
+               "\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":false,"
                "\"isConstructor\":false,\"isWasm\":false}]}");
   deno_delete(d);
 }
@@ -240,14 +243,16 @@ TEST(LibDenoTest, EncodeErrorBug) {
   Deno* d = deno_new(deno_config{0, empty, empty, nullptr, nullptr});
   EXPECT_EQ(deno_last_exception(d), nullptr);
   EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "eval('a')"));
-  EXPECT_STREQ(deno_last_exception(d),
-               "{\"message\":\"ReferenceError: a is not defined\","
-               "\"frames\":[{\"line\":1,\"column\":1,"
-               "\"functionName\":\"\",\"scriptName\":\"<unknown>\","
-               "\"isEval\":true,"
-               "\"isConstructor\":false,\"isWasm\":false},{\"line\":1,"
-               "\"column\":1,\"functionName\":\"\",\"scriptName\":\"a.js\","
-               "\"isEval\":false,\"isConstructor\":false,\"isWasm\":false}]}");
+  EXPECT_STREQ(
+      deno_last_exception(d),
+      "{\"message\":\"ReferenceError: a is not "
+      "defined\",\"sourceLine\":\"a\",\"lineNumber\":1,\"startPosition\":0,"
+      "\"endPosition\":1,\"errorLevel\":8,\"startColumn\":0,\"endColumn\":1,"
+      "\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"frames\":[{\"line\":"
+      "1,\"column\":1,\"functionName\":\"\",\"scriptName\":\"<unknown>\","
+      "\"isEval\":true,\"isConstructor\":false,\"isWasm\":false},{\"line\":1,"
+      "\"column\":1,\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":"
+      "false,\"isConstructor\":false,\"isWasm\":false}]}");
   deno_delete(d);
 }
 
