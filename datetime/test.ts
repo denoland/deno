@@ -9,7 +9,7 @@ test(function parseDateTime() {
 });
 test(function parseDate() {
   assertEqual(
-    datetime.parseDateTime("01-03-2019", "mm-dd-yyyy"),
+    datetime.parseDate("01-03-2019", "mm-dd-yyyy"),
     new Date(2019, 1, 3)
   );
 });
