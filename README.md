@@ -14,6 +14,10 @@
 
   Command line logging
 
+- **[media_types](./media_types/)**
+
+  A library for resolving media types (MIME types) and extensions.
+
 - **[mkdirp](./mkdirp/)**
 
   Make directory branches.

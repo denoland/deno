@@ -21,7 +21,7 @@ export function runTests(serverReadyPromise: Promise<any>) {
     const res = await fetch("http://localhost:4500/azure-pipelines.yml");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
-    assertEqual(res.headers.get("content-type"), "text/yaml");
+    assertEqual(res.headers.get("content-type"), "text/yaml; charset=utf-8");
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
       await readFile("./azure-pipelines.yml")
