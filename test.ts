@@ -6,6 +6,7 @@ import "datetime/test.ts";
 import "examples/test.ts";
 import "flags/test.ts";
 import "logging/test.ts";
+import "media_types/test.ts";
 import "mkdirp/test.ts";
 import "net/bufio_test.ts";
 import "net/http_test.ts";
