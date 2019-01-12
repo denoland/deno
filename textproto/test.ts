@@ -3,9 +3,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { BufReader } from "./bufio.ts";
-import { TextProtoReader, append } from "./textproto.ts";
-import { stringsReader } from "./util.ts";
+import { BufReader } from "../io/bufio.ts";
+import { TextProtoReader, append } from "./mod.ts";
+import { stringsReader } from "../io/util.ts";
 import { test, assert, assertEqual } from "../testing/mod.ts";
 
 function reader(s: string): TextProtoReader {

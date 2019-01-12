@@ -1,5 +1,5 @@
 import { test, assertEqual } from "../../testing/mod.ts";
-import { parse } from "../index.ts";
+import { parse } from "../mod.ts";
 
 // flag boolean true (default all --args to boolean)
 test(function flagBooleanTrue() {

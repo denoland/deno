@@ -1,6 +1,6 @@
 import { remove, open, readAll } from "deno";
 import { assertEqual, test } from "../testing/mod.ts";
-import * as log from "index.ts";
+import * as log from "./mod.ts";
 import { FileHandler } from "./handlers.ts";
 
 // TODO: establish something more sophisticated
