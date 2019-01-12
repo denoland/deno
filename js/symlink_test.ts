@@ -1,5 +1,5 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEqual } from "./test_util.ts";
+import { testPerm, assert, assertEqual } from "./test_util.ts";
 import * as deno from "deno";
 
 testPerm({ write: true }, function symlinkSyncSuccess() {
