@@ -75,28 +75,31 @@ impl ToString for StackFrame {
 
 impl ToString for JSError {
   fn to_string(&self) -> String {
-    // TODO use fewer clones.
     // TODO Improve the formatting of these error messages.
     let mut s = String::new();
 
     if self.script_resource_name.is_some() {
-      s.push_str(&self.script_resource_name.clone().unwrap());
-    }
-    if self.line_number.is_some() {
-      s.push_str(&format!(
-        ":{}:{}",
-        self.line_number.unwrap(),
-        self.start_column.unwrap()
-      ));
-      assert!(self.start_column.is_some());
-    }
-    if self.source_line.is_some() {
-      s.push_str("\n");
-      s.push_str(&self.source_line.clone().unwrap());
-      s.push_str("\n\n");
+      let script_resource_name = self.script_resource_name.as_ref().unwrap();
+      // Avoid showing internal code from gen/bundle/main.js
+      if script_resource_name != "gen/bundle/main.js" {
+        s.push_str(script_resource_name);
+        if self.line_number.is_some() {
+          s.push_str(&format!(
+            ":{}:{}",
+            self.line_number.unwrap(),
+            self.start_column.unwrap()
+          ));
+          assert!(self.start_column.is_some());
+        }
+        if self.source_line.is_some() {
+          s.push_str("\n");
+          s.push_str(self.source_line.as_ref().unwrap());
+          s.push_str("\n\n");
+        }
+      }
     }
 
-    s.push_str(&self.message.clone());
+    s.push_str(&self.message);
 
     for frame in &self.frames {
       s.push_str("\n");
