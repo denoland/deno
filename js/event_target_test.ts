@@ -34,8 +34,8 @@ test(function constructedEventTargetCanBeUsedAsExpected() {
 
 test(function anEventTargetCanBeSubclassed() {
   class NicerEventTarget extends EventTarget {
-    on(type, listener?, options?) {
-      this.addEventListener(type, listener, options);
+    on(type, callback?, options?) {
+      this.addEventListener(type, callback, options);
     }
 
     off(type, callback?, options?) {
