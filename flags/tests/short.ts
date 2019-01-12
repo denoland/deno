@@ -1,5 +1,5 @@
 import { test, assertEqual } from "../../testing/mod.ts";
-import { parse } from "../index.ts";
+import { parse } from "../mod.ts";
 
 test(function numbericShortArgs() {
   assertEqual(parse(["-n123"]), { n: 123, _: [] });

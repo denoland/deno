@@ -3,7 +3,7 @@
 Usage:
 
 ```typescript
-import { serve } from "https://deno.land/x/net/http.ts";
+import { serve } from "https://deno.land/x/http/mod.ts";
 const s = serve("0.0.0.0:8000");
 
 async function main() {
@@ -22,5 +22,5 @@ A small program for serving local files over HTTP.
 Add the following to your `.bash_profile`
 
 ```
-alias file_server="deno https://deno.land/x/net/file_server.ts --allow-net"
+alias file_server="deno https://deno.land/x/http/file_server.ts --allow-net"
 ```

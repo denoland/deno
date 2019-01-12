@@ -3,8 +3,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { BufReader, BufState } from "./bufio.ts";
-import { charCode } from "./util.ts";
+import { BufReader, BufState } from "../io/bufio.ts";
+import { charCode } from "../io/util.ts";
 
 const asciiDecoder = new TextDecoder();
 function str(buf: Uint8Array): string {

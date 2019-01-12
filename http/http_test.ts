@@ -12,8 +12,8 @@ import {
   ServerRequest,
   setContentLength,
   Response
-} from "./http.ts";
-import { BufWriter, BufReader } from "./bufio.ts";
+} from "./mod.ts";
+import { BufWriter, BufReader } from "../io/bufio.ts";
 
 interface ResponseTest {
   response: Response;

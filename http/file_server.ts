@@ -10,7 +10,7 @@ import {
   ServerRequest,
   setContentLength,
   Response
-} from "./http.ts";
+} from "./mod.ts";
 import { cwd, DenoError, ErrorKind, args, stat, readDir, open } from "deno";
 import { extname } from "../fs/path.ts";
 import { contentType } from "../media_types/mod.ts";
