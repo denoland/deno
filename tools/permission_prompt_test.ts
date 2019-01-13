@@ -12,7 +12,13 @@ const test = {
     listen("tcp", "127.0.0.1:4540");
   },
   needsRun: () => {
-    run({ args: ["python", "-c", "import sys; sys.stdout.write('hello')"] });
+    run({
+      args: [
+        "python",
+        "-c",
+        "import sys; sys.stdout.write('hello'); sys.stdout.flush()"
+      ]
+    });
   }
 }[name];
 
