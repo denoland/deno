@@ -41,4 +41,4 @@ import "./url_test.ts";
 import "./url_search_params_test.ts";
 import "./write_file_test.ts";
 
-// TODO import "../website/app_test.js";
+import "../website/app_test.js";
