@@ -5,7 +5,7 @@ import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import { assert, log, setLogDebug } from "./util";
 import * as os from "./os";
-import { DenoCompiler } from "./compiler";
+import { Compiler } from "./compiler";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { sendSync, handleAsyncMsgFromRust } from "./dispatch";
@@ -37,18 +37,19 @@ function sendStart(): void {
 
 function compilerMain() {
   // workerMain should have already been called since a compiler is a worker.
-  const compiler = DenoCompiler.instance();
+  const compiler = Compiler.instance();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
   compiler.recompile = startResMsg.recompileFlag();
   log(`recompile ${compiler.recompile}`);
-  window.onmessage = (e: { data: Uint8Array }) => {
-    const json = new TextDecoder().decode(e.data);
+  window.onmessage = ({ data }: { data: Uint8Array }) => {
+    const json = decoder.decode(data);
     const lookup = JSON.parse(json) as CompilerLookup;
 
-    const moduleMetaData = compiler.run(lookup.specifier, lookup.referrer);
-    moduleMetaData.outputCode = compiler.compile(moduleMetaData);
+    const moduleMetaData = compiler.compile(lookup.specifier, lookup.referrer);
 
     const responseJson = JSON.stringify(moduleMetaData);
-    const response = new TextEncoder().encode(responseJson);
+    const response = encoder.encode(responseJson);
     postMessage(response);
   };
 }
@@ -70,8 +71,9 @@ export default function denoMain() {
   setLogDebug(startResMsg.debugFlag());
 
   // handle `--types`
+  // TODO(kitsonk) move to Rust fetching from compiler
   if (startResMsg.typesFlag()) {
-    const compiler = DenoCompiler.instance();
+    const compiler = Compiler.instance();
     const defaultLibFileName = compiler.getDefaultLibFileName();
     const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
     console.log(defaultLibModule.sourceCode);
