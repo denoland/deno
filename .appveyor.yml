@@ -349,7 +349,7 @@ before_build:
 build_script:
   # Build with Cargo first. Both builds produce a deno.exe in the same dir. We
   # want the final one (which gets tested and released) to be built by Ninja.
-  - cargo build -vv --release
+  - cargo build -vv --release --locked
   - ps: Set-FilesNeeded -Auto -Reason "Cargo build finished"
 
   - python tools\build.py
