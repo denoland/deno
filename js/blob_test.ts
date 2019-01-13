@@ -1,14 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "./test_util.ts";
 
-test(async function blobString() {
+test(function blobString() {
   const b1 = new Blob(["Hello World"]);
   const str = "Test";
   const b2 = new Blob([b1, str]);
   assertEqual(b2.size, b1.size + str.length);
 });
 
-test(async function blobBuffer() {
+test(function blobBuffer() {
   const buffer = new ArrayBuffer(12);
   const u8 = new Uint8Array(buffer);
   const f1 = new Float32Array(buffer);
@@ -18,7 +18,7 @@ test(async function blobBuffer() {
   assertEqual(b2.size, 3 * u8.length);
 });
 
-test(async function blobSlice() {
+test(function blobSlice() {
   const blob = new Blob(["Deno", "Foo"]);
   const b1 = blob.slice(0, 3, "Text/HTML");
   assert(b1 instanceof Blob);
