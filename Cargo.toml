@@ -34,4 +34,6 @@ tokio-io = "=0.1.10"
 tokio-process = "=0.2.3"
 tokio-threadpool = "=0.1.9"
 url = "=1.7.2"
+
+[target.'cfg(windows)'.dependencies]
 winapi = "=0.3.6"

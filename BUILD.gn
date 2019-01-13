@@ -43,8 +43,10 @@ main_extern = [
   "$rust_build:tokio_process",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
-  "$rust_build:winapi",
 ]
+if (is_win) {
+  main_extern += [ "$rust_build:winapi" ]
+}
 
 ts_sources = [
   "js/assets.ts",
