@@ -11,14 +11,15 @@ const test = {
   needsNet: () => {
     listen("tcp", "127.0.0.1:4540");
   },
-  needsRun: () => {
-    run({
+  needsRun: async () => {
+    const process = run({
       args: [
         "python",
         "-c",
         "import sys; sys.stdout.write('hello'); sys.stdout.flush()"
       ]
     });
+    await process.status();
   }
 }[name];
 
