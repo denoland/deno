@@ -20,10 +20,10 @@
       </tr>
       <tr>
         <td>
-          <img src="https://travis-ci.com/denoland/deno.svg?branch=master"/>
+          <a href="https://travis-ci.com/denoland/deno"><img src="https://travis-ci.com/denoland/deno.svg?branch=master"/></a>
         </td>
         <td>
-          <img src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"/>
+          <a href="https://ci.appveyor.com/project/deno/deno"><img src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"/></a>
         </td>
       </tr>
     </table>
@@ -56,13 +56,13 @@ Try a Deno program. Install by bash alias.
 This one serves a local directory in HTTP.
 <pre>
 alias file_server="deno \
-  https://deno.land/x/net/file_server.ts --allow-net"
+  https://deno.land/x/http/file_server.ts --allow-net"
 </pre>
 
 Run it:
 <pre>
 % file_server .
-Downloading https://deno.land/x/net/file_server.ts...
+Downloading https://deno.land/x/http/file_server.ts...
 [...]
 HTTP server listening on http://0.0.0.0:4500/
 </pre>
