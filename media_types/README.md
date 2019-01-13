@@ -87,7 +87,3 @@ types.get("ts"); // "application/javascript"
 Adapted from [mime-type](https://github.com/jshttp/mime-types).
 
 MIT License.
-
-```
-
-```
