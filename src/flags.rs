@@ -1,8 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::libdeno;
+
 use getopts;
 use getopts::Options;
 use libc::c_int;
-use libdeno;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
@@ -258,7 +259,7 @@ fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
     args.into_iter().partition(|ref a| a.as_str() == "--help");
 
   // Replace args being sent to V8
-  for mut a in &mut v8_args {
+  for a in &mut v8_args {
     if a == "--v8-options" {
       mem::swap(a, &mut String::from("--help"));
     }

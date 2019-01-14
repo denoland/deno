@@ -1,7 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Helpers for serialization.
-use errors;
-use errors::DenoResult;
+use crate::errors;
+use crate::errors::DenoResult;
+use crate::msg;
+
 use flatbuffers;
 use http::header::HeaderName;
 use http::uri::Uri;
@@ -11,7 +13,6 @@ use hyper::header::HeaderValue;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
-use msg;
 use std::str::FromStr;
 
 type Headers = HeaderMap<HeaderValue>;
@@ -94,7 +95,7 @@ pub fn serialize_http_response<'bldr>(
 }
 
 pub fn deserialize_request(
-  header_msg: msg::HttpHeader,
+  header_msg: msg::HttpHeader<'_>,
   body: Body,
 ) -> DenoResult<Request<Body>> {
   let mut r = Request::new(body);

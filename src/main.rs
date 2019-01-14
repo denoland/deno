@@ -1,24 +1,24 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-extern crate dirs;
-extern crate flatbuffers;
-extern crate getopts;
-extern crate http;
-extern crate hyper;
-extern crate hyper_rustls;
-extern crate libc;
-extern crate rand;
-extern crate remove_dir_all;
-extern crate ring;
-extern crate rustyline;
-extern crate source_map_mappings;
-extern crate tempfile;
-extern crate tokio;
-extern crate tokio_executor;
-extern crate tokio_fs;
-extern crate tokio_io;
-extern crate tokio_process;
-extern crate tokio_threadpool;
-extern crate url;
+use dirs;
+use flatbuffers;
+use getopts;
+use http;
+use hyper;
+use hyper_rustls;
+use libc;
+use rand;
+use remove_dir_all;
+use ring;
+use rustyline;
+use source_map_mappings;
+use tempfile;
+use tokio;
+use tokio_executor;
+use tokio_fs;
+use tokio_io;
+use tokio_process;
+use tokio_threadpool;
+use url;
 
 #[macro_use]
 extern crate lazy_static;
@@ -63,11 +63,11 @@ static LOGGER: Logger = Logger;
 struct Logger;
 
 impl log::Log for Logger {
-  fn enabled(&self, metadata: &log::Metadata) -> bool {
+  fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
     metadata.level() <= log::max_level()
   }
 
-  fn log(&self, record: &log::Record) {
+  fn log(&self, record: &log::Record<'_>) {
     if self.enabled(record.metadata()) {
       println!("{} RS - {}", record.level(), record.args());
     }

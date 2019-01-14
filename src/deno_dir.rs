@@ -1,15 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use compiler::CodeFetchOutput;
-use dirs;
-use errors;
-use errors::DenoError;
-use errors::DenoResult;
-use errors::ErrorKind;
-use fs as deno_fs;
-use http_util;
-use js_errors::SourceMapGetter;
-use msg;
+use crate::compiler::CodeFetchOutput;
+use crate::errors;
+use crate::errors::DenoError;
+use crate::errors::DenoResult;
+use crate::errors::ErrorKind;
+use crate::fs as deno_fs;
+use crate::http_util;
+use crate::js_errors::SourceMapGetter;
+use crate::msg;
 
+use dirs;
 use ring;
 use std;
 use std::fmt::Write;
@@ -395,7 +395,7 @@ impl DenoDir {
 
     match j.scheme() {
       "file" => {
-        let mut p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
+        let p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
         module_name = p.clone();
         filename = p;
       }
@@ -540,8 +540,8 @@ fn filter_shebang(code: String) -> String {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::tokio_util;
   use tempfile::TempDir;
-  use tokio_util;
 
   fn test_setup() -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
@@ -751,7 +751,7 @@ mod tests {
 
   #[test]
   fn test_fetch_source_1() {
-    use tokio_util;
+    use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
@@ -786,7 +786,7 @@ mod tests {
 
   #[test]
   fn test_fetch_source_2() {
-    use tokio_util;
+    use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();

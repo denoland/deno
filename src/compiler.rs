@@ -1,11 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use isolate::Buf;
-use isolate::IsolateState;
-use msg;
-use resources;
-use resources::Resource;
-use resources::ResourceId;
-use workers;
+use crate::isolate::Buf;
+use crate::isolate::IsolateState;
+use crate::msg;
+use crate::resources;
+use crate::resources::Resource;
+use crate::resources::ResourceId;
+use crate::workers;
 
 use futures::Future;
 use serde_json;

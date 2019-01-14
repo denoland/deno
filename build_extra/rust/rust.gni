@@ -50,6 +50,7 @@ template("rust_crate") {
                            "crate_type",
                            "crate_version",
                            "deps",
+                           "edition",
                            "inputs",
                            "features",
                            "is_test",
@@ -67,6 +68,9 @@ template("rust_crate") {
   }
   if (!defined(deps)) {
     deps = []
+  }
+  if (!defined(edition)) {
+    edition = "2018"
   }
   if (!defined(is_test)) {
     is_test = false
@@ -175,6 +179,7 @@ template("rust_crate") {
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
       "--emit=$emit_type,dep-info",
+      "--edition=$edition",
       "--out-dir=" + rebase_path(out_dir, root_build_dir),
 
       # This is to disambiguate multiple versions of the same crate.

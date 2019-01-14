@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use resources::Resource;
+use crate::resources::Resource;
 
 use futures;
 use futures::Future;
