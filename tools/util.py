@@ -12,6 +12,7 @@ FG_GREEN = "\x1b[32m"
 
 executable_suffix = ".exe" if os.name == "nt" else ""
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+tests_path = os.path.join(root_path, "tests")
 
 
 def make_env(merge_env=None, env=None):

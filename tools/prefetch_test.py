@@ -2,7 +2,7 @@
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import os
 import sys
-from util import run_output, build_path, executable_suffix, green_ok
+from util import tests_path, run_output, build_path, executable_suffix, green_ok
 import tempfile
 import shutil
 
@@ -13,9 +13,9 @@ def prefetch_test(deno_exe):
 
     deno_dir = tempfile.mkdtemp()
     try:
-        output = run_output(
-            [deno_exe, "--prefetch", "tests/006_url_imports.ts"],
-            env={"DENO_DIR": deno_dir})
+        t = os.path.join(tests_path, "006_url_imports.ts")
+        output = run_output([deno_exe, "--prefetch", t],
+                            env={"DENO_DIR": deno_dir})
         assert output == ""
         # Check that we actually did the prefetch.
         os.path.exists(

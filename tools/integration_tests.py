@@ -11,10 +11,7 @@ import os
 import re
 import sys
 import subprocess
-from util import pattern_match, green_ok, red_failed
-
-root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-tests_path = os.path.join(root_path, "tests")
+from util import root_path, tests_path, pattern_match, green_ok, red_failed
 
 
 def read_test(file_name):
