@@ -22,6 +22,7 @@ testPerm({ net: true }, async function netDialListen() {
   assertEqual(1, buf[0]);
   assertEqual(2, buf[1]);
   assertEqual(3, buf[2]);
+  assert(conn.rid > 0);
 
   // TODO Currently ReadResult does not properly transmit EOF in the same call.
   // it requires a second call to get the EOF. Either ReadResult to be an

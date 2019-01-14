@@ -57,6 +57,8 @@ export interface Conn extends Reader, Writer, Closer {
   localAddr: string;
   /** The remote address of the connection. */
   remoteAddr: string;
+  /** The resource ID of the connection. */
+  rid: number;
   /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
    * callers should just use `close()`.
    */
