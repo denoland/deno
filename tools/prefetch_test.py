@@ -8,25 +8,23 @@ import shutil
 
 
 def prefetch_test(deno_exe):
+    sys.stdout.write("prefetch_test...")
+    sys.stdout.flush()
+
     deno_dir = tempfile.mkdtemp()
     try:
-        output = run_output([
-            deno_exe, "--prefetch",
-            "http://127.0.0.1:4545/tests/005_more_imports.ts"
-        ],
-                            env={"DENO_DIR": deno_dir})
+        output = run_output(
+            [deno_exe, "--prefetch", "tests/006_url_imports.ts"],
+            env={"DENO_DIR": deno_dir})
         assert output == ""
-
-        # Check that we actually prefetched something.
+        # Check that we actually did the prefetch.
         os.path.exists(
-            os.path.join(
-                deno_dir,
-                "deps/http/127.0.0.1_PORT4545/tests/005_more_imports.ts"))
-
-        print "prefetch_test...", green_ok()
-
+            os.path.join(deno_dir,
+                         "deps/http/localhost_PORT4545/tests/subdir/mod2.ts"))
     finally:
         shutil.rmtree(deno_dir)
+
+    print green_ok()
 
 
 if __name__ == "__main__":
