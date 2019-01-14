@@ -135,15 +135,6 @@ mod tests {
   }
 
   #[test]
-  fn resolve_addr2() {
-    let expected =
-      SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 443));
-    // Assuming localhost maps to 127.0.0.1... This isn't always true.
-    let actual = resolve_addr("localhost:443").wait().unwrap();
-    assert_eq!(actual, expected);
-  }
-
-  #[test]
   fn resolve_addr3() {
     let expected =
       SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 25));
