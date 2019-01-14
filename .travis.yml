@@ -32,9 +32,9 @@ install:
   # Install Rust.
   # TODO(ry) Include rustc in third_party.
   # https://github.com/denoland/deno/issues/386
-  if [ ! $(rustc --version | grep 1.30.0) ]; then
-    curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.30.0
-    rustup default 1.30.0
+  if [ ! $(rustc --version | grep 1.31.1) ]; then
+    curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.31.1
+    rustup default 1.31.1
   fi
   rustc --version
   cargo --version
