@@ -9,16 +9,17 @@
 // handlers) look up resources by their integer id here.
 
 #[cfg(unix)]
-use eager_unix as eager;
-use errors;
-use errors::bad_resource;
-use errors::DenoError;
-use errors::DenoResult;
-use http_body::HttpBody;
-use isolate::WorkerChannels;
-use repl::Repl;
-use tokio_util;
-use tokio_write;
+use crate::eager_unix as eager;
+use crate::errors;
+use crate::errors::bad_resource;
+use crate::errors::DenoError;
+use crate::errors::DenoResult;
+use crate::http_body::HttpBody;
+use crate::isolate::Buf;
+use crate::isolate::WorkerChannels;
+use crate::repl::Repl;
+use crate::tokio_util;
+use crate::tokio_write;
 
 use futures;
 use futures::future::{Either, FutureResult};
@@ -27,7 +28,6 @@ use futures::Poll;
 use futures::Sink;
 use futures::Stream;
 use hyper;
-use isolate::Buf;
 use std;
 use std::collections::HashMap;
 use std::io::{Error, Read, Write};

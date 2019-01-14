@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use errors;
-use errors::{DenoError, DenoResult};
-use tokio_util;
+use crate::errors;
+use crate::errors::{DenoError, DenoResult};
+use crate::tokio_util;
 
 use futures::future::{loop_fn, Loop};
 use futures::{future, Future, Stream};

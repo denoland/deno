@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use libdeno::deno_buf;
+use crate::libdeno::deno_buf;
 
 pub fn deno_snapshot() -> deno_buf {
   #[cfg(not(feature = "check-only"))]

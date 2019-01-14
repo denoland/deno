@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
-use resources::{EagerAccept, EagerRead, EagerWrite, Resource};
-use tokio_util;
-use tokio_write;
+use crate::resources::{EagerAccept, EagerRead, EagerWrite, Resource};
+use crate::tokio_util;
+use crate::tokio_write;
 
 use futures::future::{self, Either};
 use std;

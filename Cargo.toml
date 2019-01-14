@@ -7,6 +7,7 @@
 [package]
 name = "deno"
 version = "0.2.6"
+edition = "2018"
 
 [dependencies]
 atty = "0.2.11"

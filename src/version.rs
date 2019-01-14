@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use libdeno;
+use crate::libdeno;
+
 use std::ffi::CStr;
 
 pub const DENO: &str = env!("CARGO_PKG_VERSION");

@@ -1,13 +1,13 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-use isolate::Buf;
-use isolate::Isolate;
-use isolate::IsolateState;
-use isolate::WorkerChannels;
-use js_errors::JSError;
-use ops;
-use resources;
-use snapshot;
-use tokio_util;
+use crate::isolate::Buf;
+use crate::isolate::Isolate;
+use crate::isolate::IsolateState;
+use crate::isolate::WorkerChannels;
+use crate::js_errors::JSError;
+use crate::ops;
+use crate::resources;
+use crate::snapshot;
+use crate::tokio_util;
 
 use futures::sync::mpsc;
 use futures::sync::oneshot;
