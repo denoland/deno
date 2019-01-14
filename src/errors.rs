@@ -1,6 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use hyper;
+
 pub use msg::ErrorKind;
+use resolve_addr::ResolveAddrError;
+
+use hyper;
 use std;
 use std::fmt;
 use std::io;
@@ -145,6 +148,22 @@ impl From<hyper::Error> for DenoError {
   fn from(err: hyper::Error) -> Self {
     Self {
       repr: Repr::HyperErr(err),
+    }
+  }
+}
+
+impl From<ResolveAddrError> for DenoError {
+  fn from(e: ResolveAddrError) -> Self {
+    match e {
+      ResolveAddrError::Syntax => Self {
+        repr: Repr::Simple(
+          ErrorKind::InvalidInput,
+          "invalid address syntax".to_string(),
+        ),
+      },
+      ResolveAddrError::Resolution(io_err) => Self {
+        repr: Repr::IoErr(io_err),
+      },
     }
   }
 }

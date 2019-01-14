@@ -44,6 +44,7 @@ pub mod msg_util;
 pub mod ops;
 pub mod permissions;
 mod repl;
+pub mod resolve_addr;
 pub mod resources;
 pub mod snapshot;
 mod tokio_util;
