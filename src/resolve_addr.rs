@@ -75,7 +75,7 @@ fn split<'a>(address: &'a str) -> Option<(&'a str, u16)> {
   address.rfind(":").and_then(|i| {
     let (a, p) = address.split_at(i);
     // Default to localhost if given just the port. Example: ":80"
-    let addr = if a.len() > 0 { a } else { "127.0.0.1" };
+    let addr = if a.len() > 0 { a } else { "0.0.0.0" };
     // If this looks like an ipv6 IP address. Example: "[2001:db8::1]"
     // Then we remove the brackets.
     let addr = if addr.starts_with('[') && addr.ends_with(']') {
@@ -108,7 +108,7 @@ mod tests {
 
   #[test]
   fn split2() {
-    assert_eq!(split(":80"), Some(("127.0.0.1", 80)));
+    assert_eq!(split(":80"), Some(("0.0.0.0", 80)));
   }
 
   #[test]
