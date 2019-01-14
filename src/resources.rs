@@ -200,9 +200,7 @@ impl Resource {
     let r = table.remove(&self.rid);
     assert!(r.is_some());
     // If TcpListener, we must kill all pending accepts!
-    if let Repr::TcpListener(l, m) = r.unwrap() {
-      // Drop first
-      std::mem::drop(l);
+    if let Repr::TcpListener(_, m) = r.unwrap() {
       // Call notify on each task, so that they would error out
       for (_, t) in m {
         t.notify();

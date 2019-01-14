@@ -85,7 +85,10 @@ impl Future for Accept {
           r.track_task(self.task_id);
           return Ok(futures::prelude::Async::NotReady);
         }
-        Err(e) => return Err(From::from(e)),
+        Err(e) => {
+          r.untrack_task(self.task_id);
+          return Err(From::from(e));
+        }
       },
       AcceptState::Empty => panic!("poll Accept after it's done"),
     };
