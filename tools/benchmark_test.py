@@ -43,6 +43,6 @@ def syscall_count_test(deno_path):
 def benchmark_test(build_dir, deno_path):
     strace_parse_test()
     binary_size_test(build_dir)
-    if "linux" in sys.platform:
+    if "linux" in sys.platform and "ASAN_OPTIONS" not in os.environ:
         thread_count_test(deno_path)
         syscall_count_test(deno_path)

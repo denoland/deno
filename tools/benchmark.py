@@ -70,11 +70,7 @@ def get_binary_sizes(build_dir):
 
 def get_strace_summary_text(test_args):
     f = tempfile.NamedTemporaryFile()
-    run(["strace", "-c", "-f", "-o", f.name] + test_args,
-        merge_env={
-            "LSAN_OPTIONS": "",
-            "ASAN_OPTIONS": "",
-        })
+    run(["strace", "-c", "-f", "-o", f.name] + test_args)
     return f.read()
 
 
