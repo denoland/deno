@@ -880,7 +880,7 @@ rust_crate("rustls") {
 }
 
 rust_crate("rustyline") {
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustyline-2.1.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustyline-3.0.0/src/lib.rs"
   extern = [
     ":dirs",
     ":libc",
@@ -892,6 +892,8 @@ rust_crate("rustyline") {
   args = [
     "--cap-lints",
     "allow",
+    "--edition",
+    "2018",
   ]
   if (is_posix) {
     extern += [
