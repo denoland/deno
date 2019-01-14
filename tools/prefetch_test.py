@@ -15,7 +15,7 @@ def prefetch_test(deno_exe):
     try:
         t = os.path.join(tests_path, "006_url_imports.ts")
         output = run_output([deno_exe, "--prefetch", t],
-                            env={"DENO_DIR": deno_dir})
+                            merge_env={"DENO_DIR": deno_dir})
         assert output == ""
         # Check that we actually did the prefetch.
         os.path.exists(
