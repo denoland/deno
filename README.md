@@ -10,7 +10,7 @@
 
   Command line arguments parser.
 
-- **[logging](./logging/)**
+- **[log](./log/)**
 
   Command line logging
 
@@ -22,7 +22,7 @@
 
   Make directory branches.
 
-- **[net](./net/)**
+- **[http](./http/)**
 
   A framework for creating HTTP/HTTPS servers inspired by GoLang.
 

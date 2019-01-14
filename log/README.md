@@ -1,7 +1,7 @@
 # Basic usage
 
 ```ts
-import * as log from "https://deno.land/x/std/logging/index.ts";
+import * as log from "https://deno.land/x/std/log/mod.ts";
 
 // simple console logger
 log.debug("Hello world");
