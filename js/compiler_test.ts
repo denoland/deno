@@ -506,6 +506,7 @@ test(function compilerGetCompilationSettings() {
   const expectedKeys = [
     "allowJs",
     "checkJs",
+    "esModuleInterop",
     "module",
     "outDir",
     "resolveJsonModule",

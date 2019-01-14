@@ -137,6 +137,7 @@ export class Compiler
   private readonly _options: ts.CompilerOptions = {
     allowJs: true,
     checkJs: true,
+    esModuleInterop: true,
     module: ts.ModuleKind.ESNext,
     outDir: "$deno$",
     resolveJsonModule: true,
