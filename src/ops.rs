@@ -10,6 +10,7 @@ use isolate::Op;
 use libdeno;
 use msg;
 use msg_util;
+use resolve_addr::resolve_addr;
 use resources;
 use resources::Resource;
 use version;
@@ -28,7 +29,7 @@ use resources::table_entries;
 use std;
 use std::convert::From;
 use std::fs;
-use std::net::{Shutdown, SocketAddr};
+use std::net::Shutdown;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
@@ -36,7 +37,6 @@ use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use std::time::{Duration, Instant};
@@ -1241,8 +1241,7 @@ fn op_listen(
   // https://github.com/rust-lang-nursery/rust-clippy/issues/1684
   #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
   Box::new(futures::future::result((move || {
-    // TODO properly parse addr
-    let addr = SocketAddr::from_str(address).unwrap();
+    let addr = resolve_addr(address).wait()?;
 
     let listener = TcpListener::bind(&addr)?;
     let resource = resources::add_tcp_listener(listener);
@@ -1325,15 +1324,17 @@ fn op_dial(
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_dial().unwrap();
   let network = inner.network().unwrap();
-  assert_eq!(network, "tcp");
+  assert_eq!(network, "tcp"); // TODO Support others.
   let address = inner.address().unwrap();
 
-  // TODO properly parse addr
-  let addr = SocketAddr::from_str(address).unwrap();
-
-  let op = TcpStream::connect(&addr)
-    .map_err(|err| err.into())
-    .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream));
+  let op =
+    resolve_addr(address)
+      .map_err(DenoError::from)
+      .and_then(move |addr| {
+        TcpStream::connect(&addr)
+          .map_err(DenoError::from)
+          .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream))
+      });
   Box::new(op)
 }
 

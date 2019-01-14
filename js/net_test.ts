@@ -9,13 +9,12 @@ testPerm({ net: true }, function netListenClose() {
 });
 
 testPerm({ net: true }, async function netDialListen() {
-  const addr = "127.0.0.1:4500";
-  const listener = deno.listen("tcp", addr);
+  const listener = deno.listen("tcp", ":4500");
   listener.accept().then(async conn => {
     await conn.write(new Uint8Array([1, 2, 3]));
     conn.close();
   });
-  const conn = await deno.dial("tcp", addr);
+  const conn = await deno.dial("tcp", "127.0.0.1:4500");
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
   assertEqual(3, readResult.nread);
