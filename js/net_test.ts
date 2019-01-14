@@ -4,8 +4,22 @@ import { testPerm, assert, assertEqual } from "./test_util.ts";
 import { deferred } from "deno";
 
 testPerm({ net: true }, function netListenClose() {
-  const listener = deno.listen("tcp", "127.0.0.1:4500");
+  const listener = deno.listen("tcp", "127.0.0.1:4502");
   listener.close();
+});
+
+testPerm({ net: true }, async function netCloseWhileAccept() {
+  const listener = deno.listen("tcp", "127.0.0.1:4501");
+  const p = listener.accept();
+  listener.close();
+  let err: Error;
+  try {
+    await p;
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertEqual(err.message, "Listener has been closed");
 });
 
 testPerm({ net: true }, async function netDialListen() {

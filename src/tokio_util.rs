@@ -11,6 +11,13 @@ use tokio;
 use tokio::net::TcpStream;
 use tokio_executor;
 
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+lazy_static! {
+  // Keep unique such that no collisions in TcpListener accept task map
+  static ref NEXT_ACCEPT_ID: AtomicUsize = AtomicUsize::new(0);
+}
+
 pub fn block_on<F, R, E>(future: F) -> Result<R, E>
 where
   F: Send + 'static + Future<Item = R, Error = E>,
@@ -45,6 +52,7 @@ enum AcceptState {
 pub fn accept(r: Resource) -> Accept {
   Accept {
     state: AcceptState::Pending(r),
+    task_id: NEXT_ACCEPT_ID.fetch_add(1, Ordering::SeqCst),
   }
 }
 
@@ -55,6 +63,7 @@ pub fn accept(r: Resource) -> Accept {
 #[derive(Debug)]
 pub struct Accept {
   state: AcceptState,
+  task_id: usize,
 }
 
 impl Future for Accept {
@@ -63,7 +72,21 @@ impl Future for Accept {
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     let (stream, addr) = match self.state {
-      AcceptState::Pending(ref mut r) => try_ready!(r.poll_accept()),
+      // Similar to try_ready!, but also track/untrack accept task
+      // in TcpListener resource
+      // In this way, when the listener is closed, the task could be
+      // notified to error out (instead of stuck forever)
+      AcceptState::Pending(ref mut r) => match r.poll_accept() {
+        Ok(futures::prelude::Async::Ready(t)) => {
+          r.untrack_task(self.task_id);
+          t
+        }
+        Ok(futures::prelude::Async::NotReady) => {
+          r.track_task(self.task_id);
+          return Ok(futures::prelude::Async::NotReady);
+        }
+        Err(e) => return Err(From::from(e)),
+      },
       AcceptState::Empty => panic!("poll Accept after it's done"),
     };
 

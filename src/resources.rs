@@ -87,7 +87,11 @@ enum Repr {
   Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
   FsFile(tokio::fs::File),
-  TcpListener(tokio::net::TcpListener),
+  // Since TcpListener might be closed while there are pending accept tasks,
+  // we need to track these task so that when the listener is closed,
+  // pending tasks could be notified and die.
+  // The tasks are indexed, so they could be removed when accept completed.
+  TcpListener(tokio::net::TcpListener, HashMap<usize, futures::task::Task>),
   TcpStream(tokio::net::TcpStream),
   HttpBody(HttpBody),
   Repl(Repl),
@@ -132,7 +136,7 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::Stdout(_) => "stdout",
     Repr::Stderr(_) => "stderr",
     Repr::FsFile(_) => "fsFile",
-    Repr::TcpListener(_) => "tcpListener",
+    Repr::TcpListener(_, _) => "tcpListener",
     Repr::TcpStream(_) => "tcpStream",
     Repr::HttpBody(_) => "httpBody",
     Repr::Repl(_) => "repl",
@@ -148,7 +152,7 @@ fn inspect_repr(repr: &Repr) -> String {
 
 // Abstract async file interface.
 // Ideally in unix, if Resource represents an OS rid, it will be the same.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Resource {
   pub rid: ResourceId,
 }
@@ -159,11 +163,33 @@ impl Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      None => panic!("bad rid"),
+      None => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Listener has been closed",
+      )),
       Some(repr) => match repr {
-        Repr::TcpListener(ref mut s) => s.poll_accept(),
+        Repr::TcpListener(ref mut s, _) => s.poll_accept(),
         _ => panic!("Cannot accept"),
       },
+    }
+  }
+
+  /// Track pending tasks with task_id as identifier (for TcpListener resource)
+  /// Insert the task into map for tracking
+  pub fn track_task(&mut self, task_id: usize) {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    // Only register if is TcpListener
+    if let Some(Repr::TcpListener(_, m)) = table.get_mut(&self.rid) {
+      m.insert(task_id, futures::task::current());
+    }
+  }
+
+  /// Remove a task from tracking (for TcpListener resource)
+  /// Happens when the task is done and thus no further tracking is needed
+  pub fn untrack_task(&mut self, task_id: usize) {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    if let Some(Repr::TcpListener(_, m)) = table.get_mut(&self.rid) {
+      m.remove(&task_id);
     }
   }
 
@@ -173,6 +199,15 @@ impl Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let r = table.remove(&self.rid);
     assert!(r.is_some());
+    // If TcpListener, we must kill all pending accepts!
+    if let Repr::TcpListener(l, m) = r.unwrap() {
+      // Drop first
+      std::mem::drop(l);
+      // Call notify on each task, so that they would error out
+      for (_, t) in m {
+        t.notify();
+      }
+    }
   }
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), DenoError> {
@@ -264,7 +299,7 @@ pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
 pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::TcpListener(listener));
+  let r = tg.insert(rid, Repr::TcpListener(listener, HashMap::new()));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -515,7 +550,7 @@ pub fn eager_accept(resource: Resource) -> EagerAccept {
   match maybe_repr {
     None => panic!("bad rid"),
     Some(repr) => match repr {
-      Repr::TcpListener(ref mut tcp_listener) => {
+      Repr::TcpListener(ref mut tcp_listener, _) => {
         eager::tcp_accept(tcp_listener, resource)
       }
       _ => Either::A(tokio_util::accept(resource)),
