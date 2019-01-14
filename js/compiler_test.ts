@@ -1,12 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "./test_util.ts";
 import * as deno from "deno";
-import * as ts from "typescript";
 
 // We use a silly amount of `any` in these tests...
 // tslint:disable:no-any
 
-const { DenoCompiler, jsonAmdTemplate } = (deno as any)._compiler;
+const { Compiler, jsonEsmTemplate } = (deno as any)._compiler;
 
 interface ModuleInfo {
   moduleName: string | undefined;
@@ -17,16 +16,28 @@ interface ModuleInfo {
   sourceMap: string | undefined;
 }
 
-const compilerInstance = DenoCompiler.instance();
+// Since we can't/don't want to import all of TypeScript for this one enum, we
+// we will replicate it from TypeScript.  This does mean that if other script
+// kinds are added in the future we would need to add them manually to the tests
+enum ScriptKind {
+  Unknown = 0,
+  JS = 1,
+  JSX = 2,
+  TS = 3,
+  TSX = 4,
+  External = 5,
+  JSON = 6,
+  Deferred = 7
+}
+
+const compilerInstance = Compiler.instance();
 
 // References to original items we are going to mock
 const originals = {
-  _globalEval: (compilerInstance as any)._globalEval,
   _log: (compilerInstance as any)._log,
   _os: (compilerInstance as any)._os,
   _ts: (compilerInstance as any)._ts,
-  _service: (compilerInstance as any)._service,
-  _window: (compilerInstance as any)._window
+  _service: (compilerInstance as any)._service
 };
 
 enum MediaType {
@@ -97,27 +108,13 @@ const modBModuleInfo = mockModuleInfo(
 );
 
 // tslint:disable:max-line-length
-const fooBarTsOutput = `define(["require", "exports", "deno"], function (require, exports, deno) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    console.log(deno);
-    exports.foo = "bar";
-});
+const fooBarTsOutput = `import * as deno from "deno";
+console.log(deno);
+export const foo = "bar";
 //# sourceMappingURL=bar.js.map
 //# sourceURL=/root/project/foo/bar.ts`;
 
-const fooBarTsSourcemap = `{"version":3,"file":"bar.js","sourceRoot":"","sources":["file:///root/project/foo/bar.ts"],"names":[],"mappings":";;;IACA,OAAO,CAAC,GAAG,CAAC,IAAI,CAAC,CAAC;IACL,QAAA,GAAG,GAAG,KAAK,CAAC"}`;
-
-const fooBazTsOutput = `define(["require", "exports", "./bar.ts"], function (require, exports, bar_ts_1) {
-  "use strict";
-  Object.defineProperty(exports, "__esModule", { value: true });
-  console.log(bar_ts_1.foo);
-});
-//# sourceMappingURL=baz.js.map
-//# sourceURL=/root/project/foo/baz.ts`;
-
-// This is not a valid map, just mock data
-const fooBazTsSourcemap = `{"version":3,"file":"baz.js","sourceRoot":"","sources":["file:///root/project/foo/baz.ts"],"names":[],"mappings":""}`;
+const fooBarTsSourcemap = `{"version":3,"file":"bar.js","sourceRoot":"","sources":["file:///root/project/foo/bar.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,IAAI,MAAM,MAAM,CAAC;AAC7B,OAAO,CAAC,GAAG,CAAC,IAAI,CAAC,CAAC;AAClB,MAAM,CAAC,MAAM,GAAG,GAAG,KAAK,CAAC"}`;
 
 const loadConfigSource = `import * as config from "./config.json";
 console.log(config.foo.baz);
@@ -142,8 +139,8 @@ const moduleMap: {
       "/root/project/foo/baz.ts",
       MediaType.TypeScript,
       fooBazTsSource,
-      fooBazTsOutput,
-      fooBazTsSourcemap
+      null,
+      null
     ),
     "modA.ts": modAModuleInfo,
     "some.txt": mockModuleInfo(
@@ -252,7 +249,6 @@ const emittedFiles = {
   "/root/project/foo/qat.ts": "console.log('foo');"
 };
 
-let globalEvalStack: string[] = [];
 let getEmitOutputStack: string[] = [];
 let logStack: any[][] = [];
 let codeCacheStack: Array<{
@@ -269,12 +265,6 @@ let codeFetchStack: Array<{
 let mockDepsStack: string[][] = [];
 let mockFactoryStack: any[] = [];
 
-function globalEvalMock(x: string): void {
-  globalEvalStack.push(x);
-  if (windowMock.define && mockDepsStack.length && mockFactoryStack.length) {
-    windowMock.define(mockDepsStack.pop(), mockFactoryStack.pop());
-  }
-}
 function logMock(...args: any[]): void {
   logStack.push(args);
 }
@@ -315,62 +305,45 @@ const osMock = {
   }
 };
 const tsMock = {
-  createLanguageService(host: ts.LanguageServiceHost): ts.LanguageService {
-    return {} as ts.LanguageService;
+  createLanguageService() {
+    return {} as any;
   },
   formatDiagnosticsWithColorAndContext(
-    diagnostics: ReadonlyArray<ts.Diagnostic>,
-    _host: ts.FormatDiagnosticsHost
+    diagnostics: ReadonlyArray<any>,
+    _host: any
   ): string {
     return JSON.stringify(diagnostics.map(({ messageText }) => messageText));
   }
 };
 
-const getEmitOutputPassThrough = true;
-
 const serviceMock = {
-  getCompilerOptionsDiagnostics(): ts.Diagnostic[] {
+  getCompilerOptionsDiagnostics() {
     return originals._service.getCompilerOptionsDiagnostics.call(
       originals._service
     );
   },
-  getEmitOutput(fileName: string): ts.EmitOutput {
+  getEmitOutput(fileName: string) {
     getEmitOutputStack.push(fileName);
-    if (getEmitOutputPassThrough) {
-      return originals._service.getEmitOutput.call(
-        originals._service,
-        fileName
-      );
-    }
-    if (fileName in emittedFiles) {
-      return {
-        outputFiles: [{ text: emittedFiles[fileName] }] as any,
-        emitSkipped: false
-      };
-    }
-    return { outputFiles: [], emitSkipped: false };
+    return originals._service.getEmitOutput.call(originals._service, fileName);
   },
-  getSemanticDiagnostics(fileName: string): ts.Diagnostic[] {
+  getSemanticDiagnostics(fileName: string) {
     return originals._service.getSemanticDiagnostics.call(
       originals._service,
       fileName
     );
   },
-  getSyntacticDiagnostics(fileName: string): ts.Diagnostic[] {
+  getSyntacticDiagnostics(fileName: string) {
     return originals._service.getSyntacticDiagnostics.call(
       originals._service,
       fileName
     );
   }
 };
-const windowMock: { define?: any } = {};
 const mocks = {
-  _globalEval: globalEvalMock,
   _log: logMock,
   _os: osMock,
   _ts: tsMock,
-  _service: serviceMock,
-  _window: windowMock
+  _service: serviceMock
 };
 
 /**
@@ -394,7 +367,6 @@ function teardown() {
   codeCacheStack = [];
   logStack = [];
   getEmitOutputStack = [];
-  globalEvalStack = [];
 
   assertEqual(mockDepsStack.length, 0);
   assertEqual(mockFactoryStack.length, 0);
@@ -405,49 +377,35 @@ function teardown() {
   Object.assign(compilerInstance, originals);
 }
 
-test(function testJsonAmdTemplate() {
-  let deps: string[];
-  let factory: Function;
-  function define(d: string[], f: Function) {
-    deps = d;
-    factory = f;
-  }
-
-  const code = jsonAmdTemplate(`{ "hello": "world", "foo": "bar" }`);
-  const result = eval(code);
-  assert(result == null);
-  assertEqual(deps && deps.length, 0);
-  assert(factory != null);
-  const factoryResult = factory();
-  assertEqual(factoryResult, { hello: "world", foo: "bar" });
+test(function testJsonEsmTemplate() {
+  const result = jsonEsmTemplate(
+    `{ "hello": "world", "foo": "bar" }`,
+    "/foo.ts"
+  );
+  assertEqual(
+    result,
+    `const _json = JSON.parse(\`{ "hello": "world", "foo": "bar" }\`)\n` +
+      `export default _json;\n` +
+      `//# sourceURL=/foo.ts`
+  );
 });
 
 test(function compilerInstance() {
-  assert(DenoCompiler != null);
-  assert(DenoCompiler.instance() != null);
+  assert(Compiler != null);
+  assert(Compiler.instance() != null);
 });
 
 // Testing the internal APIs
 
-test(function compilerRun() {
+test(function compilerCompile() {
   // equal to `deno foo/bar.ts`
   setup();
-  let factoryRun = false;
-  mockDepsStack.push(["require", "exports", "deno"]);
-  mockFactoryStack.push((_require, _exports, _deno) => {
-    factoryRun = true;
-    assertEqual(typeof _require, "function");
-    assertEqual(typeof _exports, "object");
-    assert(_deno === deno);
-    _exports.foo = "bar";
-  });
-  const moduleMetaData = compilerInstance.run("foo/bar.ts", "/root/project");
-  assert(factoryRun);
-  assert(moduleMetaData.hasRun);
+  const moduleMetaData = compilerInstance.compile(
+    "foo/bar.ts",
+    "/root/project"
+  );
   assertEqual(moduleMetaData.sourceCode, fooBarTsSource);
   assertEqual(moduleMetaData.outputCode, fooBarTsOutput);
-  // assertEqual(JSON.stringify(moduleMetaData.sourceMap), fooBarTsSourcemap);
-  assertEqual(moduleMetaData.exports, { foo: "bar" });
 
   assertEqual(
     codeFetchStack.length,
@@ -467,86 +425,20 @@ test(function compilerRun() {
   teardown();
 });
 
-test(function compilerRunMultiModule() {
+test(function compilerCompilerMultiModule() {
   // equal to `deno foo/baz.ts`
   setup();
-  const factoryStack: string[] = [];
-  const bazDeps = ["require", "exports", "./bar.ts"];
-  const bazFactory = (_require, _exports, _bar) => {
-    factoryStack.push("baz");
-    assertEqual(_bar.foo, "bar");
-  };
-  const barDeps = ["require", "exports", "deno"];
-  const barFactory = (_require, _exports, _deno) => {
-    factoryStack.push("bar");
-    _exports.foo = "bar";
-  };
-  mockDepsStack.push(barDeps);
-  mockFactoryStack.push(barFactory);
-  mockDepsStack.push(bazDeps);
-  mockFactoryStack.push(bazFactory);
-  compilerInstance.run("foo/baz.ts", "/root/project");
-  assertEqual(factoryStack, ["bar", "baz"]);
-
-  assertEqual(
-    codeFetchStack.length,
-    2,
-    "Modules should have only been fetched once."
-  );
-  assertEqual(codeCacheStack.length, 0, "No code should have been cached.");
-  teardown();
-});
-
-test(function compilerRunCircularDependency() {
-  setup();
-  const factoryStack: string[] = [];
-  const modADeps = ["require", "exports", "./modB.ts"];
-  const modAFactory = (_require, _exports, _modB) => {
-    assertEqual(_modB.foo, "bar");
-    factoryStack.push("modA");
-    _exports.bar = "baz";
-    _modB.assertModA();
-  };
-  const modBDeps = ["require", "exports", "./modA.ts"];
-  const modBFactory = (_require, _exports, _modA) => {
-    assertEqual(_modA, {});
-    factoryStack.push("modB");
-    _exports.foo = "bar";
-    _exports.assertModA = () => {
-      assertEqual(_modA, {
-        bar: "baz"
-      });
-    };
-  };
-  mockDepsStack.push(modBDeps);
-  mockFactoryStack.push(modBFactory);
-  mockDepsStack.push(modADeps);
-  mockFactoryStack.push(modAFactory);
-  compilerInstance.run("modA.ts", "/root/project");
-  assertEqual(factoryStack, ["modB", "modA"]);
+  compilerInstance.compile("foo/baz.ts", "/root/project");
+  assertEqual(codeFetchStack.length, 2, "Two modules fetched.");
+  assertEqual(codeCacheStack.length, 1, "Only one module compiled.");
   teardown();
 });
 
 test(function compilerLoadJsonModule() {
   setup();
-  const factoryStack: string[] = [];
-  const configJsonDeps: string[] = [];
-  const configJsonFactory = () => {
-    factoryStack.push("configJson");
-    return JSON.parse(configJsonSource);
-  };
-  const loadConfigDeps = ["require", "exports", "./config.json"];
-  const loadConfigFactory = (_require, _exports, _config) => {
-    factoryStack.push("loadConfig");
-    assertEqual(_config, JSON.parse(configJsonSource));
-  };
-
-  mockDepsStack.push(configJsonDeps);
-  mockFactoryStack.push(configJsonFactory);
-  mockDepsStack.push(loadConfigDeps);
-  mockFactoryStack.push(loadConfigFactory);
-  compilerInstance.run("loadConfig.ts", "/root/project");
-  assertEqual(factoryStack, ["configJson", "loadConfig"]);
+  compilerInstance.compile("loadConfig.ts", "/root/project");
+  assertEqual(codeFetchStack.length, 2, "Two modules fetched.");
+  assertEqual(codeCacheStack.length, 1, "Only one module compiled.");
   teardown();
 });
 
@@ -556,12 +448,10 @@ test(function compilerResolveModule() {
     "foo/baz.ts",
     "/root/project"
   );
+  console.log(moduleMetaData);
   assertEqual(moduleMetaData.sourceCode, fooBazTsSource);
-  assertEqual(moduleMetaData.outputCode, fooBazTsOutput);
-  assertEqual(JSON.stringify(moduleMetaData.sourceMap), fooBazTsSourcemap);
-  assert(!moduleMetaData.hasRun);
-  assert(!moduleMetaData.deps);
-  assertEqual(moduleMetaData.exports, {});
+  assertEqual(moduleMetaData.outputCode, null);
+  assertEqual(moduleMetaData.sourceMap, null);
   assertEqual(moduleMetaData.scriptVersion, "1");
 
   assertEqual(codeFetchStack.length, 1, "Only initial module is resolved.");
@@ -585,25 +475,28 @@ test(function compilerResolveModuleUnknownMediaType() {
   teardown();
 });
 
-test(function compilerGetModuleDependencies() {
+test(function compilerRecompileFlag() {
   setup();
-  const bazDeps = ["require", "exports", "./bar.ts"];
-  const bazFactory = () => {
-    throw new Error("Unexpected factory call");
-  };
-  const barDeps = ["require", "exports", "deno"];
-  const barFactory = () => {
-    throw new Error("Unexpected factory call");
-  };
-  mockDepsStack.push(barDeps);
-  mockFactoryStack.push(barFactory);
-  mockDepsStack.push(bazDeps);
-  mockFactoryStack.push(bazFactory);
-  const deps = compilerInstance.getModuleDependencies(
-    "foo/baz.ts",
-    "/root/project"
+  compilerInstance.compile("foo/bar.ts", "/root/project");
+  assertEqual(
+    getEmitOutputStack.length,
+    1,
+    "Expected only a single emitted file."
   );
-  assertEqual(deps, ["/root/project/foo/bar.ts", "/root/project/foo/baz.ts"]);
+  // running compiler against same file should use cached code
+  compilerInstance.compile("foo/bar.ts", "/root/project");
+  assertEqual(
+    getEmitOutputStack.length,
+    1,
+    "Expected only a single emitted file."
+  );
+  compilerInstance.recompile = true;
+  compilerInstance.compile("foo/bar.ts", "/root/project");
+  assertEqual(getEmitOutputStack.length, 2, "Expected two emitted file.");
+  assert(
+    getEmitOutputStack[0] === getEmitOutputStack[1],
+    "Expected same file to be emitted twice."
+  );
   teardown();
 });
 
@@ -634,35 +527,10 @@ test(function compilerGetNewLine() {
 
 test(function compilerGetScriptFileNames() {
   setup();
-  compilerInstance.run("foo/bar.ts", "/root/project");
+  compilerInstance.compile("foo/bar.ts", "/root/project");
   const result = compilerInstance.getScriptFileNames();
   assertEqual(result.length, 1, "Expected only a single filename.");
   assertEqual(result[0], "/root/project/foo/bar.ts");
-  teardown();
-});
-
-test(function compilerRecompileFlag() {
-  setup();
-  compilerInstance.run("foo/bar.ts", "/root/project");
-  assertEqual(
-    getEmitOutputStack.length,
-    1,
-    "Expected only a single emitted file."
-  );
-  // running compiler against same file should use cached code
-  compilerInstance.run("foo/bar.ts", "/root/project");
-  assertEqual(
-    getEmitOutputStack.length,
-    1,
-    "Expected only a single emitted file."
-  );
-  compilerInstance.recompile = true;
-  compilerInstance.run("foo/bar.ts", "/root/project");
-  assertEqual(getEmitOutputStack.length, 2, "Expected two emitted file.");
-  assert(
-    getEmitOutputStack[0] === getEmitOutputStack[1],
-    "Expected same file to be emitted twice."
-  );
   teardown();
 });
 
@@ -675,34 +543,33 @@ test(function compilerGetScriptKind() {
   compilerInstance.resolveModule("foo.txt", "/moduleKinds");
   assertEqual(
     compilerInstance.getScriptKind("/moduleKinds/foo.ts"),
-    ts.ScriptKind.TS
+    ScriptKind.TS
   );
   assertEqual(
     compilerInstance.getScriptKind("/moduleKinds/foo.d.ts"),
-    ts.ScriptKind.TS
+    ScriptKind.TS
   );
   assertEqual(
     compilerInstance.getScriptKind("/moduleKinds/foo.js"),
-    ts.ScriptKind.JS
+    ScriptKind.JS
   );
   assertEqual(
     compilerInstance.getScriptKind("/moduleKinds/foo.json"),
-    ts.ScriptKind.JSON
+    ScriptKind.JSON
   );
   assertEqual(
     compilerInstance.getScriptKind("/moduleKinds/foo.txt"),
-    ts.ScriptKind.JS
+    ScriptKind.JS
   );
   teardown();
 });
 
 test(function compilerGetScriptVersion() {
   setup();
-  const moduleMetaData = compilerInstance.resolveModule(
+  const moduleMetaData = compilerInstance.compile(
     "foo/bar.ts",
     "/root/project"
   );
-  compilerInstance.compile(moduleMetaData);
   assertEqual(
     compilerInstance.getScriptVersion(moduleMetaData.fileName),
     "1",
