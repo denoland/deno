@@ -7,6 +7,20 @@ testPerm({ write: true }, function mkdirSyncSuccess() {
   deno.mkdirSync(path);
   const pathInfo = deno.statSync(path);
   assert(pathInfo.isDirectory());
+  deno.mkdirSync(path);
+});
+
+testPerm({ write: true }, function mkdirSyncFail() {
+  let caughtError = false;
+  const path = deno.makeTempDirSync() + "/file.txt";
+  deno.writeFileSync(path, new Uint8Array(0));
+  try {
+    deno.mkdirSync(path);
+  } catch (err) {
+    caughtError = true;
+    assertEqual(err.kind, deno.ErrorKind.AlreadyExists);
+  }
+  assert(caughtError);
 });
 
 testPerm({ write: true }, function mkdirSyncMode() {
