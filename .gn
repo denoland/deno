@@ -38,7 +38,6 @@ default_args = {
   # https://chromium.googlesource.com/chromium/src/+/master/docs/jumbo.md
   use_jumbo_build = true
 
-  symbol_level = 1
   treat_warnings_as_errors = true
   rust_treat_warnings_as_errors = true
 
