@@ -260,14 +260,13 @@ table MakeTempDirRes {
 
 table Mkdir {
   path: string;
-  mode: uint;
-  // mode specified by https://godoc.org/os#FileMode
+  recursive: bool;
+  mode: uint; // Specified by https://godoc.org/os#FileMode
 }
 
 table Chmod {
   path: string;
-  mode: uint;
-  // mode specified by https://godoc.org/os#FileMode
+  mode: uint; // Specified by https://godoc.org/os#FileMode
 }
 
 table Remove {

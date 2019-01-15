@@ -3,7 +3,7 @@ import { testPerm, assert, assertEqual } from "./test_util.ts";
 import * as deno from "deno";
 
 testPerm({ write: true }, function symlinkSyncSuccess() {
-  const testDir = deno.makeTempDirSync() + "/test-symlink-sync";
+  const testDir = deno.makeTempDirSync();
   const oldname = testDir + "/oldname";
   const newname = testDir + "/newname";
   deno.mkdirSync(oldname);
@@ -48,7 +48,7 @@ testPerm({ write: true }, function symlinkSyncNotImplemented() {
 });
 
 testPerm({ write: true }, async function symlinkSuccess() {
-  const testDir = deno.makeTempDirSync() + "/test-symlink";
+  const testDir = deno.makeTempDirSync();
   const oldname = testDir + "/oldname";
   const newname = testDir + "/newname";
   deno.mkdirSync(oldname);
