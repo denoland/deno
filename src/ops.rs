@@ -1172,9 +1172,6 @@ fn op_repl_readline(
   let prompt = inner.prompt().unwrap().to_owned();
   debug!("op_repl_readline {} {}", rid, prompt);
 
-  // Ignore this clippy warning until this issue is addressed:
-  // https://github.com/rust-lang-nursery/rust-clippy/issues/1684
-  #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
   blocking(base.sync(), move || -> OpResult {
     let line = resources::readline(rid, &prompt)?;
 
@@ -1237,9 +1234,6 @@ fn op_listen(
   assert_eq!(network, "tcp");
   let address = inner.address().unwrap();
 
-  // Ignore this clippy warning until this issue is addressed:
-  // https://github.com/rust-lang-nursery/rust-clippy/issues/1684
-  #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
   Box::new(futures::future::result((move || {
     let addr = resolve_addr(address).wait()?;
 

@@ -312,17 +312,12 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
   // Store the length of the c_argv array in a local variable. We'll pass
   // a pointer to this local variable to deno_set_v8_flags(), which then
   // updates its value.
-  #[cfg_attr(
-    feature = "cargo-clippy",
-    allow(cast_possible_truncation, cast_possible_wrap)
-  )]
   let mut c_argv_len = c_argv.len() as c_int;
   // Let v8 parse the arguments it recognizes and remove them from c_argv.
   unsafe {
     libdeno::deno_set_v8_flags(&mut c_argv_len, c_argv.as_mut_ptr());
   };
   // If c_argv_len was updated we have to change the length of c_argv to match.
-  #[cfg_attr(feature = "cargo-clippy", allow(cast_sign_loss))]
   c_argv.truncate(c_argv_len as usize);
   // Copy the modified arguments list into a proper rust vec and return it.
   c_argv
