@@ -87,11 +87,12 @@ enum Repr {
   Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
   FsFile(tokio::fs::File),
-  // Since TcpListener might be closed while there are pending accept tasks,
-  // we need to track these task so that when the listener is closed,
-  // pending tasks could be notified and die.
-  // The tasks are indexed, so they could be removed when accept completed.
-  TcpListener(tokio::net::TcpListener, HashMap<usize, futures::task::Task>),
+  // Since TcpListener might be closed while there is a pending accept task,
+  // we need to track the task so that when the listener is closed,
+  // this pending task could be notified and die.
+  // Currently TcpListener itself does not take care of this issue.
+  // See: https://github.com/tokio-rs/tokio/issues/846
+  TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
   TcpStream(tokio::net::TcpStream),
   HttpBody(HttpBody),
   Repl(Repl),
@@ -152,7 +153,7 @@ fn inspect_repr(repr: &Repr) -> String {
 
 // Abstract async file interface.
 // Ideally in unix, if Resource represents an OS rid, it will be the same.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Resource {
   pub rid: ResourceId,
 }
@@ -174,22 +175,35 @@ impl Resource {
     }
   }
 
-  /// Track pending tasks with task_id as identifier (for TcpListener resource)
-  /// Insert the task into map for tracking
-  pub fn track_task(&mut self, task_id: usize) {
+  /// Track the current task (for TcpListener resource).
+  /// Throws an error if another task is already tracked.
+  pub fn track_task(&mut self) -> Result<(), std::io::Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    // Only register if is TcpListener
-    if let Some(Repr::TcpListener(_, m)) = table.get_mut(&self.rid) {
-      m.insert(task_id, futures::task::current());
+    // Only track if is TcpListener.
+    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
+      // Currently, we only allow tracking a single accept task for a listener.
+      // This might be changed in the future with multiple workers.
+      // Caveat: TcpListener by itself also only tracks an accept task at a time.
+      // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+      if t.is_some() {
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "Another accept task is ongoing",
+        ));
+      }
+      t.replace(futures::task::current());
     }
+    Ok(())
   }
 
-  /// Remove a task from tracking (for TcpListener resource)
-  /// Happens when the task is done and thus no further tracking is needed
-  pub fn untrack_task(&mut self, task_id: usize) {
+  /// Stop tracking a task (for TcpListener resource).
+  /// Happens when the task is done and thus no further tracking is needed.
+  pub fn untrack_task(&mut self) {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    if let Some(Repr::TcpListener(_, m)) = table.get_mut(&self.rid) {
-      m.remove(&task_id);
+    // Only untrack if is TcpListener.
+    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
+      assert!(t.is_some());
+      t.take();
     }
   }
 
@@ -200,11 +214,9 @@ impl Resource {
     let r = table.remove(&self.rid);
     assert!(r.is_some());
     // If TcpListener, we must kill all pending accepts!
-    if let Repr::TcpListener(_, m) = r.unwrap() {
-      // Call notify on each task, so that they would error out
-      for (_, t) in m {
-        t.notify();
-      }
+    if let Repr::TcpListener(_, Some(t)) = r.unwrap() {
+      // Call notify on the tracked task, so that they would error out.
+      t.notify();
     }
   }
 
@@ -297,7 +309,7 @@ pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
 pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::TcpListener(listener, HashMap::new()));
+  let r = tg.insert(rid, Repr::TcpListener(listener, None));
   assert!(r.is_none());
   Resource { rid }
 }
