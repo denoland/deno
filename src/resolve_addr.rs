@@ -85,7 +85,7 @@ fn split<'a>(address: &'a str) -> Option<(&'a str, u16)> {
       addr
     };
 
-    let p = p.trim_left_matches(':');
+    let p = p.trim_start_matches(':');
     match p.parse::<u16>() {
       Err(_) => None,
       Ok(port) => Some((addr, port)),
