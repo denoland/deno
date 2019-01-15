@@ -29,9 +29,9 @@ pub struct CodeFetchOutput {
 }
 
 impl CodeFetchOutput {
-  pub fn js_source<'a>(&'a self) -> String {
+  pub fn js_source(&self) -> String {
     if self.media_type == msg::MediaType::Json {
-      return String::from(format!("export default {};", self.source_code));
+      return format!("export default {};", self.source_code);
     }
     match self.maybe_output_code {
       None => self.source_code.clone(),

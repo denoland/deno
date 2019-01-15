@@ -71,7 +71,7 @@ impl Repl {
     repl
   }
 
-  fn load_history(&mut self) -> () {
+  fn load_history(&mut self) {
     debug!("Loading REPL history: {:?}", self.history_file);
     self
       .editor

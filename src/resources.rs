@@ -452,7 +452,7 @@ pub fn eager_read<T: AsMut<[u8]>>(
   resource: Resource,
   mut buf: T,
 ) -> EagerRead<Resource, T> {
-  Either::A(tokio_io::io::read(resource, buf)).into()
+  Either::A(tokio_io::io::read(resource, buf))
 }
 
 #[cfg(not(unix))]
@@ -460,12 +460,12 @@ pub fn eager_write<T: AsRef<[u8]>>(
   resource: Resource,
   buf: T,
 ) -> EagerWrite<Resource, T> {
-  Either::A(tokio_write::write(resource, buf)).into()
+  Either::A(tokio_write::write(resource, buf))
 }
 
 #[cfg(not(unix))]
 pub fn eager_accept(resource: Resource) -> EagerAccept {
-  Either::A(tokio_util::accept(resource)).into()
+  Either::A(tokio_util::accept(resource))
 }
 
 // This is an optimization that Tokio should do.

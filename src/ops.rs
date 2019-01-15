@@ -1003,7 +1003,6 @@ fn op_read_dir(
             path: Some(path),
             mode: get_mode(&metadata.permissions()),
             has_mode: cfg!(target_family = "unix"),
-            ..Default::default()
           },
         )
       }).collect();

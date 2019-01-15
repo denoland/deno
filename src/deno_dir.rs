@@ -265,10 +265,10 @@ impl DenoDir {
     if let Some(output) = maybe_remote_source {
       return Ok(output);
     }
-    return Err(DenoError::from(std::io::Error::new(
+    Err(DenoError::from(std::io::Error::new(
       std::io::ErrorKind::NotFound,
       format!("cannot find remote file '{}'", filename),
-    )));
+    )))
   }
 
   pub fn code_fetch(
@@ -371,7 +371,7 @@ impl DenoDir {
       specifier, referrer
     );
 
-    if referrer.starts_with(".") {
+    if referrer.starts_with('.') {
       let cwd = std::env::current_dir().unwrap();
       let referrer_path = cwd.join(referrer);
       referrer = referrer_path.to_str().unwrap().to_string() + "/";
@@ -423,16 +423,10 @@ impl DenoDir {
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<String> {
     match self.code_fetch(script_name, ".") {
-      Err(_e) => {
-        return None;
-      }
+      Err(_e) => None,
       Ok(out) => match out.maybe_source_map {
-        None => {
-          return None;
-        }
-        Some(source_map) => {
-          return Some(source_map);
-        }
+        None => None,
+        Some(source_map) => Some(source_map),
       },
     }
   }
@@ -941,15 +935,9 @@ mod tests {
     let test_cases = [
       (
         "./subdir/print_hello.ts",
-        add_root!(
-          "/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"
-        ),
-        add_root!(
-          "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
-        ),
-        add_root!(
-          "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
-        ),
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
       ),
       (
         "testdata/001_hello.js",
