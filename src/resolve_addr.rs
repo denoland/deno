@@ -60,7 +60,7 @@ impl Future for ResolveAddrFuture {
         // I absolutely despise the .to_socket_addrs() API.
         let r = addr_port_pair
           .to_socket_addrs()
-          .map_err(|e| ResolveAddrError::Resolution(e));
+          .map_err(ResolveAddrError::Resolution);
 
         r.and_then(|mut iter| match iter.next() {
           Some(a) => Ok(Async::Ready(a)),
@@ -71,11 +71,11 @@ impl Future for ResolveAddrFuture {
   }
 }
 
-fn split<'a>(address: &'a str) -> Option<(&'a str, u16)> {
-  address.rfind(":").and_then(|i| {
+fn split(address: &str) -> Option<(&str, u16)> {
+  address.rfind(':').and_then(|i| {
     let (a, p) = address.split_at(i);
     // Default to localhost if given just the port. Example: ":80"
-    let addr = if a.len() > 0 { a } else { "0.0.0.0" };
+    let addr = if !a.is_empty() { a } else { "0.0.0.0" };
     // If this looks like an ipv6 IP address. Example: "[2001:db8::1]"
     // Then we remove the brackets.
     let addr = if addr.starts_with('[') && addr.ends_with(']') {

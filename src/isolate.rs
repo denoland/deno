@@ -89,7 +89,7 @@ impl IsolateState {
       permissions: DenoPermissions::new(&flags),
       flags,
       metrics: Metrics::default(),
-      worker_channels: worker_channels.map(|wc| Mutex::new(wc)),
+      worker_channels: worker_channels.map(Mutex::new),
     }
   }
 
@@ -212,7 +212,7 @@ impl Isolate {
 
   pub fn last_exception(&self) -> Option<JSError> {
     let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
-    if ptr == std::ptr::null() {
+    if ptr.is_null() {
       None
     } else {
       let cstr = unsafe { CStr::from_ptr(ptr) };
@@ -220,7 +220,7 @@ impl Isolate {
       debug!("v8_exception\n{}\n", v8_exception);
       let js_error = JSError::from_v8_exception(v8_exception).unwrap();
       let js_error_mapped = js_error.apply_source_map(&self.state.dir);
-      return Some(js_error_mapped);
+      Some(js_error_mapped)
     }
   }
 
