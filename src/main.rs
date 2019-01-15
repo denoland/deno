@@ -1,25 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use dirs;
-use flatbuffers;
-use getopts;
-use http;
-use hyper;
-use hyper_rustls;
-use libc;
-use rand;
-use remove_dir_all;
-use ring;
-use rustyline;
-use source_map_mappings;
-use tempfile;
-use tokio;
-use tokio_executor;
-use tokio_fs;
-use tokio_io;
-use tokio_process;
-use tokio_threadpool;
-use url;
-
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]

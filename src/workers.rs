@@ -83,9 +83,7 @@ pub fn spawn(
       resource.close();
     }).unwrap();
 
-  let resource = c.wait().unwrap();
-
-  resource
+  c.wait().unwrap()
 }
 
 #[cfg(test)]
