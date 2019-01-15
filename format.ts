@@ -30,7 +30,7 @@ async function main() {
     args: [
       "bash",
       "-c",
-      "prettier --write *.ts */*.ts */**/*.ts *.md */**/*.md"
+      "prettier --write *.ts */*.ts */**/*.ts *.md */*.md */**/*.md"
     ]
   });
   const s = await prettier.status();
