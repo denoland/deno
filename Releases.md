@@ -6,6 +6,15 @@ https://github.com/denoland/deno/releases
 We also have a one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.2.7 / 2019.01.14
+
+- Use rust 2018 edition
+- Native ES modules (#1460 #1492 #1512 #1514)
+- Properly parse network addresses (#1515)
+- Added rid to Conn interface (#1513)
+- Prevent segfault when eval throws an error (#1411)
+- Add --allow-all flag (#1482)
+
 ### v0.2.6 / 2019.01.06
 
 - Implement console.groupCollapsed (#1452)
