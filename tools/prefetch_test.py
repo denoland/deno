@@ -11,7 +11,11 @@ def prefetch_test(deno_exe):
     sys.stdout.write("prefetch_test...")
     sys.stdout.flush()
 
-    deno_dir = tempfile.mkdtemp()
+    # On Windows, set the base directory that mkdtemp() uses explicitly. If not,
+    # it'll use the short (8.3) path to the temp dir, which triggers the error
+    # 'TS5009: Cannot find the common subdirectory path for the input files.'
+    temp_dir = os.environ["TEMP"] if os.name == 'nt' else None
+    deno_dir = tempfile.mkdtemp(dir=temp_dir)
     try:
         t = os.path.join(tests_path, "006_url_imports.ts")
         output = run_output([deno_exe, "--prefetch", t],
