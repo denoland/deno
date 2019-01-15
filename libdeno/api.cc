@@ -127,7 +127,7 @@ int deno_execute(Deno* d_, void* user_data, const char* js_filename,
 }
 
 int deno_execute_mod(Deno* d_, void* user_data, const char* js_filename,
-                     const char* js_source) {
+                     const char* js_source, int resolve_only) {
   auto* d = unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
   auto* isolate = d->isolate_;
@@ -136,7 +136,8 @@ int deno_execute_mod(Deno* d_, void* user_data, const char* js_filename,
   v8::HandleScope handle_scope(isolate);
   auto context = d->context_.Get(d->isolate_);
   CHECK(!context.IsEmpty());
-  return deno::ExecuteMod(context, js_filename, js_source) ? 1 : 0;
+  return deno::ExecuteMod(context, js_filename, js_source, resolve_only) ? 1
+                                                                         : 0;
 }
 
 int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {

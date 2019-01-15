@@ -12,6 +12,7 @@ from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test
 from repl_test import repl_tests
+from prefetch_test import prefetch_test
 import subprocess
 import http_server
 
@@ -58,6 +59,8 @@ def main(argv):
     run([test_rs])
 
     unit_tests(deno_exe)
+
+    prefetch_test(deno_exe)
 
     integration_tests(deno_exe)
 

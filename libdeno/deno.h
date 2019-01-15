@@ -75,8 +75,11 @@ int deno_execute(Deno* d, void* user_data, const char* js_filename,
 // when instantiating the Deno object.
 // Return value: 0 = fail, 1 = success
 // Get error text with deno_last_exception().
+// If resolve_only is 0, compile and evaluate the module.
+// If resolve_only is 1, compile and collect dependencies of the module
+// without running the code.
 int deno_execute_mod(Deno* d, void* user_data, const char* js_filename,
-                     const char* js_source);
+                     const char* js_source, int resolve_only);
 
 // deno_respond sends up to one message back for every deno_recv_cb made.
 //
