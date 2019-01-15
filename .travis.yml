@@ -20,7 +20,8 @@ cache:
   - "$RUSTUP_HOME"
   - $CARGO_HOME/registry/index/
   - $CARGO_HOME/registry/cache/
-  - prebuilt/
+  - prebuilt/mac
+  - prebuilt/linux64
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
   - third_party/v8/third_party/llvm-build/
 
