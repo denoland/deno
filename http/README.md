@@ -1,6 +1,8 @@
-# net
+# http
 
-Usage:
+A framework for creating HTTP/HTTPS server.
+
+## Example
 
 ```typescript
 import { serve } from "https://deno.land/x/http/mod.ts";
