@@ -254,7 +254,11 @@ impl Isolate {
   }
 
   /// Executes the provided JavaScript module.
-  pub fn execute_mod(&self, js_filename: &str) -> Result<(), JSError> {
+  pub fn execute_mod(
+    &self,
+    js_filename: &str,
+    is_prefetch: bool,
+  ) -> Result<(), JSError> {
     let out =
       code_fetch_and_maybe_compile(&self.state, js_filename, ".").unwrap();
 
@@ -271,6 +275,7 @@ impl Isolate {
         self.as_raw_ptr(),
         filename_ptr,
         js_source_ptr,
+        if is_prefetch { 1 } else { 0 },
       )
     };
     if r == 0 {
@@ -662,7 +667,9 @@ mod tests {
     let snapshot = libdeno::deno_buf::empty();
     let isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
-      isolate.execute_mod(filename).expect("execute_mod error");
+      isolate
+        .execute_mod(filename, false)
+        .expect("execute_mod error");
       isolate.event_loop().ok();
     });
   }
