@@ -135,26 +135,6 @@ testPerm({ net: true }, async function fetchInitBlobBody() {
   assert(response.headers.get("content-type").startsWith("text/javascript"));
 });
 
-// TODO(ry) The following tests work but are flaky. There's a race condition
-// somewhere. Here is what one of these flaky failures looks like:
-//
-// test fetchPostBodyString_permW0N1E0R0
-// assertEqual failed. actual =   expected = POST /blah HTTP/1.1
-// hello: World
-// foo: Bar
-// host: 127.0.0.1:4502
-// content-length: 11
-// hello world
-// Error: actual:  expected: POST /blah HTTP/1.1
-// hello: World
-// foo: Bar
-// host: 127.0.0.1:4502
-// content-length: 11
-// hello world
-//     at Object.assertEqual (file:///C:/deno/js/testing/util.ts:29:11)
-//     at fetchPostBodyString (file
-
-/* 
 function bufferServer(addr: string): deno.Buffer {
   const listener = deno.listen("tcp", addr);
   const buf = new deno.Buffer();
@@ -187,6 +167,7 @@ testPerm({ net: true }, async function fetchRequest() {
   });
   assertEqual(response.status, 404);
   assertEqual(response.headers.get("Content-Length"), "2");
+  await response.blob();
 
   const actual = new TextDecoder().decode(buf.bytes());
   const expected = [
@@ -209,12 +190,14 @@ testPerm({ net: true }, async function fetchPostBodyString() {
   });
   assertEqual(response.status, 404);
   assertEqual(response.headers.get("Content-Length"), "2");
+  await response.blob();
 
   const actual = new TextDecoder().decode(buf.bytes());
   const expected = [
     "POST /blah HTTP/1.1\r\n",
     "hello: World\r\n",
     "foo: Bar\r\n",
+    "content-type: text/plain;charset=UTF-8\r\n",
     `host: ${addr}\r\n`,
     `content-length: ${body.length}\r\n\r\n`,
     body
@@ -234,6 +217,7 @@ testPerm({ net: true }, async function fetchPostBodyTypedArray() {
   });
   assertEqual(response.status, 404);
   assertEqual(response.headers.get("Content-Length"), "2");
+  await response.blob();
 
   const actual = new TextDecoder().decode(buf.bytes());
   const expected = [
@@ -246,4 +230,3 @@ testPerm({ net: true }, async function fetchPostBodyTypedArray() {
   ].join("");
   assertEqual(actual, expected);
 });
-*/
