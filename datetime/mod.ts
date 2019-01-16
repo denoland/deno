@@ -57,13 +57,13 @@ export function parseDateTime(
     const datePattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
     [, y, m, d, ho, mi] = datePattern.exec(datetimeStr);
   } else if (format === "hh:mm mm-dd-yyyy") {
-    const datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
+    const datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
     [, ho, mi, m, d, y] = datePattern.exec(datetimeStr);
   } else if (format === "hh:mm dd-mm-yyyy") {
-    const datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
+    const datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
     [, ho, mi, d, m, y] = datePattern.exec(datetimeStr);
   } else if (format === "hh:mm yyyy-mm-dd") {
-    const datePattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
+    const datePattern = /^(\d{2}):(\d{2}) (\d{4})-(\d{2})-(\d{2})$/;
     [, ho, mi, y, m, d] = datePattern.exec(datetimeStr);
   } else {
     throw new Error("Invalid datetime format!");
