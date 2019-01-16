@@ -153,13 +153,4 @@ mod tests {
     let actual = resolve_addr("[2001:db8::1]:8080").wait().unwrap();
     assert_eq!(actual, expected);
   }
-
-  #[test]
-  fn resolve_addr_err() {
-    let r = resolve_addr("not-a-real-domain.blahblah:8080").wait();
-    match r {
-      Err(ResolveAddrError::Resolution(_)) => {} // expected
-      _ => assert!(false),
-    }
-  }
 }
