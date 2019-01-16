@@ -8,6 +8,42 @@ testPerm({ net: true }, function netListenClose() {
   listener.close();
 });
 
+testPerm({ net: true }, async function netCloseWhileAccept() {
+  const listener = deno.listen("tcp", ":4501");
+  const p = listener.accept();
+  listener.close();
+  let err;
+  try {
+    await p;
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertEqual(err.kind, deno.ErrorKind.Other);
+  assertEqual(err.message, "Listener has been closed");
+});
+
+testPerm({ net: true }, async function netConcurrentAccept() {
+  const listener = deno.listen("tcp", ":4502");
+  let err;
+  // Consume this accept error
+  // (since it would still be waiting when listener.close is called)
+  listener.accept().catch(e => {
+    assertEqual(e.kind, deno.ErrorKind.Other);
+    assertEqual(e.message, "Listener has been closed");
+  });
+  const p1 = listener.accept();
+  try {
+    await p1;
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertEqual(err.kind, deno.ErrorKind.Other);
+  assertEqual(err.message, "Another accept task is ongoing");
+  listener.close();
+});
+
 testPerm({ net: true }, async function netDialListen() {
   const listener = deno.listen("tcp", ":4500");
   listener.accept().then(async conn => {
