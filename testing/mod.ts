@@ -29,11 +29,95 @@ export function assertEqual(actual: unknown, expected: unknown, msg?: string) {
   }
 }
 
-export function assert(expr: boolean, msg = "") {
+interface Constructor {
+  new (...args: any[]): any;
+}
+
+interface Assert {
+  /** Make an assertion, if not true, then throw. */
+  (expr: boolean, msg?: string): void;
+
+  /** Make an assertion that `actual` and `expected` are equal, deeply. If not
+   * deeply equal, then throw.
+   */
+  equal(actual: unknown, expected: unknown, msg?: string): void;
+
+  /** Make an assertion that `actual` and `expected` are strictly equal.  If
+   * not then throw.
+   */
+  strictEqual(actual: unknown, expected: unknown, msg?: string): void;
+
+  /** Executes a function, expecting it to throw.  If it does not, then it
+   * throws.  An error class and a string that should be included in the
+   * error message can also be asserted.
+   */
+  throws(fn: () => void, errorClass?: Constructor, msgIncludes?: string): void;
+}
+
+export const assert = function assert(expr: boolean, msg = "") {
   if (!expr) {
     throw new Error(msg);
   }
-}
+} as Assert;
+
+assert.equal = assertEqual;
+assert.strictEqual = function strictEqual(actual, expected, msg = "") {
+  if (actual !== expected) {
+    let actualString: string;
+    let expectedString: string;
+    try {
+      actualString = String(actual);
+    } catch (e) {
+      actualString = "[Cannot display]";
+    }
+    try {
+      expectedString = String(expected);
+    } catch (e) {
+      expectedString = "[Cannot display]";
+    }
+    console.error(
+      "strictEqual failed. actual =",
+      actualString,
+      "expected =",
+      expectedString
+    );
+    if (!msg) {
+      msg = `actual: ${actualString} expected: ${expectedString}`;
+    }
+    throw new Error(msg);
+  }
+};
+assert.throws = function throws(
+  fn,
+  ErrorClass: Constructor,
+  msgIncludes = "",
+  msg = ""
+) {
+  let doesThrow = false;
+  try {
+    fn();
+  } catch (e) {
+    if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
+      msg = `Expected error to be instance of "${ErrorClass.name}"${
+        msg ? `: ${msg}` : "."
+      }`;
+      throw new Error(msg);
+    }
+    if (msgIncludes) {
+      if (!e.message.includes(msgIncludes)) {
+        msg = `Expected error message to include "${msgIncludes}", but got "${
+          e.message
+        }"${msg ? `: ${msg}` : "."}`;
+        throw new Error(msg);
+      }
+    }
+    doesThrow = true;
+  }
+  if (!doesThrow) {
+    msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
+    throw new Error(msg);
+  }
+};
 
 export function equal(c: unknown, d: unknown): boolean {
   const seen = new Map();
