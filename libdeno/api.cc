@@ -9,6 +9,7 @@
 #include "third_party/v8/src/base/logging.h"
 
 #include "deno.h"
+#include "exceptions.h"
 #include "internal.h"
 
 extern "C" {
@@ -80,8 +81,7 @@ deno::DenoIsolate* unwrap(Deno* d_) {
 deno_buf deno_get_snapshot(Deno* d_) {
   auto* d = unwrap(d_);
   CHECK_NE(d->snapshot_creator_, nullptr);
-  CHECK(d->resolve_module_.IsEmpty());
-  d->ClearModules();
+  d->module_set_.Reset();
   d->context_.Reset();
 
   auto blob = d->snapshot_creator_->CreateBlob(
@@ -124,20 +124,6 @@ int deno_execute(Deno* d_, void* user_data, const char* js_filename,
   auto context = d->context_.Get(d->isolate_);
   CHECK(!context.IsEmpty());
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
-}
-
-int deno_execute_mod(Deno* d_, void* user_data, const char* js_filename,
-                     const char* js_source, int resolve_only) {
-  auto* d = unwrap(d_);
-  deno::UserDataScope user_data_scope(d, user_data);
-  auto* isolate = d->isolate_;
-  v8::Locker locker(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  auto context = d->context_.Get(d->isolate_);
-  CHECK(!context.IsEmpty());
-  return deno::ExecuteMod(context, js_filename, js_source, resolve_only) ? 1
-                                                                         : 0;
 }
 
 int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
@@ -202,17 +188,47 @@ void deno_check_promise_errors(Deno* d_) {
 }
 
 void deno_delete(Deno* d_) {
-  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
+  auto* d = unwrap(d_);
   delete d;
 }
 
 void deno_terminate_execution(Deno* d_) {
-  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
+  auto* d = unwrap(d_);
   d->isolate_->TerminateExecution();
 }
 
-void deno_resolve_ok(Deno* d_, const char* filename, const char* source) {
-  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
-  d->ResolveOk(filename, source);
+#define SCOPE(d)                                 \
+  v8::Locker locker(d->isolate_);                \
+  v8::Isolate::Scope isolate_scope(d->isolate_); \
+  v8::HandleScope handle_scope(d->isolate_);     \
+  auto context = d->context_.Get(d->isolate_);   \
+  v8::Context::Scope context_scope(context)
+
+deno_mod deno_mod_new(Deno* d_, void* user_data, const char* filename,
+                      const char* source) {
+  auto* d = unwrap(d_);
+  SCOPE(d);
+  deno::UserDataScope user_data_scope(d, user_data);
+  return d->module_set_.Create(context, user_data, filename, source);
+}
+
+deno_mod_state deno_mod_get_state(Deno* d_, deno_mod id) {
+  auto* d = unwrap(d_);
+  SCOPE(d);
+  return d->module_set_.State(context, id);
+}
+
+void deno_resolve(Deno* d_, uint32_t resolve_id, deno_mod child) {
+  auto* d = unwrap(d_);
+  SCOPE(d);
+  d->module_set_.Resolve(context, resolve_id, child);
+}
+
+void deno_mod_evaluate(Deno* d_, void* user_data, deno_mod id) {
+  auto* d = unwrap(d_);
+  SCOPE(d);
+  // CHECK_EQ(d->module_set_.State(context, id), DENO_MOD_INSTANCIATED);
+  deno::UserDataScope user_data_scope(d, user_data);
+  d->module_set_.Evaluate(context, user_data, id);
 }
 }

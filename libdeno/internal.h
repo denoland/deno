@@ -5,10 +5,13 @@
 #include <map>
 #include <string>
 #include "deno.h"
+#include "modules.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
 
 namespace deno {
+
+class Mod;
 
 // deno_s = Wrapped Isolate.
 class DenoIsolate {
@@ -20,9 +23,9 @@ class DenoIsolate {
         snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
         recv_cb_(config.recv_cb),
-        resolve_cb_(config.resolve_cb),
         next_req_id_(0),
-        user_data_(nullptr) {
+        user_data_(nullptr),
+        module_set_(config.resolve_cb) {
     array_buffer_allocator_ = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (config.load_snapshot.data_ptr) {
       snapshot_.data =
@@ -45,11 +48,6 @@ class DenoIsolate {
   }
 
   void AddIsolate(v8::Isolate* isolate);
-  void RegisterModule(const char* filename, v8::Local<v8::Module> module);
-  void ResolveOk(const char* filename, const char* source);
-  void ClearModules();
-
-  v8::Local<v8::Object> GetBuiltinModules();
 
   v8::Isolate* isolate_;
   v8::ArrayBuffer::Allocator* array_buffer_allocator_;
@@ -58,17 +56,8 @@ class DenoIsolate {
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
   deno_recv_cb recv_cb_;
-  deno_resolve_cb resolve_cb_;
   int32_t next_req_id_;
   void* user_data_;
-
-  // identity hash -> filename, module (avoid hash collision)
-  std::multimap<int, std::pair<std::string, v8::Persistent<v8::Module>>>
-      module_info_map_;
-  // filename -> Module
-  std::map<std::string, v8::Persistent<v8::Module>> module_map_;
-  // Set by deno_resolve_ok
-  v8::Persistent<v8::Module> resolve_module_;
 
   v8::Persistent<v8::Object> builtin_modules_;
 
@@ -80,6 +69,8 @@ class DenoIsolate {
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Persistent<v8::ArrayBuffer> shared_ab_;
+
+  ModuleSet module_set_;
 };
 
 class UserDataScope {
@@ -135,9 +126,6 @@ Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context);
 
-void HandleException(v8::Local<v8::Context> context,
-                     v8::Local<v8::Value> exception);
-
 void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
                                v8::StartupData payload, void* data);
 
@@ -150,8 +138,6 @@ void DeleteDataRef(DenoIsolate* d, int32_t req_id);
 
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
              const char* js_source);
-bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,
-                const char* js_source, bool resolve_only);
 
 }  // namespace deno
 

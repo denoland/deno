@@ -38,9 +38,7 @@ impl CodeFetchOutput {
       Some(ref output_code) => output_code.clone(),
     }
   }
-}
 
-impl CodeFetchOutput {
   // TODO Use serde_derive? Use flatbuffers?
   fn from_json(json_str: &str) -> Option<Self> {
     match serde_json::from_str::<serde_json::Value>(json_str) {

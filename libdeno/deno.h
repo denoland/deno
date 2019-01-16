@@ -19,21 +19,26 @@ typedef struct {
 
 typedef struct deno_s Deno;
 
+// An "EcmaScript" module id. 0 is a bad value.
+typedef int deno_mod;
+
 // A callback to receive a message from a libdeno.send() javascript call.
 // control_buf is valid for only for the lifetime of this callback.
 // data_buf is valid until deno_respond() is called.
 typedef void (*deno_recv_cb)(void* user_data, int32_t req_id,
                              deno_buf control_buf, deno_buf data_buf);
 
-// A callback to implement ES Module imports. User must call deno_resolve_ok()
-// at most once during deno_resolve_cb. If deno_resolve_ok() is not called, the
-// specifier is considered invalid and will issue an error in JS. The reason
-// deno_resolve_cb does not return deno_module is to avoid unnecessary heap
-// allocations.
-typedef void (*deno_resolve_cb)(void* user_data, const char* specifier,
-                                const char* referrer);
+typedef uint32_t deno_resolve_id;
 
-void deno_resolve_ok(Deno* d, const char* filename, const char* source);
+// Called during deno_mod_new for static imports.
+// Called during deno_mod_evaluate for dynamic imports.
+// is_dynamic: 0 = static import, 1 = dynamic import.
+//
+// The receiver must call deno_resolve() for each resolve_id received in this
+// way. If a resolution error occurred, call deno_resolve() with child_id = 0.
+typedef void (*deno_resolve_cb)(void* user_data, deno_resolve_id resolve_id,
+                                int is_dynamic, const char* specifier,
+                                const char* referrer, deno_mod referrer_id);
 
 void deno_init();
 const char* deno_v8_version();
@@ -44,7 +49,7 @@ typedef struct {
   deno_buf load_snapshot;      // Optionally: A deno_buf from deno_get_snapshot.
   deno_buf shared;             // Shared buffer to be mapped to libdeno.shared
   deno_recv_cb recv_cb;        // Maps to libdeno.send() calls.
-  deno_resolve_cb resolve_cb;  // Each import calls this.
+  deno_resolve_cb resolve_cb;  // Implement to use ES modules.
 } deno_config;
 
 // Create a new deno isolate.
@@ -70,16 +75,6 @@ void deno_delete(Deno* d);
 // deno_respond (as deno_last_exception is now).
 int deno_execute(Deno* d, void* user_data, const char* js_filename,
                  const char* js_source);
-
-// Compile and execute an ES module. Caller must have provided a deno_resolve_cb
-// when instantiating the Deno object.
-// Return value: 0 = fail, 1 = success
-// Get error text with deno_last_exception().
-// If resolve_only is 0, compile and evaluate the module.
-// If resolve_only is 1, compile and collect dependencies of the module
-// without running the code.
-int deno_execute_mod(Deno* d, void* user_data, const char* js_filename,
-                     const char* js_source, int resolve_only);
 
 // deno_respond sends up to one message back for every deno_recv_cb made.
 //
@@ -112,6 +107,43 @@ void deno_check_promise_errors(Deno* d);
 const char* deno_last_exception(Deno* d);
 
 void deno_terminate_execution(Deno* d);
+
+// Returns non-zero deno_mod module id on success.
+// Re-entrant: deno_resolve_cb will be called during this invocation.
+// On failure, get error text with deno_last_exception().
+deno_mod deno_mod_new(Deno* d, void* user_data, const char* filename,
+                      const char* source);
+
+typedef enum {
+  DENO_MOD_ERROR = 0,
+  DENO_MOD_UNINSTANCIATED = 1,
+  DENO_MOD_INSTANCIATED = 2,
+  DENO_MOD_EVALUATED = 3,
+} deno_mod_state;
+deno_mod_state deno_mod_get_state(Deno* d, deno_mod id);
+
+// The module must have state DENO_MOD_INSTANCIATED.
+// Only call this on the main module.
+// Child modules only should have only deno_mod_instantiate() called on them.
+// The state of the module  will be DENO_MOD_ERROR or DENO_MOD_EVALUATED.
+// Get error text with deno_last_exception().
+//
+// This function is re-entrant. That is, it may issue resolve_cb callbacks
+// during its invocation for dynamic module imports.
+void deno_mod_evaluate(Deno* d, void* user_data, deno_mod id);
+
+// Call this for every invocation of deno_resolve_cb with the same resolve_id.
+//
+// child should be the output of a call to deno_mod_new().
+//
+// This function is re-entrant. That is, it may issue resolve_cb callbacks
+// during its invocation.
+//
+// deno_resolve() is not thread safe. It must be called on the V8 thread.
+//
+// The state of the referrer may change after this call.
+// Get error text with deno_last_exception().
+void deno_resolve(Deno* d, deno_resolve_id resolve_id, deno_mod child);
 
 #ifdef __cplusplus
 }  // extern "C"

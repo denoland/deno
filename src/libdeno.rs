@@ -111,11 +111,29 @@ type deno_recv_cb = unsafe extern "C" fn(
 );
 
 #[allow(non_camel_case_types)]
+pub type deno_mod = i32;
+
+#[allow(non_camel_case_types)]
+pub type deno_resolve_id = u32;
+
+#[allow(non_camel_case_types)]
 type deno_resolve_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
+  resolve_id: deno_resolve_id,
+  is_dynamic: bool,
   specifier: *const c_char,
   referrer: *const c_char,
+  referrer_id: deno_mod,
 );
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+pub enum deno_mod_state {
+  DENO_MOD_ERROR = 0,
+  DENO_MOD_UNINSTANCIATED = 1,
+  DENO_MOD_INSTANCIATED = 2,
+  DENO_MOD_EVALUATED = 3,
+}
 
 #[repr(C)]
 pub struct deno_config {
@@ -146,16 +164,25 @@ extern "C" {
     js_filename: *const c_char,
     js_source: *const c_char,
   ) -> c_int;
-  pub fn deno_execute_mod(
+
+  pub fn deno_mod_new(
     i: *const isolate,
     user_data: *const c_void,
     js_filename: *const c_char,
     js_source: *const c_char,
-    resolve_only: i32,
-  ) -> c_int;
-  pub fn deno_resolve_ok(
+  ) -> deno_mod;
+
+  pub fn deno_mod_get_state(i: *const isolate, id: deno_mod) -> deno_mod_state;
+
+  pub fn deno_resolve(
     i: *const isolate,
-    js_filename: *const c_char,
-    js_source: *const c_char,
+    resolve_id: deno_resolve_id,
+    child_id: deno_mod,
+  );
+
+  pub fn deno_mod_evaluate(
+    i: *const isolate,
+    user_data: *const c_void,
+    id: deno_mod,
   );
 }

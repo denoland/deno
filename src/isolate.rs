@@ -21,6 +21,7 @@ use libc::c_char;
 use libc::c_void;
 use std;
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -55,6 +56,7 @@ pub struct Isolate {
   tx: mpsc::Sender<(i32, Buf)>,
   ntasks: Cell<i32>,
   timeout_due: Cell<Option<Instant>>,
+  modules_by_name: HashMap<String, libdeno::deno_mod>,
   pub state: Arc<IsolateState>,
 }
 
@@ -187,6 +189,7 @@ impl Isolate {
       ntasks: Cell::new(0),
       timeout_due: Cell::new(None),
       state,
+      modules_by_name: HashMap::new(),
     }
   }
 
@@ -196,9 +199,9 @@ impl Isolate {
   }
 
   #[inline]
-  pub unsafe fn from_raw_ptr<'a>(ptr: *const c_void) -> &'a Self {
-    let ptr = ptr as *const _;
-    &*ptr
+  pub unsafe fn from_raw_ptr<'a>(ptr: *mut c_void) -> &'a mut Self {
+    let ptr = ptr as *mut Self;
+    &mut *ptr
   }
 
   #[inline]
@@ -254,35 +257,70 @@ impl Isolate {
     Ok(())
   }
 
+  pub fn mod_new(
+    &mut self,
+    js_filename: &str,
+    js_source: &str,
+  ) -> Result<libdeno::deno_mod, JSError> {
+    // TODO Use self.modules_by_name.entry(js_filename).or_insert_with()
+    let key = String::from(js_filename);
+    let id: libdeno::deno_mod = match self.modules_by_name.get(&key) {
+      Some(id) => *id,
+      None => {
+        debug!("deno_mod_new {}", js_filename);
+
+        let filename = CString::new(js_filename.clone()).unwrap();
+        let filename_ptr = filename.as_ptr() as *const i8;
+
+        let js_source = CString::new(js_source.clone()).unwrap();
+        let js_source_ptr = js_source.as_ptr() as *const i8;
+
+        let id = unsafe {
+          libdeno::deno_mod_new(
+            self.libdeno_isolate,
+            self.as_raw_ptr(),
+            filename_ptr,
+            js_source_ptr,
+          )
+        };
+        self.modules_by_name.insert(key, id);
+        id
+      }
+    };
+
+    if id == 0 {
+      let js_error = self.last_exception().unwrap();
+      return Err(js_error);
+    }
+
+    Ok(id)
+  }
+
   /// Executes the provided JavaScript module.
   pub fn execute_mod(
-    &self,
+    &mut self,
     js_filename: &str,
     is_prefetch: bool,
   ) -> Result<(), JSError> {
     let out =
       code_fetch_and_maybe_compile(&self.state, js_filename, ".").unwrap();
 
-    let filename = CString::new(out.filename.clone()).unwrap();
-    let filename_ptr = filename.as_ptr() as *const i8;
+    let id = self.mod_new(&out.filename, &out.js_source())?;
 
-    let js_source = CString::new(out.js_source().clone()).unwrap();
-    let js_source = CString::new(js_source).unwrap();
-    let js_source_ptr = js_source.as_ptr() as *const i8;
+    assert!(id != 0);
 
-    let r = unsafe {
-      libdeno::deno_execute_mod(
-        self.libdeno_isolate,
-        self.as_raw_ptr(),
-        filename_ptr,
-        js_source_ptr,
-        if is_prefetch { 1 } else { 0 },
-      )
+    if is_prefetch {
+      return Ok(());
+    }
+
+    unsafe {
+      libdeno::deno_mod_evaluate(self.libdeno_isolate, self.as_raw_ptr(), id)
     };
-    if r == 0 {
-      let js_error = self.last_exception().unwrap();
+
+    if let Some(js_error) = self.last_exception() {
       return Err(js_error);
     }
+
     Ok(())
   }
 
@@ -392,9 +430,13 @@ fn code_fetch_and_maybe_compile(
 
 extern "C" fn resolve_cb(
   user_data: *mut c_void,
+  resolve_id: libdeno::deno_resolve_id,
+  is_dynamic: bool,
   specifier_ptr: *const c_char,
   referrer_ptr: *const c_char,
+  _referrer_id: libdeno::deno_mod,
 ) {
+  assert_eq!(is_dynamic, false); // TODO handle dynamic.
   let specifier_c: &CStr = unsafe { CStr::from_ptr(specifier_ptr) };
   let specifier: &str = specifier_c.to_str().unwrap();
 
@@ -402,30 +444,23 @@ extern "C" fn resolve_cb(
   let referrer: &str = referrer_c.to_str().unwrap();
 
   debug!("module_resolve callback {} {}", specifier, referrer);
-  let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
+  let isolate: &mut Isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
   let maybe_out =
     code_fetch_and_maybe_compile(&isolate.state, specifier, referrer);
 
-  if maybe_out.is_err() {
-    // Resolution failure
-    return;
-  }
+  let child_id = match maybe_out {
+    // TODO handle error here somehow?
+    Err(_err) => {
+      debug!("swallowing error {}", _err);
+      0
+    }
+    Ok(out) => isolate.mod_new(&out.filename, &out.js_source()).unwrap(),
+  };
 
-  let out = maybe_out.unwrap();
-
-  let filename = CString::new(out.filename.clone()).unwrap();
-  let filename_ptr = filename.as_ptr() as *const i8;
-
-  let js_source = CString::new(out.js_source().clone()).unwrap();
-  let js_source_ptr = js_source.as_ptr() as *const i8;
-
+  println!("isolate.mod_new {}, {}", specifier, child_id);
   unsafe {
-    libdeno::deno_resolve_ok(
-      isolate.libdeno_isolate,
-      filename_ptr,
-      js_source_ptr,
-    )
+    libdeno::deno_resolve(isolate.libdeno_isolate, resolve_id, child_id)
   };
 }
 
@@ -673,7 +708,7 @@ mod tests {
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let snapshot = libdeno::deno_buf::empty();
-    let isolate = Isolate::new(snapshot, state, dispatch_sync);
+    let mut isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute_mod(filename, false)
