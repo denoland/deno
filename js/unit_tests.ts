@@ -18,6 +18,7 @@ import "./fetch_test.ts";
 // import "./file_test.ts";
 import "./files_test.ts";
 import "./form_data_test.ts";
+import "./globals_test.ts";
 import "./headers_test.ts";
 import "./make_temp_dir_test.ts";
 import "./metrics_test.ts";
