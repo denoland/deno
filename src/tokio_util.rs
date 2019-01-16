@@ -63,7 +63,25 @@ impl Future for Accept {
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     let (stream, addr) = match self.state {
-      AcceptState::Pending(ref mut r) => try_ready!(r.poll_accept()),
+      // Similar to try_ready!, but also track/untrack accept task
+      // in TcpListener resource.
+      // In this way, when the listener is closed, the task can be
+      // notified to error out (instead of stuck forever).
+      AcceptState::Pending(ref mut r) => match r.poll_accept() {
+        Ok(futures::prelude::Async::Ready(t)) => {
+          r.untrack_task();
+          t
+        }
+        Ok(futures::prelude::Async::NotReady) => {
+          // Would error out if another accept task is being tracked.
+          r.track_task()?;
+          return Ok(futures::prelude::Async::NotReady);
+        }
+        Err(e) => {
+          r.untrack_task();
+          return Err(From::from(e));
+        }
+      },
       AcceptState::Empty => panic!("poll Accept after it's done"),
     };
 
