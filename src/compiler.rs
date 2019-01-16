@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 lazy_static! {
-  static ref c_rid: Mutex<Option<ResourceId>> = Mutex::new(None);
+  static ref C_RID: Mutex<Option<ResourceId>> = Mutex::new(None);
 }
 
 // This corresponds to JS ModuleMetaData.
@@ -80,7 +80,7 @@ impl CodeFetchOutput {
 }
 
 fn lazy_start(parent_state: &Arc<IsolateState>) -> Resource {
-  let mut cell = c_rid.lock().unwrap();
+  let mut cell = C_RID.lock().unwrap();
   let rid = cell.get_or_insert_with(|| {
     let resource =
       workers::spawn(parent_state.clone(), "compilerMain()".to_string());
