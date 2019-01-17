@@ -313,7 +313,7 @@ Current executable set to '../deno/target/debug/deno' (x86_64).
 To ensure reproducible builds, deno has most of its dependencies in a git
 submodule. However, you need to install separately:
 
-1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.30.0
+1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.31.1
 2. [Node](https://nodejs.org/)
 3. Python 2.
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
