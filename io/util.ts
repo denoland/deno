@@ -1,11 +1,5 @@
 import { Buffer, Reader } from "deno";
 
-export function assert(cond: boolean, msg = "assert") {
-  if (!cond) {
-    throw Error(msg);
-  }
-}
-
 // `off` is the offset into `dst` where it will at which to begin writing values
 // from `src`.
 // Returns the number of bytes copied.
