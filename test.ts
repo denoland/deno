@@ -3,7 +3,6 @@ import "colors/test.ts";
 import "datetime/test.ts";
 import "examples/test.ts";
 import "flags/test.ts";
-import "fs/mkdirp_test.ts";
 import "fs/path/basename_test.ts";
 import "fs/path/dirname_test.ts";
 import "fs/path/extname_test.ts";
