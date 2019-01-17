@@ -64,8 +64,8 @@ before_script:
 # Default script for release builds.
 script:
 - ./tools/lint.py
-- ./tools/test_format.py
 - ./tools/build.py -C target/release
+- ./tools/test_format.py
 - DENO_BUILD_MODE=release ./tools/test.py
 
 jobs:
