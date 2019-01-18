@@ -558,7 +558,11 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
 
   if (d->resolve_module_.IsEmpty()) {
     // Resolution Error.
-    isolate->ThrowException(v8_str("module resolution error"));
+    std::stringstream err_ss;
+    err_ss << "NotFound: Cannot resolve module \"" << specifier_c
+           << "\" from \"" << referrer_filename << "\"";
+    auto resolve_error = v8_str(err_ss.str().c_str());
+    isolate->ThrowException(resolve_error);
     return v8::MaybeLocal<v8::Module>();
   } else {
     auto module = d->resolve_module_.Get(isolate);
@@ -612,6 +616,8 @@ bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,
   auto module = maybe_module.ToLocalChecked();
   auto maybe_ok = module->InstantiateModule(context, ResolveCallback);
   if (maybe_ok.IsNothing()) {
+    DCHECK(try_catch.HasCaught());
+    HandleException(context, try_catch.Exception());
     return false;
   }
 

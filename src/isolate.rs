@@ -403,8 +403,15 @@ extern "C" fn resolve_cb(
   debug!("module_resolve callback {} {}", specifier, referrer);
   let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-  let out =
-    code_fetch_and_maybe_compile(&isolate.state, specifier, referrer).unwrap();
+  let maybe_out =
+    code_fetch_and_maybe_compile(&isolate.state, specifier, referrer);
+
+  if maybe_out.is_err() {
+    // Resolution failure
+    return;
+  }
+
+  let out = maybe_out.unwrap();
 
   let filename = CString::new(out.filename.clone()).unwrap();
   let filename_ptr = filename.as_ptr() as *const i8;
