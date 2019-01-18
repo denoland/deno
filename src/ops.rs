@@ -540,15 +540,17 @@ fn op_mkdir(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_mkdir().unwrap();
-  let mode = inner.mode();
   let path = String::from(inner.path().unwrap());
+  let recursive = inner.recursive();
+  let mode = inner.mode();
 
   if let Err(e) = state.check_write(&path) {
     return odd_future(e);
   }
+
   blocking(base.sync(), move || {
     debug!("op_mkdir {}", path);
-    deno_fs::mkdir(Path::new(&path), mode)?;
+    deno_fs::mkdir(Path::new(&path), mode, recursive)?;
     Ok(empty_buf())
   })
 }
