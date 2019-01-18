@@ -3,7 +3,7 @@ import { testPerm, assert, assertEqual } from "./test_util.ts";
 import * as deno from "deno";
 
 testPerm({ write: true }, function renameSyncSuccess() {
-  const testDir = deno.makeTempDirSync() + "/test-rename-sync";
+  const testDir = deno.makeTempDirSync();
   const oldpath = testDir + "/oldpath";
   const newpath = testDir + "/newpath";
   deno.mkdirSync(oldpath);
@@ -38,7 +38,7 @@ testPerm({ write: false }, function renameSyncPerm() {
 });
 
 testPerm({ write: true }, async function renameSuccess() {
-  const testDir = deno.makeTempDirSync() + "/test-rename";
+  const testDir = deno.makeTempDirSync();
   const oldpath = testDir + "/oldpath";
   const newpath = testDir + "/newpath";
   deno.mkdirSync(oldpath);

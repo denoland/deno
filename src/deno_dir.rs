@@ -73,10 +73,12 @@ impl DenoDir {
       deps_https,
       reload,
     };
-    deno_fs::mkdir(deno_dir.gen.as_ref(), 0o755)?;
-    deno_fs::mkdir(deno_dir.deps.as_ref(), 0o755)?;
-    deno_fs::mkdir(deno_dir.deps_http.as_ref(), 0o755)?;
-    deno_fs::mkdir(deno_dir.deps_https.as_ref(), 0o755)?;
+
+    // TODO Lazily create these directories.
+    deno_fs::mkdir(deno_dir.gen.as_ref(), 0o755, true)?;
+    deno_fs::mkdir(deno_dir.deps.as_ref(), 0o755, true)?;
+    deno_fs::mkdir(deno_dir.deps_http.as_ref(), 0o755, true)?;
+    deno_fs::mkdir(deno_dir.deps_https.as_ref(), 0o755, true)?;
 
     debug!("root {}", deno_dir.root.display());
     debug!("gen {}", deno_dir.gen.display());
