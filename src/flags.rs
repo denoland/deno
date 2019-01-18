@@ -131,9 +131,7 @@ pub fn set_flags(
   let args = v8_set_flags(args);
 
   let mut opts = Options::new();
-  // TODO(kevinkassimo): v8_set_flags intercepts '-help' with single '-'
-  // Resolve that and then uncomment line below (enabling Go style -long-flag)
-  // opts.long_only(true);
+  opts.long_only(true);
   opts.optflag("", "allow-write", "Allow file system write access.");
   opts.optflag("", "allow-net", "Allow network access.");
   opts.optflag("", "allow-env", "Allow environment access.");
@@ -201,7 +199,7 @@ fn test_set_flags_3() {
 #[test]
 fn test_set_flags_4() {
   let (flags, rest, _) =
-    set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]).unwrap();
+    set_flags(svec!["deno", "-D", "-r", "script.ts", "--allow-write"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
@@ -258,14 +256,48 @@ fn test_set_flags_7() {
   )
 }
 
+#[test]
+fn test_set_flags_8() {
+  // Single dash works the same.
+  let (flags, rest, _) =
+    set_flags(svec!["deno", "gist.ts", "-allow-all"]).unwrap();
+  assert_eq!(rest, svec!["deno", "gist.ts"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      allow_net: true,
+      allow_env: true,
+      allow_run: true,
+      allow_write: true,
+      ..DenoFlags::default()
+    }
+  )
+}
+
+#[test]
+fn test_set_flags_9() {
+  // Single dash works the same.
+  let (flags, rest, _) = set_flags(svec!["deno", "gist.ts", "-help"]).unwrap();
+  assert_eq!(rest, svec!["deno", "gist.ts"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      help: true,
+      ..DenoFlags::default()
+    }
+  )
+}
+
 // Returns args passed to V8, followed by args passed to JS
 fn v8_set_flags_preprocess(args: Vec<String>) -> (Vec<String>, Vec<String>) {
-  let (rest, mut v8_args) =
-    args.into_iter().partition(|ref a| a.as_str() == "--help");
+  let (rest, mut v8_args) = args.into_iter().partition(|ref a| {
+    let a_str = a.as_str();
+    a_str == "--help" || a_str == "-help"
+  });
 
   // Replace args being sent to V8
   for a in &mut v8_args {
-    if a == "--v8-options" {
+    if a == "--v8-options" || a == "-v8-options" {
       mem::swap(a, &mut String::from("--help"));
     }
   }
@@ -291,6 +323,16 @@ fn test_v8_set_flags_preprocess_2() {
   assert_eq!(
     js_args,
     (vec!["deno".to_string()], vec!["--help".to_string()])
+  );
+}
+
+#[test]
+fn test_v8_set_flags_preprocess_3() {
+  let js_args =
+    v8_set_flags_preprocess(vec!["deno".to_string(), "-help".to_string()]);
+  assert_eq!(
+    js_args,
+    (vec!["deno".to_string()], vec!["-help".to_string()])
   );
 }
 
