@@ -7,7 +7,7 @@ interface URLParts {
   password: string;
   hostname: string;
   port: string;
-  path: string;
+  pathname: string;
   query: string;
   hash: string;
 }
@@ -15,7 +15,7 @@ interface URLParts {
 const patterns = {
   protocol: "(?:([^:/?#]+):)",
   authority: "(?://([^/?#]*))",
-  path: "([^?#]*)",
+  pathname: "([^?#]*)",
   query: "(\\?[^#]*)",
   hash: "(#.*)",
 
@@ -25,7 +25,7 @@ const patterns = {
 };
 
 const urlRegExp = new RegExp(
-  `^${patterns.protocol}?${patterns.authority}?${patterns.path}${
+  `^${patterns.protocol}?${patterns.authority}?${patterns.pathname}${
     patterns.query
   }?${patterns.hash}?`
 );
@@ -54,7 +54,7 @@ function parse(url: string): URLParts | undefined {
         password: authorityMatch[2] || "",
         hostname: authorityMatch[3] || "",
         port: authorityMatch[4] || "",
-        path: urlMatch[3] || "",
+        pathname: urlMatch[3] || "",
         query: urlMatch[4] || "",
         hash: urlMatch[5] || ""
       };
@@ -155,7 +155,7 @@ export class URL {
   }
 
   get pathname(): string {
-    return this._parts.path ? this._parts.path : "/";
+    return this._parts.pathname ? this._parts.pathname : "/";
   }
 
   set pathname(value: string) {
@@ -163,8 +163,8 @@ export class URL {
     if (!value || value.charAt(0) !== "/") {
       value = `/${value}`;
     }
-    // paths can contain % unescaped
-    this._parts.path = escape(value).replace(/%25/g, "%");
+    // pathnames can contain % unescaped
+    this._parts.pathname = escape(value).replace(/%25/g, "%");
   }
 
   get port(): string {
@@ -241,7 +241,7 @@ export class URL {
         password: baseParts.password,
         hostname: baseParts.hostname,
         port: baseParts.port,
-        path: urlParts.path || baseParts.path,
+        pathname: urlParts.pathname || baseParts.pathname,
         query: urlParts.query || baseParts.query,
         hash: urlParts.hash
       };
