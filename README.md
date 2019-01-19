@@ -118,6 +118,19 @@ export function foo(): string {
 }
 ```
 
+### Meta-programming is discouraged. Including the use of Proxy.
+
+Be explicit even when it means more code.
+
+There are some situations where it may make sense to use such techniques, but in
+the vast majority of cases it does not.
+
+### If a filename starts with underscore, do not link to it: `_foo.ts`
+
+Sometimes there maybe situations where an internal module is necessary but its
+API is not meant to be stable or linked to. In this case prefix it with an
+underscore. By convention, only files in its own directory should import it.
+
 ### When referencing Deno online, use the #denoland tag.
 
 The name "deno" unfortunately is not especially unique on the internet. In order
