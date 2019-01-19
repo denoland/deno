@@ -40,6 +40,17 @@ const searchParamsMethods: Array<keyof urlSearchParams.URLSearchParams> = [
   "set"
 ];
 
+const initializedURLParts = {
+  protocol: "",
+  username: "",
+  password: "",
+  hostname: "",
+  port: "",
+  pathname: "",
+  query: "",
+  hash: ""
+};
+
 function parse(url: string): URLParts | undefined {
   const urlMatch = urlRegExp.exec(url);
   if (urlMatch) {
@@ -243,17 +254,24 @@ export class URL {
 
     if (urlParts.protocol) {
       this._parts = urlParts;
+      this.protocol = urlParts.protocol;
+      this.username = urlParts.username;
+      this.password = urlParts.password;
+      this.hostname = urlParts.hostname;
+      this.port = urlParts.port;
+      this.pathname = urlParts.pathname;
+      this.query = urlParts.query;
+      this.hash = urlParts.hash;
     } else if (baseParts) {
-      this._parts = {
-        protocol: baseParts.protocol,
-        username: baseParts.username,
-        password: baseParts.password,
-        hostname: baseParts.hostname,
-        port: baseParts.port,
-        pathname: urlParts.pathname || baseParts.pathname,
-        query: urlParts.query || baseParts.query,
-        hash: urlParts.hash
-      };
+      this._parts = initializedURLParts;
+      this.protocol = baseParts.protocol;
+      this.username = baseParts.username;
+      this.password = baseParts.password;
+      this.hostname = baseParts.hostname;
+      this.port = baseParts.port;
+      this.pathname = urlParts.pathname || baseParts.pathname;
+      this.query = urlParts.query || baseParts.query;
+      this.hash = urlParts.hash;
     } else {
       throw new TypeError("URL requires a base URL.");
     }
