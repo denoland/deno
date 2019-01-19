@@ -583,6 +583,7 @@ export class Console {
   };
 
   clear = (): void => {
+    this.indentLevel = 0;
     cursorTo(stdout, 0, 0);
     clearScreenDown(stdout);
   };
