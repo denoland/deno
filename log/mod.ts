@@ -76,6 +76,10 @@ export function getLogger(name?: string) {
   return state.loggers.get(name);
 }
 
+export function getHandler(name: string) {
+  return state.handlers.get(name);
+}
+
 export async function setup(config: LogConfig) {
   state.config = config;
 

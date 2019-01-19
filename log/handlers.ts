@@ -2,22 +2,47 @@ import { open, File, Writer } from "deno";
 import { getLevelByName } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
 
+const DEFAULT_FORMATTER = "{levelName} {msg}";
+type FormatterFunction = (logRecord: LogRecord) => string;
+
+interface HandlerOptions {
+  formatter?: string | FormatterFunction;
+}
+
 export class BaseHandler {
   level: number;
   levelName: string;
+  formatter: string | FormatterFunction;
 
-  constructor(levelName: string) {
+  constructor(levelName: string, options: HandlerOptions = {}) {
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
+
+    this.formatter = options.formatter || DEFAULT_FORMATTER;
   }
 
   handle(logRecord: LogRecord) {
     if (this.level > logRecord.level) return;
 
-    // TODO: implement formatter
-    const msg = `${logRecord.levelName} ${logRecord.msg}`;
-
+    const msg = this.format(logRecord);
     return this.log(msg);
+  }
+
+  format(logRecord: LogRecord): string {
+    if (this.formatter instanceof Function) {
+      return this.formatter(logRecord);
+    }
+    
+    return this.formatter.replace(/{(\S+)}/g, (match, p1) => {
+      const value = logRecord[p1];
+
+      // do not interpolate missing values
+      if (!value) {
+        return match;
+      }
+
+      return value;
+    });
   }
 
   log(msg: string) {}
@@ -33,21 +58,27 @@ export class ConsoleHandler extends BaseHandler {
 
 export abstract class WriterHandler extends BaseHandler {
   protected _writer: Writer;
+  private _encoder = new TextEncoder();
 
   log(msg: string) {
-    const encoder = new TextEncoder();
-    // promise is intentionally not awaited
-    this._writer.write(encoder.encode(msg + "\n"));
+    this._writer.write(this._encoder.encode(msg + "\n"));
   }
+}
+
+interface FileHandlerOptions extends HandlerOptions {
+  filename: string;
 }
 
 export class FileHandler extends WriterHandler {
   private _file: File;
   private _filename: string;
 
-  constructor(levelName: string, filename: string) {
-    super(levelName);
-    this._filename = filename;
+  constructor(
+    levelName: string, 
+    options: FileHandlerOptions,
+  ) {
+    super(levelName, options);
+    this._filename = options.filename;
   }
 
   async setup() {
