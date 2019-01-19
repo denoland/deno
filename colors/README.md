@@ -1,18 +1,19 @@
 # colors
 
 Is a basic console color module intended for [Deno](https://deno.land/). It is
-inspired by [chalk](https://www.npmjs.com/package/chalk) and
+inspired by [chalk](https://www.npmjs.com/package/chalk),
+[kleur](https://www.npmjs.com/package/kleur), and
 [colors](https://www.npmjs.com/package/colors) on npm.
 
 ## Usage
 
-The main modules exports a single function name `color` which is a function that
-provides chaining to stack colors. Basic usage looks like this:
+The main modules exports several functions which can color the output to the
+console:
 
 ```ts
-import { color } from "https://deno.land/x/std/colors/mod.ts";
+import { bgBlue, red, bold } from "https://deno.land/x/std/colors/mod.ts";
 
-console.log(color.bgBlue.red.bold("Hello world!"));
+console.log(bgBlue(red(bold("Hello world!"))));
 ```
 
 ## TODO

@@ -1,3 +1,3 @@
-import { color } from "./mod.ts";
+import { bgBlue, red, bold, italic } from "./mod.ts";
 
-console.log(color.bgBlue.red.bold("Hello world!"));
+console.log(bgBlue(italic(red(bold("Hello world!")))));
