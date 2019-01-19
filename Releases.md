@@ -6,6 +6,14 @@ https://github.com/denoland/deno/releases
 We also have a one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.2.8 / 2019.01.19
+
+- Add --prefetch flag for deps prefetch without running (#1475)
+- Kill all pending accepts when TCP listener is closed (#1517)
+- Add globalThis definition to runtime (#1534)
+- mkdir should not be recursive by default (#1530)
+- Avoid crashes on ES module resolution when module not found (#1546)
+
 ### v0.2.7 / 2019.01.14
 
 - Use rust 2018 edition
