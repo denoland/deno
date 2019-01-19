@@ -218,6 +218,15 @@ export class URL {
     return this._searchParams;
   }
 
+  get query(): string {
+    return this._parts.query;
+  }
+
+  set query(value: string) {
+    value = String(value);
+    this._parts.query = value;
+  }
+
   constructor(url: string, base?: string | URL) {
     let baseParts: URLParts | undefined;
     if (base) {
