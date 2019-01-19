@@ -1,33 +1,131 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { styles } from "./styles.ts";
 
-type Styles = { readonly [S in keyof typeof styles]: Color };
+interface Code {
+  open: string;
+  close: string;
+  regexp: RegExp;
+}
 
-type Color = Styles & {
-  (str: string): string;
-};
+let enabled = true;
 
-const styleStack: string[] = [];
+export function setEnabled(value: boolean) {
+  enabled = value;
+}
 
-export const color = function color(str: string): string {
-  styleStack.reverse();
-  while (styleStack.length) {
-    const style = styleStack.pop();
-    const code = styles[style];
-    str = `${code.open}${str.replace(code.closeRe, code.open)}${
-      code.close
-    }`.replace(/\r?\n/g, `${code.close}$&${code.open}`);
-  }
-  return str;
-} as Color;
+export function getEnabled(): boolean {
+  return enabled;
+}
 
-for (const style of Object.keys(styles)) {
-  Object.defineProperty(color, style, {
-    get() {
-      styleStack.push(style);
-      return color;
-    },
-    enumerable: true,
-    configurable: false
-  });
+function code(open: number, close: number): Code {
+  return {
+    open: `\x1b[${open}m`,
+    close: `\x1b[${close}m`,
+    regexp: new RegExp(`\\x1b\\[${close}m`, "g")
+  };
+}
+
+function run(str: string, code: Code) {
+  return enabled
+    ? `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
+    : str;
+}
+
+export function reset(str: string): string {
+  return run(str, code(0, 0));
+}
+
+export function bold(str: string): string {
+  return run(str, code(1, 22));
+}
+
+export function dim(str: string): string {
+  return run(str, code(2, 22));
+}
+
+export function italic(str: string): string {
+  return run(str, code(3, 23));
+}
+
+export function underline(str: string): string {
+  return run(str, code(4, 24));
+}
+
+export function inverse(str: string): string {
+  return run(str, code(7, 27));
+}
+
+export function hidden(str: string): string {
+  return run(str, code(8, 28));
+}
+
+export function strikethrough(str: string): string {
+  return run(str, code(9, 29));
+}
+
+export function black(str: string): string {
+  return run(str, code(30, 39));
+}
+
+export function red(str: string): string {
+  return run(str, code(31, 39));
+}
+
+export function green(str: string): string {
+  return run(str, code(32, 39));
+}
+
+export function yellow(str: string): string {
+  return run(str, code(33, 39));
+}
+
+export function blue(str: string): string {
+  return run(str, code(34, 39));
+}
+
+export function magenta(str: string): string {
+  return run(str, code(35, 39));
+}
+
+export function cyan(str: string): string {
+  return run(str, code(36, 39));
+}
+
+export function white(str: string): string {
+  return run(str, code(37, 39));
+}
+
+export function gray(str: string): string {
+  return run(str, code(90, 39));
+}
+
+export function bgBlack(str: string): string {
+  return run(str, code(40, 49));
+}
+
+export function bgRed(str: string): string {
+  return run(str, code(41, 49));
+}
+
+export function bgGreen(str: string): string {
+  return run(str, code(42, 49));
+}
+
+export function bgYellow(str: string): string {
+  return run(str, code(43, 49));
+}
+
+export function bgBlue(str: string): string {
+  return run(str, code(44, 49));
+}
+
+export function bgMagenta(str: string): string {
+  return run(str, code(45, 49));
+}
+
+export function bgCyan(str: string): string {
+  return run(str, code(46, 49));
+}
+
+export function bgWhite(str: string): string {
+  return run(str, code(47, 49));
 }
