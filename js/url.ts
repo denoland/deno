@@ -7,7 +7,7 @@ interface URLParts {
   password: string;
   hostname: string;
   port: string;
-  path: string;
+  pathname: string;
   query: string;
   hash: string;
 }
@@ -15,7 +15,7 @@ interface URLParts {
 const patterns = {
   protocol: "(?:([^:/?#]+):)",
   authority: "(?://([^/?#]*))",
-  path: "([^?#]*)",
+  pathname: "([^?#]*)",
   query: "(\\?[^#]*)",
   hash: "(#.*)",
 
@@ -25,7 +25,7 @@ const patterns = {
 };
 
 const urlRegExp = new RegExp(
-  `^${patterns.protocol}?${patterns.authority}?${patterns.path}${
+  `^${patterns.protocol}?${patterns.authority}?${patterns.pathname}${
     patterns.query
   }?${patterns.hash}?`
 );
@@ -39,6 +39,17 @@ const searchParamsMethods: Array<keyof urlSearchParams.URLSearchParams> = [
   "delete",
   "set"
 ];
+
+const initializedURLParts = {
+  protocol: "",
+  username: "",
+  password: "",
+  hostname: "",
+  port: "",
+  pathname: "",
+  query: "",
+  hash: ""
+};
 
 function parse(url: string): URLParts | undefined {
   const urlMatch = urlRegExp.exec(url);
@@ -54,7 +65,7 @@ function parse(url: string): URLParts | undefined {
         password: authorityMatch[2] || "",
         hostname: authorityMatch[3] || "",
         port: authorityMatch[4] || "",
-        path: urlMatch[3] || "",
+        pathname: urlMatch[3] || "",
         query: urlMatch[4] || "",
         hash: urlMatch[5] || ""
       };
@@ -155,7 +166,7 @@ export class URL {
   }
 
   get pathname(): string {
-    return this._parts.path ? this._parts.path : "/";
+    return this._parts.pathname ? this._parts.pathname : "/";
   }
 
   set pathname(value: string) {
@@ -163,8 +174,8 @@ export class URL {
     if (!value || value.charAt(0) !== "/") {
       value = `/${value}`;
     }
-    // paths can contain % unescaped
-    this._parts.path = escape(value).replace(/%25/g, "%");
+    // pathnames can contain % unescaped
+    this._parts.pathname = escape(value).replace(/%25/g, "%");
   }
 
   get port(): string {
@@ -218,6 +229,15 @@ export class URL {
     return this._searchParams;
   }
 
+  get query(): string {
+    return this._parts.query;
+  }
+
+  set query(value: string) {
+    value = String(value);
+    this._parts.query = value;
+  }
+
   constructor(url: string, base?: string | URL) {
     let baseParts: URLParts | undefined;
     if (base) {
@@ -234,17 +254,24 @@ export class URL {
 
     if (urlParts.protocol) {
       this._parts = urlParts;
+      this.protocol = urlParts.protocol;
+      this.username = urlParts.username;
+      this.password = urlParts.password;
+      this.hostname = urlParts.hostname;
+      this.port = urlParts.port;
+      this.pathname = urlParts.pathname;
+      this.query = urlParts.query;
+      this.hash = urlParts.hash;
     } else if (baseParts) {
-      this._parts = {
-        protocol: baseParts.protocol,
-        username: baseParts.username,
-        password: baseParts.password,
-        hostname: baseParts.hostname,
-        port: baseParts.port,
-        path: urlParts.path || baseParts.path,
-        query: urlParts.query || baseParts.query,
-        hash: urlParts.hash
-      };
+      this._parts = initializedURLParts;
+      this.protocol = baseParts.protocol;
+      this.username = baseParts.username;
+      this.password = baseParts.password;
+      this.hostname = baseParts.hostname;
+      this.port = baseParts.port;
+      this.pathname = urlParts.pathname || baseParts.pathname;
+      this.query = urlParts.query || baseParts.query;
+      this.hash = urlParts.hash;
     } else {
       throw new TypeError("URL requires a base URL.");
     }
