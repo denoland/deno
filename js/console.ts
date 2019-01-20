@@ -16,35 +16,13 @@ type ConsoleOptions = Partial<{
 // Default depth of logging nested objects
 const DEFAULT_MAX_DEPTH = 4;
 
-const kEscape = "\x1b";
-
-function CSI(strings: TemplateStringsArray, ...args: number[]): string {
-  let ret = `${kEscape}[`;
-  for (let n = 0; n < strings.length; n++) {
-    ret += strings[n];
-    if (n < args.length) {
-      ret += args[n];
-    }
-  }
-  return ret;
+export class CSI {
+  static kClear = "\x1b[1;1H";
+  static kClearScreenDown = "\x1b[0J";
 }
 
-CSI.kEscape = kEscape;
-CSI.kClearToBeginning = CSI`1K`;
-CSI.kClearToEnd = CSI`0K`;
-CSI.kClearLine = CSI`2K`;
-CSI.kClearScreenDown = CSI`0J`;
-
 function cursorTo(stream: File, x: number, y?: number) {
-  let csiCode = "";
-
-  if (y === undefined) {
-    csiCode = CSI`${x + 1}G`;
-  } else {
-    csiCode = CSI`${y + 1};${x + 1}H`;
-  }
-  const uint8 = new TextEncoder().encode(csiCode);
-
+  const uint8 = new TextEncoder().encode(CSI.kClear);
   stream.write(uint8);
 }
 

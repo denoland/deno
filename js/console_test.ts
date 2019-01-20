@@ -177,13 +177,15 @@ test(function consoleTestError() {
 
 test(function consoleTestClear() {
   const stdoutWrite = stdout.write;
-
-  const uint8 = new TextEncoder().encode("\u001b[0J" + "\u001b[1;1H");
-
+  const uint8 = new TextEncoder().encode("\x1b[1;1H" + "\x1b[0J");
   let buffer = new Uint8Array(0);
 
   stdout.write = async u8 => {
-    buffer = new TextEncoder().encode("\u001b[0J\u001b[1;1H");
+    const tmp = new Uint8Array(buffer.length + u8.length);
+    tmp.set(buffer, 0);
+    tmp.set(u8, buffer.length);
+    buffer = tmp;
+
     return await write(stdout.rid, u8);
   };
   console.clear();
