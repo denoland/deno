@@ -280,7 +280,7 @@ This is already working.
 When the rewrite is at feature parity with the Go prototype, we will release
 binaries for people to try.
 
-### v0.0.0 / 2018.09.32 / Golang Prototype
+### v0.0.0 / 2018.05.14 - 2018.06.22 / Golang Prototype
 
 https://github.com/denoland/deno/tree/golang
 
