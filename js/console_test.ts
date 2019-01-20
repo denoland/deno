@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Console, libdeno, stringifyArgs, inspect } from "deno";
+import { Console, libdeno, stringifyArgs, inspect, write, stdout } from "deno";
 import { test, assertEqual } from "./test_util.ts";
 
 const console = new Console(libdeno.print);
@@ -173,6 +173,22 @@ test(function consoleTestError() {
   } catch (e) {
     assertEqual(stringify(e).split("\n")[0], "MyError: This is an error");
   }
+});
+
+test(function consoleTestClear() {
+  const stdoutWrite = stdout.write;
+
+  const uint8 = new TextEncoder().encode("\u001b[0J" + "\u001b[1;1H");
+
+  let buffer = new Uint8Array(0);
+
+  stdout.write = async u8 => {
+    buffer = new TextEncoder().encode("\u001b[0J\u001b[1;1H");
+    return await write(stdout.rid, u8);
+  };
+  console.clear();
+  stdout.write = stdoutWrite;
+  assertEqual(buffer, uint8);
 });
 
 // Test bound this issue

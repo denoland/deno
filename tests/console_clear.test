@@ -1,2 +1,0 @@
-args: tests/console_clear.ts --reload
-output: tests/console_clear.ts.out
