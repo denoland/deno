@@ -32,15 +32,15 @@ test(function testDefaultlogMethods() {
 test(async function testDefaultFormatter() {
   await log.setup({
     handlers: {
-      test: new TestHandler("DEBUG"),
+      test: new TestHandler("DEBUG")
     },
 
     loggers: {
       test: {
         level: "DEBUG",
-        handlers: ["test"],
-      },
-    },
+        handlers: ["test"]
+      }
+    }
   });
 
   const logger = log.getLogger("test");
@@ -53,16 +53,16 @@ test(async function testFormatterAsString() {
   await log.setup({
     handlers: {
       test: new TestHandler("DEBUG", {
-        formatter: "test {levelName} {msg}",
-      }),
+        formatter: "test {levelName} {msg}"
+      })
     },
 
     loggers: {
       test: {
         level: "DEBUG",
-        handlers: ["test"],
-      },
-    },
+        handlers: ["test"]
+      }
+    }
   });
 
   const logger = log.getLogger("test");
@@ -75,16 +75,17 @@ test(async function testFormatterAsFunction() {
   await log.setup({
     handlers: {
       test: new TestHandler("DEBUG", {
-        formatter: logRecord => `fn formmatter ${logRecord.levelName} ${logRecord.msg}`,
-      }),
+        formatter: logRecord =>
+          `fn formmatter ${logRecord.levelName} ${logRecord.msg}`
+      })
     },
 
     loggers: {
       test: {
         level: "DEBUG",
-        handlers: ["test"],
-      },
-    },
+        handlers: ["test"]
+      }
+    }
   });
 
   const logger = log.getLogger("test");
