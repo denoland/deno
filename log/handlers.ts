@@ -32,7 +32,7 @@ export class BaseHandler {
     if (this.formatter instanceof Function) {
       return this.formatter(logRecord);
     }
-    
+
     return this.formatter.replace(/{(\S+)}/g, (match, p1) => {
       const value = logRecord[p1];
 
@@ -73,10 +73,7 @@ export class FileHandler extends WriterHandler {
   private _file: File;
   private _filename: string;
 
-  constructor(
-    levelName: string, 
-    options: FileHandlerOptions,
-  ) {
+  constructor(levelName: string, options: FileHandlerOptions) {
     super(levelName, options);
     this._filename = options.filename;
   }
