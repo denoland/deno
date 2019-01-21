@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Hint: --trace_serializer is a useful debugging flag.
 #include <fstream>
 #include <iostream>

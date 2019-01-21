@@ -1,6 +1,6 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { requiredArguments } from "./util";
 
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
 export class URLSearchParams {
   private params: Array<[string, string]> = [];
 

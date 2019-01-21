@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # Does google-lint on c++ files and ts-lint on typescript files
 
 import os

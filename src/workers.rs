@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::isolate::Buf;
 use crate::isolate::Isolate;
 use crate::isolate::IsolateState;

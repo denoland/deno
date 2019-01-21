@@ -1,4 +1,4 @@
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 solutions = [{
     'url': 'https://chromium.googlesource.com/v8/v8.git@7.2.502.16',
     'name': 'v8',

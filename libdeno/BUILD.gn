@@ -1,4 +1,4 @@
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import("//third_party/v8/gni/v8.gni")
 import("./deno.gni")
 

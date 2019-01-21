@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 export type TypedArray = Uint8Array | Float32Array | Int32Array;
 
 // tslint:disable:max-line-length

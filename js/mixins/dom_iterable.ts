@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { DomIterable } from "../dom_types";
 import { globalEval } from "../global_eval";
 import { requiredArguments } from "../util";

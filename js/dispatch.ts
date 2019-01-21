@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { libdeno } from "./libdeno";
 import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
