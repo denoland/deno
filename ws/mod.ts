@@ -40,6 +40,16 @@ export function isWebSocketPongEvent(a): a is WebSocketPongEvent {
   return Array.isArray(a) && a[0] === "pong" && a[1] instanceof Uint8Array;
 }
 
+// TODO move this to common/util module
+export function append(a: Uint8Array, b: Uint8Array) {
+  if (a == null || !a.length) return b;
+  if (b == null || !b.length) return a;
+  const output = new Uint8Array(a.length + b.length);
+  output.set(a, 0);
+  output.set(b, a.length);
+  return output;
+}
+
 export class SocketClosedError extends Error {}
 
 export type WebSocketFrame = {
@@ -189,10 +199,12 @@ export async function* receiveFrame(
   conn: Conn
 ): AsyncIterableIterator<WebSocketFrame> {
   let receiving = true;
+  let isLastFrame = true;
   const reader = new BufReader(conn);
   while (receiving) {
     const frame = await readFrame(reader);
-    switch (frame.opcode) {
+    const { opcode, payload } = frame;
+    switch (opcode) {
       case OpCodeTextFrame:
       case OpCodeBinaryFrame:
       case OpCodeContinue:
@@ -201,9 +213,9 @@ export async function* receiveFrame(
       case OpCodeClose:
         await writeFrame(
           {
-            isLastFrame: true,
-            opcode: OpCodeClose,
-            payload: frame.payload
+            opcode,
+            payload,
+            isLastFrame
           },
           conn
         );
@@ -214,9 +226,9 @@ export async function* receiveFrame(
       case OpcodePing:
         await writeFrame(
           {
-            isLastFrame: true,
-            opcode: OpcodePong,
-            payload: frame.payload
+            payload,
+            isLastFrame,
+            opcode: OpcodePong
           },
           conn
         );
@@ -232,41 +244,37 @@ export async function* receiveFrame(
 export async function writeFrame(frame: WebSocketFrame, writer: Writer) {
   let payloadLength = frame.payload.byteLength;
   let header: Uint8Array;
-  const hasMask = (frame.mask ? 1 : 0) << 7;
+  const hasMask = frame.mask ? 0x80 : 0;
   if (payloadLength < 126) {
     header = new Uint8Array([
-      (0b1000 << 4) | frame.opcode,
+      0x80 | frame.opcode,
       hasMask | payloadLength
     ]);
   } else if (payloadLength < 0xffff) {
     header = new Uint8Array([
-      (0b1000 << 4) | frame.opcode,
+      0x80 | frame.opcode,
       hasMask | 0b01111110,
       payloadLength >>> 8,
       payloadLength & 0x00ff
     ]);
   } else {
     header = new Uint8Array([
-      (0b1000 << 4) | frame.opcode,
+      0x80 | frame.opcode,
       hasMask | 0b01111111,
       ...sliceLongToBytes(payloadLength)
     ]);
   }
-  if (frame.mask) {
-    unmask(frame.payload, frame.mask);
-  }
-  const bytes = new Uint8Array(header.length + payloadLength);
-  bytes.set(header, 0);
-  bytes.set(frame.payload, header.length);
+  unmask(frame.payload, frame.mask);
+  const bytes = append(header, frame.payload);
   const w = new BufWriter(writer);
   await w.write(bytes);
   await w.flush();
 }
 
-export function unmask(payload: Uint8Array, mask: Uint8Array) {
+export function unmask(payload: Uint8Array, mask?: Uint8Array) {
   if (mask) {
-    for (let i = 0; i < payload.length; i++) {
-      payload[i] ^= mask[i % 4];
+    for (let i = 0, len = payload.length; i < len; i++) {
+      payload[i] ^= mask![i & 3];
     }
   }
 }
@@ -302,11 +310,7 @@ export function createSecAccept(nonce: string) {
   const sha1 = new Sha1();
   sha1.update(nonce + kGUID);
   const bytes = sha1.digest();
-  const hash = bytes.reduce(
-    (data, byte) => data + String.fromCharCode(byte),
-    ""
-  );
-  return btoa(hash);
+  return btoa(String.fromCharCode.apply(String, bytes));
 }
 
 export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
