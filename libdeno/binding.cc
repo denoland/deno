@@ -207,6 +207,15 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   bool prints_newline =
       args.Length() >= 3 ? args[2]->BooleanValue(context).ToChecked() : true;
 #ifdef _WIN32
+  int len = str.length() * sizeof(**str);
+  char* buf = (char*)malloc(len + 2);
+  memcpy(buf, *str, len);
+
+  if (prints_newline) {
+    buf[len++] = '\r';
+    buf[len++] = '\n';
+  }
+
   HANDLE std_handle =
       GetStdHandle(is_err ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE);
 
@@ -220,20 +229,16 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   // `WriteConsole` only works with console screen, not files nor pipes.
   // if the handle is redirected to a file, use `WriteFile`
   if (!GetConsoleMode(std_handle, &mode)) {
-    WriteFile(std_handle, *str, str.length() * sizeof(**str), nullptr, nullptr);
+    WriteFile(std_handle, buf, len, nullptr, nullptr);
+    free(buf);
   } else {
-    const int n = MultiByteToWideChar(CP_UTF8, 0, *str, -1, nullptr, 0);
+    const int n = MultiByteToWideChar(CP_UTF8, 0, buf, -1, nullptr, 0);
+    free(buf);
+    CHECK_GT(n, 0);
     wchar_t* wbuf = (wchar_t*)malloc(n * sizeof(wchar_t));
-    MultiByteToWideChar(CP_UTF8, 0, *str, -1, wbuf, n);
-
-    // Don't include the null character in the output
-    CHECK_GT(args.Length(), 0);
+    MultiByteToWideChar(CP_UTF8, 0, buf, -1, wbuf, n);
     WriteConsoleW(std_handle, wbuf, n - 1, nullptr, nullptr);
     free(wbuf);
-  }
-
-  if (prints_newline) {
-    WriteFile(std_handle, "\n", 1, nullptr, nullptr);
   }
 #else
   FILE* file = is_err ? stderr : stdout;
