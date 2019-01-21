@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # Run this script if you are changing Deno's dependencies.
 # To update the deno_third_party git repo after running this, try the following:
 # cd third_party

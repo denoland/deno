@@ -1,3 +1,5 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
 import { Buffer, readAll } from "deno";
 import * as deno from "deno";
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go

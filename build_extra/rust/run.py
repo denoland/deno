@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # This file just executes its arguments, except that also adds GN_OUT_DIR and
 # CARGO_PKG_VERSION to the environ. This is for compatibility with cargo.
 import subprocess

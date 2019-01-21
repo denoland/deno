@@ -1,4 +1,4 @@
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 # Dependencies between third party crates is mapped out here manually.  This is
 # not so difficult and having it be tedious to add dependencies might help us

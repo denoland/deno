@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as path from "path";
 import { main as buildRuntimeLib } from "./build_library";
 

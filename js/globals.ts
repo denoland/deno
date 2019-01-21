@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This is a "special" module, in that it define the global runtime scope of
 // Deno, and therefore it defines a lot of the runtime environemnt that code
 // is evaluated in.  We use this file to automatically build the runtime type

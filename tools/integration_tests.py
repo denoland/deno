@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # Given a deno executable, this script executes several integration tests with
 # it. The tests are stored in /tests/ and each is specified in a .yaml file
 # where a description, command line, and output are specified.  Optionally an

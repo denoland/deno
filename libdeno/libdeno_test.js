@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // A simple runtime that doesn't involve typescript or protobufs to test
 // libdeno. Invoked by libdeno_test.cc
