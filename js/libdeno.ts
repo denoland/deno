@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { globalEval } from "./global_eval";
 
 // The libdeno functions are moved so that users can't access them.

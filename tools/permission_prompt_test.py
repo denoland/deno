@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
 import pty
 import select

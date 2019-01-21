@@ -1,4 +1,4 @@
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
 from subprocess import CalledProcessError, PIPE, Popen
 import sys

@@ -1,4 +1,4 @@
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import("//build/toolchain/cc_wrapper.gni")
 import("//build_extra/flatbuffers/flatbuffer.gni")
 import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")

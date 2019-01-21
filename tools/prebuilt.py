@@ -1,3 +1,4 @@
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import sys
 import os
 from util import run, root_path

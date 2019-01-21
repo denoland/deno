@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import * as blob from "./blob";
 import * as domFile from "./dom_file";

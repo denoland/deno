@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // The following code is based off of text-encoding at:
 // https://github.com/inexorabletash/text-encoding
 //
