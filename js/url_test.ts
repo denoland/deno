@@ -31,19 +31,6 @@ test(function urlParsing() {
   );
 });
 
-test(function constractorParsing() {
-  const url = new URL("http://どめいん.com/ぱす?きー=ばりゅー#はっしゅ");
-  const { host, pathname, search, hash } = url;
-  url.host = "どめいん.com";
-  url.pathname = "/ぱす";
-  url.search = "?きー=ばりゅー";
-  url.hash = "#はっしゅ";
-  assertEqual(host, url.host);
-  assertEqual(pathname, url.pathname);
-  assertEqual(search, url.search);
-  assertEqual(hash, url.hash);
-});
-
 test(function urlModifications() {
   const url = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
