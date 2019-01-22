@@ -108,6 +108,38 @@ const assertions = {
       msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
       throw new Error(msg);
     }
+  },
+
+  async throwsAsync(
+    fn: () => Promise<void>,
+    ErrorClass?: Constructor,
+    msgIncludes = "",
+    msg = ""
+  ): Promise<void> {
+    let doesThrow = false;
+    try {
+      await fn();
+    } catch (e) {
+      if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
+        msg = `Expected error to be instance of "${ErrorClass.name}"${
+          msg ? `: ${msg}` : "."
+        }`;
+        throw new Error(msg);
+      }
+      if (msgIncludes) {
+        if (!e.message.includes(msgIncludes)) {
+          msg = `Expected error message to include "${msgIncludes}", but got "${
+            e.message
+          }"${msg ? `: ${msg}` : "."}`;
+          throw new Error(msg);
+        }
+      }
+      doesThrow = true;
+    }
+    if (!doesThrow) {
+      msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
+      throw new Error(msg);
+    }
   }
 };
 

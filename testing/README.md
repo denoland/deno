@@ -28,6 +28,11 @@ functions:
   this function does. Also compares any errors thrown to an optional expected
   `Error` class and checks that the error `.message` includes an optional
   string.
+- `assert.throwsAsync()` - Expects the passed `fn` to be async and throw (or
+  return a `Promise` that rejects). If the `fn` does not throw or reject, this
+  function will throw asynchronously. Also compares any errors thrown to an
+  optional expected `Error` class and checks that the error `.message` includes
+  an optional string.
 
 `assertEqual()` is the same as `assert.equal()` but maintained for backwards
 compatibility.
@@ -102,6 +107,36 @@ test(function doesThrow() {
 // This test will not pass
 test(function fails() {
   assert.throws(() => {
+    console.log("Hello world");
+  });
+});
+```
+
+Using `assert.throwsAsync()`:
+
+```ts
+test(async function doesThrow() {
+  assert.throwsAsync(async () => {
+    throw new TypeError("hello world!");
+  });
+  assert.throwsAsync(async () => {
+    throw new TypeError("hello world!");
+  }, TypeError);
+  assert.throwsAsync(
+    async () => {
+      throw new TypeError("hello world!");
+    },
+    TypeError,
+    "hello"
+  );
+  assert.throwsAsync(async () => {
+    return Promise.reject(new Error());
+  });
+});
+
+// This test will not pass
+test(async function fails() {
+  assert.throwsAsync(async () => {
     console.log("Hello world");
   });
 });

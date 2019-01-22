@@ -27,15 +27,15 @@ test(function testingEqual() {
 test(function testingAssertEqual() {
   const a = Object.create(null);
   a.b = "foo";
-  assertEqual(a, a);
-  assert(assert.equal === assertEqual);
+  assert.equal(a, a);
+  assert(assertEqual === assert.equal);
 });
 
 test(function testingAssertEqualActualUncoercable() {
   let didThrow = false;
   const a = Object.create(null);
   try {
-    assertEqual(a, "bar");
+    assert.equal(a, "bar");
   } catch (e) {
     didThrow = true;
     console.log(e.message);
@@ -48,7 +48,7 @@ test(function testingAssertEqualExpectedUncoercable() {
   let didThrow = false;
   const a = Object.create(null);
   try {
-    assertEqual("bar", a);
+    assert.equal("bar", a);
   } catch (e) {
     didThrow = true;
     console.log(e.message);
@@ -145,6 +145,118 @@ test(function testingThrowsMsgNotIncludes() {
   try {
     assert.throws(
       () => {
+        count++;
+        throw new TypeError("Hello world!");
+      },
+      TypeError,
+      "foobar"
+    );
+  } catch (e) {
+    assert(
+      e.message ===
+        `Expected error message to include "foobar", but got "Hello world!".`
+    );
+    didThrow = true;
+  }
+  assert(count === 1);
+  assert(didThrow);
+});
+
+test(async function testingDoesThrowAsync() {
+  let count = 0;
+  await assert.throwsAsync(async () => {
+    count++;
+    throw new Error();
+  });
+  assert(count === 1);
+});
+
+test(async function testingDoesReject() {
+  let count = 0;
+  await assert.throwsAsync(() => {
+    count++;
+    return Promise.reject(new Error());
+  });
+  assert(count === 1);
+});
+
+test(async function testingDoesNotThrowAsync() {
+  let count = 0;
+  let didThrow = false;
+  try {
+    await assert.throwsAsync(async () => {
+      count++;
+      console.log("Hello world");
+    });
+  } catch (e) {
+    assert(e.message === "Expected function to throw.");
+    didThrow = true;
+  }
+  assert(count === 1);
+  assert(didThrow);
+});
+
+test(async function testingDoesNotRejectAsync() {
+  let count = 0;
+  let didThrow = false;
+  try {
+    await assert.throwsAsync(() => {
+      count++;
+      console.log("Hello world");
+      return Promise.resolve();
+    });
+  } catch (e) {
+    assert(e.message === "Expected function to throw.");
+    didThrow = true;
+  }
+  assert(count === 1);
+  assert(didThrow);
+});
+
+test(async function testingThrowsAsyncErrorType() {
+  let count = 0;
+  await assert.throwsAsync(async () => {
+    count++;
+    throw new TypeError();
+  }, TypeError);
+  assert(count === 1);
+});
+
+test(async function testingThrowsAsyncNotErrorType() {
+  let count = 0;
+  let didThrow = false;
+  try {
+    await assert.throwsAsync(async () => {
+      count++;
+      throw new TypeError();
+    }, RangeError);
+  } catch (e) {
+    assert(e.message === `Expected error to be instance of "RangeError".`);
+    didThrow = true;
+  }
+  assert(count === 1);
+  assert(didThrow);
+});
+
+test(async function testingThrowsAsyncMsgIncludes() {
+  let count = 0;
+  await assert.throwsAsync(
+    async () => {
+      count++;
+      throw new TypeError("Hello world!");
+    },
+    TypeError,
+    "world"
+  );
+  assert(count === 1);
+});
+
+test(async function testingThrowsMsgNotIncludes() {
+  let count = 0;
+  let didThrow = false;
+  try {
+    await assert.throwsAsync(
+      async () => {
         count++;
         throw new TypeError("Hello world!");
       },
