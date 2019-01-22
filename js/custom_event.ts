@@ -10,14 +10,15 @@ export const customEventAttributes = new WeakMap();
 
 export class CustomEventInit extends event.EventInit
   implements domTypes.CustomEventInit {
-  detail = null;
+  // tslint:disable-next-line:no-any
+  detail: any;
 
   constructor({
     bubbles = false,
     cancelable = false,
     composed = false,
     detail = null
-  } = {}) {
+  }: domTypes.CustomEventInit) {
     super({ bubbles, cancelable, composed });
     this.detail = detail;
   }
@@ -35,7 +36,7 @@ export class CustomEvent extends event.Event implements domTypes.CustomEvent {
   }
 
   // tslint:disable-next-line:no-any
-  get detail(): any | null {
+  get detail(): any {
     return getPrivateValue(this, customEventAttributes, "detail");
   }
 
@@ -44,7 +45,7 @@ export class CustomEvent extends event.Event implements domTypes.CustomEvent {
     bubbles?: boolean,
     cancelable?: boolean,
     // tslint:disable-next-line:no-any
-    detail?: any | null
+    detail?: any
   ) {
     if (this.dispatched) {
       return;

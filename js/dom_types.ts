@@ -144,7 +144,7 @@ export interface EventInit {
 
 export interface CustomEventInit extends EventInit {
   // tslint:disable-next-line:no-any
-  detail?: any | null;
+  detail?: any;
 }
 
 export enum EventPhase {
