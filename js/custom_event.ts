@@ -30,9 +30,8 @@ export class CustomEvent extends event.Event implements domTypes.CustomEvent {
     customEventInitDict: domTypes.CustomEventInit = {}
   ) {
     super(type, customEventInitDict);
-    customEventAttributes.set(this, {
-      detail: customEventInitDict.detail || null
-    });
+    const { detail = null } = customEventInitDict;
+    customEventAttributes.set(this, { detail });
   }
 
   // tslint:disable-next-line:no-any
