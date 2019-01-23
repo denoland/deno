@@ -144,6 +144,11 @@ export interface EventInit {
   composed?: boolean;
 }
 
+export interface CustomEventInit extends EventInit {
+  // tslint:disable-next-line:no-any
+  detail?: any;
+}
+
 export enum EventPhase {
   NONE = 0,
   CAPTURING_PHASE = 1,
@@ -180,6 +185,18 @@ export interface Event {
 
   readonly isTrusted: boolean;
   readonly timeStamp: Date;
+}
+
+export interface CustomEvent extends Event {
+  // tslint:disable-next-line:no-any
+  readonly detail: any;
+  initCustomEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    // tslint:disable-next-line:no-any
+    detail?: any | null
+  ): void;
 }
 
 /* TODO(ry) Re-expose this interface. There is currently some interference

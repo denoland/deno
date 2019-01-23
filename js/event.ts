@@ -22,6 +22,8 @@ export class EventInit implements domTypes.EventInit {
 export class Event implements domTypes.Event {
   // Each event has the following associated flags
   private _canceledFlag = false;
+  private _dispatchedFlag = false;
+  private _initializedFlag = false;
   private _inPassiveListenerFlag = false;
   private _stopImmediatePropagationFlag = false;
   private _stopPropagationFlag = false;
@@ -30,6 +32,7 @@ export class Event implements domTypes.Event {
   private _path: domTypes.EventPath[] = [];
 
   constructor(type: string, eventInitDict: domTypes.EventInit = {}) {
+    this._initializedFlag = true;
     eventAttributes.set(this, {
       type,
       bubbles: eventInitDict.bubbles || false,
@@ -71,12 +74,34 @@ export class Event implements domTypes.Event {
     return this._canceledFlag;
   }
 
+  get dispatched(): boolean {
+    return this._dispatchedFlag;
+  }
+
   get eventPhase(): number {
     return getPrivateValue(this, eventAttributes, "eventPhase");
   }
 
+  get initialized(): boolean {
+    return this._initializedFlag;
+  }
+
   get isTrusted(): boolean {
     return getPrivateValue(this, eventAttributes, "isTrusted");
+  }
+
+  set isTrusted(value) {
+    eventAttributes.set(this, {
+      type: this.type,
+      bubbles: this.bubbles,
+      cancelable: this.cancelable,
+      composed: this.composed,
+      currentTarget: this.currentTarget,
+      eventPhase: this.eventPhase,
+      isTrusted: value,
+      target: this.target,
+      timeStamp: this.timeStamp
+    });
   }
 
   get target(): domTypes.EventTarget {

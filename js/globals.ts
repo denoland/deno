@@ -9,6 +9,7 @@
 // can be expressed as a namespace in the type library.
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
+import * as customEvent from "./custom_event";
 import * as domTypes from "./dom_types";
 import * as event from "./event";
 import * as eventTarget from "./event_target";
@@ -64,6 +65,10 @@ export type Blob = blob.DenoBlob;
 // window.File = file.DenoFile;
 // export type File = file.DenoFile;
 
+window.CustomEventInit = customEvent.CustomEventInit;
+export type CustomEventInit = customEvent.CustomEventInit;
+window.CustomEvent = customEvent.CustomEvent;
+export type CustomEvent = customEvent.CustomEvent;
 window.EventInit = event.EventInit;
 export type EventInit = event.EventInit;
 window.Event = event.Event;
