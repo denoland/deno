@@ -95,8 +95,8 @@ function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
   }
 
   return new Proxy(env, {
-    set(obj, prop: string, value: string | number) {
-      setEnv(prop, value.toString());
+    set(obj, prop: string, value: string) {
+      setEnv(prop, value);
       return Reflect.set(obj, prop, value);
     }
   });
@@ -115,7 +115,7 @@ function setEnv(key: string, value: string): void {
 
 /** Returns a snapshot of the environment variables at invocation. Mutating a
  * property in the object will set that variable in the environment for
- * the process. The environment object will only accept `string`s or `number`s
+ * the process. The environment object will only accept `string`s
  * as values.
  *
  *       import { env } from "deno";
