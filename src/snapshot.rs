@@ -12,3 +12,15 @@ pub fn deno_snapshot() -> deno_buf {
 
   unsafe { deno_buf::from_raw_parts(data.as_ptr(), data.len()) }
 }
+
+pub fn compiler_snapshot() -> deno_buf {
+  #[cfg(not(feature = "check-only"))]
+  let data =
+    include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/snapshot_compiler.bin"));
+  // The snapshot blob is not available when the Rust Language Server runs
+  // 'cargo check'.
+  #[cfg(feature = "check-only")]
+  let data = vec![];
+
+  unsafe { deno_buf::from_raw_parts(data.as_ptr(), data.len()) }
+}

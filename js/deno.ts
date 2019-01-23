@@ -63,6 +63,6 @@ export { DomIterableMixin } from "./mixins/dom_iterable";
 export { deferred } from "./util";
 
 // Provide the compiler API in an obfuscated way
-import * as compiler from "./compiler";
+// import * as compiler from "./compiler";
 // @internal
-export const _compiler = compiler;
+// export const _compiler = compiler;
