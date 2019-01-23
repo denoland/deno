@@ -7,7 +7,7 @@ jobs:
   pool:
     vmImage: 'Ubuntu-16.04'
   steps:
-  - script: curl -L https://deno.land/x/install/install.py | python - $(DENO_VERSION)
+  - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
   - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
   - script: deno test.ts --allow-run --allow-net --allow-write
 
@@ -15,7 +15,7 @@ jobs:
   pool:
     vmImage: 'macOS-10.13'
   steps:
-  - script: curl -L https://deno.land/x/install/install.py | python - $(DENO_VERSION)
+  - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
   - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
   - script: deno test.ts --allow-run --allow-net --allow-write
 
@@ -23,6 +23,6 @@ jobs:
   pool:
     vmImage: 'vs2017-win2016'
   steps:
-  - powershell: iwr https://deno.land/x/install/install.ps1 -Outfile 'install.ps1'; ./install.ps1 $(DENO_VERSION)
+  - powershell: iwr https://deno.land/x/install/install.ps1 -out install.ps1; .\install.ps1 $(DENO_VERSION)
   - script: echo '##vso[task.prependpath]C:\Users\VssAdministrator\.deno\bin\'
   - script: 'C:\Users\VssAdministrator\.deno\bin\deno.exe test.ts --allow-run --allow-net --allow-write'
