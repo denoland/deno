@@ -342,38 +342,125 @@ export function stringifyArgs(
   args: any[],
   options: ConsoleOptions = {}
 ): string {
-  const out: string[] = [];
-  const { collapsedAt, indentLevel } = options;
-  for (const a of args) {
-    if (typeof a === "string") {
-      out.push(a);
-    } else {
-      out.push(
-        // use default maximum depth for null or undefined argument
-        stringify(
-          a,
-          // tslint:disable-next-line:no-any
-          new Set<any>(),
-          0,
-          // tslint:disable-next-line:triple-equals
-          options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
-        )
-      );
+  const first = args[0];
+  let a = 0;
+  let str = "";
+  let join = "";
+
+  if (typeof first === "string") {
+    let tempStr: string;
+    let lastPos = 0;
+
+    for (let i = 0; i < first.length - 1; i++) {
+      if (first.charCodeAt(i) === 37 /* '%' */) {
+        const nextChar = first.charCodeAt(++i);
+        if (a + 1 !== args.length) {
+          switch (nextChar) {
+            case 115: // 's'
+              // format as a string
+              tempStr = String(args[++a]);
+              break;
+            case 100: // 'd'
+            case 105: // 'i'
+              // format as an integer
+              const tempInteger = args[++a];
+              if (typeof tempInteger === "bigint") {
+                tempStr = `${tempInteger}n`;
+              } else if (typeof tempInteger === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = `${parseInt(tempInteger, 10)}`;
+              }
+              break;
+            case 102: // 'f'
+              // format as a floating point value
+              const tempFloat = args[++a];
+              if (typeof tempFloat === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = `${parseFloat(tempFloat)}`;
+              }
+              break;
+            case 111: // 'o'
+            case 79: // 'O'
+              // format as an object
+              tempStr = stringify(
+                args[++a],
+                // tslint:disable-next-line:no-any
+                new Set<any>(),
+                0,
+                // tslint:disable-next-line:triple-equals
+                options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
+              );
+              break;
+            case 37: // '%'
+              str += first.slice(lastPos, i);
+              lastPos = i + 1;
+              continue;
+            case 99: // 'c'
+              // TODO: applies CSS style rules to the output string as specified
+              continue;
+            default:
+              // any other character is not a correct placeholder
+              continue;
+          }
+
+          if (lastPos !== i - 1) {
+            str += first.slice(lastPos, i - 1);
+          }
+
+          str += tempStr;
+          lastPos = i + 1;
+        } else if (nextChar === 37 /* '%' */) {
+          str += first.slice(lastPos, i);
+          lastPos = i + 1;
+        }
+      }
+    }
+
+    if (lastPos !== 0) {
+      a++;
+      join = " ";
+      if (lastPos < first.length) {
+        str += first.slice(lastPos);
+      }
     }
   }
-  let outstr = out.join(" ");
+
+  while (a < args.length) {
+    const value = args[a];
+    str += join;
+    if (typeof value === "string") {
+      str += value;
+    } else {
+      // use default maximum depth for null or undefined argument
+      str += stringify(
+        value,
+        // tslint:disable-next-line:no-any
+        new Set<any>(),
+        0,
+        // tslint:disable-next-line:triple-equals
+        options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
+      );
+    }
+    join = " ";
+    a++;
+  }
+
+  const { collapsedAt, indentLevel } = options;
   if (
     !isCollapsed(collapsedAt, indentLevel) &&
     indentLevel != null &&
     indentLevel > 0
   ) {
     const groupIndent = " ".repeat(indentLevel);
-    if (outstr.indexOf("\n") !== -1) {
-      outstr = outstr.replace(/\n/g, `\n${groupIndent}`);
+    if (str.indexOf("\n") !== -1) {
+      str = str.replace(/\n/g, `\n${groupIndent}`);
     }
-    outstr = groupIndent + outstr;
+    str = groupIndent + str;
   }
-  return outstr;
+
+  return str;
 }
 
 type PrintFunc = (x: string, isErr?: boolean, printsNewline?: boolean) => void;
