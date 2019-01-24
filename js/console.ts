@@ -14,6 +14,16 @@ type ConsoleOptions = Partial<{
 // Default depth of logging nested objects
 const DEFAULT_MAX_DEPTH = 4;
 
+// Char codes
+const CHAR_PERCENT = 37; /* % */
+const CHAR_LOWERCASE_S = 115; /* s */
+const CHAR_LOWERCASE_D = 100; /* d */
+const CHAR_LOWERCASE_I = 105; /* i */
+const CHAR_LOWERCASE_F = 102; /* f */
+const CHAR_LOWERCASE_O = 111; /* o */
+const CHAR_UPPERCASE_O = 79; /* O */
+const CHAR_LOWERCASE_C = 99; /* c */
+
 // tslint:disable-next-line:no-any
 function getClassInstanceName(instance: any): string {
   if (typeof instance !== "object") {
@@ -342,38 +352,125 @@ export function stringifyArgs(
   args: any[],
   options: ConsoleOptions = {}
 ): string {
-  const out: string[] = [];
-  const { collapsedAt, indentLevel } = options;
-  for (const a of args) {
-    if (typeof a === "string") {
-      out.push(a);
-    } else {
-      out.push(
-        // use default maximum depth for null or undefined argument
-        stringify(
-          a,
-          // tslint:disable-next-line:no-any
-          new Set<any>(),
-          0,
-          // tslint:disable-next-line:triple-equals
-          options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
-        )
-      );
+  const first = args[0];
+  let a = 0;
+  let str = "";
+  let join = "";
+
+  if (typeof first === "string") {
+    let tempStr: string;
+    let lastPos = 0;
+
+    for (let i = 0; i < first.length - 1; i++) {
+      if (first.charCodeAt(i) === CHAR_PERCENT) {
+        const nextChar = first.charCodeAt(++i);
+        if (a + 1 !== args.length) {
+          switch (nextChar) {
+            case CHAR_LOWERCASE_S:
+              // format as a string
+              tempStr = String(args[++a]);
+              break;
+            case CHAR_LOWERCASE_D:
+            case CHAR_LOWERCASE_I:
+              // format as an integer
+              const tempInteger = args[++a];
+              if (typeof tempInteger === "bigint") {
+                tempStr = `${tempInteger}n`;
+              } else if (typeof tempInteger === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = `${parseInt(tempInteger, 10)}`;
+              }
+              break;
+            case CHAR_LOWERCASE_F:
+              // format as a floating point value
+              const tempFloat = args[++a];
+              if (typeof tempFloat === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = `${parseFloat(tempFloat)}`;
+              }
+              break;
+            case CHAR_LOWERCASE_O:
+            case CHAR_UPPERCASE_O:
+              // format as an object
+              tempStr = stringify(
+                args[++a],
+                // tslint:disable-next-line:no-any
+                new Set<any>(),
+                0,
+                // tslint:disable-next-line:triple-equals
+                options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
+              );
+              break;
+            case CHAR_PERCENT:
+              str += first.slice(lastPos, i);
+              lastPos = i + 1;
+              continue;
+            case CHAR_LOWERCASE_C:
+              // TODO: applies CSS style rules to the output string as specified
+              continue;
+            default:
+              // any other character is not a correct placeholder
+              continue;
+          }
+
+          if (lastPos !== i - 1) {
+            str += first.slice(lastPos, i - 1);
+          }
+
+          str += tempStr;
+          lastPos = i + 1;
+        } else if (nextChar === CHAR_PERCENT) {
+          str += first.slice(lastPos, i);
+          lastPos = i + 1;
+        }
+      }
+    }
+
+    if (lastPos !== 0) {
+      a++;
+      join = " ";
+      if (lastPos < first.length) {
+        str += first.slice(lastPos);
+      }
     }
   }
-  let outstr = out.join(" ");
+
+  while (a < args.length) {
+    const value = args[a];
+    str += join;
+    if (typeof value === "string") {
+      str += value;
+    } else {
+      // use default maximum depth for null or undefined argument
+      str += stringify(
+        value,
+        // tslint:disable-next-line:no-any
+        new Set<any>(),
+        0,
+        // tslint:disable-next-line:triple-equals
+        options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
+      );
+    }
+    join = " ";
+    a++;
+  }
+
+  const { collapsedAt, indentLevel } = options;
   if (
     !isCollapsed(collapsedAt, indentLevel) &&
     indentLevel != null &&
     indentLevel > 0
   ) {
     const groupIndent = " ".repeat(indentLevel);
-    if (outstr.indexOf("\n") !== -1) {
-      outstr = outstr.replace(/\n/g, `\n${groupIndent}`);
+    if (str.indexOf("\n") !== -1) {
+      str = str.replace(/\n/g, `\n${groupIndent}`);
     }
-    outstr = groupIndent + outstr;
+    str = groupIndent + str;
   }
-  return outstr;
+
+  return str;
 }
 
 type PrintFunc = (x: string, isErr?: boolean, printsNewline?: boolean) => void;
