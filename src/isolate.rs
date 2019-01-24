@@ -28,6 +28,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::{Once, ONCE_INIT};
 use std::time::Duration;
 use std::time::Instant;
 use tokio;
@@ -156,7 +157,7 @@ pub struct Metrics {
   pub bytes_received: AtomicUsize,
 }
 
-static DENO_INIT: std::sync::Once = std::sync::ONCE_INIT;
+static DENO_INIT: Once = ONCE_INIT;
 
 impl Isolate {
   pub fn new(
