@@ -145,6 +145,80 @@ test(function consoleTestStringifyWithDepth() {
   );
 });
 
+test(function consoleTestWithIntegerFormatSpecifier() {
+  assertEqual(stringify("%i"), "%i");
+  assertEqual(stringify("%i", 42.0), "42");
+  assertEqual(stringify("%i", 42), "42");
+  assertEqual(stringify("%i", "42"), "42");
+  assertEqual(stringify("%i", "42.0"), "42");
+  assertEqual(stringify("%i", 1.5), "1");
+  assertEqual(stringify("%i", -0.5), "0");
+  assertEqual(stringify("%i", ""), "NaN");
+  assertEqual(stringify("%i", Symbol()), "NaN");
+  assertEqual(stringify("%i %d", 42, 43), "42 43");
+  assertEqual(stringify("%d %i", 42), "42 %i");
+  assertEqual(stringify("%d", 12345678901234567890123), "1");
+  assertEqual(
+    stringify("%i", 12345678901234567890123n),
+    "12345678901234567890123n"
+  );
+});
+
+test(function consoleTestWithFloatFormatSpecifier() {
+  assertEqual(stringify("%f"), "%f");
+  assertEqual(stringify("%f", 42.0), "42");
+  assertEqual(stringify("%f", 42), "42");
+  assertEqual(stringify("%f", "42"), "42");
+  assertEqual(stringify("%f", "42.0"), "42");
+  assertEqual(stringify("%f", 1.5), "1.5");
+  assertEqual(stringify("%f", -0.5), "-0.5");
+  assertEqual(stringify("%f", Math.PI), "3.141592653589793");
+  assertEqual(stringify("%f", ""), "NaN");
+  assertEqual(stringify("%f", Symbol("foo")), "NaN");
+  assertEqual(stringify("%f", 5n), "5");
+  assertEqual(stringify("%f %f", 42, 43), "42 43");
+  assertEqual(stringify("%f %f", 42), "42 %f");
+});
+
+test(function consoleTestWithStringFormatSpecifier() {
+  assertEqual(stringify("%s"), "%s");
+  assertEqual(stringify("%s", undefined), "undefined");
+  assertEqual(stringify("%s", "foo"), "foo");
+  assertEqual(stringify("%s", 42), "42");
+  assertEqual(stringify("%s", "42"), "42");
+  assertEqual(stringify("%s %s", 42, 43), "42 43");
+  assertEqual(stringify("%s %s", 42), "42 %s");
+  assertEqual(stringify("%s", Symbol("foo")), "Symbol(foo)");
+});
+
+test(function consoleTestWithObjectFormatSpecifier() {
+  assertEqual(stringify("%o"), "%o");
+  assertEqual(stringify("%o", 42), "42");
+  assertEqual(stringify("%o", "foo"), "foo");
+  assertEqual(stringify("o: %o, a: %O", {}, []), "o: {}, a: []");
+  assertEqual(stringify("%o", { a: 42 }), "{ a: 42 }");
+  assertEqual(
+    stringify("%o", { a: { b: { c: { d: new Set([1]) } } } }),
+    "{ a: { b: { c: { d: [Set] } } } }"
+  );
+});
+
+test(function consoleTestWithVariousOrInvalidFormatSpecifier() {
+  assertEqual(stringify("%s:%s"), "%s:%s");
+  assertEqual(stringify("%i:%i"), "%i:%i");
+  assertEqual(stringify("%d:%d"), "%d:%d");
+  assertEqual(stringify("%%s%s", "foo"), "%sfoo");
+  assertEqual(stringify("%s:%s", undefined), "undefined:%s");
+  assertEqual(stringify("%s:%s", "foo", "bar"), "foo:bar");
+  assertEqual(stringify("%s:%s", "foo", "bar", "baz"), "foo:bar baz");
+  assertEqual(stringify("%%%s%%", "hi"), "%hi%");
+  assertEqual(stringify("%d:%d", 12), "12:%d");
+  assertEqual(stringify("%i:%i", 12), "12:%i");
+  assertEqual(stringify("%f:%f", 12), "12:%f");
+  assertEqual(stringify("o: %o, a: %o", {}), "o: {}, a: %o");
+  assertEqual(stringify("abc%", 1), "abc% 1");
+});
+
 test(function consoleTestCallToStringOnLabel() {
   const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
 
