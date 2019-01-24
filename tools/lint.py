@@ -4,11 +4,10 @@
 
 import os
 import sys
-from util import enable_ansi_colors, run, find_exts
+from util import enable_ansi_colors, find_exts, root_path, run
 
 enable_ansi_colors()
 
-root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 third_party_path = os.path.join(root_path, "third_party")
 cpplint = os.path.join(third_party_path, "cpplint", "cpplint.py")
 tslint = os.path.join(third_party_path, "node_modules", "tslint", "bin",
