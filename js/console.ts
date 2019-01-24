@@ -14,6 +14,16 @@ type ConsoleOptions = Partial<{
 // Default depth of logging nested objects
 const DEFAULT_MAX_DEPTH = 4;
 
+// Char codes
+const CHAR_PERCENT = 37; /* % */
+const CHAR_LOWERCASE_S = 115; /* s */
+const CHAR_LOWERCASE_D = 100; /* d */
+const CHAR_LOWERCASE_I = 105; /* i */
+const CHAR_LOWERCASE_F = 102; /* f */
+const CHAR_LOWERCASE_O = 111; /* o */
+const CHAR_UPPERCASE_O = 79; /* O */
+const CHAR_LOWERCASE_C = 99; /* c */
+
 // tslint:disable-next-line:no-any
 function getClassInstanceName(instance: any): string {
   if (typeof instance !== "object") {
@@ -352,16 +362,16 @@ export function stringifyArgs(
     let lastPos = 0;
 
     for (let i = 0; i < first.length - 1; i++) {
-      if (first.charCodeAt(i) === 37 /* '%' */) {
+      if (first.charCodeAt(i) === CHAR_PERCENT) {
         const nextChar = first.charCodeAt(++i);
         if (a + 1 !== args.length) {
           switch (nextChar) {
-            case 115: // 's'
+            case CHAR_LOWERCASE_S:
               // format as a string
               tempStr = String(args[++a]);
               break;
-            case 100: // 'd'
-            case 105: // 'i'
+            case CHAR_LOWERCASE_D:
+            case CHAR_LOWERCASE_I:
               // format as an integer
               const tempInteger = args[++a];
               if (typeof tempInteger === "bigint") {
@@ -372,7 +382,7 @@ export function stringifyArgs(
                 tempStr = `${parseInt(tempInteger, 10)}`;
               }
               break;
-            case 102: // 'f'
+            case CHAR_LOWERCASE_F:
               // format as a floating point value
               const tempFloat = args[++a];
               if (typeof tempFloat === "symbol") {
@@ -381,8 +391,8 @@ export function stringifyArgs(
                 tempStr = `${parseFloat(tempFloat)}`;
               }
               break;
-            case 111: // 'o'
-            case 79: // 'O'
+            case CHAR_LOWERCASE_O:
+            case CHAR_UPPERCASE_O:
               // format as an object
               tempStr = stringify(
                 args[++a],
@@ -393,11 +403,11 @@ export function stringifyArgs(
                 options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
               );
               break;
-            case 37: // '%'
+            case CHAR_PERCENT:
               str += first.slice(lastPos, i);
               lastPos = i + 1;
               continue;
-            case 99: // 'c'
+            case CHAR_LOWERCASE_C:
               // TODO: applies CSS style rules to the output string as specified
               continue;
             default:
@@ -411,7 +421,7 @@ export function stringifyArgs(
 
           str += tempStr;
           lastPos = i + 1;
-        } else if (nextChar === 37 /* '%' */) {
+        } else if (nextChar === CHAR_PERCENT) {
           str += first.slice(lastPos, i);
           lastPos = i + 1;
         }
