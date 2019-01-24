@@ -9,77 +9,78 @@
 /*jslint bitwise: true */
 
 const HEX_CHARS = "0123456789abcdef".split("");
-const EXTRA = [-2147483648, 8388608, 32768, 128];
-const SHIFT = [24, 16, 8, 0];
+const EXTRA = Uint32Array.of(-2147483648, 8388608, 32768, 128);
+const SHIFT = Uint32Array.of(24, 16, 8, 0);
 
-const blocks = [];
+const blocks = new Uint32Array(80);
 
 export class Sha1 {
-  blocks;
-  block;
-  start;
-  bytes;
-  hBytes;
-  finalized;
-  hashed;
-  first;
+  private _blocks: Uint32Array;
+  private _block: number;
+  private _start: number;
+  private _bytes: number;
+  private _hBytes: number;
+  private _finalized: boolean;
+  private _hashed: boolean;
 
-  h0 = 0x67452301;
-  h1 = 0xefcdab89;
-  h2 = 0x98badcfe;
-  h3 = 0x10325476;
-  h4 = 0xc3d2e1f0;
-  lastByteIndex = 0;
+  private _h0 = 0x67452301;
+  private _h1 = 0xefcdab89;
+  private _h2 = 0x98badcfe;
+  private _h3 = 0x10325476;
+  private _h4 = 0xc3d2e1f0;
+  private _lastByteIndex = 0;
 
-  constructor(sharedMemory: boolean = false) {
+  constructor(sharedMemory = false) {
     if (sharedMemory) {
-      blocks[0] = blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
-      this.blocks = blocks;
+      this._blocks = blocks.fill(0, 0, 17);
     } else {
-      this.blocks = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      this._blocks = new Uint32Array(80);
     }
 
-    this.h0 = 0x67452301;
-    this.h1 = 0xefcdab89;
-    this.h2 = 0x98badcfe;
-    this.h3 = 0x10325476;
-    this.h4 = 0xc3d2e1f0;
+    this._h0 = 0x67452301;
+    this._h1 = 0xefcdab89;
+    this._h2 = 0x98badcfe;
+    this._h3 = 0x10325476;
+    this._h4 = 0xc3d2e1f0;
 
-    this.block = this.start = this.bytes = this.hBytes = 0;
-    this.finalized = this.hashed = false;
-    this.first = true;
+    this._block = this._start = this._bytes = this._hBytes = 0;
+    this._finalized = this._hashed = false;
   }
 
-  update(data: string | ArrayBuffer) {
-    if (this.finalized) {
+  update(data: string | ArrayBuffer | ArrayBufferView) {
+    if (this._finalized) {
       return;
     }
+    let notString = true;
     let message;
-    let notString = typeof data !== "string";
-    if (notString && data instanceof ArrayBuffer) {
+    if (data instanceof ArrayBuffer) {
       message = new Uint8Array(data);
+    } else if (ArrayBuffer.isView(data)) {
+      message = new Uint8Array(data.buffer);
     } else {
-      message = data;
+      notString = false;
+      message = String(data);
     }
     let code,
       index = 0,
       i,
+      start  = this._start,
       length = message.length || 0,
-      blocks = this.blocks;
+      blocks = this._blocks;
 
     while (index < length) {
-      if (this.hashed) {
-        this.hashed = false;
-        blocks[0] = this.block;
-        blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
+      if (this._hashed) {
+        this._hashed = false;
+        blocks[0] = this._block;
+        blocks.fill(0, 1, 17);
       }
 
       if (notString) {
-        for (i = this.start; index < length && i < 64; ++index) {
+        for (i = start; index < length && i < 64; ++index) {
           blocks[i >> 2] |= message[index] << SHIFT[i++ & 3];
         }
       } else {
-        for (i = this.start; index < length && i < 64; ++index) {
+        for (i = start; index < length && i < 64; ++index) {
           code = message.charCodeAt(index);
           if (code < 0x80) {
             blocks[i >> 2] |= code << SHIFT[i++ & 3];
@@ -102,56 +103,55 @@ export class Sha1 {
         }
       }
 
-      this.lastByteIndex = i;
-      this.bytes += i - this.start;
+      this._lastByteIndex = i;
+      this._bytes += i - start;
       if (i >= 64) {
-        this.block = blocks[16];
-        this.start = i - 64;
+        this._block = blocks[16];
+        this._start = i - 64;
         this.hash();
-        this.hashed = true;
+        this._hashed = true;
       } else {
-        this.start = i;
+        this._start = i;
       }
     }
-    if (this.bytes > 4294967295) {
-      this.hBytes += (this.bytes / 4294967296) << 0;
-      this.bytes = this.bytes % 4294967296;
+    if (this._bytes > 4294967295) {
+      this._hBytes += (this._bytes / 4294967296) >>> 0;
+      this._bytes = this._bytes >>> 0;
     }
-    return this;
   }
 
   finalize() {
-    if (this.finalized) {
+    if (this._finalized) {
       return;
     }
-    this.finalized = true;
-    let blocks = this.blocks,
-      i = this.lastByteIndex;
-    blocks[16] = this.block;
+    this._finalized = true;
+    let blocks = this._blocks,
+      i = this._lastByteIndex;
+    blocks[16] = this._block;
     blocks[i >> 2] |= EXTRA[i & 3];
-    this.block = blocks[16];
+    this._block = blocks[16];
     if (i >= 56) {
-      if (!this.hashed) {
+      if (!this._hashed) {
         this.hash();
       }
-      blocks[0] = this.block;
-      blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
+      blocks[0] = this._block;
+      blocks.fill(0, 1, 17);
     }
-    blocks[14] = (this.hBytes << 3) | (this.bytes >>> 29);
-    blocks[15] = this.bytes << 3;
+    blocks[14] = (this._hBytes << 3) | (this._bytes >>> 29);
+    blocks[15] = this._bytes << 3;
     this.hash();
   }
 
   hash() {
-    let a = this.h0,
-      b = this.h1,
-      c = this.h2,
-      d = this.h3,
-      e = this.h4;
+    let a = this._h0,
+      b = this._h1,
+      c = this._h2,
+      d = this._h3,
+      e = this._h4;
     let f,
       j,
       t,
-      blocks = this.blocks;
+      blocks = this._blocks;
 
     for (j = 16; j < 80; ++j) {
       t = blocks[j - 3] ^ blocks[j - 8] ^ blocks[j - 14] ^ blocks[j - 16];
@@ -161,126 +161,126 @@ export class Sha1 {
     for (j = 0; j < 20; j += 5) {
       f = (b & c) | (~b & d);
       t = (a << 5) | (a >>> 27);
-      e = (t + f + e + 1518500249 + blocks[j]) << 0;
+      e = (t + f + e + 1518500249 + blocks[j]) >>> 0;
       b = (b << 30) | (b >>> 2);
 
       f = (a & b) | (~a & c);
       t = (e << 5) | (e >>> 27);
-      d = (t + f + d + 1518500249 + blocks[j + 1]) << 0;
+      d = (t + f + d + 1518500249 + blocks[j + 1]) >>> 0;
       a = (a << 30) | (a >>> 2);
 
       f = (e & a) | (~e & b);
       t = (d << 5) | (d >>> 27);
-      c = (t + f + c + 1518500249 + blocks[j + 2]) << 0;
+      c = (t + f + c + 1518500249 + blocks[j + 2]) >>> 0;
       e = (e << 30) | (e >>> 2);
 
       f = (d & e) | (~d & a);
       t = (c << 5) | (c >>> 27);
-      b = (t + f + b + 1518500249 + blocks[j + 3]) << 0;
+      b = (t + f + b + 1518500249 + blocks[j + 3]) >>> 0;
       d = (d << 30) | (d >>> 2);
 
       f = (c & d) | (~c & e);
       t = (b << 5) | (b >>> 27);
-      a = (t + f + a + 1518500249 + blocks[j + 4]) << 0;
+      a = (t + f + a + 1518500249 + blocks[j + 4]) >>> 0;
       c = (c << 30) | (c >>> 2);
     }
 
     for (; j < 40; j += 5) {
       f = b ^ c ^ d;
       t = (a << 5) | (a >>> 27);
-      e = (t + f + e + 1859775393 + blocks[j]) << 0;
+      e = (t + f + e + 1859775393 + blocks[j]) >>> 0;
       b = (b << 30) | (b >>> 2);
 
       f = a ^ b ^ c;
       t = (e << 5) | (e >>> 27);
-      d = (t + f + d + 1859775393 + blocks[j + 1]) << 0;
+      d = (t + f + d + 1859775393 + blocks[j + 1]) >>> 0;
       a = (a << 30) | (a >>> 2);
 
       f = e ^ a ^ b;
       t = (d << 5) | (d >>> 27);
-      c = (t + f + c + 1859775393 + blocks[j + 2]) << 0;
+      c = (t + f + c + 1859775393 + blocks[j + 2]) >>> 0;
       e = (e << 30) | (e >>> 2);
 
       f = d ^ e ^ a;
       t = (c << 5) | (c >>> 27);
-      b = (t + f + b + 1859775393 + blocks[j + 3]) << 0;
+      b = (t + f + b + 1859775393 + blocks[j + 3]) >>> 0;
       d = (d << 30) | (d >>> 2);
 
       f = c ^ d ^ e;
       t = (b << 5) | (b >>> 27);
-      a = (t + f + a + 1859775393 + blocks[j + 4]) << 0;
+      a = (t + f + a + 1859775393 + blocks[j + 4]) >>> 0;
       c = (c << 30) | (c >>> 2);
     }
 
     for (; j < 60; j += 5) {
       f = (b & c) | (b & d) | (c & d);
       t = (a << 5) | (a >>> 27);
-      e = (t + f + e - 1894007588 + blocks[j]) << 0;
+      e = (t + f + e - 1894007588 + blocks[j]) >>> 0;
       b = (b << 30) | (b >>> 2);
 
       f = (a & b) | (a & c) | (b & c);
       t = (e << 5) | (e >>> 27);
-      d = (t + f + d - 1894007588 + blocks[j + 1]) << 0;
+      d = (t + f + d - 1894007588 + blocks[j + 1]) >>> 0;
       a = (a << 30) | (a >>> 2);
 
       f = (e & a) | (e & b) | (a & b);
       t = (d << 5) | (d >>> 27);
-      c = (t + f + c - 1894007588 + blocks[j + 2]) << 0;
+      c = (t + f + c - 1894007588 + blocks[j + 2]) >>> 0;
       e = (e << 30) | (e >>> 2);
 
       f = (d & e) | (d & a) | (e & a);
       t = (c << 5) | (c >>> 27);
-      b = (t + f + b - 1894007588 + blocks[j + 3]) << 0;
+      b = (t + f + b - 1894007588 + blocks[j + 3]) >>> 0;
       d = (d << 30) | (d >>> 2);
 
       f = (c & d) | (c & e) | (d & e);
       t = (b << 5) | (b >>> 27);
-      a = (t + f + a - 1894007588 + blocks[j + 4]) << 0;
+      a = (t + f + a - 1894007588 + blocks[j + 4]) >>> 0;
       c = (c << 30) | (c >>> 2);
     }
 
     for (; j < 80; j += 5) {
       f = b ^ c ^ d;
       t = (a << 5) | (a >>> 27);
-      e = (t + f + e - 899497514 + blocks[j]) << 0;
+      e = (t + f + e - 899497514 + blocks[j]) >>> 0;
       b = (b << 30) | (b >>> 2);
 
       f = a ^ b ^ c;
       t = (e << 5) | (e >>> 27);
-      d = (t + f + d - 899497514 + blocks[j + 1]) << 0;
+      d = (t + f + d - 899497514 + blocks[j + 1]) >>> 0;
       a = (a << 30) | (a >>> 2);
 
       f = e ^ a ^ b;
       t = (d << 5) | (d >>> 27);
-      c = (t + f + c - 899497514 + blocks[j + 2]) << 0;
+      c = (t + f + c - 899497514 + blocks[j + 2]) >>> 0;
       e = (e << 30) | (e >>> 2);
 
       f = d ^ e ^ a;
       t = (c << 5) | (c >>> 27);
-      b = (t + f + b - 899497514 + blocks[j + 3]) << 0;
+      b = (t + f + b - 899497514 + blocks[j + 3]) >>> 0;
       d = (d << 30) | (d >>> 2);
 
       f = c ^ d ^ e;
       t = (b << 5) | (b >>> 27);
-      a = (t + f + a - 899497514 + blocks[j + 4]) << 0;
+      a = (t + f + a - 899497514 + blocks[j + 4]) >>> 0;
       c = (c << 30) | (c >>> 2);
     }
 
-    this.h0 = (this.h0 + a) << 0;
-    this.h1 = (this.h1 + b) << 0;
-    this.h2 = (this.h2 + c) << 0;
-    this.h3 = (this.h3 + d) << 0;
-    this.h4 = (this.h4 + e) << 0;
+    this._h0 = (this._h0 + a) >>> 0;
+    this._h1 = (this._h1 + b) >>> 0;
+    this._h2 = (this._h2 + c) >>> 0;
+    this._h3 = (this._h3 + d) >>> 0;
+    this._h4 = (this._h4 + e) >>> 0;
   }
 
   hex() {
     this.finalize();
 
-    let h0 = this.h0,
-      h1 = this.h1,
-      h2 = this.h2,
-      h3 = this.h3,
-      h4 = this.h4;
+    let h0 = this._h0,
+      h1 = this._h1,
+      h2 = this._h2,
+      h3 = this._h3,
+      h4 = this._h4;
 
     return (
       HEX_CHARS[(h0 >> 28) & 0x0f] +
@@ -333,11 +333,11 @@ export class Sha1 {
   digest() {
     this.finalize();
 
-    let h0 = this.h0,
-      h1 = this.h1,
-      h2 = this.h2,
-      h3 = this.h3,
-      h4 = this.h4;
+    let h0 = this._h0,
+      h1 = this._h1,
+      h2 = this._h2,
+      h3 = this._h3,
+      h4 = this._h4;
 
     return [
       (h0 >> 24) & 0xff,
@@ -369,14 +369,8 @@ export class Sha1 {
 
   arrayBuffer() {
     this.finalize();
-
-    let buffer = new ArrayBuffer(20);
-    let dataView = new DataView(buffer);
-    dataView.setUint32(0, this.h0);
-    dataView.setUint32(4, this.h1);
-    dataView.setUint32(8, this.h2);
-    dataView.setUint32(12, this.h3);
-    dataView.setUint32(16, this.h4);
-    return buffer;
+    return Uint32Array.of(
+      this._h0, this._h1, this._h2, this._h3, this._h4
+    ).buffer;
   }
 }
