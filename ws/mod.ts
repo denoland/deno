@@ -246,10 +246,7 @@ export async function writeFrame(frame: WebSocketFrame, writer: Writer) {
   let header: Uint8Array;
   const hasMask = frame.mask ? 0x80 : 0;
   if (payloadLength < 126) {
-    header = new Uint8Array([
-      0x80 | frame.opcode,
-      hasMask | payloadLength
-    ]);
+    header = new Uint8Array([0x80 | frame.opcode, hasMask | payloadLength]);
   } else if (payloadLength < 0xffff) {
     header = new Uint8Array([
       0x80 | frame.opcode,

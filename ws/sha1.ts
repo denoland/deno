@@ -64,7 +64,7 @@ export class Sha1 {
     let code,
       index = 0,
       i,
-      start  = this._start,
+      start = this._start,
       length = message.length || 0,
       blocks = this._blocks;
 
@@ -369,8 +369,7 @@ export class Sha1 {
 
   arrayBuffer() {
     this.finalize();
-    return Uint32Array.of(
-      this._h0, this._h1, this._h2, this._h3, this._h4
-    ).buffer;
+    return Uint32Array.of(this._h0, this._h1, this._h2, this._h3, this._h4)
+      .buffer;
   }
 }
