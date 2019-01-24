@@ -124,7 +124,7 @@ function parenthesesAreOpen(code: string): boolean {
     if (bracePosition % 2 === 0) {
       stack.push(bracePosition + 1); // push next expected brace position
     } else {
-      if (stack.length === 0 || stack.pop() !== bracePosition) {
+      if (stack.pop() !== bracePosition) {
         return false;
       }
     }
