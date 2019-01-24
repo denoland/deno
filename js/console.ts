@@ -1,5 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { isTypedArray } from "./util";
+import { TextEncoder } from "./text_encoding";
+import { File, stdout } from "./files";
 
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
@@ -23,6 +25,20 @@ const CHAR_LOWERCASE_F = 102; /* f */
 const CHAR_LOWERCASE_O = 111; /* o */
 const CHAR_UPPERCASE_O = 79; /* O */
 const CHAR_LOWERCASE_C = 99; /* c */
+export class CSI {
+  static kClear = "\x1b[1;1H";
+  static kClearScreenDown = "\x1b[0J";
+}
+
+function cursorTo(stream: File, x: number, y?: number) {
+  const uint8 = new TextEncoder().encode(CSI.kClear);
+  stream.write(uint8);
+}
+
+function clearScreenDown(stream: File) {
+  const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
+  stream.write(uint8);
+}
 
 // tslint:disable-next-line:no-any
 function getClassInstanceName(instance: any): string {
@@ -638,6 +654,12 @@ export class Console {
       this.collapsedAt = null;
       this.log(); // When the collapsed state ended, outputs a sinle new line.
     }
+  };
+
+  clear = (): void => {
+    this.indentLevel = 0;
+    cursorTo(stdout, 0, 0);
+    clearScreenDown(stdout);
   };
 }
 

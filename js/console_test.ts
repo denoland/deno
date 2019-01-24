@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Console, libdeno, stringifyArgs, inspect } from "deno";
+import { Console, libdeno, stringifyArgs, inspect, write, stdout } from "deno";
 import { test, assertEqual } from "./test_util.ts";
 
 const console = new Console(libdeno.print);
@@ -116,7 +116,7 @@ test(function consoleTestStringifyCircular() {
   assertEqual(
     stringify(console),
     // tslint:disable-next-line:max-line-length
-    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function], group: [Function], groupCollapsed: [Function], groupEnd: [Function], indentLevel: 0, collapsedAt: null }"
+    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], time: [Function], timeLog: [Function], timeEnd: [Function], group: [Function], groupCollapsed: [Function], groupEnd: [Function], clear: [Function], indentLevel: 0, collapsedAt: null }"
   );
   // test inspect is working the same
   assertEqual(inspect(nestedObj), nestedObjExpected);
@@ -249,6 +249,24 @@ test(function consoleTestError() {
   }
 });
 
+test(function consoleTestClear() {
+  const stdoutWrite = stdout.write;
+  const uint8 = new TextEncoder().encode("\x1b[1;1H" + "\x1b[0J");
+  let buffer = new Uint8Array(0);
+
+  stdout.write = async u8 => {
+    const tmp = new Uint8Array(buffer.length + u8.length);
+    tmp.set(buffer, 0);
+    tmp.set(u8, buffer.length);
+    buffer = tmp;
+
+    return await write(stdout.rid, u8);
+  };
+  console.clear();
+  stdout.write = stdoutWrite;
+  assertEqual(buffer, uint8);
+});
+
 // Test bound this issue
 test(function consoleDetachedLog() {
   const log = console.log;
@@ -265,6 +283,7 @@ test(function consoleDetachedLog() {
   const consoleTimeEnd = console.timeEnd;
   const consoleGroup = console.group;
   const consoleGroupEnd = console.groupEnd;
+  const consoleClear = console.clear;
   log("Hello world");
   dir("Hello world");
   debug("Hello world");
@@ -279,4 +298,5 @@ test(function consoleDetachedLog() {
   consoleTimeEnd("Hello world");
   consoleGroup("Hello world");
   consoleGroupEnd();
+  console.clear();
 });
