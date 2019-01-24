@@ -23,3 +23,5 @@ import "testing/test.ts";
 import "textproto/test.ts";
 import "ws/sha1_test.ts";
 import "ws/test.ts";
+
+import "testing/main.ts";

@@ -238,7 +238,7 @@ function green_ok() {
   return FG_GREEN + "ok" + RESET;
 }
 
-async function runTests() {
+export async function runTests() {
   let passed = 0;
   let failed = 0;
 
@@ -283,5 +283,3 @@ async function runTests() {
     }, 0);
   }
 }
-
-setTimeout(runTests, 0);
