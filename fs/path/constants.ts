@@ -3,8 +3,6 @@
 
 import { platform } from "deno";
 
-const isWindows = platform.os === "win";
-
 // Alphabet chars.
 export const CHAR_UPPERCASE_A = 65; /* A */
 export const CHAR_LOWERCASE_A = 97; /* a */
@@ -50,4 +48,5 @@ export const CHAR_EQUAL = 61; /* = */
 export const CHAR_0 = 48; /* 0 */
 export const CHAR_9 = 57; /* 9 */
 
+export const isWindows = platform.os === "win";
 export const EOL = isWindows ? "\r\n" : "\n";
