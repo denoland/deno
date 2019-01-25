@@ -8,8 +8,8 @@ import { globalEval } from "./global_eval";
 import { handleAsyncMsgFromRust, sendSync } from "./dispatch";
 import { libdeno } from "./libdeno";
 import * as os from "./os";
-import { clearTimer, setInterval, setTimeout } from "./timers";
-import { atob, btoa, TextDecoder, TextEncoder } from "./text_encoding";
+import { clearTimer, setTimeout } from "./timers";
+import { TextDecoder, TextEncoder } from "./text_encoding";
 import { postMessage, workerClose, workerMain } from "./workers";
 import { assert, log, notImplemented, setLogDebug } from "./util";
 
@@ -228,10 +228,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
     innerMap.set(moduleSpecifier, fileName);
   }
 
-  private constructor() {
-    if (Compiler._instance) {
-      throw new TypeError("Attempt to create an additional compiler.");
-    }
+  constructor() {
     this._service = this._ts.createLanguageService(this);
   }
 
@@ -512,14 +509,9 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
       };
     });
   }
-
-  private static _instance: Compiler | undefined;
-
-  /** Returns the instance of `Compiler` or creates a new instance. */
-  static instance(): Compiler {
-    return Compiler._instance || (Compiler._instance = new Compiler());
-  }
 }
+
+const compiler = new Compiler();
 
 let startResMsg: msg.StartRes;
 
@@ -536,14 +528,10 @@ function sendStart(): void {
 }
 
 // set global objects for compiler web worker
-window.atob = atob;
-window.btoa = btoa;
 window.clearTimeout = clearTimer;
-window.clearInterval = clearTimer;
 window.console = console;
 window.postMessage = postMessage;
 window.setTimeout = setTimeout;
-window.setInterval = setInterval;
 window.workerMain = workerMain;
 window.close = workerClose;
 window.TextDecoder = TextDecoder;
@@ -553,7 +541,6 @@ window.TextEncoder = TextEncoder;
 // lazy instantiating the compiler web worker
 window.compilerMain = function compilerMain() {
   // workerMain should have already been called since a compiler is a worker.
-  const compiler = Compiler.instance();
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   compiler.recompile = startResMsg.recompileFlag();
@@ -584,7 +571,6 @@ export default function denoMain() {
   // handle `--types`
   // TODO(kitsonk) move to Rust fetching from compiler
   if (startResMsg.typesFlag()) {
-    const compiler = Compiler.instance();
     const defaultLibFileName = compiler.getDefaultLibFileName();
     const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
     console.log(defaultLibModule.sourceCode);

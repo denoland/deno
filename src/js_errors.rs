@@ -355,6 +355,14 @@ fn parse_map_string(
         include_str!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js.map"));
       SourceMap::from_json(s)
     }
+    #[cfg(not(feature = "check-only"))]
+    "gen/bundle/compiler.js" => {
+      let s = include_str!(concat!(
+        env!("GN_OUT_DIR"),
+        "/gen/bundle/compiler.js.map"
+      ));
+      SourceMap::from_json(s)
+    }
     _ => match getter.get_source_map(script_name) {
       None => None,
       Some(raw_source_map) => SourceMap::from_json(&raw_source_map),
