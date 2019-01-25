@@ -224,10 +224,10 @@ run_node("bundle") {
 run_node("bundle_compiler") {
   out_dir = "$target_gen_dir/bundle/"
   outputs = [
-    out_dir + "main_compiler.js",
-    out_dir + "main_compiler.js.map",
+    out_dir + "compiler.js",
+    out_dir + "compiler.js.map",
   ]
-  depfile = out_dir + "main_compiler.d"
+  depfile = out_dir + "compiler.d"
   deps = [
     ":msg_ts",
   ]
@@ -236,9 +236,9 @@ run_node("bundle_compiler") {
     "-c",
     rebase_path("rollup.config.js", root_build_dir),
     "-i",
-    rebase_path("js/main_compiler.ts", root_build_dir),
+    rebase_path("js/compiler.ts", root_build_dir),
     "-o",
-    rebase_path(out_dir + "main_compiler.js", root_build_dir),
+    rebase_path(out_dir + "compiler.js", root_build_dir),
     "--sourcemapFile",
     rebase_path("."),
     "--silent",
@@ -267,7 +267,7 @@ snapshot("snapshot_deno") {
 
 # Generates $target_gen_dir/snapshot_compiler.bin
 snapshot("snapshot_compiler") {
-  source_root = "$target_gen_dir/bundle/main_compiler.js"
+  source_root = "$target_gen_dir/bundle/compiler.js"
   deps = [
     ":bundle_compiler",
   ]
