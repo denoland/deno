@@ -16,10 +16,10 @@ has no external dependencies.
 [deno_install](https://github.com/denoland/deno_install) provides convenience
 scripts to download and install the binary.
 
-Using Python:
+Using Shell:
 
 ```
-curl -L https://deno.land/x/install/install.py | python
+curl -L https://deno.land/x/install/install.sh | sh
 ```
 
 Or using PowerShell:
