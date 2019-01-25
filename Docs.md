@@ -22,12 +22,6 @@ Using Shell:
 curl -L https://deno.land/x/install/install.sh | sh
 ```
 
-Using Python:
-
-```
-curl -L https://deno.land/x/install/install.py | python
-```
-
 Or using PowerShell:
 
 ```powershell
