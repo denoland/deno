@@ -143,7 +143,7 @@ pub fn set_flags(
   opts.optflag("h", "help", "Print this message.");
   opts.optflag("D", "log-debug", "Log debug output.");
   opts.optflag("v", "version", "Print the version.");
-  opts.optflag("r", "reload", "Reload cached remote resources.");
+  opts.optflag("", "reload", "Reload cached remote resources.");
   opts.optflag("", "v8-options", "Print V8 command line options.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
   opts.optflag("", "prefetch", "Prefetch the dependencies.");
@@ -171,7 +171,7 @@ fn test_set_flags_1() {
 #[test]
 fn test_set_flags_2() {
   let (flags, rest, _) =
-    set_flags(svec!["deno", "-r", "-D", "script.ts"]).unwrap();
+    set_flags(svec!["deno", "--reload", "-D", "script.ts"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
@@ -186,7 +186,7 @@ fn test_set_flags_2() {
 #[test]
 fn test_set_flags_3() {
   let (flags, rest, _) =
-    set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]).unwrap();
+    set_flags(svec!["deno", "--reload", "script.ts", "--allow-write"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
@@ -200,8 +200,13 @@ fn test_set_flags_3() {
 
 #[test]
 fn test_set_flags_4() {
-  let (flags, rest, _) =
-    set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]).unwrap();
+  let (flags, rest, _) = set_flags(svec![
+    "deno",
+    "-D",
+    "--reload",
+    "script.ts",
+    "--allow-write"
+  ]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
