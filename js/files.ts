@@ -62,6 +62,40 @@ export function create(filename: string): Promise<File> {
   return open(filename, "w+");
 }
 
+async function getCommonBaseRes(
+  builder: flatbuffers.Builder,
+  endOperation:
+    | typeof msg.Read.endRead
+    | typeof msg.Write.endWrite
+    | typeof msg.Open.endOpen,
+  innerType: msg.Any.Read | msg.Any.Write | msg.Any.Open,
+  resType: msg.Any.ReadRes | msg.Any.WriteRes | msg.Any.OpenRes,
+  p?: Uint8Array
+) {
+  const inner = endOperation(builder);
+  const baseRes = await dispatch.sendAsync(builder, innerType, inner, p);
+  assert(baseRes != null);
+  assert(resType === baseRes!.innerType());
+
+  return baseRes;
+}
+
+async function getReadWriteBaseRes(
+  startOperation: typeof msg.Read.startRead | typeof msg.Write.startWrite,
+  endOperation: typeof msg.Read.endRead | typeof msg.Write.endWrite,
+  addRid: typeof msg.Read.addRid | typeof msg.Write.addRid,
+  innerType: msg.Any.Read | msg.Any.Write,
+  resType: msg.Any.ReadRes | msg.Any.WriteRes,
+  rid: number,
+  p: Uint8Array
+): Promise<msg.Base> {
+  const builder = flatbuffers.createBuilder();
+  startOperation(builder);
+  addRid(builder, rid);
+
+  return getCommonBaseRes(builder, endOperation, innerType, resType, p);
+}
+
 /** Open a file and return an instance of the `File` object.
  *
  *       import * as deno from "deno";
@@ -79,10 +113,14 @@ export async function open(
   msg.Open.startOpen(builder);
   msg.Open.addFilename(builder, filename_);
   msg.Open.addMode(builder, mode_);
-  const inner = msg.Open.endOpen(builder);
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.Open, inner);
-  assert(baseRes != null);
-  assert(msg.Any.OpenRes === baseRes!.innerType());
+
+  const baseRes = await getCommonBaseRes(
+    builder,
+    msg.Open.endOpen,
+    msg.Any.Open,
+    msg.Any.OpenRes
+  );
+
   const res = new msg.OpenRes();
   assert(baseRes!.inner(res) != null);
   const rid = res.rid();
@@ -94,13 +132,16 @@ export async function open(
  * Resolves with the `ReadResult` for the operation.
  */
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
-  const builder = flatbuffers.createBuilder();
-  msg.Read.startRead(builder);
-  msg.Read.addRid(builder, rid);
-  const inner = msg.Read.endRead(builder);
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.Read, inner, p);
-  assert(baseRes != null);
-  assert(msg.Any.ReadRes === baseRes!.innerType());
+  const baseRes = await getReadWriteBaseRes(
+    msg.Read.startRead,
+    msg.Read.endRead,
+    msg.Read.addRid,
+    msg.Any.Read,
+    msg.Any.ReadRes,
+    rid,
+    p
+  );
+
   const res = new msg.ReadRes();
   assert(baseRes!.inner(res) != null);
   return { nread: res.nread(), eof: res.eof() };
@@ -111,13 +152,16 @@ export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
  * Resolves with the number of bytes written.
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
-  const builder = flatbuffers.createBuilder();
-  msg.Write.startWrite(builder);
-  msg.Write.addRid(builder, rid);
-  const inner = msg.Write.endWrite(builder);
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.Write, inner, p);
-  assert(baseRes != null);
-  assert(msg.Any.WriteRes === baseRes!.innerType());
+  const baseRes = await getReadWriteBaseRes(
+    msg.Write.startWrite,
+    msg.Write.endWrite,
+    msg.Write.addRid,
+    msg.Any.Write,
+    msg.Any.WriteRes,
+    rid,
+    p
+  );
+
   const res = new msg.WriteRes();
   assert(baseRes!.inner(res) != null);
   return res.nbyte();
