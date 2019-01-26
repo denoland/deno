@@ -690,12 +690,9 @@ rust_crate("rand") {
     ":rand_os",
     ":rand_pcg",
     ":rand_xorshift",
-  ]
-  extern_version = [
-    {
-      crate_name = "rand_core"
-      crate_version = "0.3.1"
-    },
+
+    # Override: use rand_core v0.4.0 instead of v0.3.1.
+    ":rand_core",
   ]
   args = [
     "--cap-lints",
@@ -708,6 +705,14 @@ rust_crate("rand") {
     "rustc_1_26",
     "rustc_1_27",
   ]
+
+  ## Override: use rand_core v0.4.0 instead of v0.3.1.
+  # extern_version = [
+  #   {
+  #     crate_name = "rand_core"
+  #     crate_version = "0.3.1"
+  #   },
+  # ]
   if (is_posix) {
     extern += [ ":libc" ]
   }
@@ -719,12 +724,6 @@ rust_crate("rand") {
 rust_crate("rand_chacha") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_chacha-0.1.1/src/lib.rs"
-  extern_version = [
-    {
-      crate_name = "rand_core"
-      crate_version = "0.3.1"
-    },
-  ]
   args = [
     "--cap-lints",
     "allow",
@@ -732,6 +731,17 @@ rust_crate("rand_chacha") {
 
   # Added by custom-build script.
   cfg = [ "rustc_1_26" ]
+
+  # Override: use rand_core v0.4.0 instead of v0.3.1.
+  extern = [ ":rand_core" ]
+
+  ## Override: use rand_core v0.4.0 instead of v0.3.1.
+  # extern_version = [
+  #   {
+  #     crate_name = "rand_core"
+  #     crate_version = "0.3.1"
+  #   },
+  # ]
 }
 
 rust_crate("rand_core") {
@@ -750,48 +760,63 @@ rust_crate("rand_core") {
 rust_crate("rand_hc") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_hc-0.1.0/src/lib.rs"
-  extern_version = [
-    {
-      crate_name = "rand_core"
-      crate_version = "0.3.1"
-    },
-  ]
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  # Override: use rand_core v0.4.0 instead of v0.3.1.
+  extern = [ ":rand_core" ]
+
+  ## Override: use rand_core v0.4.0 instead of v0.3.1.
+  # extern_version = [
+  #   {
+  #     crate_name = "rand_core"
+  #     crate_version = "0.3.1"
+  #   },
+  # ]
 }
 
 rust_crate("rand_isaac") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_isaac-0.1.1/src/lib.rs"
-  extern_version = [
-    {
-      crate_name = "rand_core"
-      crate_version = "0.3.1"
-    },
-  ]
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  # Override: use rand_core v0.4.0 instead of v0.3.1.
+  extern = [ ":rand_core" ]
+
+  ## Override: use rand_core v0.4.0 instead of v0.3.1.
+  # extern_version = [
+  #   {
+  #     crate_name = "rand_core"
+  #     crate_version = "0.3.1"
+  #   },
+  # ]
 }
 
 rust_crate("rand_os") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_os-0.1.1/src/lib.rs"
-  extern_version = [
-    {
-      crate_name = "rand_core"
-      crate_version = "0.3.1"
-    },
-  ]
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  # Override: use rand_core v0.4.0 instead of v0.3.1.
+  extern = [ ":rand_core" ]
+
+  ## Override: use rand_core v0.4.0 instead of v0.3.1.
+  # extern_version = [
+  #   {
+  #     crate_name = "rand_core"
+  #     crate_version = "0.3.1"
+  #   },
+  # ]
   if (is_posix) {
-    extern = [ ":libc" ]
+    extern += [ ":libc" ]
   }
 
   # Per the #[link(...)] attribute found in 'src/macos.rs'.
@@ -799,19 +824,13 @@ rust_crate("rand_os") {
     libs = [ "Security.framework" ]
   }
   if (is_win) {
-    extern = [ ":winapi" ]
+    extern += [ ":winapi" ]
   }
 }
 
 rust_crate("rand_pcg") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_pcg-0.1.1/src/lib.rs"
-  extern_version = [
-    {
-      crate_name = "rand_core"
-      crate_version = "0.3.1"
-    },
-  ]
   args = [
     "--cap-lints",
     "allow",
@@ -819,21 +838,37 @@ rust_crate("rand_pcg") {
 
   # Added by custom-build script.
   cfg = [ "rust_1_26" ]
+
+  # Override: use rand_core v0.4.0 instead of v0.3.1.
+  extern = [ ":rand_core" ]
+
+  ## Override: use rand_core v0.4.0 instead of v0.3.1.
+  # extern_version = [
+  #   {
+  #     crate_name = "rand_core"
+  #     crate_version = "0.3.1"
+  #   },
+  # ]
 }
 
 rust_crate("rand_xorshift") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_xorshift-0.1.1/src/lib.rs"
-  extern_version = [
-    {
-      crate_name = "rand_core"
-      crate_version = "0.3.1"
-    },
-  ]
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  # Override: use rand_core v0.4.0 instead of v0.3.1.
+  extern = [ ":rand_core" ]
+
+  ## Override: use rand_core v0.4.0 instead of v0.3.1.
+  # extern_version = [
+  #   {
+  #     crate_name = "rand_core"
+  #     crate_version = "0.3.1"
+  #   },
+  # ]
 }
 
 rust_crate("remove_dir_all") {
@@ -1639,22 +1674,23 @@ rust_crate("webpki_roots") {
 #   }
 # }
 
-rust_crate("rand_core-0.3.1") {
-  crate_name = "rand_core"
-  crate_version = "0.3.1"
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_core-0.3.1/src/lib.rs"
-  features = [
-    "alloc",
-    "rand_core",
-    "std",
-  ]
-  extern = [ ":rand_core" ]
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
+## Override: use rand_core v0.4.0 instead.
+# rust_crate("rand_core-0.3.1") {
+#   crate_name = "rand_core"
+#   crate_version = "0.3.1"
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_core-0.3.1/src/lib.rs"
+#   features = [
+#     "alloc",
+#     "rand_core",
+#     "std",
+#   ]
+#   extern = [ ":rand_core" ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
 
 if (is_posix) {
   rust_crate("arc_swap") {
