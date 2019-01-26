@@ -26,6 +26,9 @@ cache:
   - third_party/v8/third_party/llvm-build/
 
 install:
+# Because prebuilt/ is cached, we need to manually reset changes that might
+# happen to the sha1 files here.
+- git checkout -- prebuilt
 - nvm install v8
 - nvm use --delete-prefix v8
 - node -v
