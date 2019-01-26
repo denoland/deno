@@ -18,16 +18,25 @@ svg {
 a {
   color: #333;
 }
+a:hover {
+  color: #488;
+}
+
+a.badge {
+  display: inline-block;
+  border-radius: 2px;
+  height: 20px;
+  transition: .3s box-shadow;
+}
+a.badge:hover {
+  box-shadow: 0 0 5px 0 #333;
+}
 
 pre {
   background: #ddd;
   padding: 15px;
   word-wrap: normal;
   overflow-x: auto;
-}
-
-a:hover {
-  background: #aee;
 }
 
 table {
