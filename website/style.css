@@ -1,10 +1,14 @@
-
 body {
   color: #111;
   background: #f0f0f0;
   margin: 80px 0;
   font-family: Arial;
   font-size: 20px;
+}
+
+.c3 {
+  display: flex;
+  justify-content: center;
 }
 
 main {
