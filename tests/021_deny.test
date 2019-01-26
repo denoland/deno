@@ -1,0 +1,4 @@
+args: tests/021_deny.ts --deny
+check_stderr: true
+exit_code: 1
+output: tests/021_deny.ts.out
