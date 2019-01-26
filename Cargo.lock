@@ -192,6 +192,7 @@ dependencies = [
  "http 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.12.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper-rustls 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "integer-atomics 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.48 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -384,6 +385,11 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "integer-atomics"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
@@ -1344,6 +1350,7 @@ dependencies = [
 "checksum hyper-rustls 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8ff2c61fbda2bc72e793e329190a3e8f0ae74cb896905c8b301304c4c93f2755"
 "checksum idna 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "38f09e0f0b1fb55fdee1f17470ad800da77af5186a1a76c026b679358b7e844e"
 "checksum indexmap 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7e81a7c05f79578dbc15793d8b619db9ba32b4577003ef3af1a91c416798c58d"
+"checksum integer-atomics 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "5c33cd4d18b4ade167caace0e92364e8568c1e47c193738397b4b48a3e414139"
 "checksum iovec 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dbe6e417e7d0975db6512b90796e8ce223145ac4e33c377e4a42882a0e88bb08"
 "checksum itoa 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "1306f3464951f30e30d12373d31c79fbd52d236e5e896fd92f96ec7babbbe60b"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
