@@ -1,5 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(function(reg) {
+      console.log('Service worker has been registered for scope: '+ reg.scope);
+    })
+    .catch(function(err) {
+      console.error("Error when registering service worker:", err);
+    })
+}
+
 export async function getJson(path) {
   return (await fetch(path)).json();
 }
