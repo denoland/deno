@@ -338,8 +338,7 @@ fn op_set_timeout(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_set_timeout().unwrap();
-  // FIXME why is timeout a double if it's cast immediately to i64/u64??
-  let val = inner.timeout() as i64;
+  let val = inner.timeout();
   let timeout_due = if val >= 0 {
     Some(Instant::now() + Duration::from_millis(val as u64))
   } else {
