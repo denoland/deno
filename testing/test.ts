@@ -31,6 +31,13 @@ test(function testingAssertEqual() {
   assert(assertEqual === assert.equal);
 });
 
+test(function testingAssertFail() {
+  let didThrow = false;
+
+  assert.throws(assert.fail, Error, "Failed assertion.");
+  assert.throws(() => { assert.fail("foo"); }, Error, "Failed assertion: foo");
+});
+
 test(function testingAssertEqualActualUncoercable() {
   let didThrow = false;
   const a = Object.create(null);

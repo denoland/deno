@@ -74,6 +74,13 @@ const assertions = {
     }
   },
 
+  /**
+   * Forcefully throws a failed assertion
+   */
+  fail(msg?: string): void {
+    assert(false, `Failed assertion${msg ? `: ${msg}` : "."}`);
+  },
+
   /** Executes a function, expecting it to throw.  If it does not, then it
    * throws.  An error class and a string that should be included in the
    * error message can also be asserted.
