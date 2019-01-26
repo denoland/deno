@@ -25,6 +25,9 @@ interface Timer {
 const EPOCH = Date.now();
 const APOCALYPSE = 2 ** 32 - 2;
 
+// Timeout values > TIMEOUT_MAX are set to 1.
+const TIMEOUT_MAX = 2 ** 31 - 1;
+
 let globalTimeoutDue: number | null = null;
 
 let nextTimerId = 1;
@@ -50,6 +53,7 @@ function setGlobalTimeout(due: number | null, now: number) {
     timeout = due - now;
     assert(timeout >= 0);
   }
+
   // Send message to the backend.
   const builder = flatbuffers.createBuilder();
   msg.SetTimeout.startSetTimeout(builder);
@@ -181,7 +185,16 @@ function setTimer(
   // and INT32_MAX. Any other value will cause the timer to fire immediately.
   // We emulate this behavior.
   const now = getTime();
+  if (delay > TIMEOUT_MAX) {
+    console.warn(
+      `${delay} does not fit into` +
+        " a 32-bit signed integer." +
+        "\nTimeout duration was set to 1."
+    );
+    delay = 1;
+  }
   delay = Math.max(0, delay | 0);
+
   // Create a new, unscheduled timer object.
   const timer = {
     id: nextTimerId++,
