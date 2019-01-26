@@ -27,6 +27,7 @@ pub struct DenoFlags {
   pub allow_net: bool,
   pub allow_env: bool,
   pub allow_run: bool,
+  pub deny: bool,
   pub types: bool,
   pub prefetch: bool,
 }
@@ -105,6 +106,9 @@ fn set_recognized_flags(
           flags.allow_run = true;
           flags.allow_write = true;
         }
+        if matches.opt_present("deny") {
+          flags.deny = true;
+        }
         if matches.opt_present("types") {
           flags.types = true;
         }
@@ -139,6 +143,7 @@ pub fn set_flags(
   opts.optflag("", "allow-env", "Allow environment access.");
   opts.optflag("", "allow-run", "Allow running subprocesses.");
   opts.optflag("A", "allow-all", "Allow all permissions");
+  opts.optflag("", "deny", "Deny all permission requests");
   opts.optflag("", "recompile", "Force recompilation of TypeScript code.");
   opts.optflag("h", "help", "Print this message.");
   opts.optflag("D", "log-debug", "Log debug output.");

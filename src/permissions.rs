@@ -15,6 +15,7 @@ pub struct DenoPermissions {
   pub allow_net: AtomicBool,
   pub allow_env: AtomicBool,
   pub allow_run: AtomicBool,
+  deny: bool
 }
 
 impl DenoPermissions {
@@ -24,12 +25,16 @@ impl DenoPermissions {
       allow_env: AtomicBool::new(flags.allow_env),
       allow_net: AtomicBool::new(flags.allow_net),
       allow_run: AtomicBool::new(flags.allow_run),
+      deny: flags.deny
     }
   }
 
   pub fn check_run(&self) -> DenoResult<()> {
     if self.allow_run.load(Ordering::SeqCst) {
       return Ok(());
+    };
+    if self.deny {
+      return Err(permission_denied());
     };
     // TODO get location (where access occurred)
     let r = permission_prompt("Deno requests access to run a subprocess.");
@@ -42,6 +47,9 @@ impl DenoPermissions {
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
     if self.allow_write.load(Ordering::SeqCst) {
       return Ok(());
+    };
+    if self.deny {
+      return Err(permission_denied());
     };
     // TODO get location (where access occurred)
     let r = permission_prompt(&format!(
@@ -58,6 +66,9 @@ impl DenoPermissions {
     if self.allow_net.load(Ordering::SeqCst) {
       return Ok(());
     };
+    if self.deny {
+      return Err(permission_denied());
+    };
     // TODO get location (where access occurred)
     let r = permission_prompt(&format!(
       "Deno requests network access to \"{}\".",
@@ -72,6 +83,9 @@ impl DenoPermissions {
   pub fn check_env(&self) -> DenoResult<()> {
     if self.allow_env.load(Ordering::SeqCst) {
       return Ok(());
+    };
+    if self.deny {
+      return Err(permission_denied());
     };
     // TODO get location (where access occurred)
     let r =
