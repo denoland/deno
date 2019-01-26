@@ -3,7 +3,7 @@
   "devDependencies": {
     "@types/base64-js": "^1.2.5",
     "@types/flatbuffers": "^1.9.0",
-    "@types/prettier": "=1.15.2",
+    "@types/prettier": "=1.15.3",
     "@types/text-encoding": "0.0.33",
     "base64-js": "^1.3.0",
     "flatbuffers": "^1.9.0",
@@ -20,9 +20,9 @@
     "rollup-pluginutils": "^2.3.0",
     "ts-node": "^7.0.1",
     "ts-simple-ast": "17.1.0",
-    "tslint": "=5.12.1",
-    "tslint-eslint-rules": "=5.4.0",
-    "tslint-no-circular-imports": "=0.6.1",
+    "tslint": "^5.10.0",
+    "tslint-eslint-rules": "^5.3.1",
+    "tslint-no-circular-imports": "^0.5.0",
     "typescript": "3.2.1"
   }
 }
