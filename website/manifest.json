@@ -1,0 +1,13 @@
+{
+  "dir" : "ltr",
+  "lang" : "en",
+  "name" : "Deno",
+  "scope" : "/",
+  "display" : "browser",
+  "start_url" : "/",
+  "short_name" : "Deno",
+  "theme_color" : "#F0F0F0",
+  "description" : "Deno is a secure JavaScript / TypeScript runtime built on V8 ",
+  "orientation" : "any",
+  "background_color" : "#F0F0F0"
+}
