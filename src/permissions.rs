@@ -30,11 +30,11 @@ impl DenoPermissions {
   }
 
   pub fn check_run(&self) -> DenoResult<()> {
-    if self.deny {
-      return Err(permission_denied());
-    };
     if self.allow_run.load(Ordering::SeqCst) {
       return Ok(());
+    };
+    if self.deny {
+      return Err(permission_denied());
     };
     // TODO get location (where access occurred)
     let r = permission_prompt("Deno requests access to run a subprocess.");
@@ -45,11 +45,11 @@ impl DenoPermissions {
   }
 
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
-    if self.deny {
-      return Err(permission_denied());
-    };
     if self.allow_write.load(Ordering::SeqCst) {
       return Ok(());
+    };
+    if self.deny {
+      return Err(permission_denied());
     };
     // TODO get location (where access occurred)
     let r = permission_prompt(&format!(
@@ -63,11 +63,11 @@ impl DenoPermissions {
   }
 
   pub fn check_net(&self, domain_name: &str) -> DenoResult<()> {
-    if self.deny {
-      return Err(permission_denied());
-    };
     if self.allow_net.load(Ordering::SeqCst) {
       return Ok(());
+    };
+    if self.deny {
+      return Err(permission_denied());
     };
     // TODO get location (where access occurred)
     let r = permission_prompt(&format!(
@@ -81,11 +81,11 @@ impl DenoPermissions {
   }
 
   pub fn check_env(&self) -> DenoResult<()> {
-    if self.deny {
-      return Err(permission_denied());
-    };
     if self.allow_env.load(Ordering::SeqCst) {
       return Ok(());
+    };
+    if self.deny {
+      return Err(permission_denied());
     };
     // TODO get location (where access occurred)
     let r =
