@@ -29,15 +29,30 @@ impl DenoPermissions {
     }
   }
 
+  fn permission_prompt(&self, message: &str) -> DenoResult<()> {
+    if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) || self.deny {
+      return Err(permission_denied());
+    };
+    // print to stderr so that if deno is > to a file this is still displayed.
+    eprint!("{} Grant? [yN] ", message);
+    let mut input = String::new();
+    let stdin = io::stdin();
+    let _nread = stdin.read_line(&mut input)?;
+    let ch = input.chars().next().unwrap();
+    let is_yes = ch == 'y' || ch == 'Y';
+    if is_yes {
+      Ok(())
+    } else {
+      Err(permission_denied())
+    }
+  }
+
   pub fn check_run(&self) -> DenoResult<()> {
     if self.allow_run.load(Ordering::SeqCst) {
       return Ok(());
     };
-    if self.deny {
-      return Err(permission_denied());
-    };
     // TODO get location (where access occurred)
-    let r = permission_prompt("Deno requests access to run a subprocess.");
+    let r = self.permission_prompt("Deno requests access to run a subprocess.");
     if r.is_ok() {
       self.allow_run.store(true, Ordering::SeqCst);
     }
@@ -48,11 +63,8 @@ impl DenoPermissions {
     if self.allow_write.load(Ordering::SeqCst) {
       return Ok(());
     };
-    if self.deny {
-      return Err(permission_denied());
-    };
     // TODO get location (where access occurred)
-    let r = permission_prompt(&format!(
+    let r = self.permission_prompt(&format!(
       "Deno requests write access to \"{}\".",
       filename
     ));;
@@ -66,11 +78,8 @@ impl DenoPermissions {
     if self.allow_net.load(Ordering::SeqCst) {
       return Ok(());
     };
-    if self.deny {
-      return Err(permission_denied());
-    };
     // TODO get location (where access occurred)
-    let r = permission_prompt(&format!(
+    let r = self.permission_prompt(&format!(
       "Deno requests network access to \"{}\".",
       domain_name
     ));
@@ -84,33 +93,12 @@ impl DenoPermissions {
     if self.allow_env.load(Ordering::SeqCst) {
       return Ok(());
     };
-    if self.deny {
-      return Err(permission_denied());
-    };
     // TODO get location (where access occurred)
     let r =
-      permission_prompt(&"Deno requests access to environment variables.");
+      self.permission_prompt(&"Deno requests access to environment variables.");
     if r.is_ok() {
       self.allow_env.store(true, Ordering::SeqCst);
     }
     r
-  }
-}
-
-fn permission_prompt(message: &str) -> DenoResult<()> {
-  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-    return Err(permission_denied());
-  };
-  // print to stderr so that if deno is > to a file this is still displayed.
-  eprint!("{} Grant? [yN] ", message);
-  let mut input = String::new();
-  let stdin = io::stdin();
-  let _nread = stdin.read_line(&mut input)?;
-  let ch = input.chars().next().unwrap();
-  let is_yes = ch == 'y' || ch == 'Y';
-  if is_yes {
-    Ok(())
-  } else {
-    Err(permission_denied())
   }
 }
