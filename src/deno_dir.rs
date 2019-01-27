@@ -154,7 +154,6 @@ impl DenoDir {
     eprint!("Downloading {}...", &module_name); // no newline
     let maybe_source = http_util::fetch_sync_string(&module_name);
     if let Ok((source, content_type)) = maybe_source {
-      eprintln!(""); // next line
       match p.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
@@ -175,6 +174,7 @@ impl DenoDir {
       {
         deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?
       }
+      eprintln!(" OK");
       return Ok(Some(CodeFetchOutput {
         module_name: module_name.to_string(),
         filename: filename.to_string(),
