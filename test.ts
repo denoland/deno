@@ -18,6 +18,8 @@ import "io/util_test.ts";
 import "http/http_test.ts";
 import "http/file_server_test.ts";
 import "log/test.ts";
+import "log/handlers_test.ts";
+import "log/logger_test.ts";
 import "media_types/test.ts";
 import "testing/test.ts";
 import "textproto/test.ts";
