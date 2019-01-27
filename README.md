@@ -54,10 +54,10 @@ See the website for more info [deno.land](https://deno.land).
 
 ## Install
 
-With Python:
+With Shell:
 
 ```
-curl -L https://deno.land/x/install/install.py | python
+curl -L https://deno.land/x/install/install.sh | bash
 ```
 
 With PowerShell:
