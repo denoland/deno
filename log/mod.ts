@@ -21,24 +21,20 @@ export interface LogConfig {
 }
 
 const DEFAULT_LEVEL = "INFO";
-const DEFAULT_NAME = "";
 const DEFAULT_CONFIG: LogConfig = {
-  handlers: {},
+  handlers: {
+    "default": new ConsoleHandler(DEFAULT_LEVEL)
+  },
 
   loggers: {
-    "": {
-      level: "INFO",
-      handlers: [""]
+    "default": {
+      level: DEFAULT_LEVEL,
+      handlers: ["default"]
     }
   }
 };
 
-const defaultHandler = new ConsoleHandler("INFO");
-const defaultLogger = new Logger("INFO", [defaultHandler]);
-
 const state = {
-  defaultHandler,
-  defaultLogger,
   handlers: new Map(),
   loggers: new Map(),
   config: DEFAULT_CONFIG
@@ -52,19 +48,19 @@ export const handlers = {
 };
 
 export const debug = (msg: string, ...args: any[]) =>
-  defaultLogger.debug(msg, ...args);
+  getLogger('default').debug(msg, ...args);
 export const info = (msg: string, ...args: any[]) =>
-  defaultLogger.info(msg, ...args);
+  getLogger('default').info(msg, ...args);
 export const warning = (msg: string, ...args: any[]) =>
-  defaultLogger.warning(msg, ...args);
+  getLogger('default').warning(msg, ...args);
 export const error = (msg: string, ...args: any[]) =>
-  defaultLogger.error(msg, ...args);
+  getLogger('default').error(msg, ...args);
 export const critical = (msg: string, ...args: any[]) =>
-  defaultLogger.critical(msg, ...args);
+  getLogger('default').critical(msg, ...args);
 
 export function getLogger(name?: string) {
   if (!name) {
-    return defaultLogger;
+    return state.loggers.get('default');
   }
 
   if (!state.loggers.has(name)) {
@@ -81,7 +77,10 @@ export function getHandler(name: string) {
 }
 
 export async function setup(config: LogConfig) {
-  state.config = config;
+  state.config = {
+    handlers: {...DEFAULT_CONFIG.handlers, ...config.handlers},
+    loggers: {...DEFAULT_CONFIG.loggers, ...config.loggers}
+  };
 
   // tear down existing handlers
   state.handlers.forEach(handler => {

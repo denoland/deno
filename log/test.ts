@@ -1,7 +1,8 @@
-import { remove, open, readAll } from "deno";
 import { assertEqual, test } from "../testing/mod.ts";
 import * as log from "./mod.ts";
-import { FileHandler } from "./handlers.ts";
+import { BaseHandler } from "./handlers.ts";
+import { LogRecord } from "./logger.ts";
+import { LogLevel } from "./levels.ts";
 
 // constructor(levelName: string, options: HandlerOptions = {}) {
 //   this.level = getLevelByName(levelName);
@@ -11,85 +12,109 @@ import { FileHandler } from "./handlers.ts";
 // }
 
 class TestHandler extends log.handlers.BaseHandler {
-  testOutput = "";
+  public messages: string[] = [];
 
   log(msg: string) {
-    this.testOutput += `${msg}\n`;
+    this.messages.push(msg);
   }
 }
 
-test(function testDefaultlogMethods() {
-  log.debug("Foobar");
-  log.info("Foobar");
-  log.warning("Foobar");
-  log.error("Foobar");
-  log.critical("Foobar");
+test(async function defaultHandlers() {
+  const loggers = {
+    DEBUG: log.debug,
+    INFO: log.info,
+    WARNING: log.warning,
+    ERROR: log.error,
+    CRITICAL: log.critical
+  };
 
-  const logger = log.getLogger("");
-  console.log(logger);
+  for (const levelName in LogLevel) {
+    if (levelName === "NOTSET") {
+      continue;
+    }
+
+    const level = LogLevel[levelName];
+    const logger = loggers[levelName];
+    const handler = new TestHandler(level);
+
+    await log.setup({
+      handlers: {
+        default: handler
+      },
+      loggers: {
+        default: {
+          level: levelName,
+          handlers: ["default"]
+        }
+      }
+    });
+
+    logger("foo");
+    logger("bar", 1, 2);
+
+    assertEqual(handler.messages, [
+      `${levelName} foo`,
+      `${levelName} bar`
+    ]);
+  }
 });
 
-test(async function testDefaultFormatter() {
+test(async function getLogger() {
+  const handler = new TestHandler("DEBUG");
+
   await log.setup({
     handlers: {
-      test: new TestHandler("DEBUG")
+      default: handler 
     },
-
     loggers: {
-      test: {
+      default: {
         level: "DEBUG",
-        handlers: ["test"]
+        handlers: ["default"]
       }
     }
   });
 
-  const logger = log.getLogger("test");
-  const handler = log.getHandler("test");
-  logger.debug("Hello, world!");
-  assertEqual(handler.testOutput, "DEBUG Hello, world!\n");
+  const logger = log.getLogger();
+
+  assertEqual(logger.levelName, "DEBUG");
+  assertEqual(logger.handlers, [
+    handler
+  ]);
 });
 
-test(async function testFormatterAsString() {
+test(async function getLoggerWithName() {
+  const fooHandler = new TestHandler("DEBUG");
+
   await log.setup({
     handlers: {
-      test: new TestHandler("DEBUG", {
-        formatter: "test {levelName} {msg}"
-      })
+      foo: fooHandler
     },
-
     loggers: {
-      test: {
-        level: "DEBUG",
-        handlers: ["test"]
+      bar: {
+        level: "INFO",
+        handlers: ["foo"]
       }
     }
   });
 
-  const logger = log.getLogger("test");
-  const handler = log.getHandler("test");
-  logger.debug("Hello, world!");
-  assertEqual(handler.testOutput, "test DEBUG Hello, world!\n");
+  const logger = log.getLogger("bar");
+
+  assertEqual(logger.levelName, "INFO");
+  assertEqual(logger.handlers, [
+    fooHandler
+  ]);
 });
 
-test(async function testFormatterAsFunction() {
+test(async function getLoggerUnknown() {
   await log.setup({
     handlers: {
-      test: new TestHandler("DEBUG", {
-        formatter: logRecord =>
-          `fn formmatter ${logRecord.levelName} ${logRecord.msg}`
-      })
     },
-
     loggers: {
-      test: {
-        level: "DEBUG",
-        handlers: ["test"]
-      }
     }
   });
 
-  const logger = log.getLogger("test");
-  const handler = log.getHandler("test");
-  logger.error("Hello, world!");
-  assertEqual(handler.testOutput, "fn formmatter ERROR Hello, world!\n");
+  const logger = log.getLogger("nonexistent");
+
+  assertEqual(logger.levelName, "NOTSET");
+  assertEqual(logger.handlers, []);
 });
