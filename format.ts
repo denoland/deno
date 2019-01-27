@@ -1,36 +1,135 @@
-#!/usr/bin/env deno --allow-run
+#!/usr/bin/env deno --allow-run --allow-write
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+/**
+ * This script formats the source files in the repository.
+ *
+ * Usage: deno format.ts [--check]
+ *
+ * Options:
+ *   --check          Checks if the source files are formatted.
+ */
+import { args, platform, readAll, exit, run, readFile, writeFile } from "deno";
+import { parse } from "./flags/mod.ts";
+import { prettier, prettierPlugins } from "./prettier/prettier.ts";
 
-import { readAll, exit, run } from "deno";
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
-async function checkVersion() {
-  const prettierVersion = run({
-    args: ["bash", "-c", "prettier --version"],
-    stdout: "piped"
+// Runs commands in cross-platform way
+function xrun(opts) {
+  return run({
+    ...opts,
+    args: platform.os === "win" ? ["cmd.exe", "/c", ...opts.args] : opts.args
   });
-  const b = await readAll(prettierVersion.stdout);
-  const s = await prettierVersion.status();
-  if (s.code != 0) {
-    console.log("error calling prettier --version error");
-    exit(s.code);
+}
+
+// Gets the source files in the repository
+async function getSourceFiles() {
+  return decoder
+    .decode(
+      await readAll(
+        xrun({
+          args: ["git", "ls-files"],
+          stdout: "piped"
+        }).stdout
+      )
+    )
+    .trim()
+    .split(/\r?\n/);
+}
+
+/**
+ * Checks if the file has been formatted with prettier.
+ */
+async function checkFile(
+  filename: string,
+  parser: "typescript" | "markdown"
+): Promise<boolean> {
+  const text = decoder.decode(await readFile(filename));
+  const formatted = prettier.check(text, {
+    parser,
+    plugins: prettierPlugins
+  });
+
+  if (!formatted) {
+    // TODO: print some diff info here to show why this failed
+    console.error(`${filename} ... Not formatted`);
   }
-  const version = new TextDecoder().decode(b).trim();
-  const requiredVersion = "1.15";
-  if (!version.startsWith(requiredVersion)) {
-    console.log(`Required prettier version: ${requiredVersion}`);
-    console.log(`Installed prettier version: ${version}`);
+
+  return formatted;
+}
+
+/**
+ * Formats the given file.
+ */
+async function formatFile(
+  filename: string,
+  parser: "typescript" | "markdown"
+): Promise<void> {
+  const text = decoder.decode(await readFile(filename));
+  const formatted = prettier.format(text, {
+    parser,
+    plugins: prettierPlugins
+  });
+
+  if (text !== formatted) {
+    console.log(`Formatting ${filename}`);
+    await writeFile(filename, encoder.encode(formatted));
+  }
+}
+
+/**
+ * Checks if the all files have been formatted with prettier.
+ */
+async function checkSourceFiles() {
+  const checks = [];
+
+  (await getSourceFiles()).forEach(file => {
+    if (/\.ts$/.test(file)) {
+      checks.push(checkFile(file, "typescript"));
+    } else if (/\.md$/.test(file)) {
+      checks.push(checkFile(file, "markdown"));
+    }
+  });
+
+  const results = await Promise.all(checks);
+
+  if (results.every(result => result)) {
+    exit(0);
+  } else {
     exit(1);
   }
 }
 
-async function main() {
-  await checkVersion();
+/**
+ * Formats the all files with prettier.
+ */
+async function formatSourceFiles() {
+  const formats = [];
 
-  const prettier = run({
-    args: ["bash", "-c", "prettier --write '**/*.ts' '**/*.md'"]
+  (await getSourceFiles()).forEach(file => {
+    if (/\.ts$/.test(file)) {
+      formats.push(formatFile(file, "typescript"));
+    } else if (/\.md$/.test(file)) {
+      formats.push(formatFile(file, "markdown"));
+    }
   });
-  const s = await prettier.status();
-  exit(s.code);
+
+  await Promise.all(formats);
+  exit(0);
 }
 
-main();
+async function main(opts) {
+  try {
+    if (opts.check) {
+      await checkSourceFiles();
+    } else {
+      await formatSourceFiles();
+    }
+  } catch (e) {
+    console.log(e);
+    exit(1);
+  }
+}
+
+main(parse(args));

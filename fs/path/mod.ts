@@ -980,7 +980,7 @@ export const win32 = {
     } else {
       ret.name = path.slice(startPart, startDot);
       ret.base = path.slice(startPart, end);
-      ret.ext  = path.slice(startDot, end);
+      ret.ext = path.slice(startDot, end);
     }
 
     // If the directory is the root, use the entire root as the `dir` including
