@@ -68,6 +68,13 @@ export default function denoMain() {
   // args and other info.
   sendStart();
 
+  // handle `-D`
+  if (startResMsg.debugFlag()) {
+    console.log("deno:", startResMsg.denoVersion());
+    console.log("v8:", startResMsg.v8Version());
+    console.log("typescript:", version);
+  }
+
   setLogDebug(startResMsg.debugFlag());
 
   // handle `--types`
