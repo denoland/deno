@@ -319,13 +319,17 @@ submodule. However, you need to install separately:
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 4. [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache)
    (Optional but helpful for speeding up rebuilds of V8.)
-5. Extra steps for Windows users:
-   1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
-   2. Get [VS Community 2017](https://www.visualstudio.com/downloads/). Make
-      sure to select the option to install C++ tools and the Windows SDK.
-   3. Enable `Debugging Tools for Windows`. Go to `Control Panel` ->
-      `Windows 10 SDK` -> Right-Click -> `Change` -> `Change` ->
-      `Check Debugging Tools for Windows` -> `Change` -> `Finish`.
+
+Extra steps for Mac users:
+1. [XCode](https://developer.apple.com/xcode/)
+
+Extra steps for Windows users:
+1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
+2. Get [VS Community 2017](https://www.visualstudio.com/downloads/). Make
+  sure to select the option to install C++ tools and the Windows SDK.
+3. Enable `Debugging Tools for Windows`. Go to `Control Panel` ->
+  `Windows 10 SDK` -> Right-Click -> `Change` -> `Change` ->
+  `Check Debugging Tools for Windows` -> `Change` -> `Finish`.
 
 ### Build:
 
