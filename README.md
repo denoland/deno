@@ -4,7 +4,7 @@
 | :------------------------: | :------------------------: |
 | [![][tci badge]][tci link] | [![][avy badge]][avy link] |
 
-## A secure JavaScript / TypeScript runtime built on V8
+## A new way to JavaScript.
 
 - Supports TypeScript out of the box. Uses a recent version of V8. That is, it's
   very modern JavaScript.
