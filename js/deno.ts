@@ -34,7 +34,7 @@ export { Buffer, readAll } from "./buffer";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
 export { chmodSync, chmod } from "./chmod";
-export { removeSync, remove, removeAllSync, removeAll } from "./remove";
+export { removeSync, remove } from "./remove";
 export { renameSync, rename } from "./rename";
 export { readFileSync, readFile } from "./read_file";
 export { readDirSync, readDir } from "./read_dir";
