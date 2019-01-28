@@ -2,9 +2,36 @@
 body {
   color: #111;
   background: #f0f0f0;
-  margin: 80px 0;
   font-family: Arial;
   font-size: 20px;
+  padding: 0;
+  margin: 0;
+}
+
+.fullscreen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  min-height: 100vh;
+  background-color: #fafafa;
+
+  font-family: 'Major Mono Display', monospace;
+  text-transform: lowercase;
+}
+.fullscreen .logo {
+  max-width: 70%;
+}
+.fullscreen .heading {
+  align-self: stretch;
+  text-align: center;
+}
+.fullscreen .title {
+  font-size: 5rem;
+}
+.fullscreen .subtitle {
+  font-size: 2rem;
 }
 
 main {

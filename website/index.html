@@ -4,16 +4,20 @@
 <head>
   <title>Deno</title>
   <link rel="manifest" href="/manifest.json">
+  <link href="https://fonts.googleapis.com/css?family=Major+Mono+Display" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/c3@0.6.7/c3.min.css">
   <link rel="stylesheet" href="style.css">
   <meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' name='viewport' />
 </head>
 <body>
+  <header class="fullscreen">
+    <img class="logo" src="deno_logo.png" />
+    <h1 class="heading title">Deno</h1>
+    <h2 class="heading subtitle">A new way to JavaScript</h2>
+  </header>
+
   <main>
-    <img src="deno_logo.png" width=150 />
-
-    <h1>Deno</h1>
-
+    <h2>Build status</h2>
     <table>
       <tr>
         <th>Linux &amp; Mac</th>
@@ -48,12 +52,12 @@
     <h2>Getting started</h2>
 
     <p>Install Deno into ~/.deno/bin
-<h2>With Shell</h2>
+<h3>With Shell</h3>
 <pre>
 curl -L https://deno.land/x/install/install.sh | sh
 export PATH=$HOME/.deno/bin:$PATH
 </pre>
-<h2>With PowerShell</h2>
+<h3>With PowerShell</h3>
 <pre>
 iex (iwr https://deno.land/x/install/install.ps1)
 </pre>
