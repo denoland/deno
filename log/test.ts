@@ -52,10 +52,7 @@ test(async function defaultHandlers() {
     logger("foo");
     logger("bar", 1, 2);
 
-    assertEqual(handler.messages, [
-      `${levelName} foo`,
-      `${levelName} bar`
-    ]);
+    assertEqual(handler.messages, [`${levelName} foo`, `${levelName} bar`]);
   }
 });
 
@@ -64,7 +61,7 @@ test(async function getLogger() {
 
   await log.setup({
     handlers: {
-      default: handler 
+      default: handler
     },
     loggers: {
       default: {
@@ -77,9 +74,7 @@ test(async function getLogger() {
   const logger = log.getLogger();
 
   assertEqual(logger.levelName, "DEBUG");
-  assertEqual(logger.handlers, [
-    handler
-  ]);
+  assertEqual(logger.handlers, [handler]);
 });
 
 test(async function getLoggerWithName() {
@@ -100,17 +95,13 @@ test(async function getLoggerWithName() {
   const logger = log.getLogger("bar");
 
   assertEqual(logger.levelName, "INFO");
-  assertEqual(logger.handlers, [
-    fooHandler
-  ]);
+  assertEqual(logger.handlers, [fooHandler]);
 });
 
 test(async function getLoggerUnknown() {
   await log.setup({
-    handlers: {
-    },
-    loggers: {
-    }
+    handlers: {},
+    loggers: {}
   });
 
   const logger = log.getLogger("nonexistent");
