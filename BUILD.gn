@@ -53,6 +53,7 @@ ts_sources = [
   "js/blob.ts",
   "js/buffer.ts",
   "js/chmod.ts",
+  "js/console_table.ts",
   "js/compiler.ts",
   "js/console.ts",
   "js/copy_file.ts",
