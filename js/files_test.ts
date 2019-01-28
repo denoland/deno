@@ -61,7 +61,7 @@ testPerm({ write: true }, async function createFile() {
   f.close();
 
   // TODO: test different modes
-  await deno.removeAll(tempDir);
+  await deno.remove(tempDir, { recursive: true });
 });
 
 testPerm({ write: true }, async function openModeWrite() {
@@ -95,7 +95,7 @@ testPerm({ write: true }, async function openModeWrite() {
   file.close();
   const fileSize = deno.statSync(filename).len;
   assertEqual(fileSize, 0);
-  await deno.removeAll(tempDir);
+  await deno.remove(tempDir, { recursive: true });
 });
 
 testPerm({ write: true }, async function openModeWriteRead() {
@@ -124,5 +124,5 @@ testPerm({ write: true }, async function openModeWriteRead() {
   // assertEqual(result.nread, 13);
   // file.close();
 
-  await deno.removeAll(tempDir);
+  await deno.remove(tempDir, { recursive: true });
 });
