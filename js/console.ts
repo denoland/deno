@@ -2,6 +2,7 @@
 import { isTypedArray } from "./util";
 import { TextEncoder } from "./text_encoding";
 import { File, stdout } from "./files";
+import { cliTable } from "./console_table";
 
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
@@ -589,6 +590,99 @@ export class Console {
     } else {
       this.warn(`Count for '${label}' does not exist`);
     }
+  };
+
+  // tslint:disable-next-line:no-any
+  table = (data: any, properties?: string[]): void => {
+    // tslint:disable-next-line:no-any
+    type Value = any;
+
+    if (properties !== undefined && !Array.isArray(properties)) {
+      throw new Error(
+        "The 'properties' argument must be of type Array\
+        . Received type string"
+      );
+    }
+
+    if (data === null || typeof data !== "object") {
+      return this.log(data);
+    }
+
+    const objectValues: { [key: string]: Value[] } = {};
+    const indexKeys: string[] = [];
+    const values: Value[] = [];
+
+    const stringifyValue = (value: Value) =>
+      stringifyWithQuotes(
+        value,
+        // tslint:disable-next-line:no-any
+        new Set<any>(),
+        0,
+        1
+      );
+    const toTable = (header: string[], body: string[][]) =>
+      this.log(cliTable(header, body));
+    const createColumn = (value: Value, shift?: number): string[] => [
+      ...(shift ? [...new Array(shift)].map(() => "") : []),
+      stringifyValue(value)
+    ];
+
+    let resultData = data;
+    const isSet = data instanceof Set;
+    const isMap = data instanceof Map;
+    const valuesKey = "Values";
+    const indexKey = isSet || isMap ? "(iteration index)" : "(index)";
+
+    if (isSet) {
+      resultData = [...data];
+    } else if (isMap) {
+      let idx = 0;
+      resultData = {};
+
+      data.forEach((k: Value, v: Value) => {
+        resultData[idx] = { Key: k, Values: v };
+        idx++;
+      });
+    }
+
+    Object.keys(resultData).forEach((k, idx) => {
+      const value = resultData[k];
+
+      if (value !== null && typeof value === "object") {
+        Object.keys(value).forEach(k => {
+          const v = value[k];
+
+          if (properties && !properties.includes(k)) {
+            return;
+          }
+
+          if (objectValues[k]) {
+            objectValues[k].push(stringifyValue(v));
+          } else {
+            objectValues[k] = createColumn(v, idx);
+          }
+        });
+
+        values.push("");
+      } else {
+        values.push(stringifyValue(value));
+      }
+
+      indexKeys.push(k);
+    });
+
+    const headerKeys = Object.keys(objectValues);
+    const bodyValues = Object.values(objectValues);
+    const header = [
+      indexKey,
+      ...(properties || [
+        ...headerKeys,
+        !isMap && values.length > 0 && valuesKey
+      ])
+    ].filter(Boolean) as string[];
+    const body = [indexKeys, ...bodyValues, values];
+
+    toTable(header, body);
   };
 
   time = (label = "default"): void => {

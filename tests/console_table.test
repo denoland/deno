@@ -1,0 +1,3 @@
+args: tests/console_table.ts --reload
+check_stderr: true
+output: tests/console_table.ts.out
