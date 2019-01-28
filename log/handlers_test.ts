@@ -13,31 +13,31 @@ class TestHandler extends BaseHandler {
 
 test(function simpleHandler() {
   const cases = new Map<number, string[]>([
-    [LogLevel.DEBUG, [
-      "DEBUG debug-test",
-      "INFO info-test",
-      "WARNING warning-test",
-      "ERROR error-test",
-      "CRITICAL critical-test"
-    ]],
-    [LogLevel.INFO, [
-      "INFO info-test",
-      "WARNING warning-test",
-      "ERROR error-test",
-      "CRITICAL critical-test"
-    ]],
-    [LogLevel.WARNING, [
-      "WARNING warning-test",
-      "ERROR error-test",
-      "CRITICAL critical-test"
-    ]],
-    [LogLevel.ERROR, [
-      "ERROR error-test",
-      "CRITICAL critical-test"
-    ]],
-    [LogLevel.CRITICAL, [
-      "CRITICAL critical-test"
-    ]]
+    [
+      LogLevel.DEBUG,
+      [
+        "DEBUG debug-test",
+        "INFO info-test",
+        "WARNING warning-test",
+        "ERROR error-test",
+        "CRITICAL critical-test"
+      ]
+    ],
+    [
+      LogLevel.INFO,
+      [
+        "INFO info-test",
+        "WARNING warning-test",
+        "ERROR error-test",
+        "CRITICAL critical-test"
+      ]
+    ],
+    [
+      LogLevel.WARNING,
+      ["WARNING warning-test", "ERROR error-test", "CRITICAL critical-test"]
+    ],
+    [LogLevel.ERROR, ["ERROR error-test", "CRITICAL critical-test"]],
+    [LogLevel.CRITICAL, ["CRITICAL critical-test"]]
   ]);
 
   for (const [testCase, messages] of cases.entries()) {

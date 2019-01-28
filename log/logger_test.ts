@@ -8,7 +8,7 @@ class TestHandler extends BaseHandler {
   public records: LogRecord[] = [];
 
   handle(record: LogRecord): void {
-    this.records.push({...record, datetime: null });
+    this.records.push({ ...record, datetime: null });
     super.handle(record);
   }
 
@@ -83,22 +83,13 @@ test(function logFunctions() {
 
   doLog("WARNING");
 
-  assertEqual(handler.messages, [
-    "WARNING baz",
-    "ERROR boo",
-    "CRITICAL doo"
-  ]);
+  assertEqual(handler.messages, ["WARNING baz", "ERROR boo", "CRITICAL doo"]);
 
   doLog("ERROR");
 
-  assertEqual(handler.messages, [
-    "ERROR boo",
-    "CRITICAL doo"
-  ]);
+  assertEqual(handler.messages, ["ERROR boo", "CRITICAL doo"]);
 
   doLog("CRITICAL");
 
-  assertEqual(handler.messages, [
-    "CRITICAL doo"
-  ]);
+  assertEqual(handler.messages, ["CRITICAL doo"]);
 });

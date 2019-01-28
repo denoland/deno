@@ -38,6 +38,18 @@ async function getSourceFiles() {
     .split(/\r?\n/);
 }
 
+async function readFileIfExists(filename: string): Promise<string | null> {
+  let data;
+  try {
+    data = await readFile(filename);
+  } catch (e) {
+    // The file is deleted. Returns null.
+    return null;
+  }
+
+  return decoder.decode(data);
+}
+
 /**
  * Checks if the file has been formatted with prettier.
  */
@@ -45,7 +57,13 @@ async function checkFile(
   filename: string,
   parser: "typescript" | "markdown"
 ): Promise<boolean> {
-  const text = decoder.decode(await readFile(filename));
+  const text = await readFileIfExists(filename);
+
+  if (!text) {
+    // The file is deleted. Skip.
+    return;
+  }
+
   const formatted = prettier.check(text, {
     parser,
     plugins: prettierPlugins
@@ -66,7 +84,13 @@ async function formatFile(
   filename: string,
   parser: "typescript" | "markdown"
 ): Promise<void> {
-  const text = decoder.decode(await readFile(filename));
+  const text = await readFileIfExists(filename);
+
+  if (!text) {
+    // The file is deleted. Skip.
+    return;
+  }
+
   const formatted = prettier.format(text, {
     parser,
     plugins: prettierPlugins
