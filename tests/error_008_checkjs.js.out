@@ -1,5 +1,5 @@
 [WILDCARD]tests/error_008_checkjs.js:2:0
 consol.log("hello world!");
 
-ReferenceError: consol is not defined
+Uncaught ReferenceError: consol is not defined
     at [WILDCARD]tests/error_008_checkjs.js:2:1
