@@ -117,6 +117,7 @@ ts_sources = [
 group("deno_deps") {
   deps = [
     ":msg_rs",
+    ":snapshot_compiler",
     ":snapshot_deno",
     "libdeno:libdeno_static_lib",
   ]
@@ -195,28 +196,21 @@ run_node("deno_runtime_declaration") {
   }
 }
 
-run_node("bundle") {
+bundle("main_bundle") {
   out_dir = "$target_gen_dir/bundle/"
-  outputs = [
-    out_dir + "main.js",
-    out_dir + "main.js.map",
-  ]
-  depfile = out_dir + "main.d"
+  out_name = "main"
   deps = [
     ":deno_runtime_declaration",
     ":msg_ts",
   ]
-  args = [
-    rebase_path("third_party/node_modules/rollup/bin/rollup", root_build_dir),
-    "-c",
-    rebase_path("rollup.config.js", root_build_dir),
-    "-i",
-    rebase_path("js/main.ts", root_build_dir),
-    "-o",
-    rebase_path(out_dir + "main.js", root_build_dir),
-    "--sourcemapFile",
-    rebase_path("."),
-    "--silent",
+}
+
+bundle("compiler_bundle") {
+  out_dir = "$target_gen_dir/bundle/"
+  out_name = "compiler"
+  deps = [
+    ":deno_runtime_declaration",
+    ":msg_ts",
   ]
 }
 
@@ -236,6 +230,14 @@ rust_flatbuffer("msg_rs") {
 snapshot("snapshot_deno") {
   source_root = "$target_gen_dir/bundle/main.js"
   deps = [
-    ":bundle",
+    ":main_bundle",
+  ]
+}
+
+# Generates $target_gen_dir/snapshot_compiler.bin
+snapshot("snapshot_compiler") {
+  source_root = "$target_gen_dir/bundle/compiler.js"
+  deps = [
+    ":compiler_bundle",
   ]
 }

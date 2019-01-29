@@ -1,19 +1,28 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as ts from "typescript";
-import { MediaType } from "gen/msg_generated";
+import * as msg from "gen/msg_generated";
 import { assetSourceCode } from "./assets";
+import { Console } from "./console";
+import { globalEval } from "./global_eval";
+import { libdeno } from "./libdeno";
 import * as os from "./os";
+import { clearTimer, setTimeout } from "./timers";
+import { TextDecoder, TextEncoder } from "./text_encoding";
+import { postMessage, workerClose, workerMain } from "./workers";
 import { assert, log, notImplemented } from "./util";
 
 const EOL = "\n";
 const ASSETS = "$asset$";
 const LIB_RUNTIME = "lib.deno_runtime.d.ts";
 
+const window = globalEval("this");
+const console = new Console(libdeno.print);
+
 /** The location that a module is being loaded from. This could be a directory,
  * like `.`, or it could be a module specifier like
  * `http://gist.github.com/somefile.ts`
  */
-export type ContainingFile = string;
+type ContainingFile = string;
 /** The internal local filename of a compiled module. It will often be something
  * like `/home/ry/.deno/gen/f7b4605dfbc4d3bb356e98fda6ceb1481e4a8df5.js`
  */
@@ -25,7 +34,7 @@ type ModuleId = string;
 /** The external name of a module - could be a URL or could be a relative path.
  * Examples `http://gist.github.com/somefile.ts` or `./somefile.ts`
  */
-export type ModuleSpecifier = string;
+type ModuleSpecifier = string;
 /** The compiled source code which is cached in `.deno/gen/` */
 type OutputCode = string;
 /** The original source code */
@@ -33,10 +42,16 @@ type SourceCode = string;
 /** The output source map */
 type SourceMap = string;
 
+/** The format of the work message payload coming from the privilaged side */
+interface CompilerLookup {
+  specifier: ModuleSpecifier;
+  referrer: ContainingFile;
+}
+
 /** Abstraction of the APIs required from the `os` module so they can be
  * easily mocked.
  */
-export interface Os {
+interface Os {
   codeCache: typeof os.codeCache;
   codeFetch: typeof os.codeFetch;
   exit: typeof os.exit;
@@ -45,7 +60,7 @@ export interface Os {
 /** Abstraction of the APIs required from the `typescript` module so they can
  * be easily mocked.
  */
-export interface Ts {
+interface Ts {
   createLanguageService: typeof ts.createLanguageService;
   /* tslint:disable-next-line:max-line-length */
   formatDiagnosticsWithColorAndContext: typeof ts.formatDiagnosticsWithColorAndContext;
@@ -56,13 +71,13 @@ export interface Ts {
  * Named `ModuleMetaData` to clarify it is just a representation of meta data of
  * the module, not the actual module instance.
  */
-export class ModuleMetaData implements ts.IScriptSnapshot {
+class ModuleMetaData implements ts.IScriptSnapshot {
   public scriptVersion = "";
 
   constructor(
     public readonly moduleId: ModuleId,
     public readonly fileName: ModuleFileName,
-    public readonly mediaType: MediaType,
+    public readonly mediaType: msg.MediaType,
     public readonly sourceCode: SourceCode = "",
     public outputCode: OutputCode = "",
     public sourceMap: SourceMap = ""
@@ -88,23 +103,23 @@ export class ModuleMetaData implements ts.IScriptSnapshot {
 
 function getExtension(
   fileName: ModuleFileName,
-  mediaType: MediaType
+  mediaType: msg.MediaType
 ): ts.Extension | undefined {
   switch (mediaType) {
-    case MediaType.JavaScript:
+    case msg.MediaType.JavaScript:
       return ts.Extension.Js;
-    case MediaType.TypeScript:
+    case msg.MediaType.TypeScript:
       return fileName.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts;
-    case MediaType.Json:
+    case msg.MediaType.Json:
       return ts.Extension.Json;
-    case MediaType.Unknown:
+    case msg.MediaType.Unknown:
     default:
       return undefined;
   }
 }
 
 /** Generate output code for a provided JSON string along with its source. */
-export function jsonEsmTemplate(
+function jsonEsmTemplate(
   jsonString: string,
   sourceFileName: string
 ): OutputCode {
@@ -116,8 +131,7 @@ export function jsonEsmTemplate(
  * with Deno specific APIs to provide an interface for compiling and running
  * TypeScript and JavaScript modules.
  */
-export class Compiler
-  implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
+class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
   // Modules are usually referenced by their ModuleSpecifier and ContainingFile,
   // and keeping a map of the resolved module file name allows more efficient
   // future resolution
@@ -212,10 +226,7 @@ export class Compiler
     innerMap.set(moduleSpecifier, fileName);
   }
 
-  private constructor() {
-    if (Compiler._instance) {
-      throw new TypeError("Attempt to create an additional compiler.");
-    }
+  constructor() {
     this._service = this._ts.createLanguageService(this);
   }
 
@@ -238,12 +249,13 @@ export class Compiler
     console.warn("Compiling", moduleId);
     // Instead of using TypeScript to transpile JSON modules, we will just do
     // it directly.
-    if (mediaType === MediaType.Json) {
+    if (mediaType === msg.MediaType.Json) {
       moduleMetaData.outputCode = jsonEsmTemplate(sourceCode, fileName);
     } else {
       const service = this._service;
       assert(
-        mediaType === MediaType.TypeScript || mediaType === MediaType.JavaScript
+        mediaType === msg.MediaType.TypeScript ||
+          mediaType === msg.MediaType.JavaScript
       );
       const output = service.getEmitOutput(fileName);
 
@@ -319,7 +331,7 @@ export class Compiler
       return this._moduleMetaDataMap.get(fileName)!;
     }
     let moduleId: ModuleId | undefined;
-    let mediaType = MediaType.Unknown;
+    let mediaType = msg.MediaType.Unknown;
     let sourceCode: SourceCode | undefined;
     let outputCode: OutputCode | undefined;
     let sourceMap: SourceMap | undefined;
@@ -333,7 +345,7 @@ export class Compiler
       moduleId = moduleSpecifier.split("/").pop()!;
       const assetName = moduleId.includes(".") ? moduleId : `${moduleId}.d.ts`;
       assert(assetName in assetSourceCode, `No such asset "${assetName}"`);
-      mediaType = MediaType.TypeScript;
+      mediaType = msg.MediaType.TypeScript;
       sourceCode = assetSourceCode[assetName];
       fileName = `${ASSETS}/${assetName}`;
       outputCode = "";
@@ -353,7 +365,7 @@ export class Compiler
     assert(moduleId != null, "No module ID.");
     assert(fileName != null, "No file name.");
     assert(
-      mediaType !== MediaType.Unknown,
+      mediaType !== msg.MediaType.Unknown,
       `Unknown media type for: "${moduleSpecifier}" from "${containingFile}".`
     );
     this._log(
@@ -362,7 +374,7 @@ export class Compiler
     );
     this._log("resolveModule has outputCode:", outputCode != null);
     this._log("resolveModule has source map:", sourceMap != null);
-    this._log("resolveModule has media type:", MediaType[mediaType]);
+    this._log("resolveModule has media type:", msg.MediaType[mediaType]);
     // fileName is asserted above, but TypeScript does not track so not null
     this._setFileName(moduleSpecifier, containingFile, fileName!);
     if (fileName && this._moduleMetaDataMap.has(fileName)) {
@@ -408,11 +420,11 @@ export class Compiler
     const moduleMetaData = this._getModuleMetaData(fileName);
     if (moduleMetaData) {
       switch (moduleMetaData.mediaType) {
-        case MediaType.TypeScript:
+        case msg.MediaType.TypeScript:
           return ts.ScriptKind.TS;
-        case MediaType.JavaScript:
+        case msg.MediaType.JavaScript:
           return ts.ScriptKind.JS;
-        case MediaType.Json:
+        case msg.MediaType.Json:
           return ts.ScriptKind.JSON;
         default:
           return this._options.allowJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
@@ -495,11 +507,43 @@ export class Compiler
       };
     });
   }
+}
 
-  private static _instance: Compiler | undefined;
+const compiler = new Compiler();
 
-  /** Returns the instance of `Compiler` or creates a new instance. */
-  static instance(): Compiler {
-    return Compiler._instance || (Compiler._instance = new Compiler());
-  }
+let startResMsg: msg.StartRes;
+
+// set global objects for compiler web worker
+window.clearTimeout = clearTimer;
+window.console = console;
+window.postMessage = postMessage;
+window.setTimeout = setTimeout;
+window.workerMain = workerMain;
+window.close = workerClose;
+window.TextDecoder = TextDecoder;
+window.TextEncoder = TextEncoder;
+
+// provide the "main" function that will be called by the privilaged side when
+// lazy instantiating the compiler web worker
+window.compilerMain = function compilerMain() {
+  // workerMain should have already been called since a compiler is a worker.
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  compiler.recompile = startResMsg.recompileFlag();
+  log(`recompile ${compiler.recompile}`);
+  window.onmessage = ({ data }: { data: Uint8Array }) => {
+    const json = decoder.decode(data);
+    const lookup = JSON.parse(json) as CompilerLookup;
+
+    const moduleMetaData = compiler.compile(lookup.specifier, lookup.referrer);
+
+    const responseJson = JSON.stringify(moduleMetaData);
+    const response = encoder.encode(responseJson);
+    postMessage(response);
+  };
+};
+
+/* tslint:disable-next-line:no-default-export */
+export default function denoMain() {
+  startResMsg = os.start();
 }
