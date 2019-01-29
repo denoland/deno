@@ -56,8 +56,19 @@ class Repl(object):
         assertEqual(code, 0)
 
     def test_exit_command(self):
-        out, err, code = self.input(".exit", "'ignored'", exit=False)
+        out, err, code = self.input("exit", "'ignored'", exit=False)
         assertEqual(out, '')
+        assertEqual(err, '')
+        assertEqual(code, 0)
+
+    def test_help_command(self):
+        out, err, code = self.input("help")
+        expectedOut = '\n'.join([
+            "exit    Exit the REPL",
+            "help    Print this help message",
+            "",
+        ])
+        assertEqual(out, expectedOut)
         assertEqual(err, '')
         assertEqual(code, 0)
 
