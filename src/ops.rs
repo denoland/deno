@@ -184,7 +184,9 @@ fn op_is_tty(
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::IsTTYRes::create(
     builder,
-    &msg::IsTTYResArgs { is_tty: unsafe { libc::isatty(libc::STDIN_FILENO as i32) } != 0 },
+    &msg::IsTTYResArgs {
+      is_tty: unsafe { libc::isatty(libc::STDIN_FILENO as i32) } != 0,
+    },
   );
   ok_future(serialize_response(
     base.cmd_id(),
