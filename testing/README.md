@@ -37,10 +37,17 @@ functions:
 `assertEqual()` is the same as `assert.equal()` but maintained for backwards
 compatibility.
 
+`runTests()` executes the declared tests.
+
 Basic usage:
 
 ```ts
-import { test, assert, equal } from "https://deno.land/x/testing/mod.ts";
+import {
+  runTests,
+  test,
+  assert,
+  equal
+} from "https://deno.land/x/testing/mod.ts";
 
 test({
   name: "testing example",
@@ -53,6 +60,8 @@ test({
     assert.equal({ hello: "world" }, { hello: "world" });
   }
 });
+
+runTests();
 ```
 
 Short syntax (named function instead of object):
