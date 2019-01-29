@@ -387,7 +387,7 @@ pub fn worker_recv_message(rid: ResourceId) -> WorkerReceiver {
   WorkerReceiver { rid }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::stutter))]
 pub struct ChildResources {
   pub child_rid: ResourceId,
   pub stdin_rid: Option<ResourceId>,

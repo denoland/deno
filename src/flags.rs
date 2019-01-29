@@ -15,7 +15,7 @@ macro_rules! svec {
     ($($x:expr),*) => (vec![$($x.to_string()),*]);
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::stutter))]
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct DenoFlags {
   pub help: bool,
@@ -121,7 +121,7 @@ fn set_recognized_flags(
   Ok(rest)
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::stutter))]
 pub fn set_flags(
   args: Vec<String>,
 ) -> Result<(DenoFlags, Vec<String>, String), String> {
@@ -296,7 +296,7 @@ fn test_v8_set_flags_preprocess_2() {
 
 // Pass the command line arguments to v8.
 // Returns a vector of command line arguments that v8 did not understand.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::stutter))]
 pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
   // deno_set_v8_flags(int* argc, char** argv) mutates argc and argv to remove
   // flags that v8 understands.

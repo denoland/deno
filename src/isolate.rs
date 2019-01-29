@@ -66,7 +66,7 @@ pub type WorkerChannels = (WorkerSender, WorkerReceiver);
 // IsolateState satisfies Send and Sync.
 // So any state that needs to be accessed outside the main V8 thread should be
 // inside IsolateState.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::stutter))]
 pub struct IsolateState {
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,

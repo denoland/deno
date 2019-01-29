@@ -8,7 +8,7 @@ use crate::errors::DenoResult;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::stutter))]
 #[derive(Debug, Default)]
 pub struct DenoPermissions {
   pub allow_write: AtomicBool,
