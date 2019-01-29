@@ -3,15 +3,13 @@ import * as ts from "typescript";
 import * as msg from "gen/msg_generated";
 import { assetSourceCode } from "./assets";
 import { Console } from "./console";
-import * as flatbuffers from "./flatbuffers";
 import { globalEval } from "./global_eval";
-import { handleAsyncMsgFromRust, sendSync } from "./dispatch";
 import { libdeno } from "./libdeno";
 import * as os from "./os";
 import { clearTimer, setTimeout } from "./timers";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { postMessage, workerClose, workerMain } from "./workers";
-import { assert, log, notImplemented, setLogDebug } from "./util";
+import { assert, log, notImplemented } from "./util";
 
 const EOL = "\n";
 const ASSETS = "$asset$";
@@ -515,18 +513,6 @@ const compiler = new Compiler();
 
 let startResMsg: msg.StartRes;
 
-/** Send to the privilaged side that we have setup and are ready. */
-function sendStart(): void {
-  const builder = flatbuffers.createBuilder();
-  msg.Start.startStart(builder);
-  const startOffset = msg.Start.endStart(builder);
-  const baseRes = sendSync(builder, msg.Any.Start, startOffset);
-  assert(baseRes != null);
-  assert(msg.Any.StartRes === baseRes!.innerType());
-  startResMsg = new msg.StartRes();
-  assert(baseRes!.inner(startResMsg) != null);
-}
-
 // set global objects for compiler web worker
 window.clearTimeout = clearTimer;
 window.console = console;
@@ -559,14 +545,7 @@ window.compilerMain = function compilerMain() {
 
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
-  libdeno.recv(handleAsyncMsgFromRust);
-
-  // First we send an empty `Start` message to let the privileged side know we
-  // are ready. The response should be a `StartRes` message containing the CLI
-  // args and other info.
-  sendStart();
-
-  setLogDebug(startResMsg.debugFlag());
+  startResMsg = os.start();
 
   // handle `--types`
   // TODO(kitsonk) move to Rust fetching from compiler

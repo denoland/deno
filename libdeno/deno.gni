@@ -1,6 +1,31 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import("//build/compiled_action.gni")
 
+# Tempalte to generate a Rollup bundle of code.
+template("bundle") {
+  action(target_name) {
+    forward_variables_from(invoker, "*")
+    script = "//tools/run_node.py"
+    outputs = [
+      out_dir + out_name + ".js",
+      out_dir + out_name + ".js.map",
+    ]
+    depfile = out_dir + out_name + ".d"
+    args = [
+      rebase_path("third_party/node_modules/rollup/bin/rollup", root_build_dir),
+      "-c",
+      rebase_path("rollup.config.js", root_build_dir),
+      "-i",
+      rebase_path("js/" + out_name + ".ts", root_build_dir),
+      "-o",
+      rebase_path(out_dir + out_name + ".js", root_build_dir),
+      "--sourcemapFile",
+      rebase_path("."),
+      "--silent",
+    ]
+  }
+}
+
 template("run_node") {
   action(target_name) {
     forward_variables_from(invoker, "*")
