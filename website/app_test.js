@@ -6,8 +6,7 @@ import {
   createExecTimeColumns,
   createThreadCountColumns,
   createSyscallCountColumns,
-  createSha1List,
-  getTravisData
+  createSha1List
 } from "./app.js";
 
 const regularData = [
@@ -191,11 +190,4 @@ test(function createSyscallCountColumnsIrregularData() {
 test(function createSha1ListRegularData() {
   const sha1List = createSha1List(regularData);
   assertEqual(sha1List, ["abcdef", "012345"]);
-});
-
-testPerm({ net: true }, async function getTravisDataSuccess() {
-  const data = await getTravisData(
-    "http://localhost:4545/tools/testdata/travis_benchmark.json"
-  );
-  assert(data.length !== 0);
 });
