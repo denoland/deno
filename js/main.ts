@@ -1,4 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// tslint:disable-next-line:no-reference
+/// <reference path="./plugins.d.ts" />
+
 import "./globals";
 
 import { log } from "./util";
@@ -9,6 +12,9 @@ import { replLoop } from "./repl";
 
 // builtin modules
 import * as deno from "./deno";
+
+// TODO(kitsonk) remove with `--types` below
+import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
@@ -23,6 +29,13 @@ export default function denoMain() {
     console.log("v8:", startResMsg.v8Version());
     // TODO figure out a way to restore functionality
     // console.log("typescript:", version);
+    os.exit(0);
+  }
+
+  // handle `--types`
+  // TODO(kitsonk) move to Rust fetching from compiler
+  if (startResMsg.typesFlag()) {
+    console.log(libDts);
     os.exit(0);
   }
 

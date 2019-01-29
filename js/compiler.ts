@@ -546,13 +546,4 @@ window.compilerMain = function compilerMain() {
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
   startResMsg = os.start();
-
-  // handle `--types`
-  // TODO(kitsonk) move to Rust fetching from compiler
-  if (startResMsg.typesFlag()) {
-    const defaultLibFileName = compiler.getDefaultLibFileName();
-    const defaultLibModule = compiler.resolveModule(defaultLibFileName, "");
-    console.log(defaultLibModule.sourceCode);
-    os.exit(0);
-  }
 }
