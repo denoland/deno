@@ -34,7 +34,7 @@ impl Worker {
       Some(internal_channels),
     ));
 
-    let snapshot = snapshot::deno_snapshot();
+    let snapshot = snapshot::compiler_snapshot();
     let isolate = Isolate::new(snapshot, state, ops::dispatch);
 
     let worker = Worker { isolate };

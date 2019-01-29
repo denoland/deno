@@ -1,9 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
+import { handleAsyncMsgFromRust, sendSync } from "./dispatch";
+import * as flatbuffers from "./flatbuffers";
+import { libdeno } from "./libdeno";
 import { assert } from "./util";
 import * as util from "./util";
-import * as flatbuffers from "./flatbuffers";
-import { sendSync } from "./dispatch";
 
 /** process id */
 export let pid: number;
@@ -141,4 +142,33 @@ export function env(): { [index: string]: string } {
   assert(baseRes.inner(res) != null);
   // TypeScript cannot track assertion above, therefore not null assertion
   return createEnv(res);
+}
+
+/** Send to the privileged side that we have setup and are ready. */
+function sendStart(): msg.StartRes {
+  const builder = flatbuffers.createBuilder();
+  msg.Start.startStart(builder);
+  const startOffset = msg.Start.endStart(builder);
+  const baseRes = sendSync(builder, msg.Any.Start, startOffset);
+  assert(baseRes != null);
+  assert(msg.Any.StartRes === baseRes!.innerType());
+  const startResMsg = new msg.StartRes();
+  assert(baseRes!.inner(startResMsg) != null);
+  return startResMsg;
+}
+
+// This function bootstraps an environment within Deno, it is shared both by
+// the runtime and the compiler environments.
+// @internal
+export function start(): msg.StartRes {
+  libdeno.recv(handleAsyncMsgFromRust);
+
+  // First we send an empty `Start` message to let the privileged side know we
+  // are ready. The response should be a `StartRes` message containing the CLI
+  // args and other info.
+  const startResMsg = sendStart();
+
+  util.setLogDebug(startResMsg.debugFlag());
+
+  return startResMsg;
 }

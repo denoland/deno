@@ -94,6 +94,3 @@ window.TextDecoder = textEncoding.TextDecoder;
 export type TextDecoder = textEncoding.TextDecoder;
 
 window.workerMain = workers.workerMain;
-// TODO These shouldn't be available in main isolate.
-window.postMessage = workers.postMessage;
-window.close = workers.workerClose;
