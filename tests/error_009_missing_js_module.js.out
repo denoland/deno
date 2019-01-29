@@ -1,1 +1,1 @@
-NotFound: Cannot resolve module "./bad-module.js" from "[WILDCARD]/tests/error_009_missing_js_module.js"
+Uncaught NotFound: Cannot resolve module "./bad-module.js" from "[WILDCARD]/tests/error_009_missing_js_module.js"

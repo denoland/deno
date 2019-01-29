@@ -9,6 +9,7 @@
 #include "third_party/v8/src/base/logging.h"
 
 #include "deno.h"
+#include "exceptions.h"
 #include "internal.h"
 
 #define GLOBAL_IMPORT_BUF_SIZE 1024
@@ -43,10 +44,6 @@ v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
   return {payload, size};
 }
 
-DenoIsolate* FromIsolate(v8::Isolate* isolate) {
-  return static_cast<DenoIsolate*>(isolate->GetData(0));
-}
-
 void AddDataRef(DenoIsolate* d, int32_t req_id, v8::Local<v8::Value> data_v) {
   d->async_data_map_.emplace(std::piecewise_construct, std::make_tuple(req_id),
                              std::make_tuple(d->isolate_, data_v));
@@ -64,155 +61,6 @@ void DeleteDataRef(DenoIsolate* d, int32_t req_id) {
 // Extracts a C string from a v8::V8 Utf8Value.
 const char* ToCString(const v8::String::Utf8Value& value) {
   return *value ? *value : "<string conversion failed>";
-}
-
-std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
-                                  v8::Local<v8::Value> exception) {
-  auto* isolate = context->GetIsolate();
-  v8::HandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context);
-
-  auto message = v8::Exception::CreateMessage(isolate, exception);
-  auto stack_trace = message->GetStackTrace();
-
-  // Encode the exception into a JS object, which we will then turn into JSON.
-  auto json_obj = v8::Object::New(isolate);
-
-  auto exception_str = exception->ToString(context).ToLocalChecked();
-  // Alternate and very similar string. Not sure which is appropriate.
-  // auto exception_str = message->Get();
-  CHECK(json_obj->Set(context, v8_str("message"), exception_str).FromJust());
-
-  auto maybe_source_line = message->GetSourceLine(context);
-  if (!maybe_source_line.IsEmpty()) {
-    CHECK(json_obj
-              ->Set(context, v8_str("sourceLine"),
-                    maybe_source_line.ToLocalChecked())
-              .FromJust());
-  }
-
-  CHECK(json_obj
-            ->Set(context, v8_str("scriptResourceName"),
-                  message->GetScriptResourceName())
-            .FromJust());
-
-  auto maybe_line_number = message->GetLineNumber(context);
-  if (maybe_line_number.IsJust()) {
-    CHECK(json_obj
-              ->Set(context, v8_str("lineNumber"),
-                    v8::Integer::New(isolate, maybe_line_number.FromJust()))
-              .FromJust());
-  }
-
-  CHECK(json_obj
-            ->Set(context, v8_str("startPosition"),
-                  v8::Integer::New(isolate, message->GetStartPosition()))
-            .FromJust());
-
-  CHECK(json_obj
-            ->Set(context, v8_str("endPosition"),
-                  v8::Integer::New(isolate, message->GetEndPosition()))
-            .FromJust());
-
-  CHECK(json_obj
-            ->Set(context, v8_str("errorLevel"),
-                  v8::Integer::New(isolate, message->ErrorLevel()))
-            .FromJust());
-
-  auto maybe_start_column = message->GetStartColumn(context);
-  if (maybe_start_column.IsJust()) {
-    auto start_column =
-        v8::Integer::New(isolate, maybe_start_column.FromJust());
-    CHECK(
-        json_obj->Set(context, v8_str("startColumn"), start_column).FromJust());
-  }
-
-  auto maybe_end_column = message->GetEndColumn(context);
-  if (maybe_end_column.IsJust()) {
-    auto end_column = v8::Integer::New(isolate, maybe_end_column.FromJust());
-    CHECK(json_obj->Set(context, v8_str("endColumn"), end_column).FromJust());
-  }
-
-  CHECK(json_obj
-            ->Set(context, v8_str("isSharedCrossOrigin"),
-                  v8::Boolean::New(isolate, message->IsSharedCrossOrigin()))
-            .FromJust());
-
-  CHECK(json_obj
-            ->Set(context, v8_str("isOpaque"),
-                  v8::Boolean::New(isolate, message->IsOpaque()))
-            .FromJust());
-
-  v8::Local<v8::Array> frames;
-  if (!stack_trace.IsEmpty()) {
-    uint32_t count = static_cast<uint32_t>(stack_trace->GetFrameCount());
-    frames = v8::Array::New(isolate, count);
-
-    for (uint32_t i = 0; i < count; ++i) {
-      auto frame = stack_trace->GetFrame(isolate, i);
-      auto frame_obj = v8::Object::New(isolate);
-      CHECK(frames->Set(context, i, frame_obj).FromJust());
-      auto line = v8::Integer::New(isolate, frame->GetLineNumber());
-      auto column = v8::Integer::New(isolate, frame->GetColumn());
-      CHECK(frame_obj->Set(context, v8_str("line"), line).FromJust());
-      CHECK(frame_obj->Set(context, v8_str("column"), column).FromJust());
-      CHECK(frame_obj
-                ->Set(context, v8_str("functionName"), frame->GetFunctionName())
-                .FromJust());
-      // scriptName can be empty in special conditions e.g. eval
-      auto scriptName = frame->GetScriptNameOrSourceURL();
-      if (scriptName.IsEmpty()) {
-        scriptName = v8_str("<unknown>");
-      }
-      CHECK(
-          frame_obj->Set(context, v8_str("scriptName"), scriptName).FromJust());
-      CHECK(frame_obj
-                ->Set(context, v8_str("isEval"),
-                      v8::Boolean::New(isolate, frame->IsEval()))
-                .FromJust());
-      CHECK(frame_obj
-                ->Set(context, v8_str("isConstructor"),
-                      v8::Boolean::New(isolate, frame->IsConstructor()))
-                .FromJust());
-      CHECK(frame_obj
-                ->Set(context, v8_str("isWasm"),
-                      v8::Boolean::New(isolate, frame->IsWasm()))
-                .FromJust());
-    }
-  } else {
-    // No stack trace. We only have one stack frame of info..
-    frames = v8::Array::New(isolate, 1);
-
-    auto frame_obj = v8::Object::New(isolate);
-    CHECK(frames->Set(context, 0, frame_obj).FromJust());
-
-    auto line =
-        v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
-    auto column =
-        v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
-
-    CHECK(frame_obj->Set(context, v8_str("line"), line).FromJust());
-    CHECK(frame_obj->Set(context, v8_str("column"), column).FromJust());
-    CHECK(frame_obj
-              ->Set(context, v8_str("scriptName"),
-                    message->GetScriptResourceName())
-              .FromJust());
-  }
-
-  CHECK(json_obj->Set(context, v8_str("frames"), frames).FromJust());
-
-  auto json_string = v8::JSON::Stringify(context, json_obj).ToLocalChecked();
-  v8::String::Utf8Value json_string_(isolate, json_string);
-  return std::string(ToCString(json_string_));
-}
-
-void HandleException(v8::Local<v8::Context> context,
-                     v8::Local<v8::Value> exception) {
-  v8::Isolate* isolate = context->GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
-  std::string json_str = EncodeExceptionAsJSON(context, exception);
-  CHECK(d != nullptr);
-  d->last_exception_ = json_str;
 }
 
 void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
@@ -256,7 +104,7 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   CHECK_GE(args.Length(), 1);
   CHECK_LE(args.Length(), 3);
   auto* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   auto context = d->context_.Get(d->isolate_);
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value str(isolate, args[0]);
@@ -329,7 +177,7 @@ static deno_buf GetContents(v8::Isolate* isolate,
 // Sets the recv_ callback.
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
 
   v8::HandleScope handle_scope(isolate);
@@ -348,7 +196,7 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
 
   v8::Locker locker(d->isolate_);
@@ -401,7 +249,7 @@ v8::Local<v8::Object> DenoIsolate::GetBuiltinModules() {
 void BuiltinModules(v8::Local<v8::Name> property,
                     const v8::PropertyCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
   v8::Locker locker(d->isolate_);
   info.GetReturnValue().Set(d->GetBuiltinModules());
@@ -410,7 +258,7 @@ void BuiltinModules(v8::Local<v8::Name> property,
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
   v8::Locker locker(d->isolate_);
   v8::EscapableHandleScope handle_scope(isolate);
@@ -480,7 +328,7 @@ v8::MaybeLocal<v8::Module> CompileModule(v8::Local<v8::Context> context,
   if (!maybe_module.IsEmpty()) {
     auto module = maybe_module.ToLocalChecked();
     CHECK_EQ(v8::Module::kUninstantiated, module->GetStatus());
-    DenoIsolate* d = FromIsolate(isolate);
+    DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
     d->RegisterModule(js_filename, module);
   }
 
@@ -491,7 +339,7 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
                                            v8::Local<v8::String> specifier,
                                            v8::Local<v8::Module> referrer) {
   auto* isolate = context->GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
 
   v8::Isolate::Scope isolate_scope(isolate);
   v8::EscapableHandleScope handle_scope(isolate);
@@ -702,6 +550,16 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
           .FromJust());
 }
 
+void MessageCallback(v8::Local<v8::Message> message,
+                     v8::Local<v8::Value> data) {
+  auto* isolate = message->GetIsolate();
+  DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
+
+  v8::HandleScope handle_scope(isolate);
+  auto context = d->context_.Get(isolate);
+  HandleExceptionMessage(context, message);
+}
+
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
   isolate_ = isolate;
   // Leaving this code here because it will probably be useful later on, but
@@ -713,6 +571,7 @@ void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
       true, 10, v8::StackTrace::kDetailed);
   isolate_->SetPromiseRejectCallback(deno::PromiseRejectCallback);
   isolate_->SetData(0, this);
+  isolate_->AddMessageListener(MessageCallback);
 }
 
 }  // namespace deno
