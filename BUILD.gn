@@ -209,6 +209,7 @@ bundle("compiler_bundle") {
   out_dir = "$target_gen_dir/bundle/"
   out_name = "compiler"
   deps = [
+    ":deno_runtime_declaration",
     ":msg_ts",
   ]
 }
