@@ -1,4 +1,4 @@
 [WILDCARD]tests/error_syntax.js:3:5
 (the following is a syntax error  ^^ ! )
 
-SyntaxError: Unexpected identifier
+Uncaught SyntaxError: Unexpected identifier

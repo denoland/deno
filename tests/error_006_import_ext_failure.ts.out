@@ -1,6 +1,6 @@
 Compiling [WILDCARD]tests/error_006_import_ext_failure.ts
 [WILDCARD]
-NotFound: Cannot resolve module "./non-existent" from "[WILDCARD]/tests/error_006_import_ext_failure.ts"
+Uncaught NotFound: Cannot resolve module "./non-existent" from "[WILDCARD]/tests/error_006_import_ext_failure.ts"
     at DenoError ([WILDCARD]/js/errors.ts:[WILDCARD])
     at maybeError ([WILDCARD]/js/errors.ts:[WILDCARD])
     at maybeThrowError ([WILDCARD]/js/errors.ts:[WILDCARD])

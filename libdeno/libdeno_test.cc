@@ -173,7 +173,7 @@ TEST(LibDenoTest, GlobalErrorHandling) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr, nullptr});
   EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "GlobalErrorHandling()"));
   std::string expected =
-      "{\"message\":\"ReferenceError: notdefined is not defined\","
+      "{\"message\":\"Uncaught ReferenceError: notdefined is not defined\","
       "\"sourceLine\":\" "
       "notdefined()\",\"scriptResourceName\":\"helloworld.js\","
       "\"lineNumber\":3,\"startPosition\":3,\"endPosition\":4,\"errorLevel\":8,"
@@ -229,7 +229,7 @@ TEST(LibDenoTest, LastException) {
   EXPECT_EQ(deno_last_exception(d), nullptr);
   EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "\n\nthrow Error('boo');\n\n"));
   EXPECT_STREQ(deno_last_exception(d),
-               "{\"message\":\"Error: boo\",\"sourceLine\":\"throw "
+               "{\"message\":\"Uncaught Error: boo\",\"sourceLine\":\"throw "
                "Error('boo');\",\"scriptResourceName\":\"a.js\",\"lineNumber\":"
                "3,\"startPosition\":8,\"endPosition\":9,\"errorLevel\":8,"
                "\"startColumn\":6,\"endColumn\":7,\"isSharedCrossOrigin\":"
@@ -245,7 +245,7 @@ TEST(LibDenoTest, EncodeErrorBug) {
   EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "eval('a')"));
   EXPECT_STREQ(
       deno_last_exception(d),
-      "{\"message\":\"ReferenceError: a is not "
+      "{\"message\":\"Uncaught ReferenceError: a is not "
       "defined\",\"sourceLine\":\"a\",\"lineNumber\":1,\"startPosition\":0,"
       "\"endPosition\":1,\"errorLevel\":8,\"startColumn\":0,\"endColumn\":1,"
       "\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"frames\":[{\"line\":"

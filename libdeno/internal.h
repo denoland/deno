@@ -40,6 +40,10 @@ class DenoIsolate {
     delete array_buffer_allocator_;
   }
 
+  static inline DenoIsolate* FromIsolate(v8::Isolate* isolate) {
+    return static_cast<DenoIsolate*>(isolate->GetData(0));
+  }
+
   void AddIsolate(v8::Isolate* isolate);
   void RegisterModule(const char* filename, v8::Local<v8::Module> module);
   void ResolveOk(const char* filename, const char* source);
@@ -115,12 +119,14 @@ void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
 void BuiltinModules(v8::Local<v8::Name> property,
                     const v8::PropertyCallbackInfo<v8::Value>& info);
+void MessageCallback(v8::Local<v8::Message> message, v8::Local<v8::Value> data);
 static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print),
     reinterpret_cast<intptr_t>(Recv),
     reinterpret_cast<intptr_t>(Send),
     reinterpret_cast<intptr_t>(Shared),
     reinterpret_cast<intptr_t>(BuiltinModules),
+    reinterpret_cast<intptr_t>(MessageCallback),
     0};
 
 static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
