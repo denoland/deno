@@ -9,6 +9,7 @@ use std::mem;
 use std::net::SocketAddr;
 use tokio;
 use tokio::net::TcpStream;
+use tokio::runtime::Runtime;
 use tokio_executor;
 
 pub fn block_on<F, R, E>(future: F) -> Result<R, E>
@@ -29,7 +30,7 @@ pub fn init<F>(f: F)
 where
   F: FnOnce(),
 {
-  let rt = tokio::runtime::Runtime::new().unwrap();
+  let rt = Runtime::new().unwrap();
   let mut executor = rt.executor();
   let mut enter = tokio_executor::enter().expect("Multiple executors at once");
   tokio_executor::with_default(&mut executor, &mut enter, move |_enter| f());

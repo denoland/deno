@@ -5,6 +5,7 @@ use crate::errors::DenoResult;
 use crate::msg;
 
 use flatbuffers;
+use flatbuffers::FlatBufferBuilder;
 use http::header::HeaderName;
 use http::uri::Uri;
 use http::Method;
@@ -18,7 +19,7 @@ use std::str::FromStr;
 type Headers = HeaderMap<HeaderValue>;
 
 pub fn serialize_key_value<'bldr>(
-  builder: &mut flatbuffers::FlatBufferBuilder<'bldr>,
+  builder: &mut FlatBufferBuilder<'bldr>,
   key: &str,
   value: &str,
 ) -> flatbuffers::WIPOffset<msg::KeyValue<'bldr>> {
@@ -34,7 +35,7 @@ pub fn serialize_key_value<'bldr>(
 }
 
 pub fn serialize_request_header<'bldr>(
-  builder: &mut flatbuffers::FlatBufferBuilder<'bldr>,
+  builder: &mut FlatBufferBuilder<'bldr>,
   r: &Request<Body>,
 ) -> flatbuffers::WIPOffset<msg::HttpHeader<'bldr>> {
   let method = builder.create_string(r.method().as_str());
@@ -60,7 +61,7 @@ pub fn serialize_request_header<'bldr>(
 }
 
 pub fn serialize_fields<'bldr>(
-  builder: &mut flatbuffers::FlatBufferBuilder<'bldr>,
+  builder: &mut FlatBufferBuilder<'bldr>,
   headers: &Headers,
 ) -> flatbuffers::WIPOffset<
   flatbuffers::Vector<
@@ -78,7 +79,7 @@ pub fn serialize_fields<'bldr>(
 
 // Not to be confused with serialize_response which has nothing to do with HTTP.
 pub fn serialize_http_response<'bldr>(
-  builder: &mut flatbuffers::FlatBufferBuilder<'bldr>,
+  builder: &mut FlatBufferBuilder<'bldr>,
   r: &Response<Body>,
 ) -> flatbuffers::WIPOffset<msg::HttpHeader<'bldr>> {
   let status = r.status().as_u16();

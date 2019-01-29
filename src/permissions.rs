@@ -5,7 +5,7 @@ use crate::flags::DenoFlags;
 
 use crate::errors::permission_denied;
 use crate::errors::DenoResult;
-use std::io;
+use std::io::stdin;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -90,7 +90,7 @@ fn permission_prompt(message: &str) -> DenoResult<()> {
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{} Grant? [yN] ", message);
   let mut input = String::new();
-  let stdin = io::stdin();
+  let stdin = stdin();
   let _nread = stdin.read_line(&mut input)?;
   let ch = input.chars().next().unwrap();
   let is_yes = ch == 'y' || ch == 'Y';

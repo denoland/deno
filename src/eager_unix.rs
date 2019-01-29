@@ -9,7 +9,7 @@ use std::io::{ErrorKind, Read, Write};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
 use tokio;
 use tokio::net::{TcpListener, TcpStream};
-use tokio_io;
+use tokio_io::io;
 
 pub fn tcp_read<T: AsMut<[u8]>>(
   tcp_stream: &TcpStream,
@@ -26,7 +26,7 @@ pub fn tcp_read<T: AsMut<[u8]>>(
     Ok(nread) => Either::B(future::ok((resource, buf, nread))),
     Err(err) => {
       if err.kind() == ErrorKind::WouldBlock {
-        Either::A(tokio_io::io::read(resource, buf))
+        Either::A(io::read(resource, buf))
       } else {
         Either::B(future::err(err))
       }

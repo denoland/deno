@@ -9,7 +9,7 @@ use crate::resources;
 use crate::snapshot;
 use crate::tokio_util;
 
-use futures::sync::mpsc;
+use futures::sync::mpsc::channel;
 use futures::sync::oneshot;
 use futures::Future;
 use std::sync::Arc;
@@ -22,8 +22,8 @@ pub struct Worker {
 
 impl Worker {
   pub fn new(parent_state: &Arc<IsolateState>) -> (Self, WorkerChannels) {
-    let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
-    let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
+    let (worker_in_tx, worker_in_rx) = channel::<Buf>(1);
+    let (worker_out_tx, worker_out_rx) = channel::<Buf>(1);
 
     let internal_channels = (worker_out_tx, worker_in_rx);
     let external_channels = (worker_in_tx, worker_out_rx);
