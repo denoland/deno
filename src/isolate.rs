@@ -3,11 +3,14 @@
 // TODO Currently this module uses Tokio, but it would be nice if they were
 // decoupled.
 
+#![allow(dead_code)]
+
 use crate::compiler::compile_sync;
 use crate::compiler::CodeFetchOutput;
 use crate::deno_dir;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
+use crate::errors::RustOrJsError;
 use crate::flags;
 use crate::js_errors::JSError;
 use crate::libdeno;
@@ -21,6 +24,7 @@ use libc::c_char;
 use libc::c_void;
 use std;
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -48,6 +52,10 @@ pub type Dispatch =
   fn(isolate: &Isolate, buf: libdeno::deno_buf, data_buf: libdeno::deno_buf)
     -> (bool, Box<Op>);
 
+pub struct ModuleInfo {
+  name: String,
+}
+
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   dispatch: Dispatch,
@@ -55,6 +63,8 @@ pub struct Isolate {
   tx: mpsc::Sender<(i32, Buf)>,
   ntasks: Cell<i32>,
   timeout_due: Cell<Option<Instant>>,
+  pub modules: HashMap<libdeno::deno_mod, ModuleInfo>,
+  pub modules_by_name: HashMap<String, libdeno::deno_mod>,
   pub state: Arc<IsolateState>,
 }
 
@@ -155,6 +165,7 @@ pub struct Metrics {
   pub bytes_sent_control: AtomicUsize,
   pub bytes_sent_data: AtomicUsize,
   pub bytes_received: AtomicUsize,
+  pub resolve_count: AtomicUsize,
 }
 
 static DENO_INIT: Once = ONCE_INIT;
@@ -173,7 +184,6 @@ impl Isolate {
       load_snapshot: snapshot,
       shared: libdeno::deno_buf::empty(), // TODO Use for message passing.
       recv_cb: pre_dispatch,
-      resolve_cb,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
     // This channel handles sending async messages back to the runtime.
@@ -186,6 +196,8 @@ impl Isolate {
       tx,
       ntasks: Cell::new(0),
       timeout_due: Cell::new(None),
+      modules: HashMap::new(),
+      modules_by_name: HashMap::new(),
       state,
     }
   }
@@ -254,34 +266,156 @@ impl Isolate {
     Ok(())
   }
 
+  pub fn mod_new(
+    &mut self,
+    name: String,
+    source: String,
+  ) -> Result<libdeno::deno_mod, JSError> {
+    let name_ = CString::new(name.clone()).unwrap();
+    let name_ptr = name_.as_ptr() as *const i8;
+
+    let source_ = CString::new(source.clone()).unwrap();
+    let source_ptr = source_.as_ptr() as *const i8;
+
+    let id = unsafe {
+      libdeno::deno_mod_new(self.libdeno_isolate, name_ptr, source_ptr)
+    };
+    if let Some(js_error) = self.last_exception() {
+      assert_eq!(id, 0);
+      return Err(js_error);
+    }
+
+    let name2 = name.clone();
+    self.modules.insert(id, ModuleInfo { name });
+
+    debug!("modules_by_name insert {}", name2);
+    self.modules_by_name.insert(name2, id);
+
+    Ok(id)
+  }
+
+  // TODO(ry) This should be private...
+  pub fn resolve_cb(
+    &self,
+    specifier: &str,
+    referrer: libdeno::deno_mod,
+  ) -> libdeno::deno_mod {
+    self
+      .state
+      .metrics
+      .resolve_count
+      .fetch_add(1, Ordering::Relaxed);
+
+    debug!("resolve_cb {}", specifier);
+
+    let r = self.modules.get(&referrer);
+    if r.is_none() {
+      debug!("cant find referrer {}", referrer);
+      return 0;
+    }
+    let referrer_name = &r.unwrap().name;
+    let r = self.state.dir.resolve_module(specifier, referrer_name);
+    if let Err(err) = r {
+      debug!("potentially swallowed err: {}", err);
+      return 0;
+    }
+    let (name, _local_filename) = r.unwrap();
+
+    if let Some(id) = self.modules_by_name.get(&name) {
+      return *id;
+    } else {
+      return 0;
+    }
+  }
+
+  // TODO(ry) make this return a future.
+  pub fn mod_load_deps(
+    &mut self,
+    id: libdeno::deno_mod,
+  ) -> Result<(), RustOrJsError> {
+    // basically iterate over the imports, start loading them.
+
+    let referrer = self.modules.get(&id).unwrap().clone();
+    let referrer_name = referrer.name.clone();
+    let len =
+      unsafe { libdeno::deno_mod_imports_len(self.libdeno_isolate, id) };
+
+    for i in 0..len {
+      let specifier_ptr =
+        unsafe { libdeno::deno_mod_imports_get(self.libdeno_isolate, id, i) };
+      let specifier_c: &CStr = unsafe { CStr::from_ptr(specifier_ptr) };
+      let specifier: &str = specifier_c.to_str().unwrap();
+
+      // TODO(ry) This shouldn't be necessary here. builtin modules should be
+      // taken care of at the libdeno level.
+      if specifier == "deno" {
+        continue;
+      }
+
+      let (name, _local_filename) = self
+        .state
+        .dir
+        .resolve_module(specifier, &referrer_name)
+        .map_err(DenoError::from)
+        .map_err(RustOrJsError::from)?;
+
+      debug!("mod_load_deps {} {}", i, name);
+
+      if None == self.modules_by_name.get(&name) {
+        let out =
+          code_fetch_and_maybe_compile(&self.state, specifier, &referrer_name)?;
+        let child_id =
+          self.mod_new(out.module_name.clone(), out.js_source())?;
+
+        self.mod_load_deps(child_id)?;
+      }
+    }
+
+    Ok(())
+  }
+
+  pub fn mod_instantiate(&self, id: libdeno::deno_mod) -> Result<(), JSError> {
+    unsafe {
+      libdeno::deno_mod_instantiate(
+        self.libdeno_isolate,
+        self.as_raw_ptr(),
+        id,
+        resolve_cb,
+      )
+    };
+    if let Some(js_error) = self.last_exception() {
+      return Err(js_error);
+    }
+
+    Ok(())
+  }
+
+  pub fn mod_evaluate(&self, id: libdeno::deno_mod) -> Result<(), JSError> {
+    unsafe {
+      libdeno::deno_mod_evaluate(self.libdeno_isolate, self.as_raw_ptr(), id)
+    };
+    if let Some(js_error) = self.last_exception() {
+      return Err(js_error);
+    }
+    Ok(())
+  }
+
   /// Executes the provided JavaScript module.
   pub fn execute_mod(
-    &self,
+    &mut self,
     js_filename: &str,
     is_prefetch: bool,
   ) -> Result<(), JSError> {
     let out =
       code_fetch_and_maybe_compile(&self.state, js_filename, ".").unwrap();
 
-    let filename = CString::new(out.filename.clone()).unwrap();
-    let filename_ptr = filename.as_ptr() as *const i8;
+    let id = self.mod_new(out.filename.clone(), out.js_source())?;
 
-    let js_source = CString::new(out.js_source().clone()).unwrap();
-    let js_source = CString::new(js_source).unwrap();
-    let js_source_ptr = js_source.as_ptr() as *const i8;
+    self.mod_load_deps(id).ok();
 
-    let r = unsafe {
-      libdeno::deno_execute_mod(
-        self.libdeno_isolate,
-        self.as_raw_ptr(),
-        filename_ptr,
-        js_source_ptr,
-        if is_prefetch { 1 } else { 0 },
-      )
-    };
-    if r == 0 {
-      let js_error = self.last_exception().unwrap();
-      return Err(js_error);
+    self.mod_instantiate(id)?;
+    if !is_prefetch {
+      self.mod_evaluate(id)?;
     }
     Ok(())
   }
@@ -393,40 +527,12 @@ fn code_fetch_and_maybe_compile(
 extern "C" fn resolve_cb(
   user_data: *mut c_void,
   specifier_ptr: *const c_char,
-  referrer_ptr: *const c_char,
-) {
+  referrer: libdeno::deno_mod,
+) -> libdeno::deno_mod {
+  let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
   let specifier_c: &CStr = unsafe { CStr::from_ptr(specifier_ptr) };
   let specifier: &str = specifier_c.to_str().unwrap();
-
-  let referrer_c: &CStr = unsafe { CStr::from_ptr(referrer_ptr) };
-  let referrer: &str = referrer_c.to_str().unwrap();
-
-  debug!("module_resolve callback {} {}", specifier, referrer);
-  let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
-
-  let maybe_out =
-    code_fetch_and_maybe_compile(&isolate.state, specifier, referrer);
-
-  if maybe_out.is_err() {
-    // Resolution failure
-    return;
-  }
-
-  let out = maybe_out.unwrap();
-
-  let filename = CString::new(out.filename.clone()).unwrap();
-  let filename_ptr = filename.as_ptr() as *const i8;
-
-  let js_source = CString::new(out.js_source().clone()).unwrap();
-  let js_source_ptr = js_source.as_ptr() as *const i8;
-
-  unsafe {
-    libdeno::deno_resolve_ok(
-      isolate.libdeno_isolate,
-      filename_ptr,
-      js_source_ptr,
-    )
-  };
+  return isolate.resolve_cb(specifier, referrer);
 }
 
 // Dereferences the C pointer into the Rust Isolate object.
@@ -673,12 +779,37 @@ mod tests {
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let snapshot = libdeno::deno_buf::empty();
-    let isolate = Isolate::new(snapshot, state, dispatch_sync);
+    let mut isolate = Isolate::new(snapshot, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute_mod(filename, false)
         .expect("execute_mod error");
       isolate.event_loop().ok();
     });
+
+    let metrics = &isolate.state.metrics;
+    assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 1);
+  }
+
+  #[test]
+  fn execute_mod_circular() {
+    let filename = std::env::current_dir().unwrap().join("tests/circular1.js");
+    let filename = filename.to_str().unwrap();
+
+    let argv = vec![String::from("./deno"), String::from(filename)];
+    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
+
+    let state = Arc::new(IsolateState::new(flags, rest_argv, None));
+    let snapshot = libdeno::deno_buf::empty();
+    let mut isolate = Isolate::new(snapshot, state, dispatch_sync);
+    tokio_util::init(|| {
+      isolate
+        .execute_mod(filename, false)
+        .expect("execute_mod error");
+      isolate.event_loop().ok();
+    });
+
+    let metrics = &isolate.state.metrics;
+    assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
   }
 }

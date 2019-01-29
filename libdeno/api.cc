@@ -80,7 +80,6 @@ deno::DenoIsolate* unwrap(Deno* d_) {
 deno_buf deno_get_snapshot(Deno* d_) {
   auto* d = unwrap(d_);
   CHECK_NE(d->snapshot_creator_, nullptr);
-  CHECK(d->resolve_module_.IsEmpty());
   d->ClearModules();
   d->context_.Reset();
 
@@ -124,20 +123,6 @@ int deno_execute(Deno* d_, void* user_data, const char* js_filename,
   auto context = d->context_.Get(d->isolate_);
   CHECK(!context.IsEmpty());
   return deno::Execute(context, js_filename, js_source) ? 1 : 0;
-}
-
-int deno_execute_mod(Deno* d_, void* user_data, const char* js_filename,
-                     const char* js_source, int resolve_only) {
-  auto* d = unwrap(d_);
-  deno::UserDataScope user_data_scope(d, user_data);
-  auto* isolate = d->isolate_;
-  v8::Locker locker(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  auto context = d->context_.Get(d->isolate_);
-  CHECK(!context.IsEmpty());
-  return deno::ExecuteMod(context, js_filename, js_source, resolve_only) ? 1
-                                                                         : 0;
 }
 
 int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
@@ -209,10 +194,5 @@ void deno_delete(Deno* d_) {
 void deno_terminate_execution(Deno* d_) {
   deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
   d->isolate_->TerminateExecution();
-}
-
-void deno_resolve_ok(Deno* d_, const char* filename, const char* source) {
-  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
-  d->ResolveOk(filename, source);
 }
 }
