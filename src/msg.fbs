@@ -59,7 +59,9 @@ union Any {
   Run,
   RunRes,
   RunStatus,
-  RunStatusRes
+  RunStatusRes,
+  IsTTY,
+  IsTTYRes
 }
 
 enum ErrorKind: byte {
@@ -473,6 +475,12 @@ table RunStatusRes {
   got_signal: bool;
   exit_code: int;
   exit_signal: int;
+}
+
+table IsTTY {}
+
+table IsTTYRes {
+  is_tty: bool;
 }
 
 root_type Base;

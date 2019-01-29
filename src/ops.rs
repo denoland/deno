@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+extern crate libc;
+
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -121,6 +123,7 @@ pub fn dispatch(
       msg::Any::WorkerPostMessage => op_worker_post_message,
       msg::Any::Write => op_write,
       msg::Any::WriteFile => op_write_file,
+      msg::Any::IsTTY => op_is_tty,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -171,6 +174,27 @@ pub fn dispatch(
     base.sync()
   );
   (base.sync(), boxed_op)
+}
+
+fn op_is_tty(
+  _state: &Arc<IsolateState>,
+  base: &msg::Base<'_>,
+  _data: libdeno::deno_buf,
+) -> Box<Op> {
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::IsTTYRes::create(
+    builder,
+    &msg::IsTTYResArgs { is_tty: unsafe { libc::isatty(libc::STDIN_FILENO as i32) } != 0 },
+  );
+  ok_future(serialize_response(
+    base.cmd_id(),
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::IsTTYRes,
+      ..Default::default()
+    },
+  ))
 }
 
 fn op_exit(

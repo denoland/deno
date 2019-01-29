@@ -23,6 +23,18 @@ interface CodeInfo {
   sourceMap: string | undefined;
 }
 
+/** Check if running in terminal. */
+export function isTTY(): boolean {
+  const builder = flatbuffers.createBuilder();
+  msg.IsTTY.startIsTTY(builder);
+  const inner = msg.IsTTY.endIsTTY(builder);
+  const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
+  assert(msg.Any.IsTTYRes === baseRes.innerType());
+  const res = new msg.IsTTYRes();
+  assert(baseRes.inner(res) != null);
+  return res.isTty();
+}
+
 /** Exit the Deno process with optional exit code. */
 export function exit(exitCode = 0): never {
   const builder = flatbuffers.createBuilder();
