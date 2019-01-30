@@ -24,9 +24,10 @@ interface CodeInfo {
 }
 
 /** Check if running in terminal. */
-export function isTTY(): boolean {
+export function isTTY(rid = 0): boolean {
   const builder = flatbuffers.createBuilder();
   msg.IsTTY.startIsTTY(builder);
+  msg.IsTTY.addRid(builder, rid);
   const inner = msg.IsTTY.endIsTTY(builder);
   const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
   assert(msg.Any.IsTTYRes === baseRes.innerType());

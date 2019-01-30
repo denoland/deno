@@ -477,7 +477,9 @@ table RunStatusRes {
   exit_signal: int;
 }
 
-table IsTTY {}
+table IsTTY {
+  rid: uint32;
+}
 
 table IsTTYRes {
   is_tty: bool;

@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-extern crate libc;
 
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
@@ -20,6 +19,7 @@ use crate::resources::Resource;
 use crate::tokio_util;
 use crate::version;
 
+use atty;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::Async;
@@ -181,11 +181,26 @@ fn op_is_tty(
   base: &msg::Base<'_>,
   _data: libdeno::deno_buf,
 ) -> Box<Op> {
+  let rid = base.inner_as_is_tty().unwrap().rid();
+  //let rid = 0;
+  let is_tty: bool;
+
+  if rid < 3 { // std in/out/err -- check if is terminal
+    match rid {
+      0 => is_tty = atty::is(atty::Stream::Stdin),
+      1 => is_tty = atty::is(atty::Stream::Stdout),
+      2 => is_tty = atty::is(atty::Stream::Stderr),
+      _ => is_tty = false,
+    }
+  } else { // file -- false
+    is_tty = false;
+  }
+
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::IsTTYRes::create(
     builder,
     &msg::IsTTYResArgs {
-      is_tty: unsafe { libc::isatty(libc::STDIN_FILENO as i32) } != 0,
+      is_tty: is_tty,
     },
   );
   ok_future(serialize_response(
