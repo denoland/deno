@@ -322,6 +322,7 @@ submodule. However, you need to install separately:
 
 Extra steps for Mac users:
 1. [XCode](https://developer.apple.com/xcode/)
+2. Openssl 1.1: `brew install openssl@1.1`
 
 Extra steps for Windows users:
 1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
