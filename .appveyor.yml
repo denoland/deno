@@ -88,9 +88,6 @@ for:
 cache:
   # Rust stuff.
   - $(RUST_DIR)
-  # Cache the third_party submodule to preserve binaries downloaded by setup.py.
-  - $(APPVEYOR_BUILD_FOLDER)\third_party\v8\third_party\llvm-build\
-  - $(APPVEYOR_BUILD_FOLDER)\third_party\depot_tools\
   - $(APPVEYOR_BUILD_FOLDER)\prebuilt\win\
 
 init:
@@ -194,6 +191,14 @@ after_test:
 
   # Stop sccache and show stats.
   - ps: sccache --stop-server
+
+  # Verify that the build is fully up-to-date. Running ninja should be a no-op.
+  # This catches erroneous file cleanup, and incorrectly set up build deps.
+  - ps: |-
+      $out = ninja -C $env:DENO_BUILD_PATH -n -d explain
+      if ($out -notcontains "ninja: no work to do.") {
+        throw "Build should be up-to-date but isn't."
+      }
 
   # Verify that javascript and typescript files which are bundled by rollup are
   # listed explicitly in BUILD.gn. This is not an air-tight check.
