@@ -119,7 +119,7 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
 
 /** Turns `r` into async iterator.
  *
- *      for await (const chunk of readerIterator(reader)) {
+ *      for await (const chunk of toAsyncIterator(reader)) {
  *          console.log(chunk)
  *      }
  */

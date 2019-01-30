@@ -34,6 +34,7 @@ pub mod workers;
 #[cfg(unix)]
 mod eager_unix;
 
+use log::{LevelFilter, Metadata, Record};
 use std::env;
 use std::sync::Arc;
 
@@ -42,11 +43,11 @@ static LOGGER: Logger = Logger;
 struct Logger;
 
 impl log::Log for Logger {
-  fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+  fn enabled(&self, metadata: &Metadata) -> bool {
     metadata.level() <= log::max_level()
   }
 
-  fn log(&self, record: &log::Record<'_>) {
+  fn log(&self, record: &Record) {
     if self.enabled(record.metadata()) {
       println!("{} RS - {}", record.level(), record.args());
     }
@@ -74,9 +75,9 @@ fn main() {
   }
 
   log::set_max_level(if flags.log_debug {
-    log::LevelFilter::Debug
+    LevelFilter::Debug
   } else {
-    log::LevelFilter::Warn
+    LevelFilter::Warn
   });
 
   let should_prefetch = flags.prefetch;

@@ -92,7 +92,7 @@ testPerm({ write: true }, function removeAllSyncDirSuccess() {
   deno.mkdirSync(path);
   let pathInfo = deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
-  deno.removeAllSync(path); // remove
+  deno.removeSync(path, { recursive: true }); // remove
   // We then check again after remove
   let err;
   try {
@@ -112,7 +112,7 @@ testPerm({ write: true }, function removeAllSyncDirSuccess() {
   assert(pathInfo.isDirectory()); // check exist first
   const subPathInfo = deno.statSync(subPath);
   assert(subPathInfo.isDirectory()); // check exist first
-  deno.removeAllSync(path); // remove
+  deno.removeSync(path, { recursive: true }); // remove
   // We then check parent directory again after remove
   try {
     deno.statSync(path);
@@ -132,7 +132,7 @@ testPerm({ write: true }, function removeAllSyncFileSuccess() {
   deno.writeFileSync(filename, data, 0o666);
   const fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile()); // check exist first
-  deno.removeAllSync(filename); // remove
+  deno.removeSync(filename, { recursive: true }); // remove
   // We then check again after remove
   let err;
   try {
@@ -150,7 +150,7 @@ testPerm({ write: true }, function removeAllSyncFail() {
   let err;
   try {
     // Non-existent
-    deno.removeAllSync("/baddir");
+    deno.removeSync("/baddir", { recursive: true });
   } catch (e) {
     err = e;
   }
@@ -161,7 +161,7 @@ testPerm({ write: true }, function removeAllSyncFail() {
 testPerm({ write: false }, function removeAllSyncPerm() {
   let err;
   try {
-    deno.removeAllSync("/baddir");
+    deno.removeSync("/baddir", { recursive: true });
   } catch (e) {
     err = e;
   }
@@ -258,7 +258,7 @@ testPerm({ write: true }, async function removeAllDirSuccess() {
   deno.mkdirSync(path);
   let pathInfo = deno.statSync(path);
   assert(pathInfo.isDirectory()); // check exist first
-  await deno.removeAll(path); // remove
+  await deno.remove(path, { recursive: true }); // remove
   // We then check again after remove
   let err;
   try {
@@ -278,7 +278,7 @@ testPerm({ write: true }, async function removeAllDirSuccess() {
   assert(pathInfo.isDirectory()); // check exist first
   const subPathInfo = deno.statSync(subPath);
   assert(subPathInfo.isDirectory()); // check exist first
-  await deno.removeAll(path); // remove
+  await deno.remove(path, { recursive: true }); // remove
   // We then check parent directory again after remove
   try {
     deno.statSync(path);
@@ -298,7 +298,7 @@ testPerm({ write: true }, async function removeAllFileSuccess() {
   deno.writeFileSync(filename, data, 0o666);
   const fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile()); // check exist first
-  await deno.removeAll(filename); // remove
+  await deno.remove(filename, { recursive: true }); // remove
   // We then check again after remove
   let err;
   try {
@@ -316,7 +316,7 @@ testPerm({ write: true }, async function removeAllFail() {
   let err;
   try {
     // Non-existent
-    await deno.removeAll("/baddir");
+    await deno.remove("/baddir", { recursive: true });
   } catch (e) {
     err = e;
   }
@@ -327,7 +327,7 @@ testPerm({ write: true }, async function removeAllFail() {
 testPerm({ write: false }, async function removeAllPerm() {
   let err;
   try {
-    await deno.removeAll("/baddir");
+    await deno.remove("/baddir", { recursive: true });
   } catch (e) {
     err = e;
   }

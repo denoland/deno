@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
   const char* snapshot_out_bin = argv[1];
   const char* js_fn = argv[2];
 
-  v8::V8::SetFlagsFromCommandLine(&argc, argv, true);
+  deno_set_v8_flags(&argc, argv);
 
   CHECK_NE(js_fn, nullptr);
   CHECK_NE(snapshot_out_bin, nullptr);
