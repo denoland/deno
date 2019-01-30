@@ -184,15 +184,11 @@ fn op_is_tty(
   let rid = base.inner_as_is_tty().unwrap().rid();
   let is_tty: bool;
 
-  if rid < 3 { // std in/out/err -- check if is terminal
-    match rid {
-      0 => is_tty = atty::is(atty::Stream::Stdin),
-      1 => is_tty = atty::is(atty::Stream::Stdout),
-      2 => is_tty = atty::is(atty::Stream::Stderr),
-      _ => is_tty = false,
-    }
-  } else { // file -- false
-    is_tty = false;
+  match rid { // if std in/out/err check if is terminal, else return false
+    0 => is_tty = atty::is(atty::Stream::Stdin),
+    1 => is_tty = atty::is(atty::Stream::Stdout),
+    2 => is_tty = atty::is(atty::Stream::Stderr),
+    _ => is_tty = false,
   }
 
   let builder = &mut FlatBufferBuilder::new();
