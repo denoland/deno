@@ -182,7 +182,6 @@ fn op_is_tty(
   _data: libdeno::deno_buf,
 ) -> Box<Op> {
   let rid = base.inner_as_is_tty().unwrap().rid();
-  //let rid = 0;
   let is_tty: bool;
 
   if rid < 3 { // std in/out/err -- check if is terminal
