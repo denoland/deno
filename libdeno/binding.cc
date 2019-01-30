@@ -357,14 +357,12 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
 
     // In order to export obj as a module, we must iterate over its properties
     // and export them each individually.
-    // TODO Find a better way to do this.
     std::string src = "let globalEval = eval\nlet g = globalEval('this');\n";
     auto names = obj->GetOwnPropertyNames(context).ToLocalChecked();
     for (uint32_t i = 0; i < names->Length(); i++) {
       auto name = names->Get(context, i).ToLocalChecked();
       v8::String::Utf8Value name_utf8val(isolate, name);
       const char* name_cstr = ToCString(name_utf8val);
-      // TODO use format string.
       src.append("export const ");
       src.append(name_cstr);
       src.append(" = g.libdeno.builtinModules.");
@@ -396,7 +394,7 @@ v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
       break;
     }
   }
-  CHECK(referrer_filename.size() != 0);
+  CHECK_NE(referrer_filename.size(), 0);
 
   v8::String::Utf8Value specifier_(isolate, specifier);
   const char* specifier_c = ToCString(specifier_);

@@ -15,8 +15,8 @@ tslint = os.path.join(third_party_path, "node_modules", "tslint", "bin",
 
 os.chdir(root_path)
 run([
-    "python", cpplint, "--filter=-build/include_subdir", "--repository=src",
-    "--extensions=cc,h", "--recursive", "src/."
+    "python", cpplint, "--filter=-build/include_subdir", "--repository=libdeno",
+    "--extensions=cc,h", "--recursive", "libdeno"
 ])
 
 run(["node", tslint, "-p", ".", "--exclude", "**/gen/**/*.ts"])

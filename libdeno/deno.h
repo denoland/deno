@@ -62,12 +62,6 @@ void deno_delete(Deno* d);
 // module import statements.
 // Return value: 0 = fail, 1 = success
 // Get error text with deno_last_exception().
-//
-// TODO change return value to be const char*. On success the return
-// value is nullptr, on failure it is the JSON exception text that
-// is returned by deno_last_exception(). Remove deno_last_exception().
-// The return string is valid until the next execution of deno_execute or
-// deno_respond (as deno_last_exception is now).
 int deno_execute(Deno* d, void* user_data, const char* js_filename,
                  const char* js_source);
 
@@ -99,12 +93,6 @@ int deno_execute_mod(Deno* d, void* user_data, const char* js_filename,
 //
 // A non-zero return value, means a JS exception was encountered during the
 // libdeno.recv() callback. Check deno_last_exception() for exception text.
-//
-// TODO change return value to be const char*. On success the return
-// value is nullptr, on failure it is the JSON exception text that
-// is returned by deno_last_exception(). Remove deno_last_exception().
-// The return string is valid until the next execution of deno_execute or
-// deno_respond (as deno_last_exception is now).
 int deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf);
 
 void deno_check_promise_errors(Deno* d);

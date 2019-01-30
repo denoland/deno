@@ -15,7 +15,7 @@ extern "C" {
 
 Deno* deno_new_snapshotter(deno_config config) {
   CHECK(config.will_snapshot);
-  // TODO Support loading snapshots before snapshotting.
+  // TODO(ry) Support loading snapshots before snapshotting.
   CHECK_NULL(config.load_snapshot.data_ptr);
   auto* creator = new v8::SnapshotCreator(deno::external_references);
   auto* isolate = creator->GetIsolate();
