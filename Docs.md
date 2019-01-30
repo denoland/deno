@@ -151,7 +151,7 @@ browser JavaScript, Deno can import libraries directly from URLs. This example
 uses a URL to import a test runner library:
 
 ```ts
-import { test, assertEqual } from "https://deno.land/x/testing/mod.ts";
+import { test, assertEqual, runTests } from "https://deno.land/x/testing/mod.ts";
 
 test(function t1() {
   assertEqual("hello", "hello");
@@ -160,13 +160,15 @@ test(function t1() {
 test(function t2() {
   assertEqual("world", "world");
 });
+
+runTests();
 ```
 
 Try running this:
 
 ```
-> deno https://deno.land/x/examples/example_test.ts
-Compiling /Users/rld/src/deno_examples/example_test.ts
+> deno https://deno.land/x/examples/test.ts
+Compiling /Users/rld/src/deno_examples/test.ts
 Downloading https://deno.land/x/testing/mod.ts
 Compiling https://deno.land/x/testing/mod.ts
 running 2 tests
