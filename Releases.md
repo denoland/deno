@@ -8,88 +8,88 @@ https://github.com/denoland/deno_install
 
 ### v0.2.9 / 2019.01.29
 
-- Add REPL functions "help" and "exit" (#1563)
-- Split out compiler snapshot (#1566)
-- Combine deno.removeAll into deno.remove (#1596)
-- Add console.table (#1608)
-- Add console.clear() (#1562)
-- console output with format (#1565)
-- env key/value should both be strings (#1567)
-- Add CustomEvent API (#1505)
+- Add REPL functions "help" and "exit" ([#1563](https://github.com/denoland/deno/pull/1563))
+- Split out compiler snapshot ([#1566](https://github.com/denoland/deno/pull/1566))
+- Combine deno.removeAll into deno.remove ([#1596](https://github.com/denoland/deno/pull/1596))
+- Add console.table ([#1608](https://github.com/denoland/deno/pull/1608))
+- Add console.clear() ([#1562](https://github.com/denoland/deno/pull/1562))
+- console output with format ([#1565](https://github.com/denoland/deno/pull/1565))
+- env key/value should both be strings ([#1567](https://github.com/denoland/deno/pull/1567))
+- Add CustomEvent API ([#1505](https://github.com/denoland/deno/pull/1505))
 
 ### v0.2.8 / 2019.01.19
 
-- Add --prefetch flag for deps prefetch without running (#1475)
-- Kill all pending accepts when TCP listener is closed (#1517)
-- Add globalThis definition to runtime (#1534)
-- mkdir should not be recursive by default (#1530)
-- Avoid crashes on ES module resolution when module not found (#1546)
+- Add --prefetch flag for deps prefetch without running ([#1475](https://github.com/denoland/deno/pull/1475))
+- Kill all pending accepts when TCP listener is closed ([#1517](https://github.com/denoland/deno/pull/1517))
+- Add globalThis definition to runtime ([#1534](https://github.com/denoland/deno/pull/1534))
+- mkdir should not be recursive by default ([#1530](https://github.com/denoland/deno/pull/1530))
+- Avoid crashes on ES module resolution when module not found ([#1546](https://github.com/denoland/deno/pull/1546))
 
 ### v0.2.7 / 2019.01.14
 
 - Use rust 2018 edition
-- Native ES modules (#1460 #1492 #1512 #1514)
-- Properly parse network addresses (#1515)
-- Added rid to Conn interface (#1513)
-- Prevent segfault when eval throws an error (#1411)
-- Add --allow-all flag (#1482)
+- Native ES modules ([#1460](https://github.com/denoland/deno/pull/1460), [#1492](https://github.com/denoland/deno/pull/1492), [#1512](https://github.com/denoland/deno/pull/1512), [#1514](https://github.com/denoland/deno/pull/1514))
+- Properly parse network addresses ([#1515](https://github.com/denoland/deno/pull/1515))
+- Added rid to Conn interface ([#1513](https://github.com/denoland/deno/pull/1513))
+- Prevent segfault when eval throws an error ([#1411](https://github.com/denoland/deno/pull/1411))
+- Add --allow-all flag ([#1482](https://github.com/denoland/deno/pull/1482))
 
 ### v0.2.6 / 2019.01.06
 
-- Implement console.groupCollapsed (#1452)
-- Add deno.pid (#1464)
-- Add Event web API (#1059)
-- Support more fetch init body types (#1449)
+- Implement console.groupCollapsed ([#1452](https://github.com/denoland/deno/pull/1452))
+- Add deno.pid ([#1464](https://github.com/denoland/deno/pull/1464))
+- Add Event web API ([#1059](https://github.com/denoland/deno/pull/1059))
+- Support more fetch init body types ([#1449](https://github.com/denoland/deno/pull/1449))
 
 ### v0.2.5 / 2018.12.31
 
-- Runtime argument checks (#1427 #1415)
-- Lazily create .mime files only with mismatch/no extension (#1417)
-- Fix FormData.name (#1412)
-- Print string with NULL '\0' (#1428)
+- Runtime argument checks ([#1427](https://github.com/denoland/deno/pull/1427), [#1415](https://github.com/denoland/deno/pull/1415))
+- Lazily create .mime files only with mismatch/no extension ([#1417](https://github.com/denoland/deno/pull/1417))
+- Fix FormData.name ([#1412](https://github.com/denoland/deno/pull/1412))
+- Print string with NULL '\0' ([#1428](https://github.com/denoland/deno/pull/1428))
 
 ### v0.2.4 / 2018.12.23
 
-- "cargo build" support (#1369 #1296 #1377 #1379)
-- Remove support for extensionless import (#1396)
-- Upgrade V8 to 7.2.502.16 (#1403)
-- make stdout unbuffered (#1355)
-- Implement `Body.formData` for fetch (#1393)
-- Improve handling of non-coercable objects in assertEqual (#1385)
-- Avoid fetch segfault on empty Uri (#1394)
-- Expose deno.inspect (#1378)
-- Add illegal header name and value guards (#1375)
-- Fix URLSearchParams set() and constructor() (#1368)
-- Remove prebuilt v8 support (#1369)
-- Enable jumbo build in release. (#1362)
-- Add URL implementation (#1359)
-- Add console.count and console.time (#1358)
-- runtime arg check `URLSearchParams` (#1390)
+- "cargo build" support ([#1369](https://github.com/denoland/deno/pull/1369), [#1296](https://github.com/denoland/deno/pull/1296), [#1377](https://github.com/denoland/deno/pull/1377), [#1379](https://github.com/denoland/deno/pull/1379))
+- Remove support for extensionless import ([#1396](https://github.com/denoland/deno/pull/1396))
+- Upgrade V8 to 7.2.502.16 ([#1403](https://github.com/denoland/deno/pull/1403))
+- make stdout unbuffered ([#1355](https://github.com/denoland/deno/pull/1355))
+- Implement `Body.formData` for fetch ([#1393](https://github.com/denoland/deno/pull/1393))
+- Improve handling of non-coercable objects in assertEqual ([#1385](https://github.com/denoland/deno/pull/1385))
+- Avoid fetch segfault on empty Uri ([#1394](https://github.com/denoland/deno/pull/1394))
+- Expose deno.inspect ([#1378](https://github.com/denoland/deno/pull/1378))
+- Add illegal header name and value guards ([#1375](https://github.com/denoland/deno/pull/1375))
+- Fix URLSearchParams set() and constructor() ([#1368](https://github.com/denoland/deno/pull/1368))
+- Remove prebuilt v8 support ([#1369](https://github.com/denoland/deno/pull/1369))
+- Enable jumbo build in release. ([#1362](https://github.com/denoland/deno/pull/1362))
+- Add URL implementation ([#1359](https://github.com/denoland/deno/pull/1359))
+- Add console.count and console.time ([#1358](https://github.com/denoland/deno/pull/1358))
+- runtime arg check `URLSearchParams` ([#1390](https://github.com/denoland/deno/pull/1390))
 
 ### v0.2.3 / 2018.12.14
 
-- console.assert should not throw error (#1335)
-- Support more modes in deno.open (#1282, #1336)
-- Simplify code fetch logic (#1322)
-- readDir entry mode (#1326)
-- Use stderr for exceptions (#1303)
-- console.log formatting improvements (#1327, #1299)
-- Expose TooLarge error code for buffers (#1298)
+- console.assert should not throw error ([#1335](https://github.com/denoland/deno/pull/1335))
+- Support more modes in deno.open ([#1282](https://github.com/denoland/deno/pull/1282), [#1336](https://github.com/denoland/deno/pull/1336))
+- Simplify code fetch logic ([#1322](https://github.com/denoland/deno/pull/1322))
+- readDir entry mode ([#1326](https://github.com/denoland/deno/pull/1326))
+- Use stderr for exceptions ([#1303](https://github.com/denoland/deno/pull/1303))
+- console.log formatting improvements ([#1327](https://github.com/denoland/deno/pull/1327), [#1299](https://github.com/denoland/deno/pull/1299))
+- Expose TooLarge error code for buffers ([#1298](https://github.com/denoland/deno/pull/1298))
 
 ### v0.2.2 / 2018.12.07
 
-- Don't crash when .mime file not exist in cache (#1291)
-- Process source maps in Rust instead of JS (#1280)
-- Use alternate TextEncoder/TextDecoder implementation (#1281)
+- Don't crash when .mime file not exist in cache ([#1291](https://github.com/denoland/deno/pull/1291))
+- Process source maps in Rust instead of JS ([#1280](https://github.com/denoland/deno/pull/1280))
+- Use alternate TextEncoder/TextDecoder implementation ([#1281](https://github.com/denoland/deno/pull/1281))
 - Upgrade flatbuffers to 80d148
-- Fix memory leaks (#1265, #1275)
+- Fix memory leaks ([#1265](https://github.com/denoland/deno/pull/1265), [#1275](https://github.com/denoland/deno/pull/1275))
 
 ### v0.2.1 / 2018.11.30
 
-- Allow async functions in REPL (#1233)
-- Handle Location header relative URI (#1240)
-- Add deno.readAll() (#1234)
-- Add Process.output (#1235)
+- Allow async functions in REPL ([#1233](https://github.com/denoland/deno/pull/1233))
+- Handle Location header relative URI ([#1240](https://github.com/denoland/deno/pull/1240))
+- Add deno.readAll() ([#1234](https://github.com/denoland/deno/pull/1234))
+- Add Process.output ([#1235](https://github.com/denoland/deno/pull/1235))
 - Upgrade to TypeScript 3.2.1
 - Upgrade crates: tokio 0.1.13, hyper 0.12.16, ring 0.13.5
 
@@ -110,51 +110,51 @@ object. It can be used with various ops, particularly read and write.
 
 Changes since v0.1.12:
 
-- First pass at running subprocesses (#1156)
-- Improve flag parsing (#1200)
-- Improve fetch() (#1194 #1188 #1102)
-- Support shebang (#1197)
+- First pass at running subprocesses ([#1156](https://github.com/denoland/deno/pull/1156))
+- Improve flag parsing ([#1200](https://github.com/denoland/deno/pull/1200))
+- Improve fetch() ([#1194](https://github.com/denoland/deno/pull/1194), [#1188](https://github.com/denoland/deno/pull/1188), [#1102](https://github.com/denoland/deno/pull/1102))
+- Support shebang ([#1197](https://github.com/denoland/deno/pull/1197))
 
 ### v0.1.12 / 2018.11.12
 
-- Update to TypeScript 3.1.6 (#1177)
-- Fixes Headers type not available. (#1175)
-- Reader/Writer to use Uint8Array not ArrayBufferView (#1171)
-- Fixes importing modules starting with 'http'. (#1167)
-- build: Use target/ instead of out/ (#1153)
-- Support repl multiline input (#1165)
+- Update to TypeScript 3.1.6 ([#1177](https://github.com/denoland/deno/pull/1177))
+- Fixes Headers type not available. ([#1175](https://github.com/denoland/deno/pull/1175))
+- Reader/Writer to use Uint8Array not ArrayBufferView ([#1171](https://github.com/denoland/deno/pull/1171))
+- Fixes importing modules starting with 'http'. ([#1167](https://github.com/denoland/deno/pull/1167))
+- build: Use target/ instead of out/ ([#1153](https://github.com/denoland/deno/pull/1153))
+- Support repl multiline input ([#1165](https://github.com/denoland/deno/pull/1165))
 
 ### v0.1.11 / 2018.11.05
 
 - Performance and stability improvements on all platforms.
-- Add repl (#998)
-- Add deno.Buffer (#1121)
-- Support cargo check (#1128)
-- Upgrade Rust crates and Flatbuffers. (#1145, #1127)
-- Add helper to turn deno.Reader into async iterator (#1130)
-- Add ability to load JSON as modules (#1065)
-- Add deno.resources() (#1119)
-- Add application/x-typescript mime type support (#1111)
+- Add repl ([#998](https://github.com/denoland/deno/pull/998))
+- Add deno.Buffer ([#1121](https://github.com/denoland/deno/pull/1121))
+- Support cargo check ([#1128](https://github.com/denoland/deno/pull/1128))
+- Upgrade Rust crates and Flatbuffers. ([#1145](https://github.com/denoland/deno/pull/1145), [#1127](https://github.com/denoland/deno/pull/1127))
+- Add helper to turn deno.Reader into async iterator ([#1130](https://github.com/denoland/deno/pull/1130))
+- Add ability to load JSON as modules ([#1065](https://github.com/denoland/deno/pull/1065))
+- Add deno.resources() ([#1119](https://github.com/denoland/deno/pull/1119))
+- Add application/x-typescript mime type support ([#1111](https://github.com/denoland/deno/pull/1111))
 
 ### v0.1.10 / 2018.10.27
 
-- Add URLSearchParams (#1049)
-- Implement clone for FetchResponse (#1054)
-- Use content-type headers when importing from URLs. (#1020)
+- Add URLSearchParams ([#1049](https://github.com/denoland/deno/pull/1049))
+- Implement clone for FetchResponse ([#1054](https://github.com/denoland/deno/pull/1054))
+- Use content-type headers when importing from URLs. ([#1020](https://github.com/denoland/deno/pull/1020))
 - Use checkJs option, JavaScript will be type checked and users can supply JSDoc
-  type annotations that will be enforced by Deno (#1068)
-- Add separate http/https cache dirs to DENO_DIR (#971)
-- Support https in fetch. (#1100)
-- Add chmod/chmodSync on unix (#1088)
-- Remove broken features: --deps and trace() (#1103)
-- Ergonomics: Prompt TTY for permission escalation (#1081)
+  type annotations that will be enforced by Deno ([#1068](https://github.com/denoland/deno/pull/1068))
+- Add separate http/https cache dirs to DENO_DIR ([#971](https://github.com/denoland/deno/pull/971))
+- Support https in fetch. ([#1100](https://github.com/denoland/deno/pull/1100))
+- Add chmod/chmodSync on unix ([#1088](https://github.com/denoland/deno/pull/1088))
+- Remove broken features: --deps and trace() ([#1103](https://github.com/denoland/deno/pull/1103))
+- Ergonomics: Prompt TTY for permission escalation ([#1081](https://github.com/denoland/deno/pull/1081))
 
 ### v0.1.9 / 2018.10.20
 
 - Performance and stability improvements on all platforms.
-- Add cwd() and chdir() #907
-- Specify deno_dir location with env var DENO_DIR #970
-- Make fetch() header compliant with the current spec #1019
+- Add cwd() and chdir() ([#907](https://github.com/denoland/deno/pull/907))
+- Specify deno_dir location with env var DENO_DIR ([#970](https://github.com/denoland/deno/pull/970))
+- Make fetch() header compliant with the current spec ([#1019](https://github.com/denoland/deno/pull/1019))
 - Upgrade TypeScript to 3.1.3
 - Upgrade V8 to 7.1.302.4
 
@@ -178,55 +178,55 @@ be released in last October or early November.
 
 Changes since v0.1.7:
 
-- Fix promise reject issue (#936)
+- Fix promise reject issue ([#936](https://github.com/denoland/deno/pull/936))
 - Add --types command line flag.
 - Add metrics()
-- Add redirect follow feature #934
-- Fix clearTimer bug #942
-- Improve error printing #935
+- Add redirect follow feature ([#934](https://github.com/denoland/deno/pull/934))
+- Fix clearTimer bug ([#942](https://github.com/denoland/deno/pull/942))
+- Improve error printing ([#935](https://github.com/denoland/deno/pull/935))
 - Expose I/O interfaces Closer, Seeker, ReaderCloser, WriteCloser, ReadSeeker,
   WriteSeeker, ReadWriteCloser, ReadWriteSeeker
-- Fix silent death on double await #919
-- Add Conn.closeRead() and Conn.closeWrite() #903
+- Fix silent death on double await ([#919](https://github.com/denoland/deno/pull/919))
+- Add Conn.closeRead() and Conn.closeWrite() ([#903](https://github.com/denoland/deno/pull/903))
 
 ### v0.1.7 / 2018.10.04
 
-- Improve fetch headers (#853)
-- Add deno.truncate (#805)
-- Add copyFile/copyFileSync (#863)
+- Improve fetch headers ([#853](https://github.com/denoland/deno/pull/853))
+- Add deno.truncate ([#805](https://github.com/denoland/deno/pull/805))
+- Add copyFile/copyFileSync ([#863](https://github.com/denoland/deno/pull/863))
 - Limit depth of output in console.log for nested objects, and add console.dir
-  (#826)
-- Guess extensions on extension not provided (#859)
+  ([#826](https://github.com/denoland/deno/pull/826))
+- Guess extensions on extension not provided ([#859](https://github.com/denoland/deno/pull/859))
 - Renames: deno.platform -> deno.platform.os deno.arch -> deno.platform.arch
 - Upgrade TS to 3.0.3
 - Add readDirSync(), readDir()
-- Add support for TCP servers and clients. (#884) Adds deno.listen(),
+- Add support for TCP servers and clients. ([#884](https://github.com/denoland/deno/pull/884)) Adds deno.listen(),
   deno.dial(), deno.Listener and deno.Conn.
 
 ### v0.1.6 / 2018.09.28
 
 - Adds deno.stdin, deno.stdout, deno.stderr, deno.open(), deno.write(),
-  deno.read(), deno.Reader, deno.Writer, deno.copy() #846
+  deno.read(), deno.Reader, deno.Writer, deno.copy() ([#846](https://github.com/denoland/deno/pull/846))
 - Print 'Compiling' when compiling TS.
-- Support zero-copy for writeFile() writeFileSync() #838
-- Fixes eval error bug #837
-- Make Deno multithreaded #782
-- console.warn() goes to stderr #810
-- Add deno.readlink()/readlinkSync() #797
-- Add --recompile flag #801
-- Use constructor.name to print out function type #664
+- Support zero-copy for writeFile() writeFileSync() ([#838](https://github.com/denoland/deno/pull/838))
+- Fixes eval error bug ([#837](https://github.com/denoland/deno/pull/837))
+- Make Deno multithreaded ([#782](https://github.com/denoland/deno/pull/782))
+- console.warn() goes to stderr ([#810](https://github.com/denoland/deno/pull/810))
+- Add deno.readlink()/readlinkSync() ([#797](https://github.com/denoland/deno/pull/797))
+- Add --recompile flag ([#801](https://github.com/denoland/deno/pull/801))
+- Use constructor.name to print out function type ([#664](https://github.com/denoland/deno/pull/664))
 - Rename deno.argv to deno.args
-- Add deno.trace() #795
+- Add deno.trace() ([#795](https://github.com/denoland/deno/pull/795))
 - Continuous benchmarks https://denoland.github.io/deno/
 
 ### v0.1.5 / 2018.09.21
 
-- Add atob() btoa() #776
-- Add deno.arch deno.platform #773
-- Add deno.symlink() and deno.symlinkSync() #742
-- Add deno.mkdir() and deno.mkdirSync() #746
-- Add deno.makeTempDir() #740
-- Improvements to FileInfo interface #765, #761
+- Add atob() btoa() ([#776](https://github.com/denoland/deno/pull/776))
+- Add deno.arch deno.platform ([#773](https://github.com/denoland/deno/pull/773))
+- Add deno.symlink() and deno.symlinkSync() ([#742](https://github.com/denoland/deno/pull/742))
+- Add deno.mkdir() and deno.mkdirSync() ([#746](https://github.com/denoland/deno/pull/746))
+- Add deno.makeTempDir() ([#740](https://github.com/denoland/deno/pull/740))
+- Improvements to FileInfo interface ([#765](https://github.com/denoland/deno/pull/765), [#761](https://github.com/denoland/deno/pull/761))
 - Add fetch.blob()
 - Upgrade V8 to 7.0.276.15
 - Upgrade Rust crates
@@ -257,12 +257,12 @@ infrastructure to scale development.
 
 Changes since v0.1.2:
 
-- Fixes module resolution error #645
+- Fixes module resolution error ([#645](https://github.com/denoland/deno/pull/645))
 - Better flag parsing
 - lStatSync -> lstatSync
 - Added deno.renameSync()
 - Added deno.mkdirSync()
-- Fix circular dependencies #653
+- Fix circular dependencies ([#653](https://github.com/denoland/deno/pull/653))
 - Added deno.env() and --allow-env
 
 ### v0.1.2 / 2018.08.30
