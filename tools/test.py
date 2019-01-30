@@ -13,6 +13,7 @@ from util_test import util_test
 from benchmark_test import benchmark_test
 from repl_test import repl_tests
 from prefetch_test import prefetch_test
+from is_tty_test import is_tty_test
 import subprocess
 import http_server
 
@@ -70,6 +71,8 @@ def main(argv):
     if os.name != 'nt':
         from permission_prompt_test import permission_prompt_test
         permission_prompt_test(deno_exe)
+
+    is_tty_test(deno_exe)
 
     repl_tests(deno_exe)
 
