@@ -84,7 +84,7 @@ fn main() {
 
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
   let snapshot = snapshot::deno_snapshot();
-  let isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
+  let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
 
   tokio_util::init(|| {
     // Setup runtime.
@@ -94,9 +94,9 @@ fn main() {
 
     // Execute input file.
     if isolate.state.argv.len() > 1 {
-      let input_filename = &isolate.state.argv[1];
+      let input_filename = isolate.state.argv[1].clone();
       isolate
-        .execute_mod(input_filename, should_prefetch)
+        .execute_mod(&input_filename, should_prefetch)
         .unwrap_or_else(print_err_and_exit);
     }
 
