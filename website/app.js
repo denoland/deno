@@ -4,18 +4,6 @@ export async function getJson(path) {
   return (await fetch(path)).json();
 }
 
-export async function getTravisData(
-  url = "https://api.travis-ci.com/repos/denoland/deno/builds?event_type=pull_request"
-) {
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.travis-ci.2.1+json"
-    }
-  });
-  const data = await res.json();
-  return data.builds.reverse();
-}
-
 function getBenchmarkVarieties(data, benchmarkName) {
   // Look at last sha hash.
   const last = data[data.length - 1];
@@ -105,10 +93,6 @@ export function createSyscallCountColumns(data) {
   ]);
 }
 
-function createTravisCompileTimeColumns(data) {
-  return [["duration_time", ...data.map(d => d.duration)]];
-}
-
 export function createSha1List(data) {
   return data.map(d => d.sha1);
 }
@@ -190,7 +174,6 @@ export function drawCharts(dataUrl) {
     dataUrl = "https://denoland.github.io/deno/" + dataUrl;
   }
   drawChartsFromBenchmarkData(dataUrl);
-  drawChartsFromTravisData();
 }
 
 /**
@@ -232,29 +215,4 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");
-}
-
-/**
- * Draws the charts from travis' API data.
- */
-export async function drawChartsFromTravisData() {
-  const viewPullRequestOnClick = _prNumberList => d => {
-    // @ts-ignore
-    window.open(
-      `https://github.com/denoland/deno/pull/${_prNumberList[d["index"]]}`
-    );
-  };
-
-  const travisData = (await getTravisData()).filter(d => d.duration > 0);
-  const travisCompileTimeColumns = createTravisCompileTimeColumns(travisData);
-  const prNumberList = travisData.map(d => d.pull_request_number);
-
-  generate(
-    "#travis-compile-time-chart",
-    prNumberList,
-    travisCompileTimeColumns,
-    viewPullRequestOnClick(prNumberList),
-    "minutes",
-    formatSecsAsMins
-  );
 }
