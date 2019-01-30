@@ -4,6 +4,7 @@
 
 #include <map>
 #include <string>
+#include <utility>
 #include "deno.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
@@ -13,7 +14,7 @@ namespace deno {
 // deno_s = Wrapped Isolate.
 class DenoIsolate {
  public:
-  DenoIsolate(deno_config config)
+  explicit DenoIsolate(deno_config config)
       : isolate_(nullptr),
         shared_(config.shared),
         current_args_(nullptr),
