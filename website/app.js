@@ -98,7 +98,7 @@ export function createSha1List(data) {
 }
 
 export function formatMB(bytes) {
-  return Math.round(bytes / (1024 * 1024));
+  return (bytes / (1024 * 1024)).toFixed(2);
 }
 
 export function formatReqSec(reqPerSec) {
