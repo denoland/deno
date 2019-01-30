@@ -2,6 +2,7 @@
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
+use libc::size_t;
 use std::ops::{Deref, DerefMut};
 use std::ptr::null;
 
@@ -111,11 +112,14 @@ type deno_recv_cb = unsafe extern "C" fn(
 );
 
 #[allow(non_camel_case_types)]
+pub type deno_mod = i32;
+
+#[allow(non_camel_case_types)]
 type deno_resolve_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
   specifier: *const c_char,
-  referrer: *const c_char,
-);
+  referrer: deno_mod,
+) -> deno_mod;
 
 #[repr(C)]
 pub struct deno_config {
@@ -123,7 +127,6 @@ pub struct deno_config {
   pub load_snapshot: deno_buf,
   pub shared: deno_buf,
   pub recv_cb: deno_recv_cb,
-  pub resolve_cb: deno_resolve_cb,
 }
 
 extern "C" {
@@ -146,16 +149,34 @@ extern "C" {
     js_filename: *const c_char,
     js_source: *const c_char,
   ) -> c_int;
-  pub fn deno_execute_mod(
+
+  // Modules
+
+  pub fn deno_mod_new(
+    i: *const isolate,
+    name: *const c_char,
+    source: *const c_char,
+  ) -> deno_mod;
+
+  pub fn deno_mod_imports_len(i: *const isolate, id: deno_mod) -> size_t;
+
+  pub fn deno_mod_imports_get(
+    i: *const isolate,
+    id: deno_mod,
+    index: size_t,
+  ) -> *const c_char;
+
+  pub fn deno_mod_instantiate(
     i: *const isolate,
     user_data: *const c_void,
-    js_filename: *const c_char,
-    js_source: *const c_char,
-    resolve_only: i32,
-  ) -> c_int;
-  pub fn deno_resolve_ok(
-    i: *const isolate,
-    js_filename: *const c_char,
-    js_source: *const c_char,
+    id: deno_mod,
+    resolve_cb: deno_resolve_cb,
   );
+
+  pub fn deno_mod_evaluate(
+    i: *const isolate,
+    user_data: *const c_void,
+    id: deno_mod,
+  );
+
 }

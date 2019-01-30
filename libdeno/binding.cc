@@ -246,6 +246,57 @@ v8::Local<v8::Object> DenoIsolate::GetBuiltinModules() {
   return handle_scope.Escape(builtin_modules_.Get(isolate_));
 }
 
+v8::ScriptOrigin ModuleOrigin(v8::Isolate* isolate,
+                              v8::Local<v8::Value> resource_name) {
+  return v8::ScriptOrigin(resource_name, v8::Local<v8::Integer>(),
+                          v8::Local<v8::Integer>(), v8::Local<v8::Boolean>(),
+                          v8::Local<v8::Integer>(), v8::Local<v8::Value>(),
+                          v8::Local<v8::Boolean>(), v8::Local<v8::Boolean>(),
+                          v8::True(isolate));
+}
+
+deno_mod DenoIsolate::RegisterModule(const char* name, const char* source) {
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::Locker locker(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::Local<v8::String> name_str = v8_str(name, true);
+  v8::Local<v8::String> source_str = v8_str(source, true);
+
+  auto origin = ModuleOrigin(isolate_, name_str);
+  v8::ScriptCompiler::Source source_(source_str, origin);
+
+  v8::TryCatch try_catch(isolate_);
+
+  auto maybe_module = v8::ScriptCompiler::CompileModule(isolate_, &source_);
+
+  if (try_catch.HasCaught()) {
+    CHECK(maybe_module.IsEmpty());
+    HandleException(context, try_catch.Exception());
+    return 0;
+  }
+
+  auto module = maybe_module.ToLocalChecked();
+
+  int id = module->GetIdentityHash();
+
+  std::vector<std::string> import_specifiers;
+
+  for (int i = 0; i < module->GetModuleRequestsLength(); ++i) {
+    v8::Local<v8::String> specifier = module->GetModuleRequest(i);
+    v8::String::Utf8Value specifier_utf8(isolate_, specifier);
+    import_specifiers.push_back(*specifier_utf8);
+  }
+
+  mods_.emplace(std::piecewise_construct, std::make_tuple(id),
+                std::make_tuple(isolate_, module, name, import_specifiers));
+  mods_by_name_[name] = id;
+
+  return id;
+}
+
 void BuiltinModules(v8::Local<v8::Name> property,
                     const v8::PropertyCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
@@ -275,214 +326,12 @@ void Shared(v8::Local<v8::Name> property,
   info.GetReturnValue().Set(ab);
 }
 
-v8::ScriptOrigin ModuleOrigin(v8::Local<v8::Value> resource_name,
-                              v8::Isolate* isolate) {
-  return v8::ScriptOrigin(resource_name, v8::Local<v8::Integer>(),
-                          v8::Local<v8::Integer>(), v8::Local<v8::Boolean>(),
-                          v8::Local<v8::Integer>(), v8::Local<v8::Value>(),
-                          v8::Local<v8::Boolean>(), v8::Local<v8::Boolean>(),
-                          v8::True(isolate));
-}
-
 void DenoIsolate::ClearModules() {
-  for (auto it = module_map_.begin(); it != module_map_.end(); it++) {
-    it->second.Reset();
+  for (auto it = mods_.begin(); it != mods_.end(); it++) {
+    it->second.handle.Reset();
   }
-  module_map_.clear();
-  for (auto it = module_info_map_.begin(); it != module_info_map_.end(); it++) {
-    it->second.second.Reset();
-  }
-  module_info_map_.clear();
-}
-
-void DenoIsolate::RegisterModule(const char* filename,
-                                 v8::Local<v8::Module> module) {
-  int id = module->GetIdentityHash();
-
-  module_map_.emplace(std::piecewise_construct, std::make_tuple(filename),
-                      std::make_tuple(isolate_, module));
-
-  // Identity hash is not necessarily unique
-  // Therefore, we store a persistent handle along with filenames
-  // such that we can compare the identites and select the correct module
-  module_info_map_.emplace(
-      std::piecewise_construct, std::make_tuple(id),
-      std::make_tuple(std::piecewise_construct, std::make_tuple(filename),
-                      std::make_tuple(isolate_, module)));
-}
-
-v8::MaybeLocal<v8::Module> CompileModule(v8::Local<v8::Context> context,
-                                         const char* js_filename,
-                                         v8::Local<v8::String> source_text) {
-  auto* isolate = context->GetIsolate();
-
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::EscapableHandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context);
-
-  auto origin = ModuleOrigin(v8_str(js_filename, true), isolate);
-  v8::ScriptCompiler::Source source(source_text, origin);
-
-  auto maybe_module = v8::ScriptCompiler::CompileModule(isolate, &source);
-
-  if (!maybe_module.IsEmpty()) {
-    auto module = maybe_module.ToLocalChecked();
-    CHECK_EQ(v8::Module::kUninstantiated, module->GetStatus());
-    DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-    d->RegisterModule(js_filename, module);
-  }
-
-  return handle_scope.EscapeMaybe(maybe_module);
-}
-
-v8::MaybeLocal<v8::Module> ResolveCallback(v8::Local<v8::Context> context,
-                                           v8::Local<v8::String> specifier,
-                                           v8::Local<v8::Module> referrer) {
-  auto* isolate = context->GetIsolate();
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::EscapableHandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context);
-
-  v8::String::Utf8Value specifier_utf8val(isolate, specifier);
-  const char* specifier_cstr = ToCString(specifier_utf8val);
-
-  auto builtin_modules = d->GetBuiltinModules();
-  bool has_builtin = builtin_modules->Has(context, specifier).ToChecked();
-  if (has_builtin) {
-    auto val = builtin_modules->Get(context, specifier).ToLocalChecked();
-    CHECK(val->IsObject());
-    auto obj = val->ToObject(isolate);
-
-    // In order to export obj as a module, we must iterate over its properties
-    // and export them each individually.
-    std::string src = "let globalEval = eval\nlet g = globalEval('this');\n";
-    auto names = obj->GetOwnPropertyNames(context).ToLocalChecked();
-    for (uint32_t i = 0; i < names->Length(); i++) {
-      auto name = names->Get(context, i).ToLocalChecked();
-      v8::String::Utf8Value name_utf8val(isolate, name);
-      const char* name_cstr = ToCString(name_utf8val);
-      src.append("export const ");
-      src.append(name_cstr);
-      src.append(" = g.libdeno.builtinModules.");
-      src.append(specifier_cstr);
-      src.append(".");
-      src.append(name_cstr);
-      src.append(";\n");
-    }
-    auto export_str = v8_str(src.c_str(), true);
-
-    auto module =
-        CompileModule(context, specifier_cstr, export_str).ToLocalChecked();
-    auto maybe_ok = module->InstantiateModule(context, ResolveCallback);
-    CHECK(!maybe_ok.IsNothing());
-
-    return handle_scope.Escape(module);
-  }
-
-  int ref_id = referrer->GetIdentityHash();
-  auto range = d->module_info_map_.equal_range(ref_id);
-  std::string referrer_filename;
-  for (auto it = range.first; it != range.second; ++it) {
-    // it->second: <string, v8::Persistent<v8::Module>>
-    // operator== compares value identities stored in the handles
-    // https://denolib.github.io/v8-docs/include_2v8_8h_source.html#l00487
-    // Due to possibilities of identity hash collision, this is necessary
-    if (it->second.second == referrer) {
-      referrer_filename = it->second.first;
-      break;
-    }
-  }
-  CHECK_NE(referrer_filename.size(), 0);
-
-  v8::String::Utf8Value specifier_(isolate, specifier);
-  const char* specifier_c = ToCString(specifier_);
-
-  CHECK_NE(d->resolve_cb_, nullptr);
-  d->resolve_cb_(d->user_data_, specifier_c, referrer_filename.c_str());
-
-  if (d->resolve_module_.IsEmpty()) {
-    // Resolution Error.
-    std::stringstream err_ss;
-    err_ss << "NotFound: Cannot resolve module \"" << specifier_c
-           << "\" from \"" << referrer_filename << "\"";
-    auto resolve_error = v8_str(err_ss.str().c_str());
-    isolate->ThrowException(resolve_error);
-    return v8::MaybeLocal<v8::Module>();
-  } else {
-    auto module = d->resolve_module_.Get(isolate);
-    d->resolve_module_.Reset();
-    return handle_scope.Escape(module);
-  }
-}
-
-void DenoIsolate::ResolveOk(const char* filename, const char* source) {
-  CHECK(resolve_module_.IsEmpty());
-  auto count = module_map_.count(filename);
-  if (count == 1) {
-    auto module = module_map_[filename].Get(isolate_);
-    resolve_module_.Reset(isolate_, module);
-  } else {
-    CHECK_EQ(count, 0);
-    v8::HandleScope handle_scope(isolate_);
-    auto context = context_.Get(isolate_);
-    v8::TryCatch try_catch(isolate_);
-    auto maybe_module = CompileModule(context, filename, v8_str(source, true));
-    if (maybe_module.IsEmpty()) {
-      DCHECK(try_catch.HasCaught());
-      HandleException(context, try_catch.Exception());
-    } else {
-      auto module = maybe_module.ToLocalChecked();
-      resolve_module_.Reset(isolate_, module);
-    }
-  }
-}
-
-bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,
-                const char* js_source, bool resolve_only) {
-  auto* isolate = context->GetIsolate();
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context);
-
-  auto source = v8_str(js_source, true);
-
-  v8::TryCatch try_catch(isolate);
-
-  auto maybe_module = CompileModule(context, js_filename, source);
-
-  if (maybe_module.IsEmpty()) {
-    DCHECK(try_catch.HasCaught());
-    HandleException(context, try_catch.Exception());
-    return false;
-  }
-  DCHECK(!try_catch.HasCaught());
-
-  auto module = maybe_module.ToLocalChecked();
-  auto maybe_ok = module->InstantiateModule(context, ResolveCallback);
-  if (maybe_ok.IsNothing()) {
-    DCHECK(try_catch.HasCaught());
-    HandleException(context, try_catch.Exception());
-    return false;
-  }
-
-  CHECK_EQ(v8::Module::kInstantiated, module->GetStatus());
-
-  if (resolve_only) {
-    return true;
-  }
-
-  auto result = module->Evaluate(context);
-
-  if (result.IsEmpty()) {
-    DCHECK(try_catch.HasCaught());
-    CHECK_EQ(v8::Module::kErrored, module->GetStatus());
-    HandleException(context, module->GetException());
-    return false;
-  }
-
-  return true;
+  mods_.clear();
+  mods_by_name_.clear();
 }
 
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
@@ -558,18 +407,35 @@ void MessageCallback(v8::Local<v8::Message> message,
   HandleExceptionMessage(context, message);
 }
 
+void HostInitializeImportMetaObjectCallback(v8::Local<v8::Context> context,
+                                            v8::Local<v8::Module> module,
+                                            v8::Local<v8::Object> meta) {
+  auto* isolate = context->GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+
+  CHECK(!module.IsEmpty());
+
+  deno_mod id = module->GetIdentityHash();
+  CHECK_NE(id, 0);
+
+  auto* info = d->GetModuleInfo(id);
+
+  const char* url = info->name.c_str();
+
+  meta->CreateDataProperty(context, v8_str("url"), v8_str(url, true))
+      .ToChecked();
+}
+
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
   isolate_ = isolate;
-  // Leaving this code here because it will probably be useful later on, but
-  // disabling it now as I haven't got tests for the desired behavior.
-  // d->isolate->SetAbortOnUncaughtExceptionCallback(AbortOnUncaughtExceptionCallback);
-  // d->isolate->AddMessageListener(MessageCallback2);
-  // d->isolate->SetFatalErrorHandler(FatalErrorCallback2);
   isolate_->SetCaptureStackTraceForUncaughtExceptions(
       true, 10, v8::StackTrace::kDetailed);
   isolate_->SetPromiseRejectCallback(deno::PromiseRejectCallback);
   isolate_->SetData(0, this);
   isolate_->AddMessageListener(MessageCallback);
+  isolate->SetHostInitializeImportMetaObjectCallback(
+      HostInitializeImportMetaObjectCallback);
 }
 
 }  // namespace deno
