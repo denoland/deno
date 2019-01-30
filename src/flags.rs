@@ -138,7 +138,7 @@ pub fn set_flags(
   opts.optflag("", "allow-net", "Allow network access.");
   opts.optflag("", "allow-env", "Allow environment access.");
   opts.optflag("", "allow-run", "Allow running subprocesses.");
-  opts.optflag("A", "allow-all", "Allow all permissions");
+  opts.optflag("A", "allow-all", "Allow all permissions.");
   opts.optflag("", "recompile", "Force recompilation of TypeScript code.");
   opts.optflag("h", "help", "Print this message.");
   opts.optflag("D", "log-debug", "Log debug output.");
