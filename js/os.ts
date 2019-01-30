@@ -23,7 +23,13 @@ interface CodeInfo {
   sourceMap: string | undefined;
 }
 
-/** Check if running in terminal. */
+/** Check if running in terminal.
+ *
+ * isTTY(0); // stdin
+ * isTTY(1); // stdout
+ * isTTY(2); // stderr
+ * isTTY(3); // < 2 is files by rid
+ */
 export function isTTY(rid = 0): boolean {
   const builder = flatbuffers.createBuilder();
   msg.IsTTY.startIsTTY(builder);
