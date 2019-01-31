@@ -87,7 +87,8 @@ installation methods..
 
 ## Build locally (advanced users only)
 
-For instructions to build this project locally, please see [the docs](https://github.com/denoland/deno/blob/master/Docs.md#build-instructions-for-advanced-users-only).
+For instructions to build this project locally, please see
+[the docs](https://github.com/denoland/deno/blob/master/Docs.md#build-instructions-for-advanced-users-only).
 
 <!-- prettier-ignore -->
 [avy badge]: https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true
