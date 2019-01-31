@@ -1,7 +1,7 @@
 #!/usr/bin/env deno --allow-run
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as deno from "deno";
-import { join } from "../js/deps/https/deno.land/x/std/path/index.ts";
+import { join } from "../js/deps/https/deno.land/x/std/fs/path.ts";
 import { findFiles } from "./util.ts";
 
 const clangFormat = join("third_party", "depot_tools", "clang-format");
