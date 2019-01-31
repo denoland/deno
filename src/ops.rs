@@ -181,8 +181,8 @@ fn op_now(
   assert_eq!(data.len(), 0);
   let start = SystemTime::now();
   let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
-  let time = since_the_epoch.as_secs() as u64 * 1000 +
-            since_the_epoch.subsec_millis() as u64;
+  let time = since_the_epoch.as_secs() as u64 * 1000
+    + since_the_epoch.subsec_millis() as u64;
 
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::NowRes::create(builder, &msg::NowResArgs { time: time });
