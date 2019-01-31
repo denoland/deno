@@ -47,3 +47,5 @@ import "./write_file_test.ts";
 import "../tools/util_test.ts";
 
 import "../website/app_test.js";
+
+import "deps/https/deno.land/x/std/testing/main.ts";

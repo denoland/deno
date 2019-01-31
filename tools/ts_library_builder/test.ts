@@ -7,6 +7,7 @@ import { Project, ts } from "ts-simple-ast";
 import {
   assert,
   assertEqual,
+  runTests,
   test
 } from "../../js/deps/https/deno.land/x/std/testing/mod";
 import { flatten, mergeGlobal } from "./build_library";
@@ -167,3 +168,5 @@ test(function buildLibraryMerge() {
 });
 
 // TODO author unit tests for `ast_util.ts`
+
+runTests();
