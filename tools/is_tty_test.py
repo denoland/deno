@@ -56,22 +56,22 @@ class IsTTY(object):
         return tty_capture(cmd, b'')
 
     def test_stdin(self):
-        code, stdout, stderr = self.run('stdin')
+        code, stdout, _ = self.run('stdin')
         assert code == 0
         assert str(stdin.isatty()).lower() in stdout
 
     def test_stdout(self):
-        code, stdout, stderr = self.run('stdout')
+        code, stdout, _ = self.run('stdout')
         assert code == 0
         assert str(stdin.isatty()).lower() in stdout
 
     def test_stderr(self):
-        code, stdout, stderr = self.run('stderr')
+        code, stdout, _ = self.run('stderr')
         assert code == 0
         assert str(stdin.isatty()).lower() in stdout
 
     def test_file(self):
-        code, stdout, stderr = self.run('file')
+        code, stdout, _ = self.run('file')
         assert code == 0
         assert b'false' in stdout
 
