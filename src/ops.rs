@@ -184,7 +184,8 @@ fn op_is_tty(
   let rid = base.inner_as_is_tty().unwrap().rid();
   let is_tty: bool;
 
-  match rid { // if std in/out/err check if is terminal, else return false
+  match rid {
+    // if std in/out/err check if is terminal, else return false
     0 => is_tty = atty::is(atty::Stream::Stdin),
     1 => is_tty = atty::is(atty::Stream::Stdout),
     2 => is_tty = atty::is(atty::Stream::Stderr),
@@ -192,12 +193,8 @@ fn op_is_tty(
   }
 
   let builder = &mut FlatBufferBuilder::new();
-  let inner = msg::IsTTYRes::create(
-    builder,
-    &msg::IsTTYResArgs {
-      is_tty: is_tty,
-    },
-  );
+  let inner =
+    msg::IsTTYRes::create(builder, &msg::IsTTYResArgs { is_tty: is_tty });
   ok_future(serialize_response(
     base.cmd_id(),
     builder,
