@@ -52,7 +52,7 @@ export { metrics } from "./metrics";
 export { resources } from "./resources";
 export { run, RunOptions, Process, ProcessStatus } from "./process";
 export { inspect } from "./console";
-export { now } from "./performance";
+export { performance } from "./performance";
 export const args: string[] = [];
 
 // TODO Don't expose Console nor stringifyArgs.
