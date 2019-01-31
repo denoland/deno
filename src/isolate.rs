@@ -470,21 +470,38 @@ impl Drop for Isolate {
   }
 }
 
+fn code_fetch_and_maybe_compile_async(
+  state: &Arc<IsolateState>,
+  specifier: &str,
+  referrer: &str,
+) -> impl Future<Item = CodeFetchOutput, Error = DenoError> {
+  let referrer = referrer.to_string();
+  let specifier = specifier.to_string();
+  let state = state.clone();
+  state
+    .dir
+    .code_fetch_async(&specifier, &referrer)
+    .and_then(move |mut out| {
+      if (out.media_type == msg::MediaType::TypeScript
+        && out.maybe_output_code.is_none())
+        || state.flags.recompile
+      {
+        debug!(">>>>> compile_sync START");
+        out = compile_sync(&state, &specifier, &referrer).unwrap();
+        debug!(">>>>> compile_sync END");
+      }
+      Ok(out)
+    })
+}
+
 fn code_fetch_and_maybe_compile(
   state: &Arc<IsolateState>,
   specifier: &str,
   referrer: &str,
 ) -> Result<CodeFetchOutput, DenoError> {
-  let mut out = state.dir.code_fetch(specifier, referrer)?;
-  if (out.media_type == msg::MediaType::TypeScript
-    && out.maybe_output_code.is_none())
-    || state.flags.recompile
-  {
-    debug!(">>>>> compile_sync START");
-    out = compile_sync(state, specifier, &referrer).unwrap();
-    debug!(">>>>> compile_sync END");
-  }
-  Ok(out)
+  tokio_util::block_on(code_fetch_and_maybe_compile_async(
+    state, specifier, referrer,
+  ))
 }
 
 extern "C" fn resolve_cb(
