@@ -339,6 +339,9 @@ Extra steps for Windows users:
     cd deno
     ./tools/setup.py
 
+    # For mac users, make sure that sccache is running by uncommenting the following line:
+    # prebuilt/mac/sccache --start-server
+
     # Build.
     ./tools/build.py
 
