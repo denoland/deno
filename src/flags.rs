@@ -148,7 +148,11 @@ pub fn set_flags(
   opts.optflag("D", "log-debug", "Log debug output.");
   opts.optflag("v", "version", "Print the version.");
   opts.optflag("r", "reload", "Reload cached remote resources.");
-  opts.optflag("L", "load", "Prefetch the dependencies and reload cached remote resources.");
+  opts.optflag(
+    "L",
+    "load",
+    "Prefetch the dependencies and reload cached remote resources.",
+  );
   opts.optflag("", "v8-options", "Print V8 command line options.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
   opts.optflag("", "prefetch", "Prefetch the dependencies.");
