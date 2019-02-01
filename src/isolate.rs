@@ -335,7 +335,7 @@ impl Isolate {
   ) -> Result<(), RustOrJsError> {
     // basically iterate over the imports, start loading them.
 
-    let referrer = self.modules.get(&id).unwrap().clone();
+    let referrer = &self.modules[&id];
     let referrer_name = referrer.name.clone();
     let len =
       unsafe { libdeno::deno_mod_imports_len(self.libdeno_isolate, id) };
@@ -532,7 +532,7 @@ extern "C" fn resolve_cb(
   let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
   let specifier_c: &CStr = unsafe { CStr::from_ptr(specifier_ptr) };
   let specifier: &str = specifier_c.to_str().unwrap();
-  return isolate.resolve_cb(specifier, referrer);
+  isolate.resolve_cb(specifier, referrer)
 }
 
 // Dereferences the C pointer into the Rust Isolate object.
