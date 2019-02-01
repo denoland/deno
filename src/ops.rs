@@ -182,12 +182,14 @@ fn op_is_tty(
   _data: libdeno::deno_buf,
 ) -> Box<Op> {
   let builder = &mut FlatBufferBuilder::new();
-  let inner =
-    msg::IsTTYRes::create(builder, &msg::IsTTYResArgs {
+  let inner = msg::IsTTYRes::create(
+    builder,
+    &msg::IsTTYResArgs {
       stdin: atty::is(atty::Stream::Stdin),
       stdout: atty::is(atty::Stream::Stdout),
-      stderr: atty::is(atty::Stream::Stderr)
-    });
+      stderr: atty::is(atty::Stream::Stderr),
+    },
+  );
   ok_future(serialize_response(
     base.cmd_id(),
     builder,
