@@ -23,7 +23,11 @@ interface CodeInfo {
   sourceMap: string | undefined;
 }
 
-interface IsTTY { stdin: boolean, stdout: boolean, stderr: boolean }
+interface IsTTY {
+  stdin: boolean;
+  stdout: boolean;
+  stderr: boolean;
+}
 
 /** Check if running in terminal.
  *
@@ -39,11 +43,7 @@ export function isTTY(): IsTTY {
   const res = new msg.IsTTYRes();
   assert(baseRes.inner(res) != null);
 
-  return {
-    stdin: res.stdin(),
-    stdout: res.stdout(),
-    stderr: res.stderr()
-  };
+  return { stdin: res.stdin(), stdout: res.stdout(), stderr: res.stderr() };
 }
 
 /** Exit the Deno process with optional exit code. */
