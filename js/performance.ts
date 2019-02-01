@@ -4,7 +4,7 @@ import { sendSync } from "./dispatch";
 import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 
-export const performance = {
+export class Performance {
   /** Returns a current UNIX timestamp
    *
    *       import { now } from "deno";
@@ -12,7 +12,7 @@ export const performance = {
    *       const unix = now();
    *       console.log(`${now} ms from UNIX epoch!`);
    */
-  now: (): number => {
+  now(): number {
     const builder = flatbuffers.createBuilder();
     msg.Now.startNow(builder);
     const inner = msg.Now.endNow(builder);
@@ -22,4 +22,4 @@ export const performance = {
     assert(baseRes.inner(res) != null);
     return res.time().toFloat64();
   }
-};
+}
