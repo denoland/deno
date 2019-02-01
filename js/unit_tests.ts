@@ -43,6 +43,7 @@ import "./truncate_test.ts";
 import "./url_test.ts";
 import "./url_search_params_test.ts";
 import "./write_file_test.ts";
+import "./performance_test.ts";
 
 import "../tools/util_test.ts";
 

@@ -7,7 +7,7 @@ import { assert } from "./util";
 export class Performance {
   private denoStarted = 0;
 
-  constructor () {
+  constructor() {
     this.denoStarted = new Date().getTime();
   }
 
