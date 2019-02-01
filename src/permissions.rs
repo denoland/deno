@@ -15,7 +15,7 @@ pub struct DenoPermissions {
   pub allow_net: AtomicBool,
   pub allow_env: AtomicBool,
   pub allow_run: AtomicBool,
-  deny: bool,
+  pub deny: bool,
 }
 
 impl DenoPermissions {
