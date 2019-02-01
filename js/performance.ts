@@ -5,7 +5,7 @@ import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 
 export class Performance {
-  private timeOrigin = 0;
+  timeOrigin = 0;
 
   constructor() {
     this.timeOrigin = new Date().getTime();
