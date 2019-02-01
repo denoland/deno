@@ -79,7 +79,7 @@ impl Future for Accept {
         }
         Err(e) => {
           r.untrack_task();
-          return Err(From::from(e));
+          return Err(e);
         }
       },
       AcceptState::Empty => panic!("poll Accept after it's done"),
