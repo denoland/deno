@@ -63,8 +63,8 @@ fn print_err_and_exit(err: errors::RustOrJsError) {
 fn main() {
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
-  let (flags, rest_argv, usage_string) =
-    flags::set_flags(args).unwrap_or_else(|err| {
+  let (mut flags, mut rest_argv, usage_string) = flags::set_flags(args)
+    .unwrap_or_else(|err| {
       eprintln!("{}", err);
       std::process::exit(1)
     });
@@ -79,6 +79,11 @@ fn main() {
   } else {
     LevelFilter::Warn
   });
+
+  if flags.fmt {
+    rest_argv.insert(1, "https://deno.land/x/std/prettier/main.ts".to_string());
+    flags.allow_write = true;
+  }
 
   let should_prefetch = flags.prefetch;
   let should_display_info = flags.info;

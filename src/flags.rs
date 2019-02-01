@@ -30,6 +30,7 @@ pub struct DenoFlags {
   pub types: bool,
   pub prefetch: bool,
   pub info: bool,
+  pub fmt: bool,
 }
 
 pub fn get_usage(opts: &Options) -> String {
@@ -115,6 +116,9 @@ fn set_recognized_flags(
         if matches.opt_present("info") {
           flags.info = true;
         }
+        if matches.opt_present("fmt") {
+          flags.fmt = true;
+        }
 
         if !matches.free.is_empty() {
           rest.extend(matches.free);
@@ -152,6 +156,7 @@ pub fn set_flags(
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
   opts.optflag("", "prefetch", "Prefetch the dependencies.");
   opts.optflag("", "info", "Show source file related info");
+  opts.optflag("", "fmt", "Format code.");
 
   let mut flags = DenoFlags::default();
 
