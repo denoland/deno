@@ -6,7 +6,8 @@
 import "./blob_test.ts";
 import "./buffer_test.ts";
 import "./chmod_test.ts";
-import "./compiler_test.ts";
+// TODO find a way to test the compiler with split snapshots
+// import "./compiler_test.ts";
 import "./console_test.ts";
 import "./copy_file_test.ts";
 import "./custom_event_test.ts";
@@ -46,3 +47,5 @@ import "./write_file_test.ts";
 import "../tools/util_test.ts";
 
 import "../website/app_test.js";
+
+import "deps/https/deno.land/x/std/testing/main.ts";

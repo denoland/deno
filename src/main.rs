@@ -34,6 +34,7 @@ pub mod workers;
 #[cfg(unix)]
 mod eager_unix;
 
+use log::{LevelFilter, Metadata, Record};
 use std::env;
 use std::sync::Arc;
 
@@ -42,11 +43,11 @@ static LOGGER: Logger = Logger;
 struct Logger;
 
 impl log::Log for Logger {
-  fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+  fn enabled(&self, metadata: &Metadata) -> bool {
     metadata.level() <= log::max_level()
   }
 
-  fn log(&self, record: &log::Record<'_>) {
+  fn log(&self, record: &Record) {
     if self.enabled(record.metadata()) {
       println!("{} RS - {}", record.level(), record.args());
     }
@@ -74,16 +75,16 @@ fn main() {
   }
 
   log::set_max_level(if flags.log_debug {
-    log::LevelFilter::Debug
+    LevelFilter::Debug
   } else {
-    log::LevelFilter::Warn
+    LevelFilter::Warn
   });
 
   let should_prefetch = flags.prefetch;
 
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
   let snapshot = snapshot::deno_snapshot();
-  let isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
+  let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
 
   tokio_util::init(|| {
     // Setup runtime.
@@ -93,9 +94,9 @@ fn main() {
 
     // Execute input file.
     if isolate.state.argv.len() > 1 {
-      let input_filename = &isolate.state.argv[1];
+      let input_filename = isolate.state.argv[1].clone();
       isolate
-        .execute_mod(input_filename, should_prefetch)
+        .execute_mod(&input_filename, should_prefetch)
         .unwrap_or_else(print_err_and_exit);
     }
 

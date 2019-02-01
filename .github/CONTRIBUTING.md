@@ -17,9 +17,10 @@ Docs are [here](https://github.com/denoland/deno/blob/master/Docs.md).
 
 Before submitting, please make sure the following is done:
 
-1. Ensure `./tools/test.py` passes.
-2. Format your code with `./tools/format.ts`.
-3. Make sure `./tools/lint.py` passes.
+1. There are tests that cover the changes.
+2. Ensure `./tools/test.py` passes.
+3. Format your code with `./tools/format.ts`.
+4. Make sure `./tools/lint.py` passes.
 
 ## Changes to `third_party`
 

@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
-/// <amd-module name="deno"/>
 export { pid, env, exit } from "./os";
 export { chdir, cwd } from "./dir";
 export {
@@ -34,7 +33,7 @@ export { Buffer, readAll } from "./buffer";
 export { mkdirSync, mkdir } from "./mkdir";
 export { makeTempDirSync, makeTempDir } from "./make_temp_dir";
 export { chmodSync, chmod } from "./chmod";
-export { removeSync, remove, removeAllSync, removeAll } from "./remove";
+export { removeSync, remove } from "./remove";
 export { renameSync, rename } from "./rename";
 export { readFileSync, readFile } from "./read_file";
 export { readDirSync, readDir } from "./read_dir";
@@ -61,8 +60,3 @@ export { Console, stringifyArgs } from "./console";
 export { DomIterableMixin } from "./mixins/dom_iterable";
 // TODO Don't expose deferred.
 export { deferred } from "./util";
-
-// Provide the compiler API in an obfuscated way
-import * as compiler from "./compiler";
-// @internal
-export const _compiler = compiler;

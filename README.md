@@ -4,7 +4,7 @@
 | :------------------------: | :------------------------: |
 | [![][tci badge]][tci link] | [![][avy badge]][avy link] |
 
-## A secure JavaScript / TypeScript runtime built on V8
+## A new way to JavaScript.
 
 - Supports TypeScript out of the box. Uses a recent version of V8. That is, it's
   very modern JavaScript.
@@ -54,10 +54,10 @@ See the website for more info [deno.land](https://deno.land).
 
 ## Install
 
-With Python:
+With Shell:
 
 ```
-curl -L https://deno.land/x/install/install.py | python
+curl -L https://deno.land/x/install/install.sh | bash
 ```
 
 With PowerShell:
@@ -84,6 +84,11 @@ Try it:
 
 See [deno_install](https://github.com/denoland/deno_install) for more
 installation methods..
+
+## Build locally (advanced users only)
+
+For instructions to build this project locally, please see
+[the docs](https://github.com/denoland/deno/blob/master/Docs.md#build-instructions-for-advanced-users-only).
 
 <!-- prettier-ignore -->
 [avy badge]: https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true

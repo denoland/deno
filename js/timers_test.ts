@@ -155,3 +155,12 @@ test(async function intervalCancelInvalidSilentFail() {
   // Should silently fail (no panic)
   clearInterval(2147483647);
 });
+
+test(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
+  let count = 0;
+  setTimeout(() => {
+    count++;
+  }, 2 ** 31);
+  await waitForMs(1);
+  assertEqual(count, 1);
+});

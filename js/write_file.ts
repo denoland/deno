@@ -7,7 +7,7 @@ import * as dispatch from "./dispatch";
  *
  *       import { writeFileSync } from "deno";
  *
- *       const encoder = new TextEncoder("utf-8");
+ *       const encoder = new TextEncoder();
  *       const data = encoder.encode("Hello world\n");
  *       writeFileSync("hello.txt", data);
  */
@@ -23,7 +23,7 @@ export function writeFileSync(
  *
  *       import { writeFile } from "deno";
  *
- *       const encoder = new TextEncoder("utf-8");
+ *       const encoder = new TextEncoder();
  *       const data = encoder.encode("Hello world\n");
  *       await writeFile("hello.txt", data);
  */

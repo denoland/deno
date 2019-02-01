@@ -355,9 +355,8 @@ impl DenoDir {
     }
   }
 
-  // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L70-L98
-  // Returns (module name, local filename)
-  fn resolve_module(
+  /// Returns (module name, local filename)
+  pub fn resolve_module(
     self: &Self,
     specifier: &str,
     referrer: &str,

@@ -3,6 +3,7 @@
 <html>
 <head>
   <title>Deno</title>
+  <link rel="manifest" href="/manifest.json">
   <link rel="stylesheet" href="https://unpkg.com/c3@0.6.7/c3.min.css">
   <link rel="stylesheet" href="style.css">
   <meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' name='viewport' />
@@ -20,15 +21,15 @@
       </tr>
       <tr>
         <td>
-          <a href="https://travis-ci.com/denoland/deno"><img src="https://travis-ci.com/denoland/deno.svg?branch=master"/></a>
+          <a class="badge" href="https://travis-ci.com/denoland/deno"><img src="https://travis-ci.com/denoland/deno.svg?branch=master"/></a>
         </td>
         <td>
-          <a href="https://ci.appveyor.com/project/deno/deno"><img src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"/></a>
+          <a class="badge" href="https://ci.appveyor.com/project/deno/deno"><img src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"/></a>
         </td>
       </tr>
     </table>
 
-    <p>Deno is a secure JavaScript / TypeScript runtime built on V8
+    <p>A new way to JavaScript
 
     <p> <a href="https://github.com/denoland/deno">github.com/denoland/deno</a>
 
@@ -47,10 +48,14 @@
     <h2>Getting started</h2>
 
     <p>Install Deno into ~/.deno/bin
-
+<h2>With Shell</h2>
 <pre>
 curl -L https://deno.land/x/install/install.sh | sh
 export PATH=$HOME/.deno/bin:$PATH
+</pre>
+<h2>With PowerShell</h2>
+<pre>
+iex (iwr https://deno.land/x/install/install.ps1)
 </pre>
 
 Try a Deno program. Install by bash alias.
@@ -127,10 +132,6 @@ file_server --reload
     <h3>Syscall count</h3>
     How many total syscalls are performed when executing a given script.
     <div id="syscall-count-chart"></div>
-
-    <h3>Travis</h3>
-    How long for Travis CI to return a green status for pull requests.
-    <div id="travis-compile-time-chart"></div>
 
     <h3>References</h3>
     <p> <a href="./all_benchmark.html">All benchmark data</a>
