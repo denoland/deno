@@ -23,11 +23,7 @@ interface CodeInfo {
   sourceMap: string | undefined;
 }
 
-interface IsTTY {
-  stdin: boolean;
-  stdout: boolean;
-  stderr: boolean;
-}
+interface IsTTY { stdin: boolean, stdout: boolean, stderr: boolean }
 
 /** Check if running in terminal.
  *
