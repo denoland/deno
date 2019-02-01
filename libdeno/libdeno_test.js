@@ -136,7 +136,7 @@ global.CheckPromiseErrors = () => {
 
 global.Shared = () => {
   const ab = libdeno.shared;
-  assert(ab instanceof ArrayBuffer);
+  assert(ab instanceof SharedArrayBuffer);
   assert(ab.byteLength === 3);
   const ui8 = new Uint8Array(ab);
   assert(ui8[0] === 0);
