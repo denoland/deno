@@ -5,10 +5,10 @@ import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 
 export class Performance {
-  private denoStarted = 0;
+  private timeOrigin = 0;
 
   constructor() {
-    this.denoStarted = new Date().getTime();
+    this.timeOrigin = new Date().getTime();
   }
 
   /** Returns a current time from Deno's start
@@ -26,6 +26,6 @@ export class Performance {
     assert(msg.Any.NowRes === baseRes.innerType());
     const res = new msg.NowRes();
     assert(baseRes.inner(res) != null);
-    return res.time().toFloat64() - this.denoStarted;
+    return res.time().toFloat64() - this.timeOrigin;
   }
 }
