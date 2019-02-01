@@ -5,12 +5,18 @@ import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 
 export class Performance {
-  /** Returns a current UNIX timestamp
+  private denoStarted = 0;
+
+  constructor () {
+    this.denoStarted = new Date().getTime();
+  }
+
+  /** Returns a current time from Deno's start
    *
-   *       import { now } from "deno";
-   *
-   *       const unix = now();
-   *       console.log(`${now} ms from UNIX epoch!`);
+   *       const start = performance.now();
+   *       someFunction();
+   *       const end = performance.now();
+   *       console.log(`someFunction ran for ${end - start} ms!`);
    */
   now(): number {
     const builder = flatbuffers.createBuilder();
@@ -20,6 +26,6 @@ export class Performance {
     assert(msg.Any.NowRes === baseRes.innerType());
     const res = new msg.NowRes();
     assert(baseRes.inner(res) != null);
-    return res.time().toFloat64();
+    return res.time().toFloat64() - this.denoStarted;
   }
 }
