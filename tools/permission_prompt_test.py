@@ -57,6 +57,8 @@ class Prompt(object):
             deny=False):
         "Returns (return_code, stdout, stderr)."
         cmd = [self.deno_exe, PERMISSIONS_PROMPT_TEST_TS, arg]
+        if deny:
+            cmd.append("--deny")
         if allow_write:
             cmd.append("--allow-write")
         if allow_net:
@@ -147,13 +149,11 @@ class Prompt(object):
         code, _stdout, stderr = self.run('needsRun', b'', deny=True)
         assert code == 1
         assert b'PermissionDenied: permission denied' in stderr
-        assert b'Deno requests access to run' in stderr
 
     def test_deny_net(self):
         code, _stdout, stderr = self.run('needsNet', b'', deny=True)
         assert code == 1
         assert b'PermissionDenied: permission denied' in stderr
-        assert b'Deno requests network access' in stderr
 
 
 def permission_prompt_test(deno_exe):
@@ -171,6 +171,8 @@ def permission_prompt_test(deno_exe):
     p.test_run_yes()
     p.test_run_arg()
     p.test_run_no()
+    p.test_deny_run()
+    p.test_deny_net()
 
 
 def main():
