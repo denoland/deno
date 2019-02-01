@@ -8,7 +8,7 @@ import * as dispatch from "./dispatch";
  * `create` decides if the file should be created if not exists (default: true)
  * `append` decides if the file should be appended (default: false)
  */
-export interface WriteFileOption {
+export interface WriteFileOptions {
   perm?: number;
   create?: boolean;
   append?: boolean;
@@ -25,7 +25,7 @@ export interface WriteFileOption {
 export function writeFileSync(
   filename: string,
   data: Uint8Array,
-  options: WriteFileOption = {}
+  options: WriteFileOptions = {}
 ): void {
   dispatch.sendSync(...req(filename, data, options));
 }
@@ -41,7 +41,7 @@ export function writeFileSync(
 export async function writeFile(
   filename: string,
   data: Uint8Array,
-  options: WriteFileOption = {}
+  options: WriteFileOptions = {}
 ): Promise<void> {
   await dispatch.sendAsync(...req(filename, data, options));
 }
@@ -49,7 +49,7 @@ export async function writeFile(
 function req(
   filename: string,
   data: Uint8Array,
-  options: WriteFileOption
+  options: WriteFileOptions
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
