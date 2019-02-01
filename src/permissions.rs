@@ -15,7 +15,7 @@ pub struct DenoPermissions {
   pub allow_net: AtomicBool,
   pub allow_env: AtomicBool,
   pub allow_run: AtomicBool,
-  deny: bool
+  deny: bool,
 }
 
 impl DenoPermissions {
@@ -25,12 +25,15 @@ impl DenoPermissions {
       allow_env: AtomicBool::new(flags.allow_env),
       allow_net: AtomicBool::new(flags.allow_net),
       allow_run: AtomicBool::new(flags.allow_run),
-      deny: flags.deny
+      deny: flags.deny,
     }
   }
 
   fn permission_prompt(&self, message: &str) -> DenoResult<()> {
-    if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) || self.deny {
+    if !atty::is(atty::Stream::Stdin)
+      || !atty::is(atty::Stream::Stderr)
+      || self.deny
+    {
       return Err(permission_denied());
     };
     // print to stderr so that if deno is > to a file this is still displayed.
