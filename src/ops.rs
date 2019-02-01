@@ -181,20 +181,13 @@ fn op_is_tty(
   base: &msg::Base<'_>,
   _data: libdeno::deno_buf,
 ) -> Box<Op> {
-  let rid = base.inner_as_is_tty().unwrap().rid();
-  let is_tty: bool;
-
-  match rid {
-    // if std in/out/err check if is terminal, else return false
-    0 => is_tty = atty::is(atty::Stream::Stdin),
-    1 => is_tty = atty::is(atty::Stream::Stdout),
-    2 => is_tty = atty::is(atty::Stream::Stderr),
-    _ => is_tty = false,
-  }
-
   let builder = &mut FlatBufferBuilder::new();
   let inner =
-    msg::IsTTYRes::create(builder, &msg::IsTTYResArgs { is_tty: is_tty });
+    msg::IsTTYRes::create(builder, &msg::IsTTYResArgs {
+      stdin: atty::is(atty::Stream::Stdin),
+      stdout: atty::is(atty::Stream::Stdout),
+      stderr: atty::is(atty::Stream::Stderr)
+    });
   ok_future(serialize_response(
     base.cmd_id(),
     builder,

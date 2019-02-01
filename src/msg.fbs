@@ -477,12 +477,12 @@ table RunStatusRes {
   exit_signal: int;
 }
 
-table IsTTY {
-  rid: uint32;
-}
+table IsTTY {}
 
 table IsTTYRes {
-  is_tty: bool;
+  stdin: bool;
+  stdout: bool;
+  stderr: bool;
 }
 
 root_type Base;

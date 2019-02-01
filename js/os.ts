@@ -23,19 +23,6 @@ interface CodeInfo {
   sourceMap: string | undefined;
 }
 
-/** @internal */
-function checkTTY(rid: number): boolean {
-  const builder = flatbuffers.createBuilder();
-  msg.IsTTY.startIsTTY(builder);
-  msg.IsTTY.addRid(builder, rid);
-  const inner = msg.IsTTY.endIsTTY(builder);
-  const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
-  assert(msg.Any.IsTTYRes === baseRes.innerType());
-  const res = new msg.IsTTYRes();
-  assert(baseRes.inner(res) != null);
-  return res.isTty();
-}
-
 interface IsTTY {
   stdin: boolean;
   stdout: boolean;
@@ -49,10 +36,18 @@ interface IsTTY {
  * isTTY().stderr; // stderr
  */
 export function isTTY(): IsTTY {
+  const builder = flatbuffers.createBuilder();
+  msg.IsTTY.startIsTTY(builder);
+  const inner = msg.IsTTY.endIsTTY(builder);
+  const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
+  assert(msg.Any.IsTTYRes === baseRes.innerType());
+  const res = new msg.IsTTYRes();
+  assert(baseRes.inner(res) != null);
+
   return {
-    stdin: checkTTY(0),
-    stdout: checkTTY(1),
-    stderr: checkTTY(2)
+    stdin: res.stdin(),
+    stdout: res.stdout(),
+    stderr: res.stderr()
   };
 }
 
