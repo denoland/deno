@@ -46,13 +46,15 @@ testPerm({ write: false }, function writeFileSyncPerm() {
 });
 
 testPerm({ write: true }, function writeFileSyncUpdatePerm() {
-  const enc = new TextEncoder();
-  const data = enc.encode("Hello");
-  const filename = deno.makeTempDirSync() + "/test.txt";
-  deno.writeFileSync(filename, data, { perm: 0o755 });
-  assertEqual(deno.statSync(filename).mode & 0o777, 0o755);
-  deno.writeFileSync(filename, data, { perm: 0o666 });
-  assertEqual(deno.statSync(filename).mode & 0o777, 0o666);
+  if (deno.platform.os !== "win") {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = deno.makeTempDirSync() + "/test.txt";
+    deno.writeFileSync(filename, data, { perm: 0o755 });
+    assertEqual(deno.statSync(filename).mode & 0o777, 0o755);
+    deno.writeFileSync(filename, data, { perm: 0o666 });
+    assertEqual(deno.statSync(filename).mode & 0o777, 0o666);
+  }
 });
 
 testPerm({ write: true }, function writeFileSyncCreate() {
@@ -145,13 +147,15 @@ testPerm({ write: false }, async function writeFilePerm() {
 });
 
 testPerm({ write: true }, async function writeFileUpdatePerm() {
-  const enc = new TextEncoder();
-  const data = enc.encode("Hello");
-  const filename = deno.makeTempDirSync() + "/test.txt";
-  await deno.writeFile(filename, data, { perm: 0o755 });
-  assertEqual(deno.statSync(filename).mode & 0o777, 0o755);
-  await deno.writeFile(filename, data, { perm: 0o666 });
-  assertEqual(deno.statSync(filename).mode & 0o777, 0o666);
+  if (deno.platform.os !== "win") {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = deno.makeTempDirSync() + "/test.txt";
+    await deno.writeFile(filename, data, { perm: 0o755 });
+    assertEqual(deno.statSync(filename).mode & 0o777, 0o755);
+    await deno.writeFile(filename, data, { perm: 0o666 });
+    assertEqual(deno.statSync(filename).mode & 0o777, 0o666);
+  }
 });
 
 testPerm({ write: true }, async function writeFileCreate() {
