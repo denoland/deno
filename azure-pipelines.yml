@@ -26,6 +26,6 @@ jobs:
     vmImage: 'vs2017-win2016'
   steps:
   - powershell: iwr https://deno.land/x/install/install.ps1 -out install.ps1; .\install.ps1 $(DENO_VERSION)
-  - script: echo '##vso[task.prependpath]C:\Users\VssAdministrator\.deno\bin\'
-  - script: 'C:\Users\VssAdministrator\.deno\bin\deno.exe test.ts --allow-run --allow-net --allow-write'
-  - script: 'C:\Users\VssAdministrator\.deno\bin\deno.exe format.ts --allow-run --allow-write --check'
+  - bash: echo "##vso[task.prependpath]C:\Users\VssAdministrator\.deno\\bin"
+  - bash: deno.exe test.ts --allow-run --allow-net --allow-write
+  - bash: deno.exe format.ts --allow-run --allow-write --check

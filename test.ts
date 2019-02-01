@@ -21,6 +21,7 @@ import "log/test.ts";
 import "log/handlers_test.ts";
 import "log/logger_test.ts";
 import "media_types/test.ts";
+import "prettier/main_test.ts";
 import "testing/test.ts";
 import "textproto/test.ts";
 import "ws/sha1_test.ts";
