@@ -60,6 +60,30 @@ fn print_err_and_exit(err: js_errors::JSError) {
   std::process::exit(1);
 }
 
+fn display_file_info(filename: String, dir: &deno_dir::DenoDir) {
+  let maybe_out = dir.code_fetch(&filename, ".");
+  if maybe_out.is_err() {
+    println!("{}", maybe_out.unwrap_err());
+    return;
+  }
+  let out = maybe_out.unwrap();
+
+  println!("local filename: {}", &(out.filename));
+  println!("media type: {}", msg::enum_name_media_type(out.media_type));
+  if out.maybe_output_code_filename.is_some() {
+    println!(
+      "compiled javascript: {}",
+      out.maybe_output_code_filename.as_ref().unwrap(),
+    );
+  }
+  if out.maybe_source_map_filename.is_some() {
+    println!(
+      "source map: {}",
+      out.maybe_source_map_filename.as_ref().unwrap()
+    );
+  }
+}
+
 fn main() {
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
@@ -81,12 +105,18 @@ fn main() {
   });
 
   let should_prefetch = flags.prefetch;
+  let should_display_info = flags.info;
 
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
   let snapshot = snapshot::deno_snapshot();
   let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
 
   tokio_util::init(|| {
+    if should_display_info {
+      display_file_info(isolate.state.argv[1].clone(), &(isolate.state.dir));
+      std::process::exit(0);
+    }
+
     // Setup runtime.
     isolate
       .execute("denoMain();")

@@ -24,7 +24,9 @@ pub struct CodeFetchOutput {
   pub filename: String,
   pub media_type: msg::MediaType,
   pub source_code: String,
+  pub maybe_output_code_filename: Option<String>,
   pub maybe_output_code: Option<String>,
+  pub maybe_source_map_filename: Option<String>,
   pub maybe_source_map: Option<String>,
 }
 
@@ -70,7 +72,9 @@ impl CodeFetchOutput {
           filename,
           media_type: msg::MediaType::JavaScript, // TODO
           source_code,
+          maybe_output_code_filename: None,
           maybe_output_code,
+          maybe_source_map_filename: None,
           maybe_source_map,
         })
       }
