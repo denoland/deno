@@ -4,16 +4,13 @@ import { args, exit, isTTY } from "deno";
 const name = args[1];
 const test = {
   stdin: () => {
-    console.log(isTTY(0));
+    console.log(isTTY().stdin);
   },
   stdout: () => {
-    console.log(isTTY(1));
+    console.log(isTTY().stdout);
   },
   stderr: () => {
-    console.log(isTTY(2));
-  },
-  file: () => {
-    console.log(isTTY(10));
+    console.log(isTTY().stderr);
   }
 }[name];
 

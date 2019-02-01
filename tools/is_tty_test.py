@@ -70,18 +70,11 @@ class IsTTY(object):
         assert code == 0
         assert str(stdin.isatty()).lower() in stdout
 
-    def test_file(self):
-        code, stdout, _ = self.run('file')
-        assert code == 0
-        assert b'false' in stdout
-
-
 def is_tty_test(deno_exe):
     p = IsTTY(deno_exe)
     p.test_stdin()
     p.test_stdout()
     p.test_stderr()
-    p.test_file()
 
 
 def main():

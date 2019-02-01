@@ -23,14 +23,8 @@ interface CodeInfo {
   sourceMap: string | undefined;
 }
 
-/** Check if running in terminal.
- *
- * isTTY(0); // stdin
- * isTTY(1); // stdout
- * isTTY(2); // stderr
- * isTTY(3); // < 2 is files by rid
- */
-export function isTTY(rid = 0): boolean {
+/** @internal */
+function checkTTY(rid: number): boolean {
   const builder = flatbuffers.createBuilder();
   msg.IsTTY.startIsTTY(builder);
   msg.IsTTY.addRid(builder, rid);
@@ -40,6 +34,26 @@ export function isTTY(rid = 0): boolean {
   const res = new msg.IsTTYRes();
   assert(baseRes.inner(res) != null);
   return res.isTty();
+}
+
+interface IsTTY {
+  stdin: boolean;
+  stdout: boolean;
+  stderr: boolean;
+}
+
+/** Check if running in terminal.
+ *
+ * isTTY().stdin; // stdin
+ * isTTY().stdout; // stdout
+ * isTTY().stderr; // stderr
+ */
+export function isTTY(): IsTTY {
+  return {
+    stdin: checkTTY(0),
+    stdout: checkTTY(1),
+    stderr: checkTTY(2)
+  };
 }
 
 /** Exit the Deno process with optional exit code. */
