@@ -29,8 +29,6 @@ interface IsTTY {
   stderr: boolean;
 }
 
-let _isTTY: IsTTY; // cache
-
 /** Check if running in terminal.
  *
  * isTTY().stdin; // stdin
@@ -38,10 +36,6 @@ let _isTTY: IsTTY; // cache
  * isTTY().stderr; // stderr
  */
 export function isTTY(): IsTTY {
-  if (_isTTY) {
-    return _isTTY; // return cached value if we have one
-  }
-
   const builder = flatbuffers.createBuilder();
   msg.IsTTY.startIsTTY(builder);
   const inner = msg.IsTTY.endIsTTY(builder);
@@ -50,12 +44,11 @@ export function isTTY(): IsTTY {
   const res = new msg.IsTTYRes();
   assert(baseRes.inner(res) != null);
 
-  _isTTY = {
+  return {
     stdin: res.stdin(),
     stdout: res.stdout(),
     stderr: res.stderr()
   };
-  return _isTTY;
 }
 
 /** Exit the Deno process with optional exit code. */
