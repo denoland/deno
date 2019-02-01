@@ -155,6 +155,24 @@ class Prompt(object):
         assert code == 1
         assert b'PermissionDenied: permission denied' in stderr
 
+    def test_deny_but_allow_run(self):
+        code, stdout, stderr = self.run('needsRun',
+                                        b'',
+                                        allow_run=True,
+                                        deny=True)
+        assert code == 0
+        assert stdout == b'hello'
+        assert stderr == b''
+
+    def test_deny_but_allow_net(self):
+        code, stdout, stderr = self.run('needsNet',
+                                        b'',
+                                        allow_net=True,
+                                        deny=True)
+        assert code == 0
+        assert stdout == b''
+        assert stderr == b''
+
 
 def permission_prompt_test(deno_exe):
     p = Prompt(deno_exe)
@@ -173,6 +191,8 @@ def permission_prompt_test(deno_exe):
     p.test_run_no()
     p.test_deny_run()
     p.test_deny_net()
+    p.test_deny_but_allow_run()
+    p.test_deny_but_allow_net()
 
 
 def main():
