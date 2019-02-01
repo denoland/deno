@@ -328,11 +328,17 @@ Extra steps for Mac users:
 Extra steps for Windows users:
 
 1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
-2. Get [VS Community 2017](https://www.visualstudio.com/downloads/). Make sure
-   to select the option to install C++ tools and the Windows SDK.
-3. Enable `Debugging Tools for Windows`. Go to `Control Panel` ->
-   `Windows 10 SDK` -> Right-Click -> `Change` -> `Change` ->
-   `Check Debugging Tools for Windows` -> `Change` -> `Finish`.
+2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
+   `Desktop development with C++` toolkit and make sure to select the following
+   required tools listed below along with all C++ tools.
+   - Windows 10 SDK >= 10.0.17134
+   - Visual C++ ATL for x86 and x64
+   - Visual C++ MFC for x86 and x64
+   - C++ profiling tools
+3. Enable `Debugging Tools for Windows`. Go to `Control Panel` → `Programs` →
+   `Programs and Features` → Select
+   `Windows Software Development Kit - Windows 10` → `Change` → `Change` → Check
+   `Debugging Tools For Windows` → `Change` -> `Finish`.
 
 ### Build:
 
