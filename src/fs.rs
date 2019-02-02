@@ -18,16 +18,29 @@ pub fn write_file<T: AsRef<[u8]>>(
   data: T,
   perm: u32,
 ) -> std::io::Result<()> {
-  let is_append = perm & (1 << 31) != 0;
+  write_file_2(filename, data, true, perm, true, false)
+}
+
+pub fn write_file_2<T: AsRef<[u8]>>(
+  filename: &Path,
+  data: T,
+  update_perm: bool,
+  perm: u32,
+  is_create: bool,
+  is_append: bool,
+) -> std::io::Result<()> {
   let mut file = OpenOptions::new()
     .read(false)
     .write(true)
     .append(is_append)
     .truncate(!is_append)
-    .create(true)
+    .create(is_create)
     .open(filename)?;
 
-  set_permissions(&mut file, perm)?;
+  if update_perm {
+    set_permissions(&mut file, perm)?;
+  }
+
   file.write_all(data.as_ref())
 }
 

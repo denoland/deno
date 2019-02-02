@@ -3,6 +3,17 @@ import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
+/** Options for writing to a file.
+ * `perm` would change the file's permission if set.
+ * `create` decides if the file should be created if not exists (default: true)
+ * `append` decides if the file should be appended (default: false)
+ */
+export interface WriteFileOptions {
+  perm?: number;
+  create?: boolean;
+  append?: boolean;
+}
+
 /** Write a new file, with given filename and data synchronously.
  *
  *       import { writeFileSync } from "deno";
@@ -14,9 +25,9 @@ import * as dispatch from "./dispatch";
 export function writeFileSync(
   filename: string,
   data: Uint8Array,
-  perm = 0o666
+  options: WriteFileOptions = {}
 ): void {
-  dispatch.sendSync(...req(filename, data, perm));
+  dispatch.sendSync(...req(filename, data, options));
 }
 
 /** Write a new file, with given filename and data.
@@ -30,21 +41,35 @@ export function writeFileSync(
 export async function writeFile(
   filename: string,
   data: Uint8Array,
-  perm = 0o666
+  options: WriteFileOptions = {}
 ): Promise<void> {
-  await dispatch.sendAsync(...req(filename, data, perm));
+  await dispatch.sendAsync(...req(filename, data, options));
 }
 
 function req(
   filename: string,
   data: Uint8Array,
-  perm: number
+  options: WriteFileOptions
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
   msg.WriteFile.startWriteFile(builder);
   msg.WriteFile.addFilename(builder, filename_);
-  msg.WriteFile.addPerm(builder, perm);
+  // Perm is not updated by default
+  if (options.perm !== undefined && options.perm !== null) {
+    msg.WriteFile.addUpdatePerm(builder, true);
+    msg.WriteFile.addPerm(builder, options.perm!);
+  } else {
+    msg.WriteFile.addUpdatePerm(builder, false);
+    msg.WriteFile.addPerm(builder, 0o666);
+  }
+  // Create is turned on by default
+  if (options.create !== undefined) {
+    msg.WriteFile.addIsCreate(builder, !!options.create);
+  } else {
+    msg.WriteFile.addIsCreate(builder, true);
+  }
+  msg.WriteFile.addIsAppend(builder, !!options.append);
   const inner = msg.WriteFile.endWriteFile(builder);
   return [builder, msg.Any.WriteFile, inner, data];
 }

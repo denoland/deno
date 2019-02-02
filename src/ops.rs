@@ -1058,7 +1058,10 @@ fn op_write_file(
 ) -> Box<Op> {
   let inner = base.inner_as_write_file().unwrap();
   let filename = String::from(inner.filename().unwrap());
+  let update_perm = inner.update_perm();
   let perm = inner.perm();
+  let is_create = inner.is_create();
+  let is_append = inner.is_append();
 
   if let Err(e) = state.check_write(&filename) {
     return odd_future(e);
@@ -1066,7 +1069,14 @@ fn op_write_file(
 
   blocking(base.sync(), move || -> OpResult {
     debug!("op_write_file {} {}", filename, data.len());
-    deno_fs::write_file(Path::new(&filename), data, perm)?;
+    deno_fs::write_file_2(
+      Path::new(&filename),
+      data,
+      update_perm,
+      perm,
+      is_create,
+      is_append,
+    )?;
     Ok(empty_buf())
   })
 }

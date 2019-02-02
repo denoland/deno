@@ -11,7 +11,7 @@ function readFileString(filename: string): string {
 function writeFileString(filename: string, s: string) {
   const enc = new TextEncoder();
   const data = enc.encode(s);
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
 }
 
 function assertSameContent(filename1: string, filename2: string) {
