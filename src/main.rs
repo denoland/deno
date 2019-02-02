@@ -55,7 +55,7 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn print_err_and_exit(err: js_errors::JSError) {
+fn print_err_and_exit(err: errors::RustOrJsError) {
   eprintln!("{}", err.to_string());
   std::process::exit(1);
 }
@@ -100,6 +100,7 @@ fn main() {
     // Setup runtime.
     isolate
       .execute("denoMain();")
+      .map_err(errors::RustOrJsError::from)
       .unwrap_or_else(print_err_and_exit);
 
     // Execute input file.
@@ -110,6 +111,9 @@ fn main() {
         .unwrap_or_else(print_err_and_exit);
     }
 
-    isolate.event_loop().unwrap_or_else(print_err_and_exit);
+    isolate
+      .event_loop()
+      .map_err(errors::RustOrJsError::from)
+      .unwrap_or_else(print_err_and_exit);
   });
 }
