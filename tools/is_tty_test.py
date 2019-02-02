@@ -11,13 +11,9 @@ from sys import stdin
 
 IS_TTY_TEST_TS = "tools/is_tty_test.ts"
 
-
-# This function is copied from:
-# https://gist.github.com/hayd/4f46a68fc697ba8888a7b517a414583e
-# https://stackoverflow.com/q/52954248/1240268
 def tty_capture(cmd, bytes_input):
-    """Capture the output of cmd with bytes_input to stdin,
-    with stdin, stdout and stderr as TTYs."""
+    '''Capture the output of cmd with bytes_input to stdin,
+    with stdin, stdout and stderr as TTYs.'''
     mo, so = pty.openpty()  # provide tty to enable line-buffering
     me, se = pty.openpty()
     mi, si = pty.openpty()
