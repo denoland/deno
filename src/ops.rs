@@ -234,7 +234,6 @@ fn op_start(
       pid: std::process::id(),
       argv: Some(argv_off),
       debug_flag: state.flags.log_debug,
-      recompile_flag: state.flags.recompile,
       types_flag: state.flags.types,
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
@@ -295,19 +294,13 @@ fn op_code_fetch(
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
     let out = state.dir.code_fetch(specifier, referrer)?;
-    let mut msg_args = msg::CodeFetchResArgs {
+    let msg_args = msg::CodeFetchResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
       media_type: out.media_type,
       source_code: Some(builder.create_string(&out.source_code)),
       ..Default::default()
     };
-    if let Some(ref output_code) = out.maybe_output_code {
-      msg_args.output_code = Some(builder.create_string(output_code));
-    }
-    if let Some(ref source_map) = out.maybe_source_map {
-      msg_args.source_map = Some(builder.create_string(source_map));
-    }
     let inner = msg::CodeFetchRes::create(builder, &msg_args);
     Ok(serialize_response(
       cmd_id,
