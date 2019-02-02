@@ -180,6 +180,7 @@ pub fn permission_denied() -> DenoError {
   )
 }
 
+#[derive(Debug)]
 pub enum RustOrJsError {
   Rust(DenoError),
   Js(JSError),
@@ -194,5 +195,14 @@ impl From<DenoError> for RustOrJsError {
 impl From<JSError> for RustOrJsError {
   fn from(e: JSError) -> Self {
     RustOrJsError::Js(e)
+  }
+}
+
+impl fmt::Display for RustOrJsError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      RustOrJsError::Rust(e) => e.fmt(f),
+      RustOrJsError::Js(e) => e.fmt(f),
+    }
   }
 }
