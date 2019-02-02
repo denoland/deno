@@ -23,18 +23,12 @@ interface CodeInfo {
   sourceMap: string | undefined;
 }
 
-interface IsTTY {
-  stdin: boolean;
-  stdout: boolean;
-  stderr: boolean;
-}
-
 /** Check if running in terminal.
  *
  * import { isTTY } from "deno";
  * console.log(isTTY.stdout);
  */
-export function isTTY(): IsTTY {
+export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
   const builder = flatbuffers.createBuilder();
   msg.IsTTY.startIsTTY(builder);
   const inner = msg.IsTTY.endIsTTY(builder);
