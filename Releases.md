@@ -6,6 +6,15 @@ https://github.com/denoland/deno/releases
 We also have a one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.2.10 / 2019.02.02
+
+- Add --fmt (#1646)
+- Add --info (#1647, #1660)
+- Better error message for bad filename CLI argument. (#1650)
+- Clarify writeFile options and avoid unexpected perm modification (#1643)
+- Add performance.now (#1633)
+- Add import.meta.url (#1624)
+
 ### v0.2.9 / 2019.01.29
 
 - Add REPL functions "help" and "exit" (#1563)
