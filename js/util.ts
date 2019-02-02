@@ -2,10 +2,14 @@
 import { TypedArray } from "./types";
 
 let logDebug = false;
+let logSource = "JS";
 
 // @internal
-export function setLogDebug(debug: boolean): void {
+export function setLogDebug(debug: boolean, source?: string): void {
   logDebug = debug;
+  if (source) {
+    logSource = source;
+  }
 }
 
 /** Debug logging for deno.
@@ -15,7 +19,7 @@ export function setLogDebug(debug: boolean): void {
 // tslint:disable-next-line:no-any
 export function log(...args: any[]): void {
   if (logDebug) {
-    console.log("DEBUG JS -", ...args);
+    console.log(`DEBUG ${logSource} -`, ...args);
   }
 }
 
