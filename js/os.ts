@@ -31,8 +31,8 @@ interface IsTTY {
 
 /** Check if running in terminal.
  *
- * import { isTTY } from "deno";
- * console.log(isTTY.stdout);
+ *       import { isTTY } from "deno";
+ *       console.log(isTTY().stdout);
  */
 export function isTTY(): IsTTY {
   const builder = flatbuffers.createBuilder();
