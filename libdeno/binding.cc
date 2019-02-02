@@ -262,8 +262,8 @@ deno_mod DenoIsolate::RegisterModule(const char* name, const char* source) {
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  v8::Local<v8::String> name_str = v8_str(name, true);
-  v8::Local<v8::String> source_str = v8_str(source, true);
+  v8::Local<v8::String> name_str = v8_str(name);
+  v8::Local<v8::String> source_str = v8_str(source);
 
   auto origin = ModuleOrigin(isolate_, name_str);
   v8::ScriptCompiler::Source source_(source_str, origin);
@@ -341,8 +341,8 @@ bool Execute(v8::Local<v8::Context> context, const char* js_filename,
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
-  auto source = v8_str(js_source, true);
-  auto name = v8_str(js_filename, true);
+  auto source = v8_str(js_source);
+  auto name = v8_str(js_filename);
 
   v8::TryCatch try_catch(isolate);
 
@@ -423,8 +423,7 @@ void HostInitializeImportMetaObjectCallback(v8::Local<v8::Context> context,
 
   const char* url = info->name.c_str();
 
-  meta->CreateDataProperty(context, v8_str("url"), v8_str(url, true))
-      .ToChecked();
+  meta->CreateDataProperty(context, v8_str("url"), v8_str(url)).ToChecked();
 }
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
