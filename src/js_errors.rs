@@ -14,6 +14,7 @@ use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
 use source_map_mappings::Mappings;
 use std::collections::HashMap;
+use std::fmt;
 
 pub trait SourceMapGetter {
   /// Returns the raw source map file.
@@ -73,39 +74,34 @@ impl ToString for StackFrame {
   }
 }
 
-impl ToString for JSError {
-  fn to_string(&self) -> String {
-    // TODO Improve the formatting of these error messages.
-    let mut s = String::new();
-
+impl fmt::Display for JSError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     if self.script_resource_name.is_some() {
       let script_resource_name = self.script_resource_name.as_ref().unwrap();
       // Avoid showing internal code from gen/bundle/main.js
       if script_resource_name != "gen/bundle/main.js" {
-        s.push_str(script_resource_name);
+        write!(f, "{}", script_resource_name)?;
         if self.line_number.is_some() {
-          s.push_str(&format!(
+          write!(
+            f,
             ":{}:{}",
             self.line_number.unwrap(),
             self.start_column.unwrap()
-          ));
+          )?;
           assert!(self.start_column.is_some());
         }
         if self.source_line.is_some() {
-          s.push_str("\n");
-          s.push_str(self.source_line.as_ref().unwrap());
-          s.push_str("\n\n");
+          write!(f, "\n{}\n\n", self.source_line.as_ref().unwrap())?;
         }
       }
     }
 
-    s.push_str(&self.message);
+    write!(f, "{}", &self.message)?;
 
     for frame in &self.frames {
-      s.push_str("\n");
-      s.push_str(&frame.to_string());
+      write!(f, "\n{}", &frame.to_string())?;
     }
-    s
+    Ok(())
   }
 }
 

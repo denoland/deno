@@ -404,17 +404,19 @@ impl Isolate {
     &mut self,
     js_filename: &str,
     is_prefetch: bool,
-  ) -> Result<(), JSError> {
-    let out =
-      code_fetch_and_maybe_compile(&self.state, js_filename, ".").unwrap();
+  ) -> Result<(), RustOrJsError> {
+    let out = code_fetch_and_maybe_compile(&self.state, js_filename, ".")
+      .map_err(RustOrJsError::from)?;
 
-    let id = self.mod_new(out.filename.clone(), out.js_source())?;
+    let id = self
+      .mod_new(out.filename.clone(), out.js_source())
+      .map_err(RustOrJsError::from)?;
 
-    self.mod_load_deps(id).ok();
+    self.mod_load_deps(id)?;
 
-    self.mod_instantiate(id)?;
+    self.mod_instantiate(id).map_err(RustOrJsError::from)?;
     if !is_prefetch {
-      self.mod_evaluate(id)?;
+      self.mod_evaluate(id).map_err(RustOrJsError::from)?;
     }
     Ok(())
   }
