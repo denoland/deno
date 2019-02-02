@@ -5,7 +5,7 @@ A framework for creating HTTP/HTTPS server.
 ## Example
 
 ```typescript
-import { serve } from "https://deno.land/x/http/mod.ts";
+import { serve } from "https://deno.land/x/http/server.ts";
 const s = serve("0.0.0.0:8000");
 
 async function main() {

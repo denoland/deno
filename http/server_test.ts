@@ -12,7 +12,7 @@ import {
   ServerRequest,
   setContentLength,
   Response
-} from "./mod.ts";
+} from "./server.ts";
 import { BufWriter, BufReader } from "../io/bufio.ts";
 
 interface ResponseTest {
