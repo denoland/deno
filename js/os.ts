@@ -25,8 +25,8 @@ interface CodeInfo {
 
 /** Check if running in terminal.
  *
- * import { isTTY } from "deno";
- * console.log(isTTY.stdout);
+ *       import { isTTY } from "deno";
+ *       console.log(isTTY().stdout);
  */
 export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
   const builder = flatbuffers.createBuilder();
