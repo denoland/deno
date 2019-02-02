@@ -102,7 +102,7 @@ v8::MaybeLocal<v8::Module> ResolveCallback(Local<Context> context,
         char buf[64 * 1024];
         snprintf(buf, sizeof(buf), "Cannot resolve module \"%s\" from \"%s\"",
                  req_str.c_str(), referrer_info->name.c_str());
-        isolate->ThrowException(deno::v8_str(buf, true));
+        isolate->ThrowException(deno::v8_str(buf));
         break;
       } else {
         Local<Module> child_mod = info->handle.Get(isolate);

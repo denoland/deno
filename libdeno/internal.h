@@ -123,11 +123,9 @@ struct InternalFieldData {
   uint32_t data;
 };
 
-static inline v8::Local<v8::String> v8_str(const char* x,
-                                           bool internalize = false) {
+static inline v8::Local<v8::String> v8_str(const char* x) {
   return v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), x,
-                                 internalize ? v8::NewStringType::kInternalized
-                                             : v8::NewStringType::kNormal)
+                                 v8::NewStringType::kNormal)
       .ToLocalChecked();
 }
 
