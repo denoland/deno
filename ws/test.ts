@@ -2,16 +2,7 @@
 import { Buffer } from "deno";
 import { BufReader } from "../io/bufio.ts";
 import { test, assert, assertEqual } from "../testing/mod.ts";
-import {
-  createSecAccept,
-  OpCodeBinaryFrame,
-  OpCodeContinue,
-  OpcodePing,
-  OpcodePong,
-  OpCodeTextFrame,
-  readFrame,
-  unmask
-} from "./mod.ts";
+import { createSecAccept, OpCode, readFrame, unmask } from "./mod.ts";
 import { serve } from "../http/http.ts";
 
 test(async function testReadUnmaskedTextFrame() {
@@ -20,7 +11,7 @@ test(async function testReadUnmaskedTextFrame() {
     new Buffer(new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]))
   );
   const frame = await readFrame(buf);
-  assertEqual(frame.opcode, OpCodeTextFrame);
+  assertEqual(frame.opcode, OpCode.TextFrame);
   assertEqual(frame.mask, undefined);
   assertEqual(new Buffer(frame.payload).toString(), "Hello");
   assertEqual(frame.isLastFrame, true);
@@ -47,7 +38,7 @@ test(async function testReadMakedTextFrame() {
   );
   const frame = await readFrame(buf);
   console.dir(frame);
-  assertEqual(frame.opcode, OpCodeTextFrame);
+  assertEqual(frame.opcode, OpCode.TextFrame);
   unmask(frame.payload, frame.mask);
   assertEqual(new Buffer(frame.payload).toString(), "Hello");
   assertEqual(frame.isLastFrame, true);
@@ -63,12 +54,12 @@ test(async function testReadUnmaskedSplittedTextFrames() {
   const [f1, f2] = await Promise.all([readFrame(buf1), readFrame(buf2)]);
   assertEqual(f1.isLastFrame, false);
   assertEqual(f1.mask, undefined);
-  assertEqual(f1.opcode, OpCodeTextFrame);
+  assertEqual(f1.opcode, OpCode.TextFrame);
   assertEqual(new Buffer(f1.payload).toString(), "Hel");
 
   assertEqual(f2.isLastFrame, true);
   assertEqual(f2.mask, undefined);
-  assertEqual(f2.opcode, OpCodeContinue);
+  assertEqual(f2.opcode, OpCode.Continue);
   assertEqual(new Buffer(f2.payload).toString(), "lo");
 });
 
@@ -78,7 +69,7 @@ test(async function testReadUnmaksedPingPongFrame() {
     new Buffer(new Uint8Array([0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]))
   );
   const ping = await readFrame(buf);
-  assertEqual(ping.opcode, OpcodePing);
+  assertEqual(ping.opcode, OpCode.Ping);
   assertEqual(new Buffer(ping.payload).toString(), "Hello");
 
   const buf2 = new BufReader(
@@ -99,7 +90,7 @@ test(async function testReadUnmaksedPingPongFrame() {
     )
   );
   const pong = await readFrame(buf2);
-  assertEqual(pong.opcode, OpcodePong);
+  assertEqual(pong.opcode, OpCode.Pong);
   assert(pong.mask !== undefined);
   unmask(pong.payload, pong.mask);
   assertEqual(new Buffer(pong.payload).toString(), "Hello");
@@ -112,7 +103,7 @@ test(async function testReadUnmaksedBigBinaryFrame() {
   }
   const buf = new BufReader(new Buffer(new Uint8Array(a)));
   const bin = await readFrame(buf);
-  assertEqual(bin.opcode, OpCodeBinaryFrame);
+  assertEqual(bin.opcode, OpCode.BinaryFrame);
   assertEqual(bin.isLastFrame, true);
   assertEqual(bin.mask, undefined);
   assertEqual(bin.payload.length, 256);
@@ -125,7 +116,7 @@ test(async function testReadUnmaskedBigBigBinaryFrame() {
   }
   const buf = new BufReader(new Buffer(new Uint8Array(a)));
   const bin = await readFrame(buf);
-  assertEqual(bin.opcode, OpCodeBinaryFrame);
+  assertEqual(bin.opcode, OpCode.BinaryFrame);
   assertEqual(bin.isLastFrame, true);
   assertEqual(bin.mask, undefined);
   assertEqual(bin.payload.length, 0xffff + 1);
