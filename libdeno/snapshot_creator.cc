@@ -26,8 +26,8 @@ int main(int argc, char** argv) {
   deno_config config = {1, deno::empty_buf, deno::empty_buf, nullptr};
   Deno* d = deno_new(config);
 
-  int r = deno_execute(d, nullptr, js_fn, js_source.c_str());
-  if (!r) {
+  deno_execute(d, nullptr, js_fn, js_source.c_str());
+  if (deno_last_exception(d) != nullptr) {
     std::cerr << "Snapshot Exception " << std::endl;
     std::cerr << deno_last_exception(d) << std::endl;
     deno_delete(d);

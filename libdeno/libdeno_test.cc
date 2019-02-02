@@ -4,19 +4,21 @@
 TEST(LibDenoTest, InitializesCorrectly) {
   EXPECT_NE(snapshot.data_ptr, nullptr);
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "1 + 2"));
+  deno_execute(d, nullptr, "a.js", "1 + 2");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, Snapshotter) {
   Deno* d1 = deno_new(deno_config{1, empty, empty, nullptr});
-  EXPECT_TRUE(deno_execute(d1, nullptr, "a.js", "a = 1 + 2"));
+  deno_execute(d1, nullptr, "a.js", "a = 1 + 2");
+  EXPECT_EQ(nullptr, deno_last_exception(d1));
   deno_buf test_snapshot = deno_get_snapshot(d1);
   deno_delete(d1);
 
   Deno* d2 = deno_new(deno_config{0, test_snapshot, empty, nullptr});
-  EXPECT_TRUE(
-      deno_execute(d2, nullptr, "b.js", "if (a != 3) throw Error('x');"));
+  deno_execute(d2, nullptr, "b.js", "if (a != 3) throw Error('x');");
+  EXPECT_EQ(nullptr, deno_last_exception(d2));
   deno_delete(d2);
 
   delete[] test_snapshot.data_ptr;
@@ -24,14 +26,16 @@ TEST(LibDenoTest, Snapshotter) {
 
 TEST(LibDenoTest, CanCallFunction) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js",
-                           "if (CanCallFunction() != 'foo') throw Error();"));
+  deno_execute(d, nullptr, "a.js",
+               "if (CanCallFunction() != 'foo') throw Error();");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, ErrorsCorrectly) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "throw Error()"));
+  deno_execute(d, nullptr, "a.js", "throw Error()");
+  EXPECT_NE(nullptr, deno_last_exception(d));
   deno_delete(d);
 }
 
@@ -76,7 +80,8 @@ TEST(LibDenoTest, RecvReturnEmpty) {
     EXPECT_EQ(buf.data_ptr[2], 'c');
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "RecvReturnEmpty()"));
+  deno_execute(d, nullptr, "a.js", "RecvReturnEmpty()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(count, 2);
   deno_delete(d);
 }
@@ -94,14 +99,16 @@ TEST(LibDenoTest, RecvReturnBar) {
     deno_respond(d, user_data, req_id, strbuf("bar"));
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
-  EXPECT_TRUE(deno_execute(d, d, "a.js", "RecvReturnBar()"));
+  deno_execute(d, d, "a.js", "RecvReturnBar()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(count, 1);
   deno_delete(d);
 }
 
 TEST(LibDenoTest, DoubleRecvFails) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "DoubleRecvFails()"));
+  deno_execute(d, nullptr, "a.js", "DoubleRecvFails()");
+  EXPECT_NE(nullptr, deno_last_exception(d));
   deno_delete(d);
 }
 
@@ -135,7 +142,8 @@ TEST(LibDenoTest, SendRecvSlice) {
     deno_respond(d, user_data, req_id, buf2);
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
-  EXPECT_TRUE(deno_execute(d, d, "a.js", "SendRecvSlice()"));
+  deno_execute(d, d, "a.js", "SendRecvSlice()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(count, 5);
   deno_delete(d);
 }
@@ -152,26 +160,29 @@ TEST(LibDenoTest, JSSendArrayBufferViewTypes) {
     EXPECT_EQ(buf.data_ptr[0], count);
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "JSSendArrayBufferViewTypes()"));
+  deno_execute(d, nullptr, "a.js", "JSSendArrayBufferViewTypes()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(count, 3);
   deno_delete(d);
 }
 
 TEST(LibDenoTest, TypedArraySnapshots) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "TypedArraySnapshots()"));
+  deno_execute(d, nullptr, "a.js", "TypedArraySnapshots()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, SnapshotBug) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "SnapshotBug()"));
+  deno_execute(d, nullptr, "a.js", "SnapshotBug()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_delete(d);
 }
 
 TEST(LibDenoTest, GlobalErrorHandling) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
-  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "GlobalErrorHandling()"));
+  deno_execute(d, nullptr, "a.js", "GlobalErrorHandling()");
   std::string expected =
       "{\"message\":\"Uncaught ReferenceError: notdefined is not defined\","
       "\"sourceLine\":\" "
@@ -200,7 +211,8 @@ TEST(LibDenoTest, DataBuf) {
     EXPECT_EQ(buf.data_ptr[1], 2);
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "DataBuf()"));
+  deno_execute(d, nullptr, "a.js", "DataBuf()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(count, 1);
   // data_buf was subsequently changed in JS, let's check that our copy reflects
   // that.
@@ -214,7 +226,8 @@ TEST(LibDenoTest, CheckPromiseErrors) {
   auto recv_cb = [](auto _, int req_id, auto buf, auto data_buf) { count++; };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
   EXPECT_EQ(deno_last_exception(d), nullptr);
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "CheckPromiseErrors()"));
+  deno_execute(d, nullptr, "a.js", "CheckPromiseErrors()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(deno_last_exception(d), nullptr);
   EXPECT_EQ(count, 1);
   // We caught the exception. So still no errors after calling
@@ -227,7 +240,7 @@ TEST(LibDenoTest, CheckPromiseErrors) {
 TEST(LibDenoTest, LastException) {
   Deno* d = deno_new(deno_config{0, empty, empty, nullptr});
   EXPECT_EQ(deno_last_exception(d), nullptr);
-  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "\n\nthrow Error('boo');\n\n"));
+  deno_execute(d, nullptr, "a.js", "\n\nthrow Error('boo');\n\n");
   EXPECT_STREQ(deno_last_exception(d),
                "{\"message\":\"Uncaught Error: boo\",\"sourceLine\":\"throw "
                "Error('boo');\",\"scriptResourceName\":\"a.js\",\"lineNumber\":"
@@ -242,7 +255,7 @@ TEST(LibDenoTest, LastException) {
 TEST(LibDenoTest, EncodeErrorBug) {
   Deno* d = deno_new(deno_config{0, empty, empty, nullptr});
   EXPECT_EQ(deno_last_exception(d), nullptr);
-  EXPECT_FALSE(deno_execute(d, nullptr, "a.js", "eval('a')"));
+  deno_execute(d, nullptr, "a.js", "eval('a')");
   EXPECT_STREQ(
       deno_last_exception(d),
       "{\"message\":\"Uncaught ReferenceError: a is not "
@@ -260,7 +273,8 @@ TEST(LibDenoTest, Shared) {
   uint8_t s[] = {0, 1, 2};
   deno_buf shared = {nullptr, 0, s, 3};
   Deno* d = deno_new(deno_config{0, snapshot, shared, nullptr});
-  EXPECT_TRUE(deno_execute(d, nullptr, "a.js", "Shared()"));
+  deno_execute(d, nullptr, "a.js", "Shared()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(s[0], 42);
   EXPECT_EQ(s[1], 43);
   EXPECT_EQ(s[2], 44);
