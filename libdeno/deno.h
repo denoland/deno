@@ -49,10 +49,9 @@ void deno_delete(Deno* d);
 
 // Compile and execute a traditional JavaScript script that does not use
 // module import statements.
-// Return value: 0 = fail, 1 = success
-// Get error text with deno_last_exception().
-int deno_execute(Deno* d, void* user_data, const char* js_filename,
-                 const char* js_source);
+// If it succeeded deno_last_exception() will return NULL.
+void deno_execute(Deno* d, void* user_data, const char* js_filename,
+                  const char* js_source);
 
 // deno_respond sends up to one message back for every deno_recv_cb made.
 //
@@ -70,9 +69,8 @@ int deno_execute(Deno* d, void* user_data, const char* js_filename,
 // Calling this function more than once with the same req_id will result in
 // an error.
 //
-// A non-zero return value, means a JS exception was encountered during the
-// libdeno.recv() callback. Check deno_last_exception() for exception text.
-int deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf);
+// If a JS exception was encountered, deno_last_exception() will be non-NULL.
+void deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf);
 
 void deno_check_promise_errors(Deno* d);
 
@@ -95,9 +93,11 @@ const char* deno_mod_imports_get(Deno* d, deno_mod id, size_t index);
 typedef deno_mod (*deno_resolve_cb)(void* user_data, const char* specifier,
                                     deno_mod referrer);
 
+// If it succeeded deno_last_exception() will return NULL.
 void deno_mod_instantiate(Deno* d, void* user_data, deno_mod id,
                           deno_resolve_cb cb);
 
+// If it succeeded deno_last_exception() will return NULL.
 void deno_mod_evaluate(Deno* d, void* user_data, deno_mod id);
 
 #ifdef __cplusplus

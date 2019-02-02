@@ -112,8 +112,8 @@ const char* deno_last_exception(Deno* d_) {
   }
 }
 
-int deno_execute(Deno* d_, void* user_data, const char* js_filename,
-                 const char* js_source) {
+void deno_execute(Deno* d_, void* user_data, const char* js_filename,
+                  const char* js_source) {
   auto* d = unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
   auto* isolate = d->isolate_;
@@ -122,17 +122,17 @@ int deno_execute(Deno* d_, void* user_data, const char* js_filename,
   v8::HandleScope handle_scope(isolate);
   auto context = d->context_.Get(d->isolate_);
   CHECK(!context.IsEmpty());
-  return deno::Execute(context, js_filename, js_source) ? 1 : 0;
+  deno::Execute(context, js_filename, js_source);
 }
 
-int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
+void deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
   auto* d = unwrap(d_);
   if (d->current_args_ != nullptr) {
     // Synchronous response.
     auto ab = deno::ImportBuf(d, buf);
     d->current_args_->GetReturnValue().Set(ab);
     d->current_args_ = nullptr;
-    return 0;
+    return;
   }
 
   // Asynchronous response.
@@ -151,7 +151,7 @@ int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
   auto recv_ = d->recv_.Get(d->isolate_);
   if (recv_.IsEmpty()) {
     d->last_exception_ = "libdeno.recv_ has not been called.";
-    return 1;
+    return;
   }
 
   v8::Local<v8::Value> args[1];
@@ -161,10 +161,7 @@ int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
   if (try_catch.HasCaught()) {
     CHECK(v.IsEmpty());
     deno::HandleException(context, try_catch.Exception());
-    return 1;
   }
-
-  return 0;
 }
 
 void deno_check_promise_errors(Deno* d_) {

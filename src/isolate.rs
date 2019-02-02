@@ -251,7 +251,7 @@ impl Isolate {
   ) -> Result<(), JSError> {
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
-    let r = unsafe {
+    unsafe {
       libdeno::deno_execute(
         self.libdeno_isolate,
         self.as_raw_ptr(),
@@ -259,9 +259,8 @@ impl Isolate {
         source.as_ptr(),
       )
     };
-    if r == 0 {
-      let js_error = self.last_exception().unwrap();
-      return Err(js_error);
+    if let Some(err) = self.last_exception() {
+      return Err(err);
     }
     Ok(())
   }
