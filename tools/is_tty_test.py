@@ -4,17 +4,14 @@ import os
 import pty
 import select
 import subprocess
-
 from util import build_path, executable_suffix
-
 from sys import stdin
+from permission_prompt_test import tty_capture
 
 IS_TTY_TEST_TS = "tests/is_tty.ts"
 
-from permission_prompt_test import tty_capture
-
 def is_tty_test(deno_exe):
-    cmd = [deno_exe, IS_TTY_TEST_TS, b'']
+    cmd = [deno_exe, IS_TTY_TEST_TS]
     code, stdout, _ = tty_capture(cmd, b'')
     assert code == 0
     assert str(stdin.isatty()).lower() in stdout
