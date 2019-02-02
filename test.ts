@@ -15,7 +15,7 @@ import "fs/path/zero_length_strings_test.ts";
 import "io/bufio_test.ts";
 import "io/ioutil_test.ts";
 import "io/util_test.ts";
-import "http/http_test.ts";
+import "http/server_test.ts";
 import "http/file_server_test.ts";
 import "log/test.ts";
 import "log/handlers_test.ts";
