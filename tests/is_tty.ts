@@ -1,2 +1,2 @@
 import { isTTY } from "deno";
-console.log(isTTY());
+console.log(isTTY().stdin);
