@@ -11,35 +11,7 @@ from sys import stdin
 
 IS_TTY_TEST_TS = "tests/is_tty.ts"
 
-def tty_capture(cmd, bytes_input):
-    '''Capture the output of cmd with bytes_input to stdin,
-    with stdin, stdout and stderr as TTYs.'''
-    mo, so = pty.openpty()  # provide tty to enable line-buffering
-    me, se = pty.openpty()
-    mi, si = pty.openpty()
-    fdmap = {mo: 'stdout', me: 'stderr', mi: 'stdin'}
-
-    p = subprocess.Popen(
-        cmd, bufsize=1, stdin=si, stdout=so, stderr=se, close_fds=True)
-    os.write(mi, bytes_input)
-
-    timeout = .04  # seconds
-    res = {'stdout': b'', 'stderr': b''}
-    while True:
-        ready, _, _ = select.select([mo, me], [], [], timeout)
-        if ready:
-            for fd in ready:
-                data = os.read(fd, 512)
-                if not data:
-                    break
-                res[fdmap[fd]] += data
-        elif p.poll() is not None:  # select timed-out
-            break  # p exited
-    for fd in [si, so, se, mi, mo, me]:
-        os.close(fd)  # can't do it sooner: it leads to errno.EIO error
-    p.wait()
-    return p.returncode, res['stdout'], res['stderr']
-
+from permission_prompt_test import tty_capture
 
 class IsTTY(object):
     def __init__(self, deno_exe):
