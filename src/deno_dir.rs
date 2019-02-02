@@ -180,7 +180,9 @@ impl DenoDir {
         filename: filename.to_string(),
         media_type: map_content_type(&p, Some(&content_type)),
         source_code: source,
+        maybe_output_code_filename: None,
         maybe_output_code: None,
+        maybe_source_map_filename: None,
         maybe_source_map: None,
       }));
     } else {
@@ -219,7 +221,9 @@ impl DenoDir {
       filename: filename.to_string(),
       media_type: map_content_type(&p, maybe_content_type_str),
       source_code,
+      maybe_output_code_filename: None,
       maybe_output_code: None,
+      maybe_source_map_filename: None,
       maybe_source_map: None,
     }))
   }
@@ -307,6 +311,8 @@ impl DenoDir {
       return Ok(out);
     }
 
+    let (output_code_filename, output_source_map_filename) =
+      self.cache_path(&out.filename, &out.source_code);
     let result =
       self.load_cache(out.filename.as_str(), out.source_code.as_str());
     match result {
@@ -322,7 +328,13 @@ impl DenoDir {
         filename: out.filename,
         media_type: out.media_type,
         source_code: out.source_code,
+        maybe_output_code_filename: output_code_filename
+          .to_str()
+          .map(|s| s.to_string()),
         maybe_output_code: Some(output_code),
+        maybe_source_map_filename: output_source_map_filename
+          .to_str()
+          .map(|s| s.to_string()),
         maybe_source_map: Some(source_map),
       }),
     }
@@ -418,6 +430,28 @@ impl DenoDir {
 
     debug!("module_name: {}, filename: {}", module_name, filename);
     Ok((module_name, filename))
+  }
+
+  pub fn print_file_info(self: &Self, filename: String) {
+    let maybe_out = self.code_fetch(&filename, ".");
+    if maybe_out.is_err() {
+      println!("{}", maybe_out.unwrap_err());
+      return;
+    }
+    let out = maybe_out.unwrap();
+
+    println!("local: {}", &(out.filename));
+    println!("type: {}", msg::enum_name_media_type(out.media_type));
+    if out.maybe_output_code_filename.is_some() {
+      println!(
+        "compiled: {}",
+        out.maybe_output_code_filename.as_ref().unwrap(),
+      );
+    }
+    if out.maybe_source_map_filename.is_some() {
+      println!("map: {}", out.maybe_source_map_filename.as_ref().unwrap());
+    }
+    // TODO print deps.
   }
 }
 
