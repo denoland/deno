@@ -151,7 +151,7 @@ pub fn set_flags(
   opts.optflag("", "v8-options", "Print V8 command line options.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
   opts.optflag("", "prefetch", "Prefetch the dependencies.");
-  opts.optflag("I", "info", "Show source file related info");
+  opts.optflag("", "info", "Show source file related info");
 
   let mut flags = DenoFlags::default();
 

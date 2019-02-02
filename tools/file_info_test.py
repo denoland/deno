@@ -23,14 +23,20 @@ def file_info_test(deno_exe):
             merge_env={"DENO_DIR": deno_dir})
         output = run_output([deno_exe, "--info", t],
                             merge_env={"DENO_DIR": deno_dir})
-        cache_location = os.path.join(deno_dir,
-                         "deps/https/deno.land/thumb.ts")
-        assert cache_location in output
-        assert "TypeScript" in output
+        print(output)
+        if os.name == 'nt':
+            cache_location = os.path.join(deno_dir,
+                            "deps\\https\\deno.land\\thumb.ts")
+        else:
+            cache_location = os.path.join(deno_dir,
+                            "deps/https/deno.land/thumb.ts")
+
+        assert ("local: " + cache_location) in output
+        assert "type: TypeScript" in output
         # actual source map name changes with path
         compiled_code = re.search(
-            'compiled javascript:([^\n]*)\n', output).group(1)
-        assert compiled_code + ".map" in output
+            r"compiled: ([^\r\n]*)\r?\n", output).group(1)
+        assert ("map: " + compiled_code + ".map") in output
     finally:
         shutil.rmtree(deno_dir)
 
