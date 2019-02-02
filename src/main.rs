@@ -81,12 +81,22 @@ fn main() {
   });
 
   let should_prefetch = flags.prefetch;
+  let should_display_info = flags.info;
 
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
   let snapshot = snapshot::deno_snapshot();
   let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
 
   tokio_util::init(|| {
+    // Requires tokio
+    if should_display_info {
+      isolate
+        .state
+        .dir
+        .print_file_info(isolate.state.argv[1].clone());
+      std::process::exit(0);
+    }
+
     // Setup runtime.
     isolate
       .execute("denoMain();")
