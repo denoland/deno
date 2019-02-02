@@ -20,6 +20,9 @@ def read_test(file_name):
     lines = test_file.splitlines()
     test_dict = {}
     for line in lines:
+        if line.strip().startswith("#"):
+            # skip comments
+            continue
         key, value = re.split(r":\s+", line)
         test_dict[key] = value
     return test_dict

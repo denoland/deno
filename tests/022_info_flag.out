@@ -1,0 +1,4 @@
+local: [WILDCARD]deps/http/127.0.0.1_PORT4545/tests/003_relative_import.ts
+type: TypeScript
+compiled: [WILDCARD].js
+map: [WILDCARD].js.map

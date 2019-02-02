@@ -10,6 +10,24 @@ import { globalEval } from "./global_eval";
 
 const window = globalEval("this");
 
+const helpMsg = [
+  "exit    Exit the REPL",
+  "help    Print this help message"
+].join("\n");
+
+const replCommands = {
+  exit: {
+    get() {
+      exit(0);
+    }
+  },
+  help: {
+    get() {
+      return helpMsg;
+    }
+  }
+};
+
 function startRepl(historyFile: string): number {
   const builder = flatbuffers.createBuilder();
   const historyFile_ = builder.createString(historyFile);
@@ -54,6 +72,7 @@ export async function readline(rid: number, prompt: string): Promise<string> {
 // @internal
 export async function replLoop(): Promise<void> {
   window.deno = deno; // FIXME use a new scope (rather than window).
+  Object.defineProperties(window, replCommands);
 
   const historyFile = "deno_history.txt";
   const rid = startRepl(historyFile);
@@ -68,11 +87,6 @@ export async function replLoop(): Promise<void> {
       }
       console.error(err);
       exit(1);
-    }
-    if (!code) {
-      continue;
-    } else if (code.trim() === ".exit") {
-      break;
     }
 
     evaluate(code);

@@ -60,6 +60,8 @@ union Any {
   RunRes,
   RunStatus,
   RunStatusRes,
+  Now,
+  NowRes,
   IsTTY,
   IsTTYRes
 }
@@ -475,6 +477,12 @@ table RunStatusRes {
   got_signal: bool;
   exit_code: int;
   exit_signal: int;
+}
+
+table Now {}
+
+table NowRes {
+  time: uint64;
 }
 
 table IsTTY {}

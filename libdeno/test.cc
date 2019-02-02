@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #include "test.h"
+#include <string>
 #include "file_util.h"
 
 deno_buf snapshot = {nullptr, 0, nullptr, 0};

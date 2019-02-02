@@ -319,13 +319,26 @@ submodule. However, you need to install separately:
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 4. [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache)
    (Optional but helpful for speeding up rebuilds of V8.)
-5. Extra steps for Windows users:
-   1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
-   2. Get [VS Community 2017](https://www.visualstudio.com/downloads/). Make
-      sure to select the option to install C++ tools and the Windows SDK.
-   3. Enable `Debugging Tools for Windows`. Go to `Control Panel` ->
-      `Windows 10 SDK` -> Right-Click -> `Change` -> `Change` ->
-      `Check Debugging Tools for Windows` -> `Change` -> `Finish`.
+
+Extra steps for Mac users:
+
+1. [XCode](https://developer.apple.com/xcode/)
+2. Openssl 1.1: `brew install openssl@1.1` (TODO: shouldn't be necessary)
+
+Extra steps for Windows users:
+
+1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
+2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
+   `Desktop development with C++` toolkit and make sure to select the following
+   required tools listed below along with all C++ tools.
+   - Windows 10 SDK >= 10.0.17134
+   - Visual C++ ATL for x86 and x64
+   - Visual C++ MFC for x86 and x64
+   - C++ profiling tools
+3. Enable `Debugging Tools for Windows`. Go to `Control Panel` → `Programs` →
+   `Programs and Features` → Select
+   `Windows Software Development Kit - Windows 10` → `Change` → `Change` → Check
+   `Debugging Tools For Windows` → `Change` -> `Finish`.
 
 ### Build:
 
@@ -333,6 +346,10 @@ submodule. However, you need to install separately:
     git clone --recurse-submodules https://github.com/denoland/deno.git
     cd deno
     ./tools/setup.py
+
+    # You may need to ensure that sccache is running.
+    # (TODO it's unclear if this is necessary or not.)
+    # prebuilt/mac/sccache --start-server
 
     # Build.
     ./tools/build.py
