@@ -10,17 +10,22 @@
 </head>
 <body>
   <main>
-    <img src="deno_logo_2.gif" width=150 />
-    <!-- Logo animation by hashrock -->
+    <img id=logo src="deno_logo_2.gif" width=150>
+    <!-- Logo by hashrock https://denolib.github.io/animated-deno-logo/ -->
 
     <h1>Deno</h1>
 
+    <p>A new way to JavaScript
+
+    <!-- TODO(ry) add the registry badges. -->
     <table>
       <tr>
+        <th></th>
         <th>Linux &amp; Mac</th>
         <th>Windows</th>
       </tr>
       <tr>
+        <th><a href="https://github.com/denoland/deno">deno</a></th>
         <td>
           <a class="badge" href="https://travis-ci.com/denoland/deno"><img src="https://travis-ci.com/denoland/deno.svg?branch=master"/></a>
         </td>
@@ -28,39 +33,48 @@
           <a class="badge" href="https://ci.appveyor.com/project/deno/deno"><img src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"/></a>
         </td>
       </tr>
+      <tr>
+        <th><a href="https://github.com/denoland/deno_std">deno_std</a></th>
+        <td colspan=2>
+          <a class="badge" href="https://dev.azure.com/denoland/deno_std/_build?definitionId=2"><img src="https://dev.azure.com/denoland/deno_std/_apis/build/status/denoland.deno_std?branchName=master"/></a>
+        </td>
+      </tr>
+      <tr>
+        <th><a href="https://github.com/denoland/deno_install">deno_install</a></th>
+        <td>
+          <a class="badge" href="https://travis-ci.com/denoland/deno_install"><img src="https://travis-ci.com/denoland/deno_install.svg?branch=master"/></a>
+        </td>
+        <td>
+          <a class="badge" href="https://ci.appveyor.com/project/deno/deno-install"><img src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"/></a>
+        </td>
+      </tr>
+      <tr>
+        <th><a href="https://github.com/denoland/registry">registry</a></th>
+      </tr>
     </table>
-
-    <p>A new way to JavaScript
-
-    <p> <a href="https://github.com/denoland/deno">github.com/denoland/deno</a>
-
-    <p><a href="https://github.com/denoland/deno_std">github.com/denoland/deno_std</a>
-
-    <p><a href="https://github.com/denoland/deno_install">github.com/denoland/deno_install</a>
-
-    <p><a href="https://github.com/denoland/registry">github.com/denoland/registry</a>
 
     <p> <a href="https://github.com/denoland/deno/blob/master/Docs.md">Documentation</a>
 
     <p> <a href="typedoc/index.html">API Reference</a>
 
-    <p><a href="https://github.com/denolib/awesome-deno">Links to other Deno resources.</a>
+    <p><a href="https://github.com/denolib/awesome-deno">Other Deno resources.</a>
 
-    <h2>Getting started</h2>
+    <h2>Install</h2>
 
-    <p>Install Deno into ~/.deno/bin
-<h2>With Shell</h2>
+<p>With Shell
 <pre>
 curl -L https://deno.land/x/install/install.sh | sh
-export PATH=$HOME/.deno/bin:$PATH
 </pre>
-<h2>With PowerShell</h2>
+<p>With PowerShell
 <pre>
 iex (iwr https://deno.land/x/install/install.ps1)
 </pre>
 
-Try a Deno program. Install by bash alias.
-This one serves a local directory in HTTP.
+    <h2>Mini-tutorial</h2>
+
+
+Try a Deno program.  This one serves a local directory in HTTP.
+
 <pre>
 alias file_server="deno \
   https://deno.land/x/http/file_server.ts --allow-net"
@@ -79,7 +93,18 @@ And if you ever want to upgrade to the latest published version:
 file_server --reload
 </pre>
 
-    <h2>Benchmarks</h2>
+    <h2>Dig in...</h2>
+
+    <a href="https://github.com/denoland/deno/blob/master/Docs.md">Documentation</a>
+
+    <p> <a href="typedoc/index.html">API Reference</a>
+
+    <p><a href="https://github.com/denolib/awesome-deno">Links to other Deno resources.</a>
+
+    <h2>Continuous Benchmarks</h2>
+
+    These plots are updated on every commit to
+    <a href="https://github.com/denoland/deno">master branch</a>.
 
     <h3>Execution time</h3>
     This shows how much time total it takes to run a few simple deno programs:
@@ -134,8 +159,7 @@ file_server --reload
     How many total syscalls are performed when executing a given script.
     <div id="syscall-count-chart"></div>
 
-    <h3>References</h3>
-    <p> <a href="./all_benchmark.html">All benchmark data</a>
+    <p> <a href="./all_benchmark.html">Historical benchmark data</a>
 
   </main>
   <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
