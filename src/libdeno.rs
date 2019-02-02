@@ -148,7 +148,7 @@ extern "C" {
     user_data: *const c_void,
     js_filename: *const c_char,
     js_source: *const c_char,
-  ) -> c_int;
+  );
 
   // Modules
 
