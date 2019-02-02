@@ -1,0 +1,2 @@
+args: --info http://127.0.0.1:4545/tests/003_relative_import.ts
+output: tests/022_info_flag.out
