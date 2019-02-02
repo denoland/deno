@@ -13,19 +13,11 @@ IS_TTY_TEST_TS = "tests/is_tty.ts"
 
 from permission_prompt_test import tty_capture
 
-class IsTTY(object):
-    def __init__(self, deno_exe):
-        self.deno_exe = deno_exe
-
-    def test(self):
-        cmd = [self.deno_exe, IS_TTY_TEST_TS, b'']
-        code, stdout, _ = tty_capture(cmd, b'')
-        assert code == 0
-        assert str(stdin.isatty()).lower() in stdout
-
 def is_tty_test(deno_exe):
-    p = IsTTY(deno_exe)
-    p.test()
+    cmd = [deno_exe, IS_TTY_TEST_TS, b'']
+    code, stdout, _ = tty_capture(cmd, b'')
+    assert code == 0
+    assert str(stdin.isatty()).lower() in stdout
 
 def main():
     deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
