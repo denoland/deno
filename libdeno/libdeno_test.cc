@@ -280,3 +280,12 @@ TEST(LibDenoTest, Shared) {
   EXPECT_EQ(s[2], 44);
   deno_delete(d);
 }
+
+TEST(LibDenoTest, Utf8Bug) {
+  Deno* d = deno_new(deno_config{0, empty, empty, nullptr});
+  // The following is a valid UTF-8 javascript which just defines a string
+  // literal. We had a bug where libdeno would choke on this.
+  deno_execute(d, nullptr, "a.js", "x = \"\xEF\xBF\xBD\"");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_delete(d);
+}
