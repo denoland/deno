@@ -58,9 +58,9 @@ def main(argv):
     check_exists(test_rs)
     run([test_rs])
 
-    # unit_tests(deno_exe)
+    unit_tests(deno_exe)
 
-    # prefetch_test(deno_exe)
+    prefetch_test(deno_exe)
 
     integration_tests(deno_exe)
 
