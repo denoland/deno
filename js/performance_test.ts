@@ -5,6 +5,6 @@ test(function now() {
   const start = performance.now();
   setTimeout(() => {
     const end = performance.now();
-    assert(end - start >= 1000);
-  }, 1000);
+    assert(end - start >= 10);
+  }, 10);
 });
