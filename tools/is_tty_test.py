@@ -9,7 +9,7 @@ from util import build_path, executable_suffix
 
 from sys import stdin
 
-IS_TTY_TEST_TS = "tools/is_tty_test.ts"
+IS_TTY_TEST_TS = "tests/is_tty.ts"
 
 def tty_capture(cmd, bytes_input):
     '''Capture the output of cmd with bytes_input to stdin,
