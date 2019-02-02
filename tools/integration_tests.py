@@ -37,15 +37,19 @@ def str2bool(v):
         raise ValueError("Bad boolean value")
 
 
-def integration_tests(deno_executable):
-    assert os.path.isfile(deno_executable)
+def integration_tests(deno_exe, test_filter = None):
+    assert os.path.isfile(deno_exe)
     tests = sorted([
         filename for filename in os.listdir(tests_path)
         if filename.endswith(".test")
     ])
     assert len(tests) > 0
     for test_filename in tests:
+        if test_filter and test_filter not in test_filename:
+            continue
+
         test_abs = os.path.join(tests_path, test_filename)
+        print "read_test", test_abs
         test = read_test(test_abs)
         exit_code = int(test.get("exit_code", 0))
         args = test.get("args", "").split(" ")
@@ -56,7 +60,7 @@ def integration_tests(deno_executable):
         output_abs = os.path.join(root_path, test.get("output", ""))
         with open(output_abs, 'r') as f:
             expected_out = f.read()
-        cmd = [deno_executable] + args
+        cmd = [deno_exe] + args
         print "test %s" % (test_filename)
         print " ".join(cmd)
         actual_code = 0
@@ -83,9 +87,12 @@ def integration_tests(deno_executable):
 
         print "... " + green_ok()
 
-
 def main(argv):
-    integration_tests(argv[1])
+    deno_exe = argv[1]
+    test_filter = None
+    if len(argv) > 2:
+        test_filter = argv[2]
+    integration_tests(deno_exe, test_filter)
 
 
 if __name__ == "__main__":
