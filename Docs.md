@@ -19,7 +19,7 @@ scripts to download and install the binary.
 Using Shell:
 
 ```
-curl -L https://deno.land/x/install/install.sh | sh
+curl -fL https://deno.land/x/install/install.sh | sh
 ```
 
 Or using PowerShell:
@@ -62,6 +62,88 @@ Or see the [doc website](https://deno.land/typedoc/index.html).
 
 If you are embedding deno in a Rust program, see
 [the rust docs](https://deno.land/rustdoc/deno/index.html).
+
+## Build Instructions
+
+### Prerequisites:
+
+To ensure reproducible builds, deno has most of its dependencies in a git
+submodule. However, you need to install separately:
+
+1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.31.1
+2. [Node](https://nodejs.org/)
+3. Python 2.
+   [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+
+Extra steps for Mac users:
+
+1. [XCode](https://developer.apple.com/xcode/)
+2. Openssl 1.1: `brew install openssl@1.1` (TODO: shouldn't be necessary)
+
+Extra steps for Windows users:
+
+1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
+2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
+   `Desktop development with C++` toolkit and make sure to select the following
+   required tools listed below along with all C++ tools.
+   - Windows 10 SDK >= 10.0.17134
+   - Visual C++ ATL for x86 and x64
+   - Visual C++ MFC for x86 and x64
+   - C++ profiling tools
+3. Enable `Debugging Tools for Windows`. Go to `Control Panel` → `Programs` →
+   `Programs and Features` → Select
+   `Windows Software Development Kit - Windows 10` → `Change` → `Change` → Check
+   `Debugging Tools For Windows` → `Change` -> `Finish`.
+
+### Build:
+
+    # Fetch deps.
+    git clone --recurse-submodules https://github.com/denoland/deno.git
+    cd deno
+    ./tools/setup.py
+
+    # You may need to ensure that sccache is running.
+    # (TODO it's unclear if this is necessary or not.)
+    # prebuilt/mac/sccache --start-server
+
+    # Build.
+    ./tools/build.py
+
+    # Run.
+    ./target/debug/deno tests/002_hello.ts
+
+    # Test.
+    ./tools/test.py
+
+    # Format code.
+    deno ./tools/format.ts
+
+Other useful commands:
+
+    # Call ninja manually.
+    ./third_party/depot_tools/ninja -C target/debug
+
+    # Build a release binary.
+    DENO_BUILD_MODE=release ./tools/build.py :deno
+
+    # List executable targets.
+    ./third_party/depot_tools/gn ls target/debug //:* --as=output --type=executable
+
+    # List build configuration.
+    ./third_party/depot_tools/gn args target/debug/ --list
+
+    # Edit build configuration.
+    ./third_party/depot_tools/gn args target/debug/
+
+    # Describe a target.
+    ./third_party/depot_tools/gn desc target/debug/ :deno
+    ./third_party/depot_tools/gn help
+
+    # Update third_party modules
+    git submodule update
+
+Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
+`DENO_DIR`.
 
 ## Tutorial
 
@@ -305,90 +387,6 @@ Current executable set to '../deno/target/debug/deno' (x86_64).
 (lldb) b op_start
 (lldb) r
 ```
-
-## Build Instructions _(for advanced users only)_
-
-### Prerequisites:
-
-To ensure reproducible builds, deno has most of its dependencies in a git
-submodule. However, you need to install separately:
-
-1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.31.1
-2. [Node](https://nodejs.org/)
-3. Python 2.
-   [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
-4. [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache)
-   (Optional but helpful for speeding up rebuilds of V8.)
-
-Extra steps for Mac users:
-
-1. [XCode](https://developer.apple.com/xcode/)
-2. Openssl 1.1: `brew install openssl@1.1` (TODO: shouldn't be necessary)
-
-Extra steps for Windows users:
-
-1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
-2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
-   `Desktop development with C++` toolkit and make sure to select the following
-   required tools listed below along with all C++ tools.
-   - Windows 10 SDK >= 10.0.17134
-   - Visual C++ ATL for x86 and x64
-   - Visual C++ MFC for x86 and x64
-   - C++ profiling tools
-3. Enable `Debugging Tools for Windows`. Go to `Control Panel` → `Programs` →
-   `Programs and Features` → Select
-   `Windows Software Development Kit - Windows 10` → `Change` → `Change` → Check
-   `Debugging Tools For Windows` → `Change` -> `Finish`.
-
-### Build:
-
-    # Fetch deps.
-    git clone --recurse-submodules https://github.com/denoland/deno.git
-    cd deno
-    ./tools/setup.py
-
-    # You may need to ensure that sccache is running.
-    # (TODO it's unclear if this is necessary or not.)
-    # prebuilt/mac/sccache --start-server
-
-    # Build.
-    ./tools/build.py
-
-    # Run.
-    ./target/debug/deno tests/002_hello.ts
-
-    # Test.
-    ./tools/test.py
-
-    # Format code.
-    deno ./tools/format.ts
-
-Other useful commands:
-
-    # Call ninja manually.
-    ./third_party/depot_tools/ninja -C target/debug
-
-    # Build a release binary.
-    DENO_BUILD_MODE=release ./tools/build.py :deno
-
-    # List executable targets.
-    ./third_party/depot_tools/gn ls target/debug //:* --as=output --type=executable
-
-    # List build configuration.
-    ./third_party/depot_tools/gn args target/debug/ --list
-
-    # Edit build configuration.
-    ./third_party/depot_tools/gn args target/debug/
-
-    # Describe a target.
-    ./third_party/depot_tools/gn desc target/debug/ :deno
-    ./third_party/depot_tools/gn help
-
-    # Update third_party modules
-    git submodule update
-
-Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`.
 
 ## Internals
 
