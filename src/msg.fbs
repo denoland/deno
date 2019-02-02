@@ -59,7 +59,9 @@ union Any {
   Run,
   RunRes,
   RunStatus,
-  RunStatusRes
+  RunStatusRes,
+  Now,
+  NowRes
 }
 
 enum ErrorKind: byte {
@@ -473,6 +475,12 @@ table RunStatusRes {
   got_signal: bool;
   exit_code: int;
   exit_signal: int;
+}
+
+table Now {}
+
+table NowRes {
+  time: uint64;
 }
 
 root_type Base;
