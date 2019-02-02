@@ -295,8 +295,11 @@ table ReadDirRes {
 table WriteFile {
   filename: string;
   data: [ubyte];
+  update_perm: bool;
   perm: uint;
   // perm specified by https://godoc.org/os#FileMode
+  is_create: bool;
+  is_append: bool;
 }
 
 table CopyFile {

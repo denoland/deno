@@ -9,7 +9,7 @@ testPerm({ write: true }, function chmodSyncSuccess() {
   const data = enc.encode("Hello");
   const tempDir = deno.makeTempDirSync();
   const filename = tempDir + "/test.txt";
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
 
   // On windows no effect, but should not crash
   deno.chmodSync(filename, 0o777);
@@ -29,7 +29,7 @@ if (isNotWindows) {
     const tempDir = deno.makeTempDirSync();
 
     const filename = tempDir + "/test.txt";
-    deno.writeFileSync(filename, data, 0o666);
+    deno.writeFileSync(filename, data, { perm: 0o666 });
     const symlinkName = tempDir + "/test_symlink.txt";
     deno.symlinkSync(filename, symlinkName);
 
@@ -74,7 +74,7 @@ testPerm({ write: true }, async function chmodSuccess() {
   const data = enc.encode("Hello");
   const tempDir = deno.makeTempDirSync();
   const filename = tempDir + "/test.txt";
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
 
   // On windows no effect, but should not crash
   await deno.chmod(filename, 0o777);
@@ -94,7 +94,7 @@ if (isNotWindows) {
     const tempDir = deno.makeTempDirSync();
 
     const filename = tempDir + "/test.txt";
-    deno.writeFileSync(filename, data, 0o666);
+    deno.writeFileSync(filename, data, { perm: 0o666 });
     const symlinkName = tempDir + "/test_symlink.txt";
     deno.symlinkSync(filename, symlinkName);
 

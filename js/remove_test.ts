@@ -28,7 +28,7 @@ testPerm({ write: true }, function removeSyncFileSuccess() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = deno.makeTempDirSync() + "/test.txt";
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
   const fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile()); // check exist first
   deno.removeSync(filename); // remove
@@ -129,7 +129,7 @@ testPerm({ write: true }, function removeAllSyncFileSuccess() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = deno.makeTempDirSync() + "/test.txt";
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
   const fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile()); // check exist first
   deno.removeSync(filename, { recursive: true }); // remove
@@ -195,7 +195,7 @@ testPerm({ write: true }, async function removeFileSuccess() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = deno.makeTempDirSync() + "/test.txt";
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
   const fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile()); // check exist first
   await deno.remove(filename); // remove
@@ -295,7 +295,7 @@ testPerm({ write: true }, async function removeAllFileSuccess() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = deno.makeTempDirSync() + "/test.txt";
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
   const fileInfo = deno.statSync(filename);
   assert(fileInfo.isFile()); // check exist first
   await deno.remove(filename, { recursive: true }); // remove

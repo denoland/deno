@@ -27,7 +27,7 @@ testPerm({ write: true }, function metricsUpdatedIfNoResponseSync() {
   const filename = deno.makeTempDirSync() + "/test.txt";
 
   const data = new Uint8Array([41, 42, 43]);
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
 
   const metrics = deno.metrics();
   assert(metrics.opsDispatched === metrics.opsCompleted);
@@ -37,7 +37,7 @@ testPerm({ write: true }, async function metricsUpdatedIfNoResponseAsync() {
   const filename = deno.makeTempDirSync() + "/test.txt";
 
   const data = new Uint8Array([41, 42, 43]);
-  await deno.writeFile(filename, data, 0o666);
+  await deno.writeFile(filename, data, { perm: 0o666 });
 
   const metrics = deno.metrics();
   assert(metrics.opsDispatched === metrics.opsCompleted);
