@@ -19,7 +19,7 @@ scripts to download and install the binary.
 Using Shell:
 
 ```
-curl -L https://deno.land/x/install/install.sh | sh
+curl -fL https://deno.land/x/install/install.sh | sh
 ```
 
 Or using PowerShell:
@@ -65,8 +65,6 @@ If you are embedding deno in a Rust program, see
 
 ## Build Instructions
 
-Follow these steps if you are trying to submit a PR.
-
 ### Prerequisites:
 
 To ensure reproducible builds, deno has most of its dependencies in a git
@@ -76,8 +74,6 @@ submodule. However, you need to install separately:
 2. [Node](https://nodejs.org/)
 3. Python 2.
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
-4. [ccache](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/ccache)
-   (Optional but helpful for speeding up rebuilds of V8.)
 
 Extra steps for Mac users:
 
