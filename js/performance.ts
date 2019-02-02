@@ -13,10 +13,8 @@ export class Performance {
 
   /** Returns a current time from Deno's start
    *
-   *       const start = performance.now();
-   *       someFunction();
-   *       const end = performance.now();
-   *       console.log(`someFunction ran for ${end - start} ms!`);
+   *       const t = performance.now();
+   *       console.log(`${t} ms since start!`);
    */
   now(): number {
     const builder = flatbuffers.createBuilder();
