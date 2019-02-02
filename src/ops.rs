@@ -39,8 +39,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -121,6 +120,7 @@ pub fn dispatch(
       msg::Any::WorkerPostMessage => op_worker_post_message,
       msg::Any::Write => op_write,
       msg::Any::WriteFile => op_write_file,
+      msg::Any::Now => op_now,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -171,6 +171,30 @@ pub fn dispatch(
     base.sync()
   );
   (base.sync(), boxed_op)
+}
+
+fn op_now(
+  _state: &Arc<IsolateState>,
+  base: &msg::Base<'_>,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let start = SystemTime::now();
+  let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
+  let time = since_the_epoch.as_secs() as u64 * 1000
+    + since_the_epoch.subsec_millis() as u64;
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::NowRes::create(builder, &msg::NowResArgs { time: time });
+  ok_future(serialize_response(
+    base.cmd_id(),
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::NowRes,
+      ..Default::default()
+    },
+  ))
 }
 
 fn op_exit(

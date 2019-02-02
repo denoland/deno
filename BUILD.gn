@@ -104,6 +104,7 @@ ts_sources = [
   "js/util.ts",
   "js/workers.ts",
   "js/write_file.ts",
+  "js/performance.ts",
   "tsconfig.json",
 
   # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
