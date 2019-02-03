@@ -61,7 +61,9 @@ union Any {
   RunStatus,
   RunStatusRes,
   Now,
-  NowRes
+  NowRes,
+  IsTTY,
+  IsTTYRes
 }
 
 enum ErrorKind: byte {
@@ -481,6 +483,14 @@ table Now {}
 
 table NowRes {
   time: uint64;
+}
+
+table IsTTY {}
+
+table IsTTYRes {
+  stdin: bool;
+  stdout: bool;
+  stderr: bool;
 }
 
 root_type Base;

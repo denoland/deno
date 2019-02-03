@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -18,6 +19,7 @@ use crate::resources::Resource;
 use crate::tokio_util;
 use crate::version;
 
+use atty;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::Async;
@@ -121,6 +123,7 @@ pub fn dispatch(
       msg::Any::Write => op_write,
       msg::Any::WriteFile => op_write_file,
       msg::Any::Now => op_now,
+      msg::Any::IsTTY => op_is_tty,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -192,6 +195,31 @@ fn op_now(
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
       inner_type: msg::Any::NowRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_is_tty(
+  _state: &Arc<IsolateState>,
+  base: &msg::Base<'_>,
+  _data: libdeno::deno_buf,
+) -> Box<Op> {
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::IsTTYRes::create(
+    builder,
+    &msg::IsTTYResArgs {
+      stdin: atty::is(atty::Stream::Stdin),
+      stdout: atty::is(atty::Stream::Stdout),
+      stderr: atty::is(atty::Stream::Stderr),
+    },
+  );
+  ok_future(serialize_response(
+    base.cmd_id(),
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::IsTTYRes,
       ..Default::default()
     },
   ))
