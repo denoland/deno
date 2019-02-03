@@ -16,7 +16,7 @@
       <img id="logo" src="deno_logo_2.gif" width="150" />
       <!-- Logo by hashrock https://denolib.github.io/animated-deno-logo/ -->
 
-      <h1>Deno</h1>
+      <h1 id="deno"><a href="#deno">#</a>Deno</h1>
 
       <p>
         A new way to JavaScript
@@ -99,16 +99,16 @@
         </a>
       </p>
 
-      <h2>Install</h2>
+      <h2 id="install"><a href="#install">#</a>Install</h2>
 
-      <p>With Shell</p>
+      <p id="install-shell"><a href="#install-shell">#</a>With Shell</p>
       <pre>curl -fL https://deno.land/x/install/install.sh | sh</pre>
-      <p>With PowerShell</p>
+      <p id="install-powershell"><a href="#install-powershell">#</a>With PowerShell</p>
       <pre>iex (iwr https://deno.land/x/install/install.ps1)</pre>
 
-      <h2>Mini-tutorial</h2>
+      <h2 id="mini-tutorial"><a href="#mini-tutorial">#</a>Mini-tutorial</h2>
 
-      <p>Try a Deno program. This one serves a local directory in HTTP.</p>
+      <p id="try"><a href="#try">#</a>Try a Deno program. This one serves a local directory in HTTP.</p>
       <pre>
 alias file_server="deno \
   https://deno.land/x/http/file_server.ts --allow-net"
@@ -124,7 +124,7 @@ HTTP server listening on http://0.0.0.0:4500/
       <p>And if you ever want to upgrade to the latest published version:</p>
       <pre>file_server --reload</pre>
 
-      <h2>Dig in...</h2>
+      <h2 id="dig-in"><a href="#dig-in">#</a>Dig in...</h2>
 
       <a href="https://github.com/denoland/deno/blob/master/Docs.md">
         Documentation
@@ -140,14 +140,14 @@ HTTP server listening on http://0.0.0.0:4500/
         </a>
       </p>
 
-      <h2>Continuous Benchmarks</h2>
+      <h2 id="benchmarks"><a href="#benchmarks">#</a>Continuous Benchmarks</h2>
 
       <p>These plots are updated on every commit to</p>
       <p>
         <a href="https://github.com/denoland/deno">master branch</a>
       </p>
 
-      <h3>Execution time</h3>
+      <h3 id="exec-time"><a href="#exec-time">#</a>Execution time</h3>
       <p>This shows how much time total it takes to run a few simple deno programs:</p>
       <a href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts">
         tests/002_hello.ts
@@ -168,7 +168,7 @@ HTTP server listening on http://0.0.0.0:4500/
       </p>
       <div id="exec-time-chart"></div>
 
-      <h3>Throughput</h3>
+      <h3 id="throughput"><a href="#throughput">#</a>Throughput</h3>
 
       <p>Time it takes to pipe a certain amount of data through Deno.</p>
 
@@ -183,7 +183,7 @@ HTTP server listening on http://0.0.0.0:4500/
 
       <div id="throughput-chart"></div>
 
-      <h3>Req/Sec</h3>
+      <h3 id="req-per-sec"><a href="#req-per-sec">#</a>Req/Sec</h3>
 
       <p>
         Tests HTTP server performance. 10 keep-alive connections do as many
@@ -224,15 +224,15 @@ HTTP server listening on http://0.0.0.0:4500/
 
       <div id="req-per-sec-chart"></div>
 
-      <h3>Executable size</h3>
+      <h3 id="size"><a href="#size">#</a>Executable size</h3>
       <p>deno ships only a single binary. We track its size here.</p>
       <div id="binary-size-chart"></div>
 
-      <h3>Thread count</h3>
+      <h3 id="threads"><a href="#threads">#</a>Thread count</h3>
       <p>How many threads various programs use.</p>
       <div id="thread-count-chart"></div>
 
-      <h3>Syscall count</h3>
+      <h3 id="syscalls"><a href="#syscalls">#</a>Syscall count</h3>
       <p>How many total syscalls are performed when executing a given script.</p>
       <div id="syscall-count-chart"></div>
 
