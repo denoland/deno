@@ -66,12 +66,14 @@ def main(argv):
 
     integration_tests(deno_exe)
 
-    # TODO We currently skip testing the prompt in Windows completely.
+    # TODO We currently skip testing the prompt and IsTTY in Windows completely.
     # Windows does not support the pty module used for testing the permission
     # prompt.
     if os.name != 'nt':
         from permission_prompt_test import permission_prompt_test
+        from is_tty_test import is_tty_test
         permission_prompt_test(deno_exe)
+        is_tty_test(deno_exe)
 
     repl_tests(deno_exe)
 

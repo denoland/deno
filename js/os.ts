@@ -21,6 +21,23 @@ interface CodeInfo {
   sourceCode: string | undefined;
 }
 
+/** Check if running in terminal.
+ *
+ *       import { isTTY } from "deno";
+ *       console.log(isTTY().stdout);
+ */
+export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
+  const builder = flatbuffers.createBuilder();
+  msg.IsTTY.startIsTTY(builder);
+  const inner = msg.IsTTY.endIsTTY(builder);
+  const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
+  assert(msg.Any.IsTTYRes === baseRes.innerType());
+  const res = new msg.IsTTYRes();
+  assert(baseRes.inner(res) != null);
+
+  return { stdin: res.stdin(), stdout: res.stdout(), stderr: res.stderr() };
+}
+
 /** Exit the Deno process with optional exit code. */
 export function exit(exitCode = 0): never {
   const builder = flatbuffers.createBuilder();
