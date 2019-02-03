@@ -9,6 +9,7 @@ import * as os from "./os";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { replLoop } from "./repl";
+import { version } from "typescript";
 
 // builtin modules
 import * as deno from "./deno";
@@ -27,8 +28,7 @@ export default function denoMain() {
   if (startResMsg.versionFlag()) {
     console.log("deno:", startResMsg.denoVersion());
     console.log("v8:", startResMsg.v8Version());
-    // TODO figure out a way to restore functionality
-    // console.log("typescript:", version);
+    console.log("typescript:", version);
     os.exit(0);
   }
 
