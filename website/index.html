@@ -31,28 +31,31 @@
           <th>Windows</th>
         </tr>
         <tr>
-          <th><a href="https://github.com/denoland/deno">deno</a></th>
+          <th>
+            <a href="https://github.com/denoland/deno">deno</a>
+          </th>
           <td>
-            <a class="badge" href="https://travis-ci.com/denoland/deno"
-              ><img src="https://travis-ci.com/denoland/deno.svg?branch=master"
-            /></a>
+            <a class="badge" href="https://travis-ci.com/denoland/deno">
+              <img src="https://travis-ci.com/denoland/deno.svg?branch=master"/>
+            </a>
           </td>
           <td>
-            <a class="badge" href="https://ci.appveyor.com/project/deno/deno"
-              ><img
-                src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"
-            /></a>
+            <a class="badge" href="https://ci.appveyor.com/project/deno/deno">
+              <img src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"/>
+            </a>
           </td>
         </tr>
         <tr>
-          <th><a href="https://github.com/denoland/deno_std">deno_std</a></th>
+          <th>
+            <a href="https://github.com/denoland/deno_std">deno_std</a>
+          </th>
           <td colspan="2">
             <a
               class="badge"
               href="https://dev.azure.com/denoland/deno_std/_build?definitionId=2"
-              ><img
-                src="https://dev.azure.com/denoland/deno_std/_apis/build/status/denoland.deno_std?branchName=master"
-            /></a>
+            >
+              <img src="https://dev.azure.com/denoland/deno_std/_apis/build/status/denoland.deno_std?branchName=master"/>
+            </a>
           </td>
         </tr>
         <tr>
@@ -60,159 +63,161 @@
             <a href="https://github.com/denoland/deno_install">deno_install</a>
           </th>
           <td>
-            <a class="badge" href="https://travis-ci.com/denoland/deno_install"
-              ><img
-                src="https://travis-ci.com/denoland/deno_install.svg?branch=master"
-            /></a>
+            <a class="badge" href="https://travis-ci.com/denoland/deno_install">
+              <img src="https://travis-ci.com/denoland/deno_install.svg?branch=master"/>
+            </a>
           </td>
           <td>
             <a
               class="badge"
               href="https://ci.appveyor.com/project/deno/deno-install"
-              ><img
-                src="https://ci.appveyor.com/api/projects/status/gtekeaf7r60xa896?branch=master&svg=true"
-            /></a>
+            >
+              <img src="https://ci.appveyor.com/api/projects/status/gtekeaf7r60xa896?branch=master&svg=true"/>
+            </a>
           </td>
         </tr>
         <tr>
-          <th><a href="https://github.com/denoland/registry">registry</a></th>
+          <th>
+            <a href="https://github.com/denoland/registry">registry</a>
+          </th>
         </tr>
       </table>
 
       <p>
-        <a href="https://github.com/denoland/deno/blob/master/Docs.md"
-          >Documentation</a
-        >
+        <a href="https://github.com/denoland/deno/blob/master/Docs.md">
+          Documentation
+        </a>
       </p>
-
-      <p><a href="typedoc/index.html">API Reference</a></p>
-
       <p>
-        <a href="https://github.com/denolib/awesome-deno"
-          >Other Deno resources.</a
-        >
+        <a href="typedoc/index.html">
+          API Reference
+        </a>
+      </p>
+      <p>
+        <a href="https://github.com/denolib/awesome-deno">
+          Other Deno resources.
+        </a>
       </p>
 
       <h2>Install</h2>
 
       <p>With Shell</p>
-      <pre>
-curl -fL https://deno.land/x/install/install.sh | sh
-</pre
-      >
+      <pre>curl -fL https://deno.land/x/install/install.sh | sh</pre>
       <p>With PowerShell</p>
-      <pre>
-iex (iwr https://deno.land/x/install/install.ps1)
-</pre
-      >
+      <pre>iex (iwr https://deno.land/x/install/install.ps1)</pre>
 
       <h2>Mini-tutorial</h2>
 
-      Try a Deno program. This one serves a local directory in HTTP.
-
+      <p>Try a Deno program. This one serves a local directory in HTTP.</p>
       <pre>
 alias file_server="deno \
   https://deno.land/x/http/file_server.ts --allow-net"
-</pre
-      >
+      </pre>
 
-      Run it:
+      <p>Run it:</p>
       <pre>
 % file_server .
 Downloading https://deno.land/x/http/file_server.ts...
 [...]
 HTTP server listening on http://0.0.0.0:4500/
-</pre
-      >
-
-      And if you ever want to upgrade to the latest published version:
-      <pre>
-file_server --reload
-</pre
-      >
+      </pre>
+      <p>And if you ever want to upgrade to the latest published version:</p>
+      <pre>file_server --reload</pre>
 
       <h2>Dig in...</h2>
 
-      <a href="https://github.com/denoland/deno/blob/master/Docs.md"
-        >Documentation</a
-      >
-
-      <p><a href="typedoc/index.html">API Reference</a></p>
+      <a href="https://github.com/denoland/deno/blob/master/Docs.md">
+        Documentation
+      </a>
 
       <p>
-        <a href="https://github.com/denolib/awesome-deno"
-          >Links to other Deno resources.</a
-        >
+        <a href="typedoc/index.html">API Reference</a>
+      </p>
+
+      <p>
+        <a href="https://github.com/denolib/awesome-deno">
+          Links to other Deno resources.
+        </a>
       </p>
 
       <h2>Continuous Benchmarks</h2>
 
-      These plots are updated on every commit to
-      <a href="https://github.com/denoland/deno">master branch</a>.
+      <p>These plots are updated on every commit to</p>
+      <p>
+        <a href="https://github.com/denoland/deno">master branch</a>
+      </p>
 
       <h3>Execution time</h3>
-      This shows how much time total it takes to run a few simple deno programs:
-      <a href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts"
-        >tests/002_hello.ts</a
-      >
-      and
-      <a
-        href="https://github.com/denoland/deno/blob/master/tests/003_relative_import.ts"
-        >tests/003_relative_import.ts</a
-      >. For deno to execute typescript, it must first compile it to JS. A warm
-      startup is when deno has a cached JS output already, so it should be fast
-      because it bypasses the TS compiler. A cold startup is when deno must
-      compile from scratch.
+      <p>This shows how much time total it takes to run a few simple deno programs:</p>
+      <a href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts">
+        tests/002_hello.ts
+      </a>
+      <p>and</p>
+      <p>
+        <a
+          href="https://github.com/denoland/deno/blob/master/tests/003_relative_import.ts"
+        >
+          tests/003_relative_import.ts
+        </a>
+      </p>
+      <p>
+        For deno to execute typescript, it must first compile it to JS. A warm
+        startup is when deno has a cached JS output already, so it should be fast
+        because it bypasses the TS compiler. A cold startup is when deno must
+        compile from scratch.
+      </p>
       <div id="exec-time-chart"></div>
 
       <h3>Throughput</h3>
-      Time it takes to pipe a certain amount of data through Deno.
-      <a
-        href="https://github.com/denoland/deno/blob/master/tests/echo_server.ts"
-        >echo_server.ts</a
-      >
-      and
-      <a href="https://github.com/denoland/deno/blob/master/tests/cat.ts"
-        >cat.ts</a
-      >
-      Smaller is better.
+
+      <p>Time it takes to pipe a certain amount of data through Deno.</p>
+
+      <a href="https://github.com/denoland/deno/blob/master/tests/echo_server.ts">
+        echo_server.ts
+      </a>
+      <p>and</p>
+      <a href="https://github.com/denoland/deno/blob/master/tests/cat.ts">
+        cat.ts
+      </a>
+      <p>Smaller is better.</p>
 
       <div id="throughput-chart"></div>
 
       <h3>Req/Sec</h3>
-      Tests HTTP server performance. 10 keep-alive connections do as many
-      hello-world requests as possible. Bigger is better.
+
+      <p>
+        Tests HTTP server performance. 10 keep-alive connections do as many
+        hello-world requests as possible. Bigger is better.
+      </p>
+
       <ul>
         <!-- TODO rename "deno" to "deno_tcp". -->
         <li>
-          <a
-            href="https://github.com/denoland/deno/blob/master/tests/http_bench.ts"
-            >deno</a
-          >
+          <a href="https://github.com/denoland/deno/blob/master/tests/http_bench.ts">
+            deno
+          </a>
           is a fake http server that doesn't parse HTTP. It is comparable to
-          <a
-            href="https://github.com/denoland/deno/blob/master/tools/node_tcp.js"
-            >node_tcp</a
-          >.
+          <a href="https://github.com/denoland/deno/blob/master/tools/node_tcp.js">
+            node_tcp
+          </a>
+          .
         </li>
 
         <li>
-          <a
-            href="https://github.com/denoland/deno_std/blob/master/http/http_bench.ts"
-            >deno_net_http</a
-          >
+          <a href="https://github.com/denoland/deno_std/blob/master/http/http_bench.ts">
+            deno_net_http
+          </a>
           is a web server written in TypeScript. It is comparable to
-          <a
-            href="https://github.com/denoland/deno/blob/master/tools/node_http.js"
-            >node_http</a
-          >.
+          <a href="https://github.com/denoland/deno/blob/master/tools/node_http.js">
+            node_http
+          </a>
+          .
         </li>
 
         <li>
-          <a
-            href="https://github.com/denoland/deno/blob/master/tools/hyper_hello.rs"
-            >hyper</a
-          >
+          <a href="https://github.com/denoland/deno/blob/master/tools/hyper_hello.rs">
+            hyper
+          </a>
           is a Rust HTTP server and represents an upper bound.
         </li>
       </ul>
@@ -220,18 +225,20 @@ file_server --reload
       <div id="req-per-sec-chart"></div>
 
       <h3>Executable size</h3>
-      deno ships only a single binary. We track its size here.
+      <p>deno ships only a single binary. We track its size here.</p>
       <div id="binary-size-chart"></div>
 
       <h3>Thread count</h3>
-      How many threads various programs use.
+      <p>How many threads various programs use.</p>
       <div id="thread-count-chart"></div>
 
       <h3>Syscall count</h3>
-      How many total syscalls are performed when executing a given script.
+      <p>How many total syscalls are performed when executing a given script.</p>
       <div id="syscall-count-chart"></div>
 
-      <p><a href="./all_benchmark.html">Historical benchmark data</a></p>
+      <p>
+        <a href="./all_benchmark.html">Historical benchmark data</a>
+      </p>
     </main>
 
     <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
