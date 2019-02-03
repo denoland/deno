@@ -32,6 +32,16 @@ a.badge:hover {
   box-shadow: 0 0 5px 0 #333;
 }
 
+a[href^="#"] { /* Hash links */
+  text-decoration: none;
+  color: #3bace5;
+  margin-right: 0.5rem;
+}
+a[href^="#"]:hover {
+  text-decoration: underline;
+  color: #3d9bcc;
+}
+
 pre {
   background: #ddd;
   padding: 15px;
