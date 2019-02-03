@@ -577,9 +577,15 @@ fn op_chmod(
     #[cfg(any(unix))]
     {
       // We need to use underscore to compile in Windows.
-      #[cfg_attr(feature = "cargo-clippy", allow(clippy::used_underscore_binding))]
+      #[cfg_attr(
+        feature = "cargo-clippy",
+        allow(clippy::used_underscore_binding)
+      )]
       let mut permissions = _metadata.permissions();
-      #[cfg_attr(feature = "cargo-clippy", allow(clippy::used_underscore_binding))]
+      #[cfg_attr(
+        feature = "cargo-clippy",
+        allow(clippy::used_underscore_binding)
+      )]
       permissions.set_mode(_mode);
       fs::set_permissions(&path, permissions)?;
     }
