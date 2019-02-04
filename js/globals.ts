@@ -4,8 +4,11 @@
 // is evaluated in.  We use this file to automatically build the runtime type
 // library.
 
+// TODO This doesn't work.
+/// <reference path="./wasm.d.ts" />
+
 // Modules which will make up part of the global public API surface should be
-// imported as namespaces, so when the runtime tpye library is generated they
+// imported as namespaces, so when the runtime type library is generated they
 // can be expressed as a namespace in the type library.
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
@@ -97,3 +100,5 @@ export type TextDecoder = textEncoding.TextDecoder;
 window.performance = new performanceUtil.Performance();
 
 window.workerMain = workers.workerMain;
+
+//window.WebAssembly = _WebAssembly;

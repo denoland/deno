@@ -1,0 +1,2 @@
+args: tests/wasm.js
+output: tests/wasm.js.out
