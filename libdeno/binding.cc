@@ -20,7 +20,7 @@ std::vector<InternalFieldData*> deserialized_data;
 
 void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
                                v8::StartupData payload, void* data) {
-  DCHECK_EQ(data, nullptr);
+  DCHECK_NULL(data);
   if (payload.raw_size == 0) {
     holder->SetAlignedPointerInInternalField(index, nullptr);
     return;
@@ -33,7 +33,7 @@ void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
 
 v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
                                         void* data) {
-  DCHECK_EQ(data, nullptr);
+  DCHECK_NULL(data);
   InternalFieldData* embedder_field = static_cast<InternalFieldData*>(
       holder->GetAlignedPointerFromInternalField(index));
   if (embedder_field == nullptr) return {nullptr, 0};
@@ -139,7 +139,7 @@ v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
       // Fast case. We reuse the global ArrayBuffer.
       if (d->global_import_buf_.IsEmpty()) {
         // Lazily initialize it.
-        DCHECK_EQ(d->global_import_buf_ptr_, nullptr);
+        DCHECK_NULL(d->global_import_buf_ptr_);
         ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
         d->global_import_buf_.Reset(d->isolate_, ab);
         d->global_import_buf_ptr_ = ab->GetContents().Data();
@@ -202,7 +202,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Locker locker(d->isolate_);
   v8::HandleScope handle_scope(isolate);
 
-  CHECK_EQ(d->current_args_, nullptr);  // libdeno.send re-entry forbidden.
+  CHECK_NULL(d->current_args_);  // libdeno.send re-entry forbidden.
   int32_t req_id = d->next_req_id_++;
 
   v8::Local<v8::Value> control_v = args[0];
@@ -220,7 +220,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
     CHECK_EQ(args.Length(), 1);
   }
 
-  DCHECK_EQ(d->current_args_, nullptr);
+  DCHECK_NULL(d->current_args_);
   d->current_args_ = &args;
 
   d->recv_cb_(d->user_data_, req_id, control, data);

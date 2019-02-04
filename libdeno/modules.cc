@@ -70,7 +70,7 @@ v8::MaybeLocal<v8::Module> ResolveCallback(Local<Context> context,
 
   deno_mod referrer_id = referrer->GetIdentityHash();
   auto* referrer_info = d->GetModuleInfo(referrer_id);
-  CHECK_NE(referrer_info, nullptr);
+  CHECK_NOT_NULL(referrer_info);
 
   for (int i = 0; i < referrer->GetModuleRequestsLength(); i++) {
     Local<String> req = referrer->GetModuleRequest(i);
@@ -158,7 +158,7 @@ void deno_mod_instantiate(Deno* d_, void* user_data, deno_mod id,
 
   v8::TryCatch try_catch(isolate);
   {
-    CHECK_EQ(nullptr, d->resolve_cb_);
+    CHECK_NULL(d->resolve_cb_);
     d->resolve_cb_ = cb;
     {
       auto* info = d->GetModuleInfo(id);
