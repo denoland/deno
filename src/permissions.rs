@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, Default)]
 pub struct DenoPermissions {
+  pub allow_read: AtomicBool,
   pub allow_write: AtomicBool,
   pub allow_net: AtomicBool,
   pub allow_env: AtomicBool,
@@ -20,6 +21,7 @@ pub struct DenoPermissions {
 impl DenoPermissions {
   pub fn new(flags: &DenoFlags) -> Self {
     Self {
+      allow_read: AtomicBool::new(flags.allow_read),
       allow_write: AtomicBool::new(flags.allow_write),
       allow_env: AtomicBool::new(flags.allow_env),
       allow_net: AtomicBool::new(flags.allow_net),
