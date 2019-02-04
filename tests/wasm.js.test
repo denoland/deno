@@ -1,0 +1,2 @@
+args: tests/wasm.js --reload
+output: tests/wasm.js.out
