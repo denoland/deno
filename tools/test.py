@@ -5,12 +5,10 @@
 import os
 import sys
 from integration_tests import integration_tests
+from internal_tests import internal_tests
 from deno_dir_test import deno_dir_test
-from setup_test import setup_test
 from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
 from unit_tests import unit_tests
-from util_test import util_test
-from benchmark_test import benchmark_test
 from repl_test import repl_tests
 from prefetch_test import prefetch_test
 from fmt_test import fmt_test
@@ -47,9 +45,7 @@ def main(argv):
     check_exists(deno_exe)
 
     # Internal tools testing
-    setup_test()
-    util_test()
-    benchmark_test(build_dir, deno_exe)
+    internal_tests(build_dir, deno_exe)
 
     test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
     check_exists(test_cc)
