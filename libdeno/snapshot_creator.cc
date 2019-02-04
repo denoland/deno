@@ -16,8 +16,8 @@ int main(int argc, char** argv) {
 
   deno_set_v8_flags(&argc, argv);
 
-  CHECK_NE(js_fn, nullptr);
-  CHECK_NE(snapshot_out_bin, nullptr);
+  CHECK_NOT_NULL(js_fn);
+  CHECK_NOT_NULL(snapshot_out_bin);
 
   std::string js_source;
   CHECK(deno::ReadFileToString(js_fn, &js_source));
