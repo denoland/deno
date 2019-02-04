@@ -305,6 +305,12 @@ import { test, assertEqual } from "./package.ts";
 This design circumvents a plethora of complexity spawned by package management
 software, centralized code repositories, and superfluous file formats.
 
+## Browser compatibility
+
+The subset of Deno programs which are written completely in JavaScript and do
+not import the special `"deno"` module, ought to also be able to be run in a
+modern web browser without change.
+
 ## Useful command line flags
 
 V8 has many many command-line flags, that you can see with `--v8-options`. Here
