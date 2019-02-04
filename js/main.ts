@@ -1,6 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // tslint:disable-next-line:no-reference
 /// <reference path="./plugins.d.ts" />
+// tslint:disable-next-line:no-reference
+/// <reference path="./wasm.d.ts" />
 
 import "./globals";
 
