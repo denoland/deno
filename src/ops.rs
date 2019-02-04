@@ -255,6 +255,9 @@ fn op_start(
   let deno_version = version::DENO;
   let deno_version_off = builder.create_string(deno_version);
 
+  let ts_version = version::TS;
+  let ts_version_off = builder.create_string(ts_version);
+
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
@@ -265,6 +268,7 @@ fn op_start(
       types_flag: state.flags.types,
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
+      ts_version: Some(ts_version_off),
       deno_version: Some(deno_version_off),
       ..Default::default()
     },

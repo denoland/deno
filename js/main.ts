@@ -27,8 +27,7 @@ export default function denoMain() {
   if (startResMsg.versionFlag()) {
     console.log("deno:", startResMsg.denoVersion());
     console.log("v8:", startResMsg.v8Version());
-    // TODO figure out a way to restore functionality
-    // console.log("typescript:", version);
+    console.log("typescript:", startResMsg.tsVersion());
     os.exit(0);
   }
 

@@ -21,5 +21,17 @@ for i, arg in enumerate(args):
         os.environ["CARGO_PKG_VERSION"] = match.group(1)
         del args[i]
         break
+# Set the custom env variables if provided as an argument
+for i, arg in enumerate(args):
+    match = re.search('--custom-envs="?([^"]*)"?', arg)
+    if match:
+        env_vars = match.group(1).split(",")
+        for env_var in env_vars:
+            env_var = env_var.strip()
+            if len(env_var) > 0:
+                env_args = env_var.split("=")
+                os.environ[env_args[0]] = env_args[1]
+        del args[i]
+        break
 
 sys.exit(subprocess.call(args))

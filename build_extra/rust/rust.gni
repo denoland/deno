@@ -52,6 +52,7 @@ template("rust_crate") {
                            "crate_version",
                            "deps",
                            "edition",
+                           "envs",
                            "inputs",
                            "features",
                            "is_test",
@@ -203,6 +204,15 @@ template("rust_crate") {
         # This is used to set env variables for Cargo build compatibility
         "--cargo-pkg-version=$crate_version",
       ]
+    }
+
+    if (defined(envs)) {
+      env_vars = "--custom-envs=\""
+      foreach(e, envs) {
+        env_vars += e[0] + "=" + e[1] + ","
+      }
+      env_vars += "\""
+      args += [ env_vars ]
     }
 
     if (is_debug) {

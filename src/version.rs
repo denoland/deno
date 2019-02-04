@@ -4,6 +4,7 @@ use crate::libdeno;
 use std::ffi::CStr;
 
 pub const DENO: &str = env!("CARGO_PKG_VERSION");
+pub const TS: &str = env!("TYPESCRIPT_VERSION");
 
 pub fn v8() -> &'static str {
   let version = unsafe { libdeno::deno_v8_version() };
