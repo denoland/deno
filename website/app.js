@@ -135,11 +135,6 @@ function generate(
   // @ts-ignore
   c3.generate({
     bindto: id,
-    size: {
-      height: 300,
-      // @ts-ignore
-      width: window.chartWidth || 375 // TODO: do not use global variable
-    },
     data: {
       columns,
       onclick
