@@ -13,7 +13,8 @@ import sys
 import subprocess
 import http_server
 import argparse
-from util import root_path, tests_path, pattern_match, green_ok, red_failed, rmtree, executable_suffix
+from util import root_path, tests_path, pattern_match, \
+                 green_ok, red_failed, rmtree, executable_suffix
 
 def read_test(file_name):
     with open(file_name, "r") as f:
@@ -91,7 +92,8 @@ def integration_tests(deno_exe, test_filter = None):
 def main(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("filter", help="Run specific tests")
-    parser.add_argument("--release", help="Use release build of Deno", action="store_true")
+    parser.add_argument("--release", help="Use release build of Deno",
+                        action="store_true")
     parser.add_argument("--executable", help="Use external executable of Deno")
     args = parser.parse_args()
 
