@@ -1,6 +1,5 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// MIT License
 // Copied from https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/webassembly-js-api/index.d.ts
-
 // Type definitions for WebAssembly v1 (MVP)
 // Project: https://github.com/winksaville/test-webassembly-js-ts
 // Definitions by: 01alchemist <https://twitter.com/01alchemist>

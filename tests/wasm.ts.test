@@ -1,2 +1,2 @@
-args: tests/wasm.ts --reload
+args: tests/wasm.ts
 output: tests/wasm.ts.out

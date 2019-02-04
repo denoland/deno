@@ -102,6 +102,7 @@ ts_sources = [
   "js/url.ts",
   "js/url_search_params.ts",
   "js/util.ts",
+  "js/wasm.d.ts",
   "js/workers.ts",
   "js/write_file.ts",
   "js/performance.ts",
