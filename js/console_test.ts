@@ -300,5 +300,5 @@ test(function consoleDetachedLog() {
   consoleTimeEnd("Hello world");
   consoleGroup("Hello world");
   consoleGroupEnd();
-  console.clear();
+  consoleClear();
 });
