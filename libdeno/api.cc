@@ -79,7 +79,7 @@ deno::DenoIsolate* unwrap(Deno* d_) {
 
 deno_buf deno_get_snapshot(Deno* d_) {
   auto* d = unwrap(d_);
-  CHECK_NE(d->snapshot_creator_, nullptr);
+  CHECK_NOT_NULL(d->snapshot_creator_);
   d->ClearModules();
   d->context_.Reset();
 

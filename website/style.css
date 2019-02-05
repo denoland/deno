@@ -13,6 +13,8 @@ main {
 }
 svg {
   margin: 0px auto;
+  width: 100%;
+  height: 300px;
 }
 
 a {
