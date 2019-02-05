@@ -954,12 +954,17 @@ fn get_mode(_perm: &fs::Permissions) -> u32 {
 }
 
 fn op_cwd(
-  _state: &Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
+
+  if let Err(e) = state.check_read("current directory") {
+    return odd_future(e);
+  }
+
   Box::new(futures::future::result(|| -> OpResult {
     let path = std::env::current_dir()?;
     let builder = &mut FlatBufferBuilder::new();
