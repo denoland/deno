@@ -7,6 +7,7 @@ extern crate log;
 extern crate futures;
 #[macro_use]
 extern crate serde_json;
+extern crate ansi_term;
 
 pub mod compiler;
 pub mod deno_dir;
@@ -61,6 +62,9 @@ fn print_err_and_exit(err: errors::RustOrJsError) {
 }
 
 fn main() {
+  #[cfg(windows)]
+  ansi_term::enable_ansi_support().ok(); // For Windows 10
+
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
   let (mut flags, mut rest_argv, usage_string) = flags::set_flags(args)

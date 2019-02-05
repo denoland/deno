@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
 import pty
@@ -74,7 +75,7 @@ class Prompt(object):
         code, stdout, stderr = self.run('needsWrite', b'y\n')
         assert code == 0
         assert stdout == b''
-        assert b'Deno requests write access' in stderr
+        assert b'⚠️  Deno requests write access' in stderr
 
     def test_write_arg(self):
         code, stdout, stderr = self.run('needsWrite', b'', allow_write=True)
@@ -86,13 +87,13 @@ class Prompt(object):
         code, _stdout, stderr = self.run('needsWrite', b'N\n')
         assert code == 1
         assert b'PermissionDenied: permission denied' in stderr
-        assert b'Deno requests write access' in stderr
+        assert b'⚠️  Deno requests write access' in stderr
 
     def test_env_yes(self):
         code, stdout, stderr = self.run('needsEnv', b'y\n')
         assert code == 0
         assert stdout == b''
-        assert b'Deno requests access to environment' in stderr
+        assert b'⚠️  Deno requests access to environment' in stderr
 
     def test_env_arg(self):
         code, stdout, stderr = self.run('needsEnv', b'', allow_env=True)
@@ -104,13 +105,13 @@ class Prompt(object):
         code, _stdout, stderr = self.run('needsEnv', b'N\n')
         assert code == 1
         assert b'PermissionDenied: permission denied' in stderr
-        assert b'Deno requests access to environment' in stderr
+        assert b'⚠️  Deno requests access to environment' in stderr
 
     def test_net_yes(self):
         code, stdout, stderr = self.run('needsEnv', b'y\n')
         assert code == 0
         assert stdout == b''
-        assert b'Deno requests access to environment' in stderr
+        assert b'⚠️  Deno requests access to environment' in stderr
 
     def test_net_arg(self):
         code, stdout, stderr = self.run('needsNet', b'', allow_net=True)
@@ -122,13 +123,13 @@ class Prompt(object):
         code, _stdout, stderr = self.run('needsNet', b'N\n')
         assert code == 1
         assert b'PermissionDenied: permission denied' in stderr
-        assert b'Deno requests network access' in stderr
+        assert b'⚠️  Deno requests network access' in stderr
 
     def test_run_yes(self):
         code, stdout, stderr = self.run('needsRun', b'y\n')
         assert code == 0
         assert stdout == b'hello'
-        assert b'Deno requests access to run' in stderr
+        assert b'⚠️  Deno requests access to run' in stderr
 
     def test_run_arg(self):
         code, stdout, stderr = self.run('needsRun', b'', allow_run=True)
@@ -140,7 +141,7 @@ class Prompt(object):
         code, _stdout, stderr = self.run('needsRun', b'N\n')
         assert code == 1
         assert b'PermissionDenied: permission denied' in stderr
-        assert b'Deno requests access to run' in stderr
+        assert b'⚠️  Deno requests access to run' in stderr
 
 
 def permission_prompt_test(deno_exe):
