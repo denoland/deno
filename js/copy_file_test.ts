@@ -20,7 +20,7 @@ function assertSameContent(filename1: string, filename2: string) {
   assertEqual(data1, data2);
 }
 
-testPerm({ write: true }, function copyFileSyncSuccess() {
+testPerm({ write: true, read: true }, function copyFileSyncSuccess() {
   const tempDir = deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
   const toFilename = tempDir + "/to.txt";
@@ -32,7 +32,7 @@ testPerm({ write: true }, function copyFileSyncSuccess() {
   assertSameContent(fromFilename, toFilename);
 });
 
-testPerm({ write: true }, function copyFileSyncFailure() {
+testPerm({ write: true, read: true }, function copyFileSyncFailure() {
   const tempDir = deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
   const toFilename = tempDir + "/to.txt";
@@ -48,6 +48,30 @@ testPerm({ write: true }, function copyFileSyncFailure() {
   assertEqual(err.name, "NotFound");
 });
 
+testPerm({ write: true, read: false }, function copyFileSyncPerm1() {
+  let caughtError = false;
+  try {
+    deno.copyFileSync("/from.txt", "/to.txt");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ write: false, read: true }, function copyFileSyncPerm2() {
+  let caughtError = false;
+  try {
+    deno.copyFileSync("/from.txt", "/to.txt");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
 testPerm({ write: true }, function copyFileSyncOverwrite() {
   const tempDir = deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
@@ -60,18 +84,6 @@ testPerm({ write: true }, function copyFileSyncOverwrite() {
   assertEqual(readFileString(fromFilename), "Hello world!");
   // Original == Dest
   assertSameContent(fromFilename, toFilename);
-});
-
-testPerm({ write: false }, function copyFileSyncPerm() {
-  let err;
-  try {
-    deno.copyFileSync("/from.txt", "/to.txt");
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
 });
 
 testPerm({ write: true }, async function copyFileSuccess() {
@@ -116,14 +128,26 @@ testPerm({ write: true }, async function copyFileOverwrite() {
   assertSameContent(fromFilename, toFilename);
 });
 
-testPerm({ write: false }, async function copyFilePerm() {
-  let err;
+testPerm({ write: true, read: false }, async function copyFilePerm1() {
+  let caughtError = false;
   try {
     await deno.copyFile("/from.txt", "/to.txt");
   } catch (e) {
-    err = e;
+    caughtError = true;
+    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
   }
-  assert(!!err);
-  assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
+  assert(caughtError);
+});
+
+testPerm({ write: false, read: true }, async function copyFilePerm2() {
+  let caughtError = false;
+  try {
+    await deno.copyFile("/from.txt", "/to.txt");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
 });

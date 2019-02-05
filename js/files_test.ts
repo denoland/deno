@@ -8,7 +8,7 @@ test(function filesStdioFileDescriptors() {
   assertEqual(deno.stderr.rid, 2);
 });
 
-test(async function filesCopyToStdout() {
+testPerm({ read: true }, async function filesCopyToStdout() {
   const filename = "package.json";
   const file = await deno.open(filename);
   assert(file.rid > 2);
@@ -18,7 +18,7 @@ test(async function filesCopyToStdout() {
   console.log("bytes written", bytesWritten);
 });
 
-test(async function filesToAsyncIterator() {
+testPerm({ read: true }, async function filesToAsyncIterator() {
   const filename = "tests/hello.txt";
   const file = await deno.open(filename);
 
@@ -32,7 +32,35 @@ test(async function filesToAsyncIterator() {
 
 testPerm({ write: false }, async function writePermFailure() {
   const filename = "tests/hello.txt";
-  const writeModes: deno.OpenMode[] = ["r+", "w", "w+", "a", "a+", "x", "x+"];
+  const writeModes: deno.OpenMode[] = ["w", "a", "x"];
+  for (const mode of writeModes) {
+    let err;
+    try {
+      await deno.open(filename, mode);
+    } catch (e) {
+      err = e;
+    }
+    assert(!!err);
+    assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(err.name, "PermissionDenied");
+  }
+});
+
+testPerm({ read: false }, async function readPermFailure() {
+  let caughtError = false;
+  try {
+    await deno.open("package.json", "r");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ write: false, read: false }, async function readWritePermFailure() {
+  const filename = "tests/hello.txt";
+  const writeModes: deno.OpenMode[] = ["r+", "w+", "a+", "x+"];
   for (const mode of writeModes) {
     let err;
     try {

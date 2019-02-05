@@ -30,7 +30,7 @@ def main():
         print "No available deno executable."
         sys.exit(1)
 
-    util.run([deno_path, "--allow-run", "tools/format.ts"])
+    util.run([deno_path, "--allow-read", "--allow-run", "tools/format.ts"])
     output = util.run_output(
         ["git", "status", "-uno", "--porcelain", "--ignore-submodules"])
     if len(output) > 0:

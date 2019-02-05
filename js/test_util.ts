@@ -18,6 +18,7 @@ export {
 testing.setFilter(deno.args[1]);
 
 interface DenoPermissions {
+  read?: boolean;
   write?: boolean;
   net?: boolean;
   env?: boolean;
@@ -25,24 +26,26 @@ interface DenoPermissions {
 }
 
 function permToString(perms: DenoPermissions): string {
+  const r = perms.read ? 1 : 0;
   const w = perms.write ? 1 : 0;
   const n = perms.net ? 1 : 0;
   const e = perms.env ? 1 : 0;
-  const r = perms.run ? 1 : 0;
-  return `permW${w}N${n}E${e}R${r}`;
+  const u = perms.run ? 1 : 0;
+  return `permR${r}W${w}N${n}E${e}U${u}`;
 }
 
 function permFromString(s: string): DenoPermissions {
-  const re = /^permW([01])N([01])E([01])R([01])$/;
+  const re = /^permR([01])W([01])N([01])E([01])U([01])$/;
   const found = s.match(re);
   if (!found) {
     throw Error("Not a permission string");
   }
   return {
-    write: Boolean(Number(found[1])),
-    net: Boolean(Number(found[2])),
-    env: Boolean(Number(found[3])),
-    run: Boolean(Number(found[4]))
+    read: Boolean(Number(found[1])),
+    write: Boolean(Number(found[2])),
+    net: Boolean(Number(found[3])),
+    env: Boolean(Number(found[4])),
+    run: Boolean(Number(found[5]))
   };
 }
 
@@ -52,7 +55,10 @@ export function testPerm(perms: DenoPermissions, fn: testing.TestFunction) {
 }
 
 export function test(fn: testing.TestFunction) {
-  testPerm({ write: false, net: false, env: false, run: false }, fn);
+  testPerm(
+    { read: false, write: false, net: false, env: false, run: false },
+    fn
+  );
 }
 
 test(function permSerialization() {
@@ -60,8 +66,10 @@ test(function permSerialization() {
     for (const net of [true, false]) {
       for (const env of [true, false]) {
         for (const run of [true, false]) {
-          const perms: DenoPermissions = { write, net, env, run };
-          testing.assertEqual(perms, permFromString(permToString(perms)));
+          for (const read of [true, false]) {
+            const perms: DenoPermissions = { write, net, env, run, read };
+            testing.assertEqual(perms, permFromString(permToString(perms)));
+          }
         }
       }
     }
