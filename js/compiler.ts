@@ -316,7 +316,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
     const moduleMetaData = this._resolveModule(moduleSpecifier, containingFile);
     const { fileName, mediaType, moduleId, sourceCode } = moduleMetaData;
     this._scriptFileNames = [fileName];
-    console.warn("Compiling", moduleId);
+    console.warn("🔨 Compiling", moduleId);
     // Instead of using TypeScript to transpile JSON modules, we will just do
     // it directly.
     if (mediaType === msg.MediaType.Json) {

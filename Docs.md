@@ -248,9 +248,9 @@ Try running this:
 
 ```
 > deno https://deno.land/x/examples/example_test.ts
-Compiling /Users/rld/src/deno_examples/example_test.ts
+🔨 Compiling /Users/rld/src/deno_examples/example_test.ts
 Downloading https://deno.land/x/testing/mod.ts
-Compiling https://deno.land/x/testing/mod.ts
+🔨 Compiling https://deno.land/x/testing/mod.ts
 running 2 tests
 test t1
 ... ok
