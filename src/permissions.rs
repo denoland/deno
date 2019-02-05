@@ -41,6 +41,21 @@ impl DenoPermissions {
     r
   }
 
+  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
+    if self.allow_read.load(Ordering::SeqCst) {
+      return Ok(());
+    };
+    // TODO get location (where access occurred)
+    let r = permission_prompt(&format!(
+      "Deno requests read access to \"{}\".",
+      filename
+    ));;
+    if r.is_ok() {
+      self.allow_read.store(true, Ordering::SeqCst);
+    }
+    r
+  }
+
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
     if self.allow_write.load(Ordering::SeqCst) {
       return Ok(());
