@@ -7,6 +7,7 @@ import { main as buildRuntimeLib } from "./build_library";
 let basePath = process.cwd();
 let buildPath = path.join(basePath, "out", "debug");
 let outFile = path.join(buildPath, "gen", "lib", "lib.d.ts");
+let inline: string[] = [];
 let debug = false;
 let silent = false;
 
@@ -18,6 +19,11 @@ process.argv.forEach((arg, i, argv) => {
       break;
     case "--buildPath":
       buildPath = path.resolve(argv[i + 1]);
+      break;
+    case "--inline":
+      inline = argv[i + 1].split(",").map(filename => {
+        return path.resolve(filename);
+      });
       break;
     case "--outFile":
       outFile = path.resolve(argv[i + 1]);
@@ -35,6 +41,7 @@ buildRuntimeLib({
   basePath,
   buildPath,
   debug,
+  inline,
   outFile,
   silent
 });
