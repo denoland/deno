@@ -1,5 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+// How much to multiply time values in order to process log graphs properly.
+const TimeScaleFactor = 10000;
+
 export async function getJson(path) {
   return (await fetch(path)).json();
 }
@@ -123,13 +126,22 @@ function generate(
 ) {
   const yAxis = {
     padding: { bottom: 0 },
-    min: 0,
     label: yLabel
   };
   if (yTickFormat) {
     yAxis.tick = {
       format: yTickFormat
     };
+    if (yTickFormat == logScale) {
+      for (let col of columns) {
+        for (let i = 1; i < col.length; i++) {
+          if (col[i] == null) {
+            continue;
+          }
+          col[i] = Math.log10(col[i] * TimeScaleFactor);
+        }
+      }
+    }
   }
 
   // @ts-ignore
@@ -148,6 +160,10 @@ function generate(
       y: yAxis
     }
   });
+}
+
+function logScale(t) {
+  return (Math.pow(10, t) / TimeScaleFactor).toFixed(4);
 }
 
 function formatSecsAsMins(t) {
@@ -204,7 +220,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
     );
   }
 
-  gen("#exec-time-chart", execTimeColumns, "seconds");
+  gen("#exec-time-chart", execTimeColumns, "seconds", logScale);
   gen("#throughput-chart", throughputColumns, "seconds");
   gen("#req-per-sec-chart", reqPerSecColumns, "1000 req/sec", formatReqSec);
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
