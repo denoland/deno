@@ -97,11 +97,7 @@ def main(argv):
     parser.add_argument("--executable", help="Use external executable of Deno")
     args = parser.parse_args()
 
-    target = None
-    if args.release:
-        target = "release"
-    else:
-        target = "debug"
+    target = "release" if args.release else "debug"
 
     build_dir = None
     if "DENO_BUILD_PATH" in os.environ:
