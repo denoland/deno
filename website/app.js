@@ -135,6 +135,9 @@ function generate(
     if (yTickFormat == logScale) {
       for (let col of columns) {
         for (let i = 1; i < col.length; i++) {
+          if (col[i] == null) {
+            continue;
+          }
           col[i] = Math.log10(col[i] * TimeScaleFactor);
         }
       }
