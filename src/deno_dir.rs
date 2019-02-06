@@ -588,7 +588,7 @@ mod tests {
   use crate::tokio_util;
   use tempfile::TempDir;
 
-  fn test_setup(reload: bool = false, recompile: bool = false) -> (TempDir, DenoDir) {
+  fn test_setup(reload: bool, recompile: bool) -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let deno_dir = DenoDir::new(reload, recompile, Some(temp_dir.path().to_path_buf()))
       .expect("setup fail");
@@ -621,7 +621,7 @@ mod tests {
 
   #[test]
   fn test_cache_path() {
-    let (temp_dir, deno_dir) = test_setup();
+    let (temp_dir, deno_dir) = test_setup(false, false);
     assert_eq!(
       (
         temp_dir
@@ -637,7 +637,7 @@ mod tests {
 
   #[test]
   fn test_code_cache() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let filename = "hello.js";
     let source_code = "1+2";
@@ -679,7 +679,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_1() {
-    let (temp_dir, deno_dir) = test_setup();
+    let (temp_dir, deno_dir) = test_setup(false, false);
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let module_name = "http://localhost:4545/tests/subdir/mod2.ts";
@@ -736,7 +736,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_2() {
-    let (temp_dir, deno_dir) = test_setup();
+    let (temp_dir, deno_dir) = test_setup(false, false);
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
@@ -799,7 +799,7 @@ mod tests {
     use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let (_temp_dir, deno_dir) = test_setup();
+      let (_temp_dir, deno_dir) = test_setup(false, false);
       let module_name =
         "http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts";
       let filename = deno_fs::normalize_path(
@@ -834,7 +834,7 @@ mod tests {
     use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let (_temp_dir, deno_dir) = test_setup();
+      let (_temp_dir, deno_dir) = test_setup(false, false);
       let module_name = "http://localhost:4545/tests/subdir/no_ext";
       let filename = deno_fs::normalize_path(
         deno_dir
@@ -898,7 +898,7 @@ mod tests {
   #[test]
   fn test_fetch_source_3() {
     // only local, no http_util::fetch_sync_string called
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
     let cwd = std::env::current_dir().unwrap();
     let cwd_string = cwd.to_str().unwrap();
     let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
@@ -957,7 +957,7 @@ mod tests {
 
   #[test]
   fn test_src_file_to_url_1() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
     assert_eq!("hello", deno_dir.src_file_to_url("hello"));
     assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
     let x = deno_dir.deps_http.join("hello/world.txt");
@@ -969,7 +969,7 @@ mod tests {
 
   #[test]
   fn test_src_file_to_url_2() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
     assert_eq!("hello", deno_dir.src_file_to_url("hello"));
     assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
     let x = deno_dir.deps_https.join("hello/world.txt");
@@ -981,7 +981,7 @@ mod tests {
 
   #[test]
   fn test_src_file_to_url_3() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
     let x = deno_dir.deps_http.join("localhost_PORT4545/world.txt");
     assert_eq!(
       "http://localhost:4545/world.txt",
@@ -991,7 +991,7 @@ mod tests {
 
   #[test]
   fn test_src_file_to_url_4() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
     let x = deno_dir.deps_https.join("localhost_PORT4545/world.txt");
     assert_eq!(
       "https://localhost:4545/world.txt",
@@ -1002,7 +1002,7 @@ mod tests {
   // https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87
   #[test]
   fn test_resolve_module_1() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let test_cases = [
       (
@@ -1042,7 +1042,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_2() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let specifier = "http://localhost:4545/testdata/subdir/print_hello.ts";
     let referrer = add_root!("/deno/testdata/006_url_imports.ts");
@@ -1064,7 +1064,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_3() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let specifier_ =
       deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
@@ -1087,7 +1087,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_4() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let specifier = "./util";
     let referrer_ = deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
@@ -1110,7 +1110,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_5() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let specifier = "./util";
     let referrer_ =
@@ -1134,7 +1134,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_6() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let specifier = "http://localhost:4545/tests/subdir/mod2.ts";
     let referrer = add_root!("/deno/tests/006_url_imports.ts");
@@ -1154,7 +1154,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_7() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let specifier = "http_test.ts";
     let referrer = add_root!("/Users/rld/src/deno_net/");
@@ -1170,7 +1170,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_referrer_dot() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let specifier = "tests/001_hello.js";
 
@@ -1192,7 +1192,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_referrer_dotdot() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let specifier = "tests/001_hello.js";
 
