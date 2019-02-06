@@ -34,7 +34,7 @@ a.badge:hover {
 
 a[href^="#"] { /* Hash links */
   text-decoration: none;
-  color: #3bace5;
+  color: transparent;
   margin-right: 0.5rem;
 }
 a[href^="#"]:hover {
@@ -62,7 +62,6 @@ td, th {
 }
 
 @media only screen and (max-device-width: 480px) {
-
   main {
     margin: 15px;
   }
