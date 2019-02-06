@@ -52,7 +52,7 @@ export function testPerm(perms: DenoPermissions, fn: testing.TestFunction) {
 }
 
 export function test(fn: testing.TestFunction) {
-  testPerm({ write: false, net: false, env: false }, fn);
+  testPerm({ write: false, net: false, env: false, run: false }, fn);
 }
 
 test(function permSerialization() {
