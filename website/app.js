@@ -132,12 +132,12 @@ function generate(
     yAxis.tick = {
       format: yTickFormat
     };
-    if (yTickFormat == logScale) {    
+    if (yTickFormat == logScale) {
       for (let col of columns) {
         for (let i = 1; i < col.length; i++) {
-          col[i] = Math.log10(col[i]*TimeScaleFactor);
+          col[i] = Math.log10(col[i] * TimeScaleFactor);
         }
-      }      
+      }
     }
   }
 
