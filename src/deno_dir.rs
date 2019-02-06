@@ -336,10 +336,10 @@ impl DenoDir {
         Ok((output_code, source_map)) => {
           maybe_output_code = Some(output_code);
           maybe_source_map = Some(source_map);
-        },
+        }
       }
     }
-    
+
     Ok(CodeFetchOutput {
       module_name: out.module_name,
       filename: out.filename,
@@ -590,8 +590,9 @@ mod tests {
 
   fn test_setup(reload: bool, recompile: bool) -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let deno_dir = DenoDir::new(reload, recompile, Some(temp_dir.path().to_path_buf()))
-      .expect("setup fail");
+    let deno_dir =
+      DenoDir::new(reload, recompile, Some(temp_dir.path().to_path_buf()))
+        .expect("setup fail");
     (temp_dir, deno_dir)
   }
 
@@ -721,8 +722,9 @@ mod tests {
       );
 
       // Force self.reload
-      let deno_dir = DenoDir::new(true, false, Some(temp_dir.path().to_path_buf()))
-        .expect("setup fail");
+      let deno_dir =
+        DenoDir::new(true, false, Some(temp_dir.path().to_path_buf()))
+          .expect("setup fail");
       let result3 = deno_dir.get_source_code(module_name, &filename);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
@@ -777,8 +779,9 @@ mod tests {
       );
 
       // Force self.reload
-      let deno_dir = DenoDir::new(true, false, Some(temp_dir.path().to_path_buf()))
-        .expect("setup fail");
+      let deno_dir =
+        DenoDir::new(true, false, Some(temp_dir.path().to_path_buf()))
+          .expect("setup fail");
       let result3 = deno_dir.get_source_code(module_name, &filename);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
