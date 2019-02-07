@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { open, File, Writer } from "deno";
 import { getLevelByName } from "./levels.ts";
 import { LogRecord } from "./logger.ts";

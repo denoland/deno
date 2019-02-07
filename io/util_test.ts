@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert } from "../testing/mod.ts";
 import { copyBytes } from "./util.ts";
 

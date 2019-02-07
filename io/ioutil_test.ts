@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { Reader, ReadResult } from "deno";
 import { assertEqual, test } from "../testing/mod.ts";
 import { readInt, readLong, readShort, sliceLongToBytes } from "./ioutil.ts";

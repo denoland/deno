@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assertEqual, test } from "../testing/mod.ts";
 import * as log from "./mod.ts";
 import { BaseHandler } from "./handlers.ts";

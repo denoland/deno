@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assert, test } from "../testing/mod.ts";
 import { Sha1 } from "./sha1.ts";
 
