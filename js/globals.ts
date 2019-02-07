@@ -22,6 +22,7 @@ import * as url from "./url";
 import * as urlSearchParams from "./url_search_params";
 import * as workers from "./workers";
 import * as performanceUtil from "./performance";
+import * as storage from "./storage";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -95,5 +96,9 @@ window.TextDecoder = textEncoding.TextDecoder;
 export type TextDecoder = textEncoding.TextDecoder;
 
 window.performance = new performanceUtil.Performance();
+
+export type Storage = storage.Storage;
+export type SessionStorage = storage.SessionStorage;
+window.sessionStorage = new storage.SessionStorage();
 
 window.workerMain = workers.workerMain;
