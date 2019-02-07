@@ -91,7 +91,7 @@ def integration_tests(deno_exe, test_filter = None):
 
 def main(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument("filter", help="Run specific tests")
+    parser.add_argument("--filter", help="Run specific tests")
     parser.add_argument("--release", help="Use release build of Deno",
                         action="store_true")
     parser.add_argument("--executable", help="Use external executable of Deno")
@@ -116,11 +116,7 @@ def main(argv):
 
     http_server.spawn()
 
-    test_filter = None
-    if len(argv) > 1:
-        test_filter = argv[1]
-
-    integration_tests(deno_exe, test_filter)
+    integration_tests(deno_exe, args.filter)
 
 
 if __name__ == "__main__":
