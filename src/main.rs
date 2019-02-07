@@ -7,7 +7,6 @@ extern crate log;
 extern crate futures;
 #[macro_use]
 extern crate serde_json;
-extern crate ansi_term;
 
 pub mod compiler;
 pub mod deno_dir;
