@@ -11,8 +11,10 @@ import os
 import re
 import sys
 import subprocess
-from util import root_path, tests_path, pattern_match, green_ok, red_failed
-
+import http_server
+import argparse
+from util import root_path, tests_path, pattern_match, \
+                 green_ok, red_failed, rmtree, executable_suffix
 
 def read_test(file_name):
     with open(file_name, "r") as f:
@@ -87,13 +89,35 @@ def integration_tests(deno_exe, test_filter = None):
 
         print "... " + green_ok()
 
-def main(argv):
-    deno_exe = argv[1]
-    test_filter = None
-    if len(argv) > 2:
-        test_filter = argv[2]
-    integration_tests(deno_exe, test_filter)
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--filter", help="Run specific tests")
+    parser.add_argument("--release", help="Use release build of Deno",
+                        action="store_true")
+    parser.add_argument("--executable", help="Use external executable of Deno")
+    args = parser.parse_args()
+
+    target = "release" if args.release else "debug"
+
+    build_dir = None
+    if "DENO_BUILD_PATH" in os.environ:
+        build_dir = os.environ["DENO_BUILD_PATH"]
+    else:
+        build_dir = os.path.join(root_path, "target", target)
+
+    deno_dir = os.path.join(build_dir, ".deno_test")
+    if os.path.isdir(deno_dir):
+        rmtree(deno_dir)
+    os.environ["DENO_DIR"] = deno_dir
+
+    deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
+    if args.executable:
+        deno_exe = args.executable
+
+    http_server.spawn()
+
+    integration_tests(deno_exe, args.filter)
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main())
