@@ -20,7 +20,7 @@ function assertSameContent(filename1: string, filename2: string) {
   assertEqual(data1, data2);
 }
 
-testPerm({ write: true, read: true }, function copyFileSyncSuccess() {
+testPerm({ read: true, write: true }, function copyFileSyncSuccess() {
   const tempDir = deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
   const toFilename = tempDir + "/to.txt";
@@ -72,7 +72,7 @@ testPerm({ write: false, read: true }, function copyFileSyncPerm2() {
   assert(caughtError);
 });
 
-testPerm({ write: true }, function copyFileSyncOverwrite() {
+testPerm({ read: true, write: true }, function copyFileSyncOverwrite() {
   const tempDir = deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
   const toFilename = tempDir + "/to.txt";
