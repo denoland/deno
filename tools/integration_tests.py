@@ -89,7 +89,7 @@ def integration_tests(deno_exe, test_filter = None):
 
         print "... " + green_ok()
 
-def main(argv):
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--filter", help="Run specific tests")
     parser.add_argument("--release", help="Use release build of Deno",
@@ -120,4 +120,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main())
