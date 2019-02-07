@@ -5,7 +5,6 @@
     at sendSync ([WILDCARD]/js/dispatch.ts:[WILDCARD])
     at codeFetch ([WILDCARD]/js/os.ts:[WILDCARD])
     at _resolveModule ([WILDCARD]/js/compiler.ts:[WILDCARD])
-    at [WILDCARD]/js/compiler.ts:[WILDCARD]
     at resolveModuleNames ([WILDCARD]/js/compiler.ts:[WILDCARD])
     at compilerHost.resolveModuleNames ([WILDCARD])
     at resolveModuleNamesWorker ([WILDCARD])
