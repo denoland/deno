@@ -200,7 +200,7 @@ the network:
 
 ```
 > deno https://deno.land/x/examples/echo_server.ts
-deno requests network access to "listen". Grant? [yN] y
+⚠️  Deno requests network access to "listen". Grant? [yN] y
 listening on 0.0.0.0:8080
 ```
 
