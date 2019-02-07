@@ -10,6 +10,16 @@ import("rust.gni")
 
 cargo_home = "//third_party/rust_crates"
 
+rust_crate("aho_corasick") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/aho-corasick-0.6.9/src/lib.rs"
+  extern = [ ":memchr" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("ansi_term") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/lib.rs"
@@ -892,6 +902,42 @@ rust_crate("rand_xorshift") {
   # ]
 }
 
+rust_crate("regex") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.0/src/lib.rs"
+  features = [
+    "default",
+    "use_std",
+  ]
+  extern = [
+    ":aho_corasick",
+    ":memchr",
+    ":regex_syntax",
+    ":thread_local",
+    ":utf8_ranges",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  # Added by custom-build script.
+  cfg = [
+    "regex_runtime_teddy_avx2",
+    "regex_runtime_teddy_ssse3",
+  ]
+}
+
+rust_crate("regex_syntax") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-syntax-0.6.5/src/lib.rs"
+  extern = [ ":ucd_util" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("remove_dir_all") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/remove_dir_all-0.5.1/src/lib.rs"
@@ -1231,6 +1277,16 @@ rust_crate("tempfile") {
   }
 }
 
+rust_crate("thread_local") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/thread_local-0.3.6/src/lib.rs"
+  extern = [ ":lazy_static" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("time") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/time-0.1.42/src/lib.rs"
@@ -1528,6 +1584,15 @@ rust_crate("try_lock") {
   ]
 }
 
+rust_crate("ucd_util") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ucd-util-0.1.3/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("unicode_bidi") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unicode-bidi-0.3.4/src/lib.rs"
@@ -1595,6 +1660,15 @@ rust_crate("url") {
     ":matches",
     ":percent_encoding",
   ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_crate("utf8_ranges") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utf8-ranges-1.0.2/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
