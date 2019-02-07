@@ -23,6 +23,8 @@ cache:
   - prebuilt/mac
   - prebuilt/linux64
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
+  - third_party/v8/buildtools/mac/
+  - third_party/v8/buildtools/linux64/
   - third_party/v8/third_party/llvm-build/
 
 install:
