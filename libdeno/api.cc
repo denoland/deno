@@ -84,7 +84,7 @@ deno_buf deno_get_snapshot(Deno* d_) {
   d->context_.Reset();
 
   auto blob = d->snapshot_creator_->CreateBlob(
-      v8::SnapshotCreator::FunctionCodeHandling::kClear);
+      v8::SnapshotCreator::FunctionCodeHandling::kKeep);
   return {nullptr, 0, reinterpret_cast<uint8_t*>(const_cast<char*>(blob.data)),
           blob.raw_size};
 }
