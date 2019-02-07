@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { Buffer, Reader } from "deno";
 
 // `off` is the offset into `dst` where it will at which to begin writing values

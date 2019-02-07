@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as deno from "deno";
 
 async function cat(filenames: string[]): Promise<void> {

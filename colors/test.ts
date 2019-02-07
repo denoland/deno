@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assert, test } from "../testing/mod.ts";
 import { red, bgBlue, setEnabled, getEnabled } from "./mod.ts";
 import "./example.ts";
