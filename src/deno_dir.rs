@@ -347,12 +347,12 @@ impl DenoDir {
       source_code: out.source_code,
       maybe_output_code_filename: output_code_filename
         .to_str()
-        .map(|s| s.to_string()),
-      maybe_output_code: maybe_output_code,
+        .map(String::from),
+      maybe_output_code,
       maybe_source_map_filename: output_source_map_filename
         .to_str()
-        .map(|s| s.to_string()),
-      maybe_source_map: maybe_source_map,
+        .map(String::from),
+      maybe_source_map,
     })
   }
 
