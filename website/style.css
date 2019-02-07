@@ -35,9 +35,9 @@ a.badge:hover {
 a[href^="#"] { /* Hash links */
   text-decoration: none;
   color: transparent;
-  margin-right: 0.5rem;
+  margin-left: 0.5rem;
 }
-a[href^="#"]:hover {
+*:hover > a[href^="#"] {
   text-decoration: underline;
   color: #3d9bcc;
 }
