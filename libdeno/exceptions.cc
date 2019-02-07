@@ -155,7 +155,7 @@ void HandleException(v8::Local<v8::Context> context,
   v8::Isolate* isolate = context->GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   std::string json_str = EncodeExceptionAsJSON(context, exception);
-  CHECK(d != nullptr);
+  CHECK_NOT_NULL(d);
   d->last_exception_ = json_str;
 }
 
@@ -164,7 +164,7 @@ void HandleExceptionMessage(v8::Local<v8::Context> context,
   v8::Isolate* isolate = context->GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   std::string json_str = EncodeMessageAsJSON(context, message);
-  CHECK(d != nullptr);
+  CHECK_NOT_NULL(d);
   d->last_exception_ = json_str;
 }
 
