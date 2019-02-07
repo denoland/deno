@@ -10,6 +10,18 @@ import("rust.gni")
 
 cargo_home = "//third_party/rust_crates"
 
+rust_crate("ansi_term") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  if (is_win) {
+    extern = [ ":winapi" ]
+  }
+}
+
 rust_crate("arrayvec") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.10/src/lib.rs"
