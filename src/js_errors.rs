@@ -9,10 +9,7 @@
 //   console.log(err.stack);
 // It would require calling into Rust from Error.prototype.prepareStackTrace.
 
-use ansi_term::Colour::Cyan;
-use ansi_term::Colour::Red;
-use ansi_term::Colour::Yellow;
-use ansi_term::Style;
+use crate::ansi;
 use serde_json;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
@@ -64,7 +61,7 @@ pub struct JSError {
 impl fmt::Display for StackFrame {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     // Note when we print to string, we change from 0-indexed to 1-indexed.
-    let function_name = Style::new().italic().paint(&self.function_name);
+    let function_name = ansi::italic_bold(self.function_name.clone());
     let script_line_column =
       format_script_line_column(&self.script_name, self.line, self.column);
 
@@ -84,9 +81,9 @@ fn format_script_line_column(
   column: i64,
 ) -> String {
   // TODO match this style with how typescript displays errors.
-  let line = Yellow.paint((1 + line).to_string());
-  let column = Yellow.paint((1 + column).to_string());
-  let script_name = Cyan.paint(script_name);
+  let line = ansi::yellow((1 + line).to_string());
+  let column = ansi::yellow((1 + column).to_string());
+  let script_name = ansi::cyan(script_name.to_string());
   format!("{}:{}:{}", script_name, line, column)
 }
 
@@ -118,12 +115,12 @@ impl fmt::Display for JSError {
               s.push(' ');
             }
           }
-          write!(f, "{}\n", Red.bold().paint(s))?;
+          write!(f, "{}\n", ansi::red_bold(s))?;
         }
       }
     }
 
-    write!(f, "{}", Style::new().bold().paint(&self.message))?;
+    write!(f, "{}", ansi::bold(self.message.clone()))?;
 
     for frame in &self.frames {
       write!(f, "\n{}", &frame.to_string())?;

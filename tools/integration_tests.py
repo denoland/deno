@@ -16,7 +16,11 @@ import argparse
 from util import root_path, tests_path, pattern_match, \
                  green_ok, red_failed, rmtree, executable_suffix
 
-ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+
+def strip_ansi_codes(s):
+    ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+    return ansi_escape.sub('', s)
+
 
 def read_test(file_name):
     with open(file_name, "r") as f:
@@ -82,8 +86,7 @@ def integration_tests(deno_exe, test_filter = None):
             print actual_out
             sys.exit(1)
 
-        # Remove ANSI escape codes.
-        actual_out = ansi_escape.sub('', actual_out)
+        actual_out = strip_ansi_codes(actual_out)
 
         if pattern_match(expected_out, actual_out) != True:
             print red_failed()
