@@ -19,7 +19,7 @@ Before submitting, please make sure the following is done:
 
 1. There are tests that cover the changes.
 2. Ensure `./tools/test.py` passes.
-3. Format your code with `./tools/format.ts`.
+3. Format your code with `deno ./tools/format.ts --allow-run`.
 4. Make sure `./tools/lint.py` passes.
 
 ## Changes to `third_party`
