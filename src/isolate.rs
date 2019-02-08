@@ -14,17 +14,17 @@ use crate::errors::RustOrJsError;
 use crate::flags;
 use crate::js_errors::JSError;
 use crate::libdeno;
+use crate::modules::Modules;
 use crate::msg;
 use crate::permissions::DenoPermissions;
 use crate::tokio_util;
-
 use futures::sync::mpsc as async_mpsc;
 use futures::Future;
 use libc::c_char;
 use libc::c_void;
 use std;
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::cell::RefCell;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -52,10 +52,6 @@ pub type Dispatch =
   fn(isolate: &Isolate, buf: libdeno::deno_buf, data_buf: libdeno::deno_buf)
     -> (bool, Box<Op>);
 
-pub struct ModuleInfo {
-  name: String,
-}
-
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   dispatch: Dispatch,
@@ -63,8 +59,7 @@ pub struct Isolate {
   tx: mpsc::Sender<(i32, Buf)>,
   ntasks: Cell<i32>,
   timeout_due: Cell<Option<Instant>>,
-  pub modules: HashMap<libdeno::deno_mod, ModuleInfo>,
-  pub modules_by_name: HashMap<String, libdeno::deno_mod>,
+  pub modules: RefCell<Modules>,
   pub state: Arc<IsolateState>,
 }
 
@@ -202,8 +197,7 @@ impl Isolate {
       tx,
       ntasks: Cell::new(0),
       timeout_due: Cell::new(None),
-      modules: HashMap::new(),
-      modules_by_name: HashMap::new(),
+      modules: RefCell::new(Modules::new()),
       state,
     }
   }
@@ -290,47 +284,9 @@ impl Isolate {
       return Err(js_error);
     }
 
-    let name2 = name.clone();
-    self.modules.insert(id, ModuleInfo { name });
-
-    debug!("modules_by_name insert {}", name2);
-    self.modules_by_name.insert(name2, id);
+    self.modules.borrow_mut().register(id, &name);
 
     Ok(id)
-  }
-
-  // TODO(ry) This should be private...
-  pub fn resolve_cb(
-    &self,
-    specifier: &str,
-    referrer: libdeno::deno_mod,
-  ) -> libdeno::deno_mod {
-    self
-      .state
-      .metrics
-      .resolve_count
-      .fetch_add(1, Ordering::Relaxed);
-
-    debug!("resolve_cb {}", specifier);
-
-    let r = self.modules.get(&referrer);
-    if r.is_none() {
-      debug!("cant find referrer {}", referrer);
-      return 0;
-    }
-    let referrer_name = &r.unwrap().name;
-    let r = self.state.dir.resolve_module(specifier, referrer_name);
-    if let Err(err) = r {
-      debug!("potentially swallowed err: {}", err);
-      return 0;
-    }
-    let (name, _local_filename) = r.unwrap();
-
-    if let Some(id) = self.modules_by_name.get(&name) {
-      return *id;
-    } else {
-      return 0;
-    }
   }
 
   // TODO(ry) make this return a future.
@@ -340,8 +296,8 @@ impl Isolate {
   ) -> Result<(), RustOrJsError> {
     // basically iterate over the imports, start loading them.
 
-    let referrer = &self.modules[&id];
-    let referrer_name = referrer.name.clone();
+    let referrer_name =
+      { self.modules.borrow_mut().get_name(id).unwrap().clone() };
     let len =
       unsafe { libdeno::deno_mod_imports_len(self.libdeno_isolate, id) };
 
@@ -366,7 +322,7 @@ impl Isolate {
 
       debug!("mod_load_deps {} {}", i, name);
 
-      if None == self.modules_by_name.get(&name) {
+      if !self.modules.borrow_mut().is_registered(&name) {
         let out =
           code_fetch_and_maybe_compile(&self.state, specifier, &referrer_name)?;
         let child_id =
@@ -415,7 +371,7 @@ impl Isolate {
       .map_err(RustOrJsError::from)?;
 
     let id = self
-      .mod_new(out.filename.clone(), out.js_source())
+      .mod_new(out.module_name.clone(), out.js_source())
       .map_err(RustOrJsError::from)?;
 
     self.mod_load_deps(id)?;
@@ -539,7 +495,16 @@ extern "C" fn resolve_cb(
   let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
   let specifier_c: &CStr = unsafe { CStr::from_ptr(specifier_ptr) };
   let specifier: &str = specifier_c.to_str().unwrap();
-  isolate.resolve_cb(specifier, referrer)
+  isolate
+    .state
+    .metrics
+    .resolve_count
+    .fetch_add(1, Ordering::Relaxed);
+  isolate.modules.borrow_mut().resolve_cb(
+    &isolate.state.dir,
+    specifier,
+    referrer,
+  )
 }
 
 // Dereferences the C pointer into the Rust Isolate object.
