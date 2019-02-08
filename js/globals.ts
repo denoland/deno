@@ -23,6 +23,9 @@ import * as urlSearchParams from "./url_search_params";
 import * as workers from "./workers";
 import * as performanceUtil from "./performance";
 
+// builtin modules
+import * as denoModule from "./deno";
+
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
 import { globalEval } from "./global_eval";
@@ -40,6 +43,9 @@ declare global {
 export const window = globalEval("this");
 // A self reference to the global object.
 window.window = window;
+
+// builtin modules
+window.deno = denoModule;
 
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;

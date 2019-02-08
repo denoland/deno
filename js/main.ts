@@ -2,16 +2,13 @@
 // tslint:disable-next-line:no-reference
 /// <reference path="./plugins.d.ts" />
 
-import "./globals";
+import { window } from "./globals";
 
 import { log } from "./util";
 import * as os from "./os";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { replLoop } from "./repl";
-
-// builtin modules
-import * as deno from "./deno";
 
 // TODO(kitsonk) remove with `--types` below
 import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
@@ -20,7 +17,7 @@ import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 export default function denoMain() {
   const startResMsg = os.start();
 
-  libdeno.builtinModules["deno"] = deno;
+  libdeno.builtinModules["deno"] = window.deno;
   Object.freeze(libdeno.builtinModules);
 
   // handle `--version`
