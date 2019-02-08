@@ -26,7 +26,7 @@ testPerm({ net: true }, async function resourcesNet() {
   listener.close();
 });
 
-test(async function resourcesFile() {
+testPerm({ read: true }, async function resourcesFile() {
   const resourcesBefore = deno.resources();
   await deno.open("tests/hello.txt");
   const resourcesAfter = deno.resources();

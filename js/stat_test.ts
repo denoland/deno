@@ -1,10 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEqual } from "./test_util.ts";
+import { testPerm, assert, assertEqual } from "./test_util.ts";
 import * as deno from "deno";
 
 // TODO Add tests for modified, accessed, and created fields once there is a way
 // to create temp files.
-test(async function statSyncSuccess() {
+testPerm({ read: true }, async function statSyncSuccess() {
   const packageInfo = deno.statSync("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -18,7 +18,19 @@ test(async function statSyncSuccess() {
   assert(!srcInfo.isSymlink());
 });
 
-test(async function statSyncNotFound() {
+testPerm({ read: false }, async function statSyncPerm() {
+  let caughtError = false;
+  try {
+    deno.statSync("package.json");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ read: true }, async function statSyncNotFound() {
   let caughtError = false;
   let badInfo;
 
@@ -34,7 +46,7 @@ test(async function statSyncNotFound() {
   assertEqual(badInfo, undefined);
 });
 
-test(async function lstatSyncSuccess() {
+testPerm({ read: true }, async function lstatSyncSuccess() {
   const packageInfo = deno.lstatSync("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -48,7 +60,19 @@ test(async function lstatSyncSuccess() {
   assert(!srcInfo.isSymlink());
 });
 
-test(async function lstatSyncNotFound() {
+testPerm({ read: false }, async function lstatSyncPerm() {
+  let caughtError = false;
+  try {
+    deno.lstatSync("package.json");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ read: true }, async function lstatSyncNotFound() {
   let caughtError = false;
   let badInfo;
 
@@ -64,7 +88,7 @@ test(async function lstatSyncNotFound() {
   assertEqual(badInfo, undefined);
 });
 
-test(async function statSuccess() {
+testPerm({ read: true }, async function statSuccess() {
   const packageInfo = await deno.stat("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -78,7 +102,19 @@ test(async function statSuccess() {
   assert(!srcInfo.isSymlink());
 });
 
-test(async function statNotFound() {
+testPerm({ read: false }, async function statPerm() {
+  let caughtError = false;
+  try {
+    await deno.stat("package.json");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ read: true }, async function statNotFound() {
   let caughtError = false;
   let badInfo;
 
@@ -94,7 +130,7 @@ test(async function statNotFound() {
   assertEqual(badInfo, undefined);
 });
 
-test(async function lstatSuccess() {
+testPerm({ read: true }, async function lstatSuccess() {
   const packageInfo = await deno.lstat("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -108,7 +144,19 @@ test(async function lstatSuccess() {
   assert(!srcInfo.isSymlink());
 });
 
-test(async function lstatNotFound() {
+testPerm({ read: false }, async function lstatPerm() {
+  let caughtError = false;
+  try {
+    await deno.lstat("package.json");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ read: true }, async function lstatNotFound() {
   let caughtError = false;
   let badInfo;
 

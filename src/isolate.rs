@@ -114,6 +114,11 @@ impl IsolateState {
   }
 
   #[inline]
+  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
+    self.permissions.check_read(filename)
+  }
+
+  #[inline]
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
     self.permissions.check_write(filename)
   }

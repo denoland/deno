@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, Default)]
 pub struct DenoPermissions {
+  pub allow_read: AtomicBool,
   pub allow_write: AtomicBool,
   pub allow_net: AtomicBool,
   pub allow_env: AtomicBool,
@@ -21,6 +22,7 @@ pub struct DenoPermissions {
 impl DenoPermissions {
   pub fn new(flags: &DenoFlags) -> Self {
     Self {
+      allow_read: AtomicBool::new(flags.allow_read),
       allow_write: AtomicBool::new(flags.allow_write),
       allow_env: AtomicBool::new(flags.allow_env),
       allow_net: AtomicBool::new(flags.allow_net),
@@ -36,6 +38,21 @@ impl DenoPermissions {
     let r = permission_prompt("access to run a subprocess");
     if r.is_ok() {
       self.allow_run.store(true, Ordering::SeqCst);
+    }
+    r
+  }
+
+  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
+    if self.allow_read.load(Ordering::SeqCst) {
+      return Ok(());
+    };
+    // TODO get location (where access occurred)
+    let r = permission_prompt(&format!(
+      "Deno requests read access to \"{}\".",
+      filename
+    ));;
+    if r.is_ok() {
+      self.allow_read.store(true, Ordering::SeqCst);
     }
     r
   }
