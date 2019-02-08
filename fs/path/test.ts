@@ -1,0 +1,9 @@
+import "./basename_test.ts";
+import "./dirname_test.ts";
+import "./extname_test.ts";
+import "./isabsolute_test.ts";
+import "./join_test.ts";
+import "./parse_format_test.ts";
+import "./relative_test.ts";
+import "./resolve_test.ts";
+import "./zero_length_strings_test.ts";
