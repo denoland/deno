@@ -115,7 +115,7 @@ impl fmt::Display for JSError {
               s.push(' ');
             }
           }
-          write!(f, "{}\n", ansi::red_bold(s))?;
+          writeln!(f, "{}", ansi::red_bold(s))?;
         }
       }
     }
@@ -193,7 +193,7 @@ impl StackFrame {
     Some(StackFrame {
       line: line - 1,
       column: column - 1,
-      script_name: script_name,
+      script_name,
       function_name,
       is_eval,
       is_constructor,
@@ -227,8 +227,8 @@ impl StackFrame {
             let orig_source = sm.sources[original.source as usize].clone();
             (
               orig_source,
-              original.original_line as i64,
-              original.original_column as i64,
+              i64::from(original.original_line),
+              i64::from(original.original_column),
             )
           }
         },

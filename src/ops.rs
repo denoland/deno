@@ -184,11 +184,11 @@ fn op_now(
   assert_eq!(data.len(), 0);
   let start = SystemTime::now();
   let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
-  let time = since_the_epoch.as_secs() as u64 * 1000
-    + since_the_epoch.subsec_millis() as u64;
+  let time = since_the_epoch.as_secs() * 1000
+    + u64::from(since_the_epoch.subsec_millis());
 
   let builder = &mut FlatBufferBuilder::new();
-  let inner = msg::NowRes::create(builder, &msg::NowResArgs { time: time });
+  let inner = msg::NowRes::create(builder, &msg::NowResArgs { time });
   ok_future(serialize_response(
     base.cmd_id(),
     builder,
@@ -327,7 +327,6 @@ fn op_code_fetch(
       filename: Some(builder.create_string(&out.filename)),
       media_type: out.media_type,
       source_code: Some(builder.create_string(&out.source_code)),
-      ..Default::default()
     };
     let inner = msg::CodeFetchRes::create(builder, &msg_args);
     Ok(serialize_response(
@@ -622,9 +621,15 @@ fn op_chmod(
     #[cfg(any(unix))]
     {
       // We need to use underscore to compile in Windows.
-      #[cfg_attr(feature = "cargo-clippy", allow(used_underscore_binding))]
+      #[cfg_attr(
+        feature = "cargo-clippy",
+        allow(clippy::used_underscore_binding)
+      )]
       let mut permissions = _metadata.permissions();
-      #[cfg_attr(feature = "cargo-clippy", allow(used_underscore_binding))]
+      #[cfg_attr(
+        feature = "cargo-clippy",
+        allow(clippy::used_underscore_binding)
+      )]
       permissions.set_mode(_mode);
       fs::set_permissions(&path, permissions)?;
     }
