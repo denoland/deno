@@ -5,6 +5,9 @@ import { BaseHandler } from "./handlers.ts";
 import { LogRecord } from "./logger.ts";
 import { LogLevel } from "./levels.ts";
 
+import "./handlers_test.ts";
+import "./logger_test.ts";
+
 // constructor(levelName: string, options: HandlerOptions = {}) {
 //   this.level = getLevelByName(levelName);
 //   this.levelName = levelName;

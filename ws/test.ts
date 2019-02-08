@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import "./sha1_test.ts";
+
 import { Buffer } from "deno";
 import { BufReader } from "../io/bufio.ts";
 import { test, assert, assertEqual } from "../testing/mod.ts";
