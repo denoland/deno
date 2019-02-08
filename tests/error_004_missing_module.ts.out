@@ -1,5 +1,4 @@
 Compiling [WILDCARD]tests/error_004_missing_module.ts
-[WILDCARD]
 Uncaught NotFound: Cannot resolve module "bad-module.ts" from "[WILDCARD]/tests/error_004_missing_module.ts"
     at DenoError ([WILDCARD]/js/errors.ts:[WILDCARD])
     at maybeError ([WILDCARD]/js/errors.ts:[WILDCARD])
