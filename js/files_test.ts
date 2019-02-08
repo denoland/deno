@@ -74,7 +74,7 @@ testPerm({ write: false, read: false }, async function readWritePermFailure() {
   }
 });
 
-testPerm({ write: true }, async function createFile() {
+testPerm({ read: true, write: true }, async function createFile() {
   const tempDir = await deno.makeTempDir();
   const filename = tempDir + "/test.txt";
   const f = await deno.open(filename, "w");
@@ -92,7 +92,7 @@ testPerm({ write: true }, async function createFile() {
   await deno.remove(tempDir, { recursive: true });
 });
 
-testPerm({ write: true }, async function openModeWrite() {
+testPerm({ read: true, write: true }, async function openModeWrite() {
   const tempDir = deno.makeTempDirSync();
   const encoder = new TextEncoder();
   const filename = tempDir + "hello.txt";
@@ -126,7 +126,7 @@ testPerm({ write: true }, async function openModeWrite() {
   await deno.remove(tempDir, { recursive: true });
 });
 
-testPerm({ write: true }, async function openModeWriteRead() {
+testPerm({ read: true, write: true }, async function openModeWriteRead() {
   const tempDir = deno.makeTempDirSync();
   const encoder = new TextEncoder();
   const filename = tempDir + "hello.txt";
