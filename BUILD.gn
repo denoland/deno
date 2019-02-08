@@ -31,6 +31,7 @@ main_extern = [
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:rand",
+  "$rust_build:regex",
   "$rust_build:remove_dir_all",
   "$rust_build:ring",
   "$rust_build:rustyline",

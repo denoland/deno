@@ -9,6 +9,7 @@
 //   console.log(err.stack);
 // It would require calling into Rust from Error.prototype.prepareStackTrace.
 
+use crate::ansi;
 use serde_json;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
@@ -32,8 +33,8 @@ type CachedMaps = HashMap<String, Option<SourceMap>>;
 
 #[derive(Debug, PartialEq)]
 pub struct StackFrame {
-  pub line: u32,   // zero indexed
-  pub column: u32, // zero indexed
+  pub line: i64,   // zero indexed
+  pub column: i64, // zero indexed
   pub script_name: String,
   pub function_name: String,
   pub is_eval: bool,
@@ -57,21 +58,33 @@ pub struct JSError {
   pub frames: Vec<StackFrame>,
 }
 
-impl ToString for StackFrame {
-  fn to_string(&self) -> String {
+impl fmt::Display for StackFrame {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     // Note when we print to string, we change from 0-indexed to 1-indexed.
-    let (line, column) = (self.line + 1, self.column + 1);
+    let function_name = ansi::italic_bold(self.function_name.clone());
+    let script_line_column =
+      format_script_line_column(&self.script_name, self.line, self.column);
+
     if !self.function_name.is_empty() {
-      format!(
-        "    at {} ({}:{}:{})",
-        self.function_name, self.script_name, line, column
-      )
+      write!(f, "    at {} ({})", function_name, script_line_column)
     } else if self.is_eval {
-      format!("    at eval ({}:{}:{})", self.script_name, line, column)
+      write!(f, "    at eval ({})", script_line_column)
     } else {
-      format!("    at {}:{}:{}", self.script_name, line, column)
+      write!(f, "    at {}", script_line_column)
     }
   }
+}
+
+fn format_script_line_column(
+  script_name: &str,
+  line: i64,
+  column: i64,
+) -> String {
+  // TODO match this style with how typescript displays errors.
+  let line = ansi::yellow((1 + line).to_string());
+  let column = ansi::yellow((1 + column).to_string());
+  let script_name = ansi::cyan(script_name.to_string());
+  format!("{}:{}:{}", script_name, line, column)
 }
 
 impl fmt::Display for JSError {
@@ -79,24 +92,35 @@ impl fmt::Display for JSError {
     if self.script_resource_name.is_some() {
       let script_resource_name = self.script_resource_name.as_ref().unwrap();
       // Avoid showing internal code from gen/bundle/main.js
-      if script_resource_name != "gen/bundle/main.js" {
-        write!(f, "{}", script_resource_name)?;
-        if self.line_number.is_some() {
-          write!(
-            f,
-            ":{}:{}",
-            self.line_number.unwrap(),
-            self.start_column.unwrap()
-          )?;
+      if script_resource_name != "gen/bundle/main.js"
+        && script_resource_name != "gen/bundle/compiler.js"
+      {
+        if self.line_number.is_some() && self.start_column.is_some() {
+          assert!(self.line_number.is_some());
           assert!(self.start_column.is_some());
+          let script_line_column = format_script_line_column(
+            script_resource_name,
+            self.line_number.unwrap() - 1,
+            self.start_column.unwrap() - 1,
+          );
+          write!(f, "{}", script_line_column)?;
         }
         if self.source_line.is_some() {
-          write!(f, "\n{}\n\n", self.source_line.as_ref().unwrap())?;
+          write!(f, "\n{}\n", self.source_line.as_ref().unwrap())?;
+          let mut s = String::new();
+          for i in 0..self.end_column.unwrap() {
+            if i >= self.start_column.unwrap() {
+              s.push('^');
+            } else {
+              s.push(' ');
+            }
+          }
+          write!(f, "{}\n", ansi::red_bold(s))?;
         }
       }
     }
 
-    write!(f, "{}", &self.message)?;
+    write!(f, "{}", ansi::bold(self.message.clone()))?;
 
     for frame in &self.frames {
       write!(f, "\n{}", &frame.to_string())?;
@@ -117,13 +141,13 @@ impl StackFrame {
     if !line_v.is_u64() {
       return None;
     }
-    let line = line_v.as_u64().unwrap() as u32;
+    let line = line_v.as_u64().unwrap() as i64;
 
     let column_v = &obj["column"];
     if !column_v.is_u64() {
       return None;
     }
-    let column = column_v.as_u64().unwrap() as u32;
+    let column = column_v.as_u64().unwrap() as i64;
 
     let script_name_v = &obj["scriptName"];
     if !script_name_v.is_string() {
@@ -184,12 +208,16 @@ impl StackFrame {
   ) -> StackFrame {
     let maybe_sm =
       get_mappings(self.script_name.as_ref(), mappings_map, getter);
-    let frame_pos = (self.script_name.to_owned(), self.line, self.column);
+    let frame_pos = (
+      self.script_name.to_owned(),
+      self.line as i64,
+      self.column as i64,
+    );
     let (script_name, line, column) = match maybe_sm {
       None => frame_pos,
       Some(sm) => match sm.mappings.original_location_for(
-        self.line,
-        self.column,
+        self.line as u32,
+        self.column as u32,
         Bias::default(),
       ) {
         None => frame_pos,
@@ -199,8 +227,8 @@ impl StackFrame {
             let orig_source = sm.sources[original.source as usize].clone();
             (
               orig_source,
-              original.original_line,
-              original.original_column,
+              original.original_line as i64,
+              original.original_column as i64,
             )
           }
         },
@@ -379,6 +407,7 @@ fn get_mappings<'a>(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::ansi::strip_ansi_codes;
 
   fn error1() -> JSError {
     JSError {
@@ -546,14 +575,20 @@ mod tests {
   #[test]
   fn stack_frame_to_string() {
     let e = error1();
-    assert_eq!("    at foo (foo_bar.ts:5:17)", e.frames[0].to_string());
-    assert_eq!("    at qat (bar_baz.ts:6:21)", e.frames[1].to_string());
+    assert_eq!(
+      "    at foo (foo_bar.ts:5:17)",
+      strip_ansi_codes(&e.frames[0].to_string())
+    );
+    assert_eq!(
+      "    at qat (bar_baz.ts:6:21)",
+      strip_ansi_codes(&e.frames[1].to_string())
+    );
   }
 
   #[test]
   fn js_error_to_string() {
     let e = error1();
-    assert_eq!("Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2", e.to_string());
+    assert_eq!("Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2", strip_ansi_codes(&e.to_string()));
   }
 
   #[test]

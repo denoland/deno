@@ -16,6 +16,12 @@ import argparse
 from util import root_path, tests_path, pattern_match, \
                  green_ok, red_failed, rmtree, executable_suffix
 
+
+def strip_ansi_codes(s):
+    ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+    return ansi_escape.sub('', s)
+
+
 def read_test(file_name):
     with open(file_name, "r") as f:
         test_file = f.read()
@@ -51,20 +57,20 @@ def integration_tests(deno_exe, test_filter = None):
             continue
 
         test_abs = os.path.join(tests_path, test_filename)
-        print "read_test", test_abs
         test = read_test(test_abs)
         exit_code = int(test.get("exit_code", 0))
         args = test.get("args", "").split(" ")
 
         check_stderr = str2bool(test.get("check_stderr", "false"))
-        stderr = subprocess.STDOUT if check_stderr else None
+
+        stderr = subprocess.STDOUT if check_stderr else open(os.devnull, 'w')
 
         output_abs = os.path.join(root_path, test.get("output", ""))
         with open(output_abs, 'r') as f:
             expected_out = f.read()
         cmd = [deno_exe] + args
-        print "test %s" % (test_filename)
-        print " ".join(cmd)
+        sys.stdout.write("tests/%s ... " % (test_filename))
+        sys.stdout.flush()
         actual_code = 0
         try:
             actual_out = subprocess.check_output(
@@ -80,14 +86,16 @@ def integration_tests(deno_exe, test_filter = None):
             print actual_out
             sys.exit(1)
 
+        actual_out = strip_ansi_codes(actual_out)
+
         if pattern_match(expected_out, actual_out) != True:
-            print "... " + red_failed()
+            print red_failed()
             print "Expected output does not match actual."
             print "Expected output: \n" + expected_out
             print "Actual output:   \n" + actual_out
             sys.exit(1)
 
-        print "... " + green_ok()
+        print green_ok()
 
 def main():
     parser = argparse.ArgumentParser()

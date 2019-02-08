@@ -8,6 +8,7 @@ extern crate futures;
 #[macro_use]
 extern crate serde_json;
 
+mod ansi;
 pub mod compiler;
 pub mod deno_dir;
 pub mod errors;
