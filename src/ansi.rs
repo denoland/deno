@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use ansi_term::Color::Cyan;
 use ansi_term::Color::Red;
 use ansi_term::Color::Yellow;
@@ -20,6 +19,7 @@ lazy_static! {
 }
 
 /// Helper function to strip ansi codes.
+#[allow(dead_code)]
 pub fn strip_ansi_codes(s: &str) -> Cow<str> {
   STRIP_ANSI_RE.replace_all(s, "")
 }
