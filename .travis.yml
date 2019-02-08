@@ -41,6 +41,8 @@ install:
   if [ ! $(rustc --version | grep 1.31.1) ]; then
     curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.31.1
     rustup default 1.31.1
+    # Install clippy component
+    rustup component add clippy    
   fi
   rustc --version
   cargo --version

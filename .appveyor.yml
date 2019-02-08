@@ -145,6 +145,7 @@ install:
         Exec -NoNewLines {
           & "$env:TEMP\rustup-init.exe" -y --default-toolchain 1.31.1
         }
+        rustup component add clippy
         Delete-Tree @(
           "$env:RUSTUP_HOME\downloads",
           "$env:RUSTUP_HOME\tmp",

@@ -19,6 +19,7 @@ run([
     "--extensions=cc,h", "--recursive", "libdeno"
 ])
 
+run(["cargo", "clippy", "--", "-D", "warnings"])
 run(["node", tslint, "-p", ".", "--exclude", "**/gen/**/*.ts"])
 run([
     "node", tslint, "./js/**/*_test.ts", "./tests/**/*.ts", "--exclude",
