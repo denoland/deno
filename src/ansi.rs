@@ -25,7 +25,7 @@ pub fn strip_ansi_codes(s: &str) -> Cow<str> {
 }
 
 pub fn use_color() -> bool {
-  *NO_COLOR == false
+  !(*NO_COLOR)
 }
 
 pub fn red_bold(s: String) -> impl fmt::Display {
