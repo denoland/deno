@@ -16,7 +16,7 @@ async function readData(name: string): Promise<string> {
   return text;
 }
 
-testPerm({ write: true }, function truncateSyncSuccess() {
+testPerm({ read: true, write: true }, function truncateSyncSuccess() {
   const enc = new TextEncoder();
   const d = enc.encode("Hello");
   const filename = deno.makeTempDirSync() + "/test_truncateSync.txt";
@@ -33,7 +33,7 @@ testPerm({ write: true }, function truncateSyncSuccess() {
   deno.removeSync(filename);
 });
 
-testPerm({ write: true }, async function truncateSuccess() {
+testPerm({ read: true, write: true }, async function truncateSuccess() {
   const enc = new TextEncoder();
   const d = enc.encode("Hello");
   const filename = deno.makeTempDirSync() + "/test_truncate.txt";
