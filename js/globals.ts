@@ -45,7 +45,7 @@ export const window = globalEval("this");
 window.window = window;
 
 // builtin modules
-window.deno = denoModule;
+window.deno = denoModule as any;
 
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;
