@@ -245,8 +245,11 @@ test(function consoleTestError() {
   try {
     throw new MyError("This is an error");
   } catch (e) {
-    assert(stringify(e).split("\n")[3]
-      .includes("MyError: This is an error"));
+    assert(
+      stringify(e)
+        .split("\n")[3]
+        .includes("MyError: This is an error")
+    );
   }
 });
 

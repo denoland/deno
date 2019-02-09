@@ -57,15 +57,20 @@ def import_data_from_gh_pages():
 
 def get_binary_sizes(build_dir):
     path_dict = {
-        "deno": os.path.join(build_dir, "deno" + executable_suffix),
-        "main.js": os.path.join(build_dir, "gen/bundle/main.js"),
-        "main.js.map": os.path.join(build_dir, "gen/bundle/main.js.map"),
-        "compiler.js": os.path.join(build_dir, "gen/bundle/compiler.js"),
-        "compiler.js.map": os.path.join(build_dir,
-            "gen/bundle/compiler.js.map"),
-        "snapshot_deno.bin": os.path.join(build_dir, "gen/snapshot_deno.bin"),
-        "snapshot_compiler.bin": os.path.join(build_dir,
-            "gen/snapshot_compiler.bin")
+        "deno":
+        os.path.join(build_dir, "deno" + executable_suffix),
+        "main.js":
+        os.path.join(build_dir, "gen/bundle/main.js"),
+        "main.js.map":
+        os.path.join(build_dir, "gen/bundle/main.js.map"),
+        "compiler.js":
+        os.path.join(build_dir, "gen/bundle/compiler.js"),
+        "compiler.js.map":
+        os.path.join(build_dir, "gen/bundle/compiler.js.map"),
+        "snapshot_deno.bin":
+        os.path.join(build_dir, "gen/snapshot_deno.bin"),
+        "snapshot_compiler.bin":
+        os.path.join(build_dir, "gen/snapshot_compiler.bin")
     }
     sizes = {}
     for name, path in path_dict.items():

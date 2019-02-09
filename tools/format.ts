@@ -10,12 +10,20 @@ const yapf = join("third_party", "python_packages", "bin", "yapf");
 const rustfmt = join("third_party", "rustfmt", deno.platform.os, "rustfmt");
 const rustfmtConfig = ".rustfmt.toml";
 
-const run = (...args: string[]) => {
+const decoder = new TextDecoder();
+
+async function run(...args: string[]): Promise<void> {
   if (deno.platform.os === "win") {
     args = ["cmd.exe", "/c", ...args];
   }
-  return deno.run({ args, stdout: "null", stderr: "piped" }).status();
-};
+  const p = deno.run({ args, stdout: "piped", stderr: "piped" });
+  const { code } = await p.status();
+  if (code !== 0) {
+    console.log(decoder.decode(await deno.readAll(p.stderr)));
+    console.log(decoder.decode(await deno.readAll(p.stdout)));
+    deno.exit(code);
+  }
+}
 
 (async () => {
   console.log("clang_format");
@@ -49,6 +57,7 @@ const run = (...args: string[]) => {
   console.log("prettier");
   await run(
     lookupDenoPath(),
+    "--allow-read",
     "--allow-write",
     "js/deps/https/deno.land/x/std/prettier/main.ts",
     "rollup.config.js",

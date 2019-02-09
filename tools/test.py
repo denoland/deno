@@ -38,7 +38,6 @@ def test_no_color(deno_exe):
     print green_ok()
 
 
-
 def main(argv):
     if len(argv) == 2:
         build_dir = sys.argv[1]
