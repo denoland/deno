@@ -305,6 +305,17 @@ import { test, assertEqual } from "./package.ts";
 This design circumvents a plethora of complexity spawned by package management
 software, centralized code repositories, and superfluous file formats.
 
+## Environmental Variables
+
+There are several env vars that control how Deno behaves:
+
+`DENO_DIR` defaults to `$HOME/.deno` but can be set to any path to control where
+generated and cached source code is written and read to.
+
+`NO_COLOR` will turn off color output if set. See https://no-color.org/. User
+code can test if `NO_COLOR` was set without having `--allow-env` by using the
+boolean constant `deno.noColor`.
+
 ## Browser compatibility
 
 The subset of Deno programs which are written completely in JavaScript and do
