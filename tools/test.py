@@ -31,10 +31,10 @@ def test_no_color(deno_exe):
     sys.stdout.flush()
     t = os.path.join(tests_path, "no_color.js")
     output = run_output([deno_exe, t], merge_env={"NO_COLOR": "1"})
-    assert output == "noColor true\n"
+    assert output.strip() == "noColor true"
     t = os.path.join(tests_path, "no_color.js")
     output = run_output([deno_exe, t])
-    assert output == "noColor false\n"
+    assert output.strip() == "noColor false"
     print green_ok()
 
 
