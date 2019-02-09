@@ -1,3 +1,4 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 max_width = 80
 tab_spaces = 2
+format_macro_bodies = true
