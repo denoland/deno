@@ -8,6 +8,7 @@ from integration_tests import integration_tests
 from deno_dir_test import deno_dir_test
 from setup_test import setup_test
 from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
+from util import run_output, tests_path, green_ok
 from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test
@@ -23,6 +24,19 @@ def check_exists(filename):
         print "Required target doesn't exist:", filename
         print "Run ./tools/build.py"
         sys.exit(1)
+
+
+def test_no_color(deno_exe):
+    sys.stdout.write("no_color test...")
+    sys.stdout.flush()
+    t = os.path.join(tests_path, "no_color.js")
+    output = run_output([deno_exe, t], merge_env={"NO_COLOR": "1"})
+    assert output.strip() == "noColor true"
+    t = os.path.join(tests_path, "no_color.js")
+    output = run_output([deno_exe, t])
+    assert output.strip() == "noColor false"
+    print green_ok()
+
 
 
 def main(argv):
@@ -80,6 +94,8 @@ def main(argv):
     rmtree(deno_dir)
 
     deno_dir_test(deno_exe, deno_dir)
+
+    test_no_color(deno_exe)
 
 
 if __name__ == '__main__':

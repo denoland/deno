@@ -9,9 +9,13 @@ import * as util from "./util";
 /** process id */
 export let pid: number;
 
-export function setPid(pid_: number): void {
+/** Reflects the NO_COLOR enviromental variable: https://no-color.org/ */
+export let noColor: boolean;
+
+export function setGlobals(pid_: number, noColor_: boolean): void {
   assert(!pid);
   pid = pid_;
+  noColor = noColor_;
 }
 
 interface CodeInfo {

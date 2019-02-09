@@ -1,5 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+use atty;
+use crate::ansi;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -18,8 +20,6 @@ use crate::resources::table_entries;
 use crate::resources::Resource;
 use crate::tokio_util;
 use crate::version;
-
-use atty;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::Async;
@@ -33,10 +33,6 @@ use std;
 use std::convert::From;
 use std::fs;
 use std::net::Shutdown;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-#[cfg(unix)]
-use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -47,6 +43,11 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_process::CommandExt;
 use tokio_threadpool;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
 
 type OpResult = DenoResult<Buf>;
 
@@ -266,6 +267,7 @@ fn op_start(
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
+      no_color: !ansi::use_color(),
       ..Default::default()
     },
   );
