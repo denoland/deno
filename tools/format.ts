@@ -1,4 +1,4 @@
-#!/usr/bin/env deno --allow-run
+#!/usr/bin/env deno --allow-read --allow-run
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as deno from "deno";
 import { join } from "../js/deps/https/deno.land/x/std/fs/path.ts";
