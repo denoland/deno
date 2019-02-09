@@ -42,7 +42,7 @@ function findFilesWalk(paths: string[], depth: number) {
 
 export const executableSuffix = platform.os === "win" ? ".exe" : "";
 
-// Returns true if the path exists.
+/** Returns true if the path exists. */
 export function existsSync(path: string): boolean {
   try {
     lstatSync(path);
