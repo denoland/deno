@@ -447,28 +447,6 @@ impl DenoDir {
     debug!("module_name: {}, filename: {}", module_name, filename);
     Ok((module_name, filename))
   }
-
-  pub fn print_file_info(self: &Self, filename: String) {
-    let maybe_out = self.code_fetch(&filename, ".");
-    if maybe_out.is_err() {
-      println!("{}", maybe_out.unwrap_err());
-      return;
-    }
-    let out = maybe_out.unwrap();
-
-    println!("local: {}", &(out.filename));
-    println!("type: {}", msg::enum_name_media_type(out.media_type));
-    if out.maybe_output_code_filename.is_some() {
-      println!(
-        "compiled: {}",
-        out.maybe_output_code_filename.as_ref().unwrap(),
-      );
-    }
-    if out.maybe_source_map_filename.is_some() {
-      println!("map: {}", out.maybe_source_map_filename.as_ref().unwrap());
-    }
-    // TODO print deps.
-  }
 }
 
 impl SourceMapGetter for DenoDir {
