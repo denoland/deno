@@ -51,12 +51,15 @@ class Prompt(object):
     def run(self,
             arg,
             bytes_input,
+            allow_read=False,
             allow_write=False,
             allow_net=False,
             allow_env=False,
             allow_run=False):
         "Returns (return_code, stdout, stderr)."
         cmd = [self.deno_exe, PERMISSIONS_PROMPT_TEST_TS, arg]
+        if allow_read:
+            cmd.append("--allow-read")
         if allow_write:
             cmd.append("--allow-write")
         if allow_net:
@@ -70,6 +73,24 @@ class Prompt(object):
     def warm_up(self):
         # ignore the ts compiling message
         self.run('needsWrite', b'', allow_write=True)
+
+    def test_read_yes(self):
+        code, stdout, stderr = self.run('needsRead', b'y\n')
+        assert code == 0
+        assert stdout == b''
+        assert b'⚠️  Deno requests read access' in stderr
+
+    def test_read_arg(self):
+        code, stdout, stderr = self.run('needsRead', b'', allow_read=True)
+        assert code == 0
+        assert stdout == b''
+        assert stderr == b''
+
+    def test_read_no(self):
+        code, _stdout, stderr = self.run('needsRead', b'N\n')
+        assert code == 1
+        assert b'PermissionDenied: permission denied' in stderr
+        assert b'⚠️  Deno requests read access' in stderr
 
     def test_write_yes(self):
         code, stdout, stderr = self.run('needsWrite', b'y\n')
@@ -147,6 +168,9 @@ class Prompt(object):
 def permission_prompt_test(deno_exe):
     p = Prompt(deno_exe)
     p.warm_up()
+    p.test_read_yes()
+    p.test_read_arg()
+    p.test_read_no()
     p.test_write_yes()
     p.test_write_arg()
     p.test_write_no()
