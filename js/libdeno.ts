@@ -50,6 +50,9 @@ interface Libdeno {
   evalContext(
     code: string
   ): [any, EvalErrorInfo | null] /* tslint:disable-line:no-any */;
+
+  // tslint:disable-next-line:no-any
+  errorToJSON: (e: any) => string;
 }
 
 const window = globalEval("this");

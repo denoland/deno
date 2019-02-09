@@ -8,6 +8,7 @@ import * as dispatch from "./dispatch";
 import { exit } from "./os";
 import { globalEval } from "./global_eval";
 import { libdeno } from "./libdeno";
+import { formatError } from "./format_error";
 
 const window = globalEval("this");
 
@@ -102,7 +103,8 @@ function evaluate(code: string): void {
     console.log(result);
   } else {
     if (errInfo.isNativeError) {
-      console.error((errInfo.thrown as Error).message);
+      const formattedError = formatError(JSON.stringify(errInfo.thrown));
+      console.error(formattedError);
     } else {
       console.error("Thrown:", errInfo.thrown);
     }

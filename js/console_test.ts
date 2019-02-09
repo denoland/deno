@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { Console, libdeno, stringifyArgs, inspect, write, stdout } from "deno";
-import { test, assertEqual } from "./test_util.ts";
+import { test, assertEqual, assert } from "./test_util.ts";
 
 const console = new Console(libdeno.print);
 
@@ -245,7 +245,8 @@ test(function consoleTestError() {
   try {
     throw new MyError("This is an error");
   } catch (e) {
-    assertEqual(stringify(e).split("\n")[0], "MyError: This is an error");
+    assert(stringify(e).split("\n")[3]
+      .includes("MyError: This is an error"));
   }
 });
 

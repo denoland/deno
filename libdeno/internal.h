@@ -134,6 +134,7 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
 void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args);
+void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
 void BuiltinModules(v8::Local<v8::Name> property,
@@ -144,6 +145,7 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Recv),
     reinterpret_cast<intptr_t>(Send),
     reinterpret_cast<intptr_t>(EvalContext),
+    reinterpret_cast<intptr_t>(ErrorToJSON),
     reinterpret_cast<intptr_t>(Shared),
     reinterpret_cast<intptr_t>(BuiltinModules),
     reinterpret_cast<intptr_t>(MessageCallback),

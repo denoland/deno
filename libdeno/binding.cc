@@ -120,6 +120,16 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   fflush(file);
 }
 
+void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  CHECK_EQ(args.Length(), 1);
+  auto* isolate = args.GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  auto context = d->context_.Get(d->isolate_);
+  v8::HandleScope handle_scope(isolate);
+  auto json_string = EncodeExceptionAsJSON(context, args[0]);
+  args.GetReturnValue().Set(v8_str(json_string.c_str()));
+}
+
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
   if (buf.alloc_ptr == nullptr) {
     // If alloc_ptr isn't set, we memcpy.
@@ -477,6 +487,12 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
   auto eval_context_val =
       eval_context_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("evalContext"), eval_context_val)
+            .FromJust());
+
+  auto error_to_json_tmpl = v8::FunctionTemplate::New(isolate, ErrorToJSON);
+  auto error_to_json_val =
+      error_to_json_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("errorToJSON"), error_to_json_val)
             .FromJust());
 
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)

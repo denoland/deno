@@ -3,6 +3,8 @@ import { isTypedArray } from "./util";
 import { TextEncoder } from "./text_encoding";
 import { File, stdout } from "./files";
 import { cliTable } from "./console_table";
+import { formatError } from "./format_error";
+import { libdeno } from "./libdeno";
 
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
@@ -263,7 +265,8 @@ function createObjectString(
   ...args: [ConsoleContext, number, number]
 ): string {
   if (value instanceof Error) {
-    return value.stack! || "";
+    const errorJSON = libdeno.errorToJSON(value);
+    return formatError(errorJSON);
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);
   } else if (value instanceof Number) {
