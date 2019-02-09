@@ -289,3 +289,16 @@ TEST(LibDenoTest, Utf8Bug) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_delete(d);
 }
+
+TEST(LibDenoTest, SharedAtomics) {
+  int32_t s[] = {0, 1, 2};
+  deno_buf shared = {nullptr, 0, reinterpret_cast<uint8_t*>(s), sizeof s};
+  Deno* d = deno_new(deno_config{0, empty, shared, nullptr});
+  deno_execute(d, nullptr, "a.js",
+               "Atomics.add(new Int32Array(libdeno.shared), 0, 1)");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  EXPECT_EQ(s[0], 1);
+  EXPECT_EQ(s[1], 1);
+  EXPECT_EQ(s[2], 2);
+  deno_delete(d);
+}

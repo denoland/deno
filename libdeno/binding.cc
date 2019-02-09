@@ -316,14 +316,15 @@ void Shared(v8::Local<v8::Name> property,
   if (d->shared_.data_ptr == nullptr) {
     return;
   }
-  v8::Local<v8::ArrayBuffer> ab;
+  v8::Local<v8::SharedArrayBuffer> ab;
   if (d->shared_ab_.IsEmpty()) {
     // Lazily initialize the persistent external ArrayBuffer.
-    ab = v8::ArrayBuffer::New(isolate, d->shared_.data_ptr, d->shared_.data_len,
-                              v8::ArrayBufferCreationMode::kExternalized);
+    ab = v8::SharedArrayBuffer::New(isolate, d->shared_.data_ptr,
+                                    d->shared_.data_len,
+                                    v8::ArrayBufferCreationMode::kExternalized);
     d->shared_ab_.Reset(isolate, ab);
   }
-  info.GetReturnValue().Set(ab);
+  info.GetReturnValue().Set(d->shared_ab_);
 }
 
 void DenoIsolate::ClearModules() {
