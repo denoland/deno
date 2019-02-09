@@ -61,7 +61,7 @@ pub struct Repl {
   editor: Arc<Mutex<Editor<()>>>,
   pub tx: mpsc::Sender<DenoResult<String>>,
   pub rx: Arc<Mutex<mpsc::Receiver<DenoResult<String>>>>,
-  pub req_tx: mpsc::Sender<()>,
+  pub prompt_tx: mpsc::Sender<String>,
   history_file: PathBuf,
 }
 
@@ -83,14 +83,14 @@ fn save_history(
 impl Repl {
   pub fn new(history_file: PathBuf) -> Self {
     let (tx, rx) = mpsc::channel::<DenoResult<String>>();
-    let (req_tx, req_rx) = mpsc::channel::<()>();
+    let (prompt_tx, prompt_rx) = mpsc::channel::<String>();
     let history_file_copy = history_file.clone();
 
     let mut repl = Self {
       editor: Arc::new(Mutex::new(Editor::<()>::new())),
       tx,
       rx: Arc::new(Mutex::new(rx)),
-      req_tx,
+      prompt_tx,
       history_file,
     };
 
@@ -101,9 +101,10 @@ impl Repl {
     let tx = repl.tx.clone();
     let editor = repl.editor.clone();
     let _ = thread::spawn(move || loop {
-      // Block wait for user read request
-      let _ = req_rx.recv();
-      let maybe_line = editor.lock().unwrap().readline("> ");
+      // Use to set prompt
+      // and blocking wait for user read request
+      let prompt = prompt_rx.recv().unwrap();
+      let maybe_line = editor.lock().unwrap().readline(&prompt);
       // Handle errors
       // Guarantee that except for Interrupted,
       // we will always send something
