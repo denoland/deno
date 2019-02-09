@@ -10,6 +10,7 @@ use crate::isolate::Buf;
 use crate::isolate::Isolate;
 use crate::isolate::IsolateState;
 use crate::isolate::Op;
+use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::msg;
 use crate::msg_util;
@@ -97,6 +98,7 @@ pub fn dispatch(
       msg::Any::Environ => op_env,
       msg::Any::Exit => op_exit,
       msg::Any::Fetch => op_fetch,
+      msg::Any::FormatError => op_format_error,
       msg::Any::Listen => op_listen,
       msg::Any::MakeTempDir => op_make_temp_dir,
       msg::Any::Metrics => op_metrics,
@@ -277,6 +279,41 @@ fn op_start(
     &mut builder,
     msg::BaseArgs {
       inner_type: msg::Any::StartRes,
+      inner: Some(inner.as_union_value()),
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_format_error(
+  state: &Arc<IsolateState>,
+  base: &msg::Base<'_>,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_format_error().unwrap();
+  let orig_error = String::from(inner.error().unwrap());
+
+  let js_error = JSError::from_v8_exception(&orig_error).unwrap();
+  let js_error_mapped = js_error.apply_source_map(&state.dir);
+  let js_error_string = js_error_mapped.to_string();
+
+  let mut builder = FlatBufferBuilder::new();
+  let new_error = builder.create_string(&js_error_string);
+
+  let inner = msg::FormatErrorRes::create(
+    &mut builder,
+    &msg::FormatErrorResArgs {
+      error: Some(new_error),
+      ..Default::default()
+    },
+  );
+
+  ok_future(serialize_response(
+    base.cmd_id(),
+    &mut builder,
+    msg::BaseArgs {
+      inner_type: msg::Any::FormatErrorRes,
       inner: Some(inner.as_union_value()),
       ..Default::default()
     },
@@ -1271,7 +1308,8 @@ fn op_repl_readline(
   debug!("op_repl_readline {} {}", rid, prompt);
 
   blocking(base.sync(), move || -> OpResult {
-    let line = resources::readline(rid, &prompt)?;
+    let repl = resources::get_repl(rid)?;
+    let line = repl.lock().unwrap().readline(&prompt)?;
 
     let builder = &mut FlatBufferBuilder::new();
     let line_off = builder.create_string(&line);

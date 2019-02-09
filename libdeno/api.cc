@@ -9,6 +9,7 @@
 #include "third_party/v8/src/base/logging.h"
 
 #include "deno.h"
+#include "exceptions.h"
 #include "internal.h"
 
 extern "C" {

@@ -178,5 +178,4 @@ extern "C" {
     user_data: *const c_void,
     id: deno_mod,
   );
-
 }
