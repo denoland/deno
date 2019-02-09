@@ -18,6 +18,7 @@ const cmd = [
   `deno${executableSuffix}`,
   "--allow-run",
   "--allow-write",
+  "--allow-read",
   "prettier/main.ts"
 ];
 const testdata = "prettier/testdata";

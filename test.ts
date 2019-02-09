@@ -1,4 +1,4 @@
-#!/usr/bin/env deno --allow-run --allow-net --allow-write
+#!/usr/bin/env deno -A
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import "colors/test.ts";
 import "datetime/test.ts";
