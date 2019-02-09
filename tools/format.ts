@@ -8,7 +8,7 @@ const clangFormat = join("third_party", "depot_tools", "clang-format");
 const gn = join("third_party", "depot_tools", "gn");
 const yapf = join("third_party", "python_packages", "bin", "yapf");
 const rustfmt = join("third_party", "rustfmt", deno.platform.os, "rustfmt");
-const rustfmtConfig = join("tools", "rustfmt.toml");
+const rustfmtConfig = ".rustfmt.toml";
 
 const run = (...args: string[]) => {
   if (deno.platform.os === "win") {
