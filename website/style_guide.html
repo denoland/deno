@@ -1,0 +1,40 @@
+<!-- Copyright 2018-2019 the Deno authors. All rights reserved. MIT license. -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Deno Style Guide</title>
+    <link rel="stylesheet" href="style.css" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  </head>
+  <body>
+    <main>
+      <div id="manual"></div>
+
+      <script src="https://unpkg.com/showdown@1.9.0/dist/showdown.js"></script>
+      <script src="showdown_toc.js"></script>
+      <script>
+        const url = "style_guide.md";
+
+        async function main() {
+          const response = await fetch(url);
+          const content = await response.text();
+
+          let converter = new showdown.Converter({ extensions: ["toc"] });
+          let html = converter.makeHtml(content);
+
+          const manual = document.getElementById("manual");
+          manual.innerHTML = html;
+
+          // To make anchor links work properly, we have to manually scroll
+          // since the markdown is rendered dynamically.
+          if (window.location.hash) {
+            let el = document.getElementById(window.location.hash.slice(1));
+            window.scrollTo({ top: el.offsetTop });
+          }
+        }
+
+        main();
+      </script>
+    </main>
+  </body>
+</html>

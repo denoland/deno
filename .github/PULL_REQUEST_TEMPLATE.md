@@ -1,3 +1,3 @@
 <!--
-https://github.com/denoland/deno/blob/master/.github/CONTRIBUTING.md
+Before submitting a PR read https://deno.land/manual.html#contributing
 -->

@@ -1,0 +1,137 @@
+<!-- Copyright 2018-2019 the Deno authors. All rights reserved. MIT license. -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Deno Benchmarks</title>
+    <link rel="stylesheet" href="https://unpkg.com/c3@0.6.7/c3.min.css" />
+    <link rel="stylesheet" href="style.css" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  </head>
+  <body>
+    <main>
+      <h1>Deno Continuous Benchmarks</h1>
+
+      <p>
+        These plots are updated on every commit to
+        <a href="https://github.com/denoland/deno">master branch</a>.
+      </p>
+
+      <p><a href="#recent">recent data</a></p>
+      <p><a href="#all">all data</a> (takes a moment to load)</p>
+
+      <h3 id="exec-time">Execution time <a href="#exec-time">#</a></h3>
+      <p>
+        This shows how much time total it takes to run a few simple deno
+        programs:
+        <a
+          href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts"
+        >
+          tests/002_hello.ts
+        </a>
+        and
+        <a
+          href="https://github.com/denoland/deno/blob/master/tests/003_relative_import.ts"
+          >tests/003_relative_import.ts</a
+        >. For deno to execute typescript, it must first compile it to JS. A
+        warm startup is when deno has a cached JS output already, so it should
+        be fast because it bypasses the TS compiler. A cold startup is when deno
+        must compile from scratch.
+      </p>
+      <div id="exec-time-chart"></div>
+
+      <h3 id="throughput">Throughput <a href="#throughput">#</a></h3>
+
+      <p>
+        Time it takes to pipe a certain amount of data through Deno.
+
+        <a
+          href="https://github.com/denoland/deno/blob/master/tests/echo_server.ts"
+        >
+          echo_server.ts
+        </a>
+        and
+        <a href="https://github.com/denoland/deno/blob/master/tests/cat.ts">
+          cat.ts </a
+        >. Smaller is better.
+      </p>
+
+      <div id="throughput-chart"></div>
+
+      <h3 id="req-per-sec">Req/Sec <a href="#req-per-sec">#</a></h3>
+
+      <p>
+        Tests HTTP server performance. 10 keep-alive connections do as many
+        hello-world requests as possible. Bigger is better.
+      </p>
+
+      <ul>
+        <!-- TODO rename "deno" to "deno_tcp". -->
+        <li>
+          <a
+            href="https://github.com/denoland/deno/blob/master/tests/http_bench.ts"
+          >
+            deno
+          </a>
+          is a fake http server that doesn't parse HTTP. It is comparable to
+          <a
+            href="https://github.com/denoland/deno/blob/master/tools/node_tcp.js"
+          >
+            node_tcp
+          </a>
+          .
+        </li>
+
+        <li>
+          <a
+            href="https://github.com/denoland/deno_std/blob/master/http/http_bench.ts"
+          >
+            deno_net_http
+          </a>
+          is a web server written in TypeScript. It is comparable to
+          <a
+            href="https://github.com/denoland/deno/blob/master/tools/node_http.js"
+          >
+            node_http
+          </a>
+          .
+        </li>
+
+        <li>
+          <a
+            href="https://github.com/denoland/deno/blob/master/tools/hyper_hello.rs"
+          >
+            hyper
+          </a>
+          is a Rust HTTP server and represents an upper bound.
+        </li>
+      </ul>
+
+      <div id="req-per-sec-chart"></div>
+
+      <h3 id="size">Executable size <a href="#size">#</a></h3>
+      <p>deno ships only a single binary. We track its size here.</p>
+      <div id="binary-size-chart"></div>
+
+      <h3 id="threads">Thread count <a href="#threads">#</a></h3>
+      <p>How many threads various programs use.</p>
+      <div id="thread-count-chart"></div>
+
+      <h3 id="syscalls">Syscall count <a href="#syscalls">#</a></h3>
+      <p>
+        How many total syscalls are performed when executing a given script.
+      </p>
+      <div id="syscall-count-chart"></div>
+    </main>
+    <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
+    <script src="https://unpkg.com/c3@0.6.7/c3.min.js"></script>
+
+    <script type="module">
+      import { drawCharts } from "./app.js";
+      window.chartWidth = 800;
+
+      let u = window.location.hash.match("all") ? "./data.json" : "recent.json";
+
+      drawCharts(u);
+    </script>
+  </body>
+</html>
