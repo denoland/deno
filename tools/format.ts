@@ -2,16 +2,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as deno from "deno";
 import { join } from "../js/deps/https/deno.land/x/std/fs/path.ts";
-import { findFiles } from "./util.ts";
+import { findFiles, lookupDenoPath } from "./util.ts";
 
 const clangFormat = join("third_party", "depot_tools", "clang-format");
 const gn = join("third_party", "depot_tools", "gn");
-const prettier = join(
-  "third_party",
-  "node_modules",
-  "prettier",
-  "bin-prettier.js"
-);
 const yapf = join("third_party", "python_packages", "bin", "yapf");
 const rustfmt = join("third_party", "rustfmt", deno.platform.os, "rustfmt");
 const rustfmtConfig = join("tools", "rustfmt.toml");
@@ -54,16 +48,22 @@ const run = (...args: string[]) => {
 
   console.log("prettier");
   await run(
-    "node",
-    prettier,
-    "--write",
-    "--loglevel=error",
+    lookupDenoPath(),
+    "--allow-write",
+    "js/deps/https/deno.land/x/std/prettier/main.ts",
     "rollup.config.js",
     ...findFiles(["."], [".json", ".md"], { depth: 1 }),
     ...findFiles(
       [".github", "js", "tests", "tools", "website"],
       [".js", ".json", ".ts", ".md"],
-      { skip: [join("tools", "clang"), join("js", "deps")] }
+      {
+        skip: [
+          join("tools", "clang"),
+          join("js", "deps"),
+          join("tests", "badly_formatted.js"),
+          join("tests", "error_syntax.js")
+        ]
+      }
     )
   );
 
