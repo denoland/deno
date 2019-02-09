@@ -47,10 +47,7 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(&format!(
-      "Deno requests read access to \"{}\".",
-      filename
-    ));;
+    let r = permission_prompt(&format!("read access to \"{}\"", filename));;
     if r.is_ok() {
       self.allow_read.store(true, Ordering::SeqCst);
     }
