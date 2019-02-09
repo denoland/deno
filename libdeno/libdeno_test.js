@@ -157,13 +157,13 @@ global.LibDenoEvalContext = () => {
   assert(!errInfo2);
 };
 
- global.LibDenoEvalContextError = () => {
+global.LibDenoEvalContextError = () => {
   const [result, errInfo] = libdeno.evalContext("not_a_variable");
   assert(!result);
   assert(!!errInfo);
   assert(errInfo.isNativeError); // is a native error (ReferenceError)
   assert(!errInfo.isCompileError); // is NOT a compilation error
-  assert(errInfo.thrown.message === "Uncaught ReferenceError: not_a_variable is not defined");
+  assert(errInfo.thrown.message === "not_a_variable is not defined");
 
   const [result2, errInfo2] = libdeno.evalContext("throw 1");
   assert(!result2);
@@ -178,19 +178,19 @@ global.LibDenoEvalContext = () => {
   assert(!!errInfo3);
   assert(errInfo3.isNativeError); // extend from native error, still native error
   assert(!errInfo3.isCompileError); // is NOT a compilation error
-  assert(errInfo3.thrown.message === "Uncaught Error: e");
+  assert(errInfo3.thrown.message === "e");
 
   const [result4, errInfo4] = libdeno.evalContext("{");
   assert(!result4);
   assert(!!errInfo4);
   assert(errInfo4.isNativeError); // is a native error (SyntaxError)
   assert(errInfo4.isCompileError); // is a compilation error! (braces not closed)
-  assert(errInfo4.thrown.message === "Uncaught SyntaxError: Unexpected end of input");
+  assert(errInfo4.thrown.message === "Unexpected end of input");
 
   const [result5, errInfo5] = libdeno.evalContext("eval('{')");
   assert(!result5);
   assert(!!errInfo5);
   assert(errInfo5.isNativeError); // is a native error (SyntaxError)
   assert(!errInfo5.isCompileError); // is NOT a compilation error! (just eval)
-  assert(errInfo5.thrown.message === "Uncaught SyntaxError: Unexpected end of input");
+  assert(errInfo5.thrown.message === "Unexpected end of input");
 };

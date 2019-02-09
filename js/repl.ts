@@ -98,12 +98,16 @@ export async function replLoop(): Promise<void> {
 }
 
 function evaluate(code: string): void {
+  if (code.trim() === "") {
+    return;
+  }
   const [result, errInfo] = libdeno.evalContext(code);
   if (!errInfo) {
     console.log(result);
   } else {
     if (errInfo.isNativeError) {
-      const formattedError = formatError(JSON.stringify(errInfo.thrown));
+      const formattedError = formatError(
+        libdeno.errorToJSON(errInfo.thrown as Error));
       console.error(formattedError);
     } else {
       console.error("Thrown:", errInfo.thrown);

@@ -417,14 +417,9 @@ void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
     auto errinfo_obj = v8::Object::New(isolate);
     errinfo_obj->Set(v8_str("isCompileError"), v8_bool(true));
-    if (exception->IsNativeError()) {
-      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(true));
-      errinfo_obj->Set(v8_str("thrown"),
-                       EncodeExceptionAsObject(context, exception));
-    } else {
-      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(false));
-      errinfo_obj->Set(v8_str("thrown"), exception);
-    }
+    errinfo_obj->Set(v8_str("isNativeError"),
+                     v8_bool(exception->IsNativeError()));
+    errinfo_obj->Set(v8_str("thrown"), exception);
 
     output->Set(1, errinfo_obj);
 
@@ -442,14 +437,9 @@ void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
     auto errinfo_obj = v8::Object::New(isolate);
     errinfo_obj->Set(v8_str("isCompileError"), v8_bool(false));
-    if (exception->IsNativeError()) {
-      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(true));
-      errinfo_obj->Set(v8_str("thrown"),
-                       EncodeExceptionAsObject(context, exception));
-    } else {
-      errinfo_obj->Set(v8_str("isNativeError"), v8_bool(false));
-      errinfo_obj->Set(v8_str("thrown"), exception);
-    }
+    errinfo_obj->Set(v8_str("isNativeError"),
+                     v8_bool(exception->IsNativeError()));
+    errinfo_obj->Set(v8_str("thrown"), exception);
 
     output->Set(1, errinfo_obj);
 

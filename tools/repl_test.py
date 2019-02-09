@@ -19,9 +19,7 @@ class Repl(object):
     def input(self, *lines, **kwargs):
         exit_ = kwargs.pop("exit", True)
         sleep_ = kwargs.pop("sleep", 0)
-        p = Popen([self.deno_exe, "-A"],
-            env={"NO_COLOR": "1"},
-            stdout=PIPE, stderr=PIPE, stdin=PIPE)
+        p = Popen([self.deno_exe, "-A"], stdout=PIPE, stderr=PIPE, stdin=PIPE)
         try:
             # Note: The repl takes a >100ms until it's ready.
             time.sleep(sleep_)
@@ -89,14 +87,7 @@ class Repl(object):
     def test_reference_error(self):
         out, err, code = self.input("not_a_variable")
         assertEqual(out, '')
-        assertEqual(err,
-            '<unknown>:1:0\n' +
-            'not_a_variable\n' +
-            '^\n' +
-            'Uncaught ReferenceError: not_a_variable is not defined\n' +
-            '    at <unknown>:1:1\n' +
-            '    at evaluate (deno/js/repl.ts:101:37)\n' +
-            '    at replLoop (deno/js/repl.ts:94:5)\n')
+        assert "not_a_variable is not defined" in err
         assertEqual(code, 0)
 
     def test_set_timeout(self):
@@ -129,26 +120,13 @@ class Repl(object):
     def test_syntax_error(self):
         out, err, code = self.input("syntax error")
         assertEqual(out, '')
-        assertEqual(err,
-            '<unknown>:1:7\n' +
-            'syntax error\n' +
-            '       ^^^^^\n' +
-            'Uncaught SyntaxError: Unexpected identifier\n' +
-            '    at evaluate (deno/js/repl.ts:101:37)\n' +
-            '    at replLoop (deno/js/repl.ts:94:5)\n')
+        assert "Unexpected identifier" in err
         assertEqual(code, 0)
 
     def test_type_error(self):
         out, err, code = self.input("console()")
         assertEqual(out, '')
-        assertEqual(err,
-            '<unknown>:1:0\n' +
-            'console()\n' +
-            '^\n' +
-            'Uncaught TypeError: console is not a function\n' +
-            '    at <unknown>:1:1\n' +
-            '    at evaluate (deno/js/repl.ts:101:37)\n' +
-            '    at replLoop (deno/js/repl.ts:94:5)\n')
+        assert "console is not a function" in err
         assertEqual(code, 0)
 
     def test_variable(self):

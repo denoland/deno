@@ -3,11 +3,6 @@ import { globalEval } from "./global_eval";
 
 // The libdeno functions are moved so that users can't access them.
 type MessageCallback = (msg: Uint8Array) => void;
-export type PromiseRejectEvent =
-  | "RejectWithNoHandler"
-  | "HandlerAddedAfterReject"
-  | "ResolveAfterResolved"
-  | "RejectAfterResolved";
 
 interface EvalErrorInfo {
   // Is the object thrown a native Error?
@@ -16,6 +11,7 @@ interface EvalErrorInfo {
   isCompileError: boolean;
   // The actual thrown entity
   // (might be an Error or anything else thrown by the user)
+  // If isNativeError is true, this is an Error
   thrown: any; // tslint:disable-line:no-any
 }
 
@@ -30,18 +26,6 @@ interface Libdeno {
 
   builtinModules: { [s: string]: object };
 
-  setGlobalErrorHandler: (
-    handler: (
-      message: string,
-      source: string,
-      line: number,
-      col: number,
-      error: Error
-    ) => void
-  ) => void;
-
-  setPromiseErrorExaminer: (handler: () => boolean) => void;
-
   /** Evaluate provided code in the current context.
    * It differs from eval(...) in that it does not create a new context.
    * Returns an array: [output, errInfo].
@@ -52,7 +36,7 @@ interface Libdeno {
   ): [any, EvalErrorInfo | null] /* tslint:disable-line:no-any */;
 
   // tslint:disable-next-line:no-any
-  errorToJSON: (e: any) => string;
+  errorToJSON: (e: Error) => string;
 }
 
 const window = globalEval("this");
