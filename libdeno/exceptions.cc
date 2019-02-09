@@ -4,10 +4,10 @@
 
 namespace deno {
 
-std::string EncodeMessageAsJSON(v8::Local<v8::Context> context,
-                                v8::Local<v8::Message> message) {
+v8::Local<v8::Object> EncodeMessageAsObject(v8::Local<v8::Context> context,
+                                            v8::Local<v8::Message> message) {
   auto* isolate = context->GetIsolate();
-  v8::HandleScope handle_scope(isolate);
+  v8::EscapableHandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
   auto stack_trace = message->GetStackTrace();
@@ -134,10 +134,31 @@ std::string EncodeMessageAsJSON(v8::Local<v8::Context> context,
   }
 
   CHECK(json_obj->Set(context, v8_str("frames"), frames).FromJust());
+  json_obj = handle_scope.Escape(json_obj);
+  return json_obj;
+}
 
+std::string EncodeMessageAsJSON(v8::Local<v8::Context> context,
+                                v8::Local<v8::Message> message) {
+  auto* isolate = context->GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+  auto json_obj = EncodeMessageAsObject(context, message);
   auto json_string = v8::JSON::Stringify(context, json_obj).ToLocalChecked();
   v8::String::Utf8Value json_string_(isolate, json_string);
   return std::string(ToCString(json_string_));
+}
+
+v8::Local<v8::Object> EncodeExceptionAsObject(v8::Local<v8::Context> context,
+                                              v8::Local<v8::Value> exception) {
+  auto* isolate = context->GetIsolate();
+  v8::EscapableHandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+
+  auto message = v8::Exception::CreateMessage(isolate, exception);
+  auto json_obj = EncodeMessageAsObject(context, message);
+  json_obj = handle_scope.Escape(json_obj);
+  return json_obj;
 }
 
 std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
@@ -167,5 +188,4 @@ void HandleExceptionMessage(v8::Local<v8::Context> context,
   CHECK_NOT_NULL(d);
   d->last_exception_ = json_str;
 }
-
 }  // namespace deno

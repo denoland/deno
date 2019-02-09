@@ -35,7 +35,7 @@ use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
@@ -95,7 +95,7 @@ enum Repr {
   TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
   TcpStream(tokio::net::TcpStream),
   HttpBody(HttpBody),
-  Repl(Repl),
+  Repl(Arc<Mutex<Repl>>),
   // Enum size is bounded by the largest variant.
   // Use `Box` around large `Child` struct.
   // https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant
@@ -334,7 +334,7 @@ pub fn add_hyper_body(body: hyper::Body) -> Resource {
 pub fn add_repl(repl: Repl) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::Repl(repl));
+  let r = tg.insert(rid, Repr::Repl(Arc::new(Mutex::new(repl))));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -462,14 +462,11 @@ pub fn child_status(rid: ResourceId) -> DenoResult<ChildStatus> {
   }
 }
 
-pub fn readline(rid: ResourceId, prompt: &str) -> DenoResult<String> {
+pub fn get_repl(rid: ResourceId) -> DenoResult<Arc<Mutex<Repl>>> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
-    Some(Repr::Repl(ref mut r)) => {
-      let line = r.readline(&prompt)?;
-      Ok(line)
-    }
+    Some(Repr::Repl(ref mut r)) => Ok(r.clone()),
     _ => Err(bad_resource()),
   }
 }

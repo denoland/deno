@@ -19,7 +19,7 @@ class Repl(object):
     def input(self, *lines, **kwargs):
         exit_ = kwargs.pop("exit", True)
         sleep_ = kwargs.pop("sleep", 0)
-        p = Popen([self.deno_exe], stdout=PIPE, stderr=PIPE, stdin=PIPE)
+        p = Popen([self.deno_exe, "-A"], stdout=PIPE, stderr=PIPE, stdin=PIPE)
         try:
             # Note: The repl takes a >100ms until it's ready.
             time.sleep(sleep_)
@@ -87,7 +87,7 @@ class Repl(object):
     def test_reference_error(self):
         out, err, code = self.input("not_a_variable")
         assertEqual(out, '')
-        assertEqual(err, 'ReferenceError: not_a_variable is not defined\n')
+        assert "not_a_variable is not defined" in err
         assertEqual(code, 0)
 
     def test_set_timeout(self):
@@ -108,20 +108,35 @@ class Repl(object):
         assertEqual(err, '')
         assertEqual(code, 0)
 
+    def test_async_op(self):
+        out, err, code = self.input(
+            "fetch('http://localhost:4545/tests/001_hello.js')" +
+            ".then(res => res.text()).then(console.log)",
+            sleep=1)
+        assertEqual(out, 'Promise {}\nconsole.log("Hello World");\n\n')
+        assertEqual(err, '')
+        assertEqual(code, 0)
+
     def test_syntax_error(self):
         out, err, code = self.input("syntax error")
         assertEqual(out, '')
-        assertEqual(err, "SyntaxError: Unexpected identifier\n")
+        assert "Unexpected identifier" in err
         assertEqual(code, 0)
 
     def test_type_error(self):
         out, err, code = self.input("console()")
         assertEqual(out, '')
-        assertEqual(err, 'TypeError: console is not a function\n')
+        assert "console is not a function" in err
         assertEqual(code, 0)
 
     def test_variable(self):
         out, err, code = self.input("var a = 123;", "a")
+        assertEqual(out, 'undefined\n123\n')
+        assertEqual(err, '')
+        assertEqual(code, 0)
+
+    def test_lexical_scoped_variable(self):
+        out, err, code = self.input("let a = 123;", "a")
         assertEqual(out, 'undefined\n123\n')
         assertEqual(err, '')
         assertEqual(code, 0)

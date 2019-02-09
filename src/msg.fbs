@@ -1,6 +1,8 @@
 union Any {
   Start,
   StartRes,
+  FormatError,
+  FormatErrorRes,
   WorkerGetMessage,
   WorkerGetMessageRes,
   WorkerPostMessage,
@@ -161,6 +163,14 @@ table StartRes {
   deno_version: string;
   v8_version: string;
   no_color: bool;
+}
+
+table FormatError {
+  error: string;
+}
+
+table FormatErrorRes {
+  error: string;
 }
 
 table WorkerGetMessage {

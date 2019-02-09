@@ -290,6 +290,20 @@ TEST(LibDenoTest, Utf8Bug) {
   deno_delete(d);
 }
 
+TEST(LibDenoTest, LibDenoEvalContext) {
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
+  deno_execute(d, nullptr, "a.js", "LibDenoEvalContext();");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_delete(d);
+}
+
+TEST(LibDenoTest, LibDenoEvalContextError) {
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
+  deno_execute(d, nullptr, "a.js", "LibDenoEvalContextError();");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_delete(d);
+}
+
 TEST(LibDenoTest, SharedAtomics) {
   int32_t s[] = {0, 1, 2};
   deno_buf shared = {nullptr, 0, reinterpret_cast<uint8_t*>(s), sizeof s};
