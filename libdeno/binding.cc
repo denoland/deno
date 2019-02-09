@@ -120,14 +120,6 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   fflush(file);
 }
 
-void SetConsole(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  CHECK_EQ(args.Length(), 1);
-  auto* isolate = args.GetIsolate();
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  v8::HandleScope handle_scope(isolate);
-  d->console_.Reset(isolate, args[0].As<v8::Object>());
-}
-
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
   if (buf.alloc_ptr == nullptr) {
     // If alloc_ptr isn't set, we memcpy.
@@ -324,14 +316,15 @@ void Shared(v8::Local<v8::Name> property,
   if (d->shared_.data_ptr == nullptr) {
     return;
   }
-  v8::Local<v8::ArrayBuffer> ab;
+  v8::Local<v8::SharedArrayBuffer> ab;
   if (d->shared_ab_.IsEmpty()) {
     // Lazily initialize the persistent external ArrayBuffer.
-    ab = v8::ArrayBuffer::New(isolate, d->shared_.data_ptr, d->shared_.data_len,
-                              v8::ArrayBufferCreationMode::kExternalized);
+    ab = v8::SharedArrayBuffer::New(isolate, d->shared_.data_ptr,
+                                    d->shared_.data_len,
+                                    v8::ArrayBufferCreationMode::kExternalized);
     d->shared_ab_.Reset(isolate, ab);
   }
-  info.GetReturnValue().Set(ab);
+  info.GetReturnValue().Set(d->shared_ab_);
 }
 
 void DenoIsolate::ClearModules() {

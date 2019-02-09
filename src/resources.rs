@@ -463,18 +463,6 @@ pub fn child_status(rid: ResourceId) -> DenoResult<ChildStatus> {
   }
 }
 
-// pub fn readline(rid: ResourceId, prompt: &str) -> DenoResult<String> {
-//   let mut table = RESOURCE_TABLE.lock().unwrap();
-//   let maybe_repr = table.get_mut(&rid);
-//   match maybe_repr {
-//     Some(Repr::Repl(ref mut r)) => {
-//       let line = r.readline(&prompt)?;
-//       Ok(line)
-//     }
-//     _ => Err(bad_resource()),
-//   }
-// }
-
 pub fn request_readline(
   rid: ResourceId,
 ) -> DenoResult<Arc<Mutex<mpsc::Receiver<DenoResult<String>>>>> {

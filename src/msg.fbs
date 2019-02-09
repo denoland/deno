@@ -160,6 +160,7 @@ table StartRes {
   version_flag: bool;
   deno_version: string;
   v8_version: string;
+  no_color: bool;
 }
 
 table WorkerGetMessage {
