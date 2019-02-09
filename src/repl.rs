@@ -114,6 +114,7 @@ impl Repl {
             exit(1);
           }
           e => {
+            // Send the error to the channel
             let _ = tx.send(Err(deno_error(
               ErrorKind::Other,
               e.description().to_string(),

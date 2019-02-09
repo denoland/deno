@@ -189,8 +189,7 @@ TEST(LibDenoTest, GlobalErrorHandling) {
       "notdefined()\",\"scriptResourceName\":\"helloworld.js\","
       "\"lineNumber\":3,\"startPosition\":3,\"endPosition\":4,\"errorLevel\":8,"
       "\"startColumn\":1,\"endColumn\":2,\"isSharedCrossOrigin\":false,"
-      "\"isOpaque\":false,\"frames\":[{\"line\":3,"
-      "\"column\":2,"
+      "\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":2,"
       "\"functionName\":\"\",\"scriptName\":\"helloworld.js\",\"isEval\":true,"
       "\"isConstructor\":false,\"isWasm\":false},";
   std::string actual(deno_last_exception(d), 0, expected.length());
@@ -247,8 +246,7 @@ TEST(LibDenoTest, LastException) {
                "Error('boo');\",\"scriptResourceName\":\"a.js\",\"lineNumber\":"
                "3,\"startPosition\":8,\"endPosition\":9,\"errorLevel\":8,"
                "\"startColumn\":6,\"endColumn\":7,\"isSharedCrossOrigin\":"
-               "false,\"isOpaque\":false,\"frames\":[{"
-               "\"line\":3,\"column\":7,"
+               "false,\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":7,"
                "\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":false,"
                "\"isConstructor\":false,\"isWasm\":false}]}");
   deno_delete(d);
