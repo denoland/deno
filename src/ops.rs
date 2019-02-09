@@ -1271,8 +1271,8 @@ fn op_repl_readline(
   debug!("op_repl_readline {} {}", rid, prompt);
 
   blocking(base.sync(), move || -> OpResult {
-    let rx = resources::readline(rid, prompt)?;
-    let line = rx.lock().unwrap().recv().unwrap()?;
+    let repl = resources::get_repl(rid)?;
+    let line = repl.lock().unwrap().readline(&prompt)?;
 
     let builder = &mut FlatBufferBuilder::new();
     let line_off = builder.create_string(&line);
