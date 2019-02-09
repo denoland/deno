@@ -7,10 +7,11 @@ import { Project, ts } from "ts-simple-ast";
 import {
   assert,
   assertEqual,
+  runTests,
   test
 } from "../../js/deps/https/deno.land/x/std/testing/mod";
 import { flatten, mergeGlobal } from "./build_library";
-import { loadDtsFiles } from "./ast_util";
+import { inlineFiles, loadDtsFiles } from "./ast_util";
 
 const { ModuleKind, ModuleResolutionKind, ScriptTarget } = ts;
 
@@ -166,4 +167,26 @@ test(function buildLibraryMerge() {
   assertEqual(typeAliases.length, 1);
 });
 
+test(function testInlineFiles() {
+  const {
+    basePath,
+    buildPath,
+    debug,
+    outputSourceFile: targetSourceFile
+  } = setupFixtures();
+
+  inlineFiles({
+    basePath,
+    debug,
+    inline: [`${buildPath}/lib.extra.d.ts`],
+    targetSourceFile
+  });
+
+  assert(targetSourceFile.getNamespace("Qat") != null);
+  const qatNamespace = targetSourceFile.getNamespaceOrThrow("Qat");
+  assert(qatNamespace.getClass("Foo") != null);
+});
+
 // TODO author unit tests for `ast_util.ts`
+
+runTests();

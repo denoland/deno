@@ -9,9 +9,13 @@ import * as util from "./util";
 /** process id */
 export let pid: number;
 
-export function setPid(pid_: number): void {
+/** Reflects the NO_COLOR enviromental variable: https://no-color.org/ */
+export let noColor: boolean;
+
+export function setGlobals(pid_: number, noColor_: boolean): void {
   assert(!pid);
   pid = pid_;
+  noColor = noColor_;
 }
 
 interface CodeInfo {
@@ -19,8 +23,23 @@ interface CodeInfo {
   filename: string | undefined;
   mediaType: msg.MediaType;
   sourceCode: string | undefined;
-  outputCode: string | undefined;
-  sourceMap: string | undefined;
+}
+
+/** Check if running in terminal.
+ *
+ *       import { isTTY } from "deno";
+ *       console.log(isTTY().stdout);
+ */
+export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
+  const builder = flatbuffers.createBuilder();
+  msg.IsTTY.startIsTTY(builder);
+  const inner = msg.IsTTY.endIsTTY(builder);
+  const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
+  assert(msg.Any.IsTTYRes === baseRes.innerType());
+  const res = new msg.IsTTYRes();
+  assert(baseRes.inner(res) != null);
+
+  return { stdin: res.stdin(), stdout: res.stdout(), stderr: res.stderr() };
 }
 
 /** Exit the Deno process with optional exit code. */
@@ -35,7 +54,7 @@ export function exit(exitCode = 0): never {
 
 // @internal
 export function codeFetch(specifier: string, referrer: string): CodeInfo {
-  util.log("os.ts codeFetch", specifier, referrer);
+  util.log("os.codeFetch", { specifier, referrer });
   // Send CodeFetch message
   const builder = flatbuffers.createBuilder();
   const specifier_ = builder.createString(specifier);
@@ -58,9 +77,7 @@ export function codeFetch(specifier: string, referrer: string): CodeInfo {
     moduleName: codeFetchRes.moduleName() || undefined,
     filename: codeFetchRes.filename() || undefined,
     mediaType: codeFetchRes.mediaType(),
-    sourceCode: codeFetchRes.sourceCode() || undefined,
-    outputCode: codeFetchRes.outputCode() || undefined,
-    sourceMap: codeFetchRes.sourceMap() || undefined
+    sourceCode: codeFetchRes.sourceCode() || undefined
   };
 }
 
@@ -71,7 +88,12 @@ export function codeCache(
   outputCode: string,
   sourceMap: string
 ): void {
-  util.log("os.ts codeCache", filename, sourceCode, outputCode);
+  util.log("os.codeCache", {
+    filename,
+    sourceCodeLength: sourceCode.length,
+    outputCodeLength: outputCode.length,
+    sourceMapLength: sourceMap.length
+  });
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
   const sourceCode_ = builder.createString(sourceCode);
@@ -160,7 +182,7 @@ function sendStart(): msg.StartRes {
 // This function bootstraps an environment within Deno, it is shared both by
 // the runtime and the compiler environments.
 // @internal
-export function start(): msg.StartRes {
+export function start(source?: string): msg.StartRes {
   libdeno.recv(handleAsyncMsgFromRust);
 
   // First we send an empty `Start` message to let the privileged side know we
@@ -168,7 +190,7 @@ export function start(): msg.StartRes {
   // args and other info.
   const startResMsg = sendStart();
 
-  util.setLogDebug(startResMsg.debugFlag());
+  util.setLogDebug(startResMsg.debugFlag(), source);
 
   return startResMsg;
 }

@@ -59,7 +59,11 @@ union Any {
   Run,
   RunRes,
   RunStatus,
-  RunStatusRes
+  RunStatusRes,
+  Now,
+  NowRes,
+  IsTTY,
+  IsTTYRes
 }
 
 enum ErrorKind: byte {
@@ -152,11 +156,11 @@ table StartRes {
   argv: [string];
   debug_flag: bool;
   deps_flag: bool;
-  recompile_flag: bool;
   types_flag: bool;
   version_flag: bool;
   deno_version: string;
   v8_version: string;
+  no_color: bool;
 }
 
 table WorkerGetMessage {
@@ -186,8 +190,6 @@ table CodeFetchRes {
   // TODO These should be [ubyte].
   // See: https://github.com/denoland/deno/issues/1113
   source_code: string;
-  output_code: string; // Non-empty only if cached.
-  source_map: string; // Non-empty only if cached.
 }
 
 table CodeCache {
@@ -293,8 +295,11 @@ table ReadDirRes {
 table WriteFile {
   filename: string;
   data: [ubyte];
+  update_perm: bool;
   perm: uint;
   // perm specified by https://godoc.org/os#FileMode
+  is_create: bool;
+  is_append: bool;
 }
 
 table CopyFile {
@@ -473,6 +478,20 @@ table RunStatusRes {
   got_signal: bool;
   exit_code: int;
   exit_signal: int;
+}
+
+table Now {}
+
+table NowRes {
+  time: uint64;
+}
+
+table IsTTY {}
+
+table IsTTYRes {
+  stdin: bool;
+  stdout: bool;
+  stderr: bool;
 }
 
 root_type Base;

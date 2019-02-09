@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { lstatSync, readDirSync } from "deno";
+import { platform, lstatSync, readDirSync } from "deno";
+import { join } from "../js/deps/https/deno.land/x/std/fs/path/mod.ts";
 
 export interface FindOptions {
   skip?: string[];
@@ -37,4 +38,34 @@ function findFilesWalk(paths: string[], depth: number) {
   );
 
   return [].concat(...foundPaths);
+}
+
+export const executableSuffix = platform.os === "win" ? ".exe" : "";
+
+/** Returns true if the path exists. */
+export function existsSync(path: string): boolean {
+  try {
+    lstatSync(path);
+  } catch (e) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Looks up the available deno path with the priority
+ * of release -> debug -> global
+ */
+export function lookupDenoPath(): string {
+  const denoExe = "deno" + executableSuffix;
+  const releaseExe = join("target", "release", denoExe);
+  const debugExe = join("target", "debug", denoExe);
+
+  if (existsSync(releaseExe)) {
+    return releaseExe;
+  } else if (existsSync(debugExe)) {
+    return debugExe;
+  }
+
+  return denoExe;
 }

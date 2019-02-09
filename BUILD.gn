@@ -18,6 +18,7 @@ group("default") {
 }
 
 main_extern = [
+  "$rust_build:ansi_term",
   "$rust_build:atty",
   "$rust_build:dirs",
   "$rust_build:flatbuffers",
@@ -30,6 +31,7 @@ main_extern = [
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:rand",
+  "$rust_build:regex",
   "$rust_build:remove_dir_all",
   "$rust_build:ring",
   "$rust_build:rustyline",
@@ -76,6 +78,7 @@ ts_sources = [
   "js/headers.ts",
   "js/io.ts",
   "js/libdeno.ts",
+  "js/lib.web_assembly.d.ts",
   "js/main.ts",
   "js/make_temp_dir.ts",
   "js/metrics.ts",
@@ -104,6 +107,7 @@ ts_sources = [
   "js/util.ts",
   "js/workers.ts",
   "js/write_file.ts",
+  "js/performance.ts",
   "tsconfig.json",
 
   # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
@@ -185,6 +189,8 @@ run_node("deno_runtime_declaration") {
     rebase_path("tools/ts_library_builder/main.ts", root_build_dir),
     "--basePath",
     rebase_path(".", root_build_dir),
+    "--inline",
+    rebase_path("js/lib.web_assembly.d.ts", root_build_dir),
     "--buildPath",
     rebase_path(root_build_dir, root_build_dir),
     "--outFile",

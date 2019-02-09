@@ -11,7 +11,6 @@ environment:
   DENO_BUILD_MODE: release
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\target\release
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
-  MTIME_CACHE_DB: $(APPVEYOR_BUILD_FOLDER)\mtime_cache.xml
   RELEASE_ARTIFACT: deno_win_x64.zip
   # Renamed to fix an Appveyor cache bug (restoring old caches).
   RUST_DIR: $(USERPROFILE)\xrust
@@ -71,150 +70,6 @@ environment:
         }
       }
 
-      # We set file atimes to this date and see if it changes.
-      $FILE_NOT_NEEDED = Get-Date -Date "1984-04-11T00:00:00Z"  # A good year.
-      # Traced files are stored a hash table, using their full path as key.
-      $not_needed = @{}
-      # Whether filesystem last access time tracking has been enabled yet.
-      $atime_enabled = $false
-
-      # Trace whether files are actually used, so we can find and remove files
-      # that unnecessary. We use this to avoid hoarding stale build outputs.
-      function Start-TraceFilesNeeded([string[]] $Path, [switch] $Recurse) {
-        # Don't enable if the cache won't be saved.
-        if (-not (Get-SaveCache)) { return }
-        # Identify (new) files to trace. A non-existing path is not an error.
-        $files = $Path                                    |
-          where   { Test-Path $_ }                        |
-          foreach { Get-Tree $_ -Recurse:$Recurse -File } |
-          where   { -not $not_needed.ContainsKey($_.FullName) }
-        # Set newly traced files' last access time to very long ago.
-        $files | foreach { $_.LastAccessTime = $FILE_NOT_NEEDED }
-        # Add newly traced files to the hash table with unnecessary files.
-        $files | foreach { $not_needed.Add($_.FullName, $true) }
-        # Enable last access time tracking only if any files were found.
-        if ($files -and -not $atime_enabled) {
-          Exec { fsutil behavior set DisableLastAccess 0 }
-          Set-Variable -Name atime_enabled -Value $true -Scope 1
-        }
-        # Log statistics.
-        Write-Host "Tracing file access for $($files.Count) files."
-      }
-
-      # Marks files as needed.
-      #   -Auto          : Auto mark files if their access time has changed.
-      #   -Path <path[]> : Explicitly mark file(s) as needed.
-      #   -Recurse       : Recurse into directories specified with -Path.
-      #   -Reason <text> : Optional reason, written to the build log.
-      function Set-FilesNeeded([switch] $Auto, [string[]] $Path,
-                               [switch] $Recurse, [string] $Reason) {
-        # Helper function.
-        function Mark([System.IO.FileSystemInfo[]] $Files, [string] $How) {
-          # Find matching files that are traced, then remove them.
-          $keys = $Files.FullName |
-                  where { $_ -and $not_needed.ContainsKey($_) }
-          $keys | foreach { $not_needed.Remove($_) }
-          # Write log message.
-          if ($keys.Count -gt 0) {
-            Write-Host ("$Reason$(if ($Reason) { ': ' })" +
-                        "$($keys.Count) files $How marked 'needed'.")
-          }
-        }
-        # Skip marking step if there are no files being traced.
-        if ($not_needed.Count -eq 0) { return }
-        # Auto mark files 'needed' when their last access time has changed.
-        if ($Auto) {
-          $files = $not_needed.Keys                 |
-            where   { Test-Path $_ -PathType Leaf } |
-            foreach { Get-Item $_ -Force }          |
-            where   { $_.LastAccessTime -ne $FILE_NOT_NEEDED }
-          Mark -Files $files -How "automatically"
-        }
-        # Mark explicitly specified paths.
-        if ($Path) {
-          $files = $Path             |
-            where   { Test-Path $_ } |
-            foreach { Get-Tree $_ -Recurse:$Recurse -Force -File }
-          Mark -Files $files -How "explicitly"
-        }
-      }
-
-      # Clean up stale files and end file tracking.
-      function Stop-TraceFilesNeeded {
-        # Look for files that had their atime changed, and mark them needed.
-        Set-FilesNeeded -Auto
-        # Make a list of all files to delete.
-        $files = $not_needed.Keys                        |
-                 where   { Test-Path $_ -PathType Leaf } |
-                 foreach { Get-Item $_ -Force }
-        # Compute the total size of all to-be-deleted files.
-        $size_info = $files | measure -Property Length -Sum
-        $size_mb = "{0:N1}" -f ($size_info.Sum / (1024 * 1024))
-        # Delete files, as well as parent directories if they became empty.
-        $files | Remove-Item -Force
-        $dirs = $files | foreach {
-          try { while ($_ = $_.Directory) { $_.Delete(); $_ } } catch {}
-        }
-        # All unnecessary files are now gone.
-        $not_needed.Clear()
-        # Summarize what was cleaned up in the build log.
-        if ($files.Count -gt 0) {
-          Write-Host "Deleted $($files.Count) unnecessary files and",
-                     "$($dirs.Count) directories ($size_mb MB)."
-        }
-      }
-
-      function Sync-MTimeCache([string] $DatabasePath) {
-        # Load the previously saved cache, if it exists.
-        try {
-          $old_cache = Import-CliXml -Path $DatabasePath -ErrorAction Stop
-        } catch {
-          $old_cache = @{}
-        }
-        # The updated cache gets populated while restoring the old one.
-        $new_cache = @{}
-        # Determine the mtime that will be assigned to new and modified files.
-        # To retain nanosecond precision when (de)serializing, mtimes are stored
-        # as 64-bit 'FileTime' integers, not as DateTime objects.
-        $now = (Get-Date).ToFileTimeUtc()
-        # Since we're gonna rely on git to give us file SHAs, double check that
-        # the work dir is clean and the index is up to date.
-        $dirty = git status -z --ignore-submodules=all --untracked-files=no
-        if ($dirty) { throw "Work tree dirty." }
-        # Ask git for a list of checked-out files and their hashes, metadata.
-        (git ls-files -z --stage --eol --full-name) -split "\0" | foreach {
-            # Skip non-files (symlinks etc.). File mode should be 100644/100755.
-            if ($_ -notmatch "^100") { return }
-            # Look up mtime in cache. Reset to 'now' if not found or invalid.
-            # The entire "mode hash attr filename" line serves as the cache key.
-            $mtime = $old_cache[$_]
-            if (-not $mtime -or $mtime -gt $now) { $mtime = $now }
-            # Change the file's LastWriteTime to the mtime found in the cache.
-            $path = ($_ -split "\t", 3)[2]  # Filename starts after 2nd tab.
-            $lwt = [DateTime]::FromFileTimeUtc($mtime)
-            Set-ItemProperty -Path $path -Name LastWriteTime -Value $lwt -Force
-            # Add entry to updated cache.
-            $new_cache[$_] = $mtime
-          }
-        # Write the updated cache back to disk.
-        if (Get-SaveCache) {
-          $new_cache | Export-CliXml -Path $DatabasePath -ErrorAction Stop
-        }
-        # Log some statistics to get an idea if this is all working.
-        $rows = [ordered]@{ Valid = "=="; New   = "=>"
-                            Stale = "<="; Total = "*" }
-        $keys = @{ old = @($old_cache.Keys); new = @($new_cache.Keys) }
-        $diff = Compare-Object $keys.old $keys.new -IncludeEqual
-        $rows.GetEnumerator() | foreach {
-            $keyset = ($diff | where SideIndicator -like $_.Value).InputObject
-            New-Object -TypeName PSObject -Property ([ordered]@{
-              "Status"      = $_.Name
-              "Old Cache #" = ($keyset | where { $_ -in $keys.old }).Count
-              "New Cache #" = ($keyset | where { $_ -in $keys.new }).Count
-            })
-          } | Format-Table | Out-String -Stream | where { $_ }
-      }
-
       # Get-SaveCache returns $true if the cache will be saved at the end.
       function Get-SaveCache {
         -not $env:APPVEYOR_PULL_REQUEST_NUMBER -and
@@ -233,14 +88,7 @@ for:
 cache:
   # Rust stuff.
   - $(RUST_DIR)
-  # Cache the third_party submodule to preserve binaries downloaded by setup.py,
-  # and to make incremental builds work.
-  - $(APPVEYOR_BUILD_FOLDER)\.git\modules\third_party
-  - $(APPVEYOR_BUILD_FOLDER)\third_party
-  # Cache file mtimes in the main git repo, also to enable incremental builds.
-  - $(MTIME_CACHE_DB)
-  # TODO Incremental build disabled because there are some bugs.
-  #- $(DENO_BUILD_PATH)
+  - $(APPVEYOR_BUILD_FOLDER)\prebuilt\win\
 
 init:
   # Load utility functions
@@ -263,15 +111,6 @@ install:
         Delete-Tree $env:DENO_THIRD_PARTY_PATH
         Exec -NoNewLines { & git submodule update --init --force --depth 1 }
       }
-
-  # Prune and pack git objects. Thus when we upload `.git/modules/` to the
-  # Appveyor cache, it'll include only objects that were actually needed.
-  # This step is skipped if the cache is not going to be saved.
-  - ps: if (Get-SaveCache) { git -C $env:DENO_THIRD_PARTY_PATH gc --prune=all }
-
-  # Git doesn't store file mtimes, so those are stored separately in the cache.
-  # Without it, ninja will assume all files are dirty and rebuild everything.
-  - ps: Sync-MTimeCache -DatabasePath $env:MTIME_CACHE_DB
 
   # Configure depot_tools and add it to the search path. This is necessary
   # because, later in this script, we need to invoke ninja directly.
@@ -326,21 +165,8 @@ install:
   - cargo --version
 
 before_build:
-  # Mark all files in the build dir 'not needed' until proven otherwise.
-  # TODO: also track files in third_party that aren't checked into the repo.
-  - ps: Start-TraceFilesNeeded $env:DENO_BUILD_PATH -Recurse
-
   # Download clang and gn, generate ninja files.
   - python tools\setup.py
-  - ps: Set-FilesNeeded -Auto -Reason "Setup finished"
-
-  # Mark files that are produced during the build, and are known to ninja, as
-  # needed. We obtain this list by dry-running `ninja -t clean`.
-  - ps: |-
-      $outputs = ninja -C $env:DENO_BUILD_PATH -n -t clean -g |
-        where   { $_ -match "^Remove (.*)$" }                 |
-        foreach { "$env:DENO_BUILD_PATH\$($Matches[1])" }
-      Set-FilesNeeded -Auto -Path $outputs -Reason "Build dependency graph"
 
   # Start sccache, then throw away the S3 access key.
   - ps: |-
@@ -351,10 +177,7 @@ build_script:
   # Build with Cargo first. Both builds produce a deno.exe in the same dir. We
   # want the final one (which gets tested and released) to be built by Ninja.
   - cargo build -vv --release --locked
-  - ps: Set-FilesNeeded -Auto -Reason "Cargo build finished"
-
   - python tools\build.py
-  - ps: Set-FilesNeeded -Auto -Reason "Ninja build finished"
 
 test_script:
   - python tools\lint.py
@@ -365,9 +188,6 @@ after_test:
   # Delete the the rollup cache, which is unreliable, so that it doesn't get
   # persisted in the appveyor cache.
   - ps: if (Get-SaveCache) { Delete-Tree "$env:DENO_BUILD_PATH\.rpt2_cache" }
-
-  # Remove stale files and empty dirs from the build directory.
-  - ps: Stop-TraceFilesNeeded
 
   # Stop sccache and show stats.
   - ps: sccache --stop-server

@@ -15,7 +15,7 @@ extern "C" {
 
 Deno* deno_new_snapshotter(deno_config config) {
   CHECK(config.will_snapshot);
-  // TODO Support loading snapshots before snapshotting.
+  // TODO(ry) Support loading snapshots before snapshotting.
   CHECK_NULL(config.load_snapshot.data_ptr);
   auto* creator = new v8::SnapshotCreator(deno::external_references);
   auto* isolate = creator->GetIsolate();
@@ -79,13 +79,12 @@ deno::DenoIsolate* unwrap(Deno* d_) {
 
 deno_buf deno_get_snapshot(Deno* d_) {
   auto* d = unwrap(d_);
-  CHECK_NE(d->snapshot_creator_, nullptr);
-  CHECK(d->resolve_module_.IsEmpty());
+  CHECK_NOT_NULL(d->snapshot_creator_);
   d->ClearModules();
   d->context_.Reset();
 
   auto blob = d->snapshot_creator_->CreateBlob(
-      v8::SnapshotCreator::FunctionCodeHandling::kClear);
+      v8::SnapshotCreator::FunctionCodeHandling::kKeep);
   return {nullptr, 0, reinterpret_cast<uint8_t*>(const_cast<char*>(blob.data)),
           blob.raw_size};
 }
@@ -113,8 +112,8 @@ const char* deno_last_exception(Deno* d_) {
   }
 }
 
-int deno_execute(Deno* d_, void* user_data, const char* js_filename,
-                 const char* js_source) {
+void deno_execute(Deno* d_, void* user_data, const char* js_filename,
+                  const char* js_source) {
   auto* d = unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
   auto* isolate = d->isolate_;
@@ -123,31 +122,17 @@ int deno_execute(Deno* d_, void* user_data, const char* js_filename,
   v8::HandleScope handle_scope(isolate);
   auto context = d->context_.Get(d->isolate_);
   CHECK(!context.IsEmpty());
-  return deno::Execute(context, js_filename, js_source) ? 1 : 0;
+  deno::Execute(context, js_filename, js_source);
 }
 
-int deno_execute_mod(Deno* d_, void* user_data, const char* js_filename,
-                     const char* js_source, int resolve_only) {
-  auto* d = unwrap(d_);
-  deno::UserDataScope user_data_scope(d, user_data);
-  auto* isolate = d->isolate_;
-  v8::Locker locker(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  auto context = d->context_.Get(d->isolate_);
-  CHECK(!context.IsEmpty());
-  return deno::ExecuteMod(context, js_filename, js_source, resolve_only) ? 1
-                                                                         : 0;
-}
-
-int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
+void deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
   auto* d = unwrap(d_);
   if (d->current_args_ != nullptr) {
     // Synchronous response.
     auto ab = deno::ImportBuf(d, buf);
     d->current_args_->GetReturnValue().Set(ab);
     d->current_args_ = nullptr;
-    return 0;
+    return;
   }
 
   // Asynchronous response.
@@ -166,7 +151,7 @@ int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
   auto recv_ = d->recv_.Get(d->isolate_);
   if (recv_.IsEmpty()) {
     d->last_exception_ = "libdeno.recv_ has not been called.";
-    return 1;
+    return;
   }
 
   v8::Local<v8::Value> args[1];
@@ -176,10 +161,7 @@ int deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
   if (try_catch.HasCaught()) {
     CHECK(v.IsEmpty());
     deno::HandleException(context, try_catch.Exception());
-    return 1;
   }
-
-  return 0;
 }
 
 void deno_check_promise_errors(Deno* d_) {
@@ -209,10 +191,5 @@ void deno_delete(Deno* d_) {
 void deno_terminate_execution(Deno* d_) {
   deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
   d->isolate_->TerminateExecution();
-}
-
-void deno_resolve_ok(Deno* d_, const char* filename, const char* source) {
-  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
-  d->ResolveOk(filename, source);
 }
 }

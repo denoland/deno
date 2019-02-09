@@ -4,12 +4,12 @@ import * as deno from "deno";
 
 const isNotWindows = deno.platform.os !== "win";
 
-testPerm({ write: true }, function chmodSyncSuccess() {
+testPerm({ read: true, write: true }, function chmodSyncSuccess() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const tempDir = deno.makeTempDirSync();
   const filename = tempDir + "/test.txt";
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
 
   // On windows no effect, but should not crash
   deno.chmodSync(filename, 0o777);
@@ -23,13 +23,13 @@ testPerm({ write: true }, function chmodSyncSuccess() {
 
 // Check symlink when not on windows
 if (isNotWindows) {
-  testPerm({ write: true }, function chmodSyncSymlinkSuccess() {
+  testPerm({ read: true, write: true }, function chmodSyncSymlinkSuccess() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = deno.makeTempDirSync();
 
     const filename = tempDir + "/test.txt";
-    deno.writeFileSync(filename, data, 0o666);
+    deno.writeFileSync(filename, data, { perm: 0o666 });
     const symlinkName = tempDir + "/test_symlink.txt";
     deno.symlinkSync(filename, symlinkName);
 
@@ -69,12 +69,12 @@ testPerm({ write: false }, function chmodSyncPerm() {
   assertEqual(err.name, "PermissionDenied");
 });
 
-testPerm({ write: true }, async function chmodSuccess() {
+testPerm({ read: true, write: true }, async function chmodSuccess() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const tempDir = deno.makeTempDirSync();
   const filename = tempDir + "/test.txt";
-  deno.writeFileSync(filename, data, 0o666);
+  deno.writeFileSync(filename, data, { perm: 0o666 });
 
   // On windows no effect, but should not crash
   await deno.chmod(filename, 0o777);
@@ -88,13 +88,13 @@ testPerm({ write: true }, async function chmodSuccess() {
 
 // Check symlink when not on windows
 if (isNotWindows) {
-  testPerm({ write: true }, async function chmodSymlinkSuccess() {
+  testPerm({ read: true, write: true }, async function chmodSymlinkSuccess() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = deno.makeTempDirSync();
 
     const filename = tempDir + "/test.txt";
-    deno.writeFileSync(filename, data, 0o666);
+    deno.writeFileSync(filename, data, { perm: 0o666 });
     const symlinkName = tempDir + "/test_symlink.txt";
     deno.symlinkSync(filename, symlinkName);
 

@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+use crate::js_errors::JSError;
 pub use crate::msg::ErrorKind;
 use crate::resolve_addr::ResolveAddrError;
 
@@ -177,4 +178,31 @@ pub fn permission_denied() -> DenoError {
     ErrorKind::PermissionDenied,
     String::from("permission denied"),
   )
+}
+
+#[derive(Debug)]
+pub enum RustOrJsError {
+  Rust(DenoError),
+  Js(JSError),
+}
+
+impl From<DenoError> for RustOrJsError {
+  fn from(e: DenoError) -> Self {
+    RustOrJsError::Rust(e)
+  }
+}
+
+impl From<JSError> for RustOrJsError {
+  fn from(e: JSError) -> Self {
+    RustOrJsError::Js(e)
+  }
+}
+
+impl fmt::Display for RustOrJsError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      RustOrJsError::Rust(e) => e.fmt(f),
+      RustOrJsError::Js(e) => e.fmt(f),
+    }
+  }
 }

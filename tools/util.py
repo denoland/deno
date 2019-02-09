@@ -5,6 +5,7 @@ import shutil
 import stat
 import sys
 import subprocess
+import tempfile
 
 RESET = "\x1b[0m"
 FG_RED = "\x1b[31m"
@@ -381,3 +382,10 @@ def parse_wrk_output(output):
 
 def platform():
     return {"linux2": "linux", "darwin": "mac", "win32": "win"}[sys.platform]
+
+def mkdtemp():
+    # On Windows, set the base directory that mkdtemp() uses explicitly. If not,
+    # it'll use the short (8.3) path to the temp dir, which triggers the error
+    # 'TS5009: Cannot find the common subdirectory path for the input files.'
+    temp_dir = os.environ["TEMP"] if os.name == 'nt' else None
+    return tempfile.mkdtemp(dir=temp_dir)

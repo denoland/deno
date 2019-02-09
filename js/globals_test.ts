@@ -16,3 +16,7 @@ test(function windowWindowExists() {
 test(function globalThisEqualsWindow() {
   assert(globalThis === window);
 });
+
+test(function webAssemblyExists() {
+  assert(typeof WebAssembly.compile === "function");
+});

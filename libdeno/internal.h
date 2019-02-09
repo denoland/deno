@@ -4,25 +4,39 @@
 
 #include <map>
 #include <string>
+#include <utility>
+#include <vector>
 #include "deno.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
 
 namespace deno {
 
+struct ModuleInfo {
+  std::string name;
+  v8::Persistent<v8::Module> handle;
+  std::vector<std::string> import_specifiers;
+
+  ModuleInfo(v8::Isolate* isolate, v8::Local<v8::Module> module,
+             const char* name_, std::vector<std::string> import_specifiers_)
+      : name(name_), import_specifiers(import_specifiers_) {
+    handle.Reset(isolate, module);
+  }
+};
+
 // deno_s = Wrapped Isolate.
 class DenoIsolate {
  public:
-  DenoIsolate(deno_config config)
+  explicit DenoIsolate(deno_config config)
       : isolate_(nullptr),
         shared_(config.shared),
         current_args_(nullptr),
         snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
         recv_cb_(config.recv_cb),
-        resolve_cb_(config.resolve_cb),
         next_req_id_(0),
-        user_data_(nullptr) {
+        user_data_(nullptr),
+        resolve_cb_(nullptr) {
     array_buffer_allocator_ = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (config.load_snapshot.data_ptr) {
       snapshot_.data =
@@ -32,6 +46,7 @@ class DenoIsolate {
   }
 
   ~DenoIsolate() {
+    shared_ab_.Reset();
     if (snapshot_creator_) {
       delete snapshot_creator_;
     } else {
@@ -40,12 +55,27 @@ class DenoIsolate {
     delete array_buffer_allocator_;
   }
 
+  static inline DenoIsolate* FromIsolate(v8::Isolate* isolate) {
+    return static_cast<DenoIsolate*>(isolate->GetData(0));
+  }
+
   void AddIsolate(v8::Isolate* isolate);
-  void RegisterModule(const char* filename, v8::Local<v8::Module> module);
-  void ResolveOk(const char* filename, const char* source);
+
+  deno_mod RegisterModule(const char* name, const char* source);
+  v8::Local<v8::Object> GetBuiltinModules();
   void ClearModules();
 
-  v8::Local<v8::Object> GetBuiltinModules();
+  ModuleInfo* GetModuleInfo(deno_mod id) {
+    if (id == 0) {
+      return nullptr;
+    }
+    auto it = mods_.find(id);
+    if (it != mods_.end()) {
+      return &it->second;
+    } else {
+      return nullptr;
+    }
+  }
 
   v8::Isolate* isolate_;
   v8::ArrayBuffer::Allocator* array_buffer_allocator_;
@@ -54,19 +84,13 @@ class DenoIsolate {
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
   deno_recv_cb recv_cb_;
-  deno_resolve_cb resolve_cb_;
   int32_t next_req_id_;
   void* user_data_;
 
-  // identity hash -> filename, module (avoid hash collision)
-  std::multimap<int, std::pair<std::string, v8::Persistent<v8::Module>>>
-      module_info_map_;
-  // filename -> Module
-  std::map<std::string, v8::Persistent<v8::Module>> module_map_;
-  // Set by deno_resolve_ok
-  v8::Persistent<v8::Module> resolve_module_;
-
   v8::Persistent<v8::Object> builtin_modules_;
+  std::map<deno_mod, ModuleInfo> mods_;
+  std::map<std::string, deno_mod> mods_by_name_;
+  deno_resolve_cb resolve_cb_;
 
   v8::Persistent<v8::Context> context_;
   std::map<int32_t, v8::Persistent<v8::Value>> async_data_map_;
@@ -75,7 +99,7 @@ class DenoIsolate {
   v8::Persistent<v8::Function> recv_;
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
-  v8::Persistent<v8::ArrayBuffer> shared_ab_;
+  v8::Persistent<v8::SharedArrayBuffer> shared_ab_;
 };
 
 class UserDataScope {
@@ -100,11 +124,9 @@ struct InternalFieldData {
   uint32_t data;
 };
 
-static inline v8::Local<v8::String> v8_str(const char* x,
-                                           bool internalize = false) {
+static inline v8::Local<v8::String> v8_str(const char* x) {
   return v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), x,
-                                 internalize ? v8::NewStringType::kInternalized
-                                             : v8::NewStringType::kNormal)
+                                 v8::NewStringType::kNormal)
       .ToLocalChecked();
 }
 
@@ -115,12 +137,14 @@ void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
 void BuiltinModules(v8::Local<v8::Name> property,
                     const v8::PropertyCallbackInfo<v8::Value>& info);
+void MessageCallback(v8::Local<v8::Message> message, v8::Local<v8::Value> data);
 static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print),
     reinterpret_cast<intptr_t>(Recv),
     reinterpret_cast<intptr_t>(Send),
     reinterpret_cast<intptr_t>(Shared),
     reinterpret_cast<intptr_t>(BuiltinModules),
+    reinterpret_cast<intptr_t>(MessageCallback),
     0};
 
 static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};

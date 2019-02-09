@@ -6,6 +6,38 @@ https://github.com/denoland/deno/releases
 We also have a one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.2.11 / 2019.02.08
+
+- Add deps to --info output (#1720)
+- Add --allow-read (#1689)
+- Add deno.isTTY() (#1622)
+- Add emojis to permission prompts (#1684)
+- Add basic WebAssembly support (#1677)
+- Add `NO_COLOR` support https://no-color.org/ (#1716)
+- Add color exceptions (#1698)
+- Fix: do not load cache files when recompile flag is set (#1695)
+- Upgrade V8 to 7.4.98 (#1640)
+
+### v0.2.10 / 2019.02.02
+
+- Add --fmt (#1646)
+- Add --info (#1647, #1660)
+- Better error message for bad filename CLI argument. (#1650)
+- Clarify writeFile options and avoid unexpected perm modification (#1643)
+- Add performance.now (#1633)
+- Add import.meta.url (#1624)
+
+### v0.2.9 / 2019.01.29
+
+- Add REPL functions "help" and "exit" (#1563)
+- Split out compiler snapshot (#1566)
+- Combine deno.removeAll into deno.remove (#1596)
+- Add console.table (#1608)
+- Add console.clear() (#1562)
+- console output with format (#1565)
+- env key/value should both be strings (#1567)
+- Add CustomEvent API (#1505)
+
 ### v0.2.8 / 2019.01.19
 
 - Add --prefetch flag for deps prefetch without running (#1475)

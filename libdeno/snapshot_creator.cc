@@ -16,18 +16,18 @@ int main(int argc, char** argv) {
 
   deno_set_v8_flags(&argc, argv);
 
-  CHECK_NE(js_fn, nullptr);
-  CHECK_NE(snapshot_out_bin, nullptr);
+  CHECK_NOT_NULL(js_fn);
+  CHECK_NOT_NULL(snapshot_out_bin);
 
   std::string js_source;
   CHECK(deno::ReadFileToString(js_fn, &js_source));
 
   deno_init();
-  deno_config config = {1, deno::empty_buf, deno::empty_buf, nullptr, nullptr};
+  deno_config config = {1, deno::empty_buf, deno::empty_buf, nullptr};
   Deno* d = deno_new(config);
 
-  int r = deno_execute(d, nullptr, js_fn, js_source.c_str());
-  if (!r) {
+  deno_execute(d, nullptr, js_fn, js_source.c_str());
+  if (deno_last_exception(d) != nullptr) {
     std::cerr << "Snapshot Exception " << std::endl;
     std::cerr << deno_last_exception(d) << std::endl;
     deno_delete(d);

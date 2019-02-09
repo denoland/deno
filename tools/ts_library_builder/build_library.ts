@@ -16,6 +16,7 @@ import {
   checkDiagnostics,
   flattenNamespace,
   getSourceComment,
+  inlineFiles,
   loadDtsFiles,
   loadFiles,
   logDiagnostics,
@@ -40,6 +41,11 @@ export interface BuildLibraryOptions {
    * that indicate the source of the types)
    */
   debug?: boolean;
+
+  /**
+   * An array of files that should be inlined into the library
+   */
+  inline?: string[];
 
   /**
    * The path to the output library
@@ -278,6 +284,7 @@ export function mergeGlobal({
 export function main({
   basePath,
   buildPath,
+  inline,
   debug,
   outFile,
   silent
@@ -288,6 +295,12 @@ export function main({
     console.log();
     console.log(`basePath: "${basePath}"`);
     console.log(`buildPath: "${buildPath}"`);
+    if (inline && inline.length) {
+      console.log(`inline:`);
+      for (const filename of inline) {
+        console.log(`  "${filename}"`);
+      }
+    }
     console.log(`debug: ${!!debug}`);
     console.log(`outFile: "${outFile}"`);
     console.log();
@@ -429,6 +442,17 @@ export function main({
 
   if (!silent) {
     console.log(`Merged "globals" into global scope.`);
+  }
+
+  // Inline any files that were passed in, to be used to add additional libs
+  // which are not part of TypeScript.
+  if (inline && inline.length) {
+    inlineFiles({
+      basePath,
+      debug,
+      inline,
+      targetSourceFile: libDTs
+    });
   }
 
   // Add the preamble

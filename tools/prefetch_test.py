@@ -2,8 +2,7 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
 import sys
-from util import tests_path, run_output, build_path, executable_suffix, green_ok
-import tempfile
+from util import mkdtemp, tests_path, run_output, green_ok
 import shutil
 
 
@@ -11,11 +10,7 @@ def prefetch_test(deno_exe):
     sys.stdout.write("prefetch_test...")
     sys.stdout.flush()
 
-    # On Windows, set the base directory that mkdtemp() uses explicitly. If not,
-    # it'll use the short (8.3) path to the temp dir, which triggers the error
-    # 'TS5009: Cannot find the common subdirectory path for the input files.'
-    temp_dir = os.environ["TEMP"] if os.name == 'nt' else None
-    deno_dir = tempfile.mkdtemp(dir=temp_dir)
+    deno_dir = mkdtemp()
     try:
         t = os.path.join(tests_path, "006_url_imports.ts")
         output = run_output([deno_exe, "--prefetch", t],

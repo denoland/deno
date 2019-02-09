@@ -19,7 +19,7 @@ ADDR = "127.0.0.1:4544"
 def cat(deno_exe, megs):
     size = megs * MB
     start = time.time()
-    cmd = deno_exe + " tests/cat.ts /dev/zero | head -c %s " % size
+    cmd = deno_exe + " tests/cat.ts --allow-read /dev/zero | head -c %s " % size
     print cmd
     subprocess.check_output(cmd, shell=True)
     end = time.time()

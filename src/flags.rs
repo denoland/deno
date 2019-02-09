@@ -23,12 +23,15 @@ pub struct DenoFlags {
   pub version: bool,
   pub reload: bool,
   pub recompile: bool,
+  pub allow_read: bool,
   pub allow_write: bool,
   pub allow_net: bool,
   pub allow_env: bool,
   pub allow_run: bool,
   pub types: bool,
   pub prefetch: bool,
+  pub info: bool,
+  pub fmt: bool,
 }
 
 pub fn get_usage(opts: &Options) -> String {
@@ -87,6 +90,9 @@ fn set_recognized_flags(
         if matches.opt_present("recompile") {
           flags.recompile = true;
         }
+        if matches.opt_present("allow-read") {
+          flags.allow_read = true;
+        }
         if matches.opt_present("allow-write") {
           flags.allow_write = true;
         }
@@ -100,9 +106,11 @@ fn set_recognized_flags(
           flags.allow_run = true;
         }
         if matches.opt_present("allow-all") {
+          flags.allow_read = true;
           flags.allow_env = true;
           flags.allow_net = true;
           flags.allow_run = true;
+          flags.allow_read = true;
           flags.allow_write = true;
         }
         if matches.opt_present("types") {
@@ -110,6 +118,12 @@ fn set_recognized_flags(
         }
         if matches.opt_present("prefetch") {
           flags.prefetch = true;
+        }
+        if matches.opt_present("info") {
+          flags.info = true;
+        }
+        if matches.opt_present("fmt") {
+          flags.fmt = true;
         }
 
         if !matches.free.is_empty() {
@@ -134,11 +148,12 @@ pub fn set_flags(
   // TODO(kevinkassimo): v8_set_flags intercepts '-help' with single '-'
   // Resolve that and then uncomment line below (enabling Go style -long-flag)
   // opts.long_only(true);
+  opts.optflag("", "allow-read", "Allow file system read access.");
   opts.optflag("", "allow-write", "Allow file system write access.");
   opts.optflag("", "allow-net", "Allow network access.");
   opts.optflag("", "allow-env", "Allow environment access.");
   opts.optflag("", "allow-run", "Allow running subprocesses.");
-  opts.optflag("A", "allow-all", "Allow all permissions");
+  opts.optflag("A", "allow-all", "Allow all permissions.");
   opts.optflag("", "recompile", "Force recompilation of TypeScript code.");
   opts.optflag("h", "help", "Print this message.");
   opts.optflag("D", "log-debug", "Log debug output.");
@@ -147,6 +162,8 @@ pub fn set_flags(
   opts.optflag("", "v8-options", "Print V8 command line options.");
   opts.optflag("", "types", "Print runtime TypeScript declarations.");
   opts.optflag("", "prefetch", "Prefetch the dependencies.");
+  opts.optflag("", "info", "Show source file related info");
+  opts.optflag("", "fmt", "Format code.");
 
   let mut flags = DenoFlags::default();
 
@@ -252,7 +269,22 @@ fn test_set_flags_7() {
       allow_net: true,
       allow_env: true,
       allow_run: true,
+      allow_read: true,
       allow_write: true,
+      ..DenoFlags::default()
+    }
+  )
+}
+
+#[test]
+fn test_set_flags_8() {
+  let (flags, rest, _) =
+    set_flags(svec!["deno", "gist.ts", "--allow-read"]).unwrap();
+  assert_eq!(rest, svec!["deno", "gist.ts"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      allow_read: true,
       ..DenoFlags::default()
     }
   )

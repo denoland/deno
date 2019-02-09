@@ -1,4 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+use atty;
+use crate::ansi;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -17,7 +20,6 @@ use crate::resources::table_entries;
 use crate::resources::Resource;
 use crate::tokio_util;
 use crate::version;
-
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::Async;
@@ -31,21 +33,21 @@ use std;
 use std::convert::From;
 use std::fs;
 use std::net::Shutdown;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-#[cfg(unix)]
-use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_process::CommandExt;
 use tokio_threadpool;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
 
 type OpResult = DenoResult<Buf>;
 
@@ -121,6 +123,8 @@ pub fn dispatch(
       msg::Any::WorkerPostMessage => op_worker_post_message,
       msg::Any::Write => op_write,
       msg::Any::WriteFile => op_write_file,
+      msg::Any::Now => op_now,
+      msg::Any::IsTTY => op_is_tty,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -173,6 +177,55 @@ pub fn dispatch(
   (base.sync(), boxed_op)
 }
 
+fn op_now(
+  _state: &Arc<IsolateState>,
+  base: &msg::Base<'_>,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let start = SystemTime::now();
+  let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
+  let time = since_the_epoch.as_secs() * 1000
+    + u64::from(since_the_epoch.subsec_millis());
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::NowRes::create(builder, &msg::NowResArgs { time });
+  ok_future(serialize_response(
+    base.cmd_id(),
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::NowRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_is_tty(
+  _state: &Arc<IsolateState>,
+  base: &msg::Base<'_>,
+  _data: libdeno::deno_buf,
+) -> Box<Op> {
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::IsTTYRes::create(
+    builder,
+    &msg::IsTTYResArgs {
+      stdin: atty::is(atty::Stream::Stdin),
+      stdout: atty::is(atty::Stream::Stdout),
+      stderr: atty::is(atty::Stream::Stderr),
+    },
+  );
+  ok_future(serialize_response(
+    base.cmd_id(),
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::IsTTYRes,
+      ..Default::default()
+    },
+  ))
+}
+
 fn op_exit(
   _config: &Arc<IsolateState>,
   base: &msg::Base<'_>,
@@ -210,11 +263,11 @@ fn op_start(
       pid: std::process::id(),
       argv: Some(argv_off),
       debug_flag: state.flags.log_debug,
-      recompile_flag: state.flags.recompile,
       types_flag: state.flags.types,
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
+      no_color: !ansi::use_color(),
       ..Default::default()
     },
   );
@@ -271,19 +324,12 @@ fn op_code_fetch(
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
     let out = state.dir.code_fetch(specifier, referrer)?;
-    let mut msg_args = msg::CodeFetchResArgs {
+    let msg_args = msg::CodeFetchResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
       media_type: out.media_type,
       source_code: Some(builder.create_string(&out.source_code)),
-      ..Default::default()
     };
-    if let Some(ref output_code) = out.maybe_output_code {
-      msg_args.output_code = Some(builder.create_string(output_code));
-    }
-    if let Some(ref source_map) = out.maybe_source_map {
-      msg_args.source_map = Some(builder.create_string(source_map));
-    }
     let inner = msg::CodeFetchRes::create(builder, &msg_args);
     Ok(serialize_response(
       cmd_id,
@@ -632,10 +678,24 @@ fn op_open(
     }
   }
 
-  if mode != "r" {
-    // Write permission is needed except "r" mode
-    if let Err(e) = state.check_write(&filename_str) {
-      return odd_future(e);
+  match mode {
+    "r" => {
+      if let Err(e) = state.check_read(&filename_str) {
+        return odd_future(e);
+      }
+    }
+    "w" | "a" | "x" => {
+      if let Err(e) = state.check_write(&filename_str) {
+        return odd_future(e);
+      }
+    }
+    &_ => {
+      if let Err(e) = state.check_read(&filename_str) {
+        return odd_future(e);
+      }
+      if let Err(e) = state.check_write(&filename_str) {
+        return odd_future(e);
+      }
     }
   }
 
@@ -809,15 +869,19 @@ fn op_remove(
 
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
 fn op_read_file(
-  _state: &Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
-  let filename = PathBuf::from(inner.filename().unwrap());
+  let filename_ = inner.filename().unwrap();
+  let filename = PathBuf::from(filename_);
   debug!("op_read_file {}", filename.display());
+  if let Err(e) = state.check_read(&filename_) {
+    return odd_future(e);
+  }
   blocking(base.sync(), move || {
     let vec = fs::read(&filename)?;
     // Build the response message. memcpy data into inner.
@@ -849,10 +913,14 @@ fn op_copy_file(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_copy_file().unwrap();
-  let from = PathBuf::from(inner.from().unwrap());
+  let from_ = inner.from().unwrap();
+  let from = PathBuf::from(from_);
   let to_ = inner.to().unwrap();
   let to = PathBuf::from(to_);
 
+  if let Err(e) = state.check_read(&from_) {
+    return odd_future(e);
+  }
   if let Err(e) = state.check_write(&to_) {
     return odd_future(e);
   }
@@ -921,15 +989,20 @@ fn op_cwd(
 }
 
 fn op_stat(
-  _state: &Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let filename = PathBuf::from(inner.filename().unwrap());
+  let filename_ = inner.filename().unwrap();
+  let filename = PathBuf::from(filename_);
   let lstat = inner.lstat();
+
+  if let Err(e) = state.check_read(&filename_) {
+    return odd_future(e);
+  }
 
   blocking(base.sync(), move || {
     let builder = &mut FlatBufferBuilder::new();
@@ -968,7 +1041,7 @@ fn op_stat(
 }
 
 fn op_read_dir(
-  _state: &Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
@@ -976,6 +1049,10 @@ fn op_read_dir(
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
   let path = String::from(inner.path().unwrap());
+
+  if let Err(e) = state.check_read(&path) {
+    return odd_future(e);
+  }
 
   blocking(base.sync(), move || -> OpResult {
     debug!("op_read_dir {}", path);
@@ -1031,7 +1108,10 @@ fn op_write_file(
 ) -> Box<Op> {
   let inner = base.inner_as_write_file().unwrap();
   let filename = String::from(inner.filename().unwrap());
+  let update_perm = inner.update_perm();
   let perm = inner.perm();
+  let is_create = inner.is_create();
+  let is_append = inner.is_append();
 
   if let Err(e) = state.check_write(&filename) {
     return odd_future(e);
@@ -1039,7 +1119,14 @@ fn op_write_file(
 
   blocking(base.sync(), move || -> OpResult {
     debug!("op_write_file {} {}", filename, data.len());
-    deno_fs::write_file(Path::new(&filename), data, perm)?;
+    deno_fs::write_file_2(
+      Path::new(&filename),
+      data,
+      update_perm,
+      perm,
+      is_create,
+      is_append,
+    )?;
     Ok(empty_buf())
   })
 }
@@ -1094,14 +1181,19 @@ fn op_symlink(
 }
 
 fn op_read_link(
-  _state: &Arc<IsolateState>,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let name = PathBuf::from(inner.name().unwrap());
+  let name_ = inner.name().unwrap();
+  let name = PathBuf::from(name_);
+
+  if let Err(e) = state.check_read(&name_) {
+    return odd_future(e);
+  }
 
   blocking(base.sync(), move || -> OpResult {
     debug!("op_read_link {}", name.display());
