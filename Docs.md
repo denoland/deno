@@ -116,7 +116,7 @@ Extra steps for Windows users:
     ./tools/test.py
 
     # Format code.
-    deno ./tools/format.ts
+    deno ./tools/format.ts --allow-read --allow-run
 
 Other useful commands:
 
