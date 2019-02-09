@@ -572,21 +572,12 @@ fn op_chmod(
     debug!("op_chmod {}", &path);
     let path = PathBuf::from(&path);
     // Still check file/dir exists on windows
-    let _metadata = fs::metadata(&path)?;
+    let metadata = fs::metadata(&path)?;
     // Only work in unix
     #[cfg(any(unix))]
     {
-      // We need to use underscore to compile in Windows.
-      #[cfg_attr(
-        feature = "cargo-clippy",
-        allow(clippy::used_underscore_binding)
-      )]
-      let mut permissions = _metadata.permissions();
-      #[cfg_attr(
-        feature = "cargo-clippy",
-        allow(clippy::used_underscore_binding)
-      )]
-      permissions.set_mode(_mode);
+      let mut permissions = metadata.permissions();
+      permissions.set_mode(mode);
       fs::set_permissions(&path, permissions)?;
     }
     Ok(empty_buf())
