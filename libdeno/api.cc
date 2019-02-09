@@ -9,6 +9,7 @@
 #include "third_party/v8/src/base/logging.h"
 
 #include "deno.h"
+#include "exceptions.h"
 #include "internal.h"
 
 extern "C" {
@@ -191,5 +192,19 @@ void deno_delete(Deno* d_) {
 void deno_terminate_execution(Deno* d_) {
   deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
   d->isolate_->TerminateExecution();
+}
+
+const char* deno_repl_eval(Deno* d_, void* user_data, const char* code) {
+  auto* d = unwrap(d_);
+  auto* isolate = d->isolate_;
+  deno::UserDataScope user_data_scope(d, user_data);
+  v8::Locker locker(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
+  auto context = d->context_.Get(d->isolate_);
+  CHECK(!context.IsEmpty());
+  deno::ReplEval(context, code);
+  // TODO(kevinkassimo): with real eval code
+  return d->repl_last_exception_.c_str();
 }
 }

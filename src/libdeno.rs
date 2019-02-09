@@ -179,4 +179,9 @@ extern "C" {
     id: deno_mod,
   );
 
+  pub fn deno_repl_eval(
+    i: *const isolate,
+    user_data: *const c_void,
+    code: *const c_char,
+  ) -> *const c_char;
 }

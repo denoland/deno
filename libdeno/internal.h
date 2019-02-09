@@ -99,6 +99,9 @@ class DenoIsolate {
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Persistent<v8::ArrayBuffer> shared_ab_;
+
+  v8::Persistent<v8::Object> console_;
+  std::string repl_last_exception_;
 };
 
 class UserDataScope {
@@ -132,6 +135,7 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
+void SetConsole(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
 void BuiltinModules(v8::Local<v8::Name> property,
@@ -142,6 +146,7 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Recv),
     reinterpret_cast<intptr_t>(Send),
     reinterpret_cast<intptr_t>(Shared),
+    reinterpret_cast<intptr_t>(SetConsole),
     reinterpret_cast<intptr_t>(BuiltinModules),
     reinterpret_cast<intptr_t>(MessageCallback),
     0};
@@ -151,9 +156,6 @@ static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
 Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context);
-
-void HandleException(v8::Local<v8::Context> context,
-                     v8::Local<v8::Value> exception);
 
 void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
                                v8::StartupData payload, void* data);
@@ -165,6 +167,7 @@ v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf);
 
 void DeleteDataRef(DenoIsolate* d, int32_t req_id);
 
+void ReplEval(v8::Local<v8::Context> context, const char* js_source);
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
              const char* js_source);
 bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,

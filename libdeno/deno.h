@@ -100,6 +100,9 @@ void deno_mod_instantiate(Deno* d, void* user_data, deno_mod id,
 // If it succeeded deno_last_exception() will return NULL.
 void deno_mod_evaluate(Deno* d, void* user_data, deno_mod id);
 
+// Repl eval code in the current context
+const char* deno_repleval(Deno* d, void* user_data, const char* code);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

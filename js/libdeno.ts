@@ -30,14 +30,8 @@ interface Libdeno {
     ) => void
   ) => void;
 
-  setPromiseRejectHandler: (
-    handler: (
-      error: Error | string,
-      event: PromiseRejectEvent,
-      /* tslint:disable-next-line:no-any */
-      promise: Promise<any>
-    ) => void
-  ) => void;
+  // tslint:disable-next-line:no-any
+  setConsole: (c: any) => void;
 
   setPromiseErrorExaminer: (handler: () => boolean) => void;
 }

@@ -121,6 +121,9 @@ fn main() {
         );
         std::process::exit(0);
       }
+    } else {
+      // Start REPL
+      isolate.start_repl();
     }
 
     isolate

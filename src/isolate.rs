@@ -17,6 +17,7 @@ use crate::libdeno;
 use crate::modules::Modules;
 use crate::msg;
 use crate::permissions::DenoPermissions;
+use crate::repl::{history_path, Repl};
 use crate::tokio_util;
 use futures::sync::mpsc as async_mpsc;
 use futures::Future;
@@ -33,6 +34,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::{Once, ONCE_INIT};
+use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 use tokio;
@@ -57,6 +59,7 @@ pub struct Isolate {
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
   tx: mpsc::Sender<(i32, Buf)>,
+  repl_tx: Option<mpsc::Sender<String>>,
   ntasks: Cell<i32>,
   timeout_due: Cell<Option<Instant>>,
   pub modules: RefCell<Modules>,
@@ -195,6 +198,7 @@ impl Isolate {
       dispatch,
       rx,
       tx,
+      repl_tx: None,
       ntasks: Cell::new(0),
       timeout_due: Cell::new(None),
       modules: RefCell::new(Modules::new()),
@@ -385,15 +389,40 @@ impl Isolate {
 
   pub fn respond(&self, req_id: i32, buf: Buf) {
     self.state.metrics_op_completed(buf.len());
-    // deno_respond will memcpy the buf into V8's heap,
-    // so borrowing a reference here is sufficient.
-    unsafe {
-      libdeno::deno_respond(
+    // TODO: replace magic numbers -2 and -1
+    if req_id == -2 {
+      // Responding to REPL eval request
+      self.repl_eval(buf);
+      // REPL continues, so increment task
+      self.ntasks_increment();
+    } else if req_id == -1 {
+      // REPL is shutting down. Do nothing.
+    } else {
+      // deno_respond will memcpy the buf into V8's heap,
+      // so borrowing a reference here is sufficient.
+      unsafe {
+        libdeno::deno_respond(
+          self.libdeno_isolate,
+          self.as_raw_ptr(),
+          req_id,
+          buf.as_ref().into(),
+        )
+      }
+    }
+  }
+
+  fn repl_eval(&self, buf: Buf) {
+    let res_ptr = unsafe {
+      libdeno::deno_repl_eval(
         self.libdeno_isolate,
         self.as_raw_ptr(),
-        req_id,
-        buf.as_ref().into(),
+        buf.as_ptr() as *const i8,
       )
+    };
+    let cstr = unsafe { CStr::from_ptr(res_ptr) };
+    let v8_exception = String::from(cstr.to_str().unwrap());
+    if let Some(ref repl_tx) = &self.repl_tx {
+      let _ = repl_tx.send(v8_exception);
     }
   }
 
@@ -421,6 +450,49 @@ impl Isolate {
     unsafe {
       libdeno::deno_check_promise_errors(self.libdeno_isolate);
     }
+  }
+
+  pub fn start_repl(&mut self) {
+    // TODO: make this more elegant...
+    // import deno from builtin modules
+    let _ = self.execute("window.deno = libdeno.builtinModules['deno']");
+
+    self.ntasks_increment(); // prevent exit
+    let tx = self.tx.clone();
+    let state = (&(self.state)).clone();
+    let (repl_tx, repl_rx) = mpsc::channel::<String>();
+    self.repl_tx.replace(repl_tx);
+    thread::spawn(move || {
+      let history_file = history_path(&state.dir, "deno_history.txt");
+      let mut repl = Repl::new(history_file);
+      loop {
+        let maybe_line = repl.readline("> ");
+        if maybe_line.is_err() {
+          break;
+        }
+
+        let code = maybe_line.unwrap();
+        let mut code_vec = code.into_bytes();
+        code_vec.push(0); // for C zero byte
+                          // TODO: replace magic number -2
+                          // Forward code to main thread
+        let _ = tx.send((-2, code_vec.into_boxed_slice()));
+
+        let v8_exception = repl_rx.recv().unwrap(); // TODO: process this
+        if v8_exception.len() == 0 {
+          // no error
+          continue;
+        }
+
+        let js_error = JSError::from_v8_exception(&v8_exception).unwrap();
+        // TODO: handle multiple lines
+        eprintln!("{}", &js_error.message);
+      }
+      // Remove pending REPL task
+      let empty_buf: [u8; 0] = [];
+      // TODO: replace magic number -1
+      let _ = tx.send((-1, Box::new(empty_buf)));
+    });
   }
 
   // TODO Use Park abstraction? Note at time of writing Tokio default runtime

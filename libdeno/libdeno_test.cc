@@ -189,7 +189,8 @@ TEST(LibDenoTest, GlobalErrorHandling) {
       "notdefined()\",\"scriptResourceName\":\"helloworld.js\","
       "\"lineNumber\":3,\"startPosition\":3,\"endPosition\":4,\"errorLevel\":8,"
       "\"startColumn\":1,\"endColumn\":2,\"isSharedCrossOrigin\":false,"
-      "\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":2,"
+      "\"isOpaque\":false,\"isCompileError\":false,\"frames\":[{\"line\":3,"
+      "\"column\":2,"
       "\"functionName\":\"\",\"scriptName\":\"helloworld.js\",\"isEval\":true,"
       "\"isConstructor\":false,\"isWasm\":false},";
   std::string actual(deno_last_exception(d), 0, expected.length());
@@ -246,7 +247,8 @@ TEST(LibDenoTest, LastException) {
                "Error('boo');\",\"scriptResourceName\":\"a.js\",\"lineNumber\":"
                "3,\"startPosition\":8,\"endPosition\":9,\"errorLevel\":8,"
                "\"startColumn\":6,\"endColumn\":7,\"isSharedCrossOrigin\":"
-               "false,\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":7,"
+               "false,\"isOpaque\":false,\"isCompileError\":false,\"frames\":[{"
+               "\"line\":3,\"column\":7,"
                "\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":false,"
                "\"isConstructor\":false,\"isWasm\":false}]}");
   deno_delete(d);
@@ -261,7 +263,8 @@ TEST(LibDenoTest, EncodeErrorBug) {
       "{\"message\":\"Uncaught ReferenceError: a is not "
       "defined\",\"sourceLine\":\"a\",\"lineNumber\":1,\"startPosition\":0,"
       "\"endPosition\":1,\"errorLevel\":8,\"startColumn\":0,\"endColumn\":1,"
-      "\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"frames\":[{\"line\":"
+      "\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"isCompileError\":"
+      "false,\"frames\":[{\"line\":"
       "1,\"column\":1,\"functionName\":\"\",\"scriptName\":\"<unknown>\","
       "\"isEval\":true,\"isConstructor\":false,\"isWasm\":false},{\"line\":1,"
       "\"column\":1,\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":"
