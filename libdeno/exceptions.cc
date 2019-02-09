@@ -4,11 +4,10 @@
 
 namespace deno {
 
-std::string EncodeMessageAsJSON(v8::Local<v8::Context> context,
-                                v8::Local<v8::Message> message,
-                                bool is_compile_exception = false) {
+v8::Local<v8::Object> EncodeMessageAsObject(v8::Local<v8::Context> context,
+                                            v8::Local<v8::Message> message) {
   auto* isolate = context->GetIsolate();
-  v8::HandleScope handle_scope(isolate);
+  v8::EscapableHandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
   auto stack_trace = message->GetStackTrace();
@@ -78,12 +77,6 @@ std::string EncodeMessageAsJSON(v8::Local<v8::Context> context,
                   v8::Boolean::New(isolate, message->IsOpaque()))
             .FromJust());
 
-  // Set if the exception happens at compile time
-  CHECK(json_obj
-            ->Set(context, v8_str("isCompileError"),
-                  v8::Boolean::New(isolate, is_compile_exception))
-            .FromJust());
-
   v8::Local<v8::Array> frames;
   if (!stack_trace.IsEmpty()) {
     uint32_t count = static_cast<uint32_t>(stack_trace->GetFrameCount());
@@ -141,41 +134,57 @@ std::string EncodeMessageAsJSON(v8::Local<v8::Context> context,
   }
 
   CHECK(json_obj->Set(context, v8_str("frames"), frames).FromJust());
+  json_obj = handle_scope.Escape(json_obj);
+  return json_obj;
+}
 
+std::string EncodeMessageAsJSON(v8::Local<v8::Context> context,
+                                v8::Local<v8::Message> message) {
+  auto* isolate = context->GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+  auto json_obj = EncodeMessageAsObject(context, message);
   auto json_string = v8::JSON::Stringify(context, json_obj).ToLocalChecked();
   v8::String::Utf8Value json_string_(isolate, json_string);
   return std::string(ToCString(json_string_));
 }
 
+v8::Local<v8::Object> EncodeExceptionAsObject(v8::Local<v8::Context> context,
+                                              v8::Local<v8::Value> exception) {
+  auto* isolate = context->GetIsolate();
+  v8::EscapableHandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+
+  auto message = v8::Exception::CreateMessage(isolate, exception);
+  auto json_obj = EncodeMessageAsObject(context, message);
+  json_obj = handle_scope.Escape(json_obj);
+  return json_obj;
+}
+
 std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
-                                  v8::Local<v8::Value> exception,
-                                  bool is_compile_exception) {
+                                  v8::Local<v8::Value> exception) {
   auto* isolate = context->GetIsolate();
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
   auto message = v8::Exception::CreateMessage(isolate, exception);
-  return EncodeMessageAsJSON(context, message, is_compile_exception);
+  return EncodeMessageAsJSON(context, message);
 }
 
 void HandleException(v8::Local<v8::Context> context,
-                     v8::Local<v8::Value> exception,
-                     bool is_compile_exception) {
+                     v8::Local<v8::Value> exception) {
   v8::Isolate* isolate = context->GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  std::string json_str =
-      EncodeExceptionAsJSON(context, exception, is_compile_exception);
+  std::string json_str = EncodeExceptionAsJSON(context, exception);
   CHECK_NOT_NULL(d);
   d->last_exception_ = json_str;
 }
 
 void HandleExceptionMessage(v8::Local<v8::Context> context,
-                            v8::Local<v8::Message> message,
-                            bool is_compile_exception) {
+                            v8::Local<v8::Message> message) {
   v8::Isolate* isolate = context->GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  std::string json_str =
-      EncodeMessageAsJSON(context, message, is_compile_exception);
+  std::string json_str = EncodeMessageAsJSON(context, message);
   CHECK_NOT_NULL(d);
   d->last_exception_ = json_str;
 }

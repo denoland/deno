@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use rustyline;
 
-use rustyline::error::ReadlineError::Interrupted;
+use rustyline::error::ReadlineError::{Eof, Interrupted};
 
 use crate::msg::ErrorKind;
 use std::error::Error;
@@ -109,7 +109,7 @@ impl Repl {
       // we will always send something
       if maybe_line.is_err() {
         match maybe_line.unwrap_err() {
-          Interrupted => {
+          Interrupted | Eof => {
             let _ = save_history(editor.clone(), &history_file_copy);
             exit(1);
           }

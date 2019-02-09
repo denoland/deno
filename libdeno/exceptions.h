@@ -7,17 +7,17 @@
 
 namespace deno {
 
+v8::Local<v8::Object> EncodeExceptionAsObject(v8::Local<v8::Context> context,
+                                              v8::Local<v8::Value> exception);
+
 std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
-                                  v8::Local<v8::Value> exception,
-                                  bool is_compile_exception = false);
+                                  v8::Local<v8::Value> exception);
 
 void HandleException(v8::Local<v8::Context> context,
-                     v8::Local<v8::Value> exception,
-                     bool is_compile_exception = false);
+                     v8::Local<v8::Value> exception);
 
 void HandleExceptionMessage(v8::Local<v8::Context> context,
-                            v8::Local<v8::Message> message,
-                            bool is_compile_exception = false);
+                            v8::Local<v8::Message> message);
 }  // namespace deno
 
 #endif  // EXCEPTIONS_H_

@@ -9,6 +9,16 @@ export type PromiseRejectEvent =
   | "ResolveAfterResolved"
   | "RejectAfterResolved";
 
+interface EvalErrorInfo {
+  // Is the object thrown a native Error?
+  isNativeError: boolean;
+  // Was the error happened during compilation?
+  isCompileError: boolean;
+  // The actual thrown entity
+  // (might be an Error or anything else thrown by the user)
+  thrown: any; // tslint:disable-line:no-any
+}
+
 interface Libdeno {
   recv(cb: MessageCallback): void;
 
@@ -31,6 +41,15 @@ interface Libdeno {
   ) => void;
 
   setPromiseErrorExaminer: (handler: () => boolean) => void;
+
+  /** Evaluate provided code in the current context.
+   * It differs from eval(...) in that it does not create a new context.
+   * Returns an array: [output, errInfo].
+   * If an error occurs, `output` becomes null and `errInfo` is non-null.
+   */
+  evalContext(
+    code: string
+  ): [any, EvalErrorInfo | null] /* tslint:disable-line:no-any */;
 }
 
 const window = globalEval("this");

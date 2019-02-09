@@ -113,7 +113,7 @@ class Repl(object):
         out, err, code = self.input(
             "fetch('http://localhost:4545/tests/001_hello.js')" +
             ".then(res => res.text()).then(console.log)",
-            sleep=1, exit=False)
+            sleep=1)
         assertEqual(out, 'Promise {}\nconsole.log("Hello World");\n\n')
         assertEqual(err, '')
         assertEqual(code, 0)

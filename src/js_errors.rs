@@ -54,7 +54,6 @@ pub struct JSError {
   pub error_level: Option<i64>,
   pub start_column: Option<i64>,
   pub end_column: Option<i64>,
-  pub is_compile_error: bool,
 
   pub frames: Vec<StackFrame>,
 }
@@ -330,11 +329,6 @@ impl JSError {
       }
     }
 
-    let is_compile_error = obj
-      .get("isCompileError")
-      .and_then(|v| v.as_bool())
-      .unwrap_or(false);
-
     Some(JSError {
       message,
       source_line,
@@ -345,7 +339,6 @@ impl JSError {
       error_level,
       start_column,
       end_column,
-      is_compile_error,
       frames,
     })
   }
@@ -369,7 +362,6 @@ impl JSError {
       end_position: self.end_position,
       start_column: self.start_column,
       end_column: self.end_column,
-      is_compile_error: self.is_compile_error,
     }
   }
 }
@@ -428,7 +420,6 @@ mod tests {
       error_level: None,
       start_column: None,
       end_column: None,
-      is_compile_error: false,
       frames: vec![
         StackFrame {
           line: 4,
@@ -578,7 +569,6 @@ mod tests {
     assert_eq!(e.error_level, Some(8));
     assert_eq!(e.start_column, Some(6));
     assert_eq!(e.end_column, Some(7));
-    assert_eq!(e.is_compile_error, false);
     assert_eq!(e.frames.len(), 1);
   }
 
@@ -616,7 +606,6 @@ mod tests {
       error_level: None,
       start_column: None,
       end_column: None,
-      is_compile_error: false,
       frames: vec![
         StackFrame {
           line: 5,
@@ -662,7 +651,6 @@ mod tests {
       error_level: None,
       start_column: None,
       end_column: None,
-      is_compile_error: false,
       frames: vec![StackFrame {
         line: 11,
         column: 12,

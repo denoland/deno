@@ -189,7 +189,7 @@ TEST(LibDenoTest, GlobalErrorHandling) {
       "notdefined()\",\"scriptResourceName\":\"helloworld.js\","
       "\"lineNumber\":3,\"startPosition\":3,\"endPosition\":4,\"errorLevel\":8,"
       "\"startColumn\":1,\"endColumn\":2,\"isSharedCrossOrigin\":false,"
-      "\"isOpaque\":false,\"isCompileError\":false,\"frames\":[{\"line\":3,"
+      "\"isOpaque\":false,\"frames\":[{\"line\":3,"
       "\"column\":2,"
       "\"functionName\":\"\",\"scriptName\":\"helloworld.js\",\"isEval\":true,"
       "\"isConstructor\":false,\"isWasm\":false},";
@@ -247,7 +247,7 @@ TEST(LibDenoTest, LastException) {
                "Error('boo');\",\"scriptResourceName\":\"a.js\",\"lineNumber\":"
                "3,\"startPosition\":8,\"endPosition\":9,\"errorLevel\":8,"
                "\"startColumn\":6,\"endColumn\":7,\"isSharedCrossOrigin\":"
-               "false,\"isOpaque\":false,\"isCompileError\":false,\"frames\":[{"
+               "false,\"isOpaque\":false,\"frames\":[{"
                "\"line\":3,\"column\":7,"
                "\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":false,"
                "\"isConstructor\":false,\"isWasm\":false}]}");
@@ -263,8 +263,7 @@ TEST(LibDenoTest, EncodeErrorBug) {
       "{\"message\":\"Uncaught ReferenceError: a is not "
       "defined\",\"sourceLine\":\"a\",\"lineNumber\":1,\"startPosition\":0,"
       "\"endPosition\":1,\"errorLevel\":8,\"startColumn\":0,\"endColumn\":1,"
-      "\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"isCompileError\":"
-      "false,\"frames\":[{\"line\":"
+      "\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"frames\":[{\"line\":"
       "1,\"column\":1,\"functionName\":\"\",\"scriptName\":\"<unknown>\","
       "\"isEval\":true,\"isConstructor\":false,\"isWasm\":false},{\"line\":1,"
       "\"column\":1,\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":"
@@ -289,6 +288,20 @@ TEST(LibDenoTest, Utf8Bug) {
   // The following is a valid UTF-8 javascript which just defines a string
   // literal. We had a bug where libdeno would choke on this.
   deno_execute(d, nullptr, "a.js", "x = \"\xEF\xBF\xBD\"");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_delete(d);
+}
+
+TEST(LibDenoTest, LibDenoEvalContext) {
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
+  deno_execute(d, nullptr, "a.js", "LibDenoEvalContext();");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_delete(d);
+}
+
+TEST(LibDenoTest, LibDenoEvalContextError) {
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
+  deno_execute(d, nullptr, "a.js", "LibDenoEvalContextError();");
   EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_delete(d);
 }
