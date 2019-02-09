@@ -8,7 +8,7 @@ import { log } from "./util";
 import * as os from "./os";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
-// import { replLoop } from "./repl";
+import { replLoop } from "./repl";
 
 // builtin modules
 import * as deno from "./deno";
@@ -20,7 +20,6 @@ import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 export default function denoMain() {
   const startResMsg = os.start();
 
-  libdeno.setConsole(console);
   libdeno.builtinModules["deno"] = deno;
   Object.freeze(libdeno.builtinModules);
 
@@ -51,8 +50,8 @@ export default function denoMain() {
   log("args", args);
   Object.freeze(args);
 
-  // const inputFn = args[0];
-  // if (!inputFn) {
-  //   replLoop();
-  // }
+  const inputFn = args[0];
+  if (!inputFn) {
+    replLoop();
+  }
 }

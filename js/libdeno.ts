@@ -30,9 +30,6 @@ interface Libdeno {
     ) => void
   ) => void;
 
-  // tslint:disable-next-line:no-any
-  setConsole: (c: any) => void;
-
   setPromiseErrorExaminer: (handler: () => boolean) => void;
 }
 

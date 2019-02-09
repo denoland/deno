@@ -36,6 +36,7 @@ use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
+use std::sync::{mpsc, Arc};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
@@ -462,13 +463,27 @@ pub fn child_status(rid: ResourceId) -> DenoResult<ChildStatus> {
   }
 }
 
-pub fn readline(rid: ResourceId, prompt: &str) -> DenoResult<String> {
+// pub fn readline(rid: ResourceId, prompt: &str) -> DenoResult<String> {
+//   let mut table = RESOURCE_TABLE.lock().unwrap();
+//   let maybe_repr = table.get_mut(&rid);
+//   match maybe_repr {
+//     Some(Repr::Repl(ref mut r)) => {
+//       let line = r.readline(&prompt)?;
+//       Ok(line)
+//     }
+//     _ => Err(bad_resource()),
+//   }
+// }
+
+pub fn request_readline(
+  rid: ResourceId,
+) -> DenoResult<Arc<Mutex<mpsc::Receiver<DenoResult<String>>>>> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
     Some(Repr::Repl(ref mut r)) => {
-      let line = r.readline(&prompt)?;
-      Ok(line)
+      let _ = r.req_tx.send(()); // signifies that we are prepared for a read
+      return Ok(r.rx.clone());
     }
     _ => Err(bad_resource()),
   }

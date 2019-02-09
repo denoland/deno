@@ -55,22 +55,22 @@ class Repl(object):
         assertEqual(err, '')
         assertEqual(code, 0)
 
-    # def test_exit_command(self):
-    #     out, err, code = self.input("exit", "'ignored'", exit=False)
-    #     assertEqual(out, '')
-    #     assertEqual(err, '')
-    #     assertEqual(code, 0)
+    def test_exit_command(self):
+        out, err, code = self.input("exit", "'ignored'", exit=False)
+        assertEqual(out, '')
+        assertEqual(err, '')
+        assertEqual(code, 0)
 
-    # def test_help_command(self):
-    #     out, err, code = self.input("help")
-    #     expectedOut = '\n'.join([
-    #         "exit    Exit the REPL",
-    #         "help    Print this help message",
-    #         "",
-    #     ])
-    #     assertEqual(out, expectedOut)
-    #     assertEqual(err, '')
-    #     assertEqual(code, 0)
+    def test_help_command(self):
+        out, err, code = self.input("help")
+        expectedOut = '\n'.join([
+            "exit    Exit the REPL",
+            "help    Print this help message",
+            "",
+        ])
+        assertEqual(out, expectedOut)
+        assertEqual(err, '')
+        assertEqual(code, 0)
 
     def test_function(self):
         out, err, code = self.input("deno.writeFileSync")
@@ -78,11 +78,11 @@ class Repl(object):
         assertEqual(err, '')
         assertEqual(code, 0)
 
-    # def test_multiline(self):
-    #     out, err, code = self.input("(\n1 + 2\n)")
-    #     assertEqual(out, '3\n')
-    #     assertEqual(err, '')
-    #     assertEqual(code, 0)
+    def test_multiline(self):
+        out, err, code = self.input("(\n1 + 2\n)")
+        assertEqual(out, '3\n')
+        assertEqual(err, '')
+        assertEqual(code, 0)
 
     def test_reference_error(self):
         out, err, code = self.input("not_a_variable")

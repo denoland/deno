@@ -135,7 +135,6 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
-void SetConsole(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
 void BuiltinModules(v8::Local<v8::Name> property,
@@ -146,7 +145,6 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Recv),
     reinterpret_cast<intptr_t>(Send),
     reinterpret_cast<intptr_t>(Shared),
-    reinterpret_cast<intptr_t>(SetConsole),
     reinterpret_cast<intptr_t>(BuiltinModules),
     reinterpret_cast<intptr_t>(MessageCallback),
     0};
@@ -167,7 +165,6 @@ v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf);
 
 void DeleteDataRef(DenoIsolate* d, int32_t req_id);
 
-void ReplEval(v8::Local<v8::Context> context, const char* js_source);
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
              const char* js_source);
 bool ExecuteMod(v8::Local<v8::Context> context, const char* js_filename,

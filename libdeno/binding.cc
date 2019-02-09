@@ -342,67 +342,6 @@ void DenoIsolate::ClearModules() {
   mods_by_name_.clear();
 }
 
-// TODO(kevinkassimo): super duper ugly and cause libdeno to depend on TS...
-void ConsoleLog(v8::Local<v8::Context> context, v8::Local<v8::Value> value) {
-  auto* isolate = context->GetIsolate();
-  DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context);
-
-  auto console = d->console_.Get(isolate);
-  auto logField = console->Get(context, v8_str("log")).ToLocalChecked();
-  if (logField->IsFunction()) {
-    auto logFunc = v8::Local<v8::Function>::Cast(logField);
-    v8::Local<v8::Value> args[1];
-    args[0] = value;
-    logFunc->Call(context->Global(), 1, args);
-  }
-}
-
-void ReplEval(v8::Local<v8::Context> context, const char* js_source) {
-  auto* isolate = context->GetIsolate();
-  DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context);
-
-  d->repl_last_exception_ = "";
-
-  auto source = v8_str(js_source);
-  v8::TryCatch try_catch(isolate);
-
-  auto name = v8_str("<unknown>");
-  v8::ScriptOrigin origin(name);
-  auto script = v8::Script::Compile(context, source, &origin);
-
-  if (script.IsEmpty()) {
-    DCHECK(try_catch.HasCaught());
-    auto exception = try_catch.Exception();
-    d->repl_last_exception_ = EncodeExceptionAsJSON(context, exception, true);
-    return;
-  }
-
-  auto result = script.ToLocalChecked()->Run(context);
-
-  if (result.IsEmpty()) {
-    DCHECK(try_catch.HasCaught());
-    auto exception = try_catch.Exception();
-    // If not native error, print and abort.
-    if (!exception->IsNativeError()) {
-      std::cout << "Thrown: ";
-      ConsoleLog(context, exception);
-      return;
-    }
-    d->repl_last_exception_ = EncodeExceptionAsJSON(context, exception, false);
-    return;
-  }
-
-  // TODO(kevinkassimo): this is nasty,
-  // but we need formatting of value printed...
-  ConsoleLog(context, result.ToLocalChecked());
-}
-
 bool Execute(v8::Local<v8::Context> context, const char* js_filename,
              const char* js_source) {
   auto* isolate = context->GetIsolate();
@@ -456,12 +395,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
   auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
   auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
-
-  auto set_console_tmpl = v8::FunctionTemplate::New(isolate, SetConsole);
-  auto set_console_val =
-      set_console_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("setConsole"), set_console_val)
-            .FromJust());
 
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
