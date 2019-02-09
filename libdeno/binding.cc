@@ -324,7 +324,7 @@ void Shared(v8::Local<v8::Name> property,
                                     v8::ArrayBufferCreationMode::kExternalized);
     d->shared_ab_.Reset(isolate, ab);
   }
-  info.GetReturnValue().Set(ab);
+  info.GetReturnValue().Set(d->shared_ab_);
 }
 
 void DenoIsolate::ClearModules() {
