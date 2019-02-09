@@ -8,7 +8,14 @@ import { TextProtoReader } from "../textproto/mod.ts";
 let fileServer;
 async function startFileServer() {
   fileServer = run({
-    args: ["deno", "--allow-net", "http/file_server.ts", ".", "--cors"],
+    args: [
+      "deno",
+      "--allow-read",
+      "--allow-net",
+      "http/file_server.ts",
+      ".",
+      "--cors"
+    ],
     stdout: "piped"
   });
   // Once fileServer is ready it will write to its stdout.
