@@ -13,6 +13,7 @@ pub struct ModuleInfo {
 }
 
 /// A collection of JS modules.
+#[derive(Default)]
 pub struct Modules {
   pub info: HashMap<deno_mod, ModuleInfo>,
   pub by_name: HashMap<String, deno_mod>,
@@ -27,7 +28,7 @@ impl Modules {
   }
 
   pub fn get_id(&self, name: &str) -> Option<deno_mod> {
-    self.by_name.get(name).map(|id_ref| *id_ref)
+    self.by_name.get(name).cloned()
   }
 
   pub fn get_children(&self, id: deno_mod) -> Option<&Vec<deno_mod>> {
@@ -117,7 +118,7 @@ impl Deps {
       seen.insert(id);
       let child_ids = modules.get_children(id).unwrap();
       let deps = child_ids
-        .into_iter()
+        .iter()
         .map(|dep_id| Self::helper(seen, depth + 1, modules, *dep_id))
         .collect();
       Deps {
