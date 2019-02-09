@@ -198,7 +198,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "0.2.10"
+version = "0.2.11"
 dependencies = [
  "ansi_term 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "atty 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
