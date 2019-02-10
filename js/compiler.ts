@@ -68,6 +68,7 @@ interface Ts {
   createLanguageService: typeof ts.createLanguageService;
   /* tslint:disable-next-line:max-line-length */
   formatDiagnosticsWithColorAndContext: typeof ts.formatDiagnosticsWithColorAndContext;
+  formatDiagnostics: typeof ts.formatDiagnostics;
 }
 
 /** A simple object structure for caching resolved modules and their contents.
@@ -344,10 +345,10 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
         ...service.getSemanticDiagnostics(fileName)
       ];
       if (diagnostics.length > 0) {
-        const errMsg = this._ts.formatDiagnosticsWithColorAndContext(
-          diagnostics,
-          this
-        );
+        const errMsg = os.noColor
+          ? this._ts.formatDiagnostics(diagnostics, this)
+          : this._ts.formatDiagnosticsWithColorAndContext(diagnostics, this);
+
         console.log(errMsg);
         // All TypeScript errors are terminal for deno
         this._os.exit(1);

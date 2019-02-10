@@ -264,6 +264,7 @@ export default function makeConfig(commandOptions) {
           // bundle
           [typescriptPath]: [
             "createLanguageService",
+            "formatDiagnostics",
             "formatDiagnosticsWithColorAndContext",
             "ModuleKind",
             "ScriptKind",
