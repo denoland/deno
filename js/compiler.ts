@@ -6,6 +6,7 @@ import { Console } from "./console";
 import { globalEval } from "./global_eval";
 import { libdeno } from "./libdeno";
 import * as os from "./os";
+import { args } from "./deno";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { clearTimer, setTimeout } from "./timers";
 import { postMessage, workerClose, workerMain } from "./workers";
@@ -540,5 +541,13 @@ window.compilerMain = function compilerMain() {
 
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
-  os.start("TS");
+  const startResMsg = os.start("TS");
+
+  os.setGlobals(startResMsg.pid(), startResMsg.noColor());
+
+  for (let i = 1; i < startResMsg.argvLength(); i++) {
+    args.push(startResMsg.argv(i));
+  }
+  log("args", args);
+  Object.freeze(args);
 }
