@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Buffer, Reader } from "deno";
-
+import { Buffer, File, mkdir, open, Reader } from "deno";
+import { encode } from "../strings/strings.ts";
+import * as path from "../fs/path.ts";
 // `off` is the offset into `dst` where it will at which to begin writing values
 // from `src`.
 // Returns the number of bytes copied.
@@ -18,8 +19,23 @@ export function charCode(s: string): number {
   return s.charCodeAt(0);
 }
 
-const encoder = new TextEncoder();
 export function stringsReader(s: string): Reader {
-  const ui8 = encoder.encode(s);
-  return new Buffer(ui8.buffer as ArrayBuffer);
+  return new Buffer(encode(s).buffer);
+}
+
+/** Create or open a temporal file at specified directory with prefix and postfix  */
+export async function tempFile(
+  dir: string,
+  opts: {
+    prefix?: string;
+    postfix?: string;
+  } = { prefix: "", postfix: "" }
+): Promise<{ file: File; filepath: string }> {
+  const r = Math.floor(Math.random() * 1000000);
+  const filepath = path.resolve(
+    `${dir}/${opts.prefix || ""}${r}${opts.postfix || ""}`
+  );
+  await mkdir(path.dirname(filepath), true);
+  const file = await open(filepath, "a");
+  return { file, filepath };
 }
