@@ -1,8 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Reader, ReadResult } from "deno";
-import { assertEqual, test } from "../testing/mod.ts";
-import { readInt, readLong, readShort, sliceLongToBytes } from "./ioutil.ts";
+import { Buffer, Reader, ReadResult } from "deno";
+import { assert, assertEqual, runTests, test } from "../testing/mod.ts";
+import {
+  copyN,
+  readInt,
+  readLong,
+  readShort,
+  sliceLongToBytes
+} from "./ioutil.ts";
 import { BufReader } from "./bufio.ts";
+import { stringsReader } from "./util.ts";
 
 class BinaryReader implements Reader {
   index = 0;
@@ -60,4 +67,20 @@ test(async function testSliceLongToBytes() {
 test(async function testSliceLongToBytes2() {
   const arr = sliceLongToBytes(0x12345678);
   assertEqual(arr, [0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78]);
+});
+
+test(async function testCopyN1() {
+  const w = new Buffer();
+  const r = stringsReader("abcdefghij");
+  const n = await copyN(w, r, 3);
+  assert.equal(n, 3);
+  assert.equal(w.toString(), "abc");
+});
+
+test(async function testCopyN2() {
+  const w = new Buffer();
+  const r = stringsReader("abcdefghij");
+  const n = await copyN(w, r, 11);
+  assert.equal(n, 10);
+  assert.equal(w.toString(), "abcdefghij");
 });

@@ -30,7 +30,7 @@ test(async function bufioReaderSimple() {
   const data = "hello world";
   const b = new BufReader(stringsReader(data));
   const s = await readBytes(b);
-  assertEqual(s, data);
+  assert.equal(s, data);
 });
 
 type ReadMaker = { name: string; fn: (r: Reader) => Reader };

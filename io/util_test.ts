@@ -1,6 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert } from "../testing/mod.ts";
-import { copyBytes } from "./util.ts";
+import { copyBytes, tempFile } from "./util.ts";
+import { remove } from "deno";
+import * as path from "../fs/path.ts";
 
 test(function testCopyBytes() {
   let dst = new Uint8Array(4);
@@ -34,4 +36,15 @@ test(function testCopyBytes() {
   len = copyBytes(dst, src, -2);
   assert(len === 2);
   assert.equal(dst, Uint8Array.of(3, 4, 0, 0));
+});
+
+test(async function ioTempfile() {
+  const f = await tempFile(".", {
+    prefix: "prefix-",
+    postfix: "-postfix"
+  });
+  console.log(f.file, f.filepath);
+  const base = path.basename(f.filepath);
+  assert.assert(!!base.match(/^prefix-.+?-postfix$/));
+  await remove(f.filepath);
 });
