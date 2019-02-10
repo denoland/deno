@@ -308,6 +308,9 @@ const tsMock = {
   createLanguageService() {
     return {} as any;
   },
+  formatDiagnostics(diagnostics: ReadonlyArray<any>, _host: any): string {
+    return JSON.stringify(diagnostics.map(({ messageText }) => messageText));
+  },
   formatDiagnosticsWithColorAndContext(
     diagnostics: ReadonlyArray<any>,
     _host: any
