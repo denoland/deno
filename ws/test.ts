@@ -3,9 +3,14 @@ import "./sha1_test.ts";
 
 import { Buffer } from "deno";
 import { BufReader } from "../io/bufio.ts";
-import { test, assert, assertEqual } from "../testing/mod.ts";
-import { createSecAccept, OpCode, readFrame, unmask } from "./mod.ts";
-import { serve } from "../http/server.ts";
+import { assert, assertEqual, test } from "../testing/mod.ts";
+import {
+  acceptable,
+  createSecAccept,
+  OpCode,
+  readFrame,
+  unmask
+} from "./mod.ts";
 
 test(async function testReadUnmaskedTextFrame() {
   // unmasked single text frame with payload "Hello"
@@ -128,4 +133,30 @@ test(async function testCreateSecAccept() {
   const nonce = "dGhlIHNhbXBsZSBub25jZQ==";
   const d = createSecAccept(nonce);
   assertEqual(d, "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+});
+
+test(function testAcceptable() {
+  const ret = acceptable({
+    headers: new Headers({
+      upgrade: "websocket",
+      "sec-websocket-key": "aaa"
+    })
+  });
+  assertEqual(ret, true);
+});
+
+const invalidHeaders = [
+  { "sec-websocket-key": "aaa" },
+  { upgrade: "websocket" },
+  { upgrade: "invalid", "sec-websocket-key": "aaa" },
+  { upgrade: "websocket", "sec-websocket-ky": "" }
+];
+
+test(function testAcceptableInvalid() {
+  for (const pat of invalidHeaders) {
+    const ret = acceptable({
+      headers: new Headers(pat)
+    });
+    assertEqual(ret, false);
+  }
 });
