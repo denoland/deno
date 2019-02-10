@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { noColor } from "deno";
 
 interface Code {
   open: string;
@@ -6,9 +7,13 @@ interface Code {
   regexp: RegExp;
 }
 
-let enabled = true;
+let enabled = !noColor;
 
 export function setEnabled(value: boolean) {
+  if (noColor) {
+    return;
+  }
+
   enabled = value;
 }
 
