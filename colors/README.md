@@ -16,6 +16,8 @@ import { bgBlue, red, bold } from "https://deno.land/x/std/colors/mod.ts";
 console.log(bgBlue(red(bold("Hello world!"))));
 ```
 
+This module supports `NO_COLOR` environmental variable disabling any coloring if `NO_COLOR` is set.
+
 ## TODO
 
 - Currently, it just assumes it is running in an environment that supports ANSI
