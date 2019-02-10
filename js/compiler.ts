@@ -540,5 +540,6 @@ window.compilerMain = function compilerMain() {
 
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
-  os.start("TS");
+  const startResMsg = os.start("TS");
+  os.setGlobals(startResMsg.pid(), startResMsg.noColor());
 }
