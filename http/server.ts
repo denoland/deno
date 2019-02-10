@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { listen, Conn, toAsyncIterator, Reader, copy } from "deno";
+import { listen, Conn, toAsyncIterator, Reader, Writer, copy } from "deno";
 import { BufReader, BufState, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
@@ -40,6 +40,7 @@ interface ServeEnv {
 function serveConn(env: ServeEnv, conn: Conn, bufr?: BufReader) {
   readRequest(conn, bufr).then(maybeHandleReq.bind(null, env, conn));
 }
+
 function maybeHandleReq(env: ServeEnv, conn: Conn, maybeReq: any) {
   const [req, _err] = maybeReq;
   if (_err) {
@@ -210,68 +211,75 @@ export class ServerRequest {
     return readAllIterator(this.bodyStream());
   }
 
-  private async _streamBody(body: Reader, bodyLength: number) {
-    const n = await copy(this.w, body);
-    assert(n == bodyLength);
-  }
-
-  private async _streamChunkedBody(body: Reader) {
-    const encoder = new TextEncoder();
-
-    for await (const chunk of toAsyncIterator(body)) {
-      const start = encoder.encode(`${chunk.byteLength.toString(16)}\r\n`);
-      const end = encoder.encode("\r\n");
-      await this.w.write(start);
-      await this.w.write(chunk);
-      await this.w.write(end);
-    }
-
-    const endChunk = encoder.encode("0\r\n\r\n");
-    await this.w.write(endChunk);
-  }
-
   async respond(r: Response): Promise<void> {
-    const protoMajor = 1;
-    const protoMinor = 1;
-    const statusCode = r.status || 200;
-    const statusText = STATUS_TEXT.get(statusCode);
-    if (!statusText) {
-      throw Error("bad status code");
-    }
-
-    let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
-
-    setContentLength(r);
-
-    if (r.headers) {
-      for (const [key, value] of r.headers) {
-        out += `${key}: ${value}\r\n`;
-      }
-    }
-    out += "\r\n";
-
-    const header = new TextEncoder().encode(out);
-    let n = await this.w.write(header);
-    assert(header.byteLength == n);
-
-    if (r.body) {
-      if (r.body instanceof Uint8Array) {
-        n = await this.w.write(r.body);
-        assert(r.body.byteLength == n);
-      } else {
-        if (r.headers.has("content-length")) {
-          await this._streamBody(
-            r.body,
-            parseInt(r.headers.get("content-length"))
-          );
-        } else {
-          await this._streamChunkedBody(r.body);
-        }
-      }
-    }
-
-    await this.w.flush();
+    return writeResponse(this.w, r);
   }
+}
+
+function bufWriter(w: Writer): BufWriter {
+  if (w instanceof BufWriter) {
+    return w;
+  } else {
+    return new BufWriter(w);
+  }
+}
+
+export async function writeResponse(w: Writer, r: Response): Promise<void> {
+  const protoMajor = 1;
+  const protoMinor = 1;
+  const statusCode = r.status || 200;
+  const statusText = STATUS_TEXT.get(statusCode);
+  const writer = bufWriter(w);
+  if (!statusText) {
+    throw Error("bad status code");
+  }
+
+  let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
+
+  setContentLength(r);
+
+  if (r.headers) {
+    for (const [key, value] of r.headers) {
+      out += `${key}: ${value}\r\n`;
+    }
+  }
+  out += "\r\n";
+
+  const header = new TextEncoder().encode(out);
+  let n = await writer.write(header);
+  assert(header.byteLength == n);
+
+  if (r.body) {
+    if (r.body instanceof Uint8Array) {
+      n = await writer.write(r.body);
+      assert(r.body.byteLength == n);
+    } else {
+      if (r.headers.has("content-length")) {
+        const bodyLength = parseInt(r.headers.get("content-length"));
+        const n = await copy(writer, r.body);
+        assert(n == bodyLength);
+      } else {
+        await writeChunkedBody(writer, r.body);
+      }
+    }
+  }
+  await writer.flush();
+}
+
+async function writeChunkedBody(w: Writer, r: Reader) {
+  const writer = bufWriter(w);
+  const encoder = new TextEncoder();
+
+  for await (const chunk of toAsyncIterator(r)) {
+    const start = encoder.encode(`${chunk.byteLength.toString(16)}\r\n`);
+    const end = encoder.encode("\r\n");
+    await writer.write(start);
+    await writer.write(chunk);
+    await writer.write(end);
+  }
+
+  const endChunk = encoder.encode("0\r\n\r\n");
+  await writer.write(endChunk);
 }
 
 async function readRequest(

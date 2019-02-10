@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { Buffer, Writer, Conn } from "deno";
-import { ServerRequest } from "../http/server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
 import { Sha1 } from "./sha1.ts";
+import { writeResponse } from "../http/server.ts";
 
 export enum OpCode {
   Continue = 0x0,
@@ -71,6 +71,7 @@ export type WebSocket = {
 
 class WebSocketImpl implements WebSocket {
   encoder = new TextEncoder();
+
   constructor(private conn: Conn, private mask?: Uint8Array) {}
 
   async *receive(): AsyncIterableIterator<WebSocketEvent> {
@@ -278,19 +279,24 @@ export function unmask(payload: Uint8Array, mask?: Uint8Array) {
   }
 }
 
-export function acceptable(req: ServerRequest): boolean {
+export function acceptable(req: { headers: Headers }): boolean {
   return (
     req.headers.get("upgrade") === "websocket" &&
-    req.headers.has("sec-websocket-key")
+    req.headers.has("sec-websocket-key") &&
+    req.headers.get("sec-websocket-key").length > 0
   );
 }
 
-export async function acceptWebSocket(req: ServerRequest): Promise<WebSocket> {
+export async function acceptWebSocket(req: {
+  conn: Conn;
+  headers: Headers;
+}): Promise<WebSocket> {
+  const { conn, headers } = req;
   if (acceptable(req)) {
-    const sock = new WebSocketImpl(req.conn);
-    const secKey = req.headers.get("sec-websocket-key");
+    const sock = new WebSocketImpl(conn);
+    const secKey = headers.get("sec-websocket-key");
     const secAccept = createSecAccept(secKey);
-    await req.respond({
+    await writeResponse(conn, {
       status: 101,
       headers: new Headers({
         Upgrade: "websocket",
