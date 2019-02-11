@@ -126,6 +126,7 @@ function generate(
 ) {
   const yAxis = {
     padding: { bottom: 0 },
+    min: 0,
     label: yLabel
   };
   if (yTickFormat) {
@@ -133,6 +134,7 @@ function generate(
       format: yTickFormat
     };
     if (yTickFormat == logScale) {
+      delete yAxis.min;
       for (let col of columns) {
         for (let i = 1; i < col.length; i++) {
           if (col[i] == null) {
@@ -221,7 +223,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   }
 
   gen("#exec-time-chart", execTimeColumns, "seconds", logScale);
-  gen("#throughput-chart", throughputColumns, "seconds");
+  gen("#throughput-chart", throughputColumns, "seconds", logScale);
   gen("#req-per-sec-chart", reqPerSecColumns, "1000 req/sec", formatReqSec);
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
