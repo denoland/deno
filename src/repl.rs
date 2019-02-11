@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use rustyline;
 
-use rustyline::error::ReadlineError::Interrupted;
-
 use crate::msg::ErrorKind;
 use std::error::Error;
 
@@ -10,7 +8,6 @@ use crate::deno_dir::DenoDir;
 use crate::errors::new as deno_error;
 use crate::errors::DenoResult;
 use std::path::PathBuf;
-use std::process::exit;
 
 #[cfg(not(windows))]
 use rustyline::Editor;
@@ -99,13 +96,8 @@ impl Repl {
       .map(|line| {
         self.editor.add_history_entry(line.as_ref());
         line
-      }).map_err(|e| match e {
-        Interrupted => {
-          self.save_history().unwrap();
-          exit(1)
-        }
-        e => deno_error(ErrorKind::Other, e.description().to_string()),
-      })
+      }).map_err(|e| deno_error(ErrorKind::Other, e.description().to_string()))
+    // Forward error to TS side for processing
   }
 }
 

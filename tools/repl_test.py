@@ -84,6 +84,13 @@ class Repl(object):
         assertEqual(err, '')
         assertEqual(code, 0)
 
+    # This should print error instead of wait for input
+    def test_eval_unterminated(self):
+        out, err, code = self.input("eval('{')")
+        assertEqual(out, '')
+        assert "Unexpected end of input" in err
+        assertEqual(code, 0)
+
     def test_reference_error(self):
         out, err, code = self.input("not_a_variable")
         assertEqual(out, '')
