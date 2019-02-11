@@ -10,6 +10,7 @@ env:
   - RUST_BACKTRACE=full
   - CARGO_TARGET_DIR=$HOME/target
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
+  - PYTHONPATH=third_party/python_packages
   - RUSTC_WRAPPER=sccache
   - SCCACHE_BUCKET=deno-sccache
   - AWS_ACCESS_KEY_ID=AKIAIVRN52PLDBP55LBQ

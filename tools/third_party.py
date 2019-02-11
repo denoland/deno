@@ -255,8 +255,7 @@ def download_clang_format():
 
 # Download clang by calling the clang update script.
 def download_clang():
-    run(['python', tp('v8/tools/clang/scripts/update.py')],
-        env=google_env())
+    run(['python', tp('v8/tools/clang/scripts/update.py')], env=google_env())
 
 
 def maybe_download_sysroot():

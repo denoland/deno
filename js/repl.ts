@@ -107,7 +107,8 @@ function evaluate(code: string): void {
   } else {
     if (errInfo.isNativeError) {
       const formattedError = formatError(
-        libdeno.errorToJSON(errInfo.thrown as Error));
+        libdeno.errorToJSON(errInfo.thrown as Error)
+      );
       console.error(formattedError);
     } else {
       console.error("Thrown:", errInfo.thrown);
