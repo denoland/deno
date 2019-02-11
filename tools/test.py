@@ -38,6 +38,12 @@ def test_no_color(deno_exe):
     print green_ok()
 
 
+def exec_path_test(deno_exe):
+    cmd = [deno_exe, "tests/exec_path.ts"]
+    output = run_output(cmd)
+    assert deno_exe in output.strip()
+
+
 def main(argv):
     if len(argv) == 2:
         build_dir = sys.argv[1]
@@ -58,6 +64,8 @@ def main(argv):
 
     deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
     check_exists(deno_exe)
+
+    exec_path_test(deno_exe)
 
     # Internal tools testing
     run([

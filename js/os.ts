@@ -12,11 +12,19 @@ export let pid: number;
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
 
+/** Path to the current deno process's executable file. */
+export let execPath: string;
+
 /** @internal */
-export function setGlobals(pid_: number, noColor_: boolean): void {
+export function setGlobals(
+  pid_: number,
+  noColor_: boolean,
+  execPath_: string
+): void {
   assert(!pid);
   pid = pid_;
   noColor = noColor_;
+  execPath = execPath_;
 }
 
 interface CodeInfo {
@@ -190,7 +198,7 @@ export function start(source?: string): msg.StartRes {
 
   util.setLogDebug(startResMsg.debugFlag(), source);
 
-  setGlobals(startResMsg.pid(), startResMsg.noColor());
+  setGlobals(startResMsg.pid(), startResMsg.noColor(), startResMsg.execPath()!);
 
   return startResMsg;
 }
