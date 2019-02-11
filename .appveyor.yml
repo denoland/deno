@@ -18,6 +18,7 @@ environment:
   RUSTUP_HOME: $(RUST_DIR)\rustup
   RUST_BACKTRACE: full
   RUSTC_WRAPPER: sccache
+  PYTHONPATH: third_party\python_packages
   SCCACHE_BUCKET: deno-sccache
   AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
   AWS_SECRET_ACCESS_KEY:

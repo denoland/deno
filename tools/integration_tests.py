@@ -45,7 +45,7 @@ def str2bool(v):
         raise ValueError("Bad boolean value")
 
 
-def integration_tests(deno_exe, test_filter = None):
+def integration_tests(deno_exe, test_filter=None):
     assert os.path.isfile(deno_exe)
     tests = sorted([
         filename for filename in os.listdir(tests_path)
@@ -97,11 +97,12 @@ def integration_tests(deno_exe, test_filter = None):
 
         print green_ok()
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--filter", help="Run specific tests")
-    parser.add_argument("--release", help="Use release build of Deno",
-                        action="store_true")
+    parser.add_argument(
+        "--release", help="Use release build of Deno", action="store_true")
     parser.add_argument("--executable", help="Use external executable of Deno")
     args = parser.parse_args()
 

@@ -19,7 +19,8 @@ Before submitting, please make sure the following is done:
 
 1. There are tests that cover the changes.
 2. Ensure `./tools/test.py` passes.
-3. Format your code with `deno ./tools/format.ts --allow-read --allow-run`.
+3. Format your code with `PYTHONPATH=third_party/python_packages deno ./tools/format.ts --allow-read --allow-run`.
+   <!-- TODO: set PYTHONPATH in format.ts when run API has env option -->
 4. Make sure `./tools/lint.py` passes.
 
 ## Changes to `third_party`

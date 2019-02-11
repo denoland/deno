@@ -116,7 +116,8 @@ Extra steps for Windows users:
     ./tools/test.py
 
     # Format code.
-    deno ./tools/format.ts --allow-read --allow-run
+    PYTHONPATH=third_party/python_packages deno ./tools/format.ts --allow-read --allow-run
+    <!-- TODO: set PYTHONPATH in format.ts when run API has env option -->
 
 Other useful commands:
 
