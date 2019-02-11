@@ -61,7 +61,7 @@ async function run(...args: string[]): Promise<void> {
     "--allow-write",
     "js/deps/https/deno.land/x/std/prettier/main.ts",
     "rollup.config.js",
-    ...findFiles(["."], [".json", ".md"], { depth: 1 }),
+    ...findFiles([".", "website"], [".json", ".md"], { depth: 1 }),
     ...findFiles(
       [".github", "js", "tests", "tools", "website"],
       [".js", ".json", ".ts", ".md"],
