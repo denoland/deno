@@ -7,9 +7,12 @@ use futures::future::{loop_fn, Loop};
 use futures::{future, Future, Stream};
 use hyper;
 use hyper::client::{Client, HttpConnector};
+use hyper::header::CONTENT_LENGTH;
 use hyper::header::CONTENT_TYPE;
 use hyper::Uri;
 use hyper_rustls;
+use indicatif::{ProgressBar, ProgressStyle};
+use std::sync::Arc;
 
 type Connector = hyper_rustls::HttpsConnector<HttpConnector>;
 
@@ -83,18 +86,40 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
             "module not found".to_string(),
           ));
         }
-        Ok(Loop::Break(response))
+        Ok(Loop::Break((response, url)))
       })
-  }).and_then(|response| {
+  }).and_then(|(response, url)| {
     let content_type = response
       .headers()
       .get(CONTENT_TYPE)
       .map(|content_type| content_type.to_str().unwrap().to_string());
+    let total_size = response
+      .headers()
+      .get(CONTENT_LENGTH)
+      .map(|content_length| content_length.to_str().unwrap().parse::<u64>().unwrap());
+
+    // hide progress bar if total_size is None
+    let pb = match total_size {
+      None => Arc::new(ProgressBar::hidden()),
+      Some(size) => Arc::new(ProgressBar::new(size)),
+    };
+    pb.set_style(ProgressStyle::default_bar()
+                .template(&format!("{} {{spinner:.green}} [{{elapsed_precise}}] [{{bar:40.cyan/blue}}] {{bytes}}/{{total_bytes}} ({{eta}}) {{msg}}", url))
+                .progress_chars("#>-"));
+    pb.set_position(0);
+
+    let pb_cloned = Arc::clone(&pb);
     let body = response
       .into_body()
+      .map(move |b| {
+        pb_cloned.inc(b.len() as u64);
+        b
+      })
       .concat2()
-      .map(|body| String::from_utf8(body.to_vec()).unwrap())
-      .map_err(DenoError::from);
+      .map(move |body| {
+        pb.finish_with_message("DONE");
+        String::from_utf8(body.to_vec()).unwrap()
+      }).map_err(DenoError::from);
     body.join(future::ok(content_type))
   }).and_then(|(body_string, maybe_content_type)| {
     future::ok((body_string, maybe_content_type.unwrap()))

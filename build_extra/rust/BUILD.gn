@@ -105,6 +105,38 @@ rust_crate("cfg_if") {
   ]
 }
 
+rust_crate("clicolors_control") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/clicolors-control-1.0.0/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  extern = [
+    ":lazy_static",
+    ":libc",
+  ]
+}
+
+rust_crate("console") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/console-0.7.5/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  extern = [
+    ":termios",
+    ":lazy_static",
+    ":clicolors_control",
+    ":regex",
+    ":libc",
+    ":atty",
+    ":parking_lot",
+    ":unicode_width",
+  ]
+}
+
 rust_crate("crossbeam") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-0.6.0/src/lib.rs"
@@ -394,6 +426,22 @@ rust_crate("hyper_rustls") {
   args = [
     "--cap-lints",
     "allow",
+  ]
+}
+
+rust_crate("indicatif") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/indicatif-0.9.0/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  extern = [
+    ":regex",
+    ":lazy_static",
+    ":console",
+    ":parking_lot",
   ]
 }
 
@@ -983,6 +1031,16 @@ rust_crate("ring") {
   if (is_win) {
     libs = [ "advapi32.lib" ]
   }
+}
+
+rust_crate("termios") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/termios-0.3.1/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  extern = [ ":libc" ]
 }
 
 static_library("ring-core") {

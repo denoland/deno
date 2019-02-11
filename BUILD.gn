@@ -27,6 +27,7 @@ main_extern = [
   "$rust_build:http",
   "$rust_build:hyper",
   "$rust_build:hyper_rustls",
+  "$rust_build:indicatif",
   "$rust_build:lazy_static",
   "$rust_build:libc",
   "$rust_build:log",
