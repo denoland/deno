@@ -79,31 +79,74 @@ export async function replLoop(): Promise<void> {
   const historyFile = "deno_history.txt";
   const rid = startRepl(historyFile);
 
-  let code = "";
-  while (true) {
+  const quitRepl = (exitCode: number) => {
+    // Special handling in case user calls deno.close(3).
     try {
-      code = await readBlock(rid, "> ", "  ");
+      close(rid); // close signals Drop on REPL and saves history.
+    } catch {}
+    exit(exitCode);
+  };
+
+  while (true) {
+    let code = "";
+    // Top level read
+    try {
+      code = await readline(rid, "> ");
+      if (code.trim() === "") {
+        continue;
+      }
     } catch (err) {
       if (err.message === "EOF") {
-        break;
+        quitRepl(0);
+      } else {
+        // If interrupted, don't print error.
+        if (err.message !== "Interrupted") {
+          // e.g. this happens when we have deno.close(3).
+          // We want to display the problem.
+          const formattedError = formatError(
+            libdeno.errorToJSON(err));
+          console.error(formattedError);
+        }
+        // Quit REPL anyways.
+        quitRepl(1);
       }
-      console.error(err);
-      exit(1);
     }
-
-    evaluate(code);
+    // Start continued read
+    while (!evaluate(code)) {
+      code += "\n";
+      try {
+        code += await readline(rid, "  ");
+      } catch (err) {
+        // If interrupted on continued read,
+        // abort this read instead of quitting.
+        if (err.message === "Interrupted") {
+          break;
+        } else if (err.message === "EOF") {
+          quitRepl(0);
+        } else {
+          // e.g. this happens when we have deno.close(3).
+          // We want to display the problem.
+          const formattedError = formatError(
+            libdeno.errorToJSON(err));
+          console.error(formattedError);
+          quitRepl(1);
+        }
+      }
+    }
   }
-
-  close(rid);
 }
 
-function evaluate(code: string): void {
-  if (code.trim() === "") {
-    return;
-  }
+// Evaluate code.
+// Returns true if code is consumed (no error/irrecoverable error).
+// Returns false if error is recoverable
+function evaluate(code: string): boolean {
   const [result, errInfo] = libdeno.evalContext(code);
   if (!errInfo) {
     console.log(result);
+  } else if (errInfo.isCompileError &&
+    isRecoverableError(errInfo.thrown)) {
+    // Recoverable compiler error
+    return false; // don't consume code.
   } else {
     if (errInfo.isNativeError) {
       const formattedError = formatError(
@@ -114,42 +157,23 @@ function evaluate(code: string): void {
       console.error("Thrown:", errInfo.thrown);
     }
   }
+  return true;
 }
 
-async function readBlock(
-  rid: number,
-  prompt: string,
-  continuedPrompt: string
-): Promise<string> {
-  let code = "";
-  do {
-    code += await readline(rid, prompt);
-    prompt = continuedPrompt;
-  } while (parenthesesAreOpen(code));
-  return code;
-}
+// Error messages that allow users to continue input
+// instead of throwing an error to REPL
+// ref: https://github.com/v8/v8/blob/master/src/message-template.h
+// TODO(kevinkassimo): this list might not be comprehensive
+const recoverableErrorMessages = [
+  "Unexpected end of input", // { or [ or (
+  "Missing initializer in const declaration", // const a
+  "Missing catch or finally after try", // try {}
+  "missing ) after argument list", // console.log(1
+  "Unterminated template literal" // `template
+  // TODO(kevinkassimo): need a parser to handling errors such as:
+  // "Missing } in template expression" // `${ or `${ a 123 }`
+];
 
-// modified from
-// https://codereview.stackexchange.com/a/46039/148556
-function parenthesesAreOpen(code: string): boolean {
-  const parentheses = "[]{}()";
-  const stack = [];
-
-  for (const ch of code) {
-    const bracePosition = parentheses.indexOf(ch);
-
-    if (bracePosition === -1) {
-      // not a paren
-      continue;
-    }
-
-    if (bracePosition % 2 === 0) {
-      stack.push(bracePosition + 1); // push next expected brace position
-    } else {
-      if (stack.pop() !== bracePosition) {
-        return false;
-      }
-    }
-  }
-  return stack.length > 0;
+function isRecoverableError(e: Error): boolean {
+  return recoverableErrorMessages.includes(e.message);
 }
