@@ -192,5 +192,7 @@ export function start(source?: string): msg.StartRes {
 
   util.setLogDebug(startResMsg.debugFlag(), source);
 
+  setGlobals(startResMsg.pid(), startResMsg.noColor());
+
   return startResMsg;
 }

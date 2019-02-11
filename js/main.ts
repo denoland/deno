@@ -39,8 +39,6 @@ export default function denoMain() {
     os.exit(0);
   }
 
-  os.setGlobals(startResMsg.pid(), startResMsg.noColor());
-
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
 
