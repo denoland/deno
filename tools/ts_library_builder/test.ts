@@ -79,14 +79,16 @@ test(function buildLibraryFlatten() {
     debug,
     declarationProject,
     filePath: `${buildPath}/api.d.ts`,
-    namespaceName: `"api"`,
+    moduleName: `"api"`,
+    namespaceName: "Api",
     targetSourceFile
   });
 
   assert(targetSourceFile.getNamespace(`"api"`) != null);
-  assertEqual(targetSourceFile.getNamespaces().length, 1);
-  const namespaceApi = targetSourceFile.getNamespaceOrThrow(`"api"`);
-  const functions = namespaceApi.getFunctions();
+  assert(targetSourceFile.getNamespace("Api") != null);
+  assertEqual(targetSourceFile.getNamespaces().length, 2);
+  const moduleApi = targetSourceFile.getNamespaceOrThrow(`"api"`);
+  const functions = moduleApi.getFunctions();
   assertEqual(functions[0].getName(), "foo");
   assertEqual(
     functions[0]
@@ -104,12 +106,38 @@ test(function buildLibraryFlatten() {
     ""
   );
   assertEqual(functions.length, 2);
-  const classes = namespaceApi.getClasses();
+  const classes = moduleApi.getClasses();
   assertEqual(classes[0].getName(), "Foo");
   assertEqual(classes.length, 1);
-  const variableDeclarations = namespaceApi.getVariableDeclarations();
+  const variableDeclarations = moduleApi.getVariableDeclarations();
   assertEqual(variableDeclarations[0].getName(), "arr");
   assertEqual(variableDeclarations.length, 1);
+
+  const namespaceApi = targetSourceFile.getNamespaceOrThrow(`"api"`);
+  const functionsNs = namespaceApi.getFunctions();
+  assertEqual(functionsNs[0].getName(), "foo");
+  assertEqual(
+    functionsNs[0]
+      .getJsDocs()
+      .map(jsdoc => jsdoc.getInnerText())
+      .join("\n"),
+    "jsdoc for foo"
+  );
+  assertEqual(functionsNs[1].getName(), "bar");
+  assertEqual(
+    functionsNs[1]
+      .getJsDocs()
+      .map(jsdoc => jsdoc.getInnerText())
+      .join("\n"),
+    ""
+  );
+  assertEqual(functionsNs.length, 2);
+  const classesNs = namespaceApi.getClasses();
+  assertEqual(classesNs[0].getName(), "Foo");
+  assertEqual(classesNs.length, 1);
+  const variableDeclarationsNs = namespaceApi.getVariableDeclarations();
+  assertEqual(variableDeclarationsNs[0].getName(), "arr");
+  assertEqual(variableDeclarationsNs.length, 1);
 });
 
 test(function buildLibraryMerge() {

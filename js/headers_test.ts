@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "./test_util.ts";
-import * as deno from "deno";
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test

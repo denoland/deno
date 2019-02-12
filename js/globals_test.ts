@@ -17,6 +17,18 @@ test(function globalThisEqualsWindow() {
   assert(globalThis === window);
 });
 
+test(function DenoNamespaceExists() {
+  assert(Deno != null);
+});
+
+test(function DenoNamespaceEqualsWindowDeno() {
+  assert(Deno === window.Deno);
+});
+
+test(function DenoNamespaceIsFrozen() {
+  assert(Object.isFrozen(Deno));
+});
+
 test(function webAssemblyExists() {
   assert(typeof WebAssembly.compile === "function");
 });

@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEqual } from "./test_util.ts";
-import * as deno from "deno";
 
 testPerm({ net: true }, async function fetchJsonSuccess() {
   const response = await fetch("http://localhost:4545/package.json");
@@ -15,7 +14,7 @@ test(async function fetchPerm() {
   } catch (err_) {
     err = err_;
   }
-  assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
   assertEqual(err.name, "PermissionDenied");
 });
 
@@ -54,7 +53,7 @@ testPerm({ net: true }, async function fetchEmptyInvalid() {
   } catch (err_) {
     err = err_;
   }
-  assertEqual(err.kind, deno.ErrorKind.InvalidUri);
+  assertEqual(err.kind, Deno.ErrorKind.InvalidUri);
   assertEqual(err.name, "InvalidUri");
 });
 
@@ -155,9 +154,9 @@ testPerm({ net: true }, async function fetchInitBlobBody() {
 //     at fetchPostBodyString (file
 
 /* 
-function bufferServer(addr: string): deno.Buffer {
-  const listener = deno.listen("tcp", addr);
-  const buf = new deno.Buffer();
+function bufferServer(addr: string): Deno.Buffer {
+  const listener = Deno.listen("tcp", addr);
+  const buf = new Deno.Buffer();
   listener.accept().then(async conn => {
     const p1 = buf.readFrom(conn);
     const p2 = conn.write(

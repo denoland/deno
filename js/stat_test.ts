@@ -1,19 +1,18 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEqual } from "./test_util.ts";
-import * as deno from "deno";
 
 // TODO Add tests for modified, accessed, and created fields once there is a way
 // to create temp files.
 testPerm({ read: true }, async function statSyncSuccess() {
-  const packageInfo = deno.statSync("package.json");
+  const packageInfo = Deno.statSync("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const testingInfo = deno.statSync("testing");
+  const testingInfo = Deno.statSync("testing");
   assert(testingInfo.isDirectory());
   assert(!testingInfo.isSymlink());
 
-  const srcInfo = deno.statSync("src");
+  const srcInfo = Deno.statSync("src");
   assert(srcInfo.isDirectory());
   assert(!srcInfo.isSymlink());
 });
@@ -21,10 +20,10 @@ testPerm({ read: true }, async function statSyncSuccess() {
 testPerm({ read: false }, async function statSyncPerm() {
   let caughtError = false;
   try {
-    deno.statSync("package.json");
+    Deno.statSync("package.json");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -35,10 +34,10 @@ testPerm({ read: true }, async function statSyncNotFound() {
   let badInfo;
 
   try {
-    badInfo = deno.statSync("bad_file_name");
+    badInfo = Deno.statSync("bad_file_name");
   } catch (err) {
     caughtError = true;
-    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.kind, Deno.ErrorKind.NotFound);
     assertEqual(err.name, "NotFound");
   }
 
@@ -47,15 +46,15 @@ testPerm({ read: true }, async function statSyncNotFound() {
 });
 
 testPerm({ read: true }, async function lstatSyncSuccess() {
-  const packageInfo = deno.lstatSync("package.json");
+  const packageInfo = Deno.lstatSync("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const testingInfo = deno.lstatSync("testing");
+  const testingInfo = Deno.lstatSync("testing");
   assert(!testingInfo.isDirectory());
   assert(testingInfo.isSymlink());
 
-  const srcInfo = deno.lstatSync("src");
+  const srcInfo = Deno.lstatSync("src");
   assert(srcInfo.isDirectory());
   assert(!srcInfo.isSymlink());
 });
@@ -63,10 +62,10 @@ testPerm({ read: true }, async function lstatSyncSuccess() {
 testPerm({ read: false }, async function lstatSyncPerm() {
   let caughtError = false;
   try {
-    deno.lstatSync("package.json");
+    Deno.lstatSync("package.json");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -77,10 +76,10 @@ testPerm({ read: true }, async function lstatSyncNotFound() {
   let badInfo;
 
   try {
-    badInfo = deno.lstatSync("bad_file_name");
+    badInfo = Deno.lstatSync("bad_file_name");
   } catch (err) {
     caughtError = true;
-    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.kind, Deno.ErrorKind.NotFound);
     assertEqual(err.name, "NotFound");
   }
 
@@ -89,15 +88,15 @@ testPerm({ read: true }, async function lstatSyncNotFound() {
 });
 
 testPerm({ read: true }, async function statSuccess() {
-  const packageInfo = await deno.stat("package.json");
+  const packageInfo = await Deno.stat("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const testingInfo = await deno.stat("testing");
+  const testingInfo = await Deno.stat("testing");
   assert(testingInfo.isDirectory());
   assert(!testingInfo.isSymlink());
 
-  const srcInfo = await deno.stat("src");
+  const srcInfo = await Deno.stat("src");
   assert(srcInfo.isDirectory());
   assert(!srcInfo.isSymlink());
 });
@@ -105,10 +104,10 @@ testPerm({ read: true }, async function statSuccess() {
 testPerm({ read: false }, async function statPerm() {
   let caughtError = false;
   try {
-    await deno.stat("package.json");
+    await Deno.stat("package.json");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -119,10 +118,10 @@ testPerm({ read: true }, async function statNotFound() {
   let badInfo;
 
   try {
-    badInfo = await deno.stat("bad_file_name");
+    badInfo = await Deno.stat("bad_file_name");
   } catch (err) {
     caughtError = true;
-    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.kind, Deno.ErrorKind.NotFound);
     assertEqual(err.name, "NotFound");
   }
 
@@ -131,15 +130,15 @@ testPerm({ read: true }, async function statNotFound() {
 });
 
 testPerm({ read: true }, async function lstatSuccess() {
-  const packageInfo = await deno.lstat("package.json");
+  const packageInfo = await Deno.lstat("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const testingInfo = await deno.lstat("testing");
+  const testingInfo = await Deno.lstat("testing");
   assert(!testingInfo.isDirectory());
   assert(testingInfo.isSymlink());
 
-  const srcInfo = await deno.lstat("src");
+  const srcInfo = await Deno.lstat("src");
   assert(srcInfo.isDirectory());
   assert(!srcInfo.isSymlink());
 });
@@ -147,10 +146,10 @@ testPerm({ read: true }, async function lstatSuccess() {
 testPerm({ read: false }, async function lstatPerm() {
   let caughtError = false;
   try {
-    await deno.lstat("package.json");
+    await Deno.lstat("package.json");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -161,10 +160,10 @@ testPerm({ read: true }, async function lstatNotFound() {
   let badInfo;
 
   try {
-    badInfo = await deno.lstat("bad_file_name");
+    badInfo = await Deno.lstat("bad_file_name");
   } catch (err) {
     caughtError = true;
-    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.kind, Deno.ErrorKind.NotFound);
     assertEqual(err.name, "NotFound");
   }
 

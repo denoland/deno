@@ -1,11 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { Buffer, readAll } from "deno";
-import * as deno from "deno";
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 import { assertEqual, test } from "./test_util.ts";
+
+const { Buffer, readAll } = Deno;
+type Buffer = Deno.Buffer;
+
 // N controls how many iterations of certain checks are performed.
 const N = 100;
 let testBytes: Uint8Array | null;
@@ -22,7 +24,7 @@ function init() {
   }
 }
 
-function check(buf: Buffer, s: string) {
+function check(buf: Deno.Buffer, s: string) {
   const bytes = buf.bytes();
   assertEqual(buf.length, bytes.byteLength);
   const decoder = new TextDecoder();
@@ -147,7 +149,7 @@ test(async function bufferTooLargeByteWrites() {
     err = e;
   }
 
-  assertEqual(err.kind, deno.ErrorKind.TooLarge);
+  assertEqual(err.kind, Deno.ErrorKind.TooLarge);
   assertEqual(err.name, "TooLarge");
 });
 

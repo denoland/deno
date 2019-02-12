@@ -24,6 +24,7 @@ interface Libdeno {
 
   shared: ArrayBuffer;
 
+  // DEPRECATED
   builtinModules: { [s: string]: object };
 
   /** Evaluate provided code in the current context.

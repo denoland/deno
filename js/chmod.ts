@@ -6,8 +6,7 @@ import * as dispatch from "./dispatch";
 /** Changes the permission of a specific file/directory of specified path
  * synchronously.
  *
- *       import { chmodSync } from "deno";
- *       chmodSync("/path/to/file", 0o666);
+ *       Deno.chmodSync("/path/to/file", 0o666);
  */
 export function chmodSync(path: string, mode: number): void {
   dispatch.sendSync(...req(path, mode));
@@ -15,8 +14,7 @@ export function chmodSync(path: string, mode: number): void {
 
 /** Changes the permission of a specific file/directory of specified path.
  *
- *       import { chmod } from "deno";
- *       await chmod("/path/to/file", 0o666);
+ *       await Deno.chmod("/path/to/file", 0o666);
  */
 export async function chmod(path: string, mode: number): Promise<void> {
   await dispatch.sendAsync(...req(path, mode));

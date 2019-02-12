@@ -69,8 +69,8 @@ formatters</a>.
 ### Browser compatibility
 
 The subset of Deno programs which are written completely in JavaScript and do
-not import the special `"deno"` module, ought to also be able to be run in a
-modern web browser without change.
+not use the global `Deno` namespace (or feature test for it), ought to also be
+able to be run in a modern web browser without change.
 
 ## Setup
 
@@ -228,13 +228,11 @@ In this program each command-line argument is assumed to be a filename, the file
 is opened, and printed to stdout.
 
 ```ts
-import * as deno from "deno";
-
 (async () => {
-  for (let i = 1; i < deno.args.length; i++) {
-    let filename = deno.args[i];
-    let file = await deno.open(filename);
-    await deno.copy(deno.stdout, file);
+  for (let i = 1; i < Deno.args.length; i++) {
+    let filename = Deno.args[i];
+    let file = await Deno.open(filename);
+    await Deno.copy(Deno.stdout, file);
     file.close();
   }
 })();
@@ -257,7 +255,7 @@ This is an example of a simple server which accepts connections on port 8080,
 and returns to the client anything it sends.
 
 ```ts
-import { listen, copy } from "deno";
+const { listen, copy } = Deno;
 
 (async () => {
   const addr = "0.0.0.0:8080";

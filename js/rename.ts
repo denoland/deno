@@ -8,8 +8,7 @@ import * as dispatch from "./dispatch";
  * restrictions may apply when `oldpath` and `newpath` are in different
  * directories.
  *
- *       import { renameSync } from "deno";
- *       renameSync("old/path", "new/path");
+ *       Deno.renameSync("old/path", "new/path");
  */
 export function renameSync(oldpath: string, newpath: string): void {
   dispatch.sendSync(...req(oldpath, newpath));
@@ -19,8 +18,7 @@ export function renameSync(oldpath: string, newpath: string): void {
  * not a directory, `rename()` replaces it. OS-specific restrictions may apply
  * when `oldpath` and `newpath` are in different directories.
  *
- *       import { rename } from "deno";
- *       await rename("old/path", "new/path");
+ *       await Deno.rename("old/path", "new/path");
  */
 export async function rename(oldpath: string, newpath: string): Promise<void> {
   await dispatch.sendAsync(...req(oldpath, newpath));

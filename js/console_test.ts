@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Console, libdeno, stringifyArgs, inspect, write, stdout } from "deno";
 import { test, assertEqual, assert } from "./test_util.ts";
+
+const { Console, libdeno, stringifyArgs, inspect, write, stdout } = Deno;
 
 const console = new Console(libdeno.print);
 

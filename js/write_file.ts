@@ -16,11 +16,9 @@ export interface WriteFileOptions {
 
 /** Write a new file, with given filename and data synchronously.
  *
- *       import { writeFileSync } from "deno";
- *
  *       const encoder = new TextEncoder();
  *       const data = encoder.encode("Hello world\n");
- *       writeFileSync("hello.txt", data);
+ *       Deno.writeFileSync("hello.txt", data);
  */
 export function writeFileSync(
   filename: string,
@@ -32,11 +30,9 @@ export function writeFileSync(
 
 /** Write a new file, with given filename and data.
  *
- *       import { writeFile } from "deno";
- *
  *       const encoder = new TextEncoder();
  *       const data = encoder.encode("Hello world\n");
- *       await writeFile("hello.txt", data);
+ *       await Deno.writeFile("hello.txt", data);
  */
 export async function writeFile(
   filename: string,

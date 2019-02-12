@@ -1,29 +1,28 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as deno from "deno";
 import { test, testPerm, assert, assertEqual } from "./test_util.ts";
 
 test(function filesStdioFileDescriptors() {
-  assertEqual(deno.stdin.rid, 0);
-  assertEqual(deno.stdout.rid, 1);
-  assertEqual(deno.stderr.rid, 2);
+  assertEqual(Deno.stdin.rid, 0);
+  assertEqual(Deno.stdout.rid, 1);
+  assertEqual(Deno.stderr.rid, 2);
 });
 
 testPerm({ read: true }, async function filesCopyToStdout() {
   const filename = "package.json";
-  const file = await deno.open(filename);
+  const file = await Deno.open(filename);
   assert(file.rid > 2);
-  const bytesWritten = await deno.copy(deno.stdout, file);
-  const fileSize = deno.statSync(filename).len;
+  const bytesWritten = await Deno.copy(Deno.stdout, file);
+  const fileSize = Deno.statSync(filename).len;
   assertEqual(bytesWritten, fileSize);
   console.log("bytes written", bytesWritten);
 });
 
 testPerm({ read: true }, async function filesToAsyncIterator() {
   const filename = "tests/hello.txt";
-  const file = await deno.open(filename);
+  const file = await Deno.open(filename);
 
   let totalSize = 0;
-  for await (const buf of deno.toAsyncIterator(file)) {
+  for await (const buf of Deno.toAsyncIterator(file)) {
     totalSize += buf.byteLength;
   }
 
@@ -32,16 +31,16 @@ testPerm({ read: true }, async function filesToAsyncIterator() {
 
 testPerm({ write: false }, async function writePermFailure() {
   const filename = "tests/hello.txt";
-  const writeModes: deno.OpenMode[] = ["w", "a", "x"];
+  const writeModes: Deno.OpenMode[] = ["w", "a", "x"];
   for (const mode of writeModes) {
     let err;
     try {
-      await deno.open(filename, mode);
+      await Deno.open(filename, mode);
     } catch (e) {
       err = e;
     }
     assert(!!err);
-    assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(err.name, "PermissionDenied");
   }
 });
@@ -49,10 +48,10 @@ testPerm({ write: false }, async function writePermFailure() {
 testPerm({ read: false }, async function readPermFailure() {
   let caughtError = false;
   try {
-    await deno.open("package.json", "r");
+    await Deno.open("package.json", "r");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -60,52 +59,52 @@ testPerm({ read: false }, async function readPermFailure() {
 
 testPerm({ write: false, read: false }, async function readWritePermFailure() {
   const filename = "tests/hello.txt";
-  const writeModes: deno.OpenMode[] = ["r+", "w+", "a+", "x+"];
+  const writeModes: Deno.OpenMode[] = ["r+", "w+", "a+", "x+"];
   for (const mode of writeModes) {
     let err;
     try {
-      await deno.open(filename, mode);
+      await Deno.open(filename, mode);
     } catch (e) {
       err = e;
     }
     assert(!!err);
-    assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(err.name, "PermissionDenied");
   }
 });
 
 testPerm({ read: true, write: true }, async function createFile() {
-  const tempDir = await deno.makeTempDir();
+  const tempDir = await Deno.makeTempDir();
   const filename = tempDir + "/test.txt";
-  const f = await deno.open(filename, "w");
-  let fileInfo = deno.statSync(filename);
+  const f = await Deno.open(filename, "w");
+  let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
   assert(fileInfo.len === 0);
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   await f.write(data);
-  fileInfo = deno.statSync(filename);
+  fileInfo = Deno.statSync(filename);
   assert(fileInfo.len === 5);
   f.close();
 
   // TODO: test different modes
-  await deno.remove(tempDir, { recursive: true });
+  await Deno.remove(tempDir, { recursive: true });
 });
 
 testPerm({ read: true, write: true }, async function openModeWrite() {
-  const tempDir = deno.makeTempDirSync();
+  const tempDir = Deno.makeTempDirSync();
   const encoder = new TextEncoder();
   const filename = tempDir + "hello.txt";
   const data = encoder.encode("Hello world!\n");
 
-  let file = await deno.open(filename, "w");
+  let file = await Deno.open(filename, "w");
   // assert file was created
-  let fileInfo = deno.statSync(filename);
+  let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
   assertEqual(fileInfo.len, 0);
   // write some data
   await file.write(data);
-  fileInfo = deno.statSync(filename);
+  fileInfo = Deno.statSync(filename);
   assertEqual(fileInfo.len, 13);
   // assert we can't read from file
   let thrown = false;
@@ -119,27 +118,27 @@ testPerm({ read: true, write: true }, async function openModeWrite() {
   }
   file.close();
   // assert that existing file is truncated on open
-  file = await deno.open(filename, "w");
+  file = await Deno.open(filename, "w");
   file.close();
-  const fileSize = deno.statSync(filename).len;
+  const fileSize = Deno.statSync(filename).len;
   assertEqual(fileSize, 0);
-  await deno.remove(tempDir, { recursive: true });
+  await Deno.remove(tempDir, { recursive: true });
 });
 
 testPerm({ read: true, write: true }, async function openModeWriteRead() {
-  const tempDir = deno.makeTempDirSync();
+  const tempDir = Deno.makeTempDirSync();
   const encoder = new TextEncoder();
   const filename = tempDir + "hello.txt";
   const data = encoder.encode("Hello world!\n");
 
-  const file = await deno.open(filename, "w+");
+  const file = await Deno.open(filename, "w+");
   // assert file was created
-  let fileInfo = deno.statSync(filename);
+  let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
   assertEqual(fileInfo.len, 0);
   // write some data
   await file.write(data);
-  fileInfo = deno.statSync(filename);
+  fileInfo = Deno.statSync(filename);
   assertEqual(fileInfo.len, 13);
 
   // TODO: this test is not working, I expect because
@@ -152,5 +151,5 @@ testPerm({ read: true, write: true }, async function openModeWriteRead() {
   // assertEqual(result.nread, 13);
   // file.close();
 
-  await deno.remove(tempDir, { recursive: true });
+  await Deno.remove(tempDir, { recursive: true });
 });

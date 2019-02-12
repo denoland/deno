@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { args, listen, env, exit, makeTempDirSync, readFile, run } from "deno";
+const { args, listen, env, exit, makeTempDirSync, readFile, run } = Deno;
 
 const name = args[1];
 const test = {

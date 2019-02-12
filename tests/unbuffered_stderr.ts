@@ -1,3 +1,3 @@
-import { stderr } from "deno";
+const { stderr } = Deno;
 
 stderr.write(new TextEncoder().encode("x"));

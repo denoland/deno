@@ -7,7 +7,6 @@
 // tests by the special string. permW0N0 means allow-write but not allow-net.
 // See tools/unit_tests.py for more details.
 
-import * as deno from "deno";
 import * as testing from "./deps/https/deno.land/x/std/testing/mod.ts";
 export {
   assert,
@@ -15,7 +14,7 @@ export {
 } from "./deps/https/deno.land/x/std/testing/mod.ts";
 
 // testing.setFilter must be run before any tests are defined.
-testing.setFilter(deno.args[1]);
+testing.setFilter(Deno.args[1]);
 
 interface DenoPermissions {
   read?: boolean;
