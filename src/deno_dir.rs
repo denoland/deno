@@ -8,6 +8,7 @@ use crate::fs as deno_fs;
 use crate::http_util;
 use crate::js_errors::SourceMapGetter;
 use crate::msg;
+use crate::version;
 
 use dirs;
 use ring;
@@ -101,7 +102,7 @@ impl DenoDir {
     filename: &str,
     source_code: &str,
   ) -> (PathBuf, PathBuf) {
-    let cache_key = source_code_hash(filename, source_code);
+    let cache_key = source_code_hash(filename, source_code, version::DENO);
     (
       self.gen.join(cache_key.to_string() + ".js"),
       self.gen.join(cache_key.to_string() + ".js.map"),
@@ -478,9 +479,13 @@ fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
   out
 }
 
-// https://github.com/denoland/deno/blob/golang/deno_dir.go#L25-L30
-fn source_code_hash(filename: &str, source_code: &str) -> String {
+fn source_code_hash(
+  filename: &str,
+  source_code: &str,
+  version: &str,
+) -> String {
   let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
+  ctx.update(version.as_bytes());
   ctx.update(filename.as_bytes());
   ctx.update(source_code.as_bytes());
   let digest = ctx.finish();
@@ -601,16 +606,15 @@ mod tests {
   #[test]
   fn test_cache_path() {
     let (temp_dir, deno_dir) = test_setup(false, false);
+    let filename = "hello.js";
+    let source_code = "1+2";
+    let hash = source_code_hash(filename, source_code, version::DENO);
     assert_eq!(
       (
-        temp_dir
-          .path()
-          .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js"),
-        temp_dir
-          .path()
-          .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js.map")
+        temp_dir.path().join(format!("gen/{}.js", hash)),
+        temp_dir.path().join(format!("gen/{}.js.map", hash))
       ),
-      deno_dir.cache_path("hello.ts", "1+2")
+      deno_dir.cache_path(filename, source_code)
     );
   }
 
@@ -622,15 +626,11 @@ mod tests {
     let source_code = "1+2";
     let output_code = "1+2 // output code";
     let source_map = "{}";
+    let hash = source_code_hash(filename, source_code, version::DENO);
     let (cache_path, source_map_path) =
       deno_dir.cache_path(filename, source_code);
-    assert!(
-      cache_path.ends_with("gen/e8e3ee6bee4aef2ec63f6ec3db7fc5fdfae910ae.js")
-    );
-    assert!(
-      source_map_path
-        .ends_with("gen/e8e3ee6bee4aef2ec63f6ec3db7fc5fdfae910ae.js.map")
-    );
+    assert!(cache_path.ends_with(format!("gen/{}.js", hash)));
+    assert!(source_map_path.ends_with(format!("gen/{}.js.map", hash)));
 
     let r = deno_dir.code_cache(filename, source_code, output_code, source_map);
     r.expect("code_cache error");
@@ -641,18 +641,23 @@ mod tests {
   #[test]
   fn test_source_code_hash() {
     assert_eq!(
-      "a3e29aece8d35a19bf9da2bb1c086af71fb36ed5",
-      source_code_hash("hello.ts", "1+2")
+      "7e44de2ed9e0065da09d835b76b8d70be503d276",
+      source_code_hash("hello.ts", "1+2", "0.2.11")
     );
     // Different source_code should result in different hash.
     assert_eq!(
-      "914352911fc9c85170908ede3df1128d690dda41",
-      source_code_hash("hello.ts", "1")
+      "57033366cf9db1ef93deca258cdbcd9ef5f4bde1",
+      source_code_hash("hello.ts", "1", "0.2.11")
     );
     // Different filename should result in different hash.
     assert_eq!(
-      "2e396bc66101ecc642db27507048376d972b1b70",
-      source_code_hash("hi.ts", "1+2")
+      "19657f90b5b0540f87679e2fb362e7bd62b644b0",
+      source_code_hash("hi.ts", "1+2", "0.2.11")
+    );
+    // Different version should result in different hash.
+    assert_eq!(
+      "e2b4b7162975a02bf2770f16836eb21d5bcb8be1",
+      source_code_hash("hi.ts", "1+2", "0.2.0")
     );
   }
 
