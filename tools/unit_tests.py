@@ -55,14 +55,6 @@ def unit_tests(deno_exe):
     # TODO We might accidentally miss some. We should be smarter about which we
     # run. Maybe we can use the "filtered out" number to check this.
 
-    # These are not strictly unit tests for Deno, but for ts_library_builder.
-    # They run under Node, but use the same //js/testing/ library.
-    run_unit_test2([
-        "node", "./node_modules/.bin/ts-node", "--project",
-        "tools/ts_library_builder/tsconfig.json",
-        "tools/ts_library_builder/test.ts"
-    ])
-
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
