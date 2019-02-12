@@ -6,8 +6,7 @@ import * as dispatch from "./dispatch";
 
 /** Returns the destination of the named symbolic link synchronously.
  *
- *       import { readlinkSync } from "deno";
- *       const targetPath = readlinkSync("symlink/path");
+ *       const targetPath = Deno.readlinkSync("symlink/path");
  */
 export function readlinkSync(name: string): string {
   return res(dispatch.sendSync(...req(name)));
@@ -15,8 +14,7 @@ export function readlinkSync(name: string): string {
 
 /** Returns the destination of the named symbolic link.
  *
- *       import { readlink } from "deno";
- *       const targetPath = await readlink("symlink/path");
+ *       const targetPath = await Deno.readlink("symlink/path");
  */
 export async function readlink(name: string): Promise<string> {
   return res(await dispatch.sendAsync(...req(name)));

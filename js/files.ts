@@ -64,9 +64,8 @@ export function create(filename: string): Promise<File> {
 
 /** Open a file and return an instance of the `File` object.
  *
- *       import * as deno from "deno";
  *       (async () => {
- *         const file = await deno.open("/foo/bar.txt");
+ *         const file = await Deno.open("/foo/bar.txt");
  *       })();
  */
 export async function open(

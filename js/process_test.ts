@@ -1,15 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEqual } from "./test_util.ts";
-import { run, DenoError, ErrorKind } from "deno";
-import * as deno from "deno";
+const { run, DenoError, ErrorKind } = Deno;
 
 test(function runPermissions() {
   let caughtError = false;
   try {
-    deno.run({ args: ["python", "-c", "print('hello world')"] });
+    Deno.run({ args: ["python", "-c", "print('hello world')"] });
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -39,7 +38,7 @@ testPerm({ run: true }, async function runCommandFailedWithCode() {
 });
 
 testPerm({ run: true }, async function runCommandFailedWithSignal() {
-  if (deno.platform.os === "win") {
+  if (Deno.platform.os === "win") {
     return; // No signals on windows.
   }
   const p = run({
@@ -66,7 +65,7 @@ testPerm({ run: true }, function runNotFound() {
 
 testPerm({ write: true, run: true }, async function runWithCwdIsAsync() {
   const enc = new TextEncoder();
-  const cwd = deno.makeTempDirSync({ prefix: "deno_command_test" });
+  const cwd = Deno.makeTempDirSync({ prefix: "deno_command_test" });
 
   const exitCodeFile = "deno_was_here";
   const pyProgramFile = "poll_exit.py";
@@ -86,7 +85,7 @@ while True:
     pass
 `;
 
-  deno.writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
+  Deno.writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
   const p = run({
     cwd,
     args: ["python", `${pyProgramFile}.py`]
@@ -95,7 +94,7 @@ while True:
   // Write the expected exit code *after* starting python.
   // This is how we verify that `run()` is actually asynchronous.
   const code = 84;
-  deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
+  Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
   const status = await p.status();
   assertEqual(status.success, false);

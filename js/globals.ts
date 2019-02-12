@@ -10,6 +10,7 @@
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
 import * as customEvent from "./custom_event";
+import * as deno from "./deno";
 import * as domTypes from "./dom_types";
 import * as event from "./event";
 import * as eventTarget from "./event_target";
@@ -40,6 +41,13 @@ declare global {
 export const window = globalEval("this");
 // A self reference to the global object.
 window.window = window;
+
+// This is the Deno namespace, it is handled differently from other window
+// properties when building the runtime type library, as the whole module
+// is flattened into a single namespace.
+
+window.Deno = deno;
+Object.freeze(window.Deno);
 
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;

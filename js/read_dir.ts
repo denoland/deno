@@ -8,8 +8,7 @@ import { assert } from "./util";
 /** Reads the directory given by path and returns a list of file info
  * synchronously.
  *
- *       import { readDirSync } from "deno";
- *       const files = readDirSync("/");
+ *       const files = Deno.readDirSync("/");
  */
 export function readDirSync(path: string): FileInfo[] {
   return res(dispatch.sendSync(...req(path)));
@@ -17,8 +16,7 @@ export function readDirSync(path: string): FileInfo[] {
 
 /** Reads the directory given by path and returns a list of file info.
  *
- *       import { readDir } from "deno";
- *       const files = await readDir("/");
+ *       const files = await Deno.readDir("/");
  */
 export async function readDir(path: string): Promise<FileInfo[]> {
   return res(await dispatch.sendAsync(...req(path)));

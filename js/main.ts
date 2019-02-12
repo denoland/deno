@@ -20,6 +20,7 @@ import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 export default function denoMain() {
   const startResMsg = os.start();
 
+  // TODO(kitsonk) remove when import "deno" no longer supported
   libdeno.builtinModules["deno"] = deno;
   Object.freeze(libdeno.builtinModules);
 

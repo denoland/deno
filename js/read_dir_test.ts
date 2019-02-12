@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEqual } from "./test_util.ts";
-import * as deno from "deno";
-import { FileInfo } from "deno";
+
+type FileInfo = Deno.FileInfo;
 
 function assertSameContent(files: FileInfo[]) {
   let counter = 0;
@@ -14,7 +14,7 @@ function assertSameContent(files: FileInfo[]) {
 
     if (file.name === "002_hello.ts") {
       assertEqual(file.path, `tests/${file.name}`);
-      assertEqual(file.mode!, deno.statSync(`tests/${file.name}`).mode!);
+      assertEqual(file.mode!, Deno.statSync(`tests/${file.name}`).mode!);
       counter++;
     }
   }
@@ -23,17 +23,17 @@ function assertSameContent(files: FileInfo[]) {
 }
 
 testPerm({ read: true }, function readDirSyncSuccess() {
-  const files = deno.readDirSync("tests/");
+  const files = Deno.readDirSync("tests/");
   assertSameContent(files);
 });
 
 testPerm({ read: false }, function readDirSyncPerm() {
   let caughtError = false;
   try {
-    const files = deno.readDirSync("tests/");
+    const files = Deno.readDirSync("tests/");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -44,10 +44,10 @@ testPerm({ read: true }, function readDirSyncNotDir() {
   let src;
 
   try {
-    src = deno.readDirSync("package.json");
+    src = Deno.readDirSync("package.json");
   } catch (err) {
     caughtError = true;
-    assertEqual(err.kind, deno.ErrorKind.Other);
+    assertEqual(err.kind, Deno.ErrorKind.Other);
   }
   assert(caughtError);
   assertEqual(src, undefined);
@@ -58,27 +58,27 @@ testPerm({ read: true }, function readDirSyncNotFound() {
   let src;
 
   try {
-    src = deno.readDirSync("bad_dir_name");
+    src = Deno.readDirSync("bad_dir_name");
   } catch (err) {
     caughtError = true;
-    assertEqual(err.kind, deno.ErrorKind.NotFound);
+    assertEqual(err.kind, Deno.ErrorKind.NotFound);
   }
   assert(caughtError);
   assertEqual(src, undefined);
 });
 
 testPerm({ read: true }, async function readDirSuccess() {
-  const files = await deno.readDir("tests/");
+  const files = await Deno.readDir("tests/");
   assertSameContent(files);
 });
 
 testPerm({ read: false }, async function readDirPerm() {
   let caughtError = false;
   try {
-    const files = await deno.readDir("tests/");
+    const files = await Deno.readDir("tests/");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);

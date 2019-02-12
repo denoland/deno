@@ -2,7 +2,6 @@
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
-import * as deno from "./deno";
 import { close } from "./files";
 import * as dispatch from "./dispatch";
 import { exit } from "./os";
@@ -73,7 +72,6 @@ export async function readline(rid: number, prompt: string): Promise<string> {
 
 // @internal
 export async function replLoop(): Promise<void> {
-  window.deno = deno; // FIXME use a new scope (rather than window).
   Object.defineProperties(window, replCommands);
 
   const historyFile = "deno_history.txt";

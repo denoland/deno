@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "../test_util.ts";
-import { DomIterableMixin } from "deno";
 
 function setup() {
   const dataSymbol = Symbol("data symbol");
@@ -18,7 +17,10 @@ function setup() {
 
   return {
     Base,
-    DomIterable: DomIterableMixin<string, number, typeof Base>(Base, dataSymbol)
+    DomIterable: Deno.DomIterableMixin<string, number, typeof Base>(
+      Base,
+      dataSymbol
+    )
   };
 }
 

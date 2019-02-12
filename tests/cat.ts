@@ -1,4 +1,4 @@
-import { stdout, open, copy, args } from "deno";
+const { stdout, open, copy, args } = Deno;
 
 async function main() {
   for (let i = 1; i < args.length; i++) {

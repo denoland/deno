@@ -6,9 +6,7 @@ import * as dispatch from "./dispatch";
 /** Truncates or extends the specified file synchronously, updating the size of
  * this file to become size.
  *
- *       import { truncateSync } from "deno";
- *
- *       truncateSync("hello.txt", 10);
+ *       Deno.truncateSync("hello.txt", 10);
  */
 export function truncateSync(name: string, len?: number): void {
   dispatch.sendSync(...req(name, len));
@@ -18,9 +16,7 @@ export function truncateSync(name: string, len?: number): void {
  * Truncates or extends the specified file, updating the size of this file to
  * become size.
  *
- *       import { truncate } from "deno";
- *
- *       await truncate("hello.txt", 10);
+ *       await Deno.truncate("hello.txt", 10);
  */
 export async function truncate(name: string, len?: number): Promise<void> {
   await dispatch.sendAsync(...req(name, len));
