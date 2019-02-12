@@ -6,9 +6,8 @@ import * as dispatch from "./dispatch";
 
 /** Read the entire contents of a file synchronously.
  *
- *       import { readFileSync } from "deno";
  *       const decoder = new TextDecoder("utf-8");
- *       const data = readFileSync("hello.txt");
+ *       const data = Deno.readFileSync("hello.txt");
  *       console.log(decoder.decode(data));
  */
 export function readFileSync(filename: string): Uint8Array {
@@ -17,9 +16,8 @@ export function readFileSync(filename: string): Uint8Array {
 
 /** Read the entire contents of a file.
  *
- *       import { readFile } from "deno";
  *       const decoder = new TextDecoder("utf-8");
- *       const data = await readFile("hello.txt");
+ *       const data = await Deno.readFile("hello.txt");
  *       console.log(decoder.decode(data));
  */
 export async function readFile(filename: string): Promise<Uint8Array> {

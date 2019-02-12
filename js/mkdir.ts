@@ -9,9 +9,8 @@ import * as dispatch from "./dispatch";
  * `mode` sets permission bits (before umask) on UNIX and does nothing on
  * Windows.
  *
- *       import { mkdirSync } from "deno";
- *       mkdirSync("new_dir");
- *       mkdirSync("nested/directories", true);
+ *       Deno.mkdirSync("new_dir");
+ *       Deno.mkdirSync("nested/directories", true);
  */
 export function mkdirSync(path: string, recursive = false, mode = 0o777): void {
   dispatch.sendSync(...req(path, recursive, mode));
@@ -23,9 +22,8 @@ export function mkdirSync(path: string, recursive = false, mode = 0o777): void {
  * `mode` sets permission bits (before umask) on UNIX and does nothing on
  * Windows.
  *
- *       import { mkdir } from "deno";
- *       await mkdir("new_dir");
- *       await mkdir("nested/directories", true);
+ *       await Deno.mkdir("new_dir");
+ *       await Deno.mkdir("nested/directories", true);
  */
 export async function mkdir(
   path: string,

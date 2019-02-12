@@ -28,7 +28,7 @@ class Repl(object):
                 p.stdin.flush()
                 time.sleep(sleep_)
             if exit_:
-                p.stdin.write(b'deno.exit(0)\n')
+                p.stdin.write(b'Deno.exit(0)\n')
             else:
                 time.sleep(1)  # wait to be killed by js
             out, err = p.communicate()
@@ -73,7 +73,7 @@ class Repl(object):
         assertEqual(code, 0)
 
     def test_function(self):
-        out, err, code = self.input("deno.writeFileSync")
+        out, err, code = self.input("Deno.writeFileSync")
         assertEqual(out, '[Function: writeFileSync]\n')
         assertEqual(err, '')
         assertEqual(code, 0)
@@ -99,7 +99,7 @@ class Repl(object):
 
     def test_set_timeout(self):
         out, err, code = self.input(
-            "setTimeout(() => { console.log('b'); deno.exit(0); }, 10)",
+            "setTimeout(() => { console.log('b'); Deno.exit(0); }, 10)",
             "'a'",
             exit=False)
         assertEqual(out, '1\na\nb\n')

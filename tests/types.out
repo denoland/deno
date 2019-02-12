@@ -2,13 +2,14 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
-[WILDCARD]
-declare module "deno" {
+
+declare namespace Deno {
 [WILDCARD]
 }
-
+[WILDCARD]
 declare interface Window {
 [WILDCARD]
+  Deno: typeof Deno;
 }
 
 declare const window: Window;

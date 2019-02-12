@@ -98,7 +98,9 @@ interface FlattenOptions {
   filePath: string;
   debug?: boolean;
   declarationProject: Project;
-  namespaceName: string;
+  globalInterfaceName?: string;
+  moduleName?: string;
+  namespaceName?: string;
   targetSourceFile: SourceFile;
 }
 
@@ -109,10 +111,12 @@ export function flatten({
   filePath,
   debug,
   declarationProject,
+  globalInterfaceName,
+  moduleName,
   namespaceName,
   targetSourceFile
 }: FlattenOptions): void {
-  // Flatten the source file into a single module declaration
+  // Flatten the source file into a single set of statements
   const statements = flattenNamespace({
     sourceFile: declarationProject.getSourceFileOrThrow(filePath),
     rootPath: basePath,
@@ -120,15 +124,42 @@ export function flatten({
     debug
   });
 
-  // Create the module in the target file
-  const namespace = targetSourceFile.addNamespace({
-    name: namespaceName,
-    hasDeclareKeyword: true,
-    declarationKind: NamespaceDeclarationKind.Module
-  });
+  // If a module name is specified create the module in the target file
+  if (moduleName) {
+    const namespace = targetSourceFile.addNamespace({
+      name: moduleName,
+      hasDeclareKeyword: true,
+      declarationKind: NamespaceDeclarationKind.Module
+    });
 
-  // Add the output of the flattening to the namespace
-  namespace.addStatements(statements);
+    // Add the output of the flattening to the namespace
+    namespace.addStatements(statements);
+  }
+
+  if (namespaceName) {
+    const namespace = targetSourceFile.insertNamespace(0, {
+      name: namespaceName,
+      hasDeclareKeyword: true,
+      declarationKind: NamespaceDeclarationKind.Namespace
+    });
+
+    // Add the output of the flattening to the namespace
+    namespace.addStatements(statements);
+
+    if (globalInterfaceName) {
+      // Retrieve the global interface
+      const interfaceDeclaration = targetSourceFile.getInterfaceOrThrow(
+        globalInterfaceName
+      );
+
+      // Add the namespace to the global interface
+      addInterfaceProperty(
+        interfaceDeclaration,
+        namespaceName,
+        `typeof ${namespaceName}`
+      );
+    }
+  }
 }
 
 interface MergeGlobalOptions {
@@ -137,6 +168,7 @@ interface MergeGlobalOptions {
   declarationProject: Project;
   filePath: string;
   globalVarName: string;
+  ignore?: string[];
   inputProject: Project;
   interfaceName: string;
   targetSourceFile: SourceFile;
@@ -149,6 +181,7 @@ export function mergeGlobal({
   declarationProject,
   filePath,
   globalVarName,
+  ignore,
   inputProject,
   interfaceName,
   targetSourceFile
@@ -214,16 +247,18 @@ export function mergeGlobal({
   // Create a global variable and add the property to the `Window` interface
   // for each mutation of the `window` variable we observed in `globals.ts`
   for (const [property, info] of globalVariables) {
-    const type = info.type.getText(info.node);
-    const typeSymbol = info.type.getSymbol();
-    if (typeSymbol) {
-      const valueDeclaration = typeSymbol.getValueDeclaration();
-      if (valueDeclaration) {
-        dependentSourceFiles.add(valueDeclaration.getSourceFile());
+    if (!(ignore && ignore.includes(property))) {
+      const type = info.type.getText(info.node);
+      const typeSymbol = info.type.getSymbol();
+      if (typeSymbol) {
+        const valueDeclaration = typeSymbol.getValueDeclaration();
+        if (valueDeclaration) {
+          dependentSourceFiles.add(valueDeclaration.getSourceFile());
+        }
       }
+      addVariableDeclaration(targetSourceFile, property, type, true);
+      addInterfaceProperty(interfaceDeclaration, property, type);
     }
-    addVariableDeclaration(targetSourceFile, property, type, true);
-    addInterfaceProperty(interfaceDeclaration, property, type);
   }
 
   // We need to copy over any type aliases
@@ -288,7 +323,7 @@ export function main({
   debug,
   outFile,
   silent
-}: BuildLibraryOptions) {
+}: BuildLibraryOptions): void {
   if (!silent) {
     console.log("-----");
     console.log("build_lib");
@@ -415,20 +450,6 @@ export function main({
     }${msgGeneratedDtsText}\n`
   };
 
-  flatten({
-    basePath,
-    customSources,
-    debug,
-    declarationProject,
-    filePath: `${basePath}/js/deno.d.ts`,
-    namespaceName: `"deno"`,
-    targetSourceFile: libDTs
-  });
-
-  if (!silent) {
-    console.log(`Created module "deno".`);
-  }
-
   mergeGlobal({
     basePath,
     debug,
@@ -436,12 +457,29 @@ export function main({
     filePath: `${basePath}/js/globals.ts`,
     globalVarName: "window",
     inputProject,
+    ignore: ["Deno"],
     interfaceName: "Window",
     targetSourceFile: libDTs
   });
 
   if (!silent) {
     console.log(`Merged "globals" into global scope.`);
+  }
+
+  flatten({
+    basePath,
+    customSources,
+    debug,
+    declarationProject,
+    filePath: `${basePath}/js/deno.d.ts`,
+    globalInterfaceName: "Window",
+    moduleName: `"deno"`,
+    namespaceName: "Deno",
+    targetSourceFile: libDTs
+  });
+
+  if (!silent) {
+    console.log(`Created module "deno" and namespace Deno.`);
   }
 
   // Inline any files that were passed in, to be used to add additional libs

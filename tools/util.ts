@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { platform, lstatSync, readDirSync } from "deno";
 import { join } from "../js/deps/https/deno.land/x/std/fs/path/mod.ts";
+
+const { platform, lstatSync, readDirSync } = Deno;
 
 export interface FindOptions {
   skip?: string[];

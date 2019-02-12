@@ -1,22 +1,21 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEqual } from "./test_util.ts";
-import * as deno from "deno";
 
 testPerm({ env: true }, function envSuccess() {
-  const env = deno.env();
+  const env = Deno.env();
   assert(env !== null);
   env.test_var = "Hello World";
-  const newEnv = deno.env();
+  const newEnv = Deno.env();
   assertEqual(env.test_var, newEnv.test_var);
 });
 
 test(function envFailure() {
   let caughtError = false;
   try {
-    const env = deno.env();
+    const env = Deno.env();
   } catch (err) {
     caughtError = true;
-    assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(err.name, "PermissionDenied");
   }
 
@@ -24,11 +23,11 @@ test(function envFailure() {
 });
 
 test(function osPid() {
-  console.log("pid", deno.pid);
-  assert(deno.pid > 0);
+  console.log("pid", Deno.pid);
+  assert(Deno.pid > 0);
 });
 
 // See complete tests in tools/is_tty_test.py
 test(function osIsTTYSmoke() {
-  console.log(deno.isTTY());
+  console.log(Deno.isTTY());
 });

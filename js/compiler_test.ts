@@ -1,11 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEqual } from "./test_util.ts";
-import * as deno from "deno";
 
 // We use a silly amount of `any` in these tests...
 // tslint:disable:no-any
 
-const { Compiler, jsonEsmTemplate } = (deno as any)._compiler;
+const { Compiler, jsonEsmTemplate } = (Deno as any)._compiler;
 
 interface ModuleInfo {
   moduleName: string | undefined;

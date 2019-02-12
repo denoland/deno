@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as deno from "deno";
 import { assert, testPerm, assertEqual } from "../js/test_util.ts";
 import { findFiles } from "./util.ts";
 
@@ -55,7 +54,7 @@ testPerm({ read: false }, function testFindFilesPerm() {
     const files = findFiles([testDir], [".ts", ".md"]);
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.PermissionDenied);
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);

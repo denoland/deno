@@ -12,8 +12,7 @@ export interface RemoveOption {
  * set to false.
  * `recursive` is set to false by default.
  *
- *       import { removeSync } from "deno";
- *       removeSync("/path/to/dir/or/file", {recursive: false});
+ *       Deno.removeSync("/path/to/dir/or/file", {recursive: false});
  */
 export function removeSync(path: string, options: RemoveOption = {}): void {
   dispatch.sendSync(...req(path, options));
@@ -24,8 +23,7 @@ export function removeSync(path: string, options: RemoveOption = {}): void {
  * to false.
  * `recursive` is set to false by default.
  *
- *       import { remove } from "deno";
- *       await remove("/path/to/dir/or/file", {recursive: false});
+ *       await Deno.remove("/path/to/dir/or/file", {recursive: false});
  */
 export async function remove(
   path: string,

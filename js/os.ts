@@ -6,10 +6,10 @@ import { libdeno } from "./libdeno";
 import { assert } from "./util";
 import * as util from "./util";
 
-/** process id */
+/** The current process id of the runtime. */
 export let pid: number;
 
-/** Reflects the NO_COLOR enviromental variable: https://no-color.org/ */
+/** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
 
 export function setGlobals(pid_: number, noColor_: boolean): void {
@@ -27,8 +27,7 @@ interface CodeInfo {
 
 /** Check if running in terminal.
  *
- *       import { isTTY } from "deno";
- *       console.log(isTTY().stdout);
+ *       console.log(Deno.isTTY().stdout);
  */
 export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
   const builder = flatbuffers.createBuilder();
@@ -141,12 +140,10 @@ function setEnv(key: string, value: string): void {
  * the process. The environment object will only accept `string`s
  * as values.
  *
- *       import { env } from "deno";
- *
- *       const myEnv = env();
+ *       const myEnv = Deno.env();
  *       console.log(myEnv.SHELL);
  *       myEnv.TEST_VAR = "HELLO";
- *       const newEnv = env();
+ *       const newEnv = Deno.env();
  *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
 export function env(): { [index: string]: string } {

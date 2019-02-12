@@ -8,8 +8,7 @@ import * as util from "./util";
  * argument can be set to `dir` or `file` and is only available on Windows
  * (ignored on other platforms).
  *
- *       import { symlinkSync } from "deno";
- *       symlinkSync("old/name", "new/name");
+ *       Deno.symlinkSync("old/name", "new/name");
  */
 export function symlinkSync(
   oldname: string,
@@ -23,8 +22,7 @@ export function symlinkSync(
  * set to `dir` or `file` and is only available on Windows (ignored on other
  * platforms).
  *
- *       import { symlink } from "deno";
- *       await symlink("old/name", "new/name");
+ *       await Deno.symlink("old/name", "new/name");
  */
 export async function symlink(
   oldname: string,

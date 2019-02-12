@@ -1,15 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as deno from "deno";
 import { testPerm, assert, assertEqual } from "./test_util.ts";
-import { deferred } from "deno";
 
 testPerm({ net: true }, function netListenClose() {
-  const listener = deno.listen("tcp", "127.0.0.1:4500");
+  const listener = Deno.listen("tcp", "127.0.0.1:4500");
   listener.close();
 });
 
 testPerm({ net: true }, async function netCloseWhileAccept() {
-  const listener = deno.listen("tcp", ":4501");
+  const listener = Deno.listen("tcp", ":4501");
   const p = listener.accept();
   listener.close();
   let err;
@@ -19,15 +17,15 @@ testPerm({ net: true }, async function netCloseWhileAccept() {
     err = e;
   }
   assert(!!err);
-  assertEqual(err.kind, deno.ErrorKind.Other);
+  assertEqual(err.kind, Deno.ErrorKind.Other);
   assertEqual(err.message, "Listener has been closed");
 });
 
 testPerm({ net: true }, async function netConcurrentAccept() {
-  const listener = deno.listen("tcp", ":4502");
+  const listener = Deno.listen("tcp", ":4502");
   let acceptErrCount = 0;
   const checkErr = e => {
-    assertEqual(e.kind, deno.ErrorKind.Other);
+    assertEqual(e.kind, Deno.ErrorKind.Other);
     if (e.message === "Listener has been closed") {
       assertEqual(acceptErrCount, 1);
     } else if (e.message === "Another accept task is ongoing") {
@@ -45,12 +43,12 @@ testPerm({ net: true }, async function netConcurrentAccept() {
 });
 
 testPerm({ net: true }, async function netDialListen() {
-  const listener = deno.listen("tcp", ":4500");
+  const listener = Deno.listen("tcp", ":4500");
   listener.accept().then(async conn => {
     await conn.write(new Uint8Array([1, 2, 3]));
     conn.close();
   });
-  const conn = await deno.dial("tcp", "127.0.0.1:4500");
+  const conn = await Deno.dial("tcp", "127.0.0.1:4500");
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
   assertEqual(3, readResult.nread);
@@ -75,7 +73,7 @@ testPerm({ net: true }, async function netDialListen() {
 /* TODO Fix broken test.
 testPerm({ net: true }, async function netCloseReadSuccess() {
   const addr = "127.0.0.1:4500";
-  const listener = deno.listen("tcp", addr);
+  const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
   const closeReadDeferred = deferred();
   listener.accept().then(async conn => {
@@ -90,7 +88,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
     conn.close();
     closeDeferred.resolve();
   });
-  const conn = await deno.dial("tcp", addr);
+  const conn = await Deno.dial("tcp", addr);
   conn.closeRead(); // closing read
   closeReadDeferred.resolve();
   const buf = new Uint8Array(1024);
@@ -108,14 +106,14 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
 /* TODO Fix broken test.
 testPerm({ net: true }, async function netDoubleCloseRead() {
   const addr = "127.0.0.1:4500";
-  const listener = deno.listen("tcp", addr);
+  const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
   listener.accept().then(async conn => {
     await conn.write(new Uint8Array([1, 2, 3]));
     await closeDeferred.promise;
     conn.close();
   });
-  const conn = await deno.dial("tcp", addr);
+  const conn = await Deno.dial("tcp", addr);
   conn.closeRead(); // closing read
   let err;
   try {
@@ -125,7 +123,7 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
     err = e;
   }
   assert(!!err);
-  assertEqual(err.kind, deno.ErrorKind.NotConnected);
+  assertEqual(err.kind, Deno.ErrorKind.NotConnected);
   assertEqual(err.name, "NotConnected");
   closeDeferred.resolve();
   listener.close();
@@ -136,14 +134,14 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
 /* TODO Fix broken test.
 testPerm({ net: true }, async function netCloseWriteSuccess() {
   const addr = "127.0.0.1:4500";
-  const listener = deno.listen("tcp", addr);
+  const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
   listener.accept().then(async conn => {
     await conn.write(new Uint8Array([1, 2, 3]));
     await closeDeferred.promise;
     conn.close();
   });
-  const conn = await deno.dial("tcp", addr);
+  const conn = await Deno.dial("tcp", addr);
   conn.closeWrite(); // closing write
   const buf = new Uint8Array(1024);
   // Check read not impacted
@@ -160,7 +158,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
     err = e;
   }
   assert(!!err);
-  assertEqual(err.kind, deno.ErrorKind.BrokenPipe);
+  assertEqual(err.kind, Deno.ErrorKind.BrokenPipe);
   assertEqual(err.name, "BrokenPipe");
   closeDeferred.resolve();
   listener.close();
@@ -171,13 +169,13 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
 /* TODO Fix broken test.
 testPerm({ net: true }, async function netDoubleCloseWrite() {
   const addr = "127.0.0.1:4500";
-  const listener = deno.listen("tcp", addr);
+  const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
   listener.accept().then(async conn => {
     await closeDeferred.promise;
     conn.close();
   });
-  const conn = await deno.dial("tcp", addr);
+  const conn = await Deno.dial("tcp", addr);
   conn.closeWrite(); // closing write
   let err;
   try {
@@ -187,7 +185,7 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
     err = e;
   }
   assert(!!err);
-  assertEqual(err.kind, deno.ErrorKind.NotConnected);
+  assertEqual(err.kind, Deno.ErrorKind.NotConnected);
   assertEqual(err.name, "NotConnected");
   closeDeferred.resolve();
   listener.close();

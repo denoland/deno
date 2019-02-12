@@ -10,8 +10,7 @@ import * as dispatch from "./dispatch";
  * It would also copy the permission of the original file
  * to the destination.
  *
- *       import { copyFileSync } from "deno";
- *       copyFileSync("from.txt", "to.txt");
+ *       Deno.copyFileSync("from.txt", "to.txt");
  */
 export function copyFileSync(from: string, to: string): void {
   dispatch.sendSync(...req(from, to));
@@ -25,8 +24,7 @@ export function copyFileSync(from: string, to: string): void {
  * It would also copy the permission of the original file
  * to the destination.
  *
- *       import { copyFile } from "deno";
- *       await copyFile("from.txt", "to.txt");
+ *       await Deno.copyFile("from.txt", "to.txt");
  */
 export async function copyFile(from: string, to: string): Promise<void> {
   await dispatch.sendAsync(...req(from, to));
