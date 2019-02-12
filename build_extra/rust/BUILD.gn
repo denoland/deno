@@ -132,11 +132,9 @@ rust_crate("crossbeam") {
 
 rust_crate("crossbeam_channel") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-channel-0.3.6/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-channel-0.3.8/src/lib.rs"
   extern = [
     ":crossbeam_utils",
-    ":parking_lot",
-    ":rand",
     ":smallvec",
   ]
   args = [
@@ -160,7 +158,7 @@ rust_crate("crossbeam_deque") {
 
 rust_crate("crossbeam_epoch") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-epoch-0.7.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-epoch-0.7.1/src/lib.rs"
   features = [
     "crossbeam-utils",
     "default",
@@ -183,12 +181,16 @@ rust_crate("crossbeam_epoch") {
 
 rust_crate("crossbeam_utils") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-utils-0.6.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-utils-0.6.5/src/lib.rs"
   features = [
     "default",
+    "lazy_static",
     "std",
   ]
-  extern = [ ":cfg_if" ]
+  extern = [
+    ":cfg_if",
+    ":lazy_static",
+  ]
   args = [
     "--cap-lints",
     "allow",
@@ -334,7 +336,7 @@ rust_crate("httparse") {
 
 rust_crate("hyper") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.23/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.24/src/lib.rs"
   features = [
     "__internal_flaky_tests",
     "default",
@@ -634,7 +636,7 @@ rust_crate("nodrop") {
 
 rust_crate("num_cpus") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/num_cpus-1.9.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/num_cpus-1.10.0/src/lib.rs"
   extern = [ ":libc" ]
   args = [
     "--cap-lints",
@@ -706,24 +708,24 @@ rust_crate("percent_encoding") {
 
 rust_crate("rand") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand-0.6.4/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand-0.6.5/src/lib.rs"
   features = [
     "alloc",
     "default",
     "rand_core",
+    "rand_jitter",
     "rand_os",
     "std",
   ]
   extern = [
     ":rand_chacha",
+    ":rand_core",
     ":rand_hc",
     ":rand_isaac",
+    ":rand_jitter",
     ":rand_os",
     ":rand_pcg",
     ":rand_xorshift",
-
-    # Override: use rand_core v0.4.0 instead of v0.3.1.
-    ":rand_core",
   ]
   args = [
     "--cap-lints",
@@ -736,14 +738,6 @@ rust_crate("rand") {
     "rustc_1_26",
     "rustc_1_27",
   ]
-
-  ## Override: use rand_core v0.4.0 instead of v0.3.1.
-  # extern_version = [
-  #   {
-  #     crate_name = "rand_core"
-  #     crate_version = "0.3.1"
-  #   },
-  # ]
   if (is_posix) {
     extern += [ ":libc" ]
   }
@@ -828,24 +822,34 @@ rust_crate("rand_isaac") {
   # ]
 }
 
-rust_crate("rand_os") {
+rust_crate("rand_jitter") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_os-0.1.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_jitter-0.1.3/src/lib.rs"
+  features = [
+    "rand_core",
+    "std",
+  ]
+  extern = [ ":rand_core" ]
   args = [
     "--cap-lints",
     "allow",
   ]
+  if (is_mac) {
+    extern += [ ":libc" ]
+  }
+  if (is_win) {
+    extern += [ ":winapi" ]
+  }
+}
 
-  # Override: use rand_core v0.4.0 instead of v0.3.1.
+rust_crate("rand_os") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_os-0.1.2/src/lib.rs"
   extern = [ ":rand_core" ]
-
-  ## Override: use rand_core v0.4.0 instead of v0.3.1.
-  # extern_version = [
-  #   {
-  #     crate_name = "rand_core"
-  #     crate_version = "0.3.1"
-  #   },
-  # ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
   if (is_posix) {
     extern += [ ":libc" ]
   }
@@ -951,7 +955,7 @@ rust_crate("remove_dir_all") {
 }
 
 rust_crate("ring") {
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/src/lib.rs"
   features = [
     "default",
     "dev_urandom_fallback",
@@ -962,64 +966,62 @@ rust_crate("ring") {
     ## Override: don't build 'ring-test' static library.
     # ":ring-test",
   ]
-  extern = [ ":untrusted" ]
+  extern = [
+    ":libc",
+    ":spin",
+    ":untrusted",
+  ]
   args = [
     "--cap-lints",
     "allow",
   ]
   if (is_linux) {
-    extern += [
-      ":lazy_static",
-      ":libc",
-    ]
+    extern += [ ":lazy_static" ]
   }
 
   # Per the #[link(...)] attribute found in 'src/rand.rs'.
   if (is_mac) {
     libs = [ "Security.framework" ]
   }
-
-  # Per the #[link(...)] attribute found in 'src/rand.rs'.
   if (is_win) {
-    libs = [ "advapi32.lib" ]
+    extern += [ ":winapi" ]
   }
 }
 
 static_library("ring-core") {
   include_dirs = [
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/include",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/include",
   ]
   sources = [
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/block.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/cpu-intel.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/crypto.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/fipsmodule/bn/generic.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/fipsmodule/bn/montgomery.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/fipsmodule/bn/montgomery_inv.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/fipsmodule/cipher/e_aes.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/fipsmodule/ec/ecp_nistz.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/fipsmodule/ec/ecp_nistz256.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/fipsmodule/ec/gfp_p256.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/fipsmodule/ec/gfp_p384.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/fipsmodule/modes/gcm.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/limbs/limbs.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/mem.c",
-    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/third_party/fiat/curve25519.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/block.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/cpu-intel.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/crypto.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/fipsmodule/bn/generic.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/fipsmodule/bn/montgomery.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/fipsmodule/bn/montgomery_inv.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/fipsmodule/ec/ecp_nistz.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/fipsmodule/ec/ecp_nistz256.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/fipsmodule/ec/gfp_p256.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/fipsmodule/ec/gfp_p384.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/fipsmodule/modes/gcm.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/limbs/limbs.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/mem.c",
+    "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/third_party/fiat/curve25519.c",
   ]
   if (is_linux) {
     sources += [
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/aes-x86_64-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/aesni-gcm-x86_64-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/aesni-x86_64-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/chacha-x86_64-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/ghash-x86_64-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/p256-x86_64-asm-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/poly1305-x86_64-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/sha256-x86_64-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/sha512-x86_64-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/vpaes-x86_64-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/x86_64-mont-elf.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/x86_64-mont5-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/aes-x86_64-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/aesni-gcm-x86_64-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/aesni-x86_64-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/chacha-x86_64-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/ghash-x86_64-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/p256-x86_64-asm-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/poly1305-x86_64-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/sha256-x86_64-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/sha512-x86_64-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/vpaes-x86_64-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/x86_64-mont-elf.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/x86_64-mont5-elf.S",
     ]
 
     # Supress "warning: '_GNU_SOURCE' macro redefined."
@@ -1027,34 +1029,34 @@ static_library("ring-core") {
   }
   if (is_mac) {
     sources += [
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/aes-x86_64-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/aesni-gcm-x86_64-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/aesni-x86_64-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/chacha-x86_64-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/ghash-x86_64-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/p256-x86_64-asm-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/poly1305-x86_64-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/sha256-x86_64-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/sha512-x86_64-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/vpaes-x86_64-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/x86_64-mont-macosx.S",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/x86_64-mont5-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/aes-x86_64-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/aesni-gcm-x86_64-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/aesni-x86_64-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/chacha-x86_64-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/ghash-x86_64-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/p256-x86_64-asm-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/poly1305-x86_64-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/sha256-x86_64-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/sha512-x86_64-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/vpaes-x86_64-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/x86_64-mont-macosx.S",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/x86_64-mont5-macosx.S",
     ]
   }
   if (is_win) {
     libs = [
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/aes-x86_64-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/aesni-gcm-x86_64-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/aesni-x86_64-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/chacha-x86_64-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/ghash-x86_64-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/p256-x86_64-asm-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/poly1305-x86_64-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/sha256-x86_64-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/sha512-x86_64-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/vpaes-x86_64-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/x86_64-mont-nasm.obj",
-      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/pregenerated/x86_64-mont5-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/aes-x86_64-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/aesni-gcm-x86_64-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/aesni-x86_64-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/chacha-x86_64-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/ghash-x86_64-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/p256-x86_64-asm-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/poly1305-x86_64-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/sha256-x86_64-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/sha512-x86_64-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/vpaes-x86_64-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/x86_64-mont-nasm.obj",
+      "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/pregenerated/x86_64-mont5-nasm.obj",
     ]
 
     # Suppress "warning: '_addcarry_u64' is not a recognized builtin."
@@ -1064,12 +1066,12 @@ static_library("ring-core") {
 
 ## Override: don't build 'ring-test' static library.
 # static_library("ring-test") {
-#   include_dirs = [ "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/include" ]
-#   sources = [ "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.3/crypto/constant_time_test.c" ]
+#   include_dirs = [ "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/include" ]
+#   sources = [ "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.14.6/crypto/constant_time_test.c" ]
 # }
 
 rust_crate("rustls") {
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustls-0.15.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustls-0.15.1/src/lib.rs"
   features = [
     "default",
     "log",
@@ -1152,7 +1154,7 @@ rust_crate("sct") {
 
 rust_crate("serde") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.85/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.87/src/lib.rs"
   features = [
     "default",
     "std",
@@ -1169,13 +1171,14 @@ rust_crate("serde") {
     "de_rc_dst",
     "integer128",
     "num_nonzero",
+    "ops_bound",
     "range_inclusive",
   ]
 }
 
 rust_crate("serde_json") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.37/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.38/src/lib.rs"
   features = [ "default" ]
   extern = [
     ":itoa",
@@ -1217,7 +1220,7 @@ rust_crate("source_map_mappings") {
   extern = [
     ":vlq",
 
-    # Override: use rand v0.6.4 instead of v0.4.6.
+    # Override: use rand v0.6.5 instead of v0.4.6.
     ":rand",
   ]
   args = [
@@ -1225,13 +1228,22 @@ rust_crate("source_map_mappings") {
     "allow",
   ]
 
-  ## Override: use rand v0.6.4 instead of v0.4.6.
+  ## Override: use rand v0.6.5 instead of v0.4.6.
   # extern_version = [
   #   {
   #     crate_name = "rand"
   #     crate_version = "0.4.6"
   #   },
   # ]
+}
+
+rust_crate("spin") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/spin-0.5.0/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
 }
 
 ## Override: avoid dependency on on 'owning_ref'.
@@ -1259,7 +1271,7 @@ rust_crate("string") {
 
 rust_crate("tempfile") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.5/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.6/src/lib.rs"
   extern = [
     ":cfg_if",
     ":rand",
@@ -1496,7 +1508,7 @@ rust_crate("tokio_rustls") {
 
 rust_crate("tokio_sync") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.1/src/lib.rs"
   extern = [ ":futures" ]
   args = [
     "--cap-lints",
@@ -1544,7 +1556,7 @@ rust_crate("tokio_threadpool") {
 
 rust_crate("tokio_timer") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-timer-0.2.9/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-timer-0.2.10/src/lib.rs"
   extern = [
     ":crossbeam_utils",
     ":futures",
@@ -1741,7 +1753,7 @@ rust_crate("webpki_roots") {
   ]
 }
 
-## Override: use rand v0.6.4 instead.
+## Override: use rand v0.6.5 instead.
 # rust_crate("rand-0.4.6") {
 #   crate_name = "rand"
 #   crate_version = "0.4.6"
@@ -1775,11 +1787,6 @@ rust_crate("webpki_roots") {
 #   crate_version = "0.3.1"
 #   edition = "2015"
 #   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_core-0.3.1/src/lib.rs"
-#   features = [
-#     "alloc",
-#     "rand_core",
-#     "std",
-#   ]
 #   extern = [ ":rand_core" ]
 #   args = [
 #     "--cap-lints",
@@ -1992,6 +1999,7 @@ if (is_win) {
       "ws2def",
       "ws2ipdef",
       "ws2tcpip",
+      "wtypesbase",
 
       # Added by custom-build script.
       "basetsd",
@@ -2025,7 +2033,6 @@ if (is_win) {
       "wingdi",
       "winreg",
       "wtypes",
-      "wtypesbase",
     ]
     args = [
       "--cap-lints",
