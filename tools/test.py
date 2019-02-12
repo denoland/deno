@@ -60,6 +60,11 @@ def main(argv):
     check_exists(deno_exe)
 
     # Internal tools testing
+    run([
+        "node", "./node_modules/.bin/ts-node", "--project",
+        "tools/ts_library_builder/tsconfig.json",
+        "tools/ts_library_builder/test.ts"
+    ])
     setup_test()
     util_test()
     benchmark_test(build_dir, deno_exe)
