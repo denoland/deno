@@ -3,13 +3,8 @@
 //
 //  ./node_modules/.bin/ts-node --project tools/ts_library_builder/tsconfig.json tools/ts_library_builder/test.ts
 
+import * as assert from "assert";
 import { Project, ts } from "ts-simple-ast";
-import {
-  assert,
-  assertEqual,
-  runTests,
-  test
-} from "../../js/deps/https/deno.land/x/std/testing/mod";
 import { flatten, mergeGlobal } from "./build_library";
 import { inlineFiles, loadDtsFiles } from "./ast_util";
 
@@ -64,7 +59,7 @@ function setupFixtures() {
   };
 }
 
-test(function buildLibraryFlatten() {
+function buildLibraryFlatten() {
   const {
     basePath,
     buildPath,
@@ -86,61 +81,61 @@ test(function buildLibraryFlatten() {
 
   assert(targetSourceFile.getNamespace(`"api"`) != null);
   assert(targetSourceFile.getNamespace("Api") != null);
-  assertEqual(targetSourceFile.getNamespaces().length, 2);
+  assert.equal(targetSourceFile.getNamespaces().length, 2);
   const moduleApi = targetSourceFile.getNamespaceOrThrow(`"api"`);
   const functions = moduleApi.getFunctions();
-  assertEqual(functions[0].getName(), "foo");
-  assertEqual(
+  assert.equal(functions[0].getName(), "foo");
+  assert.equal(
     functions[0]
       .getJsDocs()
       .map(jsdoc => jsdoc.getInnerText())
       .join("\n"),
     "jsdoc for foo"
   );
-  assertEqual(functions[1].getName(), "bar");
-  assertEqual(
+  assert.equal(functions[1].getName(), "bar");
+  assert.equal(
     functions[1]
       .getJsDocs()
       .map(jsdoc => jsdoc.getInnerText())
       .join("\n"),
     ""
   );
-  assertEqual(functions.length, 2);
+  assert.equal(functions.length, 2);
   const classes = moduleApi.getClasses();
-  assertEqual(classes[0].getName(), "Foo");
-  assertEqual(classes.length, 1);
+  assert.equal(classes[0].getName(), "Foo");
+  assert.equal(classes.length, 1);
   const variableDeclarations = moduleApi.getVariableDeclarations();
-  assertEqual(variableDeclarations[0].getName(), "arr");
-  assertEqual(variableDeclarations.length, 1);
+  assert.equal(variableDeclarations[0].getName(), "arr");
+  assert.equal(variableDeclarations.length, 1);
 
   const namespaceApi = targetSourceFile.getNamespaceOrThrow(`"api"`);
   const functionsNs = namespaceApi.getFunctions();
-  assertEqual(functionsNs[0].getName(), "foo");
-  assertEqual(
+  assert.equal(functionsNs[0].getName(), "foo");
+  assert.equal(
     functionsNs[0]
       .getJsDocs()
       .map(jsdoc => jsdoc.getInnerText())
       .join("\n"),
     "jsdoc for foo"
   );
-  assertEqual(functionsNs[1].getName(), "bar");
-  assertEqual(
+  assert.equal(functionsNs[1].getName(), "bar");
+  assert.equal(
     functionsNs[1]
       .getJsDocs()
       .map(jsdoc => jsdoc.getInnerText())
       .join("\n"),
     ""
   );
-  assertEqual(functionsNs.length, 2);
+  assert.equal(functionsNs.length, 2);
   const classesNs = namespaceApi.getClasses();
-  assertEqual(classesNs[0].getName(), "Foo");
-  assertEqual(classesNs.length, 1);
+  assert.equal(classesNs[0].getName(), "Foo");
+  assert.equal(classesNs.length, 1);
   const variableDeclarationsNs = namespaceApi.getVariableDeclarations();
-  assertEqual(variableDeclarationsNs[0].getName(), "arr");
-  assertEqual(variableDeclarationsNs.length, 1);
-});
+  assert.equal(variableDeclarationsNs[0].getName(), "arr");
+  assert.equal(variableDeclarationsNs.length, 1);
+}
 
-test(function buildLibraryMerge() {
+function buildLibraryMerge() {
   const {
     basePath,
     buildPath,
@@ -165,37 +160,37 @@ test(function buildLibraryMerge() {
   assert(targetSourceFile.getNamespace("moduleD") != null);
   assert(targetSourceFile.getNamespace("moduleE") != null);
   assert(targetSourceFile.getNamespace("moduleF") != null);
-  assertEqual(targetSourceFile.getNamespaces().length, 4);
+  assert.equal(targetSourceFile.getNamespaces().length, 4);
   assert(targetSourceFile.getInterface("FooBar") != null);
-  assertEqual(targetSourceFile.getInterfaces().length, 1);
+  assert.equal(targetSourceFile.getInterfaces().length, 1);
   const variableDeclarations = targetSourceFile.getVariableDeclarations();
-  assertEqual(variableDeclarations[0].getType().getText(), `FooBar`);
-  assertEqual(variableDeclarations[1].getType().getText(), `FooBar`);
-  assertEqual(variableDeclarations[2].getType().getText(), `moduleC.Bar`);
-  assertEqual(
+  assert.equal(variableDeclarations[0].getType().getText(), `FooBar`);
+  assert.equal(variableDeclarations[1].getType().getText(), `FooBar`);
+  assert.equal(variableDeclarations[2].getType().getText(), `moduleC.Bar`);
+  assert.equal(
     variableDeclarations[3].getType().getText(),
     `typeof moduleC.qat`
   );
-  assertEqual(
+  assert.equal(
     variableDeclarations[4].getType().getText(),
     `typeof moduleE.process`
   );
-  assertEqual(
+  assert.equal(
     variableDeclarations[5].getType().getText(),
     `typeof moduleD.reprocess`
   );
-  assertEqual(
+  assert.equal(
     variableDeclarations[6].getType().getText(),
     `typeof moduleC.Bar`
   );
-  assertEqual(variableDeclarations.length, 7);
+  assert.equal(variableDeclarations.length, 7);
   const typeAliases = targetSourceFile.getTypeAliases();
-  assertEqual(typeAliases[0].getName(), "Bar");
-  assertEqual(typeAliases[0].getType().getText(), "moduleC.Bar");
-  assertEqual(typeAliases.length, 1);
-});
+  assert.equal(typeAliases[0].getName(), "Bar");
+  assert.equal(typeAliases[0].getType().getText(), "moduleC.Bar");
+  assert.equal(typeAliases.length, 1);
+}
 
-test(function testInlineFiles() {
+function testInlineFiles() {
   const {
     basePath,
     buildPath,
@@ -213,8 +208,18 @@ test(function testInlineFiles() {
   assert(targetSourceFile.getNamespace("Qat") != null);
   const qatNamespace = targetSourceFile.getNamespaceOrThrow("Qat");
   assert(qatNamespace.getClass("Foo") != null);
-});
+}
 
 // TODO author unit tests for `ast_util.ts`
 
-runTests();
+function main() {
+  console.log("ts_library_builder buildLibraryFlatten");
+  buildLibraryFlatten();
+  console.log("ts_library_builder buildLibraryMerge");
+  buildLibraryMerge();
+  console.log("ts_library_builder testInlineFiles");
+  testInlineFiles();
+  console.log("ts_library_builder ok");
+}
+
+main();
