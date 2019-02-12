@@ -265,7 +265,7 @@ export async function runTests() {
       result = red_failed();
       console.log("...", result);
       console.groupEnd();
-      console.error((e && e.stack) || e);
+      console.error(e);
       failed++;
       if (exitOnFail) {
         break;
