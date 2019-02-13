@@ -66,7 +66,7 @@ const enum FrameAllocation {
   // Placeholder value indicating the absence of an allocation.
   None = 0,
   // Alignment (in bytes) of frame offset and frame length.
-  Alignment = 8,
+  Alignment = 4,
   // Length of frame header. Note: only 4 bytes are currently used.
   HeaderByteLength = 8
 }

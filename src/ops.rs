@@ -1043,7 +1043,7 @@ fn op_cwd(
   }()))
 }
 
-fn op_stat(
+pub fn op_stat(
   state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,

@@ -40,7 +40,7 @@ impl MapOffset for FillDirection {
 struct FrameAllocation;
 #[allow(non_upper_case_globals)]
 impl FrameAllocation {
-  pub const Alignment: usize = 8;
+  pub const Alignment: usize = 4;
   pub const HeaderByteLength: usize = 8;
 }
 

@@ -8,6 +8,7 @@
 use crate::compiler::compile_sync;
 use crate::compiler::ModuleMetaData;
 use crate::deno_dir;
+use crate::ops;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::errors::RustOrJsError;
@@ -291,10 +292,33 @@ impl Isolate {
     let rx = self.ring_rx.clone();
     let tx = self.ring_tx.clone();
     let builder = thread::Builder::new().name("msg_ring_receive".to_string());
+    let state2 = self.state.clone();
     builder
       .spawn(move || loop {
         let mut rx = rx.lock().unwrap();
         let rx_msg = rx.receive();
+
+        debug!("rx_msg {}", rx_msg.len());
+
+        let control = unsafe {
+          libdeno::deno_buf::from_raw_parts(rx_msg.as_ptr(), rx_msg.len())
+        };
+        let base = msg::get_root_as_base(&control);
+        assert!(!base.sync());
+        assert_eq!(msg::Any::Stat, base.inner_type());
+        // let cmd_id = base.cmd_id();
+
+        let op = ops::op_stat(&state2, &base, libdeno::deno_buf::empty());
+
+        let task = op
+          .and_then(move |buf| {
+            //let sender = tx; // tx is moved to new thread
+            //sender.send((req_id, buf)).expect("tx.send error");
+            Ok(())
+          }).map_err(|_| ());
+        tokio::spawn(op);
+
+        // jump into pre_dispatch
 
         let mut tx = tx.lock().unwrap();
         let tx_len = rx_msg.len() + 4;

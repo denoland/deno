@@ -83,7 +83,20 @@ function sendInternal(
   msg.Base.addSync(builder, sync);
   msg.Base.addCmdId(builder, cmdId);
   builder.finish(msg.Base.endBase(builder));
-  const res = libdeno.send(builder.asUint8Array(), data);
-  builder.inUse = false;
+
+  const u8 = builder.asUint8Array();
+  console.log("sendInternal", sync, u8.byteLength, Array.from(u8));
+
+  let res;
+  if (sync) {
+    res = libdeno.send(u8, data);
+  } else {
+    res = null;
+  }
+
+  libdeno.tx.resizeSend(u8.byteLength);
+  libdeno.tx.endSend(!sync);
+
+  // builder.inUse = false;
   return [cmdId, res];
 }
