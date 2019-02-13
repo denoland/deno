@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
 // Thank you! We love Go!
@@ -118,7 +119,7 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
 
 /** Turns `r` into async iterator.
  *
- *      for await (const chunk of readerIterator(reader)) {
+ *      for await (const chunk of toAsyncIterator(reader)) {
  *          console.log(chunk)
  *      }
  */

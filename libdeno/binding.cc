@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +9,7 @@
 #include "third_party/v8/src/base/logging.h"
 
 #include "deno.h"
+#include "exceptions.h"
 #include "internal.h"
 
 #define GLOBAL_IMPORT_BUF_SIZE 1024
@@ -19,7 +20,7 @@ std::vector<InternalFieldData*> deserialized_data;
 
 void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
                                v8::StartupData payload, void* data) {
-  DCHECK_EQ(data, nullptr);
+  DCHECK_NULL(data);
   if (payload.raw_size == 0) {
     holder->SetAlignedPointerInInternalField(index, nullptr);
     return;
@@ -32,7 +33,7 @@ void DeserializeInternalFields(v8::Local<v8::Object> holder, int index,
 
 v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
                                         void* data) {
-  DCHECK_EQ(data, nullptr);
+  DCHECK_NULL(data);
   InternalFieldData* embedder_field = static_cast<InternalFieldData*>(
       holder->GetAlignedPointerFromInternalField(index));
   if (embedder_field == nullptr) return {nullptr, 0};
@@ -41,10 +42,6 @@ v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
   // We simply use memcpy to serialize the content.
   memcpy(payload, embedder_field, size);
   return {payload, size};
-}
-
-DenoIsolate* FromIsolate(v8::Isolate* isolate) {
-  return static_cast<DenoIsolate*>(isolate->GetData(0));
 }
 
 void AddDataRef(DenoIsolate* d, int32_t req_id, v8::Local<v8::Value> data_v) {
@@ -66,159 +63,71 @@ const char* ToCString(const v8::String::Utf8Value& value) {
   return *value ? *value : "<string conversion failed>";
 }
 
-static inline v8::Local<v8::String> v8_str(const char* x) {
-  return v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), x,
-                                 v8::NewStringType::kNormal)
-      .ToLocalChecked();
-}
-
-void HandleExceptionStr(v8::Local<v8::Context> context,
-                        v8::Local<v8::Value> exception,
-                        std::string* exception_str) {
-  auto* isolate = context->GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
-
-  v8::HandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context);
-
-  auto message = v8::Exception::CreateMessage(isolate, exception);
-  auto stack_trace = message->GetStackTrace();
-  auto line =
-      v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
-  auto column =
-      v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
-
-  auto global_error_handler_ = d->global_error_handler_.Get(isolate);
-
-  if (!global_error_handler_.IsEmpty()) {
-    // global_error_handler_ is set so we try to handle the exception in
-    // javascript.
-    v8::Local<v8::Value> args[5];
-    args[0] = exception->ToString(context).ToLocalChecked();
-    args[1] = message->GetScriptResourceName();
-    args[2] = line;
-    args[3] = column;
-    args[4] = exception;
-    global_error_handler_->Call(context->Global(), 5, args);
-    /* message, source, lineno, colno, error */
-
-    return;
-  }
-
-  char buf[12 * 1024];
-  if (!stack_trace.IsEmpty()) {
-    // No javascript error handler, but we do have a stack trace. Format it
-    // into a string and add to last_exception_.
-    std::string msg;
-    v8::String::Utf8Value exceptionStr(isolate, exception);
-    msg += ToCString(exceptionStr);
-    msg += "\n";
-
-    for (int i = 0; i < stack_trace->GetFrameCount(); ++i) {
-      auto frame = stack_trace->GetFrame(isolate, i);
-      v8::String::Utf8Value script_name(isolate, frame->GetScriptName());
-      int l = frame->GetLineNumber();
-      int c = frame->GetColumn();
-      snprintf(buf, sizeof(buf), "%s %d:%d\n", ToCString(script_name), l, c);
-      msg += buf;
-    }
-    *exception_str += msg;
-  } else {
-    // No javascript error handler, no stack trace. Format the little info we
-    // have into a string and add to last_exception_.
-    v8::String::Utf8Value exceptionStr(isolate, exception);
-    v8::String::Utf8Value script_name(isolate,
-                                      message->GetScriptResourceName());
-    v8::String::Utf8Value line_str(isolate, line);
-    v8::String::Utf8Value col_str(isolate, column);
-    snprintf(buf, sizeof(buf), "%s\n%s %s:%s\n", ToCString(exceptionStr),
-             ToCString(script_name), ToCString(line_str), ToCString(col_str));
-    *exception_str += buf;
-  }
-}
-
-void HandleException(v8::Local<v8::Context> context,
-                     v8::Local<v8::Value> exception) {
-  v8::Isolate* isolate = context->GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
-  std::string exception_str;
-  HandleExceptionStr(context, exception, &exception_str);
-  if (d != nullptr) {
-    d->last_exception_ = exception_str;
-  } else {
-    std::cerr << "Pre-Deno Exception " << exception_str << std::endl;
-    exit(1);
-  }
-}
-
-const char* PromiseRejectStr(enum v8::PromiseRejectEvent e) {
-  switch (e) {
-    case v8::PromiseRejectEvent::kPromiseRejectWithNoHandler:
-      return "RejectWithNoHandler";
-    case v8::PromiseRejectEvent::kPromiseHandlerAddedAfterReject:
-      return "HandlerAddedAfterReject";
-    case v8::PromiseRejectEvent::kPromiseResolveAfterResolved:
-      return "ResolveAfterResolved";
-    case v8::PromiseRejectEvent::kPromiseRejectAfterResolved:
-      return "RejectAfterResolved";
-  }
-}
-
 void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
   auto* isolate = v8::Isolate::GetCurrent();
   DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
   DCHECK_EQ(d->isolate_, isolate);
   v8::HandleScope handle_scope(d->isolate_);
-  auto exception = promise_reject_message.GetValue();
+  auto error = promise_reject_message.GetValue();
   auto context = d->context_.Get(d->isolate_);
   auto promise = promise_reject_message.GetPromise();
-  auto event = promise_reject_message.GetEvent();
 
   v8::Context::Scope context_scope(context);
-  auto promise_reject_handler = d->promise_reject_handler_.Get(isolate);
 
-  if (!promise_reject_handler.IsEmpty()) {
-    v8::Local<v8::Value> args[3];
-    args[1] = v8_str(PromiseRejectStr(event));
-    args[2] = promise;
-    /* error, event, promise */
-    if (event == v8::PromiseRejectEvent::kPromiseRejectWithNoHandler) {
-      d->pending_promise_events_++;
-      // exception only valid for kPromiseRejectWithNoHandler
-      args[0] = exception;
-    } else if (event ==
-               v8::PromiseRejectEvent::kPromiseHandlerAddedAfterReject) {
-      d->pending_promise_events_--;  // unhandled event cancelled
-      if (d->pending_promise_events_ < 0) {
-        d->pending_promise_events_ = 0;
-      }
-      // Placeholder, not actually used
-      args[0] = v8_str("Promise handler added");
-    } else if (event == v8::PromiseRejectEvent::kPromiseResolveAfterResolved) {
-      d->pending_promise_events_++;
-      args[0] = v8_str("Promise resolved after resolved");
-    } else if (event == v8::PromiseRejectEvent::kPromiseRejectAfterResolved) {
-      d->pending_promise_events_++;
-      args[0] = v8_str("Promise rejected after resolved");
-    }
-    promise_reject_handler->Call(context->Global(), 3, args);
-    return;
+  int promise_id = promise->GetIdentityHash();
+  switch (promise_reject_message.GetEvent()) {
+    case v8::kPromiseRejectWithNoHandler:
+      // Insert the error into the pending_promise_map_ using the promise's id
+      // as the key.
+      d->pending_promise_map_.emplace(std::piecewise_construct,
+                                      std::make_tuple(promise_id),
+                                      std::make_tuple(d->isolate_, error));
+      break;
+
+    case v8::kPromiseHandlerAddedAfterReject:
+      d->pending_promise_map_.erase(promise_id);
+      break;
+
+    case v8::kPromiseRejectAfterResolved:
+      break;
+
+    case v8::kPromiseResolveAfterResolved:
+      // Should not warn. See #1272
+      break;
+
+    default:
+      CHECK(false && "unreachable");
   }
 }
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   CHECK_GE(args.Length(), 1);
-  CHECK_LE(args.Length(), 2);
+  CHECK_LE(args.Length(), 3);
   auto* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   auto context = d->context_.Get(d->isolate_);
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value str(isolate, args[0]);
   bool is_err =
       args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
-  const char* cstr = ToCString(str);
-  auto& stream = is_err ? std::cerr : std::cout;
-  stream << cstr << std::endl;
+  bool prints_newline =
+      args.Length() >= 3 ? args[2]->BooleanValue(context).ToChecked() : true;
+  FILE* file = is_err ? stderr : stdout;
+  fwrite(*str, sizeof(**str), str.length(), file);
+  if (prints_newline) {
+    fprintf(file, "\n");
+  }
+  fflush(file);
+}
+
+void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  CHECK_EQ(args.Length(), 1);
+  auto* isolate = args.GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  auto context = d->context_.Get(d->isolate_);
+  v8::HandleScope handle_scope(isolate);
+  auto json_string = EncodeExceptionAsJSON(context, args[0]);
+  args.GetReturnValue().Set(v8_str(json_string.c_str()));
 }
 
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
@@ -240,7 +149,7 @@ v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
       // Fast case. We reuse the global ArrayBuffer.
       if (d->global_import_buf_.IsEmpty()) {
         // Lazily initialize it.
-        DCHECK_EQ(d->global_import_buf_ptr_, nullptr);
+        DCHECK_NULL(d->global_import_buf_ptr_);
         ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
         d->global_import_buf_.Reset(d->isolate_, ab);
         d->global_import_buf_ptr_ = ab->GetContents().Data();
@@ -278,7 +187,7 @@ static deno_buf GetContents(v8::Isolate* isolate,
 // Sets the recv_ callback.
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
 
   v8::HandleScope handle_scope(isolate);
@@ -297,13 +206,13 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
 
   v8::Locker locker(d->isolate_);
-  v8::EscapableHandleScope handle_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
 
-  CHECK_EQ(d->current_args_, nullptr);  // libdeno.send re-entry forbidden.
+  CHECK_NULL(d->current_args_);  // libdeno.send re-entry forbidden.
   int32_t req_id = d->next_req_id_++;
 
   v8::Local<v8::Value> control_v = args[0];
@@ -321,10 +230,10 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
     CHECK_EQ(args.Length(), 1);
   }
 
-  DCHECK_EQ(d->current_args_, nullptr);
+  DCHECK_NULL(d->current_args_);
   d->current_args_ = &args;
 
-  d->cb_(d->user_data_, req_id, control, data);
+  d->recv_cb_(d->user_data_, req_id, control, data);
 
   if (d->current_args_ == nullptr) {
     // This indicates that deno_repond() was called already.
@@ -339,101 +248,114 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
+v8::Local<v8::Object> DenoIsolate::GetBuiltinModules() {
+  v8::EscapableHandleScope handle_scope(isolate_);
+  if (builtin_modules_.IsEmpty()) {
+    builtin_modules_.Reset(isolate_, v8::Object::New(isolate_));
+  }
+  return handle_scope.Escape(builtin_modules_.Get(isolate_));
+}
+
+v8::ScriptOrigin ModuleOrigin(v8::Isolate* isolate,
+                              v8::Local<v8::Value> resource_name) {
+  return v8::ScriptOrigin(resource_name, v8::Local<v8::Integer>(),
+                          v8::Local<v8::Integer>(), v8::Local<v8::Boolean>(),
+                          v8::Local<v8::Integer>(), v8::Local<v8::Value>(),
+                          v8::Local<v8::Boolean>(), v8::Local<v8::Boolean>(),
+                          v8::True(isolate));
+}
+
+deno_mod DenoIsolate::RegisterModule(const char* name, const char* source) {
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::Locker locker(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::Local<v8::String> name_str = v8_str(name);
+  v8::Local<v8::String> source_str = v8_str(source);
+
+  auto origin = ModuleOrigin(isolate_, name_str);
+  v8::ScriptCompiler::Source source_(source_str, origin);
+
+  v8::TryCatch try_catch(isolate_);
+
+  auto maybe_module = v8::ScriptCompiler::CompileModule(isolate_, &source_);
+
+  if (try_catch.HasCaught()) {
+    CHECK(maybe_module.IsEmpty());
+    HandleException(context, try_catch.Exception());
+    return 0;
+  }
+
+  auto module = maybe_module.ToLocalChecked();
+
+  int id = module->GetIdentityHash();
+
+  std::vector<std::string> import_specifiers;
+
+  for (int i = 0; i < module->GetModuleRequestsLength(); ++i) {
+    v8::Local<v8::String> specifier = module->GetModuleRequest(i);
+    v8::String::Utf8Value specifier_utf8(isolate_, specifier);
+    import_specifiers.push_back(*specifier_utf8);
+  }
+
+  mods_.emplace(std::piecewise_construct, std::make_tuple(id),
+                std::make_tuple(isolate_, module, name, import_specifiers));
+  mods_by_name_[name] = id;
+
+  return id;
+}
+
+void BuiltinModules(v8::Local<v8::Name> property,
+                    const v8::PropertyCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  DCHECK_EQ(d->isolate_, isolate);
+  v8::Locker locker(d->isolate_);
+  info.GetReturnValue().Set(d->GetBuiltinModules());
+}
+
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
   v8::Locker locker(d->isolate_);
   v8::EscapableHandleScope handle_scope(isolate);
   if (d->shared_.data_ptr == nullptr) {
     return;
   }
-  v8::Local<v8::ArrayBuffer> ab;
+  v8::Local<v8::SharedArrayBuffer> ab;
   if (d->shared_ab_.IsEmpty()) {
     // Lazily initialize the persistent external ArrayBuffer.
-    ab = v8::ArrayBuffer::New(isolate, d->shared_.data_ptr, d->shared_.data_len,
-                              v8::ArrayBufferCreationMode::kExternalized);
+    ab = v8::SharedArrayBuffer::New(isolate, d->shared_.data_ptr,
+                                    d->shared_.data_len,
+                                    v8::ArrayBufferCreationMode::kExternalized);
     d->shared_ab_.Reset(isolate, ab);
   }
-  info.GetReturnValue().Set(ab);
+  info.GetReturnValue().Set(d->shared_ab_);
 }
 
-// Sets the global error handler.
-void SetGlobalErrorHandler(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  v8::Isolate* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
-  DCHECK_EQ(d->isolate_, isolate);
-
-  v8::HandleScope handle_scope(isolate);
-
-  if (!d->global_error_handler_.IsEmpty()) {
-    isolate->ThrowException(
-        v8_str("libdeno.setGlobalErrorHandler already called."));
-    return;
+void DenoIsolate::ClearModules() {
+  for (auto it = mods_.begin(); it != mods_.end(); it++) {
+    it->second.handle.Reset();
   }
-
-  v8::Local<v8::Value> v = args[0];
-  CHECK(v->IsFunction());
-  v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
-
-  d->global_error_handler_.Reset(isolate, func);
+  mods_.clear();
+  mods_by_name_.clear();
 }
 
-// Sets the promise uncaught reject handler
-void SetPromiseRejectHandler(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  v8::Isolate* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
-  DCHECK_EQ(d->isolate_, isolate);
-
-  v8::HandleScope handle_scope(isolate);
-
-  if (!d->promise_reject_handler_.IsEmpty()) {
-    isolate->ThrowException(
-        v8_str("libdeno.setPromiseRejectHandler already called."));
-    return;
-  }
-
-  v8::Local<v8::Value> v = args[0];
-  CHECK(v->IsFunction());
-  v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
-
-  d->promise_reject_handler_.Reset(isolate, func);
-}
-
-// Sets the promise uncaught reject handler
-void SetPromiseErrorExaminer(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  v8::Isolate* isolate = args.GetIsolate();
-  DenoIsolate* d = FromIsolate(isolate);
-  DCHECK_EQ(d->isolate_, isolate);
-
-  v8::HandleScope handle_scope(isolate);
-
-  if (!d->promise_error_examiner_.IsEmpty()) {
-    isolate->ThrowException(
-        v8_str("libdeno.setPromiseErrorExaminer already called."));
-    return;
-  }
-
-  v8::Local<v8::Value> v = args[0];
-  CHECK(v->IsFunction());
-  v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
-
-  d->promise_error_examiner_.Reset(isolate, func);
-}
-
-bool ExecuteV8StringSource(v8::Local<v8::Context> context,
-                           const char* js_filename,
-                           v8::Local<v8::String> source) {
+bool Execute(v8::Local<v8::Context> context, const char* js_filename,
+             const char* js_source) {
   auto* isolate = context->GetIsolate();
   v8::Isolate::Scope isolate_scope(isolate);
   v8::HandleScope handle_scope(isolate);
-
   v8::Context::Scope context_scope(context);
 
-  v8::TryCatch try_catch(isolate);
-
+  auto source = v8_str(js_source);
   auto name = v8_str(js_filename);
+
+  v8::TryCatch try_catch(isolate);
 
   v8::ScriptOrigin origin(name);
 
@@ -456,20 +378,81 @@ bool ExecuteV8StringSource(v8::Local<v8::Context> context,
   return true;
 }
 
-bool Execute(v8::Local<v8::Context> context, const char* js_filename,
-             const char* js_source) {
-  auto* isolate = context->GetIsolate();
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  auto source = v8_str(js_source);
-  return ExecuteV8StringSource(context, js_filename, source);
+static inline v8::Local<v8::Boolean> v8_bool(bool v) {
+  return v8::Boolean::New(v8::Isolate::GetCurrent(), v);
 }
 
-void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                       const char* js_filename, const char* js_source,
-                       const char* source_map) {
-  CHECK_NE(js_source, nullptr);
-  CHECK_NE(js_filename, nullptr);
+void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  v8::EscapableHandleScope handleScope(isolate);
+  auto context = d->context_.Get(isolate);
+  v8::Context::Scope context_scope(context);
+
+  CHECK(args[0]->IsString());
+  auto source = args[0].As<v8::String>();
+
+  auto output = v8::Array::New(isolate, 2);
+  /**
+   * output[0] = result
+   * output[1] = ErrorInfo | null
+   *   ErrorInfo = {
+   *     thrown: Error | any,
+   *     isNativeError: boolean,
+   *     isCompileError: boolean,
+   *   }
+   */
+
+  v8::TryCatch try_catch(isolate);
+
+  auto name = v8_str("<unknown>");
+  v8::ScriptOrigin origin(name);
+  auto script = v8::Script::Compile(context, source, &origin);
+
+  if (script.IsEmpty()) {
+    DCHECK(try_catch.HasCaught());
+    auto exception = try_catch.Exception();
+
+    output->Set(0, v8::Null(isolate));
+
+    auto errinfo_obj = v8::Object::New(isolate);
+    errinfo_obj->Set(v8_str("isCompileError"), v8_bool(true));
+    errinfo_obj->Set(v8_str("isNativeError"),
+                     v8_bool(exception->IsNativeError()));
+    errinfo_obj->Set(v8_str("thrown"), exception);
+
+    output->Set(1, errinfo_obj);
+
+    args.GetReturnValue().Set(output);
+    return;
+  }
+
+  auto result = script.ToLocalChecked()->Run(context);
+
+  if (result.IsEmpty()) {
+    DCHECK(try_catch.HasCaught());
+    auto exception = try_catch.Exception();
+
+    output->Set(0, v8::Null(isolate));
+
+    auto errinfo_obj = v8::Object::New(isolate);
+    errinfo_obj->Set(v8_str("isCompileError"), v8_bool(false));
+    errinfo_obj->Set(v8_str("isNativeError"),
+                     v8_bool(exception->IsNativeError()));
+    errinfo_obj->Set(v8_str("thrown"), exception);
+
+    output->Set(1, errinfo_obj);
+
+    args.GetReturnValue().Set(output);
+    return;
+  }
+
+  output->Set(0, result.ToLocalChecked());
+  output->Set(1, v8::Null(isolate));
+  args.GetReturnValue().Set(output);
+}
+
+void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
 
@@ -490,80 +473,65 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context,
   auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
 
+  auto eval_context_tmpl = v8::FunctionTemplate::New(isolate, EvalContext);
+  auto eval_context_val =
+      eval_context_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("evalContext"), eval_context_val)
+            .FromJust());
+
+  auto error_to_json_tmpl = v8::FunctionTemplate::New(isolate, ErrorToJSON);
+  auto error_to_json_val =
+      error_to_json_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("errorToJSON"), error_to_json_val)
+            .FromJust());
+
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
 
-  auto set_global_error_handler_tmpl =
-      v8::FunctionTemplate::New(isolate, SetGlobalErrorHandler);
-  auto set_global_error_handler_val =
-      set_global_error_handler_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val
-            ->Set(context, deno::v8_str("setGlobalErrorHandler"),
-                  set_global_error_handler_val)
-            .FromJust());
+  CHECK(
+      deno_val
+          ->SetAccessor(context, deno::v8_str("builtinModules"), BuiltinModules)
+          .FromJust());
+}
 
-  auto set_promise_reject_handler_tmpl =
-      v8::FunctionTemplate::New(isolate, SetPromiseRejectHandler);
-  auto set_promise_reject_handler_val =
-      set_promise_reject_handler_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val
-            ->Set(context, deno::v8_str("setPromiseRejectHandler"),
-                  set_promise_reject_handler_val)
-            .FromJust());
+void MessageCallback(v8::Local<v8::Message> message,
+                     v8::Local<v8::Value> data) {
+  auto* isolate = message->GetIsolate();
+  DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
 
-  auto set_promise_error_examiner_tmpl =
-      v8::FunctionTemplate::New(isolate, SetPromiseErrorExaminer);
-  auto set_promise_error_examiner_val =
-      set_promise_error_examiner_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val
-            ->Set(context, deno::v8_str("setPromiseErrorExaminer"),
-                  set_promise_error_examiner_val)
-            .FromJust());
+  v8::HandleScope handle_scope(isolate);
+  auto context = d->context_.Get(isolate);
+  HandleExceptionMessage(context, message);
+}
 
-  {
-    if (source_map != nullptr) {
-      v8::TryCatch try_catch(isolate);
-      v8::ScriptOrigin origin(v8_str("set_source_map.js"));
-      std::string source_map_parens =
-          std::string("(") + std::string(source_map) + std::string(")");
-      auto source_map_v8_str = deno::v8_str(source_map_parens.c_str());
-      auto script = v8::Script::Compile(context, source_map_v8_str, &origin);
-      if (script.IsEmpty()) {
-        DCHECK(try_catch.HasCaught());
-        HandleException(context, try_catch.Exception());
-        return;
-      }
-      auto source_map_obj = script.ToLocalChecked()->Run(context);
-      if (source_map_obj.IsEmpty()) {
-        DCHECK(try_catch.HasCaught());
-        HandleException(context, try_catch.Exception());
-        return;
-      }
-      CHECK(deno_val
-                ->Set(context, deno::v8_str("mainSourceMap"),
-                      source_map_obj.ToLocalChecked())
-                .FromJust());
-    }
+void HostInitializeImportMetaObjectCallback(v8::Local<v8::Context> context,
+                                            v8::Local<v8::Module> module,
+                                            v8::Local<v8::Object> meta) {
+  auto* isolate = context->GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
 
-    auto source = deno::v8_str(js_source);
-    CHECK(
-        deno_val->Set(context, deno::v8_str("mainSource"), source).FromJust());
+  CHECK(!module.IsEmpty());
 
-    bool r = deno::ExecuteV8StringSource(context, js_filename, source);
-    CHECK(r);
-  }
+  deno_mod id = module->GetIdentityHash();
+  CHECK_NE(id, 0);
+
+  auto* info = d->GetModuleInfo(id);
+
+  const char* url = info->name.c_str();
+
+  meta->CreateDataProperty(context, v8_str("url"), v8_str(url)).ToChecked();
 }
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
   isolate_ = isolate;
-  // Leaving this code here because it will probably be useful later on, but
-  // disabling it now as I haven't got tests for the desired behavior.
-  // d->isolate->SetCaptureStackTraceForUncaughtExceptions(true);
-  // d->isolate->SetAbortOnUncaughtExceptionCallback(AbortOnUncaughtExceptionCallback);
-  // d->isolate->AddMessageListener(MessageCallback2);
-  // d->isolate->SetFatalErrorHandler(FatalErrorCallback2);
+  isolate_->SetCaptureStackTraceForUncaughtExceptions(
+      true, 10, v8::StackTrace::kDetailed);
   isolate_->SetPromiseRejectCallback(deno::PromiseRejectCallback);
   isolate_->SetData(0, this);
+  isolate_->AddMessageListener(MessageCallback);
+  isolate->SetHostInitializeImportMetaObjectCallback(
+      HostInitializeImportMetaObjectCallback);
 }
 
 }  // namespace deno

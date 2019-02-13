@@ -1,0 +1,16 @@
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 2
+charset = utf-8
+trim_trailing_whitespace = true
+
+[*.out] # make editor neutral to .out files
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+[*.py]
+indent_size = 4

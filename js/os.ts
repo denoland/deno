@@ -1,17 +1,45 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
+import { handleAsyncMsgFromRust, sendSync } from "./dispatch";
+import * as flatbuffers from "./flatbuffers";
+import { libdeno } from "./libdeno";
 import { assert } from "./util";
 import * as util from "./util";
-import * as flatbuffers from "./flatbuffers";
-import { sendSync } from "./dispatch";
+
+/** The current process id of the runtime. */
+export let pid: number;
+
+/** Reflects the NO_COLOR environment variable: https://no-color.org/ */
+export let noColor: boolean;
+
+/** @internal */
+export function setGlobals(pid_: number, noColor_: boolean): void {
+  assert(!pid);
+  pid = pid_;
+  noColor = noColor_;
+}
 
 interface CodeInfo {
   moduleName: string | undefined;
   filename: string | undefined;
   mediaType: msg.MediaType;
   sourceCode: string | undefined;
-  outputCode: string | undefined;
-  sourceMap: string | undefined;
+}
+
+/** Check if running in terminal.
+ *
+ *       console.log(Deno.isTTY().stdout);
+ */
+export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
+  const builder = flatbuffers.createBuilder();
+  msg.IsTTY.startIsTTY(builder);
+  const inner = msg.IsTTY.endIsTTY(builder);
+  const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
+  assert(msg.Any.IsTTYRes === baseRes.innerType());
+  const res = new msg.IsTTYRes();
+  assert(baseRes.inner(res) != null);
+
+  return { stdin: res.stdin(), stdout: res.stdout(), stderr: res.stderr() };
 }
 
 /** Exit the Deno process with optional exit code. */
@@ -25,18 +53,15 @@ export function exit(exitCode = 0): never {
 }
 
 // @internal
-export function codeFetch(
-  moduleSpecifier: string,
-  containingFile: string
-): CodeInfo {
-  util.log("os.ts codeFetch", moduleSpecifier, containingFile);
+export function codeFetch(specifier: string, referrer: string): CodeInfo {
+  util.log("os.codeFetch", { specifier, referrer });
   // Send CodeFetch message
   const builder = flatbuffers.createBuilder();
-  const moduleSpecifier_ = builder.createString(moduleSpecifier);
-  const containingFile_ = builder.createString(containingFile);
+  const specifier_ = builder.createString(specifier);
+  const referrer_ = builder.createString(referrer);
   msg.CodeFetch.startCodeFetch(builder);
-  msg.CodeFetch.addModuleSpecifier(builder, moduleSpecifier_);
-  msg.CodeFetch.addContainingFile(builder, containingFile_);
+  msg.CodeFetch.addSpecifier(builder, specifier_);
+  msg.CodeFetch.addReferrer(builder, referrer_);
   const inner = msg.CodeFetch.endCodeFetch(builder);
   const baseRes = sendSync(builder, msg.Any.CodeFetch, inner);
   assert(baseRes != null);
@@ -52,9 +77,7 @@ export function codeFetch(
     moduleName: codeFetchRes.moduleName() || undefined,
     filename: codeFetchRes.filename() || undefined,
     mediaType: codeFetchRes.mediaType(),
-    sourceCode: codeFetchRes.sourceCode() || undefined,
-    outputCode: codeFetchRes.outputCode() || undefined,
-    sourceMap: codeFetchRes.sourceMap() || undefined
+    sourceCode: codeFetchRes.sourceCode() || undefined
   };
 }
 
@@ -65,7 +88,12 @@ export function codeCache(
   outputCode: string,
   sourceMap: string
 ): void {
-  util.log("os.ts codeCache", filename, sourceCode, outputCode);
+  util.log("os.codeCache", {
+    filename,
+    sourceCodeLength: sourceCode.length,
+    outputCodeLength: outputCode.length,
+    sourceMapLength: sourceMap.length
+  });
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
   const sourceCode_ = builder.createString(sourceCode);
@@ -90,8 +118,8 @@ function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
   }
 
   return new Proxy(env, {
-    set(obj, prop: string, value: string | number) {
-      setEnv(prop, value.toString());
+    set(obj, prop: string, value: string) {
+      setEnv(prop, value);
       return Reflect.set(obj, prop, value);
     }
   });
@@ -110,15 +138,13 @@ function setEnv(key: string, value: string): void {
 
 /** Returns a snapshot of the environment variables at invocation. Mutating a
  * property in the object will set that variable in the environment for
- * the process. The environment object will only accept `string`s or `number`s
+ * the process. The environment object will only accept `string`s
  * as values.
  *
- *       import { env } from "deno";
- *
- *       const myEnv = env();
+ *       const myEnv = Deno.env();
  *       console.log(myEnv.SHELL);
  *       myEnv.TEST_VAR = "HELLO";
- *       const newEnv = env();
+ *       const newEnv = Deno.env();
  *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
 export function env(): { [index: string]: string } {
@@ -136,4 +162,35 @@ export function env(): { [index: string]: string } {
   assert(baseRes.inner(res) != null);
   // TypeScript cannot track assertion above, therefore not null assertion
   return createEnv(res);
+}
+
+/** Send to the privileged side that we have setup and are ready. */
+function sendStart(): msg.StartRes {
+  const builder = flatbuffers.createBuilder();
+  msg.Start.startStart(builder);
+  const startOffset = msg.Start.endStart(builder);
+  const baseRes = sendSync(builder, msg.Any.Start, startOffset);
+  assert(baseRes != null);
+  assert(msg.Any.StartRes === baseRes!.innerType());
+  const startResMsg = new msg.StartRes();
+  assert(baseRes!.inner(startResMsg) != null);
+  return startResMsg;
+}
+
+// This function bootstraps an environment within Deno, it is shared both by
+// the runtime and the compiler environments.
+// @internal
+export function start(source?: string): msg.StartRes {
+  libdeno.recv(handleAsyncMsgFromRust);
+
+  // First we send an empty `Start` message to let the privileged side know we
+  // are ready. The response should be a `StartRes` message containing the CLI
+  // args and other info.
+  const startResMsg = sendStart();
+
+  util.setLogDebug(startResMsg.debugFlag(), source);
+
+  setGlobals(startResMsg.pid(), startResMsg.noColor());
+
+  return startResMsg;
 }

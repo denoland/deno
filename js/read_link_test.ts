@@ -1,44 +1,67 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEqual } from "./test_util.ts";
-import * as deno from "deno";
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { testPerm, assert, assertEqual } from "./test_util.ts";
 
-testPerm({ write: true }, function readlinkSyncSuccess() {
-  const testDir = deno.makeTempDirSync() + "/test-readlink-sync";
+testPerm({ write: true, read: true }, function readlinkSyncSuccess() {
+  const testDir = Deno.makeTempDirSync();
   const target = testDir + "/target";
   const symlink = testDir + "/symln";
-  deno.mkdirSync(target);
+  Deno.mkdirSync(target);
   // TODO Add test for Windows once symlink is implemented for Windows.
   // See https://github.com/denoland/deno/issues/815.
-  if (deno.platform.os !== "win") {
-    deno.symlinkSync(target, symlink);
-    const targetPath = deno.readlinkSync(symlink);
+  if (Deno.platform.os !== "win") {
+    Deno.symlinkSync(target, symlink);
+    const targetPath = Deno.readlinkSync(symlink);
     assertEqual(targetPath, target);
   }
 });
 
-test(function readlinkSyncNotFound() {
+testPerm({ read: false }, async function readlinkSyncPerm() {
+  let caughtError = false;
+  try {
+    Deno.readlinkSync("/symlink");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+testPerm({ read: true }, function readlinkSyncNotFound() {
   let caughtError = false;
   let data;
   try {
-    data = deno.readlinkSync("bad_filename");
+    data = Deno.readlinkSync("bad_filename");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, deno.ErrorKind.NotFound);
+    assertEqual(e.kind, Deno.ErrorKind.NotFound);
   }
   assert(caughtError);
   assertEqual(data, undefined);
 });
 
-testPerm({ write: true }, async function readlinkSuccess() {
-  const testDir = deno.makeTempDirSync() + "/test-readlink";
+testPerm({ write: true, read: true }, async function readlinkSuccess() {
+  const testDir = Deno.makeTempDirSync();
   const target = testDir + "/target";
   const symlink = testDir + "/symln";
-  deno.mkdirSync(target);
+  Deno.mkdirSync(target);
   // TODO Add test for Windows once symlink is implemented for Windows.
   // See https://github.com/denoland/deno/issues/815.
-  if (deno.platform.os !== "win") {
-    deno.symlinkSync(target, symlink);
-    const targetPath = await deno.readlink(symlink);
+  if (Deno.platform.os !== "win") {
+    Deno.symlinkSync(target, symlink);
+    const targetPath = await Deno.readlink(symlink);
     assertEqual(targetPath, target);
   }
+});
+
+testPerm({ read: false }, async function readlinkPerm() {
+  let caughtError = false;
+  try {
+    await Deno.readlink("/symlink");
+  } catch (e) {
+    caughtError = true;
+    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEqual(e.name, "PermissionDenied");
+  }
+  assert(caughtError);
 });

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # Many tests expect there to be an http server on port 4545 servering the deno
 # root directory.
 import os
@@ -15,6 +15,48 @@ REDIRECT_PORT = 4546
 
 
 class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if "multipart_form_data.txt" in self.path:
+            self.protocol_version = 'HTTP/1.1'
+            self.send_response(200, 'OK')
+            self.send_header('Content-type',
+                             'multipart/form-data;boundary=boundary')
+            self.end_headers()
+            self.wfile.write(
+                bytes('Preamble\r\n'
+                      '--boundary\t \r\n'
+                      'Content-Disposition: form-data; name="field_1"\r\n'
+                      '\r\n'
+                      'value_1 \r\n'
+                      '\r\n--boundary\r\n'
+                      'Content-Disposition: form-data; name="field_2"; '
+                      'filename="file.js"\r\n'
+                      'Content-Type: text/javascript\r\n'
+                      '\r\n'
+                      'console.log("Hi")'
+                      '\r\n--boundary--\r\n'
+                      'Epilogue'))
+            return
+        return SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
+
+    def do_POST(self):
+        # Simple echo server for request reflection
+        if "echo_server" in self.path:
+            self.protocol_version = 'HTTP/1.1'
+            self.send_response(200, 'OK')
+            if self.headers.has_key('content-type'):
+                self.send_header('content-type',
+                                 self.headers.getheader('content-type'))
+            self.end_headers()
+            data_string = self.rfile.read(int(self.headers['Content-Length']))
+            self.wfile.write(bytes(data_string))
+            return
+        self.protocol_version = 'HTTP/1.1'
+        self.send_response(501)
+        self.send_header('content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(bytes('Server does not support this operation'))
+
     def guess_type(self, path):
         if ".t1." in path:
             return "text/typescript"
@@ -32,6 +74,14 @@ class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             return "text/ecmascript"
         if ".j4." in path:
             return "application/x-javascript"
+        if "form_urlencoded" in path:
+            return "application/x-www-form-urlencoded"
+        if "no_ext" in path:
+            return "text/typescript"
+        if "unknown_ext" in path:
+            return "text/typescript"
+        if "mismatch_ext" in path:
+            return "text/javascript"
         return SimpleHTTPServer.SimpleHTTPRequestHandler.guess_type(self, path)
 
 

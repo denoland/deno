@@ -1,19 +1,10 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+// How much to multiply time values in order to process log graphs properly.
+const TimeScaleFactor = 10000;
 
 export async function getJson(path) {
   return (await fetch(path)).json();
-}
-
-export async function getTravisData(
-  url = "https://api.travis-ci.com/repos/denoland/deno/builds?event_type=pull_request"
-) {
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.travis-ci.2.1+json"
-    }
-  });
-  const data = await res.json();
-  return data.builds.reverse();
 }
 
 function getBenchmarkVarieties(data, benchmarkName) {
@@ -105,16 +96,12 @@ export function createSyscallCountColumns(data) {
   ]);
 }
 
-function createTravisCompileTimeColumns(data) {
-  return [["duration_time", ...data.map(d => d.duration)]];
-}
-
 export function createSha1List(data) {
   return data.map(d => d.sha1);
 }
 
 export function formatMB(bytes) {
-  return Math.round(bytes / (1024 * 1024));
+  return (bytes / (1024 * 1024)).toFixed(2);
 }
 
 export function formatReqSec(reqPerSec) {
@@ -146,16 +133,22 @@ function generate(
     yAxis.tick = {
       format: yTickFormat
     };
+    if (yTickFormat == logScale) {
+      delete yAxis.min;
+      for (let col of columns) {
+        for (let i = 1; i < col.length; i++) {
+          if (col[i] == null) {
+            continue;
+          }
+          col[i] = Math.log10(col[i] * TimeScaleFactor);
+        }
+      }
+    }
   }
 
   // @ts-ignore
   c3.generate({
     bindto: id,
-    size: {
-      height: 300,
-      // @ts-ignore
-      width: window.chartWidth || 375 // TODO: do not use global variable
-    },
     data: {
       columns,
       onclick
@@ -169,6 +162,10 @@ function generate(
       y: yAxis
     }
   });
+}
+
+function logScale(t) {
+  return (Math.pow(10, t) / TimeScaleFactor).toFixed(4);
 }
 
 function formatSecsAsMins(t) {
@@ -190,7 +187,6 @@ export function drawCharts(dataUrl) {
     dataUrl = "https://denoland.github.io/deno/" + dataUrl;
   }
   drawChartsFromBenchmarkData(dataUrl);
-  drawChartsFromTravisData();
 }
 
 /**
@@ -226,35 +222,10 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
     );
   }
 
-  gen("#exec-time-chart", execTimeColumns, "seconds");
-  gen("#throughput-chart", throughputColumns, "seconds");
+  gen("#exec-time-chart", execTimeColumns, "seconds", logScale);
+  gen("#throughput-chart", throughputColumns, "seconds", logScale);
   gen("#req-per-sec-chart", reqPerSecColumns, "1000 req/sec", formatReqSec);
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");
-}
-
-/**
- * Draws the charts from travis' API data.
- */
-export async function drawChartsFromTravisData() {
-  const viewPullRequestOnClick = _prNumberList => d => {
-    // @ts-ignore
-    window.open(
-      `https://github.com/denoland/deno/pull/${_prNumberList[d["index"]]}`
-    );
-  };
-
-  const travisData = (await getTravisData()).filter(d => d.duration > 0);
-  const travisCompileTimeColumns = createTravisCompileTimeColumns(travisData);
-  const prNumberList = travisData.map(d => d.pull_request_number);
-
-  generate(
-    "#travis-compile-time-chart",
-    prNumberList,
-    travisCompileTimeColumns,
-    viewPullRequestOnClick(prNumberList),
-    "minutes",
-    formatSecsAsMins
-  );
 }

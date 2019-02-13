@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { relative } from "path";
 import { readFileSync } from "fs";
 import { EOL } from "os";
@@ -240,6 +241,32 @@ export function getSourceComment(
   rootPath: string
 ): string {
   return `\n// @url ${relative(rootPath, sourceFile.getFilePath())}\n\n`;
+}
+
+interface InlineFilesOptions {
+  basePath: string;
+  debug?: boolean;
+  inline: string[];
+  targetSourceFile: SourceFile;
+}
+
+/** Inline files into the target source file. */
+export function inlineFiles({
+  basePath,
+  debug,
+  inline,
+  targetSourceFile
+}: InlineFilesOptions) {
+  for (const filename of inline) {
+    const text = readFileSync(filename, {
+      encoding: "utf8"
+    });
+    targetSourceFile.addStatements(
+      debug
+        ? `\n// @url ${relative(basePath, filename)}\n\n${text}`
+        : `\n${text}`
+    );
+  }
 }
 
 /**

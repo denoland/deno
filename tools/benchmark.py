@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from
 # gh-pages branch.
@@ -16,6 +16,7 @@ import tempfile
 import http_server
 import throughput_benchmark
 from http_benchmark import http_benchmark
+import prebuilt
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -56,13 +57,24 @@ def import_data_from_gh_pages():
 
 def get_binary_sizes(build_dir):
     path_dict = {
-        "deno": os.path.join(build_dir, "deno" + executable_suffix),
-        "main.js": os.path.join(build_dir, "gen/bundle/main.js"),
-        "main.js.map": os.path.join(build_dir, "gen/bundle/main.js.map"),
-        "snapshot_deno.bin": os.path.join(build_dir, "gen/snapshot_deno.bin")
+        "deno":
+        os.path.join(build_dir, "deno" + executable_suffix),
+        "main.js":
+        os.path.join(build_dir, "gen/bundle/main.js"),
+        "main.js.map":
+        os.path.join(build_dir, "gen/bundle/main.js.map"),
+        "compiler.js":
+        os.path.join(build_dir, "gen/bundle/compiler.js"),
+        "compiler.js.map":
+        os.path.join(build_dir, "gen/bundle/compiler.js.map"),
+        "snapshot_deno.bin":
+        os.path.join(build_dir, "gen/snapshot_deno.bin"),
+        "snapshot_compiler.bin":
+        os.path.join(build_dir, "gen/snapshot_compiler.bin")
     }
     sizes = {}
     for name, path in path_dict.items():
+        assert os.path.exists(path)
         sizes[name] = os.path.getsize(path)
     return sizes
 
@@ -156,7 +168,9 @@ def main(argv):
 
     os.chdir(root_path)
     import_data_from_gh_pages()
-    # TODO: Use hyperfine in //third_party
+
+    prebuilt.load_hyperfine()
+
     run([
         "hyperfine", "--ignore-failure", "--export-json", benchmark_file,
         "--warmup", "3"

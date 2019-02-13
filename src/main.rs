@@ -1,31 +1,15 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
-extern crate dirs;
-extern crate flatbuffers;
-extern crate getopts;
-extern crate http;
-extern crate hyper;
-extern crate hyper_rustls;
-extern crate libc;
-extern crate rand;
-extern crate remove_dir_all;
-extern crate ring;
-extern crate rustyline;
-extern crate tempfile;
-extern crate tokio;
-extern crate tokio_executor;
-extern crate tokio_fs;
-extern crate tokio_io;
-extern crate tokio_process;
-extern crate tokio_threadpool;
-extern crate url;
-
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
 #[macro_use]
 extern crate futures;
+#[macro_use]
+extern crate serde_json;
 
+mod ansi;
+pub mod compiler;
 pub mod deno_dir;
 pub mod errors;
 pub mod flags;
@@ -33,21 +17,26 @@ mod fs;
 mod http_body;
 mod http_util;
 pub mod isolate;
+pub mod js_errors;
 pub mod libdeno;
+pub mod modules;
 pub mod msg;
 pub mod msg_util;
 pub mod ops;
 pub mod permissions;
 mod repl;
+pub mod resolve_addr;
 pub mod resources;
 pub mod snapshot;
 mod tokio_util;
 mod tokio_write;
 pub mod version;
+pub mod workers;
 
 #[cfg(unix)]
 mod eager_unix;
 
+use log::{LevelFilter, Metadata, Record};
 use std::env;
 use std::sync::Arc;
 
@@ -56,11 +45,11 @@ static LOGGER: Logger = Logger;
 struct Logger;
 
 impl log::Log for Logger {
-  fn enabled(&self, metadata: &log::Metadata) -> bool {
+  fn enabled(&self, metadata: &Metadata) -> bool {
     metadata.level() <= log::max_level()
   }
 
-  fn log(&self, record: &log::Record) {
+  fn log(&self, record: &Record) {
     if self.enabled(record.metadata()) {
       println!("{} RS - {}", record.level(), record.args());
     }
@@ -68,19 +57,19 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
+fn print_err_and_exit(err: errors::RustOrJsError) {
+  eprintln!("{}", err.to_string());
+  std::process::exit(1);
+}
+
 fn main() {
-  // Rust does not die on panic by default. And -Cpanic=abort is broken.
-  // https://github.com/rust-lang/cargo/issues/2738
-  // Therefore this hack.
-  std::panic::set_hook(Box::new(|panic_info| {
-    eprintln!("{}", panic_info.to_string());
-    std::process::abort();
-  }));
+  #[cfg(windows)]
+  ansi_term::enable_ansi_support().ok(); // For Windows 10
 
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
-  let (flags, rest_argv, usage_string) =
-    flags::set_flags(args).unwrap_or_else(|err| {
+  let (mut flags, mut rest_argv, usage_string) = flags::set_flags(args)
+    .unwrap_or_else(|err| {
       eprintln!("{}", err);
       std::process::exit(1)
     });
@@ -91,21 +80,52 @@ fn main() {
   }
 
   log::set_max_level(if flags.log_debug {
-    log::LevelFilter::Debug
+    LevelFilter::Debug
   } else {
-    log::LevelFilter::Info
+    LevelFilter::Warn
   });
 
-  let state = Arc::new(isolate::IsolateState::new(flags, rest_argv));
-  let snapshot = unsafe { snapshot::deno_snapshot.clone() };
+  if flags.fmt {
+    rest_argv.insert(1, "https://deno.land/x/std/prettier/main.ts".to_string());
+    flags.allow_read = true;
+    flags.allow_write = true;
+  }
+
+  let should_prefetch = flags.prefetch || flags.info;
+  let should_display_info = flags.info;
+
+  let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
+  let snapshot = snapshot::deno_snapshot();
   let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
+
   tokio_util::init(|| {
+    // Setup runtime.
     isolate
-      .execute("deno_main.js", "denoMain();")
-      .unwrap_or_else(|err| {
-        error!("{}", err);
-        std::process::exit(1);
-      });
-    isolate.event_loop();
+      .execute("denoMain();")
+      .map_err(errors::RustOrJsError::from)
+      .unwrap_or_else(print_err_and_exit);
+
+    // Execute input file.
+    if isolate.state.argv.len() > 1 {
+      let input_filename = isolate.state.argv[1].clone();
+      isolate
+        .execute_mod(&input_filename, should_prefetch)
+        .unwrap_or_else(print_err_and_exit);
+
+      if should_display_info {
+        // Display file info and exit. Do not run file
+        modules::print_file_info(
+          &isolate.modules.borrow(),
+          &isolate.state.dir,
+          input_filename,
+        );
+        std::process::exit(0);
+      }
+    }
+
+    isolate
+      .event_loop()
+      .map_err(errors::RustOrJsError::from)
+      .unwrap_or_else(print_err_and_exit);
   });
 }

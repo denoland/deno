@@ -1,10 +1,11 @@
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
 import re
 import shutil
 import stat
 import sys
 import subprocess
+import tempfile
 
 RESET = "\x1b[0m"
 FG_RED = "\x1b[31m"
@@ -12,6 +13,7 @@ FG_GREEN = "\x1b[32m"
 
 executable_suffix = ".exe" if os.name == "nt" else ""
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+tests_path = os.path.join(root_path, "tests")
 
 
 def make_env(merge_env=None, env=None):
@@ -92,6 +94,8 @@ def green_ok():
 
 
 def remove_and_symlink(target, name, target_is_dir=False):
+    if os.name != "nt" and os.path.islink(name):
+        return
     try:
         # On Windows, directory symlink can only be removed with rmdir().
         if os.name == "nt" and os.path.isdir(name):
@@ -378,3 +382,11 @@ def parse_wrk_output(output):
 
 def platform():
     return {"linux2": "linux", "darwin": "mac", "win32": "win"}[sys.platform]
+
+
+def mkdtemp():
+    # On Windows, set the base directory that mkdtemp() uses explicitly. If not,
+    # it'll use the short (8.3) path to the temp dir, which triggers the error
+    # 'TS5009: Cannot find the common subdirectory path for the input files.'
+    temp_dir = os.environ["TEMP"] if os.name == 'nt' else None
+    return tempfile.mkdtemp(dir=temp_dir)

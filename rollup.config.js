@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // @ts-check
 import * as fs from "fs";
 import path from "path";
@@ -264,6 +264,7 @@ export default function makeConfig(commandOptions) {
           // bundle
           [typescriptPath]: [
             "createLanguageService",
+            "formatDiagnostics",
             "formatDiagnosticsWithColorAndContext",
             "ModuleKind",
             "ScriptKind",

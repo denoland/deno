@@ -4,7 +4,6 @@
 /target/
 *.pyc
 gclient_config.py_entries
-Cargo.lock
 yarn.lock
 # npm deps
 node_modules
@@ -15,3 +14,4 @@ node_modules
 # temp benchmark data
 /website/data.json
 /website/recent.json
+/js/gen

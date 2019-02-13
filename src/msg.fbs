@@ -1,6 +1,11 @@
 union Any {
   Start,
   StartRes,
+  FormatError,
+  FormatErrorRes,
+  WorkerGetMessage,
+  WorkerGetMessageRes,
+  WorkerPostMessage,
   CodeFetch,
   CodeFetchRes,
   CodeCache,
@@ -56,7 +61,11 @@ union Any {
   Run,
   RunRes,
   RunStatus,
-  RunStatusRes
+  RunStatusRes,
+  Now,
+  NowRes,
+  IsTTY,
+  IsTTYRes
 }
 
 enum ErrorKind: byte {
@@ -105,6 +114,10 @@ enum ErrorKind: byte {
   HttpCanceled,
   HttpParse,
   HttpOther,
+  TooLarge,
+
+  // custom errors
+  InvalidUri,
 }
 
 table Cwd {}
@@ -120,9 +133,16 @@ enum MediaType: byte {
   Unknown
 }
 
+table Shared {
+  lock: bool;
+  head: int;
+  tail: int;
+  ring: [Base];
+}
+
 table Base {
   cmd_id: uint32;
-  sync: bool = true; // TODO(ry) Change default to false.
+  sync: bool = false;
   error_kind: ErrorKind = NoError;
   error: string;
   inner: Any;
@@ -134,19 +154,40 @@ table Start {
 
 table StartRes {
   cwd: string;
+  pid: uint32;
   argv: [string];
   debug_flag: bool;
   deps_flag: bool;
-  recompile_flag: bool;
   types_flag: bool;
   version_flag: bool;
   deno_version: string;
   v8_version: string;
+  no_color: bool;
+}
+
+table FormatError {
+  error: string;
+}
+
+table FormatErrorRes {
+  error: string;
+}
+
+table WorkerGetMessage {
+  unused: int8;
+}
+
+table WorkerGetMessageRes {
+  data: [ubyte];
+}
+
+table WorkerPostMessage {
+  // data passed thru the zero-copy data parameter.
 }
 
 table CodeFetch {
-  module_specifier: string;
-  containing_file: string;
+  specifier: string;
+  referrer: string;
 }
 
 table CodeFetchRes {
@@ -159,8 +200,6 @@ table CodeFetchRes {
   // TODO These should be [ubyte].
   // See: https://github.com/denoland/deno/issues/1113
   source_code: string;
-  output_code: string; // Non-empty only if cached.
-  source_map: string; // Non-empty only if cached.
 }
 
 table CodeCache {
@@ -175,7 +214,7 @@ table Chdir {
 }
 
 table SetTimeout {
-  timeout: double;
+  timeout: int;
 }
 
 table Exit {
@@ -233,14 +272,13 @@ table MakeTempDirRes {
 
 table Mkdir {
   path: string;
-  mode: uint;
-  // mode specified by https://godoc.org/os#FileMode
+  recursive: bool;
+  mode: uint; // Specified by https://godoc.org/os#FileMode
 }
 
 table Chmod {
   path: string;
-  mode: uint;
-  // mode specified by https://godoc.org/os#FileMode
+  mode: uint; // Specified by https://godoc.org/os#FileMode
 }
 
 table Remove {
@@ -267,8 +305,11 @@ table ReadDirRes {
 table WriteFile {
   filename: string;
   data: [ubyte];
+  update_perm: bool;
   perm: uint;
   // perm specified by https://godoc.org/os#FileMode
+  is_create: bool;
+  is_append: bool;
 }
 
 table CopyFile {
@@ -349,6 +390,7 @@ table Truncate {
 table Open {
   filename: string;
   perm: uint;
+  mode: string;
 }
 
 table OpenRes {
@@ -446,6 +488,20 @@ table RunStatusRes {
   got_signal: bool;
   exit_code: int;
   exit_signal: int;
+}
+
+table Now {}
+
+table NowRes {
+  time: uint64;
+}
+
+table IsTTY {}
+
+table IsTTYRes {
+  stdin: bool;
+  stdout: bool;
+  stderr: bool;
 }
 
 root_type Base;

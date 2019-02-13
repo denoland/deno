@@ -1,11 +1,12 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Run this manually with:
 //
 //  ./node_modules/.bin/ts-node --project tools/ts_library_builder/tsconfig.json tools/ts_library_builder/test.ts
 
+import * as assert from "assert";
 import { Project, ts } from "ts-simple-ast";
-import { assert, assertEqual, test } from "../../js/testing/testing";
 import { flatten, mergeGlobal } from "./build_library";
-import { loadDtsFiles } from "./ast_util";
+import { inlineFiles, loadDtsFiles } from "./ast_util";
 
 const { ModuleKind, ModuleResolutionKind, ScriptTarget } = ts;
 
@@ -58,7 +59,7 @@ function setupFixtures() {
   };
 }
 
-test(function buildLibraryFlatten() {
+function buildLibraryFlatten() {
   const {
     basePath,
     buildPath,
@@ -73,40 +74,68 @@ test(function buildLibraryFlatten() {
     debug,
     declarationProject,
     filePath: `${buildPath}/api.d.ts`,
-    namespaceName: `"api"`,
+    moduleName: `"api"`,
+    namespaceName: "Api",
     targetSourceFile
   });
 
   assert(targetSourceFile.getNamespace(`"api"`) != null);
-  assertEqual(targetSourceFile.getNamespaces().length, 1);
-  const namespaceApi = targetSourceFile.getNamespaceOrThrow(`"api"`);
-  const functions = namespaceApi.getFunctions();
-  assertEqual(functions[0].getName(), "foo");
-  assertEqual(
+  assert(targetSourceFile.getNamespace("Api") != null);
+  assert.equal(targetSourceFile.getNamespaces().length, 2);
+  const moduleApi = targetSourceFile.getNamespaceOrThrow(`"api"`);
+  const functions = moduleApi.getFunctions();
+  assert.equal(functions[0].getName(), "foo");
+  assert.equal(
     functions[0]
       .getJsDocs()
       .map(jsdoc => jsdoc.getInnerText())
       .join("\n"),
     "jsdoc for foo"
   );
-  assertEqual(functions[1].getName(), "bar");
-  assertEqual(
+  assert.equal(functions[1].getName(), "bar");
+  assert.equal(
     functions[1]
       .getJsDocs()
       .map(jsdoc => jsdoc.getInnerText())
       .join("\n"),
     ""
   );
-  assertEqual(functions.length, 2);
-  const classes = namespaceApi.getClasses();
-  assertEqual(classes[0].getName(), "Foo");
-  assertEqual(classes.length, 1);
-  const variableDeclarations = namespaceApi.getVariableDeclarations();
-  assertEqual(variableDeclarations[0].getName(), "arr");
-  assertEqual(variableDeclarations.length, 1);
-});
+  assert.equal(functions.length, 2);
+  const classes = moduleApi.getClasses();
+  assert.equal(classes[0].getName(), "Foo");
+  assert.equal(classes.length, 1);
+  const variableDeclarations = moduleApi.getVariableDeclarations();
+  assert.equal(variableDeclarations[0].getName(), "arr");
+  assert.equal(variableDeclarations.length, 1);
 
-test(function buildLibraryMerge() {
+  const namespaceApi = targetSourceFile.getNamespaceOrThrow(`"api"`);
+  const functionsNs = namespaceApi.getFunctions();
+  assert.equal(functionsNs[0].getName(), "foo");
+  assert.equal(
+    functionsNs[0]
+      .getJsDocs()
+      .map(jsdoc => jsdoc.getInnerText())
+      .join("\n"),
+    "jsdoc for foo"
+  );
+  assert.equal(functionsNs[1].getName(), "bar");
+  assert.equal(
+    functionsNs[1]
+      .getJsDocs()
+      .map(jsdoc => jsdoc.getInnerText())
+      .join("\n"),
+    ""
+  );
+  assert.equal(functionsNs.length, 2);
+  const classesNs = namespaceApi.getClasses();
+  assert.equal(classesNs[0].getName(), "Foo");
+  assert.equal(classesNs.length, 1);
+  const variableDeclarationsNs = namespaceApi.getVariableDeclarations();
+  assert.equal(variableDeclarationsNs[0].getName(), "arr");
+  assert.equal(variableDeclarationsNs.length, 1);
+}
+
+function buildLibraryMerge() {
   const {
     basePath,
     buildPath,
@@ -131,33 +160,66 @@ test(function buildLibraryMerge() {
   assert(targetSourceFile.getNamespace("moduleD") != null);
   assert(targetSourceFile.getNamespace("moduleE") != null);
   assert(targetSourceFile.getNamespace("moduleF") != null);
-  assertEqual(targetSourceFile.getNamespaces().length, 4);
+  assert.equal(targetSourceFile.getNamespaces().length, 4);
   assert(targetSourceFile.getInterface("FooBar") != null);
-  assertEqual(targetSourceFile.getInterfaces().length, 1);
+  assert.equal(targetSourceFile.getInterfaces().length, 1);
   const variableDeclarations = targetSourceFile.getVariableDeclarations();
-  assertEqual(variableDeclarations[0].getType().getText(), `FooBar`);
-  assertEqual(variableDeclarations[1].getType().getText(), `moduleC.Bar`);
-  assertEqual(
-    variableDeclarations[2].getType().getText(),
+  assert.equal(variableDeclarations[0].getType().getText(), `FooBar`);
+  assert.equal(variableDeclarations[1].getType().getText(), `FooBar`);
+  assert.equal(variableDeclarations[2].getType().getText(), `moduleC.Bar`);
+  assert.equal(
+    variableDeclarations[3].getType().getText(),
     `typeof moduleC.qat`
   );
-  assertEqual(
-    variableDeclarations[3].getType().getText(),
+  assert.equal(
+    variableDeclarations[4].getType().getText(),
     `typeof moduleE.process`
   );
-  assertEqual(
-    variableDeclarations[4].getType().getText(),
+  assert.equal(
+    variableDeclarations[5].getType().getText(),
     `typeof moduleD.reprocess`
   );
-  assertEqual(
-    variableDeclarations[5].getType().getText(),
+  assert.equal(
+    variableDeclarations[6].getType().getText(),
     `typeof moduleC.Bar`
   );
-  assertEqual(variableDeclarations.length, 6);
+  assert.equal(variableDeclarations.length, 7);
   const typeAliases = targetSourceFile.getTypeAliases();
-  assertEqual(typeAliases[0].getName(), "Bar");
-  assertEqual(typeAliases[0].getType().getText(), "moduleC.Bar");
-  assertEqual(typeAliases.length, 1);
-});
+  assert.equal(typeAliases[0].getName(), "Bar");
+  assert.equal(typeAliases[0].getType().getText(), "moduleC.Bar");
+  assert.equal(typeAliases.length, 1);
+}
+
+function testInlineFiles() {
+  const {
+    basePath,
+    buildPath,
+    debug,
+    outputSourceFile: targetSourceFile
+  } = setupFixtures();
+
+  inlineFiles({
+    basePath,
+    debug,
+    inline: [`${buildPath}/lib.extra.d.ts`],
+    targetSourceFile
+  });
+
+  assert(targetSourceFile.getNamespace("Qat") != null);
+  const qatNamespace = targetSourceFile.getNamespaceOrThrow("Qat");
+  assert(qatNamespace.getClass("Foo") != null);
+}
 
 // TODO author unit tests for `ast_util.ts`
+
+function main() {
+  console.log("ts_library_builder buildLibraryFlatten");
+  buildLibraryFlatten();
+  console.log("ts_library_builder buildLibraryMerge");
+  buildLibraryMerge();
+  console.log("ts_library_builder testInlineFiles");
+  testInlineFiles();
+  console.log("ts_library_builder ok");
+}
+
+main();

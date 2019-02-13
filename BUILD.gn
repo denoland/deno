@@ -1,4 +1,4 @@
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import("//build/toolchain/cc_wrapper.gni")
 import("//build_extra/flatbuffers/flatbuffer.gni")
 import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
@@ -17,16 +17,11 @@ group("default") {
   ]
 }
 
-# Set of targets that need to be built for `cargo check` to succeed.
-group("cargo_check_deps") {
-  deps = [
-    ":msg_rs",
-  ]
-}
-
 main_extern = [
+  "$rust_build:ansi_term",
   "$rust_build:atty",
   "$rust_build:dirs",
+  "$rust_build:flatbuffers",
   "$rust_build:futures",
   "$rust_build:getopts",
   "$rust_build:http",
@@ -36,9 +31,12 @@ main_extern = [
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:rand",
+  "$rust_build:regex",
   "$rust_build:remove_dir_all",
   "$rust_build:ring",
   "$rust_build:rustyline",
+  "$rust_build:serde_json",
+  "$rust_build:source_map_mappings",
   "$rust_build:tempfile",
   "$rust_build:tokio",
   "$rust_build:tokio_executor",
@@ -47,24 +45,31 @@ main_extern = [
   "$rust_build:tokio_process",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
-  "//build_extra/flatbuffers/rust:flatbuffers",
 ]
+if (is_win) {
+  main_extern += [ "$rust_build:winapi" ]
+}
 
 ts_sources = [
   "js/assets.ts",
   "js/blob.ts",
   "js/buffer.ts",
   "js/chmod.ts",
+  "js/console_table.ts",
   "js/compiler.ts",
   "js/console.ts",
   "js/copy_file.ts",
+  "js/custom_event.ts",
   "js/deno.ts",
   "js/dir.ts",
   "js/dispatch.ts",
   "js/dom_types.ts",
   "js/errors.ts",
+  "js/event.ts",
+  "js/event_target.ts",
   "js/fetch.ts",
-  "js/file.ts",
+  "js/format_error.ts",
+  "js/dom_file.ts",
   "js/file_info.ts",
   "js/files.ts",
   "js/flatbuffers.ts",
@@ -74,6 +79,7 @@ ts_sources = [
   "js/headers.ts",
   "js/io.ts",
   "js/libdeno.ts",
+  "js/lib.web_assembly.d.ts",
   "js/main.ts",
   "js/make_temp_dir.ts",
   "js/metrics.ts",
@@ -84,7 +90,6 @@ ts_sources = [
   "js/platform.ts",
   "js/plugins.d.ts",
   "js/process.ts",
-  "js/promise_util.ts",
   "js/read_dir.ts",
   "js/read_file.ts",
   "js/read_link.ts",
@@ -92,17 +97,18 @@ ts_sources = [
   "js/rename.ts",
   "js/repl.ts",
   "js/resources.ts",
-  "js/runner.ts",
   "js/stat.ts",
   "js/symlink.ts",
   "js/text_encoding.ts",
   "js/timers.ts",
   "js/truncate.ts",
   "js/types.ts",
+  "js/url.ts",
   "js/url_search_params.ts",
   "js/util.ts",
-  "js/v8_source_maps.ts",
+  "js/workers.ts",
   "js/write_file.ts",
+  "js/performance.ts",
   "tsconfig.json",
 
   # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
@@ -111,56 +117,35 @@ ts_sources = [
   "third_party/yarn.lock",
 ]
 
+# When Cargo is driving the build, GN/Ninja are used to produce these non-Rust
+# targets. Cargo handles all Rust source files and the final linking step.
+group("deno_deps") {
+  deps = [
+    ":msg_rs",
+    ":snapshot_compiler",
+    ":snapshot_deno",
+    "libdeno:libdeno_static_lib",
+  ]
+}
+
+# Reads the cargo info from Cargo.toml
+deno_cargo_info = exec_script("build_extra/rust/get_cargo_info.py",
+                              [ rebase_path("Cargo.toml", root_build_dir) ],
+                              "json")
+
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
   deps = [
     ":deno_deps",
   ]
-}
 
-source_set("snapshot") {
-  sources = [
-    "src/snapshot.cc",
-  ]
-  configs += [ "libdeno:deno_config" ]
+  # Extract version from Cargo.toml
+  # TODO integrate this into rust.gni by allowing the rust_executable template
+  # to specify a cargo.toml from which it will extract a version.
+  crate_version = deno_cargo_info.version
   inputs = [
-    "$target_gen_dir/snapshot_deno.bin",
-  ]
-  deps = [
-    ":create_snapshot_deno",
-  ]
-
-  # snapshot.cc doesn't need to depend on libdeno, it just needs deno_buf.
-  include_dirs = [ "libdeno/" ]
-
-  # src/snapshot.cc uses an assembly '.incbin' directive to embed the snapshot.
-  # This causes trouble when using sccache: since the snapshot file is not
-  # inlined by the c preprocessor, sccache doesn't take its contents into
-  # consideration, leading to false-positive cache hits.
-  # Maybe other caching tools have this issue too, but ccache is unaffected.
-  # Therefore, if a cc_wrapper is used that isn't ccache, include a generated
-  # header file that contains the the sha256 hash of the snapshot.
-  if (cc_wrapper != "" && cc_wrapper != "ccache") {
-    hash_h = "$target_gen_dir/bundle/hash.h"
-    inputs += [ hash_h ]
-    deps += [ ":bundle_hash_h" ]
-    if (is_win) {
-      cflags = [ "/FI" + rebase_path(hash_h, target_out_dir) ]
-    } else {
-      cflags = [
-        "-include",
-        rebase_path(hash_h, target_out_dir),
-      ]
-    }
-  }
-}
-
-rust_executable("hyper_hello") {
-  source_root = "tools/hyper_hello.rs"
-  extern = [
-    "$rust_build:hyper",
-    "$rust_build:ring",
+    "Cargo.toml",
   ]
 }
 
@@ -170,16 +155,20 @@ rust_test("test_rs") {
   deps = [
     ":deno_deps",
   ]
+
+  # Extract version from Cargo.toml
+  crate_version = deno_cargo_info.version
+  inputs = [
+    "Cargo.toml",
+  ]
 }
 
-v8_static_library("deno_deps") {
-  complete_static_lib = true
-  public_deps = [
-    ":msg_rs",
-    ":snapshot",
-    "libdeno:libdeno",
+rust_executable("hyper_hello") {
+  source_root = "tools/hyper_hello.rs"
+  extern = [
+    "$rust_build:hyper",
+    "$rust_build:ring",
   ]
-  configs = [ "libdeno:deno_config" ]
 }
 
 # Generates the core TypeScript type library for deno that will be
@@ -197,9 +186,12 @@ run_node("deno_runtime_declaration") {
     rebase_path("node_modules/ts-node/dist/bin.js", root_build_dir),
     "--project",
     rebase_path("tools/ts_library_builder/tsconfig.json"),
+    "--skip-ignore",
     rebase_path("tools/ts_library_builder/main.ts", root_build_dir),
     "--basePath",
     rebase_path(".", root_build_dir),
+    "--inline",
+    rebase_path("js/lib.web_assembly.d.ts", root_build_dir),
     "--buildPath",
     rebase_path(root_build_dir, root_build_dir),
     "--outFile",
@@ -211,52 +203,22 @@ run_node("deno_runtime_declaration") {
   }
 }
 
-run_node("bundle") {
+bundle("main_bundle") {
   out_dir = "$target_gen_dir/bundle/"
-  outputs = [
-    out_dir + "main.js",
-    out_dir + "main.js.map",
-  ]
-  depfile = out_dir + "main.d"
+  out_name = "main"
   deps = [
     ":deno_runtime_declaration",
     ":msg_ts",
   ]
-  args = [
-    rebase_path("third_party/node_modules/rollup/bin/rollup", root_build_dir),
-    "-c",
-    rebase_path("rollup.config.js", root_build_dir),
-    "-i",
-    rebase_path("js/main.ts", root_build_dir),
-    "-o",
-    rebase_path(out_dir + "main.js", root_build_dir),
-    "--sourcemapFile",
-    rebase_path("."),
-    "--silent",
-  ]
 }
 
-action("bundle_hash_h") {
-  script = "//tools/sha256sum.py"
-  inputs = get_target_outputs(":bundle")
-  outputs = [
-    "$target_gen_dir/bundle/hash.h",
-  ]
+bundle("compiler_bundle") {
+  out_dir = "$target_gen_dir/bundle/"
+  out_name = "compiler"
   deps = [
-    ":bundle",
+    ":deno_runtime_declaration",
+    ":msg_ts",
   ]
-  args = [
-    "--format",
-    "__attribute__((__unused__)) static const int dummy_%s = 0;",
-    "--outfile",
-    rebase_path(outputs[0], root_build_dir),
-  ]
-  foreach(input, inputs) {
-    args += [
-      "--infile",
-      rebase_path(input, root_build_dir),
-    ]
-  }
 }
 
 ts_flatbuffer("msg_ts") {
@@ -272,10 +234,17 @@ rust_flatbuffer("msg_rs") {
 }
 
 # Generates $target_gen_dir/snapshot_deno.bin
-create_snapshot("deno") {
-  js = "$target_gen_dir/bundle/main.js"
-  source_map = "$target_gen_dir/bundle/main.js.map"
+snapshot("snapshot_deno") {
+  source_root = "$target_gen_dir/bundle/main.js"
   deps = [
-    ":bundle",
+    ":main_bundle",
+  ]
+}
+
+# Generates $target_gen_dir/snapshot_compiler.bin
+snapshot("snapshot_compiler") {
+  source_root = "$target_gen_dir/bundle/compiler.js"
+  deps = [
+    ":compiler_bundle",
   ]
 }

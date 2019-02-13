@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // A simple runtime that doesn't involve typescript or protobufs to test
 // libdeno. Invoked by libdeno_test.cc
@@ -99,21 +99,7 @@ global.SnapshotBug = () => {
 };
 
 global.GlobalErrorHandling = () => {
-  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {
-    libdeno.print(`line ${line} col ${col}`, true);
-    assert("ReferenceError: notdefined is not defined" === message);
-    assert(source === "helloworld.js");
-    assert(line === 3);
-    assert(col === 1);
-    assert(error instanceof Error);
-    libdeno.send(new Uint8Array([42]));
-  });
   eval("\n\n notdefined()\n//# sourceURL=helloworld.js");
-};
-
-global.DoubleGlobalErrorHandlingFails = () => {
-  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {});
-  libdeno.setGlobalErrorHandler((message, source, line, col, error) => {});
 };
 
 // Allocate this buf at the top level to avoid GC.
@@ -134,33 +120,7 @@ global.DataBuf = () => {
   b[1] = 8;
 };
 
-global.PromiseRejectCatchHandling = () => {
-  let count = 0;
-  let promiseRef = null;
-  // When we have an error, libdeno sends something
-  function assertOrSend(cond) {
-    if (!cond) {
-      libdeno.send(new Uint8Array([42]));
-    }
-  }
-  libdeno.setPromiseErrorExaminer(() => {
-    assertOrSend(count === 2);
-  });
-  libdeno.setPromiseRejectHandler((error, event, promise) => {
-    count++;
-    if (event === "RejectWithNoHandler") {
-      assertOrSend(error instanceof Error);
-      assertOrSend(error.message === "message");
-      assertOrSend(count === 1);
-      promiseRef = promise;
-    } else if (event === "HandlerAddedAfterReject") {
-      assertOrSend(count === 2);
-      assertOrSend(promiseRef === promise);
-    }
-    // Should never reach 3!
-    assertOrSend(count !== 3);
-  });
-
+global.CheckPromiseErrors = () => {
   async function fn() {
     throw new Error("message");
   }
@@ -169,14 +129,15 @@ global.PromiseRejectCatchHandling = () => {
     try {
       await fn();
     } catch (e) {
-      assertOrSend(count === 2);
+      libdeno.send(new Uint8Array([42]));
     }
   })();
-}
+};
 
 global.Shared = () => {
   const ab = libdeno.shared;
-  assert(ab instanceof ArrayBuffer);
+  assert(ab instanceof SharedArrayBuffer);
+  assert(libdeno.shared != undefined);
   assert(ab.byteLength === 3);
   const ui8 = new Uint8Array(ab);
   assert(ui8[0] === 0);
@@ -185,4 +146,51 @@ global.Shared = () => {
   ui8[0] = 42;
   ui8[1] = 43;
   ui8[2] = 44;
-}
+};
+
+global.LibDenoEvalContext = () => {
+  const [result, errInfo] = libdeno.evalContext("let a = 1; a");
+  assert(result === 1);
+  assert(!errInfo);
+  const [result2, errInfo2] = libdeno.evalContext("a = a + 1; a");
+  assert(result2 === 2);
+  assert(!errInfo2);
+};
+
+global.LibDenoEvalContextError = () => {
+  const [result, errInfo] = libdeno.evalContext("not_a_variable");
+  assert(!result);
+  assert(!!errInfo);
+  assert(errInfo.isNativeError); // is a native error (ReferenceError)
+  assert(!errInfo.isCompileError); // is NOT a compilation error
+  assert(errInfo.thrown.message === "not_a_variable is not defined");
+
+  const [result2, errInfo2] = libdeno.evalContext("throw 1");
+  assert(!result2);
+  assert(!!errInfo2);
+  assert(!errInfo2.isNativeError); // is NOT a native error
+  assert(!errInfo2.isCompileError); // is NOT a compilation error
+  assert(errInfo2.thrown === 1);
+
+  const [result3, errInfo3] =
+  libdeno.evalContext("class AError extends Error {}; throw new AError('e')");
+  assert(!result3);
+  assert(!!errInfo3);
+  assert(errInfo3.isNativeError); // extend from native error, still native error
+  assert(!errInfo3.isCompileError); // is NOT a compilation error
+  assert(errInfo3.thrown.message === "e");
+
+  const [result4, errInfo4] = libdeno.evalContext("{");
+  assert(!result4);
+  assert(!!errInfo4);
+  assert(errInfo4.isNativeError); // is a native error (SyntaxError)
+  assert(errInfo4.isCompileError); // is a compilation error! (braces not closed)
+  assert(errInfo4.thrown.message === "Unexpected end of input");
+
+  const [result5, errInfo5] = libdeno.evalContext("eval('{')");
+  assert(!result5);
+  assert(!!errInfo5);
+  assert(errInfo5.isNativeError); // is a native error (SyntaxError)
+  assert(!errInfo5.isCompileError); // is NOT a compilation error! (just eval)
+  assert(errInfo5.thrown.message === "Unexpected end of input");
+};

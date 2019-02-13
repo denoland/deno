@@ -12,7 +12,7 @@ fix_symlinks()
 prettier = os.path.join(third_party_path, "node_modules", "prettier",
                         "bin-prettier.js")
 tools_path = os.path.join(root_path, "tools")
-rustfmt_config = os.path.join(tools_path, "rustfmt.toml")
+rustfmt_config = os.path.join(root_path, ".rustfmt.toml")
 
 os.chdir(root_path)
 
@@ -41,7 +41,7 @@ qrun(["node", prettier, "--write", "--loglevel=error"] + ["rollup.config.js"] +
      glob("*.json") + glob("*.md") +
      find_exts([".github", "js", "tests", "tools", "website"],
                [".js", ".json", ".ts", ".md"],
-               skip=["tools/clang"]))
+               skip=["tools/clang", "js/deps"]))
 
 print "rustfmt"
 qrun([

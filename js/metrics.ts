@@ -1,10 +1,10 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
-interface Metrics {
+export interface Metrics {
   opsDispatched: number;
   opsCompleted: number;
   bytesSentControl: number;

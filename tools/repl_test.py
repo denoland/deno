@@ -1,4 +1,4 @@
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
 from subprocess import CalledProcessError, PIPE, Popen
 import sys
@@ -19,7 +19,7 @@ class Repl(object):
     def input(self, *lines, **kwargs):
         exit_ = kwargs.pop("exit", True)
         sleep_ = kwargs.pop("sleep", 0)
-        p = Popen([self.deno_exe], stdout=PIPE, stderr=PIPE, stdin=PIPE)
+        p = Popen([self.deno_exe, "-A"], stdout=PIPE, stderr=PIPE, stdin=PIPE)
         try:
             # Note: The repl takes a >100ms until it's ready.
             time.sleep(sleep_)
@@ -28,7 +28,7 @@ class Repl(object):
                 p.stdin.flush()
                 time.sleep(sleep_)
             if exit_:
-                p.stdin.write(b'deno.exit(0)\n')
+                p.stdin.write(b'Deno.exit(0)\n')
             else:
                 time.sleep(1)  # wait to be killed by js
             out, err = p.communicate()
@@ -56,13 +56,24 @@ class Repl(object):
         assertEqual(code, 0)
 
     def test_exit_command(self):
-        out, err, code = self.input(".exit", "'ignored'", exit=False)
+        out, err, code = self.input("exit", "'ignored'", exit=False)
         assertEqual(out, '')
         assertEqual(err, '')
         assertEqual(code, 0)
 
+    def test_help_command(self):
+        out, err, code = self.input("help")
+        expectedOut = '\n'.join([
+            "exit    Exit the REPL",
+            "help    Print this help message",
+            "",
+        ])
+        assertEqual(out, expectedOut)
+        assertEqual(err, '')
+        assertEqual(code, 0)
+
     def test_function(self):
-        out, err, code = self.input("deno.writeFileSync")
+        out, err, code = self.input("Deno.writeFileSync")
         assertEqual(out, '[Function: writeFileSync]\n')
         assertEqual(err, '')
         assertEqual(code, 0)
@@ -73,15 +84,22 @@ class Repl(object):
         assertEqual(err, '')
         assertEqual(code, 0)
 
+    # This should print error instead of wait for input
+    def test_eval_unterminated(self):
+        out, err, code = self.input("eval('{')")
+        assertEqual(out, '')
+        assert "Unexpected end of input" in err
+        assertEqual(code, 0)
+
     def test_reference_error(self):
         out, err, code = self.input("not_a_variable")
         assertEqual(out, '')
-        assertEqual(err, 'ReferenceError: not_a_variable is not defined\n')
+        assert "not_a_variable is not defined" in err
         assertEqual(code, 0)
 
     def test_set_timeout(self):
         out, err, code = self.input(
-            "setTimeout(() => { console.log('b'); deno.exit(0); }, 10)",
+            "setTimeout(() => { console.log('b'); Deno.exit(0); }, 10)",
             "'a'",
             exit=False)
         assertEqual(out, '1\na\nb\n')
@@ -90,27 +108,42 @@ class Repl(object):
 
     def test_set_timeout_interlaced(self):
         out, err, code = self.input(
-            "setTimeout(() => console.log('a'), 500)",
-            "setTimeout(() => console.log('b'), 300)",
-            sleep=0.4)
+            "setTimeout(() => console.log('a'), 1000)",
+            "setTimeout(() => console.log('b'), 600)",
+            sleep=0.8)
         assertEqual(out, '1\n2\na\nb\n')
+        assertEqual(err, '')
+        assertEqual(code, 0)
+
+    def test_async_op(self):
+        out, err, code = self.input(
+            "fetch('http://localhost:4545/tests/001_hello.js')" +
+            ".then(res => res.text()).then(console.log)",
+            sleep=1)
+        assertEqual(out, 'Promise {}\nconsole.log("Hello World");\n\n')
         assertEqual(err, '')
         assertEqual(code, 0)
 
     def test_syntax_error(self):
         out, err, code = self.input("syntax error")
         assertEqual(out, '')
-        assertEqual(err, "SyntaxError: Unexpected identifier\n")
+        assert "Unexpected identifier" in err
         assertEqual(code, 0)
 
     def test_type_error(self):
         out, err, code = self.input("console()")
         assertEqual(out, '')
-        assertEqual(err, 'TypeError: console is not a function\n')
+        assert "console is not a function" in err
         assertEqual(code, 0)
 
     def test_variable(self):
         out, err, code = self.input("var a = 123;", "a")
+        assertEqual(out, 'undefined\n123\n')
+        assertEqual(err, '')
+        assertEqual(code, 0)
+
+    def test_lexical_scoped_variable(self):
+        out, err, code = self.input("let a = 123;", "a")
         assertEqual(out, 'undefined\n123\n')
         assertEqual(err, '')
         assertEqual(code, 0)

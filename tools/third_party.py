@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # This script contains helper functions to work with the third_party subrepo.
 
 import os
@@ -104,6 +104,7 @@ def fix_symlinks():
     remove_and_symlink("v8/third_party/jinja2", tp("jinja2"), True)
     remove_and_symlink("v8/third_party/llvm-build", tp("llvm-build"), True)
     remove_and_symlink("v8/third_party/markupsafe", tp("markupsafe"), True)
+    remove_and_symlink("../../build", tp("v8/build"), True)
 
     # On Windows, git doesn't create the right type of symlink if the symlink
     # and it's target are in different repos. Here we fix the symlinks that
@@ -254,9 +255,7 @@ def download_clang_format():
 
 # Download clang by calling the clang update script.
 def download_clang():
-    run(['python',
-         tp('v8/tools/clang/scripts/update.py'), '--if-needed'],
-        env=google_env())
+    run(['python', tp('v8/tools/clang/scripts/update.py')], env=google_env())
 
 
 def maybe_download_sysroot():

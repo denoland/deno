@@ -1,6 +1,10 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #![allow(unused_imports)]
 #![allow(dead_code)]
-#![cfg_attr(feature = "cargo-clippy", allow(clippy, pedantic))]
+#![cfg_attr(
+  feature = "cargo-clippy",
+  allow(clippy::all, clippy::pedantic)
+)]
 use flatbuffers;
 use std::sync::atomic::Ordering;
 

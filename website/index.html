@@ -1,71 +1,143 @@
-<!-- Copyright 2018 the Deno authors. All rights reserved. MIT license. -->
+<!-- Copyright 2018-2019 the Deno authors. All rights reserved. MIT license. -->
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Deno</title>
-  <link rel="stylesheet" href="https://unpkg.com/c3@0.6.7/c3.min.css">
-  <link rel="stylesheet" href="style.css">
-  <meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' name='viewport' />
-</head>
-<body>
-  <main>
-    <h1>Deno</h1>
+  <head>
+    <title>Deno</title>
+    <link rel="stylesheet" href="style.css" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <a href="https://github.com/denolib/animated-deno-logo/"
+          ><img id="logo" src="deno_logo_2.gif" width="150"
+        /></a>
+        <!-- Logo by hashrock -->
+        <div>
+          <h1>Deno</h1>
+          A new way to JavaScript
+        </div>
+      </header>
 
-    <p>Deno is program for executing JavaScript and TypeScript outside of the
-    web browser.
+      <table>
+        <tr>
+          <th></th>
+          <th>Linux &amp; Mac</th>
+          <th>Windows</th>
+        </tr>
+        <tr>
+          <th><a href="https://github.com/denoland/deno">deno</a></th>
+          <td>
+            <a class="badge" href="https://travis-ci.com/denoland/deno">
+              <img
+                src="https://travis-ci.com/denoland/deno.svg?branch=master"
+              />
+            </a>
+          </td>
+          <td>
+            <a class="badge" href="https://ci.appveyor.com/project/deno/deno">
+              <img
+                src="https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x/branch/master?svg=true"
+              />
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <th><a href="https://github.com/denoland/deno_std">deno_std</a></th>
+          <td colspan="2">
+            <a
+              class="badge"
+              href="https://dev.azure.com/denoland/deno_std/_build?definitionId=2"
+            >
+              <img
+                src="https://dev.azure.com/denoland/deno_std/_apis/build/status/denoland.deno_std?branchName=master"
+              />
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <th>
+            <a href="https://github.com/denoland/deno_install">deno_install</a>
+          </th>
+          <td>
+            <a class="badge" href="https://travis-ci.com/denoland/deno_install">
+              <img
+                src="https://travis-ci.com/denoland/deno_install.svg?branch=master"
+              />
+            </a>
+          </td>
+          <td>
+            <a
+              class="badge"
+              href="https://ci.appveyor.com/project/deno/deno-install"
+            >
+              <img
+                src="https://ci.appveyor.com/api/projects/status/gtekeaf7r60xa896?branch=master&svg=true"
+              />
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <th><a href="https://github.com/denoland/registry">registry</a></th>
+        </tr>
+      </table>
 
-    <p> <a href="https://github.com/denoland/deno">github.com/denoland/deno</a>
+      <h2 id="install">Install <a href="#install">#</a></h2>
 
-    <p> <a href="https://github.com/denoland/deno/blob/master/Docs.md">Documentation</a>
+      <p>Mac or Linux</p>
+      <pre>curl -fL <a
+href="https://github.com/denoland/deno_install/blob/master/install.sh">https://deno.land/x/install/install.sh</a> | sh</pre>
+      <p>Windows (PowerShell)</p>
+      <pre>iex (iwr <a
+href="https://github.com/denoland/deno_install/blob/master/install.ps1">https://deno.land/x/install/install.ps1</a>)</pre>
 
-    <p> <a href="typedoc/index.html">API Reference</a>
+      <h2 id="example">Example <a href="#example">#</a></h2>
 
-    <h2>Execution time</h2>
-    This shows how much time total it takes to run a few simple deno programs:
-    <a href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts">tests/002_hello.ts</a>
-    and
-    <a href="https://github.com/denoland/deno/blob/master/tests/003_relative_import.ts">tests/003_relative_import.ts</a>.
-    For deno to execute typescript, it must first compile it to JS.
-    A warm startup is when deno has a cached JS output already, so
-    it should be fast because it bypasses the TS compiler.
-    A cold startup is when deno must compile from scratch.
-    <div id="exec-time-chart"></div>
+      <p>Try running a simple program:</p>
+      <pre>deno https://deno.land/welcome.js</pre>
 
-    <h2>Throughput</h2>
-    <div id="throughput-chart"></div>
+      <p>Or a more complex one:</p>
 
-    <h2>Req/Sec</h2>
-    Tests HTTP server performance against Node.
-    <div id="req-per-sec-chart"></div>
+      <pre>
+import { serve } from "<a
+href="https://github.com/denoland/deno_std/blob/master/http/server.ts">https://deno.land/x/http/server.ts</a>";
+const s = serve("0.0.0.0:8000");
 
-    <h2>Executable size</h2>
-    deno ships only a single binary. We track its size here.
-    <div id="binary-size-chart"></div>
+async function main() {
+  for await (const req of s) {
+    req.respond({ body: new TextEncoder().encode("Hello World\n") });
+  }
+}
 
-    <h2>Thread count</h2>
-    How many threads various programs use.
-    <div id="thread-count-chart"></div>
+main(); </pre>
 
-    <h2>Syscall count</h2>
-    How many total syscalls are performed when executing a given script.
-    <div id="syscall-count-chart"></div>
+      <h2 id="dig-in">Dig in... <a href="#dig-in">#</a></h2>
 
-    <h2>Travis</h2>
-    How long for Travis CI to return a green status for pull requests.
-    <div id="travis-compile-time-chart"></div>
+      <p>
+        <b><a href="manual.html">Manual</a></b>
+      </p>
 
-    <h2>References</h2>
-    <p> <a href="./all_benchmark.html">All benchmark data</a>
+      <p><a href="https://deno.land/typedoc">API Reference</a></p>
 
-  </main>
-  <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
-  <script src="https://unpkg.com/c3@0.6.7/c3.min.js"></script>
+      <p><a href="style_guide.html">Style Guide</a></p>
 
-  <script type="module">
-  import { drawCharts } from "./app.js";
+      <p><a href="https://deno.land/x/">Module repository</a></p>
 
-  drawCharts("recent.json");
-  </script>
-</body>
+      <p>
+        <a href="https://github.com/denoland/deno/blob/master/Releases.md"
+          >Release notes</a
+        >
+      </p>
+
+      <p><a href="https://gitter.im/denolife/Lobby">Community chat room</a></p>
+
+      <p><a href="benchmarks.html">Benchmarks</a></p>
+
+      <p>
+        <a href="https://github.com/denolib/awesome-deno"
+          >A curated list of awesome Deno things</a
+        >
+      </p>
+    </main>
+  </body>
 </html>
-

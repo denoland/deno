@@ -1,16 +1,13 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
-extern crate rustyline;
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use rustyline;
 
-use rustyline::error::ReadlineError::Interrupted;
-
-use msg::ErrorKind;
+use crate::msg::ErrorKind;
 use std::error::Error;
 
-use deno_dir::DenoDir;
-use errors::new as deno_error;
-use errors::DenoResult;
+use crate::deno_dir::DenoDir;
+use crate::errors::new as deno_error;
+use crate::errors::DenoResult;
 use std::path::PathBuf;
-use std::process::exit;
 
 #[cfg(not(windows))]
 use rustyline::Editor;
@@ -71,7 +68,7 @@ impl Repl {
     repl
   }
 
-  fn load_history(&mut self) -> () {
+  fn load_history(&mut self) {
     debug!("Loading REPL history: {:?}", self.history_file);
     self
       .editor
@@ -99,13 +96,8 @@ impl Repl {
       .map(|line| {
         self.editor.add_history_entry(line.as_ref());
         line
-      }).map_err(|e| match e {
-        Interrupted => {
-          self.save_history().unwrap();
-          exit(1)
-        }
-        e => deno_error(ErrorKind::Other, e.description().to_string()),
-      })
+      }).map_err(|e| deno_error(ErrorKind::Other, e.description().to_string()))
+    // Forward error to TS side for processing
   }
 }
 

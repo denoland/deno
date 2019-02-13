@@ -1,0 +1,4 @@
+args: tests/error_syntax.js --reload
+check_stderr: true
+exit_code: 1
+output: tests/error_syntax.js.out

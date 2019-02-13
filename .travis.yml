@@ -1,128 +1,133 @@
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+sudo: false
 language: c++
-matrix:
-  include:
-  - os: linux
-    env: BENCHMARK=1
-    sudo: required
-  - os: osx
+git:
+  depth: 1
 env:
   global:
-  - CARGO_HOME=$HOME/.cargo/
+  - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
   - RUSTUP_HOME=$HOME/.rustup/
-  - RUST_BACKTRACE=1
-  - HOMEBREW_PATH=$HOME/homebrew/
-  - DENO_BUILD_ARGS="use_sysroot=false"
-  - DENO_BUILD_PATH=$HOME/out/Default
+  - RUST_BACKTRACE=full
   - CARGO_TARGET_DIR=$HOME/target
-  - DENO_BUILD_MODE=release
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
-  - CCACHE_CPP2=yes
-  - CCACHE_SLOPPINESS=time_macros
-  - SCCACHE_DIR=$HOME/.sccache/
-  - SCCACHE_CACHE_SIZE=1G
-  - SCCACHE_IDLE_TIMEOUT=0
+  - PYTHONPATH=third_party/python_packages
+  - RUSTC_WRAPPER=sccache
+  - SCCACHE_BUCKET=deno-sccache
+  - AWS_ACCESS_KEY_ID=AKIAIVRN52PLDBP55LBQ
+  # AWS_SECRET_ACCESS_KEY=...
+  - secure: "ugSLNiUOQs53Oyy78EQyr2bu+//uoskbuoucenUUHM5I11M15yq1XuBJ26fIK1Jatza9pOGJNI8+4dSMWZW1GMFqgOZTKXv4kZFqU915/L1gsfS2bljB8pD1Qoq68ieGCQ49vBSFOWP24gtWBfKVJqU3HGHJgA5Ia/ujW3e37jr20xGqaBEcTjgin2fjm7VTao+hOOAMf47YkZNTEuLEHVPbDZM2tCCSlUdLpdyPB6mzX7XVmRxO26mtaHEeecivtaS6xXJXmns7OkntOzwgJi46B5uMgZz42UZ9qy1fCq8yCOyADb/Hu2WaJm7MIehHVhdC/siRzUUSOJ4N9gOPaFFAy5D28sDEa/IvlVriOwXirmDdPSlkTpwZ1NiisZXdZMaK6CWroaCHv9hYrJ7wKcntLQjLnnnskcyqxIVC7uEdlKHyLTNziyxol6oU/2Ym1NDoYWPDzcIeCkCr+xBapLXTVcg60YvcL/h+6wy5rp1v2h9R5B8HCCvmyc2X/FyaAmi8P7DYYHQL8+g+B0nGmzrrSGJzsEL7vChyiKfeNG7nnJKrU1+V8/+bPGsuPOK1XDTx80Uq56EzjHUPXy59zqtYL7ZZAIL0BQPxgm43yUCJfYSIKiwB9Odu+vb2DLDk5CLi45OHh2K7yi9m/lxlXla945az5OYO2l7a5m7rWF8="
 cache:
-  ccache: true
   directories:
-  - "$CARGO_HOME"
   - "$RUSTUP_HOME"
-  - "$HOMEBREW_PATH"
-  - "$SCCACHE_DIR"
+  - $CARGO_HOME/registry/index/
+  - $CARGO_HOME/registry/cache/
+  - prebuilt/mac
+  - prebuilt/linux64
   - third_party/v8/build/linux/debian_sid_amd64-sysroot/
+  - third_party/v8/buildtools/mac/
+  - third_party/v8/buildtools/linux64/
   - third_party/v8/third_party/llvm-build/
+
 install:
+# Because prebuilt/ is cached, we need to manually reset changes that might
+# happen to the sha1 files here.
+- git checkout -- prebuilt
 - nvm install v8
 - nvm use --delete-prefix v8
 - node -v
 - |-
-  # OS X: install a private copy of homebrew.
-  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-    export BREW="${HOMEBREW_PATH}bin/brew"
-    export PATH="${HOMEBREW_PATH}bin:$PATH"
-    if [[ ! -x "$BREW" ]]; then
-      git clone git://github.com/homebrew/brew "$HOMEBREW_PATH"
-    fi
-    "$BREW" --version
-  fi
-- |-
-  # Install ccache (if necessary) and set it up.
-  if [[ "$TRAVIS_OS_NAME" == "osx" && ! $(which ccache) ]]; then
-    "$BREW" install ccache
-  fi
-  ccache --version | head -n 1
-  ccache --max-size=1G
-- |-
   # Install Rust.
   # TODO(ry) Include rustc in third_party.
   # https://github.com/denoland/deno/issues/386
-  if [ ! $(rustc --version | grep 1.30.0) ]; then
-    curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.30.0
-    rustup default 1.30.0
+  if [ ! $(rustc --version | grep 1.31.1) ]; then
+    curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.31.1
+    rustup default 1.31.1
   fi
   rustc --version
   cargo --version
 - |-
-  # Install and start sccache.
-  if [ ! $(which sccache) ]; then
-    cargo install sccache
-  fi
-  sccache --version
-  sccache --start-server
-- |-
-  # Install hyperfine (if benchmarking is enabled for this build).
-  if [ $BENCHMARK ]; then
-    if [ ! $(which hyperfine) ]; then
-      cargo install hyperfine
-    fi
-    hyperfine --version
+  if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+    export PATH="`pwd`/prebuilt/mac:$PATH"
+  else
+    export PATH="`pwd`/prebuilt/linux64:$PATH"
   fi
 - |-
   # Remove unnnecessary cargo and rustup directories.
   # This keeps the Travis CI cache small and fast.
-  rm -rf "$CARGO_HOME"registry
   rm -rf "$RUSTUP_HOME"downloads
   rm -rf "$RUSTUP_HOME"tmp
   rm -rf "$RUSTUP_HOME"toolchains/*/etc
   rm -rf "$RUSTUP_HOME"toolchains/*/share
+
 before_script:
 - ./tools/setup.py
-script:
+# Start sccache, then throw away the S3 access key.
 - |-
-  set -e
-  ./tools/lint.py
-  ./tools/test_format.py
-  bash -c "sleep 2100; pkill ninja; pkill cargo" &
-  ./tools/build.py -j2
-  RUSTC_WRAPPER=sccache cargo check -j2 --release
-  ./tools/test.py $DENO_BUILD_PATH
-after_script:
-- ccache --show-stats
-- sccache --stop-server
-after_success:
-- |
-  # Run benchmarks and publish the result to github pages.
-  if [ $BENCHMARK ]; then
-    ./tools/benchmark.py $DENO_BUILD_PATH &&
-    cp -r website/* gh-pages/
-  fi
-before_deploy:
-- gzip -c $DENO_BUILD_PATH/deno > $DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz
-deploy:
-- provider: releases
-  api_key: &github-token
-    secure: RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps=
-  file: "$DENO_BUILD_PATH/deno_${TRAVIS_OS_NAME}_x64.gz"
-  on:
-    tags: true
-    repo: denoland/deno
-  skip-cleanup: true
-- provider: pages
-  github-token: *github-token
-  keep-history: true
-  local-dir: gh-pages
-  on:
-    branch: master
-    condition: $BENCHMARK == 1
-    repo: denoland/deno
-  skip-cleanup: true
+  sccache --start-server
+  unset AWS_SECRET_ACCESS_KEY
+- set -e
+
+# Default script for release builds.
+script:
+- ./tools/lint.py
+- ./tools/test_format.py
+- ./tools/build.py -C target/release
+- DENO_BUILD_MODE=release ./tools/test.py
+
+jobs:
+  fast_finish: true
+  include:
+    - name: "gn release mac"
+      os: osx
+      after_success:
+        - &gzip_release
+          gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_x64.gz
+      deploy:
+      - &release_provider
+        provider: releases
+        api_key: &github-token
+          secure: RIwv515oDcPAlEvt7uG8FeSFi6Tz6ODJUOXcFj6FYUPszxJ7Cg1kBLKln+fNW5OeOc52VsaZb/vPZ85skyEM6zk2ijL9FcSnnfNEm548w77iH6G0sk09NgBTy6KRXES6NZHD9jN1YTWYkT2G1NQi7mLqxR8a8pnWTbeK5HhtSWGsZPtXqf5iQbvnWsmKA0/w+FIgKupU0xe/qsYjh0eMLYpZDUWoKO0VxBKJ/ix5Uz91aJTjMIcHHij+ALg4pk+FkDotdyx39XB9b25KDxGuaI7NxWjSPzDxs/ZBHP6QYDLO0ti93ftvLAxRoBKPFoZrXqAu3KG9anr9WvxE40DO9OdV0VX2ZUatMUQm3DpSheN8ml2sErFqjIInqlpkdOVDYORz7FikPxkb9DKt+iuyFfxPRa4YWJv2tg8+Hy/nRCQw69OoKqrSNJ8KJDB3OjYbRBtdHz79RLJhTsGZla6RiyXfM7crR7CbFjbwdbW3Pt60t24fhvXQ0SwR0QTgzS/ieYEQHq/9GtSQA/Tn4kdIkyN6BdOMrQd/aUtgKmNdqbSlfmWGNyNZIxHdB+3RrTNT1tagkRI4UHEUfEujpIdYKwLjv0Xmi/VtTM+zOSkzHsIWGPfHBmIGnXfAItUHqivQYJ15E+dzg3T1CEbBxkDQtvwien9Fa8/pBsMkyovl8ps=
+        file: "target/release/deno_${TRAVIS_OS_NAME}_x64.gz"
+        on:
+          tags: true
+          repo: denoland/deno
+        skip-cleanup: true
+
+    - name: "gn release linux"
+      os: linux
+      after_success:
+        - *gzip_release
+        - ./tools/benchmark.py target/release && cp -r website/* gh-pages/
+      deploy:
+      - *release_provider
+      # Run benchmarks and publish the result to github pages.
+      - provider: pages
+        github-token: *github-token
+        keep-history: true
+        local-dir: gh-pages
+        on:
+          branch: master
+          repo: denoland/deno
+        skip-cleanup: true
+
+    - name: "cargo release linux"
+      os: linux
+      script:
+      - cargo build -vv --release --locked
+
+    # LSAN: We are in the process of getting a completely clean LSAN build,
+    # but it will take some work. So for now we just run a subset of the
+    # tests.  We want to detect leaks during the build process as well as
+    # when executing the tests. So set the ASAN_OPTIONS env var before
+    # build.py is run.
+    - name: "lsan debug linux"
+      os: linux
+      script:
+      - echo is_asan=true >> target/debug/args.gn
+      - echo is_lsan=true >> target/debug/args.gn
+      # Call gn gen again to make sure new args are recognized.
+      - third_party/depot_tools/gn gen target/debug
+      - export ASAN_OPTIONS=detect_leaks=1
+      - ./tools/build.py test_cc
+      - ./target/debug/test_cc
+

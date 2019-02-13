@@ -1,3 +1,4 @@
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 declare_args() {
   # Absolute path of rust build files.
   rust_build = "//build_extra/rust/"
@@ -45,10 +46,13 @@ template("rust_crate") {
 
   forward_variables_from(invoker,
                          [
+                           "cfg",
                            "crate_name",
                            "crate_type",
                            "crate_version",
                            "deps",
+                           "edition",
+                           "inputs",
                            "features",
                            "is_test",
                            "libs",
@@ -65,6 +69,9 @@ template("rust_crate") {
   }
   if (!defined(deps)) {
     deps = []
+  }
+  if (!defined(edition)) {
+    edition = "2018"
   }
   if (!defined(is_test)) {
     is_test = false
@@ -173,6 +180,7 @@ template("rust_crate") {
       "--crate-name=$crate_name",
       "--crate-type=$crate_type",
       "--emit=$emit_type,dep-info",
+      "--edition=$edition",
       "--out-dir=" + rebase_path(out_dir, root_build_dir),
 
       # This is to disambiguate multiple versions of the same crate.
@@ -190,6 +198,13 @@ template("rust_crate") {
       "--color=always",
     ]
 
+    if (defined(crate_version)) {
+      args += [
+        # This is used to set env variables for Cargo build compatibility
+        "--cargo-pkg-version=$crate_version",
+      ]
+    }
+
     if (is_debug) {
       args += [ "-g" ]
     }
@@ -204,6 +219,15 @@ template("rust_crate") {
     }
     if (defined(invoker.args)) {
       args += invoker.args
+    }
+
+    if (defined(cfg)) {
+      foreach(c, cfg) {
+        args += [
+          "--cfg",
+          "c",
+        ]
+      }
     }
 
     if (defined(features)) {

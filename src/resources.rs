@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // Think of Resources as File Descriptors. They are integers that are allocated
 // by the privileged side of Deno to refer to various resources.  The simplest
@@ -9,19 +9,24 @@
 // handlers) look up resources by their integer id here.
 
 #[cfg(unix)]
-use eager_unix as eager;
-use errors::bad_resource;
-use errors::DenoError;
-use errors::DenoResult;
-use http_body::HttpBody;
-use repl::Repl;
-use tokio_util;
-use tokio_write;
+use crate::eager_unix as eager;
+use crate::errors;
+use crate::errors::bad_resource;
+use crate::errors::DenoError;
+use crate::errors::DenoResult;
+use crate::http_body::HttpBody;
+use crate::isolate::Buf;
+use crate::isolate::WorkerChannels;
+use crate::repl::Repl;
+use crate::tokio_util;
+use crate::tokio_write;
 
 use futures;
 use futures::future::{Either, FutureResult};
 use futures::Future;
 use futures::Poll;
+use futures::Sink;
+use futures::Stream;
 use hyper;
 use std;
 use std::collections::HashMap;
@@ -30,7 +35,7 @@ use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
@@ -43,6 +48,15 @@ pub type ResourceId = u32; // Sometimes referred to RID.
 // system ones.
 type ResourceTable = HashMap<ResourceId, Repr>;
 
+#[cfg(not(windows))]
+use std::os::unix::io::FromRawFd;
+
+#[cfg(windows)]
+use std::os::windows::io::FromRawHandle;
+
+#[cfg(windows)]
+extern crate winapi;
+
 lazy_static! {
   // Starts at 3 because stdio is [0-2].
   static ref NEXT_RID: AtomicUsize = AtomicUsize::new(3);
@@ -50,7 +64,18 @@ lazy_static! {
     let mut m = HashMap::new();
     // TODO Load these lazily during lookup?
     m.insert(0, Repr::Stdin(tokio::io::stdin()));
-    m.insert(1, Repr::Stdout(tokio::io::stdout()));
+
+    m.insert(1, Repr::Stdout({
+      #[cfg(not(windows))]
+      let stdout = unsafe { std::fs::File::from_raw_fd(1) };
+      #[cfg(windows)]
+      let stdout = unsafe {
+        std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+            winapi::um::winbase::STD_OUTPUT_HANDLE))
+      };
+      tokio::fs::File::from_std(stdout)
+    }));
+
     m.insert(2, Repr::Stderr(tokio::io::stderr()));
     m
   });
@@ -59,13 +84,18 @@ lazy_static! {
 // Internal representation of Resource.
 enum Repr {
   Stdin(tokio::io::Stdin),
-  Stdout(tokio::io::Stdout),
+  Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
   FsFile(tokio::fs::File),
-  TcpListener(tokio::net::TcpListener),
+  // Since TcpListener might be closed while there is a pending accept task,
+  // we need to track the task so that when the listener is closed,
+  // this pending task could be notified and die.
+  // Currently TcpListener itself does not take care of this issue.
+  // See: https://github.com/tokio-rs/tokio/issues/846
+  TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
   TcpStream(tokio::net::TcpStream),
   HttpBody(HttpBody),
-  Repl(Repl),
+  Repl(Arc<Mutex<Repl>>),
   // Enum size is bounded by the largest variant.
   // Use `Box` around large `Child` struct.
   // https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant
@@ -73,6 +103,14 @@ enum Repr {
   ChildStdin(tokio_process::ChildStdin),
   ChildStdout(tokio_process::ChildStdout),
   ChildStderr(tokio_process::ChildStderr),
+  Worker(WorkerChannels),
+}
+
+/// If the given rid is open, this returns the type of resource, E.G. "worker".
+/// If the rid is closed or was never open, it returns None.
+pub fn get_type(rid: ResourceId) -> Option<String> {
+  let table = RESOURCE_TABLE.lock().unwrap();
+  table.get(&rid).map(inspect_repr)
 }
 
 pub fn table_entries() -> Vec<(u32, String)> {
@@ -88,7 +126,6 @@ pub fn table_entries() -> Vec<(u32, String)> {
 fn test_table_entries() {
   let mut entries = table_entries();
   entries.sort();
-  assert_eq!(entries.len(), 3);
   assert_eq!(entries[0], (0, String::from("stdin")));
   assert_eq!(entries[1], (1, String::from("stdout")));
   assert_eq!(entries[2], (2, String::from("stderr")));
@@ -100,7 +137,7 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::Stdout(_) => "stdout",
     Repr::Stderr(_) => "stderr",
     Repr::FsFile(_) => "fsFile",
-    Repr::TcpListener(_) => "tcpListener",
+    Repr::TcpListener(_, _) => "tcpListener",
     Repr::TcpStream(_) => "tcpStream",
     Repr::HttpBody(_) => "httpBody",
     Repr::Repl(_) => "repl",
@@ -108,6 +145,7 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::ChildStdin(_) => "childStdin",
     Repr::ChildStdout(_) => "childStdout",
     Repr::ChildStderr(_) => "childStderr",
+    Repr::Worker(_) => "worker",
   };
 
   String::from(h_repr)
@@ -115,7 +153,7 @@ fn inspect_repr(repr: &Repr) -> String {
 
 // Abstract async file interface.
 // Ideally in unix, if Resource represents an OS rid, it will be the same.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Resource {
   pub rid: ResourceId,
 }
@@ -126,20 +164,61 @@ impl Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      None => panic!("bad rid"),
+      None => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Listener has been closed",
+      )),
       Some(repr) => match repr {
-        Repr::TcpListener(ref mut s) => s.poll_accept(),
+        Repr::TcpListener(ref mut s, _) => s.poll_accept(),
         _ => panic!("Cannot accept"),
       },
     }
   }
 
+  /// Track the current task (for TcpListener resource).
+  /// Throws an error if another task is already tracked.
+  pub fn track_task(&mut self) -> Result<(), std::io::Error> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    // Only track if is TcpListener.
+    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
+      // Currently, we only allow tracking a single accept task for a listener.
+      // This might be changed in the future with multiple workers.
+      // Caveat: TcpListener by itself also only tracks an accept task at a time.
+      // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+      if t.is_some() {
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "Another accept task is ongoing",
+        ));
+      }
+      t.replace(futures::task::current());
+    }
+    Ok(())
+  }
+
+  /// Stop tracking a task (for TcpListener resource).
+  /// Happens when the task is done and thus no further tracking is needed.
+  pub fn untrack_task(&mut self) {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    // Only untrack if is TcpListener.
+    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
+      // DO NOT assert is_some here.
+      // See reasoning in Accept::poll().
+      t.take();
+    }
+  }
+
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
-  pub fn close(&mut self) {
+  pub fn close(&self) {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let r = table.remove(&self.rid);
     assert!(r.is_some());
+    // If TcpListener, we must kill all pending accepts!
+    if let Repr::TcpListener(_, Some(t)) = r.unwrap() {
+      // Call notify on the tracked task, so that they would error out.
+      t.notify();
+    }
   }
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), DenoError> {
@@ -231,7 +310,7 @@ pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
 pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::TcpListener(listener));
+  let r = tg.insert(rid, Repr::TcpListener(listener, None));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -256,9 +335,57 @@ pub fn add_hyper_body(body: hyper::Body) -> Resource {
 pub fn add_repl(repl: Repl) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::Repl(repl));
+  let r = tg.insert(rid, Repr::Repl(Arc::new(Mutex::new(repl))));
   assert!(r.is_none());
   Resource { rid }
+}
+
+pub fn add_worker(wc: WorkerChannels) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(rid, Repr::Worker(wc));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
+pub fn worker_post_message(
+  rid: ResourceId,
+  buf: Buf,
+) -> futures::sink::Send<futures::sync::mpsc::Sender<Buf>> {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&rid);
+  match maybe_repr {
+    Some(Repr::Worker(ref mut wc)) => {
+      // unwrap here is incorrect, but doing it anyway
+      wc.0.clone().send(buf)
+    }
+    _ => panic!("bad resource"), // futures::future::err(bad_resource()).into(),
+  }
+}
+
+pub struct WorkerReceiver {
+  rid: ResourceId,
+}
+
+// Invert the dumbness that tokio_process causes by making Child itself a future.
+impl Future for WorkerReceiver {
+  type Item = Option<Buf>;
+  type Error = DenoError;
+
+  fn poll(&mut self) -> Poll<Option<Buf>, DenoError> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&self.rid);
+    match maybe_repr {
+      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|()| {
+        errors::new(errors::ErrorKind::Other, "recv msg error".to_string())
+      }),
+      _ => Err(bad_resource()),
+    }
+  }
+}
+
+pub fn worker_recv_message(rid: ResourceId) -> WorkerReceiver {
+  WorkerReceiver { rid }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -336,14 +463,11 @@ pub fn child_status(rid: ResourceId) -> DenoResult<ChildStatus> {
   }
 }
 
-pub fn readline(rid: ResourceId, prompt: &str) -> DenoResult<String> {
+pub fn get_repl(rid: ResourceId) -> DenoResult<Arc<Mutex<Repl>>> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
-    Some(Repr::Repl(ref mut r)) => {
-      let line = r.readline(&prompt)?;
-      Ok(line)
-    }
+    Some(Repr::Repl(ref mut r)) => Ok(r.clone()),
     _ => Err(bad_resource()),
   }
 }
@@ -371,7 +495,7 @@ pub fn eager_read<T: AsMut<[u8]>>(
   resource: Resource,
   mut buf: T,
 ) -> EagerRead<Resource, T> {
-  Either::A(tokio_io::io::read(resource, buf)).into()
+  Either::A(tokio_io::io::read(resource, buf))
 }
 
 #[cfg(not(unix))]
@@ -379,12 +503,12 @@ pub fn eager_write<T: AsRef<[u8]>>(
   resource: Resource,
   buf: T,
 ) -> EagerWrite<Resource, T> {
-  Either::A(tokio_write::write(resource, buf)).into()
+  Either::A(tokio_write::write(resource, buf))
 }
 
 #[cfg(not(unix))]
 pub fn eager_accept(resource: Resource) -> EagerAccept {
-  Either::A(tokio_util::accept(resource)).into()
+  Either::A(tokio_util::accept(resource))
 }
 
 // This is an optimization that Tokio should do.
@@ -434,7 +558,7 @@ pub fn eager_accept(resource: Resource) -> EagerAccept {
   match maybe_repr {
     None => panic!("bad rid"),
     Some(repr) => match repr {
-      Repr::TcpListener(ref mut tcp_listener) => {
+      Repr::TcpListener(ref mut tcp_listener, _) => {
         eager::tcp_accept(tcp_listener, resource)
       }
       _ => Either::A(tokio_util::accept(resource)),

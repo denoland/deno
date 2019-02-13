@@ -1,5 +1,5 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
-use resources::Resource;
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::resources::Resource;
 
 use futures;
 use futures::Future;
@@ -63,7 +63,29 @@ impl Future for Accept {
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     let (stream, addr) = match self.state {
-      AcceptState::Pending(ref mut r) => try_ready!(r.poll_accept()),
+      // Similar to try_ready!, but also track/untrack accept task
+      // in TcpListener resource.
+      // In this way, when the listener is closed, the task can be
+      // notified to error out (instead of stuck forever).
+      AcceptState::Pending(ref mut r) => match r.poll_accept() {
+        Ok(futures::prelude::Async::Ready(t)) => {
+          // Notice: it is possible to be Ready on the first poll.
+          // When eager accept fails due to WouldBlock,
+          // a next poll() might still be immediately Ready.
+          // See https://github.com/denoland/deno/issues/1756.
+          r.untrack_task();
+          t
+        }
+        Ok(futures::prelude::Async::NotReady) => {
+          // Would error out if another accept task is being tracked.
+          r.track_task()?;
+          return Ok(futures::prelude::Async::NotReady);
+        }
+        Err(e) => {
+          r.untrack_task();
+          return Err(e);
+        }
+      },
       AcceptState::Empty => panic!("poll Accept after it's done"),
     };
 
@@ -71,5 +93,32 @@ impl Future for Accept {
       AcceptState::Pending(_) => Ok((stream, addr).into()),
       AcceptState::Empty => panic!("invalid internal state"),
     }
+  }
+}
+
+/// `futures::future::poll_fn` only support `F: FnMut()->Poll<T, E>`
+/// However, we require that `F: FnOnce()->Poll<T, E>`.
+/// Therefore, we created our version of `poll_fn`.
+pub fn poll_fn<T, E, F>(f: F) -> PollFn<F>
+where
+  F: FnOnce() -> Poll<T, E>,
+{
+  PollFn { inner: Some(f) }
+}
+
+pub struct PollFn<F> {
+  inner: Option<F>,
+}
+
+impl<T, E, F> Future for PollFn<F>
+where
+  F: FnOnce() -> Poll<T, E>,
+{
+  type Item = T;
+  type Error = E;
+
+  fn poll(&mut self) -> Poll<T, E> {
+    let f = self.inner.take().expect("Inner fn has been taken.");
+    f()
   }
 }

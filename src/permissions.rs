@@ -1,15 +1,18 @@
-extern crate atty;
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use atty;
 
-use flags::DenoFlags;
+use crate::flags::DenoFlags;
 
-use errors::permission_denied;
-use errors::DenoResult;
+use ansi_term::Style;
+use crate::errors::permission_denied;
+use crate::errors::DenoResult;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, Default)]
 pub struct DenoPermissions {
+  pub allow_read: AtomicBool,
   pub allow_write: AtomicBool,
   pub allow_net: AtomicBool,
   pub allow_env: AtomicBool,
@@ -19,6 +22,7 @@ pub struct DenoPermissions {
 impl DenoPermissions {
   pub fn new(flags: &DenoFlags) -> Self {
     Self {
+      allow_read: AtomicBool::new(flags.allow_read),
       allow_write: AtomicBool::new(flags.allow_write),
       allow_env: AtomicBool::new(flags.allow_env),
       allow_net: AtomicBool::new(flags.allow_net),
@@ -31,9 +35,21 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt("Deno requests access to run a subprocess.");
+    let r = permission_prompt("access to run a subprocess");
     if r.is_ok() {
       self.allow_run.store(true, Ordering::SeqCst);
+    }
+    r
+  }
+
+  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
+    if self.allow_read.load(Ordering::SeqCst) {
+      return Ok(());
+    };
+    // TODO get location (where access occurred)
+    let r = permission_prompt(&format!("read access to \"{}\"", filename));;
+    if r.is_ok() {
+      self.allow_read.store(true, Ordering::SeqCst);
     }
     r
   }
@@ -43,10 +59,7 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(&format!(
-      "Deno requests write access to \"{}\".",
-      filename
-    ));;
+    let r = permission_prompt(&format!("write access to \"{}\"", filename));;
     if r.is_ok() {
       self.allow_write.store(true, Ordering::SeqCst);
     }
@@ -58,10 +71,8 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(&format!(
-      "Deno requests network access to \"{}\".",
-      domain_name
-    ));
+    let r =
+      permission_prompt(&format!("network access to \"{}\"", domain_name));
     if r.is_ok() {
       self.allow_net.store(true, Ordering::SeqCst);
     }
@@ -73,8 +84,7 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r =
-      permission_prompt(&"Deno requests access to environment variables.");
+    let r = permission_prompt(&"access to environment variables");
     if r.is_ok() {
       self.allow_env.store(true, Ordering::SeqCst);
     }
@@ -86,8 +96,9 @@ fn permission_prompt(message: &str) -> DenoResult<()> {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return Err(permission_denied());
   };
+  let msg = format!("⚠️  Deno requests {}. Grant? [yN] ", message);
   // print to stderr so that if deno is > to a file this is still displayed.
-  eprint!("{} Grant? [yN] ", message);
+  eprint!("{}", Style::new().bold().paint(msg));
   let mut input = String::new();
   let stdin = io::stdin();
   let _nread = stdin.read_line(&mut input)?;

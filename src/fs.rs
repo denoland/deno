@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use std;
 use std::fs::{create_dir, DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
@@ -13,22 +13,35 @@ use std::os::unix::fs::DirBuilderExt;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 
-pub fn write_file(
+pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
-  data: &[u8],
+  data: T,
   perm: u32,
 ) -> std::io::Result<()> {
-  let is_append = perm & (1 << 31) != 0;
+  write_file_2(filename, data, true, perm, true, false)
+}
+
+pub fn write_file_2<T: AsRef<[u8]>>(
+  filename: &Path,
+  data: T,
+  update_perm: bool,
+  perm: u32,
+  is_create: bool,
+  is_append: bool,
+) -> std::io::Result<()> {
   let mut file = OpenOptions::new()
     .read(false)
     .write(true)
     .append(is_append)
     .truncate(!is_append)
-    .create(true)
+    .create(is_create)
     .open(filename)?;
 
-  set_permissions(&mut file, perm)?;
-  file.write_all(data)
+  if update_perm {
+    set_permissions(&mut file, perm)?;
+  }
+
+  file.write_all(data.as_ref())
 }
 
 #[cfg(any(unix))]
@@ -67,15 +80,12 @@ pub fn make_temp_dir(
   }
 }
 
-pub fn mkdir(path: &Path, perm: u32) -> std::io::Result<()> {
+pub fn mkdir(path: &Path, perm: u32, recursive: bool) -> std::io::Result<()> {
   debug!("mkdir -p {}", path.display());
   let mut builder = DirBuilder::new();
-  builder.recursive(true);
+  builder.recursive(recursive);
   set_dir_permission(&mut builder, perm);
-  builder.create(path).or_else(|err| match err.kind() {
-    std::io::ErrorKind::AlreadyExists => Ok(()),
-    _ => Err(err),
-  })
+  builder.create(path)
 }
 
 #[cfg(any(unix))]

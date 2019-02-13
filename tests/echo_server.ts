@@ -1,4 +1,4 @@
-import { args, listen, copy } from "deno";
+const { args, listen, copy } = Deno;
 const addr = args[1] || "127.0.0.1:4544";
 const listener = listen("tcp", addr);
 console.log("listening on", addr);

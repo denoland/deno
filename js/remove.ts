@@ -1,57 +1,46 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
-/** Removes the named file or (empty) directory synchronously. Would throw
- * error if permission denied, not found, or directory not empty.
- *
- *       import { removeSync } from "deno";
- *       removeSync("/path/to/empty_dir/or/file");
- */
-export function removeSync(path: string): void {
-  dispatch.sendSync(...req(path, false));
+export interface RemoveOption {
+  recursive?: boolean;
 }
 
-/** Removes the named file or (empty) directory. Would throw error if
- * permission denied, not found, or directory not empty.
+/** Removes the named file or directory synchronously. Would throw
+ * error if permission denied, not found, or directory not empty if `recursive`
+ * set to false.
+ * `recursive` is set to false by default.
  *
- *       import { remove } from "deno";
- *       await remove("/path/to/empty_dir/or/file");
+ *       Deno.removeSync("/path/to/dir/or/file", {recursive: false});
  */
-export async function remove(path: string): Promise<void> {
-  await dispatch.sendAsync(...req(path, false));
+export function removeSync(path: string, options: RemoveOption = {}): void {
+  dispatch.sendSync(...req(path, options));
 }
 
-/** Recursively removes the named file or directory synchronously.  Would throw
- * error if permission denied or not found.
+/** Removes the named file or directory. Would throw error if
+ * permission denied, not found, or directory not empty if `recursive` set
+ * to false.
+ * `recursive` is set to false by default.
  *
- *       import { removeAllSync } from "deno";
- *       removeAllSync("/path/to/dir/or/file");
+ *       await Deno.remove("/path/to/dir/or/file", {recursive: false});
  */
-export function removeAllSync(path: string): void {
-  dispatch.sendSync(...req(path, true));
-}
-
-/** Recursively removes the named file or directory. Would throw error if
- * permission denied or not found.
- *
- *       import { removeAll } from "deno";
- *       await removeAll("/path/to/dir/or/file");
- */
-export async function removeAll(path: string): Promise<void> {
-  await dispatch.sendAsync(...req(path, true));
+export async function remove(
+  path: string,
+  options: RemoveOption = {}
+): Promise<void> {
+  await dispatch.sendAsync(...req(path, options));
 }
 
 function req(
   path: string,
-  recursive: boolean
+  options: RemoveOption
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const path_ = builder.createString(path);
   msg.Remove.startRemove(builder);
   msg.Remove.addPath(builder, path_);
-  msg.Remove.addRecursive(builder, recursive);
+  msg.Remove.addRecursive(builder, !!options.recursive);
   const inner = msg.Remove.endRemove(builder);
   return [builder, msg.Any.Remove, inner];
 }

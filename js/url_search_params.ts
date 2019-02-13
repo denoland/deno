@@ -1,4 +1,6 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { requiredArguments } from "./util";
+
 export class URLSearchParams {
   private params: Array<[string, string]> = [];
 
@@ -24,6 +26,12 @@ export class URLSearchParams {
     } else if (Array.isArray(init)) {
       // Overload: sequence<sequence<USVString>>
       for (const tuple of init) {
+        // If pair does not contain exactly two items, then throw a TypeError.
+        if (tuple.length !== 2) {
+          const errMsg =
+            "Each query pair must be an iterable [name, value] tuple";
+          throw new TypeError(errMsg);
+        }
         this.append(tuple[0], tuple[1]);
       }
     } else if (Object(init) === init) {
@@ -40,7 +48,8 @@ export class URLSearchParams {
    *       searchParams.append('name', 'second');
    */
   append(name: string, value: string): void {
-    this.params.push([name, value]);
+    requiredArguments("URLSearchParams.append", arguments.length, 2);
+    this.params.push([String(name), value]);
   }
 
   /** Deletes the given search parameter and its associated value,
@@ -49,6 +58,8 @@ export class URLSearchParams {
    *       searchParams.delete('name');
    */
   delete(name: string): void {
+    requiredArguments("URLSearchParams.delete", arguments.length, 1);
+    name = String(name);
     let i = 0;
     while (i < this.params.length) {
       if (this.params[i][0] === name) {
@@ -65,6 +76,8 @@ export class URLSearchParams {
    *       searchParams.getAll('name');
    */
   getAll(name: string): string[] {
+    requiredArguments("URLSearchParams.getAll", arguments.length, 1);
+    name = String(name);
     const values = [];
     for (const entry of this.params) {
       if (entry[0] === name) {
@@ -80,6 +93,8 @@ export class URLSearchParams {
    *       searchParams.get('name');
    */
   get(name: string): string | null {
+    requiredArguments("URLSearchParams.get", arguments.length, 1);
+    name = String(name);
     for (const entry of this.params) {
       if (entry[0] === name) {
         return entry[1];
@@ -95,6 +110,8 @@ export class URLSearchParams {
    *       searchParams.has('name');
    */
   has(name: string): boolean {
+    requiredArguments("URLSearchParams.has", arguments.length, 1);
+    name = String(name);
     return this.params.some(entry => entry[0] === name);
   }
 
@@ -106,8 +123,33 @@ export class URLSearchParams {
    *       searchParams.set('name', 'value');
    */
   set(name: string, value: string): void {
-    this.delete(name);
-    this.append(name, value);
+    requiredArguments("URLSearchParams.set", arguments.length, 2);
+
+    // If there are any name-value pairs whose name is name, in list,
+    // set the value of the first such name-value pair to value
+    // and remove the others.
+    name = String(name);
+    let found = false;
+    let i = 0;
+    while (i < this.params.length) {
+      if (this.params[i][0] === name) {
+        if (!found) {
+          this.params[i][1] = value;
+          found = true;
+          i++;
+        } else {
+          this.params.splice(i, 1);
+        }
+      } else {
+        i++;
+      }
+    }
+
+    // Otherwise, append a new name-value pair whose name is name
+    // and value is value, to list.
+    if (!found) {
+      this.append(name, value);
+    }
   }
 
   /** Sort all key/value pairs contained in this object in place and
@@ -136,9 +178,12 @@ export class URLSearchParams {
     // tslint:disable-next-line:no-any
     thisArg?: any
   ) {
+    requiredArguments("URLSearchParams.forEach", arguments.length, 1);
+
     if (typeof thisArg !== "undefined") {
       callbackfn = callbackfn.bind(thisArg);
     }
+
     for (const [key, value] of this.entries()) {
       callbackfn(value, key, this);
     }

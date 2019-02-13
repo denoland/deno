@@ -1,6 +1,5 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEqual } from "./test_util.ts";
-import * as deno from "deno";
 
 testPerm({ net: true }, async function fetchJsonSuccess() {
   const response = await fetch("http://localhost:4545/package.json");
@@ -15,7 +14,7 @@ test(async function fetchPerm() {
   } catch (err_) {
     err = err_;
   }
-  assertEqual(err.kind, deno.ErrorKind.PermissionDenied);
+  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
   assertEqual(err.name, "PermissionDenied");
 });
 
@@ -47,6 +46,94 @@ testPerm({ net: true }, async function responseClone() {
   }
 });
 
+testPerm({ net: true }, async function fetchEmptyInvalid() {
+  let err;
+  try {
+    await fetch("");
+  } catch (err_) {
+    err = err_;
+  }
+  assertEqual(err.kind, Deno.ErrorKind.InvalidUri);
+  assertEqual(err.name, "InvalidUri");
+});
+
+testPerm({ net: true }, async function fetchMultipartFormDataSuccess() {
+  const response = await fetch(
+    "http://localhost:4545/tests/subdir/multipart_form_data.txt"
+  );
+  const formData = await response.formData();
+  assert(formData.has("field_1"));
+  assertEqual(formData.get("field_1").toString(), "value_1 \r\n");
+  assert(formData.has("field_2"));
+  /* TODO(ry) Re-enable this test once we bring back the global File type.
+  const file = formData.get("field_2") as File;
+  assertEqual(file.name, "file.js");
+  */
+  // Currently we cannot read from file...
+});
+
+testPerm({ net: true }, async function fetchURLEncodedFormDataSuccess() {
+  const response = await fetch(
+    "http://localhost:4545/tests/subdir/form_urlencoded.txt"
+  );
+  const formData = await response.formData();
+  assert(formData.has("field_1"));
+  assertEqual(formData.get("field_1").toString(), "Hi");
+  assert(formData.has("field_2"));
+  assertEqual(formData.get("field_2").toString(), "<Deno>");
+});
+
+testPerm({ net: true }, async function fetchInitStringBody() {
+  const data = "Hello World";
+  const response = await fetch("http://localhost:4545/echo_server", {
+    method: "POST",
+    body: data
+  });
+  const text = await response.text();
+  assertEqual(text, data);
+  assert(response.headers.get("content-type").startsWith("text/plain"));
+});
+
+testPerm({ net: true }, async function fetchInitTypedArrayBody() {
+  const data = "Hello World";
+  const response = await fetch("http://localhost:4545/echo_server", {
+    method: "POST",
+    body: new TextEncoder().encode(data)
+  });
+  const text = await response.text();
+  assertEqual(text, data);
+});
+
+testPerm({ net: true }, async function fetchInitURLSearchParamsBody() {
+  const data = "param1=value1&param2=value2";
+  const params = new URLSearchParams(data);
+  const response = await fetch("http://localhost:4545/echo_server", {
+    method: "POST",
+    body: params
+  });
+  const text = await response.text();
+  assertEqual(text, data);
+  assert(
+    response.headers
+      .get("content-type")
+      .startsWith("application/x-www-form-urlencoded")
+  );
+});
+
+testPerm({ net: true }, async function fetchInitBlobBody() {
+  const data = "const a = 1";
+  const blob = new Blob([data], {
+    type: "text/javascript"
+  });
+  const response = await fetch("http://localhost:4545/echo_server", {
+    method: "POST",
+    body: blob
+  });
+  const text = await response.text();
+  assertEqual(text, data);
+  assert(response.headers.get("content-type").startsWith("text/javascript"));
+});
+
 // TODO(ry) The following tests work but are flaky. There's a race condition
 // somewhere. Here is what one of these flaky failures looks like:
 //
@@ -67,9 +154,9 @@ testPerm({ net: true }, async function responseClone() {
 //     at fetchPostBodyString (file
 
 /* 
-function bufferServer(addr: string): deno.Buffer {
-  const listener = deno.listen("tcp", addr);
-  const buf = new deno.Buffer();
+function bufferServer(addr: string): Deno.Buffer {
+  const listener = Deno.listen("tcp", addr);
+  const buf = new Deno.Buffer();
   listener.accept().then(async conn => {
     const p1 = buf.readFrom(conn);
     const p2 = conn.write(

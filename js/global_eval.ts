@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 /** If you use the eval function indirectly, by invoking it via a reference
  * other than eval, as of ECMAScript 5 it works in the global scope rather than

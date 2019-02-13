@@ -1,6 +1,10 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+use crate::js_errors::JSError;
+pub use crate::msg::ErrorKind;
+use crate::resolve_addr::ResolveAddrError;
+
 use hyper;
-pub use msg::ErrorKind;
 use std;
 use std::fmt;
 use std::io;
@@ -92,7 +96,7 @@ impl DenoError {
 }
 
 impl fmt::Display for DenoError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self.repr {
       Repr::Simple(_kind, ref err_str) => f.pad(err_str),
       Repr::IoErr(ref err) => err.fmt(f),
@@ -112,7 +116,7 @@ impl std::error::Error for DenoError {
     }
   }
 
-  fn cause(&self) -> Option<&std::error::Error> {
+  fn cause(&self) -> Option<&dyn std::error::Error> {
     match self.repr {
       Repr::Simple(_kind, ref _msg) => None,
       Repr::IoErr(ref err) => Some(err),
@@ -149,6 +153,22 @@ impl From<hyper::Error> for DenoError {
   }
 }
 
+impl From<ResolveAddrError> for DenoError {
+  fn from(e: ResolveAddrError) -> Self {
+    match e {
+      ResolveAddrError::Syntax => Self {
+        repr: Repr::Simple(
+          ErrorKind::InvalidInput,
+          "invalid address syntax".to_string(),
+        ),
+      },
+      ResolveAddrError::Resolution(io_err) => Self {
+        repr: Repr::IoErr(io_err),
+      },
+    }
+  }
+}
+
 pub fn bad_resource() -> DenoError {
   new(ErrorKind::BadResource, String::from("bad resource id"))
 }
@@ -158,4 +178,31 @@ pub fn permission_denied() -> DenoError {
     ErrorKind::PermissionDenied,
     String::from("permission denied"),
   )
+}
+
+#[derive(Debug)]
+pub enum RustOrJsError {
+  Rust(DenoError),
+  Js(JSError),
+}
+
+impl From<DenoError> for RustOrJsError {
+  fn from(e: DenoError) -> Self {
+    RustOrJsError::Rust(e)
+  }
+}
+
+impl From<JSError> for RustOrJsError {
+  fn from(e: JSError) -> Self {
+    RustOrJsError::Js(e)
+  }
+}
+
+impl fmt::Display for RustOrJsError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      RustOrJsError::Rust(e) => e.fmt(f),
+      RustOrJsError::Js(e) => e.fmt(f),
+    }
+  }
 }

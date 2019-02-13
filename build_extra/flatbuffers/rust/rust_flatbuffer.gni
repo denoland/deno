@@ -1,3 +1,4 @@
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import("//build_extra/rust/rust.gni")
 
 # TODO(ry) "flatbuffer.gni" should be "flatbuffers.gni" we should be consistent

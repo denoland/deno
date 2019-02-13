@@ -1,11 +1,16 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::compiler::CodeFetchOutput;
+use crate::errors;
+use crate::errors::DenoError;
+use crate::errors::DenoResult;
+use crate::errors::ErrorKind;
+use crate::fs as deno_fs;
+use crate::http_util;
+use crate::js_errors::SourceMapGetter;
+use crate::msg;
+use crate::version;
+
 use dirs;
-use errors;
-use errors::DenoResult;
-use errors::ErrorKind;
-use fs as deno_fs;
-use http_util;
-use msg;
 use ring;
 use std;
 use std::fmt::Write;
@@ -13,10 +18,18 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
-#[cfg(test)]
-use tempfile::TempDir;
 use url;
 use url::Url;
+
+/// Gets corresponding MediaType given extension
+fn extmap(ext: &str) -> msg::MediaType {
+  match ext {
+    "ts" => msg::MediaType::TypeScript,
+    "js" => msg::MediaType::JavaScript,
+    "json" => msg::MediaType::Json,
+    _ => msg::MediaType::Unknown,
+  }
+}
 
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
@@ -34,6 +47,10 @@ pub struct DenoDir {
   pub deps_https: PathBuf,
   // If remote resources should be reloaded.
   reload: bool,
+  // recompile the typescript files.
+  // if true, not load cache files
+  // else, load cache files
+  recompile: bool,
 }
 
 impl DenoDir {
@@ -41,6 +58,7 @@ impl DenoDir {
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
   pub fn new(
     reload: bool,
+    recompile: bool,
     custom_root: Option<PathBuf>,
   ) -> std::io::Result<Self> {
     // Only setup once.
@@ -60,11 +78,14 @@ impl DenoDir {
       deps_http,
       deps_https,
       reload,
+      recompile,
     };
-    deno_fs::mkdir(deno_dir.gen.as_ref(), 0o755)?;
-    deno_fs::mkdir(deno_dir.deps.as_ref(), 0o755)?;
-    deno_fs::mkdir(deno_dir.deps_http.as_ref(), 0o755)?;
-    deno_fs::mkdir(deno_dir.deps_https.as_ref(), 0o755)?;
+
+    // TODO Lazily create these directories.
+    deno_fs::mkdir(deno_dir.gen.as_ref(), 0o755, true)?;
+    deno_fs::mkdir(deno_dir.deps.as_ref(), 0o755, true)?;
+    deno_fs::mkdir(deno_dir.deps_http.as_ref(), 0o755, true)?;
+    deno_fs::mkdir(deno_dir.deps_https.as_ref(), 0o755, true)?;
 
     debug!("root {}", deno_dir.root.display());
     debug!("gen {}", deno_dir.gen.display());
@@ -81,7 +102,7 @@ impl DenoDir {
     filename: &str,
     source_code: &str,
   ) -> (PathBuf, PathBuf) {
-    let cache_key = source_code_hash(filename, source_code);
+    let cache_key = source_code_hash(filename, source_code, version::DENO);
     (
       self.gen.join(cache_key.to_string() + ".js"),
       self.gen.join(cache_key.to_string() + ".js.map"),
@@ -126,34 +147,92 @@ impl DenoDir {
   }
 
   // Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
+  /// Fetch remote source code.
   fn fetch_remote_source(
     self: &Self,
     module_name: &str,
     filename: &str,
-  ) -> DenoResult<(String, msg::MediaType)> {
-    let p = Path::new(filename);
+  ) -> DenoResult<Option<CodeFetchOutput>> {
+    let p = Path::new(&filename);
     // We write a special ".mime" file into the `.deno/deps` directory along side the
     // cached file, containing just the media type.
-    let mut media_type_filename = filename.to_string();
-    media_type_filename.push_str(".mime");
+    let media_type_filename = [&filename, ".mime"].concat();
     let mt = Path::new(&media_type_filename);
-
-    let src = if self.reload || !p.exists() {
-      println!("Downloading {}", module_name);
-      let (source, content_type) = http_util::fetch_sync_string(module_name)?;
+    eprint!("Downloading {}...", &module_name); // no newline
+    let maybe_source = http_util::fetch_sync_string(&module_name);
+    if let Ok((source, content_type)) = maybe_source {
+      eprintln!(""); // next line
       match p.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
       }?;
-      deno_fs::write_file(&p, source.as_bytes(), 0o666)?;
-      deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?;
-      (source, map_content_type(&p, Some(&content_type)))
+      deno_fs::write_file(&p, &source, 0o666)?;
+      // Remove possibly existing stale .mime file
+      // may not exist. DON'T unwrap
+      let _ = std::fs::remove_file(&media_type_filename);
+      // Create .mime file only when content type different from extension
+      let resolved_content_type = map_content_type(&p, Some(&content_type));
+      let ext = p
+        .extension()
+        .map(|x| x.to_str().unwrap_or(""))
+        .unwrap_or("");
+      let media_type = extmap(&ext);
+      if media_type == msg::MediaType::Unknown
+        || media_type != resolved_content_type
+      {
+        deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?
+      }
+      return Ok(Some(CodeFetchOutput {
+        module_name: module_name.to_string(),
+        filename: filename.to_string(),
+        media_type: map_content_type(&p, Some(&content_type)),
+        source_code: source,
+        maybe_output_code_filename: None,
+        maybe_output_code: None,
+        maybe_source_map_filename: None,
+        maybe_source_map: None,
+      }));
     } else {
-      let source = fs::read_to_string(&p)?;
-      let content_type = fs::read_to_string(&mt)?;
-      (source, map_content_type(&p, Some(&content_type)))
+      eprintln!(" NOT FOUND");
+    }
+    Ok(None)
+  }
+
+  /// Fetch local or cached source code.
+  fn fetch_local_source(
+    self: &Self,
+    module_name: &str,
+    filename: &str,
+  ) -> DenoResult<Option<CodeFetchOutput>> {
+    let p = Path::new(&filename);
+    let media_type_filename = [&filename, ".mime"].concat();
+    let mt = Path::new(&media_type_filename);
+    let source_code = match fs::read(p) {
+      Err(e) => {
+        if e.kind() == std::io::ErrorKind::NotFound {
+          return Ok(None);
+        } else {
+          return Err(e.into());
+        }
+      }
+      Ok(c) => String::from_utf8(c).unwrap(),
     };
-    Ok(src)
+    // .mime file might not exists
+    // this is okay for local source: maybe_content_type_str will be None
+    let maybe_content_type_string = fs::read_to_string(&mt).ok();
+    // Option<String> -> Option<&str>
+    let maybe_content_type_str =
+      maybe_content_type_string.as_ref().map(String::as_str);
+    Ok(Some(CodeFetchOutput {
+      module_name: module_name.to_string(),
+      filename: filename.to_string(),
+      media_type: map_content_type(&p, maybe_content_type_str),
+      source_code,
+      maybe_output_code_filename: None,
+      maybe_output_code: None,
+      maybe_source_map_filename: None,
+      maybe_source_map: None,
+    }))
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L122-L138
@@ -162,57 +241,57 @@ impl DenoDir {
     module_name: &str,
     filename: &str,
   ) -> DenoResult<CodeFetchOutput> {
-    if module_name.starts_with(ASSET_PREFIX) {
-      panic!("Asset resolution should be done in JS, not Rust.");
-    }
     let is_module_remote = is_remote(module_name);
-    let use_extension = |ext| {
-      let module_name = format!("{}{}", module_name, ext);
-      let filename = format!("{}{}", filename, ext);
-      let (source_code, media_type) = if is_module_remote {
-        self.fetch_remote_source(&module_name, &filename)?
-      } else {
-        assert_eq!(
-          module_name, filename,
-          "if a module isn't remote, it should have the same filename"
-        );
-        let path = Path::new(&filename);
-        (fs::read_to_string(path)?, map_content_type(path, None))
-      };
-      Ok(CodeFetchOutput {
-        module_name: module_name.to_string(),
-        filename: filename.to_string(),
-        media_type,
-        source_code,
-        maybe_output_code: None,
-        maybe_source_map: None,
-      })
-    };
-    let default_attempt = use_extension("");
-    if default_attempt.is_ok() {
-      return default_attempt;
+    // We try fetch local. Two cases:
+    // 1. This is a remote module, but no reload provided
+    // 2. This is a local module
+    if !is_module_remote || !self.reload {
+      debug!(
+        "fetch local or reload {} is_module_remote {}",
+        module_name, is_module_remote
+      );
+      match self.fetch_local_source(&module_name, &filename)? {
+        Some(output) => {
+          debug!("found local source ");
+          return Ok(output);
+        }
+        None => {
+          debug!("fetch_local_source returned None");
+        }
+      }
     }
-    debug!("Trying {}.ts...", module_name);
-    let ts_attempt = use_extension(".ts");
-    if ts_attempt.is_ok() {
-      return ts_attempt;
+
+    // If not remote file, stop here!
+    if !is_module_remote {
+      debug!("not remote file stop here");
+      return Err(DenoError::from(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("cannot find local file '{}'", filename),
+      )));
     }
-    debug!("Trying {}.js...", module_name);
-    use_extension(".js")
+
+    debug!("is remote but didn't find module");
+
+    // not cached/local, try remote
+    let maybe_remote_source =
+      self.fetch_remote_source(&module_name, &filename)?;
+    if let Some(output) = maybe_remote_source {
+      return Ok(output);
+    }
+    Err(DenoError::from(std::io::Error::new(
+      std::io::ErrorKind::NotFound,
+      format!("cannot find remote file '{}'", filename),
+    )))
   }
 
   pub fn code_fetch(
     self: &Self,
-    module_specifier: &str,
-    containing_file: &str,
+    specifier: &str,
+    referrer: &str,
   ) -> Result<CodeFetchOutput, errors::DenoError> {
-    debug!(
-      "code_fetch. module_specifier {} containing_file {}",
-      module_specifier, containing_file
-    );
+    debug!("code_fetch. specifier {} referrer {}", specifier, referrer);
 
-    let (module_name, filename) =
-      self.resolve_module(module_specifier, containing_file)?;
+    let (module_name, filename) = self.resolve_module(specifier, referrer)?;
 
     let result = self.get_source_code(module_name.as_str(), filename.as_str());
     let mut out = match result {
@@ -224,7 +303,7 @@ impl DenoDir {
             ErrorKind::NotFound,
             format!(
               "Cannot resolve module \"{}\" from \"{}\"",
-              module_specifier, containing_file
+              specifier, referrer
             ),
           ));
         } else {
@@ -235,25 +314,47 @@ impl DenoDir {
 
     out.source_code = filter_shebang(out.source_code);
 
-    let result =
-      self.load_cache(out.filename.as_str(), out.source_code.as_str());
-    match result {
-      Err(err) => {
-        if err.kind() == std::io::ErrorKind::NotFound {
-          Ok(out)
-        } else {
-          Err(err.into())
+    if out.media_type != msg::MediaType::TypeScript {
+      return Ok(out);
+    }
+
+    let (output_code_filename, output_source_map_filename) =
+      self.cache_path(&out.filename, &out.source_code);
+    let mut maybe_output_code = None;
+    let mut maybe_source_map = None;
+
+    if !self.recompile {
+      let result =
+        self.load_cache(out.filename.as_str(), out.source_code.as_str());
+      match result {
+        Err(err) => {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            return Ok(out);
+          } else {
+            return Err(err.into());
+          }
+        }
+        Ok((output_code, source_map)) => {
+          maybe_output_code = Some(output_code);
+          maybe_source_map = Some(source_map);
         }
       }
-      Ok((output_code, source_map)) => Ok(CodeFetchOutput {
-        module_name: out.module_name,
-        filename: out.filename,
-        media_type: out.media_type,
-        source_code: out.source_code,
-        maybe_output_code: Some(output_code),
-        maybe_source_map: Some(source_map),
-      }),
     }
+
+    Ok(CodeFetchOutput {
+      module_name: out.module_name,
+      filename: out.filename,
+      media_type: out.media_type,
+      source_code: out.source_code,
+      maybe_output_code_filename: output_code_filename
+        .to_str()
+        .map(String::from),
+      maybe_output_code,
+      maybe_source_map_filename: output_source_map_filename
+        .to_str()
+        .map(String::from),
+      maybe_source_map,
+    })
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
@@ -283,45 +384,48 @@ impl DenoDir {
     }
   }
 
-  // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L70-L98
-  // Returns (module name, local filename)
-  fn resolve_module(
+  /// Returns (module name, local filename)
+  pub fn resolve_module(
     self: &Self,
-    module_specifier: &str,
-    containing_file: &str,
+    specifier: &str,
+    referrer: &str,
   ) -> Result<(String, String), url::ParseError> {
     let module_name;
     let filename;
 
-    let module_specifier = self.src_file_to_url(module_specifier);
-    let containing_file = self.src_file_to_url(containing_file);
+    let specifier = self.src_file_to_url(specifier);
+    let mut referrer = self.src_file_to_url(referrer);
 
     debug!(
-      "resolve_module module_specifier {} containing_file {}",
-      module_specifier, containing_file
+      "resolve_module specifier {} referrer {}",
+      specifier, referrer
     );
 
-    let j: Url = if containing_file == "."
-      || is_remote(&module_specifier)
-      || Path::new(&module_specifier).is_absolute()
+    if referrer.starts_with('.') {
+      let cwd = std::env::current_dir().unwrap();
+      let referrer_path = cwd.join(referrer);
+      referrer = referrer_path.to_str().unwrap().to_string() + "/";
+    }
+
+    let j: Url = if is_remote(&specifier) || Path::new(&specifier).is_absolute()
     {
-      parse_local_or_remote(&module_specifier)?
-    } else if containing_file.ends_with('/') {
-      let r = Url::from_directory_path(&containing_file);
+      parse_local_or_remote(&specifier)?
+    } else if referrer.ends_with('/') {
+      let r = Url::from_directory_path(&referrer);
       // TODO(ry) Properly handle error.
       if r.is_err() {
-        error!("Url::from_directory_path error {}", containing_file);
+        error!("Url::from_directory_path error {}", referrer);
       }
       let base = r.unwrap();
-      base.join(module_specifier.as_ref())?
+      base.join(specifier.as_ref())?
     } else {
-      let base = parse_local_or_remote(&containing_file)?;
-      base.join(module_specifier.as_ref())?
+      let base = parse_local_or_remote(&referrer)?;
+      base.join(specifier.as_ref())?
     };
 
     match j.scheme() {
       "file" => {
-        let mut p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
+        let p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
         module_name = p.clone();
         filename = p;
       }
@@ -346,6 +450,18 @@ impl DenoDir {
   }
 }
 
+impl SourceMapGetter for DenoDir {
+  fn get_source_map(&self, script_name: &str) -> Option<String> {
+    match self.code_fetch(script_name, ".") {
+      Err(_e) => None,
+      Ok(out) => match out.maybe_source_map {
+        None => None,
+        Some(source_map) => Some(source_map),
+      },
+    }
+  }
+}
+
 fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
   let host = url.host_str().unwrap();
   let host_port = match url.port() {
@@ -363,78 +479,13 @@ fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
   out
 }
 
-#[test]
-fn test_get_cache_filename() {
-  let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
-  let basedir = Path::new("/cache/dir/");
-  let cache_file = get_cache_filename(&basedir, &url);
-  assert_eq!(
-    cache_file,
-    Path::new("/cache/dir/example.com_PORT1234/path/to/file.ts")
-  );
-}
-
-#[derive(Debug)]
-pub struct CodeFetchOutput {
-  pub module_name: String,
-  pub filename: String,
-  pub media_type: msg::MediaType,
-  pub source_code: String,
-  pub maybe_output_code: Option<String>,
-  pub maybe_source_map: Option<String>,
-}
-
-#[cfg(test)]
-pub fn test_setup() -> (TempDir, DenoDir) {
-  let temp_dir = TempDir::new().expect("tempdir fail");
-  let deno_dir = DenoDir::new(false, Some(temp_dir.path().to_path_buf()))
-    .expect("setup fail");
-  (temp_dir, deno_dir)
-}
-
-#[test]
-fn test_cache_path() {
-  let (temp_dir, deno_dir) = test_setup();
-  assert_eq!(
-    (
-      temp_dir
-        .path()
-        .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js"),
-      temp_dir
-        .path()
-        .join("gen/a3e29aece8d35a19bf9da2bb1c086af71fb36ed5.js.map")
-    ),
-    deno_dir.cache_path("hello.ts", "1+2")
-  );
-}
-
-#[test]
-fn test_code_cache() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let filename = "hello.js";
-  let source_code = "1+2";
-  let output_code = "1+2 // output code";
-  let source_map = "{}";
-  let (cache_path, source_map_path) =
-    deno_dir.cache_path(filename, source_code);
-  assert!(
-    cache_path.ends_with("gen/e8e3ee6bee4aef2ec63f6ec3db7fc5fdfae910ae.js")
-  );
-  assert!(
-    source_map_path
-      .ends_with("gen/e8e3ee6bee4aef2ec63f6ec3db7fc5fdfae910ae.js.map")
-  );
-
-  let r = deno_dir.code_cache(filename, source_code, output_code, source_map);
-  r.expect("code_cache error");
-  assert!(cache_path.exists());
-  assert_eq!(output_code, fs::read_to_string(&cache_path).unwrap());
-}
-
-// https://github.com/denoland/deno/blob/golang/deno_dir.go#L25-L30
-fn source_code_hash(filename: &str, source_code: &str) -> String {
+fn source_code_hash(
+  filename: &str,
+  source_code: &str,
+  version: &str,
+) -> String {
   let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
+  ctx.update(version.as_bytes());
   ctx.update(filename.as_bytes());
   ctx.update(source_code.as_bytes());
   let digest = ctx.finish();
@@ -445,330 +496,6 @@ fn source_code_hash(filename: &str, source_code: &str) -> String {
   }
   out
 }
-
-#[test]
-fn test_source_code_hash() {
-  assert_eq!(
-    "a3e29aece8d35a19bf9da2bb1c086af71fb36ed5",
-    source_code_hash("hello.ts", "1+2")
-  );
-  // Different source_code should result in different hash.
-  assert_eq!(
-    "914352911fc9c85170908ede3df1128d690dda41",
-    source_code_hash("hello.ts", "1")
-  );
-  // Different filename should result in different hash.
-  assert_eq!(
-    "2e396bc66101ecc642db27507048376d972b1b70",
-    source_code_hash("hi.ts", "1+2")
-  );
-}
-
-// The `add_root` macro prepends "C:" to a string if on windows; on posix
-// systems it returns the input string untouched. This is necessary because
-// `Url::from_file_path()` fails if the input path isn't an absolute path.
-#[cfg(test)]
-macro_rules! add_root {
-  ($path:expr) => {
-    if cfg!(target_os = "windows") {
-      concat!("C:", $path)
-    } else {
-      $path
-    }
-  };
-}
-
-#[test]
-fn test_code_fetch() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let cwd = std::env::current_dir().unwrap();
-  let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
-
-  // Test failure case.
-  let module_specifier = "hello.ts";
-  let containing_file = add_root!("/baddir/badfile.ts");
-  let r = deno_dir.code_fetch(module_specifier, containing_file);
-  assert!(r.is_err());
-
-  // Assuming cwd is the deno repo root.
-  let module_specifier = "./js/main.ts";
-  let containing_file = cwd_string.as_str();
-  let r = deno_dir.code_fetch(module_specifier, containing_file);
-  assert!(r.is_ok());
-  //let code_fetch_output = r.unwrap();
-  //println!("code_fetch_output {:?}", code_fetch_output);
-}
-
-#[test]
-fn test_code_fetch_no_ext() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let cwd = std::env::current_dir().unwrap();
-  let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
-
-  // Assuming cwd is the deno repo root.
-  let module_specifier = "./js/main";
-  let containing_file = cwd_string.as_str();
-  let r = deno_dir.code_fetch(module_specifier, containing_file);
-  assert!(r.is_ok());
-
-  // Test .ts extension
-  // Assuming cwd is the deno repo root.
-  let module_specifier = "./js/main";
-  let containing_file = cwd_string.as_str();
-  let r = deno_dir.code_fetch(module_specifier, containing_file);
-  assert!(r.is_ok());
-  let code_fetch_output = r.unwrap();
-  // could only test .ends_with to avoid include local abs path
-  assert!(code_fetch_output.module_name.ends_with("/js/main.ts"));
-  assert!(code_fetch_output.filename.ends_with("/js/main.ts"));
-  assert!(code_fetch_output.source_code.len() > 10);
-
-  // Test .js extension
-  // Assuming cwd is the deno repo root.
-  let module_specifier = "./js/mock_builtin";
-  let containing_file = cwd_string.as_str();
-  let r = deno_dir.code_fetch(module_specifier, containing_file);
-  assert!(r.is_ok());
-  let code_fetch_output = r.unwrap();
-  // could only test .ends_with to avoid include local abs path
-  assert!(
-    code_fetch_output
-      .module_name
-      .ends_with("/js/mock_builtin.js")
-  );
-  assert!(code_fetch_output.filename.ends_with("/js/mock_builtin.js"));
-  assert!(code_fetch_output.source_code.len() > 10);
-}
-
-#[test]
-fn test_src_file_to_url_1() {
-  let (_temp_dir, deno_dir) = test_setup();
-  assert_eq!("hello", deno_dir.src_file_to_url("hello"));
-  assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
-  let x = deno_dir.deps_http.join("hello/world.txt");
-  assert_eq!(
-    "http://hello/world.txt",
-    deno_dir.src_file_to_url(x.to_str().unwrap())
-  );
-}
-
-#[test]
-fn test_src_file_to_url_2() {
-  let (_temp_dir, deno_dir) = test_setup();
-  assert_eq!("hello", deno_dir.src_file_to_url("hello"));
-  assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
-  let x = deno_dir.deps_https.join("hello/world.txt");
-  assert_eq!(
-    "https://hello/world.txt",
-    deno_dir.src_file_to_url(x.to_str().unwrap())
-  );
-}
-
-#[test]
-fn test_src_file_to_url_3() {
-  let (_temp_dir, deno_dir) = test_setup();
-  let x = deno_dir.deps_http.join("localhost_PORT4545/world.txt");
-  assert_eq!(
-    "http://localhost:4545/world.txt",
-    deno_dir.src_file_to_url(x.to_str().unwrap())
-  );
-}
-
-#[test]
-fn test_src_file_to_url_4() {
-  let (_temp_dir, deno_dir) = test_setup();
-  let x = deno_dir.deps_https.join("localhost_PORT4545/world.txt");
-  assert_eq!(
-    "https://localhost:4545/world.txt",
-    deno_dir.src_file_to_url(x.to_str().unwrap())
-  );
-}
-
-// https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87
-#[test]
-fn test_resolve_module_1() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let test_cases = [
-    (
-      "./subdir/print_hello.ts",
-      add_root!(
-        "/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"
-      ),
-      add_root!(
-        "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
-      ),
-      add_root!(
-        "/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"
-      ),
-    ),
-    (
-      "testdata/001_hello.js",
-      add_root!("/Users/rld/go/src/github.com/denoland/deno/"),
-      add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
-      add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
-    ),
-    (
-      add_root!("/Users/rld/src/deno/hello.js"),
-      ".",
-      add_root!("/Users/rld/src/deno/hello.js"),
-      add_root!("/Users/rld/src/deno/hello.js"),
-    ),
-    (
-      add_root!("/this/module/got/imported.js"),
-      add_root!("/that/module/did/it.js"),
-      add_root!("/this/module/got/imported.js"),
-      add_root!("/this/module/got/imported.js"),
-    ),
-  ];
-  for &test in test_cases.iter() {
-    let module_specifier = String::from(test.0);
-    let containing_file = String::from(test.1);
-    let (module_name, filename) = deno_dir
-      .resolve_module(&module_specifier, &containing_file)
-      .unwrap();
-    assert_eq!(module_name, test.2);
-    assert_eq!(filename, test.3);
-  }
-}
-
-#[test]
-fn test_resolve_module_2() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let module_specifier = "http://localhost:4545/testdata/subdir/print_hello.ts";
-  let containing_file = add_root!("/deno/testdata/006_url_imports.ts");
-
-  let expected_module_name =
-    "http://localhost:4545/testdata/subdir/print_hello.ts";
-  let expected_filename = deno_fs::normalize_path(
-    deno_dir
-      .deps_http
-      .join("localhost_PORT4545/testdata/subdir/print_hello.ts")
-      .as_ref(),
-  );
-
-  let (module_name, filename) = deno_dir
-    .resolve_module(module_specifier, containing_file)
-    .unwrap();
-  assert_eq!(module_name, expected_module_name);
-  assert_eq!(filename, expected_filename);
-}
-
-#[test]
-fn test_resolve_module_3() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let module_specifier_ =
-    deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
-  let module_specifier = module_specifier_.to_str().unwrap();
-  let containing_file = ".";
-
-  let expected_module_name = "http://unpkg.com/liltest@0.0.5/index.ts";
-  let expected_filename = deno_fs::normalize_path(
-    deno_dir
-      .deps_http
-      .join("unpkg.com/liltest@0.0.5/index.ts")
-      .as_ref(),
-  );
-
-  let (module_name, filename) = deno_dir
-    .resolve_module(module_specifier, containing_file)
-    .unwrap();
-  assert_eq!(module_name, expected_module_name);
-  assert_eq!(filename, expected_filename);
-}
-
-#[test]
-fn test_resolve_module_4() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let module_specifier = "./util";
-  let containing_file_ =
-    deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
-  let containing_file = containing_file_.to_str().unwrap();
-
-  // http containing files -> load relative import with http
-  let expected_module_name = "http://unpkg.com/liltest@0.0.5/util";
-  let expected_filename = deno_fs::normalize_path(
-    deno_dir
-      .deps_http
-      .join("unpkg.com/liltest@0.0.5/util")
-      .as_ref(),
-  );
-
-  let (module_name, filename) = deno_dir
-    .resolve_module(module_specifier, containing_file)
-    .unwrap();
-  assert_eq!(module_name, expected_module_name);
-  assert_eq!(filename, expected_filename);
-}
-
-#[test]
-fn test_resolve_module_5() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let module_specifier = "./util";
-  let containing_file_ =
-    deno_dir.deps_https.join("unpkg.com/liltest@0.0.5/index.ts");
-  let containing_file = containing_file_.to_str().unwrap();
-
-  // https containing files -> load relative import with https
-  let expected_module_name = "https://unpkg.com/liltest@0.0.5/util";
-  let expected_filename = deno_fs::normalize_path(
-    deno_dir
-      .deps_https
-      .join("unpkg.com/liltest@0.0.5/util")
-      .as_ref(),
-  );
-
-  let (module_name, filename) = deno_dir
-    .resolve_module(module_specifier, containing_file)
-    .unwrap();
-  assert_eq!(module_name, expected_module_name);
-  assert_eq!(filename, expected_filename);
-}
-
-#[test]
-fn test_resolve_module_6() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let module_specifier = "http://localhost:4545/tests/subdir/mod2.ts";
-  let containing_file = add_root!("/deno/tests/006_url_imports.ts");
-  let expected_module_name = "http://localhost:4545/tests/subdir/mod2.ts";
-  let expected_filename = deno_fs::normalize_path(
-    deno_dir
-      .deps_http
-      .join("localhost_PORT4545/tests/subdir/mod2.ts")
-      .as_ref(),
-  );
-
-  let (module_name, filename) = deno_dir
-    .resolve_module(module_specifier, containing_file)
-    .unwrap();
-  assert_eq!(module_name, expected_module_name);
-  assert_eq!(filename, expected_filename);
-}
-
-#[test]
-fn test_resolve_module_7() {
-  let (_temp_dir, deno_dir) = test_setup();
-
-  let module_specifier = "http_test.ts";
-  let containing_file = add_root!("/Users/rld/src/deno_net/");
-  let expected_module_name = add_root!("/Users/rld/src/deno_net/http_test.ts");
-  let expected_filename = add_root!("/Users/rld/src/deno_net/http_test.ts");
-
-  let (module_name, filename) = deno_dir
-    .resolve_module(module_specifier, containing_file)
-    .unwrap();
-  assert_eq!(module_name, expected_module_name);
-  assert_eq!(filename, expected_filename);
-}
-
-const ASSET_PREFIX: &str = "/$asset$/";
 
 fn is_remote(module_name: &str) -> bool {
   module_name.starts_with("http://") || module_name.starts_with("https://")
@@ -792,34 +519,6 @@ fn map_file_extension(path: &Path) -> msg::MediaType {
       _ => msg::MediaType::Unknown,
     },
   }
-}
-
-#[test]
-fn test_map_file_extension() {
-  assert_eq!(
-    map_file_extension(Path::new("foo/bar.ts")),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_file_extension(Path::new("foo/bar.d.ts")),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_file_extension(Path::new("foo/bar.js")),
-    msg::MediaType::JavaScript
-  );
-  assert_eq!(
-    map_file_extension(Path::new("foo/bar.json")),
-    msg::MediaType::Json
-  );
-  assert_eq!(
-    map_file_extension(Path::new("foo/bar.txt")),
-    msg::MediaType::Unknown
-  );
-  assert_eq!(
-    map_file_extension(Path::new("foo/bar")),
-    msg::MediaType::Unknown
-  );
 }
 
 // convert a ContentType string into a enumerated MediaType
@@ -854,93 +553,6 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
   }
 }
 
-#[test]
-fn test_map_content_type() {
-  // Extension only
-  assert_eq!(
-    map_content_type(Path::new("foo/bar.ts"), None),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar.d.ts"), None),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar.js"), None),
-    msg::MediaType::JavaScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar.json"), None),
-    msg::MediaType::Json
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar.txt"), None),
-    msg::MediaType::Unknown
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), None),
-    msg::MediaType::Unknown
-  );
-
-  // Media Type
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("application/typescript")),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("text/typescript")),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("video/vnd.dlna.mpeg-tts")),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("video/mp2t")),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("application/x-typescript")),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("application/javascript")),
-    msg::MediaType::JavaScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("text/javascript")),
-    msg::MediaType::JavaScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("application/ecmascript")),
-    msg::MediaType::JavaScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("text/ecmascript")),
-    msg::MediaType::JavaScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("application/x-javascript")),
-    msg::MediaType::JavaScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("application/json")),
-    msg::MediaType::Json
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar"), Some("text/json")),
-    msg::MediaType::Json
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar.ts"), Some("text/plain")),
-    msg::MediaType::TypeScript
-  );
-  assert_eq!(
-    map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")),
-    msg::MediaType::Unknown
-  );
-}
-
 fn filter_shebang(code: String) -> String {
   if !code.starts_with("#!") {
     return code;
@@ -953,12 +565,761 @@ fn filter_shebang(code: String) -> String {
   }
 }
 
-#[test]
-fn test_filter_shebang() {
-  assert_eq!(filter_shebang("".to_string()), "");
-  assert_eq!(filter_shebang("#".to_string()), "#");
-  assert_eq!(filter_shebang("#!".to_string()), "");
-  assert_eq!(filter_shebang("#!\n\n".to_string()), "\n\n");
-  let code = "#!/usr/bin/env deno\nconsole.log('hello');\n".to_string();
-  assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n");
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::tokio_util;
+  use tempfile::TempDir;
+
+  fn test_setup(reload: bool, recompile: bool) -> (TempDir, DenoDir) {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let deno_dir =
+      DenoDir::new(reload, recompile, Some(temp_dir.path().to_path_buf()))
+        .expect("setup fail");
+    (temp_dir, deno_dir)
+  }
+
+  // The `add_root` macro prepends "C:" to a string if on windows; on posix
+  // systems it returns the input string untouched. This is necessary because
+  // `Url::from_file_path()` fails if the input path isn't an absolute path.
+  macro_rules! add_root {
+    ($path:expr) => {
+      if cfg!(target_os = "windows") {
+        concat!("C:", $path)
+      } else {
+        $path
+      }
+    };
+  }
+
+  #[test]
+  fn test_get_cache_filename() {
+    let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
+    let basedir = Path::new("/cache/dir/");
+    let cache_file = get_cache_filename(&basedir, &url);
+    assert_eq!(
+      cache_file,
+      Path::new("/cache/dir/example.com_PORT1234/path/to/file.ts")
+    );
+  }
+
+  #[test]
+  fn test_cache_path() {
+    let (temp_dir, deno_dir) = test_setup(false, false);
+    let filename = "hello.js";
+    let source_code = "1+2";
+    let hash = source_code_hash(filename, source_code, version::DENO);
+    assert_eq!(
+      (
+        temp_dir.path().join(format!("gen/{}.js", hash)),
+        temp_dir.path().join(format!("gen/{}.js.map", hash))
+      ),
+      deno_dir.cache_path(filename, source_code)
+    );
+  }
+
+  #[test]
+  fn test_code_cache() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let filename = "hello.js";
+    let source_code = "1+2";
+    let output_code = "1+2 // output code";
+    let source_map = "{}";
+    let hash = source_code_hash(filename, source_code, version::DENO);
+    let (cache_path, source_map_path) =
+      deno_dir.cache_path(filename, source_code);
+    assert!(cache_path.ends_with(format!("gen/{}.js", hash)));
+    assert!(source_map_path.ends_with(format!("gen/{}.js.map", hash)));
+
+    let r = deno_dir.code_cache(filename, source_code, output_code, source_map);
+    r.expect("code_cache error");
+    assert!(cache_path.exists());
+    assert_eq!(output_code, fs::read_to_string(&cache_path).unwrap());
+  }
+
+  #[test]
+  fn test_source_code_hash() {
+    assert_eq!(
+      "7e44de2ed9e0065da09d835b76b8d70be503d276",
+      source_code_hash("hello.ts", "1+2", "0.2.11")
+    );
+    // Different source_code should result in different hash.
+    assert_eq!(
+      "57033366cf9db1ef93deca258cdbcd9ef5f4bde1",
+      source_code_hash("hello.ts", "1", "0.2.11")
+    );
+    // Different filename should result in different hash.
+    assert_eq!(
+      "19657f90b5b0540f87679e2fb362e7bd62b644b0",
+      source_code_hash("hi.ts", "1+2", "0.2.11")
+    );
+    // Different version should result in different hash.
+    assert_eq!(
+      "e2b4b7162975a02bf2770f16836eb21d5bcb8be1",
+      source_code_hash("hi.ts", "1+2", "0.2.0")
+    );
+  }
+
+  #[test]
+  fn test_get_source_code_1() {
+    let (temp_dir, deno_dir) = test_setup(false, false);
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let module_name = "http://localhost:4545/tests/subdir/mod2.ts";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/mod2.ts")
+          .as_ref(),
+      );
+      let mime_file_name = format!("{}.mime", &filename);
+
+      let result = deno_dir.get_source_code(module_name, &filename);
+      println!("module_name {} filename {}", module_name, filename);
+      assert!(result.is_ok());
+      let r = result.unwrap();
+      assert_eq!(
+        &(r.source_code),
+        "export { printHello } from \"./print_hello.ts\";\n"
+      );
+      assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+      // Should not create .mime file due to matching ext
+      assert!(fs::read_to_string(&mime_file_name).is_err());
+
+      // Modify .mime
+      let _ = fs::write(&mime_file_name, "text/javascript");
+      let result2 = deno_dir.get_source_code(module_name, &filename);
+      assert!(result2.is_ok());
+      let r2 = result2.unwrap();
+      assert_eq!(
+        &(r2.source_code),
+        "export { printHello } from \"./print_hello.ts\";\n"
+      );
+      // If get_source_code does not call remote, this should be JavaScript
+      // as we modified before! (we do not overwrite .mime due to no http fetch)
+      assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+      assert_eq!(
+        fs::read_to_string(&mime_file_name).unwrap(),
+        "text/javascript"
+      );
+
+      // Force self.reload
+      let deno_dir =
+        DenoDir::new(true, false, Some(temp_dir.path().to_path_buf()))
+          .expect("setup fail");
+      let result3 = deno_dir.get_source_code(module_name, &filename);
+      assert!(result3.is_ok());
+      let r3 = result3.unwrap();
+      let expected3 = "export { printHello } from \"./print_hello.ts\";\n";
+      assert_eq!(r3.source_code, expected3);
+      // Now the old .mime file should have gone! Resolved back to TypeScript
+      assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
+      assert!(fs::read_to_string(&mime_file_name).is_err());
+    });
+  }
+
+  #[test]
+  fn test_get_source_code_2() {
+    let (temp_dir, deno_dir) = test_setup(false, false);
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
+          .as_ref(),
+      );
+      let mime_file_name = format!("{}.mime", &filename);
+
+      let result = deno_dir.get_source_code(module_name, &filename);
+      println!("module_name {} filename {}", module_name, filename);
+      assert!(result.is_ok());
+      let r = result.unwrap();
+      let expected = "export const loaded = true;\n";
+      assert_eq!(r.source_code, expected);
+      // Mismatch ext with content type, create .mime
+      assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
+      assert_eq!(
+        fs::read_to_string(&mime_file_name).unwrap(),
+        "text/javascript"
+      );
+
+      // Modify .mime
+      let _ = fs::write(&mime_file_name, "text/typescript");
+      let result2 = deno_dir.get_source_code(module_name, &filename);
+      assert!(result2.is_ok());
+      let r2 = result2.unwrap();
+      let expected2 = "export const loaded = true;\n";
+      assert_eq!(r2.source_code, expected2);
+      // If get_source_code does not call remote, this should be TypeScript
+      // as we modified before! (we do not overwrite .mime due to no http fetch)
+      assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
+      assert_eq!(
+        fs::read_to_string(&mime_file_name).unwrap(),
+        "text/typescript"
+      );
+
+      // Force self.reload
+      let deno_dir =
+        DenoDir::new(true, false, Some(temp_dir.path().to_path_buf()))
+          .expect("setup fail");
+      let result3 = deno_dir.get_source_code(module_name, &filename);
+      assert!(result3.is_ok());
+      let r3 = result3.unwrap();
+      let expected3 = "export const loaded = true;\n";
+      assert_eq!(r3.source_code, expected3);
+      // Now the old .mime file should be overwritten back to JavaScript!
+      // (due to http fetch)
+      assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
+      assert_eq!(
+        fs::read_to_string(&mime_file_name).unwrap(),
+        "text/javascript"
+      );
+    });
+  }
+
+  #[test]
+  fn test_fetch_source_1() {
+    use crate::tokio_util;
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let (_temp_dir, deno_dir) = test_setup(false, false);
+      let module_name =
+        "http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts")
+          .as_ref(),
+      );
+      let mime_file_name = format!("{}.mime", &filename);
+
+      let result = deno_dir.fetch_remote_source(module_name, &filename);
+      assert!(result.is_ok());
+      let r = result.unwrap().unwrap();
+      assert_eq!(&(r.source_code), "export const loaded = true;\n");
+      assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+      // matching ext, no .mime file created
+      assert!(fs::read_to_string(&mime_file_name).is_err());
+
+      // Modify .mime, make sure read from local
+      let _ = fs::write(&mime_file_name, "text/javascript");
+      let result2 = deno_dir.fetch_local_source(module_name, &filename);
+      assert!(result2.is_ok());
+      let r2 = result2.unwrap().unwrap();
+      assert_eq!(&(r2.source_code), "export const loaded = true;\n");
+      // Not MediaType::TypeScript due to .mime modification
+      assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+    });
+  }
+
+  #[test]
+  fn test_fetch_source_2() {
+    use crate::tokio_util;
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let (_temp_dir, deno_dir) = test_setup(false, false);
+      let module_name = "http://localhost:4545/tests/subdir/no_ext";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/no_ext")
+          .as_ref(),
+      );
+      let mime_file_name = format!("{}.mime", &filename);
+      let result = deno_dir.fetch_remote_source(module_name, &filename);
+      assert!(result.is_ok());
+      let r = result.unwrap().unwrap();
+      assert_eq!(&(r.source_code), "export const loaded = true;\n");
+      assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+      // no ext, should create .mime file
+      assert_eq!(
+        fs::read_to_string(&mime_file_name).unwrap(),
+        "text/typescript"
+      );
+
+      let module_name_2 = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let filename_2 = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
+          .as_ref(),
+      );
+      let mime_file_name_2 = format!("{}.mime", &filename_2);
+      let result_2 = deno_dir.fetch_remote_source(module_name_2, &filename_2);
+      assert!(result_2.is_ok());
+      let r2 = result_2.unwrap().unwrap();
+      assert_eq!(&(r2.source_code), "export const loaded = true;\n");
+      assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+      // mismatch ext, should create .mime file
+      assert_eq!(
+        fs::read_to_string(&mime_file_name_2).unwrap(),
+        "text/javascript"
+      );
+
+      // test unknown extension
+      let module_name_3 = "http://localhost:4545/tests/subdir/unknown_ext.deno";
+      let filename_3 = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/unknown_ext.deno")
+          .as_ref(),
+      );
+      let mime_file_name_3 = format!("{}.mime", &filename_3);
+      let result_3 = deno_dir.fetch_remote_source(module_name_3, &filename_3);
+      assert!(result_3.is_ok());
+      let r3 = result_3.unwrap().unwrap();
+      assert_eq!(&(r3.source_code), "export const loaded = true;\n");
+      assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
+      // unknown ext, should create .mime file
+      assert_eq!(
+        fs::read_to_string(&mime_file_name_3).unwrap(),
+        "text/typescript"
+      );
+    });
+  }
+
+  #[test]
+  fn test_fetch_source_3() {
+    // only local, no http_util::fetch_sync_string called
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let cwd = std::env::current_dir().unwrap();
+    let cwd_string = cwd.to_str().unwrap();
+    let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
+    let filename =
+      format!("{}/tests/subdir/mt_text_typescript.t1.ts", &cwd_string);
+
+    let result = deno_dir.fetch_local_source(module_name, &filename);
+    assert!(result.is_ok());
+    let r = result.unwrap().unwrap();
+    assert_eq!(&(r.source_code), "export const loaded = true;\n");
+    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+  }
+
+  #[test]
+  fn test_code_fetch() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let cwd = std::env::current_dir().unwrap();
+    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
+
+    // Test failure case.
+    let specifier = "hello.ts";
+    let referrer = add_root!("/baddir/badfile.ts");
+    let r = deno_dir.code_fetch(specifier, referrer);
+    assert!(r.is_err());
+
+    // Assuming cwd is the deno repo root.
+    let specifier = "./js/main.ts";
+    let referrer = cwd_string.as_str();
+    let r = deno_dir.code_fetch(specifier, referrer);
+    assert!(r.is_ok());
+    //let code_fetch_output = r.unwrap();
+    //println!("code_fetch_output {:?}", code_fetch_output);
+  }
+
+  #[test]
+  fn test_code_fetch_1() {
+    /*recompile ts file*/
+    let (_temp_dir, deno_dir) = test_setup(false, true);
+
+    let cwd = std::env::current_dir().unwrap();
+    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
+
+    // Test failure case.
+    let specifier = "hello.ts";
+    let referrer = add_root!("/baddir/badfile.ts");
+    let r = deno_dir.code_fetch(specifier, referrer);
+    assert!(r.is_err());
+
+    // Assuming cwd is the deno repo root.
+    let specifier = "./js/main.ts";
+    let referrer = cwd_string.as_str();
+    let r = deno_dir.code_fetch(specifier, referrer);
+    assert!(r.is_ok());
+  }
+
+  #[test]
+  fn test_src_file_to_url_1() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+    assert_eq!("hello", deno_dir.src_file_to_url("hello"));
+    assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
+    let x = deno_dir.deps_http.join("hello/world.txt");
+    assert_eq!(
+      "http://hello/world.txt",
+      deno_dir.src_file_to_url(x.to_str().unwrap())
+    );
+  }
+
+  #[test]
+  fn test_src_file_to_url_2() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+    assert_eq!("hello", deno_dir.src_file_to_url("hello"));
+    assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
+    let x = deno_dir.deps_https.join("hello/world.txt");
+    assert_eq!(
+      "https://hello/world.txt",
+      deno_dir.src_file_to_url(x.to_str().unwrap())
+    );
+  }
+
+  #[test]
+  fn test_src_file_to_url_3() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let x = deno_dir.deps_http.join("localhost_PORT4545/world.txt");
+    assert_eq!(
+      "http://localhost:4545/world.txt",
+      deno_dir.src_file_to_url(x.to_str().unwrap())
+    );
+  }
+
+  #[test]
+  fn test_src_file_to_url_4() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let x = deno_dir.deps_https.join("localhost_PORT4545/world.txt");
+    assert_eq!(
+      "https://localhost:4545/world.txt",
+      deno_dir.src_file_to_url(x.to_str().unwrap())
+    );
+  }
+
+  // https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87
+  #[test]
+  fn test_resolve_module_1() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let test_cases = [
+      (
+        "./subdir/print_hello.ts",
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
+      ),
+      (
+        "testdata/001_hello.js",
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/"),
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
+        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
+      ),
+      (
+        add_root!("/Users/rld/src/deno/hello.js"),
+        ".",
+        add_root!("/Users/rld/src/deno/hello.js"),
+        add_root!("/Users/rld/src/deno/hello.js"),
+      ),
+      (
+        add_root!("/this/module/got/imported.js"),
+        add_root!("/that/module/did/it.js"),
+        add_root!("/this/module/got/imported.js"),
+        add_root!("/this/module/got/imported.js"),
+      ),
+    ];
+    for &test in test_cases.iter() {
+      let specifier = String::from(test.0);
+      let referrer = String::from(test.1);
+      let (module_name, filename) =
+        deno_dir.resolve_module(&specifier, &referrer).unwrap();
+      assert_eq!(module_name, test.2);
+      assert_eq!(filename, test.3);
+    }
+  }
+
+  #[test]
+  fn test_resolve_module_2() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let specifier = "http://localhost:4545/testdata/subdir/print_hello.ts";
+    let referrer = add_root!("/deno/testdata/006_url_imports.ts");
+
+    let expected_module_name =
+      "http://localhost:4545/testdata/subdir/print_hello.ts";
+    let expected_filename = deno_fs::normalize_path(
+      deno_dir
+        .deps_http
+        .join("localhost_PORT4545/testdata/subdir/print_hello.ts")
+        .as_ref(),
+    );
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, referrer).unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_3() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let specifier_ =
+      deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
+    let specifier = specifier_.to_str().unwrap();
+    let referrer = ".";
+
+    let expected_module_name = "http://unpkg.com/liltest@0.0.5/index.ts";
+    let expected_filename = deno_fs::normalize_path(
+      deno_dir
+        .deps_http
+        .join("unpkg.com/liltest@0.0.5/index.ts")
+        .as_ref(),
+    );
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, referrer).unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_4() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let specifier = "./util";
+    let referrer_ = deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
+    let referrer = referrer_.to_str().unwrap();
+
+    // http containing files -> load relative import with http
+    let expected_module_name = "http://unpkg.com/liltest@0.0.5/util";
+    let expected_filename = deno_fs::normalize_path(
+      deno_dir
+        .deps_http
+        .join("unpkg.com/liltest@0.0.5/util")
+        .as_ref(),
+    );
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, referrer).unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_5() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let specifier = "./util";
+    let referrer_ =
+      deno_dir.deps_https.join("unpkg.com/liltest@0.0.5/index.ts");
+    let referrer = referrer_.to_str().unwrap();
+
+    // https containing files -> load relative import with https
+    let expected_module_name = "https://unpkg.com/liltest@0.0.5/util";
+    let expected_filename = deno_fs::normalize_path(
+      deno_dir
+        .deps_https
+        .join("unpkg.com/liltest@0.0.5/util")
+        .as_ref(),
+    );
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, referrer).unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_6() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let specifier = "http://localhost:4545/tests/subdir/mod2.ts";
+    let referrer = add_root!("/deno/tests/006_url_imports.ts");
+    let expected_module_name = "http://localhost:4545/tests/subdir/mod2.ts";
+    let expected_filename = deno_fs::normalize_path(
+      deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/subdir/mod2.ts")
+        .as_ref(),
+    );
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, referrer).unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_7() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let specifier = "http_test.ts";
+    let referrer = add_root!("/Users/rld/src/deno_net/");
+    let expected_module_name =
+      add_root!("/Users/rld/src/deno_net/http_test.ts");
+    let expected_filename = add_root!("/Users/rld/src/deno_net/http_test.ts");
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, referrer).unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_referrer_dot() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let specifier = "tests/001_hello.js";
+
+    let cwd = std::env::current_dir().unwrap();
+    let expected_path = cwd.join(specifier);
+    let expected_module_name = deno_fs::normalize_path(&expected_path);
+    let expected_filename = expected_module_name.clone();
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, ".").unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, "./").unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_referrer_dotdot() {
+    let (_temp_dir, deno_dir) = test_setup(false, false);
+
+    let specifier = "tests/001_hello.js";
+
+    let cwd = std::env::current_dir().unwrap();
+    let expected_path = cwd.join("..").join(specifier);
+    let expected_module_name = deno_fs::normalize_path(&expected_path);
+    let expected_filename = expected_module_name.clone();
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, "..").unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, "../").unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_map_file_extension() {
+    assert_eq!(
+      map_file_extension(Path::new("foo/bar.ts")),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_file_extension(Path::new("foo/bar.d.ts")),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_file_extension(Path::new("foo/bar.js")),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
+      map_file_extension(Path::new("foo/bar.json")),
+      msg::MediaType::Json
+    );
+    assert_eq!(
+      map_file_extension(Path::new("foo/bar.txt")),
+      msg::MediaType::Unknown
+    );
+    assert_eq!(
+      map_file_extension(Path::new("foo/bar")),
+      msg::MediaType::Unknown
+    );
+  }
+
+  #[test]
+  fn test_map_content_type() {
+    // Extension only
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.ts"), None),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.d.ts"), None),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.js"), None),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.json"), None),
+      msg::MediaType::Json
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.txt"), None),
+      msg::MediaType::Unknown
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), None),
+      msg::MediaType::Unknown
+    );
+
+    // Media Type
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("application/typescript")),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("text/typescript")),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("video/vnd.dlna.mpeg-tts")),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("video/mp2t")),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("application/x-typescript")),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("application/javascript")),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("text/javascript")),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("application/ecmascript")),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("text/ecmascript")),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("application/x-javascript")),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("application/json")),
+      msg::MediaType::Json
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("text/json")),
+      msg::MediaType::Json
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.ts"), Some("text/plain")),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")),
+      msg::MediaType::Unknown
+    );
+  }
+
+  #[test]
+  fn test_filter_shebang() {
+    assert_eq!(filter_shebang("".to_string()), "");
+    assert_eq!(filter_shebang("#".to_string()), "#");
+    assert_eq!(filter_shebang("#!".to_string()), "");
+    assert_eq!(filter_shebang("#!\n\n".to_string()), "\n\n");
+    let code = "#!/usr/bin/env deno\nconsole.log('hello');\n".to_string();
+    assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n");
+  }
 }

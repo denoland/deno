@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #
 # The Rust compiler normally builds source code directly into an executable.
 # Internally, object code is produced, and then the (system) linker is called,

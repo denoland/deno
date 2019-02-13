@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assertEqual } from "./test_util.ts";
 
 function deferred() {
@@ -154,4 +154,13 @@ test(async function intervalOrdering() {
 test(async function intervalCancelInvalidSilentFail() {
   // Should silently fail (no panic)
   clearInterval(2147483647);
+});
+
+test(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
+  let count = 0;
+  setTimeout(() => {
+    count++;
+  }, 2 ** 31);
+  await waitForMs(1);
+  assertEqual(count, 1);
 });

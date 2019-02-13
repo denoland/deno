@@ -1,14 +1,13 @@
 #!/usr/bin/env python
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # Does google-lint on c++ files and ts-lint on typescript files
 
 import os
 import sys
-from util import enable_ansi_colors, run, find_exts
+from util import enable_ansi_colors, find_exts, root_path, run
 
 enable_ansi_colors()
 
-root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 third_party_path = os.path.join(root_path, "third_party")
 cpplint = os.path.join(third_party_path, "cpplint", "cpplint.py")
 tslint = os.path.join(third_party_path, "node_modules", "tslint", "bin",
@@ -16,8 +15,8 @@ tslint = os.path.join(third_party_path, "node_modules", "tslint", "bin",
 
 os.chdir(root_path)
 run([
-    "python", cpplint, "--filter=-build/include_subdir", "--repository=src",
-    "--extensions=cc,h", "--recursive", "src/."
+    "python", cpplint, "--filter=-build/include_subdir",
+    "--repository=libdeno", "--extensions=cc,h", "--recursive", "libdeno"
 ])
 
 run(["node", tslint, "-p", ".", "--exclude", "**/gen/**/*.ts"])

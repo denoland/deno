@@ -1,4 +1,10 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { isTypedArray } from "./util";
+import { TextEncoder } from "./text_encoding";
+import { File, stdout } from "./files";
+import { cliTable } from "./console_table";
+import { formatError } from "./format_error";
+import { libdeno } from "./libdeno";
 
 // tslint:disable-next-line:no-any
 type ConsoleContext = Set<any>;
@@ -6,10 +12,36 @@ type ConsoleOptions = Partial<{
   showHidden: boolean;
   depth: number;
   colors: boolean;
+  indentLevel: number;
+  collapsedAt: number | null;
 }>;
 
 // Default depth of logging nested objects
-const DEFAULT_MAX_DEPTH = 2;
+const DEFAULT_MAX_DEPTH = 4;
+
+// Char codes
+const CHAR_PERCENT = 37; /* % */
+const CHAR_LOWERCASE_S = 115; /* s */
+const CHAR_LOWERCASE_D = 100; /* d */
+const CHAR_LOWERCASE_I = 105; /* i */
+const CHAR_LOWERCASE_F = 102; /* f */
+const CHAR_LOWERCASE_O = 111; /* o */
+const CHAR_UPPERCASE_O = 79; /* O */
+const CHAR_LOWERCASE_C = 99; /* c */
+export class CSI {
+  static kClear = "\x1b[1;1H";
+  static kClearScreenDown = "\x1b[0J";
+}
+
+function cursorTo(stream: File, x: number, y?: number) {
+  const uint8 = new TextEncoder().encode(CSI.kClear);
+  stream.write(uint8);
+}
+
+function clearScreenDown(stream: File) {
+  const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
+  stream.write(uint8);
+}
 
 // tslint:disable-next-line:no-any
 function getClassInstanceName(instance: any): string {
@@ -35,6 +67,45 @@ function createFunctionString(value: Function, ctx: ConsoleContext): string {
   return `[${cstrName}]`;
 }
 
+interface IterablePrintConfig {
+  typeName: string;
+  displayName: string;
+  delims: [string, string];
+  entryHandler: (
+    // tslint:disable-next-line:no-any
+    entry: any,
+    ctx: ConsoleContext,
+    level: number,
+    maxLevel: number
+  ) => string;
+}
+
+function createIterableString(
+  // tslint:disable-next-line:no-any
+  value: any,
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number,
+  config: IterablePrintConfig
+): string {
+  if (level >= maxLevel) {
+    return `[${config.typeName}]`;
+  }
+  ctx.add(value);
+
+  const entries: string[] = [];
+  // In cases e.g. Uint8Array.prototype
+  try {
+    for (const el of value) {
+      entries.push(config.entryHandler(el, ctx, level + 1, maxLevel));
+    }
+  } catch (e) {}
+  ctx.delete(value);
+  const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
+  const iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
+  return `${iPrefix}${config.delims[0]}${iContent}${config.delims[1]}`;
+}
+
 function createArrayString(
   // tslint:disable-next-line:no-any
   value: any[],
@@ -42,24 +113,122 @@ function createArrayString(
   level: number,
   maxLevel: number
 ): string {
-  const entries: string[] = [];
-  for (const el of value) {
-    entries.push(stringifyWithQuotes(ctx, el, level + 1, maxLevel));
-  }
-  ctx.delete(value);
-  if (entries.length === 0) {
-    return "[]";
-  }
-  return `[ ${entries.join(", ")} ]`;
+  const printConfig: IterablePrintConfig = {
+    typeName: "Array",
+    displayName: "",
+    delims: ["[", "]"],
+    entryHandler: (el, ctx, level, maxLevel) =>
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
+  };
+  return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
 
-function createObjectString(
+function createTypedArrayString(
+  typedArrayName: string,
   // tslint:disable-next-line:no-any
   value: any,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
 ): string {
+  const printConfig: IterablePrintConfig = {
+    typeName: typedArrayName,
+    displayName: typedArrayName,
+    delims: ["[", "]"],
+    entryHandler: (el, ctx, level, maxLevel) =>
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
+  };
+  return createIterableString(value, ctx, level, maxLevel, printConfig);
+}
+
+function createSetString(
+  // tslint:disable-next-line:no-any
+  value: Set<any>,
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
+  const printConfig: IterablePrintConfig = {
+    typeName: "Set",
+    displayName: "Set",
+    delims: ["{", "}"],
+    entryHandler: (el, ctx, level, maxLevel) =>
+      stringifyWithQuotes(el, ctx, level + 1, maxLevel)
+  };
+  return createIterableString(value, ctx, level, maxLevel, printConfig);
+}
+
+function createMapString(
+  // tslint:disable-next-line:no-any
+  value: Map<any, any>,
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
+  const printConfig: IterablePrintConfig = {
+    typeName: "Map",
+    displayName: "Map",
+    delims: ["{", "}"],
+    entryHandler: (el, ctx, level, maxLevel) => {
+      const [key, val] = el;
+      return `${stringifyWithQuotes(
+        key,
+        ctx,
+        level + 1,
+        maxLevel
+      )} => ${stringifyWithQuotes(val, ctx, level + 1, maxLevel)}`;
+    }
+  };
+  return createIterableString(value, ctx, level, maxLevel, printConfig);
+}
+
+function createWeakSetString(): string {
+  return "WeakSet { [items unknown] }"; // as seen in Node
+}
+
+function createWeakMapString(): string {
+  return "WeakMap { [items unknown] }"; // as seen in Node
+}
+
+function createDateString(value: Date) {
+  // without quotes, ISO format
+  return value.toISOString();
+}
+
+function createRegExpString(value: RegExp) {
+  return value.toString();
+}
+
+// tslint:disable-next-line:ban-types
+function createStringWrapperString(value: String) {
+  return `[String: "${value.toString()}"]`;
+}
+
+// tslint:disable-next-line:ban-types
+function createBooleanWrapperString(value: Boolean) {
+  return `[Boolean: ${value.toString()}]`;
+}
+
+// tslint:disable-next-line:ban-types
+function createNumberWrapperString(value: Number) {
+  return `[Number: ${value.toString()}]`;
+}
+
+// TODO: Promise, requires v8 bindings to get info
+// TODO: Proxy
+
+function createRawObjectString(
+  // tslint:disable-next-line:no-any
+  value: any,
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
+  if (level >= maxLevel) {
+    return "[Object]";
+  }
+  ctx.add(value);
+
   const entries: string[] = [];
   let baseString = "";
 
@@ -71,7 +240,7 @@ function createObjectString(
 
   for (const key of Object.keys(value)) {
     entries.push(
-      `${key}: ${stringifyWithQuotes(ctx, value[key], level + 1, maxLevel)}`
+      `${key}: ${stringifyWithQuotes(value[key], ctx, level + 1, maxLevel)}`
     );
   }
 
@@ -90,10 +259,55 @@ function createObjectString(
   return baseString;
 }
 
-function stringify(
-  ctx: ConsoleContext,
+function createObjectString(
   // tslint:disable-next-line:no-any
   value: any,
+  ...args: [ConsoleContext, number, number]
+): string {
+  if (value instanceof Error) {
+    const errorJSON = libdeno.errorToJSON(value);
+    return formatError(errorJSON);
+  } else if (Array.isArray(value)) {
+    return createArrayString(value, ...args);
+  } else if (value instanceof Number) {
+    // tslint:disable-next-line:ban-types
+    return createNumberWrapperString(value as Number);
+  } else if (value instanceof Boolean) {
+    // tslint:disable-next-line:ban-types
+    return createBooleanWrapperString(value as Boolean);
+  } else if (value instanceof String) {
+    // tslint:disable-next-line:ban-types
+    return createStringWrapperString(value as String);
+  } else if (value instanceof RegExp) {
+    return createRegExpString(value as RegExp);
+  } else if (value instanceof Date) {
+    return createDateString(value as Date);
+  } else if (value instanceof Set) {
+    // tslint:disable-next-line:no-any
+    return createSetString(value as Set<any>, ...args);
+  } else if (value instanceof Map) {
+    // tslint:disable-next-line:no-any
+    return createMapString(value as Map<any, any>, ...args);
+  } else if (value instanceof WeakSet) {
+    return createWeakSetString();
+  } else if (value instanceof WeakMap) {
+    return createWeakMapString();
+  } else if (isTypedArray(value)) {
+    return createTypedArrayString(
+      Object.getPrototypeOf(value).constructor.name,
+      value,
+      ...args
+    );
+  } else {
+    // Otherwise, default object formatting
+    return createRawObjectString(value, ...args);
+  }
+}
+
+function stringify(
+  // tslint:disable-next-line:no-any
+  value: any,
+  ctx: ConsoleContext,
   level: number,
   maxLevel: number
 ): string {
@@ -118,20 +332,7 @@ function stringify(
         return "[Circular]";
       }
 
-      if (level >= maxLevel) {
-        return `[object]`;
-      }
-
-      ctx.add(value);
-
-      if (value instanceof Error) {
-        return value.stack! || "";
-      } else if (Array.isArray(value)) {
-        // tslint:disable-next-line:no-any
-        return createArrayString(value as any[], ctx, level, maxLevel);
-      } else {
-        return createObjectString(value, ctx, level, maxLevel);
-      }
+      return createObjectString(value, ctx, level, maxLevel);
     default:
       return "[Not Implemented]";
   }
@@ -139,9 +340,9 @@ function stringify(
 
 // Print strings when they are inside of arrays or objects with quotes
 function stringifyWithQuotes(
-  ctx: ConsoleContext,
   // tslint:disable-next-line:no-any
   value: any,
+  ctx: ConsoleContext,
   level: number,
   maxLevel: number
 ): string {
@@ -149,47 +350,176 @@ function stringifyWithQuotes(
     case "string":
       return `"${value}"`;
     default:
-      return stringify(ctx, value, level, maxLevel);
+      return stringify(value, ctx, level, maxLevel);
   }
 }
 
-// @internal
+// Returns true when the console is collapsed.
+function isCollapsed(
+  collapsedAt: number | null | undefined,
+  indentLevel: number | null | undefined
+) {
+  if (collapsedAt == null || indentLevel == null) {
+    return false;
+  }
+
+  return collapsedAt <= indentLevel;
+}
+
+/** TODO Do not expose this from "deno" namespace.
+ * @internal
+ */
 export function stringifyArgs(
   // tslint:disable-next-line:no-any
   args: any[],
   options: ConsoleOptions = {}
 ): string {
-  const out: string[] = [];
-  for (const a of args) {
-    if (typeof a === "string") {
-      out.push(a);
-    } else {
-      out.push(
-        // use default maximum depth for null or undefined argument
-        stringify(
-          // tslint:disable-next-line:no-any
-          new Set<any>(),
-          a,
-          0,
-          // tslint:disable-next-line:triple-equals
-          options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
-        )
-      );
+  const first = args[0];
+  let a = 0;
+  let str = "";
+  let join = "";
+
+  if (typeof first === "string") {
+    let tempStr: string;
+    let lastPos = 0;
+
+    for (let i = 0; i < first.length - 1; i++) {
+      if (first.charCodeAt(i) === CHAR_PERCENT) {
+        const nextChar = first.charCodeAt(++i);
+        if (a + 1 !== args.length) {
+          switch (nextChar) {
+            case CHAR_LOWERCASE_S:
+              // format as a string
+              tempStr = String(args[++a]);
+              break;
+            case CHAR_LOWERCASE_D:
+            case CHAR_LOWERCASE_I:
+              // format as an integer
+              const tempInteger = args[++a];
+              if (typeof tempInteger === "bigint") {
+                tempStr = `${tempInteger}n`;
+              } else if (typeof tempInteger === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = `${parseInt(tempInteger, 10)}`;
+              }
+              break;
+            case CHAR_LOWERCASE_F:
+              // format as a floating point value
+              const tempFloat = args[++a];
+              if (typeof tempFloat === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = `${parseFloat(tempFloat)}`;
+              }
+              break;
+            case CHAR_LOWERCASE_O:
+            case CHAR_UPPERCASE_O:
+              // format as an object
+              tempStr = stringify(
+                args[++a],
+                // tslint:disable-next-line:no-any
+                new Set<any>(),
+                0,
+                // tslint:disable-next-line:triple-equals
+                options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
+              );
+              break;
+            case CHAR_PERCENT:
+              str += first.slice(lastPos, i);
+              lastPos = i + 1;
+              continue;
+            case CHAR_LOWERCASE_C:
+              // TODO: applies CSS style rules to the output string as specified
+              continue;
+            default:
+              // any other character is not a correct placeholder
+              continue;
+          }
+
+          if (lastPos !== i - 1) {
+            str += first.slice(lastPos, i - 1);
+          }
+
+          str += tempStr;
+          lastPos = i + 1;
+        } else if (nextChar === CHAR_PERCENT) {
+          str += first.slice(lastPos, i);
+          lastPos = i + 1;
+        }
+      }
+    }
+
+    if (lastPos !== 0) {
+      a++;
+      join = " ";
+      if (lastPos < first.length) {
+        str += first.slice(lastPos);
+      }
     }
   }
-  return out.join(" ");
+
+  while (a < args.length) {
+    const value = args[a];
+    str += join;
+    if (typeof value === "string") {
+      str += value;
+    } else {
+      // use default maximum depth for null or undefined argument
+      str += stringify(
+        value,
+        // tslint:disable-next-line:no-any
+        new Set<any>(),
+        0,
+        // tslint:disable-next-line:triple-equals
+        options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
+      );
+    }
+    join = " ";
+    a++;
+  }
+
+  const { collapsedAt, indentLevel } = options;
+  if (
+    !isCollapsed(collapsedAt, indentLevel) &&
+    indentLevel != null &&
+    indentLevel > 0
+  ) {
+    const groupIndent = " ".repeat(indentLevel);
+    if (str.indexOf("\n") !== -1) {
+      str = str.replace(/\n/g, `\n${groupIndent}`);
+    }
+    str = groupIndent + str;
+  }
+
+  return str;
 }
 
-type PrintFunc = (x: string, isErr?: boolean) => void;
+type PrintFunc = (x: string, isErr?: boolean, printsNewline?: boolean) => void;
+
+const countMap = new Map<string, number>();
+const timerMap = new Map<string, number>();
 
 export class Console {
-  // @internal
-  constructor(private printFunc: PrintFunc) {}
+  indentLevel: number;
+  collapsedAt: number | null;
+  /** @internal */
+  constructor(private printFunc: PrintFunc) {
+    this.indentLevel = 0;
+    this.collapsedAt = null;
+  }
 
   /** Writes the arguments to stdout */
   // tslint:disable-next-line:no-any
   log = (...args: any[]): void => {
-    this.printFunc(stringifyArgs(args));
+    this.printFunc(
+      stringifyArgs(args, {
+        indentLevel: this.indentLevel,
+        collapsedAt: this.collapsedAt
+      }),
+      false,
+      !isCollapsed(this.collapsedAt, this.indentLevel)
+    );
   };
 
   /** Writes the arguments to stdout */
@@ -200,13 +530,20 @@ export class Console {
   /** Writes the properties of the supplied `obj` to stdout */
   // tslint:disable-next-line:no-any
   dir = (obj: any, options: ConsoleOptions = {}) => {
-    this.printFunc(stringifyArgs([obj], options));
+    this.log(stringifyArgs([obj], options));
   };
 
   /** Writes the arguments to stdout */
   // tslint:disable-next-line:no-any
   warn = (...args: any[]): void => {
-    this.printFunc(stringifyArgs(args), true);
+    this.printFunc(
+      stringifyArgs(args, {
+        indentLevel: this.indentLevel,
+        collapsedAt: this.collapsedAt
+      }),
+      true,
+      !isCollapsed(this.collapsedAt, this.indentLevel)
+    );
   };
 
   /** Writes the arguments to stdout */
@@ -214,11 +551,237 @@ export class Console {
 
   /** Writes an error message to stdout if the assertion is `false`. If the
    * assertion is `true`, nothing happens.
+   *
+   * ref: https://console.spec.whatwg.org/#assert
    */
   // tslint:disable-next-line:no-any
-  assert = (condition: boolean, ...args: any[]): void => {
-    if (!condition) {
-      throw new Error(`Assertion failed: ${stringifyArgs(args)}`);
+  assert = (condition = false, ...args: any[]): void => {
+    if (condition) {
+      return;
+    }
+
+    if (args.length === 0) {
+      this.error("Assertion failed");
+      return;
+    }
+
+    const [first, ...rest] = args;
+
+    if (typeof first === "string") {
+      this.error(`Assertion failed: ${first}`, ...rest);
+      return;
+    }
+
+    this.error(`Assertion failed:`, ...args);
+  };
+
+  count = (label = "default"): void => {
+    label = String(label);
+
+    if (countMap.has(label)) {
+      const current = countMap.get(label) || 0;
+      countMap.set(label, current + 1);
+    } else {
+      countMap.set(label, 1);
+    }
+
+    this.info(`${label}: ${countMap.get(label)}`);
+  };
+
+  countReset = (label = "default"): void => {
+    label = String(label);
+
+    if (countMap.has(label)) {
+      countMap.set(label, 0);
+    } else {
+      this.warn(`Count for '${label}' does not exist`);
     }
   };
+
+  // tslint:disable-next-line:no-any
+  table = (data: any, properties?: string[]): void => {
+    // tslint:disable-next-line:no-any
+    type Value = any;
+
+    if (properties !== undefined && !Array.isArray(properties)) {
+      throw new Error(
+        "The 'properties' argument must be of type Array\
+        . Received type string"
+      );
+    }
+
+    if (data === null || typeof data !== "object") {
+      return this.log(data);
+    }
+
+    const objectValues: { [key: string]: Value[] } = {};
+    const indexKeys: string[] = [];
+    const values: Value[] = [];
+
+    const stringifyValue = (value: Value) =>
+      stringifyWithQuotes(
+        value,
+        // tslint:disable-next-line:no-any
+        new Set<any>(),
+        0,
+        1
+      );
+    const toTable = (header: string[], body: string[][]) =>
+      this.log(cliTable(header, body));
+    const createColumn = (value: Value, shift?: number): string[] => [
+      ...(shift ? [...new Array(shift)].map(() => "") : []),
+      stringifyValue(value)
+    ];
+
+    let resultData = data;
+    const isSet = data instanceof Set;
+    const isMap = data instanceof Map;
+    const valuesKey = "Values";
+    const indexKey = isSet || isMap ? "(iteration index)" : "(index)";
+
+    if (isSet) {
+      resultData = [...data];
+    } else if (isMap) {
+      let idx = 0;
+      resultData = {};
+
+      data.forEach((k: Value, v: Value) => {
+        resultData[idx] = { Key: k, Values: v };
+        idx++;
+      });
+    }
+
+    Object.keys(resultData).forEach((k, idx) => {
+      const value = resultData[k];
+
+      if (value !== null && typeof value === "object") {
+        Object.keys(value).forEach(k => {
+          const v = value[k];
+
+          if (properties && !properties.includes(k)) {
+            return;
+          }
+
+          if (objectValues[k]) {
+            objectValues[k].push(stringifyValue(v));
+          } else {
+            objectValues[k] = createColumn(v, idx);
+          }
+        });
+
+        values.push("");
+      } else {
+        values.push(stringifyValue(value));
+      }
+
+      indexKeys.push(k);
+    });
+
+    const headerKeys = Object.keys(objectValues);
+    const bodyValues = Object.values(objectValues);
+    const header = [
+      indexKey,
+      ...(properties || [
+        ...headerKeys,
+        !isMap && values.length > 0 && valuesKey
+      ])
+    ].filter(Boolean) as string[];
+    const body = [indexKeys, ...bodyValues, values];
+
+    toTable(header, body);
+  };
+
+  time = (label = "default"): void => {
+    label = String(label);
+
+    if (timerMap.has(label)) {
+      this.warn(`Timer '${label}' already exists`);
+      return;
+    }
+
+    timerMap.set(label, Date.now());
+  };
+
+  // tslint:disable-next-line:no-any
+  timeLog = (label = "default", ...args: any[]): void => {
+    label = String(label);
+
+    if (!timerMap.has(label)) {
+      this.warn(`Timer '${label}' does not exists`);
+      return;
+    }
+
+    const startTime = timerMap.get(label) as number;
+    const duration = Date.now() - startTime;
+
+    this.info(`${label}: ${duration}ms`, ...args);
+  };
+
+  timeEnd = (label = "default"): void => {
+    label = String(label);
+
+    if (!timerMap.has(label)) {
+      this.warn(`Timer '${label}' does not exists`);
+      return;
+    }
+
+    const startTime = timerMap.get(label) as number;
+    timerMap.delete(label);
+    const duration = Date.now() - startTime;
+
+    this.info(`${label}: ${duration}ms`);
+  };
+
+  group = (...label: Array<unknown>): void => {
+    if (label.length > 0) {
+      this.log(...label);
+    }
+    this.indentLevel += 2;
+  };
+
+  groupCollapsed = (...label: Array<unknown>): void => {
+    if (this.collapsedAt == null) {
+      this.collapsedAt = this.indentLevel;
+    }
+    this.group(...label);
+  };
+
+  groupEnd = (): void => {
+    if (this.indentLevel > 0) {
+      this.indentLevel -= 2;
+    }
+    if (this.collapsedAt != null && this.collapsedAt >= this.indentLevel) {
+      this.collapsedAt = null;
+      this.log(); // When the collapsed state ended, outputs a sinle new line.
+    }
+  };
+
+  clear = (): void => {
+    this.indentLevel = 0;
+    cursorTo(stdout, 0, 0);
+    clearScreenDown(stdout);
+  };
+}
+
+/**
+ * inspect() converts input into string that has the same format
+ * as printed by console.log(...);
+ */
+export function inspect(
+  value: any, // tslint:disable-line:no-any
+  options?: ConsoleOptions
+) {
+  const opts = options || {};
+  if (typeof value === "string") {
+    return value;
+  } else {
+    return stringify(
+      value,
+      // tslint:disable-next-line:no-any
+      new Set<any>(),
+      0,
+      // tslint:disable-next-line:triple-equals
+      opts.depth != undefined ? opts.depth : DEFAULT_MAX_DEPTH
+    );
+  }
 }

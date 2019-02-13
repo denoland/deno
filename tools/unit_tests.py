@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import util
 import sys
 import subprocess
@@ -43,22 +43,17 @@ def run_unit_test(deno_exe, permStr, flags=None):
 # tests by the special string. permW0N0 means allow-write but not allow-net.
 # See js/test_util.ts for more details.
 def unit_tests(deno_exe):
-    run_unit_test(deno_exe, "permW0N0E0R0")
-    run_unit_test(deno_exe, "permW1N0E0R0", ["--allow-write"])
-    run_unit_test(deno_exe, "permW0N1E0R0", ["--allow-net"])
-    run_unit_test(deno_exe, "permW0N0E1R0", ["--allow-env"])
-    run_unit_test(deno_exe, "permW0N0E0R1", ["--allow-run"])
-    run_unit_test(deno_exe, "permW1N0E0R1", ["--allow-run", "--allow-write"])
+    run_unit_test(deno_exe, "permR0W0N0E0U0")
+    run_unit_test(deno_exe, "permR1W0N0E0U0", ["--allow-read"])
+    run_unit_test(deno_exe, "permR0W1N0E0U0", ["--allow-write"])
+    run_unit_test(deno_exe, "permR1W1N0E0U0",
+                  ["--allow-read", "--allow-write"])
+    run_unit_test(deno_exe, "permR1W0N1E0U0", ["--allow-read", "--allow-net"])
+    run_unit_test(deno_exe, "permR0W0N0E1U0", ["--allow-env"])
+    run_unit_test(deno_exe, "permR0W0N0E0U1", ["--allow-run"])
+    run_unit_test(deno_exe, "permR0W1N0E0U1", ["--allow-run", "--allow-write"])
     # TODO We might accidentally miss some. We should be smarter about which we
     # run. Maybe we can use the "filtered out" number to check this.
-
-    # These are not strictly unit tests for Deno, but for ts_library_builder.
-    # They run under Node, but use the same //js/testing/ library.
-    run_unit_test2([
-        "node", "./node_modules/.bin/ts-node", "--project",
-        "tools/ts_library_builder/tsconfig.json",
-        "tools/ts_library_builder/test.ts"
-    ])
 
 
 if __name__ == '__main__':

@@ -1,11 +1,15 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { TypedArray } from "./types";
 
 let logDebug = false;
+let logSource = "JS";
 
 // @internal
-export function setLogDebug(debug: boolean): void {
+export function setLogDebug(debug: boolean, source?: string): void {
   logDebug = debug;
+  if (source) {
+    logSource = source;
+  }
 }
 
 /** Debug logging for deno.
@@ -15,7 +19,7 @@ export function setLogDebug(debug: boolean): void {
 // tslint:disable-next-line:no-any
 export function log(...args: any[]): void {
   if (logDebug) {
-    console.log("DEBUG JS -", ...args);
+    console.log(`DEBUG ${logSource} -`, ...args);
   }
 }
 
@@ -103,15 +107,15 @@ export function containsOnlyASCII(str: string): boolean {
   return /^[\x00-\x7F]*$/.test(str);
 }
 
-// @internal
 export interface Deferred {
   promise: Promise<void>;
   resolve: Function;
   reject: Function;
 }
 
-/** Create a wrapper around a promise that could be resolved externally. */
-// @internal
+/** Create a wrapper around a promise that could be resolved externally.
+ * TODO Do not expose this from "deno" namespace.
+ */
 export function deferred(): Deferred {
   let resolve: Function | undefined;
   let reject: Function | undefined;
@@ -136,4 +140,30 @@ export function isTypedArray(x: unknown): x is TypedArray {
 // @internal
 export function isObject(o: unknown): o is object {
   return o != null && typeof o === "object";
+}
+
+// @internal
+export function requiredArguments(
+  name: string,
+  length: number,
+  required: number
+): void {
+  if (length < required) {
+    const errMsg = `${name} requires at least ${required} argument${
+      required === 1 ? "" : "s"
+    }, but only ${length} present`;
+    throw new TypeError(errMsg);
+  }
+}
+
+// Returns values from a WeakMap to emulate private properties in JavaScript
+export function getPrivateValue<
+  K extends object,
+  V extends object,
+  W extends keyof V
+>(instance: K, weakMap: WeakMap<K, V>, key: W): V[W] {
+  if (weakMap.has(instance)) {
+    return weakMap.get(instance)![key];
+  }
+  throw new TypeError("Illegal invocation");
 }

@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // TODO Submit this file upstream into tokio-io/src/io/write.rs
 use std::io;
 use std::mem;

@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This is a "special" module, in that it define the global runtime scope of
 // Deno, and therefore it defines a lot of the runtime environemnt that code
 // is evaluated in.  We use this file to automatically build the runtime type
@@ -9,14 +9,20 @@
 // can be expressed as a namespace in the type library.
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
+import * as customEvent from "./custom_event";
+import * as deno from "./deno";
 import * as domTypes from "./dom_types";
-import * as file from "./file";
+import * as event from "./event";
+import * as eventTarget from "./event_target";
 import * as formData from "./form_data";
 import * as fetchTypes from "./fetch";
 import * as headers from "./headers";
 import * as textEncoding from "./text_encoding";
 import * as timers from "./timers";
+import * as url from "./url";
 import * as urlSearchParams from "./url_search_params";
+import * as workers from "./workers";
+import * as performanceUtil from "./performance";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -29,14 +35,19 @@ import { libdeno } from "./libdeno";
 declare global {
   const console: consoleTypes.Console;
   const setTimeout: typeof timers.setTimeout;
-  // tslint:disable-next-line:variable-name
-  const TextEncoder: typeof textEncoding.TextEncoder;
 }
 
 // A reference to the global object.
 export const window = globalEval("this");
 // A self reference to the global object.
 window.window = window;
+
+// This is the Deno namespace, it is handled differently from other window
+// properties when building the runtime type library, as the whole module
+// is flattened into a single namespace.
+
+window.Deno = deno;
+Object.freeze(window.Deno);
 
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;
@@ -56,8 +67,25 @@ window.setInterval = timers.setInterval;
 // being used, which it cannot statically determine within this module.
 window.Blob = blob.DenoBlob;
 export type Blob = blob.DenoBlob;
-window.File = file.DenoFile;
-export type File = file.DenoFile;
+
+// TODO(ry) Do not export a class implementing the DOM, export the DOM
+// interface. See this comment for implementation hint:
+// https://github.com/denoland/deno/pull/1396#discussion_r243711502
+// window.File = file.DenoFile;
+// export type File = file.DenoFile;
+
+window.CustomEventInit = customEvent.CustomEventInit;
+export type CustomEventInit = customEvent.CustomEventInit;
+window.CustomEvent = customEvent.CustomEvent;
+export type CustomEvent = customEvent.CustomEvent;
+window.EventInit = event.EventInit;
+export type EventInit = event.EventInit;
+window.Event = event.Event;
+export type Event = event.Event;
+window.EventTarget = eventTarget.EventTarget;
+export type EventTarget = eventTarget.EventTarget;
+window.URL = url.URL;
+export type URL = url.URL;
 window.URLSearchParams = urlSearchParams.URLSearchParams;
 export type URLSearchParams = urlSearchParams.URLSearchParams;
 
@@ -69,7 +97,11 @@ export type Headers = domTypes.Headers;
 window.FormData = formData.FormData as domTypes.FormDataConstructor;
 export type FormData = domTypes.FormData;
 
-// While these are classes, they have their global instance types created in
-// other type definitions, therefore we do not have to include them here.
 window.TextEncoder = textEncoding.TextEncoder;
+export type TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
+export type TextDecoder = textEncoding.TextDecoder;
+
+window.performance = new performanceUtil.Performance();
+
+window.workerMain = workers.workerMain;
