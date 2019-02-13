@@ -77,7 +77,7 @@ fn main() {
   }
 
   if !gn_out_path.join("build.ninja").exists() {
-    let status = Command::new("python")
+    let status = Command::new("python2")
       .env("DENO_BUILD_PATH", &gn_out_dir)
       .env("DENO_BUILD_MODE", &gn_mode)
       .arg("./tools/setup.py")
@@ -86,7 +86,7 @@ fn main() {
     assert!(status.success());
   }
 
-  let status = Command::new("python")
+  let status = Command::new("python2")
     .env("DENO_BUILD_PATH", &gn_out_dir)
     .env("DENO_BUILD_MODE", &gn_mode)
     .arg("./tools/build.py")
