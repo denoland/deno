@@ -55,4 +55,5 @@ default_args = {
   v8_untrusted_code_mitigations = false
   v8_use_external_startup_data = false
   v8_use_snapshot = true
+  v8_postmortem_support = true  # for https://github.com/nodejs/llnode/
 }
