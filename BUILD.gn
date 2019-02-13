@@ -20,6 +20,7 @@ group("default") {
 main_extern = [
   "$rust_build:ansi_term",
   "$rust_build:atty",
+  "$rust_build:cfg_if",
   "$rust_build:dirs",
   "$rust_build:flatbuffers",
   "$rust_build:futures",
@@ -27,6 +28,7 @@ main_extern = [
   "$rust_build:http",
   "$rust_build:hyper",
   "$rust_build:hyper_rustls",
+  "$rust_build:integer_atomics",
   "$rust_build:lazy_static",
   "$rust_build:libc",
   "$rust_build:log",

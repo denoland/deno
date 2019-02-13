@@ -12,10 +12,12 @@ use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::errors::RustOrJsError;
 use crate::flags;
+use crate::futex::Futex;
 use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::modules::Modules;
 use crate::msg;
+use crate::msg_ring;
 use crate::permissions::DenoPermissions;
 use crate::tokio_util;
 use futures::sync::mpsc as async_mpsc;
@@ -28,13 +30,14 @@ use std::cell::RefCell;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::mem::{self, transmute};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::{Once, ONCE_INIT};
-use std::time::Duration;
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 use tokio;
 
 // Buf represents a byte array returned from a "Op".
@@ -57,6 +60,8 @@ pub struct Isolate {
   dispatch: Dispatch,
   rx: mpsc::Receiver<(i32, Buf)>,
   tx: mpsc::Sender<(i32, Buf)>,
+  pub ring_rx: Arc<Mutex<msg_ring::Receiver>>,
+  pub ring_tx: Arc<Mutex<msg_ring::Sender>>,
   ntasks: Cell<i32>,
   timeout_due: Cell<Option<Instant>>,
   pub modules: RefCell<Modules>,
@@ -188,6 +193,8 @@ pub struct Metrics {
 static DENO_INIT: Once = ONCE_INIT;
 
 impl Isolate {
+  const SHARED_BUF_LEN: usize = 4 << 20; // 4 mb.
+
   pub fn new(
     snapshot: libdeno::deno_buf,
     state: Arc<IsolateState>,
@@ -196,21 +203,48 @@ impl Isolate {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
+    // Allocate unmanaged memory for the shared buffer by creating a Vec<u8>,
+    // grabbing the raw pointer, and then leaking the Vec so it is never freed.
+    let mut vec = Vec::<u8>::new();
+    vec.resize(Self::SHARED_BUF_LEN, 0);
+    let ptr = vec.as_mut_ptr();
+    let len = vec.len();
+    mem::forget(vec);
+    // This wrapper will be used by the message ring on the rust side.
+    let half = len / 2;
+    let shared_buf_rs_rx =
+      unsafe { msg_ring::Buffer::from_raw_parts(ptr, half) };
+    let shared_buf_rs_tx =
+      unsafe { msg_ring::Buffer::from_raw_parts(ptr.add(half), half) };
+    // This deno_buf will be sent to the javascript side.
+    let shared_buf_js = unsafe { libdeno::deno_buf::from_raw_parts(ptr, len) };
+    // Create the libdeno isolate.
     let config = libdeno::deno_config {
       will_snapshot: 0,
       load_snapshot: snapshot,
-      shared: libdeno::deno_buf::empty(), // TODO Use for message passing.
+      shared: shared_buf_js,
       recv_cb: pre_dispatch,
+      futex_cb: futex,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(i32, Buf)>();
-
+    // Create the ring buffer based channel.
+    let config = msg_ring::Config {
+      fill_direction: msg_ring::FillDirection::BottomUp,
+      ..Default::default()
+    };
+    let (_, ring_rx) =
+      msg_ring::MsgRing::new_with(shared_buf_rs_rx, config).split();
+    let (ring_tx, _) =
+      msg_ring::MsgRing::new_with(shared_buf_rs_tx, config).split();
     Self {
       libdeno_isolate,
       dispatch,
       rx,
       tx,
+      ring_rx: Arc::new(Mutex::new(ring_rx)),
+      ring_tx: Arc::new(Mutex::new(ring_tx)),
       ntasks: Cell::new(0),
       timeout_due: Cell::new(None),
       modules: RefCell::new(Modules::new()),
@@ -251,6 +285,24 @@ impl Isolate {
       let js_error_mapped = js_error.apply_source_map(&self.state.dir);
       Some(js_error_mapped)
     }
+  }
+
+  pub fn spawn_receive(&self) {
+    let rx = self.ring_rx.clone();
+    let tx = self.ring_tx.clone();
+    let builder = thread::Builder::new().name("msg_ring_receive".to_string());
+    builder
+      .spawn(move || loop {
+        let mut rx = rx.lock().unwrap();
+        let rx_msg = rx.receive();
+
+        let mut tx = tx.lock().unwrap();
+        let tx_len = rx_msg.len() + 4;
+        let mut tx_msg = tx.compose(tx_len);
+        tx_msg[0..4].clone_from_slice(b"Got ");
+        tx_msg[4..tx_len].clone_from_slice(&rx_msg);
+        tx_msg.send();
+      }).expect("Failed to spawn thread.");
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".
@@ -598,6 +650,44 @@ fn recv_deadline<T>(
       // TODO: use recv_deadline() instead of recv_timeout() when this
       // feature becomes stable/available.
       rx.recv_timeout(timeout)
+    }
+  }
+}
+
+#[repr(i32)]
+enum FutexOp {
+  Wait = 0,
+  NotifyOne = 1,
+  NotifyAll = 2,
+}
+
+impl Into<i32> for FutexOp {
+  fn into(self) -> i32 {
+    self as i32
+  }
+}
+
+extern "C" fn futex(addr: *mut i32, op: i32, val: i32, timeout: i32) -> i32 {
+  let f = unsafe { &mut *(addr as *mut Futex) };
+
+  // TODO: it should be possible to do this safely somehow.
+  let op = unsafe { transmute::<i32, FutexOp>(op) };
+  match op {
+    FutexOp::Wait => {
+      let timeout = if timeout >= 0 {
+        Some(Duration::from_millis(timeout as u64))
+      } else {
+        None
+      };
+      f.wait(val, timeout) as i32
+    }
+    FutexOp::NotifyOne => {
+      f.notify_one();
+      0
+    }
+    FutexOp::NotifyAll => {
+      f.notify_all();
+      0
     }
   }
 }

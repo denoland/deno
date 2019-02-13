@@ -8,7 +8,7 @@
     "moduleResolution": "node",
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noLib": true,
+    //"noLib": true,
     "noUnusedLocals": true,
     "paths": {
       "*": ["*", "target/debug/*", "target/release/*"]

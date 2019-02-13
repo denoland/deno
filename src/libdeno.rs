@@ -121,12 +121,17 @@ type deno_resolve_cb = unsafe extern "C" fn(
   referrer: deno_mod,
 ) -> deno_mod;
 
+#[allow(non_camel_case_types)]
+type deno_futex_cb =
+  unsafe extern "C" fn(add: *mut i32, op: i32, val: i32, timeout: i32) -> i32;
+
 #[repr(C)]
 pub struct deno_config {
   pub will_snapshot: c_int,
   pub load_snapshot: deno_buf,
   pub shared: deno_buf,
   pub recv_cb: deno_recv_cb,
+  pub futex_cb: deno_futex_cb,
 }
 
 extern "C" {

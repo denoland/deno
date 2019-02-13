@@ -248,6 +248,47 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
+void Futex(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  DCHECK_EQ(d->isolate_, isolate);
+
+  v8::Locker locker(d->isolate_);
+  v8::HandleScope handle_scope(isolate);
+
+  v8::Local<v8::Value> offset_v = args[0];
+  CHECK(offset_v->IsUint32());
+  uint32_t byte_offset = v8::Local<v8::Uint32>::Cast(offset_v)->Value();
+
+  v8::Local<v8::Value> op_v = args[1];
+  CHECK(op_v->IsInt32());
+  int32_t op = v8::Local<v8::Int32>::Cast(op_v)->Value();
+
+  int32_t val = 0;
+  if (args.Length() > 2) {
+    v8::Local<v8::Value> val_v = args[2];
+    CHECK(val_v->IsInt32());
+    val = v8::Local<v8::Int32>::Cast(val_v)->Value();
+  }
+
+  int32_t timeout = -1;
+  if (args.Length() > 3) {
+    v8::Local<v8::Value> val_v = args[3];
+    CHECK(val_v->IsInt32());
+    timeout = v8::Local<v8::Int32>::Cast(val_v)->Value();
+  }
+
+  if (byte_offset >= d->shared_.data_len) {
+    d->isolate_->ThrowException(
+        v8::Exception::RangeError(v8_str("Byte offset out of range.")));
+    return;
+  }
+  int32_t* addr = reinterpret_cast<int32_t*>(&d->shared_.data_ptr[byte_offset]);
+
+  int32_t r = d->futex_cb(addr, op, val, timeout);
+  args.GetReturnValue().Set(r);
+}
+
 v8::Local<v8::Object> DenoIsolate::GetBuiltinModules() {
   v8::EscapableHandleScope handle_scope(isolate_);
   if (builtin_modules_.IsEmpty()) {
@@ -484,6 +525,10 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
       error_to_json_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("errorToJSON"), error_to_json_val)
             .FromJust());
+
+  auto futex_tmpl = v8::FunctionTemplate::New(isolate, Futex);
+  auto futex_val = futex_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(deno_val->Set(context, deno::v8_str("futex"), futex_val).FromJust());
 
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());

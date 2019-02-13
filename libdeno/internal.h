@@ -30,6 +30,7 @@ class DenoIsolate {
   explicit DenoIsolate(deno_config config)
       : isolate_(nullptr),
         shared_(config.shared),
+        futex_cb(config.futex_cb),
         current_args_(nullptr),
         snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
@@ -80,6 +81,7 @@ class DenoIsolate {
   v8::Isolate* isolate_;
   v8::ArrayBuffer::Allocator* array_buffer_allocator_;
   deno_buf shared_;
+  deno_futex_cb futex_cb;
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
@@ -99,7 +101,7 @@ class DenoIsolate {
   v8::Persistent<v8::Function> recv_;
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
-  v8::Persistent<v8::SharedArrayBuffer> shared_ab_;
+  v8::Global<v8::SharedArrayBuffer> shared_ab_;
 };
 
 class UserDataScope {
@@ -133,6 +135,7 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
+void Futex(const v8::FunctionCallbackInfo<v8::Value>& args);
 void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args);
 void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
@@ -144,6 +147,7 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print),
     reinterpret_cast<intptr_t>(Recv),
     reinterpret_cast<intptr_t>(Send),
+    reinterpret_cast<intptr_t>(Futex),
     reinterpret_cast<intptr_t>(EvalContext),
     reinterpret_cast<intptr_t>(ErrorToJSON),
     reinterpret_cast<intptr_t>(Shared),

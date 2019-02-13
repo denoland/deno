@@ -25,6 +25,9 @@ typedef struct deno_s Deno;
 typedef void (*deno_recv_cb)(void* user_data, int32_t req_id,
                              deno_buf control_buf, deno_buf data_buf);
 
+typedef int32_t (*deno_futex_cb)(int32_t* addr, int32_t op, int32_t val,
+                                 int32_t timeout);
+
 void deno_init();
 const char* deno_v8_version();
 void deno_set_v8_flags(int* argc, char** argv);
@@ -34,6 +37,7 @@ typedef struct {
   deno_buf load_snapshot;  // Optionally: A deno_buf from deno_get_snapshot.
   deno_buf shared;         // Shared buffer to be mapped to libdeno.shared
   deno_recv_cb recv_cb;    // Maps to libdeno.send() calls.
+  deno_futex_cb futex_cb;  // Futex wait/notify.
 } deno_config;
 
 // Create a new deno isolate.

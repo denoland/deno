@@ -1,5 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #[macro_use]
+extern crate cfg_if;
+#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
@@ -14,13 +16,16 @@ pub mod deno_dir;
 pub mod errors;
 pub mod flags;
 mod fs;
+mod futex;
 mod http_body;
 mod http_util;
+
 pub mod isolate;
 pub mod js_errors;
 pub mod libdeno;
 pub mod modules;
 pub mod msg;
+pub mod msg_ring;
 pub mod msg_util;
 pub mod ops;
 pub mod permissions;
@@ -99,6 +104,8 @@ fn main() {
   let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
 
   tokio_util::init(|| {
+    isolate.spawn_receive();
+
     // Setup runtime.
     isolate
       .execute("denoMain();")
