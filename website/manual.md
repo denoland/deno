@@ -6,9 +6,7 @@
 
 A word of caution: Deno is very much under development. We encourage brave early
 adopters, but expect bugs large and small. The API is subject to change without
-notice.
-
-[Bug reports](https://github.com/denoland/deno/issues) do help!
+notice. [Bug reports](https://github.com/denoland/deno/issues) do help!
 
 ## Introduction
 
@@ -19,8 +17,8 @@ programmer.
 
 It will always be distributed as a single executable - and that executable will
 be sufficient software to run any deno program. Given a URL to a deno program,
-you should be able to execute it with nothing more than <a
-href="https://deno.land/benchmarks.html#size">the 50M deno executable</a>.
+you should be able to execute it with nothing more than the 50 megabyte deno
+executable.
 
 Deno explicitly takes on the role of both runtime and package manager. It uses a
 standard browser-compatible protocol for loading modules: URLs.
