@@ -312,7 +312,6 @@ fn op_format_error(
     &mut builder,
     &msg::FormatErrorResArgs {
       error: Some(new_error),
-      ..Default::default()
     },
   );
 

@@ -564,6 +564,7 @@ mod test {
     fn as_float(&self) -> f64;
   }
   impl AsFloat for Duration {
+    #[allow(clippy::cast_lossless)]
     fn as_float(&self) -> f64 {
       self.as_secs() as f64 + self.subsec_nanos() as f64 / 1e9
     }
