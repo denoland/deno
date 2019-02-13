@@ -4,6 +4,8 @@
   <head>
     <title>Deno Manual</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="highlight/styles/github-gist.css">
+    <script src="highlight/highlight.pack.js"></script>
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
   </head>
   <body>
@@ -32,6 +34,8 @@
             let el = document.getElementById(window.location.hash.slice(1));
             window.scrollTo({ top: el.offsetTop });
           }
+
+          hljs.initHighlighting();
         }
 
         main();
