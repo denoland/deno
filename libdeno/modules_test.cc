@@ -11,7 +11,7 @@ void recv_cb(void* user_data, int req_id, deno_buf buf, deno_buf data_buf) {
 
 TEST(ModulesTest, Resolution) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb, nullptr});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, "a.js",
@@ -64,7 +64,7 @@ TEST(ModulesTest, Resolution) {
 
 TEST(ModulesTest, BuiltinModules) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb, nullptr});
   EXPECT_EQ(0, exec_count);
 
   deno_execute(d, d, "setup.js",
@@ -125,7 +125,7 @@ TEST(ModulesTest, BuiltinModules) {
 
 TEST(ModulesTest, BuiltinModules2) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb, nullptr});
   EXPECT_EQ(0, exec_count);
 
   deno_execute(d, d, "setup.js",
@@ -160,7 +160,7 @@ TEST(ModulesTest, BuiltinModules2) {
 
 TEST(ModulesTest, BuiltinModules3) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb, nullptr});
   EXPECT_EQ(0, exec_count);
 
   deno_execute(d, d, "setup.js",
@@ -215,7 +215,7 @@ TEST(ModulesTest, BuiltinModules3) {
 
 TEST(ModulesTest, ResolutionError) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb, nullptr});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, "a.js",
@@ -248,7 +248,7 @@ TEST(ModulesTest, ResolutionError) {
 
 TEST(ModulesTest, ImportMetaUrl) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb, nullptr});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a =
