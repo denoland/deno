@@ -46,7 +46,7 @@ interface Libdeno {
 
   shared: SharedArrayBuffer;
 
-  rx: MsgRingSender;
+  rx: MsgRingReceiver;
   tx: MsgRingSender;
 
   // DEPRECATED
