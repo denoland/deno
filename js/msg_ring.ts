@@ -105,7 +105,7 @@ abstract class MsgRingDefaultConfig {
   readonly fillDirection: FillDirection = FillDirection.TopDown;
 
   // The maximum number of times acquireFrame() will spin before sleeping.
-  readonly spinCount: number = 100;
+  readonly spinCount: number = 1000;
 
   // When spinning, for how long the thread yields the CPU on each cycle, in
   // milliseconds. Yielding happens by calling Atomics.wait() with a time-out.

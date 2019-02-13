@@ -206,7 +206,7 @@ impl Default for Config {
   fn default() -> Self {
     Self {
       fill_direction: FillDirection::TopDown,
-      spin_count: 100,
+      spin_count: 1000,
       // spin_yield_cpu_time: 0,
     }
   }
