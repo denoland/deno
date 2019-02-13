@@ -609,14 +609,18 @@ Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
 
 Ask for help in the [community chat room](https://gitter.im/denolife/Lobby).
 
+If you are going to work on an issue, mention so in the issue comments _before_
+you start working on the issue.
+
 ### Submitting a pull request
 
 Before submitting, please make sure the following is done:
 
-1. There are tests that cover the changes.
-2. Ensure `./tools/test.py` passes.
-3. Format your code with `tools/format.py`
-4. Make sure `./tools/lint.py` passes.
+1. That there is a related issue and it is referenced in the PR text.
+2. There are tests that cover the changes.
+3. Ensure `./tools/test.py` passes.
+4. Format your code with `tools/format.py`
+5. Make sure `./tools/lint.py` passes.
 
 ### Changes to `third_party`
 
