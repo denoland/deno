@@ -6,6 +6,7 @@ import {
   MsgRingSender,
   WaitResult
 } from "./msg_ring";
+import { unreachable } from "./util";
 
 // The libdeno functions are moved so that users can't access them.
 type MessageCallback = (msg: Uint8Array) => void;
@@ -69,9 +70,9 @@ export const libdeno = window.libdeno as Libdeno;
 
 function lazyInit() {
   if (libdeno.shared.byteLength === 0) {
-    // The message ring should not be accessed before a snapshot has been created.
-    // This is because the size of the shared buffer gets embedded in the snapshot,
-    // which is zero when the snapshot is created.
+    // The message ring should not be accessed before a snapshot has been
+    // created. This is because the size of the shared buffer gets embedded in
+    // the snapshot which is zero when snapshotting.
     // TODO: move shared buffer creation to libdeno, make the size fixed
     // (non-configurable), replace c++ getter by fixed property.
     throw new Error("Shared buffer can't be used before snapshotting.");
@@ -98,6 +99,8 @@ function lazyInit() {
         return "not-equal";
       case 2:
         return "timed-out";
+      default:
+        return unreachable();
     }
   }
 

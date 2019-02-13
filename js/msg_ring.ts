@@ -4,6 +4,7 @@
 // It's not clear to me how to declare an extra method on a global object,
 // therefore this hack.
 // TODO: fix this.
+// tslint:disable-next-line:no-any
 declare const Atomics: any;
 
 // The 'MsgRing' prefix is necessary to avoid a conflict with a less complete
@@ -152,23 +153,23 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
   // sender/receiver. The value indicates the offset in bytes from the start of
   // ring buffer, ***NOT*** adjusted for fill direction of the buffer. Hence
   // the initial (empty) window always starts and ends at position 0.
-  protected windowHeadPosition: number = 0;
-  protected windowTailPosition: number = 0;
+  protected windowHeadPosition = 0;
+  protected windowTailPosition = 0;
 
   // The window's byte length and whether it's at the end of the buffer can be
   // computed from the head and tail position. However we store them because
   // they are used often.
-  protected windowByteLength: number = 0;
-  protected windowIsAtEndOfBuffer: boolean = false;
+  protected windowByteLength = 0;
+  protected windowIsAtEndOfBuffer = false;
 
   // Counters for debugging.
-  protected messageCounter: number = 0;
-  private acquireCounter: number = 0;
-  private releaseCounter: number = 0;
-  private wrapCounter: number = 0;
-  private waitCounter: number = 0;
-  private notifyCounter: number = 0;
-  private spinCounter: number = 0;
+  protected messageCounter = 0;
+  private acquireCounter = 0;
+  private releaseCounter = 0;
+  private wrapCounter = 0;
+  private waitCounter = 0;
+  private notifyCounter = 0;
+  private spinCounter = 0;
 
   // `buffer` must be initialized with zeroes.
   constructor(readonly buffer: SharedArrayBuffer, options: MsgRingConfig = {}) {
@@ -320,7 +321,7 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
     return header;
   }
 
-  protected releaseFrame(byteLength: number, flags: number = 0): void {
+  protected releaseFrame(byteLength: number, flags = FrameHeader.None): void {
     this.assert(byteLength >= FrameAllocation.HeaderByteLength);
     this.assert(byteLength <= this.windowByteLength);
 
@@ -425,11 +426,11 @@ export class MsgRingSender extends MsgRingCommon {
   }
 
   private allocate(messageByteLength: number): void {
-    // Check whether messageByteLength is in range, and if so, store it.
-    if (messageByteLength > this.maxMessageByteLength)
+    if (messageByteLength > this.maxMessageByteLength) {
       throw new RangeError("Slice too big.");
-    if (messageByteLength < 0)
+    } else if (messageByteLength < 0) {
       throw new RangeError("Slice must have positive byte length.");
+    }
 
     // Compute the total required length, including header and padding,
     this.allocationByteLength =
