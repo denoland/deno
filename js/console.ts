@@ -366,7 +366,9 @@ function isCollapsed(
   return collapsedAt <= indentLevel;
 }
 
-/** TODO Do not expose this from "deno" namespace. */
+/** TODO Do not expose this from "deno" namespace.
+ * @internal
+ */
 export function stringifyArgs(
   // tslint:disable-next-line:no-any
   args: any[],
@@ -501,6 +503,7 @@ const timerMap = new Map<string, number>();
 export class Console {
   indentLevel: number;
   collapsedAt: number | null;
+  /** @internal */
   constructor(private printFunc: PrintFunc) {
     this.indentLevel = 0;
     this.collapsedAt = null;

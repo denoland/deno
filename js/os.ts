@@ -12,6 +12,7 @@ export let pid: number;
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
 
+/** @internal */
 export function setGlobals(pid_: number, noColor_: boolean): void {
   assert(!pid);
   pid = pid_;

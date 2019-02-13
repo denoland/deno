@@ -17,10 +17,10 @@ function setup() {
 
   return {
     Base,
-    DomIterable: Deno.DomIterableMixin<string, number, typeof Base>(
-      Base,
-      dataSymbol
-    )
+    // This is using an internal API we don't want published as types, so having
+    // to cast to any to "trick" TypeScript
+    // tslint:disable-next-line:no-any
+    DomIterable: (Deno as any).DomIterableMixin(Base, dataSymbol)
   };
 }
 
