@@ -326,7 +326,7 @@ fn op_format_error(
   ))
 }
 
-fn serialize_response(
+pub fn serialize_response(
   cmd_id: u32,
   builder: &mut FlatBufferBuilder<'_>,
   mut args: msg::BaseArgs<'_>,

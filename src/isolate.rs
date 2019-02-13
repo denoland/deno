@@ -4,11 +4,12 @@
 // decoupled.
 
 #![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
 
 use crate::compiler::compile_sync;
 use crate::compiler::ModuleMetaData;
 use crate::deno_dir;
-use crate::ops;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::errors::RustOrJsError;
@@ -19,8 +20,10 @@ use crate::libdeno;
 use crate::modules::Modules;
 use crate::msg;
 use crate::msg_ring;
+use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::tokio_util;
+use flatbuffers::FlatBufferBuilder;
 use futures::sync::mpsc as async_mpsc;
 use futures::Future;
 use libc::c_char;
@@ -246,7 +249,7 @@ impl Isolate {
       tx,
       ring_rx: Arc::new(Mutex::new(ring_rx)),
       ring_tx: Arc::new(Mutex::new(ring_tx)),
-      ntasks: Cell::new(0),
+      ntasks: Cell::new(1),
       timeout_due: Cell::new(None),
       modules: RefCell::new(Modules::new()),
       state,
@@ -292,40 +295,57 @@ impl Isolate {
     let rx = self.ring_rx.clone();
     let tx = self.ring_tx.clone();
     let builder = thread::Builder::new().name("msg_ring_receive".to_string());
+
+    let isolate_tx = self.tx.clone();
     let state2 = self.state.clone();
+
     builder
-      .spawn(move || loop {
-        let mut rx = rx.lock().unwrap();
-        let rx_msg = rx.receive();
+      .spawn(move || {
+        tokio_util::init(|| {
+          loop {
+            let mut rx = rx.lock().unwrap();
+            let rx_msg = rx.receive();
 
-        debug!("rx_msg {}", rx_msg.len());
+            debug!("rx_msg {}", rx_msg.len());
 
-        let control = unsafe {
-          libdeno::deno_buf::from_raw_parts(rx_msg.as_ptr(), rx_msg.len())
-        };
-        let base = msg::get_root_as_base(&control);
-        assert!(!base.sync());
-        assert_eq!(msg::Any::Stat, base.inner_type());
-        // let cmd_id = base.cmd_id();
+            let control = unsafe {
+              libdeno::deno_buf::from_raw_parts(rx_msg.as_ptr(), rx_msg.len())
+            };
+            let base = msg::get_root_as_base(&control);
+            assert!(!base.sync());
+            assert_eq!(msg::Any::Stat, base.inner_type());
+            let cmd_id = base.cmd_id();
 
-        let op = ops::op_stat(&state2, &base, libdeno::deno_buf::empty());
+            let op = ops::op_stat(&state2, &base, libdeno::deno_buf::empty());
 
-        let task = op
-          .and_then(move |buf| {
-            //let sender = tx; // tx is moved to new thread
-            //sender.send((req_id, buf)).expect("tx.send error");
-            Ok(())
-          }).map_err(|_| ());
-        tokio::spawn(op);
+            let boxed_op = op;
 
-        // jump into pre_dispatch
+            // want to do isolate.ntasks_increment();
+            // but cannot access isolate from this thread
 
-        let mut tx = tx.lock().unwrap();
-        let tx_len = rx_msg.len() + 4;
-        let mut tx_msg = tx.compose(tx_len);
-        tx_msg[0..4].clone_from_slice(b"Got ");
-        tx_msg[4..tx_len].clone_from_slice(&rx_msg);
-        tx_msg.send();
+            let req_id = 42;
+
+            let isolate_tx2 = isolate_tx.clone();
+            let tx2 = tx.clone();
+
+            let task = boxed_op
+              .and_then(move |buf| {
+                // let sender = isolate_tx2; // tx is moved to new thread
+                // sender.send((req_id, buf)).expect("tx.send error");
+
+                // Box<[u8]>
+                let mut tx = tx2.lock().unwrap();
+                let mut tx_msg = tx.compose(buf.len());
+                tx_msg.clone_from_slice(&buf);
+                tx_msg.send();
+
+                Ok(())
+              }).map_err(|_| ());
+            tokio::spawn(task);
+
+            // jump into pre_dispatch
+          }
+        })
       }).expect("Failed to spawn thread.");
   }
 

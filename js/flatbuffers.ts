@@ -5,15 +5,13 @@ import { libdeno } from "./libdeno";
 // Re-export some types.
 export type Offset = flatbuffers.Offset;
 export class ByteBuffer extends flatbuffers.ByteBuffer {}
-export interface Builder extends flatbuffers.Builder {
-}
-
+export interface Builder extends flatbuffers.Builder {}
 
 // const oldAllocate = flatbuffers.ByteBuffer.allocate;
 flatbuffers.ByteBuffer.allocate = (size: number): flatbuffers.ByteBuffer => {
   // throw Error("ba");
   // return oldAllocate(size);
- 
+
   const { byteOffset, byteLength } = libdeno.tx.beginSend(size);
   console.log("ByteBuffer.allocate slice: ", byteOffset, byteLength);
   const bytes = libdeno.tx.u8.subarray(byteOffset, byteOffset + byteLength);
