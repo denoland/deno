@@ -1,7 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assertEqual, assert } from "./test_util.ts";
 
-const { Console, libdeno, stringifyArgs, inspect, write, stdout } = Deno;
+// Some of these APIs aren't exposed in the types and so we have to cast to any
+// in order to "trick" TypeScript.
+// tslint:disable-next-line:no-any
+const { Console, libdeno, stringifyArgs, inspect, write, stdout } = Deno as any;
 
 const console = new Console(libdeno.print);
 

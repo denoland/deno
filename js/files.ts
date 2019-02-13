@@ -57,6 +57,7 @@ export type OpenMode =
 
 /** A factory function for creating instances of `File` associated with the
  * supplied file name.
+ * @internal
  */
 export function create(filename: string): Promise<File> {
   return open(filename, "w+");
