@@ -466,6 +466,17 @@ import { test, assertEqual } from "./package.ts";
 This design circumvents a plethora of complexity spawned by package management
 software, centralized code repositories, and superfluous file formats.
 
+### Testing if current file is the main program
+
+By using `window.location` and `import.meta.url` one can test if the current
+script has been executed as the main input to the program.
+
+```ts
+if (window.location.toString() == import.meta.url) {
+  console.log("main");
+}
+```
+
 ## Command line interface
 
 ### Flags

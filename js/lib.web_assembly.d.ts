@@ -161,3 +161,8 @@ declare namespace WebAssembly {
     constructor(message: string, fileName?: string, lineNumber?: string);
   }
 }
+
+// TODO Move ImportMeta intos its own lib.import_meta.d.ts file?
+interface ImportMeta {
+  url: string;
+}

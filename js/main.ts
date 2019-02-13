@@ -4,12 +4,13 @@
 
 import "./globals";
 
-import { log } from "./util";
+import { assert, log } from "./util";
 import * as os from "./os";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { replLoop } from "./repl";
 import { setVersions } from "./version";
+import { setLocation } from "./location";
 
 // builtin modules
 import * as deno from "./deno";
@@ -42,6 +43,12 @@ export default function denoMain() {
     os.exit(0);
   }
 
+  const mainModule = startResMsg.mainModule();
+  if (mainModule) {
+    assert(mainModule.length > 0);
+    setLocation(mainModule);
+  }
+
   const cwd = startResMsg.cwd();
   log("cwd", cwd);
 
@@ -51,8 +58,7 @@ export default function denoMain() {
   log("args", args);
   Object.freeze(args);
 
-  const inputFn = args[0];
-  if (!inputFn) {
+  if (!mainModule) {
     replLoop();
   }
 }

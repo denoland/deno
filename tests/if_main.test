@@ -1,0 +1,2 @@
+args: tests/if_main.ts --reload
+output: tests/if_main.ts.out
