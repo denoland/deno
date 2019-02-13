@@ -202,7 +202,8 @@ impl Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     // Only untrack if is TcpListener.
     if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
-      assert!(t.is_some());
+      // DO NOT assert is_some here.
+      // See reasoning in Accept::poll().
       t.take();
     }
   }
