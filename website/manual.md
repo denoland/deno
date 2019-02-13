@@ -6,20 +6,19 @@
 
 A word of caution: Deno is very much under development. We encourage brave early
 adopters, but expect bugs large and small. The API is subject to change without
-notice.
-
-[Bug reports](https://github.com/denoland/deno/issues) do help!
+notice. [Bug reports](https://github.com/denoland/deno/issues) do help!
 
 ## Introduction
 
 ### Philosophy
 
-Deno aims to be a useful multitool tool for the modern programmer.
+Deno aims to be a productive and secure scripting environment for the modern
+programmer.
 
 It will always be distributed as a single executable - and that executable will
 be sufficient software to run any deno program. Given a URL to a deno program,
-you should be able to execute it with nothing more than <a
-href="https://deno.land/benchmarks.html#size">the 50M deno executable</a>.
+you should be able to execute it with nothing more than the 50 megabyte deno
+executable.
 
 Deno explicitly takes on the role of both runtime and package manager. It uses a
 standard browser-compatible protocol for loading modules: URLs.
@@ -30,16 +29,9 @@ the default being the most restrictive secure sandbox.
 Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 (audited) standard modules</a> that are guaranteed to work with Deno.
 
-Deno is opinionated and defines <a
-href="https://github.com/denoland/deno_std#style-guide">style guides</a> and has
-<a href="https://github.com/denoland/deno_std/tree/master/prettier">automated
-formatters</a>.
-
-### Design goals
+### Goals
 
 - Support TypeScript out of the box.
-
-- No `package.json`. No npm. Not explicitly compatible with Node.
 
 - Like the browser, allows imports from URLs:
 
@@ -64,13 +56,19 @@ formatters</a>.
 
 - Always dies on uncaught errors.
 
+- Browser compatible: The subset of Deno programs which are written completely
+  in JavaScript and do not use the global `Deno` namespace (or feature test for
+  it), ought to also be able to be run in a modern web browser without change.
+
 - [Aims to support top-level `await`.](https://github.com/denoland/deno/issues/471)
 
-### Browser compatibility
+### Non-goals
 
-The subset of Deno programs which are written completely in JavaScript and do
-not use the global `Deno` namespace (or feature test for it), ought to also be
-able to be run in a modern web browser without change.
+- No `package.json`.
+
+- No npm.
+
+- Not explicitly compatible with Node.
 
 ## Setup
 
