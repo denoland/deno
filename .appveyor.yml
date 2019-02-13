@@ -144,7 +144,7 @@ install:
         Invoke-WebRequest -Uri "https://win.rustup.rs" `
                           -OutFile "$env:TEMP\rustup-init.exe"
         Exec -NoNewLines {
-          & "$env:TEMP\rustup-init.exe" -y --default-toolchain 1.31.1
+          & "$env:TEMP\rustup-init.exe" -y --default-toolchain 1.32.0
         }
         Delete-Tree @(
           "$env:RUSTUP_HOME\downloads",
