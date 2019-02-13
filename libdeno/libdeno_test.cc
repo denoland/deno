@@ -316,3 +316,27 @@ TEST(LibDenoTest, SharedAtomics) {
   EXPECT_EQ(s[2], 2);
   deno_delete(d);
 }
+
+TEST(LibDenoTest, SetIdle) {
+  uint8_t s[] = {0, 1, 2};
+  deno_buf shared = {nullptr, 0, reinterpret_cast<uint8_t*>(s), sizeof s};
+  Deno* d = deno_new(deno_config{0, empty, shared, nullptr, nullptr});
+  deno_execute(d, nullptr, "a.js",
+               "libdeno.setIdle(() => {\n"
+               "  let u8 = new Uint8Array(libdeno.shared);\n"
+               "  u8.set([5,6,7]);\n"
+               "});");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  EXPECT_EQ(s[0], 0);
+  EXPECT_EQ(s[1], 1);
+  EXPECT_EQ(s[2], 2);
+
+  deno_idle(d, d);
+
+  EXPECT_EQ(s[0], 5);
+  EXPECT_EQ(s[1], 6);
+  EXPECT_EQ(s[2], 7);
+
+  deno_delete(d);
+}

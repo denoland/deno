@@ -82,6 +82,10 @@ const char* deno_last_exception(Deno* d);
 
 void deno_terminate_execution(Deno* d);
 
+// re-entrant
+// call the callback set with libdeno.setIdle(cb)
+void deno_idle(Deno* d, void* user_data);
+
 // Module API
 
 typedef int deno_mod;

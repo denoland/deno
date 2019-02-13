@@ -99,6 +99,7 @@ class DenoIsolate {
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   std::string last_exception_;
   v8::Persistent<v8::Function> recv_;
+  v8::Persistent<v8::Function> idle_;
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Global<v8::SharedArrayBuffer> shared_ab_;
@@ -134,6 +135,7 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
+void SetIdle(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Futex(const v8::FunctionCallbackInfo<v8::Value>& args);
 void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -146,6 +148,7 @@ void MessageCallback(v8::Local<v8::Message> message, v8::Local<v8::Value> data);
 static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print),
     reinterpret_cast<intptr_t>(Recv),
+    reinterpret_cast<intptr_t>(SetIdle),
     reinterpret_cast<intptr_t>(Send),
     reinterpret_cast<intptr_t>(Futex),
     reinterpret_cast<intptr_t>(EvalContext),

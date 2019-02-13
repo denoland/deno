@@ -78,6 +78,28 @@ deno::DenoIsolate* unwrap(Deno* d_) {
   return reinterpret_cast<deno::DenoIsolate*>(d_);
 }
 
+void deno_idle(Deno* d_, void* user_data) {
+  auto* d = unwrap(d_);
+
+  deno::UserDataScope user_data_scope(d, user_data);
+  v8::Locker locker(d->isolate_);
+  v8::Isolate::Scope isolate_scope(d->isolate_);
+  v8::HandleScope handle_scope(d->isolate_);
+
+  auto context = d->context_.Get(d->isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::TryCatch try_catch(d->isolate_);
+
+  auto idle = d->idle_.Get(d->isolate_);
+  auto v = idle->Call(context, context->Global(), 0, nullptr);
+
+  if (try_catch.HasCaught()) {
+    CHECK(v.IsEmpty());
+    deno::HandleException(context, try_catch.Exception());
+  }
+}
+
 deno_buf deno_get_snapshot(Deno* d_) {
   auto* d = unwrap(d_);
   CHECK_NOT_NULL(d->snapshot_creator_);

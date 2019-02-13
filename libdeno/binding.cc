@@ -204,6 +204,25 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
   d->recv_.Reset(isolate, func);
 }
 
+void SetIdle(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  DCHECK_EQ(d->isolate_, isolate);
+
+  v8::HandleScope handle_scope(isolate);
+
+  if (!d->recv_.IsEmpty()) {
+    isolate->ThrowException(v8_str("libdeno.setIdle already called."));
+    return;
+  }
+
+  v8::Local<v8::Value> v = args[0];
+  CHECK(v->IsFunction());
+  v8::Local<v8::Function> func = v8::Local<v8::Function>::Cast(v);
+
+  d->idle_.Reset(isolate, func);
+}
+
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
@@ -509,6 +528,11 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
   auto recv_tmpl = v8::FunctionTemplate::New(isolate, Recv);
   auto recv_val = recv_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(deno_val->Set(context, deno::v8_str("recv"), recv_val).FromJust());
+
+  auto set_idle_tmpl = v8::FunctionTemplate::New(isolate, SetIdle);
+  auto set_idle_val = set_idle_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(
+      deno_val->Set(context, deno::v8_str("setIdle"), set_idle_val).FromJust());
 
   auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
   auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
