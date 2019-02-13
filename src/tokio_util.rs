@@ -69,6 +69,10 @@ impl Future for Accept {
       // notified to error out (instead of stuck forever).
       AcceptState::Pending(ref mut r) => match r.poll_accept() {
         Ok(futures::prelude::Async::Ready(t)) => {
+          // Notice: it is possible to be Ready on the first poll.
+          // When eager accept fails due to WouldBlock,
+          // a next poll() might still be immediately Ready.
+          // See https://github.com/denoland/deno/issues/1756.
           r.untrack_task();
           t
         }
