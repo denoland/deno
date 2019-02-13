@@ -359,9 +359,15 @@ and yet it accessed the network. The runtime has special access to download
 imports and cache them to disk.
 
 Deno caches remote imports in a special directory specified by the `$DENO_DIR`
-environmental variable. It default to `$HOME/.deno` if `$DENO_DIR` is not
-specified. The next time you run the program, no downloads will be made. If the
-program hasn't changed, it won't be recompiled either.
+environmental variable. It defaults to the system's cache directory if
+`$DENO_DIR` is not specified. The next time you run the program, no downloads
+will be made. If the program hasn't changed, it won't be recompiled either. The
+default directory is:
+
+- On Linux/Redox: `$XDG_CACHE_HOME/deno` or `$HOME/.cache/deno`
+- On Windows: `%LOCALAPPDATA%/deno` (`%LOCALAPPDATA%` = `FOLDERID_LocalAppData`)
+- On macOS: `$HOME/Library/Caches/deno`
+- If something fails, it falls back to `$HOME/.deno`
 
 **But what if `https://deno.land/` goes down?** Relying on external servers is
 convenient for development but brittle in production. Production software should
