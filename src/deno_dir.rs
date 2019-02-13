@@ -1183,7 +1183,8 @@ mod tests {
 
     let specifier = "http_test.ts";
     let referrer = add_root!("/Users/rld/src/deno_net/");
-    let expected_module_name = file_url!("/Users/rld/src/deno_net/http_test.ts");
+    let expected_module_name =
+      file_url!("/Users/rld/src/deno_net/http_test.ts");
     let expected_filename = add_root!("/Users/rld/src/deno_net/http_test.ts");
 
     let (module_name, filename) =

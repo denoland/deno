@@ -10,15 +10,19 @@ template("bundle") {
       out_dir + out_name + ".js",
       out_dir + out_name + ".js.map",
     ]
+    inputs = [
+      "js/" + out_name + ".ts",
+      "rollup.config.js",
+    ]
     depfile = out_dir + out_name + ".d"
     args = [
       rebase_path("third_party/node_modules/rollup/bin/rollup", root_build_dir),
       "-c",
       rebase_path("rollup.config.js", root_build_dir),
       "-i",
-      rebase_path("js/" + out_name + ".ts", root_build_dir),
+      rebase_path(inputs[0], root_build_dir),
       "-o",
-      rebase_path(out_dir + out_name + ".js", root_build_dir),
+      rebase_path(outputs[0], root_build_dir),
       "--sourcemapFile",
       rebase_path("."),
       "--silent",
