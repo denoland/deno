@@ -4,7 +4,7 @@ import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
-interface Metrics {
+export interface Metrics {
   opsDispatched: number;
   opsCompleted: number;
   bytesSentControl: number;
