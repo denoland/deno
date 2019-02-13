@@ -31,16 +31,9 @@ the default being the most restrictive secure sandbox.
 Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 (audited) standard modules</a> that are guaranteed to work with Deno.
 
-Deno is opinionated and defines <a
-href="https://github.com/denoland/deno_std#style-guide">style guides</a> and has
-<a href="https://github.com/denoland/deno_std/tree/master/prettier">automated
-formatters</a>.
-
-### Design goals
+### Goals
 
 - Support TypeScript out of the box.
-
-- No `package.json`. No npm. Not explicitly compatible with Node.
 
 - Like the browser, allows imports from URLs:
 
@@ -65,13 +58,19 @@ formatters</a>.
 
 - Always dies on uncaught errors.
 
+- Browser compatible: The subset of Deno programs which are written completely
+  in JavaScript and do not use the global `Deno` namespace (or feature test for
+  it), ought to also be able to be run in a modern web browser without change.
+
 - [Aims to support top-level `await`.](https://github.com/denoland/deno/issues/471)
 
-### Browser compatibility
+### Non-goals
 
-The subset of Deno programs which are written completely in JavaScript and do
-not use the global `Deno` namespace (or feature test for it), ought to also be
-able to be run in a modern web browser without change.
+- No `package.json`.
+
+- No npm.
+
+- Not explicitly compatible with Node.
 
 ## Setup
 
