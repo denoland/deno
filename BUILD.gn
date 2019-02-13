@@ -184,6 +184,12 @@ run_node("deno_runtime_declaration") {
   deps = [
     ":msg_ts",
   ]
+  inputs = ts_sources + [
+             "tools/ts_library_builder/tsconfig.json",
+             "tools/ts_library_builder/main.ts",
+             "tools/ts_library_builder/build_library.ts",
+             "tools/ts_library_builder/ast_util.ts",
+           ]
   args = [
     rebase_path("node_modules/ts-node/dist/bin.js", root_build_dir),
     "--project",
@@ -197,7 +203,7 @@ run_node("deno_runtime_declaration") {
     "--buildPath",
     rebase_path(root_build_dir, root_build_dir),
     "--outFile",
-    rebase_path("$out_dir/lib/lib.deno_runtime.d.ts", root_build_dir),
+    rebase_path(outputs[0], root_build_dir),
     "--silent",
   ]
   if (is_debug) {
