@@ -14,7 +14,8 @@ notice.
 
 ### Philosophy
 
-Deno aims to be a useful multitool tool for the modern programmer.
+Deno aims to be a productive and secure scripting environment for the
+modern programmer.
 
 It will always be distributed as a single executable - and that executable will
 be sufficient software to run any deno program. Given a URL to a deno program,
