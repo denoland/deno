@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # This script contains helper functions to work with the third_party subrepo.
 
@@ -232,7 +232,7 @@ def download_from_google_storage(item, bucket):
         sha1_file = "v8/buildtools/linux64/%s.sha1" % item
 
     run([
-        "python",
+        sys.executable,
         tp('depot_tools/download_from_google_storage.py'),
         '--platform=' + sys.platform,
         '--no_auth',
@@ -255,13 +255,13 @@ def download_clang_format():
 
 # Download clang by calling the clang update script.
 def download_clang():
-    run(['python', tp('v8/tools/clang/scripts/update.py')], env=google_env())
+    run([sys.executable, tp('v8/tools/clang/scripts/update.py')], env=google_env())
 
 
 def maybe_download_sysroot():
     if sys.platform.startswith('linux'):
         run([
-            'python',
+            sys.executable,
             os.path.join(root_path,
                          'build/linux/sysroot_scripts/install-sysroot.py'),
             '--arch=amd64'
