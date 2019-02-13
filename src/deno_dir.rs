@@ -63,7 +63,13 @@ impl DenoDir {
   ) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
-    let default = home_dir.join(".deno");
+    let fallback = home_dir.join(".deno");
+    // We use the OS cache dir because all files deno writes are cache files
+    // Once that changes we need to start using different roots if DENO_DIR
+    // is not set, and keep a single one if it is.
+    let default = dirs::cache_dir()
+      .map(|d| d.join("deno"))
+      .unwrap_or(fallback);
 
     let root: PathBuf = custom_root.unwrap_or(default);
     let gen = root.as_path().join("gen");
