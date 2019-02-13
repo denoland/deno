@@ -14,7 +14,7 @@ pub struct Counters {
   pub release: usize,
   pub spin: usize,
   pub wait: usize,
-  pub wake: usize,
+  pub notify: usize,
   pub wrap: usize,
 }
 
@@ -393,7 +393,7 @@ impl Window {
 
     if old_header & FrameHeader::HasWaitersFlag != 0 {
       header_atomic.notify_one();
-      self.counters.wake += 1;
+      self.counters.notify += 1;
     }
 
     self.tail_position += byte_length;

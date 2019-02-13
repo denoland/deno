@@ -37,7 +37,7 @@ export interface MsgRingCounters {
   release: number;
   spin: number;
   wait: number;
-  wake: number;
+  notify: number;
   wrap: number;
 }
 
@@ -167,7 +167,7 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
   private releaseCounter: number = 0;
   private wrapCounter: number = 0;
   private waitCounter: number = 0;
-  private wakeCounter: number = 0;
+  private notifyCounter: number = 0;
   private spinCounter: number = 0;
 
   // `buffer` must be initialized with zeroes.
@@ -226,7 +226,7 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
       release: this.releaseCounter,
       wrap: this.wrapCounter,
       wait: this.waitCounter,
-      wake: this.wakeCounter,
+      notify: this.notifyCounter,
       spin: this.spinCounter
     };
   }
@@ -332,7 +332,7 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
 
     if (oldHeader & FrameHeader.HasWaitersFlag) {
       this.notify(this.i32, headerI32Offset, 1);
-      this.wakeCounter++;
+      this.notifyCounter++;
     }
 
     this.windowTailPosition += byteLength;
