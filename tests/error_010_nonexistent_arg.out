@@ -1,1 +1,1 @@
-[WILDCARD]Cannot resolve module "not-a-valid-filename.ts" from "."
+[WILDCARD]Cannot resolve module "file:[WILDCARD]not-a-valid-filename.ts" from "."

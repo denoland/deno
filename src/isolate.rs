@@ -100,6 +100,22 @@ impl IsolateState {
     }
   }
 
+  pub fn main_module(&self) -> Option<String> {
+    if self.argv.len() <= 1 {
+      None
+    } else {
+      let specifier = self.argv[1].clone();
+      let referrer = ".";
+      match self.dir.resolve_module_url(&specifier, referrer) {
+        Ok(url) => Some(url.to_string()),
+        Err(e) => {
+          debug!("Potentially swallowed error {}", e);
+          None
+        }
+      }
+    }
+  }
+
   #[cfg(test)]
   pub fn mock() -> Arc<IsolateState> {
     let argv = vec![String::from("./deno"), String::from("hello.js")];

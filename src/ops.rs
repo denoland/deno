@@ -261,12 +261,15 @@ fn op_start(
   let deno_version = version::DENO;
   let deno_version_off = builder.create_string(deno_version);
 
+  let main_module = state.main_module().map(|m| builder.create_string(&m));
+
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
       cwd: Some(cwd_off),
       pid: std::process::id(),
       argv: Some(argv_off),
+      main_module,
       debug_flag: state.flags.log_debug,
       types_flag: state.flags.types,
       version_flag: state.flags.version,

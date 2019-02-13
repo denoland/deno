@@ -158,6 +158,7 @@ table StartRes {
   pid: uint32;
   argv: [string];
   exec_path: string;
+  main_module: string; // Absolute URL.
   debug_flag: bool;
   deps_flag: bool;
   types_flag: bool;

@@ -105,19 +105,18 @@ fn main() {
       .map_err(errors::RustOrJsError::from)
       .unwrap_or_else(print_err_and_exit);
 
-    // Execute input file.
-    if isolate.state.argv.len() > 1 {
-      let input_filename = isolate.state.argv[1].clone();
+    // Execute main module.
+    if let Some(main_module) = isolate.state.main_module() {
+      debug!("main_module {}", main_module);
       isolate
-        .execute_mod(&input_filename, should_prefetch)
+        .execute_mod(&main_module, should_prefetch)
         .unwrap_or_else(print_err_and_exit);
-
       if should_display_info {
         // Display file info and exit. Do not run file
         modules::print_file_info(
           &isolate.modules.borrow(),
           &isolate.state.dir,
-          input_filename,
+          main_module,
         );
         std::process::exit(0);
       }

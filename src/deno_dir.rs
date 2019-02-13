@@ -400,14 +400,11 @@ impl DenoDir {
   }
 
   /// Returns (module name, local filename)
-  pub fn resolve_module(
+  pub fn resolve_module_url(
     self: &Self,
     specifier: &str,
     referrer: &str,
-  ) -> Result<(String, String), url::ParseError> {
-    let module_name;
-    let filename;
-
+  ) -> Result<Url, url::ParseError> {
     let specifier = self.src_file_to_url(specifier);
     let mut referrer = self.src_file_to_url(referrer);
 
@@ -422,8 +419,7 @@ impl DenoDir {
       referrer = referrer_path.to_str().unwrap().to_string() + "/";
     }
 
-    let j: Url = if is_remote(&specifier) || Path::new(&specifier).is_absolute()
-    {
+    let j = if is_remote(&specifier) || Path::new(&specifier).is_absolute() {
       parse_local_or_remote(&specifier)?
     } else if referrer.ends_with('/') {
       let r = Url::from_directory_path(&referrer);
@@ -437,21 +433,29 @@ impl DenoDir {
       let base = parse_local_or_remote(&referrer)?;
       base.join(specifier.as_ref())?
     };
+    Ok(j)
+  }
 
+  /// Returns (module name, local filename)
+  pub fn resolve_module(
+    self: &Self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<(String, String), url::ParseError> {
+    let j = self.resolve_module_url(specifier, referrer)?;
+
+    let module_name = j.to_string();
+    let filename;
     match j.scheme() {
       "file" => {
-        let p = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
-        module_name = p.clone();
-        filename = p;
+        filename = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
       }
       "https" => {
-        module_name = j.to_string();
         filename = deno_fs::normalize_path(
           get_cache_filename(self.deps_https.as_path(), &j).as_ref(),
         )
       }
       "http" => {
-        module_name = j.to_string();
         filename = deno_fs::normalize_path(
           get_cache_filename(self.deps_http.as_path(), &j).as_ref(),
         )
@@ -517,7 +521,7 @@ fn is_remote(module_name: &str) -> bool {
 }
 
 fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
-  if is_remote(p) {
+  if is_remote(p) || p.starts_with("file:") {
     Url::parse(p)
   } else {
     Url::from_file_path(p).map_err(|_err| url::ParseError::IdnaError)
@@ -601,6 +605,16 @@ mod tests {
         concat!("C:", $path)
       } else {
         $path
+      }
+    };
+  }
+
+  macro_rules! file_url {
+    ($path:expr) => {
+      if cfg!(target_os = "windows") {
+        concat!("file:///C:", $path)
+      } else {
+        concat!("file://", $path)
       }
     };
   }
@@ -1019,25 +1033,25 @@ mod tests {
       (
         "./subdir/print_hello.ts",
         add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
-        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
+        file_url!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
         add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
       ),
       (
         "testdata/001_hello.js",
         add_root!("/Users/rld/go/src/github.com/denoland/deno/"),
-        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
+        file_url!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
         add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
       ),
       (
         add_root!("/Users/rld/src/deno/hello.js"),
         ".",
-        add_root!("/Users/rld/src/deno/hello.js"),
+        file_url!("/Users/rld/src/deno/hello.js"),
         add_root!("/Users/rld/src/deno/hello.js"),
       ),
       (
         add_root!("/this/module/got/imported.js"),
         add_root!("/that/module/did/it.js"),
-        add_root!("/this/module/got/imported.js"),
+        file_url!("/this/module/got/imported.js"),
         add_root!("/this/module/got/imported.js"),
       ),
     ];
@@ -1169,8 +1183,7 @@ mod tests {
 
     let specifier = "http_test.ts";
     let referrer = add_root!("/Users/rld/src/deno_net/");
-    let expected_module_name =
-      add_root!("/Users/rld/src/deno_net/http_test.ts");
+    let expected_module_name = file_url!("/Users/rld/src/deno_net/http_test.ts");
     let expected_filename = add_root!("/Users/rld/src/deno_net/http_test.ts");
 
     let (module_name, filename) =
@@ -1187,8 +1200,9 @@ mod tests {
 
     let cwd = std::env::current_dir().unwrap();
     let expected_path = cwd.join(specifier);
-    let expected_module_name = deno_fs::normalize_path(&expected_path);
-    let expected_filename = expected_module_name.clone();
+    let expected_module_name =
+      Url::from_file_path(&expected_path).unwrap().to_string();
+    let expected_filename = deno_fs::normalize_path(&expected_path);
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, ".").unwrap();
@@ -1209,8 +1223,9 @@ mod tests {
 
     let cwd = std::env::current_dir().unwrap();
     let expected_path = cwd.join("..").join(specifier);
-    let expected_module_name = deno_fs::normalize_path(&expected_path);
-    let expected_filename = expected_module_name.clone();
+    let expected_module_name =
+      Url::from_file_path(&expected_path).unwrap().to_string();
+    let expected_filename = deno_fs::normalize_path(&expected_path);
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, "..").unwrap();
