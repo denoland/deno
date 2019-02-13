@@ -80,6 +80,7 @@ ts_sources = [
   "js/io.ts",
   "js/libdeno.ts",
   "js/lib.web_assembly.d.ts",
+  "js/location.ts",
   "js/main.ts",
   "js/make_temp_dir.ts",
   "js/metrics.ts",

@@ -1,2 +1,0 @@
-args: tests/imports_meta.js --reload
-output: tests/imports_meta.js.out
