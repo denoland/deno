@@ -90,11 +90,12 @@ deno_buf deno_get_snapshot(Deno* d_) {
           blob.raw_size};
 }
 
+static std::unique_ptr<v8::Platform> platform;
+
 void deno_init() {
-  // v8::V8::InitializeICUDefaultLocation(argv[0]);
-  // v8::V8::InitializeExternalStartupData(argv[0]);
-  auto* p = v8::platform::CreateDefaultPlatform();
-  v8::V8::InitializePlatform(p);
+  CHECK_NULL(platform.get());
+  platform = v8::platform::NewDefaultPlatform();
+  v8::V8::InitializePlatform(platform.get());
   v8::V8::Initialize();
 }
 
