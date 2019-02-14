@@ -54,7 +54,7 @@ type OpResult = DenoResult<Buf>;
 
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type OpCreator =
+pub type OpCreator =
   fn(state: &Arc<IsolateState>, base: &msg::Base<'_>, data: libdeno::deno_buf)
     -> Box<Op>;
 
@@ -663,7 +663,7 @@ fn op_chmod(
   })
 }
 
-fn op_open(
+pub fn op_open(
   state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
@@ -796,7 +796,7 @@ fn op_shutdown(
   }
 }
 
-fn op_read(
+pub fn op_read(
   _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
@@ -834,7 +834,7 @@ fn op_read(
   }
 }
 
-fn op_write(
+pub fn op_write(
   _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
@@ -1363,7 +1363,7 @@ fn op_truncate(
   })
 }
 
-fn op_listen(
+pub fn op_listen(
   state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
@@ -1425,7 +1425,7 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
   ))
 }
 
-fn op_accept(
+pub fn op_accept(
   state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,

@@ -313,21 +313,43 @@ impl Isolate {
             };
             let base = msg::get_root_as_base(&control);
             assert!(!base.sync());
-            assert_eq!(msg::Any::Stat, base.inner_type());
             let cmd_id = base.cmd_id();
+            let inner_type = base.inner_type();
 
-            let op = ops::op_stat(&state2, &base, libdeno::deno_buf::empty());
+            // TODO Actually dispatch here.
+            // TODO if dispatch() took IsolateState instead of Isolate we could
+            // call into it here directly.
+            // TODO zero-copy buffer problem.... 
+            // let op = ops::op_stat(&state2, &base, libdeno::deno_buf::empty());
+            // op_read op_write - async with zero-copy
+            // op_accept - async but no zero-copy
+            // op_listen op_close - SYNC solved.
+            let op_creator: ops::OpCreator = match inner_type {
+              msg::Any::Accept => ops::op_accept,
+              msg::Any::Listen => ops::op_listen,
+              msg::Any::Open => ops::op_open,
+              msg::Any::Read => ops::op_read,
+              msg::Any::Stat => ops::op_stat,
+              msg::Any::Write => ops::op_write,
+              _ => panic!(format!(
+                "Unhandled message {}",
+                msg::enum_name_any(inner_type)
+              )),
+            };
+
+            // TODO This is hard part.
+            let zero_copy = libdeno::deno_buf::empty();
+
+            let op = op_creator(&state2, &base, zero_copy);
 
             let boxed_op = op;
-
-            // want to do isolate.ntasks_increment();
-            // but cannot access isolate from this thread
 
             let req_id = 42;
 
             let isolate_tx2 = isolate_tx.clone();
             let tx2 = tx.clone();
 
+            // There needs to be or_then handler for errors.
             let task = boxed_op
               .and_then(move |buf| {
                 // let sender = isolate_tx2; // tx is moved to new thread

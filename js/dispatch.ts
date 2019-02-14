@@ -107,7 +107,7 @@ function sendInternal(
   builder.finish(msg.Base.endBase(builder));
 
   const u8 = builder.asUint8Array();
-  console.log("sendInternal", sync, u8.byteLength, Array.from(u8));
+  util.log("sendInternal", sync, u8.byteLength, Array.from(u8));
 
   let res;
   if (sync) {

@@ -9,16 +9,10 @@ export interface Builder extends flatbuffers.Builder {}
 
 // const oldAllocate = flatbuffers.ByteBuffer.allocate;
 flatbuffers.ByteBuffer.allocate = (size: number): flatbuffers.ByteBuffer => {
-  // throw Error("ba");
-  // return oldAllocate(size);
-
   const { byteOffset, byteLength } = libdeno.tx.beginSend(size);
-  console.log("ByteBuffer.allocate slice: ", byteOffset, byteLength);
+  // TODO can we do this without subarray? bb.position = byteOffset
   const bytes = libdeno.tx.u8.subarray(byteOffset, byteOffset + byteLength);
   const bb = new flatbuffers.ByteBuffer(bytes);
-
-  // const bb = new flatbuffers.ByteBuffer(libdeno.tx.u8);
-  // bb.setPosition(byteOffset);
   return bb;
 };
 
