@@ -54,9 +54,10 @@ function permFromString(s: string): DenoPermissions {
 
 export function testPerm(
   perms: DenoPermissions,
-  fn: testing.TestFunction
-): void {
-  const name = `${fn.name}_${permToString(perms)}`;
+  t: testing.TestDefinition | testing.TestFunction
+) {
+  const fn: testing.TestFunction = typeof t === "function" ? t : t.fn;
+  const name = `${t.name}_${permToString(perms)}`;
   testing.test({ fn, name });
 }
 
