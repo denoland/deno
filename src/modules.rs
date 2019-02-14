@@ -91,19 +91,21 @@ impl Modules {
 pub struct Deps {
   pub name: String,
   pub deps: Option<Vec<Deps>>,
-  depth: usize,
+  prefix: String,
+  is_last: bool,
 }
 
 impl Deps {
   pub fn new(modules: &Modules, module_name: &str) -> Deps {
     let mut seen = HashSet::new();
     let id = modules.get_id(module_name).unwrap();
-    Self::helper(&mut seen, 0, modules, id)
+    Self::helper(&mut seen, "".to_string(), true, modules, id)
   }
 
   fn helper(
     seen: &mut HashSet<deno_mod>,
-    depth: usize,
+    prefix: String,
+    is_last: bool,
     modules: &Modules,
     id: deno_mod,
   ) -> Deps {
@@ -111,20 +113,29 @@ impl Deps {
     if seen.contains(&id) {
       Deps {
         name,
-        depth,
+        prefix,
         deps: None,
+        is_last,
       }
     } else {
       seen.insert(id);
       let child_ids = modules.get_children(id).unwrap();
+      let child_count = child_ids.iter().count();
       let deps = child_ids
         .iter()
-        .map(|dep_id| Self::helper(seen, depth + 1, modules, *dep_id))
-        .collect();
+        .enumerate()
+        .map(|(index, dep_id)| {
+          let new_is_last = index == child_count - 1;
+          let mut new_prefix = prefix.clone();
+          new_prefix.push(if is_last { ' ' } else { '│' });
+          new_prefix.push(' ');
+          Self::helper(seen, new_prefix, new_is_last, modules, *dep_id)
+        }).collect();
       Deps {
         name,
-        depth,
+        prefix,
         deps: Some(deps),
+        is_last,
       }
     }
   }
@@ -132,10 +143,19 @@ impl Deps {
 
 impl fmt::Display for Deps {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    for _i in 0..self.depth {
-      write!(f, "| ")?;
+    let mut has_children = false;
+    if let Some(ref deps) = self.deps {
+      has_children = !deps.is_empty();
     }
-    write!(f, "{}", self.name)?;
+    write!(
+      f,
+      "{}{}─{} {}",
+      self.prefix,
+      if self.is_last { "└" } else { "├" },
+      if has_children { "┬" } else { "─" },
+      self.name
+    )?;
+
     if let Some(ref deps) = self.deps {
       for d in deps {
         write!(f, "\n{}", d)?;
@@ -179,5 +199,10 @@ pub fn print_file_info(
   }
 
   let deps = Deps::new(modules, &out.module_name);
-  println!("{} {}", ansi::bold("deps:".to_string()), deps);
+  println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+  if let Some(ref depsdeps) = deps.deps {
+    for d in depsdeps {
+      println!("{}", d);
+    }
+  }
 }
