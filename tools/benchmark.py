@@ -169,10 +169,10 @@ def main(argv):
     os.chdir(root_path)
     import_data_from_gh_pages()
 
-    prebuilt.load_hyperfine()
+    hyperfine = prebuilt.load_hyperfine()
 
     run([
-        "hyperfine", "--ignore-failure", "--export-json", benchmark_file,
+        hyperfine, "--ignore-failure", "--export-json", benchmark_file,
         "--warmup", "3"
     ] + [
         deno_path + " " + " ".join(args) for [_, args] in exec_time_benchmarks

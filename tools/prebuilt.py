@@ -31,8 +31,10 @@ def load_sccache():
 
 def load_hyperfine():
     if sys.platform == 'win32':
-        download_prebuilt("prebuilt/win/hyperfine.exe.sha1")
+        p = "prebuilt/win/hyperfine.exe"
     elif sys.platform.startswith('linux'):
-        download_prebuilt("prebuilt/linux64/hyperfine.sha1")
+        p = "prebuilt/linux64/hyperfine"
     elif sys.platform == 'darwin':
-        download_prebuilt("prebuilt/mac/hyperfine.sha1")
+        p = "prebuilt/mac/hyperfine"
+    download_prebuilt(p + ".sha1")
+    return os.path.join(root_path, p)
