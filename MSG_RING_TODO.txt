@@ -1,0 +1,5 @@
+- figure out how to exit on idle
+  - probably want a field in shared buffer that indicates idleness
+
+
+- stat example kinda works.

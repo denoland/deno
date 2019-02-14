@@ -10,6 +10,7 @@ import { unreachable } from "./util";
 
 // The libdeno functions are moved so that users can't access them.
 type MessageCallback = (msg: Uint8Array) => void;
+type IdleCallback = () => void;
 
 const enum FutexOp {
   Wait = 0,
@@ -30,6 +31,7 @@ interface EvalErrorInfo {
 
 interface Libdeno {
   recv(cb: MessageCallback): void;
+  setIdle(cb: IdleCallback): void;
 
   send(control: ArrayBufferView, data?: ArrayBufferView): null | Uint8Array;
 

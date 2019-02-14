@@ -184,8 +184,5 @@ extern "C" {
     id: deno_mod,
   );
 
-  pub fn deno_idle(
-    i: *const isolate,
-    user_data: *const c_void,
-  );
+  pub fn deno_idle(i: *const isolate, user_data: *const c_void);
 }

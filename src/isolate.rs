@@ -544,11 +544,10 @@ impl Isolate {
   pub fn event_loop(&self) -> Result<(), JSError> {
     // Main thread event loop.
     while !self.is_idle() {
-      match recv_deadline(&self.rx, self.get_timeout_due()) {
-        Ok((req_id, buf)) => self.complete_op(req_id, buf),
-        Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
-        Err(e) => panic!("recv_deadline() failed: {:?}", e),
-      }
+      debug!("libdeno::deno_idle");
+
+      unsafe { libdeno::deno_idle(self.libdeno_isolate, self.as_raw_ptr()) };
+
       self.check_promise_errors();
       if let Some(err) = self.last_exception() {
         return Err(err);
@@ -576,7 +575,7 @@ impl Isolate {
 
   #[inline]
   fn is_idle(&self) -> bool {
-    self.ntasks.get() == 0 && self.get_timeout_due().is_none()
+    false // TODO
   }
 }
 

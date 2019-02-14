@@ -14,6 +14,28 @@ export function setFireTimersCallback(fn: () => void) {
   fireTimers = fn;
 }
 
+export function handleAsyncMsgFromRust2() {
+  // This is the libdeno.setIdle callback
+  util.log("handleAsyncMsgFromRust2");
+
+  // TODO Should we loop here?
+
+  // Before we block on beginReceive, we check if there are actually any pending
+  // promises. If not, we return.
+  if (promiseTable.size == 0) {
+    util.log("promiseTable empty");
+    return;
+  }
+
+  let { byteOffset, byteLength } = libdeno.rx.beginReceive();
+  let buf = libdeno.rx.u8.subarray(byteOffset, byteOffset + byteLength);
+
+  util.log("receive buf", buf.byteLength);
+  handleAsyncMsgFromRust(buf);
+
+  libdeno.rx.endReceive();
+}
+
 export function handleAsyncMsgFromRust(ui8: Uint8Array) {
   // If a the buffer is empty, recv() on the native side timed out and we
   // did not receive a message.

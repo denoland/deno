@@ -11,6 +11,7 @@ import { args } from "./deno";
 import { replLoop } from "./repl";
 import { setVersions } from "./version";
 import { setLocation } from "./location";
+import * as dispatch from "./dispatch";
 
 // builtin modules
 import * as deno from "./deno";
@@ -20,6 +21,7 @@ import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
+  libdeno.setIdle(dispatch.handleAsyncMsgFromRust2);
   const startResMsg = os.start();
 
   // TODO(kitsonk) remove when import "deno" no longer supported
