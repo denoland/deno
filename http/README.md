@@ -5,13 +5,22 @@ A framework for creating HTTP/HTTPS server.
 ## Example
 
 ```typescript
-import { serve } from "https://deno.land/x/http/server.ts";
-const s = serve("0.0.0.0:8000");
+import { createServer } from "https://deno.land/x/http/server.ts";
+import { encode } from "https://deno.land/x/strings/strings.ts";
 
 async function main() {
-  for await (const req of s) {
-    req.respond({ body: new TextEncoder().encode("Hello World\n") });
-  }
+  const server = createServer();
+  server.handle("/", async (req, res) => {
+    await res.respond({
+      status: 200,
+      body: encode("ok")
+    });
+  });
+  server.handle(new RegExp("/foo/(?<id>.+)"), async (req, res) => {
+    const { id } = req.match.groups;
+    await res.respondJson({ id });
+  });
+  server.listen("127.0.0.1:8080");
 }
 
 main();
