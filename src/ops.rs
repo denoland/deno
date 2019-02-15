@@ -1559,6 +1559,7 @@ fn op_run(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_run().unwrap();
   let args = inner.args().unwrap();
+  let env = inner.env().unwrap();
   let cwd = inner.cwd();
 
   let mut c = Command::new(args.get(0));
@@ -1567,6 +1568,10 @@ fn op_run(
     c.arg(arg);
   });
   cwd.map(|d| c.current_dir(d));
+  (0..env.len()).for_each(|i| {
+    let entry = env.get(i);
+    c.env(entry.key().unwrap(), entry.value().unwrap());
+  });
 
   c.stdin(subprocess_stdio_map(inner.stdin()));
   c.stdout(subprocess_stdio_map(inner.stdout()));

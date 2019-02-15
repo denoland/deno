@@ -464,6 +464,7 @@ enum ProcessStdio: byte { Inherit, Piped, Null }
 table Run {
   args: [string];
   cwd: string;
+  env: [KeyValue];
   stdin: ProcessStdio;
   stdout: ProcessStdio;
   stderr: ProcessStdio;
