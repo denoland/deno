@@ -3,6 +3,10 @@
 <html>
   <head>
     <title>Deno Manual</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.14.2/build/styles/default.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.14.2/build/styles/github-gist.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.14.2/build/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.14.2/build/languages/typescript.min.js"></script>
     <link rel="stylesheet" href="style.css" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
   </head>
@@ -32,6 +36,13 @@
             let el = document.getElementById(window.location.hash.slice(1));
             window.scrollTo({ top: el.offsetTop });
           }
+
+          // Disable automatic language detection 
+          hljs.configure({
+            languages: [],
+          });
+
+          hljs.initHighlighting();
         }
 
         main();

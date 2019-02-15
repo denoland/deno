@@ -115,7 +115,7 @@ deno https://deno.land/welcome.js
 
 ### Build from source
 
-```
+```bash
 # Fetch deps.
 git clone --recurse-submodules https://github.com/denoland/deno.git
 cd deno
@@ -170,7 +170,7 @@ Extra steps for Windows users:
 
 #### Other useful commands
 
-```
+```bash
 # Call ninja manually.
 ./third_party/depot_tools/ninja -C target/debug
 
@@ -556,7 +556,7 @@ Rust. These common data structures are defined in
 
 ### Updating prebuilt binaries
 
-```
+```bash
 ./third_party/depot_tools/upload_to_google_storage.py -b denoland  \
   -e ~/.config/gcloud/legacy_credentials/ry@tinyclouds.org/.boto `which sccache`
 mv `which sccache`.sha1 prebuilt/linux64/
