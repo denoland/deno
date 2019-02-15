@@ -13,6 +13,7 @@ import "io/util_test.ts";
 import "io/writers_test.ts";
 import "io/readers_test.ts";
 import "fs/path/test.ts";
+import "fs/walk_test.ts";
 import "io/test.ts";
 import "http/server_test.ts";
 import "http/file_server_test.ts";
