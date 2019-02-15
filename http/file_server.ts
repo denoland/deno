@@ -10,7 +10,7 @@ import {
   listenAndServe,
   ServerRequest,
   setContentLength,
-  Response
+  ServerResponse
 } from "./server.ts";
 import { cwd, DenoError, ErrorKind, args, stat, readDir, open } from "deno";
 import { extname } from "../fs/path.ts";
@@ -195,14 +195,14 @@ async function serveFallback(req: ServerRequest, e: Error) {
   }
 }
 
-function serverLog(req: ServerRequest, res: Response) {
+function serverLog(req: ServerRequest, res: ServerResponse) {
   const d = new Date().toISOString();
   const dateFmt = `[${d.slice(0, 10)} ${d.slice(11, 19)}]`;
   const s = `${dateFmt} "${req.method} ${req.url} ${req.proto}" ${res.status}`;
   console.log(s);
 }
 
-function setCORS(res: Response) {
+function setCORS(res: ServerResponse) {
   if (!res.headers) {
     res.headers = new Headers();
   }
@@ -213,11 +213,11 @@ function setCORS(res: Response) {
   );
 }
 
-listenAndServe(addr, async req => {
+listenAndServe(addr, async (req, res) => {
   const fileName = req.url.replace(/\/$/, "");
   const filePath = currentDir + fileName;
 
-  let response: Response;
+  let response: ServerResponse;
 
   try {
     const fileInfo = await stat(filePath);
@@ -235,7 +235,7 @@ listenAndServe(addr, async req => {
       setCORS(response);
     }
     serverLog(req, response);
-    req.respond(response);
+    res.respond(response);
   }
 });
 

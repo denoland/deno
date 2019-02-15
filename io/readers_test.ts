@@ -7,9 +7,11 @@ import { decode } from "../strings/strings.ts";
 
 test(async function ioStringReader() {
   const r = new StringReader("abcdef");
-  const { nread, eof } = await r.read(new Uint8Array(6));
+  const buf = new Uint8Array(6);
+  const { nread, eof } = await r.read(buf);
   assert.equal(nread, 6);
   assert.equal(eof, true);
+  assert.equal(decode(buf), "abcdef");
 });
 
 test(async function ioStringReader() {
