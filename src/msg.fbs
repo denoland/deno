@@ -65,7 +65,7 @@ union Any {
   Now,
   NowRes,
   IsTTY,
-  IsTTYRes
+  IsTTYRes,
 }
 
 enum ErrorKind: byte {
@@ -156,6 +156,7 @@ table StartRes {
   cwd: string;
   pid: uint32;
   argv: [string];
+  exec_path: string;
   debug_flag: bool;
   deps_flag: bool;
   types_flag: bool;
