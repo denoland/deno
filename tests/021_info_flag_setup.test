@@ -1,4 +1,0 @@
-# This is used to make sure code for remote source is compiled
-# such that 022_info_flag.test would function correctly
-args: --reload http://127.0.0.1:4545/tests/003_relative_import.ts
-output: tests/021_info_flag_setup.out
