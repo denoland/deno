@@ -266,12 +266,12 @@ export default function makeConfig(commandOptions) {
             "createLanguageService",
             "formatDiagnostics",
             "formatDiagnosticsWithColorAndContext",
+            "version",
+            "Extension",
             "ModuleKind",
             "ScriptKind",
             "ScriptSnapshot",
-            "ScriptTarget",
-            "Extension",
-            "version"
+            "ScriptTarget"
           ]
         }
       }),

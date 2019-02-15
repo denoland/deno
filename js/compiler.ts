@@ -162,6 +162,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
   // arguments
   private readonly _options: ts.CompilerOptions = {
     allowJs: true,
+    allowNonTsExtensions: true,
     checkJs: true,
     esModuleInterop: true,
     module: ts.ModuleKind.ESNext,
@@ -169,8 +170,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
     resolveJsonModule: true,
     sourceMap: true,
     stripComments: true,
-    target: ts.ScriptTarget.ESNext,
-    allowNonTsExtensions: true
+    target: ts.ScriptTarget.ESNext
   };
   // A reference to the `./os.ts` module, so it can be monkey patched during
   // testing
