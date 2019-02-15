@@ -3,6 +3,10 @@
 <html>
   <head>
     <title>Deno</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.14.2/build/styles/default.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.14.2/build/styles/github-gist.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.14.2/build/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.14.2/build/languages/typescript.min.js"></script>
     <link rel="stylesheet" href="style.css" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
   </head>
@@ -98,9 +102,7 @@ href="https://github.com/denoland/deno_install/blob/master/install.ps1">https://
 
       <p>Or a more complex one:</p>
 
-      <pre>
-import { serve } from "<a
-href="https://github.com/denoland/deno_std/blob/master/http/server.ts">https://deno.land/x/http/server.ts</a>";
+      <pre><code class="typescript language-typescript">import { serve } from "https://deno.land/x/http/server.ts";
 const s = serve("0.0.0.0:8000");
 
 async function main() {
@@ -109,7 +111,7 @@ async function main() {
   }
 }
 
-main(); </pre>
+main();</code></pre>
 
       <h2 id="dig-in">Dig in... <a href="#dig-in">#</a></h2>
 
@@ -138,6 +140,16 @@ main(); </pre>
           >A curated list of awesome Deno things</a
         >
       </p>
+
+      <script>
+        // Disable automatic language detection 
+        hljs.configure({
+          languages: [],
+        });
+
+        hljs.initHighlighting();
+      </script>
+
     </main>
   </body>
 </html>
