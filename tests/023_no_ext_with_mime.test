@@ -1,0 +1,2 @@
+args: tests/023_no_ext_with_mime --reload --recompile
+output: tests/023_no_ext_with_mime.out

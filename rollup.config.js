@@ -270,6 +270,7 @@ export default function makeConfig(commandOptions) {
             "ScriptKind",
             "ScriptSnapshot",
             "ScriptTarget",
+            "Extension",
             "version"
           ]
         }
