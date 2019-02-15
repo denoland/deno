@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // tslint:disable-next-line:no-reference
 /// <reference path="./plugins.d.ts" />
+/// <reference path="./const.d.ts" />
 
 import "./globals";
 
@@ -28,8 +29,7 @@ export default function denoMain() {
   if (startResMsg.versionFlag()) {
     console.log("deno:", startResMsg.denoVersion());
     console.log("v8:", startResMsg.v8Version());
-    // TODO figure out a way to restore functionality
-    // console.log("typescript:", version);
+    console.log("typescript:", TS_VERSION);
     os.exit(0);
   }
 
