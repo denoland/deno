@@ -1,6 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 import { test, assert, assertEqual, equal } from "./mod.ts";
+import "./format_test.ts";
+import "./diff_test.ts";
+import "./pretty_test.ts";
 
 test(function testingEqual() {
   assert(equal("world", "world"));
