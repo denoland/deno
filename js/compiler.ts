@@ -162,6 +162,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
   // arguments
   private readonly _options: ts.CompilerOptions = {
     allowJs: true,
+    allowNonTsExtensions: true,
     checkJs: true,
     esModuleInterop: true,
     module: ts.ModuleKind.ESNext,
