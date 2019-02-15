@@ -186,3 +186,22 @@ testPerm({ run: true }, async function runOutput() {
   assertEqual(s, "hello");
   p.close();
 });
+
+testPerm({ run: true }, async function runEnv() {
+  const p = run({
+    args: [
+      "python",
+      "-c",
+      "import os, sys; sys.stdout.write(os.environ.get('FOO', '') + os.environ.get('BAR', ''))"
+    ],
+    env: {
+      FOO: "0123",
+      BAR: "4567"
+    },
+    stdout: "piped"
+  });
+  const output = await p.output();
+  const s = new TextDecoder().decode(output);
+  assertEqual(s, "01234567");
+  p.close();
+});

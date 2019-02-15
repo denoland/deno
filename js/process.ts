@@ -27,6 +27,7 @@ export type ProcessStdio = "inherit" | "piped" | "null";
 export interface RunOptions {
   args: string[];
   cwd?: string;
+  env?: { [key: string]: string };
   stdout?: ProcessStdio;
   stderr?: ProcessStdio;
   stdin?: ProcessStdio;
@@ -107,11 +108,24 @@ export function run(opt: RunOptions): Process {
     opt.args.map(a => builder.createString(a))
   );
   const cwdOffset = opt.cwd == null ? -1 : builder.createString(opt.cwd);
+  const kvOffset: flatbuffers.Offset[] = [];
+  if (opt.env) {
+    for (const [key, val] of Object.entries(opt.env)) {
+      const keyOffset = builder.createString(key);
+      const valOffset = builder.createString(String(val));
+      msg.KeyValue.startKeyValue(builder);
+      msg.KeyValue.addKey(builder, keyOffset);
+      msg.KeyValue.addValue(builder, valOffset);
+      kvOffset.push(msg.KeyValue.endKeyValue(builder));
+    }
+  }
+  const envOffset = msg.Run.createEnvVector(builder, kvOffset);
   msg.Run.startRun(builder);
   msg.Run.addArgs(builder, argsOffset);
   if (opt.cwd != null) {
     msg.Run.addCwd(builder, cwdOffset);
   }
+  msg.Run.addEnv(builder, envOffset);
   if (opt.stdin) {
     msg.Run.addStdin(builder, stdioMap(opt.stdin!));
   }
