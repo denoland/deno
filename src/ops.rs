@@ -252,6 +252,9 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
+  let exec_path =
+    builder.create_string(std::env::current_exe().unwrap().to_str().unwrap());
+
   let v8_version = version::v8();
   let v8_version_off = builder.create_string(v8_version);
 
@@ -270,6 +273,7 @@ fn op_start(
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
       no_color: !ansi::use_color(),
+      exec_path: Some(exec_path),
       ..Default::default()
     },
   );
