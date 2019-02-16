@@ -10,9 +10,9 @@ const isWindows = platform.os === "win";
 
 function name(filename: string): string {
   if (isWindows) {
-    return filename.replace(/(.*)([\\])([^\\]*\\?$)/, "$3");
+    return filename.replace(/\\$/, "").replace(/.*\\/, "");
   } else {
-    return filename.replace(/(.*)([\/])([^\/]*\/?$)/, "$3");
+    return filename.replace(/\/$/, "").replace(/.*\//, "");
   }
 }
 
