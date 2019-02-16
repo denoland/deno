@@ -66,6 +66,7 @@ union Any {
   NowRes,
   IsTTY,
   IsTTYRes,
+  Seek,
 }
 
 enum ErrorKind: byte {
@@ -504,6 +505,11 @@ table IsTTYRes {
   stdin: bool;
   stdout: bool;
   stderr: bool;
+}
+
+table Seek {
+  rid: uint32;
+  offset: uint64;
 }
 
 root_type Base;

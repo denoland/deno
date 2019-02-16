@@ -30,7 +30,7 @@ use futures::Stream;
 use hyper;
 use std;
 use std::collections::HashMap;
-use std::io::{Error, Read, Write};
+use std::io::{Error, Read, Write, SeekFrom};
 use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
@@ -38,6 +38,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::fs::file::{SeekFuture};
 use tokio::net::TcpStream;
 use tokio_io;
 use tokio_process;
@@ -479,10 +480,10 @@ pub fn lookup(rid: ResourceId) -> Option<Resource> {
 }
 
 pub type EagerRead<R, T> =
-  Either<tokio_io::io::Read<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
+Either<tokio_io::io::Read<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
 
 pub type EagerWrite<R, T> =
-  Either<tokio_write::Write<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
+Either<tokio_write::Write<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
 
 pub type EagerAccept = Either<
   tokio_util::Accept,
@@ -562,6 +563,20 @@ pub fn eager_accept(resource: Resource) -> EagerAccept {
         eager::tcp_accept(tcp_listener, resource)
       }
       _ => Either::A(tokio_util::accept(resource)),
+    },
+  }
+}
+
+pub fn seek(resource: Resource, offset: u64) -> SeekFuture {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let maybe_repr = table.get_mut(&resource.rid);
+  match maybe_repr {
+    None => panic!("bad rid"),
+    Some(repr) => match repr {
+      Repr::FsFile(ref mut f) => {
+        f.seek(SeekFrom::Start(offset))
+      }
+      _ => panic!("cannot seek"),
     },
   }
 }
