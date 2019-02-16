@@ -47,7 +47,7 @@ pub fn yellow(s: String) -> impl fmt::Display {
   let mut style = Style::new();
   if use_color() {
     // matches TypeScript's ForegroundColorEscapeSequences.Yellow
-    style = style.fg(Fixed(10));
+    style = style.fg(Fixed(11));
   }
   style.paint(s)
 }
