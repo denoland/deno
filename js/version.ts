@@ -13,6 +13,7 @@ export const version: Version = {
 
 /**
  * Sets the deno and v8 versions and freezes the version object.
+ * @internal
  */
 export function setVersions(denoVersion: string, v8Version: string): void {
   version.deno = denoVersion;
