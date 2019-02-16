@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // tslint:disable-next-line:no-reference
 /// <reference path="./plugins.d.ts" />
-/// <reference path="./const.d.ts" />
 
 import "./globals";
 
@@ -10,6 +9,7 @@ import * as os from "./os";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { replLoop } from "./repl";
+import { version } from "./version";
 
 // builtin modules
 import * as deno from "./deno";
@@ -25,11 +25,14 @@ export default function denoMain() {
   libdeno.builtinModules["deno"] = deno;
   Object.freeze(libdeno.builtinModules);
 
+  version.deno = startResMsg.denoVersion();
+  version.v8 = startResMsg.v8Version();
+
   // handle `--version`
   if (startResMsg.versionFlag()) {
-    console.log("deno:", startResMsg.denoVersion());
-    console.log("v8:", startResMsg.v8Version());
-    console.log("typescript:", TS_VERSION);
+    console.log("deno:", version.deno);
+    console.log("v8:", version.v8);
+    console.log("typescript:", version.typescript);
     os.exit(0);
   }
 
