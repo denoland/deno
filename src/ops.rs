@@ -898,17 +898,16 @@ fn op_seek(
   let _cmd_id = base.cmd_id();
   let inner = base.inner_as_seek().unwrap();
   let rid = inner.rid();
-  let _offset = inner.offset();
+  let offset = inner.offset();
+  let whence = inner.whence();
 
-  match resources::lookup(rid) {
-    None => odd_future(errors::bad_resource()),
+  blocking(base.sync(), move || match resources::lookup(rid) {
+    None => Err(errors::bad_resource()),
     Some(resource) => {
-      let op = resources::seek(resource, 20).map_err(DenoError::from).and_then(|_file | {
-        ok_future(empty_buf())
-      });
-      Box::new(op)
+      resources::seek(resource, offset, whence)?;
+      return Ok(empty_buf());
     }
-  }
+  })
 }
 
 fn op_remove(

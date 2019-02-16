@@ -30,7 +30,7 @@ use futures::Stream;
 use hyper;
 use std;
 use std::collections::HashMap;
-use std::io::{Error, Read, Write, SeekFrom};
+use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
@@ -38,7 +38,6 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::fs::file::{SeekFuture};
 use tokio::net::TcpStream;
 use tokio_io;
 use tokio_process;
@@ -87,7 +86,9 @@ enum Repr {
   Stdin(tokio::io::Stdin),
   Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
-  FsFile(tokio::fs::File),
+  // TODO(kevinkassimo): remove Option after tokio seek PR lands:
+  // https://github.com/tokio-rs/tokio/pull/785
+  FsFile(Option<tokio::fs::File>),
   // Since TcpListener might be closed while there is a pending accept task,
   // we need to track the task so that when the listener is closed,
   // this pending task could be notified and die.
@@ -250,7 +251,13 @@ impl AsyncRead for Resource {
     match maybe_repr {
       None => panic!("bad rid"),
       Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_read(buf),
+        Repr::FsFile(ref mut maybe_f) => {
+          if let Some(f) = maybe_f {
+            return f.poll_read(buf);
+          } else {
+            panic!("Cannot read");
+          }
+        }
         Repr::Stdin(ref mut f) => f.poll_read(buf),
         Repr::TcpStream(ref mut f) => f.poll_read(buf),
         Repr::HttpBody(ref mut f) => f.poll_read(buf),
@@ -279,7 +286,13 @@ impl AsyncWrite for Resource {
     match maybe_repr {
       None => panic!("bad rid"),
       Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_write(buf),
+        Repr::FsFile(ref mut maybe_f) => {
+          if let Some(f) = maybe_f {
+            return f.poll_write(buf);
+          } else {
+            panic!("Cannot write");
+          }
+        }
         Repr::Stdout(ref mut f) => f.poll_write(buf),
         Repr::Stderr(ref mut f) => f.poll_write(buf),
         Repr::TcpStream(ref mut f) => f.poll_write(buf),
@@ -302,7 +315,7 @@ fn new_rid() -> ResourceId {
 pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  match tg.insert(rid, Repr::FsFile(fs_file)) {
+  match tg.insert(rid, Repr::FsFile(Some(fs_file))) {
     Some(_) => panic!("There is already a file with that rid"),
     None => Resource { rid },
   }
@@ -480,10 +493,10 @@ pub fn lookup(rid: ResourceId) -> Option<Resource> {
 }
 
 pub type EagerRead<R, T> =
-Either<tokio_io::io::Read<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
+  Either<tokio_io::io::Read<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
 
 pub type EagerWrite<R, T> =
-Either<tokio_write::Write<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
+  Either<tokio_write::Write<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
 
 pub type EagerAccept = Either<
   tokio_util::Accept,
@@ -567,14 +580,35 @@ pub fn eager_accept(resource: Resource) -> EagerAccept {
   }
 }
 
-pub fn seek(resource: Resource, offset: u64) -> SeekFuture {
+pub fn seek(resource: Resource, offset: i32, whence: u32) -> DenoResult<u64> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&resource.rid);
   match maybe_repr {
     None => panic!("bad rid"),
     Some(repr) => match repr {
-      Repr::FsFile(ref mut f) => {
-        f.seek(SeekFrom::Start(offset))
+      Repr::FsFile(ref mut maybe_f) => {
+        let seek_from = match whence {
+          0 => SeekFrom::Start(offset as u64),
+          1 => SeekFrom::Current(offset as i64),
+          2 => SeekFrom::End(offset as i64),
+          _ => {
+            return Err(errors::new(
+              errors::ErrorKind::InvalidSeekMode,
+              format!("Invalid seek mode: {}", whence),
+            ));
+          }
+        };
+        // TODO(kevinkassimo): revamp this after the following lands:
+        // https://github.com/tokio-rs/tokio/pull/785
+        if maybe_f.is_some() {
+          let f = maybe_f.take().unwrap();
+          let mut std_file = f.into_std();
+          let result = std_file.seek(seek_from).map_err(DenoError::from);
+          maybe_f.replace(tokio_fs::File::from_std(std_file));
+          return result;
+        } else {
+          panic!("cannot seek");
+        }
       }
       _ => panic!("cannot seek"),
     },

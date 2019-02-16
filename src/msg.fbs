@@ -119,6 +119,7 @@ enum ErrorKind: byte {
 
   // custom errors
   InvalidUri,
+  InvalidSeekMode,
 }
 
 table Cwd {}
@@ -509,7 +510,8 @@ table IsTTYRes {
 
 table Seek {
   rid: uint32;
-  offset: uint64;
+  offset: int;
+  whence: uint;
 }
 
 root_type Base;

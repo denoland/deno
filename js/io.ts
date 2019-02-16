@@ -9,6 +9,14 @@ export interface ReadResult {
   eof: boolean;
 }
 
+// Seek whence values.
+// https://golang.org/pkg/io/#pkg-constants
+export enum SeekMode {
+  SEEK_START = 0,
+  SEEK_CURRENT = 1,
+  SEEK_END = 2
+}
+
 // Reader is the interface that wraps the basic read() method.
 // https://golang.org/pkg/io/#Reader
 export interface Reader {
