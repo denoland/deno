@@ -64,6 +64,3 @@ export { Console, stringifyArgs } from "./console";
 // TODO Don't expose DomIterableMixin.
 /** @internal */
 export { DomIterableMixin } from "./mixins/dom_iterable";
-// TODO Don't expose deferred.
-/** @internal */
-export { deferred } from "./util";
