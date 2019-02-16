@@ -9,7 +9,7 @@ import * as os from "./os";
 import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { replLoop } from "./repl";
-import { version } from "./version";
+import { setVersions } from "./version";
 
 // builtin modules
 import * as deno from "./deno";
@@ -25,14 +25,13 @@ export default function denoMain() {
   libdeno.builtinModules["deno"] = deno;
   Object.freeze(libdeno.builtinModules);
 
-  version.deno = startResMsg.denoVersion();
-  version.v8 = startResMsg.v8Version();
+  setVersions(startResMsg.denoVersion()!, startResMsg.v8Version()!);
 
   // handle `--version`
   if (startResMsg.versionFlag()) {
-    console.log("deno:", version.deno);
-    console.log("v8:", version.v8);
-    console.log("typescript:", version.typescript);
+    console.log("deno:", deno.version.deno);
+    console.log("v8:", deno.version.v8);
+    console.log("typescript:", deno.version.typescript);
     os.exit(0);
   }
 
