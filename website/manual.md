@@ -331,7 +331,8 @@ const p = Deno.run({
 await p.status();
 ```
 
-When this program is started, the user is prompted for permission to run subprocess:
+When this program is started, the user is prompted for permission to run
+subprocess:
 
 ```
 > deno https://deno.land/x/examples/subprocess_simple.ts
@@ -345,9 +346,9 @@ explicit permission. To avoid the console prompt, use a command-line flag:
 > deno https://deno.land/x/examples/subprocess_simple.ts --allow-run
 ```
 
-By default when you use `deno.run()` subprocess inherits `stdin`, `stdout` and `stdout`
-of parent process. If you want to communicate with started subprocess you can use `"piped"`
-option.
+By default when you use `deno.run()` subprocess inherits `stdin`, `stdout` and
+`stdout` of parent process. If you want to communicate with started subprocess
+you can use `"piped"` option.
 
 ```
 const decoder = new TextDecoder();
