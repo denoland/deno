@@ -8,7 +8,7 @@ interface Version {
 export const version: Version = {
   deno: null,
   v8: null,
-  typescript: TS_VERSION
+  typescript: "TS_VERSION"
 };
 
 /**

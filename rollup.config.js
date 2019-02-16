@@ -228,7 +228,7 @@ export default function makeConfig(commandOptions) {
 
       // replace strings
       replace({
-        TS_VERSION: `"${typescript.version}"`
+        TS_VERSION: typescript.version
       }),
 
       // would prefer to use `rollup-plugin-virtual` to inject the empty module, but there
