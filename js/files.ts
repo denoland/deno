@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Reader, Writer, Seeker, Closer, ReadResult } from "./io";
+import { Reader, Writer, Seeker, Closer, ReadResult, SeekMode } from "./io";
 import * as dispatch from "./dispatch";
 import * as msg from "gen/msg_generated";
 import { assert } from "./util";
@@ -17,7 +17,7 @@ export class File implements Reader, Writer, Seeker, Closer {
     return read(this.rid, p);
   }
 
-  seek(offset: number, whence: number): Promise<void> {
+  seek(offset: number, whence: SeekMode): Promise<void> {
     return seek(this.rid, offset, whence);
   }
 
@@ -133,7 +133,7 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
 export async function seek(
   rid: number,
   offset: number,
-  whence: number
+  whence: SeekMode
 ): Promise<void> {
   const builder = flatbuffers.createBuilder();
   msg.Seek.startSeek(builder);
