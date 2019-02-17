@@ -141,15 +141,11 @@ testPerm({ read: true, write: true }, async function openModeWriteRead() {
   fileInfo = Deno.statSync(filename);
   assertEqual(fileInfo.len, 13);
 
-  // TODO: this test is not working, I expect because
-  //  file handle points to the end of file, but ATM
-  //  deno has no seek implementation on Rust side
-  // assert file can be read
-  // const buf = new Uint8Array(20);
-  // const result = await file.read(buf);
-  // console.log(result.eof, result.nread);
-  // assertEqual(result.nread, 13);
-  // file.close();
+  const buf = new Uint8Array(20);
+  await file.seek(0, Deno.SeekMode.SEEK_START);
+  const result = await file.read(buf);
+  assertEqual(result.nread, 13);
+  file.close();
 
   await Deno.remove(tempDir, { recursive: true });
 });
