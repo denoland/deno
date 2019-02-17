@@ -150,7 +150,7 @@ export function pwrite(options: PWrite) {}
 TODO comments should be include an issue or the author's github username in
 parentheses. Example:
 
-```
+```ts
 // TODO(ry) Add tests.
 // TODO(#123) Support Windows.
 ```
@@ -159,7 +159,7 @@ parentheses. Example:
 
 Most files in `deno_std` should have the following copyright header:
 
-```
+```ts
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 ```
 
@@ -173,7 +173,7 @@ limited to closures.
 
 Bad
 
-```
+```ts
 export const foo(): string => {
   return "bar";
 }
@@ -181,7 +181,7 @@ export const foo(): string => {
 
 Good
 
-```
+```ts
 export function foo(): string {
   return "bar";
 }
