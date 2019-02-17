@@ -107,7 +107,7 @@ href="https://github.com/denoland/deno_install/blob/master/install.ps1">https://
 const s = serve("0.0.0.0:8000");
 
 async function main() {
-  for await (const { req, res } of s) {
+  for await (const { res } of s) {
     res.respond({ body: new TextEncoder().encode("Hello World\n") });
   }
 }
