@@ -107,29 +107,6 @@ export function containsOnlyASCII(str: string): boolean {
   return /^[\x00-\x7F]*$/.test(str);
 }
 
-export interface Deferred {
-  promise: Promise<void>;
-  resolve: Function;
-  reject: Function;
-}
-
-/** Create a wrapper around a promise that could be resolved externally.
- * TODO Do not expose this from "deno" namespace.
- */
-export function deferred(): Deferred {
-  let resolve: Function | undefined;
-  let reject: Function | undefined;
-  const promise = new Promise<void>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return {
-    promise,
-    resolve: resolve!,
-    reject: reject!
-  };
-}
-
 // tslint:disable-next-line:variable-name
 const TypedArrayConstructor = Object.getPrototypeOf(Uint8Array);
 export function isTypedArray(x: unknown): x is TypedArray {
