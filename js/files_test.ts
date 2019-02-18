@@ -141,15 +141,61 @@ testPerm({ read: true, write: true }, async function openModeWriteRead() {
   fileInfo = Deno.statSync(filename);
   assertEqual(fileInfo.len, 13);
 
-  // TODO: this test is not working, I expect because
-  //  file handle points to the end of file, but ATM
-  //  deno has no seek implementation on Rust side
-  // assert file can be read
-  // const buf = new Uint8Array(20);
-  // const result = await file.read(buf);
-  // console.log(result.eof, result.nread);
-  // assertEqual(result.nread, 13);
-  // file.close();
+  const buf = new Uint8Array(20);
+  await file.seek(0, Deno.SeekMode.SEEK_START);
+  const result = await file.read(buf);
+  assertEqual(result.nread, 13);
+  file.close();
 
   await Deno.remove(tempDir, { recursive: true });
+});
+
+testPerm({ read: true }, async function seekStart() {
+  const filename = "tests/hello.txt";
+  const file = await Deno.open(filename);
+  // Deliberately move 1 step forward
+  await file.read(new Uint8Array(1)); // "H"
+  // Skipping "Hello "
+  await file.seek(6, Deno.SeekMode.SEEK_START);
+  const buf = new Uint8Array(6);
+  await file.read(buf);
+  const decoded = new TextDecoder().decode(buf);
+  assertEqual(decoded, "world!");
+});
+
+testPerm({ read: true }, async function seekCurrent() {
+  const filename = "tests/hello.txt";
+  const file = await Deno.open(filename);
+  // Deliberately move 1 step forward
+  await file.read(new Uint8Array(1)); // "H"
+  // Skipping "ello "
+  await file.seek(5, Deno.SeekMode.SEEK_CURRENT);
+  const buf = new Uint8Array(6);
+  await file.read(buf);
+  const decoded = new TextDecoder().decode(buf);
+  assertEqual(decoded, "world!");
+});
+
+testPerm({ read: true }, async function seekEnd() {
+  const filename = "tests/hello.txt";
+  const file = await Deno.open(filename);
+  await file.seek(-6, Deno.SeekMode.SEEK_END);
+  const buf = new Uint8Array(6);
+  await file.read(buf);
+  const decoded = new TextDecoder().decode(buf);
+  assertEqual(decoded, "world!");
+});
+
+testPerm({ read: true }, async function seekMode() {
+  const filename = "tests/hello.txt";
+  const file = await Deno.open(filename);
+  let err;
+  try {
+    await file.seek(1, -1);
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertEqual(err.kind, Deno.ErrorKind.InvalidSeekMode);
+  assertEqual(err.name, "InvalidSeekMode");
 });

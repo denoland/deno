@@ -11,6 +11,7 @@ export {
   stderr,
   read,
   write,
+  seek,
   close,
   OpenMode
 } from "./files";
@@ -18,6 +19,7 @@ export {
   copy,
   toAsyncIterator,
   ReadResult,
+  SeekMode,
   Reader,
   Writer,
   Closer,

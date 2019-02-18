@@ -65,6 +65,7 @@ union Any {
   NowRes,
   IsTTY,
   IsTTYRes,
+  Seek,
 }
 
 enum ErrorKind: byte {
@@ -117,6 +118,7 @@ enum ErrorKind: byte {
 
   // custom errors
   InvalidUri,
+  InvalidSeekMode,
 }
 
 table Cwd {}
@@ -494,6 +496,12 @@ table IsTTYRes {
   stdin: bool;
   stdout: bool;
   stderr: bool;
+}
+
+table Seek {
+  rid: uint32;
+  offset: int;
+  whence: uint;
 }
 
 root_type Base;
