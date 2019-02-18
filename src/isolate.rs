@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use crate::compiler::compile_sync;
-use crate::compiler::CodeFetchOutput;
+use crate::compiler::ModuleMetaData;
 use crate::deno_dir;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
@@ -323,8 +323,11 @@ impl Isolate {
       debug!("mod_load_deps {} {}", i, name);
 
       if !self.modules.borrow_mut().is_registered(&name) {
-        let out =
-          code_fetch_and_maybe_compile(&self.state, specifier, &referrer_name)?;
+        let out = fetch_module_meta_data_and_maybe_compile(
+          &self.state,
+          specifier,
+          &referrer_name,
+        )?;
         let child_id =
           self.mod_new(out.module_name.clone(), out.js_source())?;
 
@@ -367,8 +370,9 @@ impl Isolate {
     js_filename: &str,
     is_prefetch: bool,
   ) -> Result<(), RustOrJsError> {
-    let out = code_fetch_and_maybe_compile(&self.state, js_filename, ".")
-      .map_err(RustOrJsError::from)?;
+    let out =
+      fetch_module_meta_data_and_maybe_compile(&self.state, js_filename, ".")
+        .map_err(RustOrJsError::from)?;
 
     let id = self
       .mod_new(out.module_name.clone(), out.js_source())
@@ -470,19 +474,20 @@ impl Drop for Isolate {
   }
 }
 
-fn code_fetch_and_maybe_compile(
+fn fetch_module_meta_data_and_maybe_compile(
   state: &Arc<IsolateState>,
   specifier: &str,
   referrer: &str,
-) -> Result<CodeFetchOutput, DenoError> {
-  let mut out = state.dir.code_fetch(specifier, referrer)?;
+) -> Result<ModuleMetaData, DenoError> {
+  let mut out = state.dir.fetch_module_meta_data(specifier, referrer)?;
   if (out.media_type == msg::MediaType::TypeScript
     && out.maybe_output_code.is_none())
     || state.flags.recompile
   {
     debug!(">>>>> compile_sync START");
-    out = compile_sync(state, specifier, &referrer).unwrap();
+    out = compile_sync(state, specifier, &referrer, &out);
     debug!(">>>>> compile_sync END");
+    state.dir.code_cache(&out)?;
   }
   Ok(out)
 }

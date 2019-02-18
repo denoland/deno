@@ -90,8 +90,7 @@ pub fn dispatch(
       msg::Any::Chdir => op_chdir,
       msg::Any::Chmod => op_chmod,
       msg::Any::Close => op_close,
-      msg::Any::CodeCache => op_code_cache,
-      msg::Any::CodeFetch => op_code_fetch,
+      msg::Any::FetchModuleMetaData => op_fetch_module_meta_data,
       msg::Any::CopyFile => op_copy_file,
       msg::Any::Cwd => op_cwd,
       msg::Any::Dial => op_dial,
@@ -349,13 +348,13 @@ pub fn odd_future(err: DenoError) -> Box<Op> {
 }
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
-fn op_code_fetch(
+fn op_fetch_module_meta_data(
   state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let inner = base.inner_as_code_fetch().unwrap();
+  let inner = base.inner_as_fetch_module_meta_data().unwrap();
   let cmd_id = base.cmd_id();
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
@@ -364,43 +363,24 @@ fn op_code_fetch(
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
-    let out = state.dir.code_fetch(specifier, referrer)?;
-    let msg_args = msg::CodeFetchResArgs {
+    let out = state.dir.fetch_module_meta_data(specifier, referrer)?;
+    let data_off = builder.create_vector(out.source_code.as_slice());
+    let msg_args = msg::FetchModuleMetaDataResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
       filename: Some(builder.create_string(&out.filename)),
       media_type: out.media_type,
-      source_code: Some(builder.create_string(&out.source_code)),
+      data: Some(data_off),
     };
-    let inner = msg::CodeFetchRes::create(builder, &msg_args);
+    let inner = msg::FetchModuleMetaDataRes::create(builder, &msg_args);
     Ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::CodeFetchRes,
+        inner_type: msg::Any::FetchModuleMetaDataRes,
         ..Default::default()
       },
     ))
-  }()))
-}
-
-// https://github.com/denoland/deno/blob/golang/os.go#L156-L169
-fn op_code_cache(
-  state: &Arc<IsolateState>,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
-  assert_eq!(data.len(), 0);
-  let inner = base.inner_as_code_cache().unwrap();
-  let filename = inner.filename().unwrap();
-  let source_code = inner.source_code().unwrap();
-  let output_code = inner.output_code().unwrap();
-  let source_map = inner.source_map().unwrap();
-  Box::new(futures::future::result(|| -> OpResult {
-    state
-      .dir
-      .code_cache(filename, source_code, output_code, source_map)?;
-    Ok(empty_buf())
   }()))
 }
 

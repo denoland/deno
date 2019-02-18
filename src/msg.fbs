@@ -6,9 +6,8 @@ union Any {
   WorkerGetMessage,
   WorkerGetMessageRes,
   WorkerPostMessage,
-  CodeFetch,
-  CodeFetchRes,
-  CodeCache,
+  FetchModuleMetaData,
+  FetchModuleMetaDataRes,
   SetTimeout,
   Exit,
   Environ,
@@ -186,28 +185,19 @@ table WorkerPostMessage {
   // data passed thru the zero-copy data parameter.
 }
 
-table CodeFetch {
+table FetchModuleMetaData {
   specifier: string;
   referrer: string;
 }
 
-table CodeFetchRes {
+table FetchModuleMetaDataRes {
   // If it's a non-http module, moduleName and filename will be the same.
   // For http modules, moduleName is its resolved http URL, and filename
   // is the location of the locally downloaded source code.
   module_name: string;
   filename: string;
   media_type: MediaType;
-  // TODO These should be [ubyte].
-  // See: https://github.com/denoland/deno/issues/1113
-  source_code: string;
-}
-
-table CodeCache {
-  filename: string;
-  source_code: string;
-  output_code: string;
-  source_map: string;
+  data: [ubyte];
 }
 
 table Chdir {
