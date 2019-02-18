@@ -901,13 +901,14 @@ fn op_seek(
   let offset = inner.offset();
   let whence = inner.whence();
 
-  blocking(base.sync(), move || match resources::lookup(rid) {
-    None => Err(errors::bad_resource()),
+  match resources::lookup(rid) {
+    None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      resources::seek(resource, offset, whence)?;
-      return Ok(empty_buf());
+      let op = resources::seek(resource, offset, whence)
+        .and_then(move |_| Ok(empty_buf()));
+      Box::new(op)
     }
-  })
+  }
 }
 
 fn op_remove(
