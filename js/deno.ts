@@ -58,6 +58,7 @@ export { metrics, Metrics } from "./metrics";
 export { resources } from "./resources";
 export { run, RunOptions, Process, ProcessStatus } from "./process";
 export { inspect } from "./console";
+export { version } from "./version";
 export const args: string[] = [];
 
 // TODO Don't expose Console nor stringifyArgs.
