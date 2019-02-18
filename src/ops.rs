@@ -126,6 +126,7 @@ pub fn dispatch(
       msg::Any::WriteFile => op_write_file,
       msg::Any::Now => op_now,
       msg::Any::IsTTY => op_is_tty,
+      msg::Any::Seek => op_seek,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -863,6 +864,28 @@ fn op_write(
             },
           ))
         });
+      Box::new(op)
+    }
+  }
+}
+
+fn op_seek(
+  _state: &Arc<IsolateState>,
+  base: &msg::Base<'_>,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let _cmd_id = base.cmd_id();
+  let inner = base.inner_as_seek().unwrap();
+  let rid = inner.rid();
+  let offset = inner.offset();
+  let whence = inner.whence();
+
+  match resources::lookup(rid) {
+    None => odd_future(errors::bad_resource()),
+    Some(resource) => {
+      let op = resources::seek(resource, offset, whence)
+        .and_then(move |_| Ok(empty_buf()));
       Box::new(op)
     }
   }

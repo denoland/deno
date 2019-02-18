@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Reader, Writer, Closer, ReadResult } from "./io";
+import { Reader, Writer, Seeker, Closer, ReadResult, SeekMode } from "./io";
 import * as dispatch from "./dispatch";
 import * as msg from "gen/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
 
 /** The Deno abstraction for reading and writing files. */
-export class File implements Reader, Writer, Closer {
+export class File implements Reader, Writer, Seeker, Closer {
   constructor(readonly rid: number) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -15,6 +15,10 @@ export class File implements Reader, Writer, Closer {
 
   read(p: Uint8Array): Promise<ReadResult> {
     return read(this.rid, p);
+  }
+
+  seek(offset: number, whence: SeekMode): Promise<void> {
+    return seek(this.rid, offset, whence);
   }
 
   close(): void {
@@ -121,6 +125,23 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
   const res = new msg.WriteRes();
   assert(baseRes!.inner(res) != null);
   return res.nbyte();
+}
+
+/** Seek a file ID to the given offset under mode given by `whence`.
+ *
+ */
+export async function seek(
+  rid: number,
+  offset: number,
+  whence: SeekMode
+): Promise<void> {
+  const builder = flatbuffers.createBuilder();
+  msg.Seek.startSeek(builder);
+  msg.Seek.addRid(builder, rid);
+  msg.Seek.addOffset(builder, offset);
+  msg.Seek.addWhence(builder, whence);
+  const inner = msg.Seek.endSeek(builder);
+  await dispatch.sendAsync(builder, msg.Any.Seek, inner);
 }
 
 /** Close the file ID. */

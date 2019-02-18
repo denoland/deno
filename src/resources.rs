@@ -30,7 +30,7 @@ use futures::Stream;
 use hyper;
 use std;
 use std::collections::HashMap;
-use std::io::{Error, Read, Write};
+use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
@@ -563,5 +563,64 @@ pub fn eager_accept(resource: Resource) -> EagerAccept {
       }
       _ => Either::A(tokio_util::accept(resource)),
     },
+  }
+}
+
+// TODO(kevinkassimo): revamp this after the following lands:
+// https://github.com/tokio-rs/tokio/pull/785
+pub fn seek(
+  resource: Resource,
+  offset: i32,
+  whence: u32,
+) -> Box<dyn Future<Item = (), Error = DenoError> + Send> {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  // We take ownership of File here.
+  // It is put back below while still holding the lock.
+  let maybe_repr = table.remove(&resource.rid);
+  match maybe_repr {
+    None => panic!("bad rid"),
+    Some(Repr::FsFile(f)) => {
+      let seek_from = match whence {
+        0 => SeekFrom::Start(offset as u64),
+        1 => SeekFrom::Current(offset as i64),
+        2 => SeekFrom::End(offset as i64),
+        _ => {
+          return Box::new(futures::future::err(errors::new(
+            errors::ErrorKind::InvalidSeekMode,
+            format!("Invalid seek mode: {}", whence),
+          )));
+        }
+      };
+      // Trait Clone not implemented on tokio::fs::File,
+      // so convert to std File first.
+      let std_file = f.into_std();
+      // Create a copy and immediately put back.
+      // We don't want to block other resource ops.
+      // try_clone() would yield a copy containing the same
+      // underlying fd, so operations on the copy would also
+      // affect the one in resource table, and we don't need
+      // to write back.
+      let maybe_std_file_copy = std_file.try_clone();
+      // Insert the entry back with the same rid.
+      table.insert(
+        resource.rid,
+        Repr::FsFile(tokio_fs::File::from_std(std_file)),
+      );
+      if maybe_std_file_copy.is_err() {
+        return Box::new(futures::future::err(DenoError::from(
+          maybe_std_file_copy.unwrap_err(),
+        )));
+      }
+      let mut std_file_copy = maybe_std_file_copy.unwrap();
+      return Box::new(futures::future::lazy(move || {
+        let result = std_file_copy
+          .seek(seek_from)
+          .map(|_| {
+            return ();
+          }).map_err(DenoError::from);
+        futures::future::result(result)
+      }));
+    }
+    _ => panic!("cannot seek"),
   }
 }

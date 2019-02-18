@@ -9,6 +9,14 @@ export interface ReadResult {
   eof: boolean;
 }
 
+// Seek whence values.
+// https://golang.org/pkg/io/#pkg-constants
+export enum SeekMode {
+  SEEK_START = 0,
+  SEEK_CURRENT = 1,
+  SEEK_END = 2
+}
+
 // Reader is the interface that wraps the basic read() method.
 // https://golang.org/pkg/io/#Reader
 export interface Reader {
@@ -74,7 +82,7 @@ export interface Seeker {
    * any positive offset is legal, but the behavior of subsequent I/O operations
    * on the underlying object is implementation-dependent.
    */
-  seek(offset: number, whence: number): Promise<void>;
+  seek(offset: number, whence: SeekMode): Promise<void>;
 }
 
 // https://golang.org/pkg/io/#ReadCloser
