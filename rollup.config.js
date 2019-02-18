@@ -9,6 +9,7 @@ import globals from "rollup-plugin-node-globals";
 import nodeResolve from "rollup-plugin-node-resolve";
 import typescriptPlugin from "rollup-plugin-typescript2";
 import { createFilter } from "rollup-pluginutils";
+import replace from "rollup-plugin-replace";
 import typescript from "typescript";
 import MagicString from "magic-string";
 
@@ -223,6 +224,11 @@ export default function makeConfig(commandOptions) {
       // inject platform and arch from Node
       platform({
         include: [platformPath]
+      }),
+
+      // replace strings
+      replace({
+        TS_VERSION: typescript.version
       }),
 
       // would prefer to use `rollup-plugin-virtual` to inject the empty module, but there
