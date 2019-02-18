@@ -3,7 +3,7 @@
 Binary releases can be downloaded manually at
 https://github.com/denoland/deno/releases
 
-We also have a one-line install commands at
+We also have one-line install commands at
 https://github.com/denoland/deno_install
 
 ### v0.2.11 / 2019.02.08

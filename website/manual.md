@@ -82,24 +82,14 @@ scripts to download and install the binary.
 
 Using Shell:
 
-```
-curl -fL https://deno.land/x/install/install.sh | sh
+```sh
+curl -fsSL https://deno.land/x/install/install.sh | sh
 ```
 
 Or using PowerShell:
 
 ```powershell
-iex (iwr https://deno.land/x/install/install.ps1)
-```
-
-_Note: Depending on your security settings, you may have to run
-`Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` first to allow downloaded
-scripts to be executed._
-
-With [Scoop](https://scoop.sh/):
-
-```
-scoop install deno
+iwr https://deno.land/x/install/install.ps1 | iex
 ```
 
 Deno can also be installed manually, by downloading a tarball or zip file at
