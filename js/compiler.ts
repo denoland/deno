@@ -55,8 +55,7 @@ interface CompilerLookup {
  * easily mocked.
  */
 interface Os {
-  codeCache: typeof os.codeCache;
-  codeFetch: typeof os.codeFetch;
+  fetchModuleMetaData: typeof os.fetchModuleMetaData;
   exit: typeof os.exit;
 }
 
@@ -251,7 +250,10 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
     } else {
       // We query Rust with a CodeFetch message. It will load the sourceCode,
       // and if there is any outputCode cached, will return that as well.
-      const fetchResponse = this._os.codeFetch(moduleSpecifier, containingFile);
+      const fetchResponse = this._os.fetchModuleMetaData(
+        moduleSpecifier,
+        containingFile
+      );
       moduleId = fetchResponse.moduleName;
       fileName = fetchResponse.filename;
       mediaType = fetchResponse.mediaType;
@@ -307,22 +309,26 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
 
   // Deno specific compiler API
 
-  /** Retrieve the output of the TypeScript compiler for a given module and
-   * cache the result.
+  /** Retrieve the output of the TypeScript compiler for a given module.
    */
   compile(
     moduleSpecifier: ModuleSpecifier,
     containingFile: ContainingFile
-  ): ModuleMetaData {
+  ): { outputCode: OutputCode; sourceMap: SourceMap } {
     this._log("compiler.compile", { moduleSpecifier, containingFile });
     const moduleMetaData = this._resolveModule(moduleSpecifier, containingFile);
     const { fileName, mediaType, moduleId, sourceCode } = moduleMetaData;
     this._scriptFileNames = [fileName];
     console.warn("Compiling", moduleId);
+    let outputCode: string;
+    let sourceMap = "";
     // Instead of using TypeScript to transpile JSON modules, we will just do
     // it directly.
     if (mediaType === msg.MediaType.Json) {
-      moduleMetaData.outputCode = jsonEsmTemplate(sourceCode, fileName);
+      outputCode = moduleMetaData.outputCode = jsonEsmTemplate(
+        sourceCode,
+        fileName
+      );
     } else {
       const service = this._service;
       assert(
@@ -373,20 +379,14 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
         outputFile.name.endsWith(".js"),
         "Expected second emitted file to be JavaScript"
       );
-      moduleMetaData.outputCode = `${
+      outputCode = moduleMetaData.outputCode = `${
         outputFile.text
       }\n//# sourceURL=${fileName}`;
-      moduleMetaData.sourceMap = sourceMapFile.text;
+      sourceMap = moduleMetaData.sourceMap = sourceMapFile.text;
     }
 
     moduleMetaData.scriptVersion = "1";
-    this._os.codeCache(
-      fileName,
-      sourceCode,
-      moduleMetaData.outputCode,
-      moduleMetaData.sourceMap
-    );
-    return moduleMetaData;
+    return { outputCode, sourceMap };
   }
 
   // TypeScript Language Service and Format Diagnostic Host API
@@ -532,9 +532,9 @@ window.compilerMain = function compilerMain() {
     const json = decoder.decode(data);
     const { specifier, referrer } = JSON.parse(json) as CompilerLookup;
 
-    const moduleMetaData = compiler.compile(specifier, referrer);
+    const result = compiler.compile(specifier, referrer);
 
-    const responseJson = JSON.stringify(moduleMetaData);
+    const responseJson = JSON.stringify(result);
     const response = encoder.encode(responseJson);
     postMessage(response);
   };

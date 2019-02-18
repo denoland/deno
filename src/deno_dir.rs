@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::compiler::CodeFetchOutput;
+use crate::compiler::ModuleMetaData;
 use crate::errors;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
@@ -18,6 +18,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
+use std::str;
 use url;
 use url::Url;
 
@@ -106,7 +107,7 @@ impl DenoDir {
   pub fn cache_path(
     self: &Self,
     filename: &str,
-    source_code: &str,
+    source_code: &[u8],
   ) -> (PathBuf, PathBuf) {
     let cache_key = source_code_hash(filename, source_code, version::DENO);
     (
@@ -118,27 +119,25 @@ impl DenoDir {
   fn load_cache(
     self: &Self,
     filename: &str,
-    source_code: &str,
-  ) -> Result<(String, String), std::io::Error> {
+    source_code: &[u8],
+  ) -> Result<(Vec<u8>, Vec<u8>), std::io::Error> {
     let (output_code, source_map) = self.cache_path(filename, source_code);
     debug!(
       "load_cache code: {} map: {}",
       output_code.display(),
       source_map.display()
     );
-    let read_output_code = fs::read_to_string(&output_code)?;
-    let read_source_map = fs::read_to_string(&source_map)?;
+    let read_output_code = fs::read(&output_code)?;
+    let read_source_map = fs::read(&source_map)?;
     Ok((read_output_code, read_source_map))
   }
 
   pub fn code_cache(
     self: &Self,
-    filename: &str,
-    source_code: &str,
-    output_code: &str,
-    source_map: &str,
+    module_meta_data: &ModuleMetaData,
   ) -> std::io::Result<()> {
-    let (cache_path, source_map_path) = self.cache_path(filename, source_code);
+    let (cache_path, source_map_path) = self
+      .cache_path(&module_meta_data.filename, &module_meta_data.source_code);
     // TODO(ry) This is a race condition w.r.t to exists() -- probably should
     // create the file in exclusive mode. A worry is what might happen is there
     // are two processes and one reads the cache file while the other is in the
@@ -146,8 +145,14 @@ impl DenoDir {
     if cache_path.exists() && source_map_path.exists() {
       Ok(())
     } else {
-      fs::write(cache_path, output_code.as_bytes())?;
-      fs::write(source_map_path, source_map.as_bytes())?;
+      match &module_meta_data.maybe_output_code {
+        Some(output_code) => fs::write(cache_path, output_code),
+        _ => Ok(()),
+      }?;
+      match &module_meta_data.maybe_source_map {
+        Some(source_map) => fs::write(source_map_path, source_map),
+        _ => Ok(()),
+      }?;
       Ok(())
     }
   }
@@ -158,7 +163,7 @@ impl DenoDir {
     self: &Self,
     module_name: &str,
     filename: &str,
-  ) -> DenoResult<Option<CodeFetchOutput>> {
+  ) -> DenoResult<Option<ModuleMetaData>> {
     let p = Path::new(&filename);
     // We write a special ".mime" file into the `.deno/deps` directory along side the
     // cached file, containing just the media type.
@@ -188,11 +193,11 @@ impl DenoDir {
       {
         deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?
       }
-      return Ok(Some(CodeFetchOutput {
+      return Ok(Some(ModuleMetaData {
         module_name: module_name.to_string(),
         filename: filename.to_string(),
         media_type: map_content_type(&p, Some(&content_type)),
-        source_code: source,
+        source_code: source.as_bytes().to_owned(),
         maybe_output_code_filename: None,
         maybe_output_code: None,
         maybe_source_map_filename: None,
@@ -209,7 +214,7 @@ impl DenoDir {
     self: &Self,
     module_name: &str,
     filename: &str,
-  ) -> DenoResult<Option<CodeFetchOutput>> {
+  ) -> DenoResult<Option<ModuleMetaData>> {
     let p = Path::new(&filename);
     let media_type_filename = [&filename, ".mime"].concat();
     let mt = Path::new(&media_type_filename);
@@ -221,7 +226,7 @@ impl DenoDir {
           return Err(e.into());
         }
       }
-      Ok(c) => String::from_utf8(c).unwrap(),
+      Ok(c) => c,
     };
     // .mime file might not exists
     // this is okay for local source: maybe_content_type_str will be None
@@ -229,7 +234,7 @@ impl DenoDir {
     // Option<String> -> Option<&str>
     let maybe_content_type_str =
       maybe_content_type_string.as_ref().map(String::as_str);
-    Ok(Some(CodeFetchOutput {
+    Ok(Some(ModuleMetaData {
       module_name: module_name.to_string(),
       filename: filename.to_string(),
       media_type: map_content_type(&p, maybe_content_type_str),
@@ -246,7 +251,7 @@ impl DenoDir {
     self: &Self,
     module_name: &str,
     filename: &str,
-  ) -> DenoResult<CodeFetchOutput> {
+  ) -> DenoResult<ModuleMetaData> {
     let is_module_remote = is_remote(module_name);
     // We try fetch local. Two cases:
     // 1. This is a remote module, but no reload provided
@@ -290,12 +295,15 @@ impl DenoDir {
     )))
   }
 
-  pub fn code_fetch(
+  pub fn fetch_module_meta_data(
     self: &Self,
     specifier: &str,
     referrer: &str,
-  ) -> Result<CodeFetchOutput, errors::DenoError> {
-    debug!("code_fetch. specifier {} referrer {}", specifier, referrer);
+  ) -> Result<ModuleMetaData, errors::DenoError> {
+    debug!(
+      "fetch_module_meta_data. specifier {} referrer {}",
+      specifier, referrer
+    );
 
     let (module_name, filename) = self.resolve_module(specifier, referrer)?;
 
@@ -318,7 +326,9 @@ impl DenoDir {
       }
     };
 
-    out.source_code = filter_shebang(out.source_code);
+    if out.source_code.starts_with("#!".as_bytes()) {
+      out.source_code = filter_shebang(out.source_code);
+    }
 
     if out.media_type != msg::MediaType::TypeScript {
       return Ok(out);
@@ -330,8 +340,7 @@ impl DenoDir {
     let mut maybe_source_map = None;
 
     if !self.recompile {
-      let result =
-        self.load_cache(out.filename.as_str(), out.source_code.as_str());
+      let result = self.load_cache(out.filename.as_str(), &out.source_code);
       match result {
         Err(err) => {
           if err.kind() == std::io::ErrorKind::NotFound {
@@ -347,7 +356,7 @@ impl DenoDir {
       }
     }
 
-    Ok(CodeFetchOutput {
+    Ok(ModuleMetaData {
       module_name: out.module_name,
       filename: out.filename,
       media_type: out.media_type,
@@ -457,8 +466,8 @@ impl DenoDir {
 }
 
 impl SourceMapGetter for DenoDir {
-  fn get_source_map(&self, script_name: &str) -> Option<String> {
-    match self.code_fetch(script_name, ".") {
+  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
+    match self.fetch_module_meta_data(script_name, ".") {
       Err(_e) => None,
       Ok(out) => match out.maybe_source_map {
         None => None,
@@ -487,13 +496,13 @@ fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
 
 fn source_code_hash(
   filename: &str,
-  source_code: &str,
+  source_code: &[u8],
   version: &str,
 ) -> String {
   let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
   ctx.update(version.as_bytes());
   ctx.update(filename.as_bytes());
-  ctx.update(source_code.as_bytes());
+  ctx.update(source_code);
   let digest = ctx.finish();
   let mut out = String::new();
   // TODO There must be a better way to do this...
@@ -559,15 +568,13 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
   }
 }
 
-fn filter_shebang(code: String) -> String {
-  if !code.starts_with("#!") {
-    return code;
-  }
-  if let Some(i) = code.find('\n') {
-    let (_, rest) = code.split_at(i);
-    String::from(rest)
+fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
+  let string = str::from_utf8(&bytes).unwrap();
+  if let Some(i) = string.find('\n') {
+    let (_, rest) = string.split_at(i);
+    rest.as_bytes().to_owned()
   } else {
-    String::from("")
+    Vec::new()
   }
 }
 
@@ -613,7 +620,7 @@ mod tests {
   fn test_cache_path() {
     let (temp_dir, deno_dir) = test_setup(false, false);
     let filename = "hello.js";
-    let source_code = "1+2";
+    let source_code = "1+2".as_bytes();
     let hash = source_code_hash(filename, source_code, version::DENO);
     assert_eq!(
       (
@@ -629,41 +636,52 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let filename = "hello.js";
-    let source_code = "1+2";
-    let output_code = "1+2 // output code";
-    let source_map = "{}";
+    let source_code = "1+2".as_bytes();
+    let output_code = "1+2 // output code".as_bytes();
+    let source_map = "{}".as_bytes();
     let hash = source_code_hash(filename, source_code, version::DENO);
     let (cache_path, source_map_path) =
       deno_dir.cache_path(filename, source_code);
     assert!(cache_path.ends_with(format!("gen/{}.js", hash)));
     assert!(source_map_path.ends_with(format!("gen/{}.js.map", hash)));
 
-    let r = deno_dir.code_cache(filename, source_code, output_code, source_map);
+    let out = ModuleMetaData {
+      filename: filename.to_owned(),
+      source_code: source_code.to_owned(),
+      module_name: "hello.js".to_owned(),
+      media_type: msg::MediaType::TypeScript,
+      maybe_output_code: Some(output_code.to_owned()),
+      maybe_output_code_filename: None,
+      maybe_source_map: Some(source_map.to_owned()),
+      maybe_source_map_filename: None,
+    };
+
+    let r = deno_dir.code_cache(&out);
     r.expect("code_cache error");
     assert!(cache_path.exists());
-    assert_eq!(output_code, fs::read_to_string(&cache_path).unwrap());
+    assert_eq!(output_code.to_owned(), fs::read(&cache_path).unwrap());
   }
 
   #[test]
   fn test_source_code_hash() {
     assert_eq!(
       "7e44de2ed9e0065da09d835b76b8d70be503d276",
-      source_code_hash("hello.ts", "1+2", "0.2.11")
+      source_code_hash("hello.ts", "1+2".as_bytes(), "0.2.11")
     );
     // Different source_code should result in different hash.
     assert_eq!(
       "57033366cf9db1ef93deca258cdbcd9ef5f4bde1",
-      source_code_hash("hello.ts", "1", "0.2.11")
+      source_code_hash("hello.ts", "1".as_bytes(), "0.2.11")
     );
     // Different filename should result in different hash.
     assert_eq!(
       "19657f90b5b0540f87679e2fb362e7bd62b644b0",
-      source_code_hash("hi.ts", "1+2", "0.2.11")
+      source_code_hash("hi.ts", "1+2".as_bytes(), "0.2.11")
     );
     // Different version should result in different hash.
     assert_eq!(
       "e2b4b7162975a02bf2770f16836eb21d5bcb8be1",
-      source_code_hash("hi.ts", "1+2", "0.2.0")
+      source_code_hash("hi.ts", "1+2".as_bytes(), "0.2.0")
     );
   }
 
@@ -686,8 +704,8 @@ mod tests {
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
-        &(r.source_code),
-        "export { printHello } from \"./print_hello.ts\";\n"
+        r.source_code,
+        "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
       // Should not create .mime file due to matching ext
@@ -699,8 +717,8 @@ mod tests {
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
-        &(r2.source_code),
-        "export { printHello } from \"./print_hello.ts\";\n"
+        r2.source_code,
+        "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
       // If get_source_code does not call remote, this should be JavaScript
       // as we modified before! (we do not overwrite .mime due to no http fetch)
@@ -717,7 +735,8 @@ mod tests {
       let result3 = deno_dir.get_source_code(module_name, &filename);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
-      let expected3 = "export { printHello } from \"./print_hello.ts\";\n";
+      let expected3 =
+        "export { printHello } from \"./print_hello.ts\";\n".as_bytes();
       assert_eq!(r3.source_code, expected3);
       // Now the old .mime file should have gone! Resolved back to TypeScript
       assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
@@ -743,7 +762,7 @@ mod tests {
       println!("module_name {} filename {}", module_name, filename);
       assert!(result.is_ok());
       let r = result.unwrap();
-      let expected = "export const loaded = true;\n";
+      let expected = "export const loaded = true;\n".as_bytes();
       assert_eq!(r.source_code, expected);
       // Mismatch ext with content type, create .mime
       assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
@@ -757,7 +776,7 @@ mod tests {
       let result2 = deno_dir.get_source_code(module_name, &filename);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
-      let expected2 = "export const loaded = true;\n";
+      let expected2 = "export const loaded = true;\n".as_bytes();
       assert_eq!(r2.source_code, expected2);
       // If get_source_code does not call remote, this should be TypeScript
       // as we modified before! (we do not overwrite .mime due to no http fetch)
@@ -774,7 +793,7 @@ mod tests {
       let result3 = deno_dir.get_source_code(module_name, &filename);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
-      let expected3 = "export const loaded = true;\n";
+      let expected3 = "export const loaded = true;\n".as_bytes();
       assert_eq!(r3.source_code, expected3);
       // Now the old .mime file should be overwritten back to JavaScript!
       // (due to http fetch)
@@ -805,7 +824,7 @@ mod tests {
       let result = deno_dir.fetch_remote_source(module_name, &filename);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
-      assert_eq!(&(r.source_code), "export const loaded = true;\n");
+      assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
       // matching ext, no .mime file created
       assert!(fs::read_to_string(&mime_file_name).is_err());
@@ -815,7 +834,7 @@ mod tests {
       let result2 = deno_dir.fetch_local_source(module_name, &filename);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
-      assert_eq!(&(r2.source_code), "export const loaded = true;\n");
+      assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
       // Not MediaType::TypeScript due to .mime modification
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     });
@@ -838,7 +857,7 @@ mod tests {
       let result = deno_dir.fetch_remote_source(module_name, &filename);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
-      assert_eq!(&(r.source_code), "export const loaded = true;\n");
+      assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
       // no ext, should create .mime file
       assert_eq!(
@@ -857,7 +876,7 @@ mod tests {
       let result_2 = deno_dir.fetch_remote_source(module_name_2, &filename_2);
       assert!(result_2.is_ok());
       let r2 = result_2.unwrap().unwrap();
-      assert_eq!(&(r2.source_code), "export const loaded = true;\n");
+      assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       // mismatch ext, should create .mime file
       assert_eq!(
@@ -877,7 +896,7 @@ mod tests {
       let result_3 = deno_dir.fetch_remote_source(module_name_3, &filename_3);
       assert!(result_3.is_ok());
       let r3 = result_3.unwrap().unwrap();
-      assert_eq!(&(r3.source_code), "export const loaded = true;\n");
+      assert_eq!(r3.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
       // unknown ext, should create .mime file
       assert_eq!(
@@ -900,12 +919,12 @@ mod tests {
     let result = deno_dir.fetch_local_source(module_name, &filename);
     assert!(result.is_ok());
     let r = result.unwrap().unwrap();
-    assert_eq!(&(r.source_code), "export const loaded = true;\n");
+    assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
     assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
   }
 
   #[test]
-  fn test_code_fetch() {
+  fn test_fetch_module_meta_data() {
     let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let cwd = std::env::current_dir().unwrap();
@@ -914,20 +933,20 @@ mod tests {
     // Test failure case.
     let specifier = "hello.ts";
     let referrer = add_root!("/baddir/badfile.ts");
-    let r = deno_dir.code_fetch(specifier, referrer);
+    let r = deno_dir.fetch_module_meta_data(specifier, referrer);
     assert!(r.is_err());
 
     // Assuming cwd is the deno repo root.
     let specifier = "./js/main.ts";
     let referrer = cwd_string.as_str();
-    let r = deno_dir.code_fetch(specifier, referrer);
+    let r = deno_dir.fetch_module_meta_data(specifier, referrer);
     assert!(r.is_ok());
-    //let code_fetch_output = r.unwrap();
-    //println!("code_fetch_output {:?}", code_fetch_output);
+    //let fetch_module_meta_data_output = r.unwrap();
+    //println!("fetch_module_meta_data_output {:?}", fetch_module_meta_data_output);
   }
 
   #[test]
-  fn test_code_fetch_1() {
+  fn test_fetch_module_meta_data_1() {
     /*recompile ts file*/
     let (_temp_dir, deno_dir) = test_setup(false, true);
 
@@ -937,13 +956,13 @@ mod tests {
     // Test failure case.
     let specifier = "hello.ts";
     let referrer = add_root!("/baddir/badfile.ts");
-    let r = deno_dir.code_fetch(specifier, referrer);
+    let r = deno_dir.fetch_module_meta_data(specifier, referrer);
     assert!(r.is_err());
 
     // Assuming cwd is the deno repo root.
     let specifier = "./js/main.ts";
     let referrer = cwd_string.as_str();
-    let r = deno_dir.code_fetch(specifier, referrer);
+    let r = deno_dir.fetch_module_meta_data(specifier, referrer);
     assert!(r.is_ok());
   }
 
@@ -1321,11 +1340,14 @@ mod tests {
 
   #[test]
   fn test_filter_shebang() {
-    assert_eq!(filter_shebang("".to_string()), "");
-    assert_eq!(filter_shebang("#".to_string()), "#");
-    assert_eq!(filter_shebang("#!".to_string()), "");
-    assert_eq!(filter_shebang("#!\n\n".to_string()), "\n\n");
-    let code = "#!/usr/bin/env deno\nconsole.log('hello');\n".to_string();
-    assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n");
+    assert_eq!(filter_shebang("#!".as_bytes().to_owned()), "".as_bytes());
+    assert_eq!(
+      filter_shebang("#!\n\n".as_bytes().to_owned()),
+      "\n\n".as_bytes()
+    );
+    let code = "#!/usr/bin/env deno\nconsole.log('hello');\n"
+      .as_bytes()
+      .to_owned();
+    assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n".as_bytes());
   }
 }

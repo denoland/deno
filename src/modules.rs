@@ -170,7 +170,7 @@ pub fn print_file_info(
   deno_dir: &DenoDir,
   filename: String,
 ) {
-  let maybe_out = deno_dir.code_fetch(&filename, ".");
+  let maybe_out = deno_dir.fetch_module_meta_data(&filename, ".");
   if maybe_out.is_err() {
     println!("{}", maybe_out.unwrap_err());
     return;

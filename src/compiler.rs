@@ -9,6 +9,7 @@ use crate::workers;
 
 use futures::Future;
 use serde_json;
+use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -19,66 +20,28 @@ lazy_static! {
 // This corresponds to JS ModuleMetaData.
 // TODO Rename one or the other so they correspond.
 #[derive(Debug)]
-pub struct CodeFetchOutput {
+pub struct ModuleMetaData {
   pub module_name: String,
   pub filename: String,
   pub media_type: msg::MediaType,
-  pub source_code: String,
+  pub source_code: Vec<u8>,
   pub maybe_output_code_filename: Option<String>,
-  pub maybe_output_code: Option<String>,
+  pub maybe_output_code: Option<Vec<u8>>,
   pub maybe_source_map_filename: Option<String>,
-  pub maybe_source_map: Option<String>,
+  pub maybe_source_map: Option<Vec<u8>>,
 }
 
-impl CodeFetchOutput {
+impl ModuleMetaData {
   pub fn js_source(&self) -> String {
     if self.media_type == msg::MediaType::Json {
-      return format!("export default {};", self.source_code);
+      return format!(
+        "export default {};",
+        str::from_utf8(&self.source_code).unwrap()
+      );
     }
     match self.maybe_output_code {
-      None => self.source_code.clone(),
-      Some(ref output_code) => output_code.clone(),
-    }
-  }
-}
-
-impl CodeFetchOutput {
-  // TODO Use serde_derive? Use flatbuffers?
-  fn from_json(json_str: &str) -> Option<Self> {
-    match serde_json::from_str::<serde_json::Value>(json_str) {
-      Ok(serde_json::Value::Object(map)) => {
-        let module_name = match map["moduleId"].as_str() {
-          None => return None,
-          Some(s) => s.to_string(),
-        };
-
-        let filename = match map["fileName"].as_str() {
-          None => return None,
-          Some(s) => s.to_string(),
-        };
-
-        let source_code = match map["sourceCode"].as_str() {
-          None => return None,
-          Some(s) => s.to_string(),
-        };
-
-        let maybe_output_code =
-          map["outputCode"].as_str().map(|s| s.to_string());
-
-        let maybe_source_map = map["sourceMap"].as_str().map(|s| s.to_string());
-
-        Some(CodeFetchOutput {
-          module_name,
-          filename,
-          media_type: msg::MediaType::JavaScript, // TODO
-          source_code,
-          maybe_output_code_filename: None,
-          maybe_output_code,
-          maybe_source_map_filename: None,
-          maybe_source_map,
-        })
-      }
-      _ => None,
+      None => str::from_utf8(&self.source_code).unwrap().to_string(),
+      Some(ref output_code) => str::from_utf8(output_code).unwrap().to_string(),
     }
   }
 }
@@ -106,7 +69,8 @@ pub fn compile_sync(
   parent_state: &Arc<IsolateState>,
   specifier: &str,
   referrer: &str,
-) -> Option<CodeFetchOutput> {
+  module_meta_data: &ModuleMetaData,
+) -> ModuleMetaData {
   let req_msg = req(specifier, referrer);
 
   let compiler = lazy_start(parent_state);
@@ -118,7 +82,25 @@ pub fn compile_sync(
   let res_msg = recv_future.wait().unwrap().unwrap();
 
   let res_json = std::str::from_utf8(&res_msg).unwrap();
-  CodeFetchOutput::from_json(res_json)
+  match serde_json::from_str::<serde_json::Value>(res_json) {
+    Ok(serde_json::Value::Object(map)) => ModuleMetaData {
+      module_name: module_meta_data.module_name.clone(),
+      filename: module_meta_data.filename.clone(),
+      media_type: module_meta_data.media_type,
+      source_code: module_meta_data.source_code.clone(),
+      maybe_output_code: match map["outputCode"].as_str() {
+        Some(str) => Some(str.as_bytes().to_owned()),
+        _ => None,
+      },
+      maybe_output_code_filename: None,
+      maybe_source_map: match map["sourceMap"].as_str() {
+        Some(str) => Some(str.as_bytes().to_owned()),
+        _ => None,
+      },
+      maybe_source_map_filename: None,
+    },
+    _ => panic!("error decoding compiler response"),
+  }
 }
 
 #[cfg(test)]
@@ -133,28 +115,23 @@ mod tests {
     let specifier = "./tests/002_hello.ts";
     let referrer = cwd_string + "/";
 
-    let cfo =
-      compile_sync(&IsolateState::mock(), specifier, &referrer).unwrap();
-    let output_code = cfo.maybe_output_code.unwrap();
-    assert!(output_code.starts_with("console.log(\"Hello World\");"));
-  }
+    let mut out = ModuleMetaData {
+      module_name: "xxx".to_owned(),
+      filename: "/tests/002_hello.ts".to_owned(),
+      media_type: msg::MediaType::TypeScript,
+      source_code: "console.log(\"Hello World\");".as_bytes().to_owned(),
+      maybe_output_code_filename: None,
+      maybe_output_code: None,
+      maybe_source_map_filename: None,
+      maybe_source_map: None,
+    };
 
-  #[test]
-  fn code_fetch_output_from_json() {
-    let json = r#"{
-      "moduleId":"/Users/rld/src/deno/tests/002_hello.ts",
-      "fileName":"/Users/rld/src/deno/tests/002_hello.ts",
-      "mediaType":1,
-      "sourceCode":"console.log(\"Hello World\");\n",
-      "outputCode":"yyy",
-      "sourceMap":"xxx",
-      "scriptVersion":"1"
-    }"#;
-    let actual = CodeFetchOutput::from_json(json).unwrap();
-    assert_eq!(actual.filename, "/Users/rld/src/deno/tests/002_hello.ts");
-    assert_eq!(actual.module_name, "/Users/rld/src/deno/tests/002_hello.ts");
-    assert_eq!(actual.source_code, "console.log(\"Hello World\");\n");
-    assert_eq!(actual.maybe_output_code, Some("yyy".to_string()));
-    assert_eq!(actual.maybe_source_map, Some("xxx".to_string()));
+    out = compile_sync(&IsolateState::mock(), specifier, &referrer, &mut out);
+    assert!(
+      out
+        .maybe_output_code
+        .unwrap()
+        .starts_with("console.log(\"Hello World\");".as_bytes())
+    );
   }
 }

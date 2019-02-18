@@ -3,7 +3,7 @@
     at maybeError ([WILDCARD]/js/errors.ts:[WILDCARD])
     at maybeThrowError ([WILDCARD]/js/errors.ts:[WILDCARD])
     at sendSync ([WILDCARD]/js/dispatch.ts:[WILDCARD])
-    at codeFetch ([WILDCARD]/js/os.ts:[WILDCARD])
+    at fetchModuleMetaData ([WILDCARD]/js/os.ts:[WILDCARD])
     at _resolveModule ([WILDCARD]/js/compiler.ts:[WILDCARD])
     at resolveModuleNames ([WILDCARD]/js/compiler.ts:[WILDCARD])
     at compilerHost.resolveModuleNames ([WILDCARD])

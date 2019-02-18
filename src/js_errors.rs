@@ -16,10 +16,11 @@ use source_map_mappings::Bias;
 use source_map_mappings::Mappings;
 use std::collections::HashMap;
 use std::fmt;
+use std::str;
 
 pub trait SourceMapGetter {
   /// Returns the raw source map file.
-  fn get_source_map(&self, script_name: &str) -> Option<String>;
+  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>>;
 }
 
 struct SourceMap {
@@ -389,7 +390,9 @@ fn parse_map_string(
     }
     _ => match getter.get_source_map(script_name) {
       None => None,
-      Some(raw_source_map) => SourceMap::from_json(&raw_source_map),
+      Some(raw_source_map) => {
+        SourceMap::from_json(str::from_utf8(&raw_source_map).unwrap())
+      }
     },
   }
 }
@@ -455,13 +458,13 @@ mod tests {
   struct MockSourceMapGetter {}
 
   impl SourceMapGetter for MockSourceMapGetter {
-    fn get_source_map(&self, script_name: &str) -> Option<String> {
+    fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
       let s = match script_name {
         "foo_bar.ts" => r#"{"sources": ["foo_bar.ts"], "mappings":";;;IAIA,OAAO,CAAC,GAAG,CAAC,qBAAqB,EAAE,EAAE,CAAC,OAAO,CAAC,CAAC;IAC/C,OAAO,CAAC,GAAG,CAAC,eAAe,EAAE,IAAI,CAAC,QAAQ,CAAC,IAAI,CAAC,CAAC;IACjD,OAAO,CAAC,GAAG,CAAC,WAAW,EAAE,IAAI,CAAC,QAAQ,CAAC,EAAE,CAAC,CAAC;IAE3C,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#,
         "bar_baz.ts" => r#"{"sources": ["bar_baz.ts"], "mappings":";;;IAEA,CAAC,KAAK,IAAI,EAAE;QACV,MAAM,GAAG,GAAG,sDAAa,OAAO,2BAAC,CAAC;QAClC,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC;IACnB,CAAC,CAAC,EAAE,CAAC;IAEQ,QAAA,GAAG,GAAG,KAAK,CAAC;IAEzB,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#,
         _ => return None,
       };
-      Some(s.to_string())
+      Some(s.as_bytes().to_owned())
     }
   }
 
