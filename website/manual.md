@@ -310,6 +310,77 @@ And if you ever want to upgrade to the latest published version:
 file_server --reload
 ```
 
+### Run subprocess
+
+```
+const p = Deno.run({
+    args: ["deno", "--allow-read", "https://deno.land/x/examples/cat.ts", "README.md"],
+});
+
+// start subprocess
+await p.status();
+```
+
+When this program is started, the user is prompted for permission to run
+subprocess:
+
+```
+> deno https://deno.land/x/examples/subprocess_simple.ts
+⚠️  Deno requests access to run a subprocess. Grant? [yN] y
+```
+
+For security reasons, deno does not allow programs to run subprocess without
+explicit permission. To avoid the console prompt, use a command-line flag:
+
+```
+> deno https://deno.land/x/examples/subprocess_simple.ts --allow-run
+```
+
+By default when you use `deno.run()` subprocess inherits `stdin`, `stdout` and
+`stdout` of parent process. If you want to communicate with started subprocess
+you can use `"piped"` option.
+
+```
+const decoder = new TextDecoder();
+
+const filesToCat = Deno.args.slice(1);
+const subprocessArgs = ["deno", "--allow-read", "https://deno.land/x/examples/cat.ts", ...filesToCat];
+
+const p = Deno.run({
+  subprocessArgs,
+  stdout: "piped",
+  stderr: "piped",
+});
+
+const { code } = await p.status();
+
+if (code === 0) {
+  const rawOutput = await Deno.readAll(p.stdout);
+  const output = decoder.decode(rawOutput);
+  console.log(output);
+} else {
+  const rawErr = await Deno.readAll(p.stderr);
+  const err = decoder.decode(rawErr);
+  console.log(err);
+}
+
+Deno.exit(code);
+```
+
+When you run it:
+
+```
+> deno https://deno.land/x/examples/subprocess.ts --allow-run <somefile>
+[file content]
+
+> deno https://deno.land/x/examples/subprocess.ts --allow-run non_existent_file.md
+
+Uncaught NotFound: No such file or directory (os error 2)
+    at DenoError (deno/js/errors.ts:19:5)
+    at maybeError (deno/js/errors.ts:38:12)
+    at handleAsyncMsgFromRust (deno/js/dispatch.ts:27:17)
+```
+
 ### Linking to third party code
 
 In the above examples, we saw that Deno could execute scripts from URLs. Like
