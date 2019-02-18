@@ -110,7 +110,7 @@ executable bit on Mac and Linux.
 Once it's installed and in your \$PATH, try it:
 
 ```
-deno https://deno.land/welcome.js
+deno https://deno.land/welcome.ts
 ```
 
 ### Build from source
