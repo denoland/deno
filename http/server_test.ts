@@ -6,10 +6,11 @@
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
 import { Buffer, copy, Reader } from "deno";
-import { assert, assertEqual, test } from "../testing/mod.ts";
+import { assert, assertEqual, runTests, test } from "../testing/mod.ts";
 import {
   createResponder,
   createServer,
+  findLongestAndNearestMatch,
   readRequest,
   readResponse,
   ServerResponse,
@@ -100,6 +101,49 @@ test(async function httpReadRequestChunkedBody() {
   const dest = new Buffer();
   await copy(dest, req.body);
   assert.equal(dest.toString(), "deno.land");
+});
+
+test(function httpMatchNearest() {
+  assert.equal(
+    findLongestAndNearestMatch("/foo", ["/foo", "/bar", "/f"]).index,
+    0
+  );
+  assert.equal(
+    findLongestAndNearestMatch("/foo", ["/foo", "/foo/bar"]).index,
+    0
+  );
+  assert.equal(
+    findLongestAndNearestMatch("/foo/bar", [
+      "/",
+      "/foo",
+      "/hoo",
+      "/hoo/foo/bar",
+      "/foo/bar"
+    ]).index,
+    4
+  );
+  assert.equal(
+    findLongestAndNearestMatch("/foo/bar/foo", ["/foo", "/foo/bar", "/bar/foo"])
+      .index,
+    1
+  );
+  assert.equal(
+    findLongestAndNearestMatch("/foo", ["/", "/hoo", "/hoo/foo"]).index,
+    0
+  );
+  assert.equal(
+    findLongestAndNearestMatch("/deno/land", [/d(.+?)o/, /d(.+?)d/]).index,
+    1
+  );
+  assert.equal(findLongestAndNearestMatch("/foo", ["/", "/a/foo"]).index, 0);
+  assert.equal(
+    findLongestAndNearestMatch("/foo", [/\/foo/, /\/bar\/foo/]).index,
+    0
+  );
+  assert.equal(
+    findLongestAndNearestMatch("/foo", [/\/a\/foo/, /\/foo/]).index,
+    1
+  );
 });
 
 test(async function httpServer() {

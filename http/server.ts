@@ -152,25 +152,15 @@ class HttpServerImpl implements HttpServer {
 
   async listen(addr: string, cancel: Deferred = defer()) {
     for await (const { req, res } of serve(addr, cancel)) {
-      let lastMatch: RegExpMatchArray;
-      let lastHandler: HttpHandler;
-      for (const { pattern, handler } of this.handlers) {
-        const match = req.url.match(pattern);
-        if (!match) {
-          continue;
-        }
-        if (!lastMatch) {
-          lastMatch = match;
-          lastHandler = handler;
-        } else if (match[0].length > lastMatch[0].length) {
-          // use longest match
-          lastMatch = match;
-          lastHandler = handler;
-        }
-      }
-      req.match = lastMatch;
-      if (lastHandler) {
-        await lastHandler(req, res);
+      let { pathname } = new URL(req.url, addr);
+      const { index, match } = findLongestAndNearestMatch(
+        pathname,
+        this.handlers.map(v => v.pattern)
+      );
+      req.match = match;
+      if (index > -1) {
+        const { handler } = this.handlers[index];
+        await handler(req, res);
         if (!res.isResponded) {
           await res.respond({
             status: 500,
@@ -185,6 +175,36 @@ class HttpServerImpl implements HttpServer {
       }
     }
   }
+}
+
+/**
+ * Find the match that appeared in the nearest position to the beginning of word.
+ * If positions are same, the longest one will be picked.
+ * Return -1 and null if no match found.
+ * */
+export function findLongestAndNearestMatch(
+  pathname: string,
+  patterns: (string | RegExp)[]
+): { index: number; match: RegExpMatchArray } {
+  let lastMatchIndex = pathname.length;
+  let lastMatchLength = 0;
+  let match: RegExpMatchArray = null;
+  let index = -1;
+  for (let i = 0; i < patterns.length; i++) {
+    const pattern = patterns[i];
+    const m = pathname.match(pattern);
+    if (!m) continue;
+    if (
+      m.index < lastMatchIndex ||
+      (m.index === lastMatchIndex && m[0].length > lastMatchLength)
+    ) {
+      index = i;
+      match = m;
+      lastMatchIndex = m.index;
+      lastMatchLength = m[0].length;
+    }
+  }
+  return { index, match };
 }
 
 class ServerResponderImpl implements ServerResponder {
