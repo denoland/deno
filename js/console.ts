@@ -1,13 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { isTypedArray } from "./util";
+import { TypedArray } from "./types";
 import { TextEncoder } from "./text_encoding";
 import { File, stdout } from "./files";
 import { cliTable } from "./console_table";
 import { formatError } from "./format_error";
 import { libdeno } from "./libdeno";
 
-// tslint:disable-next-line:no-any
-type ConsoleContext = Set<any>;
+type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
   showHidden: boolean;
   depth: number;
@@ -43,8 +43,7 @@ function clearScreenDown(stream: File) {
   stream.write(uint8);
 }
 
-// tslint:disable-next-line:no-any
-function getClassInstanceName(instance: any): string {
+function getClassInstanceName(instance: unknown): string {
   if (typeof instance !== "object") {
     return "";
   }
@@ -67,26 +66,24 @@ function createFunctionString(value: Function, ctx: ConsoleContext): string {
   return `[${cstrName}]`;
 }
 
-interface IterablePrintConfig {
+interface IterablePrintConfig<T> {
   typeName: string;
   displayName: string;
   delims: [string, string];
   entryHandler: (
-    // tslint:disable-next-line:no-any
-    entry: any,
+    entry: T,
     ctx: ConsoleContext,
     level: number,
     maxLevel: number
   ) => string;
 }
 
-function createIterableString(
-  // tslint:disable-next-line:no-any
-  value: any,
+function createIterableString<T>(
+  value: Iterable<T>,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
-  config: IterablePrintConfig
+  config: IterablePrintConfig<T>
 ): string {
   if (level >= maxLevel) {
     return `[${config.typeName}]`;
@@ -107,13 +104,12 @@ function createIterableString(
 }
 
 function createArrayString(
-  // tslint:disable-next-line:no-any
-  value: any[],
+  value: Array<unknown>,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
 ): string {
-  const printConfig: IterablePrintConfig = {
+  const printConfig: IterablePrintConfig<unknown> = {
     typeName: "Array",
     displayName: "",
     delims: ["[", "]"],
@@ -125,13 +121,12 @@ function createArrayString(
 
 function createTypedArrayString(
   typedArrayName: string,
-  // tslint:disable-next-line:no-any
-  value: any,
+  value: TypedArray,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
 ): string {
-  const printConfig: IterablePrintConfig = {
+  const printConfig: IterablePrintConfig<unknown> = {
     typeName: typedArrayName,
     displayName: typedArrayName,
     delims: ["[", "]"],
@@ -142,13 +137,12 @@ function createTypedArrayString(
 }
 
 function createSetString(
-  // tslint:disable-next-line:no-any
-  value: Set<any>,
+  value: Set<unknown>,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
 ): string {
-  const printConfig: IterablePrintConfig = {
+  const printConfig: IterablePrintConfig<unknown> = {
     typeName: "Set",
     displayName: "Set",
     delims: ["{", "}"],
@@ -159,13 +153,12 @@ function createSetString(
 }
 
 function createMapString(
-  // tslint:disable-next-line:no-any
-  value: Map<any, any>,
+  value: Map<unknown, unknown>,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
 ): string {
-  const printConfig: IterablePrintConfig = {
+  const printConfig: IterablePrintConfig<[unknown, unknown]> = {
     typeName: "Map",
     displayName: "Map",
     delims: ["{", "}"],
@@ -218,8 +211,7 @@ function createNumberWrapperString(value: Number) {
 // TODO: Proxy
 
 function createRawObjectString(
-  // tslint:disable-next-line:no-any
-  value: any,
+  value: { [key: string]: unknown },
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
@@ -260,8 +252,7 @@ function createRawObjectString(
 }
 
 function createObjectString(
-  // tslint:disable-next-line:no-any
-  value: any,
+  value: {},
   ...args: [ConsoleContext, number, number]
 ): string {
   if (value instanceof Error) {
@@ -283,11 +274,9 @@ function createObjectString(
   } else if (value instanceof Date) {
     return createDateString(value as Date);
   } else if (value instanceof Set) {
-    // tslint:disable-next-line:no-any
-    return createSetString(value as Set<any>, ...args);
+    return createSetString(value as Set<unknown>, ...args);
   } else if (value instanceof Map) {
-    // tslint:disable-next-line:no-any
-    return createMapString(value as Map<any, any>, ...args);
+    return createMapString(value as Map<unknown, unknown>, ...args);
   } else if (value instanceof WeakSet) {
     return createWeakSetString();
   } else if (value instanceof WeakMap) {
@@ -305,8 +294,7 @@ function createObjectString(
 }
 
 function stringify(
-  // tslint:disable-next-line:no-any
-  value: any,
+  value: unknown,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
@@ -340,8 +328,7 @@ function stringify(
 
 // Print strings when they are inside of arrays or objects with quotes
 function stringifyWithQuotes(
-  // tslint:disable-next-line:no-any
-  value: any,
+  value: unknown,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
@@ -370,8 +357,7 @@ function isCollapsed(
  * @internal
  */
 export function stringifyArgs(
-  // tslint:disable-next-line:no-any
-  args: any[],
+  args: Array<unknown>,
   options: ConsoleOptions = {}
 ): string {
   const first = args[0];
@@ -401,7 +387,7 @@ export function stringifyArgs(
               } else if (typeof tempInteger === "symbol") {
                 tempStr = "NaN";
               } else {
-                tempStr = `${parseInt(tempInteger, 10)}`;
+                tempStr = `${parseInt(String(tempInteger), 10)}`;
               }
               break;
             case CHAR_LOWERCASE_F:
@@ -410,7 +396,7 @@ export function stringifyArgs(
               if (typeof tempFloat === "symbol") {
                 tempStr = "NaN";
               } else {
-                tempStr = `${parseFloat(tempFloat)}`;
+                tempStr = `${parseFloat(String(tempFloat))}`;
               }
               break;
             case CHAR_LOWERCASE_O:
@@ -418,8 +404,7 @@ export function stringifyArgs(
               // format as an object
               tempStr = stringify(
                 args[++a],
-                // tslint:disable-next-line:no-any
-                new Set<any>(),
+                new Set<unknown>(),
                 0,
                 // tslint:disable-next-line:triple-equals
                 options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
@@ -468,8 +453,7 @@ export function stringifyArgs(
       // use default maximum depth for null or undefined argument
       str += stringify(
         value,
-        // tslint:disable-next-line:no-any
-        new Set<any>(),
+        new Set<unknown>(),
         0,
         // tslint:disable-next-line:triple-equals
         options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
@@ -510,8 +494,7 @@ export class Console {
   }
 
   /** Writes the arguments to stdout */
-  // tslint:disable-next-line:no-any
-  log = (...args: any[]): void => {
+  log = (...args: Array<unknown>): void => {
     this.printFunc(
       stringifyArgs(args, {
         indentLevel: this.indentLevel,
@@ -528,14 +511,12 @@ export class Console {
   info = this.log;
 
   /** Writes the properties of the supplied `obj` to stdout */
-  // tslint:disable-next-line:no-any
-  dir = (obj: any, options: ConsoleOptions = {}) => {
+  dir = (obj: unknown, options: ConsoleOptions = {}) => {
     this.log(stringifyArgs([obj], options));
   };
 
   /** Writes the arguments to stdout */
-  // tslint:disable-next-line:no-any
-  warn = (...args: any[]): void => {
+  warn = (...args: Array<unknown>): void => {
     this.printFunc(
       stringifyArgs(args, {
         indentLevel: this.indentLevel,
@@ -554,8 +535,7 @@ export class Console {
    *
    * ref: https://console.spec.whatwg.org/#assert
    */
-  // tslint:disable-next-line:no-any
-  assert = (condition = false, ...args: any[]): void => {
+  assert = (condition = false, ...args: Array<unknown>): void => {
     if (condition) {
       return;
     }
@@ -598,11 +578,7 @@ export class Console {
     }
   };
 
-  // tslint:disable-next-line:no-any
-  table = (data: any, properties?: string[]): void => {
-    // tslint:disable-next-line:no-any
-    type Value = any;
-
+  table = (data: unknown, properties?: string[]): void => {
     if (properties !== undefined && !Array.isArray(properties)) {
       throw new Error(
         "The 'properties' argument must be of type Array\
@@ -614,60 +590,56 @@ export class Console {
       return this.log(data);
     }
 
-    const objectValues: { [key: string]: Value[] } = {};
+    const objectValues: { [key: string]: string[] } = {};
     const indexKeys: string[] = [];
-    const values: Value[] = [];
+    const values: string[] = [];
 
-    const stringifyValue = (value: Value) =>
-      stringifyWithQuotes(
-        value,
-        // tslint:disable-next-line:no-any
-        new Set<any>(),
-        0,
-        1
-      );
+    const stringifyValue = (value: unknown) =>
+      stringifyWithQuotes(value, new Set<unknown>(), 0, 1);
     const toTable = (header: string[], body: string[][]) =>
       this.log(cliTable(header, body));
-    const createColumn = (value: Value, shift?: number): string[] => [
+    const createColumn = (value: unknown, shift?: number): string[] => [
       ...(shift ? [...new Array(shift)].map(() => "") : []),
       stringifyValue(value)
     ];
 
-    let resultData = data;
+    let resultData: { [key: string]: unknown };
     const isSet = data instanceof Set;
     const isMap = data instanceof Map;
     const valuesKey = "Values";
     const indexKey = isSet || isMap ? "(iteration index)" : "(index)";
 
-    if (isSet) {
+    if (data instanceof Set) {
       resultData = [...data];
-    } else if (isMap) {
+    } else if (data instanceof Map) {
       let idx = 0;
       resultData = {};
 
-      data.forEach((k: Value, v: Value) => {
+      data.forEach((k: unknown, v: unknown) => {
         resultData[idx] = { Key: k, Values: v };
         idx++;
       });
+    } else {
+      resultData = data!;
     }
 
     Object.keys(resultData).forEach((k, idx) => {
-      const value = resultData[k];
+      const value: unknown = resultData[k]!;
 
       if (value !== null && typeof value === "object") {
-        Object.keys(value).forEach(k => {
-          const v = value[k];
+        Object.entries(value as { [key: string]: unknown }).forEach(
+          ([k, v]) => {
+            if (properties && !properties.includes(k)) {
+              return;
+            }
 
-          if (properties && !properties.includes(k)) {
-            return;
+            if (objectValues[k]) {
+              objectValues[k].push(stringifyValue(v));
+            } else {
+              objectValues[k] = createColumn(v, idx);
+            }
           }
-
-          if (objectValues[k]) {
-            objectValues[k].push(stringifyValue(v));
-          } else {
-            objectValues[k] = createColumn(v, idx);
-          }
-        });
+        );
 
         values.push("");
       } else {
@@ -702,8 +674,7 @@ export class Console {
     timerMap.set(label, Date.now());
   };
 
-  // tslint:disable-next-line:no-any
-  timeLog = (label = "default", ...args: any[]): void => {
+  timeLog = (label = "default", ...args: Array<unknown>): void => {
     label = String(label);
 
     if (!timerMap.has(label)) {
@@ -767,18 +738,14 @@ export class Console {
  * inspect() converts input into string that has the same format
  * as printed by console.log(...);
  */
-export function inspect(
-  value: any, // tslint:disable-line:no-any
-  options?: ConsoleOptions
-) {
+export function inspect(value: unknown, options?: ConsoleOptions) {
   const opts = options || {};
   if (typeof value === "string") {
     return value;
   } else {
     return stringify(
       value,
-      // tslint:disable-next-line:no-any
-      new Set<any>(),
+      new Set<unknown>(),
       0,
       // tslint:disable-next-line:triple-equals
       opts.depth != undefined ? opts.depth : DEFAULT_MAX_DEPTH
