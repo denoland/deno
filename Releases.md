@@ -6,6 +6,29 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.0 / 2019.02.18
+
+The major API change in this release is that instead of importing a `"deno"`
+module, there is now a global variable called `Deno`. This allows code that does
+deno-specific stuff to still operate in browsers. We will remain backward
+compatible with the old way of importing core functionality, but it will be
+removed in the near future, so please update your code. See #1748 for more
+details.
+
+- Add Deno global namespace object (#1748)
+- Add window.location (#1761)
+- Add back typescript version number and add Deno.version object (#1788)
+- Add `seek` and implement `Seeker` on `File` (#1797)
+- Add Deno.execPath (#1743)
+- Fix behavior for extensionless files with .mime file (#1779)
+- Add env option in Deno.run (#1773)
+- Turn on `v8_postmortem_support` (#1758)
+- Upgrade V8 to 7.4.158 (#1767)
+- Use proper directory for cache files (#1763)
+- REPL multiline support with recoverable errors (#1731)
+- Respect `NO_COLOR` in TypeScript output (#1736)
+- Support scoped variables, unblock REPL async op, and REPL error colors (#1721)
+
 ### v0.2.11 / 2019.02.08
 
 - Add deps to --info output (#1720)
