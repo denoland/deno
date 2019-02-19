@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { globalEval } from "./global_eval";
+import { window } from "./window";
 
 // The libdeno functions are moved so that users can't access them.
 type MessageCallback = (msg: Uint8Array) => void;
@@ -40,5 +40,4 @@ interface Libdeno {
   errorToJSON: (e: Error) => string;
 }
 
-const window = globalEval("this");
 export const libdeno = window.libdeno as Libdeno;

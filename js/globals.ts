@@ -7,6 +7,7 @@
 // Modules which will make up part of the global public API surface should be
 // imported as namespaces, so when the runtime tpye library is generated they
 // can be expressed as a namespace in the type library.
+import { window } from "./window";
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
 import * as customEvent from "./custom_event";
@@ -26,7 +27,6 @@ import * as performanceUtil from "./performance";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
-import { globalEval } from "./global_eval";
 import { libdeno } from "./libdeno";
 
 // During the build process, augmentations to the variable `window` in this
@@ -37,8 +37,6 @@ declare global {
   const setTimeout: typeof timers.setTimeout;
 }
 
-// A reference to the global object.
-export const window = globalEval("this");
 // A self reference to the global object.
 window.window = window;
 

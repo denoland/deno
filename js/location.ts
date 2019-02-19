@@ -2,7 +2,7 @@
 import { URL } from "./url";
 import { notImplemented } from "./util";
 import { Location } from "./dom_types";
-import { window } from "./globals";
+import { window } from "./window";
 
 export function setLocation(url: string): void {
   window.location = new LocationImpl(url);

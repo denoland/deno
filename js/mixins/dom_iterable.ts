@@ -1,11 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { DomIterable } from "../dom_types";
-import { globalEval } from "../global_eval";
+import { window } from "../window";
 import { requiredArguments } from "../util";
-
-// if we import it directly from "globals" it will break the unit tests so we
-// have to grab a reference to the global scope a different way
-const window = globalEval("this");
 
 // tslint:disable:no-any
 type Constructor<T = {}> = new (...args: any[]) => T;
