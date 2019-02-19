@@ -312,44 +312,44 @@ file_server --reload
 
 ### Run subprocess
 
-```
+[API Reference](https://deno.land/typedoc/index.html#run)
+
+Example:
+
+```ts
 const p = Deno.run({
-    args: ["deno", "--allow-read", "https://deno.land/x/examples/cat.ts", "README.md"],
+  args: ["deno", "https://deno.land/welcome.ts"]
 });
 
 // start subprocess
 await p.status();
 ```
 
-When this program is started, the user is prompted for permission to run
-subprocess:
+Run it:
 
 ```
-> deno https://deno.land/x/examples/subprocess_simple.ts
-⚠️  Deno requests access to run a subprocess. Grant? [yN] y
-```
-
-For security reasons, deno does not allow programs to run subprocess without
-explicit permission. To avoid the console prompt, use a command-line flag:
-
-```
-> deno https://deno.land/x/examples/subprocess_simple.ts --allow-run
+> deno --allow-run https://deno.land/x/examples/subprocess_simple.ts
+Welcome to Deno 🦕
 ```
 
 By default when you use `deno.run()` subprocess inherits `stdin`, `stdout` and
 `stdout` of parent process. If you want to communicate with started subprocess
 you can use `"piped"` option.
 
-```
+```ts
 const decoder = new TextDecoder();
 
-const filesToCat = Deno.args.slice(1);
-const subprocessArgs = ["deno", "--allow-read", "https://deno.land/x/examples/cat.ts", ...filesToCat];
+const fileNames = Deno.args.slice(1);
 
 const p = Deno.run({
-  subprocessArgs,
+  args: [
+    "deno",
+    "--allow-read",
+    "https://deno.land/x/examples/cat.ts",
+    ...fileNames
+  ],
   stdout: "piped",
-  stderr: "piped",
+  stderr: "piped"
 });
 
 const { code } = await p.status();
