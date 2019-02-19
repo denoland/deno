@@ -1,6 +1,5 @@
-use ansi_term::Color::Cyan;
+use ansi_term::Color::Fixed;
 use ansi_term::Color::Red;
-use ansi_term::Color::Yellow;
 use ansi_term::Style;
 use regex::Regex;
 use std::borrow::Cow;
@@ -47,7 +46,8 @@ pub fn italic_bold(s: String) -> impl fmt::Display {
 pub fn yellow(s: String) -> impl fmt::Display {
   let mut style = Style::new();
   if use_color() {
-    style = style.fg(Yellow);
+    // matches TypeScript's ForegroundColorEscapeSequences.Yellow
+    style = style.fg(Fixed(11));
   }
   style.paint(s)
 }
@@ -55,7 +55,8 @@ pub fn yellow(s: String) -> impl fmt::Display {
 pub fn cyan(s: String) -> impl fmt::Display {
   let mut style = Style::new();
   if use_color() {
-    style = style.fg(Cyan);
+    // matches TypeScript's ForegroundColorEscapeSequences.Cyan
+    style = style.fg(Fixed(14));
   }
   style.paint(s)
 }
