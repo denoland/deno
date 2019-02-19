@@ -318,7 +318,7 @@ Example:
 
 ```ts
 const p = Deno.run({
-  args: [ "echo", "hello" ]
+  args: ["echo", "hello"]
 });
 
 // start subprocess
@@ -354,15 +354,9 @@ const p = Deno.run({
 
 const { code } = await p.status();
 
-if (code === 0) {
-  const rawOutput = await p.output();
-  const output = decoder.decode(rawOutput);
-  console.log(output);
-} else {
-  const rawErr = await Deno.readAll(p.stderr);
-  const err = decoder.decode(rawErr);
-  console.log(err);
-}
+const rawOutput = await p.output();
+const output = decoder.decode(rawOutput);
+console.log(output);
 
 Deno.exit(code);
 ```
