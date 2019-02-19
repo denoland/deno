@@ -318,7 +318,7 @@ Example:
 
 ```ts
 const p = Deno.run({
-  args: ["deno", "https://deno.land/welcome.ts"]
+  args: [ "echo", "hello" ]
 });
 
 // start subprocess
@@ -329,7 +329,7 @@ Run it:
 
 ```
 > deno --allow-run https://deno.land/x/examples/subprocess_simple.ts
-Welcome to Deno 🦕
+hello
 ```
 
 By default when you use `deno.run()` subprocess inherits `stdin`, `stdout` and
@@ -355,7 +355,7 @@ const p = Deno.run({
 const { code } = await p.status();
 
 if (code === 0) {
-  const rawOutput = await Deno.readAll(p.stdout);
+  const rawOutput = await p.output();
   const output = decoder.decode(rawOutput);
   console.log(output);
 } else {
