@@ -319,7 +319,7 @@ impl Isolate {
             // TODO Actually dispatch here.
             // TODO if dispatch() took IsolateState instead of Isolate we could
             // call into it here directly.
-            // TODO zero-copy buffer problem.... 
+            // TODO zero-copy buffer problem....
             // let op = ops::op_stat(&state2, &base, libdeno::deno_buf::empty());
             // op_read op_write - async with zero-copy
             // op_accept - async but no zero-copy
@@ -337,8 +337,18 @@ impl Isolate {
               )),
             };
 
-            // TODO This is hard part.
-            let zero_copy = libdeno::deno_buf::empty();
+            let zero_copy: libdeno::deno_buf = match inner_type {
+              msg::Any::Read => {
+                static mut READ_BUF: [u8; 65536] = [0; 65536];
+                libdeno::deno_buf::from(unsafe { &READ_BUF[..] })
+              }
+              msg::Any::Write => {
+                static mut WRITE_BUF: &'static [u8] =
+                  b"HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n";
+                libdeno::deno_buf::from(unsafe { &WRITE_BUF[..] })
+              }
+              _ => libdeno::deno_buf::empty(),
+            };
 
             let op = op_creator(&state2, &base, zero_copy);
 
@@ -362,13 +372,15 @@ impl Isolate {
                 tx_msg.send();
 
                 Ok(())
-              }).map_err(|_| ());
+              })
+              .map_err(|_| ());
             tokio::spawn(task);
 
             // jump into pre_dispatch
           }
         })
-      }).expect("Failed to spawn thread.");
+      })
+      .expect("Failed to spawn thread.");
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".

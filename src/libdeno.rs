@@ -78,9 +78,9 @@ impl DerefMut for deno_buf {
   #[inline]
   fn deref_mut(&mut self) -> &mut [u8] {
     unsafe {
-      if self.alloc_ptr.is_null() {
-        panic!("Can't modify the buf");
-      }
+      //if self.alloc_ptr.is_null() {
+      //  panic!("Can't modify the buf");
+      //}
       std::slice::from_raw_parts_mut(self.data_ptr as *mut u8, self.data_len)
     }
   }
@@ -96,9 +96,9 @@ impl AsRef<[u8]> for deno_buf {
 impl AsMut<[u8]> for deno_buf {
   #[inline]
   fn as_mut(&mut self) -> &mut [u8] {
-    if self.alloc_ptr.is_null() {
-      panic!("Can't modify the buf");
-    }
+    //if self.alloc_ptr.is_null() {
+    //  panic!("Can't modify the buf");
+    //}
     &mut *self
   }
 }
