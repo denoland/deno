@@ -3,7 +3,7 @@ import * as dispatch from "./dispatch";
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import { assert, log } from "./util";
-import { globalEval } from "./global_eval";
+import { window } from "./window";
 
 export async function postMessage(data: Uint8Array): Promise<void> {
   const builder = flatbuffers.createBuilder();
@@ -52,10 +52,6 @@ export function workerClose(): void {
 
 export async function workerMain() {
   log("workerMain");
-
-  // TODO avoid using globalEval to get Window. But circular imports if getting
-  // it from globals.ts
-  const window = globalEval("this");
 
   while (!isClosing) {
     const data = await getMessage();

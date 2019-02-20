@@ -5,11 +5,9 @@ import { assert } from "./util";
 import { close } from "./files";
 import * as dispatch from "./dispatch";
 import { exit } from "./os";
-import { globalEval } from "./global_eval";
+import { window } from "./window";
 import { libdeno } from "./libdeno";
 import { formatError } from "./format_error";
-
-const window = globalEval("this");
 
 const helpMsg = [
   "exit    Exit the REPL",

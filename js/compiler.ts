@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as ts from "typescript";
 import * as msg from "gen/msg_generated";
+import { window } from "./window";
 import { assetSourceCode } from "./assets";
 import { Console } from "./console";
-import { globalEval } from "./global_eval";
 import { libdeno } from "./libdeno";
 import * as os from "./os";
 import { TextDecoder, TextEncoder } from "./text_encoding";
@@ -14,9 +14,6 @@ import { assert, log, notImplemented } from "./util";
 const EOL = "\n";
 const ASSETS = "$asset$";
 const LIB_RUNTIME = `${ASSETS}/lib.deno_runtime.d.ts`;
-
-// A reference to the global scope
-const window = globalEval("this");
 
 // An instance of console
 const console = new Console(libdeno.print);
