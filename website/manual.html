@@ -25,7 +25,7 @@
           const response = await fetch(url);
           const content = await response.text();
 
-          let converter = new showdown.Converter({ extensions: ["toc"] });
+          let converter = new showdown.Converter({ extensions: ["toc"], tables: true });
           let html = converter.makeHtml(content);
 
           const manual = document.getElementById("manual");
