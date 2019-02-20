@@ -317,18 +317,23 @@ file_server --reload
 Example:
 
 ```ts
-const p = Deno.run({
-  args: ["echo", "hello"]
-});
+async function main() {
+  // create subprocess
+  const p = Deno.run({
+    args: ["echo", "hello"]
+  });
 
-// start subprocess
-await p.status();
+  // await its completion
+  await p.status();
+}
+
+main();
 ```
 
 Run it:
 
 ```
-> deno --allow-run https://deno.land/x/examples/subprocess_simple.ts
+> deno --allow-run ./subprocess_simple.ts
 hello
 ```
 
@@ -337,37 +342,40 @@ By default when you use `deno.run()` subprocess inherits `stdin`, `stdout` and
 you can use `"piped"` option.
 
 ```ts
-const decoder = new TextDecoder();
+async function main() {
+  const decoder = new TextDecoder();
 
-const fileNames = Deno.args.slice(1);
+  const fileNames = Deno.args.slice(1);
 
-const p = Deno.run({
-  args: [
-    "deno",
-    "--allow-read",
-    "https://deno.land/x/examples/cat.ts",
-    ...fileNames
-  ],
-  stdout: "piped",
-  stderr: "piped"
-});
+  const p = Deno.run({
+    args: [
+      "deno",
+      "--allow-read",
+      "https://deno.land/x/examples/cat.ts",
+      ...fileNames
+    ],
+    stdout: "piped",
+    stderr: "piped"
+  });
 
-const { code } = await p.status();
+  const { code } = await p.status();
 
-const rawOutput = await p.output();
-const output = decoder.decode(rawOutput);
-console.log(output);
+  const rawOutput = await p.output();
+  Deno.stdout.write(rawOutput);
 
-Deno.exit(code);
+  Deno.exit(code);
+}
+
+main();
 ```
 
 When you run it:
 
 ```
-> deno https://deno.land/x/examples/subprocess.ts --allow-run <somefile>
+> deno ./subprocess.ts --allow-run <somefile>
 [file content]
 
-> deno https://deno.land/x/examples/subprocess.ts --allow-run non_existent_file.md
+> deno ./subprocess.ts --allow-run non_existent_file.md
 
 Uncaught NotFound: No such file or directory (os error 2)
     at DenoError (deno/js/errors.ts:19:5)
