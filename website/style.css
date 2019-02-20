@@ -28,6 +28,7 @@ h1, h2, h3, h4, p, table {
 
 table {
   border-collapse: collapse;
+  margin-top: 8px;
 }
 td, th {
   font-weight: normal;

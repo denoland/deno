@@ -532,6 +532,44 @@ Particularly useful ones:
 
 ## Internal details
 
+### Deno and Linux analogy
+
+|                       **Linux** | **Deno**                         |
+| ------------------------------: | :------------------------------- |
+|                       Processes | Web Workers                      |
+|                        Syscalls | Ops                              |
+|           File descriptors (fd) | [Resource ids (rid)](#resources) |
+|                       Scheduler | Tokio                            |
+| Userland: libc++ / glib / boost | deno_std                         |
+|                 /proc/\$\$/stat | [deno.metrics()](#metrics)       |
+|                       man pages | deno --types                     |
+
+#### Resources
+
+Resources (AKA `rid`) are Deno's version of file descriptors. They are integer
+values used to refer to open files, sockets, and other concepts. For testing it
+would be good to be able to query the system for how many open resources there
+are.
+
+```ts
+import { resources, close } from "deno";
+console.log(resources());
+// output like: { 0: "stdin", 1: "stdout", 2: "stderr", 3: "repl" }
+
+// close resource by rid
+close(3);
+```
+
+#### Metrics
+
+Metrics is deno's internal counters for various statics.
+
+```ts
+import { metrics } from "deno";
+console.log(metrics());
+// output like: { opsDispatched: 1, opsCompleted: 1, bytesSentControl: 40, bytesSentData: 0, bytesReceived: 176 }
+```
+
 ### Schematic diagram
 
 <img src="schematic_v0.2.png">
