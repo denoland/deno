@@ -55,9 +55,11 @@ pub type Buf = Box<[u8]>;
 pub type Op = dyn Future<Item = Buf, Error = DenoError> + Send;
 
 // Returns (is_sync, op)
-pub type Dispatch =
-  fn(isolate: &Isolate, buf: libdeno::deno_buf, data_buf: libdeno::deno_buf)
-    -> (bool, Box<Op>);
+pub type Dispatch = fn(
+  isolate: &Isolate,
+  buf: libdeno::deno_buf,
+  data_buf: libdeno::deno_buf,
+) -> (bool, Box<Op>);
 
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
@@ -582,10 +584,10 @@ impl Isolate {
 
       unsafe { libdeno::deno_idle(self.libdeno_isolate, self.as_raw_ptr()) };
 
-      self.check_promise_errors();
-      if let Some(err) = self.last_exception() {
-        return Err(err);
-      }
+      //self.check_promise_errors();
+      //if let Some(err) = self.last_exception() {
+      //  return Err(err);
+      //}
     }
     // Check on done
     self.check_promise_errors();
@@ -704,7 +706,8 @@ extern "C" fn pre_dispatch(
         let sender = tx; // tx is moved to new thread
         sender.send((req_id, buf)).expect("tx.send error");
         Ok(())
-      }).map_err(|_| ());
+      })
+      .map_err(|_| ());
     tokio::spawn(task);
   }
 }
@@ -792,7 +795,8 @@ mod tests {
             throw Error("assert error");
           }
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
       isolate.event_loop().ok();
     });
   }
@@ -836,7 +840,8 @@ mod tests {
           const data = new Uint8Array([42, 43, 44, 45, 46]);
           libdeno.send(control, data);
         "#,
-        ).expect("execute error");;
+        )
+        .expect("execute error");;
       isolate.event_loop().unwrap();
       let metrics = &isolate.state.metrics;
       assert_eq!(metrics.ops_dispatched.load(Ordering::SeqCst), 1);
@@ -872,7 +877,8 @@ mod tests {
           libdeno.recv(() => {});
           if (r != null) throw Error("expected null");
         "#,
-        ).expect("execute error");
+        )
+        .expect("execute error");
 
       // Make sure relevant metrics are updated before task is executed.
       {

@@ -94,6 +94,7 @@ def green_ok():
 
 
 def remove_and_symlink(target, name, target_is_dir=False):
+    return
     if os.name != "nt" and os.path.islink(name):
         return
     try:

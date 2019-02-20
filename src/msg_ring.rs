@@ -206,7 +206,7 @@ impl Default for Config {
   fn default() -> Self {
     Self {
       fill_direction: FillDirection::TopDown,
-      spin_count: 1000,
+      spin_count: 10000,
       // spin_yield_cpu_time: 0,
     }
   }
@@ -364,6 +364,8 @@ impl Window {
 
       if sleep {
         header_atomic.wait(header, None);
+      } else {
+        std::thread::yield_now();
       }
       header = header_atomic.load(Ordering::Acquire);
     }

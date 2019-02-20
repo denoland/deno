@@ -22,17 +22,28 @@ export function handleAsyncMsgFromRust2() {
 
   // Before we block on beginReceive, we check if there are actually any pending
   // promises. If not, we return.
-  if (promiseTable.size == 0) {
+  if (promiseTable.size === 0) {
     util.log("promiseTable empty");
     return;
   }
 
-  let { byteOffset, byteLength } = libdeno.rx.beginReceive();
-  let buf = libdeno.rx.u8.subarray(byteOffset, byteOffset + byteLength);
-
-  util.log("receive buf", buf.byteLength);
-  handleAsyncMsgFromRust(buf);
-
+  const { byteOffset, byteLength } = libdeno.rx.beginReceive();
+  const buf = libdeno.rx.u8.subarray(byteOffset, byteOffset + byteLength);
+  const u32 = libdeno.rx.u32.subarray(
+    byteOffset / 4,
+    (byteOffset + byteLength) / 4
+  );
+  const resType = u32[6];
+  if (resType === 738197504 || resType === 771751936) {
+    // Read or write.
+    const cmdId = u32[7];
+    const promise = promiseTable.get(cmdId);
+    util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
+    promiseTable.delete(cmdId);
+    promise!.resolve((null as unknown) as msg.Base);
+  } else {
+    handleAsyncMsgFromRust(buf);
+  }
   libdeno.rx.endReceive();
 }
 
@@ -66,6 +77,35 @@ export function sendAsync(
 ): Promise<msg.Base> {
   const [cmdId, resBuf] = sendInternal(builder, innerType, inner, data, false);
   util.assert(resBuf == null);
+  const promise = util.createResolvable<msg.Base>();
+  promiseTable.set(cmdId, promise);
+  return promise;
+}
+
+let msgTemplate = new Uint32Array([
+  20,
+  1179664,
+  4,
+  0,
+  786443,
+  16,
+  3 /*promise id*/,
+  721420288,
+  12,
+  393216,
+  262152,
+  6,
+  999 /*rid*/
+]);
+let msgTemplateU8 = new Uint8Array(msgTemplate.buffer);
+
+export function sendAsync2(isRead: boolean, rid: number): Promise<msg.Base> {
+  let cmdId = nextCmdId++;
+  let opCode = isRead ? 721420288 : 754974720;
+  msgTemplate[6] = cmdId;
+  msgTemplate[7] = opCode;
+  msgTemplate[12] = rid;
+  libdeno.tx.send(msgTemplateU8);
   const promise = util.createResolvable<msg.Base>();
   promiseTable.set(cmdId, promise);
   return promise;
@@ -107,7 +147,8 @@ function sendInternal(
   builder.finish(msg.Base.endBase(builder));
 
   const u8 = builder.asUint8Array();
-  util.log("sendInternal", sync, u8.byteLength, Array.from(u8));
+  const u32 = new Uint32Array(u8.buffer, u8.byteOffset, u8.byteLength / 4);
+  util.log("sendInternal", sync, u32.byteLength, Array.from(u32));
 
   let res;
   if (sync) {

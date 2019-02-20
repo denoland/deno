@@ -1,10 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { ReadResult, Reader, Writer, Closer } from "./io";
 import * as msg from "gen/msg_generated";
-import { assert, notImplemented } from "./util";
+import { assert, notImplemented, log } from "./util";
 import * as dispatch from "./dispatch";
 import * as flatbuffers from "./flatbuffers";
-import { read, write, close } from "./files";
+import { close } from "./files";
 
 export type Network = "tcp";
 // TODO support other types:
@@ -76,12 +76,18 @@ class ConnImpl implements Conn {
     readonly localAddr: string
   ) {}
 
-  write(p: Uint8Array): Promise<number> {
-    return write(this.rid, p);
+  async write(p: Uint8Array): Promise<number> {
+    log("write", this.rid);
+    //return write(this.rid, p);
+    await dispatch.sendAsync2(false, this.rid);
+    return p.length;
   }
 
-  read(p: Uint8Array): Promise<ReadResult> {
-    return read(this.rid, p);
+  async read(p: Uint8Array): Promise<ReadResult> {
+    log("read", this.rid);
+    //return read(this.rid, p);
+    await dispatch.sendAsync2(true, this.rid);
+    return { nread: p.length, eof: false };
   }
 
   close(): void {
