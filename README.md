@@ -29,6 +29,6 @@ environment for the modern programmer.
 
 [Releases](Releases.md)
 
-[Chat root](https://gitter.im/denolife/Lobby)
+[Chat room](https://gitter.im/denolife/Lobby)
 
 [More links](https://github.com/denolib/awesome-deno)
