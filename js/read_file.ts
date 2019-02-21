@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
-import { assert } from "./util";
+import { assert, validateArgumentType } from "./util";
 import * as dispatch from "./dispatch";
 
 /** Read the entire contents of a file synchronously.
@@ -11,6 +11,7 @@ import * as dispatch from "./dispatch";
  *       console.log(decoder.decode(data));
  */
 export function readFileSync(filename: string): Uint8Array {
+  validateArgumentType(filename, "string", "filename", "readFileSync");
   return res(dispatch.sendSync(...req(filename)));
 }
 
@@ -21,6 +22,7 @@ export function readFileSync(filename: string): Uint8Array {
  *       console.log(decoder.decode(data));
  */
 export async function readFile(filename: string): Promise<Uint8Array> {
+  validateArgumentType(filename, "string", "filename", "readFile");
   return res(await dispatch.sendAsync(...req(filename)));
 }
 

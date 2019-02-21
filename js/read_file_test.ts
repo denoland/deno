@@ -35,6 +35,18 @@ testPerm({ read: true }, function readFileSyncNotFound() {
   assert(data === undefined);
 });
 
+testPerm({ read: true }, function readFileSyncBadArgument() {
+  let err;
+  try {
+    // @ts-ignore
+    Deno.readFileSync(123);
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assert(err instanceof TypeError);
+});
+
 testPerm({ read: true }, async function readFileSuccess() {
   const data = await Deno.readFile("package.json");
   assert(data.byteLength > 0);
@@ -54,4 +66,16 @@ testPerm({ read: false }, async function readFilePerm() {
     assertEqual(e.name, "PermissionDenied");
   }
   assert(caughtError);
+});
+
+testPerm({ read: true }, async function readFileBadArgument() {
+  let err;
+  try {
+    // @ts-ignore
+    await Deno.readFile(123);
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assert(err instanceof TypeError);
 });

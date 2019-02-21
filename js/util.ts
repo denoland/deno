@@ -133,6 +133,55 @@ export function requiredArguments(
   }
 }
 
+function isArgumentOfType(
+  value: any, // tslint:disable-line:no-any
+  type: string | Function
+): boolean {
+  if (typeof type === "string") {
+    return typeof value === type;
+  } else {
+    return value instanceof type;
+  }
+}
+
+function stringifyType(
+  type: string | Function | Array<string | Function>
+): string {
+  if (Array.isArray(type)) {
+    return type.map(stringifyType).join(" | ");
+  } else if (typeof type === "string") {
+    return type;
+  } else {
+    return type.name;
+  }
+}
+
+// @internal
+export function validateArgumentType(
+  value: any, // tslint:disable-line:no-any
+  type: string | Function | Array<string | Function>,
+  name: string,
+  source?: string // name of the function
+): void {
+  let isValidArgument = false;
+  if (Array.isArray(type)) {
+    for (const sig of type) {
+      if (isArgumentOfType(value, sig)) {
+        isValidArgument = true;
+        break;
+      }
+    }
+  } else {
+    isValidArgument = isArgumentOfType(value, type);
+  }
+  if (!isValidArgument) {
+    const errString = `Argument "${name}" should have type ${stringifyType(
+      type
+    )}${source ? ` in "${source}"` : ""}`;
+    throw new TypeError(errString);
+  }
+}
+
 // Returns values from a WeakMap to emulate private properties in JavaScript
 export function getPrivateValue<
   K extends object,
