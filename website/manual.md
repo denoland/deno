@@ -312,68 +312,70 @@ file_server --reload
 
 ### Run subprocess
 
-```
-const p = Deno.run({
-    args: ["deno", "--allow-read", "https://deno.land/x/examples/cat.ts", "README.md"],
-});
+[API Reference](https://deno.land/typedoc/index.html#run)
 
-// start subprocess
-await p.status();
+Example:
+
+```ts
+async function main() {
+  // create subprocess
+  const p = Deno.run({
+    args: ["echo", "hello"]
+  });
+
+  // await its completion
+  await p.status();
+}
+
+main();
 ```
 
-When this program is started, the user is prompted for permission to run
-subprocess:
+Run it:
 
 ```
-> deno https://deno.land/x/examples/subprocess_simple.ts
-⚠️  Deno requests access to run a subprocess. Grant? [yN] y
-```
-
-For security reasons, deno does not allow programs to run subprocess without
-explicit permission. To avoid the console prompt, use a command-line flag:
-
-```
-> deno https://deno.land/x/examples/subprocess_simple.ts --allow-run
+> deno --allow-run ./subprocess_simple.ts
+hello
 ```
 
 By default when you use `deno.run()` subprocess inherits `stdin`, `stdout` and
 `stdout` of parent process. If you want to communicate with started subprocess
 you can use `"piped"` option.
 
-```
-const decoder = new TextDecoder();
+```ts
+async function main() {
+  const decoder = new TextDecoder();
 
-const filesToCat = Deno.args.slice(1);
-const subprocessArgs = ["deno", "--allow-read", "https://deno.land/x/examples/cat.ts", ...filesToCat];
+  const fileNames = Deno.args.slice(1);
 
-const p = Deno.run({
-  subprocessArgs,
-  stdout: "piped",
-  stderr: "piped",
-});
+  const p = Deno.run({
+    args: [
+      "deno",
+      "--allow-read",
+      "https://deno.land/x/examples/cat.ts",
+      ...fileNames
+    ],
+    stdout: "piped",
+    stderr: "piped"
+  });
 
-const { code } = await p.status();
+  const { code } = await p.status();
 
-if (code === 0) {
-  const rawOutput = await Deno.readAll(p.stdout);
-  const output = decoder.decode(rawOutput);
-  console.log(output);
-} else {
-  const rawErr = await Deno.readAll(p.stderr);
-  const err = decoder.decode(rawErr);
-  console.log(err);
+  const rawOutput = await p.output();
+  Deno.stdout.write(rawOutput);
+
+  Deno.exit(code);
 }
 
-Deno.exit(code);
+main();
 ```
 
 When you run it:
 
 ```
-> deno https://deno.land/x/examples/subprocess.ts --allow-run <somefile>
+> deno ./subprocess.ts --allow-run <somefile>
 [file content]
 
-> deno https://deno.land/x/examples/subprocess.ts --allow-run non_existent_file.md
+> deno ./subprocess.ts --allow-run non_existent_file.md
 
 Uncaught NotFound: No such file or directory (os error 2)
     at DenoError (deno/js/errors.ts:19:5)
