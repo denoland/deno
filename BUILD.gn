@@ -17,6 +17,13 @@ group("default") {
   ]
 }
 
+group("tsc") {
+  testonly = true
+  deps = [
+    "examples/tsc:tsc",
+  ]
+}
+
 main_extern = [
   "$rust_build:ansi_term",
   "$rust_build:atty",
@@ -124,8 +131,6 @@ ts_sources = [
 group("deno_deps") {
   deps = [
     ":msg_rs",
-    ":snapshot_compiler",
-    ":snapshot_deno",
     "libdeno:libdeno_static_lib",
   ]
 }
@@ -140,6 +145,8 @@ rust_executable("deno") {
   extern = main_extern
   deps = [
     ":deno_deps",
+    ":snapshot_compiler",
+    ":snapshot_deno",
   ]
 
   # Extract version from Cargo.toml
@@ -156,6 +163,8 @@ rust_test("test_rs") {
   extern = main_extern
   deps = [
     ":deno_deps",
+    ":snapshot_compiler",
+    ":snapshot_deno",
   ]
 
   # Extract version from Cargo.toml

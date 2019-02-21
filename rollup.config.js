@@ -270,8 +270,11 @@ export default function makeConfig(commandOptions) {
           // bundle
           [typescriptPath]: [
             "createLanguageService",
+            "createProgram",
+            "createSourceFile",
             "formatDiagnostics",
             "formatDiagnosticsWithColorAndContext",
+            "getPreEmitDiagnostics",
             "version",
             "Extension",
             "ModuleKind",

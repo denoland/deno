@@ -26,6 +26,7 @@
     "node_modules/typescript/lib/lib.esnext.d.ts",
     "js/lib.web_assembly.d.ts",
     "js/main.ts",
-    "js/compiler.ts"
+    "js/compiler.ts",
+    "examples/tsc/main.ts"
   ]
 }
