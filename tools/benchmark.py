@@ -204,8 +204,10 @@ def main(argv):
     # pipe.
     if os.name != 'nt':
         hyper_hello_path = os.path.join(build_dir, "hyper_hello")
+        core_http_bench_exe = os.path.join(build_dir, "deno_core_http_bench")
         new_data["throughput"] = run_throughput(deno_path)
-        new_data["req_per_sec"] = http_benchmark(deno_path, hyper_hello_path)
+        new_data["req_per_sec"] = http_benchmark(deno_path, hyper_hello_path,
+                                                 core_http_bench_exe)
     if "linux" in sys.platform:
         # Thread count test, only on linux
         new_data["thread_count"] = run_thread_count_benchmark(deno_path)

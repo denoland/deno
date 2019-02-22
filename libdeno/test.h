@@ -6,6 +6,6 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 extern deno_buf snapshot;  // Loaded in libdeno/test.cc
-const deno_buf empty = {nullptr, 0, nullptr, 0};
+const deno_buf empty = {nullptr, 0, nullptr, 0, 0};
 
 #endif  // TEST_H_
