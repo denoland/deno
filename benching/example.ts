@@ -1,5 +1,5 @@
 // https://deno.land/x/benching/mod.ts
-import { BenchmarkTimer, runBenchmarks, bench } from "mod.ts";
+import { BenchmarkTimer, runBenchmarks, bench } from "./mod.ts";
 
 // Simple
 bench(function forIncrementX1e9(b: BenchmarkTimer) {
