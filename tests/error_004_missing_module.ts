@@ -1,1 +1,1 @@
-import * as badModule from "bad-module.ts";
+import * as badModule from "./bad-module.ts";
