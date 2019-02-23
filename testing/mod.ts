@@ -290,3 +290,9 @@ export async function runTests() {
     }, 0);
   }
 }
+
+export async function runIfMain(meta: ImportMeta) {
+  if (window.location.toString() === meta.url) {
+    runTests();
+  }
+}
