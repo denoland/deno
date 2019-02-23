@@ -286,7 +286,8 @@ export async function runTests() {
     // Use setTimeout to avoid the error being ignored due to unhandled
     // promise rejections being swallowed.
     setTimeout(() => {
-      throw new Error(`There were ${failed} test failures.`);
+      console.error(`There were ${failed} test failures.`);
+      Deno.exit(1);
     }, 0);
   }
 }
