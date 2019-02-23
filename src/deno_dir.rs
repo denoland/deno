@@ -305,6 +305,22 @@ impl DenoDir {
       specifier, referrer
     );
 
+    // Module specifier check.
+    // https://github.com/denoland/deno/issues/1769
+    // https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+    if !is_remote(&specifier)
+      && !is_relative(&specifier)
+      && !is_absolute(&specifier)
+    {
+      return Err(errors::new(
+        ErrorKind::NotFound,
+        format!(
+          "Cannot resolve module \"{}\" from \"{}\". Relative references must start with either \"/\", \"./\", or \"../\".",
+          specifier, referrer
+        ),
+      ));
+    }
+
     let (module_name, filename) = self.resolve_module(specifier, referrer)?;
 
     let result = self.get_source_code(module_name.as_str(), filename.as_str());
@@ -518,6 +534,14 @@ fn source_code_hash(
 
 fn is_remote(module_name: &str) -> bool {
   module_name.starts_with("http://") || module_name.starts_with("https://")
+}
+
+fn is_relative(module_name: &str) -> bool {
+  module_name.starts_with("./") || module_name.starts_with("../")
+}
+
+fn is_absolute(module_name: &str) -> bool {
+  module_name.starts_with("/") || module_name.starts_with("file://")
 }
 
 fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
