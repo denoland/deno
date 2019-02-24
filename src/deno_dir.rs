@@ -541,7 +541,10 @@ fn is_relative(module_name: &str) -> bool {
 }
 
 fn is_absolute(module_name: &str) -> bool {
-  module_name.starts_with("/") || module_name.starts_with("file://")
+  module_name.starts_with("/")
+    || module_name.starts_with("file://")
+    // Windows disc character
+    || module_name[1..].starts_with(":\\")
 }
 
 fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
@@ -1389,5 +1392,57 @@ mod tests {
       .as_bytes()
       .to_owned();
     assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n".as_bytes());
+  }
+
+  #[test]
+  fn test_specifier_prefix() {
+    let http_specifier = "http://deno.land/welcome.ts";
+    assert!(
+      is_remote(http_specifier)
+        && !is_absolute(http_specifier)
+        && !is_relative(http_specifier)
+    );
+
+    let https_specifier = "https://deno.land/welcome.ts";
+    assert!(
+      is_remote(https_specifier)
+        && !is_absolute(https_specifier)
+        && !is_relative(https_specifier)
+    );
+
+    let file_specifier = "file:///Users/enok/projects/deno/tests/exec_path.ts";
+    assert!(
+      !is_remote(file_specifier)
+        && is_absolute(file_specifier)
+        && !is_relative(file_specifier)
+    );
+
+    let relative_specifier1 = "./hello.ts";
+    assert!(
+      !is_remote(relative_specifier1)
+        && !is_absolute(relative_specifier1)
+        && is_relative(relative_specifier1)
+    );
+
+    let relative_specifier2 = "../hello.ts";
+    assert!(
+      !is_remote(relative_specifier2)
+        && !is_absolute(relative_specifier2)
+        && is_relative(relative_specifier2)
+    );
+
+    let absolute_specifier1 = "/Users/enok/projects/deno/tests/exec_path.ts";
+    assert!(
+      !is_remote(absolute_specifier1)
+        && is_absolute(absolute_specifier1)
+        && !is_relative(absolute_specifier1)
+    );
+
+    let absolute_specifier2 = "C:\\some_dir\\hello.ts";
+    assert!(
+      !is_remote(absolute_specifier2)
+        && is_absolute(absolute_specifier2)
+        && !is_relative(absolute_specifier2)
+    );
   }
 }
