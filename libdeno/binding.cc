@@ -510,6 +510,7 @@ void HostInitializeImportMetaObjectCallback(v8::Local<v8::Context> context,
   auto* isolate = context->GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
 
   CHECK(!module.IsEmpty());
 
@@ -520,7 +521,19 @@ void HostInitializeImportMetaObjectCallback(v8::Local<v8::Context> context,
 
   const char* url = info->name.c_str();
 
+  // check if `module` is "main" module
+  // ie. `import.meta.url` === `window.location.toString()`
+  auto location_obj = context->Global()->Get(v8_str("location"));
+  v8::Local<v8::String> location_string =
+      location_obj->ToString(context).ToLocalChecked();
+  CHECK(!location_string.IsEmpty());
+  v8::String::Utf8Value location_value(isolate, location_string);
+
+  bool is_main = strcmp(url, *location_value) == 0;
+
   meta->CreateDataProperty(context, v8_str("url"), v8_str(url)).ToChecked();
+  meta->CreateDataProperty(context, v8_str("main"), v8_bool(is_main))
+      .ToChecked();
 }
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
