@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as deno from "deno";
-import { serve } from "./mod.ts";
+import { serve } from "./server.ts";
 
 const addr = deno.args[1] || "127.0.0.1:4500";
 const server = serve(addr);
