@@ -3,7 +3,8 @@ use crate::libdeno;
 
 use getopts;
 use getopts::Options;
-use libc::{c_int, c_char};
+use libc::c_char;
+use libc::c_int;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem;
