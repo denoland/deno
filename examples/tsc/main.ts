@@ -358,22 +358,91 @@ class DenoCompilerHost implements ts.CompilerHost, ts.FormatDiagnosticsHost {
 const sys = new DenoSystem();
 const host = new DenoCompilerHost(sys);
 
-function compile(fileNames: string[], options: ts.CompilerOptions): void {
-  log("compile", { fileNames, options });
-  const program = ts.createProgram(fileNames, options, host);
-  const result = program.emit();
+// tslint:disable:no-any
+function reportStatistics(program: ts.Program) {
+  let statistics: any[];
+  const compilerOptions = program.getCompilerOptions();
+  if (compilerOptions.diagnostics || compilerOptions.extendedDiagnostics) {
+    statistics = [];
+    reportCountStatistic("Files", program.getSourceFiles().length);
+    reportCountStatistic("Lines", countLines(program));
+    reportCountStatistic("Nodes", (program as any).getNodeCount());
+    reportCountStatistic("Identifiers", (program as any).getIdentifierCount());
+    reportCountStatistic("Symbols", (program as any).getSymbolCount());
+    reportCountStatistic("Types", (program as any).getTypeCount());
 
-  const diagnostics = [
-    ...ts.getPreEmitDiagnostics(program),
-    ...result.diagnostics
-  ];
+    const programTime = (ts as any).performance.getDuration("Program");
+    const bindTime = (ts as any).performance.getDuration("Bind");
+    const checkTime = (ts as any).performance.getDuration("Check");
+    const emitTime = (ts as any).performance.getDuration("Emit");
+    if (compilerOptions.extendedDiagnostics) {
+      (ts as any).performance.forEachMeasure((name: string, duration: number) =>
+        reportTimeStatistic(`${name} time`, duration)
+      );
+    } else {
+      reportTimeStatistic(
+        "I/O read",
+        (ts as any).performance.getDuration("I/O Read")
+      );
+      reportTimeStatistic(
+        "I/O write",
+        (ts as any).performance.getDuration("I/O Write")
+      );
+      reportTimeStatistic("Parse time", programTime);
+      reportTimeStatistic("Bind time", bindTime);
+      reportTimeStatistic("Check time", checkTime);
+      reportTimeStatistic("Emit time", emitTime);
+    }
+    reportTimeStatistic(
+      "Total time",
+      programTime + bindTime + checkTime + emitTime
+    );
+    reportStatistics();
 
-  if (diagnostics.length) {
-    console.log(ts.formatDiagnosticsWithColorAndContext(diagnostics, host));
+    (ts as any).performance.disable();
   }
 
-  os.exit(result.emitSkipped ? 1 : 0);
+  function reportStatistics() {
+    let nameSize = 0;
+    let valueSize = 0;
+    for (const { name, value } of statistics) {
+      if (name.length > nameSize) {
+        nameSize = name.length;
+      }
+
+      if (value.length > valueSize) {
+        valueSize = value.length;
+      }
+    }
+
+    for (const { name, value } of statistics) {
+      sys.write(
+        `${name}:`.padEnd(nameSize + 2) + value.toString().padStart(valueSize)
+      );
+    }
+  }
+
+  function reportStatisticalValue(name: string, value: string) {
+    statistics.push({ name, value });
+  }
+
+  function reportCountStatistic(name: string, count: number) {
+    reportStatisticalValue(name, "" + count);
+  }
+
+  function reportTimeStatistic(name: string, time: number) {
+    reportStatisticalValue(name, (time / 1000).toFixed(2) + "s");
+  }
+
+  function countLines(program: ts.Program): number {
+    let count = 0;
+    program.getSourceFiles().forEach(file => {
+      count += (ts as any).getLineStarts(file).length;
+    });
+    return count;
+  }
 }
+// tslint:enable
 
 // This mirrors a function in TypeScript which uses the system interface to
 // help load and parse configuration
@@ -395,6 +464,31 @@ function parseConfigFileWithSystem(
   );
   h.onUnRecoverableConfigFileDiagnostic = undefined!;
   return result;
+}
+
+function compile(
+  fileNames: string[],
+  compilerOptions: ts.CompilerOptions
+): void {
+  log("compile", { fileNames, compilerOptions });
+  if (compilerOptions.diagnostics || compilerOptions.extendedDiagnostics) {
+    (ts as any).performance.enable(); // tslint:disable-line:no-any
+  }
+  const program = ts.createProgram(fileNames, compilerOptions, host);
+  const result = program.emit();
+
+  const diagnostics = [
+    ...ts.getPreEmitDiagnostics(program),
+    ...result.diagnostics
+  ];
+
+  if (diagnostics.length) {
+    console.log(ts.formatDiagnosticsWithColorAndContext(diagnostics, host));
+  }
+
+  reportStatistics(program);
+
+  os.exit(result.emitSkipped ? 1 : 0);
 }
 
 // tslint:disable-next-line:no-default-export
