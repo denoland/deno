@@ -70,7 +70,7 @@ use crate::libdeno::deno_buf;
 fn tsc_snapshot() -> deno_buf {
   #[cfg(not(feature = "check-only"))]
   let data =
-    include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/snapshot_tsc.bin"));
+    include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/examples/tsc/snapshot_tsc.bin"));
   // The snapshot blob is not available when the Rust Language Server runs
   // 'cargo check'.
   #[cfg(feature = "check-only")]
