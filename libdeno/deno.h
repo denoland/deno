@@ -83,7 +83,7 @@ void deno_terminate_execution(Deno* d);
 typedef int deno_mod;
 
 // Returns zero on error - check deno_last_exception().
-deno_mod deno_mod_new(Deno* d, const char* name, const char* source);
+deno_mod deno_mod_new(Deno* d, bool main, const char* name, const char* source);
 
 size_t deno_mod_imports_len(Deno* d, deno_mod id);
 
