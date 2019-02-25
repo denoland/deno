@@ -266,3 +266,24 @@ TEST(ModulesTest, ImportMetaUrl) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(1, exec_count);
 }
+
+TEST(ModulesTest, ImportMetaMain) {
+  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+
+  const char* b_src = "if (import.meta.main) throw 'hmm'";
+  static deno_mod b = deno_mod_new(d, "b.js", b_src);
+  EXPECT_NE(b, 0);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  deno_mod_instantiate(d, d, b, nullptr);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  deno_mod_evaluate(d, d, b);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  deno_execute(d, d, "a.js",
+               "import 'b.js'"
+               "if (!import.meta.main) throw 'hmm'");
+
+  deno_delete(d);
+}
