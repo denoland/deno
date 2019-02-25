@@ -1,4 +1,5 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright Joyent, Inc. and other Node contributors. MIT license.
+// Forked from Node's lib/internal/cli_table.js
 
 import { TextEncoder } from "./text_encoding";
 
