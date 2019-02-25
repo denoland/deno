@@ -4,7 +4,15 @@ import { test, assertEqual, assert } from "./test_util.ts";
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
 // tslint:disable-next-line:no-any
-const { Console, libdeno, stringifyArgs, inspect, write, stdout } = Deno as any;
+const {
+  Console,
+  libdeno,
+  stringifyArgs,
+  inspect,
+  readAll,
+  write,
+  stdout
+} = Deno as any;
 
 const console = new Console(libdeno.print);
 
@@ -309,4 +317,273 @@ test(function consoleDetachedLog() {
   consoleGroup("Hello world");
   consoleGroupEnd();
   consoleClear();
+});
+
+class StringBuffer {
+  chunks: string[] = [];
+  add(x: string) {
+    this.chunks.push(x);
+  }
+  toString() {
+    return this.chunks.join("");
+  }
+}
+
+type ConsoleExamineFunc = (
+  csl: any, // tslint:disable-line:no-any
+  out: StringBuffer,
+  err?: StringBuffer,
+  both?: StringBuffer
+) => void;
+
+function mockConsole(f: ConsoleExamineFunc) {
+  const out = new StringBuffer();
+  const err = new StringBuffer();
+  const both = new StringBuffer();
+  const csl = new Console(
+    (x: string, isErr: boolean, printsNewLine: boolean) => {
+      const content = x + (printsNewLine ? "\n" : "");
+      const buf = isErr ? err : out;
+      buf.add(content);
+      both.add(content);
+    }
+  );
+  f(csl, out, err, both);
+}
+
+// console.group test
+test(function consoleGroup() {
+  mockConsole((console, out) => {
+    console.group("1");
+    console.log("2");
+    console.group("3");
+    console.log("4");
+    console.groupEnd();
+    console.groupEnd();
+
+    console.groupCollapsed("5");
+    console.log("6");
+    console.group("7");
+    console.log("8");
+    console.groupEnd();
+    console.groupEnd();
+    console.log("9");
+    console.log("10");
+
+    assertEqual(
+      out.toString(),
+      `1
+  2
+  3
+    4
+5678
+9
+10
+`
+    );
+  });
+});
+
+// console.group with console.warn test
+test(function consoleGroupWarn() {
+  mockConsole((console, _out, _err, both) => {
+    console.warn("1");
+    console.group();
+    console.warn("2");
+    console.group();
+    console.warn("3");
+    console.groupEnd();
+    console.warn("4");
+    console.groupEnd();
+    console.warn("5");
+
+    console.groupCollapsed();
+    console.warn("6");
+    console.group();
+    console.warn("7");
+    console.groupEnd();
+    console.warn("8");
+    console.groupEnd();
+
+    console.warn("9");
+    console.warn("10");
+    assertEqual(
+      both.toString(),
+      `1
+  2
+    3
+  4
+5
+678
+9
+10
+`
+    );
+  });
+});
+
+// console.table test
+test(function consoleTable() {
+  mockConsole((console, out) => {
+    console.table({ a: "test", b: 1 });
+    assertEqual(
+      out.toString(),
+      `┌─────────┬────────┐
+│ (index) │ Values │
+├─────────┼────────┤
+│    a    │ "test" │
+│    b    │   1    │
+└─────────┴────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table({ a: { b: 10 }, b: { b: 20, c: 30 } }, ["c"]);
+    assertEqual(
+      out.toString(),
+      `┌─────────┬────┐
+│ (index) │ c  │
+├─────────┼────┤
+│    a    │    │
+│    b    │ 30 │
+└─────────┴────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table([1, 2, [3, [4]], [5, 6], [[7], [8]]]);
+    assertEqual(
+      out.toString(),
+      `┌─────────┬───────┬───────┬────────┐
+│ (index) │   0   │   1   │ Values │
+├─────────┼───────┼───────┼────────┤
+│    0    │       │       │   1    │
+│    1    │       │       │   2    │
+│    2    │   3   │ [ 4 ] │        │
+│    3    │   5   │   6   │        │
+│    4    │ [ 7 ] │ [ 8 ] │        │
+└─────────┴───────┴───────┴────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Set([1, 2, 3, "test"]));
+    assertEqual(
+      out.toString(),
+      `┌───────────────────┬────────┐
+│ (iteration index) │ Values │
+├───────────────────┼────────┤
+│         0         │   1    │
+│         1         │   2    │
+│         2         │   3    │
+│         3         │ "test" │
+└───────────────────┴────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Map([[1, "one"], [2, "two"]]));
+    assertEqual(
+      out.toString(),
+      `┌───────────────────┬─────┬────────┐
+│ (iteration index) │ Key │ Values │
+├───────────────────┼─────┼────────┤
+│         0         │  1  │ "one"  │
+│         1         │  2  │ "two"  │
+└───────────────────┴─────┴────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table({
+      a: true,
+      b: { c: { d: 10 }, e: [1, 2, [5, 6]] },
+      f: "test",
+      g: new Set([1, 2, 3, "test"]),
+      h: new Map([[1, "one"]])
+    });
+    assertEqual(
+      out.toString(),
+      `┌─────────┬───────────┬───────────────────┬────────┐
+│ (index) │     c     │         e         │ Values │
+├─────────┼───────────┼───────────────────┼────────┤
+│    a    │           │                   │  true  │
+│    b    │ { d: 10 } │ [ 1, 2, [Array] ] │        │
+│    f    │           │                   │ "test" │
+│    g    │           │                   │        │
+│    h    │           │                   │        │
+└─────────┴───────────┴───────────────────┴────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table([
+      1,
+      "test",
+      false,
+      { a: 10 },
+      ["test", { b: 20, c: "test" }]
+    ]);
+    assertEqual(
+      out.toString(),
+      `┌─────────┬────────┬──────────────────────┬────┬────────┐
+│ (index) │   0    │          1           │ a  │ Values │
+├─────────┼────────┼──────────────────────┼────┼────────┤
+│    0    │        │                      │    │   1    │
+│    1    │        │                      │    │ "test" │
+│    2    │        │                      │    │ false  │
+│    3    │        │                      │ 10 │        │
+│    4    │ "test" │ { b: 20, c: "test" } │    │        │
+└─────────┴────────┴──────────────────────┴────┴────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table([]);
+    assertEqual(
+      out.toString(),
+      `┌─────────┐
+│ (index) │
+├─────────┤
+└─────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table({});
+    assertEqual(
+      out.toString(),
+      `┌─────────┐
+│ (index) │
+├─────────┤
+└─────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Set());
+    assertEqual(
+      out.toString(),
+      `┌───────────────────┐
+│ (iteration index) │
+├───────────────────┤
+└───────────────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Map());
+    assertEqual(
+      out.toString(),
+      `┌───────────────────┐
+│ (iteration index) │
+├───────────────────┤
+└───────────────────┘
+`
+    );
+  });
+  mockConsole((console, out) => {
+    console.table("test");
+    assertEqual(out.toString(), "test\n");
+  });
 });

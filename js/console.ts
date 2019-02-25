@@ -581,8 +581,8 @@ export class Console {
   table = (data: unknown, properties?: string[]): void => {
     if (properties !== undefined && !Array.isArray(properties)) {
       throw new Error(
-        "The 'properties' argument must be of type Array\
-        . Received type string"
+        "The 'properties' argument must be of type Array. " +
+          "Received type string"
       );
     }
 
@@ -615,7 +615,7 @@ export class Console {
       let idx = 0;
       resultData = {};
 
-      data.forEach((k: unknown, v: unknown) => {
+      data.forEach((v: unknown, k: unknown) => {
         resultData[idx] = { Key: k, Values: v };
         idx++;
       });
