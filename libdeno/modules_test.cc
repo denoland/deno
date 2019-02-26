@@ -270,26 +270,27 @@ TEST(ModulesTest, ImportMetaUrl) {
 TEST(ModulesTest, ImportMetaMain) {
   Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
 
-  const char* a_src = "if (!import.meta.main) throw 'hmm'";
-  static deno_mod a = deno_mod_new(d, true, "a.js", a_src);
-  EXPECT_NE(a, 0);
+  const char* throw_not_main_src = "if (!import.meta.main) throw 'err'";
+  static deno_mod throw_not_main =
+      deno_mod_new(d, true, "a.js", throw_not_main_src);
+  EXPECT_NE(throw_not_main, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
-  deno_mod_instantiate(d, d, a, nullptr);
+  deno_mod_instantiate(d, d, throw_not_main, nullptr);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
-  deno_mod_evaluate(d, d, a);
+  deno_mod_evaluate(d, d, throw_not_main);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
-  const char* b_src = "if (import.meta.main) throw 'hmm'";
-  static deno_mod b = deno_mod_new(d, false, "b.js", b_src);
-  EXPECT_NE(b, 0);
+  const char* throw_main_src = "if (import.meta.main) throw 'err'";
+  static deno_mod throw_main = deno_mod_new(d, false, "b.js", throw_main_src);
+  EXPECT_NE(throw_main, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
-  deno_mod_instantiate(d, d, b, nullptr);
+  deno_mod_instantiate(d, d, throw_main, nullptr);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
-  deno_mod_evaluate(d, d, b);
+  deno_mod_evaluate(d, d, throw_main);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
   deno_delete(d);
