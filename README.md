@@ -24,7 +24,7 @@ more specifics.
 
 [Install](https://github.com/denoland/deno_install)
 
-[API Reference](https://deno.land/typedoc)
+[API Reference](https://deno.land/typedoc/)
 
 [Style Guide](https://deno.land/style_guide.html)
 
