@@ -154,6 +154,7 @@ extern "C" {
 
   pub fn deno_mod_new(
     i: *const isolate,
+    main: bool,
     name: *const c_char,
     source: *const c_char,
   ) -> deno_mod;

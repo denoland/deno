@@ -283,6 +283,7 @@ impl Isolate {
 
   pub fn mod_new(
     &mut self,
+    main: bool,
     name: String,
     source: String,
   ) -> Result<libdeno::deno_mod, JSError> {
@@ -293,7 +294,7 @@ impl Isolate {
     let source_ptr = source_.as_ptr() as *const c_char;
 
     let id = unsafe {
-      libdeno::deno_mod_new(self.libdeno_isolate, name_ptr, source_ptr)
+      libdeno::deno_mod_new(self.libdeno_isolate, main, name_ptr, source_ptr)
     };
     if let Some(js_error) = self.last_exception() {
       assert_eq!(id, 0);
@@ -345,7 +346,7 @@ impl Isolate {
           &referrer_name,
         )?;
         let child_id =
-          self.mod_new(out.module_name.clone(), out.js_source())?;
+          self.mod_new(false, out.module_name.clone(), out.js_source())?;
 
         self.mod_load_deps(child_id)?;
       }
@@ -391,7 +392,7 @@ impl Isolate {
         .map_err(RustOrJsError::from)?;
 
     let id = self
-      .mod_new(out.module_name.clone(), out.js_source())
+      .mod_new(true, out.module_name.clone(), out.js_source())
       .map_err(RustOrJsError::from)?;
 
     self.mod_load_deps(id)?;

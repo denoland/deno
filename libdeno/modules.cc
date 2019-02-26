@@ -88,7 +88,7 @@ v8::MaybeLocal<v8::Module> ResolveCallback(Local<Context> context,
             id = it->second;
           } else {
             std::string src = BuiltinModuleSrc(context, specifier);
-            id = d->RegisterModule(req_str.c_str(), src.c_str());
+            id = d->RegisterModule(false, req_str.c_str(), src.c_str());
           }
         } else {
           id = d->resolve_cb_(d->user_data_, req_str.c_str(), referrer_id);
@@ -116,10 +116,10 @@ v8::MaybeLocal<v8::Module> ResolveCallback(Local<Context> context,
 
 extern "C" {
 
-deno_mod deno_mod_new(Deno* d_, const char* name_cstr,
+deno_mod deno_mod_new(Deno* d_, bool main, const char* name_cstr,
                       const char* source_cstr) {
   auto* d = unwrap(d_);
-  return d->RegisterModule(name_cstr, source_cstr);
+  return d->RegisterModule(main, name_cstr, source_cstr);
 }
 
 const char* deno_mod_name(Deno* d_, deno_mod id) {
