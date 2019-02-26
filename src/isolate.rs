@@ -287,10 +287,10 @@ impl Isolate {
     source: String,
   ) -> Result<libdeno::deno_mod, JSError> {
     let name_ = CString::new(name.clone()).unwrap();
-    let name_ptr = name_.as_ptr() as *const i8;
+    let name_ptr = name_.as_ptr() as *const c_char;
 
     let source_ = CString::new(source.clone()).unwrap();
-    let source_ptr = source_.as_ptr() as *const i8;
+    let source_ptr = source_.as_ptr() as *const c_char;
 
     let id = unsafe {
       libdeno::deno_mod_new(self.libdeno_isolate, name_ptr, source_ptr)
