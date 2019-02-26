@@ -30,9 +30,14 @@ def deno_net_http_benchmark(deno_exe):
         })
 
 
-def deno_core_http_bench(exe):
-    print "http_benchmark testing deno_core_http_bench"
-    return run([exe])
+def deno_core_single(exe):
+    print "http_benchmark testing deno_core_single"
+    return run([exe, "--single-thread"])
+
+
+def deno_core_multi(exe):
+    print "http_benchmark testing deno_core_multi"
+    return run([exe, "--multi-thread"])
 
 
 def node_http_benchmark():
@@ -58,7 +63,8 @@ def http_benchmark(deno_exe, hyper_hello_exe, core_http_bench_exe):
     # TODO Rename to "deno_tcp"
     r["deno"] = deno_http_benchmark(deno_exe)
     r["deno_net_http"] = deno_net_http_benchmark(deno_exe)
-    r["deno_core_http"] = deno_core_http_bench(core_http_bench_exe)
+    r["deno_core_single"] = deno_core_single(core_http_bench_exe)
+    r["deno_core_multi"] = deno_core_multi(core_http_bench_exe)
     r["node"] = node_http_benchmark()
     r["node_tcp"] = node_tcp_benchmark()
     r["hyper"] = hyper_http_benchmark(hyper_hello_exe)
@@ -74,8 +80,14 @@ def run(server_cmd, merge_env=None):
         for key, value in merge_env.iteritems():
             env[key] = value
 
+    # Wait for port 4544 to become available.
+    # TODO Need to use SO_REUSEPORT with tokio::net::TcpListener.
+    time.sleep(5)
+
     server = subprocess.Popen(server_cmd, env=env)
+
     time.sleep(5)  # wait for server to wake up. TODO racy.
+
     try:
         cmd = "third_party/wrk/%s/wrk -d %s http://%s/" % (util.platform(),
                                                            DURATION, ADDR)
