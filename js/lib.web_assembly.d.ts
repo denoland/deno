@@ -162,6 +162,7 @@ declare namespace WebAssembly {
   }
 }
 
+// TODO Move ImportMeta intos its own lib.import_meta.d.ts file?
 interface ImportMeta {
   url: string;
   main: boolean;
