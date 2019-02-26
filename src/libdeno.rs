@@ -1,4 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+// TODO Remove. While core is being developed, it may not use the complete
+// libdeno API. Thus we allow dead code until things settle.
+#![allow(dead_code)]
+
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
@@ -25,6 +30,7 @@ pub struct deno_buf {
   alloc_len: usize,
   data_ptr: *const u8,
   data_len: usize,
+  pub zero_copy_id: usize,
 }
 
 /// `deno_buf` can not clone, and there is no interior mutability.
@@ -39,6 +45,7 @@ impl deno_buf {
       alloc_len: 0,
       data_ptr: null(),
       data_len: 0,
+      zero_copy_id: 0,
     }
   }
 
@@ -49,6 +56,7 @@ impl deno_buf {
       alloc_len: 0,
       data_ptr: ptr,
       data_len: len,
+      zero_copy_id: 0,
     }
   }
 }
@@ -62,6 +70,7 @@ impl<'a> From<&'a [u8]> for deno_buf {
       alloc_len: 0,
       data_ptr: x.as_ref().as_ptr(),
       data_len: x.len(),
+      zero_copy_id: 0,
     }
   }
 }
@@ -106,9 +115,8 @@ impl AsMut<[u8]> for deno_buf {
 #[allow(non_camel_case_types)]
 type deno_recv_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
-  req_id: i32,
-  buf: deno_buf,
-  data_buf: deno_buf,
+  control_buf: deno_buf, // deprecated
+  zero_copy_buf: deno_buf,
 );
 
 #[allow(non_camel_case_types)]
@@ -137,12 +145,14 @@ extern "C" {
   pub fn deno_delete(i: *const isolate);
   pub fn deno_last_exception(i: *const isolate) -> *const c_char;
   pub fn deno_check_promise_errors(i: *const isolate);
+  pub fn deno_lock(i: *const isolate);
+  pub fn deno_unlock(i: *const isolate);
   pub fn deno_respond(
     i: *const isolate,
     user_data: *const c_void,
-    req_id: i32,
     buf: deno_buf,
   );
+  pub fn deno_zero_copy_release(i: *const isolate, zero_copy_id: usize);
   pub fn deno_execute(
     i: *const isolate,
     user_data: *const c_void,

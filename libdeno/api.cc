@@ -78,6 +78,19 @@ deno::DenoIsolate* unwrap(Deno* d_) {
   return reinterpret_cast<deno::DenoIsolate*>(d_);
 }
 
+void deno_lock(Deno* d_) {
+  auto* d = unwrap(d_);
+  CHECK_NULL(d->locker_);
+  d->locker_ = new v8::Locker(d->isolate_);
+}
+
+void deno_unlock(Deno* d_) {
+  auto* d = unwrap(d_);
+  CHECK_NOT_NULL(d->locker_);
+  delete d->locker_;
+  d->locker_ = nullptr;
+}
+
 deno_buf deno_get_snapshot(Deno* d_) {
   auto* d = unwrap(d_);
   CHECK_NOT_NULL(d->snapshot_creator_);
@@ -87,7 +100,7 @@ deno_buf deno_get_snapshot(Deno* d_) {
   auto blob = d->snapshot_creator_->CreateBlob(
       v8::SnapshotCreator::FunctionCodeHandling::kKeep);
   return {nullptr, 0, reinterpret_cast<uint8_t*>(const_cast<char*>(blob.data)),
-          blob.raw_size};
+          blob.raw_size, 0};
 }
 
 static std::unique_ptr<v8::Platform> platform;
@@ -127,12 +140,23 @@ void deno_execute(Deno* d_, void* user_data, const char* js_filename,
   deno::Execute(context, js_filename, js_source);
 }
 
-void deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
+void deno_zero_copy_release(Deno* d_, size_t zero_copy_id) {
+  auto* d = unwrap(d_);
+  v8::Isolate::Scope isolate_scope(d->isolate_);
+  v8::Locker locker(d->isolate_);
+  v8::HandleScope handle_scope(d->isolate_);
+  d->DeleteZeroCopyRef(zero_copy_id);
+}
+
+void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
   auto* d = unwrap(d_);
   if (d->current_args_ != nullptr) {
     // Synchronous response.
-    auto ab = deno::ImportBuf(d, buf);
-    d->current_args_->GetReturnValue().Set(ab);
+    if (buf.data_ptr != nullptr) {
+      DCHECK_EQ(buf.zero_copy_id, 0);
+      auto ab = deno::ImportBuf(d, buf);
+      d->current_args_->GetReturnValue().Set(ab);
+    }
     d->current_args_ = nullptr;
     return;
   }
@@ -148,8 +172,6 @@ void deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
 
   v8::TryCatch try_catch(d->isolate_);
 
-  deno::DeleteDataRef(d, req_id);
-
   auto recv_ = d->recv_.Get(d->isolate_);
   if (recv_.IsEmpty()) {
     d->last_exception_ = "libdeno.recv_ has not been called.";
@@ -157,8 +179,17 @@ void deno_respond(Deno* d_, void* user_data, int32_t req_id, deno_buf buf) {
   }
 
   v8::Local<v8::Value> args[1];
-  args[0] = deno::ImportBuf(d, buf);
-  auto v = recv_->Call(context, context->Global(), 1, args);
+  int argc = 0;
+
+  // You cannot use zero_copy_buf with deno_respond(). Use
+  // deno_zero_copy_release() instead.
+  DCHECK_EQ(buf.zero_copy_id, 0);
+  if (buf.data_ptr != nullptr) {
+    args[0] = deno::ImportBuf(d, buf);
+    argc = 1;
+  }
+
+  auto v = recv_->Call(context, context->Global(), argc, args);
 
   if (try_catch.HasCaught()) {
     CHECK(v.IsEmpty());

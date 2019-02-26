@@ -1,0 +1,37 @@
+import("//build_extra/rust/rust.gni")
+
+# deno_core does not depend on flatbuffers nor tokio.
+main_extern = [
+  "$rust_build:futures",
+  "$rust_build:libc",
+  "$rust_build:serde_json",
+  "$rust_build:log",
+]
+
+rust_crate("deno_core") {
+  source_root = "lib.rs"
+  extern = main_extern
+  deps = [
+    "../libdeno:libdeno_static_lib",
+  ]
+}
+
+rust_test("deno_core_test") {
+  source_root = "lib.rs"
+  extern = main_extern
+  deps = [
+    "../libdeno:libdeno_static_lib",
+  ]
+}
+
+rust_executable("deno_core_http_bench") {
+  source_root = "http_bench.rs"
+  extern = [
+    "$rust_build:futures",
+    "$rust_build:lazy_static",
+    "$rust_build:libc",
+    "$rust_build:log",
+    "$rust_build:tokio",
+    ":deno_core"
+  ]
+}

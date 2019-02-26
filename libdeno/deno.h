@@ -15,6 +15,7 @@ typedef struct {
   size_t alloc_len;    // Length of the memory allocation.
   uint8_t* data_ptr;   // Start of logical contents (within the allocation).
   size_t data_len;     // Length of logical contents.
+  size_t zero_copy_id;  // 0 = normal, 1 = must call deno_zero_copy_release.
 } deno_buf;
 
 typedef struct deno_s Deno;
@@ -22,8 +23,8 @@ typedef struct deno_s Deno;
 // A callback to receive a message from a libdeno.send() javascript call.
 // control_buf is valid for only for the lifetime of this callback.
 // data_buf is valid until deno_respond() is called.
-typedef void (*deno_recv_cb)(void* user_data, int32_t req_id,
-                             deno_buf control_buf, deno_buf data_buf);
+typedef void (*deno_recv_cb)(void* user_data, deno_buf control_buf,
+                             deno_buf zerop_copy_buf);
 
 void deno_init();
 const char* deno_v8_version();
@@ -47,6 +48,9 @@ deno_buf deno_get_snapshot(Deno* d);
 
 void deno_delete(Deno* d);
 
+void deno_lock(Deno* d);
+void deno_unlock(Deno* d);
+
 // Compile and execute a traditional JavaScript script that does not use
 // module import statements.
 // If it succeeded deno_last_exception() will return NULL.
@@ -66,11 +70,13 @@ void deno_execute(Deno* d, void* user_data, const char* js_filename,
 // longer owns `buf` and must not use it; deno_respond() is responsible for
 // releasing its memory.)
 //
-// Calling this function more than once with the same req_id will result in
-// an error.
-//
 // If a JS exception was encountered, deno_last_exception() will be non-NULL.
-void deno_respond(Deno* d, void* user_data, int32_t req_id, deno_buf buf);
+void deno_respond(Deno* d, void* user_data, deno_buf buf);
+
+// consumes zero_copy
+// Calling this function more than once with the same zero_copy_id will result
+// in an error.
+void deno_zero_copy_release(Deno* d, size_t zero_copy_id);
 
 void deno_check_promise_errors(Deno* d);
 
