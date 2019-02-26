@@ -1,2 +1,0 @@
-args: tests/console_group.ts --reload
-output: tests/console_group.ts.out
