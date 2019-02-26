@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Buffer, Reader, ReadResult } from "deno";
+const { Buffer } = Deno;
+import { Reader, ReadResult } from "deno";
 import { assert, assertEqual, runTests, test } from "../testing/mod.ts";
 import {
   copyN,

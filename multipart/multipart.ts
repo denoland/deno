@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { Buffer, Closer, copy, Reader, ReadResult, remove, Writer } from "deno";
-
+const { Buffer, copy, remove } = Deno;
+import { Closer, Reader, ReadResult, Writer } from "deno";
 import { FormFile } from "./formfile.ts";
 import {
   bytesFindIndex,

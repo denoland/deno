@@ -1,15 +1,14 @@
-import {
+const {
   cwd,
   chdir,
-  FileInfo,
   makeTempDir,
   mkdir,
   open,
   platform,
   remove,
   symlink
-} from "deno";
-
+} = Deno;
+import { FileInfo } from "deno";
 import { walk, walkSync, WalkOptions } from "./walk.ts";
 import { test, assert, TestFunction } from "../testing/mod.ts";
 

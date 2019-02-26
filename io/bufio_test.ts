@@ -3,7 +3,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { Buffer, Reader, ReadResult } from "deno";
+const { Buffer } = Deno;
+import { Reader, ReadResult } from "deno";
 import { test, assert, assertEqual } from "../testing/mod.ts";
 import { BufReader, BufState, BufWriter } from "./bufio.ts";
 import * as iotest from "./iotest.ts";
