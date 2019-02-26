@@ -3,6 +3,7 @@ use crate::libdeno;
 
 use getopts;
 use getopts::Options;
+use libc::c_char;
 use libc::c_int;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -343,7 +344,7 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
     .collect::<Vec<_>>();
   let mut c_argv = raw_argv
     .iter_mut()
-    .map(|arg| arg.as_mut_ptr() as *mut i8)
+    .map(|arg| arg.as_mut_ptr() as *mut c_char)
     .collect::<Vec<_>>();
 
   // Store the length of the c_argv array in a local variable. We'll pass
@@ -360,7 +361,7 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
   c_argv
     .iter()
     .map(|ptr| unsafe {
-      let cstr = CStr::from_ptr(*ptr as *const i8);
+      let cstr = CStr::from_ptr(*ptr as *const c_char);
       let slice = cstr.to_str().unwrap();
       slice.to_string()
     }).chain(rest.into_iter())
