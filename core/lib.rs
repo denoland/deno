@@ -154,14 +154,6 @@ impl Isolate {
     }
   }
 
-  fn lock(&self) {
-    unsafe { libdeno::deno_lock(self.libdeno_isolate) }
-  }
-
-  fn unlock(&self) {
-    unsafe { libdeno::deno_unlock(self.libdeno_isolate) }
-  }
-
   fn respond(&mut self) -> Result<(), JSError> {
     let buf = deno_buf::empty();
     unsafe {
@@ -175,11 +167,32 @@ impl Isolate {
   }
 }
 
+struct LockerScope {
+  libdeno_isolate: *const libdeno::isolate,
+}
+
+impl LockerScope {
+  fn new(isolate: &Isolate) -> LockerScope {
+    let libdeno_isolate = isolate.libdeno_isolate;
+    unsafe { libdeno::deno_lock(libdeno_isolate) }
+    LockerScope { libdeno_isolate }
+  }
+}
+
+impl Drop for LockerScope {
+  fn drop(&mut self) {
+    unsafe { libdeno::deno_unlock(self.libdeno_isolate) }
+  }
+}
+
 impl Future for Isolate {
   type Item = ();
   type Error = JSError;
 
   fn poll(&mut self) -> Poll<(), JSError> {
+    // Lock the current thread for V8.
+    let _locker = LockerScope::new(self);
+
     // Clear
     self.polled_recently = false;
     for (_, pending) in self.pending_ops.iter_mut() {
@@ -219,29 +232,23 @@ impl Future for Isolate {
       self.shared.set_num_records(complete.len() as i32);
       if complete.len() > 0 {
         // self.zero_copy_release() and self.respond() need Locker.
-        self.lock(); // TODO libdeno::LockerScope locker;
-        {
-          let mut i = 0;
-          for (promise_id, async_result) in complete.iter_mut() {
-            let pending = self.pending_ops.remove(promise_id).unwrap();
+        let mut i = 0;
+        for (promise_id, async_result) in complete.iter_mut() {
+          let pending = self.pending_ops.remove(promise_id).unwrap();
 
-            if pending.zero_copy_id > 0 {
-              self.zero_copy_release(pending.zero_copy_id);
-            }
-
-            self
-              .shared
-              .set_record(i, RECORD_OFFSET_PROMISE_ID, *promise_id);
-            self.shared.set_record(
-              i,
-              RECORD_OFFSET_RESULT,
-              async_result.result,
-            );
-            i += 1;
+          if pending.zero_copy_id > 0 {
+            self.zero_copy_release(pending.zero_copy_id);
           }
-          self.respond()?;
+
+          self
+            .shared
+            .set_record(i, RECORD_OFFSET_PROMISE_ID, *promise_id);
+          self
+            .shared
+            .set_record(i, RECORD_OFFSET_RESULT, async_result.result);
+          i += 1;
         }
-        self.unlock(); // TODO libdeno::LockerScope locker;
+        self.respond()?;
       }
     }
 
