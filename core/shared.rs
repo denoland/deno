@@ -17,10 +17,10 @@ const NUM_RECORDS: usize = 100;
 pub struct Shared(Vec<i32>);
 
 impl Shared {
-  pub fn new() -> Self {
+  pub fn new() -> Shared {
     let mut vec = Vec::<i32>::new();
     vec.resize(INDEX_RECORDS + RECORD_SIZE * NUM_RECORDS, 0);
-    Self(vec)
+    Shared(vec)
   }
 
   pub fn set_record(&mut self, i: usize, off: usize, value: i32) {
