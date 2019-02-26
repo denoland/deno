@@ -29,6 +29,7 @@ class DenoIsolate {
  public:
   explicit DenoIsolate(deno_config config)
       : isolate_(nullptr),
+        locker_(nullptr),
         shared_(config.shared),
         current_args_(nullptr),
         snapshot_creator_(nullptr),
@@ -47,6 +48,9 @@ class DenoIsolate {
 
   ~DenoIsolate() {
     shared_ab_.Reset();
+    if (locker_) {
+      delete locker_;
+    }
     if (snapshot_creator_) {
       delete snapshot_creator_;
     } else {
@@ -94,6 +98,7 @@ class DenoIsolate {
   }
 
   v8::Isolate* isolate_;
+  v8::Locker* locker_;
   v8::ArrayBuffer::Allocator* array_buffer_allocator_;
   deno_buf shared_;
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;

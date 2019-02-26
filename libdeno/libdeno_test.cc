@@ -26,9 +26,11 @@ TEST(LibDenoTest, Snapshotter) {
 
 TEST(LibDenoTest, CanCallFunction) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
+  deno_lock(d);
   deno_execute(d, nullptr, "a.js",
                "if (CanCallFunction() != 'foo') throw Error();");
   EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_unlock(d);
   deno_delete(d);
 }
 

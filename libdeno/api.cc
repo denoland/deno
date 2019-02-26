@@ -78,6 +78,19 @@ deno::DenoIsolate* unwrap(Deno* d_) {
   return reinterpret_cast<deno::DenoIsolate*>(d_);
 }
 
+void deno_lock(Deno* d_) {
+  auto* d = unwrap(d_);
+  CHECK_NULL(d->locker_);
+  d->locker_ = new v8::Locker(d->isolate_);
+}
+
+void deno_unlock(Deno* d_) {
+  auto* d = unwrap(d_);
+  CHECK_NOT_NULL(d->locker_);
+  delete d->locker_;
+  d->locker_ = nullptr;
+}
+
 deno_buf deno_get_snapshot(Deno* d_) {
   auto* d = unwrap(d_);
   CHECK_NOT_NULL(d->snapshot_creator_);

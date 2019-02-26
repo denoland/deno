@@ -154,6 +154,14 @@ impl Isolate {
     }
   }
 
+  fn lock(&self) {
+    unsafe { libdeno::deno_lock(self.libdeno_isolate) }
+  }
+
+  fn unlock(&self) {
+    unsafe { libdeno::deno_unlock(self.libdeno_isolate) }
+  }
+
   fn respond(&mut self) -> Result<(), JSError> {
     let buf = deno_buf::empty();
     unsafe {
@@ -210,24 +218,30 @@ impl Future for Isolate {
 
       self.shared.set_num_records(complete.len() as i32);
       if complete.len() > 0 {
-        // TODO libdeno::LockerScope locker;
-        let mut i = 0;
-        for (promise_id, async_result) in complete.iter_mut() {
-          let pending = self.pending_ops.remove(promise_id).unwrap();
+        // self.zero_copy_release() and self.respond() need Locker.
+        self.lock(); // TODO libdeno::LockerScope locker;
+        {
+          let mut i = 0;
+          for (promise_id, async_result) in complete.iter_mut() {
+            let pending = self.pending_ops.remove(promise_id).unwrap();
 
-          if pending.zero_copy_id > 0 {
-            self.zero_copy_release(pending.zero_copy_id);
+            if pending.zero_copy_id > 0 {
+              self.zero_copy_release(pending.zero_copy_id);
+            }
+
+            self
+              .shared
+              .set_record(i, RECORD_OFFSET_PROMISE_ID, *promise_id);
+            self.shared.set_record(
+              i,
+              RECORD_OFFSET_RESULT,
+              async_result.result,
+            );
+            i += 1;
           }
-
-          self
-            .shared
-            .set_record(i, RECORD_OFFSET_PROMISE_ID, *promise_id);
-          self
-            .shared
-            .set_record(i, RECORD_OFFSET_RESULT, async_result.result);
-          i += 1;
+          self.respond()?;
         }
-        self.respond()?;
+        self.unlock(); // TODO libdeno::LockerScope locker;
       }
     }
 
