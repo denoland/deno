@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+const { Buffer, copy, open, remove } = Deno;
 import { assert, test } from "../testing/mod.ts";
 import {
   matchAfterPrefix,
@@ -7,7 +8,6 @@ import {
   MultipartWriter,
   scanUntilBoundary
 } from "./multipart.ts";
-import { Buffer, copy, open, remove } from "deno";
 import * as path from "../fs/path.ts";
 import { FormFile, isFormFile } from "./formfile.ts";
 import { StringWriter } from "../io/writers.ts";

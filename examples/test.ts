@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { run } from "deno";
+const { run } = Deno;
 import { test, assertEqual } from "../testing/mod.ts";
 
 /** Example of how to do basic tests */

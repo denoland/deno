@@ -1,14 +1,5 @@
-import {
-  FileInfo,
-  cwd,
-  readDir,
-  readDirSync,
-  readlink,
-  readlinkSync,
-  stat,
-  statSync
-} from "deno";
-import { relative } from "path.ts";
+const { readDir, readDirSync, readlink, readlinkSync, stat, statSync } = Deno;
+import { FileInfo } from "deno";
 
 export interface WalkOptions {
   maxDepth?: number;

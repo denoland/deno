@@ -2,16 +2,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
-import {
-  args,
-  platform,
-  readAll,
-  lstat,
-  exit,
-  run,
-  readFile,
-  writeFile
-} from "deno";
+const { args, platform, readAll, lstat, exit, run, readFile, writeFile } = Deno;
 import { xrun } from "./util.ts";
 import { parse } from "../flags/mod.ts";
 import { prettier, prettierPlugins } from "./prettier.ts";

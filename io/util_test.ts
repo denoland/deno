@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+const { remove } = Deno;
 import { test, assert } from "../testing/mod.ts";
 import { copyBytes, tempFile } from "./util.ts";
-import { remove } from "deno";
 import * as path from "../fs/path.ts";
 
 test(function testCopyBytes() {

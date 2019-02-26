@@ -1,7 +1,7 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
 
-import { platform } from "deno";
+const { platform } = Deno;
 
 // Alphabet chars.
 export const CHAR_UPPERCASE_A = 65; /* A */

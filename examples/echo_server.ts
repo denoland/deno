@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { listen, copy } from "deno";
+const { listen, copy } = Deno;
 
 (async () => {
   const addr = "0.0.0.0:8080";

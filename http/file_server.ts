@@ -6,13 +6,14 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
+const { ErrorKind, cwd, args, stat, readDir, open } = Deno;
+import { DenoError } from "deno";
 import {
   listenAndServe,
   ServerRequest,
   setContentLength,
   Response
 } from "./server.ts";
-import { cwd, DenoError, ErrorKind, args, stat, readDir, open } from "deno";
 import { extname } from "../fs/path.ts";
 import { contentType } from "../media_types/mod.ts";
 

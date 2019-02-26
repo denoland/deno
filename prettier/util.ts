@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { platform, run } from "deno";
+const { platform, run } = Deno;
 
 // Runs a command in cross-platform way
 export function xrun(opts) {

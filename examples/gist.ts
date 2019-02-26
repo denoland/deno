@@ -1,7 +1,7 @@
 #!/usr/bin/env deno --allow-net --allow-env
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { args, env, exit, readFile } from "deno";
+const { args, env, exit, readFile } = Deno;
 import { parse } from "https://deno.land/x/flags/mod.ts";
 
 function pathBase(p: string): string {

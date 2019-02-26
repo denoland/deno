@@ -5,7 +5,7 @@
 // Ported from
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
-import { Buffer } from "deno";
+const { Buffer } = Deno;
 import { assertEqual, test } from "../testing/mod.ts";
 import { Response, ServerRequest } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";

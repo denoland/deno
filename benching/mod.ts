@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { exit, noColor } from "deno";
+const { exit, noColor } = Deno;
 
 interface BenchmarkClock {
   start: number;
