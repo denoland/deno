@@ -13,13 +13,14 @@
 namespace deno {
 
 struct ModuleInfo {
+  bool main;
   std::string name;
   v8::Persistent<v8::Module> handle;
   std::vector<std::string> import_specifiers;
 
-  ModuleInfo(v8::Isolate* isolate, v8::Local<v8::Module> module,
+  ModuleInfo(v8::Isolate* isolate, v8::Local<v8::Module> module, bool main_,
              const char* name_, std::vector<std::string> import_specifiers_)
-      : name(name_), import_specifiers(import_specifiers_) {
+      : main(main_), name(name_), import_specifiers(import_specifiers_) {
     handle.Reset(isolate, module);
   }
 };
@@ -61,7 +62,7 @@ class DenoIsolate {
 
   void AddIsolate(v8::Isolate* isolate);
 
-  deno_mod RegisterModule(const char* name, const char* source);
+  deno_mod RegisterModule(bool main, const char* name, const char* source);
   v8::Local<v8::Object> GetBuiltinModules();
   void ClearModules();
 

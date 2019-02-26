@@ -14,7 +14,7 @@ TEST(ModulesTest, Resolution) {
   Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
-  static deno_mod a = deno_mod_new(d, "a.js",
+  static deno_mod a = deno_mod_new(d, true, "a.js",
                                    "import { b } from 'b.js'\n"
                                    "if (b() != 'b') throw Error();\n"
                                    "libdeno.send(new Uint8Array([4]));");
@@ -22,7 +22,7 @@ TEST(ModulesTest, Resolution) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
   const char* b_src = "export function b() { return 'b' }";
-  static deno_mod b = deno_mod_new(d, "b.js", b_src);
+  static deno_mod b = deno_mod_new(d, false, "b.js", b_src);
   EXPECT_NE(b, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
@@ -72,7 +72,7 @@ TEST(ModulesTest, BuiltinModules) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
   static deno_mod a =
-      deno_mod_new(d, "a.js",
+      deno_mod_new(d, true, "a.js",
                    "import { b } from 'b.js'\n"
                    "import * as deno from 'deno'\n"
                    "if (b() != 'b') throw Error('b');\n"
@@ -82,7 +82,7 @@ TEST(ModulesTest, BuiltinModules) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
   const char* b_src = "export function b() { return 'b' }";
-  static deno_mod b = deno_mod_new(d, "b.js", b_src);
+  static deno_mod b = deno_mod_new(d, false, "b.js", b_src);
   EXPECT_NE(b, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
@@ -134,7 +134,7 @@ TEST(ModulesTest, BuiltinModules2) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
   static deno_mod a =
-      deno_mod_new(d, "a.js",
+      deno_mod_new(d, true, "a.js",
                    "import * as b1 from 'builtin1'\n"
                    "import * as b2 from 'builtin2'\n"
                    "if (b1.foo != 'bar') throw Error('bad1');\n"
@@ -168,7 +168,7 @@ TEST(ModulesTest, BuiltinModules3) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
   static deno_mod a =
-      deno_mod_new(d, "a.js",
+      deno_mod_new(d, true, "a.js",
                    "import * as b1 from 'builtin'\n"
                    "import * as b2 from 'b.js'\n"
                    "if (b1.foo != 'bar') throw Error('bad1');\n"
@@ -181,7 +181,7 @@ TEST(ModulesTest, BuiltinModules3) {
   EXPECT_STREQ("builtin", deno_mod_imports_get(d, a, 0));
   EXPECT_STREQ("b.js", deno_mod_imports_get(d, a, 1));
 
-  static deno_mod b = deno_mod_new(d, "b.js",
+  static deno_mod b = deno_mod_new(d, false, "b.js",
                                    "import { foo } from 'builtin';\n"
                                    "export function bar() { return foo }\n");
   EXPECT_NE(b, 0);
@@ -218,7 +218,7 @@ TEST(ModulesTest, ResolutionError) {
   Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
-  static deno_mod a = deno_mod_new(d, "a.js",
+  static deno_mod a = deno_mod_new(d, true, "a.js",
                                    "import 'bad'\n"
                                    "libdeno.send(new Uint8Array([4]));");
   EXPECT_NE(a, 0);
@@ -252,7 +252,7 @@ TEST(ModulesTest, ImportMetaUrl) {
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a =
-      deno_mod_new(d, "a.js",
+      deno_mod_new(d, true, "a.js",
                    "if ('a.js' != import.meta.url) throw 'hmm'\n"
                    "libdeno.send(new Uint8Array([4]));");
   EXPECT_NE(a, 0);
@@ -265,4 +265,33 @@ TEST(ModulesTest, ImportMetaUrl) {
   deno_mod_evaluate(d, d, a);
   EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(1, exec_count);
+}
+
+TEST(ModulesTest, ImportMetaMain) {
+  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+
+  const char* throw_not_main_src = "if (!import.meta.main) throw 'err'";
+  static deno_mod throw_not_main =
+      deno_mod_new(d, true, "a.js", throw_not_main_src);
+  EXPECT_NE(throw_not_main, 0);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  deno_mod_instantiate(d, d, throw_not_main, nullptr);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  deno_mod_evaluate(d, d, throw_not_main);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  const char* throw_main_src = "if (import.meta.main) throw 'err'";
+  static deno_mod throw_main = deno_mod_new(d, false, "b.js", throw_main_src);
+  EXPECT_NE(throw_main, 0);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  deno_mod_instantiate(d, d, throw_main, nullptr);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  deno_mod_evaluate(d, d, throw_main);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  deno_delete(d);
 }

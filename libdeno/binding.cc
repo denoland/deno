@@ -265,7 +265,8 @@ v8::ScriptOrigin ModuleOrigin(v8::Isolate* isolate,
                           v8::True(isolate));
 }
 
-deno_mod DenoIsolate::RegisterModule(const char* name, const char* source) {
+deno_mod DenoIsolate::RegisterModule(bool main, const char* name,
+                                     const char* source) {
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::Locker locker(isolate_);
   v8::HandleScope handle_scope(isolate_);
@@ -300,8 +301,9 @@ deno_mod DenoIsolate::RegisterModule(const char* name, const char* source) {
     import_specifiers.push_back(*specifier_utf8);
   }
 
-  mods_.emplace(std::piecewise_construct, std::make_tuple(id),
-                std::make_tuple(isolate_, module, name, import_specifiers));
+  mods_.emplace(
+      std::piecewise_construct, std::make_tuple(id),
+      std::make_tuple(isolate_, module, main, name, import_specifiers));
   mods_by_name_[name] = id;
 
   return id;
@@ -519,8 +521,10 @@ void HostInitializeImportMetaObjectCallback(v8::Local<v8::Context> context,
   auto* info = d->GetModuleInfo(id);
 
   const char* url = info->name.c_str();
+  const bool main = info->main;
 
   meta->CreateDataProperty(context, v8_str("url"), v8_str(url)).ToChecked();
+  meta->CreateDataProperty(context, v8_str("main"), v8_bool(main)).ToChecked();
 }
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
