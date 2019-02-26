@@ -488,25 +488,26 @@ if (window.location.toString() == import.meta.url) {
 Usage: deno script.ts
 
 Options:
-        --allow-read    Allow file system read access.
-        --allow-write   Allow file system write access.
-        --allow-net     Allow network access.
-        --allow-env     Allow environment access.
-        --allow-run     Allow running subprocesses.
-    -A, --allow-all     Allow all permissions.
-        --recompile     Force recompilation of TypeScript code.
-    -h, --help          Print this message.
-    -D, --log-debug     Log debug output.
-    -v, --version       Print the version.
-    -r, --reload        Reload cached remote resources.
-        --v8-options    Print V8 command line options.
-        --types         Print runtime TypeScript declarations.
-        --prefetch      Prefetch the dependencies.
+        --allow-read    Allow file system read access
+        --allow-write   Allow file system write access
+        --allow-net     Allow network access
+        --allow-env     Allow environment access
+        --allow-run     Allow running subprocesses
+    -A, --allow-all     Allow all permissions
+        --recompile     Force recompilation of TypeScript code
+    -h, --help          Print this message
+    -D, --log-debug     Log debug output
+    -v, --version       Print the version
+    -r, --reload        Reload cached remote resources
+        --v8-options    Print V8 command line options
+        --types         Print runtime TypeScript declarations
+        --prefetch      Prefetch the dependencies
         --info          Show source file related info
-        --fmt           Format code.
+        --fmt           Format code
 
 Environment variables:
-        DENO_DIR        Set deno's base directory.
+        DENO_DIR        Set deno's base directory
+        NO_COLOR        Set to disable color
 ```
 
 ### Environmental variables
