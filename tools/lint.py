@@ -21,8 +21,8 @@ run([
 
 run(["node", tslint, "-p", ".", "--exclude", "**/gen/**/*.ts"])
 run([
-    "node", tslint, "./js/**/*_test.ts", "./tests/**/*.ts", "--exclude",
-    "**/gen/**/*.ts", "--project", "tsconfig.json"
+    "node", tslint, "./js/**/*_test.ts", "./tests/**/*.ts", "./core/*.js",
+    "--exclude", "**/gen/**/*.ts", "--project", "tsconfig.json"
 ])
 
 run([sys.executable, "third_party/depot_tools/pylint.py"] +

@@ -39,7 +39,7 @@ qrun(
 print "prettier"
 qrun(["node", prettier, "--write", "--loglevel=error"] + ["rollup.config.js"] +
      glob("*.json") + glob("*.md") +
-     find_exts([".github", "js", "tests", "tools", "website"],
+     find_exts([".github", "js", "tests", "tools", "website", "core"],
                [".js", ".json", ".ts", ".md"],
                skip=["tools/clang", "js/deps"]))
 
@@ -47,4 +47,4 @@ print "rustfmt"
 qrun([
     "third_party/rustfmt/" + platform() +
     "/rustfmt", "--config-path", rustfmt_config, "build.rs"
-] + find_exts(["src"], [".rs"]))
+] + find_exts(["src", "core"], [".rs"]))

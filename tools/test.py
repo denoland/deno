@@ -85,6 +85,11 @@ def main(argv):
     check_exists(test_rs)
     run([test_rs])
 
+    deno_core_test = os.path.join(build_dir,
+                                  "deno_core_test" + executable_suffix)
+    check_exists(deno_core_test)
+    run([deno_core_test])
+
     unit_tests(deno_exe)
 
     prefetch_test(deno_exe)

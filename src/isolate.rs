@@ -48,15 +48,17 @@ pub type Buf = Box<[u8]>;
 pub type Op = dyn Future<Item = Buf, Error = DenoError> + Send;
 
 // Returns (is_sync, op)
-pub type Dispatch =
-  fn(isolate: &Isolate, buf: libdeno::deno_buf, data_buf: libdeno::deno_buf)
-    -> (bool, Box<Op>);
+pub type Dispatch = fn(
+  isolate: &Isolate,
+  buf: libdeno::deno_buf,
+  zero_copy_buf: libdeno::deno_buf,
+) -> (bool, Box<Op>);
 
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   dispatch: Dispatch,
-  rx: mpsc::Receiver<(i32, Buf)>,
-  tx: mpsc::Sender<(i32, Buf)>,
+  rx: mpsc::Receiver<(usize, Buf)>,
+  tx: mpsc::Sender<(usize, Buf)>,
   ntasks: Cell<i32>,
   timeout_due: Cell<Option<Instant>>,
   pub modules: RefCell<Modules>,
@@ -204,7 +206,7 @@ impl Isolate {
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
     // This channel handles sending async messages back to the runtime.
-    let (tx, rx) = mpsc::channel::<(i32, Buf)>();
+    let (tx, rx) = mpsc::channel::<(usize, Buf)>();
 
     Self {
       libdeno_isolate,
@@ -404,37 +406,39 @@ impl Isolate {
     Ok(())
   }
 
-  pub fn respond(&self, req_id: i32, buf: Buf) {
+  pub fn respond(&self, zero_copy_id: usize, buf: Buf) {
     self.state.metrics_op_completed(buf.len());
+
+    // This will be cleaned up in the future.
+    if zero_copy_id > 0 {
+      unsafe {
+        libdeno::deno_zero_copy_release(self.libdeno_isolate, zero_copy_id)
+      }
+    }
+
     // deno_respond will memcpy the buf into V8's heap,
     // so borrowing a reference here is sufficient.
     unsafe {
       libdeno::deno_respond(
         self.libdeno_isolate,
         self.as_raw_ptr(),
-        req_id,
         buf.as_ref().into(),
       )
     }
   }
 
-  fn complete_op(&self, req_id: i32, buf: Buf) {
+  fn complete_op(&self, zero_copy_id: usize, buf: Buf) {
     // Receiving a message on rx exactly corresponds to an async task
     // completing.
     self.ntasks_decrement();
     // Call into JS with the buf.
-    self.respond(req_id, buf);
+    self.respond(zero_copy_id, buf);
   }
 
   fn timeout(&self) {
     let dummy_buf = libdeno::deno_buf::empty();
     unsafe {
-      libdeno::deno_respond(
-        self.libdeno_isolate,
-        self.as_raw_ptr(),
-        -1,
-        dummy_buf,
-      )
+      libdeno::deno_respond(self.libdeno_isolate, self.as_raw_ptr(), dummy_buf)
     }
   }
 
@@ -450,7 +454,7 @@ impl Isolate {
     // Main thread event loop.
     while !self.is_idle() {
       match recv_deadline(&self.rx, self.get_timeout_due()) {
-        Ok((req_id, buf)) => self.complete_op(req_id, buf),
+        Ok((zero_copy_id, buf)) => self.complete_op(zero_copy_id, buf),
         Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
         Err(e) => panic!("recv_deadline() failed: {:?}", e),
       }
@@ -532,23 +536,24 @@ extern "C" fn resolve_cb(
 // Dereferences the C pointer into the Rust Isolate object.
 extern "C" fn pre_dispatch(
   user_data: *mut c_void,
-  req_id: i32,
   control_buf: libdeno::deno_buf,
-  data_buf: libdeno::deno_buf,
+  zero_copy_buf: libdeno::deno_buf,
 ) {
   // for metrics
   let bytes_sent_control = control_buf.len();
-  let bytes_sent_data = data_buf.len();
+  let bytes_sent_zero_copy = zero_copy_buf.len();
+
+  let zero_copy_id = zero_copy_buf.zero_copy_id;
 
   // We should ensure that there is no other `&mut Isolate` exists.
   // And also, it should be in the same thread with other `&Isolate`s.
   let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
   let dispatch = isolate.dispatch;
-  let (is_sync, op) = dispatch(isolate, control_buf, data_buf);
+  let (is_sync, op) = dispatch(isolate, control_buf, zero_copy_buf);
 
   isolate
     .state
-    .metrics_op_dispatched(bytes_sent_control, bytes_sent_data);
+    .metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
   if is_sync {
     // Execute op synchronously.
@@ -560,7 +565,7 @@ extern "C" fn pre_dispatch(
       isolate.state.metrics_op_completed(buf.len());
     } else {
       // Set the synchronous response, the value returned from isolate.send().
-      isolate.respond(req_id, buf);
+      isolate.respond(zero_copy_id, buf);
     }
   } else {
     // Execute op asynchronously.
@@ -574,7 +579,7 @@ extern "C" fn pre_dispatch(
     let task = op
       .and_then(move |buf| {
         let sender = tx; // tx is moved to new thread
-        sender.send((req_id, buf)).expect("tx.send error");
+        sender.send((zero_copy_id, buf)).expect("tx.send error");
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);

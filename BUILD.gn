@@ -13,6 +13,8 @@ group("default") {
     ":deno",
     ":hyper_hello",
     ":test_rs",
+    "core:deno_core_http_bench",
+    "core:deno_core_test",
     "libdeno:test_cc",
   ]
 }
