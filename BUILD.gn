@@ -78,7 +78,6 @@ ts_sources = [
   "js/headers.ts",
   "js/io.ts",
   "js/libdeno.ts",
-  "js/lib.import_meta.d.ts",
   "js/lib.web_assembly.d.ts",
   "js/location.ts",
   "js/main.ts",
@@ -200,8 +199,7 @@ run_node("deno_runtime_declaration") {
     "--basePath",
     rebase_path(".", root_build_dir),
     "--inline",
-    rebase_path("js/lib.import_meta.d.ts", root_build_dir) + "," +
-        rebase_path("js/lib.web_assembly.d.ts", root_build_dir),
+    rebase_path("js/lib.web_assembly.d.ts", root_build_dir),
     "--buildPath",
     rebase_path(root_build_dir, root_build_dir),
     "--outFile",

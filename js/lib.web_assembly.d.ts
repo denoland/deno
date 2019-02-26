@@ -161,3 +161,8 @@ declare namespace WebAssembly {
     constructor(message: string, fileName?: string, lineNumber?: string);
   }
 }
+
+interface ImportMeta {
+  url: string;
+  main: boolean;
+}
