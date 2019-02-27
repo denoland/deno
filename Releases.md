@@ -6,6 +6,14 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.1 / 2019.02.27
+
+- Add import.meta.main (#1835)
+- Fix console.table display of Map (#1839)
+- New low-level Rust API (#1827)
+- Upgrade V8 to 7.4.238 (#1849)
+- Upgrade crates (#1848)
+
 ### v0.3.0 / 2019.02.18
 
 The major API change in this release is that instead of importing a `"deno"`
