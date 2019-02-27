@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <iostream>
 
 #include "third_party/v8/include/libplatform/libplatform.h"
 #include "third_party/v8/include/v8.h"
@@ -11,6 +12,7 @@
 #include "deno.h"
 #include "exceptions.h"
 #include "internal.h"
+#include "file_util.h"
 
 extern "C" {
 
@@ -224,5 +226,28 @@ void deno_delete(Deno* d_) {
 void deno_terminate_execution(Deno* d_) {
   deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
   d->isolate_->TerminateExecution();
+}
+
+deno_buf deno_generate_snapshot(const char* js_file, const char* js_source) {
+  CHECK_NOT_NULL(js_file);
+  CHECK_NOT_NULL(js_source);
+
+  deno_init();
+  deno_config config = {1, deno::empty_buf, deno::empty_buf, nullptr};
+  Deno* d = deno_new(config);
+
+  deno_execute(d, nullptr, js_file, js_source);
+  if (deno_last_exception(d) != nullptr) {
+    std::cerr << "Snapshot Exception " << std::endl;
+    std::cerr << deno_last_exception(d) << std::endl;
+    deno_delete(d);
+    exit(1); // TODO: better error reporting here
+  }
+
+  auto snapshot = deno_get_snapshot(d);
+  
+  deno_delete(d);
+
+  return snapshot;
 }
 }
