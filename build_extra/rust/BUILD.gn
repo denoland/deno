@@ -12,7 +12,7 @@ cargo_home = "//third_party/rust_crates"
 
 rust_crate("aho_corasick") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/aho-corasick-0.6.9/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/aho-corasick-0.6.10/src/lib.rs"
   extern = [ ":memchr" ]
   args = [
     "--cap-lints",
@@ -208,7 +208,7 @@ rust_crate("ct_logs") {
 
 rust_crate("dirs") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-1.0.4/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-1.0.5/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -306,7 +306,7 @@ rust_crate("h2") {
 
 rust_crate("http") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/http-0.1.15/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/http-0.1.16/src/lib.rs"
   extern = [
     ":bytes",
     ":fnv",
@@ -466,7 +466,7 @@ rust_crate("itoa") {
 
 rust_crate("lazy_static") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/lazy_static-1.2.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/lazy_static-1.3.0/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -484,7 +484,7 @@ rust_crate("lazycell") {
 
 rust_crate("libc") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.48/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.49/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -495,7 +495,13 @@ rust_crate("libc") {
   ]
 
   # Added by custom-build script.
-  cfg = [ "core_cvoid" ]
+  cfg = [
+    "libc_align",
+    "libc_const_size_of",
+    "libc_core_cvoid",
+    "libc_priv_mod_use",
+    "libc_union",
+  ]
 }
 
 rust_crate("lock_api") {
@@ -536,15 +542,10 @@ rust_crate("matches") {
 
 rust_crate("memchr") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/memchr-2.1.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/memchr-2.2.0/src/lib.rs"
   features = [
     "default",
-    "libc",
     "use_std",
-  ]
-  extern = [
-    ":cfg_if",
-    ":libc",
   ]
   args = [
     "--cap-lints",
@@ -865,25 +866,15 @@ rust_crate("rand_os") {
 
 rust_crate("rand_pcg") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_pcg-0.1.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_pcg-0.1.2/src/lib.rs"
+  extern = [ ":rand_core" ]
   args = [
     "--cap-lints",
     "allow",
   ]
 
   # Added by custom-build script.
-  cfg = [ "rust_1_26" ]
-
-  # Override: use rand_core v0.4.0 instead of v0.3.1.
-  extern = [ ":rand_core" ]
-
-  ## Override: use rand_core v0.4.0 instead of v0.3.1.
-  # extern_version = [
-  #   {
-  #     crate_name = "rand_core"
-  #     crate_version = "0.3.1"
-  #   },
-  # ]
+  cfg = [ "rustc_1_26" ]
 }
 
 rust_crate("rand_xorshift") {
@@ -1154,7 +1145,7 @@ rust_crate("sct") {
 
 rust_crate("serde") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.87/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.88/src/lib.rs"
   features = [
     "default",
     "std",
@@ -1202,12 +1193,11 @@ rust_crate("slab") {
 
 rust_crate("smallvec") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/smallvec-0.6.8/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/smallvec-0.6.9/lib.rs"
   features = [
     "default",
     "std",
   ]
-  extern = [ ":unreachable" ]
   args = [
     "--cap-lints",
     "allow",
@@ -1271,7 +1261,7 @@ rust_crate("string") {
 
 rust_crate("tempfile") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.6/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.7/src/lib.rs"
   extern = [
     ":cfg_if",
     ":rand",
@@ -1508,7 +1498,7 @@ rust_crate("tokio_rustls") {
 
 rust_crate("tokio_sync") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.2/src/lib.rs"
   extern = [ ":futures" ]
   args = [
     "--cap-lints",
@@ -1645,16 +1635,6 @@ rust_crate("unicode_width") {
   ]
 }
 
-rust_crate("unreachable") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unreachable-1.0.0/src/lib.rs"
-  extern = [ ":void" ]
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
-
 rust_crate("untrusted") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/untrusted-0.6.2/src/untrusted.rs"
@@ -1690,19 +1670,6 @@ rust_crate("utf8_ranges") {
 rust_crate("vlq") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/vlq-0.5.1/src/lib.rs"
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
-
-rust_crate("void") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/void-1.0.2/src/lib.rs"
-  features = [
-    "default",
-    "std",
-  ]
   args = [
     "--cap-lints",
     "allow",
@@ -1845,7 +1812,7 @@ if (is_posix) {
 
   rust_crate("signal_hook") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/signal-hook-0.1.7/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/signal-hook-0.1.8/src/lib.rs"
     extern = [
       ":arc_swap",
       ":libc",
@@ -1899,6 +1866,19 @@ if (is_posix) {
   rust_crate("utf8parse") {
     edition = "2015"
     source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utf8parse-0.1.1/src/lib.rs"
+    args = [
+      "--cap-lints",
+      "allow",
+    ]
+  }
+
+  rust_crate("void") {
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/void-1.0.2/src/lib.rs"
+    features = [
+      "default",
+      "std",
+    ]
     args = [
       "--cap-lints",
       "allow",
