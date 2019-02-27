@@ -33,6 +33,10 @@ export default function denoMain() {
     console.log("deno:", deno.version.deno);
     console.log("v8:", deno.version.v8);
     console.log("typescript:", deno.version.typescript);
+
+    if (startResMsg.verboseVersionFlag()) {
+      console.log(`\n${deno.version.gnArgs}`);
+    }
     os.exit(0);
   }
 
