@@ -710,6 +710,17 @@ interface BenchmarkData {
 }
 ```
 
+### Logos
+
+These Deno logos, like the Deno software, are distributed under the MIT license
+(public domain and free for use)
+
+- [A hand drawn one by @ry](https://github.com/denoland/deno/blob/master/website/deno_logo.png)
+
+- [An animated one by @hashrock](https://github.com/denolib/animated-deno-logo/)
+
+- [A high resolution SVG one by @kevinkassimo](https://github.com/denolib/high-res-deno-logo)
+
 ## Contributing
 
 [Style Guide](style_guide.html)
