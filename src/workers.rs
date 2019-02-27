@@ -3,11 +3,11 @@ use crate::isolate::Buf;
 use crate::isolate::Isolate;
 use crate::isolate::IsolateState;
 use crate::isolate::WorkerChannels;
-use crate::js_errors::JSError;
 use crate::ops;
 use crate::resources;
 use crate::snapshot;
 use crate::tokio_util;
+use deno_core::JSError;
 
 use futures::sync::mpsc;
 use futures::sync::oneshot;

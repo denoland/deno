@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use ansi_term::Color::Fixed;
 use ansi_term::Color::Red;
 use ansi_term::Style;
