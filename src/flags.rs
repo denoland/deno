@@ -39,7 +39,8 @@ pub fn get_usage(opts: &Options) -> String {
   format!(
     "Usage: deno script.ts {}
 Environment variables:
-        DENO_DIR        Set deno's base directory.",
+        DENO_DIR        Set deno's base directory
+        NO_COLOR        Set to disable color",
     opts.usage("")
   )
 }
@@ -149,22 +150,22 @@ pub fn set_flags(
   // TODO(kevinkassimo): v8_set_flags intercepts '-help' with single '-'
   // Resolve that and then uncomment line below (enabling Go style -long-flag)
   // opts.long_only(true);
-  opts.optflag("", "allow-read", "Allow file system read access.");
-  opts.optflag("", "allow-write", "Allow file system write access.");
-  opts.optflag("", "allow-net", "Allow network access.");
-  opts.optflag("", "allow-env", "Allow environment access.");
-  opts.optflag("", "allow-run", "Allow running subprocesses.");
-  opts.optflag("A", "allow-all", "Allow all permissions.");
-  opts.optflag("", "recompile", "Force recompilation of TypeScript code.");
-  opts.optflag("h", "help", "Print this message.");
-  opts.optflag("D", "log-debug", "Log debug output.");
-  opts.optflag("v", "version", "Print the version.");
-  opts.optflag("r", "reload", "Reload cached remote resources.");
-  opts.optflag("", "v8-options", "Print V8 command line options.");
-  opts.optflag("", "types", "Print runtime TypeScript declarations.");
-  opts.optflag("", "prefetch", "Prefetch the dependencies.");
+  opts.optflag("", "allow-read", "Allow file system read access");
+  opts.optflag("", "allow-write", "Allow file system write access");
+  opts.optflag("", "allow-net", "Allow network access");
+  opts.optflag("", "allow-env", "Allow environment access");
+  opts.optflag("", "allow-run", "Allow running subprocesses");
+  opts.optflag("A", "allow-all", "Allow all permissions");
+  opts.optflag("", "recompile", "Force recompilation of TypeScript code");
+  opts.optflag("h", "help", "Print this message");
+  opts.optflag("D", "log-debug", "Log debug output");
+  opts.optflag("v", "version", "Print the version");
+  opts.optflag("r", "reload", "Reload cached remote resources");
+  opts.optflag("", "v8-options", "Print V8 command line options");
+  opts.optflag("", "types", "Print runtime TypeScript declarations");
+  opts.optflag("", "prefetch", "Prefetch the dependencies");
   opts.optflag("", "info", "Show source file related info");
-  opts.optflag("", "fmt", "Format code.");
+  opts.optflag("", "fmt", "Format code");
 
   let mut flags = DenoFlags::default();
 
