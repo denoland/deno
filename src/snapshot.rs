@@ -2,9 +2,9 @@
 use crate::libdeno::deno_buf;
 
 #[cfg(target_arch = "aarch64")]
-use crate::libdeno::{deno_generate_snapshot};
-#[cfg(target_arch = "aarch64")]
 use crate::flags::v8_set_flags;
+#[cfg(target_arch = "aarch64")]
+use crate::libdeno::deno_generate_snapshot;
 #[cfg(target_arch = "aarch64")]
 use std::ffi::CString;
 
@@ -12,7 +12,8 @@ use std::ffi::CString;
 pub fn deno_snapshot() -> deno_buf {
   let js_file = concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js");
   #[cfg(not(feature = "check-only"))]
-  let js_source = include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js"));
+  let js_source =
+    include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js"));
   // The snapshot blob is not available when the Rust Language Server runs
   // 'cargo check'.
   #[cfg(feature = "check-only")]
@@ -20,7 +21,10 @@ pub fn deno_snapshot() -> deno_buf {
 
   let cjs_file = CString::new(js_file).unwrap();
 
-  v8_set_flags(vec![js_file.to_string(), std::str::from_utf8(js_source).unwrap().to_string()]);
+  v8_set_flags(vec![
+    js_file.to_string(),
+    std::str::from_utf8(js_source).unwrap().to_string(),
+  ]);
 
   unsafe { deno_generate_snapshot(cjs_file.as_ptr(), js_source.as_ptr()) }
 }
@@ -42,7 +46,8 @@ pub fn deno_snapshot() -> deno_buf {
 pub fn compiler_snapshot() -> deno_buf {
   let js_file = concat!(env!("GN_OUT_DIR"), "/gen/bundle/compiler.js");
   #[cfg(not(feature = "check-only"))]
-  let js_source = include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/compiler.js"));
+  let js_source =
+    include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/compiler.js"));
   // The snapshot blob is not available when the Rust Language Server runs
   // 'cargo check'.
   #[cfg(feature = "check-only")]
@@ -50,7 +55,10 @@ pub fn compiler_snapshot() -> deno_buf {
 
   let cjs_file = CString::new(js_file).unwrap();
 
-    v8_set_flags(vec![js_file.to_string(), std::str::from_utf8(js_source).unwrap().to_string()]);
+  v8_set_flags(vec![
+    js_file.to_string(),
+    std::str::from_utf8(js_source).unwrap().to_string(),
+  ]);
 
   unsafe { deno_generate_snapshot(cjs_file.as_ptr(), js_source.as_ptr()) }
 }
