@@ -1,0 +1,25 @@
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_core"
+version = "0.0.1"
+edition = "2018"
+
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "deno_core_http_bench"
+path = "http_bench.rs"
+required-features = ["bin-dependencies"]
+
+[features]
+bin-dependencies = ["tokio"]
+
+[dependencies]
+futures = "0.1.25"
+lazy_static = "1.2.0"
+libc = "0.2.48"
+log = "0.4.6"
+serde_json = "1.0.38"
+tokio = { version = "0.1.15", optional = true }

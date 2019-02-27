@@ -4,6 +4,13 @@
 # Deno does not build with cargo. Deno uses a build system called gn.
 # See build_extra/rust/BUILD.gn for the manually built configuration of rust
 # crates.
+
+[workspace]
+members = [
+  "./",
+  "core",
+]
+
 [package]
 name = "deno"
 version = "0.3.0"
