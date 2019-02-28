@@ -90,6 +90,7 @@ ts_sources = [
   "js/metrics.ts",
   "js/mkdir.ts",
   "js/mock_builtin.js",
+  "js/msg_ring.ts",
   "js/net.ts",
   "js/os.ts",
   "js/permissions.ts",

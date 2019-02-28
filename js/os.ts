@@ -6,6 +6,7 @@ import { libdeno } from "./libdeno";
 import { TextDecoder } from "./text_encoding";
 import { assert } from "./util";
 import * as util from "./util";
+import * as msgRing from "./msg_ring";
 
 /** The current process id of the runtime. */
 export let pid: number;
@@ -169,6 +170,7 @@ function sendStart(): msg.StartRes {
 // the runtime and the compiler environments.
 // @internal
 export function start(source?: string): msg.StartRes {
+  msgRing.init();
   libdeno.recv(handleAsyncMsgFromRust);
 
   // First we send an empty `Start` message to let the privileged side know we

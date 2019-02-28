@@ -8,6 +8,7 @@
 // descriptors". This module implements a global resource table. Ops (AKA
 // handlers) look up resources by their integer id here.
 
+use crate::cli::Buf;
 #[cfg(unix)]
 use crate::eager_unix as eager;
 use crate::errors;
@@ -15,8 +16,7 @@ use crate::errors::bad_resource;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::http_body::HttpBody;
-use crate::isolate::Buf;
-use crate::isolate::WorkerChannels;
+use crate::isolate_state::WorkerChannels;
 use crate::repl::Repl;
 use crate::tokio_util;
 use crate::tokio_write;
