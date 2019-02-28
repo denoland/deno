@@ -10,7 +10,7 @@ use std::ffi::CString;
 
 #[cfg(target_arch = "aarch64")]
 pub fn deno_snapshot() -> deno_buf {
-  let js_file = concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js");
+  let js_file = "gen/bundle/main.js";
   #[cfg(not(feature = "check-only"))]
   let js_source =
     include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js"));
@@ -20,13 +20,15 @@ pub fn deno_snapshot() -> deno_buf {
   let js_source = vec![];
 
   let cjs_file = CString::new(js_file).unwrap();
+  let cjs_source =
+    CString::new(std::str::from_utf8(js_source).unwrap()).unwrap();
 
   v8_set_flags(vec![
+    "gen/snapshot_deno.bin".to_string(),
     js_file.to_string(),
-    std::str::from_utf8(js_source).unwrap().to_string(),
   ]);
 
-  unsafe { deno_generate_snapshot(cjs_file.as_ptr(), js_source.as_ptr()) }
+  unsafe { deno_generate_snapshot(cjs_file.as_ptr(), cjs_source.as_ptr()) }
 }
 
 #[cfg(not(target_arch = "aarch64"))]
@@ -44,7 +46,7 @@ pub fn deno_snapshot() -> deno_buf {
 
 #[cfg(target_arch = "aarch64")]
 pub fn compiler_snapshot() -> deno_buf {
-  let js_file = concat!(env!("GN_OUT_DIR"), "/gen/bundle/compiler.js");
+  let js_file = "gen/bundle/compiler.js";
   #[cfg(not(feature = "check-only"))]
   let js_source =
     include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/compiler.js"));
@@ -54,13 +56,15 @@ pub fn compiler_snapshot() -> deno_buf {
   let js_source = vec![];
 
   let cjs_file = CString::new(js_file).unwrap();
+  let cjs_source =
+    CString::new(std::str::from_utf8(js_source).unwrap()).unwrap();
 
   v8_set_flags(vec![
+    "gen/snapshot_compiler.bin".to_string(),
     js_file.to_string(),
-    std::str::from_utf8(js_source).unwrap().to_string(),
   ]);
 
-  unsafe { deno_generate_snapshot(cjs_file.as_ptr(), js_source.as_ptr()) }
+  unsafe { deno_generate_snapshot(cjs_file.as_ptr(), cjs_source.as_ptr()) }
 }
 
 #[cfg(not(target_arch = "aarch64"))]

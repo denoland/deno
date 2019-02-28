@@ -108,10 +108,11 @@ deno_buf deno_get_snapshot(Deno* d_) {
 static std::unique_ptr<v8::Platform> platform;
 
 void deno_init() {
-  CHECK_NULL(platform.get());
-  platform = v8::platform::NewDefaultPlatform();
-  v8::V8::InitializePlatform(platform.get());
-  v8::V8::Initialize();
+  if (platform.get() == nullptr) {
+    platform = v8::platform::NewDefaultPlatform();
+    v8::V8::InitializePlatform(platform.get());
+    v8::V8::Initialize();
+  }
 }
 
 const char* deno_v8_version() { return v8::V8::GetVersion(); }
