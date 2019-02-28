@@ -66,6 +66,19 @@ interface Ts {
   formatDiagnostics: typeof ts.formatDiagnostics;
 }
 
+const defaultCompilerOptions: ts.CompilerOptions = {
+  allowJs: true,
+  allowNonTsExtensions: true,
+  checkJs: true,
+  esModuleInterop: true,
+  module: ts.ModuleKind.ESNext,
+  outDir: "$deno$",
+  resolveJsonModule: true,
+  sourceMap: true,
+  stripComments: true,
+  target: ts.ScriptTarget.ESNext,
+};
+
 /** A simple object structure for caching resolved modules and their contents.
  *
  * Named `ModuleMetaData` to clarify it is just a representation of meta data of
@@ -154,20 +167,15 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
     ModuleFileName,
     ModuleMetaData
   >();
+  private _customTsCompilerOpts: Partial<ts.CompilerOptions> = {};
   // TODO ideally this are not static and can be influenced by command line
   // arguments
-  private readonly _options: ts.CompilerOptions = {
-    allowJs: true,
-    allowNonTsExtensions: true,
-    checkJs: true,
-    esModuleInterop: true,
-    module: ts.ModuleKind.ESNext,
-    outDir: "$deno$",
-    resolveJsonModule: true,
-    sourceMap: true,
-    stripComments: true,
-    target: ts.ScriptTarget.ESNext
-  };
+  private get _options(): ts.CompilerOptions {
+    return {
+      ...defaultCompilerOptions,
+      ...this._customTsCompilerOpts,
+    };
+  }
   // A reference to the `./os.ts` module, so it can be monkey patched during
   // testing
   private _os: Os = os;
@@ -302,6 +310,15 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
 
   constructor() {
     this._service = this._ts.createLanguageService(this);
+  }
+
+  /**
+   * This should change the compiler options and replace the language service
+   * with a new instance to ensure new options take affect.
+   * @param compilerOptions partial of ts.CompilerOptions
+   */
+  setCustomCompilerOptions(customCompilerOptions: Partial<ts.CompilerOptions>) {
+    this._customTsCompilerOpts = customCompilerOptions;
   }
 
   // Deno specific compiler API
@@ -539,5 +556,10 @@ window.compilerMain = function compilerMain() {
 
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
-  os.start("TS");
+  const startResMsg = os.start("TS");
+
+  // Update the compiler with user specified options.
+  compiler.setCustomCompilerOptions({
+    experimentalDecorators: startResMsg.expDecsFlag(),
+  });
 }

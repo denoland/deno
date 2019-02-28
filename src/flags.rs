@@ -33,6 +33,7 @@ pub struct DenoFlags {
   pub prefetch: bool,
   pub info: bool,
   pub fmt: bool,
+  pub experimental_decorators: bool,
 }
 
 pub fn get_usage(opts: &Options) -> String {
@@ -127,6 +128,9 @@ fn set_recognized_flags(
         if matches.opt_present("fmt") {
           flags.fmt = true;
         }
+        if matches.opt_present("experimental-decorators") {
+          flags.experimental_decorators = true;
+        }
 
         if !matches.free.is_empty() {
           rest.extend(matches.free);
@@ -166,6 +170,11 @@ pub fn set_flags(
   opts.optflag("", "prefetch", "Prefetch the dependencies");
   opts.optflag("", "info", "Show source file related info");
   opts.optflag("", "fmt", "Format code");
+  opts.optflag(
+    "",
+    "experimental-decorators",
+    "Enable typescripts expirmental decorators",
+  );
 
   let mut flags = DenoFlags::default();
 

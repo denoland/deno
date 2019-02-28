@@ -162,6 +162,7 @@ table StartRes {
   debug_flag: bool;
   deps_flag: bool;
   types_flag: bool;
+  exp_decs_flag: bool;
   version_flag: bool;
   deno_version: string;
   v8_version: string;

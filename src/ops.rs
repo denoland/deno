@@ -273,6 +273,7 @@ fn op_start(
       debug_flag: state.flags.log_debug,
       types_flag: state.flags.types,
       version_flag: state.flags.version,
+      exp_decs_flag: state.flags.experimental_decorators,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
       no_color: !ansi::use_color(),
