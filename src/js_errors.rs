@@ -1,3 +1,5 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+//! This mod adds source maps and ANSI color display to deno_core::JSError.
 use crate::ansi;
 use deno_core::JSError;
 use deno_core::StackFrame;
@@ -10,7 +12,22 @@ use std::str;
 
 /// Wrapper around JSError which provides color to_string.
 pub struct JSErrorColor<'a>(pub &'a JSError);
+
 struct StackFrameColor<'a>(&'a StackFrame);
+
+pub trait SourceMapGetter {
+  /// Returns the raw source map file.
+  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>>;
+}
+
+/// Cached filename lookups. The key can be None if a previous lookup failed to
+/// find a SourceMap.
+type CachedMaps = HashMap<String, Option<SourceMap>>;
+
+struct SourceMap {
+  mappings: Mappings,
+  sources: Vec<String>,
+}
 
 impl<'a> fmt::Display for StackFrameColor<'a> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -83,20 +100,6 @@ impl<'a> fmt::Display for JSErrorColor<'a> {
     }
     Ok(())
   }
-}
-
-pub trait SourceMapGetter {
-  /// Returns the raw source map file.
-  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>>;
-}
-
-/// Cached filename lookups. The key can be None if a previous lookup failed to
-/// find a SourceMap.
-type CachedMaps = HashMap<String, Option<SourceMap>>;
-
-struct SourceMap {
-  mappings: Mappings,
-  sources: Vec<String>,
 }
 
 impl SourceMap {
