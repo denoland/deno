@@ -20,6 +20,8 @@ group("default") {
 }
 
 main_extern = [
+  "core:deno_core",
+
   "$rust_build:ansi_term",
   "$rust_build:atty",
   "$rust_build:dirs",
