@@ -76,7 +76,7 @@ const defaultCompilerOptions: ts.CompilerOptions = {
   resolveJsonModule: true,
   sourceMap: true,
   stripComments: true,
-  target: ts.ScriptTarget.ESNext,
+  target: ts.ScriptTarget.ESNext
 };
 
 /** A simple object structure for caching resolved modules and their contents.
@@ -173,7 +173,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
   private get _options(): ts.CompilerOptions {
     return {
       ...defaultCompilerOptions,
-      ...this._customTsCompilerOpts,
+      ...this._customTsCompilerOpts
     };
   }
   // A reference to the `./os.ts` module, so it can be monkey patched during
@@ -560,6 +560,6 @@ export default function denoMain() {
 
   // Update the compiler with user specified options.
   compiler.setCustomCompilerOptions({
-    experimentalDecorators: startResMsg.expDecsFlag(),
+    experimentalDecorators: startResMsg.expDecsFlag()
   });
 }
