@@ -22,7 +22,6 @@ pub struct DenoFlags {
   pub help: bool,
   pub log_debug: bool,
   pub version: bool,
-  pub verbose_version: bool,
   pub reload: bool,
   pub recompile: bool,
   pub allow_read: bool,
@@ -86,9 +85,6 @@ fn set_recognized_flags(
         }
         if matches.opt_present("version") {
           flags.version = true;
-          if matches.opt_count("version") > 1 {
-            flags.verbose_version = true
-          }
         }
         if matches.opt_present("reload") {
           flags.reload = true;
@@ -163,7 +159,7 @@ pub fn set_flags(
   opts.optflag("", "recompile", "Force recompilation of TypeScript code");
   opts.optflag("h", "help", "Print this message");
   opts.optflag("D", "log-debug", "Log debug output");
-  opts.optflagmulti("v", "version", "Print the version.");
+  opts.optflag("v", "version", "Print the version");
   opts.optflag("r", "reload", "Reload cached remote resources");
   opts.optflag("", "v8-options", "Print V8 command line options");
   opts.optflag("", "types", "Print runtime TypeScript declarations");
@@ -294,20 +290,6 @@ fn test_set_flags_8() {
       ..DenoFlags::default()
     }
   )
-}
-
-#[test]
-fn test_set_flags_9() {
-  let (flags, rest, _) = set_flags(svec!["deno", "-vv"]).unwrap();
-  assert_eq!(rest, svec!["deno"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      version: true,
-      verbose_version: true,
-      ..DenoFlags::default()
-    }
-  );
 }
 
 // Returns args passed to V8, followed by args passed to JS

@@ -139,14 +139,14 @@ def generate_gn_args(mode):
 def write_gn_args_list():
     args_list_filename = os.path.join(build_path(), "args_list.txt")
 
-    json = run_output([
+    args_list = run_output([
         third_party.gn_path, "args",
         build_path(), "--list", "--short", "--overrides-only"
     ],
-                      env=third_party.google_env())
+                           env=third_party.google_env())
 
     with open(args_list_filename, "w") as f:
-        f.write(json)
+        f.write(args_list)
 
 
 # gn gen.

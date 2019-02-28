@@ -273,7 +273,6 @@ fn op_start(
       debug_flag: state.flags.log_debug,
       types_flag: state.flags.types,
       version_flag: state.flags.version,
-      verbose_version_flag: state.flags.verbose_version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
       no_color: !ansi::use_color(),
