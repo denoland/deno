@@ -6,71 +6,103 @@ extern crate libc;
 mod js_errors;
 mod libdeno;
 mod shared;
+mod shared_simple;
 
 pub use crate::js_errors::*;
 pub use crate::libdeno::deno_buf;
 pub use crate::shared::*;
+pub use crate::shared_simple::*;
 use futures::Async;
 use futures::Future;
 use futures::Poll;
 use libc::c_void;
-use std::collections::HashMap;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::sync::{Once, ONCE_INIT};
 
-pub struct Isolate {
+pub struct Isolate<R = SharedSimpleRecord, S = SharedSimple> {
   libdeno_isolate: *const libdeno::isolate,
-  pending_ops: HashMap<i32, PendingOp>, // promise_id -> op
+  pending_ops: Vec<PendingOp<R>>,
   polled_recently: bool,
-  recv_cb: RecvCallback,
+  recv_cb: RecvCallback<R, S>,
 
-  pub shared: Shared,
+  pub shared: S,
   pub test_send_counter: u32, // TODO only used for testing- REMOVE.
 }
 
-pub type RecvCallback = fn(isolate: &mut Isolate, zero_copy_buf: deno_buf);
+pub type RecvCallback<R, S> =
+  fn(isolate: &mut Isolate<R, S>, zero_copy_buf: deno_buf);
 
-pub const NUM_RECORDS: usize = 100;
+/// Buf represents a byte array returned from a "Op".
+/// The message might be empty (which will be translated into a null object on
+/// the javascript side) or it is a heap allocated opaque sequence of bytes.
+/// Usually a flatbuffer message.
+pub type Buf = Box<[u8]>;
 
-// TODO rename to AsyncResult
-pub struct AsyncResult {
-  pub result: i32,
-}
+/// JS promises in Deno map onto a specific Future
+/// which yields a Buf object. Ops should never error.
+/// Errors need to be encoded into the Buf and sent back to JS.
+pub type Op<R> = dyn Future<Item = R, Error = ()> + Send;
 
-pub type Op = dyn Future<Item = AsyncResult, Error = std::io::Error> + Send;
-
-struct PendingOp {
-  op: Box<Op>,
+struct PendingOp<R> {
+  op: Box<Op<R>>,
   polled_recently: bool,
   zero_copy_id: usize, // non-zero if associated zero-copy buffer.
+  result: Option<R>,
+}
+
+impl<R> PendingOp<R> {
+  /// Calls poll() on a PendingOp. Returns true if it's complete.
+  fn is_complete(self: &mut PendingOp<R>) -> bool {
+    // TODO the name of this method isn't great, because it doesn't indicate
+    // that the op is being polled.
+
+    // Do not call poll on futures we've already polled this turn.
+    if self.polled_recently {
+      return false;
+    }
+    self.polled_recently = true;
+
+    let op = &mut self.op;
+    match op.poll() {
+      Err(_) => {
+        // Ops should not error. If an op experiences an error it needs to
+        // encode that error into the Buf, so it can be returned to JS.
+        panic!("ops should not error")
+      }
+      Ok(Async::Ready(buf)) => {
+        self.result = Some(buf);
+        true
+      }
+      Ok(Async::NotReady) => false,
+    }
+  }
 }
 
 static DENO_INIT: Once = ONCE_INIT;
 
-unsafe impl Send for Isolate {}
+unsafe impl<R, S: Shared<R>> Send for Isolate<R, S> {}
 
-impl Isolate {
-  pub fn new(recv_cb: RecvCallback) -> Self {
+impl<R, S: Shared<R>> Isolate<R, S> {
+  pub fn new(shared: S, recv_cb: RecvCallback<R, S>) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
 
     // Allocate unmanaged memory for the shared buffer by creating a Vec<u8>,
     // grabbing the raw pointer, and then leaking the Vec so it is never freed.
-    let mut shared = Shared::new();
     let shared_deno_buf = shared.as_deno_buf();
 
     let config = libdeno::deno_config {
       will_snapshot: 0,
       load_snapshot: deno_buf::empty(), // TODO
       shared: shared_deno_buf,
-      recv_cb: pre_dispatch,
+      recv_cb: pre_dispatch::<R, S>,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
 
     Self {
-      pending_ops: HashMap::new(),
+      pending_ops: Vec::new(),
       polled_recently: false,
       libdeno_isolate,
       test_send_counter: 0,
@@ -85,21 +117,14 @@ impl Isolate {
     }
   }
 
-  pub fn add_op(
-    self: &mut Self,
-    promise_id: i32,
-    op: Box<Op>,
-    zero_copy_id: usize,
-  ) {
+  pub fn add_op(self: &mut Self, op: Box<Op<R>>, zero_copy_id: usize) {
     debug!("add_op {}", zero_copy_id);
-    self.pending_ops.insert(
-      promise_id,
-      PendingOp {
-        op,
-        polled_recently: false,
-        zero_copy_id,
-      },
-    );
+    self.pending_ops.push(PendingOp::<R> {
+      op,
+      polled_recently: false,
+      zero_copy_id,
+      result: None,
+    });
     self.polled_recently = false;
   }
 
@@ -172,8 +197,7 @@ struct LockerScope {
 }
 
 impl LockerScope {
-  fn new(isolate: &Isolate) -> LockerScope {
-    let libdeno_isolate = isolate.libdeno_isolate;
+  fn new(libdeno_isolate: *const libdeno::isolate) -> LockerScope {
     unsafe { libdeno::deno_lock(libdeno_isolate) }
     LockerScope { libdeno_isolate }
   }
@@ -185,70 +209,52 @@ impl Drop for LockerScope {
   }
 }
 
-impl Future for Isolate {
+impl<R, S: Shared<R>> Future for Isolate<R, S> {
   type Item = ();
   type Error = JSError;
 
   fn poll(&mut self) -> Poll<(), JSError> {
     // Lock the current thread for V8.
-    let _locker = LockerScope::new(self);
+    let _locker = LockerScope::new(self.libdeno_isolate);
 
-    // Clear
+    // Clear poll_recently state both on the Isolate itself and
+    // on the pending ops.
     self.polled_recently = false;
-    for (_, pending) in self.pending_ops.iter_mut() {
+    for pending in self.pending_ops.iter_mut() {
       pending.polled_recently = false;
     }
 
     while !self.polled_recently {
-      let mut complete = HashMap::<i32, AsyncResult>::new();
+      let mut complete = Vec::<PendingOp<R>>::new();
+
+      debug!("poll loop");
 
       self.polled_recently = true;
-      for (promise_id, pending) in self.pending_ops.iter_mut() {
-        // Do not call poll on futures we've already polled this turn.
-        if pending.polled_recently {
-          continue;
-        }
-        pending.polled_recently = true;
 
-        let promise_id = *promise_id;
-        let op = &mut pending.op;
-        match op.poll() {
-          Err(op_err) => {
-            eprintln!("op err {:?}", op_err);
-            complete.insert(promise_id, AsyncResult { result: -1 });
-            debug!("pending op {} complete err", promise_id);
-          }
-          Ok(Async::Ready(async_result)) => {
-            complete.insert(promise_id, async_result);
-            debug!("pending op {} complete ready", promise_id);
-          }
-          Ok(Async::NotReady) => {
-            debug!("pending op {} not ready", promise_id);
-            continue;
-          }
+      let mut i = 0;
+      while i != self.pending_ops.len() {
+        let pending = &mut self.pending_ops[i];
+        if pending.is_complete() {
+          let pending = self.pending_ops.remove(i);
+          complete.push(pending);
+        } else {
+          i += 1;
         }
       }
 
-      self.shared.set_num_records(complete.len() as i32);
+      self.shared.reset();
       if complete.len() > 0 {
-        // self.zero_copy_release() and self.respond() need Locker.
-        let mut i = 0;
-        for (promise_id, async_result) in complete.iter_mut() {
-          let pending = self.pending_ops.remove(promise_id).unwrap();
-
-          if pending.zero_copy_id > 0 {
-            self.zero_copy_release(pending.zero_copy_id);
+        for completed_op in complete.iter_mut() {
+          if completed_op.zero_copy_id > 0 {
+            self.zero_copy_release(completed_op.zero_copy_id);
           }
-
-          self
-            .shared
-            .set_record(i, RECORD_OFFSET_PROMISE_ID, *promise_id);
-          self
-            .shared
-            .set_record(i, RECORD_OFFSET_RESULT, async_result.result);
-          i += 1;
+          let result_record = &completed_op.result.take().unwrap();
+          self.shared.push(result_record);
         }
+        assert_eq!(self.shared.len(), complete.len());
+        debug!("respond");
         self.respond()?;
+        debug!("after respond");
       }
     }
 
@@ -266,12 +272,12 @@ impl Future for Isolate {
   }
 }
 
-extern "C" fn pre_dispatch(
+extern "C" fn pre_dispatch<R, S: Shared<R>>(
   user_data: *mut c_void,
   control_buf: deno_buf,
   zero_copy_buf: deno_buf,
 ) {
-  let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
+  let isolate = unsafe { Isolate::<R, S>::from_raw_ptr(user_data) };
   assert_eq!(control_buf.len(), 0);
   (isolate.recv_cb)(isolate, zero_copy_buf);
 }
@@ -293,7 +299,8 @@ mod tests {
 
   #[test]
   fn test_execute() {
-    let isolate = Isolate::new(inc_counter);
+    let shared = SharedSimple::new();
+    let isolate = Isolate::new(shared, inc_counter);
     js_check(isolate.execute(
       "filename.js",
       r#"
@@ -311,15 +318,17 @@ mod tests {
   fn async_immediate(isolate: &mut Isolate, zero_copy_buf: deno_buf) {
     assert_eq!(zero_copy_buf.len(), 0);
     isolate.test_send_counter += 1; // TODO ideally store this in isolate.state?
-
-    let promise_id = 0;
-    let op = Box::new(futures::future::ok(AsyncResult { result: 0 }));
-    isolate.add_op(promise_id, op, zero_copy_buf.zero_copy_id);
+    let op = Box::new(futures::future::ok(SharedSimpleRecord {
+      result: 42,
+      ..Default::default()
+    }));
+    isolate.add_op(op, zero_copy_buf.zero_copy_id);
   }
 
   #[test]
   fn test_poll_async_immediate_ops() {
-    let mut isolate = Isolate::new(async_immediate);
+    let shared = SharedSimple::new();
+    let mut isolate = Isolate::new(shared, async_immediate);
     js_check(isolate.execute(
       "setup.js",
       r#"

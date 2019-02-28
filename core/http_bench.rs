@@ -13,14 +13,12 @@ extern crate log;
 extern crate lazy_static;
 
 use deno_core::deno_buf;
-use deno_core::AsyncResult;
 use deno_core::Isolate;
 use deno_core::JSError;
 use deno_core::Op;
-use deno_core::RECORD_OFFSET_ARG;
-use deno_core::RECORD_OFFSET_OP;
-use deno_core::RECORD_OFFSET_PROMISE_ID;
-use deno_core::RECORD_OFFSET_RESULT;
+use deno_core::Shared;
+use deno_core::SharedSimple;
+use deno_core::SharedSimpleRecord;
 use futures::future::lazy;
 use std::collections::HashMap;
 use std::env;
@@ -36,11 +34,17 @@ const OP_READ: i32 = 3;
 const OP_WRITE: i32 = 4;
 const OP_CLOSE: i32 = 5;
 
+pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
+
 fn main() {
   let js_source = include_str!("http_bench.js");
-  let isolate = deno_core::Isolate::new(recv_cb);
 
   let main_future = lazy(move || {
+    let isolate = deno_core::Isolate::new(SharedSimple::new(), recv_cb);
+
+    let (setup_filename, setup_source) = SharedSimple::js();
+    js_check(isolate.execute(setup_filename, setup_source));
+
     // TODO currently isolate.execute() must be run inside tokio, hence the
     // lazy(). It would be nice to not have that contraint. Probably requires
     // using v8::MicrotasksPolicy::kExplicit
@@ -53,10 +57,10 @@ fn main() {
 
   let args: Vec<String> = env::args().collect();
   if args.len() > 1 && args[1] == "--multi-thread" {
-    println!("multi-thread");
+    debug!("multi-thread");
     tokio::run(main_future);
   } else {
-    println!("single-thread");
+    debug!("single-thread");
     tokio::runtime::current_thread::run(main_future);
   }
 }
@@ -80,29 +84,27 @@ fn new_rid() -> i32 {
 fn recv_cb(isolate: &mut Isolate, zero_copy_buf: deno_buf) {
   isolate.test_send_counter += 1; // TODO ideally store this in isolate.state?
 
-  let promise_id = isolate.shared.get_record(0, RECORD_OFFSET_PROMISE_ID);
-  let op_id = isolate.shared.get_record(0, RECORD_OFFSET_OP);
-  let arg = isolate.shared.get_record(0, RECORD_OFFSET_ARG);
+  assert_eq!(isolate.shared.len(), 1);
+
+  let mut record = isolate.shared.pop().unwrap();
 
   // dbg!(promise_id);
   // dbg!(op_id);
   // dbg!(arg);
+  // isolate.shared.reset();
 
-  let is_sync = promise_id == 0;
+  let is_sync = record.promise_id == 0;
 
   if is_sync {
     // sync ops
-    match op_id {
+    match record.op_id {
       OP_CLOSE => {
         debug!("close");
         assert!(is_sync);
         let mut table = RESOURCE_TABLE.lock().unwrap();
-        let r = table.remove(&arg);
-        isolate.shared.set_record(
-          0,
-          RECORD_OFFSET_RESULT,
-          if r.is_some() { 0 } else { -1 },
-        );
+        let r = table.remove(&record.arg);
+        record.result = if r.is_some() { 0 } else { -1 };
+        isolate.shared.push(&record);
       }
       OP_LISTEN => {
         debug!("listen");
@@ -111,35 +113,60 @@ fn recv_cb(isolate: &mut Isolate, zero_copy_buf: deno_buf) {
         let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
         let listener = tokio::net::TcpListener::bind(&addr).unwrap();
         let rid = new_rid();
-        isolate.shared.set_record(0, RECORD_OFFSET_RESULT, rid);
+
         let mut guard = RESOURCE_TABLE.lock().unwrap();
         guard.insert(rid, Repr::TcpListener(listener));
+
+        record.result = rid;
+        println!("listen {:?}", record);
+        isolate.shared.push(&record);
       }
       _ => panic!("bad op"),
     }
   } else {
     // async ops
     let zero_copy_id = zero_copy_buf.zero_copy_id;
-    let op = match op_id {
+    let http_bench_op = match record.op_id {
       OP_ACCEPT => {
-        let listener_rid = arg;
+        let listener_rid = record.arg;
         op_accept(listener_rid)
       }
       OP_READ => {
-        let rid = arg;
+        let rid = record.arg;
         op_read(rid, zero_copy_buf)
       }
       OP_WRITE => {
-        let rid = arg;
+        let rid = record.arg;
         op_write(rid, zero_copy_buf)
       }
-      _ => panic!("bad op"),
+      _ => panic!("bad op {}", record.op_id),
     };
-    isolate.add_op(promise_id, op, zero_copy_id);
+
+    let op = op_map(record, http_bench_op);
+    isolate.add_op(op, zero_copy_id);
   }
 }
 
-fn op_accept(listener_rid: i32) -> Box<Op> {
+fn op_map(
+  mut record: SharedSimpleRecord,
+  http_bench_op: Box<HttpBenchOp>,
+) -> Box<Op<SharedSimpleRecord>> {
+  let mut record2 = record.clone();
+  Box::new(
+    http_bench_op
+      .and_then(move |result| -> std::io::Result<SharedSimpleRecord> {
+        debug!("op_map success ");
+        record.result = result;
+        Ok(record)
+      }).or_else(move |err| -> Result<SharedSimpleRecord, ()> {
+        eprintln!("op error {}", err);
+        record2.result = -1;
+        Ok(record2)
+      }),
+  )
+}
+
+fn op_accept(listener_rid: i32) -> Box<HttpBenchOp> {
   debug!("accept {}", listener_rid);
   Box::new(
     futures::future::poll_fn(move || {
@@ -147,7 +174,7 @@ fn op_accept(listener_rid: i32) -> Box<Op> {
       let maybe_repr = table.get_mut(&listener_rid);
       match maybe_repr {
         Some(Repr::TcpListener(ref mut listener)) => listener.poll_accept(),
-        _ => panic!("bad rid"),
+        _ => panic!("bad rid {}", listener_rid),
       }
     }).and_then(move |(stream, addr)| {
       debug!("accept success {}", addr);
@@ -156,12 +183,12 @@ fn op_accept(listener_rid: i32) -> Box<Op> {
       let mut guard = RESOURCE_TABLE.lock().unwrap();
       guard.insert(rid, Repr::TcpStream(stream));
 
-      Ok(AsyncResult { result: rid })
+      Ok(rid as i32)
     }),
   )
 }
 
-fn op_read(rid: i32, mut zero_copy_buf: deno_buf) -> Box<Op> {
+fn op_read(rid: i32, mut zero_copy_buf: deno_buf) -> Box<HttpBenchOp> {
   debug!("read rid={}", rid);
   Box::new(
     futures::future::poll_fn(move || {
@@ -175,14 +202,12 @@ fn op_read(rid: i32, mut zero_copy_buf: deno_buf) -> Box<Op> {
       }
     }).and_then(move |nread| {
       debug!("read success {}", nread);
-      Ok(AsyncResult {
-        result: nread as i32,
-      })
+      Ok(nread as i32)
     }),
   )
 }
 
-fn op_write(rid: i32, zero_copy_buf: deno_buf) -> Box<Op> {
+fn op_write(rid: i32, zero_copy_buf: deno_buf) -> Box<HttpBenchOp> {
   debug!("write rid={}", rid);
   Box::new(
     futures::future::poll_fn(move || {
@@ -196,9 +221,7 @@ fn op_write(rid: i32, zero_copy_buf: deno_buf) -> Box<Op> {
       }
     }).and_then(move |nwritten| {
       debug!("write success {}", nwritten);
-      Ok(AsyncResult {
-        result: nwritten as i32,
-      })
+      Ok(nwritten as i32)
     }),
   )
 }

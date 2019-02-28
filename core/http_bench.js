@@ -1,25 +1,11 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-const shared32 = new Int32Array(libdeno.shared);
-
-const INDEX_NUM_RECORDS = 0;
-const INDEX_RECORDS = 1;
-const RECORD_OFFSET_PROMISE_ID = 0;
-const RECORD_OFFSET_OP = 1;
-const RECORD_OFFSET_ARG = 2;
-const RECORD_OFFSET_RESULT = 3;
-const RECORD_SIZE = 4;
 const OP_LISTEN = 1;
 const OP_ACCEPT = 2;
 const OP_READ = 3;
 const OP_WRITE = 4;
 const OP_CLOSE = 5;
-
-const NUM_RECORDS = (shared32.length - INDEX_RECORDS) / RECORD_SIZE;
-if (NUM_RECORDS != 100) {
-  throw Error("expected 100 entries");
-}
 
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
@@ -40,50 +26,34 @@ function createResolvable() {
 }
 
 /** Returns Promise<number> */
-function sendAsync(op, arg, zeroCopyData) {
-  const id = nextPromiseId++;
+function sendAsync(opId, arg, zeroCopyData) {
+  const promiseId = nextPromiseId++;
   const p = createResolvable();
-  shared32[INDEX_NUM_RECORDS] = 1;
-  setRecord(0, RECORD_OFFSET_PROMISE_ID, id);
-  setRecord(0, RECORD_OFFSET_OP, op);
-  setRecord(0, RECORD_OFFSET_ARG, arg);
-  setRecord(0, RECORD_OFFSET_RESULT, -1);
-  promiseMap.set(id, p);
+  Deno.sharedSimple.reset();
+  Deno.sharedSimple.push(promiseId, opId, arg, -1);
+  promiseMap.set(promiseId, p);
   libdeno.send(null, zeroCopyData);
   return p;
 }
 
 /** Returns u32 number */
-function sendSync(op, arg) {
-  shared32[INDEX_NUM_RECORDS] = 1;
-  setRecord(0, RECORD_OFFSET_PROMISE_ID, 0);
-  setRecord(0, RECORD_OFFSET_OP, op);
-  setRecord(0, RECORD_OFFSET_ARG, arg);
-  setRecord(0, RECORD_OFFSET_RESULT, -1);
+function sendSync(opId, arg) {
+  Deno.sharedSimple.reset();
+  Deno.sharedSimple.push(0, opId, arg, -1);
   libdeno.send();
-  return getRecord(0, RECORD_OFFSET_RESULT);
-}
-
-function setRecord(i, off, value) {
-  if (i >= NUM_RECORDS) {
-    throw Error("out of range");
+  if (Deno.sharedSimple.size() != 1) {
+    throw Error("Expected sharedSimple to have size 1");
   }
-  shared32[INDEX_RECORDS + RECORD_SIZE * i + off] = value;
-}
-
-function getRecord(i, off) {
-  if (i >= NUM_RECORDS) {
-    throw Error("out of range");
-  }
-  return shared32[INDEX_RECORDS + RECORD_SIZE * i + off];
+  let { result } = Deno.sharedSimple.pop();
+  return result;
 }
 
 function handleAsyncMsgFromRust() {
-  for (let i = 0; i < shared32[INDEX_NUM_RECORDS]; i++) {
-    let id = getRecord(i, RECORD_OFFSET_PROMISE_ID);
-    const p = promiseMap.get(id);
-    promiseMap.delete(id);
-    p.resolve(getRecord(i, RECORD_OFFSET_RESULT));
+  while (Deno.sharedSimple.size() > 0) {
+    const { promiseId, result } = Deno.sharedSimple.pop();
+    const p = promiseMap.get(promiseId);
+    promiseMap.delete(promiseId);
+    p.resolve(result);
   }
 }
 
