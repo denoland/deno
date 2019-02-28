@@ -12,12 +12,13 @@ use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::errors::RustOrJsError;
 use crate::flags;
-use crate::js_errors::JSError;
+use crate::js_errors::apply_source_map;
 use crate::libdeno;
 use crate::modules::Modules;
 use crate::msg;
 use crate::permissions::DenoPermissions;
 use crate::tokio_util;
+use deno_core::JSError;
 use futures::sync::mpsc as async_mpsc;
 use futures::Future;
 use libc::c_char;
@@ -250,7 +251,7 @@ impl Isolate {
       let v8_exception = cstr.to_str().unwrap();
       debug!("v8_exception\n{}\n", v8_exception);
       let js_error = JSError::from_v8_exception(v8_exception).unwrap();
-      let js_error_mapped = js_error.apply_source_map(&self.state.dir);
+      let js_error_mapped = apply_source_map(&js_error, &self.state.dir);
       Some(js_error_mapped)
     }
   }

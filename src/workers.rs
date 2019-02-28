@@ -3,11 +3,12 @@ use crate::isolate::Buf;
 use crate::isolate::Isolate;
 use crate::isolate::IsolateState;
 use crate::isolate::WorkerChannels;
-use crate::js_errors::JSError;
+use crate::js_errors::JSErrorColor;
 use crate::ops;
 use crate::resources;
 use crate::snapshot;
 use crate::tokio_util;
+use deno_core::JSError;
 
 use futures::sync::mpsc;
 use futures::sync::oneshot;
@@ -75,7 +76,7 @@ pub fn spawn(
           worker.event_loop()?;
           Ok(())
         })().or_else(|err: JSError| -> Result<(), JSError> {
-          eprintln!("{}", err.to_string());
+          eprintln!("{}", JSErrorColor(&err).to_string());
           std::process::exit(1)
         }).unwrap();
       });

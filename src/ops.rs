@@ -10,7 +10,8 @@ use crate::isolate::Buf;
 use crate::isolate::Isolate;
 use crate::isolate::IsolateState;
 use crate::isolate::Op;
-use crate::js_errors::JSError;
+use crate::js_errors::apply_source_map;
+use crate::js_errors::JSErrorColor;
 use crate::libdeno;
 use crate::msg;
 use crate::msg_util;
@@ -21,6 +22,7 @@ use crate::resources::table_entries;
 use crate::resources::Resource;
 use crate::tokio_util;
 use crate::version;
+use deno_core::JSError;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::Async;
@@ -302,8 +304,8 @@ fn op_format_error(
   let orig_error = String::from(inner.error().unwrap());
 
   let js_error = JSError::from_v8_exception(&orig_error).unwrap();
-  let js_error_mapped = js_error.apply_source_map(&state.dir);
-  let js_error_string = js_error_mapped.to_string();
+  let js_error_mapped = apply_source_map(&js_error, &state.dir);
+  let js_error_string = JSErrorColor(&js_error_mapped).to_string();
 
   let mut builder = FlatBufferBuilder::new();
   let new_error = builder.create_string(&js_error_string);
