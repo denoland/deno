@@ -1,24 +1,57 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-const shared32 = new Int32Array(libdeno.shared);
-
-const INDEX_NUM_RECORDS = 0;
-const INDEX_RECORDS = 1;
-const RECORD_OFFSET_PROMISE_ID = 0;
-const RECORD_OFFSET_OP = 1;
-const RECORD_OFFSET_ARG = 2;
-const RECORD_OFFSET_RESULT = 3;
-const RECORD_SIZE = 4;
 const OP_LISTEN = 1;
 const OP_ACCEPT = 2;
 const OP_READ = 3;
 const OP_WRITE = 4;
 const OP_CLOSE = 5;
 
-const NUM_RECORDS = (shared32.length - INDEX_RECORDS) / RECORD_SIZE;
-if (NUM_RECORDS != 100) {
-  throw Error("expected 100 entries");
+const INDEX_LEN = 0;
+const NUM_RECORDS = 128;
+const RECORD_SIZE = 4;
+const shared32 = new Int32Array(libdeno.shared);
+const global = this;
+
+if (!global["Deno"]) {
+  global["Deno"] = {};
+}
+
+function idx(i, off) {
+  return 1 + i * RECORD_SIZE + off;
+}
+
+function recordsPush(promiseId, opId, arg, result) {
+  if (shared32[INDEX_LEN] >= NUM_RECORDS) {
+    return false;
+  }
+  const i = shared32[INDEX_LEN]++;
+  shared32[idx(i, 0)] = promiseId;
+  shared32[idx(i, 1)] = opId;
+  shared32[idx(i, 2)] = arg;
+  shared32[idx(i, 3)] = result;
+  return true;
+}
+
+function recordsPop() {
+  if (shared32[INDEX_LEN] == 0) {
+    return null;
+  }
+  const i = --shared32[INDEX_LEN];
+  return {
+    promiseId: shared32[idx(i, 0)],
+    opId: shared32[idx(i, 1)],
+    arg: shared32[idx(i, 2)],
+    result: shared32[idx(i, 3)]
+  };
+}
+
+function recordsReset() {
+  shared32[INDEX_LEN] = 0;
+}
+
+function recordsSize() {
+  return shared32[INDEX_LEN];
 }
 
 const requestBuf = new Uint8Array(64 * 1024);
@@ -40,50 +73,34 @@ function createResolvable() {
 }
 
 /** Returns Promise<number> */
-function sendAsync(op, arg, zeroCopyData) {
-  const id = nextPromiseId++;
+function sendAsync(opId, arg, zeroCopyData) {
+  const promiseId = nextPromiseId++;
   const p = createResolvable();
-  shared32[INDEX_NUM_RECORDS] = 1;
-  setRecord(0, RECORD_OFFSET_PROMISE_ID, id);
-  setRecord(0, RECORD_OFFSET_OP, op);
-  setRecord(0, RECORD_OFFSET_ARG, arg);
-  setRecord(0, RECORD_OFFSET_RESULT, -1);
-  promiseMap.set(id, p);
+  recordsReset();
+  recordsPush(promiseId, opId, arg, -1);
+  promiseMap.set(promiseId, p);
   libdeno.send(null, zeroCopyData);
   return p;
 }
 
 /** Returns u32 number */
-function sendSync(op, arg) {
-  shared32[INDEX_NUM_RECORDS] = 1;
-  setRecord(0, RECORD_OFFSET_PROMISE_ID, 0);
-  setRecord(0, RECORD_OFFSET_OP, op);
-  setRecord(0, RECORD_OFFSET_ARG, arg);
-  setRecord(0, RECORD_OFFSET_RESULT, -1);
+function sendSync(opId, arg) {
+  recordsReset();
+  recordsPush(0, opId, arg, -1);
   libdeno.send();
-  return getRecord(0, RECORD_OFFSET_RESULT);
-}
-
-function setRecord(i, off, value) {
-  if (i >= NUM_RECORDS) {
-    throw Error("out of range");
+  if (recordsSize() != 1) {
+    throw Error("Expected sharedSimple to have size 1");
   }
-  shared32[INDEX_RECORDS + RECORD_SIZE * i + off] = value;
-}
-
-function getRecord(i, off) {
-  if (i >= NUM_RECORDS) {
-    throw Error("out of range");
-  }
-  return shared32[INDEX_RECORDS + RECORD_SIZE * i + off];
+  let { result } = recordsPop();
+  return result;
 }
 
 function handleAsyncMsgFromRust() {
-  for (let i = 0; i < shared32[INDEX_NUM_RECORDS]; i++) {
-    let id = getRecord(i, RECORD_OFFSET_PROMISE_ID);
-    const p = promiseMap.get(id);
-    promiseMap.delete(id);
-    p.resolve(getRecord(i, RECORD_OFFSET_RESULT));
+  while (recordsSize() > 0) {
+    const { promiseId, result } = recordsPop();
+    const p = promiseMap.get(promiseId);
+    promiseMap.delete(promiseId);
+    p.resolve(result);
   }
 }
 
@@ -132,10 +149,10 @@ async function serve(rid) {
 async function main() {
   libdeno.recv(handleAsyncMsgFromRust);
 
-  libdeno.print("http_bench.js start");
+  libdeno.print("http_bench.js start\n");
 
   const listener_rid = listen();
-  libdeno.print(`listening http://127.0.0.1:4544/ rid = ${listener_rid}`);
+  libdeno.print(`listening http://127.0.0.1:4544/ rid = ${listener_rid}\n`);
   while (true) {
     const rid = await accept(listener_rid);
     // libdeno.print(`accepted ${rid}`);

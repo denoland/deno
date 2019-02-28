@@ -113,7 +113,7 @@ impl AsMut<[u8]> for deno_buf {
 }
 
 #[allow(non_camel_case_types)]
-type deno_recv_cb = unsafe extern "C" fn(
+pub type deno_recv_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
   control_buf: deno_buf, // deprecated
   zero_copy_buf: deno_buf,
