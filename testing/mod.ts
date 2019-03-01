@@ -293,7 +293,7 @@ export async function runTests() {
 }
 
 export async function runIfMain(meta: ImportMeta) {
-  if (window.location.toString() === meta.url) {
+  if (meta.main) {
     runTests();
   }
 }

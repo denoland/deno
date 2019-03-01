@@ -1,5 +1,5 @@
 variables:
-  DENO_VERSION: 'v0.3.0'
+  DENO_VERSION: 'v0.3.1'
 
 jobs:
 
