@@ -203,10 +203,7 @@ impl Isolate {
       will_snapshot: 0,
       load_snapshot: match init.snapshot {
         Some(s) => s,
-        None => {
-          run_init_script = true;
-          libdeno::deno_buf::empty()
-        }
+        None => libdeno::deno_buf::empty()
       },
       shared: libdeno::deno_buf::empty(), // TODO Use for message passing.
       recv_cb: pre_dispatch,
