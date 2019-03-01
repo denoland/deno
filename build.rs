@@ -76,8 +76,8 @@ fn main() {
     }
   }
 
-  if cfg!(target_arch = "x86_64") {
-    // println!("cargo:rustc-cfg=feature=\"use-snapshots\"");
+  if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "x86_64" {
+    println!("cargo:rustc-cfg=feature=\"use-snapshots\"");
   }
 
   if !gn_out_path.join("build.ninja").exists() {
