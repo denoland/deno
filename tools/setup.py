@@ -135,20 +135,6 @@ def generate_gn_args(mode):
     return out
 
 
-# Writes the list of overridden args to args_list file
-def write_gn_args_list():
-    args_list_filename = os.path.join(build_path(), "args_list.txt")
-
-    args_list = run_output([
-        third_party.gn_path, "args",
-        build_path(), "--list", "--short", "--overrides-only"
-    ],
-                           env=third_party.google_env())
-
-    with open(args_list_filename, "w") as f:
-        f.write(args_list)
-
-
 # gn gen.
 def gn_gen(mode):
     os.environ["DENO_BUILD_MODE"] = mode
@@ -177,8 +163,6 @@ def gn_gen(mode):
 
     run([third_party.gn_path, "gen", build_path()],
         env=third_party.google_env())
-
-    write_gn_args_list()
 
 
 if __name__ == '__main__':

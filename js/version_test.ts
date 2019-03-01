@@ -8,5 +8,5 @@ test(function version() {
 });
 
 test(function versionGnArgs() {
-  assert(Deno.version.buildArgs.length > 100);
+  assert(Deno.version.gnArgs.length > 100);
 });

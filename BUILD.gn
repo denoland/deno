@@ -219,6 +219,7 @@ bundle("main_bundle") {
   deps = [
     ":deno_runtime_declaration",
     ":msg_ts",
+    ":write_gn_args",
   ]
 }
 
@@ -257,4 +258,12 @@ snapshot("snapshot_compiler") {
   deps = [
     ":compiler_bundle",
   ]
+}
+
+action("write_gn_args") {
+  script = "//tools/write_gn_args.py"
+  outputs = [
+    "$target_gen_dir/gn_args.txt",
+  ]
+  args = [ rebase_path(outputs[0], root_build_dir) ]
 }
