@@ -226,7 +226,7 @@ impl Isolate {
           );
         };
       }
-      None => {},
+      None => {}
     };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(usize, Buf)>();
