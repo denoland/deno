@@ -232,7 +232,7 @@ impl Isolate {
           // TODO(afinch7): display error here and exit.
         }
       };
-    };
+    }
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(usize, Buf)>();
 
@@ -644,8 +644,11 @@ mod tests {
   #[test]
   fn test_dispatch_sync() {
     let state = IsolateState::mock();
-    let snapshot = libdeno::deno_buf::empty();
-    let isolate = Isolate::new(snapshot, state, dispatch_sync);
+    let init = IsolateInit {
+      snapshot: None,
+      init_script: None,
+    };
+    let isolate = Isolate::new(init, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute(
@@ -683,8 +686,11 @@ mod tests {
   #[test]
   fn test_metrics_sync() {
     let state = IsolateState::mock();
-    let snapshot = libdeno::deno_buf::empty();
-    let isolate = Isolate::new(snapshot, state, metrics_dispatch_sync);
+    let init = IsolateInit {
+      snapshot: None,
+      init_script: None,
+    };
+    let isolate = Isolate::new(init, state, metrics_dispatch_sync);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -717,8 +723,11 @@ mod tests {
   #[test]
   fn test_metrics_async() {
     let state = IsolateState::mock();
-    let snapshot = libdeno::deno_buf::empty();
-    let isolate = Isolate::new(snapshot, state, metrics_dispatch_async);
+    let init = IsolateInit {
+      snapshot: None,
+      init_script: None,
+    };
+    let isolate = Isolate::new(init, state, metrics_dispatch_async);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -805,8 +814,11 @@ mod tests {
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
-    let snapshot = libdeno::deno_buf::empty();
-    let mut isolate = Isolate::new(snapshot, state, dispatch_sync);
+    let init = IsolateInit {
+      snapshot: None,
+      init_script: None,
+    };
+    let mut isolate = Isolate::new(init, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute_mod(filename, false)
@@ -827,8 +839,11 @@ mod tests {
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
-    let snapshot = libdeno::deno_buf::empty();
-    let mut isolate = Isolate::new(snapshot, state, dispatch_sync);
+    let init = IsolateInit {
+      snapshot: None,
+      init_script: None,
+    };
+    let mut isolate = Isolate::new(init, state, dispatch_sync);
     tokio_util::init(|| {
       isolate
         .execute_mod(filename, false)
