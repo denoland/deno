@@ -313,7 +313,7 @@ fn op_format_error(
   let orig_error = String::from(inner.error().unwrap());
 
   let js_error = JSError::from_v8_exception(&orig_error).unwrap();
-  let js_error_mapped = apply_source_map(&js_error, &state.dir);
+  let js_error_mapped = apply_source_map(&js_error, &isolate.state.dir);
   let js_error_string = JSErrorColor(&js_error_mapped).to_string();
 
   let mut builder = FlatBufferBuilder::new();
