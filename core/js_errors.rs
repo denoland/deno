@@ -73,32 +73,27 @@ impl fmt::Display for JSError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     if self.script_resource_name.is_some() {
       let script_resource_name = self.script_resource_name.as_ref().unwrap();
-      // Avoid showing internal code from gen/bundle/main.js
-      if script_resource_name != "gen/bundle/main.js"
-        && script_resource_name != "gen/bundle/compiler.js"
-      {
-        if self.line_number.is_some() && self.start_column.is_some() {
-          assert!(self.line_number.is_some());
-          assert!(self.start_column.is_some());
-          let script_line_column = format_script_line_column(
-            script_resource_name,
-            self.line_number.unwrap() - 1,
-            self.start_column.unwrap() - 1,
-          );
-          write!(f, "{}", script_line_column)?;
-        }
-        if self.source_line.is_some() {
-          write!(f, "\n{}\n", self.source_line.as_ref().unwrap())?;
-          let mut s = String::new();
-          for i in 0..self.end_column.unwrap() {
-            if i >= self.start_column.unwrap() {
-              s.push('^');
-            } else {
-              s.push(' ');
-            }
+      if self.line_number.is_some() && self.start_column.is_some() {
+        assert!(self.line_number.is_some());
+        assert!(self.start_column.is_some());
+        let script_line_column = format_script_line_column(
+          script_resource_name,
+          self.line_number.unwrap() - 1,
+          self.start_column.unwrap() - 1,
+        );
+        write!(f, "{}", script_line_column)?;
+      }
+      if self.source_line.is_some() {
+        write!(f, "\n{}\n", self.source_line.as_ref().unwrap())?;
+        let mut s = String::new();
+        for i in 0..self.end_column.unwrap() {
+          if i >= self.start_column.unwrap() {
+            s.push('^');
+          } else {
+            s.push(' ');
           }
-          writeln!(f, "{}", s)?;
         }
+        writeln!(f, "{}", s)?;
       }
     }
 
