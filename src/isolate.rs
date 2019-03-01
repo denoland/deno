@@ -28,6 +28,7 @@ use std::cell::RefCell;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::ptr::null;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -191,20 +192,47 @@ static DENO_INIT: Once = ONCE_INIT;
 
 impl Isolate {
   pub fn new(
-    snapshot: libdeno::deno_buf,
+    init: IsolateInit,
     state: Arc<IsolateState>,
     dispatch: Dispatch,
   ) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
+    let mut run_init_script = false;
     let config = libdeno::deno_config {
       will_snapshot: 0,
-      load_snapshot: snapshot,
+      load_snapshot: match init.snapshot {
+        Some(s) => s,
+        None => {
+          run_init_script = true;
+          libdeno::deno_buf::empty()
+        }
+      },
       shared: libdeno::deno_buf::empty(), // TODO Use for message passing.
       recv_cb: pre_dispatch,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
+    // If no init snapshot run init script.
+    if run_init_script {
+      match init.init_script {
+        Some(init_script) => {
+          let filename_cstr = CString::new(init_script.filename).unwrap();
+          let source_cstr = CString::new(init_script.source).unwrap();
+          unsafe {
+            libdeno::deno_execute(
+              libdeno_isolate,
+              null(),
+              filename_cstr.as_ptr(),
+              source_cstr.as_ptr(),
+            );
+          };
+        }
+        None => {
+          // TODO(afinch7): display error here and exit.
+        }
+      };
+    };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(usize, Buf)>();
 
@@ -811,4 +839,14 @@ mod tests {
     let metrics = &isolate.state.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
   }
+}
+
+pub struct IsolateInitScript {
+  pub source: String,
+  pub filename: String,
+}
+
+pub struct IsolateInit {
+  pub snapshot: Option<libdeno::deno_buf>,
+  pub init_script: Option<IsolateInitScript>,
 }

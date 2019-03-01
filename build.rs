@@ -76,6 +76,10 @@ fn main() {
     }
   }
 
+  if cfg!(target_arch = "x86_64") {
+    // println!("cargo:rustc-cfg=feature=\"use-snapshots\"");
+  }
+
   if !gn_out_path.join("build.ninja").exists() {
     let status = Command::new("python")
       .env("DENO_BUILD_PATH", &gn_out_dir)

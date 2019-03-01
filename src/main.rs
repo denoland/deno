@@ -16,6 +16,7 @@ pub mod flags;
 mod fs;
 mod http_body;
 mod http_util;
+mod init_script;
 pub mod isolate;
 pub mod js_errors;
 pub mod libdeno;
@@ -96,7 +97,12 @@ fn main() {
 
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
   let snapshot = snapshot::deno_snapshot();
-  let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch);
+  let init_script = init_script::deno_init_script();
+  let isolate_init = isolate::IsolateInit {
+    snapshot,
+    init_script,
+  };
+  let mut isolate = isolate::Isolate::new(isolate_init, state, ops::dispatch);
 
   tokio_util::init(|| {
     // Setup runtime.

@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::isolate::Buf;
 use crate::isolate::Isolate;
+use crate::isolate::IsolateInit;
 use crate::isolate::IsolateState;
 use crate::isolate::WorkerChannels;
 use crate::js_errors::JSError;
 use crate::ops;
 use crate::resources;
-use crate::snapshot;
 use crate::tokio_util;
 
 use futures::sync::mpsc;
@@ -21,7 +21,10 @@ pub struct Worker {
 }
 
 impl Worker {
-  pub fn new(parent_state: &Arc<IsolateState>) -> (Self, WorkerChannels) {
+  pub fn new(
+    init: IsolateInit,
+    parent_state: &Arc<IsolateState>,
+  ) -> (Self, WorkerChannels) {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
 
@@ -34,8 +37,7 @@ impl Worker {
       Some(internal_channels),
     ));
 
-    let snapshot = snapshot::compiler_snapshot();
-    let isolate = Isolate::new(snapshot, state, ops::dispatch);
+    let isolate = Isolate::new(init, state, ops::dispatch);
 
     let worker = Worker { isolate };
     (worker, external_channels)
@@ -51,6 +53,7 @@ impl Worker {
 }
 
 pub fn spawn(
+  init: IsolateInit,
   state: Arc<IsolateState>,
   js_source: String,
 ) -> resources::Resource {
@@ -62,7 +65,7 @@ pub fn spawn(
   let builder = thread::Builder::new().name("worker".to_string());
   let _tid = builder
     .spawn(move || {
-      let (worker, external_channels) = Worker::new(&state);
+      let (worker, external_channels) = Worker::new(init, &state);
 
       let resource = resources::add_worker(external_channels);
       p.send(resource.clone()).unwrap();
