@@ -1797,3 +1797,113 @@ fn op_worker_post_message(
   });
   Box::new(op)
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::isolate::{IsolateState, Isolate};
+  use crate::permissions::DenoPermissions;
+  use std::sync::atomic::AtomicBool;
+
+  #[test]
+  fn fetch_module_meta_fails_without_read() {
+    let state = IsolateState::mock();
+    let snapshot = libdeno::deno_buf::empty();
+    let permissions = DenoPermissions {
+      allow_read: AtomicBool::new(false),
+      allow_write: AtomicBool::new(true),
+      allow_env: AtomicBool::new(true),
+      allow_net: AtomicBool::new(true),
+      allow_run: AtomicBool::new(true),
+    };
+    let isolate = Isolate::new(snapshot, state, dispatch, permissions);
+    let builder = &mut FlatBufferBuilder::new();
+    let fetch_msg_args = msg::FetchModuleMetaDataArgs {
+      specifier: Some(builder.create_string("./somefile")),
+      referrer: Some(builder.create_string(".")),
+    };
+    let inner = msg::FetchModuleMetaData::create(builder, &fetch_msg_args);
+    let base_args = msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::FetchModuleMetaData,
+      ..Default::default()
+    };
+    let base = msg::Base::create(builder, &base_args);
+    msg::finish_base_buffer(builder, base);
+    let data = builder.finished_data();
+    let final_msg = msg::get_root_as_base(&data);
+    let fetch_result = op_fetch_module_meta_data(&isolate, &final_msg, libdeno::deno_buf::empty()).wait();
+    match fetch_result {
+      Ok(_) => assert!(true),
+      Err(e) => assert_eq!(e.to_string(), permission_denied().to_string())
+    }
+  }
+
+  #[test]
+  fn fetch_module_meta_fails_without_net() {
+    let state = IsolateState::mock();
+    let snapshot = libdeno::deno_buf::empty();
+    let permissions = DenoPermissions {
+      allow_read: AtomicBool::new(true),
+      allow_write: AtomicBool::new(true),
+      allow_env: AtomicBool::new(true),
+      allow_net: AtomicBool::new(false),
+      allow_run: AtomicBool::new(true),
+    };
+    let isolate = Isolate::new(snapshot, state, dispatch, permissions);
+    let builder = &mut FlatBufferBuilder::new();
+    let fetch_msg_args = msg::FetchModuleMetaDataArgs {
+      specifier: Some(builder.create_string("./somefile")),
+      referrer: Some(builder.create_string(".")),
+    };
+    let inner = msg::FetchModuleMetaData::create(builder, &fetch_msg_args);
+    let base_args = msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::FetchModuleMetaData,
+      ..Default::default()
+    };
+    let base = msg::Base::create(builder, &base_args);
+    msg::finish_base_buffer(builder, base);
+    let data = builder.finished_data();
+    let final_msg = msg::get_root_as_base(&data);
+    let fetch_result = op_fetch_module_meta_data(&isolate, &final_msg, libdeno::deno_buf::empty()).wait();
+    match fetch_result {
+      Ok(_) => assert!(true),
+      Err(e) => assert_eq!(e.to_string(), permission_denied().to_string())
+    }
+  }
+
+  #[test]
+  fn fetch_module_meta_not_permission_denied_with_permissions() {
+    let state = IsolateState::mock();
+    let snapshot = libdeno::deno_buf::empty();
+    let permissions = DenoPermissions {
+      allow_read: AtomicBool::new(true),
+      allow_write: AtomicBool::new(false),
+      allow_env: AtomicBool::new(false),
+      allow_net: AtomicBool::new(true),
+      allow_run: AtomicBool::new(false),
+    };
+    let isolate = Isolate::new(snapshot, state, dispatch, permissions);
+    let builder = &mut FlatBufferBuilder::new();
+    let fetch_msg_args = msg::FetchModuleMetaDataArgs {
+      specifier: Some(builder.create_string("./somefile")),
+      referrer: Some(builder.create_string(".")),
+    };
+    let inner = msg::FetchModuleMetaData::create(builder, &fetch_msg_args);
+    let base_args = msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::FetchModuleMetaData,
+      ..Default::default()
+    };
+    let base = msg::Base::create(builder, &base_args);
+    msg::finish_base_buffer(builder, base);
+    let data = builder.finished_data();
+    let final_msg = msg::get_root_as_base(&data);
+    let fetch_result = op_fetch_module_meta_data(&isolate, &final_msg, libdeno::deno_buf::empty()).wait();
+    match fetch_result {
+      Ok(_) => assert!(true),
+      Err(e) => assert!(e.to_string() != permission_denied().to_string())
+    }
+  }
+}

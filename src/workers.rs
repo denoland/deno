@@ -25,7 +25,7 @@ pub struct Worker {
 impl Worker {
   pub fn new(
     parent_state: &Arc<IsolateState>,
-    permissions: Option<DenoPermissions>,
+    permissions: DenoPermissions,
   ) -> (Self, WorkerChannels) {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
@@ -58,7 +58,7 @@ impl Worker {
 pub fn spawn(
   state: Arc<IsolateState>,
   js_source: String,
-  permissions: Option<DenoPermissions>,
+  permissions: DenoPermissions,
 ) -> resources::Resource {
   // TODO This function should return a Future, so that the caller can retrieve
   // the JSError if one is thrown. Currently it just prints to stderr and calls
@@ -114,7 +114,7 @@ mod tests {
         console.log("after postMessage");
       }
     "#.into(),
-      None,
+      DenoPermissions::default(),
     );
     let msg = String::from("hi").into_boxed_str().into_boxed_bytes();
 
@@ -136,7 +136,7 @@ mod tests {
     let resource = spawn(
       IsolateState::mock(),
       "onmessage = () => close();".into(),
-      None,
+      DenoPermissions::default(),
     );
 
     assert_eq!(

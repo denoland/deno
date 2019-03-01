@@ -169,7 +169,7 @@ impl Isolate {
     snapshot: libdeno::deno_buf,
     state: Arc<IsolateState>,
     dispatch: Dispatch,
-    permissions: Option<DenoPermissions>,
+    permissions: DenoPermissions,
   ) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
@@ -183,8 +183,6 @@ impl Isolate {
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(usize, Buf)>();
-    let isolate_perms =
-      Arc::new(permissions.unwrap_or(DenoPermissions::new(&state.flags)));
 
     Self {
       libdeno_isolate,
@@ -195,7 +193,7 @@ impl Isolate {
       timeout_due: Cell::new(None),
       modules: RefCell::new(Modules::new()),
       state,
-      permissions: isolate_perms,
+      permissions: Arc::new(permissions),
     }
   }
 
@@ -621,7 +619,8 @@ mod tests {
   fn test_dispatch_sync() {
     let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
-    let isolate = Isolate::new(snapshot, state, dispatch_sync, None);
+    let permissions = DenoPermissions::default();
+    let isolate = Isolate::new(snapshot, state, dispatch_sync, permissions);
     tokio_util::init(|| {
       isolate
         .execute(
@@ -660,7 +659,8 @@ mod tests {
   fn test_metrics_sync() {
     let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
-    let isolate = Isolate::new(snapshot, state, metrics_dispatch_sync, None);
+    let permissions = DenoPermissions::default();
+    let isolate = Isolate::new(snapshot, state, metrics_dispatch_sync, permissions);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -694,7 +694,8 @@ mod tests {
   fn test_metrics_async() {
     let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
-    let isolate = Isolate::new(snapshot, state, metrics_dispatch_async, None);
+    let permissions = DenoPermissions::default();
+    let isolate = Isolate::new(snapshot, state, metrics_dispatch_async, permissions);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -782,7 +783,8 @@ mod tests {
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let snapshot = libdeno::deno_buf::empty();
-    let mut isolate = Isolate::new(snapshot, state, dispatch_sync, None);
+    let permissions = DenoPermissions::default();
+    let mut isolate = Isolate::new(snapshot, state, dispatch_sync, permissions);
     tokio_util::init(|| {
       isolate
         .execute_mod(filename, false)
@@ -804,7 +806,8 @@ mod tests {
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let snapshot = libdeno::deno_buf::empty();
-    let mut isolate = Isolate::new(snapshot, state, dispatch_sync, None);
+    let permissions = DenoPermissions::default();
+    let mut isolate = Isolate::new(snapshot, state, dispatch_sync, permissions);
     tokio_util::init(|| {
       isolate
         .execute_mod(filename, false)
