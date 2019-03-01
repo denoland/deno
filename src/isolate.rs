@@ -182,7 +182,8 @@ impl Isolate {
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(usize, Buf)>();
-    let isolate_perms = Arc::new(permissions.unwrap_or(DenoPermissions::new(&state.flags)));
+    let isolate_perms =
+      Arc::new(permissions.unwrap_or(DenoPermissions::new(&state.flags)));
 
     Self {
       libdeno_isolate,
@@ -218,7 +219,7 @@ impl Isolate {
     self.timeout_due.set(inst);
   }
 
-    #[inline]
+  #[inline]
   pub fn check_read(&self, filename: &str) -> DenoResult<()> {
     self.permissions.check_read(filename)
   }

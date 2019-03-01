@@ -3,7 +3,7 @@
 use atty;
 use crate::ansi;
 use crate::errors;
-use crate::errors::{DenoError, DenoResult, ErrorKind, permission_denied};
+use crate::errors::{permission_denied, DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
 use crate::http_util;
 use crate::isolate::Buf;
@@ -37,8 +37,8 @@ use std::net::Shutdown;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio;
 use tokio::net::TcpListener;
@@ -246,7 +246,12 @@ fn op_start(
   assert_eq!(data.len(), 0);
   let mut builder = FlatBufferBuilder::new();
 
-  let argv = isolate.state.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+  let argv = isolate
+    .state
+    .argv
+    .iter()
+    .map(|s| s.as_str())
+    .collect::<Vec<_>>();
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
 
   let cwd_path = std::env::current_dir().unwrap();
@@ -262,7 +267,10 @@ fn op_start(
   let deno_version = version::DENO;
   let deno_version_off = builder.create_string(deno_version);
 
-  let main_module = isolate.state.main_module().map(|m| builder.create_string(&m));
+  let main_module = isolate
+    .state
+    .main_module()
+    .map(|m| builder.create_string(&m));
 
   let inner = msg::StartRes::create(
     &mut builder,
@@ -374,11 +382,18 @@ fn op_fetch_module_meta_data(
     return odd_future(permission_denied());
   }
 
-  assert_eq!(isolate.state.dir.root.join("gen"), isolate.state.dir.gen, "Sanity check");
+  assert_eq!(
+    isolate.state.dir.root.join("gen"),
+    isolate.state.dir.gen,
+    "Sanity check"
+  );
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
-    let out = isolate.state.dir.fetch_module_meta_data(specifier, referrer)?;
+    let out = isolate
+      .state
+      .dir
+      .fetch_module_meta_data(specifier, referrer)?;
     let data_off = builder.create_vector(out.source_code.as_slice());
     let msg_args = msg::FetchModuleMetaDataResArgs {
       module_name: Some(builder.create_string(&out.module_name)),

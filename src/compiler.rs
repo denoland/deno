@@ -11,9 +11,9 @@ use crate::workers;
 use futures::Future;
 use serde_json;
 use std::str;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
 
 lazy_static! {
   static ref C_RID: Mutex<Option<ResourceId>> = Mutex::new(None);
@@ -58,8 +58,11 @@ fn lazy_start(parent_state: &Arc<IsolateState>) -> Resource {
     allow_run: AtomicBool::new(false),
   };
   let rid = cell.get_or_insert_with(|| {
-    let resource =
-      workers::spawn(parent_state.clone(), "compilerMain()".to_string(), Some(compiler_permissions));
+    let resource = workers::spawn(
+      parent_state.clone(),
+      "compilerMain()".to_string(),
+      Some(compiler_permissions),
+    );
     resource.rid
   });
   Resource { rid: *rid }
