@@ -5,6 +5,7 @@ use crate::isolate::IsolateState;
 use crate::isolate::WorkerChannels;
 use crate::js_errors::JSError;
 use crate::ops;
+use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::snapshot;
 use crate::tokio_util;
@@ -21,7 +22,7 @@ pub struct Worker {
 }
 
 impl Worker {
-  pub fn new(parent_state: &Arc<IsolateState>) -> (Self, WorkerChannels) {
+  pub fn new(parent_state: &Arc<IsolateState>, permissions: Option<DenoPermissions>) -> (Self, WorkerChannels) {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
 
@@ -35,7 +36,7 @@ impl Worker {
     ));
 
     let snapshot = snapshot::compiler_snapshot();
-    let isolate = Isolate::new(snapshot, state, ops::dispatch);
+    let isolate = Isolate::new(snapshot, state, ops::dispatch, permissions);
 
     let worker = Worker { isolate };
     (worker, external_channels)
@@ -53,6 +54,7 @@ impl Worker {
 pub fn spawn(
   state: Arc<IsolateState>,
   js_source: String,
+  permissions: Option<DenoPermissions>
 ) -> resources::Resource {
   // TODO This function should return a Future, so that the caller can retrieve
   // the JSError if one is thrown. Currently it just prints to stderr and calls
@@ -62,7 +64,7 @@ pub fn spawn(
   let builder = thread::Builder::new().name("worker".to_string());
   let _tid = builder
     .spawn(move || {
-      let (worker, external_channels) = Worker::new(&state);
+      let (worker, external_channels) = Worker::new(&state, permissions);
 
       let resource = resources::add_worker(external_channels);
       p.send(resource.clone()).unwrap();
@@ -108,6 +110,7 @@ mod tests {
         console.log("after postMessage");
       }
     "#.into(),
+    None,
     );
     let msg = String::from("hi").into_boxed_str().into_boxed_bytes();
 
@@ -127,7 +130,7 @@ mod tests {
   #[test]
   fn removed_from_resource_table_on_close() {
     let resource =
-      spawn(IsolateState::mock(), "onmessage = () => close();".into());
+      spawn(IsolateState::mock(), "onmessage = () => close();".into(), None);
 
     assert_eq!(
       resources::get_type(resource.rid),

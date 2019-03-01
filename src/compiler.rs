@@ -2,6 +2,7 @@
 use crate::isolate::Buf;
 use crate::isolate::IsolateState;
 use crate::msg;
+use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::resources::Resource;
 use crate::resources::ResourceId;
@@ -12,6 +13,7 @@ use serde_json;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 
 lazy_static! {
   static ref C_RID: Mutex<Option<ResourceId>> = Mutex::new(None);
@@ -48,9 +50,16 @@ impl ModuleMetaData {
 
 fn lazy_start(parent_state: &Arc<IsolateState>) -> Resource {
   let mut cell = C_RID.lock().unwrap();
+  let compiler_permissions = DenoPermissions {
+    allow_read: AtomicBool::new(true),
+    allow_write: AtomicBool::new(false),
+    allow_env: AtomicBool::new(false),
+    allow_net: AtomicBool::new(true),
+    allow_run: AtomicBool::new(false),
+  };
   let rid = cell.get_or_insert_with(|| {
     let resource =
-      workers::spawn(parent_state.clone(), "compilerMain()".to_string());
+      workers::spawn(parent_state.clone(), "compilerMain()".to_string(), Some(compiler_permissions));
     resource.rid
   });
   Resource { rid: *rid }
