@@ -199,7 +199,6 @@ impl Isolate {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
-    let mut run_init_script = false;
     let config = libdeno::deno_config {
       will_snapshot: 0,
       load_snapshot: match init.snapshot {
@@ -213,26 +212,22 @@ impl Isolate {
       recv_cb: pre_dispatch,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
-    // If no init snapshot run init script.
-    if run_init_script {
-      match init.init_script {
-        Some(init_script) => {
-          let filename_cstr = CString::new(init_script.filename).unwrap();
-          let source_cstr = CString::new(init_script.source).unwrap();
-          unsafe {
-            libdeno::deno_execute(
-              libdeno_isolate,
-              null(),
-              filename_cstr.as_ptr(),
-              source_cstr.as_ptr(),
-            );
-          };
-        }
-        None => {
-          // TODO(afinch7): display error here and exit.
-        }
-      };
-    }
+    // Run init script if present.
+    match init.init_script {
+      Some(init_script) => {
+        let filename_cstr = CString::new(init_script.filename).unwrap();
+        let source_cstr = CString::new(init_script.source).unwrap();
+        unsafe {
+          libdeno::deno_execute(
+            libdeno_isolate,
+            null(),
+            filename_cstr.as_ptr(),
+            source_cstr.as_ptr(),
+          );
+        };
+      }
+      None => {},
+    };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(usize, Buf)>();
 
