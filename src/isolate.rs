@@ -660,7 +660,8 @@ mod tests {
     let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
     let permissions = DenoPermissions::default();
-    let isolate = Isolate::new(snapshot, state, metrics_dispatch_sync, permissions);
+    let isolate =
+      Isolate::new(snapshot, state, metrics_dispatch_sync, permissions);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -695,7 +696,8 @@ mod tests {
     let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
     let permissions = DenoPermissions::default();
-    let isolate = Isolate::new(snapshot, state, metrics_dispatch_async, permissions);
+    let isolate =
+      Isolate::new(snapshot, state, metrics_dispatch_async, permissions);
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {

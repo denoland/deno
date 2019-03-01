@@ -97,7 +97,8 @@ fn main() {
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
   let snapshot = snapshot::deno_snapshot();
   let permissions = permissions::DenoPermissions::from_flags(&state.flags);
-  let mut isolate = isolate::Isolate::new(snapshot, state, ops::dispatch, permissions);
+  let mut isolate =
+    isolate::Isolate::new(snapshot, state, ops::dispatch, permissions);
 
   tokio_util::init(|| {
     // Setup runtime.

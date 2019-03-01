@@ -1801,7 +1801,7 @@ fn op_worker_post_message(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::isolate::{IsolateState, Isolate};
+  use crate::isolate::{Isolate, IsolateState};
   use crate::permissions::DenoPermissions;
   use std::sync::atomic::AtomicBool;
 
@@ -1832,10 +1832,14 @@ mod tests {
     msg::finish_base_buffer(builder, base);
     let data = builder.finished_data();
     let final_msg = msg::get_root_as_base(&data);
-    let fetch_result = op_fetch_module_meta_data(&isolate, &final_msg, libdeno::deno_buf::empty()).wait();
+    let fetch_result = op_fetch_module_meta_data(
+      &isolate,
+      &final_msg,
+      libdeno::deno_buf::empty(),
+    ).wait();
     match fetch_result {
       Ok(_) => assert!(true),
-      Err(e) => assert_eq!(e.to_string(), permission_denied().to_string())
+      Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
     }
   }
 
@@ -1866,10 +1870,14 @@ mod tests {
     msg::finish_base_buffer(builder, base);
     let data = builder.finished_data();
     let final_msg = msg::get_root_as_base(&data);
-    let fetch_result = op_fetch_module_meta_data(&isolate, &final_msg, libdeno::deno_buf::empty()).wait();
+    let fetch_result = op_fetch_module_meta_data(
+      &isolate,
+      &final_msg,
+      libdeno::deno_buf::empty(),
+    ).wait();
     match fetch_result {
       Ok(_) => assert!(true),
-      Err(e) => assert_eq!(e.to_string(), permission_denied().to_string())
+      Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
     }
   }
 
@@ -1900,10 +1908,14 @@ mod tests {
     msg::finish_base_buffer(builder, base);
     let data = builder.finished_data();
     let final_msg = msg::get_root_as_base(&data);
-    let fetch_result = op_fetch_module_meta_data(&isolate, &final_msg, libdeno::deno_buf::empty()).wait();
+    let fetch_result = op_fetch_module_meta_data(
+      &isolate,
+      &final_msg,
+      libdeno::deno_buf::empty(),
+    ).wait();
     match fetch_result {
       Ok(_) => assert!(true),
-      Err(e) => assert!(e.to_string() != permission_denied().to_string())
+      Err(e) => assert!(e.to_string() != permission_denied().to_string()),
     }
   }
 }
