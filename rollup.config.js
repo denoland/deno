@@ -20,6 +20,7 @@ const typescriptPath = path.resolve(
   __dirname,
   "third_party/node_modules/typescript/lib/typescript.js"
 );
+const gnArgs = fs.readFileSync("gen/gn_args.txt", "utf-8").trim();
 
 // We will allow generated modules to be resolvable by TypeScript based on
 // the current build path
@@ -228,7 +229,8 @@ export default function makeConfig(commandOptions) {
 
       // replace strings
       replace({
-        TS_VERSION: typescript.version
+        TS_VERSION: typescript.version,
+        GN_ARGS: gnArgs
       }),
 
       // would prefer to use `rollup-plugin-virtual` to inject the empty module, but there
