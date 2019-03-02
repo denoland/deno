@@ -470,8 +470,8 @@ software, centralized code repositories, and superfluous file formats.
 
 ### Testing if current file is the main program
 
-To test if the current script has been executed as the main
-input to the program check `import.meta.main`.
+To test if the current script has been executed as the main input to the program
+check `import.meta.main`.
 
 ```ts
 if (import.meta.main) {
