@@ -20,7 +20,7 @@ pub struct DenoPermissions {
 }
 
 impl DenoPermissions {
-  pub fn new(flags: &DenoFlags) -> Self {
+  pub fn from_flags(flags: &DenoFlags) -> Self {
     Self {
       allow_read: AtomicBool::new(flags.allow_read),
       allow_write: AtomicBool::new(flags.allow_write),
@@ -89,6 +89,16 @@ impl DenoPermissions {
       self.allow_env.store(true, Ordering::SeqCst);
     }
     r
+  }
+
+  pub fn default() -> Self {
+    Self {
+      allow_read: AtomicBool::new(false),
+      allow_write: AtomicBool::new(false),
+      allow_env: AtomicBool::new(false),
+      allow_net: AtomicBool::new(false),
+      allow_run: AtomicBool::new(false),
+    }
   }
 }
 
