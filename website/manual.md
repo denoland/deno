@@ -472,11 +472,11 @@ software, centralized code repositories, and superfluous file formats.
 
 ### Testing if current file is the main program
 
-By using `window.location` and `import.meta.url` one can test if the current
-script has been executed as the main input to the program.
+To test if the current script has been executed as the main input to the program
+check `import.meta.main`.
 
 ```ts
-if (window.location.toString() == import.meta.url) {
+if (import.meta.main) {
   console.log("main");
 }
 ```
