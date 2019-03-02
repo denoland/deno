@@ -390,7 +390,11 @@ browser JavaScript, Deno can import libraries directly from URLs. This example
 uses a URL to import a test runner library:
 
 ```ts
-import { test, assertEqual } from "https://deno.land/x/testing/mod.ts";
+import {
+  test,
+  assertEqual,
+  runIfMain
+} from "https://deno.land/x/testing/mod.ts";
 
 test(function t1() {
   assertEqual("hello", "hello");
@@ -399,22 +403,20 @@ test(function t1() {
 test(function t2() {
   assertEqual("world", "world");
 });
+
+runIfMain(import.meta);
 ```
 
 Try running this:
 
 ```
-> deno https://deno.land/x/examples/example_test.ts
-Compiling /Users/rld/src/deno_examples/example_test.ts
-Downloading https://deno.land/x/testing/mod.ts
-Compiling https://deno.land/x/testing/mod.ts
+> deno test.ts --reload
 running 2 tests
-test t1
-... ok
-test t2
-... ok
+test t1 ... ok
+test t2 ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
 ```
 
 Note that we did not have to provide the `--allow-net` flag for this program,
