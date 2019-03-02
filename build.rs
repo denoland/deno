@@ -76,6 +76,7 @@ fn main() {
     }
   }
 
+  // Enable snapshots for x64 builds
   if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "x86_64" {
     println!("cargo:rustc-cfg=feature=\"use-snapshots\"");
   }
