@@ -14,7 +14,7 @@ import { test, assert, TestFunction } from "../testing/mod.ts";
 
 const isWindows = platform.os === "win";
 
-async function testWalk(
+export async function testWalk(
   setup: (string) => void | Promise<void>,
   t: TestFunction
 ): Promise<void> {
