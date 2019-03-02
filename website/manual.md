@@ -575,7 +575,7 @@ console.log(metrics());
 
 ### Schematic diagram
 
-<img src="schematic_v0.2.png">
+<img src="images/schematic_v0.2.png">
 
 ### Profiling
 

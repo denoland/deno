@@ -3,6 +3,7 @@ use crate::init_script;
 use crate::isolate::Buf;
 use crate::isolate::{IsolateInit, IsolateState};
 use crate::msg;
+use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::resources::Resource;
 use crate::resources::ResourceId;
@@ -12,6 +13,7 @@ use crate::workers;
 use futures::Future;
 use serde_json;
 use std::str;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -56,11 +58,19 @@ fn lazy_start(parent_state: &Arc<IsolateState>) -> Resource {
     snapshot,
     init_script,
   };
+  let permissions = DenoPermissions {
+    allow_read: AtomicBool::new(true),
+    allow_write: AtomicBool::new(false),
+    allow_env: AtomicBool::new(false),
+    allow_net: AtomicBool::new(true),
+    allow_run: AtomicBool::new(false),
+  };
   let rid = cell.get_or_insert_with(|| {
     let resource = workers::spawn(
       isolate_init,
       parent_state.clone(),
       "compilerMain()".to_string(),
+      permissions,
     );
     resource.rid
   });

@@ -7,7 +7,7 @@ mod js_errors;
 mod libdeno;
 mod shared;
 
-pub use crate::js_errors::JSError;
+pub use crate::js_errors::*;
 pub use crate::libdeno::deno_buf;
 pub use crate::shared::*;
 use futures::Async;

@@ -102,7 +102,9 @@ fn main() {
     snapshot,
     init_script,
   };
-  let mut isolate = isolate::Isolate::new(isolate_init, state, ops::dispatch);
+  let permissions = permissions::DenoPermissions::from_flags(&state.flags);
+  let mut isolate =
+    isolate::Isolate::new(isolate_init, state, ops::dispatch, permissions);
 
   tokio_util::init(|| {
     // Setup runtime.

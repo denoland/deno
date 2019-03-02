@@ -4,10 +4,12 @@ use crate::isolate::Isolate;
 use crate::isolate::IsolateInit;
 use crate::isolate::IsolateState;
 use crate::isolate::WorkerChannels;
-use crate::js_errors::JSError;
+use crate::js_errors::JSErrorColor;
 use crate::ops;
+use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::tokio_util;
+use deno_core::JSError;
 
 use futures::sync::mpsc;
 use futures::sync::oneshot;
@@ -24,6 +26,7 @@ impl Worker {
   pub fn new(
     init: IsolateInit,
     parent_state: &Arc<IsolateState>,
+    permissions: DenoPermissions,
   ) -> (Self, WorkerChannels) {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
@@ -37,7 +40,7 @@ impl Worker {
       Some(internal_channels),
     ));
 
-    let isolate = Isolate::new(init, state, ops::dispatch);
+    let isolate = Isolate::new(init, state, ops::dispatch, permissions);
 
     let worker = Worker { isolate };
     (worker, external_channels)
@@ -56,6 +59,7 @@ pub fn spawn(
   init: IsolateInit,
   state: Arc<IsolateState>,
   js_source: String,
+  permissions: DenoPermissions,
 ) -> resources::Resource {
   // TODO This function should return a Future, so that the caller can retrieve
   // the JSError if one is thrown. Currently it just prints to stderr and calls
@@ -65,7 +69,7 @@ pub fn spawn(
   let builder = thread::Builder::new().name("worker".to_string());
   let _tid = builder
     .spawn(move || {
-      let (worker, external_channels) = Worker::new(init, &state);
+      let (worker, external_channels) = Worker::new(init, &state, permissions);
 
       let resource = resources::add_worker(external_channels);
       p.send(resource.clone()).unwrap();
@@ -78,7 +82,7 @@ pub fn spawn(
           worker.event_loop()?;
           Ok(())
         })().or_else(|err: JSError| -> Result<(), JSError> {
-          eprintln!("{}", err.to_string());
+          eprintln!("{}", JSErrorColor(&err).to_string());
           std::process::exit(1)
         }).unwrap();
       });
@@ -120,6 +124,7 @@ mod tests {
         console.log("after postMessage");
       }
     "#.into(),
+      DenoPermissions::default(),
     );
     let msg = String::from("hi").into_boxed_str().into_boxed_bytes();
 
@@ -148,6 +153,7 @@ mod tests {
       isolate_init,
       IsolateState::mock(),
       "onmessage = () => close();".into(),
+      DenoPermissions::default(),
     );
 
     assert_eq!(

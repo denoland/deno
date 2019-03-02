@@ -12,12 +12,13 @@ use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::errors::RustOrJsError;
 use crate::flags;
-use crate::js_errors::JSError;
+use crate::js_errors::apply_source_map;
 use crate::libdeno;
 use crate::modules::Modules;
 use crate::msg;
 use crate::permissions::DenoPermissions;
 use crate::tokio_util;
+use deno_core::JSError;
 use futures::sync::mpsc as async_mpsc;
 use futures::Future;
 use libc::c_char;
@@ -64,6 +65,7 @@ pub struct Isolate {
   timeout_due: Cell<Option<Instant>>,
   pub modules: RefCell<Modules>,
   pub state: Arc<IsolateState>,
+  pub permissions: Arc<DenoPermissions>,
 }
 
 pub type WorkerSender = async_mpsc::Sender<Buf>;
@@ -78,7 +80,6 @@ pub type WorkerChannels = (WorkerSender, WorkerReceiver);
 pub struct IsolateState {
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
-  pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
   pub metrics: Metrics,
   pub worker_channels: Option<Mutex<WorkerChannels>>,
@@ -96,7 +97,6 @@ impl IsolateState {
       dir: deno_dir::DenoDir::new(flags.reload, flags.recompile, custom_root)
         .unwrap(),
       argv: argv_rest,
-      permissions: DenoPermissions::new(&flags),
       flags,
       metrics: Metrics::default(),
       worker_channels: worker_channels.map(Mutex::new),
@@ -125,31 +125,6 @@ impl IsolateState {
     // For debugging: argv.push_back(String::from("-D"));
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
     Arc::new(IsolateState::new(flags, rest_argv, None))
-  }
-
-  #[inline]
-  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
-    self.permissions.check_read(filename)
-  }
-
-  #[inline]
-  pub fn check_write(&self, filename: &str) -> DenoResult<()> {
-    self.permissions.check_write(filename)
-  }
-
-  #[inline]
-  pub fn check_env(&self) -> DenoResult<()> {
-    self.permissions.check_env()
-  }
-
-  #[inline]
-  pub fn check_net(&self, filename: &str) -> DenoResult<()> {
-    self.permissions.check_net(filename)
-  }
-
-  #[inline]
-  pub fn check_run(&self) -> DenoResult<()> {
-    self.permissions.check_run()
   }
 
   fn metrics_op_dispatched(
@@ -195,6 +170,7 @@ impl Isolate {
     init: IsolateInit,
     state: Arc<IsolateState>,
     dispatch: Dispatch,
+    permissions: DenoPermissions,
   ) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
@@ -237,6 +213,7 @@ impl Isolate {
       timeout_due: Cell::new(None),
       modules: RefCell::new(Modules::new()),
       state,
+      permissions: Arc::new(permissions),
     }
   }
 
@@ -261,6 +238,31 @@ impl Isolate {
     self.timeout_due.set(inst);
   }
 
+  #[inline]
+  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
+    self.permissions.check_read(filename)
+  }
+
+  #[inline]
+  pub fn check_write(&self, filename: &str) -> DenoResult<()> {
+    self.permissions.check_write(filename)
+  }
+
+  #[inline]
+  pub fn check_env(&self) -> DenoResult<()> {
+    self.permissions.check_env()
+  }
+
+  #[inline]
+  pub fn check_net(&self, filename: &str) -> DenoResult<()> {
+    self.permissions.check_net(filename)
+  }
+
+  #[inline]
+  pub fn check_run(&self) -> DenoResult<()> {
+    self.permissions.check_run()
+  }
+
   pub fn last_exception(&self) -> Option<JSError> {
     let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
     if ptr.is_null() {
@@ -270,7 +272,7 @@ impl Isolate {
       let v8_exception = cstr.to_str().unwrap();
       debug!("v8_exception\n{}\n", v8_exception);
       let js_error = JSError::from_v8_exception(v8_exception).unwrap();
-      let js_error_mapped = js_error.apply_source_map(&self.state.dir);
+      let js_error_mapped = apply_source_map(&js_error, &self.state.dir);
       Some(js_error_mapped)
     }
   }
@@ -640,7 +642,8 @@ mod tests {
       snapshot: None,
       init_script: None,
     };
-    let isolate = Isolate::new(init, state, dispatch_sync);
+    let isolate =
+      Isolate::new(init, state, dispatch_sync, DenoPermissions::default());
     tokio_util::init(|| {
       isolate
         .execute(
@@ -682,7 +685,12 @@ mod tests {
       snapshot: None,
       init_script: None,
     };
-    let isolate = Isolate::new(init, state, metrics_dispatch_sync);
+    let isolate = Isolate::new(
+      init,
+      state,
+      metrics_dispatch_sync,
+      DenoPermissions::default(),
+    );
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -719,7 +727,12 @@ mod tests {
       snapshot: None,
       init_script: None,
     };
-    let isolate = Isolate::new(init, state, metrics_dispatch_async);
+    let isolate = Isolate::new(
+      init,
+      state,
+      metrics_dispatch_async,
+      DenoPermissions::default(),
+    );
     tokio_util::init(|| {
       // Verify that metrics have been properly initialized.
       {
@@ -810,7 +823,8 @@ mod tests {
       snapshot: None,
       init_script: None,
     };
-    let mut isolate = Isolate::new(init, state, dispatch_sync);
+    let mut isolate =
+      Isolate::new(init, state, dispatch_sync, DenoPermissions::default());
     tokio_util::init(|| {
       isolate
         .execute_mod(filename, false)
@@ -835,7 +849,8 @@ mod tests {
       snapshot: None,
       init_script: None,
     };
-    let mut isolate = Isolate::new(init, state, dispatch_sync);
+    let mut isolate =
+      Isolate::new(init, state, dispatch_sync, DenoPermissions::default());
     tokio_util::init(|| {
       isolate
         .execute_mod(filename, false)
