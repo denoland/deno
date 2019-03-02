@@ -11,8 +11,8 @@ Contributions are welcome!
 ## How to use
 
 These modules are tagged in accordance with Deno releases. So, for example, the
-v0.2.6 tag is guaranteed to work with deno v0.2.6.
-You can link to v0.2.6 using the URL `https://deno.land/x/std@v0.2.6/`
+v0.3.0 tag is guaranteed to work with deno v0.3.0.
+You can link to v0.3.0 using the URL `https://deno.land/std@v0.3.0/`
 
 It's strongly recommended that you link to tagged releases rather than the
 master branch. The project is still young and we expect disruptive renames in
