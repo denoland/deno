@@ -95,13 +95,24 @@ function include(f: FileInfo, options: WalkOptions): Boolean {
   if (options.exts && !options.exts.some(ext => f.path.endsWith(ext))) {
     return false;
   }
-  if (options.match && !options.match.some(pattern => pattern.test(f.path))) {
+  if (options.match && !patternTest(options.match, f.path)) {
     return false;
   }
-  if (options.skip && options.skip.some(pattern => pattern.test(f.path))) {
+  if (options.skip && patternTest(options.skip, f.path)) {
     return false;
   }
   return true;
+}
+
+function patternTest(patterns: RegExp[], path: string) {
+  // Forced to reset last index on regex while iterating for have
+  // consistent results.
+  // See: https://stackoverflow.com/a/1520853
+  return patterns.some(pattern => {
+    let r = pattern.test(path);
+    pattern.lastIndex = 0;
+    return r;
+  });
 }
 
 async function resolve(f: FileInfo): Promise<FileInfo> {
