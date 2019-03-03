@@ -52,7 +52,7 @@ fn lazy_start(parent_state: &Arc<IsolateState>) -> Resource {
   let mut cell = C_RID.lock().unwrap();
   let permissions = DenoPermissions {
     allow_read: AtomicBool::new(true),
-    allow_write: AtomicBool::new(false),
+    allow_write: AtomicBool::new(true),
     allow_env: AtomicBool::new(false),
     allow_net: AtomicBool::new(true),
     allow_run: AtomicBool::new(false),

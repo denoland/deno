@@ -374,11 +374,19 @@ fn op_fetch_module_meta_data(
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
 
+  // Check for allow read since this operation could be used to read from the file system.
   if !isolate.permissions.allow_read.load(Ordering::SeqCst) {
     debug!("No read permission for fetch_module_meta_data");
     return odd_future(permission_denied());
   }
 
+  // Check for allow write since this operation could be used to write to the file system.
+  if !isolate.permissions.allow_write.load(Ordering::SeqCst) {
+    debug!("No network permission for fetch_module_meta_data");
+    return odd_future(permission_denied());
+  }
+
+  // Check for allow net since this operation could be used to make https/http requests.
   if !isolate.permissions.allow_net.load(Ordering::SeqCst) {
     debug!("No network permission for fetch_module_meta_data");
     return odd_future(permission_denied());
@@ -1844,6 +1852,44 @@ mod tests {
   }
 
   #[test]
+  fn fetch_module_meta_fails_without_write() {
+    let state = IsolateState::mock();
+    let snapshot = libdeno::deno_buf::empty();
+    let permissions = DenoPermissions {
+      allow_read: AtomicBool::new(true),
+      allow_write: AtomicBool::new(false),
+      allow_env: AtomicBool::new(true),
+      allow_net: AtomicBool::new(true),
+      allow_run: AtomicBool::new(true),
+    };
+    let isolate = Isolate::new(snapshot, state, dispatch, permissions);
+    let builder = &mut FlatBufferBuilder::new();
+    let fetch_msg_args = msg::FetchModuleMetaDataArgs {
+      specifier: Some(builder.create_string("./somefile")),
+      referrer: Some(builder.create_string(".")),
+    };
+    let inner = msg::FetchModuleMetaData::create(builder, &fetch_msg_args);
+    let base_args = msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::FetchModuleMetaData,
+      ..Default::default()
+    };
+    let base = msg::Base::create(builder, &base_args);
+    msg::finish_base_buffer(builder, base);
+    let data = builder.finished_data();
+    let final_msg = msg::get_root_as_base(&data);
+    let fetch_result = op_fetch_module_meta_data(
+      &isolate,
+      &final_msg,
+      libdeno::deno_buf::empty(),
+    ).wait();
+    match fetch_result {
+      Ok(_) => assert!(true),
+      Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
+    }
+  }
+
+  #[test]
   fn fetch_module_meta_fails_without_net() {
     let state = IsolateState::mock();
     let snapshot = libdeno::deno_buf::empty();
@@ -1887,7 +1933,7 @@ mod tests {
     let snapshot = libdeno::deno_buf::empty();
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(true),
-      allow_write: AtomicBool::new(false),
+      allow_write: AtomicBool::new(true),
       allow_env: AtomicBool::new(false),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(false),
