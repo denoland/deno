@@ -50,6 +50,12 @@ export { symlinkSync, symlink } from "./symlink";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file";
 export { ErrorKind, DenoError } from "./errors";
 export { libdeno } from "./libdeno";
+export {
+  permissions,
+  revokePermission,
+  Permission,
+  Permissions
+} from "./permissions";
 export { platform } from "./platform";
 export { truncateSync, truncate } from "./truncate";
 export { FileInfo } from "./file_info";
