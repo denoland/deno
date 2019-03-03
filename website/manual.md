@@ -337,7 +337,7 @@ Run it:
 hello
 ```
 
-By default when you use `deno.run()` subprocess inherits `stdin`, `stdout` and
+By default when you use `Deno.run()` subprocess inherits `stdin`, `stdout` and
 `stdout` of parent process. If you want to communicate with started subprocess
 you can use `"piped"` option.
 
@@ -390,7 +390,11 @@ browser JavaScript, Deno can import libraries directly from URLs. This example
 uses a URL to import a test runner library:
 
 ```ts
-import { test, assertEqual } from "https://deno.land/x/testing/mod.ts";
+import {
+  test,
+  assertEqual,
+  runIfMain
+} from "https://deno.land/x/testing/mod.ts";
 
 test(function t1() {
   assertEqual("hello", "hello");
@@ -399,22 +403,20 @@ test(function t1() {
 test(function t2() {
   assertEqual("world", "world");
 });
+
+runIfMain(import.meta);
 ```
 
 Try running this:
 
 ```
-> deno https://deno.land/x/examples/example_test.ts
-Compiling /Users/rld/src/deno_examples/example_test.ts
-Downloading https://deno.land/x/testing/mod.ts
-Compiling https://deno.land/x/testing/mod.ts
+> deno test.ts --reload
 running 2 tests
-test t1
-... ok
-test t2
-... ok
+test t1 ... ok
+test t2 ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
 ```
 
 Note that we did not have to provide the `--allow-net` flag for this program,
@@ -470,11 +472,11 @@ software, centralized code repositories, and superfluous file formats.
 
 ### Testing if current file is the main program
 
-By using `window.location` and `import.meta.url` one can test if the current
-script has been executed as the main input to the program.
+To test if the current script has been executed as the main input to the program
+check `import.meta.main`.
 
 ```ts
-if (window.location.toString() == import.meta.url) {
+if (import.meta.main) {
   console.log("main");
 }
 ```
@@ -519,7 +521,7 @@ generated and cached source code is written and read to.
 
 `NO_COLOR` will turn off color output if set. See https://no-color.org/. User
 code can test if `NO_COLOR` was set without having `--allow-env` by using the
-boolean constant `deno.noColor`.
+boolean constant `Deno.noColor`.
 
 ### V8 flags
 
@@ -544,7 +546,7 @@ Particularly useful ones:
 |           File descriptors (fd) | [Resource ids (rid)](#resources) |
 |                       Scheduler | Tokio                            |
 | Userland: libc++ / glib / boost | deno_std                         |
-|                 /proc/\$\$/stat | [deno.metrics()](#metrics)       |
+|                 /proc/\$\$/stat | [Deno.metrics()](#metrics)       |
 |                       man pages | deno --types                     |
 
 #### Resources
@@ -555,7 +557,7 @@ would be good to be able to query the system for how many open resources there
 are.
 
 ```ts
-import { resources, close } from "deno";
+const { resources, close } = Deno;
 console.log(resources());
 // output like: { 0: "stdin", 1: "stdout", 2: "stderr", 3: "repl" }
 
@@ -568,7 +570,7 @@ close(3);
 Metrics is deno's internal counters for various statics.
 
 ```ts
-import { metrics } from "deno";
+const { metrics } = Deno;
 console.log(metrics());
 // output like: { opsDispatched: 1, opsCompleted: 1, bytesSentControl: 40, bytesSentData: 0, bytesReceived: 176 }
 ```
@@ -760,7 +762,7 @@ We are very concerned about making mistakes when adding new APIs. When adding an
 Op to Deno, the counterpart interfaces on other platforms should be researched.
 Please list how this functionality is done in Go, Node, Rust, and Python.
 
-As an example, see how `deno.rename()` was proposed and added in
+As an example, see how `Deno.rename()` was proposed and added in
 [PR #671](https://github.com/denoland/deno/pull/671).
 
 ### Documenting APIs
