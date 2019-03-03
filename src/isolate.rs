@@ -163,6 +163,16 @@ pub struct Metrics {
   pub resolve_count: AtomicUsize,
 }
 
+pub struct IsolateInitScript {
+  pub source: String,
+  pub filename: String,
+}
+
+pub struct IsolateInit {
+  pub snapshot: Option<libdeno::deno_buf>,
+  pub init_script: Option<IsolateInitScript>,
+}
+
 static DENO_INIT: Once = ONCE_INIT;
 
 impl Isolate {
@@ -861,14 +871,4 @@ mod tests {
     let metrics = &isolate.state.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
   }
-}
-
-pub struct IsolateInitScript {
-  pub source: String,
-  pub filename: String,
-}
-
-pub struct IsolateInit {
-  pub snapshot: Option<libdeno::deno_buf>,
-  pub init_script: Option<IsolateInitScript>,
 }

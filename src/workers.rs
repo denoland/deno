@@ -96,17 +96,11 @@ pub fn spawn(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::init_script;
-  use crate::snapshot;
+  use crate::isolate_init;
 
   #[test]
   fn test_spawn() {
-    let snapshot = snapshot::compiler_snapshot();
-    let init_script = init_script::compiler_init_script();
-    let isolate_init = IsolateInit {
-      snapshot,
-      init_script,
-    };
+    let isolate_init = isolate_init::compiler_isolate_init();
     let resource = spawn(
       isolate_init,
       IsolateState::mock(),
@@ -143,12 +137,7 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    let snapshot = snapshot::compiler_snapshot();
-    let init_script = init_script::compiler_init_script();
-    let isolate_init = IsolateInit {
-      snapshot,
-      init_script,
-    };
+    let isolate_init = isolate_init::compiler_isolate_init();
     let resource = spawn(
       isolate_init,
       IsolateState::mock(),
