@@ -2,17 +2,10 @@
 import { testPerm, assert, assertEqual } from "./test_util.ts";
 import { Permission } from "deno";
 
-const perms: Permission[] = [
-  "run",
-  "read",
-  "write",
-  "net",
-  "env",
-];
+const perms: Permission[] = ["run", "read", "write", "net", "env"];
 
 for (let grant of perms) {
   testPerm({ [grant]: true }, function envGranted() {
-
     const perms = Deno.permissions();
     assert(perms !== null);
     for (let perm of Object.keys(perms)) {

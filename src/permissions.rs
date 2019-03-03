@@ -3,9 +3,9 @@ use atty;
 
 use crate::flags::DenoFlags;
 
+use ansi_term::Style;
 use crate::errors::permission_denied;
 use crate::errors::DenoResult;
-use ansi_term::Style;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 

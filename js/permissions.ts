@@ -4,7 +4,6 @@ import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";
 
-
 // Keep in sync with src/permissions.rs
 export type Permissions = {
   read: boolean;
@@ -12,7 +11,7 @@ export type Permissions = {
   net: boolean;
   env: boolean;
   run: boolean;
-}
+};
 
 export type Permission = keyof Permissions;
 
@@ -35,12 +34,11 @@ function createPermissions(inner: msg.PermissionsRes): Permissions {
     write: inner.write(),
     net: inner.net(),
     env: inner.env(),
-    run: inner.run(),
+    run: inner.run()
   };
 }
 
-function getReq(
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+function getReq(): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   msg.Permissions.startPermissions(builder);
   const inner = msg.Permissions.endPermissions(builder);
@@ -48,7 +46,7 @@ function getReq(
 }
 
 function revokeReq(
-  permission: string,
+  permission: string
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const permission_ = builder.createString(permission);

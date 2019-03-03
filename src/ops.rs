@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+use atty;
 use crate::ansi;
 use crate::errors;
 use crate::errors::{permission_denied, DenoError, DenoResult, ErrorKind};
@@ -21,7 +22,6 @@ use crate::resources::table_entries;
 use crate::resources::Resource;
 use crate::tokio_util;
 use crate::version;
-use atty;
 use deno_core::JSError;
 use flatbuffers::FlatBufferBuilder;
 use futures;
@@ -57,11 +57,9 @@ type OpResult = DenoResult<Buf>;
 
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type OpCreator = fn(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op>;
+type OpCreator =
+  fn(isolate: &Isolate, base: &msg::Base<'_>, data: libdeno::deno_buf)
+    -> Box<Op>;
 
 #[inline]
 fn empty_buf() -> Buf {
@@ -158,8 +156,7 @@ pub fn dispatch(
           ..Default::default()
         },
       ))
-    })
-    .and_then(move |buf: Buf| -> DenoResult<Buf> {
+    }).and_then(move |buf: Buf| -> DenoResult<Buf> {
       // Handle empty responses. For sync responses we just want
       // to send null. For async we want to send a small message
       // with the cmd_id.
@@ -1220,8 +1217,7 @@ fn op_read_dir(
             has_mode: cfg!(target_family = "unix"),
           },
         )
-      })
-      .collect();
+      }).collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(
@@ -1610,8 +1606,7 @@ fn op_resources(
           repr: Some(repr),
         },
       )
-    })
-    .collect();
+    }).collect();
 
   let resources = builder.create_vector(&res);
   let inner = msg::ResourcesRes::create(
@@ -1894,8 +1889,7 @@ mod tests {
       &isolate,
       &final_msg,
       libdeno::deno_buf::empty(),
-    )
-    .wait();
+    ).wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
@@ -1933,8 +1927,7 @@ mod tests {
       &isolate,
       &final_msg,
       libdeno::deno_buf::empty(),
-    )
-    .wait();
+    ).wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
@@ -1972,8 +1965,7 @@ mod tests {
       &isolate,
       &final_msg,
       libdeno::deno_buf::empty(),
-    )
-    .wait();
+    ).wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert!(e.to_string() != permission_denied().to_string()),
