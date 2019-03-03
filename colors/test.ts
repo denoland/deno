@@ -19,4 +19,6 @@ test(function enablingColors() {
   assert.equal(getEnabled(), true);
   setEnabled(false);
   assert.equal(bgBlue(red("Hello world")), "Hello world");
+  setEnabled(true);
+  assert.equal(red("Hello world"), "[31mHello world[39m");
 });
