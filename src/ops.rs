@@ -374,11 +374,19 @@ fn op_fetch_module_meta_data(
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
 
+  // Check for allow read since this operation could be used to read from the file system.
   if !isolate.permissions.allow_read.load(Ordering::SeqCst) {
     debug!("No read permission for fetch_module_meta_data");
     return odd_future(permission_denied());
   }
 
+  // Check for allow write since this operation could be used to write to the file system.
+  if !isolate.permissions.allow_write.load(Ordering::SeqCst) {
+    debug!("No network permission for fetch_module_meta_data");
+    return odd_future(permission_denied());
+  }
+
+  // Check for allow net since this operation could be used to make https/http requests.
   if !isolate.permissions.allow_net.load(Ordering::SeqCst) {
     debug!("No network permission for fetch_module_meta_data");
     return odd_future(permission_denied());
