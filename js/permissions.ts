@@ -4,17 +4,20 @@ import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";
 
-// Keep in sync with src/permissions.rs
+// Permissions as granted by the caller
 export type Permissions = {
   read: boolean;
   write: boolean;
   net: boolean;
   env: boolean;
   run: boolean;
+
+  // NOTE: Keep in sync with src/permissions.rs
 };
 
 export type Permission = keyof Permissions;
 
+// Inspect granted permissions for the current program.
 export function permissions(): Permissions {
   const baseRes = dispatch.sendSync(...getReq())!;
   assert(msg.Any.PermissionsRes === baseRes.innerType());
@@ -24,6 +27,7 @@ export function permissions(): Permissions {
   return createPermissions(res);
 }
 
+// Revoke a permission. When the permission was already revoked nothing changes
 export function revokePermission(permission: Permission): void {
   dispatch.sendSync(...revokeReq(permission));
 }
