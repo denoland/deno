@@ -5,6 +5,7 @@
 
 import "./blob_test.ts";
 import "./buffer_test.ts";
+import "./build_test.ts";
 import "./chmod_test.ts";
 // TODO find a way to test the compiler with split snapshots
 // import "./compiler_test.ts";
@@ -29,7 +30,6 @@ import "./mixins/dom_iterable_test.ts";
 import "./mkdir_test.ts";
 import "./net_test.ts";
 import "./os_test.ts";
-import "./platform_test.ts";
 import "./process_test.ts";
 import "./read_dir_test.ts";
 import "./read_file_test.ts";

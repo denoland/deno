@@ -10,7 +10,7 @@ testPerm({ write: true }, function dirCwdChdirSuccess() {
   const path = Deno.makeTempDirSync();
   Deno.chdir(path);
   const current = Deno.cwd();
-  if (Deno.platform.os === "mac") {
+  if (Deno.build.os === "mac") {
     assertEqual(current, "/private" + path);
   } else {
     assertEqual(current, path);
@@ -20,7 +20,7 @@ testPerm({ write: true }, function dirCwdChdirSuccess() {
 
 testPerm({ write: true }, function dirCwdError() {
   // excluding windows since it throws resource busy, while removeSync
-  if (["linux", "mac"].includes(Deno.platform.os)) {
+  if (["linux", "mac"].includes(Deno.build.os)) {
     const initialdir = Deno.cwd();
     const path = Deno.makeTempDirSync();
     Deno.chdir(path);

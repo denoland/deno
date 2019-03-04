@@ -45,7 +45,7 @@ testPerm({ write: false }, function writeFileSyncPerm() {
 });
 
 testPerm({ read: true, write: true }, function writeFileSyncUpdatePerm() {
-  if (Deno.platform.os !== "win") {
+  if (Deno.build.os !== "win") {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -146,7 +146,7 @@ testPerm({ read: true, write: false }, async function writeFilePerm() {
 });
 
 testPerm({ read: true, write: true }, async function writeFileUpdatePerm() {
-  if (Deno.platform.os !== "win") {
+  if (Deno.build.os !== "win") {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
