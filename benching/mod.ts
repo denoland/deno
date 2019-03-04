@@ -91,9 +91,9 @@ export function bench(
 
 /** Runs all registered and non-skipped benchmarks serially. */
 export async function runBenchmarks({
-  only = /[^\s]+/,
+  only = /[^\s]/,
   skip = /^\s*$/
-}: BenchmarkRunOptions): Promise<void> {
+}: BenchmarkRunOptions = {}): Promise<void> {
   // Filtering candidates by the "only" and "skip" constraint
   const benchmarks: Array<BenchmarkDefinition> = candidates.filter(
     ({ name }) => only.test(name) && !skip.test(name)
