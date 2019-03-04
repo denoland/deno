@@ -1,24 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assertEqual, assert } from "./test_util.ts";
+import { assert, assertEqual, test } from "./test_util.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
 // tslint:disable-next-line:no-any
-const {
-  Console,
-  libdeno,
-  stringifyArgs,
-  inspect,
-  readAll,
-  write,
-  stdout
-} = Deno as any;
+const { Console, libdeno, stringifyArgs, inspect, write, stdout } = Deno as any;
 
 const console = new Console(libdeno.print);
 
 // tslint:disable-next-line:no-any
 function stringify(...args: any[]): string {
-  return stringifyArgs(args);
+  return stringifyArgs(args).replace(/\n$/, "");
 }
 
 test(function consoleTestAssertShouldNotThrowError() {
@@ -139,16 +131,16 @@ test(function consoleTestStringifyWithDepth() {
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEqual(
     stringifyArgs([nestedObj], { depth: 3 }),
-    "{ a: { b: { c: [Object] } } }"
+    "{ a: { b: { c: [Object] } } }\n"
   );
   assertEqual(
     stringifyArgs([nestedObj], { depth: 4 }),
-    "{ a: { b: { c: { d: [Object] } } } }"
+    "{ a: { b: { c: { d: [Object] } } } }\n"
   );
-  assertEqual(stringifyArgs([nestedObj], { depth: 0 }), "[Object]");
+  assertEqual(stringifyArgs([nestedObj], { depth: 0 }), "[Object]\n");
   assertEqual(
     stringifyArgs([nestedObj], { depth: null }),
-    "{ a: { b: { c: { d: [Object] } } } }"
+    "{ a: { b: { c: { d: [Object] } } } }\n"
   );
   // test inspect is working the same way
   assertEqual(
