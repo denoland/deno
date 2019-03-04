@@ -1,9 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
-use crate::js_errors::JSError;
+use crate::js_errors::JSErrorColor;
 pub use crate::msg::ErrorKind;
 use crate::resolve_addr::ResolveAddrError;
-
+use deno_core::JSError;
 use hyper;
 use std;
 use std::fmt;
@@ -202,7 +201,7 @@ impl fmt::Display for RustOrJsError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       RustOrJsError::Rust(e) => e.fmt(f),
-      RustOrJsError::Js(e) => e.fmt(f),
+      RustOrJsError::Js(e) => JSErrorColor(e).fmt(f),
     }
   }
 }

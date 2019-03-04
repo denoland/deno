@@ -2,8 +2,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 #include <iostream>
 #include <string>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <io.h>
+#include <windows.h>
+#endif  // _WIN32
 
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
@@ -42,20 +51,6 @@ v8::StartupData SerializeInternalFields(v8::Local<v8::Object> holder, int index,
   // We simply use memcpy to serialize the content.
   memcpy(payload, embedder_field, size);
   return {payload, size};
-}
-
-void AddDataRef(DenoIsolate* d, int32_t req_id, v8::Local<v8::Value> data_v) {
-  d->async_data_map_.emplace(std::piecewise_construct, std::make_tuple(req_id),
-                             std::make_tuple(d->isolate_, data_v));
-}
-
-void DeleteDataRef(DenoIsolate* d, int32_t req_id) {
-  // Delete persistent reference to data ArrayBuffer.
-  auto it = d->async_data_map_.find(req_id);
-  if (it != d->async_data_map_.end()) {
-    it->second.Reset();
-    d->async_data_map_.erase(it);
-  }
 }
 
 // Extracts a C string from a v8::V8 Utf8Value.
@@ -107,16 +102,53 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   auto context = d->context_.Get(d->isolate_);
   v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value str(isolate, args[0]);
   bool is_err =
       args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
-  bool prints_newline =
-      args.Length() >= 3 ? args[2]->BooleanValue(context).ToChecked() : true;
   FILE* file = is_err ? stderr : stdout;
-  fwrite(*str, sizeof(**str), str.length(), file);
-  if (prints_newline) {
-    fprintf(file, "\n");
+
+#ifdef _WIN32
+  int fd = _fileno(file);
+  if (fd < 0) return;
+
+  HANDLE h = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+  if (h == INVALID_HANDLE_VALUE) return;
+
+  DWORD mode;
+  if (GetConsoleMode(h, &mode)) {
+    // Print to Windows console. Since the Windows API generally doesn't support
+    // UTF-8 encoded text, we have to use `WriteConsoleW()` which uses UTF-16.
+    v8::String::Value str(isolate, args[0]);
+    auto str_len = static_cast<size_t>(str.length());
+    auto str_wchars = reinterpret_cast<WCHAR*>(*str);
+
+    // WriteConsoleW has some limit to how many characters can be written at
+    // once, which is unspecified but low enough to be encountered in practice.
+    // Therefore we break up the write into chunks of 8kb if necessary.
+    size_t chunk_start = 0;
+    while (chunk_start < str_len) {
+      size_t chunk_end = std::min(chunk_start + 8192, str_len);
+
+      // Do not break in the middle of a surrogate pair. Note that `chunk_end`
+      // points to the start of the next chunk, so we check whether it contains
+      // the second half of a surrogate pair (a.k.a. "low surrogate").
+      if (chunk_end < str_len && str_wchars[chunk_end] >= 0xdc00 &&
+          str_wchars[chunk_end] <= 0xdfff) {
+        --chunk_end;
+      }
+
+      // Write to the console.
+      DWORD chunk_len = static_cast<DWORD>(chunk_end - chunk_start);
+      DWORD _;
+      WriteConsoleW(h, &str_wchars[chunk_start], chunk_len, &_, nullptr);
+
+      chunk_start = chunk_end;
+    }
+    return;
   }
+#endif  // _WIN32
+
+  v8::String::Utf8Value str(isolate, args[0]);
+  fwrite(*str, sizeof(**str), str.length(), file);
   fflush(file);
 }
 
@@ -131,6 +163,13 @@ void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args) {
 }
 
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
+  // Do not use ImportBuf with zero_copy buffers.
+  DCHECK_EQ(buf.zero_copy_id, 0);
+
+  if (buf.data_ptr == nullptr) {
+    return v8::Local<v8::Uint8Array>();
+  }
+
   if (buf.alloc_ptr == nullptr) {
     // If alloc_ptr isn't set, we memcpy.
     // This is currently used for flatbuffers created in Rust.
@@ -209,42 +248,44 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
 
-  v8::Locker locker(d->isolate_);
+  deno_buf control = {nullptr, 0u, nullptr, 0u, 0u};
+  deno_buf zero_copy = {nullptr, 0u, nullptr, 0u, 0u};
+
   v8::HandleScope handle_scope(isolate);
 
-  CHECK_NULL(d->current_args_);  // libdeno.send re-entry forbidden.
-  int32_t req_id = d->next_req_id_++;
+  if (args.Length() > 0) {
+    v8::Local<v8::Value> control_v = args[0];
+    if (control_v->IsArrayBufferView()) {
+      control =
+          GetContents(isolate, v8::Local<v8::ArrayBufferView>::Cast(control_v));
+    }
+  }
 
-  v8::Local<v8::Value> control_v = args[0];
-  CHECK(control_v->IsArrayBufferView());
-  deno_buf control =
-      GetContents(isolate, v8::Local<v8::ArrayBufferView>::Cast(control_v));
-  deno_buf data = {nullptr, 0u, nullptr, 0u};
-  v8::Local<v8::Value> data_v;
+  v8::Local<v8::Value> zero_copy_v;
   if (args.Length() == 2) {
     if (args[1]->IsArrayBufferView()) {
-      data_v = args[1];
-      data = GetContents(isolate, v8::Local<v8::ArrayBufferView>::Cast(data_v));
+      zero_copy_v = args[1];
+      zero_copy = GetContents(
+          isolate, v8::Local<v8::ArrayBufferView>::Cast(zero_copy_v));
+      size_t zero_copy_id = d->next_zero_copy_id_++;
+      DCHECK_GT(zero_copy_id, 0);
+      zero_copy.zero_copy_id = zero_copy_id;
+      // If the zero_copy ArrayBuffer was given, we must maintain a strong
+      // reference to it until deno_zero_copy_release is called.
+      d->AddZeroCopyRef(zero_copy_id, zero_copy_v);
     }
-  } else {
-    CHECK_EQ(args.Length(), 1);
   }
 
   DCHECK_NULL(d->current_args_);
   d->current_args_ = &args;
 
-  d->recv_cb_(d->user_data_, req_id, control, data);
+  d->recv_cb_(d->user_data_, control, zero_copy);
 
   if (d->current_args_ == nullptr) {
     // This indicates that deno_repond() was called already.
   } else {
     // Asynchronous.
     d->current_args_ = nullptr;
-    // If the data ArrayBuffer was given, we must maintain a strong reference
-    // to it until deno_respond is called.
-    if (!data_v.IsEmpty()) {
-      AddDataRef(d, req_id, data_v);
-    }
   }
 }
 
@@ -265,7 +306,8 @@ v8::ScriptOrigin ModuleOrigin(v8::Isolate* isolate,
                           v8::True(isolate));
 }
 
-deno_mod DenoIsolate::RegisterModule(const char* name, const char* source) {
+deno_mod DenoIsolate::RegisterModule(bool main, const char* name,
+                                     const char* source) {
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::Locker locker(isolate_);
   v8::HandleScope handle_scope(isolate_);
@@ -300,8 +342,9 @@ deno_mod DenoIsolate::RegisterModule(const char* name, const char* source) {
     import_specifiers.push_back(*specifier_utf8);
   }
 
-  mods_.emplace(std::piecewise_construct, std::make_tuple(id),
-                std::make_tuple(isolate_, module, name, import_specifiers));
+  mods_.emplace(
+      std::piecewise_construct, std::make_tuple(id),
+      std::make_tuple(isolate_, module, main, name, import_specifiers));
   mods_by_name_[name] = id;
 
   return id;
@@ -519,8 +562,10 @@ void HostInitializeImportMetaObjectCallback(v8::Local<v8::Context> context,
   auto* info = d->GetModuleInfo(id);
 
   const char* url = info->name.c_str();
+  const bool main = info->main;
 
   meta->CreateDataProperty(context, v8_str("url"), v8_str(url)).ToChecked();
+  meta->CreateDataProperty(context, v8_str("main"), v8_bool(main)).ToChecked();
 }
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {

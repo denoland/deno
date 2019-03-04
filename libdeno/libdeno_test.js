@@ -103,11 +103,11 @@ global.GlobalErrorHandling = () => {
 };
 
 // Allocate this buf at the top level to avoid GC.
-const dataBuf = new Uint8Array([3, 4]);
+const zeroCopyBuf = new Uint8Array([3, 4]);
 
-global.DataBuf = () => {
+global.ZeroCopyBuf = () => {
   const a = new Uint8Array([1, 2]);
-  const b = dataBuf;
+  const b = zeroCopyBuf;
   // The second parameter of send should modified by the
   // privileged side.
   const r = libdeno.send(a, b);

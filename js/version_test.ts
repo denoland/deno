@@ -6,3 +6,7 @@ test(function version() {
   assert(pattern.test(Deno.version.v8));
   assert(pattern.test(Deno.version.typescript));
 });
+
+test(function versionGnArgs() {
+  assert(Deno.version.gnArgs.length > 100);
+});
