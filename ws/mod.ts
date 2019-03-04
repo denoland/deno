@@ -43,10 +43,16 @@ export function isWebSocketPongEvent(a): a is WebSocketPongEvent {
   return Array.isArray(a) && a[0] === "pong" && a[1] instanceof Uint8Array;
 }
 
+export type WebSocketMessage = string | Uint8Array;
+
 // TODO move this to common/util module
 export function append(a: Uint8Array, b: Uint8Array) {
-  if (a == null || !a.length) return b;
-  if (b == null || !b.length) return a;
+  if (a == null || !a.length) {
+    return b;
+  }
+  if (b == null || !b.length) {
+    return a;
+  }
   const output = new Uint8Array(a.length + b.length);
   output.set(a, 0);
   output.set(b, a.length);
@@ -57,7 +63,7 @@ export class SocketClosedError extends Error {}
 
 export type WebSocketFrame = {
   isLastFrame: boolean;
-  opcode: number;
+  opcode: OpCode;
   mask?: Uint8Array;
   payload: Uint8Array;
 };
@@ -65,8 +71,8 @@ export type WebSocketFrame = {
 export type WebSocket = {
   readonly isClosed: boolean;
   receive(): AsyncIterableIterator<WebSocketEvent>;
-  send(data: string | Uint8Array): Promise<void>;
-  ping(data?: string | Uint8Array): Promise<void>;
+  send(data: WebSocketMessage): Promise<void>;
+  ping(data?: WebSocketMessage): Promise<void>;
   close(code: number, reason?: string): Promise<void>;
 };
 
@@ -118,11 +124,12 @@ class WebSocketImpl implements WebSocket {
         case OpCode.Pong:
           yield ["pong", frame.payload] as WebSocketPongEvent;
           break;
+        default:
       }
     }
   }
 
-  async send(data: string | Uint8Array): Promise<void> {
+  async send(data: WebSocketMessage): Promise<void> {
     if (this.isClosed) {
       throw new SocketClosedError("socket has been closed");
     }
@@ -141,7 +148,7 @@ class WebSocketImpl implements WebSocket {
     );
   }
 
-  async ping(data: string | Uint8Array): Promise<void> {
+  async ping(data: WebSocketMessage): Promise<void> {
     const payload = typeof data === "string" ? this.encoder.encode(data) : data;
     await writeFrame(
       {
@@ -188,7 +195,10 @@ class WebSocketImpl implements WebSocket {
   }
 
   private ensureSocketClosed(): Error {
-    if (this.isClosed) return;
+    if (this.isClosed) {
+      return;
+    }
+
     try {
       this.conn.close();
     } catch (e) {
@@ -203,7 +213,7 @@ export async function* receiveFrame(
   conn: Conn
 ): AsyncIterableIterator<WebSocketFrame> {
   let receiving = true;
-  let isLastFrame = true;
+  const isLastFrame = true;
   const reader = new BufReader(conn);
   while (receiving) {
     const frame = await readFrame(reader);
@@ -241,12 +251,13 @@ export async function* receiveFrame(
       case OpCode.Pong:
         yield frame;
         break;
+      default:
     }
   }
 }
 
 export async function writeFrame(frame: WebSocketFrame, writer: Writer) {
-  let payloadLength = frame.payload.byteLength;
+  const payloadLength = frame.payload.byteLength;
   let header: Uint8Array;
   const hasMask = frame.mask ? 0x80 : 0;
   if (payloadLength < 126) {
