@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, Default)]
 pub struct DenoPermissions {
+  // Keep in sync with src/permissions.ts
   pub allow_read: AtomicBool,
   pub allow_write: AtomicBool,
   pub allow_net: AtomicBool,
@@ -89,6 +90,51 @@ impl DenoPermissions {
       self.allow_env.store(true, Ordering::SeqCst);
     }
     r
+  }
+
+  pub fn allows_run(&self) -> bool {
+    return self.allow_run.load(Ordering::SeqCst);
+  }
+
+  pub fn allows_read(&self) -> bool {
+    return self.allow_read.load(Ordering::SeqCst);
+  }
+
+  pub fn allows_write(&self) -> bool {
+    return self.allow_write.load(Ordering::SeqCst);
+  }
+
+  pub fn allows_net(&self) -> bool {
+    return self.allow_net.load(Ordering::SeqCst);
+  }
+
+  pub fn allows_env(&self) -> bool {
+    return self.allow_env.load(Ordering::SeqCst);
+  }
+
+  pub fn revoke_run(&self) -> DenoResult<()> {
+    self.allow_run.store(false, Ordering::SeqCst);
+    return Ok(());
+  }
+
+  pub fn revoke_read(&self) -> DenoResult<()> {
+    self.allow_read.store(false, Ordering::SeqCst);
+    return Ok(());
+  }
+
+  pub fn revoke_write(&self) -> DenoResult<()> {
+    self.allow_write.store(false, Ordering::SeqCst);
+    return Ok(());
+  }
+
+  pub fn revoke_net(&self) -> DenoResult<()> {
+    self.allow_net.store(false, Ordering::SeqCst);
+    return Ok(());
+  }
+
+  pub fn revoke_env(&self) -> DenoResult<()> {
+    self.allow_env.store(false, Ordering::SeqCst);
+    return Ok(());
   }
 
   pub fn default() -> Self {

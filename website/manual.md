@@ -286,6 +286,35 @@ It's worth noting that like the `cat.ts` example, the `copy()` function here
 also does not make unnecessary memory copies. It receives a packet from the
 kernel and sends back, without further complexity.
 
+### Inspecting and revoking permissions
+
+Sometimes a program may want to revoke previously granted permissions. When a
+program, at a later stage, needs those permissions, a new prompt will be
+presented to the user.
+
+```ts
+const { permissions, revokePermission, open, remove } = Deno;
+
+(async () => {
+  // lookup a permission
+  if (!permissions().write) {
+    throw new Error("need write permission");
+  }
+
+  const log = await open("request.log", "a+");
+
+  // revoke some permissions
+  revokePermission("read");
+  revokePermission("write");
+
+  // use the log file
+  await log.write(encoder.encode("hello\n"));
+
+  // this will prompt for the write permission or fail.
+  await remove("request.log");
+})();
+```
+
 ### File server
 
 This one serves a local directory in HTTP.

@@ -130,6 +130,8 @@ pub fn dispatch(
       msg::Any::Now => op_now,
       msg::Any::IsTTY => op_is_tty,
       msg::Any::Seek => op_seek,
+      msg::Any::Permissions => op_permissions,
+      msg::Any::PermissionRevoke => op_revoke_permission,
       _ => panic!(format!(
         "Unhandled message {}",
         msg::enum_name_any(inner_type)
@@ -501,6 +503,57 @@ fn op_env(
       ..Default::default()
     },
   ))
+}
+
+fn op_permissions(
+  isolate: &Isolate,
+  base: &msg::Base<'_>,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::PermissionsRes::create(
+    builder,
+    &msg::PermissionsResArgs {
+      run: isolate.permissions.allows_run(),
+      read: isolate.permissions.allows_read(),
+      write: isolate.permissions.allows_write(),
+      net: isolate.permissions.allows_net(),
+      env: isolate.permissions.allows_env(),
+    },
+  );
+  ok_future(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::PermissionsRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_revoke_permission(
+  isolate: &Isolate,
+  base: &msg::Base<'_>,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_permission_revoke().unwrap();
+  let permission = inner.permission().unwrap();
+  let result = match permission {
+    "run" => isolate.permissions.revoke_run(),
+    "read" => isolate.permissions.revoke_read(),
+    "write" => isolate.permissions.revoke_write(),
+    "net" => isolate.permissions.revoke_net(),
+    "env" => isolate.permissions.revoke_env(),
+    _ => Ok(()),
+  };
+  if let Err(e) = result {
+    return odd_future(e);
+  }
+  ok_future(empty_buf())
 }
 
 fn op_fetch(
