@@ -1862,7 +1862,8 @@ fn op_worker_post_message(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::isolate::{Isolate, IsolateInit, IsolateState};
+  use crate::isolate::{Isolate, IsolateState};
+  use crate::isolate_init::IsolateInit;
   use crate::permissions::DenoPermissions;
   use std::sync::atomic::AtomicBool;
 
