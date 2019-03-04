@@ -1914,7 +1914,6 @@ mod tests {
   #[test]
   fn fetch_module_meta_fails_without_write() {
     let state = IsolateState::mock();
-    let snapshot = libdeno::deno_buf::empty();
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(true),
       allow_write: AtomicBool::new(false),
@@ -1922,7 +1921,15 @@ mod tests {
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
     };
-    let isolate = Isolate::new(snapshot, state, dispatch, permissions);
+    let isolate = Isolate::new(
+      IsolateInit {
+        snapshot: None,
+        init_script: None,
+      },
+      state,
+      dispatch,
+      permissions,
+    );
     let builder = &mut FlatBufferBuilder::new();
     let fetch_msg_args = msg::FetchModuleMetaDataArgs {
       specifier: Some(builder.create_string("./somefile")),
