@@ -56,7 +56,7 @@ test({
 });
 
 test({
-  name: "prints empty arguments",
+  name: "prints an empty array",
   fn() {
     const val: any[] = [];
     assertEqual(format(val), "Array []");

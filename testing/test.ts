@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { test, assert, assertEqual, equal } from "./mod.ts";
+import { test, assert, assertEqual, equal, runIfMain } from "./mod.ts";
 import "./format_test.ts";
 import "./diff_test.ts";
 import "./pretty_test.ts";
@@ -267,7 +267,7 @@ test(async function testingThrowsAsyncMsgIncludes() {
   assert(count === 1);
 });
 
-test(async function testingThrowsMsgNotIncludes() {
+test(async function testingThrowsAsyncMsgNotIncludes() {
   let count = 0;
   let didThrow = false;
   try {
@@ -289,3 +289,5 @@ test(async function testingThrowsMsgNotIncludes() {
   assert(count === 1);
   assert(didThrow);
 });
+
+runIfMain(import.meta, { parallel: true });
