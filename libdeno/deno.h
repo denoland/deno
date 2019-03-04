@@ -84,8 +84,6 @@ const char* deno_last_exception(Deno* d);
 
 void deno_terminate_execution(Deno* d);
 
-deno_buf deno_generate_snapshot(const char* js_file, const char* js_source);
-
 // Module API
 
 typedef int deno_mod;

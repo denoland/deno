@@ -22,13 +22,26 @@ int main(int argc, char** argv) {
   std::string js_source;
   CHECK(deno::ReadFileToString(js_fn, &js_source));
 
-  auto snapshot = deno_generate_snapshot(js_fn, js_source.c_str());
+  deno_init();
+  deno_config config = {1, deno::empty_buf, deno::empty_buf, nullptr};
+  Deno* d = deno_new(config);
+
+  deno_execute(d, nullptr, js_fn, js_source.c_str());
+  if (deno_last_exception(d) != nullptr) {
+    std::cerr << "Snapshot Exception " << std::endl;
+    std::cerr << deno_last_exception(d) << std::endl;
+    deno_delete(d);
+    return 1;
+  }
+
+  auto snapshot = deno_get_snapshot(d);
 
   std::ofstream file_(snapshot_out_bin, std::ios::binary);
   file_.write(reinterpret_cast<char*>(snapshot.data_ptr), snapshot.data_len);
   file_.close();
 
   delete[] snapshot.data_ptr;
+  deno_delete(d);
 
   return file_.bad();
 }

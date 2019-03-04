@@ -189,9 +189,4 @@ extern "C" {
     user_data: *const c_void,
     id: deno_mod,
   );
-
-  pub fn deno_generate_snapshot(
-    js_file: *const c_char,
-    js_source: *const c_char,
-  ) -> deno_buf;
 }
