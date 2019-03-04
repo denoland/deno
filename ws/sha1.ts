@@ -61,12 +61,12 @@ export class Sha1 {
       notString = false;
       message = String(data);
     }
-    let code,
-      index = 0,
-      i,
-      start = this._start,
-      length = message.length || 0,
-      blocks = this._blocks;
+    let code;
+    let index = 0;
+    let i;
+    const start = this._start;
+    const length = message.length || 0;
+    const blocks = this._blocks;
 
     while (index < length) {
       if (this._hashed) {
@@ -125,8 +125,8 @@ export class Sha1 {
       return;
     }
     this._finalized = true;
-    let blocks = this._blocks,
-      i = this._lastByteIndex;
+    const blocks = this._blocks;
+    const i = this._lastByteIndex;
     blocks[16] = this._block;
     blocks[i >> 2] |= EXTRA[i & 3];
     this._block = blocks[16];
@@ -143,15 +143,13 @@ export class Sha1 {
   }
 
   hash() {
-    let a = this._h0,
-      b = this._h1,
-      c = this._h2,
-      d = this._h3,
-      e = this._h4;
-    let f,
-      j,
-      t,
-      blocks = this._blocks;
+    let a = this._h0;
+    let b = this._h1;
+    let c = this._h2;
+    let d = this._h3;
+    let e = this._h4;
+    let f, j, t;
+    const blocks = this._blocks;
 
     for (j = 16; j < 80; ++j) {
       t = blocks[j - 3] ^ blocks[j - 8] ^ blocks[j - 14] ^ blocks[j - 16];
@@ -276,11 +274,11 @@ export class Sha1 {
   hex() {
     this.finalize();
 
-    let h0 = this._h0,
-      h1 = this._h1,
-      h2 = this._h2,
-      h3 = this._h3,
-      h4 = this._h4;
+    const h0 = this._h0;
+    const h1 = this._h1;
+    const h2 = this._h2;
+    const h3 = this._h3;
+    const h4 = this._h4;
 
     return (
       HEX_CHARS[(h0 >> 28) & 0x0f] +
@@ -333,11 +331,11 @@ export class Sha1 {
   digest() {
     this.finalize();
 
-    let h0 = this._h0,
-      h1 = this._h1,
-      h2 = this._h2,
-      h3 = this._h3,
-      h4 = this._h4;
+    const h0 = this._h0;
+    const h1 = this._h1;
+    const h2 = this._h2;
+    const h3 = this._h3;
+    const h4 = this._h4;
 
     return [
       (h0 >> 24) & 0xff,
