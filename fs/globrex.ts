@@ -3,6 +3,7 @@
 // Copyright (c) 2018 Terkel Gjervig Nielsen
 
 import * as deno from "deno";
+import { GlobOptions } from "./glob.ts";
 
 const isWin = deno.platform.os === "win";
 const SEP = isWin ? `\\\\+` : `\\/`;
@@ -11,14 +12,6 @@ const GLOBSTAR = `((?:[^/]*(?:/|$))*)`;
 const WILDCARD = `([^/]*)`;
 const GLOBSTAR_SEGMENT = `((?:[^${SEP_ESC}]*(?:${SEP_ESC}|$))*)`;
 const WILDCARD_SEGMENT = `([^${SEP_ESC}]*)`;
-
-export interface GlobOptions {
-  extended?: boolean;
-  globstar?: boolean;
-  strict?: boolean;
-  filepath?: boolean;
-  flags?: string;
-}
 
 /**
  * Convert any glob pattern to a JavaScript Regexp object

@@ -106,7 +106,6 @@ testWalk(
       match: [
         glob(join("a", "**", "*.ts"), {
           flags: "g",
-          extended: true,
           globstar: true
         })
       ]
@@ -118,13 +117,38 @@ testWalk(
 
 testWalk(
   async (d: string) => {
+    await mkdir(d + "/a");
+    await mkdir(d + "/a/unicorn");
+    await mkdir(d + "/a/deno");
+    await mkdir(d + "/a/raptor");
+    await touch(d + "/a/raptor/x.ts");
+    await touch(d + "/a/deno/x.ts");
+    await touch(d + "/a/unicorn/x.ts");
+  },
+  async function globInWalkFolderExtended() {
+    const arr = await walkArray(".", {
+      match: [
+        glob(join("a", "+(raptor|deno)", "*.ts"), {
+          flags: "g",
+          extended: true
+        })
+      ]
+    });
+    assert.equal(arr.length, 2);
+    assert.equal(arr[0], "./a/deno/x.ts");
+    assert.equal(arr[1], "./a/raptor/x.ts");
+  }
+);
+
+testWalk(
+  async (d: string) => {
     await touch(d + "/x.ts");
     await touch(d + "/x.js");
     await touch(d + "/b.js");
   },
   async function globInWalkWildcardExtension() {
     const arr = await walkArray(".", {
-      match: [glob("x.*", { flags: "g", extended: true, globstar: true })]
+      match: [glob("x.*", { flags: "g", globstar: true })]
     });
     console.log(arr);
     assert.equal(arr.length, 2);
