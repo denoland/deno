@@ -2,8 +2,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 #include <iostream>
 #include <string>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <io.h>
+#include <windows.h>
+#endif  // _WIN32
 
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
@@ -93,10 +102,52 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   auto context = d->context_.Get(d->isolate_);
   v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value str(isolate, args[0]);
   bool is_err =
       args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
   FILE* file = is_err ? stderr : stdout;
+
+#ifdef _WIN32
+  int fd = _fileno(file);
+  if (fd < 0) return;
+
+  HANDLE h = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+  if (h == INVALID_HANDLE_VALUE) return;
+
+  DWORD mode;
+  if (GetConsoleMode(h, &mode)) {
+    // Print to Windows console. Since the Windows API generally doesn't support
+    // UTF-8 encoded text, we have to use `WriteConsoleW()` which uses UTF-16.
+    v8::String::Value str(isolate, args[0]);
+    auto str_len = static_cast<size_t>(str.length());
+    auto str_wchars = reinterpret_cast<WCHAR*>(*str);
+
+    // WriteConsoleW has some limit to how many characters can be written at
+    // once, which is unspecified but low enough to be encountered in practice.
+    // Therefore we break up the write into chunks of 8kb if necessary.
+    size_t chunk_start = 0;
+    while (chunk_start < str_len) {
+      size_t chunk_end = std::min(chunk_start + 8192, str_len);
+
+      // Do not break in the middle of a surrogate pair. Note that `chunk_end`
+      // points to the start of the next chunk, so we check whether it contains
+      // the second half of a surrogate pair (a.k.a. "low surrogate").
+      if (chunk_end < str_len && str_wchars[chunk_end] >= 0xdc00 &&
+          str_wchars[chunk_end] <= 0xdfff) {
+        --chunk_end;
+      }
+
+      // Write to the console.
+      DWORD chunk_len = static_cast<DWORD>(chunk_end - chunk_start);
+      DWORD _;
+      WriteConsoleW(h, &str_wchars[chunk_start], chunk_len, &_, nullptr);
+
+      chunk_start = chunk_end;
+    }
+    return;
+  }
+#endif  // _WIN32
+
+  v8::String::Utf8Value str(isolate, args[0]);
   fwrite(*str, sizeof(**str), str.length(), file);
   fflush(file);
 }
