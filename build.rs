@@ -76,6 +76,13 @@ fn main() {
     }
   }
 
+  // Enable snapshots for x64 builds
+  if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "x86_64" {
+    // Not related to v8_use_snapshot
+    // This only enables using pregenerated snapshots for isolate init
+    println!("cargo:rustc-cfg=feature=\"use-snapshot-init\"");
+  }
+
   if !gn_out_path.join("build.ninja").exists() {
     let status = Command::new("python")
       .env("DENO_BUILD_PATH", &gn_out_dir)

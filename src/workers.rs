@@ -3,11 +3,11 @@ use crate::isolate::Buf;
 use crate::isolate::Isolate;
 use crate::isolate::IsolateState;
 use crate::isolate::WorkerChannels;
+use crate::isolate_init::IsolateInit;
 use crate::js_errors::JSErrorColor;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::resources;
-use crate::snapshot;
 use crate::tokio_util;
 use deno_core::JSError;
 
@@ -24,6 +24,7 @@ pub struct Worker {
 
 impl Worker {
   pub fn new(
+    init: IsolateInit,
     parent_state: &Arc<IsolateState>,
     permissions: DenoPermissions,
   ) -> (Self, WorkerChannels) {
@@ -39,8 +40,7 @@ impl Worker {
       Some(internal_channels),
     ));
 
-    let snapshot = snapshot::compiler_snapshot();
-    let isolate = Isolate::new(snapshot, state, ops::dispatch, permissions);
+    let isolate = Isolate::new(init, state, ops::dispatch, permissions);
 
     let worker = Worker { isolate };
     (worker, external_channels)
@@ -56,6 +56,7 @@ impl Worker {
 }
 
 pub fn spawn(
+  init: IsolateInit,
   state: Arc<IsolateState>,
   js_source: String,
   permissions: DenoPermissions,
@@ -68,7 +69,7 @@ pub fn spawn(
   let builder = thread::Builder::new().name("worker".to_string());
   let _tid = builder
     .spawn(move || {
-      let (worker, external_channels) = Worker::new(&state, permissions);
+      let (worker, external_channels) = Worker::new(init, &state, permissions);
 
       let resource = resources::add_worker(external_channels);
       p.send(resource.clone()).unwrap();
@@ -95,10 +96,13 @@ pub fn spawn(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::isolate_init;
 
   #[test]
   fn test_spawn() {
+    let isolate_init = isolate_init::compiler_isolate_init();
     let resource = spawn(
+      isolate_init,
       IsolateState::mock(),
       r#"
       onmessage = function(e) {
@@ -133,7 +137,9 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
+    let isolate_init = isolate_init::compiler_isolate_init();
     let resource = spawn(
+      isolate_init,
       IsolateState::mock(),
       "onmessage = () => close();".into(),
       DenoPermissions::default(),
