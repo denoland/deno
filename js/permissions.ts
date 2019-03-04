@@ -4,7 +4,7 @@ import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";
 
-// Permissions as granted by the caller
+/** Permissions as granted by the caller */
 export type Permissions = {
   read: boolean;
   write: boolean;
@@ -17,7 +17,13 @@ export type Permissions = {
 
 export type Permission = keyof Permissions;
 
-// Inspect granted permissions for the current program.
+/** Inspect granted permissions for the current program.
+ *
+ *       if (Deno.permissions().read) {
+ *         const file = await Deno.readFile("example.test");
+ *         // ...
+ *       }
+ */
 export function permissions(): Permissions {
   const baseRes = dispatch.sendSync(...getReq())!;
   assert(msg.Any.PermissionsRes === baseRes.innerType());
@@ -27,7 +33,14 @@ export function permissions(): Permissions {
   return createPermissions(res);
 }
 
-// Revoke a permission. When the permission was already revoked nothing changes
+/** Revoke a permission. When the permission was already revoked nothing changes
+ *
+ *       if (Deno.permissions().read) {
+ *         const file = await Deno.readFile("example.test");
+ *         Deno.revokePermission('read');
+ *       }
+ *       Deno.readFile("example.test"); // -> error or permission prompt
+ */
 export function revokePermission(permission: Permission): void {
   dispatch.sendSync(...revokeReq(permission));
 }
