@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::isolate::Buf;
 use crate::isolate::Isolate;
-use crate::isolate::IsolateInit;
 use crate::isolate::IsolateState;
 use crate::isolate::WorkerChannels;
+use crate::isolate_init::IsolateInit;
 use crate::js_errors::JSErrorColor;
 use crate::ops;
 use crate::permissions::DenoPermissions;

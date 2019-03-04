@@ -1,10 +1,19 @@
-use crate::isolate::IsolateInit;
-use crate::isolate::IsolateInitScript;
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::libdeno::deno_buf;
+
+pub struct IsolateInitScript {
+  pub source: String,
+  pub filename: String,
+}
+
+pub struct IsolateInit {
+  pub snapshot: Option<deno_buf>,
+  pub init_script: Option<IsolateInitScript>,
+}
 
 pub fn deno_isolate_init() -> IsolateInit {
   if cfg!(not(feature = "check-only")) {
-    if cfg!(feature = "use-snapshots") {
+    if cfg!(feature = "use-snapshot-init") {
       let data =
         include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/snapshot_deno.bin"));
 
@@ -40,7 +49,7 @@ pub fn deno_isolate_init() -> IsolateInit {
 
 pub fn compiler_isolate_init() -> IsolateInit {
   if cfg!(not(feature = "check-only")) {
-    if cfg!(feature = "use-snapshots") {
+    if cfg!(feature = "use-snapshot-init") {
       let data = include_bytes!(concat!(
         env!("GN_OUT_DIR"),
         "/gen/snapshot_compiler.bin"

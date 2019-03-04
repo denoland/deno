@@ -12,6 +12,7 @@ use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::errors::RustOrJsError;
 use crate::flags;
+use crate::isolate_init::IsolateInit;
 use crate::js_errors::apply_source_map;
 use crate::libdeno;
 use crate::modules::Modules;
@@ -29,7 +30,6 @@ use std::cell::RefCell;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::ptr::null;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -163,16 +163,6 @@ pub struct Metrics {
   pub resolve_count: AtomicUsize,
 }
 
-pub struct IsolateInitScript {
-  pub source: String,
-  pub filename: String,
-}
-
-pub struct IsolateInit {
-  pub snapshot: Option<libdeno::deno_buf>,
-  pub init_script: Option<IsolateInitScript>,
-}
-
 static DENO_INIT: Once = ONCE_INIT;
 
 impl Isolate {
@@ -195,26 +185,10 @@ impl Isolate {
       recv_cb: pre_dispatch,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
-    // Run init script if present.
-    match init.init_script {
-      Some(init_script) => {
-        let filename_cstr = CString::new(init_script.filename).unwrap();
-        let source_cstr = CString::new(init_script.source).unwrap();
-        unsafe {
-          libdeno::deno_execute(
-            libdeno_isolate,
-            null(),
-            filename_cstr.as_ptr(),
-            source_cstr.as_ptr(),
-          );
-        };
-      }
-      None => {}
-    };
     // This channel handles sending async messages back to the runtime.
     let (tx, rx) = mpsc::channel::<(usize, Buf)>();
 
-    Self {
+    let new_isolate = Self {
       libdeno_isolate,
       dispatch,
       rx,
@@ -224,7 +198,17 @@ impl Isolate {
       modules: RefCell::new(Modules::new()),
       state,
       permissions: Arc::new(permissions),
-    }
+    };
+
+    // Run init script if present.
+    match init.init_script {
+      Some(init_script) => new_isolate
+        .execute2(init_script.filename.as_str(), init_script.source.as_str())
+        .unwrap(),
+      None => {}
+    };
+
+    new_isolate
   }
 
   #[inline]
