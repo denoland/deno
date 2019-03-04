@@ -57,10 +57,10 @@ fn main() {
 
   let args: Vec<String> = env::args().collect();
   if args.len() > 1 && args[1] == "--multi-thread" {
-    debug!("multi-thread");
+    println!("multi-thread");
     tokio::run(main_future);
   } else {
-    debug!("single-thread");
+    println!("single-thread");
     tokio::runtime::current_thread::run(main_future);
   }
 }
