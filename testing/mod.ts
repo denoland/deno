@@ -241,55 +241,196 @@ function green_ok() {
   return green("ok");
 }
 
-export async function runTests() {
-  let passed = 0;
-  let failed = 0;
+interface TestStats {
+  filtered: number;
+  ignored: number;
+  measured: number;
+  passed: number;
+  failed: number;
+}
 
-  console.log("running", tests.length, "tests");
-  for (let i = 0; i < tests.length; i++) {
-    const { fn, name } = tests[i];
-    let result = green_ok();
+interface TestResult {
+  name: string;
+  error: Error;
+  ok: boolean;
+  printed: boolean;
+}
+
+interface TestResults {
+  keys: Map<string, number>;
+  cases: Map<number, TestResult>;
+}
+
+function createTestResults(tests: Array<TestDefinition>): TestResults {
+  return tests.reduce(
+    (acc: TestResults, { name }: TestDefinition, i: number): TestResults => {
+      acc.keys.set(name, i);
+      acc.cases.set(i, { name, printed: false, ok: false, error: null });
+      return acc;
+    },
+    { cases: new Map(), keys: new Map() }
+  );
+}
+
+function report(result: TestResult): void {
+  if (result.ok) {
+    console.log(`test ${result.name} ... ${green_ok()}`);
+  } else if (result.error) {
+    console.error(
+      `test ${result.name} ... ${red_failed()}\n${result.error.stack}`
+    );
+  } else {
+    console.log(`test ${result.name} ... unresolved`);
+  }
+  result.printed = true;
+}
+
+function printResults(
+  stats: TestStats,
+  results: TestResults,
+  flush: boolean
+): void {
+  if (flush) {
+    for (const result of results.cases.values()) {
+      if (!result.printed) {
+        report(result);
+        if (result.error && exitOnFail) {
+          break;
+        }
+      }
+    }
+  }
+  // Attempting to match the output of Rust's test runner.
+  console.log(
+    `\ntest result: ${stats.failed ? red_failed() : green_ok()}. ` +
+      `${stats.passed} passed; ${stats.failed} failed; ` +
+      `${stats.ignored} ignored; ${stats.measured} measured; ` +
+      `${stats.filtered} filtered out\n`
+  );
+}
+
+function previousPrinted(name: string, results: TestResults): boolean {
+  const curIndex: number = results.keys.get(name);
+  if (curIndex === 0) {
+    return true;
+  }
+  return results.cases.get(curIndex - 1).printed;
+}
+
+async function createTestCase(
+  stats: TestStats,
+  results: TestResults,
+  { fn, name }: TestDefinition
+): Promise<void> {
+  const result: TestResult = results.cases.get(results.keys.get(name));
+  try {
+    await fn();
+    stats.passed++;
+    result.ok = true;
+  } catch (err) {
+    stats.failed++;
+    result.error = err;
+    if (exitOnFail) {
+      throw err;
+    }
+  }
+  if (previousPrinted(name, results)) {
+    report(result);
+  }
+}
+
+function initTestCases(
+  stats: TestStats,
+  results: TestResults,
+  tests: Array<TestDefinition>
+): Array<Promise<void>> {
+  return tests.map(createTestCase.bind(null, stats, results));
+}
+
+async function runTestsParallel(
+  stats: TestStats,
+  results: TestResults,
+  tests: Array<TestDefinition>
+): Promise<void> {
+  try {
+    await Promise.all(initTestCases(stats, results, tests));
+  } catch (_) {
+    // The error was thrown to stop awaiting all promises if exitOnFail === true
+    // stats.failed has been incremented and the error stored in results
+  }
+}
+
+async function runTestsSerial(
+  stats: TestStats,
+  tests: Array<TestDefinition>
+): Promise<void> {
+  for (const { fn, name } of tests) {
     // See https://github.com/denoland/deno/pull/1452
     // about this usage of groupCollapsed
     console.groupCollapsed(`test ${name} `);
     try {
       await fn();
-      passed++;
-      console.log("...", result);
+      stats.passed++;
+      console.log("...", green_ok());
       console.groupEnd();
-    } catch (e) {
-      result = red_failed();
-      console.log("...", result);
+    } catch (err) {
+      console.log("...", red_failed());
       console.groupEnd();
-      console.error(e);
-      failed++;
+      console.error(err.stack);
+      stats.failed++;
       if (exitOnFail) {
         break;
       }
     }
   }
+}
 
-  // Attempting to match the output of Rust's test runner.
-  const result = failed > 0 ? red_failed() : green_ok();
-  console.log(
-    `\ntest result: ${result}. ${passed} passed; ${failed} failed; ` +
-      `${ignored} ignored; ${measured} measured; ${filtered} filtered out\n`
-  );
+/** Defines options for controlling execution details of a test suite. */
+export interface RunOptions {
+  parallel?: boolean;
+}
 
-  if (failed === 0) {
-    // All good.
+/**
+ * Runs specified test cases.
+ * Parallel execution can be enabled via the boolean option; default: serial.
+ */
+export async function runTests({ parallel = false }: RunOptions = {}): Promise<
+  void
+> {
+  const stats: TestStats = {
+    measured: 0,
+    ignored: 0,
+    filtered: filtered,
+    passed: 0,
+    failed: 0
+  };
+  const results: TestResults = createTestResults(tests);
+  console.log(`running ${tests.length} tests`);
+  if (parallel) {
+    await runTestsParallel(stats, results, tests);
   } else {
+    await runTestsSerial(stats, tests);
+  }
+  printResults(stats, results, parallel);
+  if (stats.failed) {
     // Use setTimeout to avoid the error being ignored due to unhandled
     // promise rejections being swallowed.
     setTimeout(() => {
-      console.error(`There were ${failed} test failures.`);
+      console.error(`There were ${stats.failed} test failures.`);
       Deno.exit(1);
     }, 0);
   }
 }
 
-export async function runIfMain(meta: ImportMeta) {
+/**
+ * Runs specified test cases if the enclosing script is main.
+ * Execution mode is toggleable via opts.parallel, defaults to false.
+ */
+export async function runIfMain(
+  meta: ImportMeta,
+  opts?: RunOptions
+): Promise<void> {
   if (meta.main) {
-    runTests();
+    return runTests(opts);
   }
 }
