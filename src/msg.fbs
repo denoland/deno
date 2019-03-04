@@ -12,6 +12,9 @@ union Any {
   Exit,
   Environ,
   EnvironRes,
+  Permissions,
+  PermissionRevoke,
+  PermissionsRes,
   Fetch,
   FetchRes,
   MakeTempDir,
@@ -229,6 +232,20 @@ table EnvironRes {
 table KeyValue {
   key: string;
   value: string;
+}
+
+table Permissions {}
+
+table PermissionRevoke {
+  permission: string;
+}
+
+table PermissionsRes {
+  run: bool;
+  read: bool;
+  write: bool;
+  net: bool;
+  env: bool;
 }
 
 // Note this represents The WHOLE header of an http message, not just the key

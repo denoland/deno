@@ -341,18 +341,6 @@ function stringifyWithQuotes(
   }
 }
 
-// Returns true when the console is collapsed.
-function isCollapsed(
-  collapsedAt: number | null | undefined,
-  indentLevel: number | null | undefined
-) {
-  if (collapsedAt == null || indentLevel == null) {
-    return false;
-  }
-
-  return collapsedAt <= indentLevel;
-}
-
 /** TODO Do not expose this from "deno" namespace.
  * @internal
  */
@@ -464,22 +452,23 @@ export function stringifyArgs(
   }
 
   const { collapsedAt, indentLevel } = options;
-  if (
-    !isCollapsed(collapsedAt, indentLevel) &&
-    indentLevel != null &&
-    indentLevel > 0
-  ) {
-    const groupIndent = " ".repeat(indentLevel);
-    if (str.indexOf("\n") !== -1) {
-      str = str.replace(/\n/g, `\n${groupIndent}`);
+  const isCollapsed =
+    collapsedAt != null && indentLevel != null && collapsedAt <= indentLevel;
+  if (!isCollapsed) {
+    if (indentLevel != null && indentLevel > 0) {
+      const groupIndent = " ".repeat(indentLevel);
+      if (str.indexOf("\n") !== -1) {
+        str = str.replace(/\n/g, `\n${groupIndent}`);
+      }
+      str = groupIndent + str;
     }
-    str = groupIndent + str;
+    str += "\n";
   }
 
   return str;
 }
 
-type PrintFunc = (x: string, isErr?: boolean, printsNewline?: boolean) => void;
+type PrintFunc = (x: string, isErr?: boolean) => void;
 
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
@@ -500,8 +489,7 @@ export class Console {
         indentLevel: this.indentLevel,
         collapsedAt: this.collapsedAt
       }),
-      false,
-      !isCollapsed(this.collapsedAt, this.indentLevel)
+      false
     );
   };
 
@@ -522,8 +510,7 @@ export class Console {
         indentLevel: this.indentLevel,
         collapsedAt: this.collapsedAt
       }),
-      true,
-      !isCollapsed(this.collapsedAt, this.indentLevel)
+      true
     );
   };
 

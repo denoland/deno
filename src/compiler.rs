@@ -54,7 +54,7 @@ fn lazy_start(parent_state: &Arc<IsolateState>) -> Resource {
   let isolate_init = isolate_init::compiler_isolate_init();
   let permissions = DenoPermissions {
     allow_read: AtomicBool::new(true),
-    allow_write: AtomicBool::new(false),
+    allow_write: AtomicBool::new(true),
     allow_env: AtomicBool::new(false),
     allow_net: AtomicBool::new(true),
     allow_run: AtomicBool::new(false),
