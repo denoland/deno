@@ -17,6 +17,7 @@ mod fs;
 mod http_body;
 mod http_util;
 pub mod isolate;
+pub mod isolate_init;
 pub mod js_errors;
 pub mod libdeno;
 pub mod modules;
@@ -27,7 +28,6 @@ pub mod permissions;
 mod repl;
 pub mod resolve_addr;
 pub mod resources;
-pub mod snapshot;
 mod tokio_util;
 mod tokio_write;
 pub mod version;
@@ -95,10 +95,10 @@ fn main() {
   let should_display_info = flags.info;
 
   let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
-  let snapshot = snapshot::deno_snapshot();
+  let isolate_init = isolate_init::deno_isolate_init();
   let permissions = permissions::DenoPermissions::from_flags(&state.flags);
   let mut isolate =
-    isolate::Isolate::new(snapshot, state, ops::dispatch, permissions);
+    isolate::Isolate::new(isolate_init, state, ops::dispatch, permissions);
 
   tokio_util::init(|| {
     // Setup runtime.

@@ -1863,13 +1863,13 @@ fn op_worker_post_message(
 mod tests {
   use super::*;
   use crate::isolate::{Isolate, IsolateState};
+  use crate::isolate_init::IsolateInit;
   use crate::permissions::DenoPermissions;
   use std::sync::atomic::AtomicBool;
 
   #[test]
   fn fetch_module_meta_fails_without_read() {
     let state = IsolateState::mock();
-    let snapshot = libdeno::deno_buf::empty();
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(false),
       allow_write: AtomicBool::new(true),
@@ -1877,7 +1877,15 @@ mod tests {
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
     };
-    let isolate = Isolate::new(snapshot, state, dispatch, permissions);
+    let isolate = Isolate::new(
+      IsolateInit {
+        snapshot: None,
+        init_script: None,
+      },
+      state,
+      dispatch,
+      permissions,
+    );
     let builder = &mut FlatBufferBuilder::new();
     let fetch_msg_args = msg::FetchModuleMetaDataArgs {
       specifier: Some(builder.create_string("./somefile")),
@@ -1907,7 +1915,6 @@ mod tests {
   #[test]
   fn fetch_module_meta_fails_without_write() {
     let state = IsolateState::mock();
-    let snapshot = libdeno::deno_buf::empty();
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(true),
       allow_write: AtomicBool::new(false),
@@ -1915,7 +1922,15 @@ mod tests {
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
     };
-    let isolate = Isolate::new(snapshot, state, dispatch, permissions);
+    let isolate = Isolate::new(
+      IsolateInit {
+        snapshot: None,
+        init_script: None,
+      },
+      state,
+      dispatch,
+      permissions,
+    );
     let builder = &mut FlatBufferBuilder::new();
     let fetch_msg_args = msg::FetchModuleMetaDataArgs {
       specifier: Some(builder.create_string("./somefile")),
@@ -1945,7 +1960,6 @@ mod tests {
   #[test]
   fn fetch_module_meta_fails_without_net() {
     let state = IsolateState::mock();
-    let snapshot = libdeno::deno_buf::empty();
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(true),
       allow_write: AtomicBool::new(true),
@@ -1953,7 +1967,15 @@ mod tests {
       allow_net: AtomicBool::new(false),
       allow_run: AtomicBool::new(true),
     };
-    let isolate = Isolate::new(snapshot, state, dispatch, permissions);
+    let isolate = Isolate::new(
+      IsolateInit {
+        snapshot: None,
+        init_script: None,
+      },
+      state,
+      dispatch,
+      permissions,
+    );
     let builder = &mut FlatBufferBuilder::new();
     let fetch_msg_args = msg::FetchModuleMetaDataArgs {
       specifier: Some(builder.create_string("./somefile")),
@@ -1983,7 +2005,6 @@ mod tests {
   #[test]
   fn fetch_module_meta_not_permission_denied_with_permissions() {
     let state = IsolateState::mock();
-    let snapshot = libdeno::deno_buf::empty();
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(true),
       allow_write: AtomicBool::new(true),
@@ -1991,7 +2012,15 @@ mod tests {
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(false),
     };
-    let isolate = Isolate::new(snapshot, state, dispatch, permissions);
+    let isolate = Isolate::new(
+      IsolateInit {
+        snapshot: None,
+        init_script: None,
+      },
+      state,
+      dispatch,
+      permissions,
+    );
     let builder = &mut FlatBufferBuilder::new();
     let fetch_msg_args = msg::FetchModuleMetaDataArgs {
       specifier: Some(builder.create_string("./somefile")),
