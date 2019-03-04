@@ -45,6 +45,7 @@ import "./url_test.ts";
 import "./url_search_params_test.ts";
 import "./write_file_test.ts";
 import "./performance_test.ts";
+import "./permissions_test.ts";
 import "./version_test.ts";
 
 import "../website/app_test.js";

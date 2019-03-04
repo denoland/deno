@@ -91,6 +91,7 @@ ts_sources = [
   "js/mock_builtin.js",
   "js/net.ts",
   "js/os.ts",
+  "js/permissions.ts",
   "js/platform.ts",
   "js/plugins.d.ts",
   "js/process.ts",
