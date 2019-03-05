@@ -8,7 +8,7 @@ RUN /root/.cargo/bin/rustup target add aarch64-unknown-linux-gnu
 
 RUN echo "[target.aarch64-unknown-linux-gnu]\nlinker = \"aarch64-linux-gnu-gcc\"" > /root/.cargo/config
 
-RUN apt install -y nodejs yarn python build-essential cmake make
+RUN apt install -y nodejs yarn python build-essentialcmake make
 
 RUN apt -yq --no-install-suggests --no-install-recommends install g++-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-7-multilib libc6-arm64-cross
 

@@ -120,8 +120,13 @@ jobs:
 
     - name: "cargo release linux arm64"
       os: linux
+      after_success:
+        - gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_arm64.gz
+      deploy:
+      - *release_provider
       script:
       - docker build -f Dockerfile-arm64-build -t deno-arm64-build .
+      - docker run -t -v "$PWD/:/deno" deno-arm64-build build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
       - docker run -t -v "$PWD/:/deno" deno-arm64-build ./tools/setup.py
       - docker run -t -v "$PWD/:/deno" deno-arm64-build 'cargo build --target=aarch64-unknown-linux-gnu --release'
 
