@@ -13,7 +13,7 @@ pub struct IsolateInit {
 
 pub fn deno_isolate_init() -> IsolateInit {
   if cfg!(not(feature = "check-only")) {
-    if cfg!(feature = "use-snapshot-init") {
+    if cfg!(not(feature = "no-snapshot-init")) {
       debug!("Deno isolate init with snapshots.");
       let data =
         include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/snapshot_deno.bin"));
@@ -51,7 +51,7 @@ pub fn deno_isolate_init() -> IsolateInit {
 
 pub fn compiler_isolate_init() -> IsolateInit {
   if cfg!(not(feature = "check-only")) {
-    if cfg!(feature = "use-snapshot-init") {
+    if cfg!(not(feature = "no-snapshot-init")) {
       debug!("Compiler isolate init with snapshots.");
       let data = include_bytes!(concat!(
         env!("GN_OUT_DIR"),

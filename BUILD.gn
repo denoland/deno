@@ -143,7 +143,7 @@ deno_cargo_info = exec_script("build_extra/rust/get_cargo_info.py",
 rust_executable("deno") {
   source_root = "src/main.rs"
   extern = main_extern
-  features = [ "use-snapshot-init" ]
+  features = [ "no-snapshot-init" ]
   deps = [
     ":deno_deps",
   ]
