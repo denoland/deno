@@ -11,6 +11,7 @@ export interface Permissions {
   net: boolean;
   env: boolean;
   run: boolean;
+  high_precision: boolean;
 
   // NOTE: Keep in sync with src/permissions.rs
 }
@@ -22,16 +23,6 @@ function getReq(): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   msg.Permissions.startPermissions(builder);
   const inner = msg.Permissions.endPermissions(builder);
   return [builder, msg.Any.Permissions, inner];
-}
-
-function createPermissions(inner: msg.PermissionsRes): Permissions {
-  return {
-    read: inner.read(),
-    write: inner.write(),
-    net: inner.net(),
-    env: inner.env(),
-    run: inner.run()
-  };
 }
 
 /** Inspect granted permissions for the current program.
@@ -71,4 +62,15 @@ function revokeReq(
  */
 export function revokePermission(permission: Permission): void {
   dispatch.sendSync(...revokeReq(permission));
+}
+
+function createPermissions(inner: msg.PermissionsRes): Permissions {
+  return {
+    read: inner.read(),
+    write: inner.write(),
+    net: inner.net(),
+    env: inner.env(),
+    run: inner.run(),
+    high_precision: inner.high_precision(),
+  };
 }

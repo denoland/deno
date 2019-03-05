@@ -23,6 +23,7 @@ pub struct DenoFlags {
   pub allow_env: bool,
   pub allow_run: bool,
   pub no_prompts: bool,
+  pub allow_high_precision: bool,
   pub types: bool,
   pub prefetch: bool,
   pub info: bool,
@@ -152,6 +153,7 @@ pub fn set_flags(
   opts.optflag("", "allow-net", "Allow network access");
   opts.optflag("", "allow-env", "Allow environment access");
   opts.optflag("", "allow-run", "Allow running subprocesses");
+  opts.optflag("", "allow-high-precision", "Allow high precision timestamp");
   opts.optflag("A", "allow-all", "Allow all permissions");
   opts.optflag("", "no-prompt", "Do not use prompts");
   opts.optflag("", "recompile", "Force recompilation of TypeScript code");
