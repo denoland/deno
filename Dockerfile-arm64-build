@@ -18,4 +18,4 @@ RUN echo "source $HOME/.cargo/env" >> /root/.bashrc
 
 ENV DENO_BUILD_ARGS="target_cpu=\"arm64\" v8_target_cpu=\"arm64\""
 
-ENTRYPOINT ["/bin/bash", "--rcfile", "/root/.bashrc", "-ci"]
+ENTRYPOINT ["/bin/bash", "--rcfile", "/root/.bashrc", "-cit"]
