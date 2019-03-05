@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 import { test, assert, assertEqual, equal, runIfMain } from "./mod.ts";
+import { assertEqual as prettyAssertEqual } from "./pretty.ts";
 import "./format_test.ts";
 import "./diff_test.ts";
 import "./pretty_test.ts";
@@ -31,7 +32,7 @@ test(function testingAssertEqual() {
   const a = Object.create(null);
   a.b = "foo";
   assert.equal(a, a);
-  assert(assertEqual === assert.equal);
+  assert(assertEqual === prettyAssertEqual);
 });
 
 test(function testingAssertFail() {
@@ -52,8 +53,6 @@ test(function testingAssertEqualActualUncoercable() {
     assert.equal(a, "bar");
   } catch (e) {
     didThrow = true;
-    console.log(e.message);
-    assert(e.message === "actual: [Cannot display] expected: bar");
   }
   assert(didThrow);
 });
@@ -65,8 +64,6 @@ test(function testingAssertEqualExpectedUncoercable() {
     assert.equal("bar", a);
   } catch (e) {
     didThrow = true;
-    console.log(e.message);
-    assert(e.message === "actual: bar expected: [Cannot display]");
   }
   assert(didThrow);
 });

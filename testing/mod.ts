@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 import { green, red } from "../colors/mod.ts";
+import { assertEqual as prettyAssertEqual } from "./pretty.ts";
 
 interface Constructor {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,30 +47,7 @@ const assertions = {
    * deeply equal, then throw.
    */
   equal(actual: unknown, expected: unknown, msg?: string): void {
-    if (!equal(actual, expected)) {
-      let actualString: string;
-      let expectedString: string;
-      try {
-        actualString = String(actual);
-      } catch (e) {
-        actualString = "[Cannot display]";
-      }
-      try {
-        expectedString = String(expected);
-      } catch (e) {
-        expectedString = "[Cannot display]";
-      }
-      console.error(
-        "assertEqual failed. actual =",
-        actualString,
-        "expected =",
-        expectedString
-      );
-      if (!msg) {
-        msg = `actual: ${actualString} expected: ${expectedString}`;
-      }
-      throw new Error(msg);
-    }
+    prettyAssertEqual(actual, expected, msg);
   },
 
   /** Make an assertion that `actual` and `expected` are strictly equal.  If
@@ -187,10 +165,10 @@ Object.assign(assertions.assert, assertions);
 export const assert = assertions.assert as Assert;
 
 /**
- * An alias to assert.equal
+ * Alias to pretty.assertEqual
  * @deprecated
  */
-export const assertEqual = assert.equal;
+export const assertEqual = prettyAssertEqual;
 
 export type TestFunction = () => void | Promise<void>;
 
