@@ -22,6 +22,17 @@ export class ProtocolError extends Error {
   }
 }
 
+export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
+  if (a == null) {
+    return b;
+  } else {
+    const output = new Uint8Array(a.length + b.length);
+    output.set(a, 0);
+    output.set(b, a.length);
+    return output;
+  }
+}
+
 export class TextProtoReader {
   constructor(readonly r: BufReader) {}
 
@@ -135,16 +146,5 @@ export class TextProtoReader {
       }
     }
     return [line, null];
-  }
-}
-
-export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
-  if (a == null) {
-    return b;
-  } else {
-    const output = new Uint8Array(a.length + b.length);
-    output.set(a, 0);
-    output.set(b, a.length);
-    return output;
   }
 }

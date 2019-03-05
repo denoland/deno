@@ -4,6 +4,7 @@ import { BaseHandler } from "./handlers.ts";
 
 export interface LogRecord {
   msg: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   args: any[];
   datetime: Date;
   level: number;
@@ -13,6 +14,7 @@ export interface LogRecord {
 export class Logger {
   level: number;
   levelName: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlers: any[];
 
   constructor(levelName: string, handlers?: BaseHandler[]) {
@@ -22,7 +24,8 @@ export class Logger {
     this.handlers = handlers || [];
   }
 
-  _log(level: number, msg: string, ...args: any[]) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  _log(level: number, msg: string, ...args: any[]): void {
     if (this.level > level) return;
 
     // TODO: it'd be a good idea to make it immutable, so
@@ -41,23 +44,28 @@ export class Logger {
     });
   }
 
-  debug(msg: string, ...args: any[]) {
-    return this._log(LogLevel.DEBUG, msg, ...args);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  debug(msg: string, ...args: any[]): void {
+    this._log(LogLevel.DEBUG, msg, ...args);
   }
 
-  info(msg: string, ...args: any[]) {
-    return this._log(LogLevel.INFO, msg, ...args);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  info(msg: string, ...args: any[]): void {
+    this._log(LogLevel.INFO, msg, ...args);
   }
 
-  warning(msg: string, ...args: any[]) {
-    return this._log(LogLevel.WARNING, msg, ...args);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  warning(msg: string, ...args: any[]): void {
+    this._log(LogLevel.WARNING, msg, ...args);
   }
 
-  error(msg: string, ...args: any[]) {
-    return this._log(LogLevel.ERROR, msg, ...args);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  error(msg: string, ...args: any[]): void {
+    this._log(LogLevel.ERROR, msg, ...args);
   }
 
-  critical(msg: string, ...args: any[]) {
-    return this._log(LogLevel.CRITICAL, msg, ...args);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  critical(msg: string, ...args: any[]): void {
+    this._log(LogLevel.CRITICAL, msg, ...args);
   }
 }

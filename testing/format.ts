@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Refs = any[];
 export type Optional<T> = { [K in keyof T]?: T[K] };
 
@@ -32,7 +33,7 @@ export interface Config {
 }
 
 export type Printer = (
-  val: any,
+  val: unknown,
   config: Config,
   indentation: string,
   depth: number,
@@ -66,12 +67,15 @@ interface BasicValueOptions {
  * Explicitly comparing typeof constructor to function avoids undefined as name
  * when mock identity-obj-proxy returns the key as the value for any key.
  */
-const getConstructorName = (val: new (...args: any[]) => any) =>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getConstructorName = (val: new (...args: any[]) => any): string =>
   (typeof val.constructor === "function" && val.constructor.name) || "Object";
 
 /* global window */
 /** Is val is equal to global window object? Works even if it does not exist :) */
-const isWindow = (val: any) => typeof window !== "undefined" && val === window;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const isWindow = (val: any): val is Window =>
+  typeof window !== "undefined" && val === window;
 
 const SYMBOL_REGEXP = /^Symbol\((.*)\)(.*)$/;
 
@@ -116,11 +120,12 @@ function printError(val: Error): string {
  * data-types in JS.
  */
 function printBasicValue(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   val: any,
   { printFunctionName, escapeRegex, escapeString }: BasicValueOptions
 ): string | null {
   if (val === true || val === false) {
-    return "" + val;
+    return String(val);
   }
   if (val === undefined) {
     return "undefined";
@@ -136,9 +141,9 @@ function printBasicValue(
   }
   if (typeOf === "string") {
     if (escapeString) {
-      return '"' + val.replace(/"|\\/g, "\\$&") + '"';
+      return `"${val.replace(/"|\\/g, "\\$&")}"`;
     }
-    return '"' + val + '"';
+    return `"${val}"`;
   }
   if (typeOf === "function") {
     return printFunction(val, printFunctionName);
@@ -185,95 +190,8 @@ function printBasicValue(
   return null;
 }
 
-/**
- * Handles more complex objects ( such as objects with circular references.
- * maps and sets etc )
- */
-function printComplexValue(
-  val: any,
-  config: Config,
-  indentation: string,
-  depth: number,
-  refs: Refs,
-  hasCalledToJSON?: boolean
-): string {
-  if (refs.indexOf(val) !== -1) {
-    return "[Circular]";
-  }
-  refs = refs.slice();
-  refs.push(val);
-
-  const hitMaxDepth = ++depth > config.maxDepth;
-  const { min, callToJSON } = config;
-
-  if (
-    callToJSON &&
-    !hitMaxDepth &&
-    val.toJSON &&
-    typeof val.toJSON === "function" &&
-    !hasCalledToJSON
-  ) {
-    return printer(val.toJSON(), config, indentation, depth, refs, true);
-  }
-
-  const toStringed = toString.call(val);
-  if (toStringed === "[object Arguments]") {
-    return hitMaxDepth
-      ? "[Arguments]"
-      : (min ? "" : "Arguments ") +
-          "[" +
-          printListItems(val, config, indentation, depth, refs, printer) +
-          "]";
-  }
-  if (isToStringedArrayType(toStringed)) {
-    return hitMaxDepth
-      ? "[" + val.constructor.name + "]"
-      : (min ? "" : val.constructor.name + " ") +
-          "[" +
-          printListItems(val, config, indentation, depth, refs, printer) +
-          "]";
-  }
-  if (toStringed === "[object Map]") {
-    return hitMaxDepth
-      ? "[Map]"
-      : "Map {" +
-          printIteratorEntries(
-            val.entries(),
-            config,
-            indentation,
-            depth,
-            refs,
-            printer,
-            " => "
-          ) +
-          "}";
-  }
-  if (toStringed === "[object Set]") {
-    return hitMaxDepth
-      ? "[Set]"
-      : "Set {" +
-          printIteratorValues(
-            val.values(),
-            config,
-            indentation,
-            depth,
-            refs,
-            printer
-          ) +
-          "}";
-  }
-
-  // Avoid failure to serialize global window object in jsdom test environment.
-  // For example, not even relevant if window is prop of React element.
-  return hitMaxDepth || isWindow(val)
-    ? "[" + getConstructorName(val) + "]"
-    : (min ? "" : getConstructorName(val) + " ") +
-        "{" +
-        printObjectProperties(val, config, indentation, depth, refs, printer) +
-        "}";
-}
-
 function printer(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   val: any,
   config: Config,
   indentation: string,
@@ -285,6 +203,7 @@ function printer(
   if (basicResult !== null) {
     return basicResult;
   }
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
   return printComplexValue(
     val,
     config,
@@ -295,30 +214,44 @@ function printer(
   );
 }
 
-const getConfig = (options: Options): Config => ({
-  ...options,
-  indent: options.min ? "" : createIndent(options.indent),
-  spacingInner: options.min ? " " : "\n",
-  spacingOuter: options.min ? "" : "\n"
-});
+/**
+ * Return items (for example, of an array)
+ * with spacing, indentation, and comma
+ * without surrounding punctuation (for example, brackets)
+ */
+function printListItems(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  list: any,
+  config: Config,
+  indentation: string,
+  depth: number,
+  refs: Refs,
+  printer: Printer
+): string {
+  let result = "";
 
-function createIndent(indent: number): string {
-  return new Array(indent + 1).join(" ");
-}
+  if (list.length) {
+    result += config.spacingOuter;
 
-const getKeysOfEnumerableProperties = (object: {}) => {
-  const keys: Array<string | symbol> = Object.keys(object).sort();
+    const indentationNext = indentation + config.indent;
 
-  if (Object.getOwnPropertySymbols) {
-    Object.getOwnPropertySymbols(object).forEach(symbol => {
-      if (Object.getOwnPropertyDescriptor(object, symbol)!.enumerable) {
-        keys.push(symbol);
+    for (let i = 0; i < list.length; i++) {
+      result +=
+        indentationNext +
+        printer(list[i], config, indentationNext, depth, refs);
+
+      if (i < list.length - 1) {
+        result += "," + config.spacingInner;
+      } else if (!config.min) {
+        result += ",";
       }
-    });
+    }
+
+    result += config.spacingOuter + indentation;
   }
 
-  return keys;
-};
+  return result;
+}
 
 /**
  * Return entries (for example, of a map)
@@ -326,6 +259,7 @@ const getKeysOfEnumerableProperties = (object: {}) => {
  * without surrounding punctuation (for example, braces)
  */
 function printIteratorEntries(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   iterator: any,
   config: Config,
   indentation: string,
@@ -384,6 +318,7 @@ function printIteratorEntries(
  * without surrounding punctuation (braces or brackets)
  */
 function printIteratorValues(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   iterator: Iterator<any>,
   config: Config,
   indentation: string,
@@ -419,43 +354,19 @@ function printIteratorValues(
   return result;
 }
 
-/**
- * Return items (for example, of an array)
- * with spacing, indentation, and comma
- * without surrounding punctuation (for example, brackets)
- */
-function printListItems(
-  list: any,
-  config: Config,
-  indentation: string,
-  depth: number,
-  refs: Refs,
-  printer: Printer
-): string {
-  let result = "";
+const getKeysOfEnumerableProperties = (object: {}): Array<string | symbol> => {
+  const keys: Array<string | symbol> = Object.keys(object).sort();
 
-  if (list.length) {
-    result += config.spacingOuter;
-
-    const indentationNext = indentation + config.indent;
-
-    for (let i = 0; i < list.length; i++) {
-      result +=
-        indentationNext +
-        printer(list[i], config, indentationNext, depth, refs);
-
-      if (i < list.length - 1) {
-        result += "," + config.spacingInner;
-      } else if (!config.min) {
-        result += ",";
+  if (Object.getOwnPropertySymbols) {
+    Object.getOwnPropertySymbols(object).forEach(symbol => {
+      if (Object.getOwnPropertyDescriptor(object, symbol)!.enumerable) {
+        keys.push(symbol);
       }
-    }
-
-    result += config.spacingOuter + indentation;
+    });
   }
 
-  return result;
-}
+  return keys;
+};
 
 /**
  * Return properties of an object
@@ -505,10 +416,112 @@ function printObjectProperties(
 }
 
 /**
+ * Handles more complex objects ( such as objects with circular references.
+ * maps and sets etc )
+ */
+function printComplexValue(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  val: any,
+  config: Config,
+  indentation: string,
+  depth: number,
+  refs: Refs,
+  hasCalledToJSON?: boolean
+): string {
+  if (refs.indexOf(val) !== -1) {
+    return "[Circular]";
+  }
+  refs = refs.slice();
+  refs.push(val);
+
+  const hitMaxDepth = ++depth > config.maxDepth;
+  const { min, callToJSON } = config;
+
+  if (
+    callToJSON &&
+    !hitMaxDepth &&
+    val.toJSON &&
+    typeof val.toJSON === "function" &&
+    !hasCalledToJSON
+  ) {
+    return printer(val.toJSON(), config, indentation, depth, refs, true);
+  }
+
+  const toStringed = toString.call(val);
+  if (toStringed === "[object Arguments]") {
+    return hitMaxDepth
+      ? "[Arguments]"
+      : (min ? "" : "Arguments ") +
+          "[" +
+          printListItems(val, config, indentation, depth, refs, printer) +
+          "]";
+  }
+  if (isToStringedArrayType(toStringed)) {
+    return hitMaxDepth
+      ? `[${val.constructor.name}]`
+      : (min ? "" : `${val.constructor.name} `) +
+          "[" +
+          printListItems(val, config, indentation, depth, refs, printer) +
+          "]";
+  }
+  if (toStringed === "[object Map]") {
+    return hitMaxDepth
+      ? "[Map]"
+      : "Map {" +
+          printIteratorEntries(
+            val.entries(),
+            config,
+            indentation,
+            depth,
+            refs,
+            printer,
+            " => "
+          ) +
+          "}";
+  }
+  if (toStringed === "[object Set]") {
+    return hitMaxDepth
+      ? "[Set]"
+      : "Set {" +
+          printIteratorValues(
+            val.values(),
+            config,
+            indentation,
+            depth,
+            refs,
+            printer
+          ) +
+          "}";
+  }
+
+  // Avoid failure to serialize global window object in jsdom test environment.
+  // For example, not even relevant if window is prop of React element.
+  return hitMaxDepth || isWindow(val)
+    ? "[" + getConstructorName(val) + "]"
+    : (min ? "" : getConstructorName(val) + " ") +
+        "{" +
+        printObjectProperties(val, config, indentation, depth, refs, printer) +
+        "}";
+}
+
+// TODO this is better done with `.padStart()`
+function createIndent(indent: number): string {
+  return new Array(indent + 1).join(" ");
+}
+
+const getConfig = (options: Options): Config => ({
+  ...options,
+  indent: options.min ? "" : createIndent(options.indent),
+  spacingInner: options.min ? " " : "\n",
+  spacingOuter: options.min ? "" : "\n"
+});
+
+/**
  * Returns a presentation string of your `val` object
  * @param val any potential JavaScript object
  * @param options Custom settings
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function format(val: any, options: Optional<Options> = {}): string {
   const opts = Object.keys(DEFAULT_OPTIONS).reduce(
     (acc: Options, k: keyof Options) => {

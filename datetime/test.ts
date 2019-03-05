@@ -31,6 +31,7 @@ test(function parseDateTime() {
 
 test(function invalidParseDateTimeFormatThrows() {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (datetime as any).parseDateTime("2019-01-01 00:00", "x-y-z");
     assert(false, "no exception was thrown");
   } catch (e) {
@@ -55,6 +56,7 @@ test(function parseDate() {
 
 test(function invalidParseDateFormatThrows() {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (datetime as any).parseDate("2019-01-01", "x-y-z");
     assert(false, "no exception was thrown");
   } catch (e) {

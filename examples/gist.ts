@@ -9,7 +9,7 @@ function pathBase(p: string): string {
   return parts[parts.length - 1];
 }
 
-async function main() {
+async function main(): Promise<void> {
   const token = env()["GIST_TOKEN"];
   if (!token) {
     console.error("GIST_TOKEN environmental variable not set.");
@@ -46,7 +46,7 @@ async function main() {
     headers: [
       ["Content-Type", "application/json"],
       ["User-Agent", "Deno-Gist"],
-      ["Authorization", "token " + token]
+      ["Authorization", `token ${token}`]
     ],
     body
   });

@@ -6,7 +6,7 @@
 const { Buffer } = Deno;
 import { Reader, ReadResult } from "deno";
 import { test, assert, assertEqual } from "../testing/mod.ts";
-import { BufReader, BufState, BufWriter } from "./bufio.ts";
+import { BufReader, BufWriter } from "./bufio.ts";
 import * as iotest from "./iotest.ts";
 import { charCode, copyBytes, stringsReader } from "./util.ts";
 
@@ -34,7 +34,10 @@ test(async function bufioReaderSimple() {
   assert.equal(s, data);
 });
 
-type ReadMaker = { name: string; fn: (r: Reader) => Reader };
+interface ReadMaker {
+  name: string;
+  fn: (r: Reader) => Reader;
+}
 
 const readMakers: ReadMaker[] = [
   { name: "full", fn: r => r },
@@ -43,18 +46,6 @@ const readMakers: ReadMaker[] = [
   // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
   // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
 ];
-
-function readLines(b: BufReader): string {
-  let s = "";
-  while (true) {
-    let s1 = b.readString("\n");
-    if (s1 == null) {
-      break; // EOF
-    }
-    s += s1;
-  }
-  return s;
-}
 
 // Call read to accumulate the text of a file
 async function reads(buf: BufReader, m: number): Promise<string> {
@@ -71,7 +62,10 @@ async function reads(buf: BufReader, m: number): Promise<string> {
   return decoder.decode(b.subarray(0, nb));
 }
 
-type NamedBufReader = { name: string; fn: (r: BufReader) => Promise<string> };
+interface NamedBufReader {
+  name: string;
+  fn: (r: BufReader) => Promise<string>;
+}
 
 const bufreaders: NamedBufReader[] = [
   { name: "1", fn: (b: BufReader) => reads(b, 1) },
@@ -187,6 +181,7 @@ async function testReadLine(input: Uint8Array): Promise<void> {
       if (err == "EOF") {
         break;
       }
+      // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
       let want = testOutput.subarray(done, done + line.byteLength);
       assertEqual(
         line,
@@ -290,6 +285,7 @@ test(async function bufioWriter() {
   const data = new Uint8Array(8192);
 
   for (let i = 0; i < data.byteLength; i++) {
+    // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
     data[i] = charCode(" ") + (i % (charCode("~") - charCode(" ")));
   }
 

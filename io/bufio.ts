@@ -211,7 +211,7 @@ export class BufReader implements Reader {
    * delim.
    * For simple uses, a Scanner may be more convenient.
    */
-  async readString(delim: string): Promise<string> {
+  async readString(_delim: string): Promise<string> {
     throw new Error("Not implemented");
   }
 

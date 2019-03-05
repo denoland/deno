@@ -13,13 +13,13 @@ export function parseDate(dateStr: string, format: DateFormat): Date {
 
   if (format === "mm-dd-yyyy") {
     const datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
-    [, m, d, y] = datePattern.exec(dateStr);
+    [, m, d, y] = datePattern.exec(dateStr)!;
   } else if (format === "dd-mm-yyyy") {
     const datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
-    [, d, m, y] = datePattern.exec(dateStr);
+    [, d, m, y] = datePattern.exec(dateStr)!;
   } else if (format === "yyyy-mm-dd") {
     const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
-    [, y, m, d] = datePattern.exec(dateStr);
+    [, y, m, d] = datePattern.exec(dateStr)!;
   } else {
     throw new Error("Invalid date format!");
   }
@@ -50,22 +50,22 @@ export function parseDateTime(
 
   if (format === "mm-dd-yyyy hh:mm") {
     const datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
-    [, m, d, y, ho, mi] = datePattern.exec(datetimeStr);
+    [, m, d, y, ho, mi] = datePattern.exec(datetimeStr)!;
   } else if (format === "dd-mm-yyyy hh:mm") {
     const datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
-    [, d, m, y, ho, mi] = datePattern.exec(datetimeStr);
+    [, d, m, y, ho, mi] = datePattern.exec(datetimeStr)!;
   } else if (format === "yyyy-mm-dd hh:mm") {
     const datePattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
-    [, y, m, d, ho, mi] = datePattern.exec(datetimeStr);
+    [, y, m, d, ho, mi] = datePattern.exec(datetimeStr)!;
   } else if (format === "hh:mm mm-dd-yyyy") {
     const datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
-    [, ho, mi, m, d, y] = datePattern.exec(datetimeStr);
+    [, ho, mi, m, d, y] = datePattern.exec(datetimeStr)!;
   } else if (format === "hh:mm dd-mm-yyyy") {
     const datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
-    [, ho, mi, d, m, y] = datePattern.exec(datetimeStr);
+    [, ho, mi, d, m, y] = datePattern.exec(datetimeStr)!;
   } else if (format === "hh:mm yyyy-mm-dd") {
     const datePattern = /^(\d{2}):(\d{2}) (\d{4})-(\d{2})-(\d{2})$/;
-    [, ho, mi, y, m, d] = datePattern.exec(datetimeStr);
+    [, ho, mi, y, m, d] = datePattern.exec(datetimeStr)!;
   } else {
     throw new Error("Invalid datetime format!");
   }

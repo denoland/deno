@@ -6,19 +6,19 @@ import "example.ts";
 test(async function benching() {
   bench(function forIncrementX1e9(b: BenchmarkTimer) {
     b.start();
-    for (let i: number = 0; i < 1e9; i++);
+    for (let i = 0; i < 1e9; i++);
     b.stop();
   });
 
   bench(function forDecrementX1e9(b: BenchmarkTimer) {
     b.start();
-    for (let i: number = 1e9; i > 0; i--);
+    for (let i = 1e9; i > 0; i--);
     b.stop();
   });
 
   bench(async function forAwaitFetchDenolandX10(b: BenchmarkTimer) {
     b.start();
-    for (let i: number = 0; i < 10; i++) {
+    for (let i = 0; i < 10; i++) {
       await fetch("https://deno.land/");
     }
     b.stop();
@@ -36,7 +36,7 @@ test(async function benching() {
     runs: 100,
     func(b: BenchmarkTimer) {
       b.start();
-      for (let i: number = 0; i < 1e6; i++);
+      for (let i = 0; i < 1e6; i++);
       b.stop();
     }
   });

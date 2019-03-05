@@ -15,7 +15,7 @@ function createStr(v: unknown): string {
   }
 }
 
-function createColor(diffType: DiffType) {
+function createColor(diffType: DiffType): (s: string) => string {
   switch (diffType) {
     case "added":
       return (s: string) => green(bold(s));
@@ -26,7 +26,7 @@ function createColor(diffType: DiffType) {
   }
 }
 
-function createSign(diffType: DiffType) {
+function createSign(diffType: DiffType): string {
   switch (diffType) {
     case "added":
       return "+   ";
@@ -37,7 +37,7 @@ function createSign(diffType: DiffType) {
   }
 }
 
-function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>) {
+function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   const messages = [];
   messages.push("");
   messages.push("");
@@ -55,7 +55,7 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>) {
   return messages;
 }
 
-export function assertEqual(actual: unknown, expected: unknown) {
+export function assertEqual(actual: unknown, expected: unknown): void {
   if (equal(actual, expected)) {
     return;
   }

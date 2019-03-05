@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assertEqual, test } from "../testing/mod.ts";
 import * as log from "./mod.ts";
-import { BaseHandler } from "./handlers.ts";
-import { LogRecord } from "./logger.ts";
 import { LogLevel } from "./levels.ts";
 
 import "./handlers_test.ts";
@@ -18,7 +16,7 @@ import "./logger_test.ts";
 class TestHandler extends log.handlers.BaseHandler {
   public messages: string[] = [];
 
-  log(msg: string) {
+  log(msg: string): void {
     this.messages.push(msg);
   }
 }

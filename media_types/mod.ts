@@ -42,7 +42,7 @@ export const types = new Map<string, string>();
 function populateMaps(
   extensions: Map<string, string[]>,
   types: Map<string, string>
-) {
+): void {
   const preference = ["nginx", "apache", undefined, "iana"];
 
   for (const type of Object.keys(db)) {
@@ -98,6 +98,17 @@ export function charset(type: string): string | undefined {
   }
 }
 
+/** Given an extension, lookup the appropriate media type for that extension.
+ * Likely you should be using `contentType()` though instead.
+ */
+export function lookup(path: string): string | undefined {
+  const extension = extname("x." + path)
+    .toLowerCase()
+    .substr(1);
+
+  return types.get(extension);
+}
+
 /** Given an extension or media type, return the full `Content-Type` header
  * string.  Returns `undefined` if not resolvable.
  */
@@ -135,15 +146,4 @@ export function extension(type: string): string | undefined {
   }
 
   return exts[0];
-}
-
-/** Given an extension, lookup the appropriate media type for that extension.
- * Likely you should be using `contentType()` though instead.
- */
-export function lookup(path: string): string | undefined {
-  const extension = extname("x." + path)
-    .toLowerCase()
-    .substr(1);
-
-  return types.get(extension);
 }

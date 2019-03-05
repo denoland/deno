@@ -35,8 +35,6 @@ test(function testingAssertEqual() {
 });
 
 test(function testingAssertFail() {
-  let didThrow = false;
-
   assert.throws(assert.fail, Error, "Failed assertion.");
   assert.throws(
     () => {

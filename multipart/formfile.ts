@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 /** FormFile object */
-export type FormFile = {
+export interface FormFile {
   /** filename  */
   filename: string;
   /** content-type header value of file */
@@ -12,10 +12,11 @@ export type FormFile = {
   content?: Uint8Array;
   /** temporal file path. Set if file size is bigger than specified max-memory size at reading form */
   tempfile?: string;
-};
+}
 
 /** Type guard for FormFile */
-export function isFormFile(x): x is FormFile {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isFormFile(x: any): x is FormFile {
   return (
     typeof x === "object" &&
     x.hasOwnProperty("filename") &&

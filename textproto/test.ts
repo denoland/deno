@@ -92,7 +92,7 @@ test(async function textprotoAppend() {
 
 test(async function textprotoReadEmpty() {
   let r = reader("");
-  let [m, err] = await r.readMIMEHeader();
+  let [, err] = await r.readMIMEHeader();
   // Should not crash!
   assertEqual(err, "EOF");
 });

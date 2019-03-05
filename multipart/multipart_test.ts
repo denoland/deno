@@ -13,7 +13,6 @@ import { FormFile, isFormFile } from "./formfile.ts";
 import { StringWriter } from "../io/writers.ts";
 
 const e = new TextEncoder();
-const d = new TextDecoder();
 const boundary = "--abcde";
 const dashBoundary = e.encode("--" + boundary);
 const nlDashBoundary = e.encode("\r\n--" + boundary);

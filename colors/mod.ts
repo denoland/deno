@@ -9,7 +9,7 @@ interface Code {
 
 let enabled = !noColor;
 
-export function setEnabled(value: boolean) {
+export function setEnabled(value: boolean): void {
   if (noColor) {
     return;
   }
@@ -29,7 +29,7 @@ function code(open: number, close: number): Code {
   };
 }
 
-function run(str: string, code: Code) {
+function run(str: string, code: Code): string {
   return enabled
     ? `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
     : str;
