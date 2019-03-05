@@ -4,7 +4,11 @@ interface FarthestPoint {
   id: number;
 }
 
-export type DiffType = "removed" | "common" | "added";
+export enum DiffType {
+  removed = "removed",
+  common = "common",
+  added = "added"
+}
 
 export interface DiffResult<T> {
   type: DiffType;
@@ -50,12 +54,12 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
   if (!M && !N && !suffixCommon.length && !prefixCommon.length) return [];
   if (!N) {
     return [
-      ...prefixCommon.map(c => ({ type: "common" as DiffType, value: c })),
+      ...prefixCommon.map(c => ({ type: DiffType.common, value: c })),
       ...A.map(a => ({
-        type: (swapped ? "added" : "removed") as DiffType,
+        type: swapped ? DiffType.added : DiffType.removed,
         value: a
       })),
-      ...suffixCommon.map(c => ({ type: "common" as DiffType, value: c }))
+      ...suffixCommon.map(c => ({ type: DiffType.common, value: c }))
     ];
   }
   const offset = N;
@@ -91,18 +95,18 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
       const prev = j;
       if (type === REMOVED) {
         result.unshift({
-          type: (swapped ? "removed" : "added") as DiffType,
+          type: swapped ? DiffType.removed : DiffType.added,
           value: B[b]
         });
         b -= 1;
       } else if (type === ADDED) {
         result.unshift({
-          type: (swapped ? "added" : "removed") as DiffType,
+          type: swapped ? DiffType.added : DiffType.removed,
           value: A[a]
         });
         a -= 1;
       } else {
-        result.unshift({ type: "common" as DiffType, value: A[a] });
+        result.unshift({ type: DiffType.common, value: A[a] });
         a -= 1;
         b -= 1;
       }
@@ -194,8 +198,8 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
     );
   }
   return [
-    ...prefixCommon.map(c => ({ type: "common" as DiffType, value: c })),
+    ...prefixCommon.map(c => ({ type: DiffType.common, value: c })),
     ...backTrace(A, B, fp[delta + offset], swapped),
-    ...suffixCommon.map(c => ({ type: "common" as DiffType, value: c }))
+    ...suffixCommon.map(c => ({ type: DiffType.common, value: c }))
   ];
 }
