@@ -93,20 +93,6 @@ def green_ok():
     return "%sok%s" % (FG_GREEN, RESET)
 
 
-def remove_and_symlink(target, name, target_is_dir=False):
-    if os.name != "nt" and os.path.islink(name):
-        return
-    try:
-        # On Windows, directory symlink can only be removed with rmdir().
-        if os.name == "nt" and os.path.isdir(name):
-            os.rmdir(name)
-        else:
-            os.unlink(name)
-    except OSError:
-        pass
-    symlink(target, name, target_is_dir)
-
-
 def symlink(target, name, target_is_dir=False):
     if os.name == "nt":
         from ctypes import WinDLL, WinError, GetLastError
