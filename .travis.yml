@@ -118,11 +118,10 @@ jobs:
       - *release_provider
       script:
       - rustup target add aarch64-unknown-linux-gnu
-      - apt -yq --no-install-suggests --no-install-recommends install g++-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-7-multilib libc6-arm64-cross
-      - docker build -f Dockerfile-arm64-build -t deno-arm64-build .
+      - sudo apt -yq --no-install-suggests --no-install-recommends install g++-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-7-multilib libc6-arm64-cross
       - build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
-      - tools/setup.py
-      - cargo build --target=aarch64-unknown-linux-gnu --release
+      - DENO_BUILD_ARGS="target_cpu=\"arm64\" v8_target_cpu=\"arm64\"" tools/setup.py
+      - DENO_BUILD_ARGS="target_cpu=\"arm64\" v8_target_cpu=\"arm64\"" cargo build --target=aarch64-unknown-linux-gnu --release
 
     - name: "cargo release linux x86_64"
       os: linux
