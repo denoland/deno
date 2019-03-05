@@ -6,8 +6,7 @@ import os
 import site
 import sys
 from os import path
-from util import add_env_path, find_exts, make_env, remove_and_symlink, rmtree
-from util import root_path, run
+from util import add_env_path, find_exts, make_env, rmtree, root_path, run
 from tempfile import mkdtemp
 
 
@@ -87,35 +86,6 @@ def google_env(env=None, merge_env=None, depot_tools_path_=depot_tools_path):
         env["LIBPATH"] = ""
 
     return env
-
-
-def fix_symlinks():
-    # Ensure the third_party directory exists.
-    try:
-        os.makedirs(third_party_path)
-    except OSError:
-        pass
-
-    # Make symlinks to Yarn metadata living in the root repo.
-    remove_and_symlink("../package.json", tp("package.json"))
-
-    # TODO(ry) Is it possible to remove these symlinks?
-    remove_and_symlink("v8/third_party/googletest", tp("googletest"), True)
-    remove_and_symlink("v8/third_party/jinja2", tp("jinja2"), True)
-    remove_and_symlink("v8/third_party/llvm-build", tp("llvm-build"), True)
-    remove_and_symlink("v8/third_party/markupsafe", tp("markupsafe"), True)
-    remove_and_symlink("../../build", tp("v8/build"), True)
-
-    # On Windows, git doesn't create the right type of symlink if the symlink
-    # and it's target are in different repos. Here we fix the symlinks that
-    # exist in the root repo while their target is in the third_party repo.
-    remove_and_symlink("third_party/node_modules", root("node_modules"), True)
-    remove_and_symlink("third_party/v8/buildtools", root("buildtools"), True)
-    remove_and_symlink("third_party/v8/build_overrides",
-                       root("build_overrides"), True)
-    remove_and_symlink("third_party/v8/testing", root("testing"), True)
-    remove_and_symlink("../third_party/v8/tools/clang", root("tools/clang"),
-                       True)
 
 
 # Run Yarn to install JavaScript dependencies.

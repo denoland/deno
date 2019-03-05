@@ -167,6 +167,7 @@ Extra steps for Windows users:
    `Programs and Features` → Select
    `Windows Software Development Kit - Windows 10` → `Change` → `Change` → Check
    `Debugging Tools For Windows` → `Change` -> `Finish`.
+4. Make sure you are using git version 2.19.2.windows.1 or newer.
 
 #### Other useful commands
 
