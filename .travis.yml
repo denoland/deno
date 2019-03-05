@@ -28,9 +28,6 @@ cache:
   - third_party/v8/buildtools/linux64/
   - third_party/v8/third_party/llvm-build/
 
-services:
-  - docker
-
 install:
 # Because prebuilt/ is cached, we need to manually reset changes that might
 # happen to the sha1 files here.
@@ -121,7 +118,6 @@ jobs:
       - *release_provider
       script:
       - rustup target add aarch64-unknown-linux-gnu
-      - echo "[target.aarch64-unknown-linux-gnu]\nlinker = \"aarch64-linux-gnu-gcc\"" > /root/.cargo/config
       - apt -yq --no-install-suggests --no-install-recommends install g++-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-7-multilib libc6-arm64-cross
       - docker build -f Dockerfile-arm64-build -t deno-arm64-build .
       - build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
