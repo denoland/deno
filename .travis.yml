@@ -112,12 +112,7 @@ jobs:
           branch: master
           repo: denoland/deno
         skip-cleanup: true
-
-    - name: "cargo release linux x86_64"
-      os: linux
-      script:
-      - cargo build -vv --release --locked
-
+    
     - name: "cargo release linux arm64"
       os: linux
       after_success:
@@ -130,6 +125,11 @@ jobs:
       - docker run -t -v "$PWD/:/deno" deno-arm64-build ./tools/setup.py
       - docker run -t -v "$PWD/:/deno" deno-arm64-build 'cargo build --target=aarch64-unknown-linux-gnu --release'
 
+    - name: "cargo release linux x86_64"
+      os: linux
+      script:
+      - cargo build -vv --release --locked
+      
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
     # tests.  We want to detect leaks during the build process as well as
