@@ -10,8 +10,6 @@ from util import build_path, enable_ansi_colors, run
 def main(argv):
     enable_ansi_colors()
 
-    third_party.fix_symlinks()
-
     ninja_args = argv[1:]
     if not "-C" in ninja_args:
         if not os.path.isdir(build_path()):
