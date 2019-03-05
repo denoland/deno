@@ -18,6 +18,7 @@ pub struct DenoPermissions {
   pub allow_net: AtomicBool,
   pub allow_env: AtomicBool,
   pub allow_run: AtomicBool,
+  pub allow_high_precision: AtomicBool,
 }
 
 impl DenoPermissions {
@@ -28,6 +29,7 @@ impl DenoPermissions {
       allow_env: AtomicBool::new(flags.allow_env),
       allow_net: AtomicBool::new(flags.allow_net),
       allow_run: AtomicBool::new(flags.allow_run),
+      allow_high_precision: AtomicBool::new(flags.allow_high_precision),
     }
   }
 
@@ -112,6 +114,10 @@ impl DenoPermissions {
     return self.allow_env.load(Ordering::SeqCst);
   }
 
+  pub fn allows_high_precision(&self) -> bool {
+    return self.allow_high_precision.load(Ordering::SeqCst);
+  }
+
   pub fn revoke_run(&self) -> DenoResult<()> {
     self.allow_run.store(false, Ordering::SeqCst);
     return Ok(());
@@ -137,6 +143,11 @@ impl DenoPermissions {
     return Ok(());
   }
 
+  pub fn revoke_high_precision(&self) -> DenoResult<()> {
+    self.allow_high_precision.store(false, Ordering::SeqCst);
+    return Ok(());
+  }
+
   pub fn default() -> Self {
     Self {
       allow_read: AtomicBool::new(false),
@@ -144,6 +155,7 @@ impl DenoPermissions {
       allow_env: AtomicBool::new(false),
       allow_net: AtomicBool::new(false),
       allow_run: AtomicBool::new(false),
+      allow_high_precision: AtomicBool::new(false),
     }
   }
 }

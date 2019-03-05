@@ -191,9 +191,16 @@ fn op_now(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let start = SystemTime::now();
-  let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
-  let time = since_the_epoch.as_secs() * 1000
-    + u64::from(since_the_epoch.subsec_millis());
+  let since_the_epoch = start.duration_since(UNIX_EPOCH).as_nanos();
+  let time = since_the_epoch;
+
+  // If the permission is not enabled
+  // Round the nano result on milliseconds
+  // return the result as nanos u128
+  // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp
+  if(!isolate.permissions.allow_high_precision){
+    time = (since_the_epoch / 1000).round() * 1000
+  }
 
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::NowRes::create(builder, &msg::NowResArgs { time });
@@ -521,6 +528,7 @@ fn op_permissions(
       write: isolate.permissions.allows_write(),
       net: isolate.permissions.allows_net(),
       env: isolate.permissions.allows_env(),
+      high_precision: isolate.permissions.allows_high_precision(),
     },
   );
   ok_future(serialize_response(
@@ -1876,6 +1884,7 @@ mod tests {
       allow_env: AtomicBool::new(true),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
+      allow_high_precision: AtomicBool::new(false),
     };
     let isolate = Isolate::new(
       IsolateInit {
@@ -1921,6 +1930,7 @@ mod tests {
       allow_env: AtomicBool::new(true),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
+      allow_high_precision: AtomicBool::new(false),
     };
     let isolate = Isolate::new(
       IsolateInit {
@@ -1966,6 +1976,7 @@ mod tests {
       allow_env: AtomicBool::new(true),
       allow_net: AtomicBool::new(false),
       allow_run: AtomicBool::new(true),
+      allow_high_precision: AtomicBool::new(false),
     };
     let isolate = Isolate::new(
       IsolateInit {
@@ -2011,6 +2022,7 @@ mod tests {
       allow_env: AtomicBool::new(false),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(false),
+      allow_high_precision: AtomicBool::new(false),
     };
     let isolate = Isolate::new(
       IsolateInit {

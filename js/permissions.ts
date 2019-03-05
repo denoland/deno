@@ -11,6 +11,7 @@ export type Permissions = {
   net: boolean;
   env: boolean;
   run: boolean;
+  high_precision: boolean;
 
   // NOTE: Keep in sync with src/permissions.rs
 };
@@ -51,7 +52,8 @@ function createPermissions(inner: msg.PermissionsRes): Permissions {
     write: inner.write(),
     net: inner.net(),
     env: inner.env(),
-    run: inner.run()
+    run: inner.run(),
+    high_precision: inner.high_precision(),
   };
 }
 
