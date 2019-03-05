@@ -84,7 +84,11 @@ static DENO_INIT: Once = ONCE_INIT;
 unsafe impl<R, S: Shared<R>> Send for Isolate<R, S> {}
 
 impl<R, S: Shared<R>> Isolate<R, S> {
-  pub fn new(shared: S, recv_cb: RecvCallback<R, S>) -> Self {
+  pub fn new(
+    shared: S,
+    recv_cb: RecvCallback<R, S>,
+    load_snapshot: Option<deno_buf>,
+  ) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -95,7 +99,10 @@ impl<R, S: Shared<R>> Isolate<R, S> {
 
     let config = libdeno::deno_config {
       will_snapshot: 0,
-      load_snapshot: deno_buf::empty(), // TODO
+      load_snapshot: match load_snapshot {
+        Some(s) => s,
+        None => libdeno::deno_buf::empty(),
+      },
       shared: shared_deno_buf,
       recv_cb: pre_dispatch::<R, S>,
     };
@@ -300,7 +307,7 @@ mod tests {
   #[test]
   fn test_execute() {
     let shared = SharedSimple::new();
-    let isolate = Isolate::new(shared, inc_counter);
+    let isolate = Isolate::new(shared, inc_counter, None);
     js_check(isolate.execute(
       "filename.js",
       r#"
@@ -328,7 +335,7 @@ mod tests {
   #[test]
   fn test_poll_async_immediate_ops() {
     let shared = SharedSimple::new();
-    let mut isolate = Isolate::new(shared, async_immediate);
+    let mut isolate = Isolate::new(shared, async_immediate, None);
     js_check(isolate.execute(
       "setup.js",
       r#"

@@ -104,7 +104,7 @@ mod tests {
   #[test]
   fn test_execute() {
     let shared = SharedSimple::new();
-    let mut isolate = Isolate::new(shared, inc_counter);
+    let mut isolate = Isolate::new(shared, inc_counter, None);
     let (setup_filename, setup_source) = SharedSimple::js();
     js_check(isolate.execute(setup_filename, setup_source));
     js_check(isolate.execute("x.js", "Deno.sharedSimple.push(1, 2, 3, 4)"));

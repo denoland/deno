@@ -40,7 +40,7 @@ fn main() {
   let js_source = include_str!("http_bench.js");
 
   let main_future = lazy(move || {
-    let isolate = deno_core::Isolate::new(SharedSimple::new(), recv_cb);
+    let isolate = deno_core::Isolate::new(SharedSimple::new(), recv_cb, None);
 
     let (setup_filename, setup_source) = SharedSimple::js();
     js_check(isolate.execute(setup_filename, setup_source));
