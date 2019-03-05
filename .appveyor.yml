@@ -95,6 +95,16 @@ init:
   # Load utility functions
   - ps: Invoke-Expression $env:PS_UTILS
 
+  # Upgrade git.
+  # TODO: remove when Appveyor upgrades to version 2.19.2.windows.1 or higher.
+  - ps: |-
+      $git_setup_uri = "https://github.com/git-for-windows/git/releases/" +
+                       "download/v2.21.0.windows.1/Git-2.21.0-64-bit.exe"
+      Invoke-WebRequest -Uri $git_setup_uri -OutFile "$env:TEMP\git-setup.exe"
+      Start-Process -FilePath "$env:TEMP\git-setup.exe" `
+                    -ArgumentList "/verysilent"         `
+                    -Wait
+
   # Make git check out symlinks (not placeholder text files).
   - git config --global core.symlinks true
 
