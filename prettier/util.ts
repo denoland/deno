@@ -2,7 +2,7 @@
 const { platform, run } = Deno;
 
 // Runs a command in cross-platform way
-export function xrun(opts) {
+export function xrun(opts): Deno.Process {
   return run({
     ...opts,
     args: platform.os === "win" ? ["cmd.exe", "/c", ...opts.args] : opts.args

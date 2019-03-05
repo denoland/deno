@@ -36,8 +36,8 @@ const DEFAULT_CONFIG: LogConfig = {
 };
 
 const state = {
-  handlers: new Map(),
-  loggers: new Map(),
+  handlers: new Map<string, BaseHandler>(),
+  loggers: new Map<string, Logger>(),
   config: DEFAULT_CONFIG
 };
 
@@ -48,18 +48,7 @@ export const handlers = {
   FileHandler
 };
 
-export const debug = (msg: string, ...args: any[]) =>
-  getLogger("default").debug(msg, ...args);
-export const info = (msg: string, ...args: any[]) =>
-  getLogger("default").info(msg, ...args);
-export const warning = (msg: string, ...args: any[]) =>
-  getLogger("default").warning(msg, ...args);
-export const error = (msg: string, ...args: any[]) =>
-  getLogger("default").error(msg, ...args);
-export const critical = (msg: string, ...args: any[]) =>
-  getLogger("default").critical(msg, ...args);
-
-export function getLogger(name?: string) {
+export function getLogger(name?: string): Logger {
   if (!name) {
     return state.loggers.get("default");
   }
@@ -73,11 +62,27 @@ export function getLogger(name?: string) {
   return state.loggers.get(name);
 }
 
-export function getHandler(name: string) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const debug = (msg: string, ...args: any[]): void =>
+  getLogger("default").debug(msg, ...args);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const info = (msg: string, ...args: any[]): void =>
+  getLogger("default").info(msg, ...args);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const warning = (msg: string, ...args: any[]): void =>
+  getLogger("default").warning(msg, ...args);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const error = (msg: string, ...args: any[]): void =>
+  getLogger("default").error(msg, ...args);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const critical = (msg: string, ...args: any[]): void =>
+  getLogger("default").critical(msg, ...args);
+
+export function getHandler(name: string): BaseHandler {
   return state.handlers.get(name);
 }
 
-export async function setup(config: LogConfig) {
+export async function setup(config: LogConfig): Promise<void> {
   state.config = {
     handlers: { ...DEFAULT_CONFIG.handlers, ...config.handlers },
     loggers: { ...DEFAULT_CONFIG.loggers, ...config.loggers }
@@ -106,7 +111,7 @@ export async function setup(config: LogConfig) {
   for (const loggerName in loggers) {
     const loggerConfig = loggers[loggerName];
     const handlerNames = loggerConfig.handlers || [];
-    const handlers = [];
+    const handlers: BaseHandler[] = [];
 
     handlerNames.forEach(handlerName => {
       if (state.handlers.has(handlerName)) {

@@ -22,7 +22,7 @@ export function bytesFindIndex(a: Uint8Array, pat: Uint8Array): number {
 }
 
 /** Find last index of binary pattern from a. If not found, then return -1 **/
-export function bytesFindLastIndex(a: Uint8Array, pat: Uint8Array) {
+export function bytesFindLastIndex(a: Uint8Array, pat: Uint8Array): number {
   const e = pat[pat.length - 1];
   for (let i = a.length - 1; i >= 0; i--) {
     if (a[i] !== e) continue;

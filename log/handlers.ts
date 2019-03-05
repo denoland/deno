@@ -24,7 +24,7 @@ export class BaseHandler {
     this.formatter = options.formatter || DEFAULT_FORMATTER;
   }
 
-  handle(logRecord: LogRecord) {
+  handle(logRecord: LogRecord): void {
     if (this.level > logRecord.level) return;
 
     const msg = this.format(logRecord);
@@ -48,9 +48,9 @@ export class BaseHandler {
     });
   }
 
-  log(msg: string) {}
-  async setup() {}
-  async destroy() {}
+  log(_msg: string): void {}
+  async setup(): Promise<void> {}
+  async destroy(): Promise<void> {}
 }
 
 export class ConsoleHandler extends BaseHandler {
@@ -77,7 +77,7 @@ export class ConsoleHandler extends BaseHandler {
     return msg;
   }
 
-  log(msg: string) {
+  log(msg: string): void {
     console.log(msg);
   }
 }
@@ -86,7 +86,7 @@ export abstract class WriterHandler extends BaseHandler {
   protected _writer: Writer;
   private _encoder = new TextEncoder();
 
-  log(msg: string) {
+  log(msg: string): void {
     this._writer.write(this._encoder.encode(msg + "\n"));
   }
 }
@@ -104,13 +104,13 @@ export class FileHandler extends WriterHandler {
     this._filename = options.filename;
   }
 
-  async setup() {
+  async setup(): Promise<void> {
     // open file in append mode - write only
     this._file = await open(this._filename, "a");
     this._writer = this._file;
   }
 
-  async destroy() {
+  async destroy(): Promise<void> {
     await this._file.close();
   }
 }

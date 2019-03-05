@@ -9,17 +9,19 @@
 import { test, assertEqual } from "./mod.ts";
 import { format } from "./format.ts";
 
-function returnArguments(..._args: Array<unknown>) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars,@typescript-eslint/no-explicit-any
+function returnArguments(...args: any[]): IArguments {
   return arguments;
 }
 
-function MyObject(value: unknown) {
+function MyObject(value: unknown): void {
   // @ts-ignore
   this.name = value;
 }
 
 class MyArray<T> extends Array<T> {}
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 const createVal = () => [
   {
     id: "8658c1d0-9eda-4a90-95e1-8001e8eb6036",
@@ -32,6 +34,7 @@ const createVal = () => [
   }
 ];
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 const createExpected = () =>
   [
     "Array [",
@@ -58,7 +61,7 @@ test({
 test({
   name: "prints an empty array",
   fn() {
-    const val: any[] = [];
+    const val: unknown[] = [];
     assertEqual(format(val), "Array []");
   }
 });
@@ -151,7 +154,7 @@ test({
   name: "prints an anonymous callback function",
   fn() {
     let val;
-    function f(cb: () => void) {
+    function f(cb: () => void): void {
       val = cb;
     }
     // tslint:disable-next-line:no-empty
@@ -164,7 +167,7 @@ test({
   name: "prints an anonymous assigned function",
   fn() {
     // tslint:disable-next-line:no-empty
-    const val = () => {};
+    const val = (): void => {};
     const formatted = format(val);
     assertEqual(
       formatted === "[Function anonymous]" || formatted === "[Function val]",
@@ -177,7 +180,7 @@ test({
   name: "prints a named function",
   fn() {
     // tslint:disable-next-line:no-empty
-    const val = function named() {};
+    const val = function named(): void {};
     assertEqual(format(val), "[Function named]");
   }
 });
@@ -185,7 +188,7 @@ test({
 test({
   name: "prints a named generator function",
   fn() {
-    const val = function* generate() {
+    const val = function* generate(): IterableIterator<number> {
       yield 1;
       yield 2;
       yield 3;
@@ -198,7 +201,7 @@ test({
   name: "can customize function names",
   fn() {
     // tslint:disable-next-line:no-empty
-    const val = function named() {};
+    const val = function named(): void {};
     assertEqual(
       format(val, {
         printFunctionName: false
@@ -248,6 +251,7 @@ test({
 test({
   name: "prints a map with non-string keys",
   fn() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const val = new Map<any, any>([
       [false, "boolean"],
       ["false", "string"],
@@ -373,6 +377,7 @@ test({
 test({
   name: "prints an object with properties and symbols",
   fn() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const val: any = {};
     val[Symbol("symbol1")] = "value2";
     val[Symbol("symbol2")] = "value3";
@@ -388,7 +393,7 @@ test({
   name:
     "prints an object without non-enumerable properties which have string key",
   fn() {
-    const val: any = {
+    const val = {
       enumerable: true
     };
     const key = "non-enumerable";
@@ -404,7 +409,7 @@ test({
   name:
     "prints an object without non-enumerable properties which have symbol key",
   fn() {
-    const val: any = {
+    const val = {
       enumerable: true
     };
     const key = Symbol("non-enumerable");
@@ -609,6 +614,7 @@ test({
 test({
   name: "prints circular references",
   fn() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const val: any = {};
     val.prop = val;
     assertEqual(format(val), 'Object {\n  "prop": [Circular],\n}');
@@ -787,6 +793,7 @@ test({
   name: "calls toJSON on Sets",
   fn() {
     const set = new Set([1]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (set as any).toJSON = () => "map";
     assertEqual(format(set), '"map"');
   }

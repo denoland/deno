@@ -53,7 +53,7 @@ test(function customHandler() {
 test(function logFunctions() {
   let handler: TestHandler;
 
-  const doLog = (level: string) => {
+  const doLog = (level: string): void => {
     handler = new TestHandler(level);
     let logger = new Logger(level, [handler]);
     logger.debug("foo");

@@ -14,10 +14,10 @@ export interface BenchmarkTimer {
 }
 
 /** Defines a benchmark through a named function. */
-export type BenchmarkFunction = {
+export interface BenchmarkFunction {
   (b: BenchmarkTimer): void | Promise<void>;
   name: string;
-};
+}
 
 /** Defines a benchmark definition with configurable runs. */
 export interface BenchmarkDefinition {
@@ -69,7 +69,7 @@ function createBenchmarkTimer(clock: BenchmarkClock): BenchmarkTimer {
   };
 }
 
-const candidates: Array<BenchmarkDefinition> = [];
+const candidates: BenchmarkDefinition[] = [];
 
 /** Registers a benchmark as a candidate for the runBenchmarks executor. */
 export function bench(
@@ -95,27 +95,27 @@ export async function runBenchmarks({
   skip = /^\s*$/
 }: BenchmarkRunOptions = {}): Promise<void> {
   // Filtering candidates by the "only" and "skip" constraint
-  const benchmarks: Array<BenchmarkDefinition> = candidates.filter(
+  const benchmarks: BenchmarkDefinition[] = candidates.filter(
     ({ name }) => only.test(name) && !skip.test(name)
   );
   // Init main counters and error flag
-  const filtered: number = candidates.length - benchmarks.length;
-  let measured: number = 0;
-  let failed: boolean = false;
+  const filtered = candidates.length - benchmarks.length;
+  let measured = 0;
+  let failed = false;
   // Setting up a shared benchmark clock and timer
   const clock: BenchmarkClock = { start: NaN, stop: NaN };
-  const b: BenchmarkTimer = createBenchmarkTimer(clock);
+  const b = createBenchmarkTimer(clock);
   // Iterating given benchmark definitions (await-in-loop)
   console.log(
     "running",
     benchmarks.length,
     `benchmark${benchmarks.length === 1 ? " ..." : "s ..."}`
   );
-  for (const { name, runs, func } of benchmarks) {
+  for (const { name, runs = 0, func } of benchmarks) {
     // See https://github.com/denoland/deno/pull/1452 about groupCollapsed
     console.groupCollapsed(`benchmark ${name} ... `);
     // Trying benchmark.func
-    let result: string;
+    let result = "";
     try {
       if (runs === 1) {
         // b is a benchmark timer interfacing an unset (NaN) benchmark clock
@@ -126,7 +126,7 @@ export async function runBenchmarks({
       } else if (runs > 1) {
         // Averaging runs
         let pendingRuns = runs;
-        let totalMs: number = 0;
+        let totalMs = 0;
         // Would be better 2 not run these serially
         while (true) {
           // b is a benchmark timer interfacing an unset (NaN) benchmark clock

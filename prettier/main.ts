@@ -2,7 +2,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
-const { args, platform, readAll, lstat, exit, run, readFile, writeFile } = Deno;
+const { args, readAll, lstat, exit, readFile, writeFile } = Deno;
 import { xrun } from "./util.ts";
 import { parse } from "../flags/mod.ts";
 import { prettier, prettierPlugins } from "./prettier.ts";
@@ -67,7 +67,7 @@ async function getSourceFiles(args: string[]): Promise<string[]> {
 }
 
 // Filters out the files which contains any pattern in the given ignoreList.
-function filterIgnoreList(files: string[], ignoreList: string[]) {
+function filterIgnoreList(files: string[], ignoreList: string[]): string[] {
   return files.filter(path =>
     ignoreList.every(pattern => !path.includes(pattern))
   );
@@ -203,7 +203,7 @@ async function formatSourceFiles(
   exit(0);
 }
 
-async function main(opts) {
+async function main(opts): Promise<void> {
   const { help, ignore, check, _: args } = opts;
 
   if (help) {

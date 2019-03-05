@@ -5,7 +5,9 @@ const { readAll } = Deno;
 
 const decoder = new TextDecoder();
 
-async function run(args: string[]) {
+async function run(
+  args: string[]
+): Promise<{ stdout: string; code: number | undefined }> {
   const p = xrun({ args, stdout: "piped" });
 
   const stdout = decoder.decode(await readAll(p.stdout));
@@ -33,7 +35,7 @@ function normalizeOutput(output: string): string {
     .join("\n");
 }
 
-async function clearTestdataChanges() {
+async function clearTestdataChanges(): Promise<void> {
   await xrun({ args: ["git", "checkout", testdata] }).status();
 }
 

@@ -4,7 +4,7 @@ import { test, assert } from "./mod.ts";
 import { red, green, white, gray, bold } from "../colors/mod.ts";
 import { assertEqual } from "./pretty.ts";
 
-const createHeader = () => [
+const createHeader = (): string[] => [
   "",
   "",
   `    ${gray(bold("[Diff]"))} ${red(bold("Left"))} / ${green(bold("Right"))}`,
@@ -12,8 +12,8 @@ const createHeader = () => [
   ""
 ];
 
-const added = (s: string) => green(bold(s));
-const removed = (s: string) => red(bold(s));
+const added: (s: string) => string = (s: string): string => green(bold(s));
+const removed: (s: string) => string = (s: string): string => red(bold(s));
 
 test({
   name: "pass case",

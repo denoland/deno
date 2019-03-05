@@ -1,31 +1,39 @@
 variables:
-  DENO_VERSION: 'v0.3.1'
+  DENO_VERSION: "v0.3.1"
+  TS_VERSION: "3.2.1"
 
+# TODO DRY up the jobs
+# TODO Try to get eslint to run under Deno, like prettier
 jobs:
+  - job: "Linux"
+    pool:
+      vmImage: "Ubuntu-16.04"
+    steps:
+      - script: npm install eslint typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-config-prettier
+      - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
+      - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
+      - script: npx eslint **/*.ts
+      - script: deno format.ts --allow-run --allow-write --allow-read --check
+      - script: deno test.ts --allow-run --allow-net --allow-write --allow-read
 
-- job: 'Linux'
-  pool:
-    vmImage: 'Ubuntu-16.04'
-  steps:
-  - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
-  - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
-  - script: deno test.ts --allow-run --allow-net --allow-write --allow-read
-  - script: deno format.ts --allow-run --allow-write --allow-read --check
+  - job: "Mac"
+    pool:
+      vmImage: "macOS-10.13"
+    steps:
+      - script: npm -g install eslint typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-config-prettier
+      - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
+      - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
+      - script: eslint **/*.ts
+      - script: deno format.ts --allow-run --allow-write --allow-read --check
+      - script: deno test.ts --allow-run --allow-net --allow-write --allow-read
 
-- job: 'Mac'
-  pool:
-    vmImage: 'macOS-10.13'
-  steps:
-  - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
-  - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
-  - script: deno test.ts --allow-run --allow-net --allow-write --allow-read
-  - script: deno format.ts --allow-run --allow-write --allow-read --check
-
-- job: 'Windows'
-  pool:
-    vmImage: 'vs2017-win2016'
-  steps:
-  - powershell: iwr https://deno.land/x/install/install.ps1 -out install.ps1; .\install.ps1 $(DENO_VERSION)
-  - bash: echo "##vso[task.prependpath]C:\Users\VssAdministrator\.deno\\bin"
-  - bash: deno.exe test.ts --allow-run --allow-net --allow-write --allow-read
-  - bash: deno.exe format.ts --allow-run --allow-write --allow-read --check
+  - job: "Windows"
+    pool:
+      vmImage: "vs2017-win2016"
+    steps:
+      - bash: npm install eslint typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-config-prettier
+      - powershell: iwr https://deno.land/x/install/install.ps1 -out install.ps1; .\install.ps1 $(DENO_VERSION)
+      - bash: echo "##vso[task.prependpath]C:\Users\VssAdministrator\.deno\\bin"
+      - bash: npx eslint **/*.ts
+      - bash: deno.exe format.ts --allow-run --allow-write --allow-read --check
+      - bash: deno.exe test.ts --allow-run --allow-net --allow-write --allow-read

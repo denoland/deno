@@ -6,7 +6,7 @@ import {
   isWebSocketPingEvent
 } from "https://deno.land/x/ws/mod.ts";
 
-async function main() {
+async function main(): Promise<void> {
   console.log("websocket server is running on 0.0.0.0:8080");
   for await (const req of serve("0.0.0.0:8080")) {
     if (req.url === "/ws") {
@@ -22,7 +22,7 @@ async function main() {
             // binary message
             console.log("ws:Binary", ev);
           } else if (isWebSocketPingEvent(ev)) {
-            const [_, body] = ev;
+            const [, body] = ev;
             // ping
             console.log("ws:Ping", body);
           } else if (isWebSocketCloseEvent(ev)) {

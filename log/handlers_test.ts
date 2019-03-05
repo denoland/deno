@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assertEqual, test } from "../testing/mod.ts";
-import { LogRecord, Logger } from "./logger.ts";
 import { LogLevel, getLevelName, getLevelByName } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 

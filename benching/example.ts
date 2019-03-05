@@ -14,7 +14,7 @@ bench({
   runs: 100,
   func(b: BenchmarkTimer) {
     b.start();
-    for (let i: number = 0; i < 1e6; i++);
+    for (let i = 0; i < 1e6; i++);
     b.stop();
   }
 });
