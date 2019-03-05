@@ -1,7 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-
-#![allow(dead_code)]
-
 use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
