@@ -10,6 +10,8 @@ notice. [Bug reports](https://github.com/denoland/deno/issues) do help!
 
 ## Introduction
 
+A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio
+
 ### Philosophy
 
 Deno aims to be a productive and secure scripting environment for the modern
@@ -61,6 +63,14 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
   it), ought to also be able to be run in a modern web browser without change.
 
 - [Aims to support top-level `await`.](https://github.com/denoland/deno/issues/471)
+
+- Be able to serve HTTP efficently.
+  ([Currently it is relatively slow.](https://deno.land/benchmarks.html#req-per-sec))
+
+- Provide useful tooling out of the box: Built-in command-line debugger
+  [not yet](https://github.com/denoland/deno/issues/1120), built-in lint
+  [not yet](https://github.com/denoland/deno/issues/1880), dependency inspector
+  (`deno --info`), built-in code formatter (`deno --fmt`),
 
 ### Non-goals
 
