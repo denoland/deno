@@ -94,7 +94,7 @@ cache:
 init:
   # Load utility functions
   - ps: Invoke-Expression $env:PS_UTILS
-
+  - git update-git-for-windows -y
   # Make git check out symlinks (not placeholder text files).
   - git config --global core.symlinks true
 
