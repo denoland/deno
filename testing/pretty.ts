@@ -17,9 +17,9 @@ function createStr(v: unknown): string {
 
 function createColor(diffType: DiffType): (s: string) => string {
   switch (diffType) {
-    case "added":
+    case DiffType.added:
       return (s: string) => green(bold(s));
-    case "removed":
+    case DiffType.removed:
       return (s: string) => red(bold(s));
     default:
       return white;
@@ -28,9 +28,9 @@ function createColor(diffType: DiffType): (s: string) => string {
 
 function createSign(diffType: DiffType): string {
   switch (diffType) {
-    case "added":
+    case DiffType.added:
       return "+   ";
-    case "removed":
+    case DiffType.removed:
       return "-   ";
     default:
       return "    ";
