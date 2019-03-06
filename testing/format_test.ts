@@ -6,7 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
-import { test, assertEqual } from "./mod.ts";
+import { test } from "./mod.ts";
+import { assertEq } from "../testing/asserts.ts";
 import { format } from "./format.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars,@typescript-eslint/no-explicit-any
@@ -54,7 +55,7 @@ test({
   name: "prints empty arguments",
   fn() {
     const val = returnArguments();
-    assertEqual(format(val), "Arguments []");
+    assertEq(format(val), "Arguments []");
   }
 });
 
@@ -62,7 +63,7 @@ test({
   name: "prints an empty array",
   fn() {
     const val: unknown[] = [];
-    assertEqual(format(val), "Array []");
+    assertEq(format(val), "Array []");
   }
 });
 
@@ -70,7 +71,7 @@ test({
   name: "prints an array with items",
   fn() {
     const val = [1, 2, 3];
-    assertEqual(format(val), "Array [\n  1,\n  2,\n  3,\n]");
+    assertEq(format(val), "Array [\n  1,\n  2,\n  3,\n]");
   }
 });
 
@@ -78,7 +79,7 @@ test({
   name: "prints a empty typed array",
   fn() {
     const val = new Uint32Array(0);
-    assertEqual(format(val), "Uint32Array []");
+    assertEq(format(val), "Uint32Array []");
   }
 });
 
@@ -86,7 +87,7 @@ test({
   name: "prints a typed array with items",
   fn() {
     const val = new Uint32Array(3);
-    assertEqual(format(val), "Uint32Array [\n  0,\n  0,\n  0,\n]");
+    assertEq(format(val), "Uint32Array [\n  0,\n  0,\n  0,\n]");
   }
 });
 
@@ -94,7 +95,7 @@ test({
   name: "prints an array buffer",
   fn() {
     const val = new ArrayBuffer(3);
-    assertEqual(format(val), "ArrayBuffer []");
+    assertEq(format(val), "ArrayBuffer []");
   }
 });
 
@@ -102,7 +103,7 @@ test({
   name: "prints a nested array",
   fn() {
     const val = [[1, 2, 3]];
-    assertEqual(
+    assertEq(
       format(val),
       "Array [\n  Array [\n    1,\n    2,\n    3,\n  ],\n]"
     );
@@ -113,7 +114,7 @@ test({
   name: "prints true",
   fn() {
     const val = true;
-    assertEqual(format(val), "true");
+    assertEq(format(val), "true");
   }
 });
 
@@ -121,7 +122,7 @@ test({
   name: "prints false",
   fn() {
     const val = false;
-    assertEqual(format(val), "false");
+    assertEq(format(val), "false");
   }
 });
 
@@ -129,7 +130,7 @@ test({
   name: "prints an error",
   fn() {
     const val = new Error();
-    assertEqual(format(val), "[Error]");
+    assertEq(format(val), "[Error]");
   }
 });
 
@@ -137,7 +138,7 @@ test({
   name: "prints a typed error with a message",
   fn() {
     const val = new TypeError("message");
-    assertEqual(format(val), "[TypeError: message]");
+    assertEq(format(val), "[TypeError: message]");
   }
 });
 
@@ -146,7 +147,7 @@ test({
   fn() {
     // tslint:disable-next-line:function-constructor
     const val = new Function();
-    assertEqual(format(val), "[Function anonymous]");
+    assertEq(format(val), "[Function anonymous]");
   }
 });
 
@@ -159,7 +160,7 @@ test({
     }
     // tslint:disable-next-line:no-empty
     f(() => {});
-    assertEqual(format(val), "[Function anonymous]");
+    assertEq(format(val), "[Function anonymous]");
   }
 });
 
@@ -169,7 +170,7 @@ test({
     // tslint:disable-next-line:no-empty
     const val = (): void => {};
     const formatted = format(val);
-    assertEqual(
+    assertEq(
       formatted === "[Function anonymous]" || formatted === "[Function val]",
       true
     );
@@ -181,7 +182,7 @@ test({
   fn() {
     // tslint:disable-next-line:no-empty
     const val = function named(): void {};
-    assertEqual(format(val), "[Function named]");
+    assertEq(format(val), "[Function named]");
   }
 });
 
@@ -193,7 +194,7 @@ test({
       yield 2;
       yield 3;
     };
-    assertEqual(format(val), "[Function generate]");
+    assertEq(format(val), "[Function generate]");
   }
 });
 
@@ -202,7 +203,7 @@ test({
   fn() {
     // tslint:disable-next-line:no-empty
     const val = function named(): void {};
-    assertEqual(
+    assertEq(
       format(val, {
         printFunctionName: false
       }),
@@ -215,7 +216,7 @@ test({
   name: "prints Infinity",
   fn() {
     const val = Infinity;
-    assertEqual(format(val), "Infinity");
+    assertEq(format(val), "Infinity");
   }
 });
 
@@ -223,7 +224,7 @@ test({
   name: "prints -Infinity",
   fn() {
     const val = -Infinity;
-    assertEqual(format(val), "-Infinity");
+    assertEq(format(val), "-Infinity");
   }
 });
 
@@ -231,7 +232,7 @@ test({
   name: "prints an empty map",
   fn() {
     const val = new Map();
-    assertEqual(format(val), "Map {}");
+    assertEq(format(val), "Map {}");
   }
 });
 
@@ -241,7 +242,7 @@ test({
     const val = new Map();
     val.set("prop1", "value1");
     val.set("prop2", "value2");
-    assertEqual(
+    assertEq(
       format(val),
       'Map {\n  "prop1" => "value1",\n  "prop2" => "value2",\n}'
     );
@@ -287,7 +288,7 @@ test({
       '  } => "object",',
       "}"
     ].join("\n");
-    assertEqual(format(val), expected);
+    assertEq(format(val), expected);
   }
 });
 
@@ -295,7 +296,7 @@ test({
   name: "prints NaN",
   fn() {
     const val = NaN;
-    assertEqual(format(val), "NaN");
+    assertEq(format(val), "NaN");
   }
 });
 
@@ -303,7 +304,7 @@ test({
   name: "prints null",
   fn() {
     const val = null;
-    assertEqual(format(val), "null");
+    assertEq(format(val), "null");
   }
 });
 
@@ -311,7 +312,7 @@ test({
   name: "prints a positive number",
   fn() {
     const val = 123;
-    assertEqual(format(val), "123");
+    assertEq(format(val), "123");
   }
 });
 
@@ -319,7 +320,7 @@ test({
   name: "prints a negative number",
   fn() {
     const val = -123;
-    assertEqual(format(val), "-123");
+    assertEq(format(val), "-123");
   }
 });
 
@@ -327,7 +328,7 @@ test({
   name: "prints zero",
   fn() {
     const val = 0;
-    assertEqual(format(val), "0");
+    assertEq(format(val), "0");
   }
 });
 
@@ -335,7 +336,7 @@ test({
   name: "prints negative zero",
   fn() {
     const val = -0;
-    assertEqual(format(val), "-0");
+    assertEq(format(val), "-0");
   }
 });
 
@@ -343,7 +344,7 @@ test({
   name: "prints a date",
   fn() {
     const val = new Date(10e11);
-    assertEqual(format(val), "2001-09-09T01:46:40.000Z");
+    assertEq(format(val), "2001-09-09T01:46:40.000Z");
   }
 });
 
@@ -351,7 +352,7 @@ test({
   name: "prints an invalid date",
   fn() {
     const val = new Date(Infinity);
-    assertEqual(format(val), "Date { NaN }");
+    assertEq(format(val), "Date { NaN }");
   }
 });
 
@@ -359,7 +360,7 @@ test({
   name: "prints an empty object",
   fn() {
     const val = {};
-    assertEqual(format(val), "Object {}");
+    assertEq(format(val), "Object {}");
   }
 });
 
@@ -367,7 +368,7 @@ test({
   name: "prints an object with properties",
   fn() {
     const val = { prop1: "value1", prop2: "value2" };
-    assertEqual(
+    assertEq(
       format(val),
       'Object {\n  "prop1": "value1",\n  "prop2": "value2",\n}'
     );
@@ -382,7 +383,7 @@ test({
     val[Symbol("symbol1")] = "value2";
     val[Symbol("symbol2")] = "value3";
     val.prop = "value1";
-    assertEqual(
+    assertEq(
       format(val),
       'Object {\n  "prop": "value1",\n  Symbol(symbol1): "value2",\n  Symbol(symbol2): "value3",\n}'
     );
@@ -401,7 +402,7 @@ test({
       enumerable: false,
       value: false
     });
-    assertEqual(format(val), 'Object {\n  "enumerable": true,\n}');
+    assertEq(format(val), 'Object {\n  "enumerable": true,\n}');
   }
 });
 
@@ -417,7 +418,7 @@ test({
       enumerable: false,
       value: false
     });
-    assertEqual(format(val), 'Object {\n  "enumerable": true,\n}');
+    assertEq(format(val), 'Object {\n  "enumerable": true,\n}');
   }
 });
 
@@ -425,7 +426,7 @@ test({
   name: "prints an object with sorted properties",
   fn() {
     const val = { b: 1, a: 2 };
-    assertEqual(format(val), 'Object {\n  "a": 2,\n  "b": 1,\n}');
+    assertEq(format(val), 'Object {\n  "a": 2,\n  "b": 1,\n}');
   }
 });
 
@@ -433,7 +434,7 @@ test({
   name: "prints regular expressions from constructors",
   fn() {
     const val = new RegExp("regexp");
-    assertEqual(format(val), "/regexp/");
+    assertEq(format(val), "/regexp/");
   }
 });
 
@@ -441,7 +442,7 @@ test({
   name: "prints regular expressions from literals",
   fn() {
     const val = /regexp/gi;
-    assertEqual(format(val), "/regexp/gi");
+    assertEq(format(val), "/regexp/gi");
   }
 });
 
@@ -449,7 +450,7 @@ test({
   name: "prints regular expressions {escapeRegex: false}",
   fn() {
     const val = /regexp\d/gi;
-    assertEqual(format(val), "/regexp\\d/gi");
+    assertEq(format(val), "/regexp\\d/gi");
   }
 });
 
@@ -457,7 +458,7 @@ test({
   name: "prints regular expressions {escapeRegex: true}",
   fn() {
     const val = /regexp\d/gi;
-    assertEqual(format(val, { escapeRegex: true }), "/regexp\\\\d/gi");
+    assertEq(format(val, { escapeRegex: true }), "/regexp\\\\d/gi");
   }
 });
 
@@ -465,7 +466,7 @@ test({
   name: "escapes regular expressions nested inside object",
   fn() {
     const obj = { test: /regexp\d/gi };
-    assertEqual(
+    assertEq(
       format(obj, { escapeRegex: true }),
       'Object {\n  "test": /regexp\\\\d/gi,\n}'
     );
@@ -476,7 +477,7 @@ test({
   name: "prints an empty set",
   fn() {
     const val = new Set();
-    assertEqual(format(val), "Set {}");
+    assertEq(format(val), "Set {}");
   }
 });
 
@@ -486,7 +487,7 @@ test({
     const val = new Set();
     val.add("value1");
     val.add("value2");
-    assertEqual(format(val), 'Set {\n  "value1",\n  "value2",\n}');
+    assertEq(format(val), 'Set {\n  "value1",\n  "value2",\n}');
   }
 });
 
@@ -494,7 +495,7 @@ test({
   name: "prints a string",
   fn() {
     const val = "string";
-    assertEqual(format(val), '"string"');
+    assertEq(format(val), '"string"');
   }
 });
 
@@ -502,7 +503,7 @@ test({
   name: "prints and escape a string",
   fn() {
     const val = "\"'\\";
-    assertEqual(format(val), '"\\"\'\\\\"');
+    assertEq(format(val), '"\\"\'\\\\"');
   }
 });
 
@@ -510,15 +511,15 @@ test({
   name: "doesn't escape string with {excapeString: false}",
   fn() {
     const val = "\"'\\n";
-    assertEqual(format(val, { escapeString: false }), '""\'\\n"');
+    assertEq(format(val, { escapeString: false }), '""\'\\n"');
   }
 });
 
 test({
   name: "prints a string with escapes",
   fn() {
-    assertEqual(format('"-"'), '"\\"-\\""');
-    assertEqual(format("\\ \\\\"), '"\\\\ \\\\\\\\"');
+    assertEq(format('"-"'), '"\\"-\\""');
+    assertEq(format("\\ \\\\"), '"\\\\ \\\\\\\\"');
   }
 });
 
@@ -526,7 +527,7 @@ test({
   name: "prints a multiline string",
   fn() {
     const val = ["line 1", "line 2", "line 3"].join("\n");
-    assertEqual(format(val), '"' + val + '"');
+    assertEq(format(val), '"' + val + '"');
   }
 });
 
@@ -546,7 +547,7 @@ test({
       },
       type: "svg"
     };
-    assertEqual(
+    assertEq(
       format(val),
       [
         "Object {",
@@ -572,7 +573,7 @@ test({
   name: "prints a symbol",
   fn() {
     const val = Symbol("symbol");
-    assertEqual(format(val), "Symbol(symbol)");
+    assertEq(format(val), "Symbol(symbol)");
   }
 });
 
@@ -580,7 +581,7 @@ test({
   name: "prints undefined",
   fn() {
     const val = undefined;
-    assertEqual(format(val), "undefined");
+    assertEq(format(val), "undefined");
   }
 });
 
@@ -588,7 +589,7 @@ test({
   name: "prints a WeakMap",
   fn() {
     const val = new WeakMap();
-    assertEqual(format(val), "WeakMap {}");
+    assertEq(format(val), "WeakMap {}");
   }
 });
 
@@ -596,7 +597,7 @@ test({
   name: "prints a WeakSet",
   fn() {
     const val = new WeakSet();
-    assertEqual(format(val), "WeakSet {}");
+    assertEq(format(val), "WeakSet {}");
   }
 });
 
@@ -604,7 +605,7 @@ test({
   name: "prints deeply nested objects",
   fn() {
     const val = { prop: { prop: { prop: "value" } } };
-    assertEqual(
+    assertEq(
       format(val),
       'Object {\n  "prop": Object {\n    "prop": Object {\n      "prop": "value",\n    },\n  },\n}'
     );
@@ -617,7 +618,7 @@ test({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const val: any = {};
     val.prop = val;
-    assertEqual(format(val), 'Object {\n  "prop": [Circular],\n}');
+    assertEq(format(val), 'Object {\n  "prop": [Circular],\n}');
   }
 });
 
@@ -626,7 +627,7 @@ test({
   fn() {
     const inner = {};
     const val = { prop1: inner, prop2: inner };
-    assertEqual(
+    assertEq(
       format(val),
       'Object {\n  "prop1": Object {},\n  "prop2": Object {},\n}'
     );
@@ -636,14 +637,14 @@ test({
 test({
   name: "default implicit: 2 spaces",
   fn() {
-    assertEqual(format(createVal()), createExpected());
+    assertEq(format(createVal()), createExpected());
   }
 });
 
 test({
   name: "default explicit: 2 spaces",
   fn() {
-    assertEqual(format(createVal(), { indent: 2 }), createExpected());
+    assertEq(format(createVal(), { indent: 2 }), createExpected());
   }
 });
 
@@ -652,7 +653,7 @@ test({
   name: "non-default: 0 spaces",
   fn() {
     const indent = 0;
-    assertEqual(
+    assertEq(
       format(createVal(), { indent }),
       createExpected().replace(/ {2}/g, " ".repeat(indent))
     );
@@ -663,7 +664,7 @@ test({
   name: "non-default: 4 spaces",
   fn() {
     const indent = 4;
-    assertEqual(
+    assertEq(
       format(createVal(), { indent }),
       createExpected().replace(/ {2}/g, " ".repeat(indent))
     );
@@ -691,7 +692,7 @@ test({
         "set non-empty": new Set(["value"])
       }
     ];
-    assertEqual(
+    assertEq(
       format(v, { maxDepth: 2 }),
       [
         "Array [",
@@ -719,7 +720,7 @@ test({
 test({
   name: "prints objects with no constructor",
   fn() {
-    assertEqual(format(Object.create(null)), "Object {}");
+    assertEq(format(Object.create(null)), "Object {}");
   }
 });
 
@@ -733,14 +734,14 @@ test({
       '  "constructor": "constructor",',
       "}"
     ].join("\n");
-    assertEqual(format(obj), expected);
+    assertEq(format(obj), expected);
   }
 });
 
 test({
   name: "calls toJSON and prints its return value",
   fn() {
-    assertEqual(
+    assertEq(
       format({
         toJSON: () => ({ value: false }),
         value: true
@@ -753,7 +754,7 @@ test({
 test({
   name: "calls toJSON and prints an internal representation.",
   fn() {
-    assertEqual(
+    assertEq(
       format({
         toJSON: () => "[Internal Object]",
         value: true
@@ -766,7 +767,7 @@ test({
 test({
   name: "calls toJSON only on functions",
   fn() {
-    assertEqual(
+    assertEq(
       format({
         toJSON: false,
         value: true
@@ -779,7 +780,7 @@ test({
 test({
   name: "does not call toJSON recursively",
   fn() {
-    assertEqual(
+    assertEq(
       format({
         toJSON: () => ({ toJSON: () => ({ value: true }) }),
         value: false
@@ -795,6 +796,6 @@ test({
     const set = new Set([1]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (set as any).toJSON = () => "map";
-    assertEqual(format(set), '"map"');
+    assertEq(format(set), '"map"');
   }
 });

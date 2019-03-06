@@ -1,6 +1,7 @@
 const { mkdir, open } = Deno;
 import { FileInfo } from "deno";
-import { test, assert } from "../testing/mod.ts";
+import { test } from "../testing/mod.ts";
+import { assertEq } from "../testing/asserts.ts";
 import { glob } from "./glob.ts";
 import { join } from "./path.ts";
 import { testWalk } from "./walk_test.ts";
@@ -22,43 +23,43 @@ async function walkArray(
   const arr_sync = Array.from(walkSync(dirname, options), (f: FileInfo) =>
     f.path.replace(/\\/g, "/")
   ).sort();
-  assert.equal(arr, arr_sync);
+  assertEq(arr, arr_sync);
   return arr;
 }
 
 test({
   name: "glob: glob to regex",
   fn() {
-    assert.equal(glob("unicorn.*") instanceof RegExp, true);
-    assert.equal(glob("unicorn.*").test("poney.ts"), false);
-    assert.equal(glob("unicorn.*").test("unicorn.py"), true);
-    assert.equal(glob("*.ts").test("poney.ts"), true);
-    assert.equal(glob("*.ts").test("unicorn.js"), false);
-    assert.equal(
+    assertEq(glob("unicorn.*") instanceof RegExp, true);
+    assertEq(glob("unicorn.*").test("poney.ts"), false);
+    assertEq(glob("unicorn.*").test("unicorn.py"), true);
+    assertEq(glob("*.ts").test("poney.ts"), true);
+    assertEq(glob("*.ts").test("unicorn.js"), false);
+    assertEq(
       glob(join("unicorn", "**", "cathedral.ts")).test(
         join("unicorn", "in", "the", "cathedral.ts")
       ),
       true
     );
-    assert.equal(
+    assertEq(
       glob(join("unicorn", "**", "cathedral.ts")).test(
         join("unicorn", "in", "the", "kitchen.ts")
       ),
       false
     );
-    assert.equal(
+    assertEq(
       glob(join("unicorn", "**", "bathroom.*")).test(
         join("unicorn", "sleeping", "in", "bathroom.py")
       ),
       true
     );
-    assert.equal(
+    assertEq(
       glob(join("unicorn", "!(sleeping)", "bathroom.ts"), {
         extended: true
       }).test(join("unicorn", "flying", "bathroom.ts")),
       true
     );
-    assert.equal(
+    assertEq(
       glob(join("unicorn", "(!sleeping)", "bathroom.ts"), {
         extended: true
       }).test(join("unicorn", "sleeping", "bathroom.ts")),
@@ -74,8 +75,8 @@ testWalk(
   },
   async function globInWalk() {
     const arr = await walkArray(".", { match: [glob("*.ts")] });
-    assert.equal(arr.length, 1);
-    assert.equal(arr[0], "./a/x.ts");
+    assertEq(arr.length, 1);
+    assertEq(arr[0], "./a/x.ts");
   }
 );
 
@@ -89,9 +90,9 @@ testWalk(
   },
   async function globInWalkWildcardFiles() {
     const arr = await walkArray(".", { match: [glob("*.ts")] });
-    assert.equal(arr.length, 2);
-    assert.equal(arr[0], "./a/x.ts");
-    assert.equal(arr[1], "./b/z.ts");
+    assertEq(arr.length, 2);
+    assertEq(arr[0], "./a/x.ts");
+    assertEq(arr[1], "./b/z.ts");
   }
 );
 
@@ -110,8 +111,8 @@ testWalk(
         })
       ]
     });
-    assert.equal(arr.length, 1);
-    assert.equal(arr[0], "./a/yo/x.ts");
+    assertEq(arr.length, 1);
+    assertEq(arr[0], "./a/yo/x.ts");
   }
 );
 
@@ -134,9 +135,9 @@ testWalk(
         })
       ]
     });
-    assert.equal(arr.length, 2);
-    assert.equal(arr[0], "./a/deno/x.ts");
-    assert.equal(arr[1], "./a/raptor/x.ts");
+    assertEq(arr.length, 2);
+    assertEq(arr[0], "./a/deno/x.ts");
+    assertEq(arr[1], "./a/raptor/x.ts");
   }
 );
 
@@ -151,8 +152,8 @@ testWalk(
       match: [glob("x.*", { flags: "g", globstar: true })]
     });
     console.log(arr);
-    assert.equal(arr.length, 2);
-    assert.equal(arr[0], "./x.js");
-    assert.equal(arr[1], "./x.ts");
+    assertEq(arr.length, 2);
+    assertEq(arr[0], "./x.js");
+    assertEq(arr[1], "./x.ts");
   }
 );

@@ -1,61 +1,62 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
 
-import { test, assertEqual } from "../../testing/mod.ts";
+import { test } from "../../testing/mod.ts";
+import { assertEq } from "../../testing/asserts.ts";
 import * as path from "./mod.ts";
 
 test(function dirname() {
-  assertEqual(path.posix.dirname("/a/b/"), "/a");
-  assertEqual(path.posix.dirname("/a/b"), "/a");
-  assertEqual(path.posix.dirname("/a"), "/");
-  assertEqual(path.posix.dirname(""), ".");
-  assertEqual(path.posix.dirname("/"), "/");
-  assertEqual(path.posix.dirname("////"), "/");
-  assertEqual(path.posix.dirname("//a"), "//");
-  assertEqual(path.posix.dirname("foo"), ".");
+  assertEq(path.posix.dirname("/a/b/"), "/a");
+  assertEq(path.posix.dirname("/a/b"), "/a");
+  assertEq(path.posix.dirname("/a"), "/");
+  assertEq(path.posix.dirname(""), ".");
+  assertEq(path.posix.dirname("/"), "/");
+  assertEq(path.posix.dirname("////"), "/");
+  assertEq(path.posix.dirname("//a"), "//");
+  assertEq(path.posix.dirname("foo"), ".");
 });
 
 test(function dirnameWin32() {
-  assertEqual(path.win32.dirname("c:\\"), "c:\\");
-  assertEqual(path.win32.dirname("c:\\foo"), "c:\\");
-  assertEqual(path.win32.dirname("c:\\foo\\"), "c:\\");
-  assertEqual(path.win32.dirname("c:\\foo\\bar"), "c:\\foo");
-  assertEqual(path.win32.dirname("c:\\foo\\bar\\"), "c:\\foo");
-  assertEqual(path.win32.dirname("c:\\foo\\bar\\baz"), "c:\\foo\\bar");
-  assertEqual(path.win32.dirname("\\"), "\\");
-  assertEqual(path.win32.dirname("\\foo"), "\\");
-  assertEqual(path.win32.dirname("\\foo\\"), "\\");
-  assertEqual(path.win32.dirname("\\foo\\bar"), "\\foo");
-  assertEqual(path.win32.dirname("\\foo\\bar\\"), "\\foo");
-  assertEqual(path.win32.dirname("\\foo\\bar\\baz"), "\\foo\\bar");
-  assertEqual(path.win32.dirname("c:"), "c:");
-  assertEqual(path.win32.dirname("c:foo"), "c:");
-  assertEqual(path.win32.dirname("c:foo\\"), "c:");
-  assertEqual(path.win32.dirname("c:foo\\bar"), "c:foo");
-  assertEqual(path.win32.dirname("c:foo\\bar\\"), "c:foo");
-  assertEqual(path.win32.dirname("c:foo\\bar\\baz"), "c:foo\\bar");
-  assertEqual(path.win32.dirname("file:stream"), ".");
-  assertEqual(path.win32.dirname("dir\\file:stream"), "dir");
-  assertEqual(path.win32.dirname("\\\\unc\\share"), "\\\\unc\\share");
-  assertEqual(path.win32.dirname("\\\\unc\\share\\foo"), "\\\\unc\\share\\");
-  assertEqual(path.win32.dirname("\\\\unc\\share\\foo\\"), "\\\\unc\\share\\");
-  assertEqual(
+  assertEq(path.win32.dirname("c:\\"), "c:\\");
+  assertEq(path.win32.dirname("c:\\foo"), "c:\\");
+  assertEq(path.win32.dirname("c:\\foo\\"), "c:\\");
+  assertEq(path.win32.dirname("c:\\foo\\bar"), "c:\\foo");
+  assertEq(path.win32.dirname("c:\\foo\\bar\\"), "c:\\foo");
+  assertEq(path.win32.dirname("c:\\foo\\bar\\baz"), "c:\\foo\\bar");
+  assertEq(path.win32.dirname("\\"), "\\");
+  assertEq(path.win32.dirname("\\foo"), "\\");
+  assertEq(path.win32.dirname("\\foo\\"), "\\");
+  assertEq(path.win32.dirname("\\foo\\bar"), "\\foo");
+  assertEq(path.win32.dirname("\\foo\\bar\\"), "\\foo");
+  assertEq(path.win32.dirname("\\foo\\bar\\baz"), "\\foo\\bar");
+  assertEq(path.win32.dirname("c:"), "c:");
+  assertEq(path.win32.dirname("c:foo"), "c:");
+  assertEq(path.win32.dirname("c:foo\\"), "c:");
+  assertEq(path.win32.dirname("c:foo\\bar"), "c:foo");
+  assertEq(path.win32.dirname("c:foo\\bar\\"), "c:foo");
+  assertEq(path.win32.dirname("c:foo\\bar\\baz"), "c:foo\\bar");
+  assertEq(path.win32.dirname("file:stream"), ".");
+  assertEq(path.win32.dirname("dir\\file:stream"), "dir");
+  assertEq(path.win32.dirname("\\\\unc\\share"), "\\\\unc\\share");
+  assertEq(path.win32.dirname("\\\\unc\\share\\foo"), "\\\\unc\\share\\");
+  assertEq(path.win32.dirname("\\\\unc\\share\\foo\\"), "\\\\unc\\share\\");
+  assertEq(
     path.win32.dirname("\\\\unc\\share\\foo\\bar"),
     "\\\\unc\\share\\foo"
   );
-  assertEqual(
+  assertEq(
     path.win32.dirname("\\\\unc\\share\\foo\\bar\\"),
     "\\\\unc\\share\\foo"
   );
-  assertEqual(
+  assertEq(
     path.win32.dirname("\\\\unc\\share\\foo\\bar\\baz"),
     "\\\\unc\\share\\foo\\bar"
   );
-  assertEqual(path.win32.dirname("/a/b/"), "/a");
-  assertEqual(path.win32.dirname("/a/b"), "/a");
-  assertEqual(path.win32.dirname("/a"), "/");
-  assertEqual(path.win32.dirname(""), ".");
-  assertEqual(path.win32.dirname("/"), "/");
-  assertEqual(path.win32.dirname("////"), "/");
-  assertEqual(path.win32.dirname("foo"), ".");
+  assertEq(path.win32.dirname("/a/b/"), "/a");
+  assertEq(path.win32.dirname("/a/b"), "/a");
+  assertEq(path.win32.dirname("/a"), "/");
+  assertEq(path.win32.dirname(""), ".");
+  assertEq(path.win32.dirname("/"), "/");
+  assertEq(path.win32.dirname("////"), "/");
+  assertEq(path.win32.dirname("foo"), ".");
 });

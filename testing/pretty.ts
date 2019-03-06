@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { equal } from "./mod.ts";
+import { equal } from "./asserts.ts";
 import { red, green, white, gray, bold } from "../colors/mod.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
 import { format } from "./format.ts";
@@ -55,7 +55,7 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   return messages;
 }
 
-export function assertEqual(
+export function assertEq(
   actual: unknown,
   expected: unknown,
   msg?: string

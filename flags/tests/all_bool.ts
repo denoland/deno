@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assertEqual } from "../../testing/mod.ts";
+import { test } from "../../testing/mod.ts";
+import { assertEq } from "../../testing/asserts.ts";
 import { parse } from "../mod.ts";
 
 // flag boolean true (default all --args to boolean)
@@ -8,12 +9,12 @@ test(function flagBooleanTrue() {
     boolean: true
   });
 
-  assertEqual(argv, {
+  assertEq(argv, {
     honk: true,
     _: ["moo", "cow"]
   });
 
-  assertEqual(typeof argv.honk, "boolean");
+  assertEq(typeof argv.honk, "boolean");
 });
 
 // flag boolean true only affects double hyphen arguments without equals signs
@@ -22,12 +23,12 @@ test(function flagBooleanTrueOnlyAffectsDoubleDash() {
     boolean: true
   });
 
-  assertEqual(argv, {
+  assertEq(argv, {
     honk: true,
     tacos: "good",
     p: 55,
     _: ["moo", "cow"]
   });
 
-  assertEqual(typeof argv.honk, "boolean");
+  assertEq(typeof argv.honk, "boolean");
 });

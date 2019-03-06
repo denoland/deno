@@ -1,7 +1,8 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
 
-import { test, assertEqual } from "../../testing/mod.ts";
+import { test } from "../../testing/mod.ts";
+import { assertEq } from "../../testing/asserts.ts";
 import * as path from "./mod.ts";
 
 const winPaths = [
@@ -130,15 +131,15 @@ function checkParseFormat(path, paths) {
   paths.forEach(function(p) {
     const element = p[0];
     const output = path.parse(element);
-    assertEqual(typeof output.root, "string");
-    assertEqual(typeof output.dir, "string");
-    assertEqual(typeof output.base, "string");
-    assertEqual(typeof output.ext, "string");
-    assertEqual(typeof output.name, "string");
-    assertEqual(path.format(output), element);
-    assertEqual(output.rooroot, undefined);
-    assertEqual(output.dir, output.dir ? path.dirname(element) : "");
-    assertEqual(output.base, path.basename(element));
+    assertEq(typeof output.root, "string");
+    assertEq(typeof output.dir, "string");
+    assertEq(typeof output.base, "string");
+    assertEq(typeof output.ext, "string");
+    assertEq(typeof output.name, "string");
+    assertEq(path.format(output), element);
+    assertEq(output.rooroot, undefined);
+    assertEq(output.dir, output.dir ? path.dirname(element) : "");
+    assertEq(output.base, path.basename(element));
   });
 }
 
@@ -148,14 +149,14 @@ function checkSpecialCaseParseFormat(path, testCases) {
     const expect = testCase[1];
     const output = path.parse(element);
     Object.keys(expect).forEach(function(key) {
-      assertEqual(output[key], expect[key]);
+      assertEq(output[key], expect[key]);
     });
   });
 }
 
 function checkFormat(path, testCases) {
   testCases.forEach(function(testCase) {
-    assertEqual(path.format(testCase[0]), testCase[1]);
+    assertEq(path.format(testCase[0]), testCase[1]);
   });
 }
 
@@ -163,7 +164,7 @@ test(function parseTrailingWin32() {
   windowsTrailingTests.forEach(function(p) {
     const actual = path.win32.parse(p[0] as string);
     const expected = p[1];
-    assertEqual(actual, expected);
+    assertEq(actual, expected);
   });
 });
 
@@ -171,6 +172,6 @@ test(function parseTrailing() {
   posixTrailingTests.forEach(function(p) {
     const actual = path.posix.parse(p[0] as string);
     const expected = p[1];
-    assertEqual(actual, expected);
+    assertEq(actual, expected);
   });
 });

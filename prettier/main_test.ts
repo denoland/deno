@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assertEqual } from "../testing/mod.ts";
+import { test } from "../testing/mod.ts";
 import { xrun, executableSuffix } from "./util.ts";
+import { assertEq } from "../testing/asserts.ts";
 const { readAll } = Deno;
 
 const decoder = new TextDecoder();
@@ -45,20 +46,20 @@ test(async function testPrettierCheckAndFormatFiles() {
   const files = [`${testdata}/0.ts`, `${testdata}/1.js`];
 
   var { code, stdout } = await run([...cmd, "--check", ...files]);
-  assertEqual(code, 1);
-  assertEqual(normalizeOutput(stdout), "Some files are not formatted");
+  assertEq(code, 1);
+  assertEq(normalizeOutput(stdout), "Some files are not formatted");
 
   var { code, stdout } = await run([...cmd, ...files]);
-  assertEqual(code, 0);
-  assertEqual(
+  assertEq(code, 0);
+  assertEq(
     normalizeOutput(stdout),
     `Formatting prettier/testdata/0.ts
 Formatting prettier/testdata/1.js`
   );
 
   var { code, stdout } = await run([...cmd, "--check", ...files]);
-  assertEqual(code, 0);
-  assertEqual(normalizeOutput(stdout), "Every file is formatted");
+  assertEq(code, 0);
+  assertEq(normalizeOutput(stdout), "Every file is formatted");
 
   await clearTestdataChanges();
 });
@@ -69,12 +70,12 @@ test(async function testPrettierCheckAndFormatDirs() {
   const dirs = [`${testdata}/foo`, `${testdata}/bar`];
 
   var { code, stdout } = await run([...cmd, "--check", ...dirs]);
-  assertEqual(code, 1);
-  assertEqual(normalizeOutput(stdout), "Some files are not formatted");
+  assertEq(code, 1);
+  assertEq(normalizeOutput(stdout), "Some files are not formatted");
 
   var { code, stdout } = await run([...cmd, ...dirs]);
-  assertEqual(code, 0);
-  assertEqual(
+  assertEq(code, 0);
+  assertEq(
     normalizeOutput(stdout),
     `Formatting prettier/testdata/bar/0.ts
 Formatting prettier/testdata/bar/1.js
@@ -83,8 +84,8 @@ Formatting prettier/testdata/foo/1.js`
   );
 
   var { code, stdout } = await run([...cmd, "--check", ...dirs]);
-  assertEqual(code, 0);
-  assertEqual(normalizeOutput(stdout), "Every file is formatted");
+  assertEq(code, 0);
+  assertEq(normalizeOutput(stdout), "Every file is formatted");
 
   await clearTestdataChanges();
 });

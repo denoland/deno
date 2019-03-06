@@ -11,53 +11,38 @@ contains a `name` property and a `fn` property. When running tests and
 outputting the results, the name of the past function is used, or if the
 object is passed, the `name` property is used to identify the test.
 
-The module also exports `assert`, `assertEqual`, and `equal`.
+Asserts are exposed in `testing/asserts.ts` module.
 
-`equal` is a deep comparision function, where `actual` and `expected` are
-compared deeply, and if they vary, `equal` returns `false`.
-
-The export `assert` is a function, but it is also decorated with other useful
-functions:
-
+- `equal` - Deep comparision function, where `actual` and `expected` are
+  compared deeply, and if they vary, `equal` returns `false`.
 - `assert()` - Expects a boolean value, throws if the value is `false`.
-- `assert.equal()` - Uses the `equal` comparison and throws if the `actual` and
+- `assertEq()` - Uses the `equal` comparison and throws if the `actual` and
   `expected` are not equal.
-- `assert.strictEqual()` - Compares `actual` and `expected` strictly, therefore
+- `assertStrictEq()` - Compares `actual` and `expected` strictly, therefore
   for non-primitives the values must reference the same instance.
-- `assert.throws()` - Expects the passed `fn` to throw. If `fn` does not throw,
+- `assertThrows()` - Expects the passed `fn` to throw. If `fn` does not throw,
   this function does. Also compares any errors thrown to an optional expected
   `Error` class and checks that the error `.message` includes an optional
   string.
-- `assert.throwsAsync()` - Expects the passed `fn` to be async and throw (or
+- `assertThrowsAsync()` - Expects the passed `fn` to be async and throw (or
   return a `Promise` that rejects). If the `fn` does not throw or reject, this
   function will throw asynchronously. Also compares any errors thrown to an
   optional expected `Error` class and checks that the error `.message` includes
   an optional string.
-
-`assertEqual()` is the same as `assert.equal()` but maintained for backwards
-compatibility.
 
 `runTests()` executes the declared tests.
 
 Basic usage:
 
 ```ts
-import {
-  runTests,
-  test,
-  assert,
-  equal
-} from "https://deno.land/std/testing/mod.ts";
+import { runTests, test } from "https://deno.land/std/testing/mod.ts";
+import { assertEq } from "https://deno.land/std/testing/asserts.ts";
 
 test({
   name: "testing example",
   fn() {
-    assert(equal("world", "world"));
-    assert(!equal("hello", "world"));
-    assert(equal({ hello: "world" }, { hello: "world" }));
-    assert(!equal({ world: "hello" }, { hello: "world" }));
-    assert.equal("world", "world");
-    assert.equal({ hello: "world" }, { hello: "world" });
+    assertEq("world", "world"));
+    assertEq({ hello: "world" }, { hello: "world" }));
   }
 });
 
@@ -68,43 +53,39 @@ Short syntax (named function instead of object):
 
 ```ts
 test(function example() {
-  assert(equal("world", "world"));
-  assert(!equal("hello", "world"));
-  assert(equal({ hello: "world" }, { hello: "world" }));
-  assert(!equal({ world: "hello" }, { hello: "world" }));
-  assert.equal("world", "world");
-  assert.equal({ hello: "world" }, { hello: "world" });
+    assertEq("world", "world"));
+    assertEq({ hello: "world" }, { hello: "world" }));
 });
 ```
 
-Using `assert.strictEqual()`:
+Using `assertStrictEq()`:
 
 ```ts
 test(function isStrictlyEqual() {
   const a = {};
   const b = a;
-  assert.strictEqual(a, b);
+  assertStrictEq(a, b);
 });
 
 // This test fails
 test(function isNotStrictlyEqual() {
   const a = {};
   const b = {};
-  assert.strictEqual(a, b);
+  assertStrictEq(a, b);
 });
 ```
 
-Using `assert.throws()`:
+Using `assertThrows()`:
 
 ```ts
 test(function doesThrow() {
-  assert.throws(() => {
+  assertThrows(() => {
     throw new TypeError("hello world!");
   });
-  assert.throws(() => {
+  assertThrows(() => {
     throw new TypeError("hello world!");
   }, TypeError);
-  assert.throws(
+  assertThrows(
     () => {
       throw new TypeError("hello world!");
     },
@@ -115,37 +96,37 @@ test(function doesThrow() {
 
 // This test will not pass
 test(function fails() {
-  assert.throws(() => {
+  assertThrows(() => {
     console.log("Hello world");
   });
 });
 ```
 
-Using `assert.throwsAsync()`:
+Using `assertThrowsAsync()`:
 
 ```ts
 test(async function doesThrow() {
-  assert.throwsAsync(async () => {
+  assertThrowsAsync(async () => {
     throw new TypeError("hello world!");
   });
-  assert.throwsAsync(async () => {
+  assertThrowsAsync(async () => {
     throw new TypeError("hello world!");
   }, TypeError);
-  assert.throwsAsync(
+  assertThrowsAsync(
     async () => {
       throw new TypeError("hello world!");
     },
     TypeError,
     "hello"
   );
-  assert.throwsAsync(async () => {
+  assertThrowsAsync(async () => {
     return Promise.reject(new Error());
   });
 });
 
 // This test will not pass
 test(async function fails() {
-  assert.throwsAsync(async () => {
+  assertThrowsAsync(async () => {
     console.log("Hello world");
   });
 });

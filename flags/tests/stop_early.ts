@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assertEqual } from "../../testing/mod.ts";
+import { test } from "../../testing/mod.ts";
+import { assertEq } from "../../testing/asserts.ts";
 import { parse } from "../mod.ts";
 
 // stops parsing on the first non-option when stopEarly is set
@@ -8,7 +9,7 @@ test(function stopParsing() {
     stopEarly: true
   });
 
-  assertEqual(argv, {
+  assertEq(argv, {
     aaa: "bbb",
     _: ["ccc", "--ddd"]
   });
