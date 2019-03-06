@@ -38,7 +38,7 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 - Like the browser, allows imports from URLs:
 
   ```typescript
-  import * as log from "https://deno.land/x/std/log/mod.ts";
+  import * as log from "https://deno.land/std/log/mod.ts";
   ```
 
 - Remote code is fetched and cached on first execution, and never updated until
@@ -244,7 +244,7 @@ I/O streams in Deno.
 Try the program:
 
 ```
-> deno https://deno.land/x/examples/cat.ts /etc/passwd
+> deno https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 ### TCP echo server
@@ -270,7 +270,7 @@ When this program is started, the user is prompted for permission to listen on
 the network:
 
 ```
-> deno https://deno.land/x/examples/echo_server.ts
+> deno https://deno.land/std/examples/echo_server.ts
 ⚠️  Deno requests network access to "listen". Grant? [yN] y
 listening on 0.0.0.0:8080
 ```
@@ -279,7 +279,7 @@ For security reasons, deno does not allow programs to access the network without
 explicit permission. To avoid the console prompt, use a command-line flag:
 
 ```
-> deno https://deno.land/x/examples/echo_server.ts --allow-net
+> deno https://deno.land/std/examples/echo_server.ts --allow-net
 ```
 
 To test it, try sending a HTTP request to it by using curl. The request gets
@@ -332,14 +332,14 @@ This one serves a local directory in HTTP.
 
 ```
 alias file_server="deno  --allow-net --allow-read \
-  https://deno.land/x/http/file_server.ts"
+  https://deno.land/std/http/file_server.ts"
 ```
 
 Run it:
 
 ```
 % file_server .
-Downloading https://deno.land/x/http/file_server.ts...
+Downloading https://deno.land/std/http/file_server.ts...
 [...]
 HTTP server listening on http://0.0.0.0:4500/
 ```
@@ -391,7 +391,7 @@ async function main() {
     args: [
       "deno",
       "--allow-read",
-      "https://deno.land/x/examples/cat.ts",
+      "https://deno.land/std/examples/cat.ts",
       ...fileNames
     ],
     stdout: "piped",
@@ -434,7 +434,7 @@ import {
   test,
   assertEqual,
   runIfMain
-} from "https://deno.land/x/testing/mod.ts";
+} from "https://deno.land/std/testing/mod.ts";
 
 test(function t1() {
   assertEqual("hello", "hello");
@@ -493,11 +493,11 @@ everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `package.ts` file (which serves the same purpose
 as Node's `package.json` file). For example, let's say you were using the above
 testing library across a large project. Rather than importing
-`"https://deno.land/x/testing/mod.ts"` everywhere, you could create a
+`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
 `package.ts` file the exports the third-party code:
 
 ```ts
-export { test, assertEqual } from "https://deno.land/x/testing/mod.ts";
+export { test, assertEqual } from "https://deno.land/std/testing/mod.ts";
 ```
 
 And throughout project one can import from the `package.ts` and avoid having
