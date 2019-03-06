@@ -47,7 +47,7 @@ import {
   test,
   assert,
   equal
-} from "https://deno.land/x/testing/mod.ts";
+} from "https://deno.land/std/testing/mod.ts";
 
 test({
   name: "testing example",

@@ -5,7 +5,7 @@ Basic benchmarking module. Provides flintstone millisecond resolution.
 ## Import
 
 ```ts
-import * as benching from "https://deno.land/x/benching/mod.ts";
+import * as benching from "https://deno.land/std/benching/mod.ts";
 ```
 
 ## Usage
@@ -15,7 +15,7 @@ import {
   BenchmarkTimer,
   runBenchmarks,
   bench
-} from "https://deno.land/x/benching/mod.ts";
+} from "https://deno.land/std/benching/mod.ts";
 
 // Simple
 bench(function forIncrementX1e9(b: BenchmarkTimer) {

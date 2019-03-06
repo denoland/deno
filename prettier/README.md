@@ -7,19 +7,19 @@ Prettier APIs and tools for deno
 To formats the source files, run:
 
 ```console
-deno --allow-run --allow-write https://deno.land/x/std/prettier/main.ts
+deno --allow-run --allow-write https://deno.land/std/prettier/main.ts
 ```
 
 You can format only specific files by passing the arguments.
 
 ```console
-deno --allow-run --allow-write https://deno.land/x/std/prettier/main.ts path/to/script.ts
+deno --allow-run --allow-write https://deno.land/std/prettier/main.ts path/to/script.ts
 ```
 
 You can format files on specific directory by passing the directory's path.
 
 ```console
-deno --allow-run --allow-write https://deno.land/x/std/prettier/main.ts path/to/script.ts
+deno --allow-run --allow-write https://deno.land/std/prettier/main.ts path/to/script.ts
 ```
 
 ## Use API
@@ -30,7 +30,7 @@ You can use APIs of prettier as the following:
 import {
   prettier,
   prettierPlugins
-} from "https://deno.land/x/std/prettier/prettier.ts";
+} from "https://deno.land/std/prettier/prettier.ts";
 
 prettier.format("const x = 1", {
   parser: "babel",
