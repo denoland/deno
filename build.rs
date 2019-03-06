@@ -45,11 +45,12 @@ fn main() {
 
   let gn_target;
 
-  let is_cross_compile = env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() != env::var("HOST")
-    .unwrap()
-    .as_str()
-    .split("-")
-    .collect::<Vec<&str>>()[0];
+  let is_cross_compile = env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str()
+    != env::var("HOST")
+      .unwrap()
+      .as_str()
+      .split("-")
+      .collect::<Vec<&str>>()[0];
 
   if check_only {
     // When RLS is running "cargo check" to analyze the source code, we're not
@@ -63,9 +64,9 @@ fn main() {
   } else {
     // "Full" (non-RLS) build.
     if is_cross_compile {
-      gn_target = "deno_deps_cross"; 
+      gn_target = "deno_deps_cross";
     } else {
-      gn_target = "deno_deps";  
+      gn_target = "deno_deps";
     }
     // Link with libdeno.a/.lib, which includes V8.
     println!("cargo:rustc-link-search=native={}/obj/libdeno", gn_out_dir);
@@ -86,8 +87,7 @@ fn main() {
   }
 
   // If target_arch != host_arch disable snapshots since we are cross compiling.
-  if is_cross_compile
-  {
+  if is_cross_compile {
     // no-snapshot-init is not related to v8_use_snapshots
     println!("cargo:rustc-cfg=feature=\"no-snapshot-init\"");
   }

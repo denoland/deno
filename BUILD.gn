@@ -137,9 +137,9 @@ group("deno_deps") {
 
 group("deno_deps_cross") {
   deps = [
-    ":msg_rs",
-    ":main_bundle",
     ":compiler_bundle",
+    ":main_bundle",
+    ":msg_rs",
     "libdeno:libdeno_static_lib",
   ]
 }
