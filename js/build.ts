@@ -22,3 +22,6 @@ export const build: BuildInfo = {
   gnArgs: `ROLLUP_REPLACE_GN_ARGS`
   // tslint:disable:any
 };
+
+// TODO(kevinkassimo): deprecate Deno.platform
+export const platform = build;
