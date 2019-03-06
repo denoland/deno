@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEqual } from "./test_util.ts";
+import { test, assert, assertEquals } from "./test_util.ts";
 
 test(function urlSearchParamsInitString() {
   const init = "c=4&a=2&b=3&%C3%A1=1";
@@ -13,42 +13,42 @@ test(function urlSearchParamsInitString() {
 test(function urlSearchParamsInitIterable() {
   const init = [["a", "54"], ["b", "true"]];
   const searchParams = new URLSearchParams(init);
-  assertEqual(searchParams.toString(), "a=54&b=true");
+  assertEquals(searchParams.toString(), "a=54&b=true");
 });
 
 test(function urlSearchParamsInitRecord() {
   const init = { a: "54", b: "true" };
   const searchParams = new URLSearchParams(init);
-  assertEqual(searchParams.toString(), "a=54&b=true");
+  assertEquals(searchParams.toString(), "a=54&b=true");
 });
 
 test(function urlSearchParamsAppendSuccess() {
   const searchParams = new URLSearchParams();
   searchParams.append("a", "true");
-  assertEqual(searchParams.toString(), "a=true");
+  assertEquals(searchParams.toString(), "a=true");
 });
 
 test(function urlSearchParamsDeleteSuccess() {
   const init = "a=54&b=true";
   const searchParams = new URLSearchParams(init);
   searchParams.delete("b");
-  assertEqual(searchParams.toString(), "a=54");
+  assertEquals(searchParams.toString(), "a=54");
 });
 
 test(function urlSearchParamsGetAllSuccess() {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
-  assertEqual(searchParams.getAll("a"), ["54", "true"]);
-  assertEqual(searchParams.getAll("b"), ["true"]);
-  assertEqual(searchParams.getAll("c"), []);
+  assertEquals(searchParams.getAll("a"), ["54", "true"]);
+  assertEquals(searchParams.getAll("b"), ["true"]);
+  assertEquals(searchParams.getAll("c"), []);
 });
 
 test(function urlSearchParamsGetSuccess() {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
-  assertEqual(searchParams.get("a"), "54");
-  assertEqual(searchParams.get("b"), "true");
-  assertEqual(searchParams.get("c"), null);
+  assertEquals(searchParams.get("a"), "54");
+  assertEquals(searchParams.get("b"), "true");
+  assertEquals(searchParams.get("c"), null);
 });
 
 test(function urlSearchParamsHasSuccess() {
@@ -63,21 +63,21 @@ test(function urlSearchParamsSetReplaceFirstAndRemoveOthers() {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   searchParams.set("a", "false");
-  assertEqual(searchParams.toString(), "a=false&b=true");
+  assertEquals(searchParams.toString(), "a=false&b=true");
 });
 
 test(function urlSearchParamsSetAppendNew() {
   const init = "a=54&b=true&a=true";
   const searchParams = new URLSearchParams(init);
   searchParams.set("c", "foo");
-  assertEqual(searchParams.toString(), "a=54&b=true&a=true&c=foo");
+  assertEquals(searchParams.toString(), "a=54&b=true&a=true&c=foo");
 });
 
 test(function urlSearchParamsSortSuccess() {
   const init = "c=4&a=2&b=3&a=1";
   const searchParams = new URLSearchParams(init);
   searchParams.sort();
-  assertEqual(searchParams.toString(), "a=2&a=1&b=3&c=4");
+  assertEquals(searchParams.toString(), "a=2&a=1&b=3&c=4");
 });
 
 test(function urlSearchParamsForEachSuccess() {
@@ -85,39 +85,39 @@ test(function urlSearchParamsForEachSuccess() {
   const searchParams = new URLSearchParams(init);
   let callNum = 0;
   searchParams.forEach((value, key, parent) => {
-    assertEqual(searchParams, parent);
-    assertEqual(value, init[callNum][1]);
-    assertEqual(key, init[callNum][0]);
+    assertEquals(searchParams, parent);
+    assertEquals(value, init[callNum][1]);
+    assertEquals(key, init[callNum][0]);
     callNum++;
   });
-  assertEqual(callNum, init.length);
+  assertEquals(callNum, init.length);
 });
 
 test(function urlSearchParamsMissingName() {
   const init = "=4";
   const searchParams = new URLSearchParams(init);
-  assertEqual(searchParams.get(""), "4");
-  assertEqual(searchParams.toString(), "=4");
+  assertEquals(searchParams.get(""), "4");
+  assertEquals(searchParams.toString(), "=4");
 });
 
 test(function urlSearchParamsMissingValue() {
   const init = "4=";
   const searchParams = new URLSearchParams(init);
-  assertEqual(searchParams.get("4"), "");
-  assertEqual(searchParams.toString(), "4=");
+  assertEquals(searchParams.get("4"), "");
+  assertEquals(searchParams.toString(), "4=");
 });
 
 test(function urlSearchParamsMissingEqualSign() {
   const init = "4";
   const searchParams = new URLSearchParams(init);
-  assertEqual(searchParams.get("4"), "");
-  assertEqual(searchParams.toString(), "4=");
+  assertEquals(searchParams.get("4"), "");
+  assertEquals(searchParams.toString(), "4=");
 });
 
 test(function urlSearchParamsMissingPair() {
   const init = "c=4&&a=54&";
   const searchParams = new URLSearchParams(init);
-  assertEqual(searchParams.toString(), "c=4&a=54");
+  assertEquals(searchParams.toString(), "c=4&a=54");
 });
 
 // If pair does not contain exactly two items, then throw a TypeError.
@@ -136,7 +136,7 @@ test(function urlSearchParamsShouldThrowTypeError() {
     }
   }
 
-  assertEqual(hasThrown, 2);
+  assertEquals(hasThrown, 2);
 });
 
 test(function urlSearchParamsAppendArgumentsCheck() {
@@ -157,7 +157,7 @@ test(function urlSearchParamsAppendArgumentsCheck() {
         hasThrown = 3;
       }
     }
-    assertEqual(hasThrown, 2);
+    assertEquals(hasThrown, 2);
   });
 
   methodRequireTwoParams.forEach(method => {
@@ -173,6 +173,6 @@ test(function urlSearchParamsAppendArgumentsCheck() {
         hasThrown = 3;
       }
     }
-    assertEqual(hasThrown, 2);
+    assertEquals(hasThrown, 2);
   });
 });

@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEqual } from "../test_util.ts";
+import { test, assert, assertEquals } from "../test_util.ts";
 
 function setup() {
   const dataSymbol = Symbol("data symbol");
@@ -32,9 +32,9 @@ test(function testDomIterable() {
 
   const domIterable = new DomIterable(fixture);
 
-  assertEqual(Array.from(domIterable.entries()), fixture);
-  assertEqual(Array.from(domIterable.values()), [1, 2]);
-  assertEqual(Array.from(domIterable.keys()), ["foo", "bar"]);
+  assertEquals(Array.from(domIterable.entries()), fixture);
+  assertEquals(Array.from(domIterable.values()), [1, 2]);
+  assertEquals(Array.from(domIterable.keys()), ["foo", "bar"]);
 
   let result: Array<[string, number]> = [];
   for (const [key, value] of domIterable) {
@@ -42,21 +42,21 @@ test(function testDomIterable() {
     assert(value != null);
     result.push([key, value]);
   }
-  assertEqual(fixture, result);
+  assertEquals(fixture, result);
 
   result = [];
   const scope = {};
   function callback(value, key, parent) {
-    assertEqual(parent, domIterable);
+    assertEquals(parent, domIterable);
     assert(key != null);
     assert(value != null);
     assert(this === scope);
     result.push([key, value]);
   }
   domIterable.forEach(callback, scope);
-  assertEqual(fixture, result);
+  assertEquals(fixture, result);
 
-  assertEqual(DomIterable.name, Base.name);
+  assertEquals(DomIterable.name, Base.name);
 });
 
 test(function testDomIterableScope() {
@@ -68,7 +68,7 @@ test(function testDomIterableScope() {
   // tslint:disable-next-line:no-any
   function checkScope(thisArg: any, expected: any) {
     function callback() {
-      assertEqual(this, expected);
+      assertEquals(this, expected);
     }
     domIterable.forEach(callback, thisArg);
   }
