@@ -758,7 +758,7 @@ interface BenchmarkData {
 These Deno logos, like the Deno software, are distributed under the MIT license
 (public domain and free for use)
 
-- [A hand drawn one by @ry](https://github.com/denoland/deno/blob/master/website/deno_logo.png)
+- [A hand drawn one by @ry](https://github.com/denoland/deno/blob/master/website/images/deno_logo.png)
 
 - [An animated one by @hashrock](https://github.com/denolib/animated-deno-logo/)
 
