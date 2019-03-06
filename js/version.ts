@@ -3,14 +3,13 @@ interface Version {
   deno: string;
   v8: string;
   typescript: string;
-  gnArgs: string;
 }
 
 export const version: Version = {
   deno: "",
   v8: "",
-  typescript: "TS_VERSION", // This string will be replaced by rollup
-  gnArgs: `GN_ARGS` // This string will be replaced by rollup
+  // This string will be replaced by rollup
+  typescript: `ROLLUP_REPLACE_TS_VERSION`
 };
 
 /**
