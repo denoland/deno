@@ -1,10 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { serve } from "https://deno.land/x/http/mod.ts";
+import { serve } from "https://deno.land/std/http/mod.ts";
 import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent
-} from "https://deno.land/x/ws/mod.ts";
+} from "https://deno.land/std/ws/mod.ts";
 
 async function main(): Promise<void> {
   console.log("websocket server is running on 0.0.0.0:8080");

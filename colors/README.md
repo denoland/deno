@@ -11,7 +11,7 @@ The main modules exports several functions which can color the output to the
 console:
 
 ```ts
-import { bgBlue, red, bold } from "https://deno.land/x/std/colors/mod.ts";
+import { bgBlue, red, bold } from "https://deno.land/std/colors/mod.ts";
 
 console.log(bgBlue(red(bold("Hello world!"))));
 ```

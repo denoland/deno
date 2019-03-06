@@ -1,4 +1,4 @@
-// https://deno.land/x/benching/mod.ts
+// https://deno.land/std/benching/mod.ts
 import { BenchmarkTimer, runBenchmarks, bench } from "./mod.ts";
 
 // Simple

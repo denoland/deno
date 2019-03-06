@@ -2,7 +2,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 const { args, env, exit, readFile } = Deno;
-import { parse } from "https://deno.land/x/flags/mod.ts";
+import { parse } from "https://deno.land/std/flags/mod.ts";
 
 function pathBase(p: string): string {
   const parts = p.split("/");

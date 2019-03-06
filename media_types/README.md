@@ -13,7 +13,7 @@ extension or the full path name. If the content type cannot be determined the
 function returns `undefined`:
 
 ```ts
-import { lookup } from "https://deno.land/x/std/media_types/mod.ts";
+import { lookup } from "https://deno.land/std/media_types/mod.ts";
 
 lookup("json"); // "application/json"
 lookup(".md"); // "text/markdown"
@@ -29,8 +29,8 @@ content type first. A default charset is added if not present. The
 function will return `undefined` if the content type cannot be resolved:
 
 ```ts
-import { contentType } from "https://deno.land/x/std/media_types/mod.ts";
-import * as path from "https://deno.land/x/std/path/mod.ts";
+import { contentType } from "https://deno.land/std/media_types/mod.ts";
+import * as path from "https://deno.land/std/path/mod.ts";
 
 contentType("markdown"); // "text/markdown; charset=utf-8"
 contentType("file.json"); // "application/json; charset=utf-8"
@@ -46,7 +46,7 @@ Return a default extension for a given content type. If there is not an
 appropriate extension, `undefined` is returned:
 
 ```ts
-import { extension } from "https://deno.land/x/std/media_types/mod.ts";
+import { extension } from "https://deno.land/std/media_types/mod.ts";
 
 extension("application/octet-stream"); // "bin"
 ```
@@ -57,7 +57,7 @@ Lookup the implied default charset for a given content type. If the content
 type cannot be resolved, `undefined` is returned:
 
 ```ts
-import { charset } from "https://deno.land/x/std/media_types/mod.ts";
+import { charset } from "https://deno.land/std/media_types/mod.ts";
 
 charset("text/markdown"); // "UTF-8"
 ```
@@ -67,7 +67,7 @@ charset("text/markdown"); // "UTF-8"
 A `Map` of extensions by content type, in priority order:
 
 ```ts
-import { extensions } from "https://deno.land/x/std/media_types/mod.ts";
+import { extensions } from "https://deno.land/std/media_types/mod.ts";
 
 extensions.get("application/javascript"); // [ "js", "mjs" ]
 ```
@@ -77,7 +77,7 @@ extensions.get("application/javascript"); // [ "js", "mjs" ]
 A `Map` of content types by extension:
 
 ```ts
-import { types } from "https://deno.land/x/std/media_types/mod.ts";
+import { types } from "https://deno.land/std/media_types/mod.ts";
 
 types.get("ts"); // "application/javascript"
 ```
