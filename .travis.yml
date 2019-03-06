@@ -117,16 +117,12 @@ jobs:
         - gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_arm64.gz
       deploy:
       - *release_provider
-      before_script:
-      - |-
-        sccache --start-server
-        unset AWS_SECRET_ACCESS_KEY
-      - set -e
       script:
       - rustup target add aarch64-unknown-linux-gnu
       - sudo apt update
       - sudo apt -yq --no-install-suggests --no-install-recommends install g++-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-5-multilib libc6-arm64-cross
       - build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
+      - DENO_BUILD_ARGS="target_cpu=\"arm64\" v8_target_cpu=\"arm64\"" ./tools/setup.py
       - DENO_BUILD_ARGS="target_cpu=\"arm64\" v8_target_cpu=\"arm64\"" cargo build -vv --target=aarch64-unknown-linux-gnu --release --locked
 
     - name: "cargo release linux x86_64"
