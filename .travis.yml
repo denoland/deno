@@ -114,6 +114,7 @@ jobs:
       os: linux
       dist: xenial
       after_success:
+        - ls target/aarch64-unknown-linux-gnu/release
         - gzip -c target/aarch64-unknown-linux-gnu/release/deno > target/release/deno_${TRAVIS_OS_NAME}_arm64.gz
       script:
       - rustup target add aarch64-unknown-linux-gnu
