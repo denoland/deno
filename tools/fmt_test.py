@@ -16,7 +16,7 @@ def fmt_test(deno_exe):
         dst = os.path.join(d, "badly_formatted.js")
         shutil.copyfile(src, dst)
         # Set DENO_DIR to //js/ so we don't have to rely on an intenet
-        # connection to download https://deno.land/x/std/prettier/main.ts
+        # connection to download https://deno.land/std/prettier/main.ts
         deno_dir = os.path.join(root_path, "js")
         run([deno_exe, dst, "--fmt", "--allow-read"],
             merge_env={"DENO_DIR": deno_dir})

@@ -86,7 +86,7 @@ fn main() {
   });
 
   if flags.fmt {
-    rest_argv.insert(1, "https://deno.land/x/std/prettier/main.ts".to_string());
+    rest_argv.insert(1, "https://deno.land/std/prettier/main.ts".to_string());
     flags.allow_read = true;
     flags.allow_write = true;
   }

@@ -50,4 +50,4 @@ import "./version_test.ts";
 
 import "../website/app_test.js";
 
-import "deps/https/deno.land/x/std/testing/main.ts";
+import "deps/https/deno.land/std/testing/main.ts";
