@@ -42,7 +42,9 @@ impl<R> Future for PendingOp<R> {
 
 pub trait Behavior<R> {
   fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod;
+
   fn recv(&mut self, record: R, zero_copy_buf: deno_buf) -> (bool, Box<Op<R>>);
+
   fn records_reset(&mut self);
   fn records_push(&mut self, record: R) -> bool;
   fn records_pop(&mut self) -> Option<R>;
@@ -179,7 +181,7 @@ impl<R, B: Behavior<R>> Isolate<R, B> {
     }
   }
 
-  pub fn respond(&mut self) -> Result<(), JSError> {
+  fn respond(&mut self) -> Result<(), JSError> {
     let buf = deno_buf::empty();
     unsafe {
       libdeno::deno_respond(self.libdeno_isolate, self.as_raw_ptr(), buf)
