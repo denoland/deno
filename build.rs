@@ -62,8 +62,11 @@ fn main() {
     println!("cargo:rustc-cfg=feature=\"check-only\"");
   } else {
     // "Full" (non-RLS) build.
-    gn_target = "deno_deps";
-
+    if is_cross_compile {
+      gn_target = "deno_deps_cross"; 
+    } else {
+      gn_target = "deno_deps";  
+    }
     // Link with libdeno.a/.lib, which includes V8.
     println!("cargo:rustc-link-search=native={}/obj/libdeno", gn_out_dir);
     if cfg!(target_os = "windows") {
