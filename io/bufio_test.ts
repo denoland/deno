@@ -5,7 +5,8 @@
 
 const { Buffer } = Deno;
 import { Reader, ReadResult } from "deno";
-import { test, assert, assertEqual } from "../testing/mod.ts";
+import { test } from "../testing/mod.ts";
+import { assert, assertEq } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "./bufio.ts";
 import * as iotest from "./iotest.ts";
 import { charCode, copyBytes, stringsReader } from "./util.ts";
@@ -31,7 +32,7 @@ test(async function bufioReaderSimple() {
   const data = "hello world";
   const b = new BufReader(stringsReader(data));
   const s = await readBytes(b);
-  assert.equal(s, data);
+  assertEq(s, data);
 });
 
 interface ReadMaker {
@@ -113,7 +114,7 @@ test(async function bufioBufReader() {
           const debugStr =
             `reader=${readmaker.name} ` +
             `fn=${bufreader.name} bufsize=${bufsize} want=${text} got=${s}`;
-          assertEqual(s, text, debugStr);
+          assertEq(s, text, debugStr);
         }
       }
     }
@@ -128,12 +129,12 @@ test(async function bufioBufferFull() {
 
   const decoder = new TextDecoder();
   let actual = decoder.decode(line);
-  assertEqual(err, "BufferFull");
-  assertEqual(actual, "And now, hello, ");
+  assertEq(err, "BufferFull");
+  assertEq(actual, "And now, hello, ");
 
   [line, err] = await buf.readSlice(charCode("!"));
   actual = decoder.decode(line);
-  assertEqual(actual, "world!");
+  assertEq(actual, "world!");
   assert(err == null);
 });
 
@@ -177,20 +178,20 @@ async function testReadLine(input: Uint8Array): Promise<void> {
       if (line.byteLength > 0 && err != null) {
         throw Error("readLine returned both data and error");
       }
-      assertEqual(isPrefix, false);
+      assertEq(isPrefix, false);
       if (err == "EOF") {
         break;
       }
       // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
       let want = testOutput.subarray(done, done + line.byteLength);
-      assertEqual(
+      assertEq(
         line,
         want,
         `Bad line at stride ${stride}: want: ${want} got: ${line}`
       );
       done += line.byteLength;
     }
-    assertEqual(
+    assertEq(
       done,
       testOutput.byteLength,
       `readLine didn't return everything: got: ${done}, ` +
@@ -214,54 +215,54 @@ test(async function bufioPeek() {
   );
 
   let [actual, err] = await buf.peek(1);
-  assertEqual(decoder.decode(actual), "a");
+  assertEq(decoder.decode(actual), "a");
   assert(err == null);
 
   [actual, err] = await buf.peek(4);
-  assertEqual(decoder.decode(actual), "abcd");
+  assertEq(decoder.decode(actual), "abcd");
   assert(err == null);
 
   [actual, err] = await buf.peek(32);
-  assertEqual(decoder.decode(actual), "abcdefghijklmnop");
-  assertEqual(err, "BufferFull");
+  assertEq(decoder.decode(actual), "abcdefghijklmnop");
+  assertEq(err, "BufferFull");
 
   await buf.read(p.subarray(0, 3));
-  assertEqual(decoder.decode(p.subarray(0, 3)), "abc");
+  assertEq(decoder.decode(p.subarray(0, 3)), "abc");
 
   [actual, err] = await buf.peek(1);
-  assertEqual(decoder.decode(actual), "d");
+  assertEq(decoder.decode(actual), "d");
   assert(err == null);
 
   [actual, err] = await buf.peek(1);
-  assertEqual(decoder.decode(actual), "d");
+  assertEq(decoder.decode(actual), "d");
   assert(err == null);
 
   [actual, err] = await buf.peek(1);
-  assertEqual(decoder.decode(actual), "d");
+  assertEq(decoder.decode(actual), "d");
   assert(err == null);
 
   [actual, err] = await buf.peek(2);
-  assertEqual(decoder.decode(actual), "de");
+  assertEq(decoder.decode(actual), "de");
   assert(err == null);
 
   let { eof } = await buf.read(p.subarray(0, 3));
-  assertEqual(decoder.decode(p.subarray(0, 3)), "def");
+  assertEq(decoder.decode(p.subarray(0, 3)), "def");
   assert(!eof);
   assert(err == null);
 
   [actual, err] = await buf.peek(4);
-  assertEqual(decoder.decode(actual), "ghij");
+  assertEq(decoder.decode(actual), "ghij");
   assert(err == null);
 
   await buf.read(p);
-  assertEqual(decoder.decode(p), "ghijklmnop");
+  assertEq(decoder.decode(p), "ghijklmnop");
 
   [actual, err] = await buf.peek(0);
-  assertEqual(decoder.decode(actual), "");
+  assertEq(decoder.decode(actual), "");
   assert(err == null);
 
   [actual, err] = await buf.peek(1);
-  assertEqual(decoder.decode(actual), "");
+  assertEq(decoder.decode(actual), "");
   assert(err == "EOF");
   /* TODO
 	// Test for issue 3022, not exposing a reader's error on a successful Peek.
@@ -301,15 +302,15 @@ test(async function bufioWriter() {
 
       const context = `nwrite=${nwrite} bufsize=${bs}`;
       const n = await buf.write(data.subarray(0, nwrite));
-      assertEqual(n, nwrite, context);
+      assertEq(n, nwrite, context);
 
       await buf.flush();
 
       const written = w.bytes();
-      assertEqual(written.byteLength, nwrite);
+      assertEq(written.byteLength, nwrite);
 
       for (let l = 0; l < written.byteLength; l++) {
-        assertEqual(written[l], data[l]);
+        assertEq(written[l], data[l]);
       }
     }
   }
@@ -324,15 +325,15 @@ test(async function bufReaderReadFull() {
   {
     const buf = new Uint8Array(6);
     const [nread, err] = await bufr.readFull(buf);
-    assertEqual(nread, 6);
+    assertEq(nread, 6);
     assert(!err);
-    assertEqual(dec.decode(buf), "Hello ");
+    assertEq(dec.decode(buf), "Hello ");
   }
   {
     const buf = new Uint8Array(6);
     const [nread, err] = await bufr.readFull(buf);
-    assertEqual(nread, 5);
-    assertEqual(err, "EOF");
-    assertEqual(dec.decode(buf.subarray(0, 5)), "World");
+    assertEq(nread, 5);
+    assertEq(err, "EOF");
+    assertEq(dec.decode(buf.subarray(0, 5)), "World");
   }
 });

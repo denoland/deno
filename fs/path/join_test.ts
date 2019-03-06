@@ -1,4 +1,5 @@
-import { test, assertEqual } from "../../testing/mod.ts";
+import { test } from "../../testing/mod.ts";
+import { assertEq } from "../../testing/asserts.ts";
 import * as path from "./mod.ts";
 
 const backslashRE = /\\/g;
@@ -108,17 +109,17 @@ const windowsJoinTests = [
 test(function join() {
   joinTests.forEach(function(p) {
     const actual = path.posix.join.apply(null, p[0]);
-    assertEqual(actual, p[1]);
+    assertEq(actual, p[1]);
   });
 });
 
 test(function joinWin32() {
   joinTests.forEach(function(p) {
     const actual = path.win32.join.apply(null, p[0]).replace(backslashRE, "/");
-    assertEqual(actual, p[1]);
+    assertEq(actual, p[1]);
   });
   windowsJoinTests.forEach(function(p) {
     const actual = path.win32.join.apply(null, p[0]);
-    assertEqual(actual, p[1]);
+    assertEq(actual, p[1]);
   });
 });

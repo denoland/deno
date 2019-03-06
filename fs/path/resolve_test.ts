@@ -2,7 +2,8 @@
 // Ported from https://github.com/browserify/path-browserify/
 
 const { cwd } = Deno;
-import { test, assertEqual } from "../../testing/mod.ts";
+import { test } from "../../testing/mod.ts";
+import { assertEq } from "../../testing/asserts.ts";
 import * as path from "./mod.ts";
 
 const windowsTests =
@@ -37,13 +38,13 @@ const posixTests =
 test(function resolve() {
   posixTests.forEach(function(p) {
     const actual = path.posix.resolve.apply(null, p[0]);
-    assertEqual(actual, p[1]);
+    assertEq(actual, p[1]);
   });
 });
 
 test(function resolveWin32() {
   windowsTests.forEach(function(p) {
     const actual = path.win32.resolve.apply(null, p[0]);
-    assertEqual(actual, p[1]);
+    assertEq(actual, p[1]);
   });
 });

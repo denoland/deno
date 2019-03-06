@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assertEqual, test } from "../testing/mod.ts";
+import { test } from "../testing/mod.ts";
+import { assertEq } from "../testing/asserts.ts";
 import * as log from "./mod.ts";
 import { LogLevel } from "./levels.ts";
 
@@ -54,7 +55,7 @@ test(async function defaultHandlers() {
     logger("foo");
     logger("bar", 1, 2);
 
-    assertEqual(handler.messages, [`${levelName} foo`, `${levelName} bar`]);
+    assertEq(handler.messages, [`${levelName} foo`, `${levelName} bar`]);
   }
 });
 
@@ -75,8 +76,8 @@ test(async function getLogger() {
 
   const logger = log.getLogger();
 
-  assertEqual(logger.levelName, "DEBUG");
-  assertEqual(logger.handlers, [handler]);
+  assertEq(logger.levelName, "DEBUG");
+  assertEq(logger.handlers, [handler]);
 });
 
 test(async function getLoggerWithName() {
@@ -96,8 +97,8 @@ test(async function getLoggerWithName() {
 
   const logger = log.getLogger("bar");
 
-  assertEqual(logger.levelName, "INFO");
-  assertEqual(logger.handlers, [fooHandler]);
+  assertEq(logger.levelName, "INFO");
+  assertEq(logger.handlers, [fooHandler]);
 });
 
 test(async function getLoggerUnknown() {
@@ -108,6 +109,6 @@ test(async function getLoggerUnknown() {
 
   const logger = log.getLogger("nonexistent");
 
-  assertEqual(logger.levelName, "NOTSET");
-  assertEqual(logger.handlers, []);
+  assertEq(logger.levelName, "NOTSET");
+  assertEq(logger.handlers, []);
 });

@@ -4,7 +4,7 @@ import { Conn, Reader, Writer } from "deno";
 import { BufReader, BufState, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
-import { assert } from "../testing/mod.ts";
+import { assert } from "../testing/asserts.ts";
 
 interface Deferred {
   promise: Promise<{}>;

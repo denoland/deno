@@ -5,7 +5,7 @@
 
 import { Reader, ReadResult, Writer } from "deno";
 import { charCode, copyBytes } from "./util.ts";
-import { assert } from "../testing/mod.ts";
+import { assert } from "../testing/asserts.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
 const MIN_BUF_SIZE = 16;

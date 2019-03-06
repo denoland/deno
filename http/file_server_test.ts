@@ -1,7 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { readFile, run } = Deno;
 
-import { test, assert, assertEqual } from "../testing/mod.ts";
+import { test } from "../testing/mod.ts";
+import { assert, assertEq } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 
@@ -35,12 +36,12 @@ test(async function serveFile() {
     const res = await fetch("http://localhost:4500/azure-pipelines.yml");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
-    assertEqual(res.headers.get("content-type"), "text/yaml; charset=utf-8");
+    assertEq(res.headers.get("content-type"), "text/yaml; charset=utf-8");
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
       await readFile("./azure-pipelines.yml")
     );
-    assertEqual(downloadedFile, localFile);
+    assertEq(downloadedFile, localFile);
   } finally {
     killFileServer();
   }
@@ -65,7 +66,7 @@ test(async function serveFallback() {
     const res = await fetch("http://localhost:4500/badfile.txt");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
-    assertEqual(res.status, 404);
+    assertEq(res.status, 404);
   } finally {
     killFileServer();
   }

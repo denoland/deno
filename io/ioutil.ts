@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { BufReader } from "./bufio.ts";
 import { Reader, Writer } from "deno";
-import { assert } from "../testing/mod.ts";
+import { assert } from "../testing/asserts.ts";
 
 /** copy N size at the most. If read size is lesser than N, then returns nread */
 export async function copyN(
@@ -19,7 +19,7 @@ export async function copyN(
     bytesRead += nread;
     if (nread > 0) {
       const n = await dest.write(buf.slice(0, nread));
-      assert.assert(n === nread, "could not write");
+      assert(n === nread, "could not write");
     }
     if (eof) {
       break;

@@ -1,68 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 import { green, red } from "../colors/mod.ts";
-import { assertEqual as prettyAssertEqual } from "./pretty.ts";
-import {
-  assert as assertImport,
-  equal as AssertEqual,
-  assertStrictEq,
-  assertStrContains,
-  assertMatch,
-  fail,
-  assertThrows,
-  assertThrowsAsync
-} from "./asserts.ts";
-
-export function equal(c: unknown, d: unknown): boolean {
-  const seen = new Map();
-  return (function compare(a: unknown, b: unknown) {
-    if (Object.is(a, b)) {
-      return true;
-    }
-    if (a && typeof a === "object" && b && typeof b === "object") {
-      if (seen.get(a) === b) {
-        return true;
-      }
-      if (Object.keys(a || {}).length !== Object.keys(b || {}).length) {
-        return false;
-      }
-      const merged = { ...a, ...b };
-      for (const key in merged) {
-        type Key = keyof typeof merged;
-        if (!compare(a && a[key as Key], b && b[key as Key])) {
-          return false;
-        }
-      }
-      seen.set(a, b);
-      return true;
-    }
-    return false;
-  })(c, d);
-}
-
-const assertions = {
-  assert: assertImport,
-  equal: AssertEqual,
-  strictEqual: assertStrictEq,
-  assertStrContains: assertStrContains,
-  assertMatch: assertMatch,
-  fail: fail,
-  throws: assertThrows,
-  throwsAsync: assertThrowsAsync
-};
-
-type Assert = typeof assertions.assert & typeof assertions;
-
-// Decorate assertions.assert with all the assertions
-Object.assign(assertions.assert, assertions);
-
-export const assert = assertions.assert as Assert;
-
-/**
- * Alias to pretty.assertEqual
- * @deprecated
- */
-export const assertEqual = prettyAssertEqual;
 
 export type TestFunction = () => void | Promise<void>;
 

@@ -6,7 +6,8 @@
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader, append } from "./mod.ts";
 import { stringsReader } from "../io/util.ts";
-import { test, assert, assertEqual } from "../testing/mod.ts";
+import { assert, assertEq } from "../testing/asserts.ts";
+import { test } from "../testing/mod.ts";
 
 function reader(s: string): TextProtoReader {
   return new TextProtoReader(new BufReader(stringsReader(s)));
@@ -15,15 +16,15 @@ function reader(s: string): TextProtoReader {
 test(async function textprotoReader() {
   let r = reader("line1\nline2\n");
   let [s, err] = await r.readLine();
-  assertEqual(s, "line1");
+  assertEq(s, "line1");
   assert(err == null);
 
   [s, err] = await r.readLine();
-  assertEqual(s, "line2");
+  assertEq(s, "line2");
   assert(err == null);
 
   [s, err] = await r.readLine();
-  assertEqual(s, "");
+  assertEq(s, "");
   assert(err == "EOF");
 });
 
@@ -46,7 +47,7 @@ test(async function textprotoReadMIMEHeader() {
 test(async function textprotoReadMIMEHeaderSingle() {
   let r = reader("Foo: bar\n\n");
   let [m, err] = await r.readMIMEHeader();
-  assertEqual(m.get("Foo"), "bar");
+  assertEq(m.get("Foo"), "bar");
   assert(!err);
 });
 
@@ -87,12 +88,12 @@ test(async function textprotoAppend() {
   const u1 = enc.encode("Hello ");
   const u2 = enc.encode("World");
   const joined = append(u1, u2);
-  assertEqual(dec.decode(joined), "Hello World");
+  assertEq(dec.decode(joined), "Hello World");
 });
 
 test(async function textprotoReadEmpty() {
   let r = reader("");
   let [, err] = await r.readMIMEHeader();
   // Should not crash!
-  assertEqual(err, "EOF");
+  assertEq(err, "EOF");
 });

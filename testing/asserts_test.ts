@@ -1,11 +1,33 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { assertStrContains, assertMatch } from "./asserts.ts";
-import { test, assert } from "./mod.ts";
-// import { assertEqual as prettyAssertEqual } from "./pretty.ts";
+import { assert, equal, assertStrContains, assertMatch } from "./asserts.ts";
+import { test } from "./mod.ts";
+// import { assertEq as prettyAssertEqual } from "./pretty.ts";
 // import "./format_test.ts";
 // import "./diff_test.ts";
 // import "./pretty_test.ts";
+
+test(function testingEqual() {
+  assert(equal("world", "world"));
+  assert(!equal("hello", "world"));
+  assert(equal(5, 5));
+  assert(!equal(5, 6));
+  assert(equal(NaN, NaN));
+  assert(equal({ hello: "world" }, { hello: "world" }));
+  assert(!equal({ world: "hello" }, { hello: "world" }));
+  assert(
+    equal(
+      { hello: "world", hi: { there: "everyone" } },
+      { hello: "world", hi: { there: "everyone" } }
+    )
+  );
+  assert(
+    !equal(
+      { hello: "world", hi: { there: "everyone" } },
+      { hello: "world", hi: { there: "everyone else" } }
+    )
+  );
+});
 
 test(function testingAssertStringContains() {
   assertStrContains("Denosaurus", "saur");
