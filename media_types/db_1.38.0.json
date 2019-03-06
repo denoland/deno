@@ -412,6 +412,10 @@
     "source": "iana",
     "extensions": ["exi"]
   },
+  "application/expect-ct-report+json": {
+    "source": "iana",
+    "compressible": true
+  },
   "application/fastinfoset": {
     "source": "iana"
   },
@@ -865,10 +869,12 @@
     "extensions": ["mxf"]
   },
   "application/n-quads": {
-    "source": "iana"
+    "source": "iana",
+    "extensions": ["nq"]
   },
   "application/n-triples": {
-    "source": "iana"
+    "source": "iana",
+    "extensions": ["nt"]
   },
   "application/nasdata": {
     "source": "iana"
@@ -930,6 +936,10 @@
     "source": "iana",
     "extensions": ["oda"]
   },
+  "application/odm+xml": {
+    "source": "iana",
+    "compressible": true
+  },
   "application/odx": {
     "source": "iana"
   },
@@ -977,6 +987,9 @@
     "extensions": ["pdf"]
   },
   "application/pdx": {
+    "source": "iana"
+  },
+  "application/pem-certificate-chain": {
     "source": "iana"
   },
   "application/pgp-encrypted": {
@@ -1446,6 +1459,9 @@
     "compressible": true,
     "extensions": ["tei", "teicorpus"]
   },
+  "application/tetra_isi": {
+    "source": "iana"
+  },
   "application/thraud+xml": {
     "source": "iana",
     "compressible": true,
@@ -1482,6 +1498,12 @@
     "compressible": true
   },
   "application/tve-trigger": {
+    "source": "iana"
+  },
+  "application/tzif": {
+    "source": "iana"
+  },
+  "application/tzif-leap": {
     "source": "iana"
   },
   "application/ulpfec": {
@@ -1547,11 +1569,31 @@
   "application/vnd.3gpp.mc-signalling-ear": {
     "source": "iana"
   },
+  "application/vnd.3gpp.mcdata-affiliation-command+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcdata-info+xml": {
+    "source": "iana",
+    "compressible": true
+  },
   "application/vnd.3gpp.mcdata-payload": {
     "source": "iana"
   },
+  "application/vnd.3gpp.mcdata-service-config+xml": {
+    "source": "iana",
+    "compressible": true
+  },
   "application/vnd.3gpp.mcdata-signalling": {
     "source": "iana"
+  },
+  "application/vnd.3gpp.mcdata-ue-config+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcdata-user-profile+xml": {
+    "source": "iana",
+    "compressible": true
   },
   "application/vnd.3gpp.mcptt-affiliation-command+xml": {
     "source": "iana",
@@ -1573,7 +1615,55 @@
     "source": "iana",
     "compressible": true
   },
+  "application/vnd.3gpp.mcptt-service-config+xml": {
+    "source": "iana",
+    "compressible": true
+  },
   "application/vnd.3gpp.mcptt-signed+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcptt-ue-config+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcptt-ue-init-config+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcptt-user-profile+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcvideo-affiliation-command+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcvideo-affiliation-info+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcvideo-location-info+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcvideo-mbms-usage-info+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcvideo-service-config+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcvideo-transmission-request+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcvideo-ue-config+xml": {
+    "source": "iana",
+    "compressible": true
+  },
+  "application/vnd.3gpp.mcvideo-user-profile+xml": {
     "source": "iana",
     "compressible": true
   },
@@ -2420,6 +2510,9 @@
   "application/vnd.exstream-empower+zip": {
     "source": "iana",
     "compressible": false
+  },
+  "application/vnd.exstream-package": {
+    "source": "iana"
   },
   "application/vnd.ezpix-album": {
     "source": "iana",
@@ -4214,6 +4307,9 @@
   "application/vnd.patentdive": {
     "source": "iana"
   },
+  "application/vnd.patientecommsdoc": {
+    "source": "iana"
+  },
   "application/vnd.pawaafile": {
     "source": "iana",
     "extensions": ["paw"]
@@ -4822,6 +4918,9 @@
     "compressible": true
   },
   "application/vnd.verimatrix.vcas": {
+    "source": "iana"
+  },
+  "application/vnd.veryant.thin": {
     "source": "iana"
   },
   "application/vnd.vidsoft.vidconference": {
@@ -6108,6 +6207,9 @@
   "audio/telephone-event": {
     "source": "iana"
   },
+  "audio/tetra_acelp": {
+    "source": "iana"
+  },
   "audio/tone": {
     "source": "iana"
   },
@@ -6196,6 +6298,9 @@
   "audio/vnd.dts.hd": {
     "source": "iana",
     "extensions": ["dtshd"]
+  },
+  "audio/vnd.dts.uhd": {
+    "source": "iana"
   },
   "audio/vnd.dvb.file": {
     "source": "iana"
@@ -7039,6 +7144,7 @@
     "extensions": ["jsx"]
   },
   "text/less": {
+    "compressible": true,
     "extensions": ["less"]
   },
   "text/markdown": {
@@ -7239,6 +7345,9 @@
     "source": "iana"
   },
   "text/vnd.radisys.msml-basic-layout": {
+    "source": "iana"
+  },
+  "text/vnd.senx.warpscript": {
     "source": "iana"
   },
   "text/vnd.si.uricatalogue": {
