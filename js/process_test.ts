@@ -38,7 +38,7 @@ testPerm({ run: true }, async function runCommandFailedWithCode() {
 });
 
 testPerm({ run: true }, async function runCommandFailedWithSignal() {
-  if (Deno.platform.os === "win") {
+  if (Deno.build.os === "win") {
     return; // No signals on windows.
   }
   const p = run({

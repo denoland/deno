@@ -11,10 +11,8 @@ import typescriptPlugin from "rollup-plugin-typescript2";
 import { createFilter } from "rollup-pluginutils";
 import replace from "rollup-plugin-replace";
 import typescript from "typescript";
-import MagicString from "magic-string";
 
 const mockPath = path.resolve(__dirname, "js/mock_builtin.js");
-const platformPath = path.resolve(__dirname, "js/platform.ts");
 const tsconfig = path.resolve(__dirname, "tsconfig.json");
 const typescriptPath = path.resolve(
   __dirname,
@@ -90,40 +88,6 @@ const osNodeToDeno = {
   darwin: "mac",
   linux: "linux"
 };
-
-/** Inject deno.platform.arch and deno.platform.os
- * @param {any} param0
- */
-function platform({ include, exclude } = {}) {
-  if (!include) {
-    throw new Error("include option must be passed");
-  }
-
-  const filter = createFilter(include, exclude);
-
-  return {
-    name: "platform",
-    /**
-     * @param {any} _code
-     * @param {string} id
-     */
-    transform(_code, id) {
-      if (filter(id)) {
-        // Adapted from https://github.com/rollup/rollup-plugin-inject/blob/master/src/index.js
-        const arch = archNodeToDeno[process.arch];
-        const os = osNodeToDeno[process.platform];
-        // We do not have to worry about the interface here, because this is just to generate
-        // the actual runtime code, not any type information integrated into Deno
-        const magicString = new MagicString(`
-export const platform = { arch: "${arch}", os:"${os}" };`);
-        return {
-          code: magicString.toString(),
-          map: magicString.generateMap()
-        };
-      }
-    }
-  };
-}
 
 // This plugin resolves at bundle time any generated resources that are
 // in the build path under `gen` and specified with a MID starting with `gen/`.
@@ -222,15 +186,12 @@ export default function makeConfig(commandOptions) {
     },
 
     plugins: [
-      // inject platform and arch from Node
-      platform({
-        include: [platformPath]
-      }),
-
-      // replace strings
+      // inject build and version info
       replace({
-        TS_VERSION: typescript.version,
-        GN_ARGS: gnArgs
+        ROLLUP_REPLACE_TS_VERSION: typescript.version,
+        ROLLUP_REPLACE_ARCH: archNodeToDeno[process.arch],
+        ROLLUP_REPLACE_OS: osNodeToDeno[process.platform],
+        ROLLUP_REPLACE_GN_ARGS: gnArgs
       }),
 
       // would prefer to use `rollup-plugin-virtual` to inject the empty module, but there

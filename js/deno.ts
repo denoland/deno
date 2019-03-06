@@ -56,7 +56,6 @@ export {
   Permission,
   Permissions
 } from "./permissions";
-export { platform } from "./platform";
 export { truncateSync, truncate } from "./truncate";
 export { FileInfo } from "./file_info";
 export { connect, dial, listen, Listener, Conn } from "./net";
@@ -64,6 +63,7 @@ export { metrics, Metrics } from "./metrics";
 export { resources } from "./resources";
 export { run, RunOptions, Process, ProcessStatus } from "./process";
 export { inspect } from "./console";
+export { build, platform } from "./build";
 export { version } from "./version";
 export const args: string[] = [];
 
