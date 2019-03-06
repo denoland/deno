@@ -8,7 +8,7 @@ testPerm({ write: true, read: true }, function readlinkSyncSuccess() {
   Deno.mkdirSync(target);
   // TODO Add test for Windows once symlink is implemented for Windows.
   // See https://github.com/denoland/deno/issues/815.
-  if (Deno.platform.os !== "win") {
+  if (Deno.build.os !== "win") {
     Deno.symlinkSync(target, symlink);
     const targetPath = Deno.readlinkSync(symlink);
     assertEqual(targetPath, target);
@@ -47,7 +47,7 @@ testPerm({ write: true, read: true }, async function readlinkSuccess() {
   Deno.mkdirSync(target);
   // TODO Add test for Windows once symlink is implemented for Windows.
   // See https://github.com/denoland/deno/issues/815.
-  if (Deno.platform.os !== "win") {
+  if (Deno.build.os !== "win") {
     Deno.symlinkSync(target, symlink);
     const targetPath = await Deno.readlink(symlink);
     assertEqual(targetPath, target);

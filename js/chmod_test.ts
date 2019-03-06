@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assertEqual } from "./test_util.ts";
 
-const isNotWindows = Deno.platform.os !== "win";
+const isNotWindows = Deno.build.os !== "win";
 
 testPerm({ read: true, write: true }, function chmodSyncSuccess() {
   const enc = new TextEncoder();
