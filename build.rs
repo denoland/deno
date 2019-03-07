@@ -19,9 +19,20 @@ fn main() {
     // matches the build modes we support.
     env::var("PROFILE").unwrap()
   };
+  
+  // Equivilent to target arch != host arch
+  let is_cross_compile = env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str()
+    != env::var("HOST")
+      .unwrap()
+      .as_str()
+      .split("-")
+      .collect::<Vec<&str>>()[0];
 
   let cwd = env::current_dir().unwrap();
-  let gn_out_path = cwd.join(format!("target/{}", gn_mode));
+  let gn_out_path = cwd.join(format!("target/{}", match is_cross_compile {
+    false => gn_mode.clone(),
+    true => format!("{}/{}", env::var("TARGET").unwrap(), gn_mode.clone()),
+  }));
   let gn_out_dir = normalize_path(&gn_out_path);
 
   // Tell Cargo when to re-run this file. We do this first, so these directives
@@ -44,14 +55,6 @@ fn main() {
   println!("cargo:rustc-env=GN_OUT_DIR={}", gn_out_dir);
 
   let gn_target;
-
-  // Equivilent to target arch != host arch
-  let is_cross_compile = env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str()
-    != env::var("HOST")
-      .unwrap()
-      .as_str()
-      .split("-")
-      .collect::<Vec<&str>>()[0];
 
   if check_only {
     // When RLS is running "cargo check" to analyze the source code, we're not

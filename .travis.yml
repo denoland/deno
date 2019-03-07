@@ -121,14 +121,13 @@ jobs:
       - export DENO_BUILD_ARGS="target_cpu=\"arm64\" v8_target_cpu=\"arm64\""
       - export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="/usr/bin/aarch64-linux-gnu-gcc-5"
       - export CC_aarch64_unknown_linux_gnu="/usr/bin/aarch64-linux-gnu-gcc-5"
-      - ./tools/setup.py
       - cargo build -vv --target=aarch64-unknown-linux-gnu --release --locked
       - cargo build -vv --target=aarch64-unknown-linux-gnu --release --tests --locked
       - mv $(find $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release -maxdepth 1 -type f -executable -regextype sed -regex '.*/[a-z_]*-[0-9a-f]*') $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/test_cc
-      - sudo apt -yq install qemu qemu-user-static binfmt-support
+      - sudo apt -yq install qemu qemu-user binfmt-support
       - sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 /lib/ld-linux-aarch64.so.1
       - export QEMU_LD_PREFIX=/usr/aarch64-linux-gnu
-      - DENO_BUILD_MODE=release ./tools/test.py $CARGO_TARGET_DIR/target/aarch64-unknown-linux-gnu/release
+      - DENO_BUILD_MODE=release ./tools/test.py $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release
 
     - name: "cargo release linux x86_64"
       os: linux
