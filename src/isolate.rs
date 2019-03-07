@@ -342,12 +342,6 @@ impl Isolate {
       let specifier_c: &CStr = unsafe { CStr::from_ptr(specifier_ptr) };
       let specifier: &str = specifier_c.to_str().unwrap();
 
-      // TODO(ry) This shouldn't be necessary here. builtin modules should be
-      // taken care of at the libdeno level.
-      if specifier == "deno" {
-        continue;
-      }
-
       let (name, _local_filename) = self
         .state
         .dir

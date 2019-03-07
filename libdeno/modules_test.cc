@@ -94,7 +94,6 @@ TEST(ModulesTest, BuiltinModules) {
   EXPECT_EQ(0u, deno_mod_imports_len(d, b));
 
   EXPECT_STREQ("b.js", deno_mod_imports_get(d, a, 0));
-  EXPECT_STREQ("deno", deno_mod_imports_get(d, a, 1));
   EXPECT_EQ(nullptr, deno_mod_imports_get(d, a, 2));
   EXPECT_EQ(nullptr, deno_mod_imports_get(d, b, 0));
 

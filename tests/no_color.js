@@ -1,2 +1,1 @@
-import { noColor } from "deno";
-console.log("noColor", noColor);
+console.log("noColor", Deno.noColor);
