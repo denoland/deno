@@ -62,11 +62,11 @@ fn idx(i: usize, off: usize) -> usize {
 }
 
 impl Behavior<Record> for HttpBench {
-  fn startup_snapshot(&self) -> Option<deno_buf> {
+  fn startup_snapshot(&mut self) -> Option<deno_buf> {
     None
   }
 
-  fn startup_shared(&self) -> Option<deno_buf> {
+  fn startup_shared(&mut self) -> Option<deno_buf> {
     let ptr = self.shared32.as_ptr() as *const u8;
     let len = mem::size_of::<i32>() * self.shared32.len();
     Some(unsafe { deno_buf::from_raw_parts(ptr, len) })

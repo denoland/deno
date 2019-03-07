@@ -3,14 +3,13 @@ use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
 use crate::libdeno::deno_mod;
+use futures::Async;
+use futures::Future;
+use futures::Poll;
 use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::sync::{Once, ONCE_INIT};
-
-use futures::Async;
-use futures::Future;
-use futures::Poll;
 
 pub type Op<R> = dyn Future<Item = R, Error = ()> + Send;
 
@@ -41,8 +40,8 @@ impl<R> Future for PendingOp<R> {
 }
 
 pub trait Behavior<R> {
-  fn startup_snapshot(&self) -> Option<deno_buf>;
-  fn startup_shared(&self) -> Option<deno_buf>;
+  fn startup_snapshot(&mut self) -> Option<deno_buf>;
+  fn startup_shared(&mut self) -> Option<deno_buf>;
 
   fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod;
 
@@ -62,10 +61,16 @@ pub struct Isolate<R, B: Behavior<R>> {
 
 unsafe impl<R, B: Behavior<R>> Send for Isolate<R, B> {}
 
+impl<R, B: Behavior<R>> Drop for Isolate<R, B> {
+  fn drop(&mut self) {
+    unsafe { libdeno::deno_delete(self.libdeno_isolate) }
+  }
+}
+
 static DENO_INIT: Once = ONCE_INIT;
 
 impl<R, B: Behavior<R>> Isolate<R, B> {
-  pub fn new(behavior: B) -> Self {
+  pub fn new(mut behavior: B) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -388,11 +393,11 @@ mod tests {
   }
 
   impl Behavior<()> for TestBehavior {
-    fn startup_snapshot(&self) -> Option<deno_buf> {
+    fn startup_snapshot(&mut self) -> Option<deno_buf> {
       None
     }
 
-    fn startup_shared(&self) -> Option<deno_buf> {
+    fn startup_shared(&mut self) -> Option<deno_buf> {
       None
     }
 

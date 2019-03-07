@@ -1,9 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
-// TODO Remove. While core is being developed, it may not use the complete
-// libdeno API. Thus we allow dead code until things settle.
-#![allow(dead_code)]
-
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
