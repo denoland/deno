@@ -1,19 +1,19 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::isolate::Buf;
-use crate::isolate::Isolate;
-use crate::isolate::IsolateState;
-use crate::isolate::WorkerChannels;
+use crate::cli::Buf;
+use crate::cli::Cli;
+use crate::cli::Isolate;
 use crate::isolate_init::IsolateInit;
+use crate::isolate_state::IsolateState;
+use crate::isolate_state::WorkerChannels;
 use crate::js_errors::JSErrorColor;
-use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::resources;
-use crate::tokio_util;
 use deno_core::JSError;
-
+use futures::lazy;
 use futures::sync::mpsc;
 use futures::sync::oneshot;
 use futures::Future;
+use futures::Poll;
 use std::sync::Arc;
 use std::thread;
 
@@ -40,18 +40,24 @@ impl Worker {
       Some(internal_channels),
     ));
 
-    let isolate = Isolate::new(init, state, ops::dispatch, permissions);
+    let cli = Cli::new(init, state, permissions);
+    let isolate = Isolate::new(cli);
 
     let worker = Worker { isolate };
     (worker, external_channels)
   }
 
   pub fn execute(&self, js_source: &str) -> Result<(), JSError> {
-    self.isolate.execute(js_source)
+    self.isolate.execute("<anonymous>", js_source)
   }
+}
 
-  pub fn event_loop(&self) -> Result<(), JSError> {
-    self.isolate.event_loop()
+impl Future for Worker {
+  type Item = ();
+  type Error = JSError;
+
+  fn poll(&mut self) -> Poll<(), JSError> {
+    self.isolate.poll()
   }
 }
 
@@ -70,22 +76,23 @@ pub fn spawn(
   let _tid = builder
     .spawn(move || {
       let (worker, external_channels) = Worker::new(init, &state, permissions);
-
       let resource = resources::add_worker(external_channels);
-      p.send(resource.clone()).unwrap();
+      let resource_ = resource.clone();
 
-      tokio_util::init(|| {
-        (|| -> Result<(), JSError> {
-          worker.execute("denoMain()")?;
-          worker.execute("workerMain()")?;
-          worker.execute(&js_source)?;
-          worker.event_loop()?;
-          Ok(())
-        })().or_else(|err: JSError| -> Result<(), JSError> {
-          eprintln!("{}", JSErrorColor(&err).to_string());
-          std::process::exit(1)
-        }).unwrap();
+      let worker_future = lazy(move || {
+        p.send(resource_).unwrap();
+
+        worker.execute("denoMain()")?;
+        worker.execute("workerMain()")?;
+        worker.execute(&js_source)?;
+        Ok(worker)
+      }).and_then(|_| Ok(()))
+      .or_else(|err| -> Result<(), ()> {
+        eprintln!("{}", JSErrorColor(&err).to_string());
+        std::process::exit(1)
       });
+
+      tokio::spawn(worker_future);
 
       resource.close();
     }).unwrap();

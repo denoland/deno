@@ -1,18 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
 use atty;
 use crate::ansi;
+use crate::cli::Buf;
+use crate::cli::Cli;
+use crate::cli::CliOp;
 use crate::errors;
 use crate::errors::{permission_denied, DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
 use crate::http_util;
-use crate::isolate::Buf;
-use crate::isolate::Isolate;
-use crate::isolate::IsolateState;
-use crate::isolate::Op;
+use crate::isolate_state::IsolateState;
 use crate::js_errors::apply_source_map;
 use crate::js_errors::JSErrorColor;
-use crate::libdeno;
 use crate::msg;
 use crate::msg_util;
 use crate::repl;
@@ -22,6 +20,7 @@ use crate::resources::table_entries;
 use crate::resources::Resource;
 use crate::tokio_util;
 use crate::version;
+use deno_core::deno_buf;
 use deno_core::JSError;
 use flatbuffers::FlatBufferBuilder;
 use futures;
@@ -55,11 +54,11 @@ use std::os::unix::process::ExitStatusExt;
 
 type OpResult = DenoResult<Buf>;
 
+pub type Op = dyn Future<Item = Buf, Error = DenoError> + Send;
+
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type OpCreator =
-  fn(isolate: &Isolate, base: &msg::Base<'_>, data: libdeno::deno_buf)
-    -> Box<Op>;
+type OpCreator = fn(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op>;
 
 #[inline]
 fn empty_buf() -> Buf {
@@ -71,10 +70,10 @@ fn empty_buf() -> Buf {
 /// control corresponds to the first argument of libdeno.send().
 /// data corresponds to the second argument of libdeno.send().
 pub fn dispatch(
-  isolate: &Isolate,
-  control: libdeno::deno_buf,
-  data: libdeno::deno_buf,
-) -> (bool, Box<Op>) {
+  cli: &Cli,
+  control: deno_buf,
+  data: deno_buf,
+) -> (bool, Box<CliOp>) {
   let base = msg::get_root_as_base(&control);
   let is_sync = base.sync();
   let inner_type = base.inner_type();
@@ -82,10 +81,10 @@ pub fn dispatch(
 
   let op: Box<Op> = if inner_type == msg::Any::SetTimeout {
     // SetTimeout is an exceptional op: the global timeout field is part of the
-    // Isolate state (not the IsolateState state) and it must be updated on the
+    // Cli state (not the IsolateState state) and it must be updated on the
     // main thread.
     assert_eq!(is_sync, true);
-    op_set_timeout(isolate, &base, data)
+    op_set_timeout(cli, &base, data)
   } else {
     // Handle regular ops.
     let op_creator: OpCreator = match inner_type {
@@ -137,26 +136,11 @@ pub fn dispatch(
         msg::enum_name_any(inner_type)
       )),
     };
-    op_creator(&isolate, &base, data)
+    op_creator(&cli, &base, data)
   };
 
   let boxed_op = Box::new(
-    op.or_else(move |err: DenoError| -> DenoResult<Buf> {
-      debug!("op err {}", err);
-      // No matter whether we got an Err or Ok, we want a serialized message to
-      // send back. So transform the DenoError into a deno_buf.
-      let builder = &mut FlatBufferBuilder::new();
-      let errmsg_offset = builder.create_string(&format!("{}", err));
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          error: Some(errmsg_offset),
-          error_kind: err.kind(),
-          ..Default::default()
-        },
-      ))
-    }).and_then(move |buf: Buf| -> DenoResult<Buf> {
+    op.and_then(move |buf: Buf| -> DenoResult<Buf> {
       // Handle empty responses. For sync responses we just want
       // to send null. For async we want to send a small message
       // with the cmd_id.
@@ -173,6 +157,21 @@ pub fn dispatch(
         )
       };
       Ok(buf)
+    }).or_else(move |err: DenoError| -> Result<Buf, ()> {
+      debug!("op err {}", err);
+      // No matter whether we got an Err or Ok, we want a serialized message to
+      // send back. So transform the DenoError into a deno_buf.
+      let builder = &mut FlatBufferBuilder::new();
+      let errmsg_offset = builder.create_string(&format!("{}", err));
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          error: Some(errmsg_offset),
+          error_kind: err.kind(),
+          ..Default::default()
+        },
+      ))
     }),
   );
 
@@ -184,11 +183,7 @@ pub fn dispatch(
   (base.sync(), boxed_op)
 }
 
-fn op_now(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_now(_cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let start = SystemTime::now();
   let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
@@ -208,11 +203,7 @@ fn op_now(
   ))
 }
 
-fn op_is_tty(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  _data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_is_tty(_cli: &Cli, base: &msg::Base<'_>, _data: deno_buf) -> Box<Op> {
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::IsTTYRes::create(
     builder,
@@ -233,24 +224,16 @@ fn op_is_tty(
   ))
 }
 
-fn op_exit(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  _data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_exit(_cli: &Cli, base: &msg::Base<'_>, _data: deno_buf) -> Box<Op> {
   let inner = base.inner_as_exit().unwrap();
   std::process::exit(inner.code())
 }
 
-fn op_start(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_start(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let mut builder = FlatBufferBuilder::new();
 
-  let argv = isolate
+  let argv = cli
     .state
     .argv
     .iter()
@@ -271,10 +254,7 @@ fn op_start(
   let deno_version = version::DENO;
   let deno_version_off = builder.create_string(deno_version);
 
-  let main_module = isolate
-    .state
-    .main_module()
-    .map(|m| builder.create_string(&m));
+  let main_module = cli.state.main_module().map(|m| builder.create_string(&m));
 
   let inner = msg::StartRes::create(
     &mut builder,
@@ -283,9 +263,9 @@ fn op_start(
       pid: std::process::id(),
       argv: Some(argv_off),
       main_module,
-      debug_flag: isolate.state.flags.log_debug,
-      types_flag: isolate.state.flags.types,
-      version_flag: isolate.state.flags.version,
+      debug_flag: cli.state.flags.log_debug,
+      types_flag: cli.state.flags.types,
+      version_flag: cli.state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
       no_color: !ansi::use_color(),
@@ -305,17 +285,13 @@ fn op_start(
   ))
 }
 
-fn op_format_error(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_format_error(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_format_error().unwrap();
   let orig_error = String::from(inner.error().unwrap());
 
   let js_error = JSError::from_v8_exception(&orig_error).unwrap();
-  let js_error_mapped = apply_source_map(&js_error, &isolate.state.dir);
+  let js_error_mapped = apply_source_map(&js_error, &cli.state.dir);
   let js_error_string = JSErrorColor(&js_error_mapped).to_string();
 
   let mut builder = FlatBufferBuilder::new();
@@ -366,9 +342,9 @@ pub fn odd_future(err: DenoError) -> Box<Op> {
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn op_fetch_module_meta_data(
-  isolate: &Isolate,
+  cli: &Cli,
   base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
+  data: deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_fetch_module_meta_data().unwrap();
@@ -377,35 +353,32 @@ fn op_fetch_module_meta_data(
   let referrer = inner.referrer().unwrap();
 
   // Check for allow read since this operation could be used to read from the file system.
-  if !isolate.permissions.allow_read.load(Ordering::SeqCst) {
+  if !cli.permissions.allow_read.load(Ordering::SeqCst) {
     debug!("No read permission for fetch_module_meta_data");
     return odd_future(permission_denied());
   }
 
   // Check for allow write since this operation could be used to write to the file system.
-  if !isolate.permissions.allow_write.load(Ordering::SeqCst) {
+  if !cli.permissions.allow_write.load(Ordering::SeqCst) {
     debug!("No network permission for fetch_module_meta_data");
     return odd_future(permission_denied());
   }
 
   // Check for allow net since this operation could be used to make https/http requests.
-  if !isolate.permissions.allow_net.load(Ordering::SeqCst) {
+  if !cli.permissions.allow_net.load(Ordering::SeqCst) {
     debug!("No network permission for fetch_module_meta_data");
     return odd_future(permission_denied());
   }
 
   assert_eq!(
-    isolate.state.dir.root.join("gen"),
-    isolate.state.dir.gen,
+    cli.state.dir.root.join("gen"),
+    cli.state.dir.gen,
     "Sanity check"
   );
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
-    let out = isolate
-      .state
-      .dir
-      .fetch_module_meta_data(specifier, referrer)?;
+    let out = cli.state.dir.fetch_module_meta_data(specifier, referrer)?;
     let data_off = builder.create_vector(out.source_code.as_slice());
     let msg_args = msg::FetchModuleMetaDataResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
@@ -426,11 +399,7 @@ fn op_fetch_module_meta_data(
   }()))
 }
 
-fn op_chdir(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_chdir(_cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_chdir().unwrap();
   let directory = inner.directory().unwrap();
@@ -440,11 +409,7 @@ fn op_chdir(
   }()))
 }
 
-fn op_set_timeout(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_set_timeout(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_set_timeout().unwrap();
   let val = inner.timeout();
@@ -453,35 +418,27 @@ fn op_set_timeout(
   } else {
     None
   };
-  isolate.set_timeout_due(timeout_due);
+  cli.set_timeout_due(timeout_due);
   ok_future(empty_buf())
 }
 
-fn op_set_env(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_set_env(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_set_env().unwrap();
   let key = inner.key().unwrap();
   let value = inner.value().unwrap();
-  if let Err(e) = isolate.check_env() {
+  if let Err(e) = cli.check_env() {
     return odd_future(e);
   }
   std::env::set_var(key, value);
   ok_future(empty_buf())
 }
 
-fn op_env(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_env(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
-  if let Err(e) = isolate.check_env() {
+  if let Err(e) = cli.check_env() {
     return odd_future(e);
   }
 
@@ -505,22 +462,18 @@ fn op_env(
   ))
 }
 
-fn op_permissions(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_permissions(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::PermissionsRes::create(
     builder,
     &msg::PermissionsResArgs {
-      run: isolate.permissions.allows_run(),
-      read: isolate.permissions.allows_read(),
-      write: isolate.permissions.allows_write(),
-      net: isolate.permissions.allows_net(),
-      env: isolate.permissions.allows_env(),
+      run: cli.permissions.allows_run(),
+      read: cli.permissions.allows_read(),
+      write: cli.permissions.allows_write(),
+      net: cli.permissions.allows_net(),
+      env: cli.permissions.allows_env(),
     },
   );
   ok_future(serialize_response(
@@ -535,19 +488,19 @@ fn op_permissions(
 }
 
 fn op_revoke_permission(
-  isolate: &Isolate,
+  cli: &Cli,
   base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
+  data: deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_permission_revoke().unwrap();
   let permission = inner.permission().unwrap();
   let result = match permission {
-    "run" => isolate.permissions.revoke_run(),
-    "read" => isolate.permissions.revoke_read(),
-    "write" => isolate.permissions.revoke_write(),
-    "net" => isolate.permissions.revoke_net(),
-    "env" => isolate.permissions.revoke_env(),
+    "run" => cli.permissions.revoke_run(),
+    "read" => cli.permissions.revoke_read(),
+    "write" => cli.permissions.revoke_write(),
+    "net" => cli.permissions.revoke_net(),
+    "env" => cli.permissions.revoke_env(),
     _ => Ok(()),
   };
   if let Err(e) = result {
@@ -556,11 +509,7 @@ fn op_revoke_permission(
   ok_future(empty_buf())
 }
 
-fn op_fetch(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_fetch(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   let inner = base.inner_as_fetch().unwrap();
   let cmd_id = base.cmd_id();
 
@@ -580,7 +529,7 @@ fn op_fetch(
   }
   let req = maybe_req.unwrap();
 
-  if let Err(e) = isolate.check_net(url) {
+  if let Err(e) = cli.check_net(url) {
     return odd_future(e);
   }
 
@@ -644,9 +593,9 @@ where
 }
 
 fn op_make_temp_dir(
-  isolate: &Isolate,
+  cli: &Cli,
   base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
+  data: deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let base = Box::new(*base);
@@ -654,7 +603,7 @@ fn op_make_temp_dir(
   let cmd_id = base.cmd_id();
 
   // FIXME
-  if let Err(e) = isolate.check_write("make_temp") {
+  if let Err(e) = cli.check_write("make_temp") {
     return odd_future(e);
   }
 
@@ -692,18 +641,14 @@ fn op_make_temp_dir(
   })
 }
 
-fn op_mkdir(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_mkdir(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_mkdir().unwrap();
   let path = String::from(inner.path().unwrap());
   let recursive = inner.recursive();
   let mode = inner.mode();
 
-  if let Err(e) = isolate.check_write(&path) {
+  if let Err(e) = cli.check_write(&path) {
     return odd_future(e);
   }
 
@@ -714,17 +659,13 @@ fn op_mkdir(
   })
 }
 
-fn op_chmod(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_chmod(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
   let path = String::from(inner.path().unwrap());
 
-  if let Err(e) = isolate.check_write(&path) {
+  if let Err(e) = cli.check_write(&path) {
     return odd_future(e);
   }
 
@@ -753,11 +694,7 @@ fn op_chmod(
   })
 }
 
-fn op_open(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_open(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
@@ -803,20 +740,20 @@ fn op_open(
 
   match mode {
     "r" => {
-      if let Err(e) = isolate.check_read(&filename_str) {
+      if let Err(e) = cli.check_read(&filename_str) {
         return odd_future(e);
       }
     }
     "w" | "a" | "x" => {
-      if let Err(e) = isolate.check_write(&filename_str) {
+      if let Err(e) = cli.check_write(&filename_str) {
         return odd_future(e);
       }
     }
     &_ => {
-      if let Err(e) = isolate.check_read(&filename_str) {
+      if let Err(e) = cli.check_read(&filename_str) {
         return odd_future(e);
       }
-      if let Err(e) = isolate.check_write(&filename_str) {
+      if let Err(e) = cli.check_write(&filename_str) {
         return odd_future(e);
       }
     }
@@ -843,11 +780,7 @@ fn op_open(
   Box::new(op)
 }
 
-fn op_close(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_close(_cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_close().unwrap();
   let rid = inner.rid();
@@ -860,11 +793,7 @@ fn op_close(
   }
 }
 
-fn op_shutdown(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_shutdown(_cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_shutdown().unwrap();
   let rid = inner.rid();
@@ -886,11 +815,7 @@ fn op_shutdown(
   }
 }
 
-fn op_read(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_read(_cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_read().unwrap();
   let rid = inner.rid();
@@ -924,11 +849,7 @@ fn op_read(
   }
 }
 
-fn op_write(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_write(_cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_write().unwrap();
   let rid = inner.rid();
@@ -961,11 +882,7 @@ fn op_write(
   }
 }
 
-fn op_seek(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_seek(_cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let _cmd_id = base.cmd_id();
   let inner = base.inner_as_seek().unwrap();
@@ -983,18 +900,14 @@ fn op_seek(
   }
 }
 
-fn op_remove(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_remove(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_remove().unwrap();
   let path_ = inner.path().unwrap();
   let path = PathBuf::from(path_);
   let recursive = inner.recursive();
 
-  if let Err(e) = isolate.check_write(path.to_str().unwrap()) {
+  if let Err(e) = cli.check_write(path.to_str().unwrap()) {
     return odd_future(e);
   }
 
@@ -1013,18 +926,14 @@ fn op_remove(
 }
 
 // Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
-fn op_read_file(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_read_file(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_read_file().unwrap();
   let cmd_id = base.cmd_id();
   let filename_ = inner.filename().unwrap();
   let filename = PathBuf::from(filename_);
   debug!("op_read_file {}", filename.display());
-  if let Err(e) = isolate.check_read(&filename_) {
+  if let Err(e) = cli.check_read(&filename_) {
     return odd_future(e);
   }
   blocking(base.sync(), move || {
@@ -1051,11 +960,7 @@ fn op_read_file(
   })
 }
 
-fn op_copy_file(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_copy_file(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_copy_file().unwrap();
   let from_ = inner.from().unwrap();
@@ -1063,10 +968,10 @@ fn op_copy_file(
   let to_ = inner.to().unwrap();
   let to = PathBuf::from(to_);
 
-  if let Err(e) = isolate.check_read(&from_) {
+  if let Err(e) = cli.check_read(&from_) {
     return odd_future(e);
   }
-  if let Err(e) = isolate.check_write(&to_) {
+  if let Err(e) = cli.check_write(&to_) {
     return odd_future(e);
   }
 
@@ -1107,11 +1012,7 @@ fn get_mode(_perm: &fs::Permissions) -> u32 {
   0
 }
 
-fn op_cwd(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_cwd(_cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
   Box::new(futures::future::result(|| -> OpResult {
@@ -1133,11 +1034,7 @@ fn op_cwd(
   }()))
 }
 
-fn op_stat(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_stat(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
@@ -1145,7 +1042,7 @@ fn op_stat(
   let filename = PathBuf::from(filename_);
   let lstat = inner.lstat();
 
-  if let Err(e) = isolate.check_read(&filename_) {
+  if let Err(e) = cli.check_read(&filename_) {
     return odd_future(e);
   }
 
@@ -1185,17 +1082,13 @@ fn op_stat(
   })
 }
 
-fn op_read_dir(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_read_dir(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
   let path = String::from(inner.path().unwrap());
 
-  if let Err(e) = isolate.check_read(&path) {
+  if let Err(e) = cli.check_read(&path) {
     return odd_future(e);
   }
 
@@ -1246,11 +1139,7 @@ fn op_read_dir(
   })
 }
 
-fn op_write_file(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_write_file(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   let inner = base.inner_as_write_file().unwrap();
   let filename = String::from(inner.filename().unwrap());
   let update_perm = inner.update_perm();
@@ -1258,7 +1147,7 @@ fn op_write_file(
   let is_create = inner.is_create();
   let is_append = inner.is_append();
 
-  if let Err(e) = isolate.check_write(&filename) {
+  if let Err(e) = cli.check_write(&filename) {
     return odd_future(e);
   }
 
@@ -1276,17 +1165,13 @@ fn op_write_file(
   })
 }
 
-fn op_rename(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_rename(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_rename().unwrap();
   let oldpath = PathBuf::from(inner.oldpath().unwrap());
   let newpath_ = inner.newpath().unwrap();
   let newpath = PathBuf::from(newpath_);
-  if let Err(e) = isolate.check_write(&newpath_) {
+  if let Err(e) = cli.check_write(&newpath_) {
     return odd_future(e);
   }
   blocking(base.sync(), move || -> OpResult {
@@ -1296,18 +1181,14 @@ fn op_rename(
   })
 }
 
-fn op_symlink(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_symlink(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_symlink().unwrap();
   let oldname = PathBuf::from(inner.oldname().unwrap());
   let newname_ = inner.newname().unwrap();
   let newname = PathBuf::from(newname_);
 
-  if let Err(e) = isolate.check_write(&newname_) {
+  if let Err(e) = cli.check_write(&newname_) {
     return odd_future(e);
   }
   // TODO Use type for Windows.
@@ -1325,18 +1206,14 @@ fn op_symlink(
   })
 }
 
-fn op_read_link(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_read_link(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
   let name_ = inner.name().unwrap();
   let name = PathBuf::from(name_);
 
-  if let Err(e) = isolate.check_read(&name_) {
+  if let Err(e) = cli.check_read(&name_) {
     return odd_future(e);
   }
 
@@ -1363,18 +1240,14 @@ fn op_read_link(
   })
 }
 
-fn op_repl_start(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_repl_start(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_repl_start().unwrap();
   let cmd_id = base.cmd_id();
   let history_file = String::from(inner.history_file().unwrap());
 
   debug!("op_repl_start {}", history_file);
-  let history_path = repl::history_path(&isolate.state.dir, &history_file);
+  let history_path = repl::history_path(&cli.state.dir, &history_file);
   let repl = repl::Repl::new(history_path);
   let resource = resources::add_repl(repl);
 
@@ -1395,9 +1268,9 @@ fn op_repl_start(
 }
 
 fn op_repl_readline(
-  _isolate: &Isolate,
+  _cli: &Cli,
   base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
+  data: deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_repl_readline().unwrap();
@@ -1430,18 +1303,14 @@ fn op_repl_readline(
   })
 }
 
-fn op_truncate(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_truncate(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
 
   let inner = base.inner_as_truncate().unwrap();
   let filename = String::from(inner.name().unwrap());
   let len = inner.len();
 
-  if let Err(e) = isolate.check_write(&filename) {
+  if let Err(e) = cli.check_write(&filename) {
     return odd_future(e);
   }
 
@@ -1453,13 +1322,9 @@ fn op_truncate(
   })
 }
 
-fn op_listen(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_listen(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if let Err(e) = isolate.check_net("listen") {
+  if let Err(e) = cli.check_net("listen") {
     return odd_future(e);
   }
 
@@ -1515,13 +1380,9 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
   ))
 }
 
-fn op_accept(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_accept(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if let Err(e) = isolate.check_net("accept") {
+  if let Err(e) = cli.check_net("accept") {
     return odd_future(e);
   }
   let cmd_id = base.cmd_id();
@@ -1541,13 +1402,9 @@ fn op_accept(
   }
 }
 
-fn op_dial(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_dial(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  if let Err(e) = isolate.check_net("dial") {
+  if let Err(e) = cli.check_net("dial") {
     return odd_future(e);
   }
   let cmd_id = base.cmd_id();
@@ -1567,18 +1424,14 @@ fn op_dial(
   Box::new(op)
 }
 
-fn op_metrics(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_metrics(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::MetricsRes::create(
     builder,
-    &msg::MetricsResArgs::from(&isolate.state.metrics),
+    &msg::MetricsResArgs::from(&cli.state.metrics),
   );
   ok_future(serialize_response(
     cmd_id,
@@ -1591,11 +1444,7 @@ fn op_metrics(
   ))
 }
 
-fn op_resources(
-  _isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_resources(_cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
@@ -1643,15 +1492,11 @@ fn subprocess_stdio_map(v: msg::ProcessStdio) -> std::process::Stdio {
   }
 }
 
-fn op_run(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_run(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert!(base.sync());
   let cmd_id = base.cmd_id();
 
-  if let Err(e) = isolate.check_run() {
+  if let Err(e) = cli.check_run() {
     return odd_future(e);
   }
 
@@ -1716,17 +1561,13 @@ fn op_run(
   ))
 }
 
-fn op_run_status(
-  isolate: &Isolate,
-  base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
-) -> Box<Op> {
+fn op_run_status(cli: &Cli, base: &msg::Base<'_>, data: deno_buf) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_run_status().unwrap();
   let rid = inner.rid();
 
-  if let Err(e) = isolate.check_run() {
+  if let Err(e) = cli.check_run() {
     return odd_future(e);
   }
 
@@ -1793,15 +1634,15 @@ impl Future for GetMessageFuture {
 }
 
 fn op_worker_get_message(
-  isolate: &Isolate,
+  cli: &Cli,
   base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
+  data: deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
   let op = GetMessageFuture {
-    state: isolate.state.clone(),
+    state: cli.state.clone(),
   };
   let op = op.map_err(move |_| -> DenoError { unimplemented!() });
   let op = op.and_then(move |maybe_buf| -> DenoResult<Buf> {
@@ -1827,16 +1668,16 @@ fn op_worker_get_message(
 }
 
 fn op_worker_post_message(
-  isolate: &Isolate,
+  cli: &Cli,
   base: &msg::Base<'_>,
-  data: libdeno::deno_buf,
+  data: deno_buf,
 ) -> Box<Op> {
   let cmd_id = base.cmd_id();
 
   let d = Vec::from(data.as_ref()).into_boxed_slice();
 
-  assert!(isolate.state.worker_channels.is_some());
-  let tx = match isolate.state.worker_channels {
+  assert!(cli.state.worker_channels.is_some());
+  let tx = match cli.state.worker_channels {
     None => panic!("expected worker_channels"),
     Some(ref wc) => {
       let wc = wc.lock().unwrap();
@@ -1862,8 +1703,8 @@ fn op_worker_post_message(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::isolate::{Isolate, IsolateState};
-  use crate::isolate_init::IsolateInit;
+  use crate::cli::{Cli, IsolateState};
+  use crate::cli_init::CliInit;
   use crate::permissions::DenoPermissions;
   use std::sync::atomic::AtomicBool;
 
@@ -1877,8 +1718,8 @@ mod tests {
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
     };
-    let isolate = Isolate::new(
-      IsolateInit {
+    let cli = Cli::new(
+      CliInit {
         snapshot: None,
         init_script: None,
       },
@@ -1901,11 +1742,8 @@ mod tests {
     msg::finish_base_buffer(builder, base);
     let data = builder.finished_data();
     let final_msg = msg::get_root_as_base(&data);
-    let fetch_result = op_fetch_module_meta_data(
-      &isolate,
-      &final_msg,
-      libdeno::deno_buf::empty(),
-    ).wait();
+    let fetch_result =
+      op_fetch_module_meta_data(&cli, &final_msg, deno_buf::empty()).wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
@@ -1922,8 +1760,8 @@ mod tests {
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
     };
-    let isolate = Isolate::new(
-      IsolateInit {
+    let cli = Cli::new(
+      CliInit {
         snapshot: None,
         init_script: None,
       },
@@ -1946,11 +1784,8 @@ mod tests {
     msg::finish_base_buffer(builder, base);
     let data = builder.finished_data();
     let final_msg = msg::get_root_as_base(&data);
-    let fetch_result = op_fetch_module_meta_data(
-      &isolate,
-      &final_msg,
-      libdeno::deno_buf::empty(),
-    ).wait();
+    let fetch_result =
+      op_fetch_module_meta_data(&cli, &final_msg, deno_buf::empty()).wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
@@ -1967,8 +1802,8 @@ mod tests {
       allow_net: AtomicBool::new(false),
       allow_run: AtomicBool::new(true),
     };
-    let isolate = Isolate::new(
-      IsolateInit {
+    let cli = Cli::new(
+      CliInit {
         snapshot: None,
         init_script: None,
       },
@@ -1991,11 +1826,8 @@ mod tests {
     msg::finish_base_buffer(builder, base);
     let data = builder.finished_data();
     let final_msg = msg::get_root_as_base(&data);
-    let fetch_result = op_fetch_module_meta_data(
-      &isolate,
-      &final_msg,
-      libdeno::deno_buf::empty(),
-    ).wait();
+    let fetch_result =
+      op_fetch_module_meta_data(&cli, &final_msg, deno_buf::empty()).wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
@@ -2012,8 +1844,8 @@ mod tests {
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(false),
     };
-    let isolate = Isolate::new(
-      IsolateInit {
+    let cli = Cli::new(
+      CliInit {
         snapshot: None,
         init_script: None,
       },
@@ -2036,11 +1868,8 @@ mod tests {
     msg::finish_base_buffer(builder, base);
     let data = builder.finished_data();
     let final_msg = msg::get_root_as_base(&data);
-    let fetch_result = op_fetch_module_meta_data(
-      &isolate,
-      &final_msg,
-      libdeno::deno_buf::empty(),
-    ).wait();
+    let fetch_result =
+      op_fetch_module_meta_data(&cli, &final_msg, deno_buf::empty()).wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert!(e.to_string() != permission_denied().to_string()),

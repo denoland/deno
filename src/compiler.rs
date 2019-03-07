@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::isolate::Buf;
-use crate::isolate::IsolateState;
+use crate::cli::Buf;
 use crate::isolate_init;
+use crate::isolate_state::IsolateState;
 use crate::msg;
 use crate::permissions::DenoPermissions;
 use crate::resources;

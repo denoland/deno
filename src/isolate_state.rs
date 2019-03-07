@@ -1,39 +1,15 @@
-use crate::compiler::compile_sync;
-use crate::compiler::ModuleMetaData;
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+#![allow(dead_code)]
+
+use crate::cli::Buf;
 use crate::deno_dir;
-use crate::errors::DenoError;
-use crate::errors::DenoResult;
-use crate::errors::RustOrJsError;
 use crate::flags;
-use crate::isolate_init::IsolateInit;
-use crate::js_errors::apply_source_map;
-use crate::libdeno;
-use crate::modules::Modules;
-use crate::msg;
-use crate::permissions::DenoPermissions;
-use crate::tokio_util;
-
 use futures::sync::mpsc as async_mpsc;
-use futures::Future;
-use libc::c_char;
-use libc::c_void;
 use std;
-use std::cell::Cell;
-use std::cell::RefCell;
 use std::env;
-use std::ffi::CStr;
-use std::ffi::CString;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc;
-use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::{Once, ONCE_INIT};
-use std::time::Duration;
-use std::time::Instant;
-use tokio;
-
-use deno_core::Behavior;
-use deno_core::JSError;
 
 pub type WorkerSender = async_mpsc::Sender<Buf>;
 pub type WorkerReceiver = async_mpsc::Receiver<Buf>;

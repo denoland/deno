@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+#![allow(unused_variables)]
+
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -9,6 +11,7 @@ extern crate futures;
 extern crate serde_json;
 
 mod ansi;
+pub mod cli;
 pub mod compiler;
 pub mod deno_dir;
 pub mod errors;
@@ -16,10 +19,9 @@ pub mod flags;
 mod fs;
 mod http_body;
 mod http_util;
-pub mod isolate;
 pub mod isolate_init;
+pub mod isolate_state;
 pub mod js_errors;
-pub mod libdeno;
 pub mod modules;
 pub mod msg;
 pub mod msg_util;
@@ -36,6 +38,11 @@ pub mod workers;
 #[cfg(unix)]
 mod eager_unix;
 
+use crate::cli::Cli;
+use crate::isolate_state::IsolateState;
+use deno_core::JSError;
+use futures::lazy;
+use futures::Future;
 use log::{LevelFilter, Metadata, Record};
 use std::env;
 use std::sync::Arc;
@@ -60,6 +67,12 @@ impl log::Log for Logger {
 fn print_err_and_exit(err: errors::RustOrJsError) {
   eprintln!("{}", err.to_string());
   std::process::exit(1);
+}
+
+fn js_check(r: Result<(), JSError>) {
+  if let Err(e) = r {
+    print_err_and_exit(e.into())
+  }
 }
 
 fn main() {
@@ -94,14 +107,28 @@ fn main() {
   let should_prefetch = flags.prefetch || flags.info;
   let should_display_info = flags.info;
 
-  let state = Arc::new(isolate::IsolateState::new(flags, rest_argv, None));
-  let isolate_init = isolate_init::deno_isolate_init();
-  let permissions = permissions::DenoPermissions::from_flags(&state.flags);
-  let mut isolate =
-    isolate::Isolate::new(isolate_init, state, ops::dispatch, permissions);
+  let main_future = lazy(move || {
+    println!("Hello world");
+    let state = Arc::new(IsolateState::new(flags, rest_argv, None));
+    let isolate_init = isolate_init::deno_isolate_init();
+    let permissions = permissions::DenoPermissions::from_flags(&state.flags);
+    let cli = Cli::new(isolate_init, state, permissions);
+    let isolate = deno_core::Isolate::new(cli);
 
-  tokio_util::init(|| {
     // Setup runtime.
+    js_check(isolate.execute("<anonymous>", "denoMain()"));
+
+    isolate.then(|r| {
+      js_check(r);
+      Ok(())
+    })
+  });
+
+  // tokio::runtime::current_thread::run(main_future);
+  tokio::run(main_future);
+
+  /*
+  tokio_util::init(|| {
     isolate
       .execute("denoMain();")
       .map_err(errors::RustOrJsError::from)
@@ -129,4 +156,5 @@ fn main() {
       .map_err(errors::RustOrJsError::from)
       .unwrap_or_else(print_err_and_exit);
   });
+  */
 }
