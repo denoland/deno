@@ -113,8 +113,6 @@ jobs:
     - name: "cargo release linux arm64"
       os: linux
       dist: xenial
-      after_success:
-        - gzip -c $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/deno > target/release/deno_${TRAVIS_OS_NAME}_arm64.gz
       script:
       - rustup target add aarch64-unknown-linux-gnu
       - sudo apt update
@@ -124,7 +122,12 @@ jobs:
       - export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="/usr/bin/aarch64-linux-gnu-gcc-5"
       - export CC_aarch64_unknown_linux_gnu="/usr/bin/aarch64-linux-gnu-gcc-5"
       - ./tools/setup.py
-      - cargo build -vv --target=aarch64-unknown-linux-gnu --release --locked
+      - cargo build -vv --target=aarch64-unknown-linux-gnu --release --tests --locked
+      - sudo apt -yq install qemu qemu-user-static binfmt-support debootstrap
+      - sudo qemu-debootstrap --arch=arm64 --no-check-gpg stretch $HOME/debian-arm64 http://deb.debian.org/debian
+      - sudo chroot $HOME/debian-arm64 bash -c "$(find $CARGO_TARGET_DIR/target/aarch64-unknown-linux-gnu/release -maxdepth 1 -type f -executable -regextype sed -regex '.*/[a-z_]*-[0-9a-f]*'))"
+      - sudo cp $CARGO_TARGET_DIR $HOME/debian-arm64/$CARGO_TARGET_DIR
+      - sudo chroot $HOME/debian-arm64 bash -c ""
 
     - name: "cargo release linux x86_64"
       os: linux

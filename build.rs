@@ -45,6 +45,7 @@ fn main() {
 
   let gn_target;
 
+  // Equivilent to target arch != host arch
   let is_cross_compile = env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str()
     != env::var("HOST")
       .unwrap()
