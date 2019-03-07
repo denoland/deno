@@ -33,9 +33,7 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
   // updates its value.
   let mut c_argv_len = c_argv.len() as c_int;
   // Let v8 parse the arguments it recognizes and remove them from c_argv.
-  unsafe {
-    deno_set_v8_flags(&mut c_argv_len, c_argv.as_mut_ptr())
-  };
+  unsafe { deno_set_v8_flags(&mut c_argv_len, c_argv.as_mut_ptr()) };
   // If c_argv_len was updated we have to change the length of c_argv to match.
   c_argv.truncate(c_argv_len as usize);
   // Copy the modified arguments list into a proper rust vec and return it.
@@ -84,4 +82,3 @@ fn test_v8_set_flags_preprocess_2() {
     (vec!["deno".to_string()], vec!["--help".to_string()])
   );
 }
-
