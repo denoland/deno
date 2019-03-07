@@ -33,7 +33,7 @@ impl<R> Future for PendingOp<R> {
       let op = &mut self.op;
       op.poll().map_err(|()| {
         // Ops should not error. If an op experiences an error it needs to
-        // encode that error into the Buf, so it can be returned to JS.
+        // encode that error into the record R, so it can be returned to JS.
         panic!("ops should not error")
       })
     }
