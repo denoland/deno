@@ -41,6 +41,9 @@ impl<R> Future for PendingOp<R> {
 }
 
 pub trait Behavior<R> {
+  fn startup_snapshot(&self) -> Option<deno_buf>;
+  fn startup_shared(&self) -> Option<deno_buf>;
+
   fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod;
 
   fn recv(&mut self, record: R, zero_copy_buf: deno_buf) -> (bool, Box<Op<R>>);
@@ -62,22 +65,18 @@ unsafe impl<R, B: Behavior<R>> Send for Isolate<R, B> {}
 static DENO_INIT: Once = ONCE_INIT;
 
 impl<R, B: Behavior<R>> Isolate<R, B> {
-  pub fn new(
-    behavior: B,
-    shared: Option<deno_buf>,
-    load_snapshot: Option<deno_buf>,
-  ) -> Self {
+  pub fn new(behavior: B) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
 
     let config = libdeno::deno_config {
       will_snapshot: 0,
-      load_snapshot: match load_snapshot {
+      load_snapshot: match behavior.startup_snapshot() {
         Some(s) => s,
         None => libdeno::deno_buf::empty(),
       },
-      shared: match shared {
+      shared: match behavior.startup_shared() {
         Some(s) => s,
         None => libdeno::deno_buf::empty(),
       },
@@ -389,6 +388,14 @@ mod tests {
   }
 
   impl Behavior<()> for TestBehavior {
+    fn startup_snapshot(&self) -> Option<deno_buf> {
+      None
+    }
+
+    fn startup_shared(&self) -> Option<deno_buf> {
+      None
+    }
+
     fn recv(
       &mut self,
       _record: (),
@@ -424,7 +431,7 @@ mod tests {
   #[test]
   fn test_recv() {
     let behavior = TestBehavior::new();
-    let isolate = Isolate::new(behavior, None, None);
+    let isolate = Isolate::new(behavior);
     js_check(isolate.execute(
       "filename.js",
       r#"
@@ -441,7 +448,7 @@ mod tests {
   #[test]
   fn test_mods() {
     let behavior = TestBehavior::new();
-    let mut isolate = Isolate::new(behavior, None, None);
+    let mut isolate = Isolate::new(behavior);
     let mod_a = isolate
       .mod_new(
         true,
@@ -481,7 +488,7 @@ mod tests {
   #[test]
   fn test_poll_async_immediate_ops() {
     let behavior = TestBehavior::new();
-    let mut isolate = Isolate::new(behavior, None, None);
+    let mut isolate = Isolate::new(behavior);
 
     js_check(isolate.execute(
       "setup.js",

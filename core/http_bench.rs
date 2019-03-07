@@ -55,12 +55,6 @@ impl HttpBench {
     shared32[INDEX_LEN] = 0;
     Self { shared32 }
   }
-
-  fn as_deno_buf(&self) -> deno_buf {
-    let ptr = self.shared32.as_ptr() as *const u8;
-    let len = mem::size_of::<i32>() * self.shared32.len();
-    unsafe { deno_buf::from_raw_parts(ptr, len) }
-  }
 }
 
 fn idx(i: usize, off: usize) -> usize {
@@ -68,6 +62,16 @@ fn idx(i: usize, off: usize) -> usize {
 }
 
 impl Behavior<Record> for HttpBench {
+  fn startup_snapshot(&self) -> Option<deno_buf> {
+    None
+  }
+
+  fn startup_shared(&self) -> Option<deno_buf> {
+    let ptr = self.shared32.as_ptr() as *const u8;
+    let len = mem::size_of::<i32>() * self.shared32.len();
+    Some(unsafe { deno_buf::from_raw_parts(ptr, len) })
+  }
+
   fn resolve(&mut self, _specifier: &str, _referrer: deno_mod) -> deno_mod {
     // HttpBench doesn't do ES modules.
     unimplemented!()
@@ -161,9 +165,7 @@ fn main() {
   let js_source = include_str!("http_bench.js");
 
   let main_future = lazy(move || {
-    let behavior = HttpBench::new();
-    let shared = behavior.as_deno_buf();
-    let isolate = deno_core::Isolate::new(behavior, Some(shared), None);
+    let isolate = deno_core::Isolate::new(HttpBench::new());
 
     // TODO currently isolate.execute() must be run inside tokio, hence the
     // lazy(). It would be nice to not have that contraint. Probably requires
