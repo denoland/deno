@@ -2,10 +2,9 @@
 // MIT License
 // Copyright (c) 2018 Terkel Gjervig Nielsen
 
-import * as deno from "deno";
 import { GlobOptions } from "./glob.ts";
 
-const isWin = deno.platform.os === "win";
+const isWin = Deno.build.os === "win";
 const SEP = isWin ? `\\\\+` : `\\/`;
 const SEP_ESC = isWin ? `\\\\` : `/`;
 const GLOBSTAR = `((?:[^/]*(?:/|$))*)`;
