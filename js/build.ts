@@ -9,8 +9,8 @@ export interface BuildInfo {
   /** The operating system platform. */
   os: OSType;
 
-  /** The GN build arguments */
-  gnArgs: string;
+  /** The arguments passed to GN during build. See `gn help buildargs`. */
+  args: string;
 }
 
 /** The operating system platform. */
@@ -26,7 +26,7 @@ export const build: BuildInfo = {
   // These string will be replaced by rollup
   arch: `ROLLUP_REPLACE_ARCH` as any,
   os: `ROLLUP_REPLACE_OS` as any,
-  gnArgs: `ROLLUP_REPLACE_GN_ARGS`
+  args: `ROLLUP_REPLACE_GN_ARGS`
   /* eslint-enable @typescript-eslint/no-explicit-any */
 };
 
