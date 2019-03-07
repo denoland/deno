@@ -14,6 +14,7 @@ def main():
     enable_ansi_colors()
 
     os.chdir(root_path)
+    sys.path.append('third_party/python_packages')
 
     third_party.download_gn()
     third_party.download_clang_format()
