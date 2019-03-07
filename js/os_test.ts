@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEqual } from "./test_util.ts";
+import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ env: true }, function envSuccess() {
   const env = Deno.env();
   assert(env !== null);
   env.test_var = "Hello World";
   const newEnv = Deno.env();
-  assertEqual(env.test_var, newEnv.test_var);
+  assertEquals(env.test_var, newEnv.test_var);
 });
 
 test(function envFailure() {
@@ -15,8 +15,8 @@ test(function envFailure() {
     const env = Deno.env();
   } catch (err) {
     caughtError = true;
-    assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
-    assertEqual(err.name, "PermissionDenied");
+    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
   }
 
   assert(caughtError);

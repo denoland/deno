@@ -3,7 +3,7 @@
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
-import { assertEqual, test } from "./test_util.ts";
+import { assertEquals, test } from "./test_util.ts";
 
 const { Buffer, readAll } = Deno;
 type Buffer = Deno.Buffer;
@@ -26,12 +26,12 @@ function init() {
 
 function check(buf: Deno.Buffer, s: string) {
   const bytes = buf.bytes();
-  assertEqual(buf.length, bytes.byteLength);
+  assertEquals(buf.length, bytes.byteLength);
   const decoder = new TextDecoder();
   const bytesStr = decoder.decode(bytes);
-  assertEqual(bytesStr, s);
-  assertEqual(buf.length, buf.toString().length);
-  assertEqual(buf.length, s.length);
+  assertEquals(bytesStr, s);
+  assertEquals(buf.length, buf.toString().length);
+  assertEquals(buf.length, s.length);
 }
 
 // Fill buf through n writes of byte slice fub.
@@ -46,7 +46,7 @@ async function fillBytes(
   check(buf, s);
   for (; n > 0; n--) {
     let m = await buf.write(fub);
-    assertEqual(m, fub.byteLength);
+    assertEquals(m, fub.byteLength);
     const decoder = new TextDecoder();
     s += decoder.decode(fub);
     check(buf, s);
@@ -88,15 +88,15 @@ test(async function bufferBasicOperations() {
     check(buf, "");
 
     let n = await buf.write(testBytes.subarray(0, 1));
-    assertEqual(n, 1);
+    assertEquals(n, 1);
     check(buf, "a");
 
     n = await buf.write(testBytes.subarray(1, 2));
-    assertEqual(n, 1);
+    assertEquals(n, 1);
     check(buf, "ab");
 
     n = await buf.write(testBytes.subarray(2, 26));
-    assertEqual(n, 24);
+    assertEquals(n, 24);
     check(buf, testString.slice(0, 26));
 
     buf.truncate(26);
@@ -119,8 +119,8 @@ test(async function bufferReadEmptyAtEOF() {
   let buf = new Buffer();
   const zeroLengthTmp = new Uint8Array(0);
   let result = await buf.read(zeroLengthTmp);
-  assertEqual(result.nread, 0);
-  assertEqual(result.eof, false);
+  assertEquals(result.nread, 0);
+  assertEquals(result.eof, false);
 });
 
 test(async function bufferLargeByteWrites() {
@@ -149,8 +149,8 @@ test(async function bufferTooLargeByteWrites() {
     err = e;
   }
 
-  assertEqual(err.kind, Deno.ErrorKind.TooLarge);
-  assertEqual(err.name, "TooLarge");
+  assertEquals(err.kind, Deno.ErrorKind.TooLarge);
+  assertEquals(err.name, "TooLarge");
 });
 
 test(async function bufferLargeByteReads() {
@@ -166,7 +166,7 @@ test(async function bufferLargeByteReads() {
 
 test(function bufferCapWithPreallocatedSlice() {
   const buf = new Buffer(new ArrayBuffer(10));
-  assertEqual(buf.capacity, 10);
+  assertEquals(buf.capacity, 10);
 });
 
 test(async function bufferReadFrom() {
@@ -187,7 +187,7 @@ test(async function bufferReadFrom() {
 });
 
 function repeat(c: string, bytes: number): Uint8Array {
-  assertEqual(c.length, 1);
+  assertEquals(c.length, 1);
   const ui8 = new Uint8Array(bytes);
   ui8.fill(c.charCodeAt(0));
   return ui8;
@@ -205,11 +205,11 @@ test(async function bufferTestGrow() {
       const yBytes = repeat("y", growLen);
       await buf.write(yBytes);
       // Check that buffer has correct data.
-      assertEqual(
+      assertEquals(
         buf.bytes().subarray(0, startLen - nread),
         xBytes.subarray(nread)
       );
-      assertEqual(
+      assertEquals(
         buf.bytes().subarray(startLen - nread, startLen - nread + growLen),
         yBytes
       );
@@ -221,8 +221,8 @@ test(async function testReadAll() {
   init();
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = await readAll(reader);
-  assertEqual(testBytes.byteLength, actualBytes.byteLength);
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
   for (let i = 0; i < testBytes.length; ++i) {
-    assertEqual(testBytes[i], actualBytes[i]);
+    assertEquals(testBytes[i], actualBytes[i]);
   }
 });
