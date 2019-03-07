@@ -220,10 +220,7 @@ export default function makeConfig(commandOptions) {
       resolveGenerated(),
 
       // Allows rollup to resolve modules based on Node.js resolution
-      nodeResolve({
-        jsnext: true,
-        main: true
-      }),
+      nodeResolve(),
 
       // Allows rollup to import CommonJS modules
       commonjs({

@@ -15,7 +15,21 @@ import {
   TypeGuards,
   VariableStatement,
   VariableDeclarationKind
-} from "ts-simple-ast";
+} from "ts-morph";
+
+let silent = false;
+
+/** Logs a message to the console. */
+export function log(message: any = "", ...args: any[]) {
+  if (!silent) {
+    console.log(message, ...args);
+  }
+}
+
+/** Sets the silent flag which impacts logging to the console. */
+export function setSilent(value = false): void {
+  silent = value;
+}
 
 /** Add a property to an interface */
 export function addInterfaceProperty(
@@ -169,8 +183,12 @@ export function flattenNamespace({
     }
     sourceFiles.add(currentSourceFile);
 
-    const currentSourceFilePath = currentSourceFile.getFilePath();
+    const currentSourceFilePath = currentSourceFile
+      .getFilePath()
+      .replace(/(\.d)?\.ts$/, "");
+    log("Process source file:", currentSourceFilePath);
     if (customSources && currentSourceFilePath in customSources) {
+      log("  Using custom source.");
       output += customSources[currentSourceFilePath];
       return;
     }
