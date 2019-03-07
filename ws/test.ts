@@ -3,7 +3,7 @@ import "./sha1_test.ts";
 
 const { Buffer } = Deno;
 import { BufReader } from "../io/bufio.ts";
-import { assert, assertEq } from "../testing/asserts.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
 import { test } from "../testing/mod.ts";
 import {
   acceptable,
@@ -19,10 +19,10 @@ test(async function testReadUnmaskedTextFrame() {
     new Buffer(new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]))
   );
   const frame = await readFrame(buf);
-  assertEq(frame.opcode, OpCode.TextFrame);
-  assertEq(frame.mask, undefined);
-  assertEq(new Buffer(frame.payload).toString(), "Hello");
-  assertEq(frame.isLastFrame, true);
+  assertEquals(frame.opcode, OpCode.TextFrame);
+  assertEquals(frame.mask, undefined);
+  assertEquals(new Buffer(frame.payload).toString(), "Hello");
+  assertEquals(frame.isLastFrame, true);
 });
 
 test(async function testReadMakedTextFrame() {
@@ -46,10 +46,10 @@ test(async function testReadMakedTextFrame() {
   );
   const frame = await readFrame(buf);
   console.dir(frame);
-  assertEq(frame.opcode, OpCode.TextFrame);
+  assertEquals(frame.opcode, OpCode.TextFrame);
   unmask(frame.payload, frame.mask);
-  assertEq(new Buffer(frame.payload).toString(), "Hello");
-  assertEq(frame.isLastFrame, true);
+  assertEquals(new Buffer(frame.payload).toString(), "Hello");
+  assertEquals(frame.isLastFrame, true);
 });
 
 test(async function testReadUnmaskedSplittedTextFrames() {
@@ -60,15 +60,15 @@ test(async function testReadUnmaskedSplittedTextFrames() {
     new Buffer(new Uint8Array([0x80, 0x02, 0x6c, 0x6f]))
   );
   const [f1, f2] = await Promise.all([readFrame(buf1), readFrame(buf2)]);
-  assertEq(f1.isLastFrame, false);
-  assertEq(f1.mask, undefined);
-  assertEq(f1.opcode, OpCode.TextFrame);
-  assertEq(new Buffer(f1.payload).toString(), "Hel");
+  assertEquals(f1.isLastFrame, false);
+  assertEquals(f1.mask, undefined);
+  assertEquals(f1.opcode, OpCode.TextFrame);
+  assertEquals(new Buffer(f1.payload).toString(), "Hel");
 
-  assertEq(f2.isLastFrame, true);
-  assertEq(f2.mask, undefined);
-  assertEq(f2.opcode, OpCode.Continue);
-  assertEq(new Buffer(f2.payload).toString(), "lo");
+  assertEquals(f2.isLastFrame, true);
+  assertEquals(f2.mask, undefined);
+  assertEquals(f2.opcode, OpCode.Continue);
+  assertEquals(new Buffer(f2.payload).toString(), "lo");
 });
 
 test(async function testReadUnmaksedPingPongFrame() {
@@ -77,8 +77,8 @@ test(async function testReadUnmaksedPingPongFrame() {
     new Buffer(new Uint8Array([0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]))
   );
   const ping = await readFrame(buf);
-  assertEq(ping.opcode, OpCode.Ping);
-  assertEq(new Buffer(ping.payload).toString(), "Hello");
+  assertEquals(ping.opcode, OpCode.Ping);
+  assertEquals(new Buffer(ping.payload).toString(), "Hello");
 
   const buf2 = new BufReader(
     new Buffer(
@@ -98,10 +98,10 @@ test(async function testReadUnmaksedPingPongFrame() {
     )
   );
   const pong = await readFrame(buf2);
-  assertEq(pong.opcode, OpCode.Pong);
+  assertEquals(pong.opcode, OpCode.Pong);
   assert(pong.mask !== undefined);
   unmask(pong.payload, pong.mask);
-  assertEq(new Buffer(pong.payload).toString(), "Hello");
+  assertEquals(new Buffer(pong.payload).toString(), "Hello");
 });
 
 test(async function testReadUnmaksedBigBinaryFrame() {
@@ -111,10 +111,10 @@ test(async function testReadUnmaksedBigBinaryFrame() {
   }
   const buf = new BufReader(new Buffer(new Uint8Array(a)));
   const bin = await readFrame(buf);
-  assertEq(bin.opcode, OpCode.BinaryFrame);
-  assertEq(bin.isLastFrame, true);
-  assertEq(bin.mask, undefined);
-  assertEq(bin.payload.length, 256);
+  assertEquals(bin.opcode, OpCode.BinaryFrame);
+  assertEquals(bin.isLastFrame, true);
+  assertEquals(bin.mask, undefined);
+  assertEquals(bin.payload.length, 256);
 });
 
 test(async function testReadUnmaskedBigBigBinaryFrame() {
@@ -124,16 +124,16 @@ test(async function testReadUnmaskedBigBigBinaryFrame() {
   }
   const buf = new BufReader(new Buffer(new Uint8Array(a)));
   const bin = await readFrame(buf);
-  assertEq(bin.opcode, OpCode.BinaryFrame);
-  assertEq(bin.isLastFrame, true);
-  assertEq(bin.mask, undefined);
-  assertEq(bin.payload.length, 0xffff + 1);
+  assertEquals(bin.opcode, OpCode.BinaryFrame);
+  assertEquals(bin.isLastFrame, true);
+  assertEquals(bin.mask, undefined);
+  assertEquals(bin.payload.length, 0xffff + 1);
 });
 
 test(async function testCreateSecAccept() {
   const nonce = "dGhlIHNhbXBsZSBub25jZQ==";
   const d = createSecAccept(nonce);
-  assertEq(d, "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+  assertEquals(d, "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
 });
 
 test(function testAcceptable() {
@@ -143,7 +143,7 @@ test(function testAcceptable() {
       "sec-websocket-key": "aaa"
     })
   });
-  assertEq(ret, true);
+  assertEquals(ret, true);
 });
 
 const invalidHeaders = [
@@ -158,6 +158,6 @@ test(function testAcceptableInvalid() {
     const ret = acceptable({
       headers: new Headers(pat)
     });
-    assertEq(ret, false);
+    assertEquals(ret, false);
   }
 });

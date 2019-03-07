@@ -2,7 +2,7 @@
 
 import { assert, equal, assertStrContains, assertMatch } from "./asserts.ts";
 import { test } from "./mod.ts";
-// import { assertEq as prettyAssertEqual } from "./pretty.ts";
+// import { assertEquals as prettyAssertEqual } from "./pretty.ts";
 // import "./format_test.ts";
 // import "./diff_test.ts";
 // import "./pretty_test.ts";

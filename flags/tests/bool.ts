@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "../../testing/mod.ts";
-import { assertEq } from "../../testing/asserts.ts";
+import { assertEquals } from "../../testing/asserts.ts";
 import { parse } from "../mod.ts";
 
 test(function flagBooleanDefaultFalse() {
@@ -9,14 +9,14 @@ test(function flagBooleanDefaultFalse() {
     default: { verbose: false, t: false }
   });
 
-  assertEq(argv, {
+  assertEquals(argv, {
     verbose: false,
     t: false,
     _: ["moo"]
   });
 
-  assertEq(typeof argv.verbose, "boolean");
-  assertEq(typeof argv.t, "boolean");
+  assertEquals(typeof argv.verbose, "boolean");
+  assertEquals(typeof argv.t, "boolean");
 });
 
 test(function booleanGroups() {
@@ -24,16 +24,16 @@ test(function booleanGroups() {
     boolean: ["x", "y", "z"]
   });
 
-  assertEq(argv, {
+  assertEquals(argv, {
     x: true,
     y: false,
     z: true,
     _: ["one", "two", "three"]
   });
 
-  assertEq(typeof argv.x, "boolean");
-  assertEq(typeof argv.y, "boolean");
-  assertEq(typeof argv.z, "boolean");
+  assertEquals(typeof argv.x, "boolean");
+  assertEquals(typeof argv.y, "boolean");
+  assertEquals(typeof argv.z, "boolean");
 });
 
 test(function booleanAndAliasWithChainableApi() {
@@ -56,8 +56,8 @@ test(function booleanAndAliasWithChainableApi() {
     _: ["derp"]
   };
 
-  assertEq(aliasedArgv, expected);
-  assertEq(propertyArgv, expected);
+  assertEquals(aliasedArgv, expected);
+  assertEquals(propertyArgv, expected);
 });
 
 test(function booleanAndAliasWithOptionsHash() {
@@ -74,8 +74,8 @@ test(function booleanAndAliasWithOptionsHash() {
     h: true,
     _: ["derp"]
   };
-  assertEq(aliasedArgv, expected);
-  assertEq(propertyArgv, expected);
+  assertEquals(aliasedArgv, expected);
+  assertEquals(propertyArgv, expected);
 });
 
 test(function booleanAndAliasArrayWithOptionsHash() {
@@ -95,9 +95,9 @@ test(function booleanAndAliasArrayWithOptionsHash() {
     h: true,
     _: ["derp"]
   };
-  assertEq(aliasedArgv, expected);
-  assertEq(propertyArgv, expected);
-  assertEq(altPropertyArgv, expected);
+  assertEquals(aliasedArgv, expected);
+  assertEquals(propertyArgv, expected);
+  assertEquals(altPropertyArgv, expected);
 });
 
 test(function booleanAndAliasUsingExplicitTrue() {
@@ -115,8 +115,8 @@ test(function booleanAndAliasUsingExplicitTrue() {
     _: []
   };
 
-  assertEq(aliasedArgv, expected);
-  assertEq(propertyArgv, expected);
+  assertEquals(aliasedArgv, expected);
+  assertEquals(propertyArgv, expected);
 });
 
 // regression, see https://github.com/substack/node-optimist/issues/71
@@ -126,15 +126,15 @@ test(function booleanAndNonBoolean() {
     boolean: "boool"
   });
 
-  assertEq(parsed.boool, true);
-  assertEq(parsed.other, "true");
+  assertEquals(parsed.boool, true);
+  assertEquals(parsed.other, "true");
 
   const parsed2 = parse(["--boool", "--other=false"], {
     boolean: "boool"
   });
 
-  assertEq(parsed2.boool, true);
-  assertEq(parsed2.other, "false");
+  assertEquals(parsed2.boool, true);
+  assertEquals(parsed2.other, "false");
 });
 
 test(function booleanParsingTrue() {
@@ -145,7 +145,7 @@ test(function booleanParsingTrue() {
     boolean: ["boool"]
   });
 
-  assertEq(parsed.boool, true);
+  assertEquals(parsed.boool, true);
 });
 
 test(function booleanParsingFalse() {
@@ -156,5 +156,5 @@ test(function booleanParsingFalse() {
     boolean: ["boool"]
   });
 
-  assertEq(parsed.boool, false);
+  assertEquals(parsed.boool, false);
 });

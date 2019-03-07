@@ -16,7 +16,7 @@ Asserts are exposed in `testing/asserts.ts` module.
 - `equal` - Deep comparision function, where `actual` and `expected` are
   compared deeply, and if they vary, `equal` returns `false`.
 - `assert()` - Expects a boolean value, throws if the value is `false`.
-- `assertEq()` - Uses the `equal` comparison and throws if the `actual` and
+- `assertEquals()` - Uses the `equal` comparison and throws if the `actual` and
   `expected` are not equal.
 - `assertStrictEq()` - Compares `actual` and `expected` strictly, therefore
   for non-primitives the values must reference the same instance.
@@ -36,13 +36,13 @@ Basic usage:
 
 ```ts
 import { runTests, test } from "https://deno.land/std/testing/mod.ts";
-import { assertEq } from "https://deno.land/std/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
 test({
   name: "testing example",
   fn() {
-    assertEq("world", "world"));
-    assertEq({ hello: "world" }, { hello: "world" }));
+    assertEquals("world", "world"));
+    assertEquals({ hello: "world" }, { hello: "world" }));
   }
 });
 
@@ -53,8 +53,8 @@ Short syntax (named function instead of object):
 
 ```ts
 test(function example() {
-    assertEq("world", "world"));
-    assertEq({ hello: "world" }, { hello: "world" }));
+    assertEquals("world", "world"));
+    assertEquals({ hello: "world" }, { hello: "world" }));
 });
 ```
 

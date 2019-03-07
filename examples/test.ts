@@ -1,15 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { run } = Deno;
 import { test } from "../testing/mod.ts";
-import { assertEq } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
 
 /** Example of how to do basic tests */
 test(function t1() {
-  assertEq("hello", "hello");
+  assertEquals("hello", "hello");
 });
 
 test(function t2() {
-  assertEq("world", "world");
+  assertEquals("world", "world");
 });
 
 /** A more complicated test that runs a subprocess. */
@@ -19,5 +19,5 @@ test(async function catSmoke() {
     stdout: "piped"
   });
   const s = await p.status();
-  assertEq(s.code, 0);
+  assertEquals(s.code, 0);
 });

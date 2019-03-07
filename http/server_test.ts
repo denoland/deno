@@ -7,7 +7,7 @@
 
 const { Buffer } = Deno;
 import { test } from "../testing/mod.ts";
-import { assertEq } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import { Response, ServerRequest } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 
@@ -47,7 +47,7 @@ test(async function responseWrite() {
     request.w = bufw;
 
     await request.respond(testCase.response);
-    assertEq(buf.toString(), testCase.raw);
+    assertEquals(buf.toString(), testCase.raw);
   }
 });
 
@@ -59,7 +59,7 @@ test(async function requestBodyWithContentLength() {
     const buf = new Buffer(enc.encode("Hello"));
     req.r = new BufReader(buf);
     const body = dec.decode(await req.body());
-    assertEq(body, "Hello");
+    assertEquals(body, "Hello");
   }
 
   // Larger than internal buf
@@ -71,7 +71,7 @@ test(async function requestBodyWithContentLength() {
     const buf = new Buffer(enc.encode(longText));
     req.r = new BufReader(buf);
     const body = dec.decode(await req.body());
-    assertEq(body, longText);
+    assertEquals(body, longText);
   }
 });
 
@@ -96,7 +96,7 @@ test(async function requestBodyWithTransferEncoding() {
     const buf = new Buffer(enc.encode(chunksData));
     req.r = new BufReader(buf);
     const body = dec.decode(await req.body());
-    assertEq(body, shortText);
+    assertEquals(body, shortText);
   }
 
   // Larger than internal buf
@@ -120,7 +120,7 @@ test(async function requestBodyWithTransferEncoding() {
     const buf = new Buffer(enc.encode(chunksData));
     req.r = new BufReader(buf);
     const body = dec.decode(await req.body());
-    assertEq(body, longText);
+    assertEquals(body, longText);
   }
 });
 
@@ -136,7 +136,7 @@ test(async function requestBodyStreamWithContentLength() {
     let offset = 0;
     for await (const chunk of it) {
       const s = dec.decode(chunk);
-      assertEq(shortText.substr(offset, s.length), s);
+      assertEquals(shortText.substr(offset, s.length), s);
       offset += s.length;
     }
   }
@@ -153,7 +153,7 @@ test(async function requestBodyStreamWithContentLength() {
     let offset = 0;
     for await (const chunk of it) {
       const s = dec.decode(chunk);
-      assertEq(longText.substr(offset, s.length), s);
+      assertEquals(longText.substr(offset, s.length), s);
       offset += s.length;
     }
   }
@@ -183,7 +183,7 @@ test(async function requestBodyStreamWithTransferEncoding() {
     let offset = 0;
     for await (const chunk of it) {
       const s = dec.decode(chunk);
-      assertEq(shortText.substr(offset, s.length), s);
+      assertEquals(shortText.substr(offset, s.length), s);
       offset += s.length;
     }
   }
@@ -212,7 +212,7 @@ test(async function requestBodyStreamWithTransferEncoding() {
     let offset = 0;
     for await (const chunk of it) {
       const s = dec.decode(chunk);
-      assertEq(longText.substr(offset, s.length), s);
+      assertEquals(longText.substr(offset, s.length), s);
       offset += s.length;
     }
   }
