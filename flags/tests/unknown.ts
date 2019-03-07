@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "../../testing/mod.ts";
-import { assertEq } from "../../testing/asserts.ts";
+import { assertEquals } from "../../testing/asserts.ts";
 import { parse } from "../mod.ts";
 
 test(function booleanAndAliasIsNotUnknown() {
@@ -19,7 +19,7 @@ test(function booleanAndAliasIsNotUnknown() {
   const aliasedArgv = parse(aliased, opts);
   const propertyArgv = parse(regular, opts);
 
-  assertEq(unknown, ["--derp", "-d"]);
+  assertEquals(unknown, ["--derp", "-d"]);
 });
 
 test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown() {
@@ -32,8 +32,8 @@ test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown() {
     boolean: true,
     unknown: unknownFn
   });
-  assertEq(unknown, ["--tacos=good", "cow", "-p"]);
-  assertEq(argv, {
+  assertEquals(unknown, ["--tacos=good", "cow", "-p"]);
+  assertEquals(argv, {
     honk: true,
     _: []
   });
@@ -55,7 +55,7 @@ test(function stringAndAliasIsNotUnkown() {
   const aliasedArgv = parse(aliased, opts);
   const propertyArgv = parse(regular, opts);
 
-  assertEq(unknown, ["--derp", "-d"]);
+  assertEquals(unknown, ["--derp", "-d"]);
 });
 
 test(function defaultAndAliasIsNotUnknown() {
@@ -74,7 +74,7 @@ test(function defaultAndAliasIsNotUnknown() {
   const aliasedArgv = parse(aliased, opts);
   const propertyArgv = parse(regular, opts);
 
-  assertEq(unknown, []);
+  assertEquals(unknown, []);
 });
 
 test(function valueFollowingDoubleHyphenIsNotUnknown() {
@@ -90,8 +90,8 @@ test(function valueFollowingDoubleHyphenIsNotUnknown() {
   };
   const argv = parse(aliased, opts);
 
-  assertEq(unknown, ["--bad"]);
-  assertEq(argv, {
+  assertEquals(unknown, ["--bad"]);
+  assertEquals(argv, {
     "--": ["good", "arg"],
     _: []
   });

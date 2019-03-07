@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { remove } = Deno;
 import { test } from "../testing/mod.ts";
-import { assert, assertEq } from "../testing/asserts.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
 import { copyBytes, tempFile } from "./util.ts";
 import * as path from "../fs/path.ts";
 
@@ -12,31 +12,31 @@ test(function testCopyBytes() {
   let src = Uint8Array.of(1, 2);
   let len = copyBytes(dst, src, 0);
   assert(len === 2);
-  assertEq(dst, Uint8Array.of(1, 2, 0, 0));
+  assertEquals(dst, Uint8Array.of(1, 2, 0, 0));
 
   dst.fill(0);
   src = Uint8Array.of(1, 2);
   len = copyBytes(dst, src, 1);
   assert(len === 2);
-  assertEq(dst, Uint8Array.of(0, 1, 2, 0));
+  assertEquals(dst, Uint8Array.of(0, 1, 2, 0));
 
   dst.fill(0);
   src = Uint8Array.of(1, 2, 3, 4, 5);
   len = copyBytes(dst, src);
   assert(len === 4);
-  assertEq(dst, Uint8Array.of(1, 2, 3, 4));
+  assertEquals(dst, Uint8Array.of(1, 2, 3, 4));
 
   dst.fill(0);
   src = Uint8Array.of(1, 2);
   len = copyBytes(dst, src, 100);
   assert(len === 0);
-  assertEq(dst, Uint8Array.of(0, 0, 0, 0));
+  assertEquals(dst, Uint8Array.of(0, 0, 0, 0));
 
   dst.fill(0);
   src = Uint8Array.of(3, 4);
   len = copyBytes(dst, src, -2);
   assert(len === 2);
-  assertEq(dst, Uint8Array.of(3, 4, 0, 0));
+  assertEquals(dst, Uint8Array.of(3, 4, 0, 0));
 });
 
 test(async function ioTempfile() {

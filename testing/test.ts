@@ -2,7 +2,7 @@
 import { test, runIfMain } from "./mod.ts";
 import {
   assert,
-  assertEq,
+  assertEquals,
   assertStrictEq,
   assertThrows,
   assertThrowsAsync,
@@ -28,7 +28,7 @@ test(function testingAssertEqualActualUncoercable() {
   let didThrow = false;
   const a = Object.create(null);
   try {
-    assertEq(a, "bar");
+    assertEquals(a, "bar");
   } catch (e) {
     didThrow = true;
   }

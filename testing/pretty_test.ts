@@ -2,7 +2,7 @@
 
 import { test } from "./mod.ts";
 import { red, green, white, gray, bold } from "../colors/mod.ts";
-import { assertEq } from "./pretty.ts";
+import { assertEquals } from "./pretty.ts";
 import { assertThrows } from "./asserts.ts";
 
 const createHeader = (): string[] => [
@@ -19,11 +19,11 @@ const removed: (s: string) => string = (s: string): string => red(bold(s));
 test({
   name: "pass case",
   fn() {
-    assertEq({ a: 10 }, { a: 10 });
-    assertEq(true, true);
-    assertEq(10, 10);
-    assertEq("abc", "abc");
-    assertEq({ a: 10, b: { c: "1" } }, { a: 10, b: { c: "1" } });
+    assertEquals({ a: 10 }, { a: 10 });
+    assertEquals(true, true);
+    assertEquals(10, 10);
+    assertEquals("abc", "abc");
+    assertEquals({ a: 10, b: { c: "1" } }, { a: 10, b: { c: "1" } });
   }
 });
 
@@ -31,7 +31,7 @@ test({
   name: "failed with number",
   fn() {
     assertThrows(
-      () => assertEq(1, 2),
+      () => assertEquals(1, 2),
       Error,
       [...createHeader(), removed(`-   1`), added(`+   2`), ""].join("\n")
     );
@@ -42,7 +42,7 @@ test({
   name: "failed with number vs string",
   fn() {
     assertThrows(
-      () => assertEq(1, "1"),
+      () => assertEquals(1, "1"),
       Error,
       [...createHeader(), removed(`-   1`), added(`+   "1"`)].join("\n")
     );
@@ -53,7 +53,7 @@ test({
   name: "failed with array",
   fn() {
     assertThrows(
-      () => assertEq([1, "2", 3], ["1", "2", 3]),
+      () => assertEquals([1, "2", 3], ["1", "2", 3]),
       Error,
       [
         ...createHeader(),
@@ -73,7 +73,7 @@ test({
   name: "failed with object",
   fn() {
     assertThrows(
-      () => assertEq({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
+      () => assertEquals({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
       Error,
       [
         ...createHeader(),

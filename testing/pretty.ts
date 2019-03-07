@@ -55,7 +55,7 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   return messages;
 }
 
-export function assertEq(
+export function assertEquals(
   actual: unknown,
   expected: unknown,
   msg?: string

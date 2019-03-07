@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "../../testing/mod.ts";
-import { assertEq } from "../../testing/asserts.ts";
+import { assertEquals } from "../../testing/asserts.ts";
 import { parse } from "../mod.ts";
 
 test(function booleanDefaultTrue() {
@@ -8,7 +8,7 @@ test(function booleanDefaultTrue() {
     boolean: "sometrue",
     default: { sometrue: true }
   });
-  assertEq(argv.sometrue, true);
+  assertEquals(argv.sometrue, true);
 });
 
 test(function booleanDefaultFalse() {
@@ -16,7 +16,7 @@ test(function booleanDefaultFalse() {
     boolean: "somefalse",
     default: { somefalse: false }
   });
-  assertEq(argv.somefalse, false);
+  assertEquals(argv.somefalse, false);
 });
 
 test(function booleanDefaultNull() {
@@ -24,10 +24,10 @@ test(function booleanDefaultNull() {
     boolean: "maybe",
     default: { maybe: null }
   });
-  assertEq(argv.maybe, null);
+  assertEquals(argv.maybe, null);
   const argv2 = parse(["--maybe"], {
     boolean: "maybe",
     default: { maybe: null }
   });
-  assertEq(argv2.maybe, true);
+  assertEquals(argv2.maybe, true);
 });

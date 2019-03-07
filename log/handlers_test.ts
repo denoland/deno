@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
-import { assertEq } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import { LogLevel, getLevelName, getLevelByName } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 
@@ -56,9 +56,9 @@ test(function simpleHandler() {
       });
     }
 
-    assertEq(handler.level, testCase);
-    assertEq(handler.levelName, testLevel);
-    assertEq(handler.messages, messages);
+    assertEquals(handler.level, testCase);
+    assertEquals(handler.levelName, testLevel);
+    assertEquals(handler.messages, messages);
   }
 });
 
@@ -75,7 +75,7 @@ test(function testFormatterAsString() {
     levelName: "DEBUG"
   });
 
-  assertEq(handler.messages, ["test DEBUG Hello, world!"]);
+  assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
 });
 
 test(function testFormatterAsFunction() {
@@ -92,5 +92,5 @@ test(function testFormatterAsFunction() {
     levelName: "ERROR"
   });
 
-  assertEq(handler.messages, ["fn formmatter ERROR Hello, world!"]);
+  assertEquals(handler.messages, ["fn formmatter ERROR Hello, world!"]);
 });

@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
-import { assertEq } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import { LogRecord, Logger } from "./logger.ts";
 import { LogLevel } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
@@ -23,13 +23,13 @@ test(function simpleLogger() {
   const handler = new TestHandler("DEBUG");
   let logger = new Logger("DEBUG");
 
-  assertEq(logger.level, LogLevel.DEBUG);
-  assertEq(logger.levelName, "DEBUG");
-  assertEq(logger.handlers, []);
+  assertEquals(logger.level, LogLevel.DEBUG);
+  assertEquals(logger.levelName, "DEBUG");
+  assertEquals(logger.handlers, []);
 
   logger = new Logger("DEBUG", [handler]);
 
-  assertEq(logger.handlers, [handler]);
+  assertEquals(logger.handlers, [handler]);
 });
 
 test(function customHandler() {
@@ -38,7 +38,7 @@ test(function customHandler() {
 
   logger.debug("foo", 1, 2);
 
-  assertEq(handler.records, [
+  assertEquals(handler.records, [
     {
       msg: "foo",
       args: [1, 2],
@@ -48,7 +48,7 @@ test(function customHandler() {
     }
   ]);
 
-  assertEq(handler.messages, ["DEBUG foo"]);
+  assertEquals(handler.messages, ["DEBUG foo"]);
 });
 
 test(function logFunctions() {
@@ -66,7 +66,7 @@ test(function logFunctions() {
 
   doLog("DEBUG");
 
-  assertEq(handler.messages, [
+  assertEquals(handler.messages, [
     "DEBUG foo",
     "INFO bar",
     "WARNING baz",
@@ -76,7 +76,7 @@ test(function logFunctions() {
 
   doLog("INFO");
 
-  assertEq(handler.messages, [
+  assertEquals(handler.messages, [
     "INFO bar",
     "WARNING baz",
     "ERROR boo",
@@ -85,13 +85,13 @@ test(function logFunctions() {
 
   doLog("WARNING");
 
-  assertEq(handler.messages, ["WARNING baz", "ERROR boo", "CRITICAL doo"]);
+  assertEquals(handler.messages, ["WARNING baz", "ERROR boo", "CRITICAL doo"]);
 
   doLog("ERROR");
 
-  assertEq(handler.messages, ["ERROR boo", "CRITICAL doo"]);
+  assertEquals(handler.messages, ["ERROR boo", "CRITICAL doo"]);
 
   doLog("CRITICAL");
 
-  assertEq(handler.messages, ["CRITICAL doo"]);
+  assertEquals(handler.messages, ["CRITICAL doo"]);
 });

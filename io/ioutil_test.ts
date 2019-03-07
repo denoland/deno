@@ -2,7 +2,7 @@
 const { Buffer } = Deno;
 import { Reader, ReadResult } from "deno";
 import { test } from "../testing/mod.ts";
-import { assertEq } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import {
   copyN,
   readInt,
@@ -28,13 +28,13 @@ class BinaryReader implements Reader {
 test(async function testReadShort() {
   const r = new BinaryReader(new Uint8Array([0x12, 0x34]));
   const short = await readShort(new BufReader(r));
-  assertEq(short, 0x1234);
+  assertEquals(short, 0x1234);
 });
 
 test(async function testReadInt() {
   const r = new BinaryReader(new Uint8Array([0x12, 0x34, 0x56, 0x78]));
   const int = await readInt(new BufReader(r));
-  assertEq(int, 0x12345678);
+  assertEquals(int, 0x12345678);
 });
 
 test(async function testReadLong() {
@@ -42,7 +42,7 @@ test(async function testReadLong() {
     new Uint8Array([0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78])
   );
   const long = await readLong(new BufReader(r));
-  assertEq(long, 0x1234567812345678);
+  assertEquals(long, 0x1234567812345678);
 });
 
 test(async function testReadLong2() {
@@ -50,7 +50,7 @@ test(async function testReadLong2() {
     new Uint8Array([0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78])
   );
   const long = await readLong(new BufReader(r));
-  assertEq(long, 0x12345678);
+  assertEquals(long, 0x12345678);
 });
 
 test(async function testSliceLongToBytes() {
@@ -63,26 +63,26 @@ test(async function testSliceLongToBytes() {
       )
     )
   );
-  assertEq(actual, expected);
+  assertEquals(actual, expected);
 });
 
 test(async function testSliceLongToBytes2() {
   const arr = sliceLongToBytes(0x12345678);
-  assertEq(arr, [0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78]);
+  assertEquals(arr, [0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78]);
 });
 
 test(async function testCopyN1() {
   const w = new Buffer();
   const r = stringsReader("abcdefghij");
   const n = await copyN(w, r, 3);
-  assertEq(n, 3);
-  assertEq(w.toString(), "abc");
+  assertEquals(n, 3);
+  assertEquals(w.toString(), "abc");
 });
 
 test(async function testCopyN2() {
   const w = new Buffer();
   const r = stringsReader("abcdefghij");
   const n = await copyN(w, r, 11);
-  assertEq(n, 10);
-  assertEq(w.toString(), "abcdefghij");
+  assertEquals(n, 10);
+  assertEquals(w.toString(), "abcdefghij");
 });

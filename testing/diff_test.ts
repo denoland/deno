@@ -1,18 +1,18 @@
 import diff from "./diff.ts";
-import { assertEq } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import { test } from "./mod.ts";
 
 test({
   name: "empty",
   fn() {
-    assertEq(diff([], []), []);
+    assertEquals(diff([], []), []);
   }
 });
 
 test({
   name: '"a" vs "b"',
   fn() {
-    assertEq(diff(["a"], ["b"]), [
+    assertEquals(diff(["a"], ["b"]), [
       { type: "removed", value: "a" },
       { type: "added", value: "b" }
     ]);
@@ -22,28 +22,28 @@ test({
 test({
   name: '"a" vs "a"',
   fn() {
-    assertEq(diff(["a"], ["a"]), [{ type: "common", value: "a" }]);
+    assertEquals(diff(["a"], ["a"]), [{ type: "common", value: "a" }]);
   }
 });
 
 test({
   name: '"a" vs ""',
   fn() {
-    assertEq(diff(["a"], []), [{ type: "removed", value: "a" }]);
+    assertEquals(diff(["a"], []), [{ type: "removed", value: "a" }]);
   }
 });
 
 test({
   name: '"" vs "a"',
   fn() {
-    assertEq(diff([], ["a"]), [{ type: "added", value: "a" }]);
+    assertEquals(diff([], ["a"]), [{ type: "added", value: "a" }]);
   }
 });
 
 test({
   name: '"a" vs "a, b"',
   fn() {
-    assertEq(diff(["a"], ["a", "b"]), [
+    assertEquals(diff(["a"], ["a", "b"]), [
       { type: "common", value: "a" },
       { type: "added", value: "b" }
     ]);
@@ -53,7 +53,7 @@ test({
 test({
   name: '"strength" vs "string"',
   fn() {
-    assertEq(diff(Array.from("strength"), Array.from("string")), [
+    assertEquals(diff(Array.from("strength"), Array.from("string")), [
       { type: "common", value: "s" },
       { type: "common", value: "t" },
       { type: "common", value: "r" },
@@ -70,7 +70,7 @@ test({
 test({
   name: '"strength" vs ""',
   fn() {
-    assertEq(diff(Array.from("strength"), Array.from("")), [
+    assertEquals(diff(Array.from("strength"), Array.from("")), [
       { type: "removed", value: "s" },
       { type: "removed", value: "t" },
       { type: "removed", value: "r" },
@@ -86,7 +86,7 @@ test({
 test({
   name: '"" vs "strength"',
   fn() {
-    assertEq(diff(Array.from(""), Array.from("strength")), [
+    assertEquals(diff(Array.from(""), Array.from("strength")), [
       { type: "added", value: "s" },
       { type: "added", value: "t" },
       { type: "added", value: "r" },
@@ -102,7 +102,7 @@ test({
 test({
   name: '"abc", "c" vs "abc", "bcd", "c"',
   fn() {
-    assertEq(diff(["abc", "c"], ["abc", "bcd", "c"]), [
+    assertEquals(diff(["abc", "c"], ["abc", "bcd", "c"]), [
       { type: "common", value: "abc" },
       { type: "added", value: "bcd" },
       { type: "common", value: "c" }

@@ -2,7 +2,7 @@
 // Ported from https://github.com/browserify/path-browserify/
 
 import { test } from "../../testing/mod.ts";
-import { assertEq } from "../../testing/asserts.ts";
+import { assertEquals } from "../../testing/asserts.ts";
 import * as path from "./mod.ts";
 
 const relativeTests = {
@@ -60,7 +60,7 @@ test(function relative() {
   relativeTests.posix.forEach(function(p) {
     const expected = p[2];
     const actual = path.posix.relative(p[0], p[1]);
-    assertEq(actual, expected);
+    assertEquals(actual, expected);
   });
 });
 
@@ -68,6 +68,6 @@ test(function relativeWin32() {
   relativeTests.win32.forEach(function(p) {
     const expected = p[2];
     const actual = path.win32.relative(p[0], p[1]);
-    assertEq(actual, expected);
+    assertEquals(actual, expected);
   });
 });
