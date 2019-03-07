@@ -10,5 +10,5 @@ test(function buildInfo() {
 });
 
 test(function buildGnArgs() {
-  assert(Deno.build.gnArgs.length > 100);
+  assert(Deno.build.args.length > 100);
 });
