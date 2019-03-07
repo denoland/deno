@@ -18,9 +18,9 @@ The tool depends upon a couple libraries:
 
 - [`ts-node`](https://www.npmjs.com/package/ts-node) to provide just in time
   transpiling of TypeScript for the tool itself.
-- [`ts-simple-ast`](https://www.npmjs.com/package/ts-simple-ast) which provides
-  a more rational and functional interface to the TypeScript AST to make
-  manipulations easier.
+- [`ts-morph`](https://www.npmjs.com/package/ts-morph) which provides a more
+  rational and functional interface to the TypeScript AST to make manipulations
+  easier.
 - [`prettier`](https://www.npmjs.com/package/prettier) and
   [`@types/prettier`](https://www.npmjs.com/package/@types/prettier) to format
   the output.

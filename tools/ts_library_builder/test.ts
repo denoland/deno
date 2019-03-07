@@ -4,7 +4,7 @@
 //  ./node_modules/.bin/ts-node --project tools/ts_library_builder/tsconfig.json tools/ts_library_builder/test.ts
 
 import * as assert from "assert";
-import { Project, ts } from "ts-simple-ast";
+import { Project, ts } from "ts-morph";
 import { flatten, mergeGlobal } from "./build_library";
 import { inlineFiles, loadDtsFiles } from "./ast_util";
 
@@ -20,7 +20,7 @@ function setupFixtures() {
       baseUrl: basePath,
       declaration: true,
       emitDeclarationOnly: true,
-      module: ModuleKind.AMD,
+      module: ModuleKind.ESNext,
       moduleResolution: ModuleResolutionKind.NodeJs,
       strict: true,
       stripInternal: true,
