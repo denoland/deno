@@ -124,7 +124,7 @@ jobs:
       - ./tools/setup.py
       - cargo build -vv --target=aarch64-unknown-linux-gnu --release --locked
       - cargo build -vv --target=aarch64-unknown-linux-gnu --release --tests --locked
-      - mv $(find $CARGO_TARGET_DIR/target/aarch64-unknown-linux-gnu/release -maxdepth 1 -type f -executable -regextype sed -regex '.*/[a-z_]*-[0-9a-f]*') $CARGO_TARGET_DIR/target/aarch64-unknown-linux-gnu/release/test_cc
+      - mv $(find $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release -maxdepth 1 -type f -executable -regextype sed -regex '.*/[a-z_]*-[0-9a-f]*') $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/test_cc
       - sudo apt -yq install qemu qemu-user-static binfmt-support
       - sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 /lib/ld-linux-aarch64.so.1
       - export QEMU_LD_PREFIX=/usr/aarch64-linux-gnu
