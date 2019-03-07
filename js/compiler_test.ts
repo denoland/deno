@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEqual } from "./test_util.ts";
+import { test, assert, assertEquals } from "./test_util.ts";
 
 // We use a silly amount of `any` in these tests...
 // tslint:disable:no-any
@@ -370,8 +370,8 @@ function teardown() {
   logStack = [];
   getEmitOutputStack = [];
 
-  assertEqual(mockDepsStack.length, 0);
-  assertEqual(mockFactoryStack.length, 0);
+  assertEquals(mockDepsStack.length, 0);
+  assertEquals(mockFactoryStack.length, 0);
   mockDepsStack = [];
   mockFactoryStack = [];
 
@@ -384,7 +384,7 @@ test(function testJsonEsmTemplate() {
     `{ "hello": "world", "foo": "bar" }`,
     "/foo.ts"
   );
-  assertEqual(
+  assertEquals(
     result,
     `const _json = JSON.parse(\`{ "hello": "world", "foo": "bar" }\`)\n` +
       `export default _json;\n` +
@@ -406,24 +406,24 @@ test(function compilerCompile() {
     "foo/bar.ts",
     "/root/project"
   );
-  assertEqual(moduleMetaData.sourceCode, fooBarTsSource);
-  assertEqual(moduleMetaData.outputCode, fooBarTsOutput);
+  assertEquals(moduleMetaData.sourceCode, fooBarTsSource);
+  assertEquals(moduleMetaData.outputCode, fooBarTsOutput);
 
-  assertEqual(
+  assertEquals(
     codeFetchStack.length,
     1,
     "Module should have only been fetched once."
   );
-  assertEqual(
+  assertEquals(
     codeCacheStack.length,
     1,
     "Compiled code should have only been cached once."
   );
   const [codeCacheCall] = codeCacheStack;
-  assertEqual(codeCacheCall.fileName, "/root/project/foo/bar.ts");
-  assertEqual(codeCacheCall.sourceCode, fooBarTsSource);
-  assertEqual(codeCacheCall.outputCode, fooBarTsOutput);
-  assertEqual(codeCacheCall.sourceMap, fooBarTsSourcemap);
+  assertEquals(codeCacheCall.fileName, "/root/project/foo/bar.ts");
+  assertEquals(codeCacheCall.sourceCode, fooBarTsSource);
+  assertEquals(codeCacheCall.outputCode, fooBarTsOutput);
+  assertEquals(codeCacheCall.sourceMap, fooBarTsSourcemap);
   teardown();
 });
 
@@ -431,16 +431,16 @@ test(function compilerCompilerMultiModule() {
   // equal to `deno foo/baz.ts`
   setup();
   compilerInstance.compile("foo/baz.ts", "/root/project");
-  assertEqual(codeFetchStack.length, 2, "Two modules fetched.");
-  assertEqual(codeCacheStack.length, 1, "Only one module compiled.");
+  assertEquals(codeFetchStack.length, 2, "Two modules fetched.");
+  assertEquals(codeCacheStack.length, 1, "Only one module compiled.");
   teardown();
 });
 
 test(function compilerLoadJsonModule() {
   setup();
   compilerInstance.compile("loadConfig.ts", "/root/project");
-  assertEqual(codeFetchStack.length, 2, "Two modules fetched.");
-  assertEqual(codeCacheStack.length, 1, "Only one module compiled.");
+  assertEquals(codeFetchStack.length, 2, "Two modules fetched.");
+  assertEquals(codeCacheStack.length, 1, "Only one module compiled.");
   teardown();
 });
 
@@ -451,12 +451,12 @@ test(function compilerResolveModule() {
     "/root/project"
   );
   console.log(moduleMetaData);
-  assertEqual(moduleMetaData.sourceCode, fooBazTsSource);
-  assertEqual(moduleMetaData.outputCode, null);
-  assertEqual(moduleMetaData.sourceMap, null);
-  assertEqual(moduleMetaData.scriptVersion, "1");
+  assertEquals(moduleMetaData.sourceCode, fooBazTsSource);
+  assertEquals(moduleMetaData.outputCode, null);
+  assertEquals(moduleMetaData.sourceMap, null);
+  assertEquals(moduleMetaData.scriptVersion, "1");
 
-  assertEqual(codeFetchStack.length, 1, "Only initial module is resolved.");
+  assertEquals(codeFetchStack.length, 1, "Only initial module is resolved.");
   teardown();
 });
 
@@ -467,7 +467,7 @@ test(function compilerResolveModuleUnknownMediaType() {
     compilerInstance.resolveModule("some.txt", "/root/project");
   } catch (e) {
     assert(e instanceof Error);
-    assertEqual(
+    assertEquals(
       e.message,
       `Unknown media type for: "some.txt" from "/root/project".`
     );
@@ -480,21 +480,21 @@ test(function compilerResolveModuleUnknownMediaType() {
 test(function compilerRecompileFlag() {
   setup();
   compilerInstance.compile("foo/bar.ts", "/root/project");
-  assertEqual(
+  assertEquals(
     getEmitOutputStack.length,
     1,
     "Expected only a single emitted file."
   );
   // running compiler against same file should use cached code
   compilerInstance.compile("foo/bar.ts", "/root/project");
-  assertEqual(
+  assertEquals(
     getEmitOutputStack.length,
     1,
     "Expected only a single emitted file."
   );
   compilerInstance.recompile = true;
   compilerInstance.compile("foo/bar.ts", "/root/project");
-  assertEqual(getEmitOutputStack.length, 2, "Expected two emitted file.");
+  assertEquals(getEmitOutputStack.length, 2, "Expected two emitted file.");
   assert(
     getEmitOutputStack[0] === getEmitOutputStack[1],
     "Expected same file to be emitted twice."
@@ -520,20 +520,20 @@ test(function compilerGetCompilationSettings() {
   for (const key of expectedKeys) {
     assert(key in result, `Expected "${key}" in compiler options.`);
   }
-  assertEqual(Object.keys(result).length, expectedKeys.length);
+  assertEquals(Object.keys(result).length, expectedKeys.length);
 });
 
 test(function compilerGetNewLine() {
   const result = compilerInstance.getNewLine();
-  assertEqual(result, "\n", "Expected newline value of '\\n'.");
+  assertEquals(result, "\n", "Expected newline value of '\\n'.");
 });
 
 test(function compilerGetScriptFileNames() {
   setup();
   compilerInstance.compile("foo/bar.ts", "/root/project");
   const result = compilerInstance.getScriptFileNames();
-  assertEqual(result.length, 1, "Expected only a single filename.");
-  assertEqual(result[0], "/root/project/foo/bar.ts");
+  assertEquals(result.length, 1, "Expected only a single filename.");
+  assertEquals(result[0], "/root/project/foo/bar.ts");
   teardown();
 });
 
@@ -544,23 +544,23 @@ test(function compilerGetScriptKind() {
   compilerInstance.resolveModule("foo.js", "/moduleKinds");
   compilerInstance.resolveModule("foo.json", "/moduleKinds");
   compilerInstance.resolveModule("foo.txt", "/moduleKinds");
-  assertEqual(
+  assertEquals(
     compilerInstance.getScriptKind("/moduleKinds/foo.ts"),
     ScriptKind.TS
   );
-  assertEqual(
+  assertEquals(
     compilerInstance.getScriptKind("/moduleKinds/foo.d.ts"),
     ScriptKind.TS
   );
-  assertEqual(
+  assertEquals(
     compilerInstance.getScriptKind("/moduleKinds/foo.js"),
     ScriptKind.JS
   );
-  assertEqual(
+  assertEquals(
     compilerInstance.getScriptKind("/moduleKinds/foo.json"),
     ScriptKind.JSON
   );
-  assertEqual(
+  assertEquals(
     compilerInstance.getScriptKind("/moduleKinds/foo.txt"),
     ScriptKind.JS
   );
@@ -573,7 +573,7 @@ test(function compilerGetScriptVersion() {
     "foo/bar.ts",
     "/root/project"
   );
-  assertEqual(
+  assertEquals(
     compilerInstance.getScriptVersion(moduleMetaData.fileName),
     "1",
     "Expected known module to have script version of 1"
@@ -582,7 +582,7 @@ test(function compilerGetScriptVersion() {
 });
 
 test(function compilerGetScriptVersionUnknown() {
-  assertEqual(
+  assertEquals(
     compilerInstance.getScriptVersion("/root/project/unknown_module.ts"),
     "",
     "Expected unknown module to have an empty script version"
@@ -597,13 +597,13 @@ test(function compilerGetScriptSnapshot() {
   );
   const result = compilerInstance.getScriptSnapshot(moduleMetaData.fileName);
   assert(result != null, "Expected snapshot to be defined.");
-  assertEqual(result.getLength(), fooBarTsSource.length);
-  assertEqual(
+  assertEquals(result.getLength(), fooBarTsSource.length);
+  assertEquals(
     result.getText(0, 6),
     "import",
     "Expected .getText() to equal 'import'"
   );
-  assertEqual(result.getChangeRange(result), undefined);
+  assertEquals(result.getChangeRange(result), undefined);
   // This is and optional part of the `IScriptSnapshot` API which we don't
   // define, os checking for the lack of this property.
   assert(!("dispose" in result));
@@ -616,12 +616,12 @@ test(function compilerGetScriptSnapshot() {
 });
 
 test(function compilerGetCurrentDirectory() {
-  assertEqual(compilerInstance.getCurrentDirectory(), "");
+  assertEquals(compilerInstance.getCurrentDirectory(), "");
 });
 
 test(function compilerGetDefaultLibFileName() {
   setup();
-  assertEqual(
+  assertEquals(
     compilerInstance.getDefaultLibFileName(),
     "$asset$/lib.deno_runtime.d.ts"
   );
@@ -629,7 +629,7 @@ test(function compilerGetDefaultLibFileName() {
 });
 
 test(function compilerUseCaseSensitiveFileNames() {
-  assertEqual(compilerInstance.useCaseSensitiveFileNames(), true);
+  assertEquals(compilerInstance.useCaseSensitiveFileNames(), true);
 });
 
 test(function compilerReadFile() {
@@ -651,7 +651,7 @@ test(function compilerFileExists() {
   );
   assert(compilerInstance.fileExists(moduleMetaData.fileName));
   assert(compilerInstance.fileExists("$asset$/lib.deno_runtime.d.ts"));
-  assertEqual(
+  assertEquals(
     compilerInstance.fileExists("/root/project/unknown-module.ts"),
     false
   );
@@ -664,7 +664,7 @@ test(function compilerResolveModuleNames() {
     ["foo/bar.ts", "foo/baz.ts", "deno"],
     "/root/project"
   );
-  assertEqual(results.length, 3);
+  assertEquals(results.length, 3);
   const fixtures: Array<[string, boolean]> = [
     ["/root/project/foo/bar.ts", false],
     ["/root/project/foo/baz.ts", false],
@@ -673,8 +673,8 @@ test(function compilerResolveModuleNames() {
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     const [resolvedFileName, isExternalLibraryImport] = fixtures[i];
-    assertEqual(result.resolvedFileName, resolvedFileName);
-    assertEqual(result.isExternalLibraryImport, isExternalLibraryImport);
+    assertEquals(result.resolvedFileName, resolvedFileName);
+    assertEquals(result.isExternalLibraryImport, isExternalLibraryImport);
   }
   teardown();
 });
@@ -685,6 +685,6 @@ test(function compilerResolveEmptyFile() {
     ["empty_file.ts"],
     "/moduleKinds"
   );
-  assertEqual(result[0].resolvedFileName, "/moduleKinds/empty_file.ts");
+  assertEquals(result[0].resolvedFileName, "/moduleKinds/empty_file.ts");
   teardown();
 });

@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assertEqual } from "./test_util.ts";
+import { testPerm, assertEquals } from "./test_util.ts";
 
 function readDataSync(name: string): string {
   const data = Deno.readFileSync(name);
@@ -22,13 +22,13 @@ testPerm({ read: true, write: true }, function truncateSyncSuccess() {
   Deno.writeFileSync(filename, d);
   Deno.truncateSync(filename, 20);
   let data = readDataSync(filename);
-  assertEqual(data.length, 20);
+  assertEquals(data.length, 20);
   Deno.truncateSync(filename, 5);
   data = readDataSync(filename);
-  assertEqual(data.length, 5);
+  assertEquals(data.length, 5);
   Deno.truncateSync(filename, -5);
   data = readDataSync(filename);
-  assertEqual(data.length, 0);
+  assertEquals(data.length, 0);
   Deno.removeSync(filename);
 });
 
@@ -39,13 +39,13 @@ testPerm({ read: true, write: true }, async function truncateSuccess() {
   await Deno.writeFile(filename, d);
   await Deno.truncate(filename, 20);
   let data = await readData(filename);
-  assertEqual(data.length, 20);
+  assertEquals(data.length, 20);
   await Deno.truncate(filename, 5);
   data = await readData(filename);
-  assertEqual(data.length, 5);
+  assertEquals(data.length, 5);
   await Deno.truncate(filename, -5);
   data = await readData(filename);
-  assertEqual(data.length, 0);
+  assertEquals(data.length, 0);
   await Deno.remove(filename);
 });
 
@@ -56,8 +56,8 @@ testPerm({ write: false }, function truncateSyncPerm() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
 });
 
 testPerm({ write: false }, async function truncatePerm() {
@@ -67,6 +67,6 @@ testPerm({ write: false }, async function truncatePerm() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
 });

@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEqual } from "./test_util.ts";
+import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ read: true, write: true }, function mkdirSyncSuccess() {
   const path = Deno.makeTempDirSync() + "/dir";
@@ -14,7 +14,7 @@ testPerm({ read: true, write: true }, function mkdirSyncMode() {
   const pathInfo = Deno.statSync(path);
   if (pathInfo.mode !== null) {
     // Skip windows
-    assertEqual(pathInfo.mode & 0o777, 0o755);
+    assertEquals(pathInfo.mode & 0o777, 0o755);
   }
 });
 
@@ -25,8 +25,8 @@ testPerm({ write: false }, function mkdirSyncPerm() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
 });
 
 testPerm({ read: true, write: true }, async function mkdirSuccess() {
@@ -43,8 +43,8 @@ testPerm({ write: true }, function mkdirErrIfExists() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.AlreadyExists);
-  assertEqual(err.name, "AlreadyExists");
+  assertEquals(err.kind, Deno.ErrorKind.AlreadyExists);
+  assertEquals(err.name, "AlreadyExists");
 });
 
 testPerm({ read: true, write: true }, function mkdirSyncRecursive() {

@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { test, testPerm, assert, assertEqual } from "../js/test_util.ts";
+import { test, testPerm, assert, assertEquals } from "../js/test_util.ts";
 import {
   createBinarySizeColumns,
   createExecTimeColumns,
@@ -134,7 +134,7 @@ const irregularData = [
 
 test(function createExecTimeColumnsRegularData() {
   const columns = createExecTimeColumns(regularData);
-  assertEqual(columns, [
+  assertEquals(columns, [
     ["hello", 0.05, 0.055],
     ["relative_import", 0.06, 0.065],
     ["cold_hello", 0.05, 0.055],
@@ -144,7 +144,7 @@ test(function createExecTimeColumnsRegularData() {
 
 test(function createExecTimeColumnsIrregularData() {
   const columns = createExecTimeColumns(irregularData);
-  assertEqual(columns, [
+  assertEquals(columns, [
     ["hello", null, null],
     ["relative_import", null, null],
     ["cold_hello", null, null],
@@ -154,7 +154,7 @@ test(function createExecTimeColumnsIrregularData() {
 
 test(function createBinarySizeColumnsRegularData() {
   const columns = createBinarySizeColumns(regularData);
-  assertEqual(columns, [
+  assertEquals(columns, [
     ["deno", 100000000, 100000001],
     ["main.js", 90000000, 90000001],
     ["main.js.map", 80000000, 80000001],
@@ -164,30 +164,30 @@ test(function createBinarySizeColumnsRegularData() {
 
 test(function createBinarySizeColumnsIrregularData() {
   const columns = createBinarySizeColumns(irregularData);
-  assertEqual(columns, [["deno", null, 1]]);
+  assertEquals(columns, [["deno", null, 1]]);
 });
 
 test(function createThreadCountColumnsRegularData() {
   const columns = createThreadCountColumns(regularData);
-  assertEqual(columns, [["set_timeout", 4, 5], ["fetch_deps", 6, 7]]);
+  assertEquals(columns, [["set_timeout", 4, 5], ["fetch_deps", 6, 7]]);
 });
 
 test(function createThreadCountColumnsIrregularData() {
   const columns = createThreadCountColumns(irregularData);
-  assertEqual(columns, [["set_timeout", null, 5], ["fetch_deps", null, 7]]);
+  assertEquals(columns, [["set_timeout", null, 5], ["fetch_deps", null, 7]]);
 });
 
 test(function createSyscallCountColumnsRegularData() {
   const columns = createSyscallCountColumns(regularData);
-  assertEqual(columns, [["hello", 600, 700], ["fetch_deps", 700, 800]]);
+  assertEquals(columns, [["hello", 600, 700], ["fetch_deps", 700, 800]]);
 });
 
 test(function createSyscallCountColumnsIrregularData() {
   const columns = createSyscallCountColumns(irregularData);
-  assertEqual(columns, [["hello", null, 700], ["fetch_deps", null, 800]]);
+  assertEquals(columns, [["hello", null, 700], ["fetch_deps", null, 800]]);
 });
 
 test(function createSha1ListRegularData() {
   const sha1List = createSha1List(regularData);
-  assertEqual(sha1List, ["abcdef", "012345"]);
+  assertEquals(sha1List, ["abcdef", "012345"]);
 });

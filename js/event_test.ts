@@ -1,16 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assertEqual } from "./test_util.ts";
+import { test, assertEquals } from "./test_util.ts";
 
 test(function eventInitializedWithType() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(event.isTrusted, false);
-  assertEqual(event.target, null);
-  assertEqual(event.currentTarget, null);
-  assertEqual(event.type, "click");
-  assertEqual(event.bubbles, false);
-  assertEqual(event.cancelable, false);
+  assertEquals(event.isTrusted, false);
+  assertEquals(event.target, null);
+  assertEquals(event.currentTarget, null);
+  assertEquals(event.type, "click");
+  assertEquals(event.bubbles, false);
+  assertEquals(event.cancelable, false);
 });
 
 test(function eventInitializedWithTypeAndDict() {
@@ -18,12 +18,12 @@ test(function eventInitializedWithTypeAndDict() {
   const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
   const event = new Event(init, eventInitDict);
 
-  assertEqual(event.isTrusted, false);
-  assertEqual(event.target, null);
-  assertEqual(event.currentTarget, null);
-  assertEqual(event.type, "submit");
-  assertEqual(event.bubbles, true);
-  assertEqual(event.cancelable, true);
+  assertEquals(event.isTrusted, false);
+  assertEquals(event.target, null);
+  assertEquals(event.currentTarget, null);
+  assertEquals(event.type, "submit");
+  assertEquals(event.bubbles, true);
+  assertEquals(event.cancelable, true);
 });
 
 test(function eventComposedPathSuccess() {
@@ -31,40 +31,40 @@ test(function eventComposedPathSuccess() {
   const event = new Event(type);
   const composedPath = event.composedPath();
 
-  assertEqual(composedPath, []);
+  assertEquals(composedPath, []);
 });
 
 test(function eventStopPropagationSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(event.cancelBubble, false);
+  assertEquals(event.cancelBubble, false);
   event.stopPropagation();
-  assertEqual(event.cancelBubble, true);
+  assertEquals(event.cancelBubble, true);
 });
 
 test(function eventStopImmediatePropagationSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(event.cancelBubble, false);
-  assertEqual(event.cancelBubbleImmediately, false);
+  assertEquals(event.cancelBubble, false);
+  assertEquals(event.cancelBubbleImmediately, false);
   event.stopImmediatePropagation();
-  assertEqual(event.cancelBubble, true);
-  assertEqual(event.cancelBubbleImmediately, true);
+  assertEquals(event.cancelBubble, true);
+  assertEquals(event.cancelBubbleImmediately, true);
 });
 
 test(function eventPreventDefaultSuccess() {
   const type = "click";
   const event = new Event(type);
 
-  assertEqual(event.defaultPrevented, false);
+  assertEquals(event.defaultPrevented, false);
   event.preventDefault();
-  assertEqual(event.defaultPrevented, false);
+  assertEquals(event.defaultPrevented, false);
 
   const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
   const cancelableEvent = new Event(type, eventInitDict);
-  assertEqual(cancelableEvent.defaultPrevented, false);
+  assertEquals(cancelableEvent.defaultPrevented, false);
   cancelableEvent.preventDefault();
-  assertEqual(cancelableEvent.defaultPrevented, true);
+  assertEquals(cancelableEvent.defaultPrevented, true);
 });

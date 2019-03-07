@@ -432,16 +432,16 @@ uses a URL to import a test runner library:
 ```ts
 import {
   test,
-  assertEqual,
+  assertEquals,
   runIfMain
 } from "https://deno.land/std/testing/mod.ts";
 
 test(function t1() {
-  assertEqual("hello", "hello");
+  assertEquals("hello", "hello");
 });
 
 test(function t2() {
-  assertEqual("world", "world");
+  assertEquals("world", "world");
 });
 
 runIfMain(import.meta);
@@ -497,14 +497,14 @@ testing library across a large project. Rather than importing
 `package.ts` file the exports the third-party code:
 
 ```ts
-export { test, assertEqual } from "https://deno.land/std/testing/mod.ts";
+export { test, assertEquals } from "https://deno.land/std/testing/mod.ts";
 ```
 
 And throughout project one can import from the `package.ts` and avoid having
 many references to the same URL:
 
 ```ts
-import { test, assertEqual } from "./package.ts";
+import { test, assertEquals } from "./package.ts";
 ```
 
 This design circumvents a plethora of complexity spawned by package management
