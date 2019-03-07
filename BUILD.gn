@@ -136,11 +136,13 @@ group("deno_deps") {
 }
 
 group("deno_deps_cross") {
+  testonly = true
   deps = [
     ":compiler_bundle",
     ":main_bundle",
     ":msg_rs",
     "libdeno:libdeno_static_lib",
+    "libdeno:test_cc",
   ]
 }
 
