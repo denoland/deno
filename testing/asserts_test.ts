@@ -1,6 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { assert, equal, assertStrContains, assertMatch } from "./asserts.ts";
+import {
+  assert,
+  equal,
+  assertNotEquals,
+  assertStrContains,
+  assertArrayContains,
+  assertMatch,
+  assertEquals
+} from "./asserts.ts";
 import { test } from "./mod.ts";
 // import { assertEquals as prettyAssertEqual } from "./pretty.ts";
 // import "./format_test.ts";
@@ -29,10 +37,48 @@ test(function testingEqual() {
   );
 });
 
+test(function testingNotEquals() {
+  const a = { foo: "bar" };
+  const b = { bar: "foo" };
+  assertNotEquals(a, b);
+  assertNotEquals("Denosaurus", "Tyrannosaurus");
+  let didThrow;
+  try {
+    assertNotEquals("Raptor", "Raptor");
+    didThrow = false;
+  } catch (e) {
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
+});
+
 test(function testingAssertStringContains() {
   assertStrContains("Denosaurus", "saur");
   assertStrContains("Denosaurus", "Deno");
   assertStrContains("Denosaurus", "rus");
+  let didThrow;
+  try {
+    assertStrContains("Denosaurus", "Raptor");
+    didThrow = false;
+  } catch (e) {
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
+});
+
+test(function testingArrayContains() {
+  const fixture = ["deno", "iz", "luv"];
+  const fixtureObject = [{ deno: "luv" }, { deno: "Js" }];
+  assertArrayContains(fixture, ["deno"]);
+  assertArrayContains(fixtureObject, [{ deno: "luv" }]);
+  let didThrow;
+  try {
+    assertArrayContains(fixtureObject, [{ deno: "node" }]);
+    didThrow = false;
+  } catch (e) {
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
 });
 
 test(function testingAssertStringContainsThrow() {

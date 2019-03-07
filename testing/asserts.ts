@@ -53,6 +53,42 @@ export function assertEquals(
 }
 
 /**
+ * Make an assertion that `actual` and `expected` are not equal, deeply.
+ * If not then throw.
+ */
+export function assertNotEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void {
+  if (!equal(actual, expected)) {
+    return;
+  }
+  let actualString: string;
+  let expectedString: string;
+  try {
+    actualString = String(actual);
+  } catch (e) {
+    actualString = "[Cannot display]";
+  }
+  try {
+    expectedString = String(expected);
+  } catch (e) {
+    expectedString = "[Cannot display]";
+  }
+  console.error(
+    "Not Equals failed. actual =",
+    actualString,
+    "expected =",
+    expectedString
+  );
+  if (!msg) {
+    msg = `actual: ${actualString} expected: ${expectedString}`;
+  }
+  throw new Error(msg);
+}
+
+/**
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
  */
@@ -108,6 +144,45 @@ export function assertStrContains(
     }
     throw new Error(msg);
   }
+}
+
+/**
+ * Make an assertion that `actual` contains the `expected` values
+ * If not then thrown.
+ */
+export function assertArrayContains(
+  actual: unknown[],
+  expected: unknown[],
+  msg?: string
+) {
+  let missing = [];
+  for (let i = 0; i < expected.length; i++) {
+    let found = false;
+    for (let j = 0; j < actual.length; j++) {
+      if (equal(expected[i], actual[j])) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      missing.push(expected[i]);
+    }
+  }
+  if (missing.length === 0) {
+    return;
+  }
+  console.error(
+    "assertArrayContains failed. actual=",
+    actual,
+    "not containing ",
+    expected
+  );
+  if (!msg) {
+    msg = `actual: "${actual}" expected to contains: "${expected}"`;
+    msg += "\n";
+    msg += `missing: ${missing}`;
+  }
+  throw new Error(msg);
 }
 
 /**
