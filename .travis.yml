@@ -130,7 +130,7 @@ jobs:
       - sudo mkdir -p $HOME/debian-arm64/$HOME/denoland/deno
       - sudo cp -r ./ $HOME/debian-arm64/$HOME/denoland/deno
       - sudo cp -r $CARGO_TARGET_DIR $HOME/debian-arm64/$HOME/denoland/deno/target
-      - sudo mv $(find $HOME/debian-arm64/$CARGO_TARGET_DIR/target/aarch64-unknown-linux-gnu/release -maxdepth 1 -type f -executable -regextype sed -regex '.*/[a-z_]*-[0-9a-f]*')) ../debian-arm64/$CARGO_TARGET_DIR/target/aarch64-unknown-linux-gnu/release/test_cc
+      - sudo mv $(find $HOME/debian-arm64/$CARGO_TARGET_DIR/target/aarch64-unknown-linux-gnu/release -maxdepth 1 -type f -executable -regextype sed -regex '.*/[a-z_]*-[0-9a-f]*') $HOME/debian-arm64/$CARGO_TARGET_DIR/target/aarch64-unknown-linux-gnu/release/test_cc
       - sudo chroot $HOME/debian-arm64 bash -c "DENO_BUILD_MODE=release $HOME/denoland/deno/tools/test.py target/aarch64-unknown-linux-gnu/release"
 
     - name: "cargo release linux x86_64"
