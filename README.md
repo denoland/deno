@@ -1,5 +1,7 @@
 # deno
 
+A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio
+
 |      **Linux & Mac**       |        **Windows**         |
 | :------------------------: | :------------------------: |
 | [![][tci badge]][tci link] | [![][avy badge]][avy link] |
@@ -9,8 +11,6 @@
 [avy link]: https://ci.appveyor.com/project/deno/deno
 [tci badge]: https://travis-ci.com/denoland/deno.svg?branch=master
 [tci link]: https://travis-ci.com/denoland/deno
-
-Deno is a browser-like command line program for executing JavaScript.
 
 Deno aims to provide a productive and secure scripting environment for the
 modern programmer. It is built on top of V8, Rust, and TypeScript.

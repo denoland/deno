@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEqual } from "./test_util.ts";
+import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ write: true, read: true }, function readlinkSyncSuccess() {
   const testDir = Deno.makeTempDirSync();
@@ -8,10 +8,10 @@ testPerm({ write: true, read: true }, function readlinkSyncSuccess() {
   Deno.mkdirSync(target);
   // TODO Add test for Windows once symlink is implemented for Windows.
   // See https://github.com/denoland/deno/issues/815.
-  if (Deno.platform.os !== "win") {
+  if (Deno.build.os !== "win") {
     Deno.symlinkSync(target, symlink);
     const targetPath = Deno.readlinkSync(symlink);
-    assertEqual(targetPath, target);
+    assertEquals(targetPath, target);
   }
 });
 
@@ -21,8 +21,8 @@ testPerm({ read: false }, async function readlinkSyncPerm() {
     Deno.readlinkSync("/symlink");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEqual(e.name, "PermissionDenied");
+    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
 });
@@ -34,10 +34,10 @@ testPerm({ read: true }, function readlinkSyncNotFound() {
     data = Deno.readlinkSync("bad_filename");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, Deno.ErrorKind.NotFound);
+    assertEquals(e.kind, Deno.ErrorKind.NotFound);
   }
   assert(caughtError);
-  assertEqual(data, undefined);
+  assertEquals(data, undefined);
 });
 
 testPerm({ write: true, read: true }, async function readlinkSuccess() {
@@ -47,10 +47,10 @@ testPerm({ write: true, read: true }, async function readlinkSuccess() {
   Deno.mkdirSync(target);
   // TODO Add test for Windows once symlink is implemented for Windows.
   // See https://github.com/denoland/deno/issues/815.
-  if (Deno.platform.os !== "win") {
+  if (Deno.build.os !== "win") {
     Deno.symlinkSync(target, symlink);
     const targetPath = await Deno.readlink(symlink);
-    assertEqual(targetPath, target);
+    assertEquals(targetPath, target);
   }
 });
 
@@ -60,8 +60,8 @@ testPerm({ read: false }, async function readlinkPerm() {
     await Deno.readlink("/symlink");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEqual(e.name, "PermissionDenied");
+    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
 });

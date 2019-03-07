@@ -7,11 +7,15 @@
 // tests by the special string. permW0N0 means allow-write but not allow-net.
 // See tools/unit_tests.py for more details.
 
-import * as testing from "./deps/https/deno.land/x/std/testing/mod.ts";
+import * as testing from "./deps/https/deno.land/std/testing/mod.ts";
+import {
+  assert,
+  assertEquals
+} from "./deps/https/deno.land/std/testing/asserts.ts";
 export {
   assert,
-  assertEqual
-} from "./deps/https/deno.land/x/std/testing/mod.ts";
+  assertEquals
+} from "./deps/https/deno.land/std/testing/asserts.ts";
 
 // testing.setFilter must be run before any tests are defined.
 testing.setFilter(Deno.args[1]);
@@ -67,7 +71,7 @@ test(function permSerialization() {
         for (const run of [true, false]) {
           for (const read of [true, false]) {
             const perms: DenoPermissions = { write, net, env, run, read };
-            testing.assertEqual(perms, permFromString(permToString(perms)));
+            assertEquals(perms, permFromString(permToString(perms)));
           }
         }
       }
@@ -84,5 +88,5 @@ test(function permFromStringThrows() {
   } catch (e) {
     threw = true;
   }
-  testing.assert(threw);
+  assert(threw);
 });

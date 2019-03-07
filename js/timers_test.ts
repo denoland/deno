@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assertEqual } from "./test_util.ts";
+import { test, assertEquals } from "./test_util.ts";
 
 function deferred() {
   let resolve;
@@ -28,7 +28,7 @@ test(async function timeoutSuccess() {
   }, 500);
   await promise;
   // count should increment
-  assertEqual(count, 1);
+  assertEquals(count, 1);
 });
 
 test(async function timeoutArgs() {
@@ -36,9 +36,9 @@ test(async function timeoutArgs() {
   const arg = 1;
   setTimeout(
     (a, b, c) => {
-      assertEqual(a, arg);
-      assertEqual(b, arg.toString());
-      assertEqual(c, [arg]);
+      assertEquals(a, arg);
+      assertEquals(b, arg.toString());
+      assertEquals(c, [arg]);
       resolve();
     },
     10,
@@ -58,7 +58,7 @@ test(async function timeoutCancelSuccess() {
   clearTimeout(id);
   // Wait a bit longer than 500ms
   await waitForMs(600);
-  assertEqual(count, 0);
+  assertEquals(count, 0);
 });
 
 test(async function timeoutCancelMultiple() {
@@ -97,7 +97,7 @@ test(async function timeoutCancelInvalidSilentFail() {
     resolve();
   }, 500);
   await promise;
-  assertEqual(count, 1);
+  assertEquals(count, 1);
 
   // Should silently fail (no panic)
   clearTimeout(2147483647);
@@ -120,7 +120,7 @@ test(async function intervalSuccess() {
   // Clear interval
   clearInterval(id);
   // count should increment twice
-  assertEqual(count, 2);
+  assertEquals(count, 2);
 });
 
 test(async function intervalCancelSuccess() {
@@ -132,7 +132,7 @@ test(async function intervalCancelSuccess() {
   clearInterval(id);
   // Wait a bit longer than 500ms
   await waitForMs(600);
-  assertEqual(count, 0);
+  assertEquals(count, 0);
 });
 
 test(async function intervalOrdering() {
@@ -148,7 +148,7 @@ test(async function intervalOrdering() {
     }
   }
   await waitForMs(100);
-  assertEqual(timeouts, 1);
+  assertEquals(timeouts, 1);
 });
 
 test(async function intervalCancelInvalidSilentFail() {
@@ -162,5 +162,5 @@ test(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
     count++;
   }, 2 ** 31);
   await waitForMs(1);
-  assertEqual(count, 1);
+  assertEquals(count, 1);
 });

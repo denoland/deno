@@ -3,11 +3,9 @@
 from glob import glob
 import os
 import sys
-from third_party import fix_symlinks, google_env, python_env
+from third_party import google_env, python_env
 from third_party import clang_format_path, third_party_path
 from util import root_path, run, find_exts, platform
-
-fix_symlinks()
 
 prettier = os.path.join(third_party_path, "node_modules", "prettier",
                         "bin-prettier.js")

@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEqual } from "./test_util.ts";
+import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
 test(function dirCwdNotNull() {
   assert(Deno.cwd() != null);
@@ -10,17 +10,17 @@ testPerm({ write: true }, function dirCwdChdirSuccess() {
   const path = Deno.makeTempDirSync();
   Deno.chdir(path);
   const current = Deno.cwd();
-  if (Deno.platform.os === "mac") {
-    assertEqual(current, "/private" + path);
+  if (Deno.build.os === "mac") {
+    assertEquals(current, "/private" + path);
   } else {
-    assertEqual(current, path);
+    assertEquals(current, path);
   }
   Deno.chdir(initialdir);
 });
 
 testPerm({ write: true }, function dirCwdError() {
   // excluding windows since it throws resource busy, while removeSync
-  if (["linux", "mac"].includes(Deno.platform.os)) {
+  if (["linux", "mac"].includes(Deno.build.os)) {
     const initialdir = Deno.cwd();
     const path = Deno.makeTempDirSync();
     Deno.chdir(path);

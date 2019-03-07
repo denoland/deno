@@ -104,7 +104,7 @@ function createIterableString<T>(
 }
 
 function createArrayString(
-  value: Array<unknown>,
+  value: unknown[],
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
@@ -345,7 +345,7 @@ function stringifyWithQuotes(
  * @internal
  */
 export function stringifyArgs(
-  args: Array<unknown>,
+  args: unknown[],
   options: ConsoleOptions = {}
 ): string {
   const first = args[0];
@@ -483,7 +483,7 @@ export class Console {
   }
 
   /** Writes the arguments to stdout */
-  log = (...args: Array<unknown>): void => {
+  log = (...args: unknown[]): void => {
     this.printFunc(
       stringifyArgs(args, {
         indentLevel: this.indentLevel,
@@ -504,7 +504,7 @@ export class Console {
   };
 
   /** Writes the arguments to stdout */
-  warn = (...args: Array<unknown>): void => {
+  warn = (...args: unknown[]): void => {
     this.printFunc(
       stringifyArgs(args, {
         indentLevel: this.indentLevel,
@@ -522,7 +522,7 @@ export class Console {
    *
    * ref: https://console.spec.whatwg.org/#assert
    */
-  assert = (condition = false, ...args: Array<unknown>): void => {
+  assert = (condition = false, ...args: unknown[]): void => {
     if (condition) {
       return;
     }
@@ -661,7 +661,7 @@ export class Console {
     timerMap.set(label, Date.now());
   };
 
-  timeLog = (label = "default", ...args: Array<unknown>): void => {
+  timeLog = (label = "default", ...args: unknown[]): void => {
     label = String(label);
 
     if (!timerMap.has(label)) {
@@ -690,14 +690,14 @@ export class Console {
     this.info(`${label}: ${duration}ms`);
   };
 
-  group = (...label: Array<unknown>): void => {
+  group = (...label: unknown[]): void => {
     if (label.length > 0) {
       this.log(...label);
     }
     this.indentLevel += 2;
   };
 
-  groupCollapsed = (...label: Array<unknown>): void => {
+  groupCollapsed = (...label: unknown[]): void => {
     if (this.collapsedAt == null) {
       this.collapsedAt = this.indentLevel;
     }

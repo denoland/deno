@@ -76,11 +76,15 @@ fn main() {
     }
   }
 
-  // Enable snapshots for x64 builds
-  if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "x86_64" {
-    // Not related to v8_use_snapshot
-    // This only enables using pregenerated snapshots for isolate init
-    println!("cargo:rustc-cfg=feature=\"use-snapshot-init\"");
+  // If target_arch != host_arch disable snapshots since we are cross compiling.
+  if env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() != env::var("HOST")
+    .unwrap()
+    .as_str()
+    .split("-")
+    .collect::<Vec<&str>>()[0]
+  {
+    // no-snapshot-init is not related to v8_use_snapshots
+    println!("cargo:rustc-cfg=feature=\"no-snapshot-init\"");
   }
 
   if !gn_out_path.join("build.ninja").exists() {

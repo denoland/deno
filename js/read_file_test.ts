@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEqual } from "./test_util.ts";
+import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ read: true }, function readFileSyncSuccess() {
   const data = Deno.readFileSync("package.json");
@@ -7,7 +7,7 @@ testPerm({ read: true }, function readFileSyncSuccess() {
   const decoder = new TextDecoder("utf-8");
   const json = decoder.decode(data);
   const pkg = JSON.parse(json);
-  assertEqual(pkg.name, "deno");
+  assertEquals(pkg.name, "deno");
 });
 
 testPerm({ read: false }, function readFileSyncPerm() {
@@ -16,8 +16,8 @@ testPerm({ read: false }, function readFileSyncPerm() {
     const data = Deno.readFileSync("package.json");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEqual(e.name, "PermissionDenied");
+    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
 });
@@ -29,7 +29,7 @@ testPerm({ read: true }, function readFileSyncNotFound() {
     data = Deno.readFileSync("bad_filename");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, Deno.ErrorKind.NotFound);
+    assertEquals(e.kind, Deno.ErrorKind.NotFound);
   }
   assert(caughtError);
   assert(data === undefined);
@@ -41,7 +41,7 @@ testPerm({ read: true }, async function readFileSuccess() {
   const decoder = new TextDecoder("utf-8");
   const json = decoder.decode(data);
   const pkg = JSON.parse(json);
-  assertEqual(pkg.name, "deno");
+  assertEquals(pkg.name, "deno");
 });
 
 testPerm({ read: false }, async function readFilePerm() {
@@ -50,8 +50,8 @@ testPerm({ read: false }, async function readFilePerm() {
     await Deno.readFile("package.json");
   } catch (e) {
     caughtError = true;
-    assertEqual(e.kind, Deno.ErrorKind.PermissionDenied);
-    assertEqual(e.name, "PermissionDenied");
+    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
 });

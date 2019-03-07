@@ -10,6 +10,8 @@ notice. [Bug reports](https://github.com/denoland/deno/issues) do help!
 
 ## Introduction
 
+A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio
+
 ### Philosophy
 
 Deno aims to be a productive and secure scripting environment for the modern
@@ -36,7 +38,7 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 - Like the browser, allows imports from URLs:
 
   ```typescript
-  import * as log from "https://deno.land/x/std/log/mod.ts";
+  import * as log from "https://deno.land/std/log/mod.ts";
   ```
 
 - Remote code is fetched and cached on first execution, and never updated until
@@ -61,6 +63,14 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
   it), ought to also be able to be run in a modern web browser without change.
 
 - [Aims to support top-level `await`.](https://github.com/denoland/deno/issues/471)
+
+- Be able to serve HTTP efficently.
+  ([Currently it is relatively slow.](https://deno.land/benchmarks.html#req-per-sec))
+
+- Provide useful tooling out of the box: Built-in command-line debugger
+  [not yet](https://github.com/denoland/deno/issues/1120), built-in lint
+  [not yet](https://github.com/denoland/deno/issues/1880), dependency inspector
+  (`deno --info`), built-in code formatter (`deno --fmt`),
 
 ### Non-goals
 
@@ -157,6 +167,7 @@ Extra steps for Windows users:
    `Programs and Features` → Select
    `Windows Software Development Kit - Windows 10` → `Change` → `Change` → Check
    `Debugging Tools For Windows` → `Change` -> `Finish`.
+4. Make sure you are using git version 2.19.2.windows.1 or newer.
 
 #### Other useful commands
 
@@ -233,7 +244,7 @@ I/O streams in Deno.
 Try the program:
 
 ```
-> deno https://deno.land/x/examples/cat.ts /etc/passwd
+> deno https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 ### TCP echo server
@@ -259,7 +270,7 @@ When this program is started, the user is prompted for permission to listen on
 the network:
 
 ```
-> deno https://deno.land/x/examples/echo_server.ts
+> deno https://deno.land/std/examples/echo_server.ts
 ⚠️  Deno requests network access to "listen". Grant? [yN] y
 listening on 0.0.0.0:8080
 ```
@@ -268,7 +279,7 @@ For security reasons, deno does not allow programs to access the network without
 explicit permission. To avoid the console prompt, use a command-line flag:
 
 ```
-> deno https://deno.land/x/examples/echo_server.ts --allow-net
+> deno https://deno.land/std/examples/echo_server.ts --allow-net
 ```
 
 To test it, try sending a HTTP request to it by using curl. The request gets
@@ -321,14 +332,14 @@ This one serves a local directory in HTTP.
 
 ```
 alias file_server="deno  --allow-net --allow-read \
-  https://deno.land/x/http/file_server.ts"
+  https://deno.land/std/http/file_server.ts"
 ```
 
 Run it:
 
 ```
 % file_server .
-Downloading https://deno.land/x/http/file_server.ts...
+Downloading https://deno.land/std/http/file_server.ts...
 [...]
 HTTP server listening on http://0.0.0.0:4500/
 ```
@@ -380,7 +391,7 @@ async function main() {
     args: [
       "deno",
       "--allow-read",
-      "https://deno.land/x/examples/cat.ts",
+      "https://deno.land/std/examples/cat.ts",
       ...fileNames
     ],
     stdout: "piped",
@@ -421,16 +432,16 @@ uses a URL to import a test runner library:
 ```ts
 import {
   test,
-  assertEqual,
+  assertEquals,
   runIfMain
-} from "https://deno.land/x/testing/mod.ts";
+} from "https://deno.land/std/testing/mod.ts";
 
 test(function t1() {
-  assertEqual("hello", "hello");
+  assertEquals("hello", "hello");
 });
 
 test(function t2() {
-  assertEqual("world", "world");
+  assertEquals("world", "world");
 });
 
 runIfMain(import.meta);
@@ -482,18 +493,18 @@ everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `package.ts` file (which serves the same purpose
 as Node's `package.json` file). For example, let's say you were using the above
 testing library across a large project. Rather than importing
-`"https://deno.land/x/testing/mod.ts"` everywhere, you could create a
+`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
 `package.ts` file the exports the third-party code:
 
 ```ts
-export { test, assertEqual } from "https://deno.land/x/testing/mod.ts";
+export { test, assertEquals } from "https://deno.land/std/testing/mod.ts";
 ```
 
 And throughout project one can import from the `package.ts` and avoid having
 many references to the same URL:
 
 ```ts
-import { test, assertEqual } from "./package.ts";
+import { test, assertEquals } from "./package.ts";
 ```
 
 This design circumvents a plethora of complexity spawned by package management
@@ -747,7 +758,7 @@ interface BenchmarkData {
 These Deno logos, like the Deno software, are distributed under the MIT license
 (public domain and free for use)
 
-- [A hand drawn one by @ry](https://github.com/denoland/deno/blob/master/website/deno_logo.png)
+- [A hand drawn one by @ry](https://github.com/denoland/deno/blob/master/website/images/deno_logo.png)
 
 - [An animated one by @hashrock](https://github.com/denolib/animated-deno-logo/)
 

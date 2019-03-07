@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEqual } from "./test_util.ts";
+import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ read: true, write: true }, function renameSyncSuccess() {
   const testDir = Deno.makeTempDirSync();
@@ -17,10 +17,10 @@ testPerm({ read: true, write: true }, function renameSyncSuccess() {
     oldPathInfo = Deno.statSync(oldpath);
   } catch (e) {
     caughtErr = true;
-    assertEqual(e.kind, Deno.ErrorKind.NotFound);
+    assertEquals(e.kind, Deno.ErrorKind.NotFound);
   }
   assert(caughtErr);
-  assertEqual(oldPathInfo, undefined);
+  assertEquals(oldPathInfo, undefined);
 });
 
 testPerm({ read: true, write: false }, function renameSyncPerm() {
@@ -32,8 +32,8 @@ testPerm({ read: true, write: false }, function renameSyncPerm() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
 });
 
 testPerm({ read: true, write: true }, async function renameSuccess() {
@@ -52,8 +52,8 @@ testPerm({ read: true, write: true }, async function renameSuccess() {
     oldPathInfo = Deno.statSync(oldpath);
   } catch (e) {
     caughtErr = true;
-    assertEqual(e.kind, Deno.ErrorKind.NotFound);
+    assertEquals(e.kind, Deno.ErrorKind.NotFound);
   }
   assert(caughtErr);
-  assertEqual(oldPathInfo, undefined);
+  assertEquals(oldPathInfo, undefined);
 });

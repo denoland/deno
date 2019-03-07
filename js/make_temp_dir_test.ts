@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEqual } from "./test_util.ts";
+import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ write: true }, function makeTempDirSyncSuccess() {
   const dir1 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
@@ -23,8 +23,8 @@ testPerm({ write: true }, function makeTempDirSyncSuccess() {
   } catch (err_) {
     err = err_;
   }
-  assertEqual(err.kind, Deno.ErrorKind.NotFound);
-  assertEqual(err.name, "NotFound");
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
 });
 
 test(function makeTempDirSyncPerm() {
@@ -35,8 +35,8 @@ test(function makeTempDirSyncPerm() {
   } catch (err_) {
     err = err_;
   }
-  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
 });
 
 testPerm({ write: true }, async function makeTempDirSuccess() {
@@ -61,6 +61,6 @@ testPerm({ write: true }, async function makeTempDirSuccess() {
   } catch (err_) {
     err = err_;
   }
-  assertEqual(err.kind, Deno.ErrorKind.NotFound);
-  assertEqual(err.name, "NotFound");
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
 });
