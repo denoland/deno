@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { Buffer } = Deno;
-import { Reader, ReadResult } from "deno";
+type Reader = Deno.Reader;
+type ReadResult = Deno.ReadResult;
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import {

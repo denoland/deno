@@ -4,7 +4,8 @@
 // license that can be found in the LICENSE file.
 
 const { Buffer } = Deno;
-import { Reader, ReadResult } from "deno";
+type Reader = Deno.Reader;
+type ReadResult = Deno.ReadResult;
 import { test } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "./bufio.ts";

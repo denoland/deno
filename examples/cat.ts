@@ -1,12 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as deno from "deno";
-
 async function cat(filenames: string[]): Promise<void> {
   for (let filename of filenames) {
-    let file = await deno.open(filename);
-    await deno.copy(deno.stdout, file);
+    let file = await Deno.open(filename);
+    await Deno.copy(Deno.stdout, file);
     file.close();
   }
 }
 
-cat(deno.args.slice(1));
+cat(Deno.args.slice(1));

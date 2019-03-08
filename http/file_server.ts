@@ -7,7 +7,6 @@
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
 const { ErrorKind, cwd, args, stat, readDir, open } = Deno;
-import { DenoError } from "deno";
 import {
   listenAndServe,
   ServerRequest,
@@ -181,8 +180,8 @@ async function serveFile(req: ServerRequest, filename: string) {
 
 async function serveFallback(req: ServerRequest, e: Error) {
   if (
-    e instanceof DenoError &&
-    (e as DenoError<any>).kind === ErrorKind.NotFound
+    e instanceof Deno.DenoError &&
+    (e as Deno.DenoError<any>).kind === ErrorKind.NotFound
   ) {
     return {
       status: 404,

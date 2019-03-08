@@ -1,5 +1,5 @@
 const { cwd, chdir, makeTempDir, mkdir, open, build, remove, symlink } = Deno;
-import { FileInfo } from "deno";
+type FileInfo = Deno.FileInfo;
 import { walk, walkSync, WalkOptions } from "./walk.ts";
 import { test, TestFunction } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";

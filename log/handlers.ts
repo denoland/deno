@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { open } = Deno;
-import { File, Writer } from "deno";
+type File = Deno.File;
+type Writer = Deno.Writer;
 import { getLevelByName, LogLevel } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../colors/mod.ts";
