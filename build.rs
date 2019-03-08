@@ -28,17 +28,23 @@ fn main() {
       .split("-")
       .collect::<Vec<&str>>()[0];
 
-  // If we are not using a standard target
-  let is_nonstandard_target =
-    env::var("TARGET").unwrap() != env::var("HOST").unwrap();
+  // If we are using the same target as the host's default
+  // "rustup target list" should show your default target
+  let is_default_target =
+    env::var("TARGET").unwrap() == env::var("HOST").unwrap();
 
   let cwd = env::current_dir().unwrap();
-  // If not using standard target tell gn to use the correct directory
+  // If not using host default target the output folder will change
+  // target/release will become target/$TARGET/release
+  // Gn should also be using this output directory as well
+  // most things will work with gn using the default
+  // output directory but some tests depend on artifacts
+  // being in a specific directory relative to the main build output
   let gn_out_path = cwd.join(format!(
     "target/{}",
-    match is_nonstandard_target {
-      false => gn_mode.clone(),
-      true => format!("{}/{}", env::var("TARGET").unwrap(), gn_mode.clone()),
+    match is_default_target {
+      true => gn_mode.clone(),
+      false => format!("{}/{}", env::var("TARGET").unwrap(), gn_mode.clone()),
     }
   ));
   let gn_out_dir = normalize_path(&gn_out_path);
@@ -98,7 +104,14 @@ fn main() {
     }
   }
 
-  // If target_arch != host_arch disable snapshots since we are cross compiling.
+  // If target_arch != host_arch disable snapshots.
+  // v8 snapshots seem to not be compatible with binaries
+  // other than the ones used to gernerate them,
+  // so for non native architecture builds we don't
+  // have an easy way to generate these snapshots.
+  // We can't run any binary capable of generating
+  // compatible snapshots without emulating the
+  // target architecture.
   if is_different_target_arch {
     // no-snapshot-init is not related to v8_use_snapshots
     println!("cargo:rustc-cfg=feature=\"no-snapshot-init\"");
