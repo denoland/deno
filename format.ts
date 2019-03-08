@@ -8,9 +8,10 @@ async function main(opts) {
   const args = [
     `deno${executableSuffix}`,
     "--allow-write",
-    "--allow-run",
     "--allow-read",
     "prettier/main.ts",
+    "--ignore",
+    "node_modules",
     "--ignore",
     "testdata",
     "--ignore",

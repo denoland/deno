@@ -1,7 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { join } from "../fs/path.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import { test } from "../testing/mod.ts";
 import { xrun, executableSuffix } from "./util.ts";
-import { assertEquals } from "../testing/asserts.ts";
 const { readAll } = Deno;
 
 const decoder = new TextDecoder();
@@ -24,7 +25,7 @@ const cmd = [
   "--allow-read",
   "prettier/main.ts"
 ];
-const testdata = "prettier/testdata";
+const testdata = join("prettier", "testdata");
 
 function normalizeOutput(output: string): string {
   return output
@@ -43,7 +44,7 @@ async function clearTestdataChanges(): Promise<void> {
 test(async function testPrettierCheckAndFormatFiles() {
   await clearTestdataChanges();
 
-  const files = [`${testdata}/0.ts`, `${testdata}/1.js`];
+  const files = [join(testdata, "0.ts"), join(testdata, "1.js")];
 
   var { code, stdout } = await run([...cmd, "--check", ...files]);
   assertEquals(code, 1);
@@ -53,8 +54,8 @@ test(async function testPrettierCheckAndFormatFiles() {
   assertEquals(code, 0);
   assertEquals(
     normalizeOutput(stdout),
-    `Formatting prettier/testdata/0.ts
-Formatting prettier/testdata/1.js`
+    `Formatting ./prettier/testdata/0.ts
+Formatting ./prettier/testdata/1.js`
   );
 
   var { code, stdout } = await run([...cmd, "--check", ...files]);
@@ -67,7 +68,7 @@ Formatting prettier/testdata/1.js`
 test(async function testPrettierCheckAndFormatDirs() {
   await clearTestdataChanges();
 
-  const dirs = [`${testdata}/foo`, `${testdata}/bar`];
+  const dirs = [join(testdata, "foo"), join(testdata, "bar")];
 
   var { code, stdout } = await run([...cmd, "--check", ...dirs]);
   assertEquals(code, 1);
@@ -77,10 +78,10 @@ test(async function testPrettierCheckAndFormatDirs() {
   assertEquals(code, 0);
   assertEquals(
     normalizeOutput(stdout),
-    `Formatting prettier/testdata/bar/0.ts
-Formatting prettier/testdata/bar/1.js
-Formatting prettier/testdata/foo/0.ts
-Formatting prettier/testdata/foo/1.js`
+    `Formatting ./prettier/testdata/bar/0.ts
+Formatting ./prettier/testdata/bar/1.js
+Formatting ./prettier/testdata/foo/0.ts
+Formatting ./prettier/testdata/foo/1.js`
   );
 
   var { code, stdout } = await run([...cmd, "--check", ...dirs]);

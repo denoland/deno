@@ -2,8 +2,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
-const { args, readAll, lstat, exit, readFile, writeFile } = Deno;
-import { xrun } from "./util.ts";
+const { args, exit, readFile, writeFile } = Deno;
+type FileInfo = Deno.FileInfo;
+import { glob } from "../fs/glob.ts";
+import { walk } from "../fs/walk.ts";
 import { parse } from "../flags/mod.ts";
 import { prettier, prettierPlugins } from "./prettier.ts";
 
@@ -33,45 +35,6 @@ type ParserLabel = "typescript" | "babel" | "markdown" | "json";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-
-// Lists files in the given directory.
-// TODO: Replace git usage with deno's API calls
-async function listFiles(dir: string = "."): Promise<string[]> {
-  return decoder
-    .decode(
-      await readAll(
-        xrun({
-          args: ["git", "ls-files", dir],
-          stdout: "piped"
-        }).stdout
-      )
-    )
-    .trim()
-    .split(/\r?\n/);
-}
-
-async function getSourceFiles(args: string[]): Promise<string[]> {
-  if (args.length === 0) {
-    return listFiles();
-  }
-
-  const results = args.map(async path => {
-    if ((await lstat(path)).isDirectory()) {
-      return listFiles(path);
-    }
-
-    return path;
-  });
-
-  return [].concat(...(await Promise.all(results)));
-}
-
-// Filters out the files which contains any pattern in the given ignoreList.
-function filterIgnoreList(files: string[], ignoreList: string[]): string[] {
-  return files.filter(path =>
-    ignoreList.every(pattern => !path.includes(pattern))
-  );
-}
 
 async function readFileIfExists(filename: string): Promise<string | null> {
   let data;
@@ -159,17 +122,16 @@ function selectParser(path: string): ParserLabel | null {
  * If paths are empty, then checks all the files.
  */
 async function checkSourceFiles(
-  args: string[],
-  ignoreList: string[]
+  files: AsyncIterableIterator<FileInfo>
 ): Promise<void> {
-  const checks = [];
+  const checks: Array<Promise<boolean>> = [];
 
-  filterIgnoreList(await getSourceFiles(args), ignoreList).forEach(file => {
-    const parser = selectParser(file);
+  for await (const file of files) {
+    const parser = selectParser(file.path);
     if (parser) {
-      checks.push(checkFile(file, parser));
+      checks.push(checkFile(file.path, parser));
     }
-  });
+  }
 
   const results = await Promise.all(checks);
 
@@ -187,17 +149,16 @@ async function checkSourceFiles(
  * If paths are empty, then formats all the files.
  */
 async function formatSourceFiles(
-  args: string[],
-  ignoreList: string[]
+  files: AsyncIterableIterator<FileInfo>
 ): Promise<void> {
-  const formats = [];
+  const formats: Array<Promise<void>> = [];
 
-  filterIgnoreList(await getSourceFiles(args), ignoreList).forEach(file => {
-    const parser = selectParser(file);
+  for await (const file of files) {
+    const parser = selectParser(file.path);
     if (parser) {
-      formats.push(formatFile(file, parser));
+      formats.push(formatFile(file.path, parser));
     }
-  });
+  }
 
   await Promise.all(formats);
   exit(0);
@@ -210,14 +171,18 @@ async function main(opts): Promise<void> {
     console.log(HELP_MESSAGE);
     exit(0);
   }
-
-  const ignoreList: string[] = Array.isArray(ignore) ? ignore : [ignore];
-
+  const options = { flags: "g" };
+  const skip = Array.isArray(ignore)
+    ? ignore.map((i: string) => glob(i, options))
+    : [glob(ignore, options)];
+  const match =
+    args.length > 0 ? args.map((a: string) => glob(a, options)) : undefined;
+  const files = walk(".", { match, skip });
   try {
     if (check) {
-      await checkSourceFiles(args, ignoreList);
+      await checkSourceFiles(files);
     } else {
-      await formatSourceFiles(args, ignoreList);
+      await formatSourceFiles(files);
     }
   } catch (e) {
     console.log(e);
