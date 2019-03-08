@@ -2,8 +2,8 @@
 import { join } from "../fs/path.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { test } from "../testing/mod.ts";
-import { xrun, executableSuffix } from "./util.ts";
-const { readAll } = Deno;
+import { xrun } from "./util.ts";
+const { readAll, execPath } = Deno;
 
 const decoder = new TextDecoder();
 
@@ -19,7 +19,7 @@ async function run(
 }
 
 const cmd = [
-  `deno${executableSuffix}`,
+  execPath,
   "--allow-run",
   "--allow-write",
   "--allow-read",
