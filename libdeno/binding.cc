@@ -289,14 +289,6 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
-v8::Local<v8::Object> DenoIsolate::GetBuiltinModules() {
-  v8::EscapableHandleScope handle_scope(isolate_);
-  if (builtin_modules_.IsEmpty()) {
-    builtin_modules_.Reset(isolate_, v8::Object::New(isolate_));
-  }
-  return handle_scope.Escape(builtin_modules_.Get(isolate_));
-}
-
 v8::ScriptOrigin ModuleOrigin(v8::Isolate* isolate,
                               v8::Local<v8::Value> resource_name) {
   return v8::ScriptOrigin(resource_name, v8::Local<v8::Integer>(),
@@ -348,15 +340,6 @@ deno_mod DenoIsolate::RegisterModule(bool main, const char* name,
   mods_by_name_[name] = id;
 
   return id;
-}
-
-void BuiltinModules(v8::Local<v8::Name> property,
-                    const v8::PropertyCallbackInfo<v8::Value>& info) {
-  v8::Isolate* isolate = info.GetIsolate();
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  DCHECK_EQ(d->isolate_, isolate);
-  v8::Locker locker(d->isolate_);
-  info.GetReturnValue().Set(d->GetBuiltinModules());
 }
 
 void Shared(v8::Local<v8::Name> property,
@@ -530,11 +513,6 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
 
   CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
-
-  CHECK(
-      deno_val
-          ->SetAccessor(context, deno::v8_str("builtinModules"), BuiltinModules)
-          .FromJust());
 }
 
 void MessageCallback(v8::Local<v8::Message> message,

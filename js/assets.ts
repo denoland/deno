@@ -39,9 +39,6 @@ import libEsnextBigintDts from "/third_party/node_modules/typescript/lib/lib.esn
 import libEsnextDts from "/third_party/node_modules/typescript/lib/lib.esnext.d.ts!string";
 import libEsnextIntlDts from "/third_party/node_modules/typescript/lib/lib.esnext.intl.d.ts!string";
 import libEsnextSymbolDts from "/third_party/node_modules/typescript/lib/lib.esnext.symbol.d.ts!string";
-
-// Static definitions
-import typescriptDts from "/third_party/node_modules/typescript/lib/typescript.d.ts!string";
 // tslint:enable:max-line-length
 
 // @internal
@@ -78,8 +75,5 @@ export const assetSourceCode: { [key: string]: string } = {
   "lib.esnext.asynciterable.d.ts": libEsnextAsynciterablesDts,
   "lib.esnext.bigint.d.ts": libEsnextBigintDts,
   "lib.esnext.intl.d.ts": libEsnextIntlDts,
-  "lib.esnext.symbol.d.ts": libEsnextSymbolDts,
-
-  // Static definitions
-  "typescript.d.ts": typescriptDts
+  "lib.esnext.symbol.d.ts": libEsnextSymbolDts
 };
