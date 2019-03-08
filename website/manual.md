@@ -490,21 +490,21 @@ network access.
 **It seems unwieldy to import URLs everywhere. What if one of the URLs links to
 a subtly different version of a library? Isn't it error prone to maintain URLs
 everywhere in a large project?** The solution is to import and re-export your
-external libraries in a central `package.ts` file (which serves the same purpose
-as Node's `package.json` file). For example, let's say you were using the above
+external libraries in a central `deps.ts` file (which serves the same purpose as
+Node's `package.json` file). For example, let's say you were using the above
 testing library across a large project. Rather than importing
 `"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
-`package.ts` file the exports the third-party code:
+`deps.ts` file the exports the third-party code:
 
 ```ts
 export { test, assertEquals } from "https://deno.land/std/testing/mod.ts";
 ```
 
-And throughout project one can import from the `package.ts` and avoid having
-many references to the same URL:
+And throughout project one can import from the `deps.ts` and avoid having many
+references to the same URL:
 
 ```ts
-import { test, assertEquals } from "./package.ts";
+import { test, assertEquals } from "./deps.ts";
 ```
 
 This design circumvents a plethora of complexity spawned by package management
