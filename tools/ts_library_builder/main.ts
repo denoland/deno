@@ -42,6 +42,11 @@ buildRuntimeLib({
   buildPath,
   debug,
   inline,
+  inputs: [
+    "node_modules/typescript/lib/lib.esnext.d.ts",
+    "js/deno.ts",
+    "js/globals.ts"
+  ],
   outFile,
   silent
 });
