@@ -1,5 +1,5 @@
 const { mkdir, open } = Deno;
-import { FileInfo } from "deno";
+type FileInfo = Deno.FileInfo;
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { glob } from "./glob.ts";

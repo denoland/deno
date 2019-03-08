@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Writer } from "deno";
+type Writer = Deno.Writer;
 import { decode, encode } from "../strings/strings.ts";
 
 /** Writer utility for buffering string chunks */

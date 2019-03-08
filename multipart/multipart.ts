@@ -1,7 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 const { Buffer, copy, remove } = Deno;
-import { Closer, Reader, ReadResult, Writer } from "deno";
+type Closer = Deno.Closer;
+type Reader = Deno.Reader;
+type ReadResult = Deno.ReadResult;
+type Writer = Deno.Writer;
 import { FormFile } from "./formfile.ts";
 import {
   bytesFindIndex,

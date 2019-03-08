@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { Buffer, mkdir, open } = Deno;
-import { File, Reader } from "deno";
+type File = Deno.File;
+type Reader = Deno.Reader;
 import { encode } from "../strings/strings.ts";
 import * as path from "../fs/path.ts";
 // `off` is the offset into `dst` where it will at which to begin writing values

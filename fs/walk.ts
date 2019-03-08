@@ -1,5 +1,5 @@
 const { readDir, readDirSync, readlink, readlinkSync, stat, statSync } = Deno;
-import { FileInfo } from "deno";
+type FileInfo = Deno.FileInfo;
 
 export interface WalkOptions {
   maxDepth?: number;

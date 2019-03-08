@@ -1,4 +1,3 @@
-import { FileInfo } from "deno";
 import { globrex } from "./globrex.ts";
 
 export interface GlobOptions {

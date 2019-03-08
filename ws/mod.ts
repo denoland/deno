@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { Buffer } = Deno;
-import { Writer, Conn } from "deno";
+type Conn = Deno.Conn;
+type Writer = Deno.Writer;
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
 import { Sha1 } from "./sha1.ts";
