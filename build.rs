@@ -21,15 +21,16 @@ fn main() {
   };
 
   // Equivalent to target arch != host arch
-  let is_cross_compile = env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str()
-    != env::var("HOST")
+  let is_different_target_arch =
+    env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() != env::var("HOST")
       .unwrap()
       .as_str()
       .split("-")
       .collect::<Vec<&str>>()[0];
-  
+
   // If we are not using a standard target
-  let is_nonstandard_target = env::var("TARGET").unwrap() != env::var("HOST").unwrap();
+  let is_nonstandard_target =
+    env::var("TARGET").unwrap() != env::var("HOST").unwrap();
 
   let cwd = env::current_dir().unwrap();
   // If not using standard target tell gn to use the correct directory
@@ -74,7 +75,7 @@ fn main() {
     println!("cargo:rustc-cfg=feature=\"check-only\"");
   } else {
     // "Full" (non-RLS) build.
-    if is_cross_compile {
+    if is_different_target_arch {
       gn_target = "deno_deps_cross";
     } else {
       gn_target = "deno_deps";
@@ -98,7 +99,7 @@ fn main() {
   }
 
   // If target_arch != host_arch disable snapshots since we are cross compiling.
-  if is_cross_compile {
+  if is_different_target_arch {
     // no-snapshot-init is not related to v8_use_snapshots
     println!("cargo:rustc-cfg=feature=\"no-snapshot-init\"");
   }
