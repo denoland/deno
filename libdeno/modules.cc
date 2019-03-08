@@ -19,42 +19,6 @@ using v8::ScriptOrigin;
 using v8::String;
 using v8::Value;
 
-std::string BuiltinModuleSrc(Local<Context> context, Local<String> specifier) {
-  auto* isolate = context->GetIsolate();
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::EscapableHandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context);
-
-  v8::String::Utf8Value specifier_utf8val(isolate, specifier);
-  const char* specifier_cstr = *specifier_utf8val;
-
-  auto builtin_modules = d->GetBuiltinModules();
-  auto val = builtin_modules->Get(context, specifier).ToLocalChecked();
-  CHECK(val->IsObject());
-  auto obj = val->ToObject(isolate);
-
-  // In order to export obj as a module, we must iterate over its properties
-  // and export them each individually.
-  // TODO(ry) Find a better way to do this.
-  std::string src = "let globalEval = eval\nlet g = globalEval('this');\n";
-  auto names = obj->GetOwnPropertyNames(context).ToLocalChecked();
-  for (uint32_t i = 0; i < names->Length(); i++) {
-    auto name = names->Get(context, i).ToLocalChecked();
-    v8::String::Utf8Value name_utf8val(isolate, name);
-    const char* name_cstr = *name_utf8val;
-    // TODO(ry) use format string.
-    src.append("export const ");
-    src.append(name_cstr);
-    src.append(" = g.libdeno.builtinModules.");
-    src.append(specifier_cstr);
-    src.append(".");
-    src.append(name_cstr);
-    src.append(";\n");
-  }
-  return src;
-}
-
 v8::MaybeLocal<v8::Module> ResolveCallback(Local<Context> context,
                                            Local<String> specifier,
                                            Local<Module> referrer) {
@@ -65,8 +29,6 @@ v8::MaybeLocal<v8::Module> ResolveCallback(Local<Context> context,
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
 
   v8::EscapableHandleScope handle_scope(isolate);
-
-  auto builtin_modules = d->GetBuiltinModules();
 
   deno_mod referrer_id = referrer->GetIdentityHash();
   auto* referrer_info = d->GetModuleInfo(referrer_id);
@@ -79,21 +41,7 @@ v8::MaybeLocal<v8::Module> ResolveCallback(Local<Context> context,
       v8::String::Utf8Value req_utf8(isolate, req);
       std::string req_str(*req_utf8);
 
-      deno_mod id = 0;
-      {
-        bool has_builtin = builtin_modules->Has(context, specifier).ToChecked();
-        if (has_builtin) {
-          auto it = d->mods_by_name_.find(req_str.c_str());
-          if (it != d->mods_by_name_.end()) {
-            id = it->second;
-          } else {
-            std::string src = BuiltinModuleSrc(context, specifier);
-            id = d->RegisterModule(false, req_str.c_str(), src.c_str());
-          }
-        } else {
-          id = d->resolve_cb_(d->user_data_, req_str.c_str(), referrer_id);
-        }
-      }
+      deno_mod id = d->resolve_cb_(d->user_data_, req_str.c_str(), referrer_id);
 
       // Note: id might be zero, in which case GetModuleInfo will return
       // nullptr.

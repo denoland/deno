@@ -67,7 +67,6 @@ class DenoIsolate {
   void AddIsolate(v8::Isolate* isolate);
 
   deno_mod RegisterModule(bool main, const char* name, const char* source);
-  v8::Local<v8::Object> GetBuiltinModules();
   void ClearModules();
 
   ModuleInfo* GetModuleInfo(deno_mod id) {
@@ -109,7 +108,6 @@ class DenoIsolate {
   size_t next_zero_copy_id_;
   void* user_data_;
 
-  v8::Persistent<v8::Object> builtin_modules_;
   std::map<deno_mod, ModuleInfo> mods_;
   std::map<std::string, deno_mod> mods_by_name_;
   deno_resolve_cb resolve_cb_;
@@ -159,8 +157,6 @@ void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args);
 void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
-void BuiltinModules(v8::Local<v8::Name> property,
-                    const v8::PropertyCallbackInfo<v8::Value>& info);
 void MessageCallback(v8::Local<v8::Message> message, v8::Local<v8::Value> data);
 static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print),
@@ -169,7 +165,6 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(EvalContext),
     reinterpret_cast<intptr_t>(ErrorToJSON),
     reinterpret_cast<intptr_t>(Shared),
-    reinterpret_cast<intptr_t>(BuiltinModules),
     reinterpret_cast<intptr_t>(MessageCallback),
     0};
 

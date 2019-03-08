@@ -24,9 +24,6 @@ interface Libdeno {
 
   shared: ArrayBuffer;
 
-  // DEPRECATED
-  builtinModules: { [s: string]: object };
-
   /** Evaluate provided code in the current context.
    * It differs from eval(...) in that it does not create a new context.
    * Returns an array: [output, errInfo].
