@@ -5,24 +5,12 @@ import {
   assertEquals,
   assertStrictEq,
   assertThrows,
-  assertThrowsAsync,
-  fail
+  assertThrowsAsync
 } from "../testing/asserts.ts";
 import "./format_test.ts";
 import "./diff_test.ts";
 import "./pretty_test.ts";
 import "./asserts_test.ts";
-
-test(function testingAssertFail() {
-  assertThrows(fail, Error, "Failed assertion.");
-  assertThrows(
-    () => {
-      fail("foo");
-    },
-    Error,
-    "Failed assertion: foo"
-  );
-});
 
 test(function testingAssertEqualActualUncoercable() {
   let didThrow = false;
