@@ -20,18 +20,22 @@ fn main() {
     env::var("PROFILE").unwrap()
   };
 
-  // Equivilent to target arch != host arch
+  // Equivalent to target arch != host arch
   let is_cross_compile = env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str()
     != env::var("HOST")
       .unwrap()
       .as_str()
       .split("-")
       .collect::<Vec<&str>>()[0];
+  
+  // If we are not using a standard target
+  let is_nonstandard_target = env::var("TARGET").unwrap() != env::var("HOST").unwrap();
 
   let cwd = env::current_dir().unwrap();
+  // If not using standard target tell gn to use the correct directory
   let gn_out_path = cwd.join(format!(
     "target/{}",
-    match is_cross_compile {
+    match is_nonstandard_target {
       false => gn_mode.clone(),
       true => format!("{}/{}", env::var("TARGET").unwrap(), gn_mode.clone()),
     }
