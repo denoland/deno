@@ -2,20 +2,19 @@
 
 import {
   assert,
-  equal,
   assertNotEquals,
   assertStrContains,
   assertArrayContains,
   assertMatch,
   assertEquals,
+  assertThrows,
+  AssertionError,
+  equal,
+  fail,
   unimplemented,
   unreachable
 } from "./asserts.ts";
 import { test } from "./mod.ts";
-// import { assertEquals as prettyAssertEqual } from "./pretty.ts";
-// import "./format_test.ts";
-// import "./diff_test.ts";
-// import "./pretty_test.ts";
 
 test(function testingEqual() {
   assert(equal("world", "world"));
@@ -49,6 +48,7 @@ test(function testingNotEquals() {
     assertNotEquals("Raptor", "Raptor");
     didThrow = false;
   } catch (e) {
+    assert(e instanceof AssertionError);
     didThrow = true;
   }
   assertEquals(didThrow, true);
@@ -63,6 +63,7 @@ test(function testingAssertStringContains() {
     assertStrContains("Denosaurus", "Raptor");
     didThrow = false;
   } catch (e) {
+    assert(e instanceof AssertionError);
     didThrow = true;
   }
   assertEquals(didThrow, true);
@@ -78,6 +79,7 @@ test(function testingArrayContains() {
     assertArrayContains(fixtureObject, [{ deno: "node" }]);
     didThrow = false;
   } catch (e) {
+    assert(e instanceof AssertionError);
     didThrow = true;
   }
   assertEquals(didThrow, true);
@@ -92,6 +94,7 @@ test(function testingAssertStringContainsThrow() {
       e.message ===
         `actual: "Denosaurus from Jurassic" expected to contains: "Raptor"`
     );
+    assert(e instanceof AssertionError);
     didThrow = true;
   }
   assert(didThrow);
@@ -110,6 +113,7 @@ test(function testingAssertStringMatchingThrows() {
       e.message ===
         `actual: "Denosaurus from Jurassic" expected to match: "/Raptor/"`
     );
+    assert(e instanceof AssertionError);
     didThrow = true;
   }
   assert(didThrow);
@@ -121,6 +125,7 @@ test(function testingAssertsUnimplemented() {
     unimplemented();
   } catch (e) {
     assert(e.message === "unimplemented");
+    assert(e instanceof AssertionError);
     didThrow = true;
   }
   assert(didThrow);
@@ -132,7 +137,19 @@ test(function testingAssertsUnreachable() {
     unreachable();
   } catch (e) {
     assert(e.message === "unreachable");
+    assert(e instanceof AssertionError);
     didThrow = true;
   }
   assert(didThrow);
+});
+
+test(function testingAssertFail() {
+  assertThrows(fail, AssertionError, "Failed assertion.");
+  assertThrows(
+    () => {
+      fail("foo");
+    },
+    AssertionError,
+    "Failed assertion: foo"
+  );
 });

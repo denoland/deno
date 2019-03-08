@@ -6,6 +6,13 @@ interface Constructor {
   new (...args: any[]): any;
 }
 
+export class AssertionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AssertionError";
+  }
+}
+
 export function equal(c: unknown, d: unknown): boolean {
   const seen = new Map();
   return (function compare(a: unknown, b: unknown) {
@@ -36,7 +43,7 @@ export function equal(c: unknown, d: unknown): boolean {
 /** Make an assertion, if not `true`, then throw. */
 export function assert(expr: boolean, msg = ""): void {
   if (!expr) {
-    throw new Error(msg);
+    throw new AssertionError(msg);
   }
 }
 
@@ -85,7 +92,7 @@ export function assertNotEquals(
   if (!msg) {
     msg = `actual: ${actualString} expected: ${expectedString}`;
   }
-  throw new Error(msg);
+  throw new AssertionError(msg);
 }
 
 /**
@@ -119,7 +126,7 @@ export function assertStrictEq(
     if (!msg) {
       msg = `actual: ${actualString} expected: ${expectedString}`;
     }
-    throw new Error(msg);
+    throw new AssertionError(msg);
   }
 }
 
@@ -142,7 +149,7 @@ export function assertStrContains(
     if (!msg) {
       msg = `actual: "${actual}" expected to contains: "${expected}"`;
     }
-    throw new Error(msg);
+    throw new AssertionError(msg);
   }
 }
 
@@ -182,7 +189,7 @@ export function assertArrayContains(
     msg += "\n";
     msg += `missing: ${missing}`;
   }
-  throw new Error(msg);
+  throw new AssertionError(msg);
 }
 
 /**
@@ -204,7 +211,7 @@ export function assertMatch(
     if (!msg) {
       msg = `actual: "${actual}" expected to match: "${expected}"`;
     }
-    throw new Error(msg);
+    throw new AssertionError(msg);
   }
 }
 
@@ -234,21 +241,19 @@ export function assertThrows(
       msg = `Expected error to be instance of "${ErrorClass.name}"${
         msg ? `: ${msg}` : "."
       }`;
-      throw new Error(msg);
+      throw new AssertionError(msg);
     }
-    if (msgIncludes) {
-      if (!e.message.includes(msgIncludes)) {
-        msg = `Expected error message to include "${msgIncludes}", but got "${
-          e.message
-        }"${msg ? `: ${msg}` : "."}`;
-        throw new Error(msg);
-      }
+    if (msgIncludes && !e.message.includes(msgIncludes)) {
+      msg = `Expected error message to include "${msgIncludes}", but got "${
+        e.message
+      }"${msg ? `: ${msg}` : "."}`;
+      throw new AssertionError(msg);
     }
     doesThrow = true;
   }
   if (!doesThrow) {
     msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
-    throw new Error(msg);
+    throw new AssertionError(msg);
   }
 }
 
@@ -266,30 +271,28 @@ export async function assertThrowsAsync(
       msg = `Expected error to be instance of "${ErrorClass.name}"${
         msg ? `: ${msg}` : "."
       }`;
-      throw new Error(msg);
+      throw new AssertionError(msg);
     }
-    if (msgIncludes) {
-      if (!e.message.includes(msgIncludes)) {
-        msg = `Expected error message to include "${msgIncludes}", but got "${
-          e.message
-        }"${msg ? `: ${msg}` : "."}`;
-        throw new Error(msg);
-      }
+    if (msgIncludes && !e.message.includes(msgIncludes)) {
+      msg = `Expected error message to include "${msgIncludes}", but got "${
+        e.message
+      }"${msg ? `: ${msg}` : "."}`;
+      throw new AssertionError(msg);
     }
     doesThrow = true;
   }
   if (!doesThrow) {
     msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
-    throw new Error(msg);
+    throw new AssertionError(msg);
   }
 }
 
 /** Use this to stub out methods that will throw when invoked. */
 export function unimplemented(msg?: string): never {
-  throw new Error(msg || "unimplemented");
+  throw new AssertionError(msg || "unimplemented");
 }
 
 /** Use this to assert unreachable code. */
 export function unreachable(): never {
-  throw new Error("unreachable");
+  throw new AssertionError("unreachable");
 }
