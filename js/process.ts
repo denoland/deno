@@ -22,7 +22,6 @@ import { assert, unreachable } from "./util";
 export type ProcessStdio = "inherit" | "piped" | "null";
 
 // TODO Maybe extend VSCode's 'CommandOptions'?
-// tslint:disable-next-line:max-line-length
 // See https://code.visualstudio.com/docs/editor/tasks-appendix#_schema-for-tasksjson
 export interface RunOptions {
   args: string[];

@@ -12,7 +12,7 @@ interface EvalErrorInfo {
   // The actual thrown entity
   // (might be an Error or anything else thrown by the user)
   // If isNativeError is true, this is an Error
-  thrown: any; // tslint:disable-line:no-any
+  thrown: any;
 }
 
 interface Libdeno {
@@ -29,11 +29,8 @@ interface Libdeno {
    * Returns an array: [output, errInfo].
    * If an error occurs, `output` becomes null and `errInfo` is non-null.
    */
-  evalContext(
-    code: string
-  ): [any, EvalErrorInfo | null] /* tslint:disable-line:no-any */;
+  evalContext(code: string): [any, EvalErrorInfo | null];
 
-  // tslint:disable-next-line:no-any
   errorToJSON: (e: Error) => string;
 }
 

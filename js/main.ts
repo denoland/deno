@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// tslint:disable-next-line:no-reference
 /// <reference path="./plugins.d.ts" />
 
 import "./globals";
@@ -17,7 +16,6 @@ import * as deno from "./deno";
 // TODO(kitsonk) remove with `--types` below
 import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 
-/* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
   const startResMsg = os.start();
 

@@ -64,7 +64,6 @@ export function cliTable(head: string[], columns: string[][]): string {
       if (rows[j] === undefined) {
         rows[j] = [];
       }
-      // tslint:disable-next-line:no-any
       const value = ((rows[j][i] as any) = column.hasOwnProperty(j)
         ? column[j]
         : "");

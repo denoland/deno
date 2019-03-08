@@ -8,7 +8,6 @@ import { requiredArguments } from "./util";
 const invalidTokenRegex = /[^\^_`a-zA-Z\-0-9!#$%&'*+.|~]/;
 const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
 
-// tslint:disable-next-line:no-any
 function isHeaders(value: any): value is domTypes.Headers {
   return value instanceof Headers;
 }
@@ -57,9 +56,9 @@ class HeadersBase {
           // then throw a TypeError.
           // ref: https://fetch.spec.whatwg.org/#concept-headers-fill
           if (tuple.length !== 2) {
-            // tslint:disable:max-line-length
-            // prettier-ignore
-            throw new TypeError("Failed to construct 'Headers'; Each header pair must be an iterable [name, value] tuple");
+            throw new TypeError(
+              "Failed to construct 'Headers'; Each header pair must be an iterable [name, value] tuple"
+            );
           }
 
           const [name, value] = this._normalizeParams(tuple[0], tuple[1]);
@@ -127,7 +126,6 @@ class HeadersBase {
 }
 
 // @internal
-// tslint:disable-next-line:variable-name
 export class Headers extends DomIterableMixin<
   string,
   string,

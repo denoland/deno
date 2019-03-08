@@ -192,17 +192,14 @@ function createRegExpString(value: RegExp) {
   return value.toString();
 }
 
-// tslint:disable-next-line:ban-types
 function createStringWrapperString(value: String) {
   return `[String: "${value.toString()}"]`;
 }
 
-// tslint:disable-next-line:ban-types
 function createBooleanWrapperString(value: Boolean) {
   return `[Boolean: ${value.toString()}]`;
 }
 
-// tslint:disable-next-line:ban-types
 function createNumberWrapperString(value: Number) {
   return `[Number: ${value.toString()}]`;
 }
@@ -261,13 +258,10 @@ function createObjectString(
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);
   } else if (value instanceof Number) {
-    // tslint:disable-next-line:ban-types
     return createNumberWrapperString(value as Number);
   } else if (value instanceof Boolean) {
-    // tslint:disable-next-line:ban-types
     return createBooleanWrapperString(value as Boolean);
   } else if (value instanceof String) {
-    // tslint:disable-next-line:ban-types
     return createStringWrapperString(value as String);
   } else if (value instanceof RegExp) {
     return createRegExpString(value as RegExp);
@@ -394,7 +388,6 @@ export function stringifyArgs(
                 args[++a],
                 new Set<unknown>(),
                 0,
-                // tslint:disable-next-line:triple-equals
                 options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
               );
               break;
@@ -443,7 +436,6 @@ export function stringifyArgs(
         value,
         new Set<unknown>(),
         0,
-        // tslint:disable-next-line:triple-equals
         options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
       );
     }
@@ -734,7 +726,6 @@ export function inspect(value: unknown, options?: ConsoleOptions) {
       value,
       new Set<unknown>(),
       0,
-      // tslint:disable-next-line:triple-equals
       opts.depth != undefined ? opts.depth : DEFAULT_MAX_DEPTH
     );
   }

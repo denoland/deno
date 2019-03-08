@@ -17,7 +17,6 @@ globalBuilder.inUse = false;
 // We can do this because the "control" messages sent to the privileged
 // side are guaranteed to be used during the call to libdeno.send().
 export function createBuilder(): Builder {
-  // tslint:disable-next-line:no-any
   const gb = globalBuilder as any;
   util.assert(!gb.inUse);
 

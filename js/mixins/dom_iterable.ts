@@ -3,7 +3,6 @@ import { DomIterable } from "../dom_types";
 import { window } from "../window";
 import { requiredArguments } from "../util";
 
-// tslint:disable:no-any
 type Constructor<T = {}> = new (...args: any[]) => T;
 
 /** Mixes in a DOM iterable methods into a base class, assumes that there is
@@ -12,7 +11,6 @@ type Constructor<T = {}> = new (...args: any[]) => T;
  * TODO Don't expose DomIterableMixin from "deno" namespace.
  */
 export function DomIterableMixin<K, V, TBase extends Constructor>(
-  // tslint:disable-next-line:variable-name
   Base: TBase,
   dataSymbol: symbol
 ): TBase & Constructor<DomIterable<K, V>> {
@@ -25,7 +23,6 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
   // Symbol.iterator, and some have an Array, which yields V, in this case
   // [K, V] too as they are arrays of tuples.
 
-  // tslint:disable-next-line:variable-name
   const DomIterable = class extends Base {
     *entries(): IterableIterator<[K, V]> {
       for (const entry of (this as any)[dataSymbol]) {
@@ -47,7 +44,6 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
 
     forEach(
       callbackfn: (value: V, key: K, parent: this) => void,
-      // tslint:disable-next-line:no-any
       thisArg?: any
     ): void {
       requiredArguments(
@@ -76,4 +72,3 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
 
   return DomIterable;
 }
-// tslint:enable:no-any

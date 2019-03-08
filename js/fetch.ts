@@ -204,7 +204,6 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     }
   }
 
-  // tslint:disable-next-line:no-any
   async json(): Promise<any> {
     const text = await this.text();
     return JSON.parse(text);
@@ -272,7 +271,6 @@ class Response implements domTypes.Response {
     return this.body.formData();
   }
 
-  // tslint:disable-next-line:no-any
   async json(): Promise<any> {
     return this.body.json();
   }

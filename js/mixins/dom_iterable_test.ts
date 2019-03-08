@@ -19,13 +19,11 @@ function setup() {
     Base,
     // This is using an internal API we don't want published as types, so having
     // to cast to any to "trick" TypeScript
-    // tslint:disable-next-line:no-any
     DomIterable: (Deno as any).DomIterableMixin(Base, dataSymbol)
   };
 }
 
 test(function testDomIterable() {
-  // tslint:disable-next-line:variable-name
   const { DomIterable, Base } = setup();
 
   const fixture: Array<[string, number]> = [["foo", 1], ["bar", 2]];
@@ -60,12 +58,10 @@ test(function testDomIterable() {
 });
 
 test(function testDomIterableScope() {
-  // tslint:disable-next-line:variable-name
   const { DomIterable } = setup();
 
   const domIterable = new DomIterable([["foo", 1]]);
 
-  // tslint:disable-next-line:no-any
   function checkScope(thisArg: any, expected: any) {
     function callback() {
       assertEquals(this, expected);

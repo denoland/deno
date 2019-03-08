@@ -22,7 +22,6 @@ test(function fileUnicodeStringFileBits() {
 });
 
 test(function fileStringObjectFileBits() {
-  // tslint:disable-next-line no-construct
   testFirstArgument([new String("string object")], 13);
 });
 

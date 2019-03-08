@@ -2,7 +2,6 @@
 import { test, assert, assertEquals } from "./test_util.ts";
 
 // We use a silly amount of `any` in these tests...
-// tslint:disable:no-any
 
 const { Compiler, jsonEsmTemplate } = (Deno as any)._compiler;
 
@@ -106,7 +105,6 @@ const modBModuleInfo = mockModuleInfo(
   undefined
 );
 
-// tslint:disable:max-line-length
 const fooBarTsOutput = `import * as deno from "deno";
 console.log(deno);
 export const foo = "bar";
@@ -119,7 +117,6 @@ const loadConfigSource = `import * as config from "./config.json";
 console.log(config.foo.baz);
 `;
 const configJsonSource = `{"foo":{"bar": true,"baz": ["qat", 1]}}`;
-// tslint:enable:max-line-length
 
 const moduleMap: {
   [containFile: string]: { [moduleSpecifier: string]: ModuleInfo };

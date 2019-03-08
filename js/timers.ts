@@ -171,7 +171,7 @@ function fireTimers() {
   setGlobalTimeout(nextTimerDue, now);
 }
 
-export type Args = any[]; // tslint:disable-line:no-any
+export type Args = any[];
 
 function setTimer(
   cb: (...args: Args) => void,
