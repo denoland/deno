@@ -7,19 +7,19 @@ Prettier APIs and tools for deno
 To formats the source files, run:
 
 ```console
-deno --allow-run --allow-write https://deno.land/std/prettier/main.ts
+deno --allow-read --allow-write https://deno.land/std/prettier/main.ts
 ```
 
 You can format only specific files by passing the arguments.
 
 ```console
-deno --allow-run --allow-write https://deno.land/std/prettier/main.ts path/to/script.ts
+deno --allow-read --allow-write https://deno.land/std/prettier/main.ts path/to/script.ts
 ```
 
 You can format files on specific directory by passing the directory's path.
 
 ```console
-deno --allow-run --allow-write https://deno.land/std/prettier/main.ts path/to/script.ts
+deno --allow-read --allow-write https://deno.land/std/prettier/main.ts path/to/script.ts
 ```
 
 ## Use API
