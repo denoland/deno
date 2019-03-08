@@ -20,8 +20,33 @@ fn main() {
     env::var("PROFILE").unwrap()
   };
 
+  // Equivalent to target arch != host arch
+  let is_different_target_arch =
+    env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() != env::var("HOST")
+      .unwrap()
+      .as_str()
+      .split("-")
+      .collect::<Vec<&str>>()[0];
+
+  // If we are using the same target as the host's default
+  // "rustup target list" should show your default target
+  let is_default_target =
+    env::var("TARGET").unwrap() == env::var("HOST").unwrap();
+
   let cwd = env::current_dir().unwrap();
-  let gn_out_path = cwd.join(format!("target/{}", gn_mode));
+  // If not using host default target the output folder will change
+  // target/release will become target/$TARGET/release
+  // Gn should also be using this output directory as well
+  // most things will work with gn using the default
+  // output directory but some tests depend on artifacts
+  // being in a specific directory relative to the main build output
+  let gn_out_path = cwd.join(format!(
+    "target/{}",
+    match is_default_target {
+      true => gn_mode.clone(),
+      false => format!("{}/{}", env::var("TARGET").unwrap(), gn_mode.clone()),
+    }
+  ));
   let gn_out_dir = normalize_path(&gn_out_path);
 
   // Tell Cargo when to re-run this file. We do this first, so these directives
@@ -56,8 +81,11 @@ fn main() {
     println!("cargo:rustc-cfg=feature=\"check-only\"");
   } else {
     // "Full" (non-RLS) build.
-    gn_target = "deno_deps";
-
+    if is_different_target_arch {
+      gn_target = "deno_deps_cross";
+    } else {
+      gn_target = "deno_deps";
+    }
     // Link with libdeno.a/.lib, which includes V8.
     println!("cargo:rustc-link-search=native={}/obj/libdeno", gn_out_dir);
     if cfg!(target_os = "windows") {
@@ -76,13 +104,15 @@ fn main() {
     }
   }
 
-  // If target_arch != host_arch disable snapshots since we are cross compiling.
-  if env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() != env::var("HOST")
-    .unwrap()
-    .as_str()
-    .split("-")
-    .collect::<Vec<&str>>()[0]
-  {
+  // If target_arch != host_arch disable snapshots.
+  // v8 snapshots seem to not be compatible with binaries
+  // other than the ones used to gernerate them,
+  // so for non native architecture builds we don't
+  // have an easy way to generate these snapshots.
+  // We can't run any binary capable of generating
+  // compatible snapshots without emulating the
+  // target architecture.
+  if is_different_target_arch {
     // no-snapshot-init is not related to v8_use_snapshots
     println!("cargo:rustc-cfg=feature=\"no-snapshot-init\"");
   }
