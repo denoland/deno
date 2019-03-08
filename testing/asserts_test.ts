@@ -7,7 +7,9 @@ import {
   assertStrContains,
   assertArrayContains,
   assertMatch,
-  assertEquals
+  assertEquals,
+  unimplemented,
+  unreachable
 } from "./asserts.ts";
 import { test } from "./mod.ts";
 // import { assertEquals as prettyAssertEqual } from "./pretty.ts";
@@ -108,6 +110,28 @@ test(function testingAssertStringMatchingThrows() {
       e.message ===
         `actual: "Denosaurus from Jurassic" expected to match: "/Raptor/"`
     );
+    didThrow = true;
+  }
+  assert(didThrow);
+});
+
+test(function testingAssertsUnimplemented() {
+  let didThrow = false;
+  try {
+    unimplemented();
+  } catch (e) {
+    assert(e.message === "unimplemented");
+    didThrow = true;
+  }
+  assert(didThrow);
+});
+
+test(function testingAssertsUnreachable() {
+  let didThrow = false;
+  try {
+    unreachable();
+  } catch (e) {
+    assert(e.message === "unreachable");
     didThrow = true;
   }
   assert(didThrow);
