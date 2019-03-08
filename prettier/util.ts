@@ -8,5 +8,3 @@ export function xrun(opts): Deno.Process {
     args: build.os === "win" ? ["cmd.exe", "/c", ...opts.args] : opts.args
   });
 }
-
-export const executableSuffix = build.os === "win" ? ".exe" : "";

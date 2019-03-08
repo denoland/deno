@@ -1,12 +1,12 @@
 #!/usr/bin/env deno --allow-run --allow-write --allow-read
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { exit, args } = Deno;
+const { exit, args, execPath } = Deno;
 import { parse } from "./flags/mod.ts";
-import { xrun, executableSuffix } from "./prettier/util.ts";
+import { xrun } from "./prettier/util.ts";
 
 async function main(opts) {
   const args = [
-    `deno${executableSuffix}`,
+    execPath,
     "--allow-write",
     "--allow-read",
     "prettier/main.ts",
