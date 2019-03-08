@@ -29,10 +29,10 @@ pub fn deno_isolate_init() -> IsolateInit {
     }
   } else {
     debug!("Deno isolate init with snapshots.");
-    #[cfg(not(feature = "check-only"))]
+    #[cfg(not(any(feature = "check-only", feature = "no-snapshot-init")))]
     let data =
       include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/snapshot_deno.bin"));
-    #[cfg(feature = "check-only")]
+    #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
     let data = vec![];
 
     unsafe {
@@ -62,10 +62,10 @@ pub fn compiler_isolate_init() -> IsolateInit {
     }
   } else {
     debug!("Deno isolate init with snapshots.");
-    #[cfg(not(feature = "check-only"))]
+    #[cfg(not(any(feature = "check-only", feature = "no-snapshot-init")))]
     let data =
       include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/snapshot_compiler.bin"));
-    #[cfg(feature = "check-only")]
+    #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
     let data = vec![];
 
     unsafe {

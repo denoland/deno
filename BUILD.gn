@@ -135,6 +135,19 @@ group("deno_deps") {
   ]
 }
 
+# Optimized dependencies for cross compiled builds.
+# This can be removed once we get snapshots into cross compiled builds.
+group("deno_deps_cross") {
+  testonly = true
+  deps = [
+    ":compiler_bundle",
+    ":main_bundle",
+    ":msg_rs",
+    "libdeno:libdeno_static_lib",
+    "libdeno:test_cc",
+  ]
+}
+
 # Reads the cargo info from Cargo.toml
 deno_cargo_info = exec_script("build_extra/rust/get_cargo_info.py",
                               [ rebase_path("Cargo.toml", root_build_dir) ],
