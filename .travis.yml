@@ -134,7 +134,6 @@ jobs:
       os: linux
       script:
       - cargo build -vv --release --locked
-      
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
     # tests.  We want to detect leaks during the build process as well as
