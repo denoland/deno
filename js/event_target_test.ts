@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assertEqual } from "./test_util.ts";
+import { test, assertEquals } from "./test_util.ts";
 
 test(function addEventListenerTest() {
   const document = new EventTarget();
 
-  assertEqual(document.addEventListener("x", null, false), undefined);
-  assertEqual(document.addEventListener("x", null, true), undefined);
-  assertEqual(document.addEventListener("x", null), undefined);
+  assertEquals(document.addEventListener("x", null, false), undefined);
+  assertEquals(document.addEventListener("x", null, true), undefined);
+  assertEquals(document.addEventListener("x", null), undefined);
 });
 
 test(function constructedEventTargetCanBeUsedAsExpected() {
@@ -15,21 +15,21 @@ test(function constructedEventTargetCanBeUsedAsExpected() {
   let callCount = 0;
 
   function listener(e) {
-    assertEqual(e, event);
+    assertEquals(e, event);
     ++callCount;
   }
 
   target.addEventListener("foo", listener);
 
   target.dispatchEvent(event);
-  assertEqual(callCount, 1);
+  assertEquals(callCount, 1);
 
   target.dispatchEvent(event);
-  assertEqual(callCount, 2);
+  assertEquals(callCount, 2);
 
   target.removeEventListener("foo", listener);
   target.dispatchEvent(event);
-  assertEqual(callCount, 2);
+  assertEquals(callCount, 2);
 });
 
 test(function anEventTargetCanBeSubclassed() {
@@ -52,15 +52,15 @@ test(function anEventTargetCanBeSubclassed() {
   }
 
   target.on("foo", listener);
-  assertEqual(callCount, 0);
+  assertEquals(callCount, 0);
 
   target.off("foo", listener);
-  assertEqual(callCount, 0);
+  assertEquals(callCount, 0);
 });
 
 test(function removingNullEventListenerShouldSucceed() {
   const document = new EventTarget();
-  assertEqual(document.removeEventListener("x", null, false), undefined);
-  assertEqual(document.removeEventListener("x", null, true), undefined);
-  assertEqual(document.removeEventListener("x", null), undefined);
+  assertEquals(document.removeEventListener("x", null, false), undefined);
+  assertEquals(document.removeEventListener("x", null, true), undefined);
+  assertEquals(document.removeEventListener("x", null), undefined);
 });

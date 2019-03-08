@@ -1,24 +1,24 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEqual } from "./test_util.ts";
+import { test, assert, assertEquals } from "./test_util.ts";
 
 test(function formDataHasCorrectNameProp() {
-  assertEqual(FormData.name, "FormData");
+  assertEquals(FormData.name, "FormData");
 });
 
 test(function formDataParamsAppendSuccess() {
   const formData = new FormData();
   formData.append("a", "true");
-  assertEqual(formData.get("a"), "true");
+  assertEquals(formData.get("a"), "true");
 });
 
 test(function formDataParamsDeleteSuccess() {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
-  assertEqual(formData.get("b"), "false");
+  assertEquals(formData.get("b"), "false");
   formData.delete("b");
-  assertEqual(formData.get("a"), "true");
-  assertEqual(formData.get("b"), null);
+  assertEquals(formData.get("a"), "true");
+  assertEquals(formData.get("b"), null);
 });
 
 test(function formDataParamsGetAllSuccess() {
@@ -26,9 +26,9 @@ test(function formDataParamsGetAllSuccess() {
   formData.append("a", "true");
   formData.append("b", "false");
   formData.append("a", "null");
-  assertEqual(formData.getAll("a"), ["true", "null"]);
-  assertEqual(formData.getAll("b"), ["false"]);
-  assertEqual(formData.getAll("c"), []);
+  assertEquals(formData.getAll("a"), ["true", "null"]);
+  assertEquals(formData.getAll("b"), ["false"]);
+  assertEquals(formData.getAll("c"), []);
 });
 
 test(function formDataParamsGetSuccess() {
@@ -38,11 +38,11 @@ test(function formDataParamsGetSuccess() {
   formData.append("a", "null");
   formData.append("d", undefined);
   formData.append("e", null);
-  assertEqual(formData.get("a"), "true");
-  assertEqual(formData.get("b"), "false");
-  assertEqual(formData.get("c"), null);
-  assertEqual(formData.get("d"), "undefined");
-  assertEqual(formData.get("e"), "null");
+  assertEquals(formData.get("a"), "true");
+  assertEquals(formData.get("b"), "false");
+  assertEquals(formData.get("c"), null);
+  assertEquals(formData.get("d"), "undefined");
+  assertEquals(formData.get("e"), "null");
 });
 
 test(function formDataParamsHasSuccess() {
@@ -59,14 +59,14 @@ test(function formDataParamsSetSuccess() {
   formData.append("a", "true");
   formData.append("b", "false");
   formData.append("a", "null");
-  assertEqual(formData.getAll("a"), ["true", "null"]);
-  assertEqual(formData.getAll("b"), ["false"]);
+  assertEquals(formData.getAll("a"), ["true", "null"]);
+  assertEquals(formData.getAll("b"), ["false"]);
   formData.set("a", "false");
-  assertEqual(formData.getAll("a"), ["false"]);
+  assertEquals(formData.getAll("a"), ["false"]);
   formData.set("d", undefined);
-  assertEqual(formData.get("d"), "undefined");
+  assertEquals(formData.get("d"), "undefined");
   formData.set("e", null);
-  assertEqual(formData.get("e"), "null");
+  assertEquals(formData.get("e"), "null");
 });
 
 test(function formDataSetEmptyBlobSuccess() {
@@ -76,7 +76,7 @@ test(function formDataSetEmptyBlobSuccess() {
   /* TODO Fix this test.
   assert(file instanceof File);
   if (typeof file !== "string") {
-    assertEqual(file.name, "blank.txt");
+    assertEquals(file.name, "blank.txt");
   }
   */
 });
@@ -89,12 +89,12 @@ test(function formDataParamsForEachSuccess() {
   }
   let callNum = 0;
   formData.forEach((value, key, parent) => {
-    assertEqual(formData, parent);
-    assertEqual(value, init[callNum][1]);
-    assertEqual(key, init[callNum][0]);
+    assertEquals(formData, parent);
+    assertEquals(value, init[callNum][1]);
+    assertEquals(key, init[callNum][0]);
     callNum++;
   });
-  assertEqual(callNum, init.length);
+  assertEquals(callNum, init.length);
 });
 
 test(function formDataParamsArgumentsCheck() {
@@ -117,8 +117,8 @@ test(function formDataParamsArgumentsCheck() {
         hasThrown = 3;
       }
     }
-    assertEqual(hasThrown, 2);
-    assertEqual(
+    assertEquals(hasThrown, 2);
+    assertEquals(
       errMsg,
       `FormData.${method} requires at least 1 argument, but only 0 present`
     );
@@ -140,8 +140,8 @@ test(function formDataParamsArgumentsCheck() {
         hasThrown = 3;
       }
     }
-    assertEqual(hasThrown, 2);
-    assertEqual(
+    assertEquals(hasThrown, 2);
+    assertEquals(
       errMsg,
       `FormData.${method} requires at least 2 arguments, but only 0 present`
     );
@@ -159,8 +159,8 @@ test(function formDataParamsArgumentsCheck() {
         hasThrown = 3;
       }
     }
-    assertEqual(hasThrown, 2);
-    assertEqual(
+    assertEquals(hasThrown, 2);
+    assertEquals(
       errMsg,
       `FormData.${method} requires at least 2 arguments, but only 1 present`
     );

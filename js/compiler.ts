@@ -477,15 +477,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
     this._log("resolveModuleNames()", { moduleNames, containingFile });
     const resolvedModuleNames: ts.ResolvedModuleFull[] = [];
     for (const moduleName of moduleNames) {
-      let moduleMetaData: ModuleMetaData;
-      if (moduleName === "deno") {
-        // builtin modules are part of the runtime lib
-        moduleMetaData = this._getModuleMetaData(LIB_RUNTIME)!;
-      } else if (moduleName === "typescript") {
-        moduleMetaData = this._getModuleMetaData(`${ASSETS}/typescript.d.ts`)!;
-      } else {
-        moduleMetaData = this._resolveModule(moduleName, containingFile);
-      }
+      const moduleMetaData = this._resolveModule(moduleName, containingFile);
       // According to the interface we shouldn't return `undefined` but if we
       // fail to return the same length of modules to those we cannot resolve
       // then TypeScript fails on an assertion that the lengths can't be

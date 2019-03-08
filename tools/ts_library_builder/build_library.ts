@@ -485,7 +485,6 @@ export function main({
     declarationProject,
     filePath: `${basePath}/js/deno.d.ts`,
     globalInterfaceName: "Window",
-    moduleName: `"deno"`,
     namespaceName: "Deno",
     targetSourceFile: libDTs
   });

@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEqual, test } from "./test_util.ts";
+import { assert, assertEquals, test } from "./test_util.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
@@ -23,13 +23,13 @@ test(function consoleTestAssertShouldNotThrowError() {
   } catch {
     hasThrown = true;
   }
-  assertEqual(hasThrown, false);
+  assertEquals(hasThrown, false);
 });
 
 test(function consoleTestStringifyComplexObjects() {
-  assertEqual(stringify("foo"), "foo");
-  assertEqual(stringify(["foo", "bar"]), `[ "foo", "bar" ]`);
-  assertEqual(stringify({ foo: "bar" }), `{ foo: "bar" }`);
+  assertEquals(stringify("foo"), "foo");
+  assertEquals(stringify(["foo", "bar"]), `[ "foo", "bar" ]`);
+  assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
 test(function consoleTestStringifyCircular() {
@@ -76,151 +76,151 @@ test(function consoleTestStringifyCircular() {
   // tslint:disable-next-line:max-line-length
   const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], asyncMethod: [AsyncFunction: asyncMethod], generatorMethod: [GeneratorFunction: generatorMethod], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: {}, arr: [ 1, "s", false, null, [Circular] ], baseClass: Base { a: 1 } } }`;
 
-  assertEqual(stringify(1), "1");
-  assertEqual(stringify(1n), "1n");
-  assertEqual(stringify("s"), "s");
-  assertEqual(stringify(false), "false");
+  assertEquals(stringify(1), "1");
+  assertEquals(stringify(1n), "1n");
+  assertEquals(stringify("s"), "s");
+  assertEquals(stringify(false), "false");
   // tslint:disable-next-line:no-construct
-  assertEqual(stringify(new Number(1)), "[Number: 1]");
+  assertEquals(stringify(new Number(1)), "[Number: 1]");
   // tslint:disable-next-line:no-construct
-  assertEqual(stringify(new Boolean(true)), "[Boolean: true]");
+  assertEquals(stringify(new Boolean(true)), "[Boolean: true]");
   // tslint:disable-next-line:no-construct
-  assertEqual(stringify(new String("deno")), `[String: "deno"]`);
-  assertEqual(stringify(/[0-9]*/), "/[0-9]*/");
-  assertEqual(
+  assertEquals(stringify(new String("deno")), `[String: "deno"]`);
+  assertEquals(stringify(/[0-9]*/), "/[0-9]*/");
+  assertEquals(
     stringify(new Date("2018-12-10T02:26:59.002Z")),
     "2018-12-10T02:26:59.002Z"
   );
-  assertEqual(stringify(new Set([1, 2, 3])), "Set { 1, 2, 3 }");
-  assertEqual(
+  assertEquals(stringify(new Set([1, 2, 3])), "Set { 1, 2, 3 }");
+  assertEquals(
     stringify(new Map([[1, "one"], [2, "two"]])),
     `Map { 1 => "one", 2 => "two" }`
   );
-  assertEqual(stringify(new WeakSet()), "WeakSet { [items unknown] }");
-  assertEqual(stringify(new WeakMap()), "WeakMap { [items unknown] }");
-  assertEqual(stringify(Symbol(1)), "Symbol(1)");
-  assertEqual(stringify(null), "null");
-  assertEqual(stringify(undefined), "undefined");
-  assertEqual(stringify(new Extended()), "Extended { a: 1, b: 2 }");
-  assertEqual(stringify(function f() {}), "[Function: f]");
-  assertEqual(stringify(async function af() {}), "[AsyncFunction: af]");
-  assertEqual(stringify(function* gf() {}), "[GeneratorFunction: gf]");
-  assertEqual(
+  assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
+  assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
+  assertEquals(stringify(Symbol(1)), "Symbol(1)");
+  assertEquals(stringify(null), "null");
+  assertEquals(stringify(undefined), "undefined");
+  assertEquals(stringify(new Extended()), "Extended { a: 1, b: 2 }");
+  assertEquals(stringify(function f() {}), "[Function: f]");
+  assertEquals(stringify(async function af() {}), "[AsyncFunction: af]");
+  assertEquals(stringify(function* gf() {}), "[GeneratorFunction: gf]");
+  assertEquals(
     stringify(async function* agf() {}),
     "[AsyncGeneratorFunction: agf]"
   );
-  assertEqual(stringify(new Uint8Array([1, 2, 3])), "Uint8Array [ 1, 2, 3 ]");
-  assertEqual(stringify(Uint8Array.prototype), "TypedArray []");
-  assertEqual(
+  assertEquals(stringify(new Uint8Array([1, 2, 3])), "Uint8Array [ 1, 2, 3 ]");
+  assertEquals(stringify(Uint8Array.prototype), "TypedArray []");
+  assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
     "{ a: { b: { c: { d: [Set] } } } }"
   );
-  assertEqual(stringify(nestedObj), nestedObjExpected);
-  assertEqual(stringify(JSON), "{}");
-  assertEqual(
+  assertEquals(stringify(nestedObj), nestedObjExpected);
+  assertEquals(stringify(JSON), "{}");
+  assertEquals(
     stringify(console),
     // tslint:disable-next-line:max-line-length
     "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], table: [Function], time: [Function], timeLog: [Function], timeEnd: [Function], group: [Function], groupCollapsed: [Function], groupEnd: [Function], clear: [Function], indentLevel: 0, collapsedAt: null }"
   );
   // test inspect is working the same
-  assertEqual(inspect(nestedObj), nestedObjExpected);
+  assertEquals(inspect(nestedObj), nestedObjExpected);
 });
 
 test(function consoleTestStringifyWithDepth() {
   // tslint:disable-next-line:no-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
-  assertEqual(
+  assertEquals(
     stringifyArgs([nestedObj], { depth: 3 }),
     "{ a: { b: { c: [Object] } } }\n"
   );
-  assertEqual(
+  assertEquals(
     stringifyArgs([nestedObj], { depth: 4 }),
     "{ a: { b: { c: { d: [Object] } } } }\n"
   );
-  assertEqual(stringifyArgs([nestedObj], { depth: 0 }), "[Object]\n");
-  assertEqual(
+  assertEquals(stringifyArgs([nestedObj], { depth: 0 }), "[Object]\n");
+  assertEquals(
     stringifyArgs([nestedObj], { depth: null }),
     "{ a: { b: { c: { d: [Object] } } } }\n"
   );
   // test inspect is working the same way
-  assertEqual(
+  assertEquals(
     inspect(nestedObj, { depth: 4 }),
     "{ a: { b: { c: { d: [Object] } } } }"
   );
 });
 
 test(function consoleTestWithIntegerFormatSpecifier() {
-  assertEqual(stringify("%i"), "%i");
-  assertEqual(stringify("%i", 42.0), "42");
-  assertEqual(stringify("%i", 42), "42");
-  assertEqual(stringify("%i", "42"), "42");
-  assertEqual(stringify("%i", "42.0"), "42");
-  assertEqual(stringify("%i", 1.5), "1");
-  assertEqual(stringify("%i", -0.5), "0");
-  assertEqual(stringify("%i", ""), "NaN");
-  assertEqual(stringify("%i", Symbol()), "NaN");
-  assertEqual(stringify("%i %d", 42, 43), "42 43");
-  assertEqual(stringify("%d %i", 42), "42 %i");
-  assertEqual(stringify("%d", 12345678901234567890123), "1");
-  assertEqual(
+  assertEquals(stringify("%i"), "%i");
+  assertEquals(stringify("%i", 42.0), "42");
+  assertEquals(stringify("%i", 42), "42");
+  assertEquals(stringify("%i", "42"), "42");
+  assertEquals(stringify("%i", "42.0"), "42");
+  assertEquals(stringify("%i", 1.5), "1");
+  assertEquals(stringify("%i", -0.5), "0");
+  assertEquals(stringify("%i", ""), "NaN");
+  assertEquals(stringify("%i", Symbol()), "NaN");
+  assertEquals(stringify("%i %d", 42, 43), "42 43");
+  assertEquals(stringify("%d %i", 42), "42 %i");
+  assertEquals(stringify("%d", 12345678901234567890123), "1");
+  assertEquals(
     stringify("%i", 12345678901234567890123n),
     "12345678901234567890123n"
   );
 });
 
 test(function consoleTestWithFloatFormatSpecifier() {
-  assertEqual(stringify("%f"), "%f");
-  assertEqual(stringify("%f", 42.0), "42");
-  assertEqual(stringify("%f", 42), "42");
-  assertEqual(stringify("%f", "42"), "42");
-  assertEqual(stringify("%f", "42.0"), "42");
-  assertEqual(stringify("%f", 1.5), "1.5");
-  assertEqual(stringify("%f", -0.5), "-0.5");
-  assertEqual(stringify("%f", Math.PI), "3.141592653589793");
-  assertEqual(stringify("%f", ""), "NaN");
-  assertEqual(stringify("%f", Symbol("foo")), "NaN");
-  assertEqual(stringify("%f", 5n), "5");
-  assertEqual(stringify("%f %f", 42, 43), "42 43");
-  assertEqual(stringify("%f %f", 42), "42 %f");
+  assertEquals(stringify("%f"), "%f");
+  assertEquals(stringify("%f", 42.0), "42");
+  assertEquals(stringify("%f", 42), "42");
+  assertEquals(stringify("%f", "42"), "42");
+  assertEquals(stringify("%f", "42.0"), "42");
+  assertEquals(stringify("%f", 1.5), "1.5");
+  assertEquals(stringify("%f", -0.5), "-0.5");
+  assertEquals(stringify("%f", Math.PI), "3.141592653589793");
+  assertEquals(stringify("%f", ""), "NaN");
+  assertEquals(stringify("%f", Symbol("foo")), "NaN");
+  assertEquals(stringify("%f", 5n), "5");
+  assertEquals(stringify("%f %f", 42, 43), "42 43");
+  assertEquals(stringify("%f %f", 42), "42 %f");
 });
 
 test(function consoleTestWithStringFormatSpecifier() {
-  assertEqual(stringify("%s"), "%s");
-  assertEqual(stringify("%s", undefined), "undefined");
-  assertEqual(stringify("%s", "foo"), "foo");
-  assertEqual(stringify("%s", 42), "42");
-  assertEqual(stringify("%s", "42"), "42");
-  assertEqual(stringify("%s %s", 42, 43), "42 43");
-  assertEqual(stringify("%s %s", 42), "42 %s");
-  assertEqual(stringify("%s", Symbol("foo")), "Symbol(foo)");
+  assertEquals(stringify("%s"), "%s");
+  assertEquals(stringify("%s", undefined), "undefined");
+  assertEquals(stringify("%s", "foo"), "foo");
+  assertEquals(stringify("%s", 42), "42");
+  assertEquals(stringify("%s", "42"), "42");
+  assertEquals(stringify("%s %s", 42, 43), "42 43");
+  assertEquals(stringify("%s %s", 42), "42 %s");
+  assertEquals(stringify("%s", Symbol("foo")), "Symbol(foo)");
 });
 
 test(function consoleTestWithObjectFormatSpecifier() {
-  assertEqual(stringify("%o"), "%o");
-  assertEqual(stringify("%o", 42), "42");
-  assertEqual(stringify("%o", "foo"), "foo");
-  assertEqual(stringify("o: %o, a: %O", {}, []), "o: {}, a: []");
-  assertEqual(stringify("%o", { a: 42 }), "{ a: 42 }");
-  assertEqual(
+  assertEquals(stringify("%o"), "%o");
+  assertEquals(stringify("%o", 42), "42");
+  assertEquals(stringify("%o", "foo"), "foo");
+  assertEquals(stringify("o: %o, a: %O", {}, []), "o: {}, a: []");
+  assertEquals(stringify("%o", { a: 42 }), "{ a: 42 }");
+  assertEquals(
     stringify("%o", { a: { b: { c: { d: new Set([1]) } } } }),
     "{ a: { b: { c: { d: [Set] } } } }"
   );
 });
 
 test(function consoleTestWithVariousOrInvalidFormatSpecifier() {
-  assertEqual(stringify("%s:%s"), "%s:%s");
-  assertEqual(stringify("%i:%i"), "%i:%i");
-  assertEqual(stringify("%d:%d"), "%d:%d");
-  assertEqual(stringify("%%s%s", "foo"), "%sfoo");
-  assertEqual(stringify("%s:%s", undefined), "undefined:%s");
-  assertEqual(stringify("%s:%s", "foo", "bar"), "foo:bar");
-  assertEqual(stringify("%s:%s", "foo", "bar", "baz"), "foo:bar baz");
-  assertEqual(stringify("%%%s%%", "hi"), "%hi%");
-  assertEqual(stringify("%d:%d", 12), "12:%d");
-  assertEqual(stringify("%i:%i", 12), "12:%i");
-  assertEqual(stringify("%f:%f", 12), "12:%f");
-  assertEqual(stringify("o: %o, a: %o", {}), "o: {}, a: %o");
-  assertEqual(stringify("abc%", 1), "abc% 1");
+  assertEquals(stringify("%s:%s"), "%s:%s");
+  assertEquals(stringify("%i:%i"), "%i:%i");
+  assertEquals(stringify("%d:%d"), "%d:%d");
+  assertEquals(stringify("%%s%s", "foo"), "%sfoo");
+  assertEquals(stringify("%s:%s", undefined), "undefined:%s");
+  assertEquals(stringify("%s:%s", "foo", "bar"), "foo:bar");
+  assertEquals(stringify("%s:%s", "foo", "bar", "baz"), "foo:bar baz");
+  assertEquals(stringify("%%%s%%", "hi"), "%hi%");
+  assertEquals(stringify("%d:%d", 12), "12:%d");
+  assertEquals(stringify("%i:%i", 12), "12:%i");
+  assertEquals(stringify("%f:%f", 12), "12:%f");
+  assertEquals(stringify("o: %o, a: %o", {}), "o: {}, a: %o");
+  assertEquals(stringify("abc%", 1), "abc% 1");
 });
 
 test(function consoleTestCallToStringOnLabel() {
@@ -235,7 +235,7 @@ test(function consoleTestCallToStringOnLabel() {
       }
     });
 
-    assertEqual(hasCalled, true);
+    assertEquals(hasCalled, true);
   }
 });
 
@@ -272,7 +272,7 @@ test(function consoleTestClear() {
   };
   console.clear();
   stdout.write = stdoutWrite;
-  assertEqual(buffer, uint8);
+  assertEquals(buffer, uint8);
 });
 
 // Test bound this issue
@@ -362,7 +362,7 @@ test(function consoleGroup() {
     console.log("9");
     console.log("10");
 
-    assertEqual(
+    assertEquals(
       out.toString(),
       `1
   2
@@ -399,7 +399,7 @@ test(function consoleGroupWarn() {
 
     console.warn("9");
     console.warn("10");
-    assertEqual(
+    assertEquals(
       both.toString(),
       `1
   2
@@ -418,7 +418,7 @@ test(function consoleGroupWarn() {
 test(function consoleTable() {
   mockConsole((console, out) => {
     console.table({ a: "test", b: 1 });
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌─────────┬────────┐
 │ (index) │ Values │
@@ -431,7 +431,7 @@ test(function consoleTable() {
   });
   mockConsole((console, out) => {
     console.table({ a: { b: 10 }, b: { b: 20, c: 30 } }, ["c"]);
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌─────────┬────┐
 │ (index) │ c  │
@@ -444,7 +444,7 @@ test(function consoleTable() {
   });
   mockConsole((console, out) => {
     console.table([1, 2, [3, [4]], [5, 6], [[7], [8]]]);
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌─────────┬───────┬───────┬────────┐
 │ (index) │   0   │   1   │ Values │
@@ -460,7 +460,7 @@ test(function consoleTable() {
   });
   mockConsole((console, out) => {
     console.table(new Set([1, 2, 3, "test"]));
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌───────────────────┬────────┐
 │ (iteration index) │ Values │
@@ -475,7 +475,7 @@ test(function consoleTable() {
   });
   mockConsole((console, out) => {
     console.table(new Map([[1, "one"], [2, "two"]]));
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌───────────────────┬─────┬────────┐
 │ (iteration index) │ Key │ Values │
@@ -494,7 +494,7 @@ test(function consoleTable() {
       g: new Set([1, 2, 3, "test"]),
       h: new Map([[1, "one"]])
     });
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌─────────┬───────────┬───────────────────┬────────┐
 │ (index) │     c     │         e         │ Values │
@@ -516,7 +516,7 @@ test(function consoleTable() {
       { a: 10 },
       ["test", { b: 20, c: "test" }]
     ]);
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌─────────┬────────┬──────────────────────┬────┬────────┐
 │ (index) │   0    │          1           │ a  │ Values │
@@ -532,7 +532,7 @@ test(function consoleTable() {
   });
   mockConsole((console, out) => {
     console.table([]);
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌─────────┐
 │ (index) │
@@ -543,7 +543,7 @@ test(function consoleTable() {
   });
   mockConsole((console, out) => {
     console.table({});
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌─────────┐
 │ (index) │
@@ -554,7 +554,7 @@ test(function consoleTable() {
   });
   mockConsole((console, out) => {
     console.table(new Set());
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌───────────────────┐
 │ (iteration index) │
@@ -565,7 +565,7 @@ test(function consoleTable() {
   });
   mockConsole((console, out) => {
     console.table(new Map());
-    assertEqual(
+    assertEquals(
       out.toString(),
       `┌───────────────────┐
 │ (iteration index) │
@@ -576,6 +576,6 @@ test(function consoleTable() {
   });
   mockConsole((console, out) => {
     console.table("test");
-    assertEqual(out.toString(), "test\n");
+    assertEquals(out.toString(), "test\n");
   });
 });

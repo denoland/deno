@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEqual } from "./test_util.ts";
+import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ read: true, write: true }, function symlinkSyncSuccess() {
   const testDir = Deno.makeTempDirSync();
@@ -14,8 +14,8 @@ testPerm({ read: true, write: true }, function symlinkSyncSuccess() {
     errOnWindows = e;
   }
   if (errOnWindows) {
-    assertEqual(errOnWindows.kind, Deno.ErrorKind.Other);
-    assertEqual(errOnWindows.message, "Not implemented");
+    assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
+    assertEquals(errOnWindows.message, "Not implemented");
   } else {
     const newNameInfoLStat = Deno.lstatSync(newname);
     const newNameInfoStat = Deno.statSync(newname);
@@ -31,8 +31,8 @@ test(function symlinkSyncPerm() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
 });
 
 // Just for now, until we implement symlink for Windows.
@@ -43,7 +43,7 @@ testPerm({ write: true }, function symlinkSyncNotImplemented() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.message, "Not implemented");
+  assertEquals(err.message, "Not implemented");
 });
 
 testPerm({ read: true, write: true }, async function symlinkSuccess() {
@@ -59,8 +59,8 @@ testPerm({ read: true, write: true }, async function symlinkSuccess() {
     errOnWindows = e;
   }
   if (errOnWindows) {
-    assertEqual(errOnWindows.kind, Deno.ErrorKind.Other);
-    assertEqual(errOnWindows.message, "Not implemented");
+    assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
+    assertEquals(errOnWindows.message, "Not implemented");
   } else {
     const newNameInfoLStat = Deno.lstatSync(newname);
     const newNameInfoStat = Deno.statSync(newname);

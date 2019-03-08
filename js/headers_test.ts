@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEqual } from "./test_util.ts";
+import { test, assert, assertEquals } from "./test_util.ts";
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
@@ -13,7 +13,7 @@ test(function newHeaderTest() {
   try {
     new Headers(null);
   } catch (e) {
-    assertEqual(
+    assertEquals(
       e.message,
       "Failed to construct 'Headers'; The provided value was not valid"
     );
@@ -35,15 +35,15 @@ for (const name in headerDict) {
 test(function newHeaderWithSequence() {
   const headers = new Headers(headerSeq);
   for (const name in headerDict) {
-    assertEqual(headers.get(name), String(headerDict[name]));
+    assertEquals(headers.get(name), String(headerDict[name]));
   }
-  assertEqual(headers.get("length"), null);
+  assertEquals(headers.get("length"), null);
 });
 
 test(function newHeaderWithRecord() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
-    assertEqual(headers.get(name), String(headerDict[name]));
+    assertEquals(headers.get(name), String(headerDict[name]));
   }
 });
 
@@ -51,7 +51,7 @@ test(function newHeaderWithHeadersInstance() {
   const headers = new Headers(headerDict);
   const headers2 = new Headers(headers);
   for (const name in headerDict) {
-    assertEqual(headers2.get(name), String(headerDict[name]));
+    assertEquals(headers2.get(name), String(headerDict[name]));
   }
 });
 
@@ -59,7 +59,7 @@ test(function headerAppendSuccess() {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.append(name, headerDict[name]);
-    assertEqual(headers.get(name), String(headerDict[name]));
+    assertEquals(headers.get(name), String(headerDict[name]));
   }
 });
 
@@ -67,7 +67,7 @@ test(function headerSetSuccess() {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.set(name, headerDict[name]);
-    assertEqual(headers.get(name), String(headerDict[name]));
+    assertEquals(headers.get(name), String(headerDict[name]));
   }
 });
 
@@ -95,8 +95,8 @@ test(function headerDeleteSuccess() {
 test(function headerGetSuccess() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
-    assertEqual(headers.get(name), String(headerDict[name]));
-    assertEqual(headers.get("nameNotInHeaders"), null);
+    assertEquals(headers.get(name), String(headerDict[name]));
+    assertEquals(headers.get("nameNotInHeaders"), null);
   }
 });
 
@@ -107,7 +107,7 @@ test(function headerEntriesSuccess() {
     const key = it[0];
     const value = it[1];
     assert(headers.has(key));
-    assertEqual(value, headers.get(key));
+    assertEquals(value, headers.get(key));
   }
 });
 
@@ -151,11 +151,11 @@ test(function headerForEachSuccess() {
   });
   let callNum = 0;
   headers.forEach((value, key, container) => {
-    assertEqual(headers, container);
-    assertEqual(value, headerEntriesDict[key]);
+    assertEquals(headers, container);
+    assertEquals(value, headerEntriesDict[key]);
     callNum++;
   });
-  assertEqual(callNum, keys.length);
+  assertEquals(callNum, keys.length);
 });
 
 test(function headerSymbolIteratorSuccess() {
@@ -165,7 +165,7 @@ test(function headerSymbolIteratorSuccess() {
     const key = header[0];
     const value = header[1];
     assert(headers.has(key));
-    assertEqual(value, headers.get(key));
+    assertEquals(value, headers.get(key));
   }
 });
 
@@ -228,7 +228,7 @@ test(function headerIllegalReject() {
   } catch (e) {
     errorCount++;
   }
-  assertEqual(errorCount, 9);
+  assertEquals(errorCount, 9);
   // 'o k' is valid value but invalid name
   new Headers({ "He-y": "o k" });
 });
@@ -248,7 +248,7 @@ test(function headerParamsShouldThrowTypeError() {
     }
   }
 
-  assertEqual(hasThrown, 2);
+  assertEquals(hasThrown, 2);
 });
 
 test(function headerParamsArgumentsCheck() {
@@ -271,8 +271,8 @@ test(function headerParamsArgumentsCheck() {
         hasThrown = 3;
       }
     }
-    assertEqual(hasThrown, 2);
-    assertEqual(
+    assertEquals(hasThrown, 2);
+    assertEquals(
       errMsg,
       `Headers.${method} requires at least 1 argument, but only 0 present`
     );
@@ -294,8 +294,8 @@ test(function headerParamsArgumentsCheck() {
         hasThrown = 3;
       }
     }
-    assertEqual(hasThrown, 2);
-    assertEqual(
+    assertEquals(hasThrown, 2);
+    assertEquals(
       errMsg,
       `Headers.${method} requires at least 2 arguments, but only 0 present`
     );
@@ -313,8 +313,8 @@ test(function headerParamsArgumentsCheck() {
         hasThrown = 3;
       }
     }
-    assertEqual(hasThrown, 2);
-    assertEqual(
+    assertEquals(hasThrown, 2);
+    assertEquals(
       errMsg,
       `Headers.${method} requires at least 2 arguments, but only 1 present`
     );

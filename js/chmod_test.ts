@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assertEqual } from "./test_util.ts";
+import { testPerm, assertEquals } from "./test_util.ts";
 
 const isNotWindows = Deno.build.os !== "win";
 
@@ -16,7 +16,7 @@ testPerm({ read: true, write: true }, function chmodSyncSuccess() {
   // Check success when not on windows
   if (isNotWindows) {
     const fileInfo = Deno.statSync(filename);
-    assertEqual(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
   }
 });
 
@@ -39,9 +39,9 @@ if (isNotWindows) {
 
     // Change actual file mode, not symlink
     const fileInfo = Deno.statSync(filename);
-    assertEqual(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
     symlinkInfo = Deno.lstatSync(symlinkName);
-    assertEqual(symlinkInfo.mode & 0o777, symlinkMode);
+    assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
   });
 }
 
@@ -53,8 +53,8 @@ testPerm({ write: true }, function chmodSyncFailure() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.NotFound);
-  assertEqual(err.name, "NotFound");
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
 });
 
 testPerm({ write: false }, function chmodSyncPerm() {
@@ -64,8 +64,8 @@ testPerm({ write: false }, function chmodSyncPerm() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
 });
 
 testPerm({ read: true, write: true }, async function chmodSuccess() {
@@ -81,7 +81,7 @@ testPerm({ read: true, write: true }, async function chmodSuccess() {
   // Check success when not on windows
   if (isNotWindows) {
     const fileInfo = Deno.statSync(filename);
-    assertEqual(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
   }
 });
 
@@ -104,9 +104,9 @@ if (isNotWindows) {
 
     // Just change actual file mode, not symlink
     const fileInfo = Deno.statSync(filename);
-    assertEqual(fileInfo.mode & 0o777, 0o777);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
     symlinkInfo = Deno.lstatSync(symlinkName);
-    assertEqual(symlinkInfo.mode & 0o777, symlinkMode);
+    assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
   });
 }
 
@@ -118,8 +118,8 @@ testPerm({ write: true }, async function chmodFailure() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.NotFound);
-  assertEqual(err.name, "NotFound");
+  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.name, "NotFound");
 });
 
 testPerm({ write: false }, async function chmodPerm() {
@@ -129,6 +129,6 @@ testPerm({ write: false }, async function chmodPerm() {
   } catch (e) {
     err = e;
   }
-  assertEqual(err.kind, Deno.ErrorKind.PermissionDenied);
-  assertEqual(err.name, "PermissionDenied");
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
 });

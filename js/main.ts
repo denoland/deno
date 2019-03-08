@@ -6,7 +6,6 @@ import "./globals";
 
 import { assert, log } from "./util";
 import * as os from "./os";
-import { libdeno } from "./libdeno";
 import { args } from "./deno";
 import { replLoop } from "./repl";
 import { setVersions } from "./version";
@@ -21,10 +20,6 @@ import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 /* tslint:disable-next-line:no-default-export */
 export default function denoMain() {
   const startResMsg = os.start();
-
-  // TODO(kitsonk) remove when import "deno" no longer supported
-  libdeno.builtinModules["deno"] = deno;
-  Object.freeze(libdeno.builtinModules);
 
   setVersions(startResMsg.denoVersion()!, startResMsg.v8Version()!);
 

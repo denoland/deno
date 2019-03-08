@@ -6,6 +6,29 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.2 / 2019.03.06
+
+In deno itself:
+
+- Reorganize version and platform into Deno.build and Deno.version (#1879)
+- Allow inspection and revocation of permissions (#1875)
+- Fix unicode output on Windows (#1876)
+- Add Deno.build.gnArgs (#1845)
+- Fix security bug #1858 (#1864, #1874)
+- Replace deno.land/x/std links with deno.land/std/ (#1890)
+
+In deno_std:
+
+- Move asserts out of testing/mod.ts into testing/assert.ts Rename assertEqual
+  to assertEquals (#240, #242)
+- Update mime-db to 1.38.0 (#238)
+- Use pretty assertEqual in testing (#234)
+- Add eslint to CI (#235)
+- Refactor WebSockets (#173)
+- Allow for parallel testing (#224)
+- testing: use color module for displaying colors (#223)
+- Glob integration for the FS walker (#219)
+
 ### v0.3.1 / 2019.02.27
 
 - Add import.meta.main (#1835)
