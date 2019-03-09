@@ -3,6 +3,34 @@ import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
+function req(
+  filename: string,
+  data: Uint8Array,
+  options: WriteFileOptions
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
+  const builder = flatbuffers.createBuilder();
+  const filename_ = builder.createString(filename);
+  msg.WriteFile.startWriteFile(builder);
+  msg.WriteFile.addFilename(builder, filename_);
+  // Perm is not updated by default
+  if (options.perm !== undefined && options.perm !== null) {
+    msg.WriteFile.addUpdatePerm(builder, true);
+    msg.WriteFile.addPerm(builder, options.perm!);
+  } else {
+    msg.WriteFile.addUpdatePerm(builder, false);
+    msg.WriteFile.addPerm(builder, 0o666);
+  }
+  // Create is turned on by default
+  if (options.create !== undefined) {
+    msg.WriteFile.addIsCreate(builder, !!options.create);
+  } else {
+    msg.WriteFile.addIsCreate(builder, true);
+  }
+  msg.WriteFile.addIsAppend(builder, !!options.append);
+  const inner = msg.WriteFile.endWriteFile(builder);
+  return [builder, msg.Any.WriteFile, inner, data];
+}
+
 /** Options for writing to a file.
  * `perm` would change the file's permission if set.
  * `create` decides if the file should be created if not exists (default: true)
@@ -40,32 +68,4 @@ export async function writeFile(
   options: WriteFileOptions = {}
 ): Promise<void> {
   await dispatch.sendAsync(...req(filename, data, options));
-}
-
-function req(
-  filename: string,
-  data: Uint8Array,
-  options: WriteFileOptions
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
-  const builder = flatbuffers.createBuilder();
-  const filename_ = builder.createString(filename);
-  msg.WriteFile.startWriteFile(builder);
-  msg.WriteFile.addFilename(builder, filename_);
-  // Perm is not updated by default
-  if (options.perm !== undefined && options.perm !== null) {
-    msg.WriteFile.addUpdatePerm(builder, true);
-    msg.WriteFile.addPerm(builder, options.perm!);
-  } else {
-    msg.WriteFile.addUpdatePerm(builder, false);
-    msg.WriteFile.addPerm(builder, 0o666);
-  }
-  // Create is turned on by default
-  if (options.create !== undefined) {
-    msg.WriteFile.addIsCreate(builder, !!options.create);
-  } else {
-    msg.WriteFile.addIsCreate(builder, true);
-  }
-  msg.WriteFile.addIsAppend(builder, !!options.append);
-  const inner = msg.WriteFile.endWriteFile(builder);
-  return [builder, msg.Any.WriteFile, inner, data];
 }

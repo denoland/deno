@@ -97,6 +97,17 @@ export function fetchModuleMetaData(
   };
 }
 
+function setEnv(key: string, value: string): void {
+  const builder = flatbuffers.createBuilder();
+  const _key = builder.createString(key);
+  const _value = builder.createString(value);
+  msg.SetEnv.startSetEnv(builder);
+  msg.SetEnv.addKey(builder, _key);
+  msg.SetEnv.addValue(builder, _value);
+  const inner = msg.SetEnv.endSetEnv(builder);
+  sendSync(builder, msg.Any.SetEnv, inner);
+}
+
 function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
   const env: { [index: string]: string } = {};
 
@@ -111,17 +122,6 @@ function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
       return Reflect.set(obj, prop, value);
     }
   });
-}
-
-function setEnv(key: string, value: string): void {
-  const builder = flatbuffers.createBuilder();
-  const _key = builder.createString(key);
-  const _value = builder.createString(value);
-  msg.SetEnv.startSetEnv(builder);
-  msg.SetEnv.addKey(builder, _key);
-  msg.SetEnv.addValue(builder, _value);
-  const inner = msg.SetEnv.endSetEnv(builder);
-  sendSync(builder, msg.Any.SetEnv, inner);
 }
 
 /** Returns a snapshot of the environment variables at invocation. Mutating a

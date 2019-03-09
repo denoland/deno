@@ -138,7 +138,6 @@ class FormDataBase {
   }
 }
 
-// tslint:disable-next-line:variable-name
 export class FormData extends DomIterableMixin<
   string,
   domTypes.FormDataEntryValue,

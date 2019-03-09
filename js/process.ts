@@ -22,7 +22,6 @@ import { assert, unreachable } from "./util";
 export type ProcessStdio = "inherit" | "piped" | "null";
 
 // TODO Maybe extend VSCode's 'CommandOptions'?
-// tslint:disable-next-line:max-line-length
 // See https://code.visualstudio.com/docs/editor/tasks-appendix#_schema-for-tasksjson
 export interface RunOptions {
   args: string[];
@@ -31,6 +30,27 @@ export interface RunOptions {
   stdout?: ProcessStdio;
   stderr?: ProcessStdio;
   stdin?: ProcessStdio;
+}
+
+async function runStatus(rid: number): Promise<ProcessStatus> {
+  const builder = flatbuffers.createBuilder();
+  msg.RunStatus.startRunStatus(builder);
+  msg.RunStatus.addRid(builder, rid);
+  const inner = msg.RunStatus.endRunStatus(builder);
+
+  const baseRes = await dispatch.sendAsync(builder, msg.Any.RunStatus, inner);
+  assert(baseRes != null);
+  assert(msg.Any.RunStatusRes === baseRes!.innerType());
+  const res = new msg.RunStatusRes();
+  assert(baseRes!.inner(res) != null);
+
+  if (res.gotSignal()) {
+    const signal = res.exitSignal();
+    return { signal, success: false };
+  } else {
+    const code = res.exitCode();
+    return { code, success: code === 0 };
+  }
 }
 
 export class Process {
@@ -155,25 +175,4 @@ export function run(opt: RunOptions): Process {
   assert(baseRes!.inner(res) != null);
 
   return new Process(res);
-}
-
-async function runStatus(rid: number): Promise<ProcessStatus> {
-  const builder = flatbuffers.createBuilder();
-  msg.RunStatus.startRunStatus(builder);
-  msg.RunStatus.addRid(builder, rid);
-  const inner = msg.RunStatus.endRunStatus(builder);
-
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.RunStatus, inner);
-  assert(baseRes != null);
-  assert(msg.Any.RunStatusRes === baseRes!.innerType());
-  const res = new msg.RunStatusRes();
-  assert(baseRes!.inner(res) != null);
-
-  if (res.gotSignal()) {
-    const signal = res.exitSignal();
-    return { signal, success: false };
-  } else {
-    const code = res.exitCode();
-    return { code, success: code === 0 };
-  }
 }

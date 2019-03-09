@@ -3,13 +3,12 @@ import { assert, assertEquals, test } from "./test_util.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
-// tslint:disable-next-line:no-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { Console, libdeno, stringifyArgs, inspect, write, stdout } = Deno as any;
 
 const console = new Console(libdeno.print);
 
-// tslint:disable-next-line:no-any
-function stringify(...args: any[]): string {
+function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
 }
 
@@ -35,15 +34,15 @@ test(function consoleTestStringifyComplexObjects() {
 test(function consoleTestStringifyCircular() {
   class Base {
     a = 1;
-    m1() {}
+    m1(): void {}
   }
 
   class Extended extends Base {
     b = 2;
-    m2() {}
+    m2(): void {}
   }
 
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nestedObj: any = {
     num: 1,
     bool: true,
@@ -73,18 +72,14 @@ test(function consoleTestStringifyCircular() {
   };
 
   nestedObj.o = circularObj;
-  // tslint:disable-next-line:max-line-length
   const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], asyncMethod: [AsyncFunction: asyncMethod], generatorMethod: [GeneratorFunction: generatorMethod], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: {}, arr: [ 1, "s", false, null, [Circular] ], baseClass: Base { a: 1 } } }`;
 
   assertEquals(stringify(1), "1");
   assertEquals(stringify(1n), "1n");
   assertEquals(stringify("s"), "s");
   assertEquals(stringify(false), "false");
-  // tslint:disable-next-line:no-construct
   assertEquals(stringify(new Number(1)), "[Number: 1]");
-  // tslint:disable-next-line:no-construct
   assertEquals(stringify(new Boolean(true)), "[Boolean: true]");
-  // tslint:disable-next-line:no-construct
   assertEquals(stringify(new String("deno")), `[String: "deno"]`);
   assertEquals(stringify(/[0-9]*/), "/[0-9]*/");
   assertEquals(
@@ -119,7 +114,6 @@ test(function consoleTestStringifyCircular() {
   assertEquals(stringify(JSON), "{}");
   assertEquals(
     stringify(console),
-    // tslint:disable-next-line:max-line-length
     "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], table: [Function], time: [Function], timeLog: [Function], timeEnd: [Function], group: [Function], groupCollapsed: [Function], groupEnd: [Function], clear: [Function], indentLevel: 0, collapsedAt: null }"
   );
   // test inspect is working the same
@@ -127,7 +121,7 @@ test(function consoleTestStringifyCircular() {
 });
 
 test(function consoleTestStringifyWithDepth() {
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
     stringifyArgs([nestedObj], { depth: 3 }),
@@ -313,22 +307,23 @@ test(function consoleDetachedLog() {
 
 class StringBuffer {
   chunks: string[] = [];
-  add(x: string) {
+  add(x: string): void {
     this.chunks.push(x);
   }
-  toString() {
+  toString(): string {
     return this.chunks.join("");
   }
 }
 
 type ConsoleExamineFunc = (
-  csl: any, // tslint:disable-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  csl: any,
   out: StringBuffer,
   err?: StringBuffer,
   both?: StringBuffer
 ) => void;
 
-function mockConsole(f: ConsoleExamineFunc) {
+function mockConsole(f: ConsoleExamineFunc): void {
   const out = new StringBuffer();
   const err = new StringBuffer();
   const both = new StringBuffer();

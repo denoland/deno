@@ -1,8 +1,8 @@
-function foo() {
+function foo(): never {
   throw Error("bad");
 }
 
-function bar() {
+function bar(): void {
   foo();
 }
 

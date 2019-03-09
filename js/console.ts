@@ -33,12 +33,14 @@ export class CSI {
   static kClearScreenDown = "\x1b[0J";
 }
 
-function cursorTo(stream: File, x: number, y?: number) {
+/* eslint-disable @typescript-eslint/no-use-before-define */
+
+function cursorTo(stream: File, _x: number, _y?: number): void {
   const uint8 = new TextEncoder().encode(CSI.kClear);
   stream.write(uint8);
 }
 
-function clearScreenDown(stream: File) {
+function clearScreenDown(stream: File): void {
   const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
   stream.write(uint8);
 }
@@ -56,7 +58,7 @@ function getClassInstanceName(instance: unknown): string {
   return "";
 }
 
-function createFunctionString(value: Function, ctx: ConsoleContext): string {
+function createFunctionString(value: Function, _ctx: ConsoleContext): string {
   // Might be Function/AsyncFunction/GeneratorFunction
   const cstrName = Object.getPrototypeOf(value).constructor.name;
   if (value.name && value.name !== "anonymous") {
@@ -101,6 +103,54 @@ function createIterableString<T>(
   const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
   const iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
   return `${iPrefix}${config.delims[0]}${iContent}${config.delims[1]}`;
+}
+
+function stringify(
+  value: unknown,
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
+  switch (typeof value) {
+    case "string":
+      return value;
+    case "number":
+    case "boolean":
+    case "undefined":
+    case "symbol":
+      return String(value);
+    case "bigint":
+      return `${value}n`;
+    case "function":
+      return createFunctionString(value as Function, ctx);
+    case "object":
+      if (value === null) {
+        return "null";
+      }
+
+      if (ctx.has(value)) {
+        return "[Circular]";
+      }
+
+      return createObjectString(value, ctx, level, maxLevel);
+    default:
+      return "[Not Implemented]";
+  }
+}
+
+// Print strings when they are inside of arrays or objects with quotes
+function stringifyWithQuotes(
+  value: unknown,
+  ctx: ConsoleContext,
+  level: number,
+  maxLevel: number
+): string {
+  switch (typeof value) {
+    case "string":
+      return `"${value}"`;
+    default:
+      return stringify(value, ctx, level, maxLevel);
+  }
 }
 
 function createArrayString(
@@ -183,29 +233,30 @@ function createWeakMapString(): string {
   return "WeakMap { [items unknown] }"; // as seen in Node
 }
 
-function createDateString(value: Date) {
+function createDateString(value: Date): string {
   // without quotes, ISO format
   return value.toISOString();
 }
 
-function createRegExpString(value: RegExp) {
+function createRegExpString(value: RegExp): string {
   return value.toString();
 }
 
-// tslint:disable-next-line:ban-types
-function createStringWrapperString(value: String) {
+/* eslint-disable @typescript-eslint/ban-types */
+
+function createStringWrapperString(value: String): string {
   return `[String: "${value.toString()}"]`;
 }
 
-// tslint:disable-next-line:ban-types
-function createBooleanWrapperString(value: Boolean) {
+function createBooleanWrapperString(value: Boolean): string {
   return `[Boolean: ${value.toString()}]`;
 }
 
-// tslint:disable-next-line:ban-types
-function createNumberWrapperString(value: Number) {
+function createNumberWrapperString(value: Number): string {
   return `[Number: ${value.toString()}]`;
 }
+
+/* eslint-enable @typescript-eslint/ban-types */
 
 // TODO: Promise, requires v8 bindings to get info
 // TODO: Proxy
@@ -261,22 +312,19 @@ function createObjectString(
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);
   } else if (value instanceof Number) {
-    // tslint:disable-next-line:ban-types
-    return createNumberWrapperString(value as Number);
+    return createNumberWrapperString(value);
   } else if (value instanceof Boolean) {
-    // tslint:disable-next-line:ban-types
-    return createBooleanWrapperString(value as Boolean);
+    return createBooleanWrapperString(value);
   } else if (value instanceof String) {
-    // tslint:disable-next-line:ban-types
-    return createStringWrapperString(value as String);
+    return createStringWrapperString(value);
   } else if (value instanceof RegExp) {
-    return createRegExpString(value as RegExp);
+    return createRegExpString(value);
   } else if (value instanceof Date) {
-    return createDateString(value as Date);
+    return createDateString(value);
   } else if (value instanceof Set) {
-    return createSetString(value as Set<unknown>, ...args);
+    return createSetString(value, ...args);
   } else if (value instanceof Map) {
-    return createMapString(value as Map<unknown, unknown>, ...args);
+    return createMapString(value, ...args);
   } else if (value instanceof WeakSet) {
     return createWeakSetString();
   } else if (value instanceof WeakMap) {
@@ -290,54 +338,6 @@ function createObjectString(
   } else {
     // Otherwise, default object formatting
     return createRawObjectString(value, ...args);
-  }
-}
-
-function stringify(
-  value: unknown,
-  ctx: ConsoleContext,
-  level: number,
-  maxLevel: number
-): string {
-  switch (typeof value) {
-    case "string":
-      return value;
-    case "number":
-    case "boolean":
-    case "undefined":
-    case "symbol":
-      return String(value);
-    case "bigint":
-      return `${value}n`;
-    case "function":
-      return createFunctionString(value as Function, ctx);
-    case "object":
-      if (value === null) {
-        return "null";
-      }
-
-      if (ctx.has(value)) {
-        return "[Circular]";
-      }
-
-      return createObjectString(value, ctx, level, maxLevel);
-    default:
-      return "[Not Implemented]";
-  }
-}
-
-// Print strings when they are inside of arrays or objects with quotes
-function stringifyWithQuotes(
-  value: unknown,
-  ctx: ConsoleContext,
-  level: number,
-  maxLevel: number
-): string {
-  switch (typeof value) {
-    case "string":
-      return `"${value}"`;
-    default:
-      return stringify(value, ctx, level, maxLevel);
   }
 }
 
@@ -394,7 +394,6 @@ export function stringifyArgs(
                 args[++a],
                 new Set<unknown>(),
                 0,
-                // tslint:disable-next-line:triple-equals
                 options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
               );
               break;
@@ -443,7 +442,6 @@ export function stringifyArgs(
         value,
         new Set<unknown>(),
         0,
-        // tslint:disable-next-line:triple-equals
         options.depth != undefined ? options.depth : DEFAULT_MAX_DEPTH
       );
     }
@@ -581,9 +579,9 @@ export class Console {
     const indexKeys: string[] = [];
     const values: string[] = [];
 
-    const stringifyValue = (value: unknown) =>
+    const stringifyValue = (value: unknown): string =>
       stringifyWithQuotes(value, new Set<unknown>(), 0, 1);
-    const toTable = (header: string[], body: string[][]) =>
+    const toTable = (header: string[], body: string[][]): void =>
       this.log(cliTable(header, body));
     const createColumn = (value: unknown, shift?: number): string[] => [
       ...(shift ? [...new Array(shift)].map(() => "") : []),
@@ -725,7 +723,7 @@ export class Console {
  * inspect() converts input into string that has the same format
  * as printed by console.log(...);
  */
-export function inspect(value: unknown, options?: ConsoleOptions) {
+export function inspect(value: unknown, options?: ConsoleOptions): string {
   const opts = options || {};
   if (typeof value === "string") {
     return value;
@@ -734,7 +732,6 @@ export function inspect(value: unknown, options?: ConsoleOptions) {
       value,
       new Set<unknown>(),
       0,
-      // tslint:disable-next-line:triple-equals
       opts.depth != undefined ? opts.depth : DEFAULT_MAX_DEPTH
     );
   }

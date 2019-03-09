@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "../test_util.ts";
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function setup() {
   const dataSymbol = Symbol("data symbol");
   class Base {
@@ -19,13 +20,12 @@ function setup() {
     Base,
     // This is using an internal API we don't want published as types, so having
     // to cast to any to "trick" TypeScript
-    // tslint:disable-next-line:no-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     DomIterable: (Deno as any).DomIterableMixin(Base, dataSymbol)
   };
 }
 
 test(function testDomIterable() {
-  // tslint:disable-next-line:variable-name
   const { DomIterable, Base } = setup();
 
   const fixture: Array<[string, number]> = [["foo", 1], ["bar", 2]];
@@ -46,7 +46,7 @@ test(function testDomIterable() {
 
   result = [];
   const scope = {};
-  function callback(value, key, parent) {
+  function callback(value, key, parent): void {
     assertEquals(parent, domIterable);
     assert(key != null);
     assert(value != null);
@@ -60,14 +60,13 @@ test(function testDomIterable() {
 });
 
 test(function testDomIterableScope() {
-  // tslint:disable-next-line:variable-name
   const { DomIterable } = setup();
 
   const domIterable = new DomIterable([["foo", 1]]);
 
-  // tslint:disable-next-line:no-any
-  function checkScope(thisArg: any, expected: any) {
-    function callback() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function checkScope(thisArg: any, expected: any): void {
+    function callback(): void {
       assertEquals(this, expected);
     }
     domIterable.forEach(callback, thisArg);

@@ -1,6 +1,6 @@
 import { throwsError } from "./subdir/mod1.ts";
 
-function foo() {
+function foo(): void {
   throwsError();
 }
 

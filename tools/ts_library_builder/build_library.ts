@@ -70,7 +70,6 @@ const { ModuleKind, ModuleResolutionKind, ScriptTarget } = ts;
 /**
  * A preamble which is appended to the start of the library.
  */
-// tslint:disable-next-line:max-line-length
 const libPreamble = `// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />

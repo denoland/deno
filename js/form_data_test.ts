@@ -72,7 +72,7 @@ test(function formDataParamsSetSuccess() {
 test(function formDataSetEmptyBlobSuccess() {
   const formData = new FormData();
   formData.set("a", new Blob([]), "blank.txt");
-  const file = formData.get("a");
+  formData.get("a");
   /* TODO Fix this test.
   assert(file instanceof File);
   if (typeof file !== "string") {

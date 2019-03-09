@@ -4,7 +4,9 @@ import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
-export type ResourceMap = { [rid: number]: string };
+export interface ResourceMap {
+  [rid: number]: string;
+}
 
 /** Returns a map of open _file like_ resource ids along with their string
  * representation.
@@ -19,7 +21,7 @@ export function resources(): ResourceMap {
   const res = new msg.ResourcesRes();
   assert(baseRes!.inner(res) !== null);
 
-  const resources = {} as ResourceMap;
+  const resources: ResourceMap = {};
 
   for (let i = 0; i < res.resourcesLength(); i++) {
     const item = res.resources(i)!;

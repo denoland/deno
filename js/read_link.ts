@@ -4,22 +4,6 @@ import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
-/** Returns the destination of the named symbolic link synchronously.
- *
- *       const targetPath = Deno.readlinkSync("symlink/path");
- */
-export function readlinkSync(name: string): string {
-  return res(dispatch.sendSync(...req(name)));
-}
-
-/** Returns the destination of the named symbolic link.
- *
- *       const targetPath = await Deno.readlink("symlink/path");
- */
-export async function readlink(name: string): Promise<string> {
-  return res(await dispatch.sendAsync(...req(name)));
-}
-
 function req(name: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const name_ = builder.createString(name);
@@ -37,4 +21,20 @@ function res(baseRes: null | msg.Base): string {
   const path = res.path();
   assert(path !== null);
   return path!;
+}
+
+/** Returns the destination of the named symbolic link synchronously.
+ *
+ *       const targetPath = Deno.readlinkSync("symlink/path");
+ */
+export function readlinkSync(name: string): string {
+  return res(dispatch.sendSync(...req(name)));
+}
+
+/** Returns the destination of the named symbolic link.
+ *
+ *       const targetPath = await Deno.readlink("symlink/path");
+ */
+export async function readlink(name: string): Promise<string> {
+  return res(await dispatch.sendAsync(...req(name)));
 }

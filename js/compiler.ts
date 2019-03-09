@@ -61,7 +61,6 @@ interface Os {
  */
 interface Ts {
   createLanguageService: typeof ts.createLanguageService;
-  /* tslint:disable-next-line:max-line-length */
   formatDiagnosticsWithColorAndContext: typeof ts.formatDiagnosticsWithColorAndContext;
   formatDiagnostics: typeof ts.formatDiagnostics;
 }
@@ -529,7 +528,6 @@ window.compilerMain = function compilerMain() {
   };
 };
 
-/* tslint:disable-next-line:no-default-export */
-export default function denoMain() {
+export default function denoMain(): void {
   os.start("TS");
 }

@@ -5,23 +5,6 @@ import * as dispatch from "./dispatch";
 import { FileInfo, FileInfoImpl } from "./file_info";
 import { assert } from "./util";
 
-/** Reads the directory given by path and returns a list of file info
- * synchronously.
- *
- *       const files = Deno.readDirSync("/");
- */
-export function readDirSync(path: string): FileInfo[] {
-  return res(dispatch.sendSync(...req(path)));
-}
-
-/** Reads the directory given by path and returns a list of file info.
- *
- *       const files = await Deno.readDir("/");
- */
-export async function readDir(path: string): Promise<FileInfo[]> {
-  return res(await dispatch.sendAsync(...req(path)));
-}
-
 function req(path: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const path_ = builder.createString(path);
@@ -41,4 +24,21 @@ function res(baseRes: null | msg.Base): FileInfo[] {
     fileInfos.push(new FileInfoImpl(res.entries(i)!));
   }
   return fileInfos;
+}
+
+/** Reads the directory given by path and returns a list of file info
+ * synchronously.
+ *
+ *       const files = Deno.readDirSync("/");
+ */
+export function readDirSync(path: string): FileInfo[] {
+  return res(dispatch.sendSync(...req(path)));
+}
+
+/** Reads the directory given by path and returns a list of file info.
+ *
+ *       const files = await Deno.readDir("/");
+ */
+export async function readDir(path: string): Promise<FileInfo[]> {
+  return res(await dispatch.sendAsync(...req(path)));
 }

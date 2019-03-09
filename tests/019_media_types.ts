@@ -2,7 +2,6 @@
 // based on the URL containing `.t#.` strings, which exercises the different
 // mapping of media types end to end.
 
-// tslint:disable:max-line-length
 import { loaded as loadedTs1 } from "http://localhost:4545/tests/subdir/mt_text_typescript.t1.ts";
 import { loaded as loadedTs2 } from "http://localhost:4545/tests/subdir/mt_video_vdn.t2.ts";
 import { loaded as loadedTs3 } from "http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts";

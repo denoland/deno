@@ -1,10 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-// tslint:disable-next-line:no-reference
+// eslint-disable-next-line @typescript-eslint/no-triple-slash-reference
 /// <reference path="./plugins.d.ts" />
 
 // There is a rollup plugin that will inline any module ending with `!string`
-// tslint:disable:max-line-length
 
 // Generated default library
 import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
@@ -39,7 +38,6 @@ import libEsnextBigintDts from "/third_party/node_modules/typescript/lib/lib.esn
 import libEsnextDts from "/third_party/node_modules/typescript/lib/lib.esnext.d.ts!string";
 import libEsnextIntlDts from "/third_party/node_modules/typescript/lib/lib.esnext.intl.d.ts!string";
 import libEsnextSymbolDts from "/third_party/node_modules/typescript/lib/lib.esnext.symbol.d.ts!string";
-// tslint:enable:max-line-length
 
 // @internal
 export const assetSourceCode: { [key: string]: string } = {

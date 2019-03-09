@@ -8,8 +8,9 @@ import { requiredArguments } from "./util";
 const invalidTokenRegex = /[^\^_`a-zA-Z\-0-9!#$%&'*+.|~]/;
 const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
 
-// tslint:disable-next-line:no-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isHeaders(value: any): value is domTypes.Headers {
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
   return value instanceof Headers;
 }
 
@@ -30,13 +31,13 @@ class HeadersBase {
   // The following name/value validations are copied from
   // https://github.com/bitinn/node-fetch/blob/master/src/headers.js
   // Copyright (c) 2016 David Frank. MIT License.
-  private _validateName(name: string) {
+  private _validateName(name: string): void {
     if (invalidTokenRegex.test(name) || name === "") {
       throw new TypeError(`${name} is not a legal HTTP header name`);
     }
   }
 
-  private _validateValue(value: string) {
+  private _validateValue(value: string): void {
     if (invalidHeaderCharRegex.test(value)) {
       throw new TypeError(`${value} is not a legal HTTP header value`);
     }
@@ -57,9 +58,9 @@ class HeadersBase {
           // then throw a TypeError.
           // ref: https://fetch.spec.whatwg.org/#concept-headers-fill
           if (tuple.length !== 2) {
-            // tslint:disable:max-line-length
-            // prettier-ignore
-            throw new TypeError("Failed to construct 'Headers'; Each header pair must be an iterable [name, value] tuple");
+            throw new TypeError(
+              "Failed to construct 'Headers'; Each header pair must be an iterable [name, value] tuple"
+            );
           }
 
           const [name, value] = this._normalizeParams(tuple[0], tuple[1]);
@@ -127,7 +128,6 @@ class HeadersBase {
 }
 
 // @internal
-// tslint:disable-next-line:variable-name
 export class Headers extends DomIterableMixin<
   string,
   string,

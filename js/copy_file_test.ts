@@ -7,13 +7,13 @@ function readFileString(filename: string): string {
   return dec.decode(dataRead);
 }
 
-function writeFileString(filename: string, s: string) {
+function writeFileString(filename: string, s: string): void {
   const enc = new TextEncoder();
   const data = enc.encode(s);
   Deno.writeFileSync(filename, data, { perm: 0o666 });
 }
 
-function assertSameContent(filename1: string, filename2: string) {
+function assertSameContent(filename1: string, filename2: string): void {
   const data1 = Deno.readFileSync(filename1);
   const data2 = Deno.readFileSync(filename2);
   assertEquals(data1, data2);
