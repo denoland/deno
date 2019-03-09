@@ -3,7 +3,7 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 type FileInfo = Deno.FileInfo;
 
-function assertSameContent(files: FileInfo[]) {
+function assertSameContent(files: FileInfo[]): void {
   let counter = 0;
 
   for (const file of files) {
@@ -30,7 +30,7 @@ testPerm({ read: true }, function readDirSyncSuccess() {
 testPerm({ read: false }, function readDirSyncPerm() {
   let caughtError = false;
   try {
-    const files = Deno.readDirSync("tests/");
+    Deno.readDirSync("tests/");
   } catch (e) {
     caughtError = true;
     assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
@@ -75,7 +75,7 @@ testPerm({ read: true }, async function readDirSuccess() {
 testPerm({ read: false }, async function readDirPerm() {
   let caughtError = false;
   try {
-    const files = await Deno.readDir("tests/");
+    await Deno.readDir("tests/");
   } catch (e) {
     caughtError = true;
     assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);

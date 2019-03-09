@@ -10,32 +10,6 @@ export interface MakeTempDirOptions {
   suffix?: string;
 }
 
-/** makeTempDirSync is the synchronous version of `makeTempDir`.
- *
- *       const tempDirName0 = Deno.makeTempDirSync();
- *       const tempDirName1 = Deno.makeTempDirSync({ prefix: 'my_temp' });
- */
-export function makeTempDirSync(options: MakeTempDirOptions = {}): string {
-  return res(dispatch.sendSync(...req(options)));
-}
-
-/** makeTempDir creates a new temporary directory in the directory `dir`, its
- * name beginning with `prefix` and ending with `suffix`.
- * It returns the full path to the newly created directory.
- * If `dir` is unspecified, tempDir uses the default directory for temporary
- * files. Multiple programs calling tempDir simultaneously will not choose the
- * same directory. It is the caller's responsibility to remove the directory
- * when no longer needed.
- *
- *       const tempDirName0 = await Deno.makeTempDir();
- *       const tempDirName1 = await Deno.makeTempDir({ prefix: 'my_temp' });
- */
-export async function makeTempDir(
-  options: MakeTempDirOptions = {}
-): Promise<string> {
-  return res(await dispatch.sendAsync(...req(options)));
-}
-
 function req({
   dir,
   prefix,
@@ -67,4 +41,30 @@ function res(baseRes: null | msg.Base): string {
   const path = res.path();
   assert(path != null);
   return path!;
+}
+
+/** makeTempDirSync is the synchronous version of `makeTempDir`.
+ *
+ *       const tempDirName0 = Deno.makeTempDirSync();
+ *       const tempDirName1 = Deno.makeTempDirSync({ prefix: 'my_temp' });
+ */
+export function makeTempDirSync(options: MakeTempDirOptions = {}): string {
+  return res(dispatch.sendSync(...req(options)));
+}
+
+/** makeTempDir creates a new temporary directory in the directory `dir`, its
+ * name beginning with `prefix` and ending with `suffix`.
+ * It returns the full path to the newly created directory.
+ * If `dir` is unspecified, tempDir uses the default directory for temporary
+ * files. Multiple programs calling tempDir simultaneously will not choose the
+ * same directory. It is the caller's responsibility to remove the directory
+ * when no longer needed.
+ *
+ *       const tempDirName0 = await Deno.makeTempDir();
+ *       const tempDirName1 = await Deno.makeTempDir({ prefix: 'my_temp' });
+ */
+export async function makeTempDir(
+  options: MakeTempDirOptions = {}
+): Promise<string> {
+  return res(await dispatch.sendAsync(...req(options)));
 }

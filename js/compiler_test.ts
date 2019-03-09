@@ -2,7 +2,8 @@
 import { test, assert, assertEquals } from "./test_util.ts";
 
 // We use a silly amount of `any` in these tests...
-// tslint:disable:no-any
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 const { Compiler, jsonEsmTemplate } = (Deno as any)._compiler;
 
@@ -106,7 +107,6 @@ const modBModuleInfo = mockModuleInfo(
   undefined
 );
 
-// tslint:disable:max-line-length
 const fooBarTsOutput = `import * as deno from "deno";
 console.log(deno);
 export const foo = "bar";
@@ -119,7 +119,6 @@ const loadConfigSource = `import * as config from "./config.json";
 console.log(config.foo.baz);
 `;
 const configJsonSource = `{"foo":{"bar": true,"baz": ["qat", 1]}}`;
-// tslint:enable:max-line-length
 
 const moduleMap: {
   [containFile: string]: { [moduleSpecifier: string]: ModuleInfo };
@@ -244,10 +243,6 @@ const moduleCache: {
   "/root/project/modB.ts": modBModuleInfo
 };
 
-const emittedFiles = {
-  "/root/project/foo/qat.ts": "console.log('foo');"
-};
-
 let getEmitOutputStack: string[] = [];
 let logStack: any[][] = [];
 let codeCacheStack: Array<{
@@ -351,7 +346,7 @@ const mocks = {
 /**
  * Setup the mocks for a test
  */
-function setup() {
+function setup(): void {
   // monkey patch mocks on instance
   Object.assign(compilerInstance, mocks);
 }
@@ -359,7 +354,7 @@ function setup() {
 /**
  * Teardown the mocks for a test
  */
-function teardown() {
+function teardown(): void {
   // reset compiler internal state
   (compilerInstance as any)._moduleMetaDataMap.clear();
   (compilerInstance as any)._fileNamesMap.clear();

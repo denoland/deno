@@ -14,7 +14,7 @@ test(function constructedEventTargetCanBeUsedAsExpected() {
   const event = new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
 
-  function listener(e) {
+  function listener(e): void {
     assertEquals(e, event);
     ++callCount;
   }
@@ -34,20 +34,20 @@ test(function constructedEventTargetCanBeUsedAsExpected() {
 
 test(function anEventTargetCanBeSubclassed() {
   class NicerEventTarget extends EventTarget {
-    on(type, callback?, options?) {
+    on(type, callback?, options?): void {
       this.addEventListener(type, callback, options);
     }
 
-    off(type, callback?, options?) {
+    off(type, callback?, options?): void {
       this.removeEventListener(type, callback, options);
     }
   }
 
   const target = new NicerEventTarget();
-  const event = new Event("foo", { bubbles: true, cancelable: false });
+  new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
 
-  function listener() {
+  function listener(): void {
     ++callCount;
   }
 

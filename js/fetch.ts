@@ -26,7 +26,7 @@ function getHeaderValueParams(value: string): Map<string, string> {
   return params;
 }
 
-function hasHeaderValueOf(s: string, value: string) {
+function hasHeaderValueOf(s: string, value: string): boolean {
   return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
@@ -204,7 +204,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     }
   }
 
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async json(): Promise<any> {
     const text = await this.text();
     return JSON.parse(text);
@@ -272,7 +272,7 @@ class Response implements domTypes.Response {
     return this.body.formData();
   }
 
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async json(): Promise<any> {
     return this.body.json();
   }
@@ -334,6 +334,15 @@ function msgHttpRequest(
     msg.HttpHeader.addFields(builder, fieldsOffset);
   }
   return msg.HttpHeader.endHttpHeader(builder);
+}
+
+function deserializeHeaderFields(m: msg.HttpHeader): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  for (let i = 0; i < m.fieldsLength(); i++) {
+    const item = m.fields(i)!;
+    out.push([item.key()!, item.value()!]);
+  }
+  return out;
 }
 
 /** Fetch a resource from the network. */
@@ -419,13 +428,4 @@ export async function fetch(
 
   const response = new Response(status, headersList, bodyRid);
   return response;
-}
-
-function deserializeHeaderFields(m: msg.HttpHeader): Array<[string, string]> {
-  const out: Array<[string, string]> = [];
-  for (let i = 0; i < m.fieldsLength(); i++) {
-    const item = m.fields(i)!;
-    out.push([item.key()!, item.value()!]);
-  }
-  return out;
 }

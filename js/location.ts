@@ -4,11 +4,6 @@ import { notImplemented } from "./util";
 import { Location } from "./dom_types";
 import { window } from "./window";
 
-export function setLocation(url: string): void {
-  window.location = new LocationImpl(url);
-  Object.freeze(window.location);
-}
-
 export class LocationImpl implements Location {
   constructor(url: string) {
     const u = new URL(url);
@@ -40,13 +35,18 @@ export class LocationImpl implements Location {
   port: string;
   protocol: string;
   search: string;
-  assign(url: string): void {
+  assign(_url: string): void {
     throw notImplemented();
   }
   reload(): void {
     throw notImplemented();
   }
-  replace(url: string): void {
+  replace(_url: string): void {
     throw notImplemented();
   }
+}
+
+export function setLocation(url: string): void {
+  window.location = new LocationImpl(url);
+  Object.freeze(window.location);
 }

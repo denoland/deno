@@ -4,6 +4,7 @@ import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 testPerm({ env: true }, function envSuccess() {
   const env = Deno.env();
   assert(env !== null);
+  // eslint-disable-next-line @typescript-eslint/camelcase
   env.test_var = "Hello World";
   const newEnv = Deno.env();
   assertEquals(env.test_var, newEnv.test_var);
@@ -12,7 +13,7 @@ testPerm({ env: true }, function envSuccess() {
 test(function envFailure() {
   let caughtError = false;
   try {
-    const env = Deno.env();
+    Deno.env();
   } catch (err) {
     caughtError = true;
     assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);

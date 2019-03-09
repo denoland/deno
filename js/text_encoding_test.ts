@@ -46,7 +46,7 @@ test(function textDecoderASCII() {
 test(function textDecoderErrorEncoding() {
   let didThrow = false;
   try {
-    const decoder = new TextDecoder("foo");
+    new TextDecoder("foo");
   } catch (e) {
     didThrow = true;
     assertEquals(e.message, "The encoding label provided ('foo') is invalid.");

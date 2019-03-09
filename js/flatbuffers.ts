@@ -2,6 +2,8 @@
 import { flatbuffers } from "flatbuffers";
 import * as util from "./util";
 
+/* eslint-disable @typescript-eslint/camelcase */
+
 // Re-export some types.
 export type Offset = flatbuffers.Offset;
 export class ByteBuffer extends flatbuffers.ByteBuffer {}
@@ -17,7 +19,7 @@ globalBuilder.inUse = false;
 // We can do this because the "control" messages sent to the privileged
 // side are guaranteed to be used during the call to libdeno.send().
 export function createBuilder(): Builder {
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const gb = globalBuilder as any;
   util.assert(!gb.inUse);
 

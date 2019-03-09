@@ -4,26 +4,6 @@ import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
 
-/** Read the entire contents of a file synchronously.
- *
- *       const decoder = new TextDecoder("utf-8");
- *       const data = Deno.readFileSync("hello.txt");
- *       console.log(decoder.decode(data));
- */
-export function readFileSync(filename: string): Uint8Array {
-  return res(dispatch.sendSync(...req(filename)));
-}
-
-/** Read the entire contents of a file.
- *
- *       const decoder = new TextDecoder("utf-8");
- *       const data = await Deno.readFile("hello.txt");
- *       console.log(decoder.decode(data));
- */
-export async function readFile(filename: string): Promise<Uint8Array> {
-  return res(await dispatch.sendAsync(...req(filename)));
-}
-
 function req(
   filename: string
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
@@ -43,4 +23,24 @@ function res(baseRes: null | msg.Base): Uint8Array {
   const dataArray = inner.dataArray();
   assert(dataArray != null);
   return new Uint8Array(dataArray!);
+}
+
+/** Read the entire contents of a file synchronously.
+ *
+ *       const decoder = new TextDecoder("utf-8");
+ *       const data = Deno.readFileSync("hello.txt");
+ *       console.log(decoder.decode(data));
+ */
+export function readFileSync(filename: string): Uint8Array {
+  return res(dispatch.sendSync(...req(filename)));
+}
+
+/** Read the entire contents of a file.
+ *
+ *       const decoder = new TextDecoder("utf-8");
+ *       const data = await Deno.readFile("hello.txt");
+ *       console.log(decoder.decode(data));
+ */
+export async function readFile(filename: string): Promise<Uint8Array> {
+  return res(await dispatch.sendAsync(...req(filename)));
 }

@@ -15,12 +15,12 @@ export interface BuildInfo {
 
 // 'build' is injected by rollup.config.js at compile time.
 export const build: BuildInfo = {
-  // tslint:disable:no-any
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   // These string will be replaced by rollup
   arch: `ROLLUP_REPLACE_ARCH` as any,
   os: `ROLLUP_REPLACE_OS` as any,
   gnArgs: `ROLLUP_REPLACE_GN_ARGS`
-  // tslint:disable:any
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 };
 
 // TODO(kevinkassimo): deprecate Deno.platform

@@ -27,123 +27,9 @@ import * as base64 from "base64-js";
 import * as domTypes from "./dom_types";
 import { DenoError, ErrorKind } from "./errors";
 
-/** Decodes a string of data which has been encoded using base-64. */
-export function atob(s: string): string {
-  const rem = s.length % 4;
-  // base64-js requires length exactly times of 4
-  if (rem > 0) {
-    s = s.padEnd(s.length + (4 - rem), "=");
-  }
-  let byteArray;
-  try {
-    byteArray = base64.toByteArray(s);
-  } catch (_) {
-    throw new DenoError(
-      ErrorKind.InvalidInput,
-      "The string to be decoded is not correctly encoded"
-    );
-  }
-  let result = "";
-  for (let i = 0; i < byteArray.length; i++) {
-    result += String.fromCharCode(byteArray[i]);
-  }
-  return result;
-}
-
-/** Creates a base-64 ASCII string from the input string. */
-export function btoa(s: string): string {
-  const byteArray = [];
-  for (let i = 0; i < s.length; i++) {
-    const charCode = s[i].charCodeAt(0);
-    if (charCode > 0xff) {
-      throw new DenoError(
-        ErrorKind.InvalidInput,
-        "The string to be encoded contains characters " +
-          "outside of the Latin1 range."
-      );
-    }
-    byteArray.push(charCode);
-  }
-  const result = base64.fromByteArray(Uint8Array.from(byteArray));
-  return result;
-}
-
-interface DecoderOptions {
-  fatal?: boolean;
-}
-
-interface Decoder {
-  handler(stream: Stream, byte: number): number | null;
-}
-
-interface Encoder {
-  handler(codePoint: number): number | number[];
-}
-
 const CONTINUE = null;
 const END_OF_STREAM = -1;
 const FINISHED = -1;
-
-// The encodingMap is a hash of labels that are indexed by the conical
-// encoding.
-const encodingMap: { [key: string]: string[] } = {
-  "windows-1252": [
-    "ansi_x3.4-1968",
-    "ascii",
-    "cp1252",
-    "cp819",
-    "csisolatin1",
-    "ibm819",
-    "iso-8859-1",
-    "iso-ir-100",
-    "iso8859-1",
-    "iso88591",
-    "iso_8859-1",
-    "iso_8859-1:1987",
-    "l1",
-    "latin1",
-    "us-ascii",
-    "windows-1252",
-    "x-cp1252"
-  ],
-  "utf-8": ["unicode-1-1-utf-8", "utf-8", "utf8"]
-};
-// We convert these into a Map where every label resolves to its canonical
-// encoding type.
-const encodings = new Map<string, string>();
-for (const key of Object.keys(encodingMap)) {
-  const labels = encodingMap[key];
-  for (const label of labels) {
-    encodings.set(label, key);
-  }
-}
-
-// A map of functions that return new instances of a decoder indexed by the
-// encoding type.
-const decoders = new Map<string, (options: DecoderOptions) => Decoder>();
-decoders.set("utf-8", (options: DecoderOptions) => {
-  return new UTF8Decoder(options);
-});
-
-// Single byte decoders are an array of code point lookups
-const encodingIndexes = new Map<string, number[]>();
-// tslint:disable:max-line-length
-// prettier-ignore
-encodingIndexes.set("windows-1252", [8364,129,8218,402,8222,8230,8224,8225,710,8240,352,8249,338,141,381,143,144,8216,8217,8220,8221,8226,8211,8212,732,8482,353,8250,339,157,382,376,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255]);
-// tslint:enable
-for (const [key, index] of encodingIndexes) {
-  decoders.set(key, (options: DecoderOptions) => {
-    return new SingleByteDecoder(index, options);
-  });
-}
-
-function codePointsToString(codePoints: number[]): string {
-  let s = "";
-  for (const cp of codePoints) {
-    s += String.fromCodePoint(cp);
-  }
-  return s;
-}
 
 function decoderError(fatal: boolean): number | never {
   if (fatal) {
@@ -152,11 +38,11 @@ function decoderError(fatal: boolean): number | never {
   return 0xfffd; // default code point
 }
 
-function inRange(a: number, min: number, max: number) {
+function inRange(a: number, min: number, max: number): boolean {
   return min <= a && a <= max;
 }
 
-function isASCIIByte(a: number) {
+function isASCIIByte(a: number): boolean {
   return inRange(a, 0x00, 0x7f);
 }
 
@@ -166,67 +52,6 @@ function stringToCodePoints(input: string): number[] {
     u.push(c.codePointAt(0)!);
   }
   return u;
-}
-
-class Stream {
-  private _tokens: number[];
-  constructor(tokens: number[] | Uint8Array) {
-    this._tokens = [].slice.call(tokens);
-    this._tokens.reverse();
-  }
-
-  endOfStream(): boolean {
-    return !this._tokens.length;
-  }
-
-  read(): number {
-    return !this._tokens.length ? END_OF_STREAM : this._tokens.pop()!;
-  }
-
-  prepend(token: number | number[]): void {
-    if (Array.isArray(token)) {
-      while (token.length) {
-        this._tokens.push(token.pop()!);
-      }
-    } else {
-      this._tokens.push(token);
-    }
-  }
-
-  push(token: number | number[]): void {
-    if (Array.isArray(token)) {
-      while (token.length) {
-        this._tokens.unshift(token.shift()!);
-      }
-    } else {
-      this._tokens.unshift(token);
-    }
-  }
-}
-
-class SingleByteDecoder implements Decoder {
-  private _index: number[];
-  private _fatal: boolean;
-
-  constructor(index: number[], options: DecoderOptions) {
-    this._fatal = options.fatal || false;
-    this._index = index;
-  }
-  handler(stream: Stream, byte: number): number {
-    if (byte === END_OF_STREAM) {
-      return FINISHED;
-    }
-    if (isASCIIByte(byte)) {
-      return byte;
-    }
-    const codePoint = this._index[byte - 0x80];
-
-    if (codePoint == null) {
-      return decoderError(this._fatal);
-    }
-
-    return codePoint;
-  }
 }
 
 class UTF8Decoder implements Decoder {
@@ -346,6 +171,179 @@ class UTF8Encoder implements Encoder {
     }
 
     return bytes;
+  }
+}
+
+/** Decodes a string of data which has been encoded using base-64. */
+export function atob(s: string): string {
+  const rem = s.length % 4;
+  // base64-js requires length exactly times of 4
+  if (rem > 0) {
+    s = s.padEnd(s.length + (4 - rem), "=");
+  }
+  let byteArray;
+  try {
+    byteArray = base64.toByteArray(s);
+  } catch (_) {
+    throw new DenoError(
+      ErrorKind.InvalidInput,
+      "The string to be decoded is not correctly encoded"
+    );
+  }
+  let result = "";
+  for (let i = 0; i < byteArray.length; i++) {
+    result += String.fromCharCode(byteArray[i]);
+  }
+  return result;
+}
+
+/** Creates a base-64 ASCII string from the input string. */
+export function btoa(s: string): string {
+  const byteArray = [];
+  for (let i = 0; i < s.length; i++) {
+    const charCode = s[i].charCodeAt(0);
+    if (charCode > 0xff) {
+      throw new DenoError(
+        ErrorKind.InvalidInput,
+        "The string to be encoded contains characters " +
+          "outside of the Latin1 range."
+      );
+    }
+    byteArray.push(charCode);
+  }
+  const result = base64.fromByteArray(Uint8Array.from(byteArray));
+  return result;
+}
+
+interface DecoderOptions {
+  fatal?: boolean;
+}
+
+interface Decoder {
+  handler(stream: Stream, byte: number): number | null;
+}
+
+interface Encoder {
+  handler(codePoint: number): number | number[];
+}
+
+class SingleByteDecoder implements Decoder {
+  private _index: number[];
+  private _fatal: boolean;
+
+  constructor(index: number[], options: DecoderOptions) {
+    this._fatal = options.fatal || false;
+    this._index = index;
+  }
+  handler(stream: Stream, byte: number): number {
+    if (byte === END_OF_STREAM) {
+      return FINISHED;
+    }
+    if (isASCIIByte(byte)) {
+      return byte;
+    }
+    const codePoint = this._index[byte - 0x80];
+
+    if (codePoint == null) {
+      return decoderError(this._fatal);
+    }
+
+    return codePoint;
+  }
+}
+
+// The encodingMap is a hash of labels that are indexed by the conical
+// encoding.
+const encodingMap: { [key: string]: string[] } = {
+  "windows-1252": [
+    "ansi_x3.4-1968",
+    "ascii",
+    "cp1252",
+    "cp819",
+    "csisolatin1",
+    "ibm819",
+    "iso-8859-1",
+    "iso-ir-100",
+    "iso8859-1",
+    "iso88591",
+    "iso_8859-1",
+    "iso_8859-1:1987",
+    "l1",
+    "latin1",
+    "us-ascii",
+    "windows-1252",
+    "x-cp1252"
+  ],
+  "utf-8": ["unicode-1-1-utf-8", "utf-8", "utf8"]
+};
+// We convert these into a Map where every label resolves to its canonical
+// encoding type.
+const encodings = new Map<string, string>();
+for (const key of Object.keys(encodingMap)) {
+  const labels = encodingMap[key];
+  for (const label of labels) {
+    encodings.set(label, key);
+  }
+}
+
+// A map of functions that return new instances of a decoder indexed by the
+// encoding type.
+const decoders = new Map<string, (options: DecoderOptions) => Decoder>();
+decoders.set("utf-8", (options: DecoderOptions) => {
+  return new UTF8Decoder(options);
+});
+
+// Single byte decoders are an array of code point lookups
+const encodingIndexes = new Map<string, number[]>();
+// prettier-ignore
+encodingIndexes.set("windows-1252", [8364,129,8218,402,8222,8230,8224,8225,710,8240,352,8249,338,141,381,143,144,8216,8217,8220,8221,8226,8211,8212,732,8482,353,8250,339,157,382,376,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255]);
+for (const [key, index] of encodingIndexes) {
+  decoders.set(key, (options: DecoderOptions) => {
+    return new SingleByteDecoder(index, options);
+  });
+}
+
+function codePointsToString(codePoints: number[]): string {
+  let s = "";
+  for (const cp of codePoints) {
+    s += String.fromCodePoint(cp);
+  }
+  return s;
+}
+
+class Stream {
+  private _tokens: number[];
+  constructor(tokens: number[] | Uint8Array) {
+    this._tokens = [].slice.call(tokens);
+    this._tokens.reverse();
+  }
+
+  endOfStream(): boolean {
+    return !this._tokens.length;
+  }
+
+  read(): number {
+    return !this._tokens.length ? END_OF_STREAM : this._tokens.pop()!;
+  }
+
+  prepend(token: number | number[]): void {
+    if (Array.isArray(token)) {
+      while (token.length) {
+        this._tokens.push(token.pop()!);
+      }
+    } else {
+      this._tokens.push(token);
+    }
+  }
+
+  push(token: number | number[]): void {
+    if (Array.isArray(token)) {
+      while (token.length) {
+        this._tokens.unshift(token.shift()!);
+      }
+    } else {
+      this._tokens.unshift(token);
+    }
   }
 }
 

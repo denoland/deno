@@ -51,7 +51,7 @@ function renderRow(row: string[], columnWidths: number[]): string {
 }
 
 export function cliTable(head: string[], columns: string[][]): string {
-  const rows = [];
+  const rows: string[][] = [];
   const columnWidths = head.map((h: string) => countBytes(h));
   const longestColumn = columns.reduce(
     (n: number, a: string[]) => Math.max(n, a.length),
@@ -64,10 +64,7 @@ export function cliTable(head: string[], columns: string[][]): string {
       if (rows[j] === undefined) {
         rows[j] = [];
       }
-      // tslint:disable-next-line:no-any
-      const value = ((rows[j][i] as any) = column.hasOwnProperty(j)
-        ? column[j]
-        : "");
+      const value = (rows[j][i] = column.hasOwnProperty(j) ? column[j] : "");
       const width = columnWidths[i] || 0;
       const counted = countBytes(value);
       columnWidths[i] = Math.max(width, counted);

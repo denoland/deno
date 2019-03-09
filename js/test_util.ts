@@ -52,12 +52,15 @@ function permFromString(s: string): DenoPermissions {
   };
 }
 
-export function testPerm(perms: DenoPermissions, fn: testing.TestFunction) {
+export function testPerm(
+  perms: DenoPermissions,
+  fn: testing.TestFunction
+): void {
   const name = `${fn.name}_${permToString(perms)}`;
   testing.test({ fn, name });
 }
 
-export function test(fn: testing.TestFunction) {
+export function test(fn: testing.TestFunction): void {
   testPerm(
     { read: false, write: false, net: false, env: false, run: false },
     fn

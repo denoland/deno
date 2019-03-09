@@ -3,7 +3,6 @@ import * as domTypes from "./dom_types";
 import { getPrivateValue } from "./util";
 
 // WeakMaps are recommended for private attributes (see MDN link below)
-// tslint:disable-next-line:max-line-length
 // https://developer.mozilla.org/en-US/docs/Archive/Add-ons/Add-on_SDK/Guides/Contributor_s_Guide/Private_Properties#Using_WeakMaps
 export const eventAttributes = new WeakMap();
 

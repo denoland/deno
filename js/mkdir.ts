@@ -3,6 +3,21 @@ import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
+function req(
+  path: string,
+  recursive: boolean,
+  mode: number
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const path_ = builder.createString(path);
+  msg.Mkdir.startMkdir(builder);
+  msg.Mkdir.addPath(builder, path_);
+  msg.Mkdir.addRecursive(builder, recursive);
+  msg.Mkdir.addMode(builder, mode);
+  const inner = msg.Mkdir.endMkdir(builder);
+  return [builder, msg.Any.Mkdir, inner];
+}
+
 /** Creates a new directory with the specified path synchronously.
  * If `recursive` is set to true, nested directories will be created (also known
  * as "mkdir -p").
@@ -31,19 +46,4 @@ export async function mkdir(
   mode = 0o777
 ): Promise<void> {
   await dispatch.sendAsync(...req(path, recursive, mode));
-}
-
-function req(
-  path: string,
-  recursive: boolean,
-  mode: number
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const path_ = builder.createString(path);
-  msg.Mkdir.startMkdir(builder);
-  msg.Mkdir.addPath(builder, path_);
-  msg.Mkdir.addRecursive(builder, recursive);
-  msg.Mkdir.addMode(builder, mode);
-  const inner = msg.Mkdir.endMkdir(builder);
-  return [builder, msg.Any.Mkdir, inner];
 }

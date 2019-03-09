@@ -56,7 +56,6 @@ window.clearInterval = timers.clearTimer;
 window.console = new consoleTypes.Console(libdeno.print);
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
-// tslint:disable-next-line:no-any
 window.location = (undefined as unknown) as domTypes.Location;
 
 // When creating the runtime type library, we use modifications to `window` to

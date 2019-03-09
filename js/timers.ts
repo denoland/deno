@@ -4,10 +4,6 @@ import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync, setFireTimersCallback } from "./dispatch";
 
-// Tell the dispatcher which function it should call to fire timers that are
-// due. This is done using a callback because circular imports are disallowed.
-setFireTimersCallback(fireTimers);
-
 interface Timer {
   id: number;
   callback: () => void;
@@ -34,14 +30,14 @@ let nextTimerId = 1;
 const idMap = new Map<number, Timer>();
 const dueMap: { [due: number]: Timer[] } = Object.create(null);
 
-function getTime() {
+function getTime(): number {
   // TODO: use a monotonic clock.
   const now = Date.now() - EPOCH;
   assert(now >= 0 && now < APOCALYPSE);
   return now;
 }
 
-function setGlobalTimeout(due: number | null, now: number) {
+function setGlobalTimeout(due: number | null, now: number): void {
   // Since JS and Rust don't use the same clock, pass the time to rust as a
   // relative time value. On the Rust side we'll turn that into an absolute
   // value again.
@@ -65,7 +61,7 @@ function setGlobalTimeout(due: number | null, now: number) {
   globalTimeoutDue = due;
 }
 
-function schedule(timer: Timer, now: number) {
+function schedule(timer: Timer, now: number): void {
   assert(!timer.scheduled);
   assert(now <= timer.due);
   // Find or create the list of timers that will fire at point-in-time `due`.
@@ -83,7 +79,7 @@ function schedule(timer: Timer, now: number) {
   }
 }
 
-function unschedule(timer: Timer) {
+function unschedule(timer: Timer): void {
   if (!timer.scheduled) {
     return;
   }
@@ -112,7 +108,7 @@ function unschedule(timer: Timer) {
   }
 }
 
-function fire(timer: Timer) {
+function fire(timer: Timer): void {
   // If the timer isn't found in the ID map, that means it has been cancelled
   // between the timer firing and the promise callback (this function).
   if (!idMap.has(timer.id)) {
@@ -135,7 +131,7 @@ function fire(timer: Timer) {
   callback();
 }
 
-function fireTimers() {
+function fireTimers(): void {
   const now = getTime();
   // Bail out if we're not expecting the global timer to fire (yet).
   if (globalTimeoutDue === null || now < globalTimeoutDue) {
@@ -171,7 +167,7 @@ function fireTimers() {
   setGlobalTimeout(nextTimerDue, now);
 }
 
-export type Args = any[]; // tslint:disable-line:no-any
+export type Args = unknown[];
 
 function setTimer(
   cb: (...args: Args) => void,
@@ -241,3 +237,7 @@ export function clearTimer(id: number): void {
   unschedule(timer);
   idMap.delete(timer.id);
 }
+
+// Tell the dispatcher which function it should call to fire timers that are
+// due. This is done using a callback because circular imports are disallowed.
+setFireTimersCallback(fireTimers);

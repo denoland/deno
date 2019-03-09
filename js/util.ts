@@ -16,15 +16,14 @@ export function setLogDebug(debug: boolean, source?: string): void {
  * Enable with the `--log-debug` or `-D` command line flag.
  * @internal
  */
-// tslint:disable-next-line:no-any
-export function log(...args: any[]): void {
+export function log(...args: unknown[]): void {
   if (logDebug) {
     console.log(`DEBUG ${logSource} -`, ...args);
   }
 }
 
 // @internal
-export function assert(cond: boolean, msg = "assert") {
+export function assert(cond: boolean, msg = "assert"): void {
   if (!cond) {
     throw Error(msg);
   }
@@ -62,7 +61,7 @@ export function arrayToStr(ui8: Uint8Array): string {
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
-  // tslint:disable-next-line:no-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (reason?: any) => void;
 }
 
@@ -107,7 +106,6 @@ export function containsOnlyASCII(str: string): boolean {
   return /^[\x00-\x7F]*$/.test(str);
 }
 
-// tslint:disable-next-line:variable-name
 const TypedArrayConstructor = Object.getPrototypeOf(Uint8Array);
 export function isTypedArray(x: unknown): x is TypedArray {
   return x instanceof TypedArrayConstructor;

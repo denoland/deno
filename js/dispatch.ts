@@ -10,11 +10,11 @@ const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
 let fireTimers: () => void;
 
-export function setFireTimersCallback(fn: () => void) {
+export function setFireTimersCallback(fn: () => void): void {
   fireTimers = fn;
 }
 
-export function handleAsyncMsgFromRust(ui8: Uint8Array) {
+export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
   // If a the buffer is empty, recv() on the native side timed out and we
   // did not receive a message.
   if (ui8 && ui8.length) {
@@ -33,6 +33,25 @@ export function handleAsyncMsgFromRust(ui8: Uint8Array) {
   }
   // Fire timers that have become runnable.
   fireTimers();
+}
+
+function sendInternal(
+  builder: flatbuffers.Builder,
+  innerType: msg.Any,
+  inner: flatbuffers.Offset,
+  data: undefined | ArrayBufferView,
+  sync = true
+): [number, null | Uint8Array] {
+  const cmdId = nextCmdId++;
+  msg.Base.startBase(builder);
+  msg.Base.addInner(builder, inner);
+  msg.Base.addInnerType(builder, innerType);
+  msg.Base.addSync(builder, sync);
+  msg.Base.addCmdId(builder, cmdId);
+  builder.finish(msg.Base.endBase(builder));
+  const res = libdeno.send(builder.asUint8Array(), data);
+  builder.inUse = false;
+  return [cmdId, res];
 }
 
 // @internal
@@ -67,23 +86,4 @@ export function sendSync(
     errors.maybeThrowError(baseRes);
     return baseRes;
   }
-}
-
-function sendInternal(
-  builder: flatbuffers.Builder,
-  innerType: msg.Any,
-  inner: flatbuffers.Offset,
-  data: undefined | ArrayBufferView,
-  sync = true
-): [number, null | Uint8Array] {
-  const cmdId = nextCmdId++;
-  msg.Base.startBase(builder);
-  msg.Base.addInner(builder, inner);
-  msg.Base.addInnerType(builder, innerType);
-  msg.Base.addSync(builder, sync);
-  msg.Base.addCmdId(builder, cmdId);
-  builder.finish(msg.Base.endBase(builder));
-  const res = libdeno.send(builder.asUint8Array(), data);
-  builder.inUse = false;
-  return [cmdId, res];
 }

@@ -13,7 +13,7 @@ testPerm({ read: true }, function readFileSyncSuccess() {
 testPerm({ read: false }, function readFileSyncPerm() {
   let caughtError = false;
   try {
-    const data = Deno.readFileSync("package.json");
+    Deno.readFileSync("package.json");
   } catch (e) {
     caughtError = true;
     assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);

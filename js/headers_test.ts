@@ -3,9 +3,7 @@ import { test, assert, assertEquals } from "./test_util.ts";
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
-/* tslint:disable-next-line:max-line-length */
 // ref: https://github.com/web-platform-tests/wpt/blob/7c50c216081d6ea3c9afe553ee7b64534020a1b2/fetch/api/headers/headers-basic.html
-/* tslint:disable:no-unused-expression */
 test(function newHeaderTest() {
   new Headers();
   new Headers(undefined);
@@ -75,7 +73,6 @@ test(function headerHasSuccess() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assert(headers.has(name), "headers has name " + name);
-    /* tslint:disable-next-line:max-line-length */
     assert(
       !headers.has("nameNotInHeaders"),
       "headers do not have header: nameNotInHeaders"
@@ -177,7 +174,6 @@ test(function headerTypesAvailable() {
   assert(headers instanceof Headers);
 });
 
-// tslint:disable-next-line:max-line-length
 // Modified from https://github.com/bitinn/node-fetch/blob/7d3293200a91ad52b5ca7962f9d6fd1c04983edb/test/test.js#L2001-L2014
 // Copyright (c) 2016 David Frank. MIT License.
 test(function headerIllegalReject() {

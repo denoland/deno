@@ -12,7 +12,7 @@ export class EventTarget implements domTypes.EventTarget {
   public addEventListener(
     type: string,
     listener: domTypes.EventListenerOrEventListenerObject | null,
-    options?: boolean | domTypes.AddEventListenerOptions
+    _options?: boolean | domTypes.AddEventListenerOptions
   ): void {
     if (!(type in this.listeners)) {
       this.listeners[type] = [];
@@ -25,7 +25,7 @@ export class EventTarget implements domTypes.EventTarget {
   public removeEventListener(
     type: string,
     callback: domTypes.EventListenerOrEventListenerObject | null,
-    options?: domTypes.EventListenerOptions | boolean
+    _options?: domTypes.EventListenerOptions | boolean
   ): void {
     if (type in this.listeners && callback !== null) {
       this.listeners[type] = this.listeners[type].filter(

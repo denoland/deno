@@ -175,9 +175,9 @@ export class URLSearchParams {
    */
   forEach(
     callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
-    // tslint:disable-next-line:no-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     thisArg?: any
-  ) {
+  ): void {
     requiredArguments("URLSearchParams.forEach", arguments.length, 1);
 
     if (typeof thisArg !== "undefined") {
