@@ -3,11 +3,12 @@ import { assert, assertEquals, test } from "./test_util.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { Console, libdeno, stringifyArgs, inspect, write, stdout } = Deno as any;
 
 const console = new Console(libdeno.print);
 
-function stringify(...args: any[]): string {
+function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
 }
 
@@ -33,14 +34,15 @@ test(function consoleTestStringifyComplexObjects() {
 test(function consoleTestStringifyCircular() {
   class Base {
     a = 1;
-    m1() {}
+    m1(): void {}
   }
 
   class Extended extends Base {
     b = 2;
-    m2() {}
+    m2(): void {}
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nestedObj: any = {
     num: 1,
     bool: true,
@@ -119,6 +121,7 @@ test(function consoleTestStringifyCircular() {
 });
 
 test(function consoleTestStringifyWithDepth() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
     stringifyArgs([nestedObj], { depth: 3 }),
@@ -304,22 +307,23 @@ test(function consoleDetachedLog() {
 
 class StringBuffer {
   chunks: string[] = [];
-  add(x: string) {
+  add(x: string): void {
     this.chunks.push(x);
   }
-  toString() {
+  toString(): string {
     return this.chunks.join("");
   }
 }
 
 type ConsoleExamineFunc = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   csl: any,
   out: StringBuffer,
   err?: StringBuffer,
   both?: StringBuffer
 ) => void;
 
-function mockConsole(f: ConsoleExamineFunc) {
+function mockConsole(f: ConsoleExamineFunc): void {
   const out = new StringBuffer();
   const err = new StringBuffer();
   const both = new StringBuffer();

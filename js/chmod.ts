@@ -3,6 +3,19 @@ import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
+function req(
+  path: string,
+  mode: number
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const path_ = builder.createString(path);
+  msg.Chmod.startChmod(builder);
+  msg.Chmod.addPath(builder, path_);
+  msg.Chmod.addMode(builder, mode);
+  const inner = msg.Chmod.endChmod(builder);
+  return [builder, msg.Any.Chmod, inner];
+}
+
 /** Changes the permission of a specific file/directory of specified path
  * synchronously.
  *
@@ -18,17 +31,4 @@ export function chmodSync(path: string, mode: number): void {
  */
 export async function chmod(path: string, mode: number): Promise<void> {
   await dispatch.sendAsync(...req(path, mode));
-}
-
-function req(
-  path: string,
-  mode: number
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const path_ = builder.createString(path);
-  msg.Chmod.startChmod(builder);
-  msg.Chmod.addPath(builder, path_);
-  msg.Chmod.addMode(builder, mode);
-  const inner = msg.Chmod.endChmod(builder);
-  return [builder, msg.Any.Chmod, inner];
 }

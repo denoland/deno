@@ -10,11 +10,18 @@ enable_ansi_colors()
 
 third_party_path = os.path.join(root_path, "third_party")
 cpplint = os.path.join(third_party_path, "cpplint", "cpplint.py")
+eslint = os.path.join(third_party_path, "node_modules", "eslint", "bin",
+                      "eslint")
 
 os.chdir(root_path)
 run([
     "python", cpplint, "--filter=-build/include_subdir",
     "--repository=libdeno", "--extensions=cc,h", "--recursive", "libdeno"
+])
+
+run([
+    "node", eslint, "./js/**/*.{ts,js}", "./core/**/*.{ts,js}",
+    "./tests/**/*.{ts,js}"
 ])
 
 run([sys.executable, "third_party/depot_tools/pylint.py"] +

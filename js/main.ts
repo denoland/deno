@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+// eslint-disable-next-line @typescript-eslint/no-triple-slash-reference
 /// <reference path="./plugins.d.ts" />
 
 import "./globals";
@@ -16,7 +18,7 @@ import * as deno from "./deno";
 // TODO(kitsonk) remove with `--types` below
 import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 
-export default function denoMain() {
+export default function denoMain(): void {
   const startResMsg = os.start();
 
   setVersions(startResMsg.denoVersion()!, startResMsg.v8Version()!);

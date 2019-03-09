@@ -9,6 +9,7 @@ export const customEventAttributes = new WeakMap();
 
 export class CustomEventInit extends event.EventInit
   implements domTypes.CustomEventInit {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   detail: any;
 
   constructor({
@@ -32,6 +33,7 @@ export class CustomEvent extends event.Event implements domTypes.CustomEvent {
     customEventAttributes.set(this, { detail });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get detail(): any {
     return getPrivateValue(this, customEventAttributes, "detail");
   }
@@ -40,8 +42,9 @@ export class CustomEvent extends event.Event implements domTypes.CustomEvent {
     type: string,
     bubbles?: boolean,
     cancelable?: boolean,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     detail?: any
-  ) {
+  ): void {
     if (this.dispatched) {
       return;
     }

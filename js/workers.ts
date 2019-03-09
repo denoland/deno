@@ -50,7 +50,7 @@ export function workerClose(): void {
   isClosing = true;
 }
 
-export async function workerMain() {
+export async function workerMain(): Promise<void> {
   log("workerMain");
 
   while (!isClosing) {

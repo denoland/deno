@@ -5,6 +5,75 @@ import { TextEncoder } from "./text_encoding";
 
 export const bytesSymbol = Symbol("bytes");
 
+function convertLineEndingsToNative(s: string): string {
+  // TODO(qti3e) Implement convertLineEndingsToNative.
+  // https://w3c.github.io/FileAPI/#convert-line-endings-to-native
+  return s;
+}
+
+function toUint8Arrays(
+  blobParts: domTypes.BlobPart[],
+  doNormalizeLineEndingsToNative: boolean
+): Uint8Array[] {
+  const ret: Uint8Array[] = [];
+  const enc = new TextEncoder();
+  for (const element of blobParts) {
+    if (typeof element === "string") {
+      let str = element;
+      if (doNormalizeLineEndingsToNative) {
+        str = convertLineEndingsToNative(element);
+      }
+      ret.push(enc.encode(str));
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+    } else if (element instanceof DenoBlob) {
+      ret.push(element[bytesSymbol]);
+    } else if (element instanceof Uint8Array) {
+      ret.push(element);
+    } else if (element instanceof Uint16Array) {
+      const uint8 = new Uint8Array(element.buffer);
+      ret.push(uint8);
+    } else if (element instanceof Uint32Array) {
+      const uint8 = new Uint8Array(element.buffer);
+      ret.push(uint8);
+    } else if (ArrayBuffer.isView(element)) {
+      // Convert view to Uint8Array.
+      const uint8 = new Uint8Array(element.buffer);
+      ret.push(uint8);
+    } else if (element instanceof ArrayBuffer) {
+      // Create a new Uint8Array view for the given ArrayBuffer.
+      const uint8 = new Uint8Array(element);
+      ret.push(uint8);
+    } else {
+      ret.push(enc.encode(String(element)));
+    }
+  }
+  return ret;
+}
+
+function processBlobParts(
+  blobParts: domTypes.BlobPart[],
+  options: domTypes.BlobPropertyBag
+): Uint8Array {
+  const normalizeLineEndingsToNative = options.ending === "native";
+  // ArrayBuffer.transfer is not yet implemented in V8, so we just have to
+  // pre compute size of the array buffer and do some sort of static allocation
+  // instead of dynamic allocation.
+  const uint8Arrays = toUint8Arrays(blobParts, normalizeLineEndingsToNative);
+  const byteLength = uint8Arrays
+    .map(u8 => u8.byteLength)
+    .reduce((a, b) => a + b, 0);
+  const ab = new ArrayBuffer(byteLength);
+  const bytes = new Uint8Array(ab);
+
+  let courser = 0;
+  for (const u8 of uint8Arrays) {
+    bytes.set(u8, courser);
+    courser += u8.byteLength;
+  }
+
+  return bytes;
+}
+
 export class DenoBlob implements domTypes.Blob {
   private readonly [bytesSymbol]: Uint8Array;
   readonly size: number = 0;
@@ -55,72 +124,4 @@ export class DenoBlob implements domTypes.Blob {
       type: contentType || this.type
     });
   }
-}
-
-function processBlobParts(
-  blobParts: domTypes.BlobPart[],
-  options: domTypes.BlobPropertyBag
-): Uint8Array {
-  const normalizeLineEndingsToNative = options.ending === "native";
-  // ArrayBuffer.transfer is not yet implemented in V8, so we just have to
-  // pre compute size of the array buffer and do some sort of static allocation
-  // instead of dynamic allocation.
-  const uint8Arrays = toUint8Arrays(blobParts, normalizeLineEndingsToNative);
-  const byteLength = uint8Arrays
-    .map(u8 => u8.byteLength)
-    .reduce((a, b) => a + b, 0);
-  const ab = new ArrayBuffer(byteLength);
-  const bytes = new Uint8Array(ab);
-
-  let courser = 0;
-  for (const u8 of uint8Arrays) {
-    bytes.set(u8, courser);
-    courser += u8.byteLength;
-  }
-
-  return bytes;
-}
-
-function toUint8Arrays(
-  blobParts: domTypes.BlobPart[],
-  doNormalizeLineEndingsToNative: boolean
-): Uint8Array[] {
-  const ret: Uint8Array[] = [];
-  const enc = new TextEncoder();
-  for (const element of blobParts) {
-    if (typeof element === "string") {
-      let str = element;
-      if (doNormalizeLineEndingsToNative) {
-        str = convertLineEndingsToNative(element);
-      }
-      ret.push(enc.encode(str));
-    } else if (element instanceof DenoBlob) {
-      ret.push(element[bytesSymbol]);
-    } else if (element instanceof Uint8Array) {
-      ret.push(element);
-    } else if (element instanceof Uint16Array) {
-      const uint8 = new Uint8Array(element.buffer);
-      ret.push(uint8);
-    } else if (element instanceof Uint32Array) {
-      const uint8 = new Uint8Array(element.buffer);
-      ret.push(uint8);
-    } else if (ArrayBuffer.isView(element)) {
-      // Convert view to Uint8Array.
-      const uint8 = new Uint8Array(element.buffer);
-      ret.push(uint8);
-    } else if (element instanceof ArrayBuffer) {
-      // Create a new Uint8Array view for the given ArrayBuffer.
-      const uint8 = new Uint8Array(element);
-      ret.push(uint8);
-    } else {
-      ret.push(enc.encode(String(element)));
-    }
-  }
-  return ret;
-}
-
-function convertLineEndingsToNative(s: string): string {
-  // TODO(qti3e) Implement convertLineEndingsToNative.
-  // https://w3c.github.io/FileAPI/#convert-line-endings-to-native
-  return s;
 }

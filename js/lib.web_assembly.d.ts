@@ -1,11 +1,13 @@
 // This follows the WebIDL at: https://webassembly.github.io/spec/js-api/
 // And follow on WebIDL at: https://webassembly.github.io/spec/web-api/
 
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+
 declare namespace WebAssembly {
-  type WebAssemblyInstantiatedSource = {
+  interface WebAssemblyInstantiatedSource {
     module: Module;
     instance: Instance;
-  };
+  }
 
   /** Compiles a `WebAssembly.Module` from WebAssembly binary code.  This
    * function is useful if it is necessary to a compile a module before it can
@@ -52,12 +54,15 @@ declare namespace WebAssembly {
 
   type ImportExportKind = "function" | "table" | "memory" | "global";
 
-  type ModuleExportDescriptor = { name: string; kind: ImportExportKind };
-  type ModuleImportDescriptor = {
+  interface ModuleExportDescriptor {
+    name: string;
+    kind: ImportExportKind;
+  }
+  interface ModuleImportDescriptor {
     module: string;
     name: string;
     kind: ImportExportKind;
-  };
+  }
 
   class Module {
     constructor(bufferSource: domTypes.BufferSource);
@@ -87,10 +92,10 @@ declare namespace WebAssembly {
     readonly exports: T;
   }
 
-  type MemoryDescriptor = {
+  interface MemoryDescriptor {
     initial: number;
     maximum?: number;
-  };
+  }
 
   class Memory {
     constructor(descriptor: MemoryDescriptor);
@@ -128,7 +133,10 @@ declare namespace WebAssembly {
     set(index: number, value: (...args: any[]) => any): void;
   }
 
-  type GlobalDescriptor = { value: string; mutable?: boolean };
+  interface GlobalDescriptor {
+    value: string;
+    mutable?: boolean;
+  }
 
   /** Represents a global variable instance, accessible from both JavaScript and
    * importable/exportable across one or more `WebAssembly.Module` instances.
@@ -167,3 +175,5 @@ interface ImportMeta {
   url: string;
   main: boolean;
 }
+
+/* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */

@@ -1,7 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assertEquals } from "./test_util.ts";
 
-function deferred() {
+function deferred(): {
+  promise: Promise<{}>;
+  resolve: (value?: {} | PromiseLike<{}>) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  reject: (reason?: any) => void;
+} {
   let resolve;
   let reject;
   const promise = new Promise((res, rej) => {
@@ -15,7 +20,7 @@ function deferred() {
   };
 }
 
-function waitForMs(ms) {
+async function waitForMs(ms): Promise<number> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -62,6 +67,10 @@ test(async function timeoutCancelSuccess() {
 });
 
 test(async function timeoutCancelMultiple() {
+  function uncalled(): never {
+    throw new Error("This function should not be called.");
+  }
+
   // Set timers and cancel them in the same order.
   const t1 = setTimeout(uncalled, 10);
   const t2 = setTimeout(uncalled, 10);
@@ -80,10 +89,6 @@ test(async function timeoutCancelMultiple() {
 
   // Sleep until we're certain that the cancelled timers aren't gonna fire.
   await waitForMs(50);
-
-  function uncalled() {
-    throw new Error("This function should not be called.");
-  }
 });
 
 test(async function timeoutCancelInvalidSilentFail() {
@@ -138,14 +143,14 @@ test(async function intervalCancelSuccess() {
 test(async function intervalOrdering() {
   const timers = [];
   let timeouts = 0;
-  for (let i = 0; i < 10; i++) {
-    timers[i] = setTimeout(onTimeout, 20);
-  }
-  function onTimeout() {
+  function onTimeout(): void {
     ++timeouts;
     for (let i = 1; i < timers.length; i++) {
       clearTimeout(timers[i]);
     }
+  }
+  for (let i = 0; i < 10; i++) {
+    timers[i] = setTimeout(onTimeout, 20);
   }
   await waitForMs(100);
   assertEquals(timeouts, 1);

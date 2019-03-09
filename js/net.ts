@@ -27,6 +27,58 @@ export interface Listener {
   addr(): Addr;
 }
 
+enum ShutdownMode {
+  // See http://man7.org/linux/man-pages/man2/shutdown.2.html
+  // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
+  Read = 0,
+  Write,
+  ReadWrite // unused
+}
+
+function shutdown(rid: number, how: ShutdownMode): void {
+  const builder = flatbuffers.createBuilder();
+  msg.Shutdown.startShutdown(builder);
+  msg.Shutdown.addRid(builder, rid);
+  msg.Shutdown.addHow(builder, how);
+  const inner = msg.Shutdown.endShutdown(builder);
+  const baseRes = dispatch.sendSync(builder, msg.Any.Shutdown, inner);
+  assert(baseRes == null);
+}
+
+class ConnImpl implements Conn {
+  constructor(
+    readonly rid: number,
+    readonly remoteAddr: string,
+    readonly localAddr: string
+  ) {}
+
+  write(p: Uint8Array): Promise<number> {
+    return write(this.rid, p);
+  }
+
+  read(p: Uint8Array): Promise<ReadResult> {
+    return read(this.rid, p);
+  }
+
+  close(): void {
+    close(this.rid);
+  }
+
+  /** closeRead shuts down (shutdown(2)) the reading side of the TCP connection.
+   * Most callers should just use close().
+   */
+  closeRead(): void {
+    shutdown(this.rid, ShutdownMode.Read);
+  }
+
+  /** closeWrite shuts down (shutdown(2)) the writing side of the TCP
+   * connection. Most callers should just use close().
+   */
+  closeWrite(): void {
+    shutdown(this.rid, ShutdownMode.Write);
+  }
+}
+
 class ListenerImpl implements Listener {
   constructor(readonly rid: number) {}
 
@@ -67,58 +119,6 @@ export interface Conn extends Reader, Writer, Closer {
    * callers should just use `close()`.
    */
   closeWrite(): void;
-}
-
-class ConnImpl implements Conn {
-  constructor(
-    readonly rid: number,
-    readonly remoteAddr: string,
-    readonly localAddr: string
-  ) {}
-
-  write(p: Uint8Array): Promise<number> {
-    return write(this.rid, p);
-  }
-
-  read(p: Uint8Array): Promise<ReadResult> {
-    return read(this.rid, p);
-  }
-
-  close(): void {
-    close(this.rid);
-  }
-
-  /** closeRead shuts down (shutdown(2)) the reading side of the TCP connection.
-   * Most callers should just use close().
-   */
-  closeRead(): void {
-    shutdown(this.rid, ShutdownMode.Read);
-  }
-
-  /** closeWrite shuts down (shutdown(2)) the writing side of the TCP
-   * connection. Most callers should just use close().
-   */
-  closeWrite(): void {
-    shutdown(this.rid, ShutdownMode.Write);
-  }
-}
-
-enum ShutdownMode {
-  // See http://man7.org/linux/man-pages/man2/shutdown.2.html
-  // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
-  Read = 0,
-  Write,
-  ReadWrite // unused
-}
-
-function shutdown(rid: number, how: ShutdownMode) {
-  const builder = flatbuffers.createBuilder();
-  msg.Shutdown.startShutdown(builder);
-  msg.Shutdown.addRid(builder, rid);
-  msg.Shutdown.addHow(builder, how);
-  const inner = msg.Shutdown.endShutdown(builder);
-  const baseRes = dispatch.sendSync(builder, msg.Any.Shutdown, inner);
-  assert(baseRes == null);
 }
 
 /** Listen announces on the local network address.
@@ -197,8 +197,8 @@ export async function dial(network: Network, address: string): Promise<Conn> {
 
 /** **RESERVED** */
 export async function connect(
-  network: Network,
-  address: string
+  _network: Network,
+  _address: string
 ): Promise<Conn> {
   return notImplemented();
 }

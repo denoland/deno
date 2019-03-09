@@ -15,6 +15,8 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 *******************************************************************************/
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 export type BufferSource = ArrayBufferView | ArrayBuffer;
 
 export type HeadersInit =

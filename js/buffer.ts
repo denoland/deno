@@ -66,14 +66,14 @@ export class Buffer implements Reader, Writer {
   }
 
   /** empty() returns whether the unread portion of the buffer is empty. */
-  empty() {
+  empty(): boolean {
     return this.buf.byteLength <= this.off;
   }
 
   /** length is a getter that returns the number of bytes of the unread
    * portion of the buffer
    */
-  get length() {
+  get length(): number {
     return this.buf.byteLength - this.off;
   }
 

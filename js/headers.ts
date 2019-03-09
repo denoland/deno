@@ -8,7 +8,9 @@ import { requiredArguments } from "./util";
 const invalidTokenRegex = /[^\^_`a-zA-Z\-0-9!#$%&'*+.|~]/;
 const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isHeaders(value: any): value is domTypes.Headers {
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
   return value instanceof Headers;
 }
 
@@ -29,13 +31,13 @@ class HeadersBase {
   // The following name/value validations are copied from
   // https://github.com/bitinn/node-fetch/blob/master/src/headers.js
   // Copyright (c) 2016 David Frank. MIT License.
-  private _validateName(name: string) {
+  private _validateName(name: string): void {
     if (invalidTokenRegex.test(name) || name === "") {
       throw new TypeError(`${name} is not a legal HTTP header name`);
     }
   }
 
-  private _validateValue(value: string) {
+  private _validateValue(value: string): void {
     if (invalidHeaderCharRegex.test(value)) {
       throw new TypeError(`${value} is not a legal HTTP header value`);
     }

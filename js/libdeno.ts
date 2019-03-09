@@ -12,6 +12,7 @@ interface EvalErrorInfo {
   // The actual thrown entity
   // (might be an Error or anything else thrown by the user)
   // If isNativeError is true, this is an Error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   thrown: any;
 }
 
@@ -29,6 +30,7 @@ interface Libdeno {
    * Returns an array: [output, errInfo].
    * If an error occurs, `output` becomes null and `errInfo` is non-null.
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   evalContext(code: string): [any, EvalErrorInfo | null];
 
   errorToJSON: (e: Error) => string;

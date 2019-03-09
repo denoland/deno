@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+// eslint-disable-next-line @typescript-eslint/no-triple-slash-reference
 /// <reference path="./plugins.d.ts" />
 
 // There is a rollup plugin that will inline any module ending with `!string`

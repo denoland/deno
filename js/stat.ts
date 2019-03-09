@@ -5,6 +5,27 @@ import * as dispatch from "./dispatch";
 import { assert } from "./util";
 import { FileInfo, FileInfoImpl } from "./file_info";
 
+function req(
+  filename: string,
+  lstat: boolean
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const filename_ = builder.createString(filename);
+  msg.Stat.startStat(builder);
+  msg.Stat.addFilename(builder, filename_);
+  msg.Stat.addLstat(builder, lstat);
+  const inner = msg.Stat.endStat(builder);
+  return [builder, msg.Any.Stat, inner];
+}
+
+function res(baseRes: null | msg.Base): FileInfo {
+  assert(baseRes != null);
+  assert(msg.Any.StatRes === baseRes!.innerType());
+  const res = new msg.StatRes();
+  assert(baseRes!.inner(res) != null);
+  return new FileInfoImpl(res);
+}
+
 /** Queries the file system for information on the path provided. If the given
  * path is a symlink information about the symlink will be returned.
  *
@@ -44,25 +65,4 @@ export async function stat(filename: string): Promise<FileInfo> {
  */
 export function statSync(filename: string): FileInfo {
   return res(dispatch.sendSync(...req(filename, false)));
-}
-
-function req(
-  filename: string,
-  lstat: boolean
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const filename_ = builder.createString(filename);
-  msg.Stat.startStat(builder);
-  msg.Stat.addFilename(builder, filename_);
-  msg.Stat.addLstat(builder, lstat);
-  const inner = msg.Stat.endStat(builder);
-  return [builder, msg.Any.Stat, inner];
-}
-
-function res(baseRes: null | msg.Base): FileInfo {
-  assert(baseRes != null);
-  assert(msg.Any.StatRes === baseRes!.innerType());
-  const res = new msg.StatRes();
-  assert(baseRes!.inner(res) != null);
-  return new FileInfoImpl(res);
 }

@@ -3,6 +3,20 @@ import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
+function req(
+  from: string,
+  to: string
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const from_ = builder.createString(from);
+  const to_ = builder.createString(to);
+  msg.CopyFile.startCopyFile(builder);
+  msg.CopyFile.addFrom(builder, from_);
+  msg.CopyFile.addTo(builder, to_);
+  const inner = msg.CopyFile.endCopyFile(builder);
+  return [builder, msg.Any.CopyFile, inner];
+}
+
 /** Copies the contents of a file to another by name synchronously.
  * Creates a new file if target does not exists, and if target exists,
  * overwrites original content of the target file.
@@ -28,18 +42,4 @@ export function copyFileSync(from: string, to: string): void {
  */
 export async function copyFile(from: string, to: string): Promise<void> {
   await dispatch.sendAsync(...req(from, to));
-}
-
-function req(
-  from: string,
-  to: string
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const from_ = builder.createString(from);
-  const to_ = builder.createString(to);
-  msg.CopyFile.startCopyFile(builder);
-  msg.CopyFile.addFrom(builder, from_);
-  msg.CopyFile.addTo(builder, to_);
-  const inner = msg.CopyFile.endCopyFile(builder);
-  return [builder, msg.Any.CopyFile, inner];
 }

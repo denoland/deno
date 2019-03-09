@@ -16,14 +16,14 @@ export function setLogDebug(debug: boolean, source?: string): void {
  * Enable with the `--log-debug` or `-D` command line flag.
  * @internal
  */
-export function log(...args: any[]): void {
+export function log(...args: unknown[]): void {
   if (logDebug) {
     console.log(`DEBUG ${logSource} -`, ...args);
   }
 }
 
 // @internal
-export function assert(cond: boolean, msg = "assert") {
+export function assert(cond: boolean, msg = "assert"): void {
   if (!cond) {
     throw Error(msg);
   }
@@ -61,6 +61,7 @@ export function arrayToStr(ui8: Uint8Array): string {
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (reason?: any) => void;
 }
 

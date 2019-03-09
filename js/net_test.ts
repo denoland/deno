@@ -24,7 +24,7 @@ testPerm({ net: true }, async function netCloseWhileAccept() {
 testPerm({ net: true }, async function netConcurrentAccept() {
   const listener = Deno.listen("tcp", ":4502");
   let acceptErrCount = 0;
-  const checkErr = e => {
+  const checkErr = (e): void => {
     assertEquals(e.kind, Deno.ErrorKind.Other);
     if (e.message === "Listener has been closed") {
       assertEquals(acceptErrCount, 1);

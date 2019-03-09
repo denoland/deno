@@ -528,6 +528,6 @@ window.compilerMain = function compilerMain() {
   };
 };
 
-export default function denoMain() {
+export default function denoMain(): void {
   os.start("TS");
 }

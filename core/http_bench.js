@@ -39,6 +39,20 @@ function createResolvable() {
   return Object.assign(promise, methods);
 }
 
+function setRecord(i, off, value) {
+  if (i >= NUM_RECORDS) {
+    throw Error("out of range");
+  }
+  shared32[INDEX_RECORDS + RECORD_SIZE * i + off] = value;
+}
+
+function getRecord(i, off) {
+  if (i >= NUM_RECORDS) {
+    throw Error("out of range");
+  }
+  return shared32[INDEX_RECORDS + RECORD_SIZE * i + off];
+}
+
 /** Returns Promise<number> */
 function sendAsync(op, arg, zeroCopyData) {
   const id = nextPromiseId++;
@@ -62,20 +76,6 @@ function sendSync(op, arg) {
   setRecord(0, RECORD_OFFSET_RESULT, -1);
   libdeno.send();
   return getRecord(0, RECORD_OFFSET_RESULT);
-}
-
-function setRecord(i, off, value) {
-  if (i >= NUM_RECORDS) {
-    throw Error("out of range");
-  }
-  shared32[INDEX_RECORDS + RECORD_SIZE * i + off] = value;
-}
-
-function getRecord(i, off) {
-  if (i >= NUM_RECORDS) {
-    throw Error("out of range");
-  }
-  return shared32[INDEX_RECORDS + RECORD_SIZE * i + off];
 }
 
 function handleAsyncMsgFromRust() {
@@ -134,10 +134,10 @@ async function main() {
 
   libdeno.print("http_bench.js start");
 
-  const listener_rid = listen();
-  libdeno.print(`listening http://127.0.0.1:4544/ rid = ${listener_rid}`);
+  const listenerRid = listen();
+  libdeno.print(`listening http://127.0.0.1:4544/ rid = ${listenerRid}`);
   while (true) {
-    const rid = await accept(listener_rid);
+    const rid = await accept(listenerRid);
     // libdeno.print(`accepted ${rid}`);
     if (rid < 0) {
       libdeno.print(`accept error ${rid}`);

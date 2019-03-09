@@ -13,7 +13,7 @@ const N = 100;
 let testBytes: Uint8Array | null;
 let testString: string | null;
 
-function init() {
+function init(): void {
   if (testBytes == null) {
     testBytes = new Uint8Array(N);
     for (let i = 0; i < N; i++) {
@@ -24,7 +24,7 @@ function init() {
   }
 }
 
-function check(buf: Deno.Buffer, s: string) {
+function check(buf: Deno.Buffer, s: string): void {
   const bytes = buf.bytes();
   assertEquals(buf.length, bytes.byteLength);
   const decoder = new TextDecoder();
@@ -67,6 +67,13 @@ async function empty(buf: Buffer, s: string, fub: Uint8Array): Promise<void> {
     check(buf, s);
   }
   check(buf, "");
+}
+
+function repeat(c: string, bytes: number): Uint8Array {
+  assertEquals(c.length, 1);
+  const ui8 = new Uint8Array(bytes);
+  ui8.fill(c.charCodeAt(0));
+  return ui8;
 }
 
 test(function bufferNewBuffer() {
@@ -140,7 +147,7 @@ test(async function bufferTooLargeByteWrites() {
   const growLen = Number.MAX_VALUE;
   const xBytes = repeat("x", 0);
   const buf = new Buffer(xBytes.buffer as ArrayBuffer);
-  const { nread, eof } = await buf.read(tmp);
+  await buf.read(tmp);
 
   let err;
   try {
@@ -186,13 +193,6 @@ test(async function bufferReadFrom() {
   }
 });
 
-function repeat(c: string, bytes: number): Uint8Array {
-  assertEquals(c.length, 1);
-  const ui8 = new Uint8Array(bytes);
-  ui8.fill(c.charCodeAt(0));
-  return ui8;
-}
-
 test(async function bufferTestGrow() {
   const tmp = new Uint8Array(72);
   for (let startLen of [0, 100, 1000, 10000, 100000]) {
@@ -200,7 +200,7 @@ test(async function bufferTestGrow() {
     for (let growLen of [0, 100, 1000, 10000, 100000]) {
       const buf = new Buffer(xBytes.buffer as ArrayBuffer);
       // If we read, this affects buf.off, which is good to test.
-      const { nread, eof } = await buf.read(tmp);
+      const { nread } = await buf.read(tmp);
       buf.grow(growLen);
       const yBytes = repeat("y", growLen);
       await buf.write(yBytes);

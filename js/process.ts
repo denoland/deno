@@ -32,6 +32,27 @@ export interface RunOptions {
   stdin?: ProcessStdio;
 }
 
+async function runStatus(rid: number): Promise<ProcessStatus> {
+  const builder = flatbuffers.createBuilder();
+  msg.RunStatus.startRunStatus(builder);
+  msg.RunStatus.addRid(builder, rid);
+  const inner = msg.RunStatus.endRunStatus(builder);
+
+  const baseRes = await dispatch.sendAsync(builder, msg.Any.RunStatus, inner);
+  assert(baseRes != null);
+  assert(msg.Any.RunStatusRes === baseRes!.innerType());
+  const res = new msg.RunStatusRes();
+  assert(baseRes!.inner(res) != null);
+
+  if (res.gotSignal()) {
+    const signal = res.exitSignal();
+    return { signal, success: false };
+  } else {
+    const code = res.exitCode();
+    return { code, success: code === 0 };
+  }
+}
+
 export class Process {
   readonly rid: number;
   readonly pid: number;
@@ -154,25 +175,4 @@ export function run(opt: RunOptions): Process {
   assert(baseRes!.inner(res) != null);
 
   return new Process(res);
-}
-
-async function runStatus(rid: number): Promise<ProcessStatus> {
-  const builder = flatbuffers.createBuilder();
-  msg.RunStatus.startRunStatus(builder);
-  msg.RunStatus.addRid(builder, rid);
-  const inner = msg.RunStatus.endRunStatus(builder);
-
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.RunStatus, inner);
-  assert(baseRes != null);
-  assert(msg.Any.RunStatusRes === baseRes!.innerType());
-  const res = new msg.RunStatusRes();
-  assert(baseRes!.inner(res) != null);
-
-  if (res.gotSignal()) {
-    const signal = res.exitSignal();
-    return { signal, success: false };
-  } else {
-    const code = res.exitCode();
-    return { code, success: code === 0 };
-  }
 }

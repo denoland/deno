@@ -5,68 +5,6 @@ import * as msg from "gen/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
 
-/** The Deno abstraction for reading and writing files. */
-export class File implements Reader, Writer, Seeker, Closer {
-  constructor(readonly rid: number) {}
-
-  write(p: Uint8Array): Promise<number> {
-    return write(this.rid, p);
-  }
-
-  read(p: Uint8Array): Promise<ReadResult> {
-    return read(this.rid, p);
-  }
-
-  seek(offset: number, whence: SeekMode): Promise<void> {
-    return seek(this.rid, offset, whence);
-  }
-
-  close(): void {
-    close(this.rid);
-  }
-}
-
-/** An instance of `File` for stdin. */
-export const stdin = new File(0);
-/** An instance of `File` for stdout. */
-export const stdout = new File(1);
-/** An instance of `File` for stderr. */
-export const stderr = new File(2);
-
-export type OpenMode =
-  /** Read-only. Default. Starts at beginning of file. */
-  | "r"
-  /** Read-write. Start at beginning of file. */
-  | "r+"
-  /** Write-only. Opens and truncates existing file or creates new one for
-   * writing only.
-   */
-  | "w"
-  /** Read-write. Opens and truncates existing file or creates new one for
-   * writing and reading.
-   */
-  | "w+"
-  /** Write-only. Opens existing file or creates new one. Each write appends
-   * content to the end of file.
-   */
-  | "a"
-  /** Read-write. Behaves like "a" and allows to read from file. */
-  | "a+"
-  /** Write-only. Exclusive create - creates new file only if one doesn't exist
-   * already.
-   */
-  | "x"
-  /** Read-write. Behaves like `x` and allows to read from file. */
-  | "x+";
-
-/** A factory function for creating instances of `File` associated with the
- * supplied file name.
- * @internal
- */
-export function create(filename: string): Promise<File> {
-  return open(filename, "w+");
-}
-
 /** Open a file and return an instance of the `File` object.
  *
  *       (async () => {
@@ -90,6 +28,7 @@ export async function open(
   const res = new msg.OpenRes();
   assert(baseRes!.inner(res) != null);
   const rid = res.rid();
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
   return new File(rid);
 }
 
@@ -151,4 +90,66 @@ export function close(rid: number): void {
   msg.Close.addRid(builder, rid);
   const inner = msg.Close.endClose(builder);
   dispatch.sendSync(builder, msg.Any.Close, inner);
+}
+
+/** The Deno abstraction for reading and writing files. */
+export class File implements Reader, Writer, Seeker, Closer {
+  constructor(readonly rid: number) {}
+
+  write(p: Uint8Array): Promise<number> {
+    return write(this.rid, p);
+  }
+
+  read(p: Uint8Array): Promise<ReadResult> {
+    return read(this.rid, p);
+  }
+
+  seek(offset: number, whence: SeekMode): Promise<void> {
+    return seek(this.rid, offset, whence);
+  }
+
+  close(): void {
+    close(this.rid);
+  }
+}
+
+/** An instance of `File` for stdin. */
+export const stdin = new File(0);
+/** An instance of `File` for stdout. */
+export const stdout = new File(1);
+/** An instance of `File` for stderr. */
+export const stderr = new File(2);
+
+export type OpenMode =
+  /** Read-only. Default. Starts at beginning of file. */
+  | "r"
+  /** Read-write. Start at beginning of file. */
+  | "r+"
+  /** Write-only. Opens and truncates existing file or creates new one for
+   * writing only.
+   */
+  | "w"
+  /** Read-write. Opens and truncates existing file or creates new one for
+   * writing and reading.
+   */
+  | "w+"
+  /** Write-only. Opens existing file or creates new one. Each write appends
+   * content to the end of file.
+   */
+  | "a"
+  /** Read-write. Behaves like "a" and allows to read from file. */
+  | "a+"
+  /** Write-only. Exclusive create - creates new file only if one doesn't exist
+   * already.
+   */
+  | "x"
+  /** Read-write. Behaves like `x` and allows to read from file. */
+  | "x+";
+
+/** A factory function for creating instances of `File` associated with the
+ * supplied file name.
+ * @internal
+ */
+export function create(filename: string): Promise<File> {
+  return open(filename, "w+");
 }

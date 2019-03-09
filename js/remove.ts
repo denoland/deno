@@ -7,6 +7,19 @@ export interface RemoveOption {
   recursive?: boolean;
 }
 
+function req(
+  path: string,
+  options: RemoveOption
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const path_ = builder.createString(path);
+  msg.Remove.startRemove(builder);
+  msg.Remove.addPath(builder, path_);
+  msg.Remove.addRecursive(builder, !!options.recursive);
+  const inner = msg.Remove.endRemove(builder);
+  return [builder, msg.Any.Remove, inner];
+}
+
 /** Removes the named file or directory synchronously. Would throw
  * error if permission denied, not found, or directory not empty if `recursive`
  * set to false.
@@ -30,17 +43,4 @@ export async function remove(
   options: RemoveOption = {}
 ): Promise<void> {
   await dispatch.sendAsync(...req(path, options));
-}
-
-function req(
-  path: string,
-  options: RemoveOption
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const path_ = builder.createString(path);
-  msg.Remove.startRemove(builder);
-  msg.Remove.addPath(builder, path_);
-  msg.Remove.addRecursive(builder, !!options.recursive);
-  const inner = msg.Remove.endRemove(builder);
-  return [builder, msg.Any.Remove, inner];
 }
