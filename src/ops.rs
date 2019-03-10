@@ -80,13 +80,7 @@ pub fn dispatch(
   let inner_type = base.inner_type();
   let cmd_id = base.cmd_id();
 
-  let op: Box<Op> = if inner_type == msg::Any::SetTimeout {
-    // SetTimeout is an exceptional op: the global timeout field is part of the
-    // Isolate state (not the IsolateState state) and it must be updated on the
-    // main thread.
-    assert_eq!(is_sync, true);
-    op_set_timeout(isolate, &base, data)
-  } else {
+  let op: Box<Op> = {
     // Handle regular ops.
     let op_creator: OpCreator = match inner_type {
       msg::Any::Accept => op_accept,
@@ -101,6 +95,8 @@ pub fn dispatch(
       msg::Any::Fetch => op_fetch,
       msg::Any::FetchModuleMetaData => op_fetch_module_meta_data,
       msg::Any::FormatError => op_format_error,
+      msg::Any::GlobalTimer => op_global_timer,
+      msg::Any::GlobalTimerStop => op_global_timer_stop,
       msg::Any::IsTTY => op_is_tty,
       msg::Any::Listen => op_listen,
       msg::Any::MakeTempDir => op_make_temp_dir,
@@ -440,21 +436,48 @@ fn op_chdir(
   }()))
 }
 
-fn op_set_timeout(
+fn op_global_timer_stop(
   isolate: &Isolate,
   base: &msg::Base<'_>,
   data: libdeno::deno_buf,
 ) -> Box<Op> {
+  assert!(base.sync());
   assert_eq!(data.len(), 0);
-  let inner = base.inner_as_set_timeout().unwrap();
-  let val = inner.timeout();
-  let timeout_due = if val >= 0 {
-    Some(Instant::now() + Duration::from_millis(val as u64))
-  } else {
-    None
-  };
-  isolate.set_timeout_due(timeout_due);
+  let mut t = isolate.state.global_timer.lock().unwrap();
+  t.cancel();
   ok_future(empty_buf())
+}
+
+fn op_global_timer(
+  isolate: &Isolate,
+  base: &msg::Base<'_>,
+  data: libdeno::deno_buf,
+) -> Box<Op> {
+  assert!(!base.sync());
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_global_timer().unwrap();
+  let val = inner.timeout();
+  assert!(val >= 0);
+
+  let mut t = isolate.state.global_timer.lock().unwrap();
+  let deadline = Instant::now() + Duration::from_millis(val as u64);
+  let f = t.new_timeout(deadline);
+
+  Box::new(f.then(move |_| {
+    let builder = &mut FlatBufferBuilder::new();
+    let inner =
+      msg::GlobalTimerRes::create(builder, &msg::GlobalTimerResArgs {});
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::GlobalTimerRes,
+        ..Default::default()
+      },
+    ))
+  }))
 }
 
 fn op_set_env(

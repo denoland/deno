@@ -12,6 +12,7 @@ use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::errors::RustOrJsError;
 use crate::flags;
+use crate::global_timer::GlobalTimer;
 use crate::isolate_init::IsolateInit;
 use crate::js_errors::apply_source_map;
 use crate::libdeno;
@@ -35,8 +36,6 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::{Once, ONCE_INIT};
-use std::time::Duration;
-use std::time::Instant;
 use tokio;
 
 // Buf represents a byte array returned from a "Op".
@@ -62,7 +61,6 @@ pub struct Isolate {
   rx: mpsc::Receiver<(usize, Buf)>,
   tx: mpsc::Sender<(usize, Buf)>,
   ntasks: Cell<i32>,
-  timeout_due: Cell<Option<Instant>>,
   pub modules: RefCell<Modules>,
   pub state: Arc<IsolateState>,
   pub permissions: Arc<DenoPermissions>,
@@ -83,6 +81,7 @@ pub struct IsolateState {
   pub flags: flags::DenoFlags,
   pub metrics: Metrics,
   pub worker_channels: Option<Mutex<WorkerChannels>>,
+  pub global_timer: Mutex<GlobalTimer>,
 }
 
 impl IsolateState {
@@ -100,6 +99,7 @@ impl IsolateState {
       flags,
       metrics: Metrics::default(),
       worker_channels: worker_channels.map(Mutex::new),
+      global_timer: Mutex::new(GlobalTimer::new()),
     }
   }
 
@@ -194,7 +194,6 @@ impl Isolate {
       rx,
       tx,
       ntasks: Cell::new(0),
-      timeout_due: Cell::new(None),
       modules: RefCell::new(Modules::new()),
       state,
       permissions: Arc::new(permissions),
@@ -220,16 +219,6 @@ impl Isolate {
   pub unsafe fn from_raw_ptr<'a>(ptr: *const c_void) -> &'a Self {
     let ptr = ptr as *const _;
     &*ptr
-  }
-
-  #[inline]
-  pub fn get_timeout_due(&self) -> Option<Instant> {
-    self.timeout_due.clone().into_inner()
-  }
-
-  #[inline]
-  pub fn set_timeout_due(&self, inst: Option<Instant>) {
-    self.timeout_due.set(inst);
   }
 
   #[inline]
@@ -463,10 +452,9 @@ impl Isolate {
   pub fn event_loop(&self) -> Result<(), JSError> {
     // Main thread event loop.
     while !self.is_idle() {
-      match recv_deadline(&self.rx, self.get_timeout_due()) {
+      match self.rx.recv() {
         Ok((zero_copy_id, buf)) => self.complete_op(zero_copy_id, buf),
-        Err(mpsc::RecvTimeoutError::Timeout) => self.timeout(),
-        Err(e) => panic!("recv_deadline() failed: {:?}", e),
+        Err(e) => panic!("Isolate.rx.recv() failed: {:?}", e),
       }
       self.check_promise_errors();
       if let Some(err) = self.last_exception() {
@@ -495,7 +483,7 @@ impl Isolate {
 
   #[inline]
   fn is_idle(&self) -> bool {
-    self.ntasks.get() == 0 && self.get_timeout_due().is_none()
+    self.ntasks.get() == 0
   }
 }
 
@@ -593,28 +581,6 @@ extern "C" fn pre_dispatch(
         Ok(())
       }).map_err(|_| ());
     tokio::spawn(task);
-  }
-}
-
-fn recv_deadline<T>(
-  rx: &mpsc::Receiver<T>,
-  maybe_due: Option<Instant>,
-) -> Result<T, mpsc::RecvTimeoutError> {
-  match maybe_due {
-    None => rx.recv().map_err(|e| e.into()),
-    Some(due) => {
-      // Subtracting two Instants causes a panic if the resulting duration
-      // would become negative. Avoid this.
-      let now = Instant::now();
-      let timeout = if due > now {
-        due - now
-      } else {
-        Duration::new(0, 0)
-      };
-      // TODO: use recv_deadline() instead of recv_timeout() when this
-      // feature becomes stable/available.
-      rx.recv_timeout(timeout)
-    }
   }
 }
 

@@ -16,6 +16,9 @@ union Any {
   FetchRes,
   FormatError,
   FormatErrorRes,
+  GlobalTimer,
+  GlobalTimerRes,
+  GlobalTimerStop,
   IsTTY,
   IsTTYRes,
   Listen,
@@ -55,7 +58,6 @@ union Any {
   RunStatusRes,
   Seek,
   SetEnv,
-  SetTimeout,
   Shutdown,
   Start,
   StartRes,
@@ -210,9 +212,13 @@ table Chdir {
   directory: string;
 }
 
-table SetTimeout {
+table GlobalTimer {
   timeout: int;
 }
+
+table GlobalTimerRes { }
+
+table GlobalTimerStop { }
 
 table Exit {
   code: int;

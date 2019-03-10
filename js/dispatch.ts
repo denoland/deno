@@ -8,31 +8,20 @@ import * as util from "./util";
 let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
-let fireTimers: () => void;
-
-export function setFireTimersCallback(fn: () => void): void {
-  fireTimers = fn;
-}
-
 export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
-  // If a the buffer is empty, recv() on the native side timed out and we
-  // did not receive a message.
-  if (ui8 && ui8.length) {
-    const bb = new flatbuffers.ByteBuffer(ui8);
-    const base = msg.Base.getRootAsBase(bb);
-    const cmdId = base.cmdId();
-    const promise = promiseTable.get(cmdId);
-    util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
-    promiseTable.delete(cmdId);
-    const err = errors.maybeError(base);
-    if (err != null) {
-      promise!.reject(err);
-    } else {
-      promise!.resolve(base);
-    }
+  util.assert(ui8 != null && ui8.length > 0);
+  const bb = new flatbuffers.ByteBuffer(ui8);
+  const base = msg.Base.getRootAsBase(bb);
+  const cmdId = base.cmdId();
+  const promise = promiseTable.get(cmdId);
+  util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
+  promiseTable.delete(cmdId);
+  const err = errors.maybeError(base);
+  if (err != null) {
+    promise!.reject(err);
+  } else {
+    promise!.resolve(base);
   }
-  // Fire timers that have become runnable.
-  fireTimers();
 }
 
 function sendInternal(
