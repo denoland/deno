@@ -257,6 +257,42 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
       }
     }
   }
+
+  async readFromMultiple(...r: Reader[]): Promise<number> {
+    const readers = r.slice();
+    let n = 0;
+    while (true) {
+      try {
+        const i = this._grow(MIN_READ);
+        this._reslice(i);
+        const fub = new Uint8Array(this.buf.buffer, i);
+
+        const { reader, rr } = await Promise.race(
+          readers.map(async reader => {
+            const rr = await reader.read(fub);
+            return {
+              reader,
+              rr
+            };
+          })
+        );
+
+        const { nread, eof } = rr;
+        this._reslice(i + nread);
+        n += nread;
+
+        if (eof) {
+          readers.splice(readers.indexOf(reader), 1);
+        }
+
+        if (!readers.length) {
+          return n;
+        }
+      } catch (e) {
+        return n;
+      }
+    }
+  }
 }
 
 /** Read `r` until EOF and return the content as `Uint8Array`.

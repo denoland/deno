@@ -187,14 +187,30 @@ testPerm({ run: true }, async function runOutput() {
   p.close();
 });
 
-testPerm({ run: true }, async function runError() {
+testPerm({ run: true }, async function runStderrOutput() {
   const p = run({
     args: ["python", "-c", "import sys; sys.stderr.write('error')"],
     stderr: "piped"
   });
-  const error = await p.error();
+  const error = await p.stderrOutput();
   const s = new TextDecoder().decode(error);
   assertEqual(s, "error");
+  p.close();
+});
+
+testPerm({ run: true }, async function runCombinedOutput() {
+  const p = run({
+    args: [
+      "python",
+      "-c",
+      "import sys; sys.stderr.write('error'); sys.stdout.write('output')"
+    ],
+    stdout: "piped",
+    stderr: "piped"
+  });
+  const error = await p.combinedOutput();
+  const s = new TextDecoder().decode(error);
+  assertEqual(s, "erroroutput");
   p.close();
 });
 

@@ -5,7 +5,7 @@ import * as msg from "gen/msg_generated";
 
 import { File, close } from "./files";
 import { ReadCloser, WriteCloser } from "./io";
-import { readAll } from "./buffer";
+import { Buffer, readAll } from "./buffer";
 import { assert, unreachable } from "./util";
 
 /** How to handle subprocess stdio.
@@ -101,13 +101,31 @@ export class Process {
    * You must set stderr to "piped" when creating the process.
    * This calls close() on stderr after its done.
    */
-  async error(): Promise<Uint8Array> {
+  async stderrOutput(): Promise<Uint8Array> {
     if (!this.stderr) {
-      throw new Error("Process.error: stderr is undefined");
+      throw new Error("Process.stderrOutput: stderr is undefined");
     }
     try {
       return await readAll(this.stderr);
     } finally {
+      this.stderr.close();
+    }
+  }
+
+  async combinedOutput(): Promise<Uint8Array> {
+    if (!this.stdout) {
+      throw new Error("Process.combinedOutput: stdout is undefined");
+    }
+    if (!this.stderr) {
+      throw new Error("Process.combinedOutput: stderr is undefined");
+    }
+
+    try {
+      const buf = new Buffer();
+      await buf.readFromMultiple(this.stdout, this.stderr);
+      return buf.bytes();
+    } finally {
+      this.stdout.close();
       this.stderr.close();
     }
   }
