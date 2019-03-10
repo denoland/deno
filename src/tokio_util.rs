@@ -122,3 +122,11 @@ where
     f()
   }
 }
+
+pub fn panic_on_error<I, E, F>(f: F) -> impl Future<Item = I, Error = ()>
+where
+  F: Future<Item = I, Error = E>,
+  E: std::fmt::Debug,
+{
+  f.map_err(|err| panic!("Future got unexpected error: {:?}", err))
+}
