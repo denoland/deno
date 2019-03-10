@@ -119,6 +119,15 @@ deno https://deno.land/welcome.ts
 # Fetch deps.
 git clone --recurse-submodules https://github.com/denoland/deno.git
 cd deno
+# Check your python
+python -V  # 2.7?
+
+# If you don't have python2 _and_ you have pyenv, you can install python2 in a project specific way
+type pyenv | grep function  # pyenv is a function
+pyenv install 2.7.15
+pyenv local 2.7.15
+python -V # 2.7.15
+
 ./tools/setup.py
 
 # You may need to ensure that sccache is running.
@@ -147,6 +156,10 @@ submodule. However, you need to install separately:
 2. [Node](https://nodejs.org/)
 3. Python 2.
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+
+   Note that [pyenv](https://github.com/pyenv/pyenv) can be useful to deploy a
+   python2, especially in those situations where the default python in now
+   python3 such as Ubuntu 18.10 and above. See more below.
 
 Extra steps for Mac users:
 

@@ -16,3 +16,6 @@ node_modules
 /website/data.json
 /website/recent.json
 /js/gen
+
+# ignore the pyenv (local) version file
+.python-version
