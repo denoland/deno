@@ -194,7 +194,7 @@ testPerm({ run: true }, async function runStderrOutput() {
   });
   const error = await p.stderrOutput();
   const s = new TextDecoder().decode(error);
-  assertEqual(s, "error");
+  assertEquals(s, "error");
   p.close();
 });
 
@@ -210,7 +210,7 @@ testPerm({ run: true }, async function runCombinedOutput() {
   });
   const error = await p.combinedOutput();
   const s = new TextDecoder().decode(error);
-  assertEqual(s, "erroroutput");
+  assertEquals(s, "erroroutput");
   p.close();
 });
 
