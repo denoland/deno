@@ -14,6 +14,7 @@ pub mod deno_dir;
 pub mod errors;
 pub mod flags;
 mod fs;
+mod global_timer;
 mod http_body;
 mod http_util;
 pub mod isolate;
