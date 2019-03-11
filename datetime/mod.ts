@@ -10,18 +10,23 @@ export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
  */
 export function parseDate(dateStr: string, format: DateFormat): Date {
   let m, d, y: string;
+  let datePattern: RegExp;
 
-  if (format === "mm-dd-yyyy") {
-    const datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
-    [, m, d, y] = datePattern.exec(dateStr)!;
-  } else if (format === "dd-mm-yyyy") {
-    const datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
-    [, d, m, y] = datePattern.exec(dateStr)!;
-  } else if (format === "yyyy-mm-dd") {
-    const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
-    [, y, m, d] = datePattern.exec(dateStr)!;
-  } else {
-    throw new Error("Invalid date format!");
+  switch (format) {
+    case "mm-dd-yyyy":
+      datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
+      [, m, d, y] = datePattern.exec(dateStr)!;
+      break;
+    case "dd-mm-yyyy":
+      datePattern = /^(\d{2})-(\d{2})-(\d{4})$/;
+      [, d, m, y] = datePattern.exec(dateStr)!;
+      break;
+    case "yyyy-mm-dd":
+      datePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
+      [, y, m, d] = datePattern.exec(dateStr)!;
+      break;
+    default:
+      throw new Error("Invalid date format!");
   }
 
   return new Date(Number(y), Number(m) - 1, Number(d));
@@ -47,30 +52,52 @@ export function parseDateTime(
   format: DateTimeFormat
 ): Date {
   let m, d, y, ho, mi: string;
+  let datePattern: RegExp;
 
-  if (format === "mm-dd-yyyy hh:mm") {
-    const datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
-    [, m, d, y, ho, mi] = datePattern.exec(datetimeStr)!;
-  } else if (format === "dd-mm-yyyy hh:mm") {
-    const datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
-    [, d, m, y, ho, mi] = datePattern.exec(datetimeStr)!;
-  } else if (format === "yyyy-mm-dd hh:mm") {
-    const datePattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
-    [, y, m, d, ho, mi] = datePattern.exec(datetimeStr)!;
-  } else if (format === "hh:mm mm-dd-yyyy") {
-    const datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
-    [, ho, mi, m, d, y] = datePattern.exec(datetimeStr)!;
-  } else if (format === "hh:mm dd-mm-yyyy") {
-    const datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
-    [, ho, mi, d, m, y] = datePattern.exec(datetimeStr)!;
-  } else if (format === "hh:mm yyyy-mm-dd") {
-    const datePattern = /^(\d{2}):(\d{2}) (\d{4})-(\d{2})-(\d{2})$/;
-    [, ho, mi, y, m, d] = datePattern.exec(datetimeStr)!;
-  } else {
-    throw new Error("Invalid datetime format!");
+  switch (format) {
+    case "mm-dd-yyyy hh:mm":
+      datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
+      [, m, d, y, ho, mi] = datePattern.exec(datetimeStr)!;
+      break;
+    case "dd-mm-yyyy hh:mm":
+      datePattern = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/;
+      [, d, m, y, ho, mi] = datePattern.exec(datetimeStr)!;
+      break;
+    case "yyyy-mm-dd hh:mm":
+      datePattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
+      [, y, m, d, ho, mi] = datePattern.exec(datetimeStr)!;
+      break;
+    case "hh:mm mm-dd-yyyy":
+      datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
+      [, ho, mi, m, d, y] = datePattern.exec(datetimeStr)!;
+      break;
+    case "hh:mm dd-mm-yyyy":
+      datePattern = /^(\d{2}):(\d{2}) (\d{2})-(\d{2})-(\d{4})$/;
+      [, ho, mi, d, m, y] = datePattern.exec(datetimeStr)!;
+      break;
+    case "hh:mm yyyy-mm-dd":
+      datePattern = /^(\d{2}):(\d{2}) (\d{4})-(\d{2})-(\d{2})$/;
+      [, ho, mi, y, m, d] = datePattern.exec(datetimeStr)!;
+      break;
+    default:
+      throw new Error("Invalid datetime format!");
   }
 
   return new Date(Number(y), Number(m) - 1, Number(d), Number(ho), Number(mi));
+}
+
+/**
+ * Get number of the day in the year
+ * @return {number} Number of the day in year
+ */
+export function dayOfYear(date: Date): any {
+  const dayMs = 1000 * 60 * 60 * 24;
+  const yearStart = new Date(date.getFullYear(), 0, 0);
+  const diff =
+    date.getTime() -
+    yearStart.getTime() +
+    (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
+  return Math.floor(diff / dayMs);
 }
 
 /**
@@ -79,10 +106,5 @@ export function parseDateTime(
  * @return {number} Number of current day in year
  */
 export function currentDayOfYear(): number {
-  return (
-    Math.ceil(new Date().getTime() / 86400000) -
-    Math.floor(
-      new Date().setFullYear(new Date().getFullYear(), 0, 1) / 86400000
-    )
-  );
+  return dayOfYear(new Date());
 }
