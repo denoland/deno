@@ -63,7 +63,7 @@ export { metrics, Metrics } from "./metrics";
 export { resources } from "./resources";
 export { run, RunOptions, Process, ProcessStatus } from "./process";
 export { inspect } from "./console";
-export { build, platform, OSType } from "./build";
+export { build, platform, OperatingSystem } from "./build";
 export { version } from "./version";
 export const args: string[] = [];
 
