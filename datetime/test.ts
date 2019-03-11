@@ -65,12 +65,12 @@ test(function invalidParseDateFormatThrows() {
   }
 });
 
+test(function DayOfYear() {
+  assertEquals(1, datetime.dayOfYear(new Date("2019-01-01T03:24:00")));
+  assertEquals(70, datetime.dayOfYear(new Date("2019-03-11T03:24:00")));
+  assertEquals(365, datetime.dayOfYear(new Date("2019-12-31T03:24:00")));
+});
+
 test(function currentDayOfYear() {
-  assertEquals(
-    datetime.currentDayOfYear(),
-    Math.ceil(new Date().getTime() / 86400000) -
-      Math.floor(
-        new Date().setFullYear(new Date().getFullYear(), 0, 1) / 86400000
-      )
-  );
+  assertEquals(datetime.currentDayOfYear(), datetime.dayOfYear(new Date()));
 });
