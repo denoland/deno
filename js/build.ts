@@ -7,14 +7,14 @@ export interface BuildInfo {
   arch: "x64";
 
   /** The operating system platform. */
-  os: OperatingSystem;
+  os: OSType;
 
   /** The GN build arguments */
   gnArgs: string;
 }
 
 /** The operating system platform. */
-export enum OperatingSystem {
+export enum OSType {
   mac = "mac",
   win = "win",
   linux = "linux"
