@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-use atty;
 use crate::ansi;
 use crate::errors;
 use crate::errors::{permission_denied, DenoError, DenoResult, ErrorKind};
@@ -22,6 +21,7 @@ use crate::resources::table_entries;
 use crate::resources::Resource;
 use crate::tokio_util;
 use crate::version;
+use atty;
 use deno_core::JSError;
 use flatbuffers::FlatBufferBuilder;
 use futures;
@@ -31,6 +31,7 @@ use futures::Sink;
 use futures::Stream;
 use hyper;
 use hyper::rt::Future;
+use math::round;
 use remove_dir_all::remove_dir_all;
 use std;
 use std::convert::From;
@@ -41,7 +42,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -57,9 +58,11 @@ type OpResult = DenoResult<Buf>;
 
 // TODO Ideally we wouldn't have to box the Op being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type OpCreator =
-  fn(isolate: &Isolate, base: &msg::Base<'_>, data: libdeno::deno_buf)
-    -> Box<Op>;
+type OpCreator = fn(
+  isolate: &Isolate,
+  base: &msg::Base<'_>,
+  data: libdeno::deno_buf,
+) -> Box<Op>;
 
 #[inline]
 fn empty_buf() -> Buf {
@@ -152,7 +155,8 @@ pub fn dispatch(
           ..Default::default()
         },
       ))
-    }).and_then(move |buf: Buf| -> DenoResult<Buf> {
+    })
+    .and_then(move |buf: Buf| -> DenoResult<Buf> {
       // Handle empty responses. For sync responses we just want
       // to send null. For async we want to send a small message
       // with the cmd_id.
@@ -186,7 +190,7 @@ fn op_now(
   data: libdeno::deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let start = SystemTime::now();
+  let start = Instant::now();
   let since_the_epoch = start.duration_since(UNIX_EPOCH).as_nanos();
   let time = since_the_epoch;
 
@@ -194,8 +198,8 @@ fn op_now(
   // Round the nano result on milliseconds
   // return the result as nanos u128
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp
-  if !_isolate.permissions.allow_high_precision {
-    time = (since_the_epoch / 1000).round() * 1000
+  if !_isolate.permissions.allows_high_precision() {
+    time = round::ceil(since_the_epoch / 1000, 0) * 1000
   }
 
   let builder = &mut FlatBufferBuilder::new();
@@ -1256,7 +1260,8 @@ fn op_read_dir(
             has_mode: cfg!(target_family = "unix"),
           },
         )
-      }).collect();
+      })
+      .collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(
@@ -1645,7 +1650,8 @@ fn op_resources(
           repr: Some(repr),
         },
       )
-    }).collect();
+    })
+    .collect();
 
   let resources = builder.create_vector(&res);
   let inner = msg::ResourcesRes::create(
@@ -1941,7 +1947,8 @@ mod tests {
       &isolate,
       &final_msg,
       libdeno::deno_buf::empty(),
-    ).wait();
+    )
+    .wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
@@ -1991,7 +1998,8 @@ mod tests {
       &isolate,
       &final_msg,
       libdeno::deno_buf::empty(),
-    ).wait();
+    )
+    .wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
@@ -2041,7 +2049,8 @@ mod tests {
       &isolate,
       &final_msg,
       libdeno::deno_buf::empty(),
-    ).wait();
+    )
+    .wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert_eq!(e.to_string(), permission_denied().to_string()),
@@ -2091,7 +2100,8 @@ mod tests {
       &isolate,
       &final_msg,
       libdeno::deno_buf::empty(),
-    ).wait();
+    )
+    .wait();
     match fetch_result {
       Ok(_) => assert!(true),
       Err(e) => assert!(e.to_string() != permission_denied().to_string()),
