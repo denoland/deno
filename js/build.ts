@@ -4,7 +4,7 @@
 /** Build related information */
 export interface BuildInfo {
   /** The operating system CPU architecture. */
-  arch: "x64";
+  arch: "x64" | "arm64";
 
   /** The operating system. */
   os: OperatingSystem;
