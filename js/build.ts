@@ -7,19 +7,18 @@ export interface BuildInfo {
   arch: "x64";
 
   /** The operating system platform. */
-  os: BuildPlatform;
+  os: OperatingSystem;
 
   /** The GN build arguments */
   gnArgs: string;
 }
 
 /** The operating system platform. */
-export enum BuildPlatform {
+export enum OperatingSystem {
   mac = "mac",
   win = "win",
   linux = "linux"
 }
-
 
 // 'build' is injected by rollup.config.js at compile time.
 export const build: BuildInfo = {
