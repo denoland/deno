@@ -11,6 +11,7 @@ import "./format_test.ts";
 import "./diff_test.ts";
 import "./pretty_test.ts";
 import "./asserts_test.ts";
+import "./bench_test.ts";
 
 test(function testingAssertEqualActualUncoercable() {
   let didThrow = false;
@@ -251,4 +252,4 @@ test(async function testingThrowsAsyncMsgNotIncludes() {
   assert(didThrow);
 });
 
-runIfMain(import.meta, { parallel: true });
+runIfMain(import.meta);

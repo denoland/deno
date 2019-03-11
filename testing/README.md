@@ -131,3 +131,77 @@ test(async function fails() {
   });
 });
 ```
+
+### Benching Usage
+
+Basic usage:
+
+```ts
+import { runBenchmarks, bench } from "https://deno.land/std/testing/bench.ts";
+
+bench(function forIncrementX1e9(b) {
+  b.start();
+  for (let i = 0; i < 1e9; i++);
+  b.stop();
+});
+
+runBenchmarks();
+```
+
+Averaging execution time over multiple runs:
+
+```ts
+bench({
+  name: "runs100ForIncrementX1e6",
+  runs: 100,
+  func(b) {
+    b.start();
+    for (let i = 0; i < 1e6; i++);
+    b.stop();
+  }
+});
+```
+
+#### Benching API
+
+##### `bench(benchmark: BenchmarkDefinition | BenchmarkFunction): void`
+
+Registers a benchmark that will be run once `runBenchmarks` is called.
+
+##### `runBenchmarks(opts?: BenchmarkRunOptions): Promise<void>`
+
+Runs all registered benchmarks serially. Filtering can be applied by setting
+`BenchmarkRunOptions.only` and/or `BenchmarkRunOptions.skip` to regular expressions matching benchmark names.
+
+##### `runIfMain(meta: ImportMeta, opts?: BenchmarkRunOptions): Promise<void>`
+
+Runs specified benchmarks if the enclosing script is main.
+
+##### Other exports
+
+```ts
+/** Provides methods for starting and stopping a benchmark clock. */
+export interface BenchmarkTimer {
+  start: () => void;
+  stop: () => void;
+}
+
+/** Defines a benchmark through a named function. */
+export interface BenchmarkFunction {
+  (b: BenchmarkTimer): void | Promise<void>;
+  name: string;
+}
+
+/** Defines a benchmark definition with configurable runs. */
+export interface BenchmarkDefinition {
+  func: BenchmarkFunction;
+  name: string;
+  runs?: number;
+}
+
+/** Defines runBenchmark's run constraints by matching benchmark names. */
+export interface BenchmarkRunOptions {
+  only?: RegExp;
+  skip?: RegExp;
+}
+```

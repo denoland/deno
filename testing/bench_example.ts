@@ -1,7 +1,7 @@
-// https://deno.land/std/benching/mod.ts
-import { BenchmarkTimer, runBenchmarks, bench } from "./mod.ts";
+// https://deno.land/std/testing/bench.ts
+import { BenchmarkTimer, bench, runIfMain } from "./bench.ts";
 
-// Simple
+// Basic
 bench(function forIncrementX1e9(b: BenchmarkTimer) {
   b.start();
   for (let i = 0; i < 1e9; i++);
@@ -12,7 +12,7 @@ bench(function forIncrementX1e9(b: BenchmarkTimer) {
 bench({
   name: "runs100ForIncrementX1e6",
   runs: 100,
-  func(b: BenchmarkTimer) {
+  func(b) {
     b.start();
     for (let i = 0; i < 1e6; i++);
     b.stop();
@@ -26,4 +26,4 @@ bench(function throwing(b) {
 });
 
 // Bench control
-runBenchmarks({ skip: /throw/ });
+runIfMain(import.meta, { skip: /throw/ });
