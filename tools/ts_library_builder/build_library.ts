@@ -360,9 +360,9 @@ export function main({
       baseUrl: basePath,
       declaration: true,
       emitDeclarationOnly: true,
+      lib: ["esnext"],
       module: ModuleKind.ESNext,
       moduleResolution: ModuleResolutionKind.NodeJs,
-      // noLib: true,
       paths: {
         "*": ["*", `${buildPath}/*`]
       },
@@ -402,8 +402,8 @@ export function main({
   const declarationProject = new Project({
     compilerOptions: {
       baseUrl: basePath,
+      lib: ["esnext"],
       moduleResolution: ModuleResolutionKind.NodeJs,
-      noLib: true,
       paths: {
         "*": ["*", `${buildPath}/*`]
       },
@@ -432,6 +432,7 @@ export function main({
   const outputProject = new Project({
     compilerOptions: {
       baseUrl: buildPath,
+      lib: ["esnext"],
       moduleResolution: ModuleResolutionKind.NodeJs,
       strict: true,
       target: ScriptTarget.ESNext
