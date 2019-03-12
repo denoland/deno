@@ -17,7 +17,7 @@
     "@typescript-eslint/no-parameter-properties": ["off"],
     "@typescript-eslint/no-unused-vars": [
       "error",
-      { "argsIgnorePattern": "^_" }
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "_" }
     ]
   }
 }

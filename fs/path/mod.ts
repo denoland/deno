@@ -847,7 +847,7 @@ export const win32 = {
   parse(path: string): ParsedPath {
     assertPath(path);
 
-    let ret = { root: "", dir: "", base: "", ext: "", name: "" } as ParsedPath;
+    let ret: ParsedPath = { root: "", dir: "", base: "", ext: "", name: "" };
 
     const len = path.length;
     if (len === 0) return ret;
@@ -1324,7 +1324,7 @@ export const posix = {
   parse(path: string): ParsedPath {
     assertPath(path);
 
-    let ret = { root: "", dir: "", base: "", ext: "", name: "" } as ParsedPath;
+    let ret: ParsedPath = { root: "", dir: "", base: "", ext: "", name: "" };
     if (path.length === 0) return ret;
     let isAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
     let start: number;

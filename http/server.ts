@@ -36,7 +36,7 @@ export function setContentLength(r: Response): void {
     }
   }
 }
-async function writeChunkedBody(w: Writer, r: Reader) {
+async function writeChunkedBody(w: Writer, r: Reader): Promise<void> {
   const writer = bufWriter(w);
   const encoder = new TextEncoder();
 
@@ -123,7 +123,7 @@ export class ServerRequest {
   r: BufReader;
   w: BufWriter;
 
-  public async *bodyStream() {
+  public async *bodyStream(): AsyncIterableIterator<Uint8Array> {
     if (this.headers.has("content-length")) {
       const len = +this.headers.get("content-length");
       if (Number.isNaN(len)) {
@@ -263,7 +263,11 @@ async function readRequest(
   return [req, err];
 }
 
-function maybeHandleReq(env: ServeEnv, conn: Conn, maybeReq: any) {
+function maybeHandleReq(
+  env: ServeEnv,
+  conn: Conn,
+  maybeReq: [ServerRequest, BufState]
+): void {
   const [req, _err] = maybeReq;
   if (_err) {
     conn.close(); // assume EOF for now...
@@ -273,11 +277,13 @@ function maybeHandleReq(env: ServeEnv, conn: Conn, maybeReq: any) {
   env.serveDeferred.resolve(); // signal while loop to process it
 }
 
-function serveConn(env: ServeEnv, conn: Conn, bufr?: BufReader) {
+function serveConn(env: ServeEnv, conn: Conn, bufr?: BufReader): void {
   readRequest(conn, bufr).then(maybeHandleReq.bind(null, env, conn));
 }
 
-export async function* serve(addr: string) {
+export async function* serve(
+  addr: string
+): AsyncIterableIterator<ServerRequest> {
   const listener = listen("tcp", addr);
   const env: ServeEnv = {
     reqQueue: [], // in case multiple promises are ready
@@ -285,9 +291,9 @@ export async function* serve(addr: string) {
   };
 
   // Routine that keeps calling accept
-  let handleConn = (_conn: Conn) => {};
-  let scheduleAccept = () => {};
-  const acceptRoutine = () => {
+  let handleConn = (_conn: Conn): void => {};
+  let scheduleAccept = (): void => {};
+  const acceptRoutine = (): void => {
     scheduleAccept = () => {
       listener.accept().then(handleConn);
     };
@@ -320,7 +326,7 @@ export async function* serve(addr: string) {
 export async function listenAndServe(
   addr: string,
   handler: (req: ServerRequest) => void
-) {
+): Promise<void> {
   const server = serve(addr);
 
   for await (const request of server) {

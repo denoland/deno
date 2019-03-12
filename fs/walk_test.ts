@@ -11,15 +11,15 @@ export async function testWalk(
   t: TestFunction
 ): Promise<void> {
   const name = t.name;
-  async function fn() {
-    const orig_cwd = cwd();
+  async function fn(): Promise<void> {
+    const origCwd = cwd();
     const d = await makeTempDir();
     chdir(d);
     try {
       await setup(d);
       await t();
     } finally {
-      chdir(orig_cwd);
+      chdir(origCwd);
       remove(d, { recursive: true });
     }
   }
@@ -29,23 +29,23 @@ export async function testWalk(
 async function walkArray(
   dirname: string = ".",
   options: WalkOptions = {}
-): Promise<Array<string>> {
+): Promise<string[]> {
   const arr: string[] = [];
   for await (const f of walk(dirname, { ...options })) {
     arr.push(f.path.replace(/\\/g, "/"));
   }
   arr.sort();
-  const arr_sync = Array.from(walkSync(dirname, options), (f: FileInfo) =>
+  const arrSync = Array.from(walkSync(dirname, options), (f: FileInfo) =>
     f.path.replace(/\\/g, "/")
   ).sort();
-  assertEquals(arr, arr_sync);
+  assertEquals(arr, arrSync);
   return arr;
 }
 
 async function touch(path: string): Promise<void> {
   await open(path, "w");
 }
-function assertReady(expectedLength: number) {
+function assertReady(expectedLength: number): void {
   const arr = Array.from(walkSync(), (f: FileInfo) => f.path);
   assertEquals(arr.length, expectedLength);
 }
@@ -77,11 +77,11 @@ testWalk(
   },
   async function iteratable() {
     let count = 0;
-    for (const f of walkSync()) {
+    for (const _ of walkSync()) {
       count += 1;
     }
     assertEquals(count, 1);
-    for await (const f of walk()) {
+    for await (const _ of walk()) {
       count += 1;
     }
     assertEquals(count, 2);
@@ -107,11 +107,11 @@ testWalk(
   },
   async function depth() {
     assertReady(1);
-    const arr_3 = await walkArray(".", { maxDepth: 3 });
-    assertEquals(arr_3.length, 0);
-    const arr_5 = await walkArray(".", { maxDepth: 5 });
-    assertEquals(arr_5.length, 1);
-    assertEquals(arr_5[0], "./a/b/c/d/x");
+    const arr3 = await walkArray(".", { maxDepth: 3 });
+    assertEquals(arr3.length, 0);
+    const arr5 = await walkArray(".", { maxDepth: 5 });
+    assertEquals(arr5.length, 1);
+    assertEquals(arr5[0], "./a/b/c/d/x");
   }
 );
 
@@ -214,12 +214,12 @@ testWalk(
   }
 );
 
-testWalk(async (d: string) => {}, async function onError() {
+testWalk(async (_d: string) => {}, async function onError() {
   assertReady(0);
   const ignored = await walkArray("missing");
   assertEquals(ignored.length, 0);
   let errors = 0;
-  const arr = await walkArray("missing", { onError: e => (errors += 1) });
+  await walkArray("missing", { onError: _e => (errors += 1) });
   // It's 2 since walkArray iterates over both sync and async.
   assertEquals(errors, 2);
 });

@@ -39,9 +39,6 @@ test(function booleanGroups() {
 test(function booleanAndAliasWithChainableApi() {
   const aliased = ["-h", "derp"];
   const regular = ["--herp", "derp"];
-  const opts = {
-    herp: { alias: "h", boolean: true }
-  };
   const aliasedArgv = parse(aliased, {
     boolean: "herp",
     alias: { h: "herp" }

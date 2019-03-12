@@ -7,7 +7,7 @@ import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 
 let fileServer;
-async function startFileServer() {
+async function startFileServer(): Promise<void> {
   fileServer = run({
     args: [
       "deno",
@@ -25,7 +25,7 @@ async function startFileServer() {
   assert(err == null);
   assert(s.includes("server listening"));
 }
-function killFileServer() {
+function killFileServer(): void {
   fileServer.close();
   fileServer.stdout.close();
 }

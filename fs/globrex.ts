@@ -12,6 +12,15 @@ const WILDCARD = `([^/]*)`;
 const GLOBSTAR_SEGMENT = `((?:[^${SEP_ESC}]*(?:${SEP_ESC}|$))*)`;
 const WILDCARD_SEGMENT = `([^${SEP_ESC}]*)`;
 
+export interface GlobrexResult {
+  regex: RegExp;
+  path?: {
+    regex: string | RegExp;
+    segments: RegExp[];
+    globstar?: RegExp;
+  };
+}
+
 /**
  * Convert any glob pattern to a JavaScript Regexp object
  * @param {String} glob Glob pattern to convert
@@ -32,12 +41,12 @@ export function globrex(
     filepath = false,
     flags = ""
   }: GlobOptions = {}
-) {
+): GlobrexResult {
   let regex = "";
   let segment = "";
   let path: {
     regex: string | RegExp;
-    segments: Array<RegExp>;
+    segments: RegExp[];
     globstar?: RegExp;
   } = { regex: "", segments: [] };
 
@@ -59,7 +68,7 @@ export function globrex(
   function add(
     str,
     options: AddOptions = { split: false, last: false, only: "" }
-  ) {
+  ): void {
     const { split, last, only } = options;
     if (only !== "path") regex += str;
     if (filepath && only !== "regex") {
@@ -283,14 +292,7 @@ export function globrex(
     if (filepath) path.regex = `^${path.regex}$`;
   }
 
-  const result: {
-    regex: RegExp;
-    path?: {
-      regex: string | RegExp;
-      segments: Array<RegExp>;
-      globstar?: RegExp;
-    };
-  } = { regex: new RegExp(regex, flags) };
+  const result: GlobrexResult = { regex: new RegExp(regex, flags) };
 
   // Push the last segment
   if (filepath) {

@@ -6,9 +6,52 @@ export interface WalkOptions {
   exts?: string[];
   match?: RegExp[];
   skip?: RegExp[];
-  // FIXME don't use `any` here?
-  onError?: (err: any) => void;
-  followSymlinks?: Boolean;
+  onError?: (err: Error) => void;
+  followSymlinks?: boolean;
+}
+
+function patternTest(patterns: RegExp[], path: string): boolean {
+  // Forced to reset last index on regex while iterating for have
+  // consistent results.
+  // See: https://stackoverflow.com/a/1520853
+  return patterns.some(pattern => {
+    let r = pattern.test(path);
+    pattern.lastIndex = 0;
+    return r;
+  });
+}
+
+function include(f: FileInfo, options: WalkOptions): boolean {
+  if (options.exts && !options.exts.some(ext => f.path.endsWith(ext))) {
+    return false;
+  }
+  if (options.match && !patternTest(options.match, f.path)) {
+    return false;
+  }
+  if (options.skip && patternTest(options.skip, f.path)) {
+    return false;
+  }
+  return true;
+}
+
+async function resolve(f: FileInfo): Promise<FileInfo> {
+  // This is the full path, unfortunately if we were to make it relative
+  // it could resolve to a symlink and cause an infinite loop.
+  const fpath = await readlink(f.path);
+  f = await stat(fpath);
+  // workaround path not being returned by stat
+  f.path = fpath;
+  return f;
+}
+
+function resolveSync(f: FileInfo): FileInfo {
+  // This is the full path, unfortunately if we were to make it relative
+  // it could resolve to a symlink and cause an infinite loop.
+  const fpath = readlinkSync(f.path);
+  f = statSync(fpath);
+  // workaround path not being returned by stat
+  f.path = fpath;
+  return f;
 }
 
 /** Generate all files in a directory recursively.
@@ -93,48 +136,4 @@ export function* walkSync(
       }
     }
   }
-}
-
-function include(f: FileInfo, options: WalkOptions): Boolean {
-  if (options.exts && !options.exts.some(ext => f.path.endsWith(ext))) {
-    return false;
-  }
-  if (options.match && !patternTest(options.match, f.path)) {
-    return false;
-  }
-  if (options.skip && patternTest(options.skip, f.path)) {
-    return false;
-  }
-  return true;
-}
-
-function patternTest(patterns: RegExp[], path: string) {
-  // Forced to reset last index on regex while iterating for have
-  // consistent results.
-  // See: https://stackoverflow.com/a/1520853
-  return patterns.some(pattern => {
-    let r = pattern.test(path);
-    pattern.lastIndex = 0;
-    return r;
-  });
-}
-
-async function resolve(f: FileInfo): Promise<FileInfo> {
-  // This is the full path, unfortunately if we were to make it relative
-  // it could resolve to a symlink and cause an infinite loop.
-  const fpath = await readlink(f.path);
-  f = await stat(fpath);
-  // workaround path not being returned by stat
-  f.path = fpath;
-  return f;
-}
-
-function resolveSync(f: FileInfo): FileInfo {
-  // This is the full path, unfortunately if we were to make it relative
-  // it could resolve to a symlink and cause an infinite loop.
-  const fpath = readlinkSync(f.path);
-  f = statSync(fpath);
-  // workaround path not being returned by stat
-  f.path = fpath;
-  return f;
 }

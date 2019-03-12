@@ -4,12 +4,12 @@
 
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { globrex } from "./globrex.ts";
+import { globrex, GlobrexResult } from "./globrex.ts";
 
 const isWin = Deno.build.os === "win";
 const t = { equal: assertEquals, is: assertEquals };
 
-function match(glob, strUnix, strWin?, opts = {}) {
+function match(glob, strUnix, strWin?, opts = {}): boolean {
   if (typeof strWin === "object") {
     opts = strWin;
     strWin = false;
@@ -18,14 +18,14 @@ function match(glob, strUnix, strWin?, opts = {}) {
   return res.regex.test(isWin && strWin ? strWin : strUnix);
 }
 
-function matchRegex(t, pattern, ifUnix, ifWin, opts) {
+function matchRegex(t, pattern, ifUnix, ifWin, opts): GlobrexResult {
   const res = globrex(pattern, opts);
   const { regex } = opts.filepath ? res.path : res;
   t.is(regex.toString(), isWin ? ifWin : ifUnix, "~> regex matches expectant");
   return res;
 }
 
-function matchSegments(t, pattern, ifUnix, ifWin, opts) {
+function matchSegments(t, pattern, ifUnix, ifWin, opts): GlobrexResult {
   const res = globrex(pattern, { filepath: true, ...opts });
   const str = res.path.segments.join(" ");
   const exp = (isWin ? ifWin : ifUnix).join(" ");
@@ -191,7 +191,7 @@ test({
     t.equal(match("f?o", "fooo", { extended: true }), false);
     t.equal(match("f?oo", "foo", { extended: true }), false);
 
-    const tester = globstar => {
+    const tester = (globstar): void => {
       t.equal(
         match("f?o", "foo", { extended: true, globstar, flags: "g" }),
         true
@@ -235,7 +235,7 @@ test({
     t.equal(match("fo[!tz]", "fot", { extended: true }), false);
     t.equal(match("fo[!tz]", "fob", { extended: true }), true);
 
-    const tester = globstar => {
+    const tester = (globstar): void => {
       t.equal(
         match("fo[oz]", "foo", { extended: true, globstar, flags: "g" }),
         true
@@ -321,7 +321,7 @@ test({
     t.equal(match("foo{bar,baaz}", "foobuzz", { extended: true }), false);
     t.equal(match("foo{bar,b*z}", "foobuzz", { extended: true }), true);
 
-    const tester = globstar => {
+    const tester = (globstar): void => {
       t.equal(
         match("foo{bar,baaz}", "foobaaz", {
           extended: true,
@@ -405,7 +405,7 @@ test({
       false
     );
 
-    const tester = globstar => {
+    const tester = (globstar): void => {
       t.equal(
         match(
           "http://?o[oz].b*z.com/{*.js,*.html}",
@@ -456,7 +456,7 @@ test({
 test({
   name: "globrex: standard globstar",
   fn() {
-    const tester = globstar => {
+    const tester = (globstar): void => {
       t.equal(
         match(
           "http://foo.com/**/{*.js,*.html}",
@@ -491,7 +491,7 @@ test({
 test({
   name: "globrex: remaining chars should match themself",
   fn() {
-    const tester = globstar => {
+    const tester = (globstar): void => {
       const testExtStr = "\\/$^+.()=!|,.*";
       t.equal(match(testExtStr, testExtStr, { extended: true }), true);
       t.equal(
@@ -849,7 +849,6 @@ test({
   name: "globrex: filepath path segments",
   fn() {
     let opts = { extended: true },
-      res,
       win,
       unix;
 

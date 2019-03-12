@@ -14,16 +14,16 @@ async function touch(path: string): Promise<void> {
 async function walkArray(
   dirname: string = ".",
   options: WalkOptions = {}
-): Promise<Array<string>> {
+): Promise<string[]> {
   const arr: string[] = [];
   for await (const f of walk(dirname, { ...options })) {
     arr.push(f.path.replace(/\\/g, "/"));
   }
   arr.sort();
-  const arr_sync = Array.from(walkSync(dirname, options), (f: FileInfo) =>
+  const arrSync = Array.from(walkSync(dirname, options), (f: FileInfo) =>
     f.path.replace(/\\/g, "/")
   ).sort();
-  assertEquals(arr, arr_sync);
+  assertEquals(arr, arrSync);
   return arr;
 }
 
