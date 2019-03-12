@@ -13,6 +13,7 @@ use deno_core::deno_mod;
 use deno_core::Behavior;
 use deno_core::Op;
 use std::cell::Cell;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -104,6 +105,11 @@ impl Behavior<Buf> for Cli {
   }
 
   fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod {
+    self
+      .state
+      .metrics
+      .resolve_count
+      .fetch_add(1, Ordering::Relaxed);
     let mut modules = self.state.modules.lock().unwrap();
     modules.resolve_cb(&self.state.dir, specifier, referrer)
   }

@@ -248,10 +248,12 @@ mod tests {
       snapshot: None,
       init_script: None,
     };
-    let cli = Cli::new(init, state.clone(), DenoPermissions::default());
-    let isolate = Isolate::new(cli);
-    tokio::runtime::current_thread::run(lazy(move || {
-      state.mod_execute(&isolate, &filename, false).ok();
+    tokio::run(lazy(move || {
+      let cli = Cli::new(init, state.clone(), DenoPermissions::default());
+      let isolate = Isolate::new(cli);
+      if let Err(err) = state.mod_execute(&isolate, &filename, false) {
+        eprintln!("mod_execute err {:?}", err);
+      }
       panic_on_error(isolate)
     }));
 
