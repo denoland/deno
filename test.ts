@@ -17,6 +17,7 @@ import "./fs/exists_test.ts";
 import "./fs/empty_dir_test.ts";
 import "./fs/ensure_dir_test.ts";
 import "./fs/ensure_file_test.ts";
+import "./fs/move_test.ts";
 import "./io/test.ts";
 import "./http/server_test.ts";
 import "./http/file_server_test.ts";
