@@ -39,13 +39,27 @@ impl<R> Future for PendingOp<R> {
   }
 }
 
+/// Defines the behavior of an Isolate.
 pub trait Behavior<R> {
+  /// Called exactly once when an Isolate is created to retrieve the startup
+  /// snapshot.
   fn startup_snapshot(&mut self) -> Option<deno_buf>;
+
+  /// Called exactly once when an Isolate is created to provide the
+  /// backing memory for the libdeno.shared SharedArrayBuffer.
   fn startup_shared(&mut self) -> Option<deno_buf>;
 
+  /// Called during mod_instantiate() to resolve imports.
   fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod;
 
+  /// Called whenever libdeno.send() is called in JavaScript. zero_copy_buf
+  /// corresponds to the second argument of libdeno.send().
   fn recv(&mut self, record: R, zero_copy_buf: deno_buf) -> (bool, Box<Op<R>>);
+
+  // TODO(ry) Remove records_reset().
+  // TODO(ry) Abstract records_* and startup_shared() methods into standalone
+  // trait called Shared.  It should, however, wait until integration with
+  // existing Deno codebase is complete.
 
   /// Clears the shared buffer.
   fn records_reset(&mut self);
@@ -57,6 +71,14 @@ pub trait Behavior<R> {
   fn records_shift(&mut self) -> Option<R>;
 }
 
+/// A single execution context of JavaScript. Corresponds roughly to the "Web
+/// Worker" concept in the DOM. An Isolate is a Future that can be used with
+/// Tokio.  The Isolate future complete when there is an error or when all
+/// pending ops have completed.
+///
+/// Ops are created in JavaScript by calling libdeno.send(), and in Rust by
+/// implementing Behavior::recv. An Op corresponds exactly to a Promise in
+/// JavaScript.
 pub struct Isolate<R, B: Behavior<R>> {
   libdeno_isolate: *const libdeno::isolate,
   behavior: B,
@@ -133,7 +155,7 @@ impl<R, B: Behavior<R>> Isolate<R, B> {
     }
   }
 
-  pub fn zero_copy_release(&self, zero_copy_id: usize) {
+  fn zero_copy_release(&self, zero_copy_id: usize) {
     unsafe {
       libdeno::deno_zero_copy_release(self.libdeno_isolate, zero_copy_id)
     }
@@ -184,7 +206,7 @@ impl<R, B: Behavior<R>> Isolate<R, B> {
     }
   }
 
-  pub fn check_promise_errors(&self) {
+  fn check_promise_errors(&self) {
     unsafe {
       libdeno::deno_check_promise_errors(self.libdeno_isolate);
     }
