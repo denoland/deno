@@ -6,7 +6,7 @@ import { libdeno } from "./libdeno";
 // It's not clear to me how to declare an extra method on a global object,
 // therefore this hack.
 // TODO: fix this.
-// tslint:disable-next-line:no-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const Atomics: any;
 
 // The 'MsgRing' prefix is necessary to avoid a conflict with a less complete
@@ -52,7 +52,7 @@ export const enum FillDirection {
 export let rx!: MsgRingReceiver;
 export let tx!: MsgRingSender;
 
-export function init() {
+export function init(): void {
   if (libdeno.shared.byteLength === 0) {
     // The message ring should not be accessed before a snapshot has been
     // created. This is because the size of the shared buffer gets embedded in
@@ -68,10 +68,12 @@ export function init() {
   const commonConfig = {
     byteLength: half
   };
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
   rx = new MsgRingReceiver(libdeno.shared, {
     byteOffset: 0,
     ...commonConfig
   });
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
   tx = new MsgRingSender(libdeno.shared, {
     byteOffset: half,
     ...commonConfig
