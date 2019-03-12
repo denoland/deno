@@ -38,15 +38,11 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    if !self.no_prompts.load(Ordering::SeqCst) {
-      let r = permission_prompt("access to run a subprocess");
-      if r.is_ok() {
-        self.allow_run.store(true, Ordering::SeqCst);
-      }
-      r
-    } else {
-      Err(permission_denied())
+    let r = self.try_permissions_prompt("access to run a subprocess");
+    if r.is_ok() {
+      self.allow_run.store(true, Ordering::SeqCst);
     }
+    r
   }
 
   pub fn check_read(&self, filename: &str) -> DenoResult<()> {
@@ -54,15 +50,12 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    if !self.no_prompts.load(Ordering::SeqCst) {
-      let r = permission_prompt(&format!("read access to \"{}\"", filename));;
-      if r.is_ok() {
-        self.allow_read.store(true, Ordering::SeqCst);
-      }
-      r
-    } else {
-      Err(permission_denied())
+    let r =
+      self.try_permissions_prompt(&format!("read access to \"{}\"", filename));;
+    if r.is_ok() {
+      self.allow_read.store(true, Ordering::SeqCst);
     }
+    r
   }
 
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
@@ -70,15 +63,12 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    if !self.no_prompts.load(Ordering::SeqCst) {
-      let r = permission_prompt(&format!("write access to \"{}\"", filename));;
-      if r.is_ok() {
-        self.allow_write.store(true, Ordering::SeqCst);
-      }
-      r
-    } else {
-      Err(permission_denied())
+    let r =
+      self.try_permissions_prompt(&format!("write access to \"{}\"", filename));;
+    if r.is_ok() {
+      self.allow_write.store(true, Ordering::SeqCst);
     }
+    r
   }
 
   pub fn check_net(&self, domain_name: &str) -> DenoResult<()> {
@@ -86,16 +76,14 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    if !self.no_prompts.load(Ordering::SeqCst) {
-      let r =
-        permission_prompt(&format!("network access to \"{}\"", domain_name));
-      if r.is_ok() {
-        self.allow_net.store(true, Ordering::SeqCst);
-      }
-      r
-    } else {
-      Err(permission_denied())
+    let r = self.try_permissions_prompt(&format!(
+      "network access to \"{}\"",
+      domain_name
+    ));
+    if r.is_ok() {
+      self.allow_net.store(true, Ordering::SeqCst);
     }
+    r
   }
 
   pub fn check_env(&self) -> DenoResult<()> {
@@ -103,15 +91,18 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    if !self.no_prompts.load(Ordering::SeqCst) {
-      let r = permission_prompt(&"access to environment variables");
-      if r.is_ok() {
-        self.allow_env.store(true, Ordering::SeqCst);
-      }
-      r
-    } else {
+    let r = self.try_permissions_prompt(&"access to environment variables");
+    if r.is_ok() {
+      self.allow_env.store(true, Ordering::SeqCst);
+    }
+    r
+  }
+
+  fn try_permissions_prompt(message: &str) {
+    if self.no_prompts.load(Ordering::SeqCst) {
       Err(permission_denied())
     }
+    permission_prompt(message)
   }
 
   pub fn allows_run(&self) -> bool {
