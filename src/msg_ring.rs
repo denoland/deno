@@ -617,138 +617,26 @@ impl<'msg> Drop for Receive<'msg> {
   }
 }
 
-/*
 #[cfg(test)]
 mod test {
   use super::{Buffer, MsgRing};
-  use std::sync::{Mutex, MutexGuard};
-  use std::thread;
-  use std::time::{Duration, Instant};
 
-  const ROUNDS: usize = 10;
-  const PER_ROUND: usize = 1e6 as usize;
-
-  trait AsFloat {
-    fn as_float(&self) -> f64;
-  }
-  impl AsFloat for Duration {
-    #[allow(clippy::cast_lossless)]
-    fn as_float(&self) -> f64 {
-      self.as_secs() as f64 + self.subsec_nanos() as f64 / 1e9
-    }
-  }
-
-  #[test] // TODO: use #[bench].
-  fn uni_flow_benchmark() {
-    let _guard = unparallelize_test();
-
+  #[test]
+  fn msg_ring_single_threaded() {
     let buffer = Buffer::new(240);
     let ring = MsgRing::new(buffer);
     let (mut sender, mut receiver) = ring.split();
 
-    let thread1 = thread::spawn(move || {
-      benchmark_loop(
-        "sender",
-        &mut (&mut sender, 0),
-        |(sender, ctr)| {
-          let mut send = sender.compose(32);
-          send[*ctr >> 8 & 7] = *ctr as u8;
-          *ctr += 1;
-          send.send();
-        },
-        |(sender, _)| eprintln!("  s {:?}", sender.counters()),
-      );
-    });
+    for i in 0..100_000usize {
+      let mut msg = sender.compose(40).unwrap();
+      msg[0] = (i % 7) as u8;
+      msg[39] = (i % 13) as u8;
+      msg.send();
 
-    let thread2 = thread::spawn(move || {
-      benchmark_loop(
-        "recver",
-        &mut (&mut receiver, 0),
-        |(receiver, ctr)| {
-          let msg = receiver.receive();
-          assert_eq!(msg[*ctr >> 8 & 7], *ctr as u8);
-          *ctr += 1;
-        },
-        |(receiver, _)| eprintln!("  r {:?}", receiver.counters()),
-      );
-    });
-
-    thread1.join().unwrap();
-    thread2.join().unwrap();
-  }
-
-  #[test] // TODO: use #[bench]
-  fn ping_pong_benchmark() {
-    let _guard = unparallelize_test();
-
-    let (mut sender1, mut receiver1) = MsgRing::new(Buffer::new(10240)).split();
-    let (mut sender2, mut receiver2) = MsgRing::new(Buffer::new(10240)).split();
-
-    let thread1 = thread::spawn(move || {
-      benchmark_loop(
-        "send..recv",
-        &mut (&mut sender1, &mut receiver2),
-        |(sender, receiver)| {
-          sender.compose(32).send();
-          receiver.receive();
-        },
-        |(sender, receiver)| {
-          eprintln!("  s1 {:?}", sender.counters());
-          eprintln!("  r2 {:?}", receiver.counters());
-        },
-      );
-    });
-
-    let thread2 = thread::spawn(move || {
-      benchmark_loop(
-        "recv..send",
-        &mut (&mut sender2, &mut receiver1),
-        |(sender, receiver)| {
-          receiver.receive();
-          sender.compose(32).send();
-        },
-        |(sender, receiver)| {
-          eprintln!("  s2 {:?}", sender.counters());
-          eprintln!("  r1 {:?}", receiver.counters());
-        },
-      );
-    });
-
-    thread1.join().unwrap();
-    thread2.join().unwrap();
-  }
-
-  fn benchmark_loop<A, RoundFn: Fn(&mut A), StatsFn: Fn(&mut A)>(
-    name: &str,
-    a: &mut A,
-    round_fn: RoundFn,
-    stats_fn: StatsFn,
-  ) {
-    let tid = thread::current().id();
-
-    for round in 0..ROUNDS {
-      let start_time = Instant::now();
-
-      for _ in 0..PER_ROUND {
-        round_fn(a);
-      }
-
-      let elapsed_time: Duration = Instant::now() - start_time;
-      let elapsed_time = elapsed_time.as_float();
-      let rate = (PER_ROUND as f64 / elapsed_time) as u64;
-      eprintln!(
-        "round {}, {:?}, {}, count: {}, rate: {} s\u{207b}\u{b9}",
-        round, tid, name, PER_ROUND, rate
-      );
-      stats_fn(a);
+      let msg = receiver.receive().unwrap();
+      assert!(msg.len() == 40);
+      assert!(msg[0] == (i % 7) as u8);
+      assert!(msg[39] == (i % 13) as u8);
     }
   }
-
-  fn unparallelize_test() -> MutexGuard<'static, ()> {
-    lazy_static! {
-      static ref GLOBAL_MUTEX: Mutex<()> = Mutex::new(());
-    };
-    GLOBAL_MUTEX.lock().unwrap()
-  }
 }
-*/
