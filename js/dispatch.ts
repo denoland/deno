@@ -9,7 +9,7 @@ import * as msgRing from "./msg_ring";
 let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
-export function handleAsyncMsgFromRust(_unused: Uint8Array) {
+export function handleAsyncMsgFromRust(_unused: Uint8Array): void {
   util.log("handleAsyncMsgFromRust start");
   util.assert(_unused == null);
   let i = 0;
@@ -29,6 +29,31 @@ export function handleAsyncMsgFromRust(_unused: Uint8Array) {
       promise!.resolve(base);
     }
   }
+}
+
+function sendInternal(
+  builder: flatbuffers.Builder,
+  innerType: msg.Any,
+  inner: flatbuffers.Offset,
+  data: undefined | ArrayBufferView,
+  sync = true
+): number {
+  const cmdId = nextCmdId++;
+  msg.Base.startBase(builder);
+  msg.Base.addInner(builder, inner);
+  msg.Base.addInnerType(builder, innerType);
+  msg.Base.addSync(builder, sync);
+  msg.Base.addCmdId(builder, cmdId);
+  builder.finish(msg.Base.endBase(builder));
+
+  const ui8 = builder.asUint8Array();
+  msgRing.tx.send(ui8);
+
+  // Somehow put this in the shared buffer.
+
+  libdeno.send(null, data);
+  builder.inUse = false;
+  return cmdId;
 }
 
 // @internal
@@ -62,29 +87,4 @@ export function sendSync(
     errors.maybeThrowError(baseRes);
     return baseRes;
   }
-}
-
-function sendInternal(
-  builder: flatbuffers.Builder,
-  innerType: msg.Any,
-  inner: flatbuffers.Offset,
-  data: undefined | ArrayBufferView,
-  sync = true
-): number {
-  const cmdId = nextCmdId++;
-  msg.Base.startBase(builder);
-  msg.Base.addInner(builder, inner);
-  msg.Base.addInnerType(builder, innerType);
-  msg.Base.addSync(builder, sync);
-  msg.Base.addCmdId(builder, cmdId);
-  builder.finish(msg.Base.endBase(builder));
-
-  const ui8 = builder.asUint8Array();
-  msgRing.tx.send(ui8);
-
-  // Somehow put this in the shared buffer.
-
-  libdeno.send(null, data);
-  builder.inUse = false;
-  return cmdId;
 }

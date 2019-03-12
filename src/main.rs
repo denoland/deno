@@ -20,6 +20,7 @@ mod fs;
 mod global_timer;
 mod http_body;
 mod http_util;
+pub mod isolate;
 pub mod isolate_init;
 pub mod isolate_state;
 pub mod js_errors;
@@ -42,6 +43,7 @@ mod eager_unix;
 
 use crate::cli::Cli;
 use crate::errors::RustOrJsError;
+use crate::isolate::Isolate;
 use crate::isolate_state::IsolateState;
 use futures::lazy;
 use futures::Future;
@@ -117,20 +119,19 @@ fn main() {
   let isolate_init = isolate_init::deno_isolate_init();
   let permissions = permissions::DenoPermissions::from_flags(&state.flags);
   let cli = Cli::new(isolate_init, state_, permissions);
-  let isolate = deno_core::Isolate::new(cli);
+  let mut isolate = Isolate::new(cli);
 
   let main_future = lazy(move || {
     // Setup runtime.
-    js_check(isolate.execute("<anonymous>", "denoMain()"));
+    js_check(isolate.execute("denoMain()"));
 
     // Execute main module.
     if let Some(main_module) = state.main_module() {
       debug!("main_module {}", main_module);
-      js_check(state.mod_execute(&isolate, &main_module, should_prefetch));
+      js_check(isolate.mod_execute(&main_module, should_prefetch));
       if should_display_info {
         // Display file info and exit. Do not run file
-        let m = state.modules.lock().unwrap();
-        m.print_file_info(&state.dir, main_module);
+        isolate.print_file_info(&main_module);
         std::process::exit(0);
       }
     }
