@@ -272,7 +272,7 @@ sibling `foo_test.ts`.
 ## Unit Tests should be explicit
 
 For a better understanding of the tests, function should be correctly named as
-its prompted throught the test command. Like:
+its prompted throughout the test command. Like:
 
 ```
 test myTestFunction ... ok
@@ -281,8 +281,8 @@ test myTestFunction ... ok
 Example of test:
 
 ```ts
-import { assertStrContains } from "./asserts.ts";
-import { test } from "./mod.ts";
+import { assertStrContains } from "https://deno.land/std@v0.3.1/testing/asserts.ts";
+import { test } from "https://deno.land/std@v0.3.1/testing/mod.ts";
 
 test(function testingAssertStringContains() {
   assertStrContains("Denosaurus", "saur");
