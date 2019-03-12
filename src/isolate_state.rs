@@ -228,6 +228,7 @@ mod tests {
   use crate::cli::Cli;
   use crate::isolate_init::IsolateInit;
   use crate::permissions::DenoPermissions;
+  use crate::tokio_util;
   use crate::tokio_util::panic_on_error;
   use futures::future::lazy;
   use std::sync::Arc;
@@ -248,7 +249,7 @@ mod tests {
       snapshot: None,
       init_script: None,
     };
-    tokio::run(lazy(move || {
+    tokio_util::run(lazy(move || {
       let cli = Cli::new(init, state.clone(), DenoPermissions::default());
       let isolate = Isolate::new(cli);
       if let Err(err) = state.mod_execute(&isolate, &filename, false) {

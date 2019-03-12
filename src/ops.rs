@@ -132,7 +132,22 @@ pub fn dispatch(cli: &Cli, control: Buf, data: deno_buf) -> (bool, Box<CliOp>) {
   };
 
   let boxed_op = Box::new(
-    op.and_then(move |buf: Buf| -> DenoResult<Buf> {
+    op.or_else(move |err: DenoError| -> Result<Buf, ()> {
+      debug!("op err {}", err);
+      // No matter whether we got an Err or Ok, we want a serialized message to
+      // send back. So transform the DenoError into a deno_buf.
+      let builder = &mut FlatBufferBuilder::new();
+      let errmsg_offset = builder.create_string(&format!("{}", err));
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          error: Some(errmsg_offset),
+          error_kind: err.kind(),
+          ..Default::default()
+        },
+      ))
+    }).and_then(move |buf: Buf| -> Result<Buf, ()> {
       // Handle empty responses. For sync responses we just want
       // to send null. For async we want to send a small message
       // with the cmd_id.
@@ -149,21 +164,6 @@ pub fn dispatch(cli: &Cli, control: Buf, data: deno_buf) -> (bool, Box<CliOp>) {
         )
       };
       Ok(buf)
-    }).or_else(move |err: DenoError| -> Result<Buf, ()> {
-      debug!("op err {}", err);
-      // No matter whether we got an Err or Ok, we want a serialized message to
-      // send back. So transform the DenoError into a deno_buf.
-      let builder = &mut FlatBufferBuilder::new();
-      let errmsg_offset = builder.create_string(&format!("{}", err));
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          error: Some(errmsg_offset),
-          error_kind: err.kind(),
-          ..Default::default()
-        },
-      ))
     }),
   );
 

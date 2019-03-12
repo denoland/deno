@@ -71,6 +71,15 @@ fn print_err_and_exit(err: RustOrJsError) {
   std::process::exit(1);
 }
 
+fn js_check<E>(r: Result<(), E>)
+where
+  E: Into<RustOrJsError>,
+{
+  if let Err(err) = r {
+    print_err_and_exit(err.into());
+  }
+}
+
 fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
@@ -110,14 +119,14 @@ fn main() {
   let cli = Cli::new(isolate_init, state_, permissions);
   let isolate = deno_core::Isolate::new(cli);
 
-  let main_future = lazy(move || -> Result<(), RustOrJsError> {
+  let main_future = lazy(move || {
     // Setup runtime.
-    isolate.execute("<anonymous>", "denoMain()")?;
+    js_check(isolate.execute("<anonymous>", "denoMain()"));
 
     // Execute main module.
     if let Some(main_module) = state.main_module() {
       debug!("main_module {}", main_module);
-      state.mod_execute(&isolate, &main_module, should_prefetch)?;
+      js_check(state.mod_execute(&isolate, &main_module, should_prefetch));
       if should_display_info {
         // Display file info and exit. Do not run file
         let m = state.modules.lock().unwrap();
@@ -125,16 +134,12 @@ fn main() {
         std::process::exit(0);
       }
     }
-    Ok(())
+
+    isolate.then(|result| {
+      js_check(result);
+      Ok(())
+    })
   });
 
-  let f = main_future.then(|r| -> Result<(), ()> {
-    if let Err(err) = r {
-      print_err_and_exit(err);
-    }
-    Ok(())
-  });
-
-  // tokio::runtime::current_thread::run(main_future);
-  tokio::run(f);
+  tokio_util::run(main_future);
 }
