@@ -6,7 +6,6 @@ import {
   ExportDeclaration,
   ImportDeclaration,
   InterfaceDeclaration,
-  InterfaceDeclarationStructure,
   JSDoc,
   Project,
   PropertySignature,
@@ -93,9 +92,9 @@ export function addVariableDeclaration(
 /** Add a declaration of an interface to a node */
 export function addInterfaceDeclaration(
   node: StatementedNode,
-  interfaceDeclaration: InterfaceDeclarationStructure
+  interfaceDeclaration: InterfaceDeclaration
 ) {
-  return node.addInterface(interfaceDeclaration);
+  return node.addInterface(interfaceDeclaration.getStructure());
 }
 
 /** Copy one source file to the end of another source file. */
