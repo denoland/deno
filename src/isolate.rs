@@ -178,15 +178,12 @@ fn fetch_module_meta_data_and_maybe_compile(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cli::Cli;
   use crate::flags;
   use crate::isolate_init::IsolateInit;
   use crate::permissions::DenoPermissions;
   use crate::tokio_util;
-  use crate::tokio_util::panic_on_error;
   use futures::future::lazy;
   use std::sync::atomic::Ordering;
-  use std::sync::Arc;
 
   #[test]
   fn execute_mod() {
@@ -210,7 +207,7 @@ mod tests {
       if let Err(err) = isolate.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
       }
-      panic_on_error(isolate)
+      tokio_util::panic_on_error(isolate)
     }));
 
     let metrics = &state_.metrics;
@@ -237,7 +234,7 @@ mod tests {
       if let Err(err) = isolate.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
       }
-      panic_on_error(isolate)
+      tokio_util::panic_on_error(isolate)
     }));
 
     let metrics = &state_.metrics;
