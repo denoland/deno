@@ -47,7 +47,7 @@ export class Sha1 {
     this._finalized = this._hashed = false;
   }
 
-  update(data: string | ArrayBuffer | ArrayBufferView) {
+  update(data: string | ArrayBuffer | ArrayBufferView): void {
     if (this._finalized) {
       return;
     }
@@ -120,7 +120,7 @@ export class Sha1 {
     }
   }
 
-  finalize() {
+  finalize(): void {
     if (this._finalized) {
       return;
     }
@@ -142,7 +142,7 @@ export class Sha1 {
     this.hash();
   }
 
-  hash() {
+  hash(): void {
     let a = this._h0;
     let b = this._h1;
     let c = this._h2;
@@ -271,7 +271,7 @@ export class Sha1 {
     this._h4 = (this._h4 + e) >>> 0;
   }
 
-  hex() {
+  hex(): string {
     this.finalize();
 
     const h0 = this._h0;
@@ -324,11 +324,11 @@ export class Sha1 {
     );
   }
 
-  toString() {
+  toString(): string {
     return this.hex();
   }
 
-  digest() {
+  digest(): number[] {
     this.finalize();
 
     const h0 = this._h0;
@@ -361,11 +361,11 @@ export class Sha1 {
     ];
   }
 
-  array() {
+  array(): number[] {
     return this.digest();
   }
 
-  arrayBuffer() {
+  arrayBuffer(): ArrayBuffer {
     this.finalize();
     return Uint32Array.of(this._h0, this._h1, this._h2, this._h3, this._h4)
       .buffer;

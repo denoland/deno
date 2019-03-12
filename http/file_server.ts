@@ -188,7 +188,7 @@ async function serveDir(
 async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
   if (
     e instanceof Deno.DenoError &&
-    (e as Deno.DenoError<any>).kind === ErrorKind.NotFound
+    (e as Deno.DenoError<Deno.ErrorKind.NotFound>).kind === ErrorKind.NotFound
   ) {
     return {
       status: 404,

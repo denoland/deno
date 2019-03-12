@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 export interface ArgParsingOptions {
   unknown?: Function;
-  boolean?: Boolean | string | string[];
+  boolean?: boolean | string | string[];
   alias?: { [key: string]: string | string[] };
   string?: string | string[];
-  default?: { [key: string]: any };
-  "--"?: Boolean;
-  stopEarly?: Boolean;
+  default?: { [key: string]: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
+  "--"?: boolean;
+  stopEarly?: boolean;
 }
 
 const DEFAULT_OPTIONS = {
@@ -19,10 +19,27 @@ const DEFAULT_OPTIONS = {
   stopEarly: false
 };
 
+function isNumber(x: unknown): boolean {
+  if (typeof x === "number") return true;
+  if (/^0x[0-9a-f]+$/i.test(String(x))) return true;
+  return /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(e[-+]?\d+)?$/.test(String(x));
+}
+
+function hasKey(obj, keys): boolean {
+  let o = obj;
+  keys.slice(0, -1).forEach(function(key) {
+    o = o[key] || {};
+  });
+
+  const key = keys[keys.length - 1];
+  return key in o;
+}
+
 export function parse(
   args,
   initialOptions?: ArgParsingOptions
 ): { [key: string]: any } {
+  // eslint-disable-line @typescript-eslint/no-explicit-any
   const options: ArgParsingOptions = {
     ...DEFAULT_OPTIONS,
     ...(initialOptions || {})
@@ -72,37 +89,14 @@ export function parse(
   const defaults = options.default!;
 
   const argv = { _: [] };
-  Object.keys(flags.bools).forEach(function(key) {
-    setArg(key, defaults[key] === undefined ? false : defaults[key]);
-  });
 
-  let notFlags = [];
-
-  if (args.indexOf("--") !== -1) {
-    notFlags = args.slice(args.indexOf("--") + 1);
-    args = args.slice(0, args.indexOf("--"));
-  }
-
-  function argDefined(key, arg) {
+  function argDefined(key, arg): boolean {
     return (
       (flags.allBools && /^--[^=]+$/.test(arg)) ||
       flags.strings[key] ||
       flags.bools[key] ||
       aliases[key]
     );
-  }
-
-  function setArg(key, val, arg = null): void {
-    if (arg && flags.unknownFn && !argDefined(key, arg)) {
-      if (flags.unknownFn(arg) === false) return;
-    }
-
-    const value = !flags.strings[key] && isNumber(val) ? Number(val) : val;
-    setKey(argv, key.split("."), value);
-
-    (aliases[key] || []).forEach(function(x) {
-      setKey(argv, x.split("."), value);
-    });
   }
 
   function setKey(obj, keys, value): void {
@@ -126,10 +120,34 @@ export function parse(
     }
   }
 
+  function setArg(key, val, arg = null): void {
+    if (arg && flags.unknownFn && !argDefined(key, arg)) {
+      if (flags.unknownFn(arg) === false) return;
+    }
+
+    const value = !flags.strings[key] && isNumber(val) ? Number(val) : val;
+    setKey(argv, key.split("."), value);
+
+    (aliases[key] || []).forEach(function(x) {
+      setKey(argv, x.split("."), value);
+    });
+  }
+
   function aliasIsBoolean(key): boolean {
     return aliases[key].some(function(x) {
       return flags.bools[x];
     });
+  }
+
+  Object.keys(flags.bools).forEach(function(key) {
+    setArg(key, defaults[key] === undefined ? false : defaults[key]);
+  });
+
+  let notFlags = [];
+
+  if (args.indexOf("--") !== -1) {
+    notFlags = args.slice(args.indexOf("--") + 1);
+    args = args.slice(0, args.indexOf("--"));
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -242,7 +260,7 @@ export function parse(
   });
 
   if (options["--"]) {
-    argv["--"] = new Array();
+    argv["--"] = [];
     notFlags.forEach(function(key) {
       argv["--"].push(key);
     });
@@ -253,20 +271,4 @@ export function parse(
   }
 
   return argv;
-}
-
-function hasKey(obj, keys) {
-  let o = obj;
-  keys.slice(0, -1).forEach(function(key) {
-    o = o[key] || {};
-  });
-
-  const key = keys[keys.length - 1];
-  return key in o;
-}
-
-function isNumber(x: any): boolean {
-  if (typeof x === "number") return true;
-  if (/^0x[0-9a-f]+$/i.test(x)) return true;
-  return /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(e[-+]?\d+)?$/.test(x);
 }

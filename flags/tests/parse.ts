@@ -178,7 +178,7 @@ test(function nestedDottedObjects() {
     "4",
     "--foo.quux.quibble",
     "5",
-    "--foo.quux.o_O",
+    "--foo.quux.oO",
     "--beep.boop"
   ]);
 
@@ -187,7 +187,7 @@ test(function nestedDottedObjects() {
     baz: 4,
     quux: {
       quibble: 5,
-      o_O: true
+      oO: true
     }
   });
   assertEquals(argv.beep, { boop: true });

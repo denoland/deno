@@ -79,6 +79,39 @@ const unixSpecialCaseFormatTests = [
   [{}, ""]
 ];
 
+function checkParseFormat(path, paths): void {
+  paths.forEach(function(p) {
+    const element = p[0];
+    const output = path.parse(element);
+    assertEquals(typeof output.root, "string");
+    assertEquals(typeof output.dir, "string");
+    assertEquals(typeof output.base, "string");
+    assertEquals(typeof output.ext, "string");
+    assertEquals(typeof output.name, "string");
+    assertEquals(path.format(output), element);
+    assertEquals(output.rooroot, undefined);
+    assertEquals(output.dir, output.dir ? path.dirname(element) : "");
+    assertEquals(output.base, path.basename(element));
+  });
+}
+
+function checkSpecialCaseParseFormat(path, testCases): void {
+  testCases.forEach(function(testCase) {
+    const element = testCase[0];
+    const expect = testCase[1];
+    const output = path.parse(element);
+    Object.keys(expect).forEach(function(key) {
+      assertEquals(output[key], expect[key]);
+    });
+  });
+}
+
+function checkFormat(path, testCases): void {
+  testCases.forEach(function(testCase) {
+    assertEquals(path.format(testCase[0]), testCase[1]);
+  });
+}
+
 test(function parseWin32() {
   checkParseFormat(path.win32, winPaths);
   checkSpecialCaseParseFormat(path.win32, winSpecialCaseParseTests);
@@ -116,6 +149,7 @@ const windowsTrailingTests = [
     }
   ]
 ];
+
 const posixTrailingTests = [
   ["./", { root: "", dir: "", base: ".", ext: "", name: "." }],
   ["//", { root: "/", dir: "/", base: "", ext: "", name: "" }],
@@ -126,39 +160,6 @@ const posixTrailingTests = [
     { root: "/", dir: "/foo//", base: "bar.baz", ext: ".baz", name: "bar" }
   ]
 ];
-
-function checkParseFormat(path, paths) {
-  paths.forEach(function(p) {
-    const element = p[0];
-    const output = path.parse(element);
-    assertEquals(typeof output.root, "string");
-    assertEquals(typeof output.dir, "string");
-    assertEquals(typeof output.base, "string");
-    assertEquals(typeof output.ext, "string");
-    assertEquals(typeof output.name, "string");
-    assertEquals(path.format(output), element);
-    assertEquals(output.rooroot, undefined);
-    assertEquals(output.dir, output.dir ? path.dirname(element) : "");
-    assertEquals(output.base, path.basename(element));
-  });
-}
-
-function checkSpecialCaseParseFormat(path, testCases) {
-  testCases.forEach(function(testCase) {
-    const element = testCase[0];
-    const expect = testCase[1];
-    const output = path.parse(element);
-    Object.keys(expect).forEach(function(key) {
-      assertEquals(output[key], expect[key]);
-    });
-  });
-}
-
-function checkFormat(path, testCases) {
-  testCases.forEach(function(testCase) {
-    assertEquals(path.format(testCase[0]), testCase[1]);
-  });
-}
 
 test(function parseTrailingWin32() {
   windowsTrailingTests.forEach(function(p) {

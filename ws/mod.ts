@@ -23,10 +23,10 @@ export type WebSocketEvent =
   | WebSocketPingEvent
   | WebSocketPongEvent;
 
-export type WebSocketCloseEvent = {
+export interface WebSocketCloseEvent {
   code: number;
   reason?: string;
-};
+}
 
 export function isWebSocketCloseEvent(a): a is WebSocketCloseEvent {
   return a && typeof a["code"] === "number";
@@ -47,7 +47,7 @@ export function isWebSocketPongEvent(a): a is WebSocketPongEvent {
 export type WebSocketMessage = string | Uint8Array;
 
 // TODO move this to common/util module
-export function append(a: Uint8Array, b: Uint8Array) {
+export function append(a: Uint8Array, b: Uint8Array): Uint8Array {
   if (a == null || !a.length) {
     return b;
   }
@@ -62,20 +62,145 @@ export function append(a: Uint8Array, b: Uint8Array) {
 
 export class SocketClosedError extends Error {}
 
-export type WebSocketFrame = {
+export interface WebSocketFrame {
   isLastFrame: boolean;
   opcode: OpCode;
   mask?: Uint8Array;
   payload: Uint8Array;
-};
+}
 
-export type WebSocket = {
+export interface WebSocket {
   readonly isClosed: boolean;
   receive(): AsyncIterableIterator<WebSocketEvent>;
   send(data: WebSocketMessage): Promise<void>;
   ping(data?: WebSocketMessage): Promise<void>;
   close(code: number, reason?: string): Promise<void>;
-};
+}
+
+export function unmask(payload: Uint8Array, mask?: Uint8Array): void {
+  if (mask) {
+    for (let i = 0, len = payload.length; i < len; i++) {
+      payload[i] ^= mask![i & 3];
+    }
+  }
+}
+
+export async function writeFrame(
+  frame: WebSocketFrame,
+  writer: Writer
+): Promise<void> {
+  const payloadLength = frame.payload.byteLength;
+  let header: Uint8Array;
+  const hasMask = frame.mask ? 0x80 : 0;
+  if (payloadLength < 126) {
+    header = new Uint8Array([0x80 | frame.opcode, hasMask | payloadLength]);
+  } else if (payloadLength < 0xffff) {
+    header = new Uint8Array([
+      0x80 | frame.opcode,
+      hasMask | 0b01111110,
+      payloadLength >>> 8,
+      payloadLength & 0x00ff
+    ]);
+  } else {
+    header = new Uint8Array([
+      0x80 | frame.opcode,
+      hasMask | 0b01111111,
+      ...sliceLongToBytes(payloadLength)
+    ]);
+  }
+  unmask(frame.payload, frame.mask);
+  const bytes = append(header, frame.payload);
+  const w = new BufWriter(writer);
+  await w.write(bytes);
+  await w.flush();
+}
+
+export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
+  let b = await buf.readByte();
+  let isLastFrame = false;
+  switch (b >>> 4) {
+    case 0b1000:
+      isLastFrame = true;
+      break;
+    case 0b0000:
+      isLastFrame = false;
+      break;
+    default:
+      throw new Error("invalid signature");
+  }
+  const opcode = b & 0x0f;
+  // has_mask & payload
+  b = await buf.readByte();
+  const hasMask = b >>> 7;
+  let payloadLength = b & 0b01111111;
+  if (payloadLength === 126) {
+    payloadLength = await readShort(buf);
+  } else if (payloadLength === 127) {
+    payloadLength = await readLong(buf);
+  }
+  // mask
+  let mask;
+  if (hasMask) {
+    mask = new Uint8Array(4);
+    await buf.readFull(mask);
+  }
+  // payload
+  const payload = new Uint8Array(payloadLength);
+  await buf.readFull(payload);
+  return {
+    isLastFrame,
+    opcode,
+    mask,
+    payload
+  };
+}
+
+export async function* receiveFrame(
+  conn: Conn
+): AsyncIterableIterator<WebSocketFrame> {
+  let receiving = true;
+  const isLastFrame = true;
+  const reader = new BufReader(conn);
+  while (receiving) {
+    const frame = await readFrame(reader);
+    const { opcode, payload } = frame;
+    switch (opcode) {
+      case OpCode.TextFrame:
+      case OpCode.BinaryFrame:
+      case OpCode.Continue:
+        yield frame;
+        break;
+      case OpCode.Close:
+        await writeFrame(
+          {
+            opcode,
+            payload,
+            isLastFrame
+          },
+          conn
+        );
+        conn.close();
+        yield frame;
+        receiving = false;
+        break;
+      case OpCode.Ping:
+        await writeFrame(
+          {
+            payload,
+            isLastFrame,
+            opcode: OpCode.Pong
+          },
+          conn
+        );
+        yield frame;
+        break;
+      case OpCode.Pong:
+        yield frame;
+        break;
+      default:
+    }
+  }
+}
 
 class WebSocketImpl implements WebSocket {
   encoder = new TextEncoder();
@@ -163,7 +288,7 @@ class WebSocketImpl implements WebSocket {
   }
 
   private _isClosed = false;
-  get isClosed() {
+  get isClosed(): boolean {
     return this._isClosed;
   }
 
@@ -210,94 +335,21 @@ class WebSocketImpl implements WebSocket {
   }
 }
 
-export async function* receiveFrame(
-  conn: Conn
-): AsyncIterableIterator<WebSocketFrame> {
-  let receiving = true;
-  const isLastFrame = true;
-  const reader = new BufReader(conn);
-  while (receiving) {
-    const frame = await readFrame(reader);
-    const { opcode, payload } = frame;
-    switch (opcode) {
-      case OpCode.TextFrame:
-      case OpCode.BinaryFrame:
-      case OpCode.Continue:
-        yield frame;
-        break;
-      case OpCode.Close:
-        await writeFrame(
-          {
-            opcode,
-            payload,
-            isLastFrame
-          },
-          conn
-        );
-        conn.close();
-        yield frame;
-        receiving = false;
-        break;
-      case OpCode.Ping:
-        await writeFrame(
-          {
-            payload,
-            isLastFrame,
-            opcode: OpCode.Pong
-          },
-          conn
-        );
-        yield frame;
-        break;
-      case OpCode.Pong:
-        yield frame;
-        break;
-      default:
-    }
-  }
-}
-
-export async function writeFrame(frame: WebSocketFrame, writer: Writer) {
-  const payloadLength = frame.payload.byteLength;
-  let header: Uint8Array;
-  const hasMask = frame.mask ? 0x80 : 0;
-  if (payloadLength < 126) {
-    header = new Uint8Array([0x80 | frame.opcode, hasMask | payloadLength]);
-  } else if (payloadLength < 0xffff) {
-    header = new Uint8Array([
-      0x80 | frame.opcode,
-      hasMask | 0b01111110,
-      payloadLength >>> 8,
-      payloadLength & 0x00ff
-    ]);
-  } else {
-    header = new Uint8Array([
-      0x80 | frame.opcode,
-      hasMask | 0b01111111,
-      ...sliceLongToBytes(payloadLength)
-    ]);
-  }
-  unmask(frame.payload, frame.mask);
-  const bytes = append(header, frame.payload);
-  const w = new BufWriter(writer);
-  await w.write(bytes);
-  await w.flush();
-}
-
-export function unmask(payload: Uint8Array, mask?: Uint8Array) {
-  if (mask) {
-    for (let i = 0, len = payload.length; i < len; i++) {
-      payload[i] ^= mask![i & 3];
-    }
-  }
-}
-
 export function acceptable(req: { headers: Headers }): boolean {
   return (
     req.headers.get("upgrade") === "websocket" &&
     req.headers.has("sec-websocket-key") &&
     req.headers.get("sec-websocket-key").length > 0
   );
+}
+
+const kGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+export function createSecAccept(nonce: string): string {
+  const sha1 = new Sha1();
+  sha1.update(nonce + kGUID);
+  const bytes = sha1.digest();
+  return btoa(String.fromCharCode.apply(String, bytes));
 }
 
 export async function acceptWebSocket(req: {
@@ -320,53 +372,4 @@ export async function acceptWebSocket(req: {
     return sock;
   }
   throw new Error("request is not acceptable");
-}
-
-const kGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-export function createSecAccept(nonce: string) {
-  const sha1 = new Sha1();
-  sha1.update(nonce + kGUID);
-  const bytes = sha1.digest();
-  return btoa(String.fromCharCode.apply(String, bytes));
-}
-
-export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
-  let b = await buf.readByte();
-  let isLastFrame = false;
-  switch (b >>> 4) {
-    case 0b1000:
-      isLastFrame = true;
-      break;
-    case 0b0000:
-      isLastFrame = false;
-      break;
-    default:
-      throw new Error("invalid signature");
-  }
-  const opcode = b & 0x0f;
-  // has_mask & payload
-  b = await buf.readByte();
-  const hasMask = b >>> 7;
-  let payloadLength = b & 0b01111111;
-  if (payloadLength === 126) {
-    payloadLength = await readShort(buf);
-  } else if (payloadLength === 127) {
-    payloadLength = await readLong(buf);
-  }
-  // mask
-  let mask;
-  if (hasMask) {
-    mask = new Uint8Array(4);
-    await buf.readFull(mask);
-  }
-  // payload
-  const payload = new Uint8Array(payloadLength);
-  await buf.readFull(payload);
-  return {
-    isLastFrame,
-    opcode,
-    mask,
-    payload
-  };
 }

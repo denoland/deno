@@ -4,7 +4,7 @@ const { exit, args, execPath } = Deno;
 import { parse } from "./flags/mod.ts";
 import { xrun } from "./prettier/util.ts";
 
-async function main(opts) {
+async function main(opts): Promise<void> {
   const args = [
     execPath,
     "--allow-write",
