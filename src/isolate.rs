@@ -217,34 +217,30 @@ mod tests {
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 1);
   }
 
-  /*
-
-	TODO(ry) uncomment this before landing
-
   #[test]
   fn execute_mod_circular() {
     let filename = std::env::current_dir().unwrap().join("tests/circular1.js");
-    let filename = filename.to_str().unwrap();
+    let filename = filename.to_str().unwrap().to_string();
 
-    let argv = vec![String::from("./deno"), String::from(filename)];
+    let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
+    let state_ = state.clone();
     let init = IsolateInit {
       snapshot: None,
       init_script: None,
     };
-    let mut isolate =
-      Isolate::new(init, state, dispatch_sync, DenoPermissions::default());
-    tokio_util::init(|| {
-      isolate
-        .execute_mod(filename, false)
-        .expect("execute_mod error");
-      isolate.event_loop().ok();
-    });
+    tokio_util::run(lazy(move || {
+      let cli = Cli::new(init, state.clone(), DenoPermissions::default());
+      let mut isolate = Isolate::new(cli);
+      if let Err(err) = isolate.execute_mod(&filename, false) {
+        eprintln!("execute_mod err {:?}", err);
+      }
+      panic_on_error(isolate)
+    }));
 
-    let metrics = &isolate.state.metrics;
+    let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
   }
-	*/
 }
