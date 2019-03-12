@@ -37,7 +37,7 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 
 - Like the browser, allows imports from URLs:
 
-  ```typescript
+  ```ts
   import * as log from "https://deno.land/std/log/mod.ts";
   ```
 
@@ -92,14 +92,14 @@ scripts to download and install the binary.
 
 Using Shell:
 
-```sh
-curl -fsSL https://deno.land/x/install/install.sh | sh
+```shellsession
+$ curl -fsSL https://deno.land/x/install/install.sh | sh
 ```
 
 Or using PowerShell:
 
-```powershell
-iwr https://deno.land/x/install/install.ps1 | iex
+```shellsession
+> iwr https://deno.land/x/install/install.ps1 | iex
 ```
 
 Deno can also be installed manually, by downloading a tarball or zip file at
@@ -107,10 +107,10 @@ Deno can also be installed manually, by downloading a tarball or zip file at
 These packages contain just a single executable file. You will have to set the
 executable bit on Mac and Linux.
 
-Once it's installed and in your \$PATH, try it:
+Once it's installed and in your `$PATH`, try it:
 
-```
-deno https://deno.land/welcome.ts
+```shellsession
+$ deno https://deno.land/welcome.ts
 ```
 
 ### Build from source
@@ -157,16 +157,16 @@ Extra steps for Windows users:
 
 1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
 2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
-   `Desktop development with C++` toolkit and make sure to select the following
+   "Desktop development with C++" toolkit and make sure to select the following
    required tools listed below along with all C++ tools.
    - Windows 10 SDK >= 10.0.17134
    - Visual C++ ATL for x86 and x64
    - Visual C++ MFC for x86 and x64
    - C++ profiling tools
-3. Enable `Debugging Tools for Windows`. Go to `Control Panel` → `Programs` →
-   `Programs and Features` → Select
-   `Windows Software Development Kit - Windows 10` → `Change` → `Change` → Check
-   `Debugging Tools For Windows` → `Change` -> `Finish`.
+3. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
+   "Programs and Features" → Select "Windows Software Development Kit - Windows
+   10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
+   "Finish".
 4. Make sure you are using git version 2.19.2.windows.1 or newer.
 
 #### Other useful commands
@@ -205,8 +205,8 @@ Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
 To get an exact reference of deno's runtime API, run the following in the
 command line:
 
-```
-deno --types
+```shellsession
+$ deno --types
 ```
 
 [This is what the output looks like.](https://gist.github.com/ry/46da4724168cdefa763e13207d27ede5)
@@ -243,8 +243,8 @@ I/O streams in Deno.
 
 Try the program:
 
-```
-> deno https://deno.land/std/examples/cat.ts /etc/passwd
+```shellsession
+$ deno https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 ### TCP echo server
@@ -269,8 +269,8 @@ const { listen, copy } = Deno;
 When this program is started, the user is prompted for permission to listen on
 the network:
 
-```
-> deno https://deno.land/std/examples/echo_server.ts
+```shellsession
+$ deno https://deno.land/std/examples/echo_server.ts
 ⚠️  Deno requests network access to "listen". Grant? [yN] y
 listening on 0.0.0.0:8080
 ```
@@ -278,15 +278,15 @@ listening on 0.0.0.0:8080
 For security reasons, deno does not allow programs to access the network without
 explicit permission. To avoid the console prompt, use a command-line flag:
 
-```
-> deno https://deno.land/std/examples/echo_server.ts --allow-net
+```shellsession
+$ deno https://deno.land/std/examples/echo_server.ts --allow-net
 ```
 
 To test it, try sending a HTTP request to it by using curl. The request gets
 written directly back to the client.
 
-```
-> curl http://localhost:8080/
+```shellsession
+$ curl http://localhost:8080/
 GET / HTTP/1.1
 Host: localhost:8080
 User-Agent: curl/7.54.0
@@ -330,15 +330,15 @@ const { permissions, revokePermission, open, remove } = Deno;
 
 This one serves a local directory in HTTP.
 
-```
+```bash
 alias file_server="deno  --allow-net --allow-read \
   https://deno.land/std/http/file_server.ts"
 ```
 
 Run it:
 
-```
-% file_server .
+```shellsession
+$ file_server .
 Downloading https://deno.land/std/http/file_server.ts...
 [...]
 HTTP server listening on http://0.0.0.0:4500/
@@ -346,8 +346,8 @@ HTTP server listening on http://0.0.0.0:4500/
 
 And if you ever want to upgrade to the latest published version:
 
-```
-file_server --reload
+```shellsession
+$ file_server --reload
 ```
 
 ### Run subprocess
@@ -372,8 +372,8 @@ main();
 
 Run it:
 
-```
-> deno --allow-run ./subprocess_simple.ts
+```shellsession
+$ deno --allow-run ./subprocess_simple.ts
 hello
 ```
 
@@ -411,11 +411,11 @@ main();
 
 When you run it:
 
-```
-> deno ./subprocess.ts --allow-run <somefile>
+```shellsession
+$ deno ./subprocess.ts --allow-run <somefile>
 [file content]
 
-> deno ./subprocess.ts --allow-run non_existent_file.md
+$ deno ./subprocess.ts --allow-run non_existent_file.md
 
 Uncaught NotFound: No such file or directory (os error 2)
     at DenoError (deno/js/errors.ts:19:5)
@@ -449,8 +449,8 @@ runIfMain(import.meta);
 
 Try running this:
 
-```
-> deno test.ts --reload
+```shellsession
+$ deno test.ts
 running 2 tests
 test t1 ... ok
 test t2 ... ok
@@ -525,8 +525,8 @@ if (import.meta.main) {
 
 ### Flags
 
-```
-> deno -h
+```shellsession
+$ deno -h
 Usage: deno script.ts
 
 Options:
@@ -665,8 +665,8 @@ To learn more about `d8` and profiling, check out the following links:
 
 We can use LLDB to debug deno.
 
-```sh
-lldb -- target/debug/deno tests/worker.js
+```shellsession
+$ lldb -- target/debug/deno tests/worker.js
 > run
 > bt
 > up
@@ -677,8 +677,8 @@ lldb -- target/debug/deno tests/worker.js
 To debug Rust code, we can use `rust-lldb`. It should come with `rustc` and is a
 wrapper around LLDB.
 
-```sh
-rust-lldb -- ./target/debug/deno tests/http_bench.ts --allow-net
+```shellsession
+$ rust-lldb -- ./target/debug/deno tests/http_bench.ts --allow-net
 # On macOS, you might get warnings like
 # `ImportError: cannot import name _remove_dead_weakref`
 # In that case, use system python by setting PATH, e.g.
@@ -711,21 +711,21 @@ Rust. These common data structures are defined in
 
 ### Updating prebuilt binaries
 
-```bash
-./third_party/depot_tools/upload_to_google_storage.py -b denoland  \
+```shellsession
+$ ./third_party/depot_tools/upload_to_google_storage.py -b denoland  \
   -e ~/.config/gcloud/legacy_credentials/ry@tinyclouds.org/.boto `which sccache`
-mv `which sccache`.sha1 prebuilt/linux64/
-gsutil acl ch -u AllUsers:R gs://denoland/608be47bf01004aa11d4ed06955414e93934516e
+$ mv `which sccache`.sha1 prebuilt/linux64/
+$ gsutil acl ch -u AllUsers:R gs://denoland/608be47bf01004aa11d4ed06955414e93934516e
 ```
 
 ### Continuous Benchmarks
 
-https://deno.land/benchmarks.html
+See our benchmarks [over here](https://deno.land/benchmarks.html)
 
 The benchmark chart supposes `//website/data.json` has the type
 `BenchmarkData[]` where `BenchmarkData` is defined like the below:
 
-```typescript
+```ts
 interface ExecTimeData {
   mean: number;
   stddev: number;
