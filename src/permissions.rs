@@ -18,6 +18,7 @@ pub struct DenoPermissions {
   pub allow_net: AtomicBool,
   pub allow_env: AtomicBool,
   pub allow_run: AtomicBool,
+  pub no_prompts: AtomicBool,
 }
 
 impl DenoPermissions {
@@ -28,6 +29,7 @@ impl DenoPermissions {
       allow_env: AtomicBool::new(flags.allow_env),
       allow_net: AtomicBool::new(flags.allow_net),
       allow_run: AtomicBool::new(flags.allow_run),
+      no_prompts: AtomicBool::new(flags.no_prompts),
     }
   }
 
@@ -36,11 +38,15 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt("access to run a subprocess");
-    if r.is_ok() {
-      self.allow_run.store(true, Ordering::SeqCst);
+    if !self.no_prompts.load(Ordering::SeqCst) {
+      let r = permission_prompt("access to run a subprocess");
+      if r.is_ok() {
+        self.allow_run.store(true, Ordering::SeqCst);
+      }
+      r
+    } else {
+      Err(permission_denied())
     }
-    r
   }
 
   pub fn check_read(&self, filename: &str) -> DenoResult<()> {
@@ -48,11 +54,15 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(&format!("read access to \"{}\"", filename));;
-    if r.is_ok() {
-      self.allow_read.store(true, Ordering::SeqCst);
+    if !self.no_prompts.load(Ordering::SeqCst) {
+      let r = permission_prompt(&format!("read access to \"{}\"", filename));;
+      if r.is_ok() {
+        self.allow_read.store(true, Ordering::SeqCst);
+      }
+      r
+    } else {
+      Err(permission_denied())
     }
-    r
   }
 
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
@@ -60,11 +70,15 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(&format!("write access to \"{}\"", filename));;
-    if r.is_ok() {
-      self.allow_write.store(true, Ordering::SeqCst);
+    if !self.no_prompts.load(Ordering::SeqCst) {
+      let r = permission_prompt(&format!("write access to \"{}\"", filename));;
+      if r.is_ok() {
+        self.allow_write.store(true, Ordering::SeqCst);
+      }
+      r
+    } else {
+      Err(permission_denied())
     }
-    r
   }
 
   pub fn check_net(&self, domain_name: &str) -> DenoResult<()> {
@@ -72,12 +86,16 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r =
-      permission_prompt(&format!("network access to \"{}\"", domain_name));
-    if r.is_ok() {
-      self.allow_net.store(true, Ordering::SeqCst);
+    if !self.no_prompts.load(Ordering::SeqCst) {
+      let r =
+        permission_prompt(&format!("network access to \"{}\"", domain_name));
+      if r.is_ok() {
+        self.allow_net.store(true, Ordering::SeqCst);
+      }
+      r
+    } else {
+      Err(permission_denied())
     }
-    r
   }
 
   pub fn check_env(&self) -> DenoResult<()> {
@@ -85,11 +103,15 @@ impl DenoPermissions {
       return Ok(());
     };
     // TODO get location (where access occurred)
-    let r = permission_prompt(&"access to environment variables");
-    if r.is_ok() {
-      self.allow_env.store(true, Ordering::SeqCst);
+    if !self.no_prompts.load(Ordering::SeqCst) {
+      let r = permission_prompt(&"access to environment variables");
+      if r.is_ok() {
+        self.allow_env.store(true, Ordering::SeqCst);
+      }
+      r
+    } else {
+      Err(permission_denied())
     }
-    r
   }
 
   pub fn allows_run(&self) -> bool {
@@ -144,6 +166,7 @@ impl DenoPermissions {
       allow_env: AtomicBool::new(false),
       allow_net: AtomicBool::new(false),
       allow_run: AtomicBool::new(false),
+      ..Default::default()
     }
   }
 }
