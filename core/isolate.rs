@@ -71,10 +71,11 @@ pub trait Behavior<R> {
   fn records_shift(&mut self) -> Option<R>;
 }
 
-/// A single excitation context of JavaScript. Corresponds roughly to the "Web
-/// Worker" in the DOM. An Isolate is a Future that can be used with Tokio.
-/// The Isolate future complete when there is an error or when all pending ops
-/// have completed.
+/// A single execution context of JavaScript. Corresponds roughly to the "Web
+/// Worker" concept in the DOM. An Isolate is a Future that can be used with
+/// Tokio.  The Isolate future complete when there is an error or when all
+/// pending ops have completed.
+///
 /// Ops are created in JavaScript by calling libdeno.send(), and in Rust by
 /// implementing Behavior::recv. An Op corresponds exactly to a Promise in
 /// JavaScript.
