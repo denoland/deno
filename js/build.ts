@@ -1,10 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+export type OperatingSystem = "mac" | "win" | "linux";
+
+export type Arch = "x64" | "arm64";
+
 // Do not add unsupported platforms.
 /** Build related information */
 export interface BuildInfo {
-  /** The operating system CPU architecture. */
-  arch: "x64" | "arm64";
+  /** The CPU architecture. */
+  arch: Arch;
 
   /** The operating system. */
   os: OperatingSystem;
@@ -12,9 +16,6 @@ export interface BuildInfo {
   /** The arguments passed to GN during build. See `gn help buildargs`. */
   args: string;
 }
-
-/** The operating system platform. */
-export type OperatingSystem = "mac" | "win" | "linux";
 
 // 'build' is injected by rollup.config.js at compile time.
 export const build: BuildInfo = {
