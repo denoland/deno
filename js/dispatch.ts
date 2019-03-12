@@ -79,7 +79,7 @@ export function sendSync(
   const cmdId = sendInternal(builder, innerType, inner, data, true);
   util.assert(cmdId >= 0);
   let resBuf: Uint8Array | null = msgRing.rx.receive(Uint8Array);
-  if (resBuf == null) {
+  if (resBuf == null || resBuf.length === 0) {
     return null;
   } else {
     const bb = new flatbuffers.ByteBuffer(resBuf);
