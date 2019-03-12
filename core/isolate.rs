@@ -133,7 +133,7 @@ impl<R, B: Behavior<R>> Isolate<R, B> {
     }
   }
 
-  pub fn zero_copy_release(&self, zero_copy_id: usize) {
+  fn zero_copy_release(&self, zero_copy_id: usize) {
     unsafe {
       libdeno::deno_zero_copy_release(self.libdeno_isolate, zero_copy_id)
     }
@@ -184,7 +184,7 @@ impl<R, B: Behavior<R>> Isolate<R, B> {
     }
   }
 
-  pub fn check_promise_errors(&self) {
+  fn check_promise_errors(&self) {
     unsafe {
       libdeno::deno_check_promise_errors(self.libdeno_isolate);
     }
