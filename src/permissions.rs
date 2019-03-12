@@ -98,9 +98,9 @@ impl DenoPermissions {
     r
   }
 
-  fn try_permissions_prompt(message: &str) {
+  fn try_permissions_prompt(&self, message: &str) -> DenoResult<()> {
     if self.no_prompts.load(Ordering::SeqCst) {
-      Err(permission_denied())
+      return Err(permission_denied());
     }
     permission_prompt(message)
   }
