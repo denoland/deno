@@ -190,11 +190,11 @@ impl IsolateState {
   }
 
   #[cfg(test)]
-  pub fn mock() -> Arc<IsolateState> {
+  pub fn mock() -> IsolateState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     // For debugging: argv.push_back(String::from("-D"));
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    Arc::new(IsolateState::new(flags, rest_argv, None))
+    IsolateState::new(flags, rest_argv, None)
   }
 
   fn metrics_op_dispatched(
@@ -225,16 +225,21 @@ impl IsolateState {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use tempfile::TempDir;
+  use crate::cli::Cli;
+  use crate::isolate_init::IsolateInit;
+  use crate::permissions::DenoPermissions;
+  use crate::tokio_util::panic_on_error;
+  use futures::future::lazy;
+  use std::sync::Arc;
 
   #[test]
   fn execute_mod() {
     let filename = std::env::current_dir()
       .unwrap()
       .join("tests/esm_imports_a.js");
-    let filename = filename.to_str().unwrap();
+    let filename = filename.to_str().unwrap().to_string();
 
-    let argv = vec![String::from("./deno"), String::from(filename)];
+    let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
@@ -243,17 +248,14 @@ mod tests {
       snapshot: None,
       init_script: None,
     };
-    let mut isolate =
-      Isolate::new(init, state_, dispatch_sync, DenoPermissions::default());
-    tokio::run(
-      lazy(move || {
-        state.mod_execute(isolate, filename, false)?;
-        Ok(())
-      }).and_then(isolate)
-      .or_else(|err| panic!(err)),
-    );
+    let cli = Cli::new(init, state.clone(), DenoPermissions::default());
+    let isolate = Isolate::new(cli);
+    tokio::runtime::current_thread::run(lazy(move || {
+      state.mod_execute(&isolate, &filename, false).ok();
+      panic_on_error(isolate)
+    }));
 
-    let metrics = &isolate.state.metrics;
+    let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 1);
   }
 

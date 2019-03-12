@@ -119,7 +119,7 @@ mod tests {
     let isolate_init = isolate_init::compiler_isolate_init();
     let resource = spawn(
       isolate_init,
-      IsolateState::mock(),
+      &IsolateState::mock(),
       r#"
       onmessage = function(e) {
         let s = new TextDecoder().decode(e.data);;
@@ -156,7 +156,7 @@ mod tests {
     let isolate_init = isolate_init::compiler_isolate_init();
     let resource = spawn(
       isolate_init,
-      IsolateState::mock(),
+      &IsolateState::mock(),
       "onmessage = () => close();".into(),
       DenoPermissions::default(),
     );

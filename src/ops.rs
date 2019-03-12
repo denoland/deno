@@ -1722,14 +1722,15 @@ fn op_worker_post_message(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cli::{Cli, IsolateState};
-  use crate::cli_init::CliInit;
+  use crate::cli::Cli;
+  use crate::isolate_init::IsolateInit;
+  use crate::isolate_state::IsolateState;
   use crate::permissions::DenoPermissions;
   use std::sync::atomic::AtomicBool;
 
   #[test]
   fn fetch_module_meta_fails_without_read() {
-    let state = IsolateState::mock();
+    let state = Arc::new(IsolateState::mock());
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(false),
       allow_write: AtomicBool::new(true),
@@ -1738,12 +1739,11 @@ mod tests {
       allow_run: AtomicBool::new(true),
     };
     let cli = Cli::new(
-      CliInit {
+      IsolateInit {
         snapshot: None,
         init_script: None,
       },
       state,
-      dispatch,
       permissions,
     );
     let builder = &mut FlatBufferBuilder::new();
@@ -1771,7 +1771,7 @@ mod tests {
 
   #[test]
   fn fetch_module_meta_fails_without_write() {
-    let state = IsolateState::mock();
+    let state = Arc::new(IsolateState::mock());
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(true),
       allow_write: AtomicBool::new(false),
@@ -1780,12 +1780,11 @@ mod tests {
       allow_run: AtomicBool::new(true),
     };
     let cli = Cli::new(
-      CliInit {
+      IsolateInit {
         snapshot: None,
         init_script: None,
       },
       state,
-      dispatch,
       permissions,
     );
     let builder = &mut FlatBufferBuilder::new();
@@ -1813,7 +1812,7 @@ mod tests {
 
   #[test]
   fn fetch_module_meta_fails_without_net() {
-    let state = IsolateState::mock();
+    let state = Arc::new(IsolateState::mock());
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(true),
       allow_write: AtomicBool::new(true),
@@ -1822,12 +1821,11 @@ mod tests {
       allow_run: AtomicBool::new(true),
     };
     let cli = Cli::new(
-      CliInit {
+      IsolateInit {
         snapshot: None,
         init_script: None,
       },
       state,
-      dispatch,
       permissions,
     );
     let builder = &mut FlatBufferBuilder::new();
@@ -1855,7 +1853,7 @@ mod tests {
 
   #[test]
   fn fetch_module_meta_not_permission_denied_with_permissions() {
-    let state = IsolateState::mock();
+    let state = Arc::new(IsolateState::mock());
     let permissions = DenoPermissions {
       allow_read: AtomicBool::new(true),
       allow_write: AtomicBool::new(true),
@@ -1864,12 +1862,11 @@ mod tests {
       allow_run: AtomicBool::new(false),
     };
     let cli = Cli::new(
-      CliInit {
+      IsolateInit {
         snapshot: None,
         init_script: None,
       },
       state,
-      dispatch,
       permissions,
     );
     let builder = &mut FlatBufferBuilder::new();
