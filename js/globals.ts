@@ -104,3 +104,9 @@ export type TextDecoder = textEncoding.TextDecoder;
 window.performance = new performanceUtil.Performance();
 
 window.workerMain = workers.workerMain;
+
+// @ts-ignore
+interface ImportMeta {
+  url: string;
+  main: boolean;
+}
