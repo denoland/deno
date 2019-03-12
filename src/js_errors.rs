@@ -206,9 +206,15 @@ pub fn apply_source_map(
   }
 }
 
-// TODO(ry) Move to DenoDir?
+// The bundle does not get built for 'cargo check', so we don't embed the
+// bundle source map.
+#[cfg(feature = "check-only")]
 fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
-  // #[cfg(not(feature = "check-only"))]
+  None
+}
+
+#[cfg(not(feature = "check-only"))]
+fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
   match script_name {
     "gen/bundle/main.js" => Some(
       include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js.map"))

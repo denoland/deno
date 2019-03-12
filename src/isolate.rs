@@ -4,7 +4,7 @@ use crate::cli::Cli;
 use crate::cli::Isolate as CoreIsolate;
 use crate::errors::RustOrJsError;
 use crate::isolate_state::IsolateState;
-use crate::js_errors::apply_source_map;
+use crate::js_errors;
 use deno_core::JSError;
 use futures::Async;
 use futures::Future;
@@ -38,10 +38,7 @@ impl Isolate {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), JSError> {
-    self
-      .inner
-      .execute(js_filename, js_source)
-      .map_err(|err| apply_source_map(&err, &self.state.dir))
+    self.inner.execute(js_filename, js_source)
   }
 
   /// Executes the provided JavaScript module.
@@ -55,9 +52,7 @@ impl Isolate {
       .state
       .mod_execute(&self.inner, js_filename, is_prefetch)
       .map_err(|err| match err {
-        RustOrJsError::Js(err) => {
-          RustOrJsError::Js(apply_source_map(&err, &self.state.dir))
-        }
+        RustOrJsError::Js(err) => RustOrJsError::Js(self.apply_source_map(err)),
         x => x,
       })
   }
@@ -66,6 +61,11 @@ impl Isolate {
     let m = self.state.modules.lock().unwrap();
     m.print_file_info(&self.state.dir, module.to_string());
   }
+
+  /// Applies source map to the error.
+  fn apply_source_map(&self, err: JSError) -> JSError {
+    js_errors::apply_source_map(&err, &self.state.dir)
+  }
 }
 
 impl Future for Isolate {
@@ -73,6 +73,6 @@ impl Future for Isolate {
   type Error = JSError;
 
   fn poll(&mut self) -> Result<Async<()>, Self::Error> {
-    self.inner.poll()
+    self.inner.poll().map_err(|err| self.apply_source_map(err))
   }
 }
