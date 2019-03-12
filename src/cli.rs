@@ -22,8 +22,6 @@ use std::time::Instant;
 // a heap allocated opaque sequence of bytes.  Usually a flatbuffer message.
 pub type Buf = Box<[u8]>;
 
-pub type Isolate = deno_core::Isolate<Buf, Cli>;
-
 pub type CliOp = Op<Buf>;
 
 /// Implements deno_core::Behavior for the main Deno command-line.

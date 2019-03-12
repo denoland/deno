@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::cli::Buf;
 use crate::cli::Cli;
-use crate::cli::Isolate as CoreIsolate;
 use crate::compiler::compile_sync;
 use crate::compiler::ModuleMetaData;
 use crate::errors::DenoError;
@@ -8,11 +8,14 @@ use crate::errors::RustOrJsError;
 use crate::isolate_state::IsolateState;
 use crate::js_errors;
 use crate::msg;
+use deno_core;
 use deno_core::deno_mod;
 use deno_core::JSError;
 use futures::Async;
 use futures::Future;
 use std::sync::Arc;
+
+type CoreIsolate = deno_core::Isolate<Buf, Cli>;
 
 /// Wraps deno_core::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading

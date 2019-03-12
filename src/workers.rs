@@ -1,14 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::cli::Buf;
 use crate::cli::Cli;
-use crate::cli::Isolate;
 use crate::flags::DenoFlags;
+use crate::isolate::Isolate;
 use crate::isolate_init::IsolateInit;
 use crate::isolate_state::IsolateState;
 use crate::isolate_state::WorkerChannels;
 use crate::js_errors::JSErrorColor;
 use crate::permissions::DenoPermissions;
 use crate::resources;
+use crate::tokio_util;
 use deno_core::JSError;
 use futures::future::lazy;
 use futures::sync::mpsc;
@@ -47,7 +48,7 @@ impl Worker {
   }
 
   pub fn execute(&self, js_source: &str) -> Result<(), JSError> {
-    self.isolate.execute("<anonymous>", js_source)
+    self.isolate.execute(js_source)
   }
 }
 
@@ -78,7 +79,7 @@ pub fn spawn(
 
   let _tid = builder
     .spawn(move || {
-      tokio::runtime::current_thread::run(lazy(move || {
+      tokio_util::run(lazy(move || {
         let (worker, external_channels) =
           Worker::new(init, flags, argv, permissions);
         let resource = resources::add_worker(external_channels);
@@ -94,7 +95,7 @@ pub fn spawn(
 
         worker.then(move |r| -> Result<(), ()> {
           resource.close();
-          println!("workers.rs after resource close");
+          debug!("workers.rs after resource close");
           if let Err(err) = r {
             eprintln!("{}", JSErrorColor(&err).to_string());
             std::process::exit(1);
@@ -103,7 +104,7 @@ pub fn spawn(
         })
       }));
 
-      println!("workers.rs after spawn");
+      debug!("workers.rs after spawn");
     }).unwrap();
 
   c.wait().unwrap()
