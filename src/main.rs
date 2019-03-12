@@ -128,7 +128,7 @@ fn main() {
     // Execute main module.
     if let Some(main_module) = state.main_module() {
       debug!("main_module {}", main_module);
-      js_check(isolate.mod_execute(&main_module, should_prefetch));
+      js_check(isolate.execute_mod(&main_module, should_prefetch));
       if should_display_info {
         // Display file info and exit. Do not run file
         isolate.print_file_info(&main_module);
