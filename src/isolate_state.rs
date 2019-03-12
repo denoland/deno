@@ -197,7 +197,7 @@ impl IsolateState {
     IsolateState::new(flags, rest_argv, None)
   }
 
-  fn metrics_op_dispatched(
+  pub fn metrics_op_dispatched(
     &self,
     bytes_sent_control: usize,
     bytes_sent_data: usize,
@@ -213,7 +213,7 @@ impl IsolateState {
       .fetch_add(bytes_sent_data, Ordering::SeqCst);
   }
 
-  fn metrics_op_completed(&self, bytes_received: usize) {
+  pub fn metrics_op_completed(&self, bytes_received: usize) {
     self.metrics.ops_completed.fetch_add(1, Ordering::SeqCst);
     self
       .metrics

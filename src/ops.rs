@@ -69,7 +69,13 @@ fn empty_buf() -> Buf {
 /// This functions invoked every time libdeno.send() is called.
 /// control corresponds to the first argument of libdeno.send().
 /// data corresponds to the second argument of libdeno.send().
-pub fn dispatch(cli: &Cli, control: Buf, data: deno_buf) -> (bool, Box<CliOp>) {
+pub fn dispatch(
+  cli: &Cli,
+  control: Buf,
+  zero_copy: deno_buf,
+) -> (bool, Box<CliOp>) {
+  let bytes_sent_control = control.len();
+  let bytes_sent_zero_copy = zero_copy.len();
   let base = msg::get_root_as_base(&control);
   let is_sync = base.sync();
   let inner_type = base.inner_type();
@@ -128,8 +134,13 @@ pub fn dispatch(cli: &Cli, control: Buf, data: deno_buf) -> (bool, Box<CliOp>) {
         msg::enum_name_any(inner_type)
       )),
     };
-    op_creator(&cli, &base, data)
+    op_creator(&cli, &base, zero_copy)
   };
+
+  cli
+    .state
+    .metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
+  let state = cli.state.clone();
 
   let boxed_op = Box::new(
     op.or_else(move |err: DenoError| -> Result<Buf, ()> {
@@ -163,6 +174,7 @@ pub fn dispatch(cli: &Cli, control: Buf, data: deno_buf) -> (bool, Box<CliOp>) {
           },
         )
       };
+      state.metrics_op_completed(buf.len());
       Ok(buf)
     }),
   );
