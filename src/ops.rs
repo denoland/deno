@@ -1899,6 +1899,7 @@ mod tests {
       allow_env: AtomicBool::new(true),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
+      ..Default::default()
     };
     let isolate = Isolate::new(
       IsolateInit {
@@ -1944,6 +1945,7 @@ mod tests {
       allow_env: AtomicBool::new(true),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
+      ..Default::default()
     };
     let isolate = Isolate::new(
       IsolateInit {
@@ -1989,6 +1991,7 @@ mod tests {
       allow_env: AtomicBool::new(true),
       allow_net: AtomicBool::new(false),
       allow_run: AtomicBool::new(true),
+      ..Default::default()
     };
     let isolate = Isolate::new(
       IsolateInit {
@@ -2034,6 +2037,7 @@ mod tests {
       allow_env: AtomicBool::new(false),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(false),
+      ..Default::default()
     };
     let isolate = Isolate::new(
       IsolateInit {
