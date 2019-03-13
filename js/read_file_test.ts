@@ -10,6 +10,14 @@ testPerm({ read: true }, function readFileSyncSuccess() {
   assertEquals(pkg.name, "deno");
 });
 
+testPerm({ read: true }, function readFileStrSyncSuccess() {
+  const json = Deno.readFileStrSync("package.json", "utf-8");
+  assert(json.length > 0);
+  assert(typeof json === "string");
+  const pkg = JSON.parse(json);
+  assertEquals(pkg.name, "deno");
+});
+
 testPerm({ read: false }, function readFileSyncPerm() {
   let caughtError = false;
   try {
@@ -40,6 +48,14 @@ testPerm({ read: true }, async function readFileSuccess() {
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
   const json = decoder.decode(data);
+  const pkg = JSON.parse(json);
+  assertEquals(pkg.name, "deno");
+});
+
+testPerm({ read: true }, async function readFileSuccess() {
+  const json = await Deno.readFileStr("package.json", "utf-8");
+  assert(json.length > 0);
+  assert(typeof json === "string");
   const pkg = JSON.parse(json);
   assertEquals(pkg.name, "deno");
 });

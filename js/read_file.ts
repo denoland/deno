@@ -35,6 +35,17 @@ export function readFileSync(filename: string): Uint8Array {
   return res(dispatch.sendSync(...req(filename)));
 }
 
+/**
+ * Read file synchronously and output it as a string.
+ *
+ * @param filename File to read
+ * @param encoding Encoding of the file
+ */
+export function readFileStrSync(filename: string, encoding: string): string {
+  const decoder = new TextDecoder(encoding);
+  return decoder.decode(readFileSync(filename));
+}
+
 /** Read the entire contents of a file.
  *
  *       const decoder = new TextDecoder("utf-8");
@@ -43,4 +54,18 @@ export function readFileSync(filename: string): Uint8Array {
  */
 export async function readFile(filename: string): Promise<Uint8Array> {
   return res(await dispatch.sendAsync(...req(filename)));
+}
+
+/**
+ * Read file and output it as a string.
+ *
+ * @param filename File to read
+ * @param encoding Encoding of the file
+ */
+export async function readFileStr(
+  filename: string,
+  encoding: string
+): Promise<string> {
+  const decoder = new TextDecoder(encoding);
+  return decoder.decode(await readFile(filename));
 }

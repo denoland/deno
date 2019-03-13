@@ -41,7 +41,12 @@ export {
 export { chmodSync, chmod } from "./chmod";
 export { removeSync, remove, RemoveOption } from "./remove";
 export { renameSync, rename } from "./rename";
-export { readFileSync, readFile } from "./read_file";
+export {
+  readFileSync,
+  readFile,
+  readFileStrSync,
+  readFileStr
+} from "./read_file";
 export { readDirSync, readDir } from "./read_dir";
 export { copyFileSync, copyFile } from "./copy_file";
 export { readlinkSync, readlink } from "./read_link";
