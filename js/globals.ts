@@ -105,8 +105,7 @@ window.performance = new performanceUtil.Performance();
 
 window.workerMain = workers.workerMain;
 
-// @ts-ignore
-interface ImportMeta {
+export interface ImportMeta {
   url: string;
   main: boolean;
 }

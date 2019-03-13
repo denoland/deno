@@ -227,6 +227,10 @@ export function mergeGlobal({
   // to extract the type and add it to the global variable map
   sourceFile.forEachChild(node => {
     if (TypeGuards.isExpressionStatement(node)) {
+      console.log(
+        "is expression statement",
+        TypeGuards.isExpressionStatement(node)
+      );
       const firstChild = node.getFirstChild();
       if (!firstChild) {
         return;
@@ -246,7 +250,7 @@ export function mergeGlobal({
           }
         }
       }
-    } else if (TypeGuards.isInterfaceDeclaration(node)) {
+    } else if (TypeGuards.isInterfaceDeclaration(node) && node.isExported()) {
       globalInterfaces.push(node);
     }
   });
