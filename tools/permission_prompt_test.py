@@ -199,18 +199,23 @@ def permission_prompt_test(deno_exe):
     p.test_read_yes()
     p.test_read_arg()
     p.test_read_no()
+    p.test_read_no_prompt()
     p.test_write_yes()
     p.test_write_arg()
     p.test_write_no()
+    p.test_write_no_prompt()
     p.test_env_yes()
     p.test_env_arg()
     p.test_env_no()
+    p.test_env_no_prompt()
     p.test_net_yes()
     p.test_net_arg()
     p.test_net_no()
+    p.test_net_no_prompt()
     p.test_run_yes()
     p.test_run_arg()
     p.test_run_no()
+    p.test_run_no_prompt()
 
 
 def main():
