@@ -11,7 +11,6 @@ import prebuilt
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--filter", help="Run specific tests")
 parser.add_argument(
     "--no-binary-download",
     help="Do not download binaries, must use depot_tools manually",
