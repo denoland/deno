@@ -6,6 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.3 / 2019.03.13
+
+In deno itself:
+
+- Rename Deno.build.gnArgs to Deno.build.args (#1912, #1909)
+- Upgrade to TypeScript 3.3 (#1908)
+- Basic Arm64 support (#1887)
+- Remove builtin "deno" module, use Deno global var (#1895)
+- Improvements to internal deno_core crate (#1904, #1914)
+- Add --no-prompt flag for non-interactive environments (#1913)
+
+In deno_std
+
+- Add fs extras: ensureDir, ensireFile, readJson, emptyDir, move, exists (#269,
+  #266, #264, #263, #260)
+- Datetime module improvement (#259)
+- asserts: Add unimplemented, unreachable, assertNotEquals, assertArrayContains
+  (#246, #248)
+
 ### v0.3.2 / 2019.03.06
 
 In deno itself:
