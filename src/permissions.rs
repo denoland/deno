@@ -98,7 +98,8 @@ impl DenoPermissions {
     r
   }
 
-  /// Try to present the user with a permission prompt permission_denied if no_prompts is enabled
+  /// Try to present the user with a permission prompt 
+  /// will error with permission_denied if no_prompts is enabled
   fn try_permissions_prompt(&self, message: &str) -> DenoResult<()> {
     if self.no_prompts.load(Ordering::SeqCst) {
       return Err(permission_denied());
