@@ -5,8 +5,9 @@ import os
 import pty
 import select
 import subprocess
+import sys
 
-from util import build_path, executable_suffix
+from util import build_path, executable_suffix, green_ok
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/permission_prompt_test.ts"
 
@@ -44,6 +45,12 @@ def tty_capture(cmd, bytes_input):
     return p.returncode, res['stdout'], res['stderr']
 
 
+def wrap_test(test_method, test_name):
+    sys.stdout.write(test_name + " ... ")
+    test_method()
+    print green_ok()
+
+
 class Prompt(object):
     def __init__(self, deno_exe):
         self.deno_exe = deno_exe
@@ -78,6 +85,7 @@ class Prompt(object):
         self.run('needsWrite', b'', allow_write=True)
 
     def test_read_yes(self):
+        sys.stdout.write("test_read_yes ...")
         code, stdout, stderr = self.run('needsRead', b'y\n')
         assert code == 0
         assert stdout == b''
@@ -170,7 +178,7 @@ class Prompt(object):
         assert b'PermissionDenied: permission denied' in stderr
 
     def test_run_yes(self):
-        code, stdout, stderr = self.run('needsRun', b'y\n')
+        code, stdout, stderr = self.run('needsRun', b'a\n')
         assert code == 0
         assert stdout == b'hello'
         assert b'⚠️  Deno requests access to run' in stderr
@@ -195,30 +203,31 @@ class Prompt(object):
 
 def permission_prompt_test(deno_exe):
     p = Prompt(deno_exe)
-    p.warm_up()
-    p.test_read_yes()
-    p.test_read_arg()
-    p.test_read_no()
-    p.test_read_no_prompt()
-    p.test_write_yes()
-    p.test_write_arg()
-    p.test_write_no()
-    p.test_write_no_prompt()
-    p.test_env_yes()
-    p.test_env_arg()
-    p.test_env_no()
-    p.test_env_no_prompt()
-    p.test_net_yes()
-    p.test_net_arg()
-    p.test_net_no()
-    p.test_net_no_prompt()
-    p.test_run_yes()
-    p.test_run_arg()
-    p.test_run_no()
-    p.test_run_no_prompt()
+    wrap_test(p.warm_up, "warm_up")
+    wrap_test(p.test_read_yes, "read_yes")
+    wrap_test(p.test_read_arg, "read_arg")
+    wrap_test(p.test_read_no, "read_no")
+    wrap_test(p.test_read_no_prompt, "read_no_prompts")
+    wrap_test(p.test_write_yes, "write_yes")
+    wrap_test(p.test_write_arg, "write_arg")
+    wrap_test(p.test_write_no, "write_no")
+    wrap_test(p.test_write_no_prompt, "write_no_prompts")
+    wrap_test(p.test_env_yes, "env_yes")
+    wrap_test(p.test_env_arg, "env_arg")
+    wrap_test(p.test_env_no, "env_no")
+    wrap_test(p.test_env_no_prompt, "env_no_prompts")
+    wrap_test(p.test_net_yes, "net_yes")
+    wrap_test(p.test_net_arg, "net_arg")
+    wrap_test(p.test_net_no, "net_no")
+    wrap_test(p.test_net_no_prompt, "net_no_prompts")
+    wrap_test(p.test_run_yes, "run_yes")
+    wrap_test(p.test_run_arg, "run_arg")
+    wrap_test(p.test_run_no, "run_no")
+    wrap_test(p.test_run_no_prompt, "run_no_prompts")
 
 
 def main():
+    print "Permissions prompt tests"
     deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
     permission_prompt_test(deno_exe)
 
