@@ -281,20 +281,11 @@ test myTestFunction ... ok
 Example of test:
 
 ```ts
-import { assertStrContains } from "https://deno.land/std@v0.3.1/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@v0.3.1/testing/asserts.ts";
 import { test } from "https://deno.land/std@v0.3.1/testing/mod.ts";
+import { foo } from "./mod.ts";
 
 test(function myTestFunction() {
-  assertStrContains("Denosaurus", "saur");
-  assertStrContains("Denosaurus", "Deno");
-  assertStrContains("Denosaurus", "rus");
-  let didThrow;
-  try {
-    assertStrContains("Denosaurus", "Raptor");
-    didThrow = false;
-  } catch (e) {
-    didThrow = true;
-  }
-  assertEquals(didThrow, true);
+  assertEquals(foo(), { bar: "bar" });
 });
 ```
