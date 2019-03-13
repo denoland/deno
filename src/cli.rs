@@ -41,7 +41,7 @@ impl Cli {
     state: Arc<IsolateState>,
     permissions: DenoPermissions,
   ) -> Self {
-    let buffer = msg_ring::Buffer::new(1024 * 1024);
+    let buffer = msg_ring::Buffer::new(8 * 1024 * 1024);
     let shared = buffer.into_deno_buf();
     let (tx_buffer, rx_buffer) = buffer.split();
     let (tx, _) = msg_ring::MsgRing::new(tx_buffer).split();
