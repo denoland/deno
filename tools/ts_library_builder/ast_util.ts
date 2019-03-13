@@ -89,14 +89,6 @@ export function addVariableDeclaration(
   });
 }
 
-/** Add a declaration of an interface to a node */
-export function addInterfaceDeclaration(
-  node: StatementedNode,
-  interfaceDeclaration: InterfaceDeclaration
-) {
-  return node.addInterface(interfaceDeclaration.getStructure());
-}
-
 /** Copy one source file to the end of another source file. */
 export function appendSourceFile(
   sourceFile: SourceFile,

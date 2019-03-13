@@ -12,7 +12,6 @@ import {
   TypeGuards
 } from "ts-morph";
 import {
-  addInterfaceDeclaration,
   addInterfaceProperty,
   addSourceComment,
   addTypeAlias,
@@ -287,9 +286,7 @@ export function mergeGlobal({
   }
 
   // We need to copy over any interfaces
-  for (const interfaceDeclaration of globalInterfaces) {
-    addInterfaceDeclaration(targetSourceFile, interfaceDeclaration);
-  }
+  targetSourceFile.addInterfaces(globalInterfaces.map(i => i.getStructure()));
 
   // We need to ensure that we only namespace each source file once, so we
   // will use this map for tracking that.
