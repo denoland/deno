@@ -3,6 +3,7 @@ import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
+import { TextDecoder } from "./text_encoding";
 
 function req(
   filename: string
