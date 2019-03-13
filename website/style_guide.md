@@ -284,7 +284,7 @@ Example of test:
 import { assertStrContains } from "https://deno.land/std@v0.3.1/testing/asserts.ts";
 import { test } from "https://deno.land/std@v0.3.1/testing/mod.ts";
 
-test(function testingAssertStringContains() {
+test(function myTestFunction() {
   assertStrContains("Denosaurus", "saur");
   assertStrContains("Denosaurus", "Deno");
   assertStrContains("Denosaurus", "rus");
