@@ -376,7 +376,7 @@ mod tests {
   }
 
   struct TestBehavior {
-    recv_count: usize,
+    dispatch_count: usize,
     resolve_count: usize,
     push_count: usize,
     shift_count: usize,
@@ -386,7 +386,7 @@ mod tests {
   impl TestBehavior {
     fn new() -> Self {
       Self {
-        recv_count: 0,
+        dispatch_count: 0,
         resolve_count: 0,
         push_count: 0,
         shift_count: 0,
@@ -413,7 +413,7 @@ mod tests {
       _record: (),
       _zero_copy_buf: deno_buf,
     ) -> (bool, Box<Op<()>>) {
-      self.recv_count += 1;
+      self.dispatch_count += 1;
       (false, Box::new(futures::future::ok(())))
     }
 
@@ -450,7 +450,7 @@ mod tests {
         main();
         "#,
     ));
-    assert_eq!(isolate.behavior.recv_count, 2);
+    assert_eq!(isolate.behavior.dispatch_count, 2);
   }
 
   #[test]
@@ -467,7 +467,7 @@ mod tests {
         libdeno.send();
       "#,
       ).unwrap();
-    assert_eq!(isolate.behavior.recv_count, 0);
+    assert_eq!(isolate.behavior.dispatch_count, 0);
     assert_eq!(isolate.behavior.resolve_count, 0);
 
     let imports = isolate.mod_get_imports(mod_a);
@@ -480,16 +480,16 @@ mod tests {
     assert_eq!(imports.len(), 0);
 
     js_check(isolate.mod_instantiate(mod_b));
-    assert_eq!(isolate.behavior.recv_count, 0);
+    assert_eq!(isolate.behavior.dispatch_count, 0);
     assert_eq!(isolate.behavior.resolve_count, 0);
 
     isolate.behavior.register("b.js", mod_b);
     js_check(isolate.mod_instantiate(mod_a));
-    assert_eq!(isolate.behavior.recv_count, 0);
+    assert_eq!(isolate.behavior.dispatch_count, 0);
     assert_eq!(isolate.behavior.resolve_count, 1);
 
     js_check(isolate.mod_evaluate(mod_a));
-    assert_eq!(isolate.behavior.recv_count, 1);
+    assert_eq!(isolate.behavior.dispatch_count, 1);
     assert_eq!(isolate.behavior.resolve_count, 1);
   }
 
@@ -512,7 +512,7 @@ mod tests {
         }
         "#,
     ));
-    assert_eq!(isolate.behavior.recv_count, 0);
+    assert_eq!(isolate.behavior.dispatch_count, 0);
     js_check(isolate.execute(
       "check1.js",
       r#"
@@ -521,9 +521,9 @@ mod tests {
         assertEq(nrecv, 0);
         "#,
     ));
-    assert_eq!(isolate.behavior.recv_count, 1);
+    assert_eq!(isolate.behavior.dispatch_count, 1);
     assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    assert_eq!(isolate.behavior.recv_count, 1);
+    assert_eq!(isolate.behavior.dispatch_count, 1);
     js_check(isolate.execute(
       "check2.js",
       r#"
@@ -532,10 +532,10 @@ mod tests {
         assertEq(nrecv, 1);
         "#,
     ));
-    assert_eq!(isolate.behavior.recv_count, 2);
+    assert_eq!(isolate.behavior.dispatch_count, 2);
     assert_eq!(Ok(Async::Ready(())), isolate.poll());
     js_check(isolate.execute("check3.js", "assertEq(nrecv, 2)"));
-    assert_eq!(isolate.behavior.recv_count, 2);
+    assert_eq!(isolate.behavior.dispatch_count, 2);
     // We are idle, so the next poll should be the last.
     assert_eq!(Ok(Async::Ready(())), isolate.poll());
   }
