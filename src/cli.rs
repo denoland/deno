@@ -112,7 +112,11 @@ impl Behavior<Buf> for Cli {
     modules.resolve_cb(&self.state.dir, specifier, referrer)
   }
 
-  fn recv(&mut self, control: Buf, zero_copy: deno_buf) -> (bool, Box<CliOp>) {
+  fn dispatch(
+    &mut self,
+    control: Buf,
+    zero_copy: deno_buf,
+  ) -> (bool, Box<CliOp>) {
     ops::dispatch(self, control, zero_copy)
   }
 

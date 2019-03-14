@@ -80,7 +80,7 @@ impl Behavior<Record> for HttpBench {
     unimplemented!()
   }
 
-  fn recv(
+  fn dispatch(
     &mut self,
     record: Record,
     zero_copy_buf: deno_buf,

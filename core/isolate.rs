@@ -45,7 +45,11 @@ pub trait Behavior<R> {
 
   fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod;
 
-  fn recv(&mut self, record: R, zero_copy_buf: deno_buf) -> (bool, Box<Op<R>>);
+  fn dispatch(
+    &mut self,
+    record: R,
+    zero_copy_buf: deno_buf,
+  ) -> (bool, Box<Op<R>>);
 
   /// Clears the shared buffer.
   fn records_reset(&mut self);
@@ -115,7 +119,7 @@ impl<R, B: Behavior<R>> Isolate<R, B> {
 
     isolate.behavior.records_reset();
 
-    let (is_sync, op) = isolate.behavior.recv(req_record, zero_copy_buf);
+    let (is_sync, op) = isolate.behavior.dispatch(req_record, zero_copy_buf);
     if is_sync {
       let res_record = op.wait().unwrap();
       let push_success = isolate.behavior.records_push(res_record);
@@ -409,7 +413,7 @@ mod tests {
       None
     }
 
-    fn recv(
+    fn dispatch(
       &mut self,
       _record: (),
       _zero_copy_buf: deno_buf,
