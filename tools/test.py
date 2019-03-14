@@ -90,6 +90,11 @@ def main(argv):
     check_exists(deno_core_test)
     run([deno_core_test])
 
+    deno_core_http_bench_test = os.path.join(
+        build_dir, "deno_core_http_bench_test" + executable_suffix)
+    check_exists(deno_core_http_bench_test)
+    run([deno_core_http_bench_test])
+
     unit_tests(deno_exe)
 
     prefetch_test(deno_exe)
