@@ -3,7 +3,6 @@ use ansi_term::Color::Fixed;
 use ansi_term::Color::Red;
 use ansi_term::Style;
 use regex::Regex;
-use std::borrow::Cow;
 use std::env;
 use std::fmt;
 
@@ -19,8 +18,8 @@ lazy_static! {
 }
 
 /// Helper function to strip ansi codes.
-#[allow(dead_code)]
-pub fn strip_ansi_codes(s: &str) -> Cow<str> {
+#[cfg(test)]
+pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
   STRIP_ANSI_RE.replace_all(s, "")
 }
 

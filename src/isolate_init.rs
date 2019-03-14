@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::libdeno::deno_buf;
+use deno_core::deno_buf;
 
 pub struct IsolateInitScript {
   pub source: String,

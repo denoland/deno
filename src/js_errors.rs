@@ -206,34 +206,39 @@ pub fn apply_source_map(
   }
 }
 
+// The bundle does not get built for 'cargo check', so we don't embed the
+// bundle source map.
+#[cfg(feature = "check-only")]
+fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
+  None
+}
+
+#[cfg(not(feature = "check-only"))]
+fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
+  match script_name {
+    "gen/bundle/main.js" => Some(
+      include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js.map"))
+        .to_vec(),
+    ),
+    "gen/bundle/compiler.js" => Some(
+      include_bytes!(concat!(
+        env!("GN_OUT_DIR"),
+        "/gen/bundle/compiler.js.map"
+      )).to_vec(),
+    ),
+    _ => None,
+  }
+}
+
 fn parse_map_string(
   script_name: &str,
   getter: &dyn SourceMapGetter,
 ) -> Option<SourceMap> {
-  match script_name {
-    // The bundle does not get built for 'cargo check', so we don't embed the
-    // bundle source map.
-    #[cfg(not(feature = "check-only"))]
-    "gen/bundle/main.js" => {
-      let s =
-        include_str!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js.map"));
-      SourceMap::from_json(s)
-    }
-    #[cfg(not(feature = "check-only"))]
-    "gen/bundle/compiler.js" => {
-      let s = include_str!(concat!(
-        env!("GN_OUT_DIR"),
-        "/gen/bundle/compiler.js.map"
-      ));
-      SourceMap::from_json(s)
-    }
-    _ => match getter.get_source_map(script_name) {
-      None => None,
-      Some(raw_source_map) => {
-        SourceMap::from_json(str::from_utf8(&raw_source_map).unwrap())
-      }
-    },
-  }
+  builtin_source_map(script_name)
+    .or_else(|| getter.get_source_map(script_name))
+    .and_then(|raw_source_map| {
+      SourceMap::from_json(str::from_utf8(&raw_source_map).unwrap())
+    })
 }
 
 fn get_mappings<'a>(

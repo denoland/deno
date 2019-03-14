@@ -1,5 +1,4 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
-use crate::isolate::Buf;
 use crate::libdeno::deno_buf;
 
 const MAX_RECORDS: usize = 100;
@@ -43,14 +42,22 @@ impl SharedQueue {
     s[INDEX_HEAD] = HEAD_INIT as u32;
   }
 
-  fn as_u32_slice<'a>(&'a self) -> &'a [u32] {
-    let p = self.bytes.as_ptr() as *const u32;
-    unsafe { std::slice::from_raw_parts(p, self.bytes.len() / 4) }
+  fn as_u32_slice(&self) -> &[u32] {
+    let p = self.bytes.as_ptr();
+    // Assert pointer is 32 bit aligned before casting.
+    assert_eq!((p as usize) % std::mem::align_of::<u32>(), 0);
+    #[allow(clippy::cast_ptr_alignment)]
+    let p32 = p as *const u32;
+    unsafe { std::slice::from_raw_parts(p32, self.bytes.len() / 4) }
   }
 
-  fn as_u32_slice_mut<'a>(&'a mut self) -> &'a mut [u32] {
-    let p = self.bytes.as_mut_ptr() as *mut u32;
-    unsafe { std::slice::from_raw_parts_mut(p, self.bytes.len() / 4) }
+  fn as_u32_slice_mut(&mut self) -> &mut [u32] {
+    let p = self.bytes.as_mut_ptr();
+    // Assert pointer is 32 bit aligned before casting.
+    assert_eq!((p as usize) % std::mem::align_of::<u32>(), 0);
+    #[allow(clippy::cast_ptr_alignment)]
+    let p32 = p as *mut u32;
+    unsafe { std::slice::from_raw_parts_mut(p32, self.bytes.len() / 4) }
   }
 
   pub fn size(&self) -> usize {
@@ -96,7 +103,7 @@ impl SharedQueue {
   }
 
   /// Returns none if empty.
-  pub fn shift<'a>(&'a mut self) -> Option<&'a [u8]> {
+  pub fn shift(&mut self) -> Option<&[u8]> {
     let u32_slice = self.as_u32_slice();
     let i = u32_slice[INDEX_NUM_SHIFTED_OFF] as usize;
     if self.size() == 0 {
@@ -117,7 +124,7 @@ impl SharedQueue {
     Some(&self.bytes[off..end])
   }
 
-  pub fn push(&mut self, record: Buf) -> bool {
+  pub fn push(&mut self, record: &[u8]) -> bool {
     let off = self.head();
     let end = off + record.len();
     let index = self.num_records();
@@ -127,7 +134,7 @@ impl SharedQueue {
     }
     self.set_end(index, end);
     assert_eq!(end - off, record.len());
-    self.bytes[off..end].copy_from_slice(&record);
+    self.bytes[off..end].copy_from_slice(record);
     let u32_slice = self.as_u32_slice_mut();
     u32_slice[INDEX_NUM_RECORDS] += 1;
     u32_slice[INDEX_HEAD] = end as u32;
@@ -138,11 +145,7 @@ impl SharedQueue {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::isolate::js_check;
-  use crate::isolate::Isolate;
-  use crate::test_util::*;
-  use futures::Async;
-  use futures::Future;
+  use crate::isolate::Buf;
 
   #[test]
   fn basic() {
@@ -153,14 +156,14 @@ mod tests {
 
     let r = vec![1u8, 2, 3, 4, 5].into_boxed_slice();
     let len = r.len() + h;
-    assert!(q.push(r));
+    assert!(q.push(&r));
     assert_eq!(q.head(), len);
 
     let r = vec![6, 7].into_boxed_slice();
-    assert!(q.push(r));
+    assert!(q.push(&r));
 
     let r = vec![8, 9, 10, 11].into_boxed_slice();
-    assert!(q.push(r));
+    assert!(q.push(&r));
     assert_eq!(q.num_records(), 3);
     assert_eq!(q.size(), 3);
 
@@ -195,31 +198,19 @@ mod tests {
   #[test]
   fn overflow() {
     let mut q = SharedQueue::new(RECOMMENDED_SIZE);
-    assert!(q.push(alloc_buf(RECOMMENDED_SIZE - 1)));
+    assert!(q.push(&alloc_buf(RECOMMENDED_SIZE - 1)));
     assert_eq!(q.size(), 1);
-    assert!(!q.push(alloc_buf(2)));
+    assert!(!q.push(&alloc_buf(2)));
     assert_eq!(q.size(), 1);
-    assert!(q.push(alloc_buf(1)));
+    assert!(q.push(&alloc_buf(1)));
     assert_eq!(q.size(), 2);
 
     assert_eq!(q.shift().unwrap().len(), RECOMMENDED_SIZE - 1);
     assert_eq!(q.size(), 1);
 
-    assert!(!q.push(alloc_buf(1)));
+    assert!(!q.push(&alloc_buf(1)));
 
     assert_eq!(q.shift().unwrap().len(), 1);
     assert_eq!(q.size(), 0);
-  }
-
-  #[test]
-  fn test_js() {
-    let behavior = TestBehavior::new();
-    let mut isolate = Isolate::new(behavior);
-    isolate.shared_init();
-    js_check(
-      isolate
-        .execute("shared_queue_test.js", include_str!("shared_queue_test.js")),
-    );
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
   }
 }

@@ -37,21 +37,12 @@ const scratchBytes = new Uint8Array(
 );
 assert(scratchBytes.byteLength === 4 * 4);
 
-// Toggle what method we send with. false = legacy.
-// AFAICT This has no effect on performance.
-const sendWithShared = true;
-
 function send(promiseId, opId, arg, zeroCopy = null) {
   scratch32[0] = promiseId;
   scratch32[1] = opId;
   scratch32[2] = arg;
   scratch32[3] = -1;
-  if (sendWithShared) {
-    Deno._sharedQueue.push(scratchBytes);
-    libdeno.send(null, zeroCopy);
-  } else {
-    libdeno.send(scratchBytes, zeroCopy);
-  }
+  return DenoCore.dispatch(scratchBytes, zeroCopy);
 }
 
 /** Returns Promise<number> */
@@ -74,19 +65,10 @@ function recordFromBuf(buf) {
   };
 }
 
-function recv() {
-  const buf = Deno._sharedQueue.shift();
-  if (!buf) {
-    return null;
-  }
-  return recordFromBuf(buf);
-}
-
 /** Returns i32 number */
 function sendSync(opId, arg) {
-  send(0, opId, arg);
-  const record = recv();
-  assert(recv() == null);
+  const buf = send(0, opId, arg);
+  const record = recordFromBuf(buf);
   return record.result;
 }
 
@@ -141,7 +123,7 @@ async function serve(rid) {
 }
 
 async function main() {
-  Deno._setAsyncHandler(handleAsyncMsgFromRust);
+  DenoCore.setAsyncHandler(handleAsyncMsgFromRust);
 
   libdeno.print("http_bench.js start\n");
 

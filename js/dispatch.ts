@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { libdeno } from "./libdeno";
+import { window } from "./window";
 import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import * as errors from "./errors";
@@ -9,7 +9,6 @@ let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
 export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
-  util.assert(ui8 != null && ui8.length > 0);
   const bb = new flatbuffers.ByteBuffer(ui8);
   const base = msg.Base.getRootAsBase(bb);
   const cmdId = base.cmdId();
@@ -28,7 +27,7 @@ function sendInternal(
   builder: flatbuffers.Builder,
   innerType: msg.Any,
   inner: flatbuffers.Offset,
-  data: undefined | ArrayBufferView,
+  zeroCopy: undefined | ArrayBufferView,
   sync = true
 ): [number, null | Uint8Array] {
   const cmdId = nextCmdId++;
@@ -38,9 +37,12 @@ function sendInternal(
   msg.Base.addSync(builder, sync);
   msg.Base.addCmdId(builder, cmdId);
   builder.finish(msg.Base.endBase(builder));
-  const res = libdeno.send(builder.asUint8Array(), data);
+
+  const control = builder.asUint8Array();
+  const response = window.DenoCore.dispatch(control, zeroCopy);
+
   builder.inUse = false;
-  return [cmdId, res];
+  return [cmdId, response];
 }
 
 // @internal
@@ -50,8 +52,14 @@ export function sendAsync(
   inner: flatbuffers.Offset,
   data?: ArrayBufferView
 ): Promise<msg.Base> {
-  const [cmdId, resBuf] = sendInternal(builder, innerType, inner, data, false);
-  util.assert(resBuf == null);
+  const [cmdId, response] = sendInternal(
+    builder,
+    innerType,
+    inner,
+    data,
+    false
+  );
+  util.assert(response == null);
   const promise = util.createResolvable<msg.Base>();
   promiseTable.set(cmdId, promise);
   return promise;
@@ -64,13 +72,12 @@ export function sendSync(
   inner: flatbuffers.Offset,
   data?: ArrayBufferView
 ): null | msg.Base {
-  const [cmdId, resBuf] = sendInternal(builder, innerType, inner, data, true);
+  const [cmdId, response] = sendInternal(builder, innerType, inner, data, true);
   util.assert(cmdId >= 0);
-  if (resBuf == null) {
+  if (response == null || response.length === 0) {
     return null;
   } else {
-    const u8 = new Uint8Array(resBuf!);
-    const bb = new flatbuffers.ByteBuffer(u8);
+    const bb = new flatbuffers.ByteBuffer(response);
     const baseRes = msg.Base.getRootAsBase(bb);
     errors.maybeThrowError(baseRes);
     return baseRes;
