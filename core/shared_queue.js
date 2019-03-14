@@ -11,10 +11,6 @@
   let sharedBytes = null;
   let shared32 = null;
 
-  if (!window["Deno"]) {
-    window["Deno"] = {};
-  }
-
   function assert(cond) {
     if (!cond) {
       throw Error("assert");
@@ -105,10 +101,13 @@
     asyncHandler = cb;
   }
 
-  function handleAsyncMsgFromRust() {
-    let buf;
-    while ((buf = shift()) != null) {
+  function handleAsyncMsgFromRust(buf) {
+    if (buf) {
       asyncHandler(buf);
+    } else {
+      while ((buf = shift()) != null) {
+        asyncHandler(buf);
+      }
     }
   }
 
@@ -122,13 +121,26 @@
     libdeno.recv(handleAsyncMsgFromRust);
   }
 
-  window.Deno._setAsyncHandler = setAsyncHandler;
-  window.Deno._sharedQueue = {
-    head,
-    numRecords,
-    size,
-    push,
-    shift
+  function dispatch(control, zeroCopy = null) {
+    // First try to push control to shared.
+    const success = push(control);
+    // If successful, don't use first argument of libdeno.send.
+    const arg0 = success ? null : control;
+    return libdeno.send(arg0, zeroCopy);
+  }
+
+  assert(!window["DenoCore"]);
+  window["DenoCore"] = {
+    setAsyncHandler,
+    dispatch,
+    shared: {
+      head,
+      numRecords,
+      size,
+      push,
+      reset,
+      shift
+    }
   };
 
   init(libdeno.shared);

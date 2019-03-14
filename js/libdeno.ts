@@ -19,11 +19,14 @@ interface EvalErrorInfo {
 interface Libdeno {
   recv(cb: MessageCallback): void;
 
-  send(control: ArrayBufferView, data?: ArrayBufferView): null | Uint8Array;
+  send(
+    control: null | ArrayBufferView,
+    data?: ArrayBufferView
+  ): null | Uint8Array;
 
   print(x: string, isErr?: boolean): void;
 
-  shared: ArrayBuffer;
+  shared: SharedArrayBuffer;
 
   /** Evaluate provided code in the current context.
    * It differs from eval(...) in that it does not create a new context.

@@ -1,19 +1,21 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::isolate::Buf;
+use crate::cli::Buf;
+use crate::cli::Cli;
+use crate::flags::DenoFlags;
 use crate::isolate::Isolate;
-use crate::isolate::IsolateState;
-use crate::isolate::WorkerChannels;
 use crate::isolate_init::IsolateInit;
+use crate::isolate_state::IsolateState;
+use crate::isolate_state::WorkerChannels;
 use crate::js_errors::JSErrorColor;
-use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::tokio_util;
 use deno_core::JSError;
-
+use futures::future::lazy;
 use futures::sync::mpsc;
 use futures::sync::oneshot;
 use futures::Future;
+use futures::Poll;
 use std::sync::Arc;
 use std::thread;
 
@@ -25,7 +27,8 @@ pub struct Worker {
 impl Worker {
   pub fn new(
     init: IsolateInit,
-    parent_state: &Arc<IsolateState>,
+    flags: DenoFlags,
+    argv: Vec<String>,
     permissions: DenoPermissions,
   ) -> (Self, WorkerChannels) {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
@@ -34,30 +37,33 @@ impl Worker {
     let internal_channels = (worker_out_tx, worker_in_rx);
     let external_channels = (worker_in_tx, worker_out_rx);
 
-    let state = Arc::new(IsolateState::new(
-      parent_state.flags.clone(),
-      parent_state.argv.clone(),
-      Some(internal_channels),
-    ));
+    let state =
+      Arc::new(IsolateState::new(flags, argv, Some(internal_channels)));
 
-    let isolate = Isolate::new(init, state, ops::dispatch, permissions);
+    let cli = Cli::new(init, state, permissions);
+    let isolate = Isolate::new(cli);
 
     let worker = Worker { isolate };
     (worker, external_channels)
   }
 
-  pub fn execute(&self, js_source: &str) -> Result<(), JSError> {
+  pub fn execute(&mut self, js_source: &str) -> Result<(), JSError> {
     self.isolate.execute(js_source)
   }
+}
 
-  pub fn event_loop(&self) -> Result<(), JSError> {
-    self.isolate.event_loop()
+impl Future for Worker {
+  type Item = ();
+  type Error = JSError;
+
+  fn poll(&mut self) -> Poll<(), JSError> {
+    self.isolate.poll()
   }
 }
 
 pub fn spawn(
   init: IsolateInit,
-  state: Arc<IsolateState>,
+  state: &IsolateState,
   js_source: String,
   permissions: DenoPermissions,
 ) -> resources::Resource {
@@ -67,27 +73,38 @@ pub fn spawn(
   // let (js_error_tx, js_error_rx) = oneshot::channel::<JSError>();
   let (p, c) = oneshot::channel::<resources::Resource>();
   let builder = thread::Builder::new().name("worker".to_string());
+
+  let flags = state.flags.clone();
+  let argv = state.argv.clone();
+
   let _tid = builder
     .spawn(move || {
-      let (worker, external_channels) = Worker::new(init, &state, permissions);
+      tokio_util::run(lazy(move || {
+        let (mut worker, external_channels) =
+          Worker::new(init, flags, argv, permissions);
+        let resource = resources::add_worker(external_channels);
+        p.send(resource.clone()).unwrap();
 
-      let resource = resources::add_worker(external_channels);
-      p.send(resource.clone()).unwrap();
+        worker
+          .execute("denoMain()")
+          .expect("worker denoMain failed");
+        worker
+          .execute("workerMain()")
+          .expect("worker workerMain failed");
+        worker.execute(&js_source).expect("worker js_source failed");
 
-      tokio_util::init(|| {
-        (|| -> Result<(), JSError> {
-          worker.execute("denoMain()")?;
-          worker.execute("workerMain()")?;
-          worker.execute(&js_source)?;
-          worker.event_loop()?;
+        worker.then(move |r| -> Result<(), ()> {
+          resource.close();
+          debug!("workers.rs after resource close");
+          if let Err(err) = r {
+            eprintln!("{}", JSErrorColor(&err).to_string());
+            std::process::exit(1);
+          }
           Ok(())
-        })().or_else(|err: JSError| -> Result<(), JSError> {
-          eprintln!("{}", JSErrorColor(&err).to_string());
-          std::process::exit(1)
-        }).unwrap();
-      });
+        })
+      }));
 
-      resource.close();
+      debug!("workers.rs after spawn");
     }).unwrap();
 
   c.wait().unwrap()
@@ -103,7 +120,7 @@ mod tests {
     let isolate_init = isolate_init::compiler_isolate_init();
     let resource = spawn(
       isolate_init,
-      IsolateState::mock(),
+      &IsolateState::mock(),
       r#"
       onmessage = function(e) {
         let s = new TextDecoder().decode(e.data);;
@@ -140,7 +157,7 @@ mod tests {
     let isolate_init = isolate_init::compiler_isolate_init();
     let resource = spawn(
       isolate_init,
-      IsolateState::mock(),
+      &IsolateState::mock(),
       "onmessage = () => close();".into(),
       DenoPermissions::default(),
     );

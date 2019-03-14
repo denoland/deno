@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::ansi;
 use crate::deno_dir::DenoDir;
-use crate::libdeno::deno_mod;
 use crate::msg;
+use deno_core::deno_mod;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -86,6 +86,44 @@ impl Modules {
       return 0;
     }
   }
+
+  pub fn print_file_info(&self, deno_dir: &DenoDir, filename: String) {
+    let maybe_out = deno_dir.fetch_module_meta_data(&filename, ".");
+    if maybe_out.is_err() {
+      println!("{}", maybe_out.unwrap_err());
+      return;
+    }
+    let out = maybe_out.unwrap();
+
+    println!("{} {}", ansi::bold("local:".to_string()), &(out.filename));
+    println!(
+      "{} {}",
+      ansi::bold("type:".to_string()),
+      msg::enum_name_media_type(out.media_type)
+    );
+    if out.maybe_output_code_filename.is_some() {
+      println!(
+        "{} {}",
+        ansi::bold("compiled:".to_string()),
+        out.maybe_output_code_filename.as_ref().unwrap(),
+      );
+    }
+    if out.maybe_source_map_filename.is_some() {
+      println!(
+        "{} {}",
+        ansi::bold("map:".to_string()),
+        out.maybe_source_map_filename.as_ref().unwrap()
+      );
+    }
+
+    let deps = Deps::new(self, &out.module_name);
+    println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+    if let Some(ref depsdeps) = deps.deps {
+      for d in depsdeps {
+        println!("{}", d);
+      }
+    }
+  }
 }
 
 pub struct Deps {
@@ -162,47 +200,5 @@ impl fmt::Display for Deps {
       }
     }
     Ok(())
-  }
-}
-
-pub fn print_file_info(
-  modules: &Modules,
-  deno_dir: &DenoDir,
-  filename: String,
-) {
-  let maybe_out = deno_dir.fetch_module_meta_data(&filename, ".");
-  if maybe_out.is_err() {
-    println!("{}", maybe_out.unwrap_err());
-    return;
-  }
-  let out = maybe_out.unwrap();
-
-  println!("{} {}", ansi::bold("local:".to_string()), &(out.filename));
-  println!(
-    "{} {}",
-    ansi::bold("type:".to_string()),
-    msg::enum_name_media_type(out.media_type)
-  );
-  if out.maybe_output_code_filename.is_some() {
-    println!(
-      "{} {}",
-      ansi::bold("compiled:".to_string()),
-      out.maybe_output_code_filename.as_ref().unwrap(),
-    );
-  }
-  if out.maybe_source_map_filename.is_some() {
-    println!(
-      "{} {}",
-      ansi::bold("map:".to_string()),
-      out.maybe_source_map_filename.as_ref().unwrap()
-    );
-  }
-
-  let deps = Deps::new(modules, &out.module_name);
-  println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
-  if let Some(ref depsdeps) = deps.deps {
-    for d in depsdeps {
-      println!("{}", d);
-    }
   }
 }

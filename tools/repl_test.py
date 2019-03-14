@@ -97,32 +97,32 @@ class Repl(object):
         assert "not_a_variable is not defined" in err
         assertEqual(code, 0)
 
-    def test_set_timeout(self):
-        out, err, code = self.input(
-            "setTimeout(() => { console.log('b'); Deno.exit(0); }, 10)",
-            "'a'",
-            exit=False)
-        assertEqual(out, '1\na\nb\n')
-        assertEqual(err, '')
-        assertEqual(code, 0)
+    # def test_set_timeout(self):
+    #     out, err, code = self.input(
+    #         "setTimeout(() => { console.log('b'); Deno.exit(0); }, 1)",
+    #         "'a'",
+    #         exit=False)
+    #     assertEqual(out, '1\na\nb\n')
+    #     assertEqual(err, '')
+    #     assertEqual(code, 0)
 
-    def test_set_timeout_interlaced(self):
-        out, err, code = self.input(
-            "setTimeout(() => console.log('a'), 1000)",
-            "setTimeout(() => console.log('b'), 600)",
-            sleep=0.8)
-        assertEqual(out, '1\n2\na\nb\n')
-        assertEqual(err, '')
-        assertEqual(code, 0)
+    # def test_set_timeout_interlaced(self):
+    #     out, err, code = self.input(
+    #         "setTimeout(() => console.log('a'), 1)",
+    #         "setTimeout(() => console.log('b'), 6)",
+    #         sleep=0.8)
+    #     assertEqual(out, '1\n2\na\nb\n')
+    #     assertEqual(err, '')
+    #     assertEqual(code, 0)
 
-    def test_async_op(self):
-        out, err, code = self.input(
-            "fetch('http://localhost:4545/tests/001_hello.js')" +
-            ".then(res => res.text()).then(console.log)",
-            sleep=1)
-        assertEqual(out, 'Promise {}\nconsole.log("Hello World");\n\n')
-        assertEqual(err, '')
-        assertEqual(code, 0)
+    # def test_async_op(self):
+    #     out, err, code = self.input(
+    #         "fetch('http://localhost:4545/tests/001_hello.js')" +
+    #         ".then(res => res.text()).then(console.log)",
+    #         sleep=1)
+    #     assertEqual(out, 'Promise {}\nconsole.log("Hello World");\n\n')
+    #     assertEqual(err, '')
+    #     assertEqual(code, 0)
 
     def test_syntax_error(self):
         out, err, code = self.input("syntax error")

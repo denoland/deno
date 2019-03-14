@@ -63,6 +63,7 @@ ts_sources = [
   "js/compiler.ts",
   "js/console.ts",
   "js/copy_file.ts",
+  "js/core.ts",
   "js/custom_event.ts",
   "js/deno.ts",
   "js/dir.ts",
