@@ -71,29 +71,7 @@ impl Future for Accept {
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     let (stream, addr) = match self.state {
-      // Similar to try_ready!, but also track/untrack accept task
-      // in TcpListener resource.
-      // In this way, when the listener is closed, the task can be
-      // notified to error out (instead of stuck forever).
-      AcceptState::Pending(ref mut r) => match r.poll_accept() {
-        Ok(futures::prelude::Async::Ready(t)) => {
-          // Notice: it is possible to be Ready on the first poll.
-          // When eager accept fails due to WouldBlock,
-          // a next poll() might still be immediately Ready.
-          // See https://github.com/denoland/deno/issues/1756.
-          r.untrack_task();
-          t
-        }
-        Ok(futures::prelude::Async::NotReady) => {
-          // Would error out if another accept task is being tracked.
-          r.track_task()?;
-          return Ok(futures::prelude::Async::NotReady);
-        }
-        Err(e) => {
-          r.untrack_task();
-          return Err(e);
-        }
-      },
+      AcceptState::Pending(ref mut r) => try_ready!(r.poll_accept()),
       AcceptState::Empty => panic!("poll Accept after it's done"),
     };
 
