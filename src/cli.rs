@@ -120,10 +120,6 @@ impl Behavior<Buf> for Cli {
     ops::dispatch(self, control, zero_copy)
   }
 
-  fn records_reset(&mut self) {
-    // No-op.
-  }
-
   fn records_push(&mut self, record: Buf) -> bool {
     let maybe_msg = self.tx.compose(record.len());
     if let Some(mut msg) = maybe_msg {

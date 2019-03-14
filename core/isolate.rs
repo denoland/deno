@@ -51,9 +51,6 @@ pub trait Behavior<R> {
     zero_copy_buf: deno_buf,
   ) -> (bool, Box<Op<R>>);
 
-  /// Clears the shared buffer.
-  fn records_reset(&mut self);
-
   /// Returns false if not enough room.
   fn records_push(&mut self, record: R) -> bool;
 
@@ -117,7 +114,7 @@ impl<R, B: Behavior<R>> Isolate<R, B> {
 
     let req_record = isolate.behavior.records_shift().unwrap();
 
-    isolate.behavior.records_reset();
+    // TODO assert shared buffer is empty.
 
     let (is_sync, op) = isolate.behavior.dispatch(req_record, zero_copy_buf);
     if is_sync {
@@ -323,7 +320,7 @@ impl<R, B: Behavior<R>> Future for Isolate<R, B> {
 
       self.polled_recently = true;
 
-      self.behavior.records_reset();
+      // TODO assert shared buffer is empty.
 
       let mut i = 0;
       while i != self.pending_ops.len() {
@@ -383,7 +380,6 @@ mod tests {
     resolve_count: usize,
     push_count: usize,
     shift_count: usize,
-    reset_count: usize,
     mod_map: HashMap<String, deno_mod>,
   }
 
@@ -394,7 +390,6 @@ mod tests {
         resolve_count: 0,
         push_count: 0,
         shift_count: 0,
-        reset_count: 0,
         mod_map: HashMap::new(),
       }
     }
@@ -428,10 +423,6 @@ mod tests {
         Some(id) => *id,
         None => 0,
       }
-    }
-
-    fn records_reset(&mut self) {
-      self.reset_count += 1;
     }
 
     fn records_push(&mut self, _record: ()) -> bool {

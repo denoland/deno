@@ -58,6 +58,12 @@ impl HttpBench {
     shared32[INDEX_END] = 0;
     Self { shared32 }
   }
+
+  #[allow(dead_code)]
+  fn records_reset(&mut self) {
+    self.shared32[INDEX_START] = 0;
+    self.shared32[INDEX_END] = 0;
+  }
 }
 
 fn idx(i: usize, off: usize) -> usize {
@@ -128,11 +134,6 @@ impl Behavior<Record> for HttpBench {
         }),
     );
     (is_sync, op)
-  }
-
-  fn records_reset(&mut self) {
-    self.shared32[INDEX_START] = 0;
-    self.shared32[INDEX_END] = 0;
   }
 
   fn records_push(&mut self, record: Record) -> bool {
