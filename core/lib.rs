@@ -8,6 +8,9 @@ mod flags;
 mod isolate;
 mod js_errors;
 mod libdeno;
+mod shared_queue;
+#[cfg(test)]
+mod test_util;
 
 pub use crate::flags::v8_set_flags;
 pub use crate::isolate::*;

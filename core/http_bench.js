@@ -6,63 +6,20 @@ const OP_ACCEPT = 2;
 const OP_READ = 3;
 const OP_WRITE = 4;
 const OP_CLOSE = 5;
-const INDEX_START = 0;
-const INDEX_END = 1;
-const NUM_RECORDS = 128;
-const RECORD_SIZE = 4;
-
-const shared32 = new Int32Array(libdeno.shared);
-
-function idx(i, off) {
-  return 2 + i * RECORD_SIZE + off;
-}
-
-function recordsPush(promiseId, opId, arg, result) {
-  let i = shared32[INDEX_END];
-  if (i >= NUM_RECORDS) {
-    return false;
-  }
-  shared32[idx(i, 0)] = promiseId;
-  shared32[idx(i, 1)] = opId;
-  shared32[idx(i, 2)] = arg;
-  shared32[idx(i, 3)] = result;
-  shared32[INDEX_END]++;
-  return true;
-}
-
-function recordsShift() {
-  if (shared32[INDEX_START] == shared32[INDEX_END]) {
-    return null;
-  }
-  const i = shared32[INDEX_START];
-  const record = {
-    promiseId: shared32[idx(i, 0)],
-    opId: shared32[idx(i, 1)],
-    arg: shared32[idx(i, 2)],
-    result: shared32[idx(i, 3)]
-  };
-  shared32[INDEX_START]++;
-  return record;
-}
-
-function recordsReset() {
-  shared32[INDEX_START] = 0;
-  shared32[INDEX_END] = 0;
-}
-
-function recordsSize() {
-  return shared32[INDEX_END] - shared32[INDEX_START];
-}
-
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
     .split("")
     .map(c => c.charCodeAt(0))
 );
-
 const promiseMap = new Map();
 let nextPromiseId = 1;
+
+function assert(cond) {
+  if (!cond) {
+    throw Error("assert");
+  }
+}
 
 function createResolvable() {
   let methods;
@@ -72,36 +29,73 @@ function createResolvable() {
   return Object.assign(promise, methods);
 }
 
+const scratch32 = new Int32Array(4);
+const scratchBytes = new Uint8Array(
+  scratch32.buffer,
+  scratch32.byteOffset,
+  scratch32.byteLength
+);
+assert(scratchBytes.byteLength === 4 * 4);
+
+// Toggle what method we send with. false = legacy.
+// AFAICT This has no effect on performance.
+const sendWithShared = true;
+
+function send(promiseId, opId, arg, zeroCopy = null) {
+  scratch32[0] = promiseId;
+  scratch32[1] = opId;
+  scratch32[2] = arg;
+  scratch32[3] = -1;
+  if (sendWithShared) {
+    Deno._sharedQueue.push(scratchBytes);
+    libdeno.send(null, zeroCopy);
+  } else {
+    libdeno.send(scratchBytes, zeroCopy);
+  }
+}
+
 /** Returns Promise<number> */
-function sendAsync(opId, arg, zeroCopyData) {
+function sendAsync(opId, arg, zeroCopy = null) {
   const promiseId = nextPromiseId++;
   const p = createResolvable();
-  recordsReset();
-  recordsPush(promiseId, opId, arg, -1);
   promiseMap.set(promiseId, p);
-  libdeno.send(null, zeroCopyData);
+  send(promiseId, opId, arg, zeroCopy);
   return p;
 }
 
-/** Returns u32 number */
-function sendSync(opId, arg) {
-  recordsReset();
-  recordsPush(0, opId, arg, -1);
-  libdeno.send();
-  if (recordsSize() != 1) {
-    throw Error("Expected sharedSimple to have size 1");
-  }
-  let { result } = recordsShift();
-  return result;
+function recordFromBuf(buf) {
+  assert(buf.byteLength === 16);
+  const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+  return {
+    promiseId: buf32[0],
+    opId: buf32[1],
+    arg: buf32[2],
+    result: buf32[3]
+  };
 }
 
-function handleAsyncMsgFromRust() {
-  while (recordsSize() > 0) {
-    const { promiseId, result } = recordsShift();
-    const p = promiseMap.get(promiseId);
-    promiseMap.delete(promiseId);
-    p.resolve(result);
+function recv() {
+  const buf = Deno._sharedQueue.shift();
+  if (!buf) {
+    return null;
   }
+  return recordFromBuf(buf);
+}
+
+/** Returns i32 number */
+function sendSync(opId, arg) {
+  send(0, opId, arg);
+  const record = recv();
+  assert(recv() == null);
+  return record.result;
+}
+
+function handleAsyncMsgFromRust(buf) {
+  const record = recordFromBuf(buf);
+  const { promiseId, result } = record;
+  const p = promiseMap.get(promiseId);
+  promiseMap.delete(promiseId);
+  p.resolve(result);
 }
 
 /** Listens on 0.0.0.0:4500, returns rid. */
@@ -147,12 +141,12 @@ async function serve(rid) {
 }
 
 async function main() {
-  libdeno.recv(handleAsyncMsgFromRust);
+  Deno._setAsyncHandler(handleAsyncMsgFromRust);
 
   libdeno.print("http_bench.js start\n");
 
   const listenerRid = listen();
-  libdeno.print(`listening http://127.0.0.1:4544/ rid = ${listenerRid}`);
+  libdeno.print(`listening http://127.0.0.1:4544/ rid = ${listenerRid}\n`);
   while (true) {
     const rid = await accept(listenerRid);
     // libdeno.print(`accepted ${rid}`);
