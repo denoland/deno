@@ -1,12 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as path from "./path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
+
 /**
  * Ensures that the file exists.
- * If the file that is requested to be created is in directories that do not exist, these directories are created. If the file already exists, it is NOT MODIFIED.
- * @export
- * @param {string} filePath
- * @returns {Promise<void>}
+ * If the file that is requested to be created is in directories that do not exist,
+ * these directories are created. If the file already exists, it is NOT MODIFIED.
  */
 export async function ensureFile(filePath: string): Promise<void> {
   try {
@@ -23,10 +22,8 @@ export async function ensureFile(filePath: string): Promise<void> {
 
 /**
  * Ensures that the file exists.
- * If the file that is requested to be created is in directories that do not exist, these directories are created. If the file already exists, it is NOT MODIFIED.
- * @export
- * @param {string} filePath
- * @returns {void}
+ * If the file that is requested to be created is in directories that do not exist,
+ * these directories are created. If the file already exists, it is NOT MODIFIED.
  */
 export function ensureFileSync(filePath: string): void {
   try {

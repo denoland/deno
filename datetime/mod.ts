@@ -3,10 +3,9 @@ export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
 
 /**
  * Parse date from string using format string
- *
- * @param {string} dateStr - date string
- * @param {DateFormat} format - format string
- * @return {Date} Parsed date
+ * @param dateStr Date string
+ * @param format Format string
+ * @return Parsed date
  */
 export function parseDate(dateStr: string, format: DateFormat): Date {
   let m, d, y: string;
@@ -42,10 +41,9 @@ export type DateTimeFormat =
 
 /**
  * Parse date & time from string using format string
- *
- * @param {string} dateStr - date & time string
- * @param {DateTimeFormat} format - format string
- * @return {Date} Parsed date
+ * @param dateStr Date & time string
+ * @param format Format string
+ * @return Parsed date
  */
 export function parseDateTime(
   datetimeStr: string,
@@ -88,9 +86,9 @@ export function parseDateTime(
 
 /**
  * Get number of the day in the year
- * @return {number} Number of the day in year
+ * @return Number of the day in year
  */
-export function dayOfYear(date: Date): any {
+export function dayOfYear(date: Date): number {
   const dayMs = 1000 * 60 * 60 * 24;
   const yearStart = new Date(date.getFullYear(), 0, 0);
   const diff =
@@ -102,8 +100,7 @@ export function dayOfYear(date: Date): any {
 
 /**
  * Get number of current day in year
- *
- * @return {number} Number of current day in year
+ * @return Number of current day in year
  */
 export function currentDayOfYear(): number {
   return dayOfYear(new Date());
