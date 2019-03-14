@@ -1,18 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::isolate::Buf;
-use crate::isolate::IsolateState;
+use crate::cli::Buf;
 use crate::isolate_init;
+use crate::isolate_state::IsolateState;
 use crate::msg;
 use crate::permissions::{DenoPermissions, PermissionAccessor};
 use crate::resources;
 use crate::resources::Resource;
 use crate::resources::ResourceId;
 use crate::workers;
-
 use futures::Future;
 use serde_json;
 use std::str;
-use std::sync::Arc;
 use std::sync::Mutex;
 
 lazy_static! {
@@ -48,7 +46,7 @@ impl ModuleMetaData {
   }
 }
 
-fn lazy_start(parent_state: &Arc<IsolateState>) -> Resource {
+fn lazy_start(parent_state: &IsolateState) -> Resource {
   let mut cell = C_RID.lock().unwrap();
   let isolate_init = isolate_init::compiler_isolate_init();
   let permissions = DenoPermissions {
@@ -57,10 +55,11 @@ fn lazy_start(parent_state: &Arc<IsolateState>) -> Resource {
     allow_net: PermissionAccessor::from(true),
     ..Default::default()
   };
+
   let rid = cell.get_or_insert_with(|| {
     let resource = workers::spawn(
       isolate_init,
-      parent_state.clone(),
+      parent_state,
       "compilerMain()".to_string(),
       permissions,
     );
@@ -79,7 +78,7 @@ fn req(specifier: &str, referrer: &str) -> Buf {
 }
 
 pub fn compile_sync(
-  parent_state: &Arc<IsolateState>,
+  parent_state: &IsolateState,
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
@@ -92,7 +91,9 @@ pub fn compile_sync(
   send_future.wait().unwrap();
 
   let recv_future = resources::worker_recv_message(compiler.rid);
-  let res_msg = recv_future.wait().unwrap().unwrap();
+  let result = recv_future.wait().unwrap();
+  assert!(result.is_some());
+  let res_msg = result.unwrap();
 
   let res_json = std::str::from_utf8(&res_msg).unwrap();
   match serde_json::from_str::<serde_json::Value>(res_json) {

@@ -167,9 +167,7 @@ fn main() {
   let js_source = include_str!("http_bench.js");
 
   let main_future = lazy(move || {
-    let isolate = deno_core::Isolate::new(HttpBench());
-
-    isolate.shared_init();
+    let mut isolate = deno_core::Isolate::new(HttpBench());
 
     // TODO currently isolate.execute() must be run inside tokio, hence the
     // lazy(). It would be nice to not have that contraint. Probably requires

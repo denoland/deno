@@ -103,9 +103,10 @@ def main(argv):
     # Windows does not support the pty module used for testing the permission
     # prompt.
     if os.name != 'nt':
-        from permission_prompt_test import permission_prompt_test
         from is_tty_test import is_tty_test
-        permission_prompt_test(deno_exe)
+        # TODO(ry) Re-enable permission_prompt_test
+        # from permission_prompt_test import permission_prompt_test
+        # permission_prompt_test(deno_exe)
         is_tty_test(deno_exe)
 
     repl_tests(deno_exe)
