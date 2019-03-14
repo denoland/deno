@@ -1,9 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
 /**
- * Ensures that the directory exists. If the directory structure does not exist, it is created. Like mkdir -p.
- * @export
- * @param {string} dir
- * @returns {Promise<void>}
+ * Ensures that the directory exists.
+ * If the directory structure does not exist, it is created. Like mkdir -p.
  */
 export async function ensureDir(dir: string): Promise<void> {
   try {
@@ -16,10 +15,8 @@ export async function ensureDir(dir: string): Promise<void> {
 }
 
 /**
- * Ensures that the directory exists. If the directory structure does not exist, it is created. Like mkdir -p.
- * @export
- * @param {string} dir
- * @returns {void}
+ * Ensures that the directory exists.
+ * If the directory structure does not exist, it is created. Like mkdir -p.
  */
 export function ensureDirSync(dir: string): void {
   try {

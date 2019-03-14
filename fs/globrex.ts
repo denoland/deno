@@ -23,14 +23,14 @@ export interface GlobrexResult {
 
 /**
  * Convert any glob pattern to a JavaScript Regexp object
- * @param {String} glob Glob pattern to convert
- * @param {Object} opts Configuration object
- * @param {Boolean} [opts.extended=false] Support advanced ext globbing
- * @param {Boolean} [opts.globstar=false] Support globstar
- * @param {Boolean} [opts.strict=true] be laissez faire about mutiple slashes
- * @param {Boolean} [opts.filepath=''] Parse as filepath for extra path related features
- * @param {String} [opts.flags=''] RegExp globs
- * @returns {Object} converted object with string, segments and RegExp object
+ * @param glob Glob pattern to convert
+ * @param opts Configuration object
+ * @param [opts.extended=false] Support advanced ext globbing
+ * @param [opts.globstar=false] Support globstar
+ * @param [opts.strict=true] be laissez faire about mutiple slashes
+ * @param [opts.filepath=""] Parse as filepath for extra path related features
+ * @param [opts.flags=""] RegExp globs
+ * @returns Converted object with string, segments and RegExp object
  */
 export function globrex(
   glob: string,

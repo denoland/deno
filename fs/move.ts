@@ -15,14 +15,7 @@ function isSrcSubdir(src: string, dest: string): boolean {
   }, true);
 }
 
-/**
- * Moves a file or directory
- * @export
- * @param {string} src
- * @param {string} dest
- * @param {MoveOptions} [options]
- * @returns {Promise<void>}
- */
+/** Moves a file or directory */
 export async function move(
   src: string,
   dest: string,
@@ -52,14 +45,7 @@ export async function move(
   return;
 }
 
-/**
- * Moves a file or directory
- * @export
- * @param {string} src
- * @param {string} dest
- * @param {MoveOptions} [options]
- * @returns {void}
- */
+/** Moves a file or directory */
 export function moveSync(
   src: string,
   dest: string,

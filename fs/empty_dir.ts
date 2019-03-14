@@ -4,9 +4,6 @@
  * Deletes directory contents if the directory is not empty.
  * If the directory does not exist, it is created.
  * The directory itself is not deleted.
- * @export
- * @param {string} dir
- * @returns {Promise<void>}
  */
 export async function emptyDir(dir: string): Promise<void> {
   let items: Deno.FileInfo[] = [];
@@ -30,9 +27,6 @@ export async function emptyDir(dir: string): Promise<void> {
  * Deletes directory contents if the directory is not empty.
  * If the directory does not exist, it is created.
  * The directory itself is not deleted.
- * @export
- * @param {string} dir
- * @returns {void}
  */
 export function emptyDirSync(dir: string): void {
   let items: Deno.FileInfo[] = [];
