@@ -244,7 +244,7 @@ I/O streams in Deno.
 Try the program:
 
 ```shellsession
-$ deno https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 ### TCP echo server
