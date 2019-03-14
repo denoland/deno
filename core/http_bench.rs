@@ -16,7 +16,6 @@ use deno_core::*;
 use futures::future::lazy;
 use std::collections::HashMap;
 use std::env;
-use std::mem;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -29,13 +28,7 @@ const OP_READ: i32 = 3;
 const OP_WRITE: i32 = 4;
 const OP_CLOSE: i32 = 5;
 
-const INDEX_START: usize = 0;
-const INDEX_END: usize = 1;
-
-const NUM_RECORDS: usize = 128;
-const RECORD_SIZE: usize = 4;
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Record {
   pub promise_id: i32,
   pub op_id: i32,
@@ -43,36 +36,71 @@ pub struct Record {
   pub result: i32,
 }
 
+impl Into<Buf> for Record {
+  fn into(self) -> Buf {
+    let buf32 = vec![self.promise_id, self.op_id, self.arg, self.result]
+      .into_boxed_slice();
+    let ptr = Box::into_raw(buf32) as *mut [u8; 16];
+    unsafe { Box::from_raw(ptr) }
+  }
+}
+
+impl From<&[u8]> for Record {
+  fn from(s: &[u8]) -> Record {
+    let ptr = s.as_ptr() as *const i32;
+    let ints = unsafe { std::slice::from_raw_parts(ptr, 4) };
+    Record {
+      promise_id: ints[0],
+      op_id: ints[1],
+      arg: ints[2],
+      result: ints[3],
+    }
+  }
+}
+
+impl From<Buf> for Record {
+  fn from(buf: Buf) -> Record {
+    assert_eq!(buf.len(), 4 * 4);
+    //let byte_len = buf.len();
+    let ptr = Box::into_raw(buf) as *mut [i32; 4];
+    let ints: Box<[i32]> = unsafe { Box::from_raw(ptr) };
+    assert_eq!(ints.len(), 4);
+    Record {
+      promise_id: ints[0],
+      op_id: ints[1],
+      arg: ints[2],
+      result: ints[3],
+    }
+  }
+}
+
+#[test]
+fn test_record_from() {
+  let r = Record {
+    promise_id: 1,
+    op_id: 2,
+    arg: 3,
+    result: 4,
+  };
+  let expected = r.clone();
+  let buf: Buf = r.into();
+  #[cfg(target_endian = "little")]
+  assert_eq!(
+    buf,
+    vec![1u8, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0].into_boxed_slice()
+  );
+  let actual = Record::from(buf);
+  assert_eq!(actual, expected);
+  // TODO test From<&[u8]> for Record
+}
+
 pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-struct HttpBench {
-  shared32: Vec<i32>,
-}
+struct HttpBench();
 
-impl HttpBench {
-  fn new() -> Self {
-    let mut shared32 = Vec::<i32>::new();
-    let n = 2 + 4 * NUM_RECORDS;
-    shared32.resize(n, 0);
-    shared32[INDEX_START] = 0;
-    shared32[INDEX_END] = 0;
-    Self { shared32 }
-  }
-}
-
-fn idx(i: usize, off: usize) -> usize {
-  2 + i * RECORD_SIZE + off
-}
-
-impl Behavior<Record> for HttpBench {
+impl Behavior for HttpBench {
   fn startup_snapshot(&mut self) -> Option<deno_buf> {
     None
-  }
-
-  fn startup_shared(&mut self) -> Option<deno_buf> {
-    let ptr = self.shared32.as_ptr() as *const u8;
-    let len = mem::size_of::<i32>() * self.shared32.len();
-    Some(unsafe { deno_buf::from_raw_parts(ptr, len) })
   }
 
   fn resolve(&mut self, _specifier: &str, _referrer: deno_mod) -> deno_mod {
@@ -80,11 +108,12 @@ impl Behavior<Record> for HttpBench {
     unimplemented!()
   }
 
-  fn recv(
+  fn dispatch(
     &mut self,
-    record: Record,
+    control: &[u8],
     zero_copy_buf: deno_buf,
-  ) -> (bool, Box<Op<Record>>) {
+  ) -> (bool, Box<Op>) {
+    let record = Record::from(control);
     let is_sync = record.promise_id == 0;
     let http_bench_op = match record.op_id {
       OP_LISTEN => {
@@ -125,43 +154,12 @@ impl Behavior<Record> for HttpBench {
           eprintln!("unexpected err {}", err);
           record_b.result = -1;
           Ok(record_b)
+        }).then(|result| -> Result<Buf, ()> {
+          let record = result.unwrap();
+          Ok(record.into())
         }),
     );
     (is_sync, op)
-  }
-
-  fn records_reset(&mut self) {
-    self.shared32[INDEX_START] = 0;
-    self.shared32[INDEX_END] = 0;
-  }
-
-  fn records_push(&mut self, record: Record) -> bool {
-    debug!("push {:?}", record);
-    let i = self.shared32[INDEX_END] as usize;
-    if i >= NUM_RECORDS {
-      return false;
-    }
-    self.shared32[idx(i, 0)] = record.promise_id;
-    self.shared32[idx(i, 1)] = record.op_id;
-    self.shared32[idx(i, 2)] = record.arg;
-    self.shared32[idx(i, 3)] = record.result;
-    self.shared32[INDEX_END] += 1;
-    true
-  }
-
-  fn records_shift(&mut self) -> Option<Record> {
-    let i = self.shared32[INDEX_START] as usize;
-    if i == self.shared32[INDEX_END] as usize {
-      return None;
-    }
-    let record = Record {
-      promise_id: self.shared32[idx(i, 0)],
-      op_id: self.shared32[idx(i, 1)],
-      arg: self.shared32[idx(i, 2)],
-      result: self.shared32[idx(i, 3)],
-    };
-    self.shared32[INDEX_START] += 1;
-    Some(record)
   }
 }
 
@@ -169,7 +167,9 @@ fn main() {
   let js_source = include_str!("http_bench.js");
 
   let main_future = lazy(move || {
-    let isolate = deno_core::Isolate::new(HttpBench::new());
+    let isolate = deno_core::Isolate::new(HttpBench());
+
+    isolate.shared_init();
 
     // TODO currently isolate.execute() must be run inside tokio, hence the
     // lazy(). It would be nice to not have that contraint. Probably requires
