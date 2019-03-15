@@ -270,3 +270,30 @@ the first column of the comment. For example:
 
 Code examples should not contain additional comments. It is already inside a
 comment. If it needs further comments is not a good example.
+
+## Each module should come with tests
+
+Each module should come with its test as a sibling with the name
+`modulename_test.ts`. For example the module `foo.ts` should come with its
+sibling `foo_test.ts`.
+
+## Unit Tests should be explicit
+
+For a better understanding of the tests, function should be correctly named as
+its prompted throughout the test command. Like:
+
+```
+test myTestFunction ... ok
+```
+
+Example of test:
+
+```ts
+import { assertEquals } from "https://deno.land/std@v0.3.1/testing/asserts.ts";
+import { test } from "https://deno.land/std@v0.3.1/testing/mod.ts";
+import { foo } from "./mod.ts";
+
+test(function myTestFunction() {
+  assertEquals(foo(), { bar: "bar" });
+});
+```
