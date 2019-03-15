@@ -48,17 +48,14 @@ function main() {
   assert(r[1] == 9);
   assert(r[2] == 10);
   assert(r[3] == 11);
-  assert(q.numRecords() == 3);
-  assert(q.size() == 0);
-
-  assert(q.shift() == null);
-  assert(q.shift() == null);
-  assert(q.numRecords() == 3);
-  assert(q.size() == 0);
-
-  q.reset();
   assert(q.numRecords() == 0);
   assert(q.size() == 0);
+
+  assert(q.shift() == null);
+  assert(q.shift() == null);
+  assert(q.numRecords() == 0);
+  assert(q.size() == 0);
+
   libdeno.print("shared_queue_test.js ok\n");
 }
 

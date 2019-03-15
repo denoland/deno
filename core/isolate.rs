@@ -375,7 +375,6 @@ impl<B: Behavior> Future for Isolate<B> {
         self.respond()?;
         // The other side should have shifted off all the messages.
         assert_eq!(self.shared.size(), 0);
-        self.shared.reset();
       }
     }
 

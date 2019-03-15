@@ -22,7 +22,8 @@
   }
 
   function reset() {
-    shared32.fill(0, 0, INDEX_RECORDS);
+    shared32[INDEX_NUM_RECORDS] = 0;
+    shared32[INDEX_NUM_SHIFTED_OFF] = 0;
     shared32[INDEX_HEAD] = HEAD_INIT;
   }
 
@@ -32,6 +33,10 @@
 
   function numRecords() {
     return shared32[INDEX_NUM_RECORDS];
+  }
+
+  function size() {
+    return shared32[INDEX_NUM_RECORDS] - shared32[INDEX_NUM_SHIFTED_OFF];
   }
 
   function setEnd(index, end) {
@@ -77,17 +82,21 @@
   /// Returns null if empty.
   function shift() {
     let i = shared32[INDEX_NUM_SHIFTED_OFF];
-    if (i >= numRecords()) {
+    if (size() == 0) {
+      assert(i == 0);
       return null;
     }
+
     let off = getOffset(i);
     let end = getEnd(i);
-    shared32[INDEX_NUM_SHIFTED_OFF] += 1;
-    return sharedBytes.subarray(off, end);
-  }
 
-  function size() {
-    return shared32[INDEX_NUM_RECORDS] - shared32[INDEX_NUM_SHIFTED_OFF];
+    if (size() > 1) {
+      shared32[INDEX_NUM_SHIFTED_OFF] += 1;
+    } else {
+      reset();
+    }
+
+    return sharedBytes.subarray(off, end);
   }
 
   let asyncHandler = null;
@@ -119,7 +128,6 @@
     numRecords,
     size,
     push,
-    reset,
     shift
   };
 

@@ -36,12 +36,10 @@ impl SharedQueue {
     unsafe { deno_buf::from_raw_parts(ptr, len) }
   }
 
-  /// Clears the shared buffer.
-  pub fn reset(&mut self) {
+  fn reset(&mut self) {
     let s: &mut [u32] = self.as_u32_slice_mut();
-    for i in 0..INDEX_RECORDS {
-      s[i] = 0;
-    }
+    s[INDEX_NUM_RECORDS] = 0;
+    s[INDEX_NUM_SHIFTED_OFF] = 0;
     s[INDEX_HEAD] = HEAD_INIT as u32;
   }
 
@@ -101,15 +99,20 @@ impl SharedQueue {
   pub fn shift<'a>(&'a mut self) -> Option<&'a [u8]> {
     let u32_slice = self.as_u32_slice();
     let i = u32_slice[INDEX_NUM_SHIFTED_OFF] as usize;
-    if i >= self.num_records() {
-      assert_eq!(self.size(), 0);
+    if self.size() == 0 {
+      assert_eq!(i, 0);
       return None;
     }
+
     let off = self.get_offset(i).unwrap();
     let end = self.get_end(i).unwrap();
 
-    let u32_slice = self.as_u32_slice_mut();
-    u32_slice[INDEX_NUM_SHIFTED_OFF] += 1;
+    if self.size() > 1 {
+      let u32_slice = self.as_u32_slice_mut();
+      u32_slice[INDEX_NUM_SHIFTED_OFF] += 1;
+    } else {
+      self.reset();
+    }
 
     Some(&self.bytes[off..end])
   }
@@ -173,16 +176,12 @@ mod tests {
 
     let r = q.shift().unwrap();
     assert_eq!(r.as_ref(), vec![8, 9, 10, 11].as_slice());
-    assert_eq!(q.num_records(), 3);
+    assert_eq!(q.num_records(), 0);
     assert_eq!(q.size(), 0);
 
     assert!(q.shift().is_none());
     assert!(q.shift().is_none());
 
-    assert_eq!(q.num_records(), 3);
-    assert_eq!(q.size(), 0);
-
-    q.reset();
     assert_eq!(q.num_records(), 0);
     assert_eq!(q.size(), 0);
   }
@@ -205,10 +204,11 @@ mod tests {
 
     assert_eq!(q.shift().unwrap().len(), RECOMMENDED_SIZE - 1);
     assert_eq!(q.size(), 1);
-    assert_eq!(q.shift().unwrap().len(), 1);
-    assert_eq!(q.size(), 0);
 
     assert!(!q.push(alloc_buf(1)));
+
+    assert_eq!(q.shift().unwrap().len(), 1);
+    assert_eq!(q.size(), 0);
   }
 
   #[test]
