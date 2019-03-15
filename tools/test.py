@@ -65,17 +65,14 @@ def main(argv):
     deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
     check_exists(deno_exe)
 
-    exec_path_test(deno_exe)
-
-    # Internal tools testing
+    # Python/build tools testing
+    setup_test()
+    util_test()
     run([
         "node", "./node_modules/.bin/ts-node", "--project",
         "tools/ts_library_builder/tsconfig.json",
         "tools/ts_library_builder/test.ts"
     ])
-    setup_test()
-    util_test()
-    benchmark_test(build_dir, deno_exe)
 
     test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
     check_exists(test_cc)
@@ -118,6 +115,9 @@ def main(argv):
     deno_dir_test(deno_exe, deno_dir)
 
     test_no_color(deno_exe)
+
+    benchmark_test(build_dir, deno_exe)
+    exec_path_test(deno_exe)
 
 
 if __name__ == '__main__':
