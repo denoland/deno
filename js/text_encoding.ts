@@ -409,7 +409,7 @@ export class TextDecoder {
     let bytes: Uint8Array;
     if (input instanceof Uint8Array) {
       bytes = input;
-    } else if (typeof input === "object" && isEitherArrayBuffer(input)) {
+    } else if (isEitherArrayBuffer(input)) {
       bytes = new Uint8Array(input);
     } else if (
       typeof input === "object" &&
