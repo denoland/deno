@@ -101,7 +101,7 @@ const enum FrameAllocation {
   // Alignment (in bytes) of frame offset and frame length.
   Alignment = 4,
   // Length of frame header. Note: only 4 bytes are currently used.
-  HeaderByteLength = 8
+  HeaderByteLength = 4
 }
 
 // prettier-ignore
@@ -294,8 +294,8 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
     const headerI32Offset = this.getHeaderI32Offset(this.windowHeadPosition);
     let header = this.i32[headerI32Offset];
 
-    let spinCountRemaining: number = this.spinCount;
-    let futexWaitTime: number = this.spinYieldCpuTime;
+    // let spinCountRemaining: number = this.spinCount;
+    // let futexWaitTime: number = this.spinYieldCpuTime;
 
     while ((header & FrameHeader.EpochMask) !== this.epoch) {
       // Sleep nor spin when acquiring in non-blocking mode.
@@ -303,6 +303,8 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
         return FrameHeader.None;
       }
 
+      throw new Error("Failed to acquire. Can't block on ring.");
+      /*
       if (spinCountRemaining === 0) {
         // We're going to put the thread to sleep.
         // Use compare-and-swap to set the kHasWaiters flag.
@@ -326,8 +328,7 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
       } else {
         // We still have spins left.
         spinCountRemaining--;
-        this.spinCounter++;
-      }
+        this.spinCounter++;    //}
 
       // If we're spinning and CPU yielding is enabled, we'll call futexWait
       // just as as if we were going to sleep, but with some very small time-out
@@ -341,6 +342,7 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
         // is different from our local copy, so refresh it.
         header = Atomics.load(this.i32, headerI32Offset);
       }
+      */
     }
 
     const byteLength = header & FrameHeader.ByteLengthMask;
@@ -358,11 +360,21 @@ abstract class MsgRingCommon extends MsgRingDefaultConfig {
     this.assert(byteLength >= FrameAllocation.HeaderByteLength);
     this.assert(byteLength <= this.windowByteLength);
 
+    if (byteLength < this.windowByteLength) {
+      // Place a temporary header for which what will become the next message
+      // right after the message.
+      const nextHeaderI32Offset = this.windowTailPosition + this.byteLength;
+      // TODO: Do away with epoch concept, just use zero always.
+      this.i32[nextHeaderI32Offset] = this.epoch;
+    }
+
     const tailEpoch = this.epoch + FrameHeader.EpochIncrementPass;
     const newHeader = byteLength | flags | tailEpoch;
 
     const headerI32Offset = this.getHeaderI32Offset(this.windowTailPosition);
-    const oldHeader = Atomics.exchange(this.i32, headerI32Offset, newHeader);
+    // const oldHeader = Atomics.exchange(this.i32, headerI32Offset, newHeader);
+    const oldHeader = this.i32[headerI32Offset];
+    this.i32[headerI32Offset] = newHeader;
 
     if (oldHeader & FrameHeader.HasWaitersFlag) {
       this.notify(this.i32, headerI32Offset, 1);

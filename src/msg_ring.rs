@@ -41,7 +41,7 @@ struct FrameAllocation;
 #[allow(non_upper_case_globals)]
 impl FrameAllocation {
   pub const Alignment: usize = 4;
-  pub const HeaderByteLength: usize = 8;
+  pub const HeaderByteLength: usize = 4;
 }
 
 struct FrameHeader;
@@ -338,7 +338,9 @@ impl Window {
     let header_ref: &mut i32 =
       unsafe { self.buffer.get_mut(header_byte_offset) };
 
-    *header_ref = target;
+    if *header_ref == 0 {
+      *header_ref = target;
+    }
     //let header_atomic: &mut Futex =
     //  unsafe { self.buffer.get_mut(header_byte_offset) };
     //header_atomic.compare_and_swap(0, target, Ordering::AcqRel);
@@ -415,6 +417,17 @@ impl Window {
   pub fn release_frame(&mut self, byte_length: usize, flags: i32) {
     assert!(byte_length >= FrameAllocation::HeaderByteLength);
     assert!(byte_length <= self.byte_length());
+
+    if byte_length < self.byte_length() {
+      // Place a temporary header for which what will become the next message
+      // right after the message.
+      let next_header_byte_offset =
+        self.header_byte_offset(self.tail_position + byte_length);
+      let next_header_ref: &mut i32 =
+        unsafe { self.buffer.get_mut(next_header_byte_offset) };
+      // TODO: Do away with epoch concept, just use zero always.
+      *next_header_ref = self.epoch;
+    }
 
     let tail_epoch = self.epoch + FrameHeader::EpochIncrementPass;
     let new_header = byte_length as i32 | flags | tail_epoch;
