@@ -230,7 +230,15 @@ For example:
 
 Do not document function arguments unless they are non-obvious of their intent
 (though if they are non-obvious intent, the API should be considered anyways).
-Therefore `@param` should generally not be used.
+Therefore `@param` should generally not be used. If `@param` is used, it should
+not include the `type` as Typescript is already strongly typed.
+
+```ts
+/**
+ * Function with non obvious param
+ * @param foo Description of non obvious parameter
+ */
+```
 
 Vertical spacing should be minimized whenever possible. Therefore single line
 comments should be written as:
