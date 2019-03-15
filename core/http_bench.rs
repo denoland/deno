@@ -182,6 +182,7 @@ fn main() {
   });
 
   let args: Vec<String> = env::args().collect();
+  let args = deno_core::v8_set_flags(args);
   if args.len() > 1 && args[1] == "--multi-thread" {
     println!("multi-thread");
     tokio::run(main_future);
