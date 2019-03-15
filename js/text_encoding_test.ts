@@ -65,3 +65,29 @@ test(function textEncoder2() {
     0xf0, 0x9d, 0x93, 0xbd
   ]);
 });
+
+test(function textDecoderSharedUint8Array() {
+  const ab = new SharedArrayBuffer(6);
+  const dataView = new DataView(ab);
+  const charCodeA = "A".charCodeAt(0);
+  for (let i = 0; i < ab.byteLength; i++) {
+    dataView.setUint8(i, charCodeA + i);
+  }
+  const ui8 = new Uint8Array(ab);
+  const decoder = new TextDecoder();
+  const actual = decoder.decode(ui8);
+  assertEquals(actual, "ABCDEF");
+});
+
+test(function textDecoderSharedInt32Array() {
+  const ab = new SharedArrayBuffer(8);
+  const dataView = new DataView(ab);
+  const charCodeA = "A".charCodeAt(0);
+  for (let i = 0; i < ab.byteLength; i++) {
+    dataView.setUint8(i, charCodeA + i);
+  }
+  const i32 = new Int32Array(ab);
+  const decoder = new TextDecoder();
+  const actual = decoder.decode(i32);
+  assertEquals(actual, "ABCDEFGH");
+});

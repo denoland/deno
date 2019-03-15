@@ -356,6 +356,13 @@ export interface TextDecoderOptions {
   ignoreBOM?: false;
 }
 
+type EitherArrayBuffer = SharedArrayBuffer | ArrayBuffer;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isEitherArrayBuffer(x: any): x is EitherArrayBuffer {
+  return x instanceof SharedArrayBuffer || x instanceof ArrayBuffer;
+}
+
 export class TextDecoder {
   private _encoding: string;
 
@@ -400,12 +407,14 @@ export class TextDecoder {
     }
 
     let bytes: Uint8Array;
-    if (typeof input === "object" && input instanceof ArrayBuffer) {
+    if (input instanceof Uint8Array) {
+      bytes = input;
+    } else if (isEitherArrayBuffer(input)) {
       bytes = new Uint8Array(input);
     } else if (
       typeof input === "object" &&
       "buffer" in input &&
-      input.buffer instanceof ArrayBuffer
+      isEitherArrayBuffer(input.buffer)
     ) {
       bytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
     } else {
