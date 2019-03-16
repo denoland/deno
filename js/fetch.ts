@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { createResolvable, isTypedArray } from "./util";
-import { assert, unreachable, unimplemented } from "./test_util";
+import { assert, unimplemented } from "./test_util";
 import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
