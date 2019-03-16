@@ -14,7 +14,9 @@ import {
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 export {
   assert,
-  assertEquals
+  assertEquals,
+  unreachable,
+  unimplemented
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 
 // testing.setFilter must be run before any tests are defined.

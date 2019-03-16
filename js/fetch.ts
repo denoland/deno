@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assert, createResolvable, notImplemented, isTypedArray } from "./util";
+import { createResolvable, isTypedArray } from "./util";
+import { assert, unreachable, unimplemented } from "./test_util";
 import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
@@ -225,11 +226,11 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   }
 
   async cancel(): Promise<void> {
-    return notImplemented();
+    return unimplemented();
   }
 
   getReader(): domTypes.ReadableStreamReader {
-    return notImplemented();
+    return unimplemented();
   }
 }
 
@@ -389,7 +390,7 @@ export async function fetch(
           contentType = init.body.type;
         } else {
           // TODO: FormData, ReadableStream
-          notImplemented();
+          unimplemented();
         }
         if (contentType && !headers.has("content-type")) {
           headers.set("content-type", contentType);

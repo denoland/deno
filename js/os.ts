@@ -4,7 +4,7 @@ import { handleAsyncMsgFromRust, sendSync } from "./dispatch";
 import * as flatbuffers from "./flatbuffers";
 import { libdeno } from "./libdeno";
 import { TextDecoder } from "./text_encoding";
-import { assert } from "./util";
+import { assert, unreachable } from "./test_util";
 import * as util from "./util";
 
 /** The current process id of the runtime. */
@@ -58,7 +58,7 @@ export function exit(exitCode = 0): never {
   msg.Exit.addCode(builder, exitCode);
   const inner = msg.Exit.endExit(builder);
   sendSync(builder, msg.Any.Exit, inner);
-  return util.unreachable();
+  return unreachable();
 }
 
 const decoder = new TextDecoder();

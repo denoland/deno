@@ -9,7 +9,8 @@ import * as os from "./os";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { clearTimer, setTimeout } from "./timers";
 import { postMessage, workerClose, workerMain } from "./workers";
-import { assert, log, notImplemented } from "./util";
+import { log } from "./util";
+import { assert, unimplemented } from "./test_util";
 
 const EOL = "\n";
 const ASSETS = "$asset$";
@@ -459,7 +460,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
 
   readFile(path: string): string | undefined {
     this._log("readFile()", path);
-    return notImplemented();
+    return unimplemented();
   }
 
   fileExists(fileName: string): boolean {

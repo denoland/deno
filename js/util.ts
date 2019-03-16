@@ -23,13 +23,6 @@ export function log(...args: unknown[]): void {
 }
 
 // @internal
-export function assert(cond: boolean, msg = "assert"): void {
-  if (!cond) {
-    throw Error(msg);
-  }
-}
-
-// @internal
 export function typedArrayToArrayBuffer(ta: TypedArray): ArrayBuffer {
   const ab = ta.buffer.slice(ta.byteOffset, ta.byteOffset + ta.byteLength);
   return ab as ArrayBuffer;
@@ -77,16 +70,6 @@ export function createResolvable<T>(): Resolvable<T> {
   // TypeScript doesn't know that the Promise callback occurs synchronously
   // therefore use of not null assertion (`!`)
   return Object.assign(promise, methods!) as Resolvable<T>;
-}
-
-// @internal
-export function notImplemented(): never {
-  throw new Error("Not implemented");
-}
-
-// @internal
-export function unreachable(): never {
-  throw new Error("Code not reachable");
 }
 
 // @internal

@@ -6,7 +6,7 @@ import * as msg from "gen/msg_generated";
 import { File, close } from "./files";
 import { ReadCloser, WriteCloser } from "./io";
 import { readAll } from "./buffer";
-import { assert, unreachable } from "./util";
+import { assert, unreachable } from "./test_util";
 
 /** How to handle subprocess stdio.
  *

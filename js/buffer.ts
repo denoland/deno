@@ -6,7 +6,7 @@
 
 //import * as io from "./io";
 import { Reader, Writer, ReadResult } from "./io";
-import { assert } from "./util";
+import { assert } from "./test_util";
 import { TextDecoder } from "./text_encoding";
 import { DenoError, ErrorKind } from "./errors";
 
