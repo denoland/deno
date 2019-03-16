@@ -58,7 +58,7 @@ export function exit(exitCode = 0): never {
   msg.Exit.addCode(builder, exitCode);
   const inner = msg.Exit.endExit(builder);
   sendSync(builder, msg.Any.Exit, inner);
-  return unreachable();
+  return unreachable() as never;
 }
 
 const decoder = new TextDecoder();

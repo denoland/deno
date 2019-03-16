@@ -5,7 +5,8 @@
 
 import "./globals";
 
-import { assert, log } from "./util";
+import { log } from "./util";
+import { assert } from "./test_util";
 import * as os from "./os";
 import { args } from "./deno";
 import { replLoop } from "./repl";

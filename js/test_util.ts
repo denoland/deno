@@ -6,13 +6,10 @@
 // Here we run several copies of deno with different permissions, filtering the
 // tests by the special string. permW0N0 means allow-write but not allow-net.
 // See tools/unit_tests.py for more details.
-
 import * as testing from "./deps/https/deno.land/std/testing/mod.ts";
 import {
   assert,
-  assertEquals,
-  unreachable,
-  unimplemented
+  assertEquals
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 export {
   assert,
