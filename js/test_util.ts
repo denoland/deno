@@ -10,7 +10,9 @@
 import * as testing from "./deps/https/deno.land/std/testing/mod.ts";
 import {
   assert,
-  assertEquals
+  assertEquals,
+  unreachable,
+  unimplemented
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 export {
   assert,
