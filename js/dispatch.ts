@@ -4,17 +4,18 @@ import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
+import { assert } from "./test_util";
 
 let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
 export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
-  util.assert(ui8 != null && ui8.length > 0);
+  assert(ui8 != null && ui8.length > 0);
   const bb = new flatbuffers.ByteBuffer(ui8);
   const base = msg.Base.getRootAsBase(bb);
   const cmdId = base.cmdId();
   const promise = promiseTable.get(cmdId);
-  util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
+  assert(promise != null, `Expecting promise in table. ${cmdId}`);
   promiseTable.delete(cmdId);
   const err = errors.maybeError(base);
   if (err != null) {
@@ -51,7 +52,7 @@ export function sendAsync(
   data?: ArrayBufferView
 ): Promise<msg.Base> {
   const [cmdId, resBuf] = sendInternal(builder, innerType, inner, data, false);
-  util.assert(resBuf == null);
+  assert(resBuf == null);
   const promise = util.createResolvable<msg.Base>();
   promiseTable.set(cmdId, promise);
   return promise;
@@ -65,7 +66,7 @@ export function sendSync(
   data?: ArrayBufferView
 ): null | msg.Base {
   const [cmdId, resBuf] = sendInternal(builder, innerType, inner, data, true);
-  util.assert(cmdId >= 0);
+  assert(cmdId >= 0);
   if (resBuf == null) {
     return null;
   } else {

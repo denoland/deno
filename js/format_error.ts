@@ -2,7 +2,7 @@
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
-import { assert } from "./util";
+import { assert } from "./test_util";
 
 export function formatError(errString: string): string {
   const builder = flatbuffers.createBuilder();

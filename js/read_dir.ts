@@ -3,7 +3,7 @@ import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import { FileInfo, FileInfoImpl } from "./file_info";
-import { assert } from "./util";
+import { assert } from "./test_util";
 
 function req(path: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();

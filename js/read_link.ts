@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
-import { assert } from "./util";
+import { assert } from "./test_util";
 import * as dispatch from "./dispatch";
 
 function req(name: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {

@@ -2,7 +2,7 @@
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
-import * as util from "./util";
+import { unimplemented } from "./test_util";
 
 function req(
   oldname: string,
@@ -11,7 +11,7 @@ function req(
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   // TODO Use type for Windows.
   if (type) {
-    return util.notImplemented();
+    return unimplemented();
   }
   const builder = flatbuffers.createBuilder();
   const oldname_ = builder.createString(oldname);

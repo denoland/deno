@@ -2,7 +2,7 @@
 import { Reader, Writer, Seeker, Closer, ReadResult, SeekMode } from "./io";
 import * as dispatch from "./dispatch";
 import * as msg from "gen/msg_generated";
-import { assert } from "./util";
+import { assert } from "./test_util";
 import * as flatbuffers from "./flatbuffers";
 
 /** Open a file and return an instance of the `File` object.

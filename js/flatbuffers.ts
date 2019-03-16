@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { flatbuffers } from "flatbuffers";
 import * as util from "./util";
+import { assert } from "./test_util";
 
 /* eslint-disable @typescript-eslint/camelcase */
 
@@ -21,7 +22,7 @@ globalBuilder.inUse = false;
 export function createBuilder(): Builder {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const gb = globalBuilder as any;
-  util.assert(!gb.inUse);
+  assert(!gb.inUse);
 
   let bb = globalBuilder.dataBuffer();
   // Only create a new backing ArrayBuffer if the previous one had grown very

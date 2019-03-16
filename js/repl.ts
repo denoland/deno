@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
-import { assert } from "./util";
+import { assert } from "./test_util";
 import { close } from "./files";
 import * as dispatch from "./dispatch";
 import { exit } from "./os";

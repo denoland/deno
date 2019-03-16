@@ -2,7 +2,7 @@
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
-import { assert } from "./util";
+import { assert } from "./test_util";
 
 export interface MakeTempDirOptions {
   dir?: string;

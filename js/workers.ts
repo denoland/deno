@@ -2,7 +2,8 @@
 import * as dispatch from "./dispatch";
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
-import { assert, log } from "./util";
+import { log } from "./util";
+import { assert } from "./test_util"
 import { window } from "./window";
 
 export async function postMessage(data: Uint8Array): Promise<void> {

@@ -2,7 +2,7 @@
 import * as msg from "gen/msg_generated";
 import { sendSync } from "./dispatch";
 import * as flatbuffers from "./flatbuffers";
-import { assert } from "./util";
+import { assert } from "./test_util";
 
 export class Performance {
   timeOrigin = 0;

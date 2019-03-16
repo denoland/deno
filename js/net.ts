@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { ReadResult, Reader, Writer, Closer } from "./io";
 import * as msg from "gen/msg_generated";
-import { assert, notImplemented } from "./util";
+import { assert, unimplemented } from "./test_util";
 import * as dispatch from "./dispatch";
 import * as flatbuffers from "./flatbuffers";
 import { read, write, close } from "./files";
@@ -100,7 +100,7 @@ class ListenerImpl implements Listener {
   }
 
   addr(): Addr {
-    return notImplemented();
+    return unimplemented();
   }
 }
 
@@ -200,5 +200,5 @@ export async function connect(
   _network: Network,
   _address: string
 ): Promise<Conn> {
-  return notImplemented();
+  return unimplemented();
 }
