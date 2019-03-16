@@ -60,12 +60,7 @@ impl Behavior for CompilerBehavior {
     control: &[u8],
     zero_copy: deno_buf,
   ) -> (bool, Box<Op>) {
-    ops::dispatch_all(
-      Box::new(self),
-      control,
-      zero_copy,
-      ops::op_selector_compiler,
-    )
+    ops::dispatch_all(self, control, zero_copy, ops::op_selector_compiler)
   }
 }
 
