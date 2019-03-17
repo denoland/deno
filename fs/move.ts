@@ -1,18 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as path from "./path/mod.ts";
 import { exists, existsSync } from "./exists.ts";
+import { isSubdir } from "./utils.ts";
 
 interface MoveOptions {
   overwrite?: boolean;
-}
-
-function isSrcSubdir(src: string, dest: string): boolean {
-  const srcArray = src.split(path.sep);
-  const destArray = dest.split(path.sep);
-
-  return srcArray.reduce((acc, current, i) => {
-    return acc && destArray[i] === current;
-  }, true);
 }
 
 /** Moves a file or directory */
@@ -26,7 +18,7 @@ export async function move(
 
   const srcStat = await Deno.stat(src);
 
-  if (srcStat.isDirectory() && isSrcSubdir(src, dest)) {
+  if (srcStat.isDirectory() && isSubdir(src, dest)) {
     throw new Error(
       `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`
     );
@@ -56,7 +48,7 @@ export function moveSync(
 
   const srcStat = Deno.statSync(src);
 
-  if (srcStat.isDirectory() && isSrcSubdir(src, dest)) {
+  if (srcStat.isDirectory() && isSubdir(src, dest)) {
     throw new Error(
       `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`
     );
