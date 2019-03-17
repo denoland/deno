@@ -18,11 +18,8 @@ pub struct DenoPermissions {
   pub allow_net: AtomicBool,
   pub allow_env: AtomicBool,
   pub allow_run: AtomicBool,
-<<<<<<< HEAD
   pub no_prompts: AtomicBool,
-=======
   pub allow_high_precision: AtomicBool,
->>>>>>> Add high precision permission
 }
 
 impl DenoPermissions {
@@ -33,11 +30,8 @@ impl DenoPermissions {
       allow_env: AtomicBool::new(flags.allow_env),
       allow_net: AtomicBool::new(flags.allow_net),
       allow_run: AtomicBool::new(flags.allow_run),
-<<<<<<< HEAD
       no_prompts: AtomicBool::new(flags.no_prompts),
-=======
       allow_high_precision: AtomicBool::new(flags.allow_high_precision),
->>>>>>> Add high precision permission
     }
   }
 
