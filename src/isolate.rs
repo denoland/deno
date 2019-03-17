@@ -31,6 +31,7 @@ use std::cell::RefCell;
 use std::env;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::time::Instant;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -64,6 +65,7 @@ pub struct Isolate {
   pub modules: RefCell<Modules>,
   pub state: Arc<IsolateState>,
   pub permissions: Arc<DenoPermissions>,
+  pub start_time: Instant
 }
 
 pub type WorkerSender = async_mpsc::Sender<Buf>;
@@ -99,7 +101,7 @@ impl IsolateState {
       flags,
       metrics: Metrics::default(),
       worker_channels: worker_channels.map(Mutex::new),
-      global_timer: Mutex::new(GlobalTimer::new()),
+      global_timer: Mutex::new(GlobalTimer::new())
     }
   }
 
@@ -197,6 +199,7 @@ impl Isolate {
       modules: RefCell::new(Modules::new()),
       state,
       permissions: Arc::new(permissions),
+      start_time: Instant::now()
     };
 
     // Run init script if present.
