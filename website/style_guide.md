@@ -147,7 +147,7 @@ export function pwrite(options: PWrite) {}
 
 ## TODO Comments
 
-TODO comments should be include an issue or the author's github username in
+TODO comments should include an issue or the author's github username in
 parentheses. Example:
 
 ```ts
