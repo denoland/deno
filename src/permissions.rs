@@ -6,6 +6,7 @@ use crate::flags::DenoFlags;
 use ansi_term::Style;
 use crate::errors::permission_denied;
 use crate::errors::DenoResult;
+use std::fmt;
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -33,6 +34,16 @@ impl From<bool> for PermissionAccessorState {
     match val {
       true => PermissionAccessorState::Allow,
       false => PermissionAccessorState::Ask,
+    }
+  }
+}
+
+impl fmt::Display for PermissionAccessorState {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      PermissionAccessorState::Allow => f.pad("Allow"),
+      PermissionAccessorState::Ask => f.pad("Ask"),
+      PermissionAccessorState::Deny => f.pad("Deny"),
     }
   }
 }
@@ -159,7 +170,7 @@ impl DenoPermissions {
       {
         Err(e) => Err(e),
         Ok(v) => {
-          self.allow_run.update_with_prompt_result(&v);
+          self.allow_read.update_with_prompt_result(&v);
           v.check()?;
           Ok(())
         }
@@ -176,7 +187,7 @@ impl DenoPermissions {
       {
         Err(e) => Err(e),
         Ok(v) => {
-          self.allow_run.update_with_prompt_result(&v);
+          self.allow_write.update_with_prompt_result(&v);
           v.check()?;
           Ok(())
         }
@@ -193,7 +204,7 @@ impl DenoPermissions {
       ) {
         Err(e) => Err(e),
         Ok(v) => {
-          self.allow_run.update_with_prompt_result(&v);
+          self.allow_net.update_with_prompt_result(&v);
           v.check()?;
           Ok(())
         }
@@ -209,7 +220,7 @@ impl DenoPermissions {
         match self.try_permissions_prompt("access to environment variables") {
           Err(e) => Err(e),
           Ok(v) => {
-            self.allow_run.update_with_prompt_result(&v);
+            self.allow_env.update_with_prompt_result(&v);
             v.check()?;
             Ok(())
           }
@@ -293,6 +304,17 @@ impl PromptResult {
       PromptResult::DenyOnce => Err(permission_denied()),
       PromptResult::DenyAlways => Err(permission_denied()),
       _ => Ok(()),
+    }
+  }
+}
+
+impl fmt::Display for PromptResult {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      PromptResult::AllowAlways => f.pad("AllowAlways"),
+      PromptResult::AllowOnce => f.pad("AllowOnce"),
+      PromptResult::DenyOnce => f.pad("DenyOnce"),
+      PromptResult::DenyAlways => f.pad("DenyAlways"),
     }
   }
 }
