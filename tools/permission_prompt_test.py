@@ -52,178 +52,122 @@ def wrap_test(test_method, test_name):
 
 
 class Prompt(object):
-    def __init__(self, deno_exe):
+    def __init__(self, deno_exe, test_types):
         self.deno_exe = deno_exe
+        self.test_types = test_types
 
-    def run(self,
-            arg,
-            bytes_input,
-            allow_read=False,
-            allow_write=False,
-            allow_net=False,
-            allow_env=False,
-            allow_run=False,
-            no_prompt=False):
+    def run(self, arg, bytes_input, args=[]):
         "Returns (return_code, stdout, stderr)."
-        cmd = [self.deno_exe, PERMISSIONS_PROMPT_TEST_TS, arg]
-        if allow_read:
-            cmd.append("--allow-read")
-        if allow_write:
-            cmd.append("--allow-write")
-        if allow_net:
-            cmd.append("--allow-net")
-        if allow_env:
-            cmd.append("--allow-env")
-        if allow_run:
-            cmd.append("--allow-run")
-        if no_prompt:
-            cmd.append("--no-prompt")
+        cmd = [self.deno_exe, PERMISSIONS_PROMPT_TEST_TS, arg] + args
         return tty_capture(cmd, bytes_input)
 
     def warm_up(self):
         # ignore the ts compiling message
         self.run('needsWrite', b'', allow_write=True)
 
-    def test_read_yes(self):
-        sys.stdout.write("test_read_yes ...")
-        code, stdout, stderr = self.run('needsRead', b'y\n')
-        assert code == 0
-        assert stdout == b''
-        assert b'⚠️  Deno requests read access' in stderr
+    def test(self):
+        for test_type in self.test_types:
+            test_name_base = "test_" + test_type
+            sys.stdout.write(test_name_base + "_allow_flag" + " ... ")
+            self.test_allow_flag(test_type)
+            print green_ok()
+            sys.stdout.write(test_name_base + "_yes_yes" + " ... ")
+            self.test_yes_yes(test_type)
+            print green_ok()
+            sys.stdout.write(test_name_base + "_yes_no" + " ... ")
+            self.test_yes_no(test_type)
+            print green_ok()
+            sys.stdout.write(test_name_base + "_no_no" + " ... ")
+            self.test_no_no(test_type)
+            print green_ok()
+            sys.stdout.write(test_name_base + "_no_yes" + " ... ")
+            self.test_no_yes(test_type)
+            print green_ok()
+            sys.stdout.write(test_name_base + "_allow" + " ... ")
+            self.test_allow(test_type)
+            print green_ok()
+            sys.stdout.write(test_name_base + "_deny" + " ... ")
+            self.test_deny(test_type)
+            print green_ok()
+            sys.stdout.write(test_name_base + "_unrecognized_option" + " ... ")
+            self.test_unrecognized_option(test_type)
+            print green_ok()
+            sys.stdout.write(test_name_base + "_no_prompt" + " ... ")
+            self.test_no_prompt(test_type)
+            print green_ok()
 
-    def test_read_arg(self):
-        code, stdout, stderr = self.run('needsRead', b'', allow_read=True)
+    def test_allow_flag(self, test_type):
+        code, stdout, stderr = self.run("needs" + test_type.capitalize(), b'',
+                                        ["--allow-" + test_type])
         assert code == 0
-        assert stdout == b''
-        assert stderr == b''
 
-    def test_read_no(self):
-        code, _stdout, stderr = self.run('needsRead', b'N\n')
+    def test_yes_yes(self, test_type):
+        code, stdout, stderr = self.run("needs" + test_type.capitalize(),
+                                        b'y\ny\n')
+        assert code == 0
+        assert b'⚠️  Deno requests' in stderr
+
+    def test_yes_no(self, test_type):
+        code, stdout, stderr = self.run("needs" + test_type.capitalize(),
+                                        b'y\nn\n')
         assert code == 1
         assert b'PermissionDenied: permission denied' in stderr
-        assert b'⚠️  Deno requests read access' in stderr
+        assert b'⚠️  Deno requests' in stderr
+        assert not b'First check failed' in stdout
 
-    def test_read_no_prompt(self):
-        code, _stdout, stderr = self.run('needsRead', b'', no_prompt=True)
+    def test_no_no(self, test_type):
+        code, stdout, stderr = self.run("needs" + test_type.capitalize(),
+                                        b'n\nn\n')
         assert code == 1
         assert b'PermissionDenied: permission denied' in stderr
+        assert b'⚠️  Deno requests' in stderr
+        assert b'First check failed' in stdout
 
-    def test_write_yes(self):
-        code, stdout, stderr = self.run('needsWrite', b'y\n')
+    def test_no_yes(self, test_type):
+        code, stdout, stderr = self.run("needs" + test_type.capitalize(),
+                                        b'n\ny\n')
         assert code == 0
-        assert stdout == b''
-        assert b'⚠️  Deno requests write access' in stderr
+        assert not b'PermissionDenied: permission denied' in stderr
+        assert b'⚠️  Deno requests' in stderr
+        assert b'First check failed' in stdout
 
-    def test_write_arg(self):
-        code, stdout, stderr = self.run('needsWrite', b'', allow_write=True)
+    def test_allow(self, test_type):
+        code, stdout, stderr = self.run("needs" + test_type.capitalize(),
+                                        b'a\n')
         assert code == 0
-        assert stdout == b''
-        assert stderr == b''
+        assert b'⚠️  Deno requests' in stderr
+        assert not b'PermissionDenied: permission denied' in stderr
+        assert not b'First check failed' in stdout
 
-    def test_write_no(self):
-        code, _stdout, stderr = self.run('needsWrite', b'N\n')
+    def test_deny(self, test_type):
+        code, stdout, stderr = self.run("needs" + test_type.capitalize(),
+                                        b'd\n')
         assert code == 1
+        assert b'⚠️  Deno requests' in stderr
         assert b'PermissionDenied: permission denied' in stderr
-        assert b'⚠️  Deno requests write access' in stderr
+        assert b'First check failed' in stdout
 
-    def test_write_no_prompt(self):
-        code, _stdout, stderr = self.run('needsWrite', b'', no_prompt=True)
-        assert code == 1
-        assert b'PermissionDenied: permission denied' in stderr
-
-    def test_env_yes(self):
-        code, stdout, stderr = self.run('needsEnv', b'y\n')
+    def test_unrecognized_option(self, test_type):
+        code, stdout, stderr = self.run("needs" + test_type.capitalize(),
+                                        b'e\na\n')
         assert code == 0
-        assert stdout == b''
-        assert b'⚠️  Deno requests access to environment' in stderr
+        assert b'Unrecognized option' in stderr
+        assert b'⚠️  Deno requests' in stderr
+        assert not b'PermissionDenied: permission denied' in stderr
+        assert not b'First check failed' in stdout
 
-    def test_env_arg(self):
-        code, stdout, stderr = self.run('needsEnv', b'', allow_env=True)
-        assert code == 0
-        assert stdout == b''
-        assert stderr == b''
-
-    def test_env_no(self):
-        code, _stdout, stderr = self.run('needsEnv', b'N\n')
+    def test_no_prompt(self, test_type):
+        code, stdout, stderr = self.run("needs" + test_type.capitalize(), b'',
+                                        ["--no-prompt"])
         assert code == 1
+        assert not b'⚠️  Deno requests' in stderr
         assert b'PermissionDenied: permission denied' in stderr
-        assert b'⚠️  Deno requests access to environment' in stderr
-
-    def test_env_no_prompt(self):
-        code, _stdout, stderr = self.run('needsEnv', b'', no_prompt=True)
-        assert code == 1
-        assert b'PermissionDenied: permission denied' in stderr
-
-    def test_net_yes(self):
-        code, stdout, stderr = self.run('needsEnv', b'y\n')
-        assert code == 0
-        assert stdout == b''
-        assert b'⚠️  Deno requests access to environment' in stderr
-
-    def test_net_arg(self):
-        code, stdout, stderr = self.run('needsNet', b'', allow_net=True)
-        assert code == 0
-        assert stdout == b''
-        assert stderr == b''
-
-    def test_net_no(self):
-        code, _stdout, stderr = self.run('needsNet', b'N\n')
-        assert code == 1
-        assert b'PermissionDenied: permission denied' in stderr
-        assert b'⚠️  Deno requests network access' in stderr
-
-    def test_net_no_prompt(self):
-        code, _stdout, stderr = self.run('needsNet', b'', no_prompt=True)
-        assert code == 1
-        assert b'PermissionDenied: permission denied' in stderr
-
-    def test_run_yes(self):
-        code, stdout, stderr = self.run('needsRun', b'a\n')
-        assert code == 0
-        assert stdout == b'hello'
-        assert b'⚠️  Deno requests access to run' in stderr
-
-    def test_run_arg(self):
-        code, stdout, stderr = self.run('needsRun', b'', allow_run=True)
-        assert code == 0
-        assert stdout == b'hello'
-        assert stderr == b''
-
-    def test_run_no(self):
-        code, _stdout, stderr = self.run('needsRun', b'N\n')
-        assert code == 1
-        assert b'PermissionDenied: permission denied' in stderr
-        assert b'⚠️  Deno requests access to run' in stderr
-
-    def test_run_no_prompt(self):
-        code, _stdout, stderr = self.run('needsRun', b'', no_prompt=True)
-        assert code == 1
-        assert b'PermissionDenied: permission denied' in stderr
+        assert b'First check failed' in stdout
 
 
 def permission_prompt_test(deno_exe):
-    p = Prompt(deno_exe)
-    wrap_test(p.warm_up, "warm_up")
-    wrap_test(p.test_read_yes, "read_yes")
-    wrap_test(p.test_read_arg, "read_arg")
-    wrap_test(p.test_read_no, "read_no")
-    wrap_test(p.test_read_no_prompt, "read_no_prompts")
-    wrap_test(p.test_write_yes, "write_yes")
-    wrap_test(p.test_write_arg, "write_arg")
-    wrap_test(p.test_write_no, "write_no")
-    wrap_test(p.test_write_no_prompt, "write_no_prompts")
-    wrap_test(p.test_env_yes, "env_yes")
-    wrap_test(p.test_env_arg, "env_arg")
-    wrap_test(p.test_env_no, "env_no")
-    wrap_test(p.test_env_no_prompt, "env_no_prompts")
-    wrap_test(p.test_net_yes, "net_yes")
-    wrap_test(p.test_net_arg, "net_arg")
-    wrap_test(p.test_net_no, "net_no")
-    wrap_test(p.test_net_no_prompt, "net_no_prompts")
-    wrap_test(p.test_run_yes, "run_yes")
-    wrap_test(p.test_run_arg, "run_arg")
-    wrap_test(p.test_run_no, "run_no")
-    wrap_test(p.test_run_no_prompt, "run_no_prompts")
+    p = Prompt(deno_exe, ["read", "write", "env", "net", "run"])
+    p.test()
 
 
 def main():
