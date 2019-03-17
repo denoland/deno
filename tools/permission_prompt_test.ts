@@ -35,7 +35,7 @@ const test = {
     }
     listen("tcp", "127.0.0.1:4541");
   },
-  needsRun: async () => {
+  needsRun: () => {
     try {
       const process = run({
         args: [

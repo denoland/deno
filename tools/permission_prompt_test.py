@@ -56,14 +56,16 @@ class Prompt(object):
         self.deno_exe = deno_exe
         self.test_types = test_types
 
-    def run(self, arg, bytes_input, args=[]):
+    def run(self, arg, bytes_input, args=None):
         "Returns (return_code, stdout, stderr)."
+        if args is None:
+            args = []
         cmd = [self.deno_exe, PERMISSIONS_PROMPT_TEST_TS, arg] + args
         return tty_capture(cmd, bytes_input)
 
     def warm_up(self):
         # ignore the ts compiling message
-        self.run('needsWrite', b'', allow_write=True)
+        self.run('needsWrite', b'', ["--allow-write"])
 
     def test(self):
         for test_type in self.test_types:
@@ -95,74 +97,92 @@ class Prompt(object):
             sys.stdout.write(test_name_base + "_no_prompt" + " ... ")
             self.test_no_prompt(test_type)
             print green_ok()
+            sys.stdout.write(test_name_base + "_no_prompt_allow" + " ... ")
+            self.test_no_prompt_allow(test_type)
+            print green_ok()
 
     def test_allow_flag(self, test_type):
         code, stdout, stderr = self.run("needs" + test_type.capitalize(), b'',
                                         ["--allow-" + test_type])
         assert code == 0
+        assert not b'⚠️  Deno requests' in stderr
+        assert not b'First check failed' in stdout
+        assert not b'PermissionDenied: permission denied' in stderr
 
     def test_yes_yes(self, test_type):
         code, stdout, stderr = self.run("needs" + test_type.capitalize(),
                                         b'y\ny\n')
         assert code == 0
         assert b'⚠️  Deno requests' in stderr
+        assert not b'First check failed' in stdout
+        assert not b'PermissionDenied: permission denied' in stderr
 
     def test_yes_no(self, test_type):
         code, stdout, stderr = self.run("needs" + test_type.capitalize(),
                                         b'y\nn\n')
         assert code == 1
-        assert b'PermissionDenied: permission denied' in stderr
         assert b'⚠️  Deno requests' in stderr
         assert not b'First check failed' in stdout
+        assert b'PermissionDenied: permission denied' in stderr
 
     def test_no_no(self, test_type):
         code, stdout, stderr = self.run("needs" + test_type.capitalize(),
                                         b'n\nn\n')
         assert code == 1
-        assert b'PermissionDenied: permission denied' in stderr
         assert b'⚠️  Deno requests' in stderr
         assert b'First check failed' in stdout
+        assert b'PermissionDenied: permission denied' in stderr
 
     def test_no_yes(self, test_type):
         code, stdout, stderr = self.run("needs" + test_type.capitalize(),
                                         b'n\ny\n')
         assert code == 0
-        assert not b'PermissionDenied: permission denied' in stderr
+
         assert b'⚠️  Deno requests' in stderr
         assert b'First check failed' in stdout
+        assert not b'PermissionDenied: permission denied' in stderr
 
     def test_allow(self, test_type):
         code, stdout, stderr = self.run("needs" + test_type.capitalize(),
                                         b'a\n')
         assert code == 0
         assert b'⚠️  Deno requests' in stderr
-        assert not b'PermissionDenied: permission denied' in stderr
         assert not b'First check failed' in stdout
+        assert not b'PermissionDenied: permission denied' in stderr
 
     def test_deny(self, test_type):
         code, stdout, stderr = self.run("needs" + test_type.capitalize(),
                                         b'd\n')
         assert code == 1
         assert b'⚠️  Deno requests' in stderr
-        assert b'PermissionDenied: permission denied' in stderr
         assert b'First check failed' in stdout
+        assert b'PermissionDenied: permission denied' in stderr
 
     def test_unrecognized_option(self, test_type):
         code, stdout, stderr = self.run("needs" + test_type.capitalize(),
                                         b'e\na\n')
         assert code == 0
-        assert b'Unrecognized option' in stderr
         assert b'⚠️  Deno requests' in stderr
-        assert not b'PermissionDenied: permission denied' in stderr
         assert not b'First check failed' in stdout
+        assert not b'PermissionDenied: permission denied' in stderr
+        assert b'Unrecognized option' in stderr
 
     def test_no_prompt(self, test_type):
         code, stdout, stderr = self.run("needs" + test_type.capitalize(), b'',
                                         ["--no-prompt"])
         assert code == 1
         assert not b'⚠️  Deno requests' in stderr
-        assert b'PermissionDenied: permission denied' in stderr
         assert b'First check failed' in stdout
+        assert b'PermissionDenied: permission denied' in stderr
+
+    def test_no_prompt_allow(self, test_type):
+        code, stdout, stderr = self.run(
+            "needs" + test_type.capitalize(), b'',
+            ["--no-prompt", "--allow-" + test_type])
+        assert code == 0
+        assert not b'⚠️  Deno requests' in stderr
+        assert not b'First check failed' in stdout
+        assert not b'PermissionDenied: permission denied' in stderr
 
 
 def permission_prompt_test(deno_exe):
