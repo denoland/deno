@@ -1,4 +1,13 @@
 #!/usr/bin/env deno --allow-run --allow-write
+/**
+ * Copyright © James Long and contributors
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
@@ -19,6 +28,32 @@ Options:
   --check                    Check if the source files are formatted.
   --ignore <path>            Ignore the given path(s).
 
+JS/TS Styling Options:
+  --print-width <int>        The line length where Prettier will try wrap.
+                             Defaults to 80.
+  --tab-width <int>          Number of spaces per indentation level.
+                             Defaults to 2.
+  --use-tabs                 Indent with tabs instead of spaces.
+                             Defaults to false.
+  --no-semi                  Do not print semicolons, except at the beginning of lines which may need them.
+  --single-quote             Use single quotes instead of double quotes.
+                             Defaults to false.
+  --trailing-comma <none|es5|all>
+                             Print trailing commas wherever possible when multi-line.
+                             Defaults to none.
+  --no-bracket-spacing       Do not print spaces between brackets.
+  --arrow-parens <avoid|always>
+                             Include parentheses around a sole arrow function parameter.
+                             Defaults to avoid.
+  --end-of-line <auto|lf|crlf|cr>
+                             Which end of line characters to apply.
+                             Defaults to auto.
+
+Markdown Styling Options:
+  --prose-wrap <always|never|preserve>
+                             How to wrap prose.
+                             Defaults to preserve.
+
 Example:
   deno prettier/main.ts script1.ts script2.js
                              Formats the files
@@ -32,6 +67,19 @@ Example:
 
 // Available parsers
 type ParserLabel = "typescript" | "babel" | "markdown" | "json";
+
+interface PrettierOptions {
+  printWidth: number;
+  tabWidth: number;
+  useTabs: boolean;
+  semi: boolean;
+  singleQuote: boolean;
+  trailingComma: string;
+  bracketSpacing: boolean;
+  arrowParens: string;
+  proseWrap: string;
+  endOfLine: string;
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -53,7 +101,8 @@ async function readFileIfExists(filename: string): Promise<string | null> {
  */
 async function checkFile(
   filename: string,
-  parser: ParserLabel
+  parser: ParserLabel,
+  prettierOpts: PrettierOptions
 ): Promise<boolean> {
   const text = await readFileIfExists(filename);
 
@@ -63,6 +112,7 @@ async function checkFile(
   }
 
   const formatted = prettier.check(text, {
+    ...prettierOpts,
     parser,
     plugins: prettierPlugins
   });
@@ -80,7 +130,8 @@ async function checkFile(
  */
 async function formatFile(
   filename: string,
-  parser: ParserLabel
+  parser: ParserLabel,
+  prettierOpts: PrettierOptions
 ): Promise<void> {
   const text = await readFileIfExists(filename);
 
@@ -90,6 +141,7 @@ async function formatFile(
   }
 
   const formatted = prettier.format(text, {
+    ...prettierOpts,
     parser,
     plugins: prettierPlugins
   });
@@ -122,14 +174,15 @@ function selectParser(path: string): ParserLabel | null {
  * If paths are empty, then checks all the files.
  */
 async function checkSourceFiles(
-  files: AsyncIterableIterator<FileInfo>
+  files: AsyncIterableIterator<FileInfo>,
+  prettierOpts: PrettierOptions
 ): Promise<void> {
   const checks: Array<Promise<boolean>> = [];
 
   for await (const file of files) {
     const parser = selectParser(file.path);
     if (parser) {
-      checks.push(checkFile(file.path, parser));
+      checks.push(checkFile(file.path, parser, prettierOpts));
     }
   }
 
@@ -149,14 +202,15 @@ async function checkSourceFiles(
  * If paths are empty, then formats all the files.
  */
 async function formatSourceFiles(
-  files: AsyncIterableIterator<FileInfo>
+  files: AsyncIterableIterator<FileInfo>,
+  prettierOpts: PrettierOptions
 ): Promise<void> {
   const formats: Array<Promise<void>> = [];
 
   for await (const file of files) {
     const parser = selectParser(file.path);
     if (parser) {
-      formats.push(formatFile(file.path, parser));
+      formats.push(formatFile(file.path, parser, prettierOpts));
     }
   }
 
@@ -166,6 +220,19 @@ async function formatSourceFiles(
 
 async function main(opts): Promise<void> {
   const { help, ignore, check, _: args } = opts;
+
+  const prettierOpts: PrettierOptions = {
+    printWidth: Number(opts["print-width"]),
+    tabWidth: Number(opts["tab-width"]),
+    useTabs: Boolean(opts["use-tabs"]),
+    semi: Boolean(opts["semi"]),
+    singleQuote: Boolean(opts["single-quote"]),
+    trailingComma: opts["trailing-comma"],
+    bracketSpacing: Boolean(opts["bracket-spacing"]),
+    arrowParens: opts["arrow-parens"],
+    proseWrap: opts["prose-wrap"],
+    endOfLine: opts["end-of-line"]
+  };
 
   if (help) {
     console.log(HELP_MESSAGE);
@@ -180,9 +247,9 @@ async function main(opts): Promise<void> {
   const files = walk(".", { match, skip });
   try {
     if (check) {
-      await checkSourceFiles(files);
+      await checkSourceFiles(files, prettierOpts);
     } else {
-      await formatSourceFiles(files);
+      await formatSourceFiles(files, prettierOpts);
     }
   } catch (e) {
     console.log(e);
@@ -192,10 +259,35 @@ async function main(opts): Promise<void> {
 
 main(
   parse(args.slice(1), {
-    string: ["ignore"],
-    boolean: ["check", "help"],
+    string: [
+      "ignore",
+      "printWidth",
+      "tab-width",
+      "trailing-comma",
+      "arrow-parens",
+      "prose-wrap",
+      "end-of-line"
+    ],
+    boolean: [
+      "check",
+      "help",
+      "semi",
+      "use-tabs",
+      "single-quote",
+      "bracket-spacing"
+    ],
     default: {
-      ignore: []
+      ignore: [],
+      "print-width": "80",
+      "tab-width": "2",
+      "use-tabs": false,
+      semi: true,
+      "single-quote": false,
+      "trailing-comma": "none",
+      "bracket-spacing": true,
+      "arrow-parens": "avoid",
+      "prose-wrap": "preserve",
+      "end-of-line": "auto"
     },
     alias: {
       H: "help"
