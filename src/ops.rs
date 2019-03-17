@@ -199,7 +199,7 @@ fn op_now(
   // return the result as nanos u128
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
   if !_isolate.permissions.allows_high_precision() {
-    time = round::ceil(since_the_epoch / 1000, 0) * 1000
+    time = math::round::ceil(since_the_epoch / 1000, 0) * 1000
   }
 
   let builder = &mut FlatBufferBuilder::new();
@@ -1913,11 +1913,8 @@ mod tests {
       allow_env: AtomicBool::new(true),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
-<<<<<<< HEAD
-      ..Default::default()
-=======
       allow_high_precision: AtomicBool::new(false),
->>>>>>> Add high precision permission
+      ..Default::default()
     };
     let isolate = Isolate::new(
       IsolateInit {
@@ -1964,11 +1961,8 @@ mod tests {
       allow_env: AtomicBool::new(true),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(true),
-<<<<<<< HEAD
-      ..Default::default()
-=======
       allow_high_precision: AtomicBool::new(false),
->>>>>>> Add high precision permission
+      ..Default::default()
     };
     let isolate = Isolate::new(
       IsolateInit {
@@ -2015,11 +2009,8 @@ mod tests {
       allow_env: AtomicBool::new(true),
       allow_net: AtomicBool::new(false),
       allow_run: AtomicBool::new(true),
-<<<<<<< HEAD
-      ..Default::default()
-=======
       allow_high_precision: AtomicBool::new(false),
->>>>>>> Add high precision permission
+      ..Default::default()
     };
     let isolate = Isolate::new(
       IsolateInit {
@@ -2066,11 +2057,8 @@ mod tests {
       allow_env: AtomicBool::new(false),
       allow_net: AtomicBool::new(true),
       allow_run: AtomicBool::new(false),
-<<<<<<< HEAD
-      ..Default::default()
-=======
       allow_high_precision: AtomicBool::new(false),
->>>>>>> Add high precision permission
+      ..Default::default()
     };
     let isolate = Isolate::new(
       IsolateInit {
