@@ -18,6 +18,7 @@ use crate::resources;
 use crate::resources::table_entries;
 use crate::resources::Resource;
 use crate::tokio_util;
+use crate::tokio_write;
 use crate::version;
 use deno_core::deno_buf;
 use deno_core::JSError;
@@ -918,7 +919,7 @@ fn op_read(
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      let op = resources::eager_read(resource, data)
+      let op = tokio::io::read(resource, data)
         .map_err(DenoError::from)
         .and_then(move |(_resource, _buf, nread)| {
           let builder = &mut FlatBufferBuilder::new();
@@ -956,7 +957,7 @@ fn op_write(
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      let op = resources::eager_write(resource, data)
+      let op = tokio_write::write(resource, data)
         .map_err(DenoError::from)
         .and_then(move |(_resource, _buf, nwritten)| {
           let builder = &mut FlatBufferBuilder::new();
@@ -1551,7 +1552,7 @@ fn op_accept(
   match resources::lookup(server_rid) {
     None => odd_future(errors::bad_resource()),
     Some(server_resource) => {
-      let op = resources::eager_accept(server_resource)
+      let op = tokio_util::accept(server_resource)
         .map_err(DenoError::from)
         .and_then(move |(tcp_stream, _socket_addr)| {
           new_conn(cmd_id, tcp_stream)

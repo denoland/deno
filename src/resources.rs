@@ -9,8 +9,6 @@
 // handlers) look up resources by their integer id here.
 
 use crate::cli::Buf;
-#[cfg(unix)]
-use crate::eager_unix as eager;
 use crate::errors;
 use crate::errors::bad_resource;
 use crate::errors::DenoError;
@@ -18,11 +16,8 @@ use crate::errors::DenoResult;
 use crate::http_body::HttpBody;
 use crate::isolate_state::WorkerChannels;
 use crate::repl::Repl;
-use crate::tokio_util;
-use crate::tokio_write;
 
 use futures;
-use futures::future::{Either, FutureResult};
 use futures::Future;
 use futures::Poll;
 use futures::Sink;
@@ -39,7 +34,6 @@ use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
-use tokio_io;
 use tokio_process;
 
 pub type ResourceId = u32; // Sometimes referred to RID.
@@ -438,94 +432,6 @@ pub fn lookup(rid: ResourceId) -> Option<Resource> {
   debug!("resource lookup {}", rid);
   let table = RESOURCE_TABLE.lock().unwrap();
   table.get(&rid).map(|_| Resource { rid })
-}
-
-pub type EagerRead<R, T> =
-  Either<tokio_io::io::Read<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
-
-pub type EagerWrite<R, T> =
-  Either<tokio_write::Write<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
-
-pub type EagerAccept = Either<
-  tokio_util::Accept,
-  FutureResult<(tokio::net::TcpStream, std::net::SocketAddr), std::io::Error>,
->;
-
-#[cfg(not(unix))]
-#[allow(unused_mut)]
-pub fn eager_read<T: AsMut<[u8]>>(
-  resource: Resource,
-  mut buf: T,
-) -> EagerRead<Resource, T> {
-  Either::A(tokio_io::io::read(resource, buf))
-}
-
-#[cfg(not(unix))]
-pub fn eager_write<T: AsRef<[u8]>>(
-  resource: Resource,
-  buf: T,
-) -> EagerWrite<Resource, T> {
-  Either::A(tokio_write::write(resource, buf))
-}
-
-#[cfg(not(unix))]
-pub fn eager_accept(resource: Resource) -> EagerAccept {
-  Either::A(tokio_util::accept(resource))
-}
-
-// This is an optimization that Tokio should do.
-// Attempt to call read() on the main thread.
-#[cfg(unix)]
-pub fn eager_read<T: AsMut<[u8]>>(
-  resource: Resource,
-  buf: T,
-) -> EagerRead<Resource, T> {
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let maybe_repr = table.get_mut(&resource.rid);
-  match maybe_repr {
-    None => panic!("bad rid"),
-    Some(repr) => match repr {
-      Repr::TcpStream(ref mut tcp_stream) => {
-        eager::tcp_read(tcp_stream, resource, buf)
-      }
-      _ => Either::A(tokio_io::io::read(resource, buf)),
-    },
-  }
-}
-
-// This is an optimization that Tokio should do.
-// Attempt to call write() on the main thread.
-#[cfg(unix)]
-pub fn eager_write<T: AsRef<[u8]>>(
-  resource: Resource,
-  buf: T,
-) -> EagerWrite<Resource, T> {
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let maybe_repr = table.get_mut(&resource.rid);
-  match maybe_repr {
-    None => panic!("bad rid"),
-    Some(repr) => match repr {
-      Repr::TcpStream(ref mut tcp_stream) => {
-        eager::tcp_write(tcp_stream, resource, buf)
-      }
-      _ => Either::A(tokio_write::write(resource, buf)),
-    },
-  }
-}
-
-#[cfg(unix)]
-pub fn eager_accept(resource: Resource) -> EagerAccept {
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let maybe_repr = table.get_mut(&resource.rid);
-  match maybe_repr {
-    None => panic!("bad rid"),
-    Some(repr) => match repr {
-      Repr::TcpListener(ref mut tcp_listener, _) => {
-        eager::tcp_accept(tcp_listener, resource)
-      }
-      _ => Either::A(tokio_util::accept(resource)),
-    },
-  }
 }
 
 // TODO(kevinkassimo): revamp this after the following lands:
