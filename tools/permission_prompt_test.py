@@ -51,6 +51,7 @@ def tty_capture(cmd, bytes_input, timeout=5):
     p.wait()
     return p.returncode, res['stdout'], res['stderr']
 
+
 # Wraps a test in debug printouts
 # so we have visual indicator of what test failed
 def wrap_test(test_name, test_method, *argv):
