@@ -181,7 +181,6 @@ fn fetch_module_meta_data_and_maybe_compile(
 mod tests {
   use super::*;
   use crate::flags;
-  use crate::isolate_init::IsolateInit;
   use crate::permissions::DenoPermissions;
   use crate::tokio_util;
   use futures::future::lazy;
@@ -199,12 +198,8 @@ mod tests {
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let state_ = state.clone();
-    let init = IsolateInit {
-      snapshot: None,
-      init_script: None,
-    };
     tokio_util::run(lazy(move || {
-      let cli = Cli::new(init, state.clone(), DenoPermissions::default());
+      let cli = Cli::new(None, state.clone(), DenoPermissions::default());
       let mut isolate = Isolate::new(cli);
       if let Err(err) = isolate.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
@@ -226,12 +221,8 @@ mod tests {
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let state_ = state.clone();
-    let init = IsolateInit {
-      snapshot: None,
-      init_script: None,
-    };
     tokio_util::run(lazy(move || {
-      let cli = Cli::new(init, state.clone(), DenoPermissions::default());
+      let cli = Cli::new(None, state.clone(), DenoPermissions::default());
       let mut isolate = Isolate::new(cli);
       if let Err(err) = isolate.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
