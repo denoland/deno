@@ -115,7 +115,7 @@ impl<B: Behavior> Isolate<B> {
     let (startup_snapshot, startup_script) = match behavior.startup_data() {
       Some(StartupData::Snapshot(d)) => (Some(d), None),
       Some(StartupData::Script(d)) => (None, Some(d)),
-      _ => (None, None),
+      None => (None, None),
     };
     let config = libdeno::deno_config {
       will_snapshot: 0,
