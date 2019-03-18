@@ -24,7 +24,7 @@ lazy_static! {
 
 pub fn get_proxy_client() -> Client<ProxConnector, hyper::Body> {
   let c = CONNECTOR.clone();
-  let proxy_uri = Uri::from_static("http://locahost:9000/");
+  let proxy_uri = Uri::from_static(env!("HTTP_PROXY"));
   let mut proxy = Proxy::new(Intercept::All, proxy_uri);
   let proxy_connector = ProxyConnector::from_proxy(c, proxy).unwrap();
   Client::builder().build(proxy_connector)
@@ -67,7 +67,12 @@ fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
 // synchronous response, this utility method supports that.
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
   let url = module_name.parse::<Uri>().unwrap();
-  let client = get_proxy_client();
+  let client;
+  if Some(env()["HTTP_PROXY"]) {
+    client = get_proxy_client();
+  }else{
+    client = get_client();
+  }
   // TODO(kevinkassimo): consider set a max redirection counter
   // to avoid bouncing between 2 or more urls
   let fetch_future = loop_fn((client, url), |(client, url)| {
