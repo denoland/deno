@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-function assert(cond) {
+function assert(cond: boolean): void {
   if (!cond) {
     throw Error("assert");
   }
 }
 
-function main() {
+function main(): void {
   const q = Deno._sharedQueue;
 
   let h = q.head();

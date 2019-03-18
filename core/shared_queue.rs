@@ -216,10 +216,13 @@ mod tests {
     let behavior = TestBehavior::new();
     let mut isolate = Isolate::new(behavior);
     isolate.shared_init();
-    js_check(
-      isolate
-        .execute("shared_queue_test.js", include_str!("shared_queue_test.js")),
-    );
+    js_check(isolate.execute(
+      "shared_queue_test.js",
+      include_str!(concat!(
+        env!("GN_OUT_DIR"),
+        "/gen/core/shared_queue_test.js"
+      )),
+    ));
     assert_eq!(Ok(Async::Ready(())), isolate.poll());
   }
 }

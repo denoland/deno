@@ -1,4 +1,5 @@
 import("//build_extra/rust/rust.gni")
+import("//libdeno/deno.gni")
 
 group("default") {
   testonly = true
@@ -12,6 +13,7 @@ group("default") {
 deno_core_deps = [
   "../libdeno:libdeno_static_lib",
   "../libdeno:v8",
+  ":shared_queue",
 ]
 
 # deno_core does not depend on flatbuffers nor tokio.
@@ -21,6 +23,34 @@ main_extern = [
   "$rust_build:serde_json",
   "$rust_build:log",
 ]
+
+run_node("shared_queue") {
+  out_dir = target_gen_dir
+  sources = [
+    "shared_queue.ts"
+  ]
+  outputs = [
+    "$out_dir/shared_queue.js",
+    "$out_dir/shared_queue.js.map",
+    "$out_dir/shared_queue_test.js",
+    "$out_dir/shared_queue_test.js.map",
+  ]
+  args = [
+    rebase_path("../node_modules/typescript/bin/tsc", root_build_dir),
+    "--lib",
+    "esnext",
+    "--outDir",
+    rebase_path(out_dir, root_build_dir),
+    "--pretty",
+    "--removeComments",
+    "--sourceMap",
+    "--strict",
+    "--target",
+    "esnext",
+    rebase_path("shared_queue.ts", root_build_dir),
+    rebase_path("shared_queue_test.ts", root_build_dir)
+  ]
+}
 
 rust_crate("deno_core") {
   source_root = "lib.rs"

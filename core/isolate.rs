@@ -116,7 +116,10 @@ impl<B: Behavior> Isolate<B> {
 
   /// Executes a bit of built-in JavaScript to provide Deno._sharedQueue.
   pub fn shared_init(&self) {
-    js_check(self.execute("shared_queue.js", include_str!("shared_queue.js")));
+    js_check(self.execute(
+      "shared_queue.js",
+      include_str!(concat!(env!("GN_OUT_DIR"), "/gen/core/shared_queue.js")),
+    ));
   }
 
   extern "C" fn pre_dispatch(
