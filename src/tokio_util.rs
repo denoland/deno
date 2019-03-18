@@ -13,8 +13,8 @@ pub fn run<F>(future: F)
 where
   F: Future<Item = (), Error = ()> + Send + 'static,
 {
-  // tokio::runtime::current_thread::run(future)
-  tokio::run(future)
+  tokio::runtime::current_thread::run(future)
+  // tokio::run(future)
 }
 
 pub fn block_on<F, R, E>(future: F) -> Result<R, E>
