@@ -29,6 +29,7 @@ main_extern = [
   "$rust_build:getopts",
   "$rust_build:http",
   "$rust_build:hyper",
+  "$rust_build:hyper-proxy",
   "$rust_build:hyper_rustls",
   "$rust_build:lazy_static",
   "$rust_build:libc",
