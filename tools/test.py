@@ -104,9 +104,8 @@ def main(argv):
     # prompt.
     if os.name != 'nt':
         from is_tty_test import is_tty_test
-        # TODO(ry) Re-enable permission_prompt_test
-        # from permission_prompt_test import permission_prompt_test
-        # permission_prompt_test(deno_exe)
+        from permission_prompt_test import permission_prompt_test
+        permission_prompt_test(deno_exe)
         is_tty_test(deno_exe)
 
     repl_tests(deno_exe)
