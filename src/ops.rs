@@ -39,7 +39,6 @@ use std::net::Shutdown;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio;
@@ -373,19 +372,19 @@ fn op_fetch_module_meta_data(
   let referrer = inner.referrer().unwrap();
 
   // Check for allow read since this operation could be used to read from the file system.
-  if !isolate.permissions.allow_read.load(Ordering::SeqCst) {
+  if !isolate.permissions.allows_read() {
     debug!("No read permission for fetch_module_meta_data");
     return odd_future(permission_denied());
   }
 
   // Check for allow write since this operation could be used to write to the file system.
-  if !isolate.permissions.allow_write.load(Ordering::SeqCst) {
+  if !isolate.permissions.allows_write() {
     debug!("No network permission for fetch_module_meta_data");
     return odd_future(permission_denied());
   }
 
   // Check for allow net since this operation could be used to make https/http requests.
-  if !isolate.permissions.allow_net.load(Ordering::SeqCst) {
+  if !isolate.permissions.allows_net() {
     debug!("No network permission for fetch_module_meta_data");
     return odd_future(permission_denied());
   }
@@ -1887,18 +1886,16 @@ mod tests {
   use super::*;
   use crate::isolate::{Isolate, IsolateState};
   use crate::isolate_init::IsolateInit;
-  use crate::permissions::DenoPermissions;
-  use std::sync::atomic::AtomicBool;
+  use crate::permissions::{DenoPermissions, PermissionAccessor};
 
   #[test]
   fn fetch_module_meta_fails_without_read() {
     let state = IsolateState::mock();
     let permissions = DenoPermissions {
-      allow_read: AtomicBool::new(false),
-      allow_write: AtomicBool::new(true),
-      allow_env: AtomicBool::new(true),
-      allow_net: AtomicBool::new(true),
-      allow_run: AtomicBool::new(true),
+      allow_write: PermissionAccessor::from(true),
+      allow_env: PermissionAccessor::from(true),
+      allow_net: PermissionAccessor::from(true),
+      allow_run: PermissionAccessor::from(true),
       ..Default::default()
     };
     let isolate = Isolate::new(
@@ -1940,11 +1937,10 @@ mod tests {
   fn fetch_module_meta_fails_without_write() {
     let state = IsolateState::mock();
     let permissions = DenoPermissions {
-      allow_read: AtomicBool::new(true),
-      allow_write: AtomicBool::new(false),
-      allow_env: AtomicBool::new(true),
-      allow_net: AtomicBool::new(true),
-      allow_run: AtomicBool::new(true),
+      allow_read: PermissionAccessor::from(true),
+      allow_env: PermissionAccessor::from(true),
+      allow_net: PermissionAccessor::from(true),
+      allow_run: PermissionAccessor::from(true),
       ..Default::default()
     };
     let isolate = Isolate::new(
@@ -1986,11 +1982,10 @@ mod tests {
   fn fetch_module_meta_fails_without_net() {
     let state = IsolateState::mock();
     let permissions = DenoPermissions {
-      allow_read: AtomicBool::new(true),
-      allow_write: AtomicBool::new(true),
-      allow_env: AtomicBool::new(true),
-      allow_net: AtomicBool::new(false),
-      allow_run: AtomicBool::new(true),
+      allow_read: PermissionAccessor::from(true),
+      allow_write: PermissionAccessor::from(true),
+      allow_env: PermissionAccessor::from(true),
+      allow_run: PermissionAccessor::from(true),
       ..Default::default()
     };
     let isolate = Isolate::new(
@@ -2032,11 +2027,9 @@ mod tests {
   fn fetch_module_meta_not_permission_denied_with_permissions() {
     let state = IsolateState::mock();
     let permissions = DenoPermissions {
-      allow_read: AtomicBool::new(true),
-      allow_write: AtomicBool::new(true),
-      allow_env: AtomicBool::new(false),
-      allow_net: AtomicBool::new(true),
-      allow_run: AtomicBool::new(false),
+      allow_read: PermissionAccessor::from(true),
+      allow_write: PermissionAccessor::from(true),
+      allow_net: PermissionAccessor::from(true),
       ..Default::default()
     };
     let isolate = Isolate::new(
