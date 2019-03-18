@@ -2,7 +2,7 @@
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { red, bgBlue, setEnabled, getEnabled } from "./mod.ts";
-import "./example.ts";
+import "../examples/colors.ts";
 
 test(function singleColor() {
   assertEquals(red("Hello world"), "[31mHello world[39m");

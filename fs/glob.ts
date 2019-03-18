@@ -20,27 +20,24 @@ export interface GlobOptions {
  * Generate a regex based on glob pattern and options
  * This was meant to be using the the `fs.walk` function
  * but can be used anywhere else.
+ * Examples:
+ *
+ *    Looking for all the `ts` files:
+ *    walkSync(".", {
+ *      match: [glob("*.ts")]
+ *    })
+ *
+ *    Looking for all the `.json` files in any subfolder:
+ *    walkSync(".", {
+ *      match: [glob(join("a", "**", "*.json"),flags: "g",
+ *      extended: true,
+ *      globstar: true
+ *      })]
+ *    })
+ *
  * @param glob - Glob pattern to be used
  * @param options - Specific options for the glob pattern
  * @returns A RegExp for the glob pattern
- * @example
- * Looking for all the `ts` files
- * ```typescript
- * walkSync(".", {
- * match: [glob("*.ts")]
- * })
- * ```
- * @example
- * Looking for all the `.json` files in any subfolder
- * of the `a` folder
- * ```typescript
- * walkSync(".", {
- *  match: [glob(join("a", "**", "*.json"),flags: "g",
- *  extended: true,
- *  globstar: true
- *  })]
- * })
- * ```
  */
 export function glob(glob: string, options: GlobOptions = {}): RegExp {
   return globrex(glob, options).regex;
