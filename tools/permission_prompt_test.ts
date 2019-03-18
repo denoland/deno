@@ -1,13 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { args, listen, env, exit, makeTempDirSync, readFileSync, run } = Deno;
 
+const firstCheckFailedMessage = "First check failed";
+
 const name = args[1];
 const test = {
   needsRead: async () => {
     try {
       readFileSync("package.json");
     } catch (e) {
-      console.log("First check failed");
+      console.log(firstCheckFailedMessage);
     }
     readFileSync("package.json");
   },
@@ -15,7 +17,7 @@ const test = {
     try {
       makeTempDirSync();
     } catch (e) {
-      console.log("First check failed");
+      console.log(firstCheckFailedMessage);
     }
     makeTempDirSync();
   },
@@ -23,7 +25,7 @@ const test = {
     try {
       env().home;
     } catch (e) {
-      console.log("First check failed");
+      console.log(firstCheckFailedMessage);
     }
     env().home;
   },
@@ -31,7 +33,7 @@ const test = {
     try {
       listen("tcp", "127.0.0.1:4540");
     } catch (e) {
-      console.log("First check failed");
+      console.log(firstCheckFailedMessage);
     }
     listen("tcp", "127.0.0.1:4541");
   },
@@ -45,7 +47,7 @@ const test = {
         ]
       });
     } catch (e) {
-      console.log("First check failed");
+      console.log(firstCheckFailedMessage);
     }
     const process = run({
       args: [
