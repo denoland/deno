@@ -42,13 +42,15 @@ impl Future for PendingOp {
   }
 }
 
-/// Stores an init script for usage at init
+/// Stores a script used to initalize a Isolate
 pub struct StartupScript {
   pub source: String,
   pub filename: String,
 }
 
-/// Isolate init value
+/// Represents data used to initialize isolate at startup
+/// either a binary snapshot or a javascript source file
+/// in the form of the StartupScript struct.
 pub enum StartupData {
   Script(StartupScript),
   Snapshot(deno_buf),
@@ -56,8 +58,9 @@ pub enum StartupData {
 
 /// Defines the behavior of an Isolate.
 pub trait Behavior {
-  /// Called exactly once when an Isolate is created to retrieve the startup
-  /// snapshot.
+  /// Allow for a behavior to define the snapshot or script used at
+  /// startup to initalize the isolate. Called exactly once when an
+  /// Isolate is created.
   fn startup_data(&mut self) -> Option<StartupData>;
 
   /// Called during mod_instantiate() to resolve imports.

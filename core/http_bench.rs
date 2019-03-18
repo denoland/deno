@@ -170,6 +170,9 @@ impl Behavior for HttpBench {
 
 fn main() {
   let main_future = lazy(move || {
+    // TODO currently isolate.execute() must be run inside tokio, hence the
+    // lazy(). It would be nice to not have that contraint. Probably requires
+    // using v8::MicrotasksPolicy::kExplicit
     let isolate = deno_core::Isolate::new(HttpBench());
 
     isolate.then(|r| {
