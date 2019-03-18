@@ -6,18 +6,28 @@ use crate::tokio_util;
 use futures::future::{loop_fn, Loop};
 use futures::{future, Future, Stream};
 use hyper;
+use hyper_proxy;
 use hyper::client::{Client, HttpConnector};
 use hyper::header::CONTENT_TYPE;
 use hyper::Uri;
+use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use hyper_rustls;
 
 type Connector = hyper_rustls::HttpsConnector<HttpConnector>;
+type ProxConnector = hyper_proxy::ProxyConnector<Connector>;
 
 lazy_static! {
   static ref CONNECTOR: Connector = {
-    let num_dns_threads = 4;
-    Connector::new(num_dns_threads)
+    Connector::new(4)
   };
+}
+
+pub fn get_proxy_client() -> Client<ProxConnector, hyper::Body> {
+  let c = CONNECTOR.clone();
+  let proxy_uri = Uri::from_static("http://locahost:9000/");
+  let mut proxy = Proxy::new(Intercept::All, proxy_uri);
+  let proxy_connector = ProxyConnector::from_proxy(c, proxy).unwrap();
+  Client::builder().build(proxy_connector)
 }
 
 pub fn get_client() -> Client<Connector, hyper::Body> {
@@ -57,7 +67,7 @@ fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
 // synchronous response, this utility method supports that.
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
   let url = module_name.parse::<Uri>().unwrap();
-  let client = get_client();
+  let client = get_proxy_client();
   // TODO(kevinkassimo): consider set a max redirection counter
   // to avoid bouncing between 2 or more urls
   let fetch_future = loop_fn((client, url), |(client, url)| {
@@ -85,7 +95,8 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
         }
         Ok(Loop::Break(response))
       })
-  }).and_then(|response| {
+  })
+  .and_then(|response| {
     let content_type = response
       .headers()
       .get(CONTENT_TYPE)
@@ -96,7 +107,8 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
       .map(|body| String::from_utf8(body.to_vec()).unwrap())
       .map_err(DenoError::from);
     body.join(future::ok(content_type))
-  }).and_then(|(body_string, maybe_content_type)| {
+  })
+  .and_then(|(body_string, maybe_content_type)| {
     future::ok((body_string, maybe_content_type.unwrap()))
   });
 
