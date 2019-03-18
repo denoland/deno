@@ -35,9 +35,6 @@ mod tokio_write;
 pub mod version;
 pub mod workers;
 
-#[cfg(unix)]
-mod eager_unix;
-
 use crate::cli::Cli;
 use crate::errors::RustOrJsError;
 use crate::isolate::Isolate;
