@@ -154,7 +154,7 @@ deno_cargo_info = exec_script("build_extra/rust/get_cargo_info.py",
                               "json")
 
 rust_executable("deno") {
-  source_root = "src/main.rs"
+  source_root = "cli/main.rs"
   extern = main_extern
   deps = [
     ":deno_deps",
@@ -170,7 +170,7 @@ rust_executable("deno") {
 }
 
 rust_test("test_rs") {
-  source_root = "src/main.rs"
+  source_root = "cli/main.rs"
   extern = main_extern
   deps = [
     ":deno_deps",
@@ -257,13 +257,13 @@ bundle("compiler_bundle") {
 
 ts_flatbuffer("msg_ts") {
   sources = [
-    "src/msg.fbs",
+    "cli/msg.fbs",
   ]
 }
 
 rust_flatbuffer("msg_rs") {
   sources = [
-    "src/msg.fbs",
+    "cli/msg.fbs",
   ]
 }
 
