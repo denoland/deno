@@ -114,6 +114,8 @@ jobs:
       os: linux
       dist: xenial
       script:
+      - ./tools/lint.py
+      - ./tools/test_format.py
       - rustup target add aarch64-unknown-linux-gnu
       - sudo apt update
       - |-
@@ -136,6 +138,8 @@ jobs:
     - name: "cargo release linux x86_64"
       os: linux
       script:
+      - ./tools/lint.py
+      - ./tools/test_format.py
       - cargo build -vv --release --locked
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
@@ -145,6 +149,8 @@ jobs:
     - name: "lsan debug linux"
       os: linux
       script:
+      - ./tools/lint.py
+      - ./tools/test_format.py
       - echo is_asan=true >> target/debug/args.gn
       - echo is_lsan=true >> target/debug/args.gn
       # Call gn gen again to make sure new args are recognized.
