@@ -2,7 +2,7 @@
 
 /** Test whether or not the given path exists by checking with the file system */
 export async function exists(filePath: string): Promise<boolean> {
-  return Deno.stat(filePath)
+  return Deno.lstat(filePath)
     .then(() => true)
     .catch(() => false);
 }
@@ -10,7 +10,7 @@ export async function exists(filePath: string): Promise<boolean> {
 /** Test whether or not the given path exists by checking with the file system */
 export function existsSync(filePath: string): boolean {
   try {
-    Deno.statSync(filePath);
+    Deno.lstatSync(filePath);
     return true;
   } catch {
     return false;
