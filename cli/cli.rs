@@ -14,11 +14,6 @@ use deno_core::StartupData;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-// Buf represents a byte array returned from a "Op". The message might be empty
-// (which will be translated into a null object on the javascript side) or it is
-// a heap allocated opaque sequence of bytes.  Usually a flatbuffer message.
-pub type Buf = Box<[u8]>;
-
 /// Implements deno_core::Behavior for the main Deno command-line.
 pub struct Cli {
   startup_data: Option<StartupData>,
