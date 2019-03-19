@@ -13,6 +13,8 @@ use deno_core::Behavior;
 use deno_core::Op;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use tokio_threadpool::Builder;
+use tokio_threadpool::ThreadPool;
 
 // Buf represents a byte array returned from a "Op". The message might be empty
 // (which will be translated into a null object on the javascript side) or it is
@@ -22,6 +24,7 @@ pub type Buf = Box<[u8]>;
 /// Implements deno_core::Behavior for the main Deno command-line.
 pub struct Cli {
   init: IsolateInit,
+  pub pool: ThreadPool,
   pub state: Arc<IsolateState>,
   pub permissions: Arc<DenoPermissions>, // TODO(ry) move to IsolateState
 }
@@ -32,9 +35,11 @@ impl Cli {
     state: Arc<IsolateState>,
     permissions: DenoPermissions,
   ) -> Self {
+    let pool = Builder::new().pool_size(4).build();
     Self {
       init,
       state,
+      pool,
       permissions: Arc::new(permissions),
     }
   }

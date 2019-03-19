@@ -25,6 +25,7 @@ use deno_core::JSError;
 use deno_core::Op;
 use flatbuffers::FlatBufferBuilder;
 use futures;
+use futures::lazy;
 use futures::Async;
 use futures::Poll;
 use futures::Sink;
@@ -653,14 +654,16 @@ where
   }
 }
 
-fn blocking<F>(is_sync: bool, f: F) -> Box<OpWithError>
+fn blocking<F>(cli: &Cli, is_sync: bool, f: F) -> Box<OpWithError>
 where
   F: 'static + Send + FnOnce() -> DenoResult<Buf>,
 {
   if is_sync {
     Box::new(futures::future::result(f()))
   } else {
-    Box::new(tokio_util::poll_fn(move || convert_blocking(f)))
+    Box::new(cli.pool.spawn_handle(lazy(move || {
+      tokio_util::poll_fn(move || convert_blocking(f))
+    })))
   }
 }
 
@@ -683,7 +686,7 @@ fn op_make_temp_dir(
   let prefix = inner.prefix().map(String::from);
   let suffix = inner.suffix().map(String::from);
 
-  blocking(base.sync(), move || -> OpResult {
+  blocking(cli, base.sync(), move || -> OpResult {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
@@ -728,7 +731,7 @@ fn op_mkdir(
     return odd_future(e);
   }
 
-  blocking(base.sync(), move || {
+  blocking(cli, base.sync(), move || {
     debug!("op_mkdir {}", path);
     deno_fs::mkdir(Path::new(&path), mode, recursive)?;
     Ok(empty_buf())
@@ -749,7 +752,7 @@ fn op_chmod(
     return odd_future(e);
   }
 
-  blocking(base.sync(), move || {
+  blocking(cli, base.sync(), move || {
     debug!("op_chmod {}", &path);
     let path = PathBuf::from(&path);
     // Still check file/dir exists on windows
@@ -882,7 +885,7 @@ fn op_close(
 }
 
 fn op_shutdown(
-  _cli: &Cli,
+  cli: &Cli,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -898,7 +901,7 @@ fn op_shutdown(
         1 => Shutdown::Write,
         _ => unimplemented!(),
       };
-      blocking(base.sync(), move || {
+      blocking(cli, base.sync(), move || {
         // Use UFCS for disambiguation
         Resource::shutdown(&mut resource, shutdown_mode)?;
         Ok(empty_buf())
@@ -1019,7 +1022,7 @@ fn op_remove(
     return odd_future(e);
   }
 
-  blocking(base.sync(), move || {
+  blocking(cli, base.sync(), move || {
     debug!("op_remove {}", path.display());
     let metadata = fs::metadata(&path)?;
     if metadata.is_file() {
@@ -1048,7 +1051,7 @@ fn op_read_file(
   if let Err(e) = cli.check_read(&filename_) {
     return odd_future(e);
   }
-  blocking(base.sync(), move || {
+  blocking(cli, base.sync(), move || {
     let vec = fs::read(&filename)?;
     // Build the response message. memcpy data into inner.
     // TODO(ry) zero-copy.
@@ -1092,7 +1095,7 @@ fn op_copy_file(
   }
 
   debug!("op_copy_file {} {}", from.display(), to.display());
-  blocking(base.sync(), move || {
+  blocking(cli, base.sync(), move || {
     // On *nix, Rust deem non-existent path as invalid input
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is reolved, we should remove this workaround.
@@ -1170,7 +1173,7 @@ fn op_stat(
     return odd_future(e);
   }
 
-  blocking(base.sync(), move || {
+  blocking(cli, base.sync(), move || {
     let builder = &mut FlatBufferBuilder::new();
     debug!("op_stat {} {}", filename.display(), lstat);
     let metadata = if lstat {
@@ -1220,7 +1223,7 @@ fn op_read_dir(
     return odd_future(e);
   }
 
-  blocking(base.sync(), move || -> OpResult {
+  blocking(cli, base.sync(), move || -> OpResult {
     debug!("op_read_dir {}", path);
     let builder = &mut FlatBufferBuilder::new();
     let entries: Vec<_> = fs::read_dir(Path::new(&path))?
@@ -1283,7 +1286,7 @@ fn op_write_file(
     return odd_future(e);
   }
 
-  blocking(base.sync(), move || -> OpResult {
+  blocking(cli, base.sync(), move || -> OpResult {
     debug!("op_write_file {} {}", filename, data.len());
     deno_fs::write_file_2(
       Path::new(&filename),
@@ -1310,7 +1313,7 @@ fn op_rename(
   if let Err(e) = cli.check_write(&newpath_) {
     return odd_future(e);
   }
-  blocking(base.sync(), move || -> OpResult {
+  blocking(cli, base.sync(), move || -> OpResult {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     fs::rename(&oldpath, &newpath)?;
     Ok(empty_buf())
@@ -1338,7 +1341,7 @@ fn op_symlink(
       "Not implemented".to_string(),
     ));
   }
-  blocking(base.sync(), move || -> OpResult {
+  blocking(cli, base.sync(), move || -> OpResult {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
     std::os::unix::fs::symlink(&oldname, &newname)?;
@@ -1361,7 +1364,7 @@ fn op_read_link(
     return odd_future(e);
   }
 
-  blocking(base.sync(), move || -> OpResult {
+  blocking(cli, base.sync(), move || -> OpResult {
     debug!("op_read_link {}", name.display());
     let path = fs::read_link(&name)?;
     let builder = &mut FlatBufferBuilder::new();
@@ -1416,7 +1419,7 @@ fn op_repl_start(
 }
 
 fn op_repl_readline(
-  _cli: &Cli,
+  cli: &Cli,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1427,7 +1430,7 @@ fn op_repl_readline(
   let prompt = inner.prompt().unwrap().to_owned();
   debug!("op_repl_readline {} {}", rid, prompt);
 
-  blocking(base.sync(), move || -> OpResult {
+  blocking(cli, base.sync(), move || -> OpResult {
     let repl = resources::get_repl(rid)?;
     let line = repl.lock().unwrap().readline(&prompt)?;
 
@@ -1466,7 +1469,7 @@ fn op_truncate(
     return odd_future(e);
   }
 
-  blocking(base.sync(), move || {
+  blocking(cli, base.sync(), move || {
     debug!("op_truncate {} {}", filename, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
     f.set_len(u64::from(len))?;
