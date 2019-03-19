@@ -1,7 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
 use crate::isolate_state::IsolateState;
 use crate::isolate_state::IsolateStateContainer;
 use crate::ops;

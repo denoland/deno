@@ -63,6 +63,8 @@ type OpCreator =
   fn(sc: Box<&IsolateStateContainer>, base: &msg::Base<'_>, data: deno_buf)
     -> Box<OpWithError>;
 
+type OpSelector = fn(inner_type: msg::Any) -> DenoResult<Box<OpCreator>>;
+
 #[inline]
 fn empty_buf() -> Buf {
   Box::new([])
@@ -77,77 +79,22 @@ pub fn dispatch_cli(
   control: &[u8],
   zero_copy: deno_buf,
 ) -> (bool, Box<Op>) {
-  let bytes_sent_control = control.len();
-  let bytes_sent_zero_copy = zero_copy.len();
-  let base = msg::get_root_as_base(&control);
-  let is_sync = base.sync();
-  let inner_type = base.inner_type();
-  let cmd_id = base.cmd_id();
-
-  let op = match inner_type {
-    _ => match create_op_std(Box::new(&cli), &base, zero_copy) {
-      Ok(v) => v,
-      Err(_) => panic!(format!(
-        "Unhandled message {}",
-        msg::enum_name_any(inner_type)
-      )),
-    },
-  };
-
-  cli
-    .state
-    .metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
-  let state = cli.state.clone();
-
-  let boxed_op = Box::new(
-    op.or_else(move |err: DenoError| -> Result<Buf, ()> {
-      debug!("op err {}", err);
-      // No matter whether we got an Err or Ok, we want a serialized message to
-      // send back. So transform the DenoError into a deno_buf.
-      let builder = &mut FlatBufferBuilder::new();
-      let errmsg_offset = builder.create_string(&format!("{}", err));
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          error: Some(errmsg_offset),
-          error_kind: err.kind(),
-          ..Default::default()
-        },
-      ))
-    }).and_then(move |buf: Buf| -> Result<Buf, ()> {
-      // Handle empty responses. For sync responses we just want
-      // to send null. For async we want to send a small message
-      // with the cmd_id.
-      let buf = if is_sync || buf.len() > 0 {
-        buf
-      } else {
-        let builder = &mut FlatBufferBuilder::new();
-        serialize_response(
-          cmd_id,
-          builder,
-          msg::BaseArgs {
-            ..Default::default()
-          },
-        )
-      };
-      state.metrics_op_completed(buf.len());
-      Ok(buf)
-    }).map_err(|err| panic!("unexpected error {:?}", err)),
-  );
-
-  debug!(
-    "msg_from_js {} sync {}",
-    msg::enum_name_any(inner_type),
-    base.sync()
-  );
-  (base.sync(), boxed_op)
+  dispatch_all(Box::new(cli), control, zero_copy, op_selector_std)
 }
 
 pub fn dispatch_compiler(
   compiler: &CompilerBehavior,
   control: &[u8],
   zero_copy: deno_buf,
+) -> (bool, Box<Op>) {
+  dispatch_all(Box::new(compiler), control, zero_copy, op_selector_compiler)
+}
+
+pub fn dispatch_all(
+  sc: Box<&IsolateStateContainer>,
+  control: &[u8],
+  zero_copy: deno_buf,
+  op_selector: OpSelector,
 ) -> (bool, Box<Op>) {
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.len();
@@ -156,23 +103,19 @@ pub fn dispatch_compiler(
   let inner_type = base.inner_type();
   let cmd_id = base.cmd_id();
 
-  let op = match inner_type {
-    msg::Any::FetchModuleMetaData => {
-      op_fetch_module_meta_data(Box::new(&compiler), &base, zero_copy)
-    }
-    _ => match create_op_std(Box::new(&compiler), &base, zero_copy) {
-      Ok(v) => v,
-      Err(_) => panic!(format!(
-        "Unhandled message {}",
-        msg::enum_name_any(inner_type)
-      )),
-    },
+  let op_func: Box<OpCreator> = match op_selector(inner_type) {
+    Ok(v) => v,
+    Err(_) => panic!(format!(
+      "Unhandled message {}",
+      msg::enum_name_any(inner_type)
+    )),
   };
 
-  compiler
-    .state
-    .metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
-  let state = compiler.state.clone();
+  let state = sc.state().clone();
+
+  let op: Box<OpWithError> = op_func(sc, &base, zero_copy);
+
+  state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
   let boxed_op = Box::new(
     op.or_else(move |err: DenoError| -> Result<Buf, ()> {
@@ -219,13 +162,20 @@ pub fn dispatch_compiler(
   (base.sync(), boxed_op)
 }
 
-pub fn create_op_std(
-  sc: Box<&IsolateStateContainer>,
-  base: &msg::Base<'_>,
-  zero_copy: deno_buf,
-) -> DenoResult<Box<OpWithError>> {
-  let inner_type = base.inner_type();
+pub fn op_selector_compiler(
+  inner_type: msg::Any,
+) -> DenoResult<Box<OpCreator>> {
+  let op_creator: Box<OpCreator> = match inner_type {
+    msg::Any::FetchModuleMetaData => Box::new(op_fetch_module_meta_data),
+    _ => match op_selector_std(inner_type) {
+      Ok(v) => v,
+      Err(e) => return Err(e),
+    },
+  };
+  Ok(op_creator)
+}
 
+pub fn op_selector_std(inner_type: msg::Any) -> DenoResult<Box<OpCreator>> {
   let op_creator: OpCreator = match inner_type {
     msg::Any::Accept => op_accept,
     msg::Any::Chdir => op_chdir,
@@ -273,7 +223,7 @@ pub fn create_op_std(
     msg::Any::WriteFile => op_write_file,
     _ => return Err(op_not_implemented()),
   };
-  Ok(op_creator(sc, &base, zero_copy))
+  Ok(Box::new(op_creator))
 }
 
 fn op_now(
