@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::cli::Buf;
 use crate::isolate_state::IsolateState;
 use crate::msg;
 use crate::permissions::{DenoPermissions, PermissionAccessor};
@@ -8,6 +7,7 @@ use crate::resources::Resource;
 use crate::resources::ResourceId;
 use crate::startup_data;
 use crate::workers;
+use deno_core::Buf;
 use futures::Future;
 use serde_json;
 use std::str;

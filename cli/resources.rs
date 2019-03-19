@@ -8,7 +8,6 @@
 // descriptors". This module implements a global resource table. Ops (AKA
 // handlers) look up resources by their integer id here.
 
-use crate::cli::Buf;
 use crate::errors;
 use crate::errors::bad_resource;
 use crate::errors::DenoError;
@@ -16,6 +15,8 @@ use crate::errors::DenoResult;
 use crate::http_body::HttpBody;
 use crate::isolate_state::WorkerChannels;
 use crate::repl::Repl;
+
+use deno_core::Buf;
 
 use futures;
 use futures::Future;
