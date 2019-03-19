@@ -71,6 +71,6 @@ function createPermissions(inner: msg.PermissionsRes): Permissions {
     net: inner.net(),
     env: inner.env(),
     run: inner.run(),
-    high_precision: inner.high_precision(),
+    high_precision: inner.highPrecision(),
   };
 }

@@ -513,7 +513,7 @@ table Now {}
 
 table NowRes {
   time: uint64;
-  nano: uint64;
+  nano: uint32;
 }
 
 table IsTTY {}

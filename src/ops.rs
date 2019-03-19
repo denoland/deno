@@ -190,15 +190,15 @@ fn op_now(
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
   let time = _isolate.start_time.elapsed().as_secs();
-  let nano = _isolate.start_time.elapsed().subsec_nanos();
-  let REDUCED_TIME_PRECISION = 2000;
+  let mut nano = _isolate.start_time.elapsed().subsec_nanos();
+  let reduced_time_precision = 2000;
 
   // If the permission is not enabled
   // Round the nano result on milliseconds
   // return the result as nanos u128
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
   if !_isolate.permissions.allows_high_precision() {
-    nano -= nano % REDUCED_TIME_PRECISION
+    nano -= nano % reduced_time_precision
   }
 
   let builder = &mut FlatBufferBuilder::new();
