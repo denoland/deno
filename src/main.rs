@@ -19,7 +19,6 @@ mod global_timer;
 mod http_body;
 mod http_util;
 pub mod isolate;
-pub mod isolate_init;
 pub mod isolate_state;
 pub mod js_errors;
 pub mod modules;
@@ -30,6 +29,7 @@ pub mod permissions;
 mod repl;
 pub mod resolve_addr;
 pub mod resources;
+mod startup_data;
 mod tokio_util;
 mod tokio_write;
 pub mod version;
@@ -110,9 +110,9 @@ fn main() {
 
   let state = Arc::new(IsolateState::new(flags, rest_argv, None));
   let state_ = state.clone();
-  let isolate_init = isolate_init::deno_isolate_init();
+  let startup_data = startup_data::deno_isolate_init();
   let permissions = permissions::DenoPermissions::from_flags(&state.flags);
-  let cli = Cli::new(isolate_init, state_, permissions);
+  let cli = Cli::new(Some(startup_data), state_, permissions);
   let mut isolate = Isolate::new(cli);
 
   let main_future = lazy(move || {

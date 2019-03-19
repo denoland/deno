@@ -3,7 +3,6 @@
 #![allow(dead_code)]
 
 use crate::errors::DenoResult;
-use crate::isolate_init::IsolateInit;
 use crate::isolate_state::IsolateState;
 use crate::ops;
 use crate::permissions::DenoPermissions;
@@ -11,6 +10,7 @@ use deno_core::deno_buf;
 use deno_core::deno_mod;
 use deno_core::Behavior;
 use deno_core::Op;
+use deno_core::StartupData;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio_threadpool::Builder;
@@ -23,7 +23,7 @@ pub type Buf = Box<[u8]>;
 
 /// Implements deno_core::Behavior for the main Deno command-line.
 pub struct Cli {
-  init: IsolateInit,
+  startup_data: Option<StartupData>,
   pub pool: ThreadPool,
   pub state: Arc<IsolateState>,
   pub permissions: Arc<DenoPermissions>, // TODO(ry) move to IsolateState
@@ -31,13 +31,13 @@ pub struct Cli {
 
 impl Cli {
   pub fn new(
-    init: IsolateInit,
+    startup_data: Option<StartupData>,
     state: Arc<IsolateState>,
     permissions: DenoPermissions,
   ) -> Self {
     let pool = Builder::new().pool_size(4).build();
     Self {
-      init,
+      startup_data,
       state,
       pool,
       permissions: Arc::new(permissions),
@@ -71,8 +71,8 @@ impl Cli {
 }
 
 impl Behavior for Cli {
-  fn startup_snapshot(&mut self) -> Option<deno_buf> {
-    self.init.snapshot.take()
+  fn startup_data(&mut self) -> Option<StartupData> {
+    self.startup_data.take()
   }
 
   fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod {

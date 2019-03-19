@@ -99,8 +99,13 @@ pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 struct HttpBench();
 
 impl Behavior for HttpBench {
-  fn startup_snapshot(&mut self) -> Option<deno_buf> {
-    None
+  fn startup_data(&mut self) -> Option<StartupData> {
+    let js_source = include_str!("http_bench.js");
+
+    Some(StartupData::Script(StartupScript {
+      source: js_source.to_string(),
+      filename: "http_bench.js".to_string(),
+    }))
   }
 
   fn resolve(&mut self, _specifier: &str, _referrer: deno_mod) -> deno_mod {
@@ -164,15 +169,12 @@ impl Behavior for HttpBench {
 }
 
 fn main() {
-  let js_source = include_str!("http_bench.js");
-
   let main_future = lazy(move || {
-    let mut isolate = deno_core::Isolate::new(HttpBench());
-
     // TODO currently isolate.execute() must be run inside tokio, hence the
     // lazy(). It would be nice to not have that contraint. Probably requires
     // using v8::MicrotasksPolicy::kExplicit
-    js_check(isolate.execute("http_bench.js", js_source));
+    let isolate = deno_core::Isolate::new(HttpBench());
+
     isolate.then(|r| {
       js_check(r);
       Ok(())
