@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as path from "./path/mod.ts";
 import { exists, existsSync } from "./exists.ts";
 import { isSubdir } from "./utils.ts";
 
@@ -13,9 +12,6 @@ export async function move(
   dest: string,
   options?: MoveOptions
 ): Promise<void> {
-  src = path.resolve(src);
-  dest = path.resolve(dest);
-
   const srcStat = await Deno.stat(src);
 
   if (srcStat.isDirectory() && isSubdir(src, dest)) {
@@ -43,9 +39,6 @@ export function moveSync(
   dest: string,
   options?: MoveOptions
 ): void {
-  src = path.resolve(src);
-  dest = path.resolve(dest);
-
   const srcStat = Deno.statSync(src);
 
   if (srcStat.isDirectory() && isSubdir(src, dest)) {
