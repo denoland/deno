@@ -42,11 +42,26 @@ impl Future for PendingOp {
   }
 }
 
+/// Stores a script used to initalize a Isolate
+pub struct StartupScript {
+  pub source: String,
+  pub filename: String,
+}
+
+/// Represents data used to initialize isolate at startup
+/// either a binary snapshot or a javascript source file
+/// in the form of the StartupScript struct.
+pub enum StartupData {
+  Script(StartupScript),
+  Snapshot(deno_buf),
+}
+
 /// Defines the behavior of an Isolate.
 pub trait Behavior {
-  /// Called exactly once when an Isolate is created to retrieve the startup
-  /// snapshot.
-  fn startup_snapshot(&mut self) -> Option<deno_buf>;
+  /// Allow for a behavior to define the snapshot or script used at
+  /// startup to initalize the isolate. Called exactly once when an
+  /// Isolate is created.
+  fn startup_data(&mut self) -> Option<StartupData>;
 
   /// Called during mod_instantiate() to resolve imports.
   fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod;
@@ -96,9 +111,15 @@ impl<B: Behavior> Isolate<B> {
     let shared = SharedQueue::new(RECOMMENDED_SIZE);
 
     let needs_init = true;
+    // Seperate into Option values for eatch startup type
+    let (startup_snapshot, startup_script) = match behavior.startup_data() {
+      Some(StartupData::Snapshot(d)) => (Some(d), None),
+      Some(StartupData::Script(d)) => (None, Some(d)),
+      None => (None, None),
+    };
     let config = libdeno::deno_config {
       will_snapshot: 0,
-      load_snapshot: match behavior.startup_snapshot() {
+      load_snapshot: match startup_snapshot {
         Some(s) => s,
         None => libdeno::deno_buf::empty(),
       },
@@ -107,14 +128,24 @@ impl<B: Behavior> Isolate<B> {
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
 
-    Self {
+    let mut core_isolate = Self {
       libdeno_isolate,
       behavior,
       shared,
       needs_init,
       pending_ops: Vec::new(),
       polled_recently: false,
-    }
+    };
+
+    // If we want to use execute this has to happen here sadly.
+    match startup_script {
+      Some(s) => core_isolate
+        .execute(s.filename.as_str(), s.source.as_str())
+        .unwrap(),
+      None => {}
+    };
+
+    core_isolate
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno._sharedQueue.
@@ -475,7 +506,7 @@ mod tests {
   }
 
   impl Behavior for TestBehavior {
-    fn startup_snapshot(&mut self) -> Option<deno_buf> {
+    fn startup_data(&mut self) -> Option<StartupData> {
       None
     }
 
