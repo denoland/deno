@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::errors;
 use crate::errors::DenoError;
-use crate::errors::DenoResult;
-use crate::tokio_util;
 use futures::future::{loop_fn, Loop};
 use futures::{future, Future, Stream};
 use hyper;
@@ -53,6 +51,11 @@ fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
   }
 }
 
+#[cfg(test)]
+use crate::errors::DenoResult;
+#[cfg(test)]
+use crate::tokio_util;
+#[cfg(test)]
 /// Synchronously fetchs the given HTTP URL. Returns (content, media_type).
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
   tokio_util::block_on(fetch_string(module_name))
