@@ -8,9 +8,10 @@ use crate::fs as deno_fs;
 use crate::http_util;
 use crate::js_errors::SourceMapGetter;
 use crate::msg;
+use crate::tokio_util;
 use crate::version;
-
 use dirs;
+use futures::Future;
 use ring;
 use std;
 use std::fmt::Write;
@@ -492,55 +493,64 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   }
 }
 
+/// Asynchronously fetch remote source file specified by the URL `module_name`
+/// and write it to disk at `filename`.
+fn fetch_remote_source_async(
+  module_name: &str,
+  filename: &str,
+) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
+  let filename = filename.to_string();
+  let module_name = module_name.to_string();
+  let p = PathBuf::from(filename.clone());
+  // We write a special ".mime" file into the `.deno/deps` directory along side the
+  // cached file, containing just the media type.
+  let media_type_filename = [&filename, ".mime"].concat();
+  let mt = PathBuf::from(&media_type_filename);
+  eprint!("Downloading {}...", &module_name); // no newline
+  http_util::fetch_string(&module_name).and_then(
+    move |(source, content_type)| {
+      eprintln!(""); // next line
+      match p.parent() {
+        Some(ref parent) => fs::create_dir_all(parent),
+        None => Ok(()),
+      }?;
+      deno_fs::write_file(&p, &source, 0o666)?;
+      // Remove possibly existing stale .mime file
+      // may not exist. DON'T unwrap
+      let _ = std::fs::remove_file(&media_type_filename);
+      // Create .mime file only when content type different from extension
+      let resolved_content_type = map_content_type(&p, Some(&content_type));
+      let ext = p
+        .extension()
+        .map(|x| x.to_str().unwrap_or(""))
+        .unwrap_or("");
+      let media_type = extmap(&ext);
+      if media_type == msg::MediaType::Unknown
+        || media_type != resolved_content_type
+      {
+        deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?
+      }
+      Ok(Some(ModuleMetaData {
+        module_name: module_name.to_string(),
+        filename: filename.to_string(),
+        media_type: map_content_type(&p, Some(&content_type)),
+        source_code: source.as_bytes().to_owned(),
+        maybe_output_code_filename: None,
+        maybe_output_code: None,
+        maybe_source_map_filename: None,
+        maybe_source_map: None,
+      }))
+    },
+  )
+}
+
 // Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
 /// Fetch remote source code.
 fn fetch_remote_source(
   module_name: &str,
   filename: &str,
 ) -> DenoResult<Option<ModuleMetaData>> {
-  let p = Path::new(&filename);
-  // We write a special ".mime" file into the `.deno/deps` directory along side the
-  // cached file, containing just the media type.
-  let media_type_filename = [&filename, ".mime"].concat();
-  let mt = Path::new(&media_type_filename);
-  eprint!("Downloading {}...", &module_name); // no newline
-  let maybe_source = http_util::fetch_sync_string(&module_name);
-  if let Ok((source, content_type)) = maybe_source {
-    eprintln!(""); // next line
-    match p.parent() {
-      Some(ref parent) => fs::create_dir_all(parent),
-      None => Ok(()),
-    }?;
-    deno_fs::write_file(&p, &source, 0o666)?;
-    // Remove possibly existing stale .mime file
-    // may not exist. DON'T unwrap
-    let _ = std::fs::remove_file(&media_type_filename);
-    // Create .mime file only when content type different from extension
-    let resolved_content_type = map_content_type(&p, Some(&content_type));
-    let ext = p
-      .extension()
-      .map(|x| x.to_str().unwrap_or(""))
-      .unwrap_or("");
-    let media_type = extmap(&ext);
-    if media_type == msg::MediaType::Unknown
-      || media_type != resolved_content_type
-    {
-      deno_fs::write_file(&mt, content_type.as_bytes(), 0o666)?
-    }
-    return Ok(Some(ModuleMetaData {
-      module_name: module_name.to_string(),
-      filename: filename.to_string(),
-      media_type: map_content_type(&p, Some(&content_type)),
-      source_code: source.as_bytes().to_owned(),
-      maybe_output_code_filename: None,
-      maybe_output_code: None,
-      maybe_source_map_filename: None,
-      maybe_source_map: None,
-    }));
-  } else {
-    eprintln!(" NOT FOUND");
-  }
-  Ok(None)
+  tokio_util::block_on(fetch_remote_source_async(module_name, filename))
 }
 
 /// Fetch local or cached source code.
@@ -582,7 +592,6 @@ fn fetch_local_source(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::tokio_util;
   use tempfile::TempDir;
 
   fn test_setup(reload: bool, recompile: bool) -> (TempDir, DenoDir) {
@@ -813,6 +822,44 @@ mod tests {
         fs::read_to_string(&mime_file_name).unwrap(),
         "text/javascript"
       );
+    });
+  }
+
+  #[test]
+  fn test_fetch_source_async_1() {
+    use crate::tokio_util;
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let (_temp_dir, deno_dir) = test_setup(false, false);
+      let module_name =
+        "http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts".to_string();
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts")
+          .as_ref(),
+      );
+      let mime_file_name = format!("{}.mime", &filename);
+
+      let result = tokio_util::block_on(fetch_remote_source_async(
+        &module_name,
+        &filename,
+      ));
+      assert!(result.is_ok());
+      let r = result.unwrap().unwrap();
+      assert_eq!(r.source_code, b"export const loaded = true;\n");
+      assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+      // matching ext, no .mime file created
+      assert!(fs::read_to_string(&mime_file_name).is_err());
+
+      // Modify .mime, make sure read from local
+      let _ = fs::write(&mime_file_name, "text/javascript");
+      let result2 = fetch_local_source(&module_name, &filename);
+      assert!(result2.is_ok());
+      let r2 = result2.unwrap().unwrap();
+      assert_eq!(r2.source_code, b"export const loaded = true;\n");
+      // Not MediaType::TypeScript due to .mime modification
+      assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     });
   }
 
