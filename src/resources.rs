@@ -42,9 +42,6 @@ pub type ResourceId = u32; // Sometimes referred to RID.
 // system ones.
 type ResourceTable = HashMap<ResourceId, Repr>;
 
-#[cfg(not(windows))]
-use std::os::unix::io::FromRawFd;
-
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
 
@@ -57,30 +54,19 @@ lazy_static! {
   static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new({
     let mut m = HashMap::new();
     // TODO Load these lazily during lookup?
-    m.insert(0, Repr::Stdin(tokio::io::stdin()));
-
-    m.insert(1, Repr::Stdout({
-      #[cfg(not(windows))]
-      let stdout = unsafe { std::fs::File::from_raw_fd(1) };
-      #[cfg(windows)]
-      let stdout = unsafe {
-        std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
-            winapi::um::winbase::STD_OUTPUT_HANDLE))
-      };
-      tokio::fs::File::from_std(stdout)
-    }));
-
-    m.insert(2, Repr::Stderr(tokio::io::stderr()));
+    m.insert(0, Repr::Stdin(std::io::stdin()));
+    m.insert(1, Repr::Stdout(std::io::stdout()));
+    m.insert(2, Repr::Stderr(std::io::stderr()));
     m
   });
 }
 
 // Internal representation of Resource.
 enum Repr {
-  Stdin(tokio::io::Stdin),
-  Stdout(tokio::fs::File),
-  Stderr(tokio::io::Stderr),
-  FsFile(tokio::fs::File),
+  Stdin(std::io::Stdin),
+  Stdout(std::io::Stdout),
+  Stderr(std::io::Stderr),
+  FsFile(std::fs::File),
   // Since TcpListener might be closed while there is a pending accept task,
   // we need to track the task so that when the listener is closed,
   // this pending task could be notified and die.
@@ -205,8 +191,14 @@ impl AsyncRead for Resource {
     match maybe_repr {
       None => panic!("bad rid"),
       Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_read(buf),
-        Repr::Stdin(ref mut f) => f.poll_read(buf),
+        Repr::FsFile(ref mut f) => {
+          // f.poll_read(buf),
+          f.read(buf).map(|n| futures::Async::Ready(n))
+        }
+        Repr::Stdin(ref mut f) => {
+          // TODO(ry) This is a blocking read. Use tokio::io instead.
+          f.read(buf).map(|n| futures::Async::Ready(n))
+        }
         Repr::TcpStream(ref mut f) => f.poll_read(buf),
         Repr::HttpBody(ref mut f) => f.poll_read(buf),
         Repr::ChildStdout(ref mut f) => f.poll_read(buf),
@@ -234,9 +226,18 @@ impl AsyncWrite for Resource {
     match maybe_repr {
       None => panic!("bad rid"),
       Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_write(buf),
-        Repr::Stdout(ref mut f) => f.poll_write(buf),
-        Repr::Stderr(ref mut f) => f.poll_write(buf),
+        Repr::FsFile(ref mut f) => {
+          // f.poll_write(buf),
+          f.write(buf).map(|s| futures::Async::Ready(s))
+        }
+        Repr::Stdout(ref mut f) => {
+          // TODO(ry) This is a blocking write. Use tokio::io instead.
+          f.write(buf).map(|s| futures::Async::Ready(s))
+        }
+        Repr::Stderr(ref mut f) => {
+          // TODO(ry) This is a blocking write. Use tokio::io instead.
+          f.write(buf).map(|s| futures::Async::Ready(s))
+        }
         Repr::TcpStream(ref mut f) => f.poll_write(buf),
         Repr::ChildStdin(ref mut f) => f.poll_write(buf),
         _ => panic!("Cannot write"),
@@ -254,7 +255,7 @@ fn new_rid() -> ResourceId {
   next_rid as ResourceId
 }
 
-pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
+pub fn add_fs_file(fs_file: std::fs::File) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
   match tg.insert(rid, Repr::FsFile(fs_file)) {
@@ -447,7 +448,7 @@ pub fn seek(
   let maybe_repr = table.remove(&resource.rid);
   match maybe_repr {
     None => panic!("bad rid"),
-    Some(Repr::FsFile(f)) => {
+    Some(Repr::FsFile(std_file)) => {
       let seek_from = match whence {
         0 => SeekFrom::Start(offset as u64),
         1 => SeekFrom::Current(offset as i64),
@@ -459,9 +460,6 @@ pub fn seek(
           )));
         }
       };
-      // Trait Clone not implemented on tokio::fs::File,
-      // so convert to std File first.
-      let std_file = f.into_std();
       // Create a copy and immediately put back.
       // We don't want to block other resource ops.
       // try_clone() would yield a copy containing the same
@@ -470,10 +468,7 @@ pub fn seek(
       // to write back.
       let maybe_std_file_copy = std_file.try_clone();
       // Insert the entry back with the same rid.
-      table.insert(
-        resource.rid,
-        Repr::FsFile(tokio_fs::File::from_std(std_file)),
-      );
+      table.insert(resource.rid, Repr::FsFile(std_file));
       if maybe_std_file_copy.is_err() {
         return Box::new(futures::future::err(DenoError::from(
           maybe_std_file_copy.unwrap_err(),

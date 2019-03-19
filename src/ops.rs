@@ -789,7 +789,7 @@ fn op_open(
   let filename = PathBuf::from(&filename_str);
   let mode = inner.mode().unwrap();
 
-  let mut open_options = tokio::fs::OpenOptions::new();
+  let mut open_options = std::fs::OpenOptions::new();
 
   match mode {
     "r" => {
@@ -846,25 +846,22 @@ fn op_open(
     }
   }
 
-  let op = open_options
-    .open(filename)
-    .map_err(DenoError::from)
-    .and_then(move |fs_file| -> OpResult {
-      let resource = resources::add_fs_file(fs_file);
-      let builder = &mut FlatBufferBuilder::new();
-      let inner =
-        msg::OpenRes::create(builder, &msg::OpenResArgs { rid: resource.rid });
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          inner: Some(inner.as_union_value()),
-          inner_type: msg::Any::OpenRes,
-          ..Default::default()
-        },
-      ))
-    });
-  Box::new(op)
+  blocking(cli, base.sync(), move || {
+    let file = open_options.open(filename).map_err(DenoError::from)?;
+    let resource = resources::add_fs_file(file);
+    let builder = &mut FlatBufferBuilder::new();
+    let inner =
+      msg::OpenRes::create(builder, &msg::OpenResArgs { rid: resource.rid });
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::OpenRes,
+        ..Default::default()
+      },
+    ))
+  })
 }
 
 fn op_close(

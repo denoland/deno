@@ -17,6 +17,7 @@ where
   // tokio::run(future)
 }
 
+#[allow(dead_code)]
 pub fn block_on<F, R, E>(future: F) -> Result<R, E>
 where
   F: Send + 'static + Future<Item = R, Error = E>,
