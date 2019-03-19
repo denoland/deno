@@ -1,13 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir;
+use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::modules::Modules;
+use crate::permissions::DenoPermissions;
 use deno_core::Buf;
 use futures::sync::mpsc as async_mpsc;
 use std;
 use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::sync::Mutex;
 
 pub type WorkerSender = async_mpsc::Sender<Buf>;
@@ -33,6 +36,7 @@ pub struct Metrics {
 pub struct IsolateState {
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
+  pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
   pub metrics: Metrics,
   pub modules: Mutex<Modules>,
@@ -52,6 +56,7 @@ impl IsolateState {
       dir: deno_dir::DenoDir::new(flags.reload, flags.recompile, custom_root)
         .unwrap(),
       argv: argv_rest,
+      permissions: DenoPermissions::from_flags(&flags),
       flags,
       metrics: Metrics::default(),
       modules: Mutex::new(Modules::new()),
@@ -74,6 +79,31 @@ impl IsolateState {
         }
       }
     }
+  }
+
+  #[inline]
+  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
+    self.permissions.check_read(filename)
+  }
+
+  #[inline]
+  pub fn check_write(&self, filename: &str) -> DenoResult<()> {
+    self.permissions.check_write(filename)
+  }
+
+  #[inline]
+  pub fn check_env(&self) -> DenoResult<()> {
+    self.permissions.check_env()
+  }
+
+  #[inline]
+  pub fn check_net(&self, filename: &str) -> DenoResult<()> {
+    self.permissions.check_net(filename)
+  }
+
+  #[inline]
+  pub fn check_run(&self) -> DenoResult<()> {
+    self.permissions.check_run()
   }
 
   #[cfg(test)]
@@ -107,4 +137,9 @@ impl IsolateState {
       .bytes_received
       .fetch_add(bytes_received, Ordering::SeqCst);
   }
+}
+
+/// Provides state getter function
+pub trait IsolateStateContainer {
+  fn state(&self) -> Arc<IsolateState>;
 }

@@ -1,20 +1,85 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::isolate_state::IsolateState;
+use crate::isolate_state::{IsolateStateContainer, WorkerChannels};
 use crate::msg;
-use crate::permissions::{DenoPermissions, PermissionAccessor};
+use crate::ops;
 use crate::resources;
 use crate::resources::Resource;
 use crate::resources::ResourceId;
 use crate::startup_data;
 use crate::workers;
+use crate::workers::WorkerBehavior;
+use deno_core::deno_buf;
+use deno_core::deno_mod;
+use deno_core::Behavior;
 use deno_core::Buf;
+use deno_core::Op;
+use deno_core::StartupData;
 use futures::Future;
 use serde_json;
 use std::str;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 lazy_static! {
   static ref C_RID: Mutex<Option<ResourceId>> = Mutex::new(None);
+}
+
+pub struct CompilerBehavior {
+  pub state: Arc<IsolateState>,
+}
+
+impl CompilerBehavior {
+  pub fn new(state: Arc<IsolateState>) -> Self {
+    Self { state }
+  }
+}
+
+impl Behavior for CompilerBehavior {
+  fn startup_data(&mut self) -> Option<StartupData> {
+    Some(startup_data::compiler_isolate_init())
+  }
+
+  fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod {
+    self
+      .state
+      .metrics
+      .resolve_count
+      .fetch_add(1, Ordering::Relaxed);
+    let mut modules = self.state.modules.lock().unwrap();
+    modules.resolve_cb(&self.state.dir, specifier, referrer)
+  }
+
+  fn dispatch(
+    &mut self,
+    control: &[u8],
+    zero_copy: deno_buf,
+  ) -> (bool, Box<Op>) {
+    ops::dispatch_compiler(self, control, zero_copy)
+  }
+}
+
+impl IsolateStateContainer for CompilerBehavior {
+  fn state(&self) -> Arc<IsolateState> {
+    self.state.clone()
+  }
+}
+
+impl IsolateStateContainer for &CompilerBehavior {
+  fn state(&self) -> Arc<IsolateState> {
+    self.state.clone()
+  }
+}
+
+impl WorkerBehavior for CompilerBehavior {
+  fn set_internal_channels(&mut self, worker_channels: WorkerChannels) {
+    self.state = Arc::new(IsolateState::new(
+      self.state.flags.clone(),
+      self.state.argv.clone(),
+      Some(worker_channels),
+    ));
+  }
 }
 
 // This corresponds to JS ModuleMetaData.
@@ -46,22 +111,16 @@ impl ModuleMetaData {
   }
 }
 
-fn lazy_start(parent_state: &IsolateState) -> Resource {
+fn lazy_start(parent_state: Arc<IsolateState>) -> Resource {
   let mut cell = C_RID.lock().unwrap();
-  let startup_data = startup_data::compiler_isolate_init();
-  let permissions = DenoPermissions {
-    allow_read: PermissionAccessor::from(true),
-    allow_write: PermissionAccessor::from(true),
-    allow_net: PermissionAccessor::from(true),
-    ..Default::default()
-  };
-
   let rid = cell.get_or_insert_with(|| {
     let resource = workers::spawn(
-      Some(startup_data),
-      parent_state,
+      CompilerBehavior::new(Arc::new(IsolateState::new(
+        parent_state.flags.clone(),
+        parent_state.argv.clone(),
+        None,
+      ))),
       "compilerMain()".to_string(),
-      permissions,
     );
     resource.rid
   });
@@ -78,7 +137,7 @@ fn req(specifier: &str, referrer: &str) -> Buf {
 }
 
 pub fn compile_sync(
-  parent_state: &IsolateState,
+  parent_state: Arc<IsolateState>,
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
@@ -140,7 +199,12 @@ mod tests {
       maybe_source_map: None,
     };
 
-    out = compile_sync(&IsolateState::mock(), specifier, &referrer, &mut out);
+    out = compile_sync(
+      Arc::new(IsolateState::mock()),
+      specifier,
+      &referrer,
+      &mut out,
+    );
     assert!(
       out
         .maybe_output_code

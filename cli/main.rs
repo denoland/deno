@@ -9,7 +9,7 @@ extern crate futures;
 extern crate serde_json;
 
 mod ansi;
-pub mod cli;
+pub mod cli_behavior;
 pub mod compiler;
 pub mod deno_dir;
 pub mod errors;
@@ -35,7 +35,7 @@ mod tokio_write;
 pub mod version;
 pub mod workers;
 
-use crate::cli::Cli;
+use crate::cli_behavior::CliBehavior;
 use crate::errors::RustOrJsError;
 use crate::isolate::Isolate;
 use crate::isolate_state::IsolateState;
@@ -111,8 +111,7 @@ fn main() {
   let state = Arc::new(IsolateState::new(flags, rest_argv, None));
   let state_ = state.clone();
   let startup_data = startup_data::deno_isolate_init();
-  let permissions = permissions::DenoPermissions::from_flags(&state.flags);
-  let cli = Cli::new(Some(startup_data), state_, permissions);
+  let cli = CliBehavior::new(Some(startup_data), state_);
   let mut isolate = Isolate::new(cli);
 
   let main_future = lazy(move || {
