@@ -23,6 +23,8 @@ const DEFAULT_MAX_DEPTH = 4;
 // form.
 const OBJ_ABBREVIATE_SIZE = 5;
 
+const STR_ABBREVIATE_SIZE = 100;
+
 // Char codes
 const CHAR_PERCENT = 37; /* % */
 const CHAR_LOWERCASE_S = 115; /* s */
@@ -151,7 +153,11 @@ function stringifyWithQuotes(
 ): string {
   switch (typeof value) {
     case "string":
-      return `"${value}"`;
+      const trunc =
+        value.length > STR_ABBREVIATE_SIZE
+          ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
+          : value;
+      return JSON.stringify(trunc);
     default:
       return stringify(value, ctx, level, maxLevel);
   }
