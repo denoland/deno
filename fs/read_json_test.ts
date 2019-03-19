@@ -34,7 +34,7 @@ test(async function readInvalidJsonFile() {
   });
 });
 
-test(async function readValidJsonFile() {
+test(async function readValidArrayJsonFile() {
   const invalidJsonFile = path.join(testdataDir, "json_valid_array.json");
 
   const json = await readJson(invalidJsonFile);
@@ -42,10 +42,16 @@ test(async function readValidJsonFile() {
   assertEquals(json, ["1", "2", "3"]);
 });
 
-test(async function readValidJsonFile() {
+test(async function readValidObjJsonFile() {
   const invalidJsonFile = path.join(testdataDir, "json_valid_obj.json");
 
   const json = await readJson(invalidJsonFile);
+
+  assertEquals(json, { key1: "value1", key2: "value2" });
+});
+
+test(async function readValidObjJsonFileWithRelativePath() {
+  const json = await readJson("./fs/testdata/json_valid_obj.json");
 
   assertEquals(json, { key1: "value1", key2: "value2" });
 });
@@ -74,7 +80,7 @@ test(function readInvalidJsonFile() {
   });
 });
 
-test(function readValidJsonFile() {
+test(function readValidArrayJsonFileSync() {
   const invalidJsonFile = path.join(testdataDir, "json_valid_array.json");
 
   const json = readJsonSync(invalidJsonFile);
@@ -82,10 +88,16 @@ test(function readValidJsonFile() {
   assertEquals(json, ["1", "2", "3"]);
 });
 
-test(function readValidJsonFile() {
+test(function readValidObjJsonFileSync() {
   const invalidJsonFile = path.join(testdataDir, "json_valid_obj.json");
 
   const json = readJsonSync(invalidJsonFile);
+
+  assertEquals(json, { key1: "value1", key2: "value2" });
+});
+
+test(function readValidObjJsonFileSyncWithRelativePath() {
+  const json = readJsonSync("./fs/testdata/json_valid_obj.json");
 
   assertEquals(json, { key1: "value1", key2: "value2" });
 });
