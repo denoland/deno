@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::errors;
-use crate::errors::{DenoError, DenoResult};
+use crate::errors::DenoError;
+use crate::errors::DenoResult;
 use crate::tokio_util;
-
 use futures::future::{loop_fn, Loop};
 use futures::{future, Future, Stream};
 use hyper;
@@ -53,14 +53,20 @@ fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
   }
 }
 
-// The CodeFetch message is used to load HTTP javascript resources and expects a
-// synchronous response, this utility method supports that.
+/// Synchronously fetchs the given HTTP URL. Returns (content, media_type).
 pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
+  tokio_util::block_on(fetch_string(module_name))
+}
+
+/// Asynchronously fetchs the given HTTP URL. Returns (content, media_type).
+pub fn fetch_string(
+  module_name: &str,
+) -> impl Future<Item = (String, String), Error = DenoError> {
   let url = module_name.parse::<Uri>().unwrap();
   let client = get_client();
   // TODO(kevinkassimo): consider set a max redirection counter
   // to avoid bouncing between 2 or more urls
-  let fetch_future = loop_fn((client, url), |(client, url)| {
+  loop_fn((client, url), |(client, url)| {
     client
       .get(url.clone())
       .map_err(DenoError::from)
@@ -98,9 +104,7 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
     body.join(future::ok(content_type))
   }).and_then(|(body_string, maybe_content_type)| {
     future::ok((body_string, maybe_content_type.unwrap()))
-  });
-
-  tokio_util::block_on(fetch_future)
+  })
 }
 
 #[test]
@@ -109,6 +113,19 @@ fn test_fetch_sync_string() {
   tokio_util::init(|| {
     let (p, m) =
       fetch_sync_string("http://127.0.0.1:4545/package.json").unwrap();
+    println!("package.json len {}", p.len());
+    assert!(p.len() > 1);
+    assert!(m == "application/json")
+  });
+}
+
+#[test]
+fn test_fetch_string() {
+  // Relies on external http server. See tools/http_server.py
+  tokio_util::init(|| {
+    let (p, m) = fetch_string("http://127.0.0.1:4545/package.json")
+      .wait()
+      .unwrap();
     println!("package.json len {}", p.len());
     assert!(p.len() > 1);
     assert!(m == "application/json")
