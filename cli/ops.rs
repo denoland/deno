@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::cli::Buf;
 use crate::cli::Cli;
 use crate::errors;
 use crate::errors::{permission_denied, DenoError, DenoResult, ErrorKind};
@@ -21,6 +20,7 @@ use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
 use deno_core::deno_buf;
+use deno_core::Buf;
 use deno_core::JSError;
 use deno_core::Op;
 use flatbuffers::FlatBufferBuilder;

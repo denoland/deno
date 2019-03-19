@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::cli::Buf;
 use crate::deno_dir;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::modules::Modules;
+use deno_core::Buf;
 use futures::sync::mpsc as async_mpsc;
 use std;
 use std::env;
