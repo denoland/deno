@@ -12,7 +12,6 @@ use crate::isolate::Op;
 use crate::js_errors::apply_source_map;
 use crate::js_errors::JSErrorColor;
 use crate::libdeno;
-use crate::math;
 use crate::msg;
 use crate::msg_util;
 use crate::repl;
@@ -190,20 +189,20 @@ fn op_now(
   data: libdeno::deno_buf,
 ) -> Box<Op> {
   assert_eq!(data.len(), 0);
-  let start = Instant::now();
-  let since_the_epoch = start.duration_since(_isolate.start_time).as_nanos();
-  let time = since_the_epoch;
+  let time = _isolate.start_time.elapsed().as_secs();
+  let nano = _isolate.start_time.elapsed().subsec_nanos();
+  let REDUCED_TIME_PRECISION = 2000;
 
   // If the permission is not enabled
   // Round the nano result on milliseconds
   // return the result as nanos u128
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
   if !_isolate.permissions.allows_high_precision() {
-    time = math::round::ceil(since_the_epoch / 1000, 0) * 1000
+    nano -= nano % REDUCED_TIME_PRECISION
   }
 
   let builder = &mut FlatBufferBuilder::new();
-  let inner = msg::NowRes::create(builder, &msg::NowResArgs { time as u64 });
+  let inner = msg::NowRes::create(builder, &msg::NowResArgs { time, nano });
   ok_future(serialize_response(
     base.cmd_id(),
     builder,
