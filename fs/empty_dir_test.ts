@@ -1,6 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
-import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import {
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync
+} from "../testing/asserts.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 import * as path from "./path/mod.ts";
 
@@ -63,12 +67,12 @@ test(async function emptyDirIfItExist() {
     assertEquals(stat.isDirectory(), true);
 
     // nest directory have been remove
-    assertThrowsAsync(async () => {
+    await assertThrowsAsync(async () => {
       await Deno.stat(testNestDir);
     });
 
     // test file have been remove
-    assertThrowsAsync(async () => {
+    await assertThrowsAsync(async () => {
       await Deno.stat(testDirFile);
     });
   } finally {
@@ -102,12 +106,12 @@ test(function emptyDirSyncIfItExist() {
     assertEquals(stat.isDirectory(), true);
 
     // nest directory have been remove
-    assertThrowsAsync(async () => {
+    assertThrows(() => {
       Deno.statSync(testNestDir);
     });
 
     // test file have been remove
-    assertThrowsAsync(async () => {
+    assertThrows(() => {
       Deno.statSync(testDirFile);
     });
   } finally {

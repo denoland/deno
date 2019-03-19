@@ -113,27 +113,27 @@ Using `assertThrowsAsync()`:
 
 ```ts
 test(async function doesThrow() {
-  assertThrowsAsync(async () => {
+  await assertThrowsAsync(async () => {
     throw new TypeError("hello world!");
   });
-  assertThrowsAsync(async () => {
+  await assertThrowsAsync(async () => {
     throw new TypeError("hello world!");
   }, TypeError);
-  assertThrowsAsync(
+  await assertThrowsAsync(
     async () => {
       throw new TypeError("hello world!");
     },
     TypeError,
     "hello"
   );
-  assertThrowsAsync(async () => {
+  await assertThrowsAsync(async () => {
     return Promise.reject(new Error());
   });
 });
 
 // This test will not pass
 test(async function fails() {
-  assertThrowsAsync(async () => {
+  await assertThrowsAsync(async () => {
     console.log("Hello world");
   });
 });
