@@ -1,26 +1,76 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { window } from "./window";
+
 import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
+import { window } from "./window";
 
-let nextCmdId = 0;
+const DISPATCH_MINIMAL = 0xcafe;
+
+let nextPromiseId = 0;
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
+const promiseTable2 = new Map<number, util.Resolvable<number>>();
+
+interface Record {
+  promiseId: number;
+  opId: number;
+  arg: number;
+  result: number;
+  base?: msg.Base;
+}
+
+function recordFromBuf(buf: Uint8Array): Record {
+  // assert(buf.byteLength % 4 == 0);
+  const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+  if (buf32[0] == DISPATCH_MINIMAL) {
+    return {
+      promiseId: buf32[1],
+      opId: buf32[2],
+      arg: buf32[3],
+      result: buf32[4]
+    };
+  } else {
+    const bb = new flatbuffers.ByteBuffer(buf);
+    const base = msg.Base.getRootAsBase(bb);
+    const cmdId = base.cmdId();
+    return {
+      promiseId: cmdId,
+      arg: -1,
+      result: 0,
+      opId: -1,
+      base
+    };
+  }
+}
 
 export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
-  const bb = new flatbuffers.ByteBuffer(ui8);
-  const base = msg.Base.getRootAsBase(bb);
-  const cmdId = base.cmdId();
-  const promise = promiseTable.get(cmdId);
-  util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
-  promiseTable.delete(cmdId);
-  const err = errors.maybeError(base);
-  if (err != null) {
-    promise!.reject(err);
+  const record = recordFromBuf(ui8);
+
+  if (record.base) {
+    // Legacy
+    const { promiseId, base } = record;
+    const promise = promiseTable.get(promiseId);
+    util.assert(promise != null, `Expecting promise in table. ${promiseId}`);
+    promiseTable.delete(record.promiseId);
+    const err = errors.maybeError(base);
+    if (err != null) {
+      promise!.reject(err);
+    } else {
+      promise!.resolve(base);
+    }
   } else {
-    promise!.resolve(base);
+    // Fast and new
+    util.log("minimal handleAsyncMsgFromRust ", ui8.length);
+    const { promiseId, result } = record;
+    const promise = promiseTable2.get(promiseId);
+    promiseTable2.delete(promiseId);
+    promise!.resolve(result);
   }
+}
+
+function ui8FromArrayBufferView(abv: ArrayBufferView): Uint8Array {
+  return new Uint8Array(abv.buffer, abv.byteOffset, abv.byteLength);
 }
 
 function sendInternal(
@@ -30,7 +80,7 @@ function sendInternal(
   zeroCopy: undefined | ArrayBufferView,
   sync = true
 ): [number, null | Uint8Array] {
-  const cmdId = nextCmdId++;
+  const cmdId = nextPromiseId++;
   msg.Base.startBase(builder);
   msg.Base.addInner(builder, inner);
   msg.Base.addInnerType(builder, innerType);
@@ -39,7 +89,12 @@ function sendInternal(
   builder.finish(msg.Base.endBase(builder));
 
   const control = builder.asUint8Array();
-  const response = window.DenoCore.dispatch(control, zeroCopy);
+
+  //const response = DenoCore.dispatch(
+  const response = window.DenoCore.dispatch(
+    control,
+    zeroCopy ? ui8FromArrayBufferView(zeroCopy!) : undefined
+  );
 
   builder.inUse = false;
   return [cmdId, response];
@@ -62,6 +117,36 @@ export function sendAsync(
   util.assert(response == null);
   const promise = util.createResolvable<msg.Base>();
   promiseTable.set(cmdId, promise);
+  return promise;
+}
+
+const scratch32 = new Int32Array(5);
+const scratchBytes = new Uint8Array(
+  scratch32.buffer,
+  scratch32.byteOffset,
+  scratch32.byteLength
+);
+util.assert(scratchBytes.byteLength === scratch32.length * 4);
+
+export function sendAsync2(
+  opId: number,
+  arg: number,
+  zeroCopy: Uint8Array
+): Promise<number> {
+  const promiseId = nextPromiseId++; // AKA cmdId
+
+  scratch32[0] = DISPATCH_MINIMAL;
+  scratch32[1] = promiseId;
+  scratch32[2] = opId;
+  scratch32[3] = arg;
+  // scratch32[4] = -1;
+
+  const promise = util.createResolvable<number>();
+  promiseTable2.set(promiseId, promise);
+
+  window.DenoCore.dispatch(scratchBytes, zeroCopy);
+
+  //DenoCore.dispatch(scratchBytes, zeroCopy);
   return promise;
 }
 

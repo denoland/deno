@@ -5,6 +5,9 @@ import * as msg from "gen/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
 
+const OP_READ = 1;
+const OP_WRITE = 2;
+
 /** Open a file and return an instance of the `File` object.
  *
  *       (async () => {
@@ -36,34 +39,28 @@ export async function open(
  *
  * Resolves with the `ReadResult` for the operation.
  */
-export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
-  const builder = flatbuffers.createBuilder();
-  msg.Read.startRead(builder);
-  msg.Read.addRid(builder, rid);
-  const inner = msg.Read.endRead(builder);
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.Read, inner, p);
-  assert(baseRes != null);
-  assert(msg.Any.ReadRes === baseRes!.innerType());
-  const res = new msg.ReadRes();
-  assert(baseRes!.inner(res) != null);
-  return { nread: res.nread(), eof: res.eof() };
+export async function read(rid: number, ui8: Uint8Array): Promise<ReadResult> {
+  let result = await dispatch.sendAsync2(OP_READ, rid, ui8);
+  if (result < 0) {
+    throw new Error("read error");
+  } else if (result == 0) {
+    return { nread: 0, eof: true };
+  } else {
+    return { nread: result, eof: false };
+  }
 }
 
 /** Write to the file ID the contents of the array buffer.
  *
  * Resolves with the number of bytes written.
  */
-export async function write(rid: number, p: Uint8Array): Promise<number> {
-  const builder = flatbuffers.createBuilder();
-  msg.Write.startWrite(builder);
-  msg.Write.addRid(builder, rid);
-  const inner = msg.Write.endWrite(builder);
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.Write, inner, p);
-  assert(baseRes != null);
-  assert(msg.Any.WriteRes === baseRes!.innerType());
-  const res = new msg.WriteRes();
-  assert(baseRes!.inner(res) != null);
-  return res.nbyte();
+export async function write(rid: number, ui8: Uint8Array): Promise<number> {
+  let result = await dispatch.sendAsync2(OP_WRITE, rid, ui8);
+  if (result < 0) {
+    throw new Error("write error");
+  } else {
+    return result;
+  }
 }
 
 /** Seek a file ID to the given offset under mode given by `whence`.

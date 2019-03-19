@@ -67,6 +67,17 @@ fn empty_buf() -> Buf {
   Box::new([])
 }
 
+fn slice_u8_as_i32(bytes: &[u8]) -> &[i32] {
+  let p = bytes.as_ptr();
+  // Assert pointer is 32 bit aligned before casting.
+  assert_eq!((p as usize) % std::mem::align_of::<i32>(), 0);
+  #[allow(clippy::cast_ptr_alignment)]
+  let p32 = p as *const i32;
+  unsafe { std::slice::from_raw_parts(p32, bytes.len() / 4) }
+}
+
+const DISPATCH_MINIMAL: i32 = 0xCAFE;
+
 /// Processes raw messages from JavaScript.
 /// This functions invoked every time libdeno.send() is called.
 /// control corresponds to the first argument of libdeno.send().
@@ -78,6 +89,119 @@ pub fn dispatch(
 ) -> (bool, Box<Op>) {
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.len();
+
+  let control32 = slice_u8_as_i32(control);
+
+  let (is_sync, op) = if control32[0] == DISPATCH_MINIMAL {
+    dispatch_minimal(cli, control32, zero_copy)
+  } else {
+    dispatch_flatbuffer(cli, control, zero_copy)
+  };
+
+  cli
+    .state
+    .metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
+
+  (is_sync, op)
+}
+
+const OP_READ: i32 = 1;
+const OP_WRITE: i32 = 2;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Record {
+  pub promise_id: i32,
+  pub op_id: i32,
+  pub arg: i32,
+  pub result: i32,
+}
+
+impl Into<Buf> for Record {
+  fn into(self) -> Buf {
+    let vec = vec![
+      DISPATCH_MINIMAL,
+      self.promise_id,
+      self.op_id,
+      self.arg,
+      self.result,
+    ];
+    //let len = vec.len();
+    let buf32 = vec.into_boxed_slice();
+    let ptr = Box::into_raw(buf32) as *mut [u8; 5 * 4];
+    unsafe { Box::from_raw(ptr) }
+  }
+}
+
+impl From<&[i32]> for Record {
+  fn from(s: &[i32]) -> Record {
+    let ptr = s.as_ptr();
+    let ints = unsafe { std::slice::from_raw_parts(ptr, 5) };
+    assert_eq!(ints[0], DISPATCH_MINIMAL);
+    Record {
+      promise_id: ints[1],
+      op_id: ints[2],
+      arg: ints[3],
+      result: ints[4],
+    }
+  }
+}
+
+impl From<&[u8]> for Record {
+  fn from(s: &[u8]) -> Record {
+    let ptr = s.as_ptr() as *const i32;
+    let ints = unsafe { std::slice::from_raw_parts(ptr, 4) };
+    assert_eq!(ints[0], DISPATCH_MINIMAL);
+    Record {
+      promise_id: ints[1],
+      op_id: ints[2],
+      arg: ints[3],
+      result: ints[4],
+    }
+  }
+}
+
+pub fn dispatch_minimal(
+  cli: &Cli,
+  control32: &[i32],
+  zero_copy: deno_buf,
+) -> (bool, Box<Op>) {
+  let record = Record::from(control32);
+  let state = cli.state.clone();
+
+  let is_sync = record.promise_id == 0;
+  let http_bench_op = match record.op_id {
+    OP_READ => op_read2(record.arg, zero_copy),
+    OP_WRITE => op_write2(record.arg, zero_copy),
+    _ => unimplemented!(),
+  };
+
+  let mut record_a = record.clone();
+  let mut record_b = record.clone();
+
+  let op = Box::new(
+    http_bench_op
+      .and_then(move |result| {
+        record_a.result = result;
+        Ok(record_a)
+      }).or_else(|err| -> Result<Record, ()> {
+        debug!("unexpected err {}", err);
+        record_b.result = -1;
+        Ok(record_b)
+      }).then(move |result| -> Result<Buf, ()> {
+        let record = result.unwrap();
+        let buf: Buf = record.into();
+        state.metrics_op_completed(buf.len());
+        Ok(buf)
+      }),
+  );
+  (is_sync, op)
+}
+
+pub fn dispatch_flatbuffer(
+  cli: &Cli,
+  control: &[u8],
+  zero_copy: deno_buf,
+) -> (bool, Box<Op>) {
   let base = msg::get_root_as_base(&control);
   let is_sync = base.sync();
   let inner_type = base.inner_type();
@@ -109,7 +233,7 @@ pub fn dispatch(
       msg::Any::Open => op_open,
       msg::Any::PermissionRevoke => op_revoke_permission,
       msg::Any::Permissions => op_permissions,
-      msg::Any::Read => op_read,
+      // msg::Any::Read => op_read,
       msg::Any::ReadDir => op_read_dir,
       msg::Any::ReadFile => op_read_file,
       msg::Any::Readlink => op_read_link,
@@ -129,7 +253,7 @@ pub fn dispatch(
       msg::Any::Truncate => op_truncate,
       msg::Any::WorkerGetMessage => op_worker_get_message,
       msg::Any::WorkerPostMessage => op_worker_post_message,
-      msg::Any::Write => op_write,
+      // msg::Any::Write => op_write,
       msg::Any::WriteFile => op_write_file,
       _ => panic!(format!(
         "Unhandled message {}",
@@ -138,10 +262,6 @@ pub fn dispatch(
     };
     op_creator(&cli, &base, zero_copy)
   };
-
-  cli
-    .state
-    .metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
   let state = cli.state.clone();
 
   let boxed_op = Box::new(
@@ -907,78 +1027,31 @@ fn op_shutdown(
   }
 }
 
-fn op_read(
-  _cli: &Cli,
-  base: &msg::Base<'_>,
-  data: deno_buf,
-) -> Box<OpWithError> {
-  let cmd_id = base.cmd_id();
-  let inner = base.inner_as_read().unwrap();
-  let rid = inner.rid();
+pub type MinimalOp = dyn Future<Item = i32, Error = DenoError> + Send;
 
-  match resources::lookup(rid) {
-    None => odd_future(errors::bad_resource()),
-    Some(resource) => {
-      let op = tokio::io::read(resource, data)
+fn op_read2(rid: i32, zero_copy: deno_buf) -> Box<MinimalOp> {
+  debug!("read rid={}", rid);
+
+  match resources::lookup(rid as u32) {
+    None => Box::new(futures::future::err(errors::bad_resource())),
+    Some(resource) => Box::new(
+      tokio::io::read(resource, zero_copy)
         .map_err(DenoError::from)
-        .and_then(move |(_resource, _buf, nread)| {
-          let builder = &mut FlatBufferBuilder::new();
-          let inner = msg::ReadRes::create(
-            builder,
-            &msg::ReadResArgs {
-              nread: nread as u32,
-              eof: nread == 0,
-            },
-          );
-          Ok(serialize_response(
-            cmd_id,
-            builder,
-            msg::BaseArgs {
-              inner: Some(inner.as_union_value()),
-              inner_type: msg::Any::ReadRes,
-              ..Default::default()
-            },
-          ))
-        });
-      Box::new(op)
-    }
+        .and_then(move |(_resource, _buf, nread)| Ok(nread as i32)),
+    ),
   }
 }
 
-fn op_write(
-  _cli: &Cli,
-  base: &msg::Base<'_>,
-  data: deno_buf,
-) -> Box<OpWithError> {
-  let cmd_id = base.cmd_id();
-  let inner = base.inner_as_write().unwrap();
-  let rid = inner.rid();
+fn op_write2(rid: i32, zero_copy: deno_buf) -> Box<MinimalOp> {
+  debug!("write rid={}", rid);
 
-  match resources::lookup(rid) {
-    None => odd_future(errors::bad_resource()),
-    Some(resource) => {
-      let op = tokio_write::write(resource, data)
+  match resources::lookup(rid as u32) {
+    None => Box::new(futures::future::err(errors::bad_resource())),
+    Some(resource) => Box::new(
+      tokio_write::write(resource, zero_copy)
         .map_err(DenoError::from)
-        .and_then(move |(_resource, _buf, nwritten)| {
-          let builder = &mut FlatBufferBuilder::new();
-          let inner = msg::WriteRes::create(
-            builder,
-            &msg::WriteResArgs {
-              nbyte: nwritten as u32,
-            },
-          );
-          Ok(serialize_response(
-            cmd_id,
-            builder,
-            msg::BaseArgs {
-              inner: Some(inner.as_union_value()),
-              inner_type: msg::Any::WriteRes,
-              ..Default::default()
-            },
-          ))
-        });
-      Box::new(op)
-    }
+        .and_then(move |(_resource, _buf, nwritten)| Ok(nwritten as i32)),
+    ),
   }
 }
 
