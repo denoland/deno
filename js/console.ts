@@ -19,6 +19,10 @@ type ConsoleOptions = Partial<{
 // Default depth of logging nested objects
 const DEFAULT_MAX_DEPTH = 4;
 
+// Number of elements an object must have before it's displayed in appreviated
+// form.
+const OBJ_ABBREVIATE_SIZE = 5;
+
 // Char codes
 const CHAR_PERCENT = 37; /* % */
 const CHAR_LOWERCASE_S = 115; /* s */
@@ -272,7 +276,6 @@ function createRawObjectString(
   }
   ctx.add(value);
 
-  const entries: string[] = [];
   let baseString = "";
 
   const className = getClassInstanceName(value);
@@ -280,12 +283,19 @@ function createRawObjectString(
   if (className && className !== "Object" && className !== "anonymous") {
     shouldShowClassName = true;
   }
-
-  for (const key of Object.keys(value)) {
-    entries.push(
-      `${key}: ${stringifyWithQuotes(value[key], ctx, level + 1, maxLevel)}`
-    );
-  }
+  const keys = Object.keys(value);
+  const entries: string[] = keys.map(key => {
+    if (keys.length > OBJ_ABBREVIATE_SIZE) {
+      return key;
+    } else {
+      return `${key}: ${stringifyWithQuotes(
+        value[key],
+        ctx,
+        level + 1,
+        maxLevel
+      )}`;
+    }
+  });
 
   ctx.delete(value);
 
