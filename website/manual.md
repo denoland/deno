@@ -176,7 +176,7 @@ Extra steps for Windows users:
 ./third_party/depot_tools/ninja -C target/debug
 
 # Build a release binary.
-DENO_BUILD_MODE=release ./tools/build.py :deno
+./tools/build.py --release deno
 
 # List executable targets.
 ./third_party/depot_tools/gn ls target/debug //:* --as=output --type=executable
@@ -622,9 +622,8 @@ To start profiling,
 
 ```sh
 # Make sure we're only building release.
-export DENO_BUILD_MODE=release
 # Build deno and V8's d8.
-./tools/build.py d8 deno
+./tools/build.py --release d8 deno
 # Start the program we want to benchmark with --prof
 ./target/release/deno tests/http_bench.ts --allow-net --prof &
 # Exercise it.
