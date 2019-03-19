@@ -31,6 +31,17 @@ test(function consoleTestStringifyComplexObjects() {
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
+test(function consoleTestStringifyLongStrings() {
+  const veryLongString = "a".repeat(200);
+  // If we stringify an object containing the long string, it gets abbreviated.
+  let actual = stringify({ veryLongString });
+  assert(actual.includes("..."));
+  assert(actual.length < 200);
+  // However if we stringify the string itself, we get it exactly.
+  actual = stringify(veryLongString);
+  assertEquals(actual, veryLongString);
+});
+
 test(function consoleTestStringifyCircular() {
   class Base {
     a = 1;
