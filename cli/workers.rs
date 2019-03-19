@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::cli::Buf;
 use crate::cli::Cli;
 use crate::flags::DenoFlags;
 use crate::isolate::Isolate;
@@ -9,6 +8,7 @@ use crate::js_errors::JSErrorColor;
 use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::tokio_util;
+use deno_core::Buf;
 use deno_core::JSError;
 use deno_core::StartupData;
 use futures::future::lazy;
