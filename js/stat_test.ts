@@ -12,9 +12,9 @@ testPerm({ read: true }, async function statSyncSuccess() {
   assert(testingInfo.isDirectory());
   assert(!testingInfo.isSymlink());
 
-  const srcInfo = Deno.statSync("src");
-  assert(srcInfo.isDirectory());
-  assert(!srcInfo.isSymlink());
+  const testsInfo = Deno.statSync("tests");
+  assert(testsInfo.isDirectory());
+  assert(!testsInfo.isSymlink());
 });
 
 testPerm({ read: false }, async function statSyncPerm() {
@@ -54,9 +54,9 @@ testPerm({ read: true }, async function lstatSyncSuccess() {
   assert(!testingInfo.isDirectory());
   assert(testingInfo.isSymlink());
 
-  const srcInfo = Deno.lstatSync("src");
-  assert(srcInfo.isDirectory());
-  assert(!srcInfo.isSymlink());
+  const testsInfo = Deno.lstatSync("tests");
+  assert(testsInfo.isDirectory());
+  assert(!testsInfo.isSymlink());
 });
 
 testPerm({ read: false }, async function lstatSyncPerm() {
@@ -96,9 +96,9 @@ testPerm({ read: true }, async function statSuccess() {
   assert(testingInfo.isDirectory());
   assert(!testingInfo.isSymlink());
 
-  const srcInfo = await Deno.stat("src");
-  assert(srcInfo.isDirectory());
-  assert(!srcInfo.isSymlink());
+  const testsInfo = await Deno.stat("tests");
+  assert(testsInfo.isDirectory());
+  assert(!testsInfo.isSymlink());
 });
 
 testPerm({ read: false }, async function statPerm() {
@@ -138,9 +138,9 @@ testPerm({ read: true }, async function lstatSuccess() {
   assert(!testingInfo.isDirectory());
   assert(testingInfo.isSymlink());
 
-  const srcInfo = await Deno.lstat("src");
-  assert(srcInfo.isDirectory());
-  assert(!srcInfo.isSymlink());
+  const testsInfo = await Deno.lstat("tests");
+  assert(testsInfo.isDirectory());
+  assert(!testsInfo.isSymlink());
 });
 
 testPerm({ read: false }, async function lstatPerm() {
