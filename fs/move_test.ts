@@ -240,7 +240,7 @@ test(function moveSyncFileIfDestExists() {
   );
 
   // move again with overwrite
-  assertThrowsAsync(
+  assertThrows(
     () => {
       moveSync(srcFile, destFile, { overwrite: true });
       throw new Error("should not throw error");

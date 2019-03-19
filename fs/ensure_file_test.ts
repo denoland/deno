@@ -12,7 +12,7 @@ test(async function ensureFileIfItNotExist() {
 
   await ensureFile(testFile);
 
-  assertThrowsAsync(async () => {
+  await assertThrowsAsync(async () => {
     await Deno.stat(testFile).then(() => {
       throw new Error("test file should exists.");
     });
@@ -44,7 +44,7 @@ test(async function ensureFileIfItExist() {
 
   await ensureFile(testFile);
 
-  assertThrowsAsync(async () => {
+  await assertThrowsAsync(async () => {
     await Deno.stat(testFile).then(() => {
       throw new Error("test file should exists.");
     });
