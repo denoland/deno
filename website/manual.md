@@ -606,10 +606,17 @@ close(3);
 
 Metrics is deno's internal counters for various statics.
 
-```ts
-const { metrics } = Deno;
-console.log(metrics());
-// output like: { opsDispatched: 1, opsCompleted: 1, bytesSentControl: 40, bytesSentData: 0, bytesReceived: 176 }
+```shellsession
+> console.table(Deno.metrics())
+┌──────────────────┬────────┐
+│     (index)      │ Values │
+├──────────────────┼────────┤
+│  opsDispatched   │   9    │
+│   opsCompleted   │   9    │
+│ bytesSentControl │  504   │
+│  bytesSentData   │   0    │
+│  bytesReceived   │  856   │
+└──────────────────┴────────┘
 ```
 
 ### Schematic diagram
