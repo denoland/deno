@@ -3,7 +3,6 @@ use crate::cli::Buf;
 use crate::cli::Cli;
 use crate::flags::DenoFlags;
 use crate::isolate::Isolate;
-use crate::isolate_init::IsolateInit;
 use crate::isolate_state::IsolateState;
 use crate::isolate_state::WorkerChannels;
 use crate::js_errors::JSErrorColor;
@@ -11,6 +10,7 @@ use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::tokio_util;
 use deno_core::JSError;
+use deno_core::StartupData;
 use futures::future::lazy;
 use futures::sync::mpsc;
 use futures::sync::oneshot;
@@ -26,7 +26,7 @@ pub struct Worker {
 
 impl Worker {
   pub fn new(
-    init: IsolateInit,
+    startup_data: Option<StartupData>,
     flags: DenoFlags,
     argv: Vec<String>,
     permissions: DenoPermissions,
@@ -40,7 +40,7 @@ impl Worker {
     let state =
       Arc::new(IsolateState::new(flags, argv, Some(internal_channels)));
 
-    let cli = Cli::new(init, state, permissions);
+    let cli = Cli::new(startup_data, state, permissions);
     let isolate = Isolate::new(cli);
 
     let worker = Worker { isolate };
@@ -62,7 +62,7 @@ impl Future for Worker {
 }
 
 pub fn spawn(
-  init: IsolateInit,
+  startup_data: Option<StartupData>,
   state: &IsolateState,
   js_source: String,
   permissions: DenoPermissions,
@@ -81,7 +81,7 @@ pub fn spawn(
     .spawn(move || {
       tokio_util::run(lazy(move || {
         let (mut worker, external_channels) =
-          Worker::new(init, flags, argv, permissions);
+          Worker::new(startup_data, flags, argv, permissions);
         let resource = resources::add_worker(external_channels);
         p.send(resource.clone()).unwrap();
 
@@ -113,13 +113,13 @@ pub fn spawn(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::isolate_init;
+  use crate::startup_data;
 
   #[test]
   fn test_spawn() {
-    let isolate_init = isolate_init::compiler_isolate_init();
+    let startup_data = startup_data::compiler_isolate_init();
     let resource = spawn(
-      isolate_init,
+      Some(startup_data),
       &IsolateState::mock(),
       r#"
       onmessage = function(e) {
@@ -154,9 +154,9 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    let isolate_init = isolate_init::compiler_isolate_init();
+    let startup_data = startup_data::compiler_isolate_init();
     let resource = spawn(
-      isolate_init,
+      Some(startup_data),
       &IsolateState::mock(),
       "onmessage = () => close();".into(),
       DenoPermissions::default(),

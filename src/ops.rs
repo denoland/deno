@@ -1880,7 +1880,7 @@ fn op_worker_post_message(
 mod tests {
   use super::*;
   use crate::cli::Cli;
-  use crate::isolate_init::IsolateInit;
+  use crate::isolate_state::IsolateState;
   use crate::permissions::{DenoPermissions, PermissionAccessor};
 
   #[test]
@@ -1893,14 +1893,7 @@ mod tests {
       allow_run: PermissionAccessor::from(true),
       ..Default::default()
     };
-    let cli = Cli::new(
-      IsolateInit {
-        snapshot: None,
-        init_script: None,
-      },
-      state,
-      permissions,
-    );
+    let cli = Cli::new(None, state, permissions);
     let builder = &mut FlatBufferBuilder::new();
     let fetch_msg_args = msg::FetchModuleMetaDataArgs {
       specifier: Some(builder.create_string("./somefile")),
@@ -1934,14 +1927,7 @@ mod tests {
       allow_run: PermissionAccessor::from(true),
       ..Default::default()
     };
-    let cli = Cli::new(
-      IsolateInit {
-        snapshot: None,
-        init_script: None,
-      },
-      state,
-      permissions,
-    );
+    let cli = Cli::new(None, state, permissions);
     let builder = &mut FlatBufferBuilder::new();
     let fetch_msg_args = msg::FetchModuleMetaDataArgs {
       specifier: Some(builder.create_string("./somefile")),
@@ -1975,14 +1961,7 @@ mod tests {
       allow_run: PermissionAccessor::from(true),
       ..Default::default()
     };
-    let cli = Cli::new(
-      IsolateInit {
-        snapshot: None,
-        init_script: None,
-      },
-      state,
-      permissions,
-    );
+    let cli = Cli::new(None, state, permissions);
     let builder = &mut FlatBufferBuilder::new();
     let fetch_msg_args = msg::FetchModuleMetaDataArgs {
       specifier: Some(builder.create_string("./somefile")),
@@ -2015,14 +1994,7 @@ mod tests {
       allow_net: PermissionAccessor::from(true),
       ..Default::default()
     };
-    let cli = Cli::new(
-      IsolateInit {
-        snapshot: None,
-        init_script: None,
-      },
-      state,
-      permissions,
-    );
+    let cli = Cli::new(None, state, permissions);
     let builder = &mut FlatBufferBuilder::new();
     let fetch_msg_args = msg::FetchModuleMetaDataArgs {
       specifier: Some(builder.create_string("./somefile")),
