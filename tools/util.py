@@ -364,9 +364,11 @@ def parse_wrk_output(output):
     stats['max_latency'] = None
     for line in output.split("\n"):
         if stats['req_per_sec'] is None:
-            stats['req_per_sec'] = extract_number(r'Requests/sec:\s+(\d+)', line)
+            stats['req_per_sec'] = extract_number(r'Requests/sec:\s+(\d+)',
+                                                  line)
         if stats['max_latency'] is None:
-            stats['max_latency'] = extract_number(r'Latency(?:\s+(\d+).\d+ms){3}', line)
+            stats['max_latency'] = extract_number(
+                r'Latency(?:\s+(\d+).\d+ms){3}', line)
     return stats
 
 

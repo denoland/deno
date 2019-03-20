@@ -93,9 +93,9 @@ def run(server_cmd, merge_env=None):
                                                            DURATION, ADDR)
         print cmd
         output = subprocess.check_output(cmd, shell=True)
-        req_per_sec = util.parse_wrk_output(output)
+        stats = util.parse_wrk_output(output)
         print output
-        return req_per_sec
+        return stats
     finally:
         server.kill()
 
