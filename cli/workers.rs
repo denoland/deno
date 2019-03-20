@@ -1,47 +1,42 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::cli::Cli;
-use crate::flags::DenoFlags;
-use crate::isolate::Isolate;
-use crate::isolate_state::IsolateState;
+use crate::isolate::{DenoBehavior, Isolate};
 use crate::isolate_state::WorkerChannels;
 use crate::js_errors::JSErrorColor;
-use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::tokio_util;
 use deno_core::Buf;
 use deno_core::JSError;
-use deno_core::StartupData;
 use futures::future::lazy;
 use futures::sync::mpsc;
 use futures::sync::oneshot;
 use futures::Future;
 use futures::Poll;
-use std::sync::Arc;
 use std::thread;
 
-/// Rust interface for WebWorkers.
-pub struct Worker {
-  isolate: Isolate,
+/// Behavior trait specific to workers
+pub trait WorkerBehavior: DenoBehavior {
+  /// Used to setup internal channels at worker creation.
+  /// This is intended to be temporary fix.
+  /// TODO(afinch7) come up with a better solution to set worker channels
+  fn set_internal_channels(&mut self, worker_channels: WorkerChannels);
 }
 
-impl Worker {
-  pub fn new(
-    startup_data: Option<StartupData>,
-    flags: DenoFlags,
-    argv: Vec<String>,
-    permissions: DenoPermissions,
-  ) -> (Self, WorkerChannels) {
+/// Rust interface for WebWorkers.
+pub struct Worker<B: WorkerBehavior> {
+  isolate: Isolate<B>,
+}
+
+impl<B: WorkerBehavior> Worker<B> {
+  pub fn new(mut behavior: B) -> (Self, WorkerChannels) {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
 
     let internal_channels = (worker_out_tx, worker_in_rx);
     let external_channels = (worker_in_tx, worker_out_rx);
 
-    let state =
-      Arc::new(IsolateState::new(flags, argv, Some(internal_channels)));
+    behavior.set_internal_channels(internal_channels);
 
-    let cli = Cli::new(startup_data, state, permissions);
-    let isolate = Isolate::new(cli);
+    let isolate = Isolate::new(behavior);
 
     let worker = Worker { isolate };
     (worker, external_channels)
@@ -52,7 +47,7 @@ impl Worker {
   }
 }
 
-impl Future for Worker {
+impl<B: WorkerBehavior> Future for Worker<B> {
   type Item = ();
   type Error = JSError;
 
@@ -61,11 +56,9 @@ impl Future for Worker {
   }
 }
 
-pub fn spawn(
-  startup_data: Option<StartupData>,
-  state: &IsolateState,
+pub fn spawn<B: WorkerBehavior + 'static>(
+  behavior: B,
   js_source: String,
-  permissions: DenoPermissions,
 ) -> resources::Resource {
   // TODO This function should return a Future, so that the caller can retrieve
   // the JSError if one is thrown. Currently it just prints to stderr and calls
@@ -74,14 +67,10 @@ pub fn spawn(
   let (p, c) = oneshot::channel::<resources::Resource>();
   let builder = thread::Builder::new().name("worker".to_string());
 
-  let flags = state.flags.clone();
-  let argv = state.argv.clone();
-
   let _tid = builder
     .spawn(move || {
       tokio_util::run(lazy(move || {
-        let (mut worker, external_channels) =
-          Worker::new(startup_data, flags, argv, permissions);
+        let (mut worker, external_channels) = Worker::new(behavior);
         let resource = resources::add_worker(external_channels);
         p.send(resource.clone()).unwrap();
 
@@ -113,14 +102,14 @@ pub fn spawn(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::startup_data;
+  use crate::compiler::CompilerBehavior;
+  use crate::isolate_state::IsolateState;
+  use std::sync::Arc;
 
   #[test]
   fn test_spawn() {
-    let startup_data = startup_data::compiler_isolate_init();
     let resource = spawn(
-      Some(startup_data),
-      &IsolateState::mock(),
+      CompilerBehavior::new(Arc::new(IsolateState::mock())),
       r#"
       onmessage = function(e) {
         let s = new TextDecoder().decode(e.data);;
@@ -134,8 +123,7 @@ mod tests {
         postMessage(new Uint8Array([1, 2, 3]));
         console.log("after postMessage");
       }
-    "#.into(),
-      DenoPermissions::default(),
+      "#.into(),
     );
     let msg = String::from("hi").into_boxed_str().into_boxed_bytes();
 
@@ -154,12 +142,9 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    let startup_data = startup_data::compiler_isolate_init();
     let resource = spawn(
-      Some(startup_data),
-      &IsolateState::mock(),
+      CompilerBehavior::new(Arc::new(IsolateState::mock())),
       "onmessage = () => close();".into(),
-      DenoPermissions::default(),
     );
 
     assert_eq!(
