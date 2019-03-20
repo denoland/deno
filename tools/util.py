@@ -360,10 +360,14 @@ def extract_number(pattern, string):
 
 def parse_wrk_output(output):
     req_per_sec = None
+    max_latency = None
     for line in output.split("\n"):
         if req_per_sec is None:
             req_per_sec = extract_number(r'Requests/sec:\s+(\d+)', line)
-    return req_per_sec
+        if max_latency is None:
+            max_latency = extract_number(r'Latency(?:\s+(\d+).\d+ms){3}', line)
+
+    return { "req_per_sec": req_per_sec, "max_latency": max_latency }
 
 
 def platform():

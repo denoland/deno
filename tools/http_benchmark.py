@@ -60,15 +60,25 @@ def hyper_http_benchmark(hyper_hello_exe):
 
 def http_benchmark(deno_exe, hyper_hello_exe, core_http_bench_exe):
     r = {}
+    m = {}
     # TODO Rename to "deno_tcp"
-    r["deno"] = deno_http_benchmark(deno_exe)
-    r["deno_net_http"] = deno_net_http_benchmark(deno_exe)
-    r["deno_core_single"] = deno_core_single(core_http_bench_exe)
-    r["deno_core_multi"] = deno_core_multi(core_http_bench_exe)
-    r["node"] = node_http_benchmark()
-    r["node_tcp"] = node_tcp_benchmark()
-    r["hyper"] = hyper_http_benchmark(hyper_hello_exe)
-    return r
+    r["deno"] = deno_http_benchmark(deno_exe)["req_per_sec"]
+    r["deno_net_http"] = deno_net_http_benchmark(deno_exe)["req_per_sec"]
+    r["deno_core_single"] = deno_core_single(core_http_bench_exe)["req_per_sec"]
+    r["deno_core_multi"] = deno_core_multi(core_http_bench_exe)["req_per_sec"]
+    r["node"] = node_http_benchmark()["req_per_sec"]
+    r["node_tcp"] = node_tcp_benchmark()["req_per_sec"]
+    r["hyper"] = hyper_http_benchmark(hyper_hello_exe)["req_per_sec"]
+
+    m["deno"] = deno_http_benchmark(deno_exe)["max_latency"]
+    m["deno_net_http"] = deno_net_http_benchmark(deno_exe)["max_latency"]
+    m["deno_core_single"] = deno_core_single(core_http_bench_exe)["max_latency"]
+    m["deno_core_multi"] = deno_core_multi(core_http_bench_exe)["max_latency"]
+    m["node"] = node_http_benchmark()["max_latency"]
+    m["node_tcp"] = node_tcp_benchmark()["max_latency"]
+    m["hyper"] = hyper_http_benchmark(hyper_hello_exe)["max_latency"]
+
+    return { "req_per_sec": r, "max_latency": m }
 
 
 def run(server_cmd, merge_env=None):
@@ -93,9 +103,10 @@ def run(server_cmd, merge_env=None):
                                                            DURATION, ADDR)
         print cmd
         output = subprocess.check_output(cmd, shell=True)
-        req_per_sec = util.parse_wrk_output(output)
+        req_per_sec = util.parse_wrk_output(output)["req_per_sec"]
+        max_latency = util.parse_wrk_output(output)["max_latency"]
         print output
-        return req_per_sec
+        return { "req_per_sec": req_per_sec, "max_latency": max_latency }
     finally:
         server.kill()
 
