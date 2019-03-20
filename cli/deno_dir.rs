@@ -256,7 +256,7 @@ impl DenoDir {
             }
           };
 
-          if out.source_code.starts_with("#!".as_bytes()) {
+          if out.source_code.starts_with(b"#!") {
             out.source_code = filter_shebang(out.source_code);
           }
 

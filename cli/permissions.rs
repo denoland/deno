@@ -31,9 +31,10 @@ impl From<usize> for PermissionAccessorState {
 
 impl From<bool> for PermissionAccessorState {
   fn from(val: bool) -> Self {
-    match val {
-      true => PermissionAccessorState::Allow,
-      false => PermissionAccessorState::Ask,
+    if val {
+      PermissionAccessorState::Allow
+    } else {
+      PermissionAccessorState::Ask
     }
   }
 }
@@ -243,48 +244,48 @@ impl DenoPermissions {
   }
 
   pub fn allows_run(&self) -> bool {
-    return self.allow_run.is_allow();
+    self.allow_run.is_allow()
   }
 
   pub fn allows_read(&self) -> bool {
-    return self.allow_read.is_allow();
+    self.allow_read.is_allow()
   }
 
   pub fn allows_write(&self) -> bool {
-    return self.allow_write.is_allow();
+    self.allow_write.is_allow()
   }
 
   pub fn allows_net(&self) -> bool {
-    return self.allow_net.is_allow();
+    self.allow_net.is_allow()
   }
 
   pub fn allows_env(&self) -> bool {
-    return self.allow_env.is_allow();
+    self.allow_env.is_allow()
   }
 
   pub fn revoke_run(&self) -> DenoResult<()> {
     self.allow_run.revoke();
-    return Ok(());
+    Ok(())
   }
 
   pub fn revoke_read(&self) -> DenoResult<()> {
     self.allow_read.revoke();
-    return Ok(());
+    Ok(())
   }
 
   pub fn revoke_write(&self) -> DenoResult<()> {
     self.allow_write.revoke();
-    return Ok(());
+    Ok(())
   }
 
   pub fn revoke_net(&self) -> DenoResult<()> {
     self.allow_net.revoke();
-    return Ok(());
+    Ok(())
   }
 
   pub fn revoke_env(&self) -> DenoResult<()> {
     self.allow_env.revoke();
-    return Ok(());
+    Ok(())
   }
 }
 

@@ -451,8 +451,8 @@ pub fn seek(
     Some(Repr::FsFile(f)) => {
       let seek_from = match whence {
         0 => SeekFrom::Start(offset as u64),
-        1 => SeekFrom::Current(offset as i64),
-        2 => SeekFrom::End(offset as i64),
+        1 => SeekFrom::Current(i64::from(offset)),
+        2 => SeekFrom::End(i64::from(offset)),
         _ => {
           return Box::new(futures::future::err(errors::new(
             errors::ErrorKind::InvalidSeekMode,
@@ -481,14 +481,13 @@ pub fn seek(
         )));
       }
       let mut std_file_copy = maybe_std_file_copy.unwrap();
-      return Box::new(futures::future::lazy(move || {
+      Box::new(futures::future::lazy(move || {
         let result = std_file_copy
           .seek(seek_from)
-          .map(|_| {
-            return ();
-          }).map_err(DenoError::from);
+          .map(|_| {})
+          .map_err(DenoError::from);
         futures::future::result(result)
-      }));
+      }))
     }
     _ => panic!("cannot seek"),
   }
