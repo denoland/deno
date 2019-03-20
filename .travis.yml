@@ -131,7 +131,7 @@ jobs:
       - sudo apt -yq install qemu qemu-user binfmt-support qemu-user-binfmt
       - sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 /lib/ld-linux-aarch64.so.1
       - export QEMU_LD_PREFIX=/usr/aarch64-linux-gnu
-      - $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/deno tests/002_hello.ts
+      #- $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/deno tests/002_hello.ts
       # - DENO_BUILD_MODE=release ./tools/test.py $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release TODO(afinch7): Get the tests working
 
     - name: "cargo release linux x86_64"
