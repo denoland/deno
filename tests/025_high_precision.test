@@ -1,0 +1,2 @@
+args: tests/025_high_precision.ts --allow-high-precision --reload
+output: tests/025_high_precision.ts.out
