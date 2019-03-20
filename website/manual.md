@@ -826,4 +826,6 @@ export const FOO = "foo";
 ```
 
 ### CLI flags
-Deno aims to keep number of command line flags minimal. Before introducing new flags discuss it in related issue first.
+
+Deno aims to keep number of command line flags minimal. Before introducing new
+flags discuss it in related issue first.
