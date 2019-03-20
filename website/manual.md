@@ -824,3 +824,6 @@ and are denoted by a leading `/**` before terminating with a `*/`. For example:
 /** A simple JSDoc comment */
 export const FOO = "foo";
 ```
+
+### CLI flags
+Deno aims to keep number of command line flags minimal. Before introducing new flags discuss it in related issue first.
