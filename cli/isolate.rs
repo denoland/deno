@@ -1,33 +1,37 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::cli::Cli;
 use crate::compiler::compile_sync;
 use crate::compiler::ModuleMetaData;
 use crate::errors::DenoError;
 use crate::errors::RustOrJsError;
 use crate::isolate_state::IsolateState;
+use crate::isolate_state::IsolateStateContainer;
 use crate::js_errors;
 use crate::msg;
 use deno_core;
 use deno_core::deno_mod;
+use deno_core::Behavior;
 use deno_core::JSError;
 use futures::Async;
 use futures::Future;
 use std::sync::Arc;
 
-type CoreIsolate = deno_core::Isolate<Cli>;
+pub trait DenoBehavior: Behavior + IsolateStateContainer + Send {}
+impl<T> DenoBehavior for T where T: Behavior + IsolateStateContainer + Send {}
+
+type CoreIsolate<B> = deno_core::Isolate<B>;
 
 /// Wraps deno_core::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
-pub struct Isolate {
-  inner: CoreIsolate,
+pub struct Isolate<B: Behavior> {
+  inner: CoreIsolate<B>,
   state: Arc<IsolateState>,
 }
 
-impl Isolate {
-  pub fn new(cli: Cli) -> Isolate {
-    let state = cli.state.clone();
+impl<B: DenoBehavior> Isolate<B> {
+  pub fn new(behavior: B) -> Isolate<B> {
+    let state = behavior.state().clone();
     Self {
-      inner: CoreIsolate::new(cli),
+      inner: CoreIsolate::new(behavior),
       state,
     }
   }
@@ -150,7 +154,7 @@ impl Isolate {
   }
 }
 
-impl Future for Isolate {
+impl<B: DenoBehavior> Future for Isolate<B> {
   type Item = ();
   type Error = JSError;
 
@@ -170,7 +174,7 @@ fn fetch_module_meta_data_and_maybe_compile(
     || state.flags.recompile
   {
     debug!(">>>>> compile_sync START");
-    out = compile_sync(state, specifier, &referrer, &out);
+    out = compile_sync(state.clone(), specifier, &referrer, &out);
     debug!(">>>>> compile_sync END");
     state.dir.code_cache(&out)?;
   }
@@ -180,8 +184,8 @@ fn fetch_module_meta_data_and_maybe_compile(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::cli_behavior::CliBehavior;
   use crate::flags;
-  use crate::permissions::DenoPermissions;
   use crate::tokio_util;
   use futures::future::lazy;
   use std::sync::atomic::Ordering;
@@ -199,7 +203,7 @@ mod tests {
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let cli = Cli::new(None, state.clone(), DenoPermissions::default());
+      let cli = CliBehavior::new(None, state.clone());
       let mut isolate = Isolate::new(cli);
       if let Err(err) = isolate.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
@@ -222,7 +226,7 @@ mod tests {
     let state = Arc::new(IsolateState::new(flags, rest_argv, None));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let cli = Cli::new(None, state.clone(), DenoPermissions::default());
+      let cli = CliBehavior::new(None, state.clone());
       let mut isolate = Isolate::new(cli);
       if let Err(err) = isolate.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
