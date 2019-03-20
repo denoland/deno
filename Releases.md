@@ -6,6 +6,20 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.4 / 2019.03.20
+
+In deno itself:
+
+- Performance improvements (#1959, #1938)
+- Improve pretty printing of objects (#1969)
+- More permissions prompt options (#1926)
+
+In deno_std:
+
+- Add prettier styling options (#281)
+- Extract internal method isSubdir to fs/utils.ts (#285)
+- Add strings/pad (#282)
+
 ### v0.3.3 / 2019.03.13
 
 In deno itself:
