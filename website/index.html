@@ -17,7 +17,7 @@
         <img id="logo" src="images/deno_logo_3.svg" width=200>
         <div>
           <h1>Deno</h1>
-          A browser-like command line runtime
+          A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio
         </div>
       </header>
 
@@ -109,11 +109,11 @@ href="https://github.com/denoland/deno_install/blob/master/install.ps1">https://
       <p>Or a more complex one:</p>
 
       <pre><code class="typescript language-typescript">import { serve } from "https://deno.land/std@v0.3.2/http/server.ts";
-const s = serve("0.0.0.0:8000");
 
 async function main() {
-  for await (const req of s) {
-    req.respond({ body: new TextEncoder().encode("Hello World\n") });
+  const body = new TextEncoder().encode("Hello World\n");
+  for await (const req of serve(":8000")) {
+    req.respond({ body });
   }
 }
 

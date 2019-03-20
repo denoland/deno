@@ -148,10 +148,8 @@ submodule. However, you need to install separately:
 3. Python 2.
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 
-Extra steps for Mac users:
-
-1. [XCode](https://developer.apple.com/xcode/)
-2. Openssl 1.1: `brew install openssl@1.1` (TODO: shouldn't be necessary)
+Extra steps for Mac users: install [XCode](https://developer.apple.com/xcode/)
+:(
 
 Extra steps for Windows users:
 
@@ -606,10 +604,17 @@ close(3);
 
 Metrics is deno's internal counters for various statics.
 
-```ts
-const { metrics } = Deno;
-console.log(metrics());
-// output like: { opsDispatched: 1, opsCompleted: 1, bytesSentControl: 40, bytesSentData: 0, bytesReceived: 176 }
+```shellsession
+> console.table(Deno.metrics())
+┌──────────────────┬────────┐
+│     (index)      │ Values │
+├──────────────────┼────────┤
+│  opsDispatched   │   9    │
+│   opsCompleted   │   9    │
+│ bytesSentControl │  504   │
+│  bytesSentData   │   0    │
+│  bytesReceived   │  856   │
+└──────────────────┴────────┘
 ```
 
 ### Schematic diagram
