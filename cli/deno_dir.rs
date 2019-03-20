@@ -11,6 +11,7 @@ use crate::msg;
 use crate::tokio_util;
 use crate::version;
 use dirs;
+use futures::future::Either;
 use futures::Future;
 use ring;
 use std;
@@ -158,13 +159,14 @@ impl DenoDir {
     }
   }
 
-  // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L122-L138
-  fn get_source_code(
+  fn get_source_code_async(
     self: &Self,
     module_name: &str,
     filename: &str,
-  ) -> DenoResult<ModuleMetaData> {
-    let is_module_remote = is_remote(module_name);
+  ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+    let filename = filename.to_string();
+    let module_name = module_name.to_string();
+    let is_module_remote = is_remote(&module_name);
     // We try fetch local. Two cases:
     // 1. This is a remote module, but no reload provided
     // 2. This is a local module
@@ -173,13 +175,17 @@ impl DenoDir {
         "fetch local or reload {} is_module_remote {}",
         module_name, is_module_remote
       );
-      match fetch_local_source(&module_name, &filename)? {
-        Some(output) => {
+      // Note that local fetch is done synchronously.
+      match fetch_local_source(&module_name, &filename) {
+        Ok(Some(output)) => {
           debug!("found local source ");
-          return Ok(output);
+          return Either::A(futures::future::ok(output));
         }
-        None => {
+        Ok(None) => {
           debug!("fetch_local_source returned None");
+        }
+        Err(err) => {
+          return Either::A(futures::future::err(err));
         }
       }
     }
@@ -187,23 +193,36 @@ impl DenoDir {
     // If not remote file, stop here!
     if !is_module_remote {
       debug!("not remote file stop here");
-      return Err(DenoError::from(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        format!("cannot find local file '{}'", filename),
+      return Either::A(futures::future::err(DenoError::from(
+        std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!("cannot find local file '{}'", &filename),
+        ),
       )));
     }
 
     debug!("is remote but didn't find module");
 
+    let filename2 = filename.clone();
     // not cached/local, try remote
-    let maybe_remote_source = fetch_remote_source(&module_name, &filename)?;
-    if let Some(output) = maybe_remote_source {
-      return Ok(output);
-    }
-    Err(DenoError::from(std::io::Error::new(
-      std::io::ErrorKind::NotFound,
-      format!("cannot find remote file '{}'", filename),
-    )))
+    let f = fetch_remote_source_async(&module_name, &filename).and_then(
+      move |maybe_remote_source| match maybe_remote_source {
+        Some(output) => Ok(output),
+        None => Err(DenoError::from(std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!("cannot find remote file '{}'", &filename2),
+        ))),
+      },
+    );
+    Either::B(f)
+  }
+
+  fn get_source_code(
+    self: &Self,
+    module_name: &str,
+    filename: &str,
+  ) -> DenoResult<ModuleMetaData> {
+    tokio_util::block_on(self.get_source_code_async(module_name, filename))
   }
 
   pub fn fetch_module_meta_data(
@@ -546,6 +565,7 @@ fn fetch_remote_source_async(
 
 // Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
 /// Fetch remote source code.
+#[cfg(test)]
 fn fetch_remote_source(
   module_name: &str,
   filename: &str,
