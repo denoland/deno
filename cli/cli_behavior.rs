@@ -52,6 +52,6 @@ impl Behavior for CliBehavior {
     control: &[u8],
     zero_copy: deno_buf,
   ) -> (bool, Box<Op>) {
-    ops::dispatch_all(Box::new(self), control, zero_copy, ops::op_selector_std)
+    ops::dispatch_all(self, control, zero_copy, ops::op_selector_std)
   }
 }
