@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::isolate_state::IsolateState;
-use crate::isolate_state::{IsolateStateContainer, WorkerChannels};
+use crate::isolate_state::*;
 use crate::msg;
 use crate::ops;
 use crate::resources;
@@ -18,7 +17,6 @@ use deno_core::StartupData;
 use futures::Future;
 use serde_json;
 use std::str;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -36,30 +34,6 @@ impl CompilerBehavior {
   }
 }
 
-impl Behavior for CompilerBehavior {
-  fn startup_data(&mut self) -> Option<StartupData> {
-    Some(startup_data::compiler_isolate_init())
-  }
-
-  fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod {
-    self
-      .state
-      .metrics
-      .resolve_count
-      .fetch_add(1, Ordering::Relaxed);
-    let mut modules = self.state.modules.lock().unwrap();
-    modules.resolve_cb(&self.state.dir, specifier, referrer)
-  }
-
-  fn dispatch(
-    &mut self,
-    control: &[u8],
-    zero_copy: deno_buf,
-  ) -> (bool, Box<Op>) {
-    ops::dispatch_compiler(self, control, zero_copy)
-  }
-}
-
 impl IsolateStateContainer for CompilerBehavior {
   fn state(&self) -> Arc<IsolateState> {
     self.state.clone()
@@ -69,6 +43,29 @@ impl IsolateStateContainer for CompilerBehavior {
 impl IsolateStateContainer for &CompilerBehavior {
   fn state(&self) -> Arc<IsolateState> {
     self.state.clone()
+  }
+}
+
+impl Behavior for CompilerBehavior {
+  fn startup_data(&mut self) -> Option<StartupData> {
+    Some(startup_data::compiler_isolate_init())
+  }
+
+  fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod {
+    self.state_resolve(specifier, referrer)
+  }
+
+  fn dispatch(
+    &mut self,
+    control: &[u8],
+    zero_copy: deno_buf,
+  ) -> (bool, Box<Op>) {
+    ops::dispatch_all(
+      Box::new(self),
+      control,
+      zero_copy,
+      ops::op_selector_compiler,
+    )
   }
 }
 

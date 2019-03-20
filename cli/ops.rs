@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::cli_behavior::CliBehavior;
-use crate::compiler::CompilerBehavior;
 use crate::errors;
 use crate::errors::{op_not_implemented, DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -74,22 +72,6 @@ fn empty_buf() -> Buf {
 /// This functions invoked every time libdeno.send() is called.
 /// control corresponds to the first argument of libdeno.send().
 /// data corresponds to the second argument of libdeno.send().
-pub fn dispatch_cli(
-  cli: &CliBehavior,
-  control: &[u8],
-  zero_copy: deno_buf,
-) -> (bool, Box<Op>) {
-  dispatch_all(Box::new(cli), control, zero_copy, op_selector_std)
-}
-
-pub fn dispatch_compiler(
-  compiler: &CompilerBehavior,
-  control: &[u8],
-  zero_copy: deno_buf,
-) -> (bool, Box<Op>) {
-  dispatch_all(Box::new(compiler), control, zero_copy, op_selector_compiler)
-}
-
 pub fn dispatch_all(
   sc: Box<&IsolateStateContainer>,
   control: &[u8],
