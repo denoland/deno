@@ -11,6 +11,7 @@ use crate::msg;
 use crate::tokio_util;
 use crate::version;
 use dirs;
+use futures::future::Either;
 use futures::Future;
 use ring;
 use std;
@@ -117,22 +118,6 @@ impl DenoDir {
     )
   }
 
-  fn load_cache(
-    self: &Self,
-    filename: &str,
-    source_code: &[u8],
-  ) -> Result<(Vec<u8>, Vec<u8>), std::io::Error> {
-    let (output_code, source_map) = self.cache_path(filename, source_code);
-    debug!(
-      "load_cache code: {} map: {}",
-      output_code.display(),
-      source_map.display()
-    );
-    let read_output_code = fs::read(&output_code)?;
-    let read_source_map = fs::read(&source_map)?;
-    Ok((read_output_code, read_source_map))
-  }
-
   pub fn code_cache(
     self: &Self,
     module_meta_data: &ModuleMetaData,
@@ -158,13 +143,14 @@ impl DenoDir {
     }
   }
 
-  // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L122-L138
-  fn get_source_code(
+  fn get_source_code_async(
     self: &Self,
     module_name: &str,
     filename: &str,
-  ) -> DenoResult<ModuleMetaData> {
-    let is_module_remote = is_remote(module_name);
+  ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+    let filename = filename.to_string();
+    let module_name = module_name.to_string();
+    let is_module_remote = is_remote(&module_name);
     // We try fetch local. Two cases:
     // 1. This is a remote module, but no reload provided
     // 2. This is a local module
@@ -173,13 +159,17 @@ impl DenoDir {
         "fetch local or reload {} is_module_remote {}",
         module_name, is_module_remote
       );
-      match fetch_local_source(&module_name, &filename)? {
-        Some(output) => {
+      // Note that local fetch is done synchronously.
+      match fetch_local_source(&module_name, &filename) {
+        Ok(Some(output)) => {
           debug!("found local source ");
-          return Ok(output);
+          return Either::A(futures::future::ok(output));
         }
-        None => {
+        Ok(None) => {
           debug!("fetch_local_source returned None");
+        }
+        Err(err) => {
+          return Either::A(futures::future::err(err));
         }
       }
     }
@@ -187,100 +177,147 @@ impl DenoDir {
     // If not remote file, stop here!
     if !is_module_remote {
       debug!("not remote file stop here");
-      return Err(DenoError::from(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        format!("cannot find local file '{}'", filename),
+      return Either::A(futures::future::err(DenoError::from(
+        std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!("cannot find local file '{}'", &filename),
+        ),
       )));
     }
 
     debug!("is remote but didn't find module");
 
+    let filename2 = filename.clone();
     // not cached/local, try remote
-    let maybe_remote_source = fetch_remote_source(&module_name, &filename)?;
-    if let Some(output) = maybe_remote_source {
-      return Ok(output);
-    }
-    Err(DenoError::from(std::io::Error::new(
-      std::io::ErrorKind::NotFound,
-      format!("cannot find remote file '{}'", filename),
-    )))
+    let f = fetch_remote_source_async(&module_name, &filename).and_then(
+      move |maybe_remote_source| match maybe_remote_source {
+        Some(output) => Ok(output),
+        None => Err(DenoError::from(std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!("cannot find remote file '{}'", &filename2),
+        ))),
+      },
+    );
+    Either::B(f)
   }
 
-  pub fn fetch_module_meta_data(
+  #[cfg(test)]
+  /// Synchronous version of get_source_code_async
+  /// This function is deprecated.
+  fn get_source_code(
+    self: &Self,
+    module_name: &str,
+    filename: &str,
+  ) -> DenoResult<ModuleMetaData> {
+    tokio_util::block_on(self.get_source_code_async(module_name, filename))
+  }
+
+  pub fn fetch_module_meta_data_async(
     self: &Self,
     specifier: &str,
     referrer: &str,
-  ) -> Result<ModuleMetaData, errors::DenoError> {
+  ) -> impl Future<Item = ModuleMetaData, Error = errors::DenoError> {
     debug!(
       "fetch_module_meta_data. specifier {} referrer {}",
       specifier, referrer
     );
 
-    let (module_name, filename) = self.resolve_module(specifier, referrer)?;
+    let specifier = specifier.to_string();
+    let referrer = referrer.to_string();
 
-    let result = self.get_source_code(module_name.as_str(), filename.as_str());
-    let mut out = match result {
-      Ok(out) => out,
-      Err(err) => {
-        if err.kind() == ErrorKind::NotFound {
-          // For NotFound, change the message to something better.
-          return Err(errors::new(
-            ErrorKind::NotFound,
-            format!(
-              "Cannot resolve module \"{}\" from \"{}\"",
-              specifier, referrer
-            ),
-          ));
-        } else {
-          return Err(err);
-        }
-      }
-    };
-
-    if out.source_code.starts_with("#!".as_bytes()) {
-      out.source_code = filter_shebang(out.source_code);
+    let result = self.resolve_module(&specifier, &referrer);
+    if let Err(err) = result {
+      return Either::A(futures::future::err(DenoError::from(err)));
     }
+    let (module_name, filename) = result.unwrap();
 
-    if out.media_type != msg::MediaType::TypeScript {
-      return Ok(out);
-    }
+    let gen = self.gen.clone();
+    let recompile = self.recompile;
 
-    let (output_code_filename, output_source_map_filename) =
-      self.cache_path(&out.filename, &out.source_code);
-    let mut maybe_output_code = None;
-    let mut maybe_source_map = None;
+    Either::B(
+      self
+        .get_source_code_async(module_name.as_str(), filename.as_str())
+        .then(move |result| {
+          let mut out = match result {
+            Ok(out) => out,
+            Err(err) => {
+              if err.kind() == ErrorKind::NotFound {
+                // For NotFound, change the message to something better.
+                return Err(errors::new(
+                  ErrorKind::NotFound,
+                  format!(
+                    "Cannot resolve module \"{}\" from \"{}\"",
+                    specifier, referrer
+                  ),
+                ));
+              } else {
+                return Err(err);
+              }
+            }
+          };
 
-    if !self.recompile {
-      let result = self.load_cache(out.filename.as_str(), &out.source_code);
-      match result {
-        Err(err) => {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            return Ok(out);
-          } else {
-            return Err(err.into());
+          if out.source_code.starts_with("#!".as_bytes()) {
+            out.source_code = filter_shebang(out.source_code);
           }
-        }
-        Ok((output_code, source_map)) => {
-          maybe_output_code = Some(output_code);
-          maybe_source_map = Some(source_map);
-        }
-      }
-    }
 
-    Ok(ModuleMetaData {
-      module_name: out.module_name,
-      filename: out.filename,
-      media_type: out.media_type,
-      source_code: out.source_code,
-      maybe_output_code_filename: output_code_filename
-        .to_str()
-        .map(String::from),
-      maybe_output_code,
-      maybe_source_map_filename: output_source_map_filename
-        .to_str()
-        .map(String::from),
-      maybe_source_map,
-    })
+          if out.media_type != msg::MediaType::TypeScript {
+            return Ok(out);
+          }
+
+          let cache_key =
+            source_code_hash(&out.filename, &out.source_code, version::DENO);
+          let (output_code_filename, output_source_map_filename) = (
+            gen.join(cache_key.to_string() + ".js"),
+            gen.join(cache_key.to_string() + ".js.map"),
+          );
+
+          let mut maybe_output_code = None;
+          let mut maybe_source_map = None;
+
+          if !recompile {
+            let result =
+              load_cache2(&output_code_filename, &output_source_map_filename);
+            match result {
+              Err(err) => {
+                if err.kind() == std::io::ErrorKind::NotFound {
+                  return Ok(out);
+                } else {
+                  return Err(err.into());
+                }
+              }
+              Ok((output_code, source_map)) => {
+                maybe_output_code = Some(output_code);
+                maybe_source_map = Some(source_map);
+              }
+            }
+          }
+
+          Ok(ModuleMetaData {
+            module_name: out.module_name,
+            filename: out.filename,
+            media_type: out.media_type,
+            source_code: out.source_code,
+            maybe_output_code_filename: output_code_filename
+              .to_str()
+              .map(String::from),
+            maybe_output_code,
+            maybe_source_map_filename: output_source_map_filename
+              .to_str()
+              .map(String::from),
+            maybe_source_map,
+          })
+        }),
+    )
+  }
+
+  /// Synchronous version of fetch_module_meta_data_async
+  /// This function is deprecated.
+  pub fn fetch_module_meta_data(
+    self: &Self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<ModuleMetaData, errors::DenoError> {
+    tokio_util::block_on(self.fetch_module_meta_data_async(specifier, referrer))
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
@@ -407,6 +444,20 @@ fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
     out.push(path_seg);
   }
   out
+}
+
+fn load_cache2(
+  js_filename: &PathBuf,
+  map_filename: &PathBuf,
+) -> Result<(Vec<u8>, Vec<u8>), std::io::Error> {
+  debug!(
+    "load_cache code: {} map: {}",
+    js_filename.display(),
+    map_filename.display()
+  );
+  let read_output_code = fs::read(&js_filename)?;
+  let read_source_map = fs::read(&map_filename)?;
+  Ok((read_output_code, read_source_map))
 }
 
 fn source_code_hash(
@@ -546,6 +597,7 @@ fn fetch_remote_source_async(
 
 // Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
 /// Fetch remote source code.
+#[cfg(test)]
 fn fetch_remote_source(
   module_name: &str,
   filename: &str,
@@ -988,19 +1040,21 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
 
-    // Test failure case.
-    let specifier = "hello.ts";
-    let referrer = add_root!("/baddir/badfile.ts");
-    let r = deno_dir.fetch_module_meta_data(specifier, referrer);
-    assert!(r.is_err());
+    tokio_util::init(|| {
+      // Test failure case.
+      let specifier = "hello.ts";
+      let referrer = add_root!("/baddir/badfile.ts");
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer);
+      assert!(r.is_err());
 
-    // Assuming cwd is the deno repo root.
-    let specifier = "./js/main.ts";
-    let referrer = cwd_string.as_str();
-    let r = deno_dir.fetch_module_meta_data(specifier, referrer);
-    assert!(r.is_ok());
-    //let fetch_module_meta_data_output = r.unwrap();
-    //println!("fetch_module_meta_data_output {:?}", fetch_module_meta_data_output);
+      // Assuming cwd is the deno repo root.
+      let specifier = "./js/main.ts";
+      let referrer = cwd_string.as_str();
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer);
+      assert!(r.is_ok());
+      //let fetch_module_meta_data_output = r.unwrap();
+      //println!("fetch_module_meta_data_output {:?}", fetch_module_meta_data_output);
+    })
   }
 
   #[test]
@@ -1011,17 +1065,19 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
 
-    // Test failure case.
-    let specifier = "hello.ts";
-    let referrer = add_root!("/baddir/badfile.ts");
-    let r = deno_dir.fetch_module_meta_data(specifier, referrer);
-    assert!(r.is_err());
+    tokio_util::init(|| {
+      // Test failure case.
+      let specifier = "hello.ts";
+      let referrer = add_root!("/baddir/badfile.ts");
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer);
+      assert!(r.is_err());
 
-    // Assuming cwd is the deno repo root.
-    let specifier = "./js/main.ts";
-    let referrer = cwd_string.as_str();
-    let r = deno_dir.fetch_module_meta_data(specifier, referrer);
-    assert!(r.is_ok());
+      // Assuming cwd is the deno repo root.
+      let specifier = "./js/main.ts";
+      let referrer = cwd_string.as_str();
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer);
+      assert!(r.is_ok());
+    })
   }
 
   #[test]
