@@ -734,24 +734,24 @@ mod tests {
   #[test]
   fn terminate_execution() {
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
+    let tx_clone = tx.clone();
 
-    std::thread::spawn(move || {
-      let mut isolate = TestBehavior::setup(TestBehaviorMode::AsyncImmediate);
-      let shared = isolate.shared_isolate();
-      let tx_clone = tx.clone();
+    let mut isolate = TestBehavior::setup(TestBehaviorMode::AsyncImmediate);
+    let shared = isolate.shared_isolate();
 
-      std::thread::spawn(move || {
-        // allow deno to boot and run
-        std::thread::sleep(std::time::Duration::from_millis(100));
+    let t1 = std::thread::spawn(move || {
+      // allow deno to boot and run
+      std::thread::sleep(std::time::Duration::from_millis(100));
 
-        // terminate execution
-        shared.terminate_execution();
+      // terminate execution
+      shared.terminate_execution();
 
-        // allow shutdown
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        let _ = tx_clone.send(false);
-      });
+      // allow shutdown
+      std::thread::sleep(std::time::Duration::from_millis(100));
+      let _ = tx_clone.send(false);
+    });
 
+    let t2 = std::thread::spawn(move || {
       let res = isolate.execute(
         "infinte_loop.js",
         r#"
@@ -761,7 +761,9 @@ mod tests {
       );
 
       if let Err(e) = res {
-        println!("{}", e.to_string());
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated");
+      } else {
+        panic!("should return an error");
       }
 
       let _ = tx.send(true);
@@ -770,6 +772,9 @@ mod tests {
     if !rx.recv().unwrap() {
       panic!("should have terminated")
     }
+
+    t1.join().unwrap();
+    t2.join().unwrap();
   }
 
   #[test]
