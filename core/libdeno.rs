@@ -155,6 +155,7 @@ extern "C" {
     js_filename: *const c_char,
     js_source: *const c_char,
   );
+  pub fn deno_terminate_execution(i: *const isolate);
 
   // Modules
 
