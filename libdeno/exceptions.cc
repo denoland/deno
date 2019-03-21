@@ -174,6 +174,15 @@ std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
 void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception) {
   v8::Isolate* isolate = context->GetIsolate();
+
+  // TerminateExecution was called
+  if (isolate->IsExecutionTerminating()) {
+    isolate->CancelTerminateExecution();
+
+    // exception is the null value
+    exception = v8::Exception::Error(v8_str("execution terminated"));
+  }
+
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   std::string json_str = EncodeExceptionAsJSON(context, exception);
   CHECK_NOT_NULL(d);
