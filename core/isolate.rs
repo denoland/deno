@@ -153,8 +153,9 @@ impl<B: Behavior> Isolate<B> {
     core_isolate
   }
 
-  pub fn shared_isolate(&mut self) -> SharedIsolate {
-    SharedIsolate {
+  /// Get a thread safe handle on the isolate.
+  pub fn shared_isolate_handle(&mut self) -> IsolateHandle {
+    IsolateHandle {
       shared_libdeno_isolate: self.shared_libdeno_isolate.clone(),
     }
   }
@@ -463,15 +464,15 @@ impl<B: Behavior> Future for Isolate<B> {
   }
 }
 
-/// SharedIsolate is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
+/// IsolateHandle is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
 #[derive(Clone)]
-pub struct SharedIsolate {
+pub struct IsolateHandle {
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
 }
 
-unsafe impl Send for SharedIsolate {}
+unsafe impl Send for IsolateHandle {}
 
-impl SharedIsolate {
+impl IsolateHandle {
   /// Terminate the execution of any currently running javascript.
   /// After terminating execution it is probably not wise to continue using
   /// the isolate.
@@ -737,7 +738,7 @@ mod tests {
     let tx_clone = tx.clone();
 
     let mut isolate = TestBehavior::setup(TestBehaviorMode::AsyncImmediate);
-    let shared = isolate.shared_isolate();
+    let shared = isolate.shared_isolate_handle();
 
     let t1 = std::thread::spawn(move || {
       // allow deno to boot and run
@@ -748,10 +749,13 @@ mod tests {
 
       // allow shutdown
       std::thread::sleep(std::time::Duration::from_millis(100));
-      let _ = tx_clone.send(false);
+
+      // unless reported otherwise the test should fail after this point
+      tx_clone.send(false).ok();
     });
 
     let t2 = std::thread::spawn(move || {
+      // run an infinte loop
       let res = isolate.execute(
         "infinte_loop.js",
         r#"
@@ -760,13 +764,22 @@ mod tests {
         "#,
       );
 
+      // execute() terminated which means terminate_execution() was successful.
+      tx.send(true).ok();
+
       if let Err(e) = res {
         assert_eq!(e.to_string(), "Uncaught Error: execution terminated");
       } else {
         panic!("should return an error");
       }
 
-      let _ = tx.send(true);
+      // make sure the isolate is still unusable
+      let res = isolate.execute("simple.js", "1+1;");
+      if let Err(e) = res {
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated");
+      } else {
+        panic!("should return an error");
+      }
     });
 
     if !rx.recv().unwrap() {
@@ -782,9 +795,10 @@ mod tests {
     let shared = {
       // isolate is dropped at the end of this block
       let mut isolate = TestBehavior::setup(TestBehaviorMode::AsyncImmediate);
-      isolate.shared_isolate()
+      isolate.shared_isolate_handle()
     };
 
+    // this should not SEGFAULT
     shared.terminate_execution();
   }
 
