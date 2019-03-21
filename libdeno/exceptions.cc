@@ -174,6 +174,25 @@ std::string EncodeExceptionAsJSON(v8::Local<v8::Context> context,
 void HandleException(v8::Local<v8::Context> context,
                      v8::Local<v8::Value> exception) {
   v8::Isolate* isolate = context->GetIsolate();
+
+  // TerminateExecution was called
+  if (isolate->IsExecutionTerminating()) {
+    // cancel exception termination so that the exception can be created
+    isolate->CancelTerminateExecution();
+
+    // maybe make a new exception object
+    if (exception->IsNullOrUndefined()) {
+      exception = v8::Exception::Error(v8_str("execution terminated"));
+    }
+
+    // handle the exception as if it is a regular exception
+    HandleException(context, exception);
+
+    // re-enable exception termination
+    isolate->TerminateExecution();
+    return;
+  }
+
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   std::string json_str = EncodeExceptionAsJSON(context, exception);
   CHECK_NOT_NULL(d);
@@ -183,6 +202,13 @@ void HandleException(v8::Local<v8::Context> context,
 void HandleExceptionMessage(v8::Local<v8::Context> context,
                             v8::Local<v8::Message> message) {
   v8::Isolate* isolate = context->GetIsolate();
+
+  // TerminateExecution was called
+  if (isolate->IsExecutionTerminating()) {
+    HandleException(context, v8::Undefined(isolate));
+    return;
+  }
+
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   std::string json_str = EncodeMessageAsJSON(context, message);
   CHECK_NOT_NULL(d);

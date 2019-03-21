@@ -11,7 +11,7 @@ use futures::Poll;
 use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::sync::{Once, ONCE_INIT};
+use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
 pub type Op = dyn Future<Item = Buf, Error = ()> + Send;
@@ -85,6 +85,7 @@ pub trait Behavior {
 /// JavaScript.
 pub struct Isolate<B: Behavior> {
   libdeno_isolate: *const libdeno::isolate,
+  shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
   behavior: B,
   needs_init: bool,
   shared: SharedQueue,
@@ -96,6 +97,9 @@ unsafe impl<B: Behavior> Send for Isolate<B> {}
 
 impl<B: Behavior> Drop for Isolate<B> {
   fn drop(&mut self) {
+    // remove shared_libdeno_isolate reference
+    *self.shared_libdeno_isolate.lock().unwrap() = None;
+
     unsafe { libdeno::deno_delete(self.libdeno_isolate) }
   }
 }
@@ -130,6 +134,7 @@ impl<B: Behavior> Isolate<B> {
 
     let mut core_isolate = Self {
       libdeno_isolate,
+      shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
       behavior,
       shared,
       needs_init,
@@ -146,6 +151,13 @@ impl<B: Behavior> Isolate<B> {
     };
 
     core_isolate
+  }
+
+  /// Get a thread safe handle on the isolate.
+  pub fn shared_isolate_handle(&mut self) -> IsolateHandle {
+    IsolateHandle {
+      shared_libdeno_isolate: self.shared_libdeno_isolate.clone(),
+    }
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno._sharedQueue.
@@ -452,6 +464,28 @@ impl<B: Behavior> Future for Isolate<B> {
   }
 }
 
+/// IsolateHandle is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
+#[derive(Clone)]
+pub struct IsolateHandle {
+  shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
+}
+
+unsafe impl Send for IsolateHandle {}
+
+impl IsolateHandle {
+  /// Terminate the execution of any currently running javascript.
+  /// After terminating execution it is probably not wise to continue using
+  /// the isolate.
+  pub fn terminate_execution(&self) {
+    unsafe {
+      match *self.shared_libdeno_isolate.lock().unwrap() {
+        Some(isolate) => libdeno::deno_terminate_execution(isolate),
+        None => (),
+      }
+    }
+  }
+}
+
 pub fn js_check(r: Result<(), JSError>) {
   if let Err(e) = r {
     panic!(e.to_string());
@@ -696,6 +730,76 @@ mod tests {
     assert_eq!(Ok(Async::Ready(())), isolate.poll());
 
     js_check(isolate.execute("send1.js", "assert(nrecv === 2);"));
+  }
+
+  #[test]
+  fn terminate_execution() {
+    let (tx, rx) = std::sync::mpsc::channel::<bool>();
+    let tx_clone = tx.clone();
+
+    let mut isolate = TestBehavior::setup(TestBehaviorMode::AsyncImmediate);
+    let shared = isolate.shared_isolate_handle();
+
+    let t1 = std::thread::spawn(move || {
+      // allow deno to boot and run
+      std::thread::sleep(std::time::Duration::from_millis(100));
+
+      // terminate execution
+      shared.terminate_execution();
+
+      // allow shutdown
+      std::thread::sleep(std::time::Duration::from_millis(100));
+
+      // unless reported otherwise the test should fail after this point
+      tx_clone.send(false).ok();
+    });
+
+    let t2 = std::thread::spawn(move || {
+      // run an infinite loop
+      let res = isolate.execute(
+        "infinite_loop.js",
+        r#"
+          let i = 0;
+          while (true) { i++; }
+        "#,
+      );
+
+      // execute() terminated, which means terminate_execution() was successful.
+      tx.send(true).ok();
+
+      if let Err(e) = res {
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated");
+      } else {
+        panic!("should return an error");
+      }
+
+      // make sure the isolate is still unusable
+      let res = isolate.execute("simple.js", "1+1;");
+      if let Err(e) = res {
+        assert_eq!(e.to_string(), "Uncaught Error: execution terminated");
+      } else {
+        panic!("should return an error");
+      }
+    });
+
+    if !rx.recv().unwrap() {
+      panic!("should have terminated")
+    }
+
+    t1.join().unwrap();
+    t2.join().unwrap();
+  }
+
+  #[test]
+  fn dangling_shared_isolate() {
+    let shared = {
+      // isolate is dropped at the end of this block
+      let mut isolate = TestBehavior::setup(TestBehaviorMode::AsyncImmediate);
+      isolate.shared_isolate_handle()
+    };
+
+    // this should not SEGFAULT
+    shared.terminate_execution();
   }
 
   #[test]
