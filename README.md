@@ -1,6 +1,6 @@
 # deno
 
-A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio
+A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
 |      **Linux & Mac**       |        **Windows**         |
 | :------------------------: | :------------------------: |
