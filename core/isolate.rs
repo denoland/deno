@@ -755,16 +755,16 @@ mod tests {
     });
 
     let t2 = std::thread::spawn(move || {
-      // run an infinte loop
+      // run an infinite loop
       let res = isolate.execute(
-        "infinte_loop.js",
+        "infinite_loop.js",
         r#"
           let i = 0;
           while (true) { i++; }
         "#,
       );
 
-      // execute() terminated which means terminate_execution() was successful.
+      // execute() terminated, which means terminate_execution() was successful.
       tx.send(true).ok();
 
       if let Err(e) = res {
