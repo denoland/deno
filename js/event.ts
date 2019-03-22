@@ -31,6 +31,7 @@ export class Event implements domTypes.Event {
   private _path: domTypes.EventPath[] = [];
 
   constructor(type: string, eventInitDict: domTypes.EventInit = {}) {
+    requiredArguments("Event", arguments.length, 1);
     this._initializedFlag = true;
     eventAttributes.set(this, {
       type,
