@@ -9,7 +9,7 @@ target_path = os.path.join(root_path, "target/")
 os.chdir(root_path)
 
 # Builds into target/doc
-run(["cargo", "doc", "--no-deps", "-vv"])
+run(["cargo", "doc", "--all", "--no-deps", "-vv"])
 
 # 'deno --types' is stored in target/debug/gen/lib/lib.deno_runtime.d.ts
 # We want to run typedoc on that declaration file only.
