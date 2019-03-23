@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::errors::RustOrJsError;
 use crate::isolate::{DenoBehavior, Isolate};
 use crate::isolate_state::WorkerChannels;
 use crate::js_errors::JSErrorColor;
@@ -45,6 +46,14 @@ impl<B: WorkerBehavior> Worker<B> {
   pub fn execute(&mut self, js_source: &str) -> Result<(), JSError> {
     self.isolate.execute(js_source)
   }
+
+  pub fn execute_mod(
+    &mut self,
+    js_filename: &str,
+    is_prefetch: bool,
+  ) -> Result<(), RustOrJsError> {
+    self.isolate.execute_mod(js_filename, is_prefetch)
+  }
 }
 
 impl<B: WorkerBehavior> Future for Worker<B> {
@@ -56,9 +65,14 @@ impl<B: WorkerBehavior> Future for Worker<B> {
   }
 }
 
+pub enum WorkerInit {
+  Script(String),
+  MainModule(),
+}
+
 pub fn spawn<B: WorkerBehavior + 'static>(
   behavior: B,
-  js_source: String,
+  init: WorkerInit,
 ) -> resources::Resource {
   // TODO This function should return a Future, so that the caller can retrieve
   // the JSError if one is thrown. Currently it just prints to stderr and calls
@@ -70,6 +84,7 @@ pub fn spawn<B: WorkerBehavior + 'static>(
   let _tid = builder
     .spawn(move || {
       tokio_util::run(lazy(move || {
+        let state = behavior.state().clone();
         let (mut worker, external_channels) = Worker::new(behavior);
         let resource = resources::add_worker(external_channels);
         p.send(resource.clone()).unwrap();
@@ -80,7 +95,20 @@ pub fn spawn<B: WorkerBehavior + 'static>(
         worker
           .execute("workerMain()")
           .expect("worker workerMain failed");
-        worker.execute(&js_source).expect("worker js_source failed");
+        match init {
+          WorkerInit::Script(script) => {
+            worker.execute(&script).expect("worker init script failed")
+          }
+          WorkerInit::MainModule() => {
+            let should_prefetch = state.flags.prefetch || state.flags.info;
+            let main_module_option = state.main_module();
+            assert!(main_module_option.is_some());
+            let main_module = main_module_option.unwrap();
+            worker
+              .execute_mod(&main_module, should_prefetch)
+              .expect("worker init main module failed");
+          }
+        };
 
         worker.then(move |r| -> Result<(), ()> {
           resource.close();
@@ -110,33 +138,39 @@ mod tests {
   fn test_spawn() {
     let resource = spawn(
       CompilerBehavior::new(Arc::new(IsolateState::mock())),
-      r#"
+      WorkerInit::Script(
+        r#"
       onmessage = function(e) {
-        let s = new TextDecoder().decode(e.data);;
-        console.log("msg from main script", s);
-        if (s == "exit") {
+        console.log("msg from main script", e.data);
+        if (e.data == "exit") {
           close();
           return;
         } else {
-          console.assert(s === "hi");
+          console.assert(e.data === "hi");
         }
-        postMessage(new Uint8Array([1, 2, 3]));
+        postMessage([1, 2, 3]);
         console.log("after postMessage");
       }
       "#.into(),
+      ),
     );
-    let msg = String::from("hi").into_boxed_str().into_boxed_bytes();
+    let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-    let r = resources::worker_post_message(resource.rid, msg).wait();
+    let r = resources::post_message_to_worker(resource.rid, msg).wait();
     assert!(r.is_ok());
 
-    let maybe_msg =
-      resources::worker_recv_message(resource.rid).wait().unwrap();
+    let maybe_msg = resources::get_message_from_worker(resource.rid)
+      .wait()
+      .unwrap();
     assert!(maybe_msg.is_some());
-    assert_eq!(*maybe_msg.unwrap(), [1, 2, 3]);
+    // Check if message received is [1, 2, 3] as json encoded
+    assert_eq!(*maybe_msg.unwrap(), [91, 49, 44, 50, 44, 51, 93]);
 
-    let msg = String::from("exit").into_boxed_str().into_boxed_bytes();
-    let r = resources::worker_post_message(resource.rid, msg).wait();
+    let msg = json!("exit")
+      .to_string()
+      .into_boxed_str()
+      .into_boxed_bytes();
+    let r = resources::post_message_to_worker(resource.rid, msg).wait();
     assert!(r.is_ok());
   }
 
@@ -144,7 +178,7 @@ mod tests {
   fn removed_from_resource_table_on_close() {
     let resource = spawn(
       CompilerBehavior::new(Arc::new(IsolateState::mock())),
-      "onmessage = () => close();".into(),
+      WorkerInit::Script("onmessage = () => close();".into()),
     );
 
     assert_eq!(
@@ -152,8 +186,8 @@ mod tests {
       Some("worker".to_string())
     );
 
-    let msg = String::from("hi").into_boxed_str().into_boxed_bytes();
-    let r = resources::worker_post_message(resource.rid, msg).wait();
+    let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+    let r = resources::post_message_to_worker(resource.rid, msg).wait();
     assert!(r.is_ok());
     println!("rid {:?}", resource.rid);
 

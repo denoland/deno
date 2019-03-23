@@ -8,6 +8,7 @@ use crate::resources::ResourceId;
 use crate::startup_data;
 use crate::workers;
 use crate::workers::WorkerBehavior;
+use crate::workers::WorkerInit;
 use deno_core::deno_buf;
 use deno_core::deno_mod;
 use deno_core::Behavior;
@@ -70,6 +71,7 @@ impl WorkerBehavior for CompilerBehavior {
       self.state.flags.clone(),
       self.state.argv.clone(),
       Some(worker_channels),
+      None,
     ));
   }
 }
@@ -111,8 +113,9 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> Resource {
         parent_state.flags.clone(),
         parent_state.argv.clone(),
         None,
+        None,
       ))),
-      "compilerMain()".to_string(),
+      WorkerInit::Script("compilerMain()".to_string()),
     );
     resource.rid
   });
@@ -138,10 +141,10 @@ pub fn compile_sync(
 
   let compiler = lazy_start(parent_state);
 
-  let send_future = resources::worker_post_message(compiler.rid, req_msg);
+  let send_future = resources::post_message_to_worker(compiler.rid, req_msg);
   send_future.wait().unwrap();
 
-  let recv_future = resources::worker_recv_message(compiler.rid);
+  let recv_future = resources::get_message_from_worker(compiler.rid);
   let result = recv_future.wait().unwrap();
   assert!(result.is_some());
   let res_msg = result.unwrap();

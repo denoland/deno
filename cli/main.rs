@@ -33,6 +33,7 @@ mod startup_data;
 mod tokio_util;
 mod tokio_write;
 pub mod version;
+pub mod web_worker_behavior;
 pub mod workers;
 
 use crate::cli_behavior::CliBehavior;
@@ -108,7 +109,7 @@ fn main() {
   let should_prefetch = flags.prefetch || flags.info;
   let should_display_info = flags.info;
 
-  let state = Arc::new(IsolateState::new(flags, rest_argv, None));
+  let state = Arc::new(IsolateState::new(flags, rest_argv, None, None));
   let state_ = state.clone();
   let startup_data = startup_data::deno_isolate_init();
   let cli = CliBehavior::new(Some(startup_data), state_);

@@ -514,17 +514,12 @@ window.TextEncoder = TextEncoder;
 // lazy instantiating the compiler web worker
 window.compilerMain = function compilerMain() {
   // workerMain should have already been called since a compiler is a worker.
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  window.onmessage = ({ data }: { data: Uint8Array }) => {
-    const json = decoder.decode(data);
-    const { specifier, referrer } = JSON.parse(json) as CompilerLookup;
+  window.onmessage = ({ data }: { data: CompilerLookup }) => {
+    const { specifier, referrer } = data;
 
     const result = compiler.compile(specifier, referrer);
 
-    const responseJson = JSON.stringify(result);
-    const response = encoder.encode(responseJson);
-    postMessage(response);
+    postMessage(result);
   };
 };
 

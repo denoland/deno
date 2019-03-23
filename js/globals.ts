@@ -104,3 +104,9 @@ export type TextDecoder = textEncoding.TextDecoder;
 window.performance = new performanceUtil.Performance();
 
 window.workerMain = workers.workerMain;
+
+window.Worker = workers.WorkerImpl;
+export type Worker = workers.Worker;
+
+// TODO(afinch7) replace this hack with a real solution at some point.
+window.onmessage = (e: { data: any }): void => {};

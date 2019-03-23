@@ -43,13 +43,21 @@ pub struct IsolateState {
   pub modules: Mutex<Modules>,
   pub worker_channels: Option<Mutex<WorkerChannels>>,
   pub global_timer: Mutex<GlobalTimer>,
+  pub main_module_specifier: Option<String>,
 }
 
+// TODO(afinch7) abstract out IsolateState to a trait, since
+// some isolates don't require or shouldn't be given some
+// state data
 impl IsolateState {
+  /// main_module should be a fully qualified url
+  /// argv will be used to determine main module
+  /// if not sepcified
   pub fn new(
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
     worker_channels: Option<WorkerChannels>,
+    main_module_specifier: Option<String>,
   ) -> Self {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
 
@@ -63,20 +71,37 @@ impl IsolateState {
       modules: Mutex::new(Modules::new()),
       worker_channels: worker_channels.map(Mutex::new),
       global_timer: Mutex::new(GlobalTimer::new()),
+      main_module_specifier,
     }
   }
 
+  /// Attempt to resolve explicit main module specifier from creation
+  /// if present or extract it from argv_rest if not
   pub fn main_module(&self) -> Option<String> {
-    if self.argv.len() <= 1 {
-      None
-    } else {
-      let specifier = self.argv[1].clone();
-      let referrer = ".";
-      match self.dir.resolve_module_url(&specifier, referrer) {
-        Ok(url) => Some(url.to_string()),
-        Err(e) => {
-          debug!("Potentially swallowed error {}", e);
+    match &self.main_module_specifier {
+      Some(specifier) => {
+        let referrer = ".";
+        match self.dir.resolve_module_url(&specifier, referrer) {
+          Ok(url) => Some(url.to_string()),
+          Err(e) => {
+            debug!("Potentially swallowed error {}", e);
+            None
+          }
+        }
+      }
+      None => {
+        if self.argv.len() <= 1 {
           None
+        } else {
+          let specifier = self.argv[1].clone();
+          let referrer = ".";
+          match self.dir.resolve_module_url(&specifier, referrer) {
+            Ok(url) => Some(url.to_string()),
+            Err(e) => {
+              debug!("Potentially swallowed error {}", e);
+              None
+            }
+          }
         }
       }
     }
@@ -112,7 +137,7 @@ impl IsolateState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     // For debugging: argv.push_back(String::from("-D"));
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    IsolateState::new(flags, rest_argv, None)
+    IsolateState::new(flags, rest_argv, None, None)
   }
 
   pub fn metrics_op_dispatched(
