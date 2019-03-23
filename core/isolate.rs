@@ -430,7 +430,7 @@ impl<B: Behavior> Future for Isolate<B> {
               // there wasn't enough size, we will return the buffer via the
               // legacy route, using the argument of deno_respond.
               overflow_response = Some(buf);
-              // mark `polled_recently` so pending ops can be
+              // reset `polled_recently` so pending ops can be
               // done even if shared space overflows
               self.polled_recently = false;
               break;
