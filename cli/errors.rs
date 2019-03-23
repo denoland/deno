@@ -179,6 +179,10 @@ pub fn permission_denied() -> DenoError {
   )
 }
 
+pub fn op_not_implemented() -> DenoError {
+  new(ErrorKind::BadResource, String::from("op not implemented"))
+}
+
 #[derive(Debug)]
 pub enum RustOrJsError {
   Rust(DenoError),

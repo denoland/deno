@@ -5,6 +5,7 @@ git:
   depth: 1
 env:
   global:
+  - RUST_VERSION=1.33.0
   - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
   - RUSTUP_HOME=$HOME/.rustup/
   - RUST_BACKTRACE=full
@@ -37,11 +38,10 @@ install:
 - node -v
 - |-
   # Install Rust.
-  # TODO(ry) Include rustc in third_party.
-  # https://github.com/denoland/deno/issues/386
-  if [ ! $(rustc --version | grep 1.31.1) ]; then
-    curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.31.1
-    rustup default 1.31.1
+  if [ ! $(rustc --version | grep $RUST_VERSION) ]; then
+    curl -sSf https://sh.rustup.rs | sh -s -- -y \
+      --default-toolchain $RUST_VERSION
+    rustup default $RUST_VERSION
   fi
   rustc --version
   cargo --version
@@ -114,6 +114,8 @@ jobs:
       os: linux
       dist: xenial
       script:
+      - ./tools/lint.py
+      - ./tools/test_format.py
       - rustup target add aarch64-unknown-linux-gnu
       - sudo apt update
       - |-
@@ -129,13 +131,14 @@ jobs:
       - sudo apt -yq install qemu qemu-user binfmt-support qemu-user-binfmt
       - sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 /lib/ld-linux-aarch64.so.1
       - export QEMU_LD_PREFIX=/usr/aarch64-linux-gnu
-      # TODO(ry) Temp disabling arm test to make progress on core integration.
       #- $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/deno tests/002_hello.ts
       # - DENO_BUILD_MODE=release ./tools/test.py $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release TODO(afinch7): Get the tests working
 
     - name: "cargo release linux x86_64"
       os: linux
       script:
+      - ./tools/lint.py
+      - ./tools/test_format.py
       - cargo build -vv --release --locked
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
@@ -145,6 +148,8 @@ jobs:
     - name: "lsan debug linux"
       os: linux
       script:
+      - ./tools/lint.py
+      - ./tools/test_format.py
       - echo is_asan=true >> target/debug/args.gn
       - echo is_lsan=true >> target/debug/args.gn
       # Call gn gen again to make sure new args are recognized.

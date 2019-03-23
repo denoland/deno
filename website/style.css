@@ -78,7 +78,7 @@ header {
 }
 
 header > * {
-  margin: 16px;
+  margin: 8px;
 }
 
 header h1 {

@@ -1,23 +1,77 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::isolate::Buf;
-use crate::isolate::IsolateState;
-use crate::isolate_init;
+use crate::isolate_state::*;
 use crate::msg;
-use crate::permissions::DenoPermissions;
+use crate::ops;
 use crate::resources;
 use crate::resources::Resource;
 use crate::resources::ResourceId;
+use crate::startup_data;
 use crate::workers;
-
+use crate::workers::WorkerBehavior;
+use deno_core::deno_buf;
+use deno_core::deno_mod;
+use deno_core::Behavior;
+use deno_core::Buf;
+use deno_core::Op;
+use deno_core::StartupData;
 use futures::Future;
 use serde_json;
 use std::str;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 lazy_static! {
   static ref C_RID: Mutex<Option<ResourceId>> = Mutex::new(None);
+}
+
+pub struct CompilerBehavior {
+  pub state: Arc<IsolateState>,
+}
+
+impl CompilerBehavior {
+  pub fn new(state: Arc<IsolateState>) -> Self {
+    Self { state }
+  }
+}
+
+impl IsolateStateContainer for CompilerBehavior {
+  fn state(&self) -> Arc<IsolateState> {
+    self.state.clone()
+  }
+}
+
+impl IsolateStateContainer for &CompilerBehavior {
+  fn state(&self) -> Arc<IsolateState> {
+    self.state.clone()
+  }
+}
+
+impl Behavior for CompilerBehavior {
+  fn startup_data(&mut self) -> Option<StartupData> {
+    Some(startup_data::compiler_isolate_init())
+  }
+
+  fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod {
+    self.state_resolve(specifier, referrer)
+  }
+
+  fn dispatch(
+    &mut self,
+    control: &[u8],
+    zero_copy: deno_buf,
+  ) -> (bool, Box<Op>) {
+    ops::dispatch_all(self, control, zero_copy, ops::op_selector_compiler)
+  }
+}
+
+impl WorkerBehavior for CompilerBehavior {
+  fn set_internal_channels(&mut self, worker_channels: WorkerChannels) {
+    self.state = Arc::new(IsolateState::new(
+      self.state.flags.clone(),
+      self.state.argv.clone(),
+      Some(worker_channels),
+    ));
+  }
 }
 
 // This corresponds to JS ModuleMetaData.
@@ -49,23 +103,16 @@ impl ModuleMetaData {
   }
 }
 
-fn lazy_start(parent_state: &Arc<IsolateState>) -> Resource {
+fn lazy_start(parent_state: Arc<IsolateState>) -> Resource {
   let mut cell = C_RID.lock().unwrap();
-  let isolate_init = isolate_init::compiler_isolate_init();
-  let permissions = DenoPermissions {
-    allow_read: AtomicBool::new(true),
-    allow_write: AtomicBool::new(true),
-    allow_env: AtomicBool::new(false),
-    allow_net: AtomicBool::new(true),
-    allow_run: AtomicBool::new(false),
-    ..Default::default()
-  };
   let rid = cell.get_or_insert_with(|| {
     let resource = workers::spawn(
-      isolate_init,
-      parent_state.clone(),
+      CompilerBehavior::new(Arc::new(IsolateState::new(
+        parent_state.flags.clone(),
+        parent_state.argv.clone(),
+        None,
+      ))),
       "compilerMain()".to_string(),
-      permissions,
     );
     resource.rid
   });
@@ -82,7 +129,7 @@ fn req(specifier: &str, referrer: &str) -> Buf {
 }
 
 pub fn compile_sync(
-  parent_state: &Arc<IsolateState>,
+  parent_state: Arc<IsolateState>,
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
@@ -95,7 +142,9 @@ pub fn compile_sync(
   send_future.wait().unwrap();
 
   let recv_future = resources::worker_recv_message(compiler.rid);
-  let res_msg = recv_future.wait().unwrap().unwrap();
+  let result = recv_future.wait().unwrap();
+  assert!(result.is_some());
+  let res_msg = result.unwrap();
 
   let res_json = std::str::from_utf8(&res_msg).unwrap();
   match serde_json::from_str::<serde_json::Value>(res_json) {
@@ -142,7 +191,12 @@ mod tests {
       maybe_source_map: None,
     };
 
-    out = compile_sync(&IsolateState::mock(), specifier, &referrer, &mut out);
+    out = compile_sync(
+      Arc::new(IsolateState::mock()),
+      specifier,
+      &referrer,
+      &mut out,
+    );
     assert!(
       out
         .maybe_output_code

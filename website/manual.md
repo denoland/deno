@@ -148,10 +148,8 @@ submodule. However, you need to install separately:
 3. Python 2.
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 
-Extra steps for Mac users:
-
-1. [XCode](https://developer.apple.com/xcode/)
-2. Openssl 1.1: `brew install openssl@1.1` (TODO: shouldn't be necessary)
+Extra steps for Mac users: install [XCode](https://developer.apple.com/xcode/)
+:(
 
 Extra steps for Windows users:
 
@@ -176,7 +174,7 @@ Extra steps for Windows users:
 ./third_party/depot_tools/ninja -C target/debug
 
 # Build a release binary.
-DENO_BUILD_MODE=release ./tools/build.py :deno
+./tools/build.py --release deno
 
 # List executable targets.
 ./third_party/depot_tools/gn ls target/debug //:* --as=output --type=executable
@@ -430,11 +428,8 @@ browser JavaScript, Deno can import libraries directly from URLs. This example
 uses a URL to import a test runner library:
 
 ```ts
-import {
-  test,
-  assertEquals,
-  runIfMain
-} from "https://deno.land/std/testing/mod.ts";
+import { test, runIfMain } from "https://deno.land/std/testing/mod.ts";
+import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
 test(function t1() {
   assertEquals("hello", "hello");
@@ -609,10 +604,17 @@ close(3);
 
 Metrics is deno's internal counters for various statics.
 
-```ts
-const { metrics } = Deno;
-console.log(metrics());
-// output like: { opsDispatched: 1, opsCompleted: 1, bytesSentControl: 40, bytesSentData: 0, bytesReceived: 176 }
+```shellsession
+> console.table(Deno.metrics())
+┌──────────────────┬────────┐
+│     (index)      │ Values │
+├──────────────────┼────────┤
+│  opsDispatched   │   9    │
+│   opsCompleted   │   9    │
+│ bytesSentControl │  504   │
+│  bytesSentData   │   0    │
+│  bytesReceived   │  856   │
+└──────────────────┴────────┘
 ```
 
 ### Schematic diagram
@@ -625,9 +627,8 @@ To start profiling,
 
 ```sh
 # Make sure we're only building release.
-export DENO_BUILD_MODE=release
 # Build deno and V8's d8.
-./tools/build.py d8 deno
+./tools/build.py --release d8 deno
 # Start the program we want to benchmark with --prof
 ./target/release/deno tests/http_bench.ts --allow-net --prof &
 # Exercise it.

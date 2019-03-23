@@ -4,9 +4,7 @@ import { assert, assertEquals, test } from "./test_util.ts";
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { Console, libdeno, stringifyArgs, inspect, write, stdout } = Deno as any;
-
-const console = new Console(libdeno.print);
+const { Console, stringifyArgs, inspect, write, stdout } = Deno as any;
 
 function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
@@ -29,6 +27,17 @@ test(function consoleTestStringifyComplexObjects() {
   assertEquals(stringify("foo"), "foo");
   assertEquals(stringify(["foo", "bar"]), `[ "foo", "bar" ]`);
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
+});
+
+test(function consoleTestStringifyLongStrings() {
+  const veryLongString = "a".repeat(200);
+  // If we stringify an object containing the long string, it gets abbreviated.
+  let actual = stringify({ veryLongString });
+  assert(actual.includes("..."));
+  assert(actual.length < 200);
+  // However if we stringify the string itself, we get it exactly.
+  actual = stringify(veryLongString);
+  assertEquals(actual, veryLongString);
 });
 
 test(function consoleTestStringifyCircular() {
@@ -72,7 +81,7 @@ test(function consoleTestStringifyCircular() {
   };
 
   nestedObj.o = circularObj;
-  const nestedObjExpected = `{ num: 1, bool: true, str: "a", method: [Function: method], asyncMethod: [AsyncFunction: asyncMethod], generatorMethod: [GeneratorFunction: generatorMethod], un: undefined, nu: null, arrowFunc: [Function: arrowFunc], extendedClass: Extended { a: 1, b: 2 }, nFunc: [Function], extendedCstr: [Function: Extended], o: { num: 2, bool: false, str: "b", method: [Function: method], un: undefined, nu: null, nested: [Circular], emptyObj: {}, arr: [ 1, "s", false, null, [Circular] ], baseClass: Base { a: 1 } } }`;
+  const nestedObjExpected = `{ num, bool, str, method, asyncMethod, generatorMethod, un, nu, arrowFunc, extendedClass, nFunc, extendedCstr, o }`;
 
   assertEquals(stringify(1), "1");
   assertEquals(stringify(1n), "1n");
@@ -114,7 +123,7 @@ test(function consoleTestStringifyCircular() {
   assertEquals(stringify(JSON), "{}");
   assertEquals(
     stringify(console),
-    "Console { printFunc: [Function], log: [Function], debug: [Function], info: [Function], dir: [Function], warn: [Function], error: [Function], assert: [Function], count: [Function], countReset: [Function], table: [Function], time: [Function], timeLog: [Function], timeEnd: [Function], group: [Function], groupCollapsed: [Function], groupEnd: [Function], clear: [Function], indentLevel: 0, collapsedAt: null }"
+    "Console { printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, indentLevel, collapsedAt }"
   );
   // test inspect is working the same
   assertEquals(inspect(nestedObj), nestedObjExpected);

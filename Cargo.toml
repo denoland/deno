@@ -11,9 +11,13 @@ members = [
   "core",
 ]
 
+[[bin]]
+name = "deno"
+path = "cli/main.rs"
+
 [package]
 name = "deno"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2018"
 
 [dependencies]

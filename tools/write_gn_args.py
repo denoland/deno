@@ -10,6 +10,7 @@ args_list = run_output([
     third_party.gn_path, "args",
     build_path(), "--list", "--short", "--overrides-only"
 ],
+                       quiet=True,
                        env=third_party.google_env())
 
 with open(out_filename, "w") as f:

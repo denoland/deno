@@ -8,21 +8,17 @@
 // descriptors". This module implements a global resource table. Ops (AKA
 // handlers) look up resources by their integer id here.
 
-#[cfg(unix)]
-use crate::eager_unix as eager;
 use crate::errors;
 use crate::errors::bad_resource;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::http_body::HttpBody;
-use crate::isolate::Buf;
-use crate::isolate::WorkerChannels;
+use crate::isolate_state::WorkerChannels;
 use crate::repl::Repl;
-use crate::tokio_util;
-use crate::tokio_write;
+
+use deno_core::Buf;
 
 use futures;
-use futures::future::{Either, FutureResult};
 use futures::Future;
 use futures::Poll;
 use futures::Sink;
@@ -39,7 +35,6 @@ use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
-use tokio_io;
 use tokio_process;
 
 pub type ResourceId = u32; // Sometimes referred to RID.
@@ -175,50 +170,12 @@ impl Resource {
     }
   }
 
-  /// Track the current task (for TcpListener resource).
-  /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self) -> Result<(), std::io::Error> {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    // Only track if is TcpListener.
-    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
-      // Currently, we only allow tracking a single accept task for a listener.
-      // This might be changed in the future with multiple workers.
-      // Caveat: TcpListener by itself also only tracks an accept task at a time.
-      // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-      if t.is_some() {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Another accept task is ongoing",
-        ));
-      }
-      t.replace(futures::task::current());
-    }
-    Ok(())
-  }
-
-  /// Stop tracking a task (for TcpListener resource).
-  /// Happens when the task is done and thus no further tracking is needed.
-  pub fn untrack_task(&mut self) {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    // Only untrack if is TcpListener.
-    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
-      // DO NOT assert is_some here.
-      // See reasoning in Accept::poll().
-      t.take();
-    }
-  }
-
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
   pub fn close(&self) {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let r = table.remove(&self.rid);
     assert!(r.is_some());
-    // If TcpListener, we must kill all pending accepts!
-    if let Repr::TcpListener(_, Some(t)) = r.unwrap() {
-      // Call notify on the tracked task, so that they would error out.
-      t.notify();
-    }
   }
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), DenoError> {
@@ -478,94 +435,6 @@ pub fn lookup(rid: ResourceId) -> Option<Resource> {
   table.get(&rid).map(|_| Resource { rid })
 }
 
-pub type EagerRead<R, T> =
-  Either<tokio_io::io::Read<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
-
-pub type EagerWrite<R, T> =
-  Either<tokio_write::Write<R, T>, FutureResult<(R, T, usize), std::io::Error>>;
-
-pub type EagerAccept = Either<
-  tokio_util::Accept,
-  FutureResult<(tokio::net::TcpStream, std::net::SocketAddr), std::io::Error>,
->;
-
-#[cfg(not(unix))]
-#[allow(unused_mut)]
-pub fn eager_read<T: AsMut<[u8]>>(
-  resource: Resource,
-  mut buf: T,
-) -> EagerRead<Resource, T> {
-  Either::A(tokio_io::io::read(resource, buf))
-}
-
-#[cfg(not(unix))]
-pub fn eager_write<T: AsRef<[u8]>>(
-  resource: Resource,
-  buf: T,
-) -> EagerWrite<Resource, T> {
-  Either::A(tokio_write::write(resource, buf))
-}
-
-#[cfg(not(unix))]
-pub fn eager_accept(resource: Resource) -> EagerAccept {
-  Either::A(tokio_util::accept(resource))
-}
-
-// This is an optimization that Tokio should do.
-// Attempt to call read() on the main thread.
-#[cfg(unix)]
-pub fn eager_read<T: AsMut<[u8]>>(
-  resource: Resource,
-  buf: T,
-) -> EagerRead<Resource, T> {
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let maybe_repr = table.get_mut(&resource.rid);
-  match maybe_repr {
-    None => panic!("bad rid"),
-    Some(repr) => match repr {
-      Repr::TcpStream(ref mut tcp_stream) => {
-        eager::tcp_read(tcp_stream, resource, buf)
-      }
-      _ => Either::A(tokio_io::io::read(resource, buf)),
-    },
-  }
-}
-
-// This is an optimization that Tokio should do.
-// Attempt to call write() on the main thread.
-#[cfg(unix)]
-pub fn eager_write<T: AsRef<[u8]>>(
-  resource: Resource,
-  buf: T,
-) -> EagerWrite<Resource, T> {
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let maybe_repr = table.get_mut(&resource.rid);
-  match maybe_repr {
-    None => panic!("bad rid"),
-    Some(repr) => match repr {
-      Repr::TcpStream(ref mut tcp_stream) => {
-        eager::tcp_write(tcp_stream, resource, buf)
-      }
-      _ => Either::A(tokio_write::write(resource, buf)),
-    },
-  }
-}
-
-#[cfg(unix)]
-pub fn eager_accept(resource: Resource) -> EagerAccept {
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let maybe_repr = table.get_mut(&resource.rid);
-  match maybe_repr {
-    None => panic!("bad rid"),
-    Some(repr) => match repr {
-      Repr::TcpListener(ref mut tcp_listener, _) => {
-        eager::tcp_accept(tcp_listener, resource)
-      }
-      _ => Either::A(tokio_util::accept(resource)),
-    },
-  }
-}
-
 // TODO(kevinkassimo): revamp this after the following lands:
 // https://github.com/tokio-rs/tokio/pull/785
 pub fn seek(
@@ -582,8 +451,8 @@ pub fn seek(
     Some(Repr::FsFile(f)) => {
       let seek_from = match whence {
         0 => SeekFrom::Start(offset as u64),
-        1 => SeekFrom::Current(offset as i64),
-        2 => SeekFrom::End(offset as i64),
+        1 => SeekFrom::Current(i64::from(offset)),
+        2 => SeekFrom::End(i64::from(offset)),
         _ => {
           return Box::new(futures::future::err(errors::new(
             errors::ErrorKind::InvalidSeekMode,
@@ -612,14 +481,13 @@ pub fn seek(
         )));
       }
       let mut std_file_copy = maybe_std_file_copy.unwrap();
-      return Box::new(futures::future::lazy(move || {
+      Box::new(futures::future::lazy(move || {
         let result = std_file_copy
           .seek(seek_from)
-          .map(|_| {
-            return ();
-          }).map_err(DenoError::from);
+          .map(|_| {})
+          .map_err(DenoError::from);
         futures::future::result(result)
-      }));
+      }))
     }
     _ => panic!("cannot seek"),
   }

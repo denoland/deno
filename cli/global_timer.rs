@@ -14,6 +14,7 @@ use std::time::Instant;
 use tokio::sync::oneshot;
 use tokio::timer::Delay;
 
+#[derive(Default)]
 pub struct GlobalTimer {
   tx: Option<oneshot::Sender<()>>,
 }
