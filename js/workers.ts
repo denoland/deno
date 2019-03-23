@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { sendSync, sendAsync } from "./dispatch";
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
@@ -9,7 +10,6 @@ import { TextDecoder, TextEncoder } from "./text_encoding";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-// TODO(afinch7) replace any types with something else thats more accurate.
 function encodeMessage(data: any): Uint8Array {
   const dataJson = JSON.stringify(data);
   return encoder.encode(dataJson);
@@ -37,7 +37,7 @@ function createWorker(specifier: string): number {
   return res.rid();
 }
 
-function hostPostMessage(rid: number, data: any) {
+function hostPostMessage(rid: number, data: any): void {
   const dataIntArray = encodeMessage(data);
   const builder = flatbuffers.createBuilder();
   msg.HostPostMessage.startHostPostMessage(builder);
@@ -152,11 +152,11 @@ export class WorkerImpl implements Worker {
     this.run();
   }
 
-  postMessage(data: any) {
+  postMessage(data: any): void {
     hostPostMessage(this.rid, data);
   }
 
-  private async run() {
+  private async run(): Promise<void> {
     while (!this.isClosing) {
       const data = await hostGetMessage(this.rid);
       if (data == null) {
