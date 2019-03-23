@@ -430,7 +430,7 @@ impl<B: Behavior> Future for Isolate<B> {
               // there wasn't enough size, we will return the buffer via the
               // legacy route, using the argument of deno_respond.
               overflow_response = Some(buf);
-              // mark `pollect_recently` so pending ops can be
+              // mark `polled_recently` so pending ops can be
               // done even if shared space overflows
               self.polled_recently = false;
               break;
@@ -852,7 +852,7 @@ mod tests {
     let mut isolate = TestBehavior::setup(TestBehaviorMode::OverflowReqAsync);
     js_check(isolate.execute(
       "overflow_req_async.js",
-       r#"
+      r#"
         let asyncRecv = 0;
         DenoCore.setAsyncHandler((buf) => {
           assert(buf.byteLength === 1);
