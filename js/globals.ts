@@ -110,4 +110,4 @@ export type Worker = workers.Worker;
 
 // TODO(afinch7) replace this hack with a real solution at some point.
 // eslint-disable-next-line
-window.onmessage = (e: { data: any }): void => { };
+window.onmessage = (e: { data: any }): void => {};
