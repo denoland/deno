@@ -852,7 +852,7 @@ mod tests {
     let mut isolate = TestBehavior::setup(TestBehaviorMode::OverflowReqAsync);
     js_check(isolate.execute(
       "overflow_req_async.js",
-      r#"
+       r#"
         let asyncRecv = 0;
         DenoCore.setAsyncHandler((buf) => {
           assert(buf.byteLength === 1);
