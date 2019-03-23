@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use deno_core::deno_buf;
-use deno_core::{StartupData, StartupScript};
+use deno_core::{Script, StartupData};
 
 pub fn deno_isolate_init() -> StartupData {
   if cfg!(feature = "no-snapshot-init") {
@@ -11,7 +11,7 @@ pub fn deno_isolate_init() -> StartupData {
     #[cfg(feature = "check-only")]
     let source_bytes = vec![];
 
-    StartupData::Script(StartupScript {
+    StartupData::Script(Script {
       filename: "gen/bundle/main.js".to_string(),
       source: std::str::from_utf8(source_bytes).unwrap().to_string(),
     })
@@ -38,7 +38,7 @@ pub fn compiler_isolate_init() -> StartupData {
     #[cfg(feature = "check-only")]
     let source_bytes = vec![];
 
-    StartupData::Script(StartupScript {
+    StartupData::Script(Script {
       filename: "gen/bundle/compiler.js".to_string(),
       source: std::str::from_utf8(source_bytes).unwrap().to_string(),
     })

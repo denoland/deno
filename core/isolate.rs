@@ -43,7 +43,7 @@ impl Future for PendingOp {
 }
 
 /// Stores a script used to initalize a Isolate
-pub struct StartupScript {
+pub struct Script {
   pub source: String,
   pub filename: String,
 }
@@ -52,7 +52,7 @@ pub struct StartupScript {
 /// either a binary snapshot or a javascript source file
 /// in the form of the StartupScript struct.
 pub enum StartupData {
-  Script(StartupScript),
+  Script(Script),
   Snapshot(deno_buf),
 }
 
