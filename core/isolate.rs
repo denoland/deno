@@ -430,6 +430,9 @@ impl<B: Behavior> Future for Isolate<B> {
               // there wasn't enough size, we will return the buffer via the
               // legacy route, using the argument of deno_respond.
               overflow_response = Some(buf);
+              // reset `polled_recently` so pending ops can be
+              // done even if shared space overflows
+              self.polled_recently = false;
               break;
             }
 
@@ -893,6 +896,35 @@ mod tests {
     assert_eq!(isolate.behavior.dispatch_count, 1);
     assert_eq!(Ok(Async::Ready(())), isolate.poll());
     js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+  }
+
+  #[test]
+  fn overflow_res_multiple_dispatch_async() {
+    // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
+    // should optimize this.
+    let mut isolate = TestBehavior::setup(TestBehaviorMode::OverflowResAsync);
+    js_check(isolate.execute(
+      "overflow_res_multiple_dispatch_async.js",
+      r#"
+        let asyncRecv = 0;
+        DenoCore.setAsyncHandler((buf) => {
+          assert(buf.byteLength === 100 * 1024 * 1024);
+          assert(buf[0] === 4);
+          asyncRecv++;
+        });
+        // Large message that will overflow the shared space.
+        let control = new Uint8Array([42]);
+        let response = DenoCore.dispatch(control);
+        assert(response == null);
+        assert(asyncRecv == 0);
+        // Dispatch another message to verify that pending ops
+        // are done even if shared space overflows
+        DenoCore.dispatch(control);
+        "#,
+    ));
+    assert_eq!(isolate.behavior.dispatch_count, 2);
+    assert_eq!(Ok(Async::Ready(())), isolate.poll());
+    js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
   }
 
   #[test]
