@@ -208,8 +208,14 @@ def main(argv):
         new_data["throughput"] = run_throughput(deno_path)
         stats = http_benchmark(deno_path, hyper_hello_path,
                                core_http_bench_exe)
-        new_data["req_per_sec"] = stats["req_per_sec"]
-        new_data["max_latency"] = stats["max_latency"]
+        new_data["req_per_sec"] = {
+            k: v["req_per_sec"]
+            for k, v in stats.items()
+        }
+        new_data["max_latency"] = {
+            k: v["max_latency"]
+            for k, v in stats.items()
+        }
     if "linux" in sys.platform:
         # Thread count test, only on linux
         new_data["thread_count"] = run_thread_count_benchmark(deno_path)

@@ -59,33 +59,18 @@ def hyper_http_benchmark(hyper_hello_exe):
 
 
 def http_benchmark(deno_exe, hyper_hello_exe, core_http_bench_exe):
-    r = {}
-    m = {}
 
     # TODO Rename to "deno_tcp"
-    denoHttp = deno_http_benchmark(deno_exe)
-    denoNetHttp = deno_net_http_benchmark(deno_exe)
-    denoCoreSingle = deno_core_single(core_http_bench_exe)
-    denoCoreMulti = deno_core_multi(core_http_bench_exe)
-    nodeHttp = node_http_benchmark()
-    nodeTcp = node_tcp_benchmark()
-    hyperHttp = hyper_http_benchmark(hyper_hello_exe)
 
-    dic = {
-        "deno": denoHttp,
-        "deno_net_http": denoNetHttp,
-        "deno_core_single": denoCoreSingle,
-        "deno_core_multi": denoCoreMulti,
-        "node": nodeHttp,
-        "node_tcp": nodeTcp,
-        "hyper": hyperHttp
+    return {
+        "deno": deno_http_benchmark(deno_exe),
+        "deno_net_http": deno_net_http_benchmark(deno_exe),
+        "deno_core_single": deno_core_single(core_http_bench_exe),
+        "deno_core_multi": deno_core_multi(core_http_bench_exe),
+        "node": node_http_benchmark(),
+        "node_tcp": node_tcp_benchmark(),
+        "hyper": hyper_http_benchmark(hyper_hello_exe)
     }
-
-    for key, value in dic.items():
-        r[key] = value["req_per_sec"]
-        m[key] = value["max_latency"]
-
-    return {"req_per_sec": r, "max_latency": m}
 
 
 def run(server_cmd, merge_env=None):
