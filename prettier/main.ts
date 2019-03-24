@@ -107,8 +107,8 @@ async function checkFile(
   const text = await readFileIfExists(filename);
 
   if (!text) {
-    // The file is deleted. Skip.
-    return;
+    // The file is empty. Skip.
+    return true;
   }
 
   const formatted = prettier.check(text, {
