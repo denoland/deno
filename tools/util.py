@@ -358,7 +358,7 @@ def extract_number(pattern, string):
     return int(matches[0])
 
 
-def extract_latency(pattern, string):
+def extract_max_latency_in_milliseconds(pattern, string):
     matches = re.findall(pattern, string)
     if len(matches) != 1:
         return None
@@ -381,7 +381,7 @@ def parse_wrk_output(output):
             stats['req_per_sec'] = extract_number(r'Requests/sec:\s+(\d+)',
                                                   line)
         if stats['max_latency'] is None:
-            stats['max_latency'] = extract_latency(
+            stats['max_latency'] = extract_max_latency_in_milliseconds(
                 r'Latency(?:\s+(\d+.\d+)([a-z]+)){3}', line)
     return stats
 
