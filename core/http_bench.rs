@@ -108,11 +108,6 @@ impl Behavior for HttpBench {
     }))
   }
 
-  fn resolve(&mut self, _specifier: &str, _referrer: deno_mod) -> deno_mod {
-    // HttpBench doesn't do ES modules.
-    unimplemented!()
-  }
-
   fn dispatch(
     &mut self,
     control: &[u8],
