@@ -230,7 +230,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen("#exec-time-chart", execTimeColumns, "seconds", logScale);
   gen("#throughput-chart", throughputColumns, "seconds", logScale);
   gen("#req-per-sec-chart", reqPerSecColumns, "1000 req/sec", formatReqSec);
-  gen("#max-latency-chart", maxLatencyColumns, "seconds", logScale);
+  gen("#max-latency-chart", maxLatencyColumns, "milliseconds", logScale);
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");
