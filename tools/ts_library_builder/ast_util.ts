@@ -73,6 +73,21 @@ export function addTypeAlias(
   });
 }
 
+/** Add a declaration of an interface to a node */
+export function addInterfaceDeclaration(
+  node: StatementedNode,
+  interfaceDeclaration: InterfaceDeclaration
+) {
+  const interfaceStructure = interfaceDeclaration.getStructure();
+
+  return node.addInterface({
+    name: interfaceStructure.name,
+    properties: interfaceStructure.properties,
+    docs: interfaceStructure.docs,
+    hasDeclareKeyword: true
+  });
+}
+
 /** Add a declaration of a variable to a node */
 export function addVariableDeclaration(
   node: StatementedNode,
