@@ -527,7 +527,7 @@ pub fn js_check(r: Result<(), JSError>) {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::collections::HashMap;
+  use std::sync::atomic::{AtomicUsize, Ordering};
 
   pub enum TestBehaviorMode {
     AsyncImmediate,
@@ -655,20 +655,13 @@ mod tests {
     let imports = isolate.mod_get_imports(mod_b);
     assert_eq!(imports.len(), 0);
 
-    let mut mod_map: HashMap<String, deno_mod> = HashMap::new();
-    mod_map.insert("b.js".to_string(), mod_b);
-
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
     let resolve_count = Arc::new(AtomicUsize::new(0));
     let resolve_count_ = resolve_count.clone();
 
     let mut resolve = move |specifier: &str, _referrer: deno_mod| -> deno_mod {
       resolve_count_.fetch_add(1, Ordering::SeqCst);
-      match mod_map.get(specifier) {
-        Some(id) => *id,
-        None => 0,
-      }
+      assert_eq!(specifier, "b.js");
+      mod_b
     };
 
     js_check(isolate.mod_instantiate(mod_b, &mut resolve));
