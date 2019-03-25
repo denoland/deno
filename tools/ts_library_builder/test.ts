@@ -162,7 +162,7 @@ function buildLibraryMerge() {
   assert(targetSourceFile.getNamespace("moduleF") != null);
   assert.equal(targetSourceFile.getNamespaces().length, 4);
   assert(targetSourceFile.getInterface("FooBar") != null);
-  assert.equal(targetSourceFile.getInterfaces().length, 1);
+  assert.equal(targetSourceFile.getInterfaces().length, 2);
   const variableDeclarations = targetSourceFile.getVariableDeclarations();
   assert.equal(variableDeclarations[0].getType().getText(), `FooBar`);
   assert.equal(variableDeclarations[1].getType().getText(), `FooBar`);
@@ -188,6 +188,14 @@ function buildLibraryMerge() {
   assert.equal(typeAliases[0].getName(), "Bar");
   assert.equal(typeAliases[0].getType().getText(), "moduleC.Bar");
   assert.equal(typeAliases.length, 1);
+  const exportedInterface = targetSourceFile.getInterfaceOrThrow("FizzBuzz");
+  const interfaceProperties = exportedInterface.getStructure().properties;
+  assert(interfaceProperties != null);
+  assert.equal(interfaceProperties!.length, 2);
+  assert.equal(interfaceProperties![0].name, "foo");
+  assert.equal(interfaceProperties![0].type, "string");
+  assert.equal(interfaceProperties![1].name, "bar");
+  assert.equal(interfaceProperties![1].type, "number");
 }
 
 function testInlineFiles() {

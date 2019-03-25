@@ -104,3 +104,10 @@ export type TextDecoder = textEncoding.TextDecoder;
 window.performance = new performanceUtil.Performance();
 
 window.workerMain = workers.workerMain;
+
+// below are interfaces that are available in TypeScript but
+// have different signatures
+export interface ImportMeta {
+  url: string;
+  main: boolean;
+}
