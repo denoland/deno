@@ -5,7 +5,6 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::modules::Modules;
 use crate::permissions::DenoPermissions;
-use deno_core::deno_mod;
 use deno_core::Buf;
 use futures::sync::mpsc as async_mpsc;
 use std;
@@ -144,16 +143,3 @@ impl IsolateState {
 pub trait IsolateStateContainer {
   fn state(&self) -> Arc<IsolateState>;
 }
-
-/// Provides state_resolve function for IsolateStateContainer implementors
-pub trait IsolateStateModuleResolution: IsolateStateContainer {
-  fn state_resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod {
-    let state = self.state();
-    state.metrics.resolve_count.fetch_add(1, Ordering::Relaxed);
-    let mut modules = state.modules.lock().unwrap();
-    modules.resolve_cb(&state.dir, specifier, referrer)
-  }
-}
-
-// Auto implementation for all IsolateStateContainer implementors
-impl<T> IsolateStateModuleResolution for T where T: IsolateStateContainer {}
