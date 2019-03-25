@@ -46,6 +46,10 @@ export function createReqPerSecColumns(data) {
   return createColumns(data, "req_per_sec");
 }
 
+export function createMaxLatencyColumns(data) {
+  return createColumns(data, "max_latency");
+}
+
 export function createBinarySizeColumns(data) {
   const propName = "binary_size";
   const binarySizeNames = Object.keys(data[data.length - 1][propName]);
@@ -198,6 +202,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   const execTimeColumns = createExecTimeColumns(data);
   const throughputColumns = createThroughputColumns(data);
   const reqPerSecColumns = createReqPerSecColumns(data);
+  const maxLatencyColumns = createMaxLatencyColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
   const threadCountColumns = createThreadCountColumns(data);
   const syscallCountColumns = createSyscallCountColumns(data);
@@ -225,6 +230,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen("#exec-time-chart", execTimeColumns, "seconds", logScale);
   gen("#throughput-chart", throughputColumns, "seconds", logScale);
   gen("#req-per-sec-chart", reqPerSecColumns, "1000 req/sec", formatReqSec);
+  gen("#max-latency-chart", maxLatencyColumns, "milliseconds", logScale);
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");
