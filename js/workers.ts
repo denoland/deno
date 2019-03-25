@@ -37,6 +37,14 @@ function createWorker(specifier: string): number {
   return res.rid();
 }
 
+async function hostGetWorkerClosed(rid: number): Promise<any> {
+  const builder = flatbuffers.createBuilder();
+  msg.HostGetWorkerClosed.startHostGetWorkerClosed(builder);
+  msg.HostGetWorkerClosed.addRid(builder, rid);
+  const inner = msg.HostGetWorkerClosed.endHostGetWorkerClosed(builder);
+  await sendAsync(builder, msg.Any.HostGetWorkerClosed, inner);
+}
+
 function hostPostMessage(rid: number, data: any): void {
   const dataIntArray = encodeMessage(data);
   const builder = flatbuffers.createBuilder();
@@ -150,6 +158,9 @@ export class WorkerImpl implements Worker {
   constructor(specifier: string) {
     this.rid = createWorker(specifier);
     this.run();
+    hostGetWorkerClosed(this.rid).then(() => {
+      this.isClosing = true;
+    });
   }
 
   postMessage(data: any): void {

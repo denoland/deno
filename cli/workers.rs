@@ -2,17 +2,12 @@
 use crate::errors::RustOrJsError;
 use crate::isolate::{DenoBehavior, Isolate};
 use crate::isolate_state::WorkerChannels;
-use crate::js_errors::JSErrorColor;
 use crate::resources;
-use crate::tokio_util;
 use deno_core::Buf;
 use deno_core::JSError;
-use futures::future::lazy;
 use futures::sync::mpsc;
-use futures::sync::oneshot;
 use futures::Future;
 use futures::Poll;
-use std::thread;
 
 /// Behavior trait specific to workers
 pub trait WorkerBehavior: DenoBehavior {
@@ -25,10 +20,11 @@ pub trait WorkerBehavior: DenoBehavior {
 /// Rust interface for WebWorkers.
 pub struct Worker<B: WorkerBehavior> {
   isolate: Isolate<B>,
+  pub resource: resources::Resource,
 }
 
 impl<B: WorkerBehavior> Worker<B> {
-  pub fn new(mut behavior: B) -> (Self, WorkerChannels) {
+  pub fn new(mut behavior: B) -> Self {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
 
@@ -39,8 +35,10 @@ impl<B: WorkerBehavior> Worker<B> {
 
     let isolate = Isolate::new(behavior);
 
-    let worker = Worker { isolate };
-    (worker, external_channels)
+    Worker {
+      isolate,
+      resource: resources::add_worker(external_channels),
+    }
   }
 
   pub fn execute(&mut self, js_source: &str) -> Result<(), JSError> {
@@ -73,58 +71,36 @@ pub enum WorkerInit {
 pub fn spawn<B: WorkerBehavior + 'static>(
   behavior: B,
   init: WorkerInit,
-) -> resources::Resource {
-  // TODO This function should return a Future, so that the caller can retrieve
-  // the JSError if one is thrown. Currently it just prints to stderr and calls
-  // exit(1).
-  // let (js_error_tx, js_error_rx) = oneshot::channel::<JSError>();
-  let (p, c) = oneshot::channel::<resources::Resource>();
-  let builder = thread::Builder::new().name("worker".to_string());
+) -> Result<Worker<B>, RustOrJsError> {
+  let state = behavior.state().clone();
+  let mut worker = Worker::new(behavior);
 
-  let _tid = builder
-    .spawn(move || {
-      tokio_util::run(lazy(move || {
-        let state = behavior.state().clone();
-        let (mut worker, external_channels) = Worker::new(behavior);
-        let resource = resources::add_worker(external_channels);
-        p.send(resource.clone()).unwrap();
+  worker
+    .execute("denoMain()")
+    .expect("worker denoMain failed");
 
-        worker
-          .execute("denoMain()")
-          .expect("worker denoMain failed");
-        worker
-          .execute("workerMain()")
-          .expect("worker workerMain failed");
-        match init {
-          WorkerInit::Script(script) => {
-            worker.execute(&script).expect("worker init script failed")
-          }
-          WorkerInit::MainModule() => {
-            let should_prefetch = state.flags.prefetch || state.flags.info;
-            let main_module_option = state.main_module();
-            assert!(main_module_option.is_some());
-            let main_module = main_module_option.unwrap();
-            worker
-              .execute_mod(&main_module, should_prefetch)
-              .expect("worker init main module failed");
-          }
-        };
+  worker
+    .execute("workerMain()")
+    .expect("worker workerMain failed");
 
-        worker.then(move |r| -> Result<(), ()> {
-          resource.close();
-          debug!("workers.rs after resource close");
-          if let Err(err) = r {
-            eprintln!("{}", JSErrorColor(&err).to_string());
-            std::process::exit(1);
-          }
-          Ok(())
-        })
-      }));
+  let init_result = match init {
+    WorkerInit::Script(script) => match worker.execute(&script) {
+      Ok(v) => Ok(v),
+      Err(e) => Err(RustOrJsError::Js(e)),
+    },
+    WorkerInit::MainModule() => {
+      let should_prefetch = state.flags.prefetch || state.flags.info;
+      let main_module_option = state.main_module();
+      assert!(main_module_option.is_some());
+      let main_module = main_module_option.unwrap();
+      worker.execute_mod(&main_module, should_prefetch)
+    }
+  };
 
-      debug!("workers.rs after spawn");
-    }).unwrap();
-
-  c.wait().unwrap()
+  match init_result {
+    Ok(_) => Ok(worker),
+    Err(err) => Err(err),
+  }
 }
 
 #[cfg(test)]
@@ -132,11 +108,15 @@ mod tests {
   use super::*;
   use crate::compiler::CompilerBehavior;
   use crate::isolate_state::IsolateState;
+  use crate::js_errors::JSErrorColor;
+  use crate::tokio_util;
+  use futures::future::lazy;
   use std::sync::Arc;
+  use std::thread;
 
   #[test]
   fn test_spawn() {
-    let resource = spawn(
+    let worker_result = spawn(
       CompilerBehavior::new(Arc::new(IsolateState::mock())),
       WorkerInit::Script(
         r#"
@@ -154,6 +134,27 @@ mod tests {
       "#.into(),
       ),
     );
+    assert!(worker_result.is_ok());
+    let worker = worker_result.unwrap();
+    let resource = worker.resource.clone();
+    let resource_ = resource.clone();
+
+    let builder = thread::Builder::new().name("test-worker".to_string());
+
+    let _tid = builder.spawn(move || {
+      tokio_util::run(lazy(move || {
+        worker.then(move |r| -> Result<(), ()> {
+          resource_.close();
+          debug!("workers.rs after resource close");
+          if let Err(err) = r {
+            eprintln!("{}", JSErrorColor(&err).to_string());
+            assert!(false)
+          }
+          Ok(())
+        })
+      }))
+    });
+
     let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
     let r = resources::post_message_to_worker(resource.rid, msg).wait();
@@ -176,10 +177,30 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    let resource = spawn(
+    let worker_result = spawn(
       CompilerBehavior::new(Arc::new(IsolateState::mock())),
       WorkerInit::Script("onmessage = () => close();".into()),
     );
+    assert!(worker_result.is_ok());
+    let worker = worker_result.unwrap();
+    let resource = worker.resource.clone();
+    let resource_ = resource.clone();
+
+    let builder = thread::Builder::new().name("test-worker".to_string());
+
+    let _tid = builder.spawn(move || {
+      tokio_util::run(lazy(move || {
+        worker.then(move |r| -> Result<(), ()> {
+          resource_.close();
+          debug!("workers.rs after resource close");
+          if let Err(err) = r {
+            eprintln!("{}", JSErrorColor(&err).to_string());
+            assert!(false)
+          }
+          Ok(())
+        })
+      }))
+    });
 
     assert_eq!(
       resources::get_type(resource.rid),

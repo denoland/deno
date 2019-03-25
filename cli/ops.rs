@@ -204,6 +204,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
     msg::Any::CreateWorker => Some(op_create_worker),
+    msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
     msg::Any::HostGetMessage => Some(op_host_get_message),
     msg::Any::HostPostMessage => Some(op_host_post_message),
     msg::Any::Write => Some(op_write),
@@ -1909,22 +1910,63 @@ fn op_create_worker(
       specifier.map(|v| v.to_string()),
     ));
     let behavior = web_worker_behavior::WebWorkerBehavior::new(worker_state);
-    let resource = workers::spawn(behavior, workers::WorkerInit::MainModule());
-    let builder = &mut FlatBufferBuilder::new();
-    let msg_inner = msg::CreateWorkerRes::create(
-      builder,
-      &msg::CreateWorkerResArgs { rid: resource.rid },
-    );
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(msg_inner.as_union_value()),
-        inner_type: msg::Any::CreateWorkerRes,
-        ..Default::default()
-      },
-    ))
+    match workers::spawn(behavior, workers::WorkerInit::MainModule()) {
+      Ok(worker) => {
+        let mut workers_tl = parent_state.workers.lock().unwrap();
+        let rid = worker.resource.rid.clone();
+        workers_tl.insert(rid, worker);
+        let builder = &mut FlatBufferBuilder::new();
+        let msg_inner = msg::CreateWorkerRes::create(
+          builder,
+          &msg::CreateWorkerResArgs { rid },
+        );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            inner: Some(msg_inner.as_union_value()),
+            inner_type: msg::Any::CreateWorkerRes,
+            ..Default::default()
+          },
+        ))
+      }
+      Err(errors::RustOrJsError::Js(_)) => Err(errors::worker_init_failed()),
+      Err(errors::RustOrJsError::Rust(err)) => Err(err),
+    }
   }()))
+}
+
+/// Return when the worker closes
+fn op_host_get_worker_closed(
+  sc: &IsolateStateContainer,
+  base: &msg::Base<'_>,
+  data: deno_buf,
+) -> Box<OpWithError> {
+  assert_eq!(data.len(), 0);
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_host_get_worker_closed().unwrap();
+  let rid = inner.rid();
+  let state = sc.state().clone();
+
+  let worker_option = {
+    let mut workers_tl = state.workers.lock().unwrap();
+    workers_tl.remove(&rid)
+  };
+
+  match worker_option {
+    None => odd_future(errors::bad_resource()),
+    Some(worker) => Box::new(worker.then(move |_result| {
+      let builder = &mut FlatBufferBuilder::new();
+
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          ..Default::default()
+        },
+      ))
+    })),
+  }
 }
 
 /// Get message from guest worker as host

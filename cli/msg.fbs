@@ -67,6 +67,7 @@ union Any {
   Truncate,
   CreateWorker,
   CreateWorkerRes,
+  HostGetWorkerClosed,
   HostGetMessage,
   HostGetMessageRes,
   HostPostMessage,
@@ -129,6 +130,8 @@ enum ErrorKind: byte {
   // custom errors
   InvalidUri,
   InvalidSeekMode,
+  OpNotAvaiable,
+  WorkerInitFailed
 }
 
 table Cwd {}
@@ -185,6 +188,10 @@ table CreateWorker {
 }
 
 table CreateWorkerRes {
+  rid: uint32;
+}
+
+table HostGetWorkerClosed {
   rid: uint32;
 }
 

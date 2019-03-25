@@ -1,11 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::isolate_state::*;
+use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::ops;
 use crate::resources;
 use crate::resources::Resource;
 use crate::resources::ResourceId;
 use crate::startup_data;
+use crate::tokio_util;
 use crate::workers;
 use crate::workers::WorkerBehavior;
 use crate::workers::WorkerInit;
@@ -15,11 +17,13 @@ use deno_core::Behavior;
 use deno_core::Buf;
 use deno_core::Op;
 use deno_core::StartupData;
+use futures::future::lazy;
 use futures::Future;
 use serde_json;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::thread;
 
 lazy_static! {
   static ref C_RID: Mutex<Option<ResourceId>> = Mutex::new(None);
@@ -108,7 +112,7 @@ impl ModuleMetaData {
 fn lazy_start(parent_state: Arc<IsolateState>) -> Resource {
   let mut cell = C_RID.lock().unwrap();
   let rid = cell.get_or_insert_with(|| {
-    let resource = workers::spawn(
+    let worker_result = workers::spawn(
       CompilerBehavior::new(Arc::new(IsolateState::new(
         parent_state.flags.clone(),
         parent_state.argv.clone(),
@@ -117,7 +121,37 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> Resource {
       ))),
       WorkerInit::Script("compilerMain()".to_string()),
     );
-    resource.rid
+    match worker_result {
+      Ok(worker) => {
+        let resource = worker.resource.clone();
+        let rid = resource.rid.clone();
+        let builder =
+          thread::Builder::new().name("compiler-worker".to_string());
+
+        let _tid = builder.spawn(move || {
+          tokio_util::run(lazy(move || {
+            worker.then(move |r| -> Result<(), ()> {
+              resource.close();
+              debug!("workers.rs after resource close");
+              if let Err(err) = r {
+                eprintln!(
+                  "Compiler worker failed with error: {}",
+                  JSErrorColor(&err).to_string()
+                );
+                std::process::exit(1);
+              }
+              Ok(())
+            })
+          }))
+        });
+
+        rid
+      }
+      Err(err) => {
+        println!("{}", err.to_string());
+        std::process::exit(1);
+      }
+    }
   });
   Resource { rid: *rid }
 }
