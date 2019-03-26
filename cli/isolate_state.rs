@@ -8,7 +8,6 @@ use crate::permissions::DenoPermissions;
 use crate::resources::ResourceId;
 use crate::web_worker_behavior::WebWorkerBehavior;
 use crate::workers::Worker;
-use deno_core::deno_mod;
 use deno_core::Buf;
 use futures::future::Shared;
 use futures::sync::mpsc as async_mpsc;

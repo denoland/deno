@@ -4,7 +4,6 @@ use crate::ops;
 use crate::startup_data;
 use crate::workers::WorkerBehavior;
 use deno_core::deno_buf;
-use deno_core::deno_mod;
 use deno_core::Behavior;
 use deno_core::Op;
 use deno_core::StartupData;
@@ -35,10 +34,6 @@ impl IsolateStateContainer for &WebWorkerBehavior {
 impl Behavior for WebWorkerBehavior {
   fn startup_data(&mut self) -> Option<StartupData> {
     Some(startup_data::deno_isolate_init())
-  }
-
-  fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod {
-    self.state_resolve(specifier, referrer)
   }
 
   fn dispatch(
