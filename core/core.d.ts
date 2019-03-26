@@ -9,12 +9,12 @@ declare interface MessageCallback {
 }
 
 declare interface DenoCore {
-  _dispatch(
+  dispatch(
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
   ): Uint8Array | null;
-  _setAsyncHandler(cb: MessageCallback): void;
-  _sharedQueue: {
+  setAsyncHandler(cb: MessageCallback): void;
+  sharedQueue: {
     head(): number;
     numRecords(): number;
     size(): number;

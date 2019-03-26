@@ -323,7 +323,7 @@ function createObjectString(
   ...args: [ConsoleContext, number, number]
 ): string {
   if (value instanceof Error) {
-    const errorJSON = core._errorToJSON(value);
+    const errorJSON = core.errorToJSON(value);
     return formatError(errorJSON);
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);

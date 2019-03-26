@@ -7,7 +7,7 @@ function assert(cond) {
 }
 
 function main() {
-  const q = Deno.core._sharedQueue;
+  const q = Deno.core.sharedQueue;
 
   let h = q.head();
   assert(h > 0);
@@ -56,7 +56,7 @@ function main() {
   assert(q.numRecords() == 0);
   assert(q.size() == 0);
 
-  Deno.core._print("shared_queue_test.js ok\n");
+  Deno.core.print("shared_queue_test.js ok\n");
 }
 
 main();

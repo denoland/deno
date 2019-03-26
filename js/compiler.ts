@@ -16,7 +16,7 @@ const ASSETS = "$asset$";
 const LIB_RUNTIME = `${ASSETS}/lib.deno_runtime.d.ts`;
 
 // An instance of console
-const console = new Console(core._print);
+const console = new Console(core.print);
 
 /** The location that a module is being loaded from. This could be a directory,
  * like `.`, or it could be a module specifier like

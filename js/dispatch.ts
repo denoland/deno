@@ -39,7 +39,7 @@ function sendInternal(
   builder.finish(msg.Base.endBase(builder));
 
   const control = builder.asUint8Array();
-  const response = core._dispatch(control, zeroCopy);
+  const response = core.dispatch(control, zeroCopy);
 
   builder.inUse = false;
   return [cmdId, response];

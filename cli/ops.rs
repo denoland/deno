@@ -69,9 +69,9 @@ fn empty_buf() -> Buf {
 }
 
 /// Processes raw messages from JavaScript.
-/// This functions invoked every time Deno.core._send() is called.
-/// control corresponds to the first argument of Deno.core._send().
-/// data corresponds to the second argument of Deno.core._send().
+/// This functions invoked every time Deno.core.dispatch() is called.
+/// control corresponds to the first argument of Deno.core.dispatch().
+/// data corresponds to the second argument of Deno.core.dispatch().
 pub fn dispatch_all(
   sc: &IsolateStateContainer,
   control: &[u8],

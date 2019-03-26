@@ -104,7 +104,7 @@
   }
 
   let asyncHandler;
-  function _setAsyncHandler(cb) {
+  function setAsyncHandler(cb) {
     assert(asyncHandler == null);
     asyncHandler = cb;
   }
@@ -125,22 +125,22 @@
     assert(shared32 == null);
     sharedBytes = new Uint8Array(shared);
     shared32 = new Int32Array(shared);
-    // Callers should not call Deno.core._recv, use setAsyncHandler.
-    window.Deno.core._recv(handleAsyncMsgFromRust);
+    // Callers should not call Deno.core.recv, use setAsyncHandler.
+    window.Deno.core.recv(handleAsyncMsgFromRust);
   }
 
-  function _dispatch(control, zeroCopy = null) {
+  function dispatch(control, zeroCopy = null) {
     // First try to push control to shared.
     const success = push(control);
-    // If successful, don't use first argument of core._send.
+    // If successful, don't use first argument of core.send.
     const arg0 = success ? null : control;
-    return window.Deno.core._send(arg0, zeroCopy);
+    return window.Deno.core.send(arg0, zeroCopy);
   }
 
   const denoCore = {
-    _setAsyncHandler,
-    _dispatch,
-    _sharedQueue: {
+    setAsyncHandler,
+    dispatch,
+    sharedQueue: {
       head,
       numRecords,
       size,
@@ -154,5 +154,5 @@
   assert(window[GLOBAL_NAMESPACE][CORE_NAMESPACE] != null);
   Object.assign(core, denoCore);
 
-  init(Deno.core._shared);
+  init(Deno.core.shared);
 })(globalThis);

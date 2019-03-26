@@ -10,7 +10,7 @@ function assert(cond) {
 }
 
 global.CanCallFunction = () => {
-  Deno.core._print("Hello world from foo");
+  Deno.core.print("Hello world from foo");
   return "foo";
 };
 
@@ -28,15 +28,15 @@ global.TypedArraySnapshots = () => {
 global.RecvReturnEmpty = () => {
   const m1 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const m2 = m1.slice();
-  const r1 = Deno.core._send(m1);
+  const r1 = Deno.core.send(m1);
   assert(r1 == null);
-  const r2 = Deno.core._send(m2);
+  const r2 = Deno.core.send(m2);
   assert(r2 == null);
 };
 
 global.RecvReturnBar = () => {
   const m = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
-  const r = Deno.core._send(m);
+  const r = Deno.core.send(m);
   assert(r instanceof Uint8Array);
   assert(r.byteLength === 3);
   const rstr = String.fromCharCode(...r);
@@ -44,10 +44,10 @@ global.RecvReturnBar = () => {
 };
 
 global.DoubleRecvFails = () => {
-  // Deno.core._recv is an internal function and should only be called once from the
+  // Deno.core.recv is an internal function and should only be called once from the
   // runtime.
-  Deno.core._recv((channel, msg) => assert(false));
-  Deno.core._recv((channel, msg) => assert(false));
+  Deno.core.recv((channel, msg) => assert(false));
+  Deno.core.recv((channel, msg) => assert(false));
 };
 
 global.SendRecvSlice = () => {
@@ -58,7 +58,7 @@ global.SendRecvSlice = () => {
     buf[0] = 100 + i;
     buf[buf.length - 1] = 100 - i;
     // On the native side, the slice is shortened by 19 bytes.
-    buf = Deno.core._send(buf);
+    buf = Deno.core.send(buf);
     assert(buf.byteOffset === i * 11);
     assert(buf.byteLength === abLen - i * 30 - 19);
     assert(buf.buffer.byteLength == abLen);
@@ -78,17 +78,17 @@ global.JSSendArrayBufferViewTypes = () => {
   const ab1 = new ArrayBuffer(4321);
   const u8 = new Uint8Array(ab1, 2468, 1000);
   u8[0] = 1;
-  Deno.core._send(u8);
+  Deno.core.send(u8);
   // Send Uint32Array.
   const ab2 = new ArrayBuffer(4321);
   const u32 = new Uint32Array(ab2, 2468, 1000 / Uint32Array.BYTES_PER_ELEMENT);
   u32[0] = 0x02020202;
-  Deno.core._send(u32);
+  Deno.core.send(u32);
   // Send DataView.
   const ab3 = new ArrayBuffer(4321);
   const dv = new DataView(ab3, 2468, 1000);
   dv.setUint8(0, 3);
-  Deno.core._send(dv);
+  Deno.core.send(dv);
 };
 
 // The following join has caused SnapshotBug to segfault when using kKeep.
@@ -110,7 +110,7 @@ global.ZeroCopyBuf = () => {
   const b = zeroCopyBuf;
   // The second parameter of send should modified by the
   // privileged side.
-  const r = Deno.core._send(a, b);
+  const r = Deno.core.send(a, b);
   assert(r == null);
   // b is different.
   assert(b[0] === 4);
@@ -129,15 +129,15 @@ global.CheckPromiseErrors = () => {
     try {
       await fn();
     } catch (e) {
-      Deno.core._send(new Uint8Array([42]));
+      Deno.core.send(new Uint8Array([42]));
     }
   })();
 };
 
 global.Shared = () => {
-  const ab = Deno.core._shared;
+  const ab = Deno.core.shared;
   assert(ab instanceof SharedArrayBuffer);
-  assert(Deno.core._shared != undefined);
+  assert(Deno.core.shared != undefined);
   assert(ab.byteLength === 3);
   const ui8 = new Uint8Array(ab);
   assert(ui8[0] === 0);
@@ -149,30 +149,30 @@ global.Shared = () => {
 };
 
 global.LibDenoEvalContext = () => {
-  const [result, errInfo] = Deno.core._evalContext("let a = 1; a");
+  const [result, errInfo] = Deno.core.evalContext("let a = 1; a");
   assert(result === 1);
   assert(!errInfo);
-  const [result2, errInfo2] = Deno.core._evalContext("a = a + 1; a");
+  const [result2, errInfo2] = Deno.core.evalContext("a = a + 1; a");
   assert(result2 === 2);
   assert(!errInfo2);
 };
 
 global.LibDenoEvalContextError = () => {
-  const [result, errInfo] = Deno.core._evalContext("not_a_variable");
+  const [result, errInfo] = Deno.core.evalContext("not_a_variable");
   assert(!result);
   assert(!!errInfo);
   assert(errInfo.isNativeError); // is a native error (ReferenceError)
   assert(!errInfo.isCompileError); // is NOT a compilation error
   assert(errInfo.thrown.message === "not_a_variable is not defined");
 
-  const [result2, errInfo2] = Deno.core._evalContext("throw 1");
+  const [result2, errInfo2] = Deno.core.evalContext("throw 1");
   assert(!result2);
   assert(!!errInfo2);
   assert(!errInfo2.isNativeError); // is NOT a native error
   assert(!errInfo2.isCompileError); // is NOT a compilation error
   assert(errInfo2.thrown === 1);
 
-  const [result3, errInfo3] = Deno.core._evalContext(
+  const [result3, errInfo3] = Deno.core.evalContext(
     "class AError extends Error {}; throw new AError('e')"
   );
   assert(!result3);
@@ -181,14 +181,14 @@ global.LibDenoEvalContextError = () => {
   assert(!errInfo3.isCompileError); // is NOT a compilation error
   assert(errInfo3.thrown.message === "e");
 
-  const [result4, errInfo4] = Deno.core._evalContext("{");
+  const [result4, errInfo4] = Deno.core.evalContext("{");
   assert(!result4);
   assert(!!errInfo4);
   assert(errInfo4.isNativeError); // is a native error (SyntaxError)
   assert(errInfo4.isCompileError); // is a compilation error! (braces not closed)
   assert(errInfo4.thrown.message === "Unexpected end of input");
 
-  const [result5, errInfo5] = Deno.core._evalContext("eval('{')");
+  const [result5, errInfo5] = Deno.core.evalContext("eval('{')");
   assert(!result5);
   assert(!!errInfo5);
   assert(errInfo5.isNativeError); // is a native error (SyntaxError)

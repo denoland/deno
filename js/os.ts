@@ -164,7 +164,7 @@ function sendStart(): msg.StartRes {
 // the runtime and the compiler environments.
 // @internal
 export function start(source?: string): msg.StartRes {
-  core._setAsyncHandler(handleAsyncMsgFromRust);
+  core.setAsyncHandler(handleAsyncMsgFromRust);
 
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI

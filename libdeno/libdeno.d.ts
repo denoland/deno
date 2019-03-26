@@ -17,16 +17,16 @@ declare interface MessageCallback {
 }
 
 declare interface DenoCore {
-  _recv(cb: MessageCallback): void;
+  recv(cb: MessageCallback): void;
 
-  _send(
+  send(
     control: null | ArrayBufferView,
     data?: ArrayBufferView
   ): null | Uint8Array;
 
-  _print(x: string, isErr?: boolean): void;
+  print(x: string, isErr?: boolean): void;
 
-  _shared: SharedArrayBuffer;
+  shared: SharedArrayBuffer;
 
   /** Evaluate provided code in the current context.
    * It differs from eval(...) in that it does not create a new context.
@@ -34,7 +34,7 @@ declare interface DenoCore {
    * If an error occurs, `output` becomes null and `errInfo` is non-null.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _evalContext(code: string): [any, EvalErrorInfo | null];
+  evalContext(code: string): [any, EvalErrorInfo | null];
 
-  _errorToJSON: (e: Error) => string;
+  errorToJSON: (e: Error) => string;
 }
