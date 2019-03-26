@@ -13,7 +13,7 @@ object is passed, the `name` property is used to identify the test. If the asser
 
 Asserts are exposed in `testing/asserts.ts` module.
 
-- `equal` - Deep comparision function, where `actual` and `expected` are
+- `equal()` - Deep comparision function, where `actual` and `expected` are
   compared deeply, and if they vary, `equal` returns `false`.
 - `assert()` - Expects a boolean value, throws if the value is `false`.
 - `assertEquals()` - Uses the `equal` comparison and throws if the `actual` and
@@ -37,7 +37,10 @@ Asserts are exposed in `testing/asserts.ts` module.
 - `unimplemented()` - Use this to stub out methods that will throw when invoked
 - `unreachable()` - Used to assert unreachable code
 
-`runTests()` executes the declared tests.
+`runTests()` executes the declared tests. It accepts a `RunOptions` parameter:
+
+- parallel : Execute tests in a parallel way.
+- exitOnFail : if one test fails, test will throw an error and stop the tests. If not all tests will be processed.
 
 Basic usage:
 
