@@ -123,17 +123,17 @@ async function serve(rid) {
 }
 
 async function main() {
-  Deno.core._setAsyncHandler(handleAsyncMsgFromRust);
+  Deno.core.setAsyncHandler(handleAsyncMsgFromRust);
 
-  Deno.core._print("http_bench.js start\n");
+  Deno.core.print("http_bench.js start\n");
 
   const listenerRid = listen();
-  Deno.core._print(`listening http://127.0.0.1:4544/ rid = ${listenerRid}\n`);
+  Deno.core.print(`listening http://127.0.0.1:4544/ rid = ${listenerRid}\n`);
   while (true) {
     const rid = await accept(listenerRid);
-    // Deno.core._print(`accepted ${rid}`);
+    // Deno.core.print(`accepted ${rid}`);
     if (rid < 0) {
-      Deno.core._print(`accept error ${rid}`);
+      Deno.core.print(`accept error ${rid}`);
       return;
     }
     serve(rid);
