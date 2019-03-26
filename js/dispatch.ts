@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { window } from "./window";
+import { core } from "./core";
 import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/msg_generated";
 import * as errors from "./errors";
@@ -39,7 +39,7 @@ function sendInternal(
   builder.finish(msg.Base.endBase(builder));
 
   const control = builder.asUint8Array();
-  const response = window.DenoCore.dispatch(control, zeroCopy);
+  const response = core.dispatch(control, zeroCopy);
 
   builder.inUse = false;
   return [cmdId, response];

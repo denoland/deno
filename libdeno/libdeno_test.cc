@@ -320,7 +320,7 @@ TEST(LibDenoTest, SharedAtomics) {
   deno_buf shared = {nullptr, 0, reinterpret_cast<uint8_t*>(s), sizeof s, 0};
   Deno* d = deno_new(deno_config{0, empty, shared, nullptr});
   deno_execute(d, nullptr, "a.js",
-               "Atomics.add(new Int32Array(libdeno.shared), 0, 1)");
+               "Atomics.add(new Int32Array(Deno.core.shared), 0, 1)");
   EXPECT_EQ(nullptr, deno_last_exception(d));
   EXPECT_EQ(s[0], 1);
   EXPECT_EQ(s[1], 1);

@@ -6,7 +6,7 @@ import { close } from "./files";
 import * as dispatch from "./dispatch";
 import { exit } from "./os";
 import { window } from "./window";
-import { libdeno } from "./libdeno";
+import { core } from "./core";
 import { formatError } from "./format_error";
 
 const helpMsg = [
@@ -90,7 +90,7 @@ function isRecoverableError(e: Error): boolean {
 // Returns true if code is consumed (no error/irrecoverable error).
 // Returns false if error is recoverable
 function evaluate(code: string): boolean {
-  const [result, errInfo] = libdeno.evalContext(code);
+  const [result, errInfo] = core.evalContext(code);
   if (!errInfo) {
     console.log(result);
   } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
@@ -99,7 +99,7 @@ function evaluate(code: string): boolean {
   } else {
     if (errInfo.isNativeError) {
       const formattedError = formatError(
-        libdeno.errorToJSON(errInfo.thrown as Error)
+        core.errorToJSON(errInfo.thrown as Error)
       );
       console.error(formattedError);
     } else {
@@ -140,7 +140,7 @@ export async function replLoop(): Promise<void> {
         if (err.message !== "Interrupted") {
           // e.g. this happens when we have deno.close(3).
           // We want to display the problem.
-          const formattedError = formatError(libdeno.errorToJSON(err));
+          const formattedError = formatError(core.errorToJSON(err));
           console.error(formattedError);
         }
         // Quit REPL anyways.
@@ -162,7 +162,7 @@ export async function replLoop(): Promise<void> {
         } else {
           // e.g. this happens when we have deno.close(3).
           // We want to display the problem.
-          const formattedError = formatError(libdeno.errorToJSON(err));
+          const formattedError = formatError(core.errorToJSON(err));
           console.error(formattedError);
           quitRepl(1);
         }

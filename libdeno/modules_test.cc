@@ -19,7 +19,7 @@ TEST(ModulesTest, Resolution) {
   static deno_mod a = deno_mod_new(d, true, "a.js",
                                    "import { b } from 'b.js'\n"
                                    "if (b() != 'b') throw Error();\n"
-                                   "libdeno.send(new Uint8Array([4]));");
+                                   "Deno.core.send(new Uint8Array([4]));");
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
@@ -71,7 +71,7 @@ TEST(ModulesTest, ResolutionError) {
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
                                    "import 'bad'\n"
-                                   "libdeno.send(new Uint8Array([4]));");
+                                   "Deno.core.send(new Uint8Array([4]));");
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
@@ -105,7 +105,7 @@ TEST(ModulesTest, ImportMetaUrl) {
   static deno_mod a =
       deno_mod_new(d, true, "a.js",
                    "if ('a.js' != import.meta.url) throw 'hmm'\n"
-                   "libdeno.send(new Uint8Array([4]));");
+                   "Deno.core.send(new Uint8Array([4]));");
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 

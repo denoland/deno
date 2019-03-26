@@ -1,8 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { window } from "./window";
-
-// The libdeno functions are moved so that users can't access them.
-type MessageCallback = (msg: Uint8Array) => void;
 
 interface EvalErrorInfo {
   // Is the object thrown a native Error?
@@ -16,7 +12,11 @@ interface EvalErrorInfo {
   thrown: any;
 }
 
-interface Libdeno {
+declare interface MessageCallback {
+  (msg: Uint8Array): void;
+}
+
+declare interface DenoCore {
   recv(cb: MessageCallback): void;
 
   send(
@@ -38,5 +38,3 @@ interface Libdeno {
 
   errorToJSON: (e: Error) => string;
 }
-
-export const libdeno = window.libdeno as Libdeno;
