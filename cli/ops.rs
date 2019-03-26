@@ -174,7 +174,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Permissions => Some(op_permissions),
     msg::Any::Read => Some(op_read),
     msg::Any::ReadDir => Some(op_read_dir),
-    msg::Any::ReadFile => Some(op_read_file),
     msg::Any::Readlink => Some(op_read_link),
     msg::Any::Remove => Some(op_remove),
     msg::Any::Rename => Some(op_rename),
@@ -193,7 +192,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::WorkerGetMessage => Some(op_worker_get_message),
     msg::Any::WorkerPostMessage => Some(op_worker_post_message),
     msg::Any::Write => Some(op_write),
-    msg::Any::WriteFile => Some(op_write_file),
     _ => None,
   }
 }
@@ -1026,45 +1024,6 @@ fn op_remove(
   })
 }
 
-// Prototype https://github.com/denoland/deno/blob/golang/os.go#L171-L184
-fn op_read_file(
-  sc: &IsolateStateContainer,
-  base: &msg::Base<'_>,
-  data: deno_buf,
-) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
-  let inner = base.inner_as_read_file().unwrap();
-  let cmd_id = base.cmd_id();
-  let filename_ = inner.filename().unwrap();
-  let filename = PathBuf::from(filename_);
-  debug!("op_read_file {}", filename.display());
-  if let Err(e) = sc.state().check_read(&filename_) {
-    return odd_future(e);
-  }
-  blocking(base.sync(), move || {
-    let vec = fs::read(&filename)?;
-    // Build the response message. memcpy data into inner.
-    // TODO(ry) zero-copy.
-    let builder = &mut FlatBufferBuilder::new();
-    let data_off = builder.create_vector(vec.as_slice());
-    let inner = msg::ReadFileRes::create(
-      builder,
-      &msg::ReadFileResArgs {
-        data: Some(data_off),
-      },
-    );
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::ReadFileRes,
-        ..Default::default()
-      },
-    ))
-  })
-}
-
 fn op_copy_file(
   sc: &IsolateStateContainer,
   base: &msg::Base<'_>,
@@ -1257,36 +1216,6 @@ fn op_read_dir(
         ..Default::default()
       },
     ))
-  })
-}
-
-fn op_write_file(
-  sc: &IsolateStateContainer,
-  base: &msg::Base<'_>,
-  data: deno_buf,
-) -> Box<OpWithError> {
-  let inner = base.inner_as_write_file().unwrap();
-  let filename = String::from(inner.filename().unwrap());
-  let update_perm = inner.update_perm();
-  let perm = inner.perm();
-  let is_create = inner.is_create();
-  let is_append = inner.is_append();
-
-  if let Err(e) = sc.state().check_write(&filename) {
-    return odd_future(e);
-  }
-
-  blocking(base.sync(), move || -> OpResult {
-    debug!("op_write_file {} {}", filename, data.len());
-    deno_fs::write_file_2(
-      Path::new(&filename),
-      data,
-      update_perm,
-      perm,
-      is_create,
-      is_append,
-    )?;
-    Ok(empty_buf())
   })
 }
 
