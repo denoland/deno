@@ -56,7 +56,6 @@ impl WorkerBehavior for WebWorkerBehavior {
       self.state.flags.clone(),
       self.state.argv.clone(),
       Some(worker_channels),
-      self.state.main_module_specifier.clone(),
     ));
   }
 }

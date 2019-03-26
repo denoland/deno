@@ -37,7 +37,7 @@ function createWorker(specifier: string): number {
   return res.rid();
 }
 
-async function hostGetWorkerClosed(rid: number): Promise<any> {
+async function hostGetWorkerClosed(rid: number): Promise<void> {
   const builder = flatbuffers.createBuilder();
   msg.HostGetWorkerClosed.startHostGetWorkerClosed(builder);
   msg.HostGetWorkerClosed.addRid(builder, rid);
@@ -126,6 +126,8 @@ export function workerClose(): void {
 
 export async function workerMain(): Promise<void> {
   log("workerMain");
+
+  window.close = workerClose;
 
   while (!isClosing) {
     const data = await getMessage();

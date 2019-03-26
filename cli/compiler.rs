@@ -75,7 +75,6 @@ impl WorkerBehavior for CompilerBehavior {
       self.state.flags.clone(),
       self.state.argv.clone(),
       Some(worker_channels),
-      None,
     ));
   }
 }
@@ -116,7 +115,6 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> Resource {
       CompilerBehavior::new(Arc::new(IsolateState::new(
         parent_state.flags.clone(),
         parent_state.argv.clone(),
-        None,
         None,
       ))),
       WorkerInit::Script("compilerMain()".to_string()),

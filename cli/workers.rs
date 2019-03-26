@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::errors::RustOrJsError;
+use crate::errors::*;
 use crate::isolate::{DenoBehavior, Isolate};
 use crate::isolate_state::WorkerChannels;
 use crate::resources;
@@ -63,9 +63,10 @@ impl<B: WorkerBehavior> Future for Worker<B> {
   }
 }
 
+/// Method and data used to initalize a worker
 pub enum WorkerInit {
   Script(String),
-  MainModule(),
+  Module(String),
 }
 
 pub fn spawn<B: WorkerBehavior + 'static>(
@@ -88,12 +89,14 @@ pub fn spawn<B: WorkerBehavior + 'static>(
       Ok(v) => Ok(v),
       Err(e) => Err(RustOrJsError::Js(e)),
     },
-    WorkerInit::MainModule() => {
+    WorkerInit::Module(specifier) => {
       let should_prefetch = state.flags.prefetch || state.flags.info;
-      let main_module_option = state.main_module();
-      assert!(main_module_option.is_some());
-      let main_module = main_module_option.unwrap();
-      worker.execute_mod(&main_module, should_prefetch)
+      match state.dir.resolve_module_url(&specifier, ".") {
+        Err(err) => Err(RustOrJsError::Rust(DenoError::from(err))),
+        Ok(module_url) => {
+          worker.execute_mod(&module_url.to_string(), should_prefetch)
+        }
+      }
     }
   };
 

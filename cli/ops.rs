@@ -1899,7 +1899,7 @@ fn op_create_worker(
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_create_worker().unwrap();
-  let specifier = inner.specifier();
+  let specifier = inner.specifier().unwrap();
 
   Box::new(futures::future::result(move || -> OpResult {
     let parent_state = sc.state().clone();
@@ -1907,10 +1907,12 @@ fn op_create_worker(
       parent_state.flags.clone(),
       parent_state.argv.clone(),
       None,
-      specifier.map(|v| v.to_string()),
     ));
     let behavior = web_worker_behavior::WebWorkerBehavior::new(worker_state);
-    match workers::spawn(behavior, workers::WorkerInit::MainModule()) {
+    match workers::spawn(
+      behavior,
+      workers::WorkerInit::Module(specifier.to_string()),
+    ) {
       Ok(worker) => {
         let mut workers_tl = parent_state.workers.lock().unwrap();
         let rid = worker.resource.rid.clone();
