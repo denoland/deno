@@ -1,4 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
+// Do not add dependenies to modules.rs. it should remain decoupled from the
+// isolate to keep the Isolate struct from becoming too bloating for users who
+// do not need asynchronous module loading.
+
 use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
@@ -287,7 +292,6 @@ impl<B: Behavior> Isolate<B> {
   }
 
   /// Low-level module creation.
-  /// You probably want to use IsolateState::mod_execute instead.
   pub fn mod_new(
     &self,
     main: bool,
@@ -523,7 +527,7 @@ pub fn js_check(r: Result<(), JSError>) {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
   use super::*;
   use std::sync::atomic::{AtomicUsize, Ordering};
 
