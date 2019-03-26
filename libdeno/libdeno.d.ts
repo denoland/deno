@@ -1,8 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { window } from "./window";
-
-// The libdeno functions are moved so that users can't access them.
-type MessageCallback = (msg: Uint8Array) => void;
 
 interface EvalErrorInfo {
   // Is the object thrown a native Error?
@@ -16,17 +12,21 @@ interface EvalErrorInfo {
   thrown: any;
 }
 
-interface Libdeno {
-  recv(cb: MessageCallback): void;
+declare interface MessageCallback {
+  (msg: Uint8Array): void;
+}
 
-  send(
+declare interface DenoCore {
+  _recv(cb: MessageCallback): void;
+
+  _send(
     control: null | ArrayBufferView,
     data?: ArrayBufferView
   ): null | Uint8Array;
 
-  print(x: string, isErr?: boolean): void;
+  _print(x: string, isErr?: boolean): void;
 
-  shared: SharedArrayBuffer;
+  _shared: SharedArrayBuffer;
 
   /** Evaluate provided code in the current context.
    * It differs from eval(...) in that it does not create a new context.
@@ -34,9 +34,7 @@ interface Libdeno {
    * If an error occurs, `output` becomes null and `errInfo` is non-null.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  evalContext(code: string): [any, EvalErrorInfo | null];
+  _evalContext(code: string): [any, EvalErrorInfo | null];
 
-  errorToJSON: (e: Error) => string;
+  _errorToJSON: (e: Error) => string;
 }
-
-export const libdeno = window.libdeno as Libdeno;

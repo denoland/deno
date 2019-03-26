@@ -49,7 +49,6 @@ export { statSync, lstatSync, stat, lstat } from "./stat";
 export { symlinkSync, symlink } from "./symlink";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file";
 export { ErrorKind, DenoError } from "./errors";
-export { libdeno } from "./libdeno";
 export {
   permissions,
   revokePermission,
@@ -66,6 +65,11 @@ export { inspect } from "./console";
 export { build, platform, OperatingSystem, Arch } from "./build";
 export { version } from "./version";
 export const args: string[] = [];
+
+// These are internal Deno APIs.  We are marking them as internal so they do not
+// appear in the runtime type library.
+/** @internal */
+export { core } from "./core";
 
 // TODO Don't expose Console nor stringifyArgs.
 /** @internal */
