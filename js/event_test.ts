@@ -68,3 +68,15 @@ test(function eventPreventDefaultSuccess() {
   cancelableEvent.preventDefault();
   assertEquals(cancelableEvent.defaultPrevented, true);
 });
+
+test(function eventInitializedWithNonStringType() {
+  const type = undefined;
+  const event = new Event(type);
+
+  assertEquals(event.isTrusted, false);
+  assertEquals(event.target, null);
+  assertEquals(event.currentTarget, null);
+  assertEquals(event.type, "undefined");
+  assertEquals(event.bubbles, false);
+  assertEquals(event.cancelable, false);
+});
