@@ -78,12 +78,13 @@ export async function writeFile(
     }
   }
 
+  const openMode = !!options.append ? "a" : "w";
+  const file = await open(filename, openMode);
+
   if (options.perm !== undefined && options.perm !== null) {
     await chmod(filename, options.perm);
   }
 
-  const openMode = !!options.append ? "a" : "w";
-  const file = await open(filename, openMode);
   await file.write(data);
   file.close();
 }
