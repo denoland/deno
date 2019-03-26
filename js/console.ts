@@ -5,7 +5,7 @@ import { TextEncoder } from "./text_encoding";
 import { File, stdout } from "./files";
 import { cliTable } from "./console_table";
 import { formatError } from "./format_error";
-import { libdeno } from "./libdeno";
+import { core } from "./core";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
@@ -323,7 +323,7 @@ function createObjectString(
   ...args: [ConsoleContext, number, number]
 ): string {
   if (value instanceof Error) {
-    const errorJSON = libdeno.errorToJSON(value);
+    const errorJSON = core.errorToJSON(value);
     return formatError(errorJSON);
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);

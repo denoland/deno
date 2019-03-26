@@ -14,6 +14,7 @@ use deno_core::Behavior;
 use deno_core::JSError;
 use futures::Async;
 use futures::Future;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 pub trait DenoBehavior: Behavior + IsolateStateContainer + Send {}
@@ -122,9 +123,17 @@ impl<B: DenoBehavior> Isolate<B> {
 
     self.mod_load_deps(id)?;
 
+    let state = self.state.clone();
+
+    let mut resolve = move |specifier: &str, referrer: deno_mod| -> deno_mod {
+      state.metrics.resolve_count.fetch_add(1, Ordering::Relaxed);
+      let mut modules = state.modules.lock().unwrap();
+      modules.resolve_cb(&state.dir, specifier, referrer)
+    };
+
     self
       .inner
-      .mod_instantiate(id)
+      .mod_instantiate(id, &mut resolve)
       .map_err(RustOrJsError::from)?;
     if !is_prefetch {
       self.inner.mod_evaluate(id).map_err(RustOrJsError::from)?;

@@ -82,7 +82,6 @@ ts_sources = [
   "js/globals.ts",
   "js/headers.ts",
   "js/io.ts",
-  "js/libdeno.ts",
   "js/lib.web_assembly.d.ts",
   "js/location.ts",
   "js/main.ts",

@@ -4,7 +4,7 @@ import * as msg from "gen/msg_generated";
 import { window } from "./window";
 import { assetSourceCode } from "./assets";
 import { Console } from "./console";
-import { libdeno } from "./libdeno";
+import { core } from "./core";
 import * as os from "./os";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { clearTimer, setTimeout } from "./timers";
@@ -16,7 +16,7 @@ const ASSETS = "$asset$";
 const LIB_RUNTIME = `${ASSETS}/lib.deno_runtime.d.ts`;
 
 // An instance of console
-const console = new Console(libdeno.print);
+const console = new Console(core.print);
 
 /** The location that a module is being loaded from. This could be a directory,
  * like `.`, or it could be a module specifier like

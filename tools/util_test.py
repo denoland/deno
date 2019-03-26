@@ -82,8 +82,19 @@ def parse_unit_test_output_test():
 def parse_wrk_output_test():
     print "Testing util.parse_wrk_output_test()..."
     f = open(os.path.join(util.root_path, "tools/testdata/wrk1.txt"))
-    req_per_sec = util.parse_wrk_output(f.read())
-    assert req_per_sec == 1837
+    stats = util.parse_wrk_output(f.read())
+    assert stats['req_per_sec'] == 1837
+    assert stats['max_latency'] == 34.96
+
+    f2 = open(os.path.join(util.root_path, "tools/testdata/wrk2.txt"))
+    stats2 = util.parse_wrk_output(f2.read())
+    assert stats2['req_per_sec'] == 53435
+    assert stats2['max_latency'] == 0.00125
+
+    f3 = open(os.path.join(util.root_path, "tools/testdata/wrk3.txt"))
+    stats3 = util.parse_wrk_output(f3.read())
+    assert stats3['req_per_sec'] == 96037
+    assert stats3['max_latency'] == 1630.0
 
 
 def util_test():

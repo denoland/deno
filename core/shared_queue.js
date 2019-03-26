@@ -1,5 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
 (window => {
+  const GLOBAL_NAMESPACE = "Deno";
+  const CORE_NAMESPACE = "core";
   const MAX_RECORDS = 100;
   const INDEX_NUM_RECORDS = 0;
   const INDEX_NUM_SHIFTED_OFF = 1;
@@ -8,8 +11,11 @@
   const INDEX_RECORDS = 3 + MAX_RECORDS;
   const HEAD_INIT = 4 * INDEX_RECORDS;
 
-  let sharedBytes = null;
-  let shared32 = null;
+  const Deno = window[GLOBAL_NAMESPACE];
+  const core = Deno[CORE_NAMESPACE];
+
+  let sharedBytes;
+  let shared32;
 
   function assert(cond) {
     if (!cond) {
@@ -92,10 +98,12 @@
       reset();
     }
 
+    assert(off != null);
+    assert(end != null);
     return sharedBytes.subarray(off, end);
   }
 
-  let asyncHandler = null;
+  let asyncHandler;
   function setAsyncHandler(cb) {
     assert(asyncHandler == null);
     asyncHandler = cb;
@@ -117,23 +125,22 @@
     assert(shared32 == null);
     sharedBytes = new Uint8Array(shared);
     shared32 = new Int32Array(shared);
-    // Callers should not call libdeno.recv, use setAsyncHandler.
-    libdeno.recv(handleAsyncMsgFromRust);
+    // Callers should not call Deno.core.recv, use setAsyncHandler.
+    window.Deno.core.recv(handleAsyncMsgFromRust);
   }
 
   function dispatch(control, zeroCopy = null) {
     // First try to push control to shared.
     const success = push(control);
-    // If successful, don't use first argument of libdeno.send.
+    // If successful, don't use first argument of core.send.
     const arg0 = success ? null : control;
-    return libdeno.send(arg0, zeroCopy);
+    return window.Deno.core.send(arg0, zeroCopy);
   }
 
-  assert(!window["DenoCore"]);
-  window["DenoCore"] = {
+  const denoCore = {
     setAsyncHandler,
     dispatch,
-    shared: {
+    sharedQueue: {
       head,
       numRecords,
       size,
@@ -143,5 +150,9 @@
     }
   };
 
-  init(libdeno.shared);
-})(this);
+  assert(window[GLOBAL_NAMESPACE] != null);
+  assert(window[GLOBAL_NAMESPACE][CORE_NAMESPACE] != null);
+  Object.assign(core, denoCore);
+
+  init(Deno.core.shared);
+})(globalThis);

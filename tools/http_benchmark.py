@@ -59,16 +59,18 @@ def hyper_http_benchmark(hyper_hello_exe):
 
 
 def http_benchmark(deno_exe, hyper_hello_exe, core_http_bench_exe):
-    r = {}
+
     # TODO Rename to "deno_tcp"
-    r["deno"] = deno_http_benchmark(deno_exe)
-    r["deno_net_http"] = deno_net_http_benchmark(deno_exe)
-    r["deno_core_single"] = deno_core_single(core_http_bench_exe)
-    r["deno_core_multi"] = deno_core_multi(core_http_bench_exe)
-    r["node"] = node_http_benchmark()
-    r["node_tcp"] = node_tcp_benchmark()
-    r["hyper"] = hyper_http_benchmark(hyper_hello_exe)
-    return r
+
+    return {
+        "deno": deno_http_benchmark(deno_exe),
+        "deno_net_http": deno_net_http_benchmark(deno_exe),
+        "deno_core_single": deno_core_single(core_http_bench_exe),
+        "deno_core_multi": deno_core_multi(core_http_bench_exe),
+        "node": node_http_benchmark(),
+        "node_tcp": node_tcp_benchmark(),
+        "hyper": hyper_http_benchmark(hyper_hello_exe)
+    }
 
 
 def run(server_cmd, merge_env=None):
@@ -93,9 +95,9 @@ def run(server_cmd, merge_env=None):
                                                            DURATION, ADDR)
         print cmd
         output = subprocess.check_output(cmd, shell=True)
-        req_per_sec = util.parse_wrk_output(output)
+        stats = util.parse_wrk_output(output)
         print output
-        return req_per_sec
+        return stats
     finally:
         server.kill()
 

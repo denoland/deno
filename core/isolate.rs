@@ -43,7 +43,7 @@ impl Future for PendingOp {
 }
 
 /// Stores a script used to initalize a Isolate
-pub struct StartupScript {
+pub struct Script {
   pub source: String,
   pub filename: String,
 }
@@ -52,7 +52,7 @@ pub struct StartupScript {
 /// either a binary snapshot or a javascript source file
 /// in the form of the StartupScript struct.
 pub enum StartupData {
-  Script(StartupScript),
+  Script(Script),
   Snapshot(deno_buf),
 }
 
@@ -63,11 +63,8 @@ pub trait Behavior {
   /// Isolate is created.
   fn startup_data(&mut self) -> Option<StartupData>;
 
-  /// Called during mod_instantiate() to resolve imports.
-  fn resolve(&mut self, specifier: &str, referrer: deno_mod) -> deno_mod;
-
-  /// Called whenever libdeno.send() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of libdeno.send().
+  /// Called whenever Deno.core.send() is called in JavaScript. zero_copy_buf
+  /// corresponds to the second argument of Deno.core.send().
   fn dispatch(
     &mut self,
     control: &[u8],
@@ -80,7 +77,7 @@ pub trait Behavior {
 /// Tokio.  The Isolate future complete when there is an error or when all
 /// pending ops have completed.
 ///
-/// Ops are created in JavaScript by calling libdeno.send(), and in Rust by
+/// Ops are created in JavaScript by calling Deno.core.send(), and in Rust by
 /// implementing Behavior::dispatch. An Op corresponds exactly to a Promise in
 /// JavaScript.
 pub struct Isolate<B: Behavior> {
@@ -128,7 +125,7 @@ impl<B: Behavior> Isolate<B> {
         None => libdeno::deno_buf::empty(),
       },
       shared: shared.as_deno_buf(),
-      recv_cb: Self::pre_dispatch,
+      recv_cb: Self::predispatch,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
 
@@ -160,7 +157,7 @@ impl<B: Behavior> Isolate<B> {
     }
   }
 
-  /// Executes a bit of built-in JavaScript to provide Deno._sharedQueue.
+  /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
   pub fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
@@ -170,7 +167,7 @@ impl<B: Behavior> Isolate<B> {
     }
   }
 
-  extern "C" fn pre_dispatch(
+  extern "C" fn predispatch(
     user_data: *mut c_void,
     control_argv0: deno_buf,
     zero_copy_buf: deno_buf,
@@ -181,12 +178,12 @@ impl<B: Behavior> Isolate<B> {
     let control_shared = isolate.shared.shift();
 
     let (is_sync, op) = if control_argv0.len() > 0 {
-      // The user called libdeno.send(control)
+      // The user called Deno.core.send(control)
       isolate
         .behavior
         .dispatch(control_argv0.as_ref(), zero_copy_buf)
     } else if let Some(c) = control_shared {
-      // The user called Deno._sharedQueue.push(control)
+      // The user called Deno.sharedQueue.push(control)
       isolate.behavior.dispatch(&c, zero_copy_buf)
     } else {
       // The sharedQueue is empty. The shouldn't happen usually, but it's also
@@ -202,7 +199,7 @@ impl<B: Behavior> Isolate<B> {
 
     if is_sync {
       let res_record = op.wait().unwrap();
-      // For sync messages, we always return the response via libdeno.send's
+      // For sync messages, we always return the response via Deno.core.send's
       // return value.
       // TODO(ry) check that if JSError thrown during respond(), that it will be
       // picked up.
@@ -329,27 +326,46 @@ impl<B: Behavior> Isolate<B> {
     }
     out
   }
+}
 
-  pub fn mod_instantiate(&self, id: deno_mod) -> Result<(), JSError> {
+/// Called during mod_instantiate() to resolve imports.
+type ResolveFn = dyn FnMut(&str, deno_mod) -> deno_mod;
+
+/// Used internally by Isolate::mod_instantiate to wrap ResolveFn and
+/// encapsulate pointer casts.
+struct ResolveContext<'a> {
+  resolve_fn: &'a mut ResolveFn,
+}
+
+impl<'a> ResolveContext<'a> {
+  #[inline]
+  fn as_raw_ptr(&mut self) -> *mut c_void {
+    self as *mut _ as *mut c_void
+  }
+
+  #[inline]
+  unsafe fn from_raw_ptr(ptr: *mut c_void) -> &'a mut Self {
+    &mut *(ptr as *mut _)
+  }
+}
+
+impl<B: Behavior> Isolate<B> {
+  pub fn mod_instantiate(
+    &mut self,
+    id: deno_mod,
+    resolve_fn: &mut ResolveFn,
+  ) -> Result<(), JSError> {
+    let libdeno_isolate = self.libdeno_isolate;
+    let mut ctx = ResolveContext { resolve_fn };
     unsafe {
       libdeno::deno_mod_instantiate(
-        self.libdeno_isolate,
-        self.as_raw_ptr(),
+        libdeno_isolate,
+        ctx.as_raw_ptr(),
         id,
         Self::resolve_cb,
       )
     };
-    if let Some(js_error) = self.last_exception() {
-      return Err(js_error);
-    }
-    Ok(())
-  }
 
-  pub fn mod_evaluate(&mut self, id: deno_mod) -> Result<(), JSError> {
-    self.shared_init();
-    unsafe {
-      libdeno::deno_mod_evaluate(self.libdeno_isolate, self.as_raw_ptr(), id)
-    };
     if let Some(js_error) = self.last_exception() {
       return Err(js_error);
     }
@@ -362,10 +378,23 @@ impl<B: Behavior> Isolate<B> {
     specifier_ptr: *const libc::c_char,
     referrer: deno_mod,
   ) -> deno_mod {
-    let isolate = unsafe { Isolate::<B>::from_raw_ptr(user_data) };
+    let ResolveContext { resolve_fn } =
+      unsafe { ResolveContext::from_raw_ptr(user_data) };
     let specifier_c: &CStr = unsafe { CStr::from_ptr(specifier_ptr) };
     let specifier: &str = specifier_c.to_str().unwrap();
-    isolate.behavior.resolve(specifier, referrer)
+
+    resolve_fn(specifier, referrer)
+  }
+
+  pub fn mod_evaluate(&mut self, id: deno_mod) -> Result<(), JSError> {
+    self.shared_init();
+    unsafe {
+      libdeno::deno_mod_evaluate(self.libdeno_isolate, self.as_raw_ptr(), id)
+    };
+    if let Some(js_error) = self.last_exception() {
+      return Err(js_error);
+    }
+    Ok(())
   }
 }
 
@@ -430,6 +459,9 @@ impl<B: Behavior> Future for Isolate<B> {
               // there wasn't enough size, we will return the buffer via the
               // legacy route, using the argument of deno_respond.
               overflow_response = Some(buf);
+              // reset `polled_recently` so pending ops can be
+              // done even if shared space overflows
+              self.polled_recently = false;
               break;
             }
 
@@ -495,7 +527,7 @@ pub fn js_check(r: Result<(), JSError>) {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::collections::HashMap;
+  use std::sync::atomic::{AtomicUsize, Ordering};
 
   pub enum TestBehaviorMode {
     AsyncImmediate,
@@ -507,8 +539,6 @@ mod tests {
 
   pub struct TestBehavior {
     pub dispatch_count: usize,
-    pub resolve_count: usize,
-    pub mod_map: HashMap<String, deno_mod>,
     mode: TestBehaviorMode,
   }
 
@@ -516,9 +546,7 @@ mod tests {
     pub fn setup(mode: TestBehaviorMode) -> Isolate<Self> {
       let mut isolate = Isolate::new(TestBehavior {
         dispatch_count: 0,
-        resolve_count: 0,
         mode,
-        mod_map: HashMap::new(),
       });
       js_check(isolate.execute(
         "setup.js",
@@ -533,23 +561,11 @@ mod tests {
       assert_eq!(isolate.behavior.dispatch_count, 0);
       isolate
     }
-
-    pub fn register(&mut self, name: &str, id: deno_mod) {
-      self.mod_map.insert(name.to_string(), id);
-    }
   }
 
   impl Behavior for TestBehavior {
     fn startup_data(&mut self) -> Option<StartupData> {
       None
-    }
-
-    fn resolve(&mut self, specifier: &str, _referrer: deno_mod) -> deno_mod {
-      self.resolve_count += 1;
-      match self.mod_map.get(specifier) {
-        Some(id) => *id,
-        None => 0,
-      }
     }
 
     fn dispatch(
@@ -598,15 +614,15 @@ mod tests {
   }
 
   #[test]
-  fn test_dispatch() {
+  fn testdispatch() {
     let mut isolate = TestBehavior::setup(TestBehaviorMode::AsyncImmediate);
     js_check(isolate.execute(
       "filename.js",
       r#"
         let control = new Uint8Array([42]);
-        libdeno.send(control);
+        Deno.core.send(control);
         async function main() {
-          libdeno.send(control);
+          Deno.core.send(control);
         }
         main();
         "#,
@@ -625,11 +641,10 @@ mod tests {
         import { b } from 'b.js'
         if (b() != 'b') throw Error();
         let control = new Uint8Array([42]);
-        libdeno.send(control);
+        Deno.core.send(control);
       "#,
       ).unwrap();
     assert_eq!(isolate.behavior.dispatch_count, 0);
-    assert_eq!(isolate.behavior.resolve_count, 0);
 
     let imports = isolate.mod_get_imports(mod_a);
     assert_eq!(imports, vec!["b.js".to_string()]);
@@ -640,18 +655,26 @@ mod tests {
     let imports = isolate.mod_get_imports(mod_b);
     assert_eq!(imports.len(), 0);
 
-    js_check(isolate.mod_instantiate(mod_b));
-    assert_eq!(isolate.behavior.dispatch_count, 0);
-    assert_eq!(isolate.behavior.resolve_count, 0);
+    let resolve_count = Arc::new(AtomicUsize::new(0));
+    let resolve_count_ = resolve_count.clone();
 
-    isolate.behavior.register("b.js", mod_b);
-    js_check(isolate.mod_instantiate(mod_a));
+    let mut resolve = move |specifier: &str, _referrer: deno_mod| -> deno_mod {
+      resolve_count_.fetch_add(1, Ordering::SeqCst);
+      assert_eq!(specifier, "b.js");
+      mod_b
+    };
+
+    js_check(isolate.mod_instantiate(mod_b, &mut resolve));
     assert_eq!(isolate.behavior.dispatch_count, 0);
-    assert_eq!(isolate.behavior.resolve_count, 1);
+    assert_eq!(resolve_count.load(Ordering::SeqCst), 0);
+
+    js_check(isolate.mod_instantiate(mod_a, &mut resolve));
+    assert_eq!(isolate.behavior.dispatch_count, 0);
+    assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
     js_check(isolate.mod_evaluate(mod_a));
     assert_eq!(isolate.behavior.dispatch_count, 1);
-    assert_eq!(isolate.behavior.resolve_count, 1);
+    assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
   }
 
   #[test]
@@ -662,7 +685,7 @@ mod tests {
       "setup2.js",
       r#"
         let nrecv = 0;
-        DenoCore.setAsyncHandler((buf) => {
+        Deno.core.setAsyncHandler((buf) => {
           nrecv++;
         });
         "#,
@@ -673,7 +696,7 @@ mod tests {
       r#"
         assert(nrecv == 0);
         let control = new Uint8Array([42]);
-        libdeno.send(control);
+        Deno.core.send(control);
         assert(nrecv == 0);
         "#,
     ));
@@ -684,7 +707,7 @@ mod tests {
       "check2.js",
       r#"
         assert(nrecv == 1);
-        libdeno.send(control);
+        Deno.core.send(control);
         assert(nrecv == 1);
         "#,
     ));
@@ -704,7 +727,7 @@ mod tests {
       "setup2.js",
       r#"
         let nrecv = 0;
-        DenoCore.setAsyncHandler((buf) => {
+        Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 1);
           assert(buf[0] === 43);
           nrecv++;
@@ -717,12 +740,12 @@ mod tests {
       "send1.js",
       r#"
         let control = new Uint8Array([42]);
-        DenoCore.shared.push(control);
-        libdeno.send();
+        Deno.core.sharedQueue.push(control);
+        Deno.core.send();
         assert(nrecv === 0);
 
-        DenoCore.shared.push(control);
-        libdeno.send();
+        Deno.core.sharedQueue.push(control);
+        Deno.core.send();
         assert(nrecv === 0);
         "#,
     ));
@@ -809,10 +832,10 @@ mod tests {
       "overflow_req_sync.js",
       r#"
         let asyncRecv = 0;
-        DenoCore.setAsyncHandler((buf) => { asyncRecv++ });
+        Deno.core.setAsyncHandler((buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = DenoCore.dispatch(control);
+        let response = Deno.core.dispatch(control);
         assert(response instanceof Uint8Array);
         assert(response.length == 1);
         assert(response[0] == 43);
@@ -831,10 +854,10 @@ mod tests {
       "overflow_res_sync.js",
       r#"
         let asyncRecv = 0;
-        DenoCore.setAsyncHandler((buf) => { asyncRecv++ });
+        Deno.core.setAsyncHandler((buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = DenoCore.dispatch(control);
+        let response = Deno.core.dispatch(control);
         assert(response instanceof Uint8Array);
         assert(response.length == 100 * 1024 * 1024);
         assert(response[0] == 99);
@@ -851,14 +874,14 @@ mod tests {
       "overflow_req_async.js",
       r#"
         let asyncRecv = 0;
-        DenoCore.setAsyncHandler((buf) => {
+        Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 1);
           assert(buf[0] === 43);
           asyncRecv++;
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = DenoCore.dispatch(control);
+        let response = Deno.core.dispatch(control);
         // Async messages always have null response.
         assert(response == null);
         assert(asyncRecv == 0);
@@ -878,14 +901,14 @@ mod tests {
       "overflow_res_async.js",
       r#"
         let asyncRecv = 0;
-        DenoCore.setAsyncHandler((buf) => {
+        Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 100 * 1024 * 1024);
           assert(buf[0] === 4);
           asyncRecv++;
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = DenoCore.dispatch(control);
+        let response = Deno.core.dispatch(control);
         assert(response == null);
         assert(asyncRecv == 0);
         "#,
@@ -893,6 +916,35 @@ mod tests {
     assert_eq!(isolate.behavior.dispatch_count, 1);
     assert_eq!(Ok(Async::Ready(())), isolate.poll());
     js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+  }
+
+  #[test]
+  fn overflow_res_multipledispatch_async() {
+    // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
+    // should optimize this.
+    let mut isolate = TestBehavior::setup(TestBehaviorMode::OverflowResAsync);
+    js_check(isolate.execute(
+      "overflow_res_multipledispatch_async.js",
+      r#"
+        let asyncRecv = 0;
+        Deno.core.setAsyncHandler((buf) => {
+          assert(buf.byteLength === 100 * 1024 * 1024);
+          assert(buf[0] === 4);
+          asyncRecv++;
+        });
+        // Large message that will overflow the shared space.
+        let control = new Uint8Array([42]);
+        let response = Deno.core.dispatch(control);
+        assert(response == null);
+        assert(asyncRecv == 0);
+        // Dispatch another message to verify that pending ops
+        // are done even if shared space overflows
+        Deno.core.dispatch(control);
+        "#,
+    ));
+    assert_eq!(isolate.behavior.dispatch_count, 2);
+    assert_eq!(Ok(Async::Ready(())), isolate.poll());
+    js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
   }
 
   #[test]
