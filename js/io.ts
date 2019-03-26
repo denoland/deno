@@ -49,6 +49,10 @@ export interface Reader {
   read(p: Uint8Array): Promise<ReadResult>;
 }
 
+export interface SyncReader {
+  readSync(p: Uint8Array): ReadResult;
+}
+
 // Writer is the interface that wraps the basic write() method.
 // https://golang.org/pkg/io/#Writer
 export interface Writer {

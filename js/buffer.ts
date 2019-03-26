@@ -5,7 +5,7 @@
 // https://github.com/golang/go/blob/master/LICENSE
 
 //import * as io from "./io";
-import { Reader, Writer, ReadResult } from "./io";
+import { Reader, Writer, ReadResult, SyncReader } from "./io";
 import { assert } from "./util";
 import { TextDecoder } from "./text_encoding";
 import { DenoError, ErrorKind } from "./errors";
@@ -126,11 +126,15 @@ export class Buffer implements Reader, Writer {
     this.buf = new Uint8Array(this.buf.buffer, 0, len);
   }
 
-  /** read() reads the next len(p) bytes from the buffer or until the buffer
+  read(p: Uint8Array): Promise<ReadResult> {
+    const rr = this.readSync(p);
+    return Promise.resolve(rr);
+  }
+  /** readSync() reads the next len(p) bytes from the buffer or until the buffer
    * is drained. The return value n is the number of bytes read. If the
    * buffer has no data to return, eof in the response will be true.
    */
-  async read(p: Uint8Array): Promise<ReadResult> {
+  readSync(p: Uint8Array): ReadResult {
     if (this.empty()) {
       // Buffer is empty, reset to recover space.
       this.reset();
@@ -226,6 +230,25 @@ export class Buffer implements Reader, Writer {
       }
     }
   }
+
+  readFromSync(r: SyncReader): number {
+    let n = 0;
+    while (true) {
+      try {
+        const i = this._grow(MIN_READ);
+        this._reslice(i);
+        const fub = new Uint8Array(this.buf.buffer, i);
+        const { nread, eof } = r.readSync(fub);
+        this._reslice(i + nread);
+        n += nread;
+        if (eof) {
+          return n;
+        }
+      } catch (e) {
+        return n;
+      }
+    }
+  }
 }
 
 /** Read `r` until EOF and return the content as `Uint8Array`.
@@ -233,5 +256,13 @@ export class Buffer implements Reader, Writer {
 export async function readAll(r: Reader): Promise<Uint8Array> {
   const buf = new Buffer();
   await buf.readFrom(r);
+  return buf.bytes();
+}
+
+/** Read synchronously `r` until EOF and return the content as `Uint8Array`.
+ */
+export function readAllSync(r: SyncReader): Uint8Array {
+  const buf = new Buffer();
+  buf.readFromSync(r);
   return buf.bytes();
 }

@@ -6,10 +6,12 @@ export { chdir, cwd } from "./dir";
 export {
   File,
   open,
+  openSync,
   stdin,
   stdout,
   stderr,
   read,
+  readSync,
   write,
   seek,
   close,

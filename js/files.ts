@@ -1,9 +1,50 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Reader, Writer, Seeker, Closer, ReadResult, SeekMode } from "./io";
+import {
+  Reader,
+  Writer,
+  Seeker,
+  Closer,
+  ReadResult,
+  SeekMode,
+  SyncReader
+} from "./io";
 import * as dispatch from "./dispatch";
 import * as msg from "gen/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
+
+function reqOpen(
+  filename: string,
+  mode: OpenMode
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const filename_ = builder.createString(filename);
+  const mode_ = builder.createString(mode);
+  msg.Open.startOpen(builder);
+  msg.Open.addFilename(builder, filename_);
+  msg.Open.addMode(builder, mode_);
+  const inner = msg.Open.endOpen(builder);
+  return [builder, msg.Any.Open, inner];
+}
+
+function resOpen(baseRes: null | msg.Base): File {
+  assert(baseRes != null);
+  assert(msg.Any.OpenRes === baseRes!.innerType());
+  const res = new msg.OpenRes();
+  assert(baseRes!.inner(res) != null);
+  const rid = res.rid();
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
+  return new File(rid);
+}
+
+/** Open a file and return an instance of the `File` object
+ *  synchronously.
+ *
+ *       const file = Deno.openSync("/foo/bar.txt");
+ */
+export function openSync(filename: string, mode: OpenMode = "r"): File {
+  return resOpen(dispatch.sendSync(...reqOpen(filename, mode)));
+}
 
 /** Open a file and return an instance of the `File` object.
  *
@@ -15,21 +56,34 @@ export async function open(
   filename: string,
   mode: OpenMode = "r"
 ): Promise<File> {
+  return resOpen(await dispatch.sendAsync(...reqOpen(filename, mode)));
+}
+
+function reqRead(
+  rid: number,
+  p: Uint8Array
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
   const builder = flatbuffers.createBuilder();
-  const filename_ = builder.createString(filename);
-  const mode_ = builder.createString(mode);
-  msg.Open.startOpen(builder);
-  msg.Open.addFilename(builder, filename_);
-  msg.Open.addMode(builder, mode_);
-  const inner = msg.Open.endOpen(builder);
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.Open, inner);
+  msg.Read.startRead(builder);
+  msg.Read.addRid(builder, rid);
+  const inner = msg.Read.endRead(builder);
+  return [builder, msg.Any.Read, inner, p];
+}
+
+function resRead(baseRes: null | msg.Base): ReadResult {
   assert(baseRes != null);
-  assert(msg.Any.OpenRes === baseRes!.innerType());
-  const res = new msg.OpenRes();
+  assert(msg.Any.ReadRes === baseRes!.innerType());
+  const res = new msg.ReadRes();
   assert(baseRes!.inner(res) != null);
-  const rid = res.rid();
-  // eslint-disable-next-line @typescript-eslint/no-use-before-define
-  return new File(rid);
+  return { nread: res.nread(), eof: res.eof() };
+}
+
+/** Read synchronously from a file ID into an array buffer.
+ *
+ * Return `ReadResult` for the operation.
+ */
+export function readSync(rid: number, p: Uint8Array): ReadResult {
+  return resRead(dispatch.sendSync(...reqRead(rid, p)));
 }
 
 /** Read from a file ID into an array buffer.
@@ -37,16 +91,7 @@ export async function open(
  * Resolves with the `ReadResult` for the operation.
  */
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
-  const builder = flatbuffers.createBuilder();
-  msg.Read.startRead(builder);
-  msg.Read.addRid(builder, rid);
-  const inner = msg.Read.endRead(builder);
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.Read, inner, p);
-  assert(baseRes != null);
-  assert(msg.Any.ReadRes === baseRes!.innerType());
-  const res = new msg.ReadRes();
-  assert(baseRes!.inner(res) != null);
-  return { nread: res.nread(), eof: res.eof() };
+  return resRead(await dispatch.sendAsync(...reqRead(rid, p)));
 }
 
 /** Write to the file ID the contents of the array buffer.
@@ -93,7 +138,7 @@ export function close(rid: number): void {
 }
 
 /** The Deno abstraction for reading and writing files. */
-export class File implements Reader, Writer, Seeker, Closer {
+export class File implements Reader, SyncReader, Writer, Seeker, Closer {
   constructor(readonly rid: number) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -102,6 +147,10 @@ export class File implements Reader, Writer, Seeker, Closer {
 
   read(p: Uint8Array): Promise<ReadResult> {
     return read(this.rid, p);
+  }
+
+  readSync(p: Uint8Array): ReadResult {
+    return readSync(this.rid, p);
   }
 
   seek(offset: number, whence: SeekMode): Promise<void> {
