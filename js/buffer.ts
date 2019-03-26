@@ -5,7 +5,7 @@
 // https://github.com/golang/go/blob/master/LICENSE
 
 //import * as io from "./io";
-import { Reader, Writer, ReadResult, SyncReader } from "./io";
+import { Reader, Writer, ReadResult, SyncReader, SyncWriter } from "./io";
 import { assert } from "./util";
 import { TextDecoder } from "./text_encoding";
 import { DenoError, ErrorKind } from "./errors";
@@ -32,7 +32,7 @@ function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
 /** A Buffer is a variable-sized buffer of bytes with read() and write()
  * methods. Based on https://golang.org/pkg/bytes/#Buffer
  */
-export class Buffer implements Reader, Writer {
+export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
   private buf: Uint8Array; // contents are the bytes buf[off : len(buf)]
   private off = 0; // read at buf[off], write at buf[buf.byteLength]
 
@@ -126,10 +126,6 @@ export class Buffer implements Reader, Writer {
     this.buf = new Uint8Array(this.buf.buffer, 0, len);
   }
 
-  read(p: Uint8Array): Promise<ReadResult> {
-    const rr = this.readSync(p);
-    return Promise.resolve(rr);
-  }
   /** readSync() reads the next len(p) bytes from the buffer or until the buffer
    * is drained. The return value n is the number of bytes read. If the
    * buffer has no data to return, eof in the response will be true.
@@ -149,9 +145,19 @@ export class Buffer implements Reader, Writer {
     return { nread, eof: false };
   }
 
-  async write(p: Uint8Array): Promise<number> {
+  async read(p: Uint8Array): Promise<ReadResult> {
+    const rr = this.readSync(p);
+    return Promise.resolve(rr);
+  }
+
+  writeSync(p: Uint8Array): number {
     const m = this._grow(p.byteLength);
     return copyBytes(this.buf, p, m);
+  }
+
+  async write(p: Uint8Array): Promise<number> {
+    const n = this.writeSync(p);
+    return Promise.resolve(n);
   }
 
   /** _grow() grows the buffer to guarantee space for n more bytes.
