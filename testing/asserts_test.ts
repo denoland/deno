@@ -36,6 +36,10 @@ test(function testingEqual() {
       { hello: "world", hi: { there: "everyone else" } }
     )
   );
+  assert(equal(/deno/, /deno/));
+  assert(!equal(/deno/, /node/));
+  assert(equal(new Date(2019, 0, 3), new Date(2019, 0, 3)));
+  assert(!equal(new Date(2019, 0, 3), new Date(2019, 1, 3)));
 });
 
 test(function testingNotEquals() {

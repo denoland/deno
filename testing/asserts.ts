@@ -16,6 +16,16 @@ export class AssertionError extends Error {
 export function equal(c: unknown, d: unknown): boolean {
   const seen = new Map();
   return (function compare(a: unknown, b: unknown) {
+    // Have to render RegExp & Date for string comparison
+    // unless it's mistreated as object
+    if (
+      a &&
+      b &&
+      ((a instanceof RegExp && b instanceof RegExp) ||
+        (a instanceof Date && b instanceof Date))
+    ) {
+      return String(a) === String(b);
+    }
     if (Object.is(a, b)) {
       return true;
     }
