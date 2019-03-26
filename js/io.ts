@@ -67,6 +67,9 @@ export interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
+export interface SyncWriter {
+  writeSync(p: Uint8Array): number;
+}
 // https://golang.org/pkg/io/#Closer
 export interface Closer {
   // The behavior of Close after the first call is undefined. Specific

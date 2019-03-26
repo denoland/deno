@@ -6,7 +6,8 @@ import {
   Closer,
   ReadResult,
   SeekMode,
-  SyncReader
+  SyncReader,
+  SyncWriter
 } from "./io";
 import * as dispatch from "./dispatch";
 import * as msg from "gen/msg_generated";
@@ -94,21 +95,39 @@ export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
   return resRead(await dispatch.sendAsync(...reqRead(rid, p)));
 }
 
-/** Write to the file ID the contents of the array buffer.
- *
- * Resolves with the number of bytes written.
- */
-export async function write(rid: number, p: Uint8Array): Promise<number> {
+function reqWrite(
+  rid: number,
+  p: Uint8Array
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
   const builder = flatbuffers.createBuilder();
   msg.Write.startWrite(builder);
   msg.Write.addRid(builder, rid);
   const inner = msg.Write.endWrite(builder);
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.Write, inner, p);
+  return [builder, msg.Any.Write, inner, p];
+}
+
+function resWrite(baseRes: null | msg.Base): number {
   assert(baseRes != null);
   assert(msg.Any.WriteRes === baseRes!.innerType());
   const res = new msg.WriteRes();
   assert(baseRes!.inner(res) != null);
   return res.nbyte();
+}
+
+/** Write synchronously to the file ID the contents of the array buffer.
+ *
+ * Resolves with the number of bytes written.
+ */
+export function writeSync(rid: number, p: Uint8Array): number {
+  return resWrite(dispatch.sendSync(...reqWrite(rid, p)));
+}
+
+/** Write to the file ID the contents of the array buffer.
+ *
+ * Resolves with the number of bytes written.
+ */
+export async function write(rid: number, p: Uint8Array): Promise<number> {
+  return resWrite(await dispatch.sendAsync(...reqWrite(rid, p)));
 }
 
 /** Seek a file ID to the given offset under mode given by `whence`.
@@ -138,11 +157,16 @@ export function close(rid: number): void {
 }
 
 /** The Deno abstraction for reading and writing files. */
-export class File implements Reader, SyncReader, Writer, Seeker, Closer {
+export class File
+  implements Reader, SyncReader, Writer, SyncWriter, Seeker, Closer {
   constructor(readonly rid: number) {}
 
   write(p: Uint8Array): Promise<number> {
     return write(this.rid, p);
+  }
+
+  writeSync(p: Uint8Array): number {
+    return writeSync(this.rid, p);
   }
 
   read(p: Uint8Array): Promise<ReadResult> {
