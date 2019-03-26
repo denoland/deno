@@ -2,6 +2,9 @@
 import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
+import { stat } from "./stat";
+import { open } from "./files";
+import { chmod } from "./chmod";
 
 function req(
   filename: string,
@@ -67,5 +70,20 @@ export async function writeFile(
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): Promise<void> {
-  await dispatch.sendAsync(...req(filename, data, options));
+  if (options.create !== undefined) {
+    const create = !!options.create;
+    if (!create) {
+      // verify that file exists
+      await stat(filename);
+    }
+  }
+
+  if (options.perm !== undefined && options.perm !== null) {
+    await chmod(filename, options.perm);
+  }
+
+  const openMode = !!options.append ? "a" : "w";
+  const file = await open(filename, openMode);
+  await file.write(data);
+  file.close();
 }
