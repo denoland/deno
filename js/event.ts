@@ -21,7 +21,7 @@ export class EventInit implements domTypes.EventInit {
 export class Event implements domTypes.Event {
   // Each event has the following associated flags
   private _canceledFlag = false;
-  private _dispatchedFlag = false;
+  private dispatchedFlag = false;
   private _initializedFlag = false;
   private _inPassiveListenerFlag = false;
   private _stopImmediatePropagationFlag = false;
@@ -76,7 +76,7 @@ export class Event implements domTypes.Event {
   }
 
   get dispatched(): boolean {
-    return this._dispatchedFlag;
+    return this.dispatchedFlag;
   }
 
   get eventPhase(): number {
