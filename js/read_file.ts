@@ -3,6 +3,8 @@ import * as msg from "gen/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import * as dispatch from "./dispatch";
+import { open } from "./files";
+import { readAll } from "./buffer";
 
 function req(
   filename: string
@@ -42,5 +44,8 @@ export function readFileSync(filename: string): Uint8Array {
  *       console.log(decoder.decode(data));
  */
 export async function readFile(filename: string): Promise<Uint8Array> {
-  return res(await dispatch.sendAsync(...req(filename)));
+  const file = await open(filename);
+  const contents = await readAll(file);
+  file.close();
+  return contents;
 }
