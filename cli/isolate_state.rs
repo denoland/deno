@@ -3,8 +3,8 @@ use crate::deno_dir;
 use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
-use crate::modules::Modules;
 use crate::permissions::DenoPermissions;
+use deno_core;
 use deno_core::Buf;
 use futures::sync::mpsc as async_mpsc;
 use std;
@@ -39,7 +39,7 @@ pub struct IsolateState {
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
   pub metrics: Metrics,
-  pub modules: Mutex<Modules>,
+  pub core_modules: Mutex<deno_core::Modules>,
   pub worker_channels: Option<Mutex<WorkerChannels>>,
   pub global_timer: Mutex<GlobalTimer>,
 }
@@ -58,7 +58,7 @@ impl IsolateState {
       permissions: DenoPermissions::from_flags(&flags),
       flags,
       metrics: Metrics::default(),
-      modules: Mutex::new(Modules::new()),
+      core_modules: Mutex::new(deno_core::Modules::new()),
       worker_channels: worker_channels.map(Mutex::new),
       global_timer: Mutex::new(GlobalTimer::new()),
     }

@@ -113,27 +113,45 @@ fn main() {
   let startup_data = startup_data::deno_isolate_init();
   let cli = CliBehavior::new(Some(startup_data), state_);
   let mut isolate = Isolate::new(cli);
+  // TODO(ry) somehow combine the two branches below. They're very similar but
+  // it's difficult to get the types to workout.
+  match state.main_module() {
+    None => {
+      // REPL situation.
 
-  let main_future = lazy(move || {
-    // Setup runtime.
-    js_check(isolate.execute("denoMain()"));
-
-    // Execute main module.
-    if let Some(main_module) = state.main_module() {
-      debug!("main_module {}", main_module);
-      js_check(isolate.execute_mod(&main_module, should_prefetch));
-      if should_display_info {
-        // Display file info and exit. Do not run file
-        isolate.print_file_info(&main_module);
-        std::process::exit(0);
-      }
+      let main_future = lazy(move || {
+        // Setup runtime.
+        js_check(isolate.execute("denoMain()"));
+        isolate
+          .then(|result| {
+            js_check(result);
+            Ok(())
+          }).map_err(|_err: RustOrJsError| panic!("unhandled error"))
+      });
+      tokio_util::run(main_future);
     }
+    Some(main_module) => {
+      // Normal situation of executing a module.
 
-    isolate.then(|result| {
-      js_check(result);
-      Ok(())
-    })
-  });
-
-  tokio_util::run(main_future);
+      let main_future = lazy(move || {
+        // Setup runtime.
+        js_check(isolate.execute("denoMain()"));
+        debug!("main_module {}", main_module);
+        isolate
+          .execute_mod_async(&main_module, should_prefetch)
+          .and_then(move |isolate_| {
+            if should_display_info {
+              // Display file info and exit. Do not run file
+              isolate_.print_file_info(&main_module);
+              std::process::exit(0);
+            }
+            isolate_.then(|result| {
+              js_check(result);
+              Ok(())
+            })
+          }).map_err(|(_err, _isolate)| panic!("unhandled error"))
+      });
+      tokio_util::run(main_future);
+    }
+  }
 }

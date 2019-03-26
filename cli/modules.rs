@@ -2,127 +2,48 @@
 use crate::ansi;
 use crate::deno_dir::DenoDir;
 use crate::msg;
-use deno_core::deno_mod;
-use std::collections::HashMap;
+use deno_core::Modules;
 use std::collections::HashSet;
 use std::fmt;
 
-pub struct ModuleInfo {
-  name: String,
-  children: Vec<deno_mod>,
-}
-
-/// A collection of JS modules.
-#[derive(Default)]
-pub struct Modules {
-  pub info: HashMap<deno_mod, ModuleInfo>,
-  pub by_name: HashMap<String, deno_mod>,
-}
-
-impl Modules {
-  pub fn new() -> Modules {
-    Self {
-      info: HashMap::new(),
-      by_name: HashMap::new(),
-    }
+pub fn print_file_info(
+  modules: &Modules,
+  deno_dir: &DenoDir,
+  filename: String,
+) {
+  let maybe_out = deno_dir.fetch_module_meta_data(&filename, ".", true);
+  if maybe_out.is_err() {
+    println!("{}", maybe_out.unwrap_err());
+    return;
   }
+  let out = maybe_out.unwrap();
 
-  pub fn get_id(&self, name: &str) -> Option<deno_mod> {
-    self.by_name.get(name).cloned()
-  }
-
-  pub fn get_children(&self, id: deno_mod) -> Option<&Vec<deno_mod>> {
-    self.info.get(&id).map(|i| &i.children)
-  }
-
-  pub fn get_name(&self, id: deno_mod) -> Option<&String> {
-    self.info.get(&id).map(|i| &i.name)
-  }
-
-  pub fn is_registered(&self, name: &str) -> bool {
-    self.by_name.get(name).is_some()
-  }
-
-  pub fn register(&mut self, id: deno_mod, name: &str) {
-    let name = String::from(name);
-    debug!("register {}", name);
-    self.by_name.insert(name.clone(), id);
-    self.info.insert(
-      id,
-      ModuleInfo {
-        name,
-        children: Vec::new(),
-      },
-    );
-  }
-
-  pub fn resolve_cb(
-    &mut self,
-    deno_dir: &DenoDir,
-    specifier: &str,
-    referrer: deno_mod,
-  ) -> deno_mod {
-    debug!("resolve_cb {}", specifier);
-
-    let maybe_info = self.info.get_mut(&referrer);
-    if maybe_info.is_none() {
-      debug!("cant find referrer {}", referrer);
-      return 0;
-    }
-    let info = maybe_info.unwrap();
-    let referrer_name = &info.name;
-    let r = deno_dir.resolve_module(specifier, referrer_name);
-    if let Err(err) = r {
-      debug!("potentially swallowed err: {}", err);
-      return 0;
-    }
-    let (name, _local_filename) = r.unwrap();
-
-    if let Some(id) = self.by_name.get(&name) {
-      let child_id = *id;
-      info.children.push(child_id);
-      return child_id;
-    } else {
-      return 0;
-    }
-  }
-
-  pub fn print_file_info(&self, deno_dir: &DenoDir, filename: String) {
-    // TODO Note the --reload flag is ignored here.
-    let maybe_out = deno_dir.fetch_module_meta_data(&filename, ".", true);
-    if maybe_out.is_err() {
-      println!("{}", maybe_out.unwrap_err());
-      return;
-    }
-    let out = maybe_out.unwrap();
-
-    println!("{} {}", ansi::bold("local:".to_string()), &(out.filename));
+  println!("{} {}", ansi::bold("local:".to_string()), &(out.filename));
+  println!(
+    "{} {}",
+    ansi::bold("type:".to_string()),
+    msg::enum_name_media_type(out.media_type)
+  );
+  if out.maybe_output_code_filename.is_some() {
     println!(
       "{} {}",
-      ansi::bold("type:".to_string()),
-      msg::enum_name_media_type(out.media_type)
+      ansi::bold("compiled:".to_string()),
+      out.maybe_output_code_filename.as_ref().unwrap(),
     );
-    if out.maybe_output_code_filename.is_some() {
-      println!(
-        "{} {}",
-        ansi::bold("compiled:".to_string()),
-        out.maybe_output_code_filename.as_ref().unwrap(),
-      );
-    }
-    if out.maybe_source_map_filename.is_some() {
-      println!(
-        "{} {}",
-        ansi::bold("map:".to_string()),
-        out.maybe_source_map_filename.as_ref().unwrap()
-      );
-    }
+  }
+  if out.maybe_source_map_filename.is_some() {
+    println!(
+      "{} {}",
+      ansi::bold("map:".to_string()),
+      out.maybe_source_map_filename.as_ref().unwrap()
+    );
+  }
 
-    let deps = Deps::new(self, &out.module_name);
-    println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
-    if let Some(ref depsdeps) = deps.deps {
-      for d in depsdeps {
-        println!("{}", d);
-      }
+  let deps = Deps::new(modules, &out.module_name);
+  println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+  if let Some(ref depsdeps) = deps.deps {
+    for d in depsdeps {
+      println!("{}", d);
     }
   }
 }
@@ -137,19 +58,23 @@ pub struct Deps {
 impl Deps {
   pub fn new(modules: &Modules, module_name: &str) -> Deps {
     let mut seen = HashSet::new();
-    let id = modules.get_id(module_name).unwrap();
-    Self::helper(&mut seen, "".to_string(), true, modules, id)
+    Self::helper(
+      &mut seen,
+      "".to_string(),
+      true,
+      modules,
+      module_name.to_string(),
+    )
   }
 
   fn helper(
-    seen: &mut HashSet<deno_mod>,
+    seen: &mut HashSet<String>,
     prefix: String,
     is_last: bool,
     modules: &Modules,
-    id: deno_mod,
+    name: String,
   ) -> Deps {
-    let name = modules.get_name(id).unwrap().to_string();
-    if seen.contains(&id) {
+    if seen.contains(&name) {
       Deps {
         name,
         prefix,
@@ -157,21 +82,28 @@ impl Deps {
         is_last,
       }
     } else {
-      seen.insert(id);
-      let child_ids = modules.get_children(id).unwrap();
-      let child_count = child_ids.iter().count();
-      let deps = child_ids
+      let name_ = name.clone();
+      seen.insert(name);
+      let child_names = modules.get_children2(&name_).unwrap();
+      let child_count = child_names.iter().count();
+      let deps = child_names
         .iter()
         .enumerate()
-        .map(|(index, dep_id)| {
+        .map(|(index, child_name)| {
           let new_is_last = index == child_count - 1;
           let mut new_prefix = prefix.clone();
           new_prefix.push(if is_last { ' ' } else { '│' });
           new_prefix.push(' ');
-          Self::helper(seen, new_prefix, new_is_last, modules, *dep_id)
+          Self::helper(
+            seen,
+            new_prefix,
+            new_is_last,
+            modules,
+            child_name.to_string(),
+          )
         }).collect();
       Deps {
-        name,
+        name: name_,
         prefix,
         deps: Some(deps),
         is_last,

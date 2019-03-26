@@ -26,7 +26,7 @@ pub struct Worker<B: WorkerBehavior> {
   isolate: Isolate<B>,
 }
 
-impl<B: WorkerBehavior> Worker<B> {
+impl<B: 'static + WorkerBehavior> Worker<B> {
   pub fn new(mut behavior: B) -> (Self, WorkerChannels) {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
@@ -47,7 +47,7 @@ impl<B: WorkerBehavior> Worker<B> {
   }
 }
 
-impl<B: WorkerBehavior> Future for Worker<B> {
+impl<B: 'static + WorkerBehavior> Future for Worker<B> {
   type Item = ();
   type Error = JSError;
 

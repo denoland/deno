@@ -115,7 +115,7 @@ impl std::error::Error for DenoError {
     }
   }
 
-  fn cause(&self) -> Option<&dyn std::error::Error> {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
     match self.repr {
       Repr::Simple(_kind, ref _msg) => None,
       Repr::IoErr(ref err) => Some(err),
@@ -187,6 +187,15 @@ pub fn op_not_implemented() -> DenoError {
 pub enum RustOrJsError {
   Rust(DenoError),
   Js(JSError),
+}
+
+impl From<deno_core::Either<DenoError>> for RustOrJsError {
+  fn from(e: deno_core::Either<DenoError>) -> Self {
+    match e {
+      deno_core::Either::JSError(e) => RustOrJsError::Js(e),
+      deno_core::Either::Other(e) => RustOrJsError::Rust(e),
+    }
+  }
 }
 
 impl From<DenoError> for RustOrJsError {
