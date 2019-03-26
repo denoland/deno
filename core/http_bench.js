@@ -42,7 +42,7 @@ function send(promiseId, opId, arg, zeroCopy = null) {
   scratch32[1] = opId;
   scratch32[2] = arg;
   scratch32[3] = -1;
-  return DenoCore.dispatch(scratchBytes, zeroCopy);
+  return Deno.core.dispatch(scratchBytes, zeroCopy);
 }
 
 /** Returns Promise<number> */
@@ -123,17 +123,17 @@ async function serve(rid) {
 }
 
 async function main() {
-  DenoCore.setAsyncHandler(handleAsyncMsgFromRust);
+  Deno.core.setAsyncHandler(handleAsyncMsgFromRust);
 
-  libdeno.print("http_bench.js start\n");
+  Deno.core.print("http_bench.js start\n");
 
   const listenerRid = listen();
-  libdeno.print(`listening http://127.0.0.1:4544/ rid = ${listenerRid}\n`);
+  Deno.core.print(`listening http://127.0.0.1:4544/ rid = ${listenerRid}\n`);
   while (true) {
     const rid = await accept(listenerRid);
-    // libdeno.print(`accepted ${rid}`);
+    // Deno.core.print(`accepted ${rid}`);
     if (rid < 0) {
-      libdeno.print(`accept error ${rid}`);
+      Deno.core.print(`accept error ${rid}`);
       return;
     }
     serve(rid);

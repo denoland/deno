@@ -27,7 +27,7 @@ import * as performanceUtil from "./performance";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
-import { libdeno } from "./libdeno";
+import { core } from "./core";
 
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
@@ -43,7 +43,6 @@ window.window = window;
 // This is the Deno namespace, it is handled differently from other window
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.
-
 window.Deno = deno;
 Object.freeze(window.Deno);
 
@@ -53,7 +52,7 @@ window.btoa = textEncoding.btoa;
 window.fetch = fetchTypes.fetch;
 window.clearTimeout = timers.clearTimer;
 window.clearInterval = timers.clearTimer;
-window.console = new consoleTypes.Console(libdeno.print);
+window.console = new consoleTypes.Console(core.print);
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
 window.location = (undefined as unknown) as domTypes.Location;
@@ -111,3 +110,10 @@ export type Worker = workers.Worker;
 // TODO(afinch7) replace this hack with a real solution at some point.
 // eslint-disable-next-line
 window.onmessage = (e: { data: any }): void => {};
+
+// below are interfaces that are available in TypeScript but
+// have different signatures
+export interface ImportMeta {
+  url: string;
+  main: boolean;
+}

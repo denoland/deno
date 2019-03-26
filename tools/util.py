@@ -358,12 +358,32 @@ def extract_number(pattern, string):
     return int(matches[0])
 
 
+def extract_max_latency_in_milliseconds(pattern, string):
+    matches = re.findall(pattern, string)
+    if len(matches) != 1:
+        return None
+    num = float(matches[0][0])
+    unit = matches[0][1]
+    if (unit == 'ms'):
+        return num
+    elif (unit == 'us'):
+        return num / 1000
+    elif (unit == 's'):
+        return num * 1000
+
+
 def parse_wrk_output(output):
-    req_per_sec = None
+    stats = {}
+    stats['req_per_sec'] = None
+    stats['max_latency'] = None
     for line in output.split("\n"):
-        if req_per_sec is None:
-            req_per_sec = extract_number(r'Requests/sec:\s+(\d+)', line)
-    return req_per_sec
+        if stats['req_per_sec'] is None:
+            stats['req_per_sec'] = extract_number(r'Requests/sec:\s+(\d+)',
+                                                  line)
+        if stats['max_latency'] is None:
+            stats['max_latency'] = extract_max_latency_in_milliseconds(
+                r'Latency(?:\s+(\d+.\d+)([a-z]+)){3}', line)
+    return stats
 
 
 def platform():

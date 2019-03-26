@@ -177,7 +177,7 @@ void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
 
   auto recv_ = d->recv_.Get(d->isolate_);
   if (recv_.IsEmpty()) {
-    d->last_exception_ = "libdeno.recv_ has not been called.";
+    d->last_exception_ = "Deno.core.recv has not been called.";
     return;
   }
 

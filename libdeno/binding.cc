@@ -232,7 +232,7 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::HandleScope handle_scope(isolate);
 
   if (!d->recv_.IsEmpty()) {
-    isolate->ThrowException(v8_str("libdeno.recv_ already called."));
+    isolate->ThrowException(v8_str("Deno.core.recv already called."));
     return;
   }
 
@@ -485,33 +485,36 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
   auto global = context->Global();
 
   auto deno_val = v8::Object::New(isolate);
-  CHECK(global->Set(context, deno::v8_str("libdeno"), deno_val).FromJust());
+  CHECK(global->Set(context, deno::v8_str("Deno"), deno_val).FromJust());
+
+  auto core_val = v8::Object::New(isolate);
+  CHECK(deno_val->Set(context, deno::v8_str("core"), core_val).FromJust());
 
   auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
   auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("print"), print_val).FromJust());
+  CHECK(core_val->Set(context, deno::v8_str("print"), print_val).FromJust());
 
   auto recv_tmpl = v8::FunctionTemplate::New(isolate, Recv);
   auto recv_val = recv_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("recv"), recv_val).FromJust());
+  CHECK(core_val->Set(context, deno::v8_str("recv"), recv_val).FromJust());
 
   auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
   auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("send"), send_val).FromJust());
+  CHECK(core_val->Set(context, deno::v8_str("send"), send_val).FromJust());
 
   auto eval_context_tmpl = v8::FunctionTemplate::New(isolate, EvalContext);
   auto eval_context_val =
       eval_context_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("evalContext"), eval_context_val)
+  CHECK(core_val->Set(context, deno::v8_str("evalContext"), eval_context_val)
             .FromJust());
 
   auto error_to_json_tmpl = v8::FunctionTemplate::New(isolate, ErrorToJSON);
   auto error_to_json_val =
       error_to_json_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(deno_val->Set(context, deno::v8_str("errorToJSON"), error_to_json_val)
+  CHECK(core_val->Set(context, deno::v8_str("errorToJSON"), error_to_json_val)
             .FromJust());
 
-  CHECK(deno_val->SetAccessor(context, deno::v8_str("shared"), Shared)
+  CHECK(core_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
 }
 

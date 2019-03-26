@@ -2,6 +2,7 @@ import { writeFileSync } from "fs";
 import { join } from "path";
 import * as prettier from "prettier";
 import {
+  InterfaceDeclaration,
   ExpressionStatement,
   NamespaceDeclarationKind,
   Project,
@@ -11,6 +12,7 @@ import {
   TypeGuards
 } from "ts-morph";
 import {
+  addInterfaceDeclaration,
   addInterfaceProperty,
   addSourceComment,
   addTypeAlias,
@@ -219,6 +221,7 @@ export function mergeGlobal({
       node: ExpressionStatement;
     }
   >();
+  const globalInterfaces: InterfaceDeclaration[] = [];
 
   // For every augmentation of the global variable in source file, we want
   // to extract the type and add it to the global variable map
@@ -243,6 +246,8 @@ export function mergeGlobal({
           }
         }
       }
+    } else if (TypeGuards.isInterfaceDeclaration(node) && node.isExported()) {
+      globalInterfaces.push(node);
     }
   });
 
@@ -275,6 +280,11 @@ export function mergeGlobal({
       typeAlias.getType().getText(sourceFile),
       true
     );
+  }
+
+  // We need to copy over any interfaces
+  for (const interfaceDeclaration of globalInterfaces) {
+    addInterfaceDeclaration(targetSourceFile, interfaceDeclaration);
   }
 
   // We need to ensure that we only namespace each source file once, so we

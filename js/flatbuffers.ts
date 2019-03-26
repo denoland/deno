@@ -17,7 +17,7 @@ globalBuilder.inUse = false;
 // This is a wrapper around the real Builder .
 // The purpose is to reuse a single ArrayBuffer for every message.
 // We can do this because the "control" messages sent to the privileged
-// side are guaranteed to be used during the call to libdeno.send().
+// side are guaranteed to be used during the call to Deno.core.send().
 export function createBuilder(): Builder {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const gb = globalBuilder as any;

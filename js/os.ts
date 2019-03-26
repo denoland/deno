@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/msg_generated";
-import { window } from "./window";
+import { core } from "./core";
 import { handleAsyncMsgFromRust, sendSync } from "./dispatch";
 import * as flatbuffers from "./flatbuffers";
 import { TextDecoder } from "./text_encoding";
@@ -16,12 +16,7 @@ export let noColor: boolean;
 /** Path to the current deno process's executable file. */
 export let execPath: string;
 
-/** @internal */
-export function setGlobals(
-  pid_: number,
-  noColor_: boolean,
-  execPath_: string
-): void {
+function setGlobals(pid_: number, noColor_: boolean, execPath_: string): void {
   assert(!pid);
   pid = pid_;
   noColor = noColor_;
@@ -169,7 +164,7 @@ function sendStart(): msg.StartRes {
 // the runtime and the compiler environments.
 // @internal
 export function start(source?: string): msg.StartRes {
-  window.DenoCore.setAsyncHandler(handleAsyncMsgFromRust);
+  core.setAsyncHandler(handleAsyncMsgFromRust);
 
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
