@@ -1916,7 +1916,7 @@ fn op_create_worker(
       Ok(worker) => {
         let mut workers_tl = parent_state.workers.lock().unwrap();
         let rid = worker.resource.rid.clone();
-        workers_tl.insert(rid, worker);
+        workers_tl.insert(rid, worker.shared());
         let builder = &mut FlatBufferBuilder::new();
         let msg_inner = msg::CreateWorkerRes::create(
           builder,
@@ -1950,25 +1950,23 @@ fn op_host_get_worker_closed(
   let rid = inner.rid();
   let state = sc.state().clone();
 
-  let worker_option = {
-    let mut workers_tl = state.workers.lock().unwrap();
-    workers_tl.remove(&rid)
+  let shared_worker_future = {
+    let workers_tl = state.workers.lock().unwrap();
+    let worker = workers_tl.get(&rid).unwrap();
+    worker.clone()
   };
 
-  match worker_option {
-    None => odd_future(errors::bad_resource()),
-    Some(worker) => Box::new(worker.then(move |_result| {
-      let builder = &mut FlatBufferBuilder::new();
+  Box::new(shared_worker_future.then(move |_result| {
+    let builder = &mut FlatBufferBuilder::new();
 
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          ..Default::default()
-        },
-      ))
-    })),
-  }
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        ..Default::default()
+      },
+    ))
+  }))
 }
 
 /// Get message from guest worker as host

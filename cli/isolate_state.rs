@@ -10,6 +10,7 @@ use crate::web_worker_behavior::WebWorkerBehavior;
 use crate::workers::Worker;
 use deno_core::deno_mod;
 use deno_core::Buf;
+use futures::future::Shared;
 use futures::sync::mpsc as async_mpsc;
 use std;
 use std::collections::HashMap;
@@ -21,7 +22,8 @@ use std::sync::Mutex;
 pub type WorkerSender = async_mpsc::Sender<Buf>;
 pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
 pub type WorkerChannels = (WorkerSender, WorkerReceiver);
-pub type WebWorkerTable = HashMap<ResourceId, Worker<WebWorkerBehavior>>;
+pub type WebWorkerTable =
+  HashMap<ResourceId, Shared<Worker<WebWorkerBehavior>>>;
 
 // AtomicU64 is currently unstable
 #[derive(Default)]
