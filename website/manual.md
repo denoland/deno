@@ -64,7 +64,7 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 
 - [Aims to support top-level `await`.](https://github.com/denoland/deno/issues/471)
 
-- Be able to serve HTTP efficently.
+- Be able to serve HTTP efficiently.
   ([Currently it is relatively slow.](https://deno.land/benchmarks.html#req-per-sec))
 
 - Provide useful tooling out of the box: Built-in command-line debugger
@@ -793,7 +793,7 @@ Before submitting, please make sure the following is done:
 
 [`deno_third_party`](https://github.com/denoland/deno_third_party) contains most
 of the external code that Deno depends on, so that we know exactly what we are
-executing at any given time. It is carefully mantained with a mixture of manual
+executing at any given time. It is carefully maintained with a mixture of manual
 labor and private scripts. It's likely you will need help from @ry or
 @piscisaureus to make changes.
 
