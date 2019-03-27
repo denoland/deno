@@ -449,17 +449,6 @@ pub fn seek(
   match maybe_repr {
     None => panic!("bad rid"),
     Some(Repr::FsFile(f)) => {
-      let seek_from = match whence {
-        0 => SeekFrom::Start(offset as u64),
-        1 => SeekFrom::Current(i64::from(offset)),
-        2 => SeekFrom::End(i64::from(offset)),
-        _ => {
-          return Box::new(futures::future::err(errors::new(
-            errors::ErrorKind::InvalidSeekMode,
-            format!("Invalid seek mode: {}", whence),
-          )));
-        }
-      };
       // Trait Clone not implemented on tokio::fs::File,
       // so convert to std File first.
       let std_file = f.into_std();
@@ -475,6 +464,18 @@ pub fn seek(
         resource.rid,
         Repr::FsFile(tokio_fs::File::from_std(std_file)),
       );
+      // Translate seek mode to Rust repr.
+      let seek_from = match whence {
+        0 => SeekFrom::Start(offset as u64),
+        1 => SeekFrom::Current(i64::from(offset)),
+        2 => SeekFrom::End(i64::from(offset)),
+        _ => {
+          return Box::new(futures::future::err(errors::new(
+            errors::ErrorKind::InvalidSeekMode,
+            format!("Invalid seek mode: {}", whence),
+          )));
+        }
+      };
       if maybe_std_file_copy.is_err() {
         return Box::new(futures::future::err(DenoError::from(
           maybe_std_file_copy.unwrap_err(),

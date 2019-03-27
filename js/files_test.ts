@@ -198,4 +198,10 @@ testPerm({ read: true }, async function seekMode() {
   assert(!!err);
   assertEquals(err.kind, Deno.ErrorKind.InvalidSeekMode);
   assertEquals(err.name, "InvalidSeekMode");
+
+  // We should still be able to read the file
+  // since it is still open.
+  let buf = new Uint8Array(1);
+  await file.read(buf); // "H"
+  assertEquals(new TextDecoder().decode(buf), "H");
 });
