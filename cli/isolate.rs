@@ -184,9 +184,8 @@ fn fetch_module_meta_data_and_maybe_compile_async(
     .dir
     .fetch_module_meta_data_async(&specifier, &referrer)
     .and_then(move |mut out| {
-      if (out.media_type == msg::MediaType::TypeScript
-        && out.maybe_output_code.is_none())
-        || state_.flags.recompile
+      if out.media_type == msg::MediaType::TypeScript
+        && (out.maybe_output_code.is_none() || state_.flags.recompile)
       {
         debug!(">>>>> compile_sync START");
         out = compile_sync(state_.clone(), &specifier, &referrer, &out);
