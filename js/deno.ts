@@ -34,7 +34,7 @@ export {
   ReadWriteCloser,
   ReadWriteSeeker
 } from "./io";
-export { Buffer, readAll } from "./buffer";
+export { Buffer, readAll, readAllSync } from "./buffer";
 export { mkdirSync, mkdir } from "./mkdir";
 export {
   makeTempDirSync,

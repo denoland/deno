@@ -237,6 +237,8 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
     }
   }
 
+  /** Sync version of `readFrom`
+   */
   readFromSync(r: SyncReader): number {
     let n = 0;
     while (true) {
