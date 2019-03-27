@@ -7,7 +7,8 @@ import {
   ReadResult,
   SeekMode,
   SyncReader,
-  SyncWriter
+  SyncWriter,
+  SyncSeeker
 } from "./io";
 import * as dispatch from "./dispatch";
 import * as msg from "gen/msg_generated";
@@ -156,21 +157,42 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
   return resWrite(await dispatch.sendAsync(...reqWrite(rid, p)));
 }
 
-/** Seek a file ID to the given offset under mode given by `whence`.
- *
- */
-export async function seek(
+function reqSeek(
   rid: number,
   offset: number,
   whence: SeekMode
-): Promise<void> {
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   msg.Seek.startSeek(builder);
   msg.Seek.addRid(builder, rid);
   msg.Seek.addOffset(builder, offset);
   msg.Seek.addWhence(builder, whence);
   const inner = msg.Seek.endSeek(builder);
-  await dispatch.sendAsync(builder, msg.Any.Seek, inner);
+  return [builder, msg.Any.Seek, inner];
+}
+
+/** Seek a file ID synchronously to the given offset under mode given by `whence`.
+ *
+ *    const file = Deno.openSync("/foo/bar.txt");
+ *    Deno.seekSync(file.rid, 0, 0);
+ */
+export function seekSync(rid: number, offset: number, whence: SeekMode): void {
+  dispatch.sendSync(...reqSeek(rid, offset, whence));
+}
+
+/** Seek a file ID to the given offset under mode given by `whence`.
+ *
+ *    (async () => {
+ *        const file = await Deno.open("/foo/bar.txt");
+ *        await Deno.seek(file.rid, 0, 0);
+ *    })();
+ */
+export async function seek(
+  rid: number,
+  offset: number,
+  whence: SeekMode
+): Promise<void> {
+  await dispatch.sendAsync(...reqSeek(rid, offset, whence));
 }
 
 /** Close the file ID. */
@@ -184,7 +206,14 @@ export function close(rid: number): void {
 
 /** The Deno abstraction for reading and writing files. */
 export class File
-  implements Reader, SyncReader, Writer, SyncWriter, Seeker, Closer {
+  implements
+    Reader,
+    SyncReader,
+    Writer,
+    SyncWriter,
+    Seeker,
+    SyncSeeker,
+    Closer {
   constructor(readonly rid: number) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -205,6 +234,10 @@ export class File
 
   seek(offset: number, whence: SeekMode): Promise<void> {
     return seek(this.rid, offset, whence);
+  }
+
+  seekSync(offset: number, whence: SeekMode): void {
+    return seekSync(this.rid, offset, whence);
   }
 
   close(): void {

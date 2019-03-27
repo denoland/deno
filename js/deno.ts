@@ -15,6 +15,7 @@ export {
   write,
   writeSync,
   seek,
+  seekSync,
   close,
   OpenMode
 } from "./files";
@@ -24,9 +25,12 @@ export {
   ReadResult,
   SeekMode,
   Reader,
+  SyncReader,
   Writer,
+  SyncWriter,
   Closer,
   Seeker,
+  SyncSeeker,
   ReadCloser,
   WriteCloser,
   ReadSeeker,

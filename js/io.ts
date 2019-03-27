@@ -92,6 +92,10 @@ export interface Seeker {
   seek(offset: number, whence: SeekMode): Promise<void>;
 }
 
+export interface SyncSeeker {
+  seekSync(offset: number, whence: SeekMode): void;
+}
+
 // https://golang.org/pkg/io/#ReadCloser
 export interface ReadCloser extends Reader, Closer {}
 
