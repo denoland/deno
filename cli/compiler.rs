@@ -7,7 +7,6 @@ use crate::resources;
 use crate::resources::ResourceId;
 use crate::startup_data;
 use crate::workers;
-use crate::workers::Worker;
 use crate::workers::WorkerBehavior;
 use crate::workers::WorkerInit;
 use deno_core::deno_buf;
@@ -24,10 +23,14 @@ use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+pub type CompilerResult = Result<ModuleMetaData, JSError>;
+type CompilerInnerResult = Result<ModuleMetaData, Option<JSError>>;
+type WorkerErrReceiver = oneshot::Receiver<CompilerInnerResult>;
+
 #[derive(Clone)]
 struct CompilerShared {
   pub rid: ResourceId,
-  pub shared_future: Shared<Worker<CompilerBehavior>>,
+  pub worker_err_receiver: Shared<WorkerErrReceiver>,
 }
 
 lazy_static! {
@@ -124,8 +127,23 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
       match worker_result {
         Ok(worker) => {
           let rid = worker.resource.rid.clone();
-          let shared_future = worker.shared();
-          CompilerShared { rid, shared_future }
+          // create oneshot channels and use the sender to pass back
+          // results from worker future
+          let (err_sender, err_receiver) =
+            oneshot::channel::<CompilerInnerResult>();
+          tokio::spawn(lazy(move || {
+            worker.then(|result| -> Result<(), ()> {
+              match result {
+                Err(err) => err_sender.send(Err(Some(err))).unwrap(),
+                _ => err_sender.send(Err(None)).unwrap(),
+              };
+              Ok(())
+            })
+          }));
+          CompilerShared {
+            rid,
+            worker_err_receiver: err_receiver.shared(),
+          }
         }
         Err(err) => {
           println!("{}", err.to_string());
@@ -155,9 +173,7 @@ pub fn compile_sync(
   let shared = lazy_start(parent_state);
 
   let (local_sender, local_receiver) =
-    oneshot::channel::<Result<ModuleMetaData, JSError>>();
-  let (worker_sender, worker_receiver) =
-    oneshot::channel::<Result<ModuleMetaData, JSError>>();
+    oneshot::channel::<Result<ModuleMetaData, Option<JSError>>>();
 
   let compiler_rid = shared.rid.clone();
   let module_meta_data_ = module_meta_data.clone();
@@ -165,12 +181,15 @@ pub fn compile_sync(
   tokio::spawn(lazy(move || {
     debug!("Running rust part of compile_sync");
     let send_future = resources::post_message_to_worker(compiler_rid, req_msg);
-    send_future.wait().unwrap();
+    match send_future.wait() {
+      Ok(_) => {} // Do nothing if result is ok else send back None error
+      _ => return Ok(local_sender.send(Err(None)).unwrap()),
+    };
 
     let recv_future = resources::get_message_from_worker(compiler_rid);
     let res_msg = match recv_future.wait() {
       Ok(Some(v)) => v,
-      _ => return Ok(()),
+      _ => return Ok(local_sender.send(Err(None)).unwrap()),
     };
 
     let res_json = std::str::from_utf8(&res_msg).unwrap();
@@ -200,32 +219,29 @@ pub fn compile_sync(
     )
   }));
 
-  let shared_worker_future = shared.shared_future.clone();
-
-  tokio::spawn(lazy(move || {
-    shared_worker_future.then(|result| -> Result<(), ()> {
-      match result {
-        Err(err) => worker_sender.send(Err((*err.deref()).clone())).unwrap(),
-        _ => {
-          println!("Possibly stuck!");
-        }
-      };
-      Ok(())
-    })
-  }));
+  let worker_receiver = shared.worker_err_receiver.clone();
 
   let union =
-    futures::future::select_all(vec![local_receiver, worker_receiver]);
+    futures::future::select_all(vec![worker_receiver, local_receiver.shared()]);
 
-  let result = union.wait();
-  debug!("Finished wait!");
-
-  match result {
-    Ok((result, _, _)) => result,
-    Err((_, _, others)) => {
-      let mut others_mut = others;
-      others_mut.remove(0).wait().unwrap()
+  match union.wait() {
+    Ok((result, i, rest)) => {
+      // local_receiver finished first
+      let mut rest_mut = rest;
+      match ((*result.deref()).clone(), i) {
+        (Ok(v), 1) => Ok(v),
+        (Err(Some(err)), _) => Err(err),
+        (Err(None), 1) => {
+          match (*rest_mut.remove(0).wait().unwrap().deref()).clone() {
+            Ok(v) => Ok(v),
+            Err(Some(err)) => Err(err),
+            Err(None) => panic!("Odd compiler worker result!"),
+          }
+        }
+        (_, i) => panic!("Odd compiler result for future {}!", i),
+      }
     }
+    Err((err, i, _)) => panic!("compile_sync {} failed: {}", i, err),
   }
 }
 
