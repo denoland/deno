@@ -82,6 +82,12 @@ function resRead(baseRes: null | msg.Base): ReadResult {
 /** Read synchronously from a file ID into an array buffer.
  *
  * Return `ReadResult` for the operation.
+ *
+ *    const file = Deno.openSync("/foo/bar.txt");
+ *    const buf = new Uint8Array(100);
+ *    const { nread, eof } = Deno.readSync(file.rid, buf);
+ *    const text = new TextDecoder.decode(buf);
+ *
  */
 export function readSync(rid: number, p: Uint8Array): ReadResult {
   return resRead(dispatch.sendSync(...reqRead(rid, p)));
@@ -90,6 +96,13 @@ export function readSync(rid: number, p: Uint8Array): ReadResult {
 /** Read from a file ID into an array buffer.
  *
  * Resolves with the `ReadResult` for the operation.
+ *
+ *    (async () => {
+ *         const file = await Deno.open("/foo/bar.txt");
+ *         const buf = new Uint8Array(100);
+ *         const { nread, eof } = await Deno.read(file.rid, buf);
+ *         const text = new TextDecoder.decode(buf);
+ *    })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
   return resRead(await dispatch.sendAsync(...reqRead(rid, p)));
@@ -117,6 +130,11 @@ function resWrite(baseRes: null | msg.Base): number {
 /** Write synchronously to the file ID the contents of the array buffer.
  *
  * Resolves with the number of bytes written.
+ *
+ *       const encoder = new TextEncoder();
+ *       const data = encoder.encode("Hello world\n");
+ *       const file = Deno.openSync("/foo/bar.txt");
+ *       Deno.writeSync(file.rid, data);
  */
 export function writeSync(rid: number, p: Uint8Array): number {
   return resWrite(dispatch.sendSync(...reqWrite(rid, p)));
@@ -125,6 +143,14 @@ export function writeSync(rid: number, p: Uint8Array): number {
 /** Write to the file ID the contents of the array buffer.
  *
  * Resolves with the number of bytes written.
+ *
+ *    (async () => {
+ *        const encoder = new TextEncoder();
+ *        const data = encoder.encode("Hello world\n");
+ *        const file = await Deno.open("/foo/bar.txt");
+ *        await Deno.write(file.rid, data);
+ *    })();
+ *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
   return resWrite(await dispatch.sendAsync(...reqWrite(rid, p)));

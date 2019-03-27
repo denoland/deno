@@ -13,6 +13,7 @@ export {
   read,
   readSync,
   write,
+  writeSync,
   seek,
   close,
   OpenMode
