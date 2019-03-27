@@ -1,2 +1,2 @@
-args: tests/025_reload_js_type_error.js --reload --recompile
+args: tests/025_reload_js_type_error.js --reload
 output: tests/025_reload_js_type_error.js.out

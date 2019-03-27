@@ -172,6 +172,7 @@ impl<B: DenoBehavior> Future for Isolate<B> {
     self.inner.poll().map_err(|err| self.apply_source_map(err))
   }
 }
+
 fn fetch_module_meta_data_and_maybe_compile_async(
   state: &Arc<IsolateState>,
   specifier: &str,
@@ -185,7 +186,9 @@ fn fetch_module_meta_data_and_maybe_compile_async(
     .fetch_module_meta_data_async(&specifier, &referrer)
     .and_then(move |mut out| {
       if out.media_type == msg::MediaType::TypeScript
-        && (out.maybe_output_code.is_none() || state_.flags.recompile)
+        && (out.maybe_output_code.is_none()
+          || out.maybe_source_map.is_none()
+          || state_.flags.reload)
       {
         debug!(">>>>> compile_sync START");
         out = compile_sync(state_.clone(), &specifier, &referrer, &out);
