@@ -6,6 +6,7 @@ use crate::errors::RustOrJsError;
 use crate::isolate_state::IsolateState;
 use crate::isolate_state::IsolateStateContainer;
 use crate::js_errors;
+use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::tokio_util;
 use deno_core;
@@ -189,7 +190,13 @@ fn fetch_module_meta_data_and_maybe_compile_async(
         || state_.flags.recompile
       {
         debug!(">>>>> compile_sync START");
-        out = compile_sync(state_.clone(), &specifier, &referrer, &out);
+        out = match compile_sync(state_.clone(), &specifier, &referrer, &out) {
+          Ok(v) => v,
+          Err(err) => {
+            eprintln!("{}", JSErrorColor(&err).to_string());
+            std::process::exit(1);
+          }
+        };
         debug!(">>>>> compile_sync END");
         state_.dir.code_cache(&out)?;
       }

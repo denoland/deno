@@ -1,31 +1,37 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use core::ops::Deref;
 use crate::isolate_state::*;
-use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::ops;
 use crate::resources;
-use crate::resources::Resource;
 use crate::resources::ResourceId;
 use crate::startup_data;
-use crate::tokio_util;
 use crate::workers;
+use crate::workers::Worker;
 use crate::workers::WorkerBehavior;
 use crate::workers::WorkerInit;
 use deno_core::deno_buf;
 use deno_core::Behavior;
 use deno_core::Buf;
+use deno_core::JSError;
 use deno_core::Op;
 use deno_core::StartupData;
-use futures::future::lazy;
+use futures::future::*;
+use futures::sync::oneshot;
 use futures::Future;
 use serde_json;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::thread;
+
+#[derive(Clone)]
+struct CompilerShared {
+  pub rid: ResourceId,
+  pub shared_future: Shared<Worker<CompilerBehavior>>,
+}
 
 lazy_static! {
-  static ref C_RID: Mutex<Option<ResourceId>> = Mutex::new(None);
+  static ref C_SHARED: Mutex<Option<CompilerShared>> = Mutex::new(None);
 }
 
 pub struct CompilerBehavior {
@@ -76,7 +82,7 @@ impl WorkerBehavior for CompilerBehavior {
 
 // This corresponds to JS ModuleMetaData.
 // TODO Rename one or the other so they correspond.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModuleMetaData {
   pub module_name: String,
   pub filename: String,
@@ -103,50 +109,30 @@ impl ModuleMetaData {
   }
 }
 
-fn lazy_start(parent_state: Arc<IsolateState>) -> Resource {
-  let mut cell = C_RID.lock().unwrap();
-  let rid = cell.get_or_insert_with(|| {
-    let worker_result = workers::spawn(
-      CompilerBehavior::new(Arc::new(IsolateState::new(
-        parent_state.flags.clone(),
-        parent_state.argv.clone(),
-        None,
-      ))),
-      WorkerInit::Script("compilerMain()".to_string()),
-    );
-    match worker_result {
-      Ok(worker) => {
-        let resource = worker.resource.clone();
-        let rid = resource.rid.clone();
-        let builder =
-          thread::Builder::new().name("compiler-worker".to_string());
-
-        let _tid = builder.spawn(move || {
-          tokio_util::run(lazy(move || {
-            worker.then(move |r| -> Result<(), ()> {
-              resource.close();
-              debug!("workers.rs after resource close");
-              if let Err(err) = r {
-                eprintln!(
-                  "Compiler worker failed with error: {}",
-                  JSErrorColor(&err).to_string()
-                );
-                std::process::exit(1);
-              }
-              Ok(())
-            })
-          }))
-        });
-
-        rid
+fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
+  let mut cell = C_SHARED.lock().unwrap();
+  cell
+    .get_or_insert_with(|| {
+      let worker_result = workers::spawn(
+        CompilerBehavior::new(Arc::new(IsolateState::new(
+          parent_state.flags.clone(),
+          parent_state.argv.clone(),
+          None,
+        ))),
+        WorkerInit::Script("compilerMain()".to_string()),
+      );
+      match worker_result {
+        Ok(worker) => {
+          let rid = worker.resource.rid.clone();
+          let shared_future = worker.shared();
+          CompilerShared { rid, shared_future }
+        }
+        Err(err) => {
+          println!("{}", err.to_string());
+          std::process::exit(1);
+        }
       }
-      Err(err) => {
-        println!("{}", err.to_string());
-        std::process::exit(1);
-      }
-    }
-  });
-  Resource { rid: *rid }
+    }).clone()
 }
 
 fn req(specifier: &str, referrer: &str) -> Buf {
@@ -163,75 +149,125 @@ pub fn compile_sync(
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> ModuleMetaData {
+) -> Result<ModuleMetaData, JSError> {
   let req_msg = req(specifier, referrer);
 
-  let compiler = lazy_start(parent_state);
+  let shared = lazy_start(parent_state);
 
-  let send_future = resources::post_message_to_worker(compiler.rid, req_msg);
-  send_future.wait().unwrap();
+  let (local_sender, local_receiver) =
+    oneshot::channel::<Result<ModuleMetaData, JSError>>();
+  let (worker_sender, worker_receiver) =
+    oneshot::channel::<Result<ModuleMetaData, JSError>>();
 
-  let recv_future = resources::get_message_from_worker(compiler.rid);
-  let result = recv_future.wait().unwrap();
-  assert!(result.is_some());
-  let res_msg = result.unwrap();
+  let compiler_rid = shared.rid.clone();
+  let module_meta_data_ = module_meta_data.clone();
 
-  let res_json = std::str::from_utf8(&res_msg).unwrap();
-  match serde_json::from_str::<serde_json::Value>(res_json) {
-    Ok(serde_json::Value::Object(map)) => ModuleMetaData {
-      module_name: module_meta_data.module_name.clone(),
-      filename: module_meta_data.filename.clone(),
-      media_type: module_meta_data.media_type,
-      source_code: module_meta_data.source_code.clone(),
-      maybe_output_code: match map["outputCode"].as_str() {
-        Some(str) => Some(str.as_bytes().to_owned()),
-        _ => None,
-      },
-      maybe_output_code_filename: None,
-      maybe_source_map: match map["sourceMap"].as_str() {
-        Some(str) => Some(str.as_bytes().to_owned()),
-        _ => None,
-      },
-      maybe_source_map_filename: None,
-    },
-    _ => panic!("error decoding compiler response"),
+  tokio::spawn(lazy(move || {
+    debug!("Running rust part of compile_sync");
+    let send_future = resources::post_message_to_worker(compiler_rid, req_msg);
+    send_future.wait().unwrap();
+
+    let recv_future = resources::get_message_from_worker(compiler_rid);
+    let res_msg = match recv_future.wait() {
+      Ok(Some(v)) => v,
+      _ => return Ok(()),
+    };
+
+    let res_json = std::str::from_utf8(&res_msg).unwrap();
+    Ok(
+      local_sender
+        .send(Ok(
+          match serde_json::from_str::<serde_json::Value>(res_json) {
+            Ok(serde_json::Value::Object(map)) => ModuleMetaData {
+              module_name: module_meta_data_.module_name.clone(),
+              filename: module_meta_data_.filename.clone(),
+              media_type: module_meta_data_.media_type,
+              source_code: module_meta_data_.source_code.clone(),
+              maybe_output_code: match map["outputCode"].as_str() {
+                Some(str) => Some(str.as_bytes().to_owned()),
+                _ => None,
+              },
+              maybe_output_code_filename: None,
+              maybe_source_map: match map["sourceMap"].as_str() {
+                Some(str) => Some(str.as_bytes().to_owned()),
+                _ => None,
+              },
+              maybe_source_map_filename: None,
+            },
+            _ => panic!("error decoding compiler response"),
+          },
+        )).unwrap(),
+    )
+  }));
+
+  let shared_worker_future = shared.shared_future.clone();
+
+  tokio::spawn(lazy(move || {
+    shared_worker_future.then(|result| -> Result<(), ()> {
+      match result {
+        Err(err) => worker_sender.send(Err((*err.deref()).clone())).unwrap(),
+        _ => {
+          println!("Possibly stuck!");
+        }
+      };
+      Ok(())
+    })
+  }));
+
+  let union =
+    futures::future::select_all(vec![local_receiver, worker_receiver]);
+
+  let result = union.wait();
+  debug!("Finished wait!");
+
+  match result {
+    Ok((result, _, _)) => result,
+    Err((_, _, others)) => {
+      let mut others_mut = others;
+      others_mut.remove(0).wait().unwrap()
+    }
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::tokio_util;
 
   #[test]
   fn test_compile_sync() {
-    let cwd = std::env::current_dir().unwrap();
-    let cwd_string = cwd.to_str().unwrap().to_owned();
+    tokio_util::init(|| {
+      let cwd = std::env::current_dir().unwrap();
+      let cwd_string = cwd.to_str().unwrap().to_owned();
 
-    let specifier = "./tests/002_hello.ts";
-    let referrer = cwd_string + "/";
+      let specifier = "./tests/002_hello.ts";
+      let referrer = cwd_string + "/";
 
-    let mut out = ModuleMetaData {
-      module_name: "xxx".to_owned(),
-      filename: "/tests/002_hello.ts".to_owned(),
-      media_type: msg::MediaType::TypeScript,
-      source_code: "console.log(\"Hello World\");".as_bytes().to_owned(),
-      maybe_output_code_filename: None,
-      maybe_output_code: None,
-      maybe_source_map_filename: None,
-      maybe_source_map: None,
-    };
+      let mut out = ModuleMetaData {
+        module_name: "xxx".to_owned(),
+        filename: "/tests/002_hello.ts".to_owned(),
+        media_type: msg::MediaType::TypeScript,
+        source_code: "console.log(\"Hello World\");".as_bytes().to_owned(),
+        maybe_output_code_filename: None,
+        maybe_output_code: None,
+        maybe_source_map_filename: None,
+        maybe_source_map: None,
+      };
 
-    out = compile_sync(
-      Arc::new(IsolateState::mock()),
-      specifier,
-      &referrer,
-      &mut out,
-    );
-    assert!(
-      out
-        .maybe_output_code
-        .unwrap()
-        .starts_with("console.log(\"Hello World\");".as_bytes())
-    );
+      let out_result = compile_sync(
+        Arc::new(IsolateState::mock()),
+        specifier,
+        &referrer,
+        &mut out,
+      );
+      assert!(out_result.is_ok());
+      out = out_result.unwrap();
+      assert!(
+        out
+          .maybe_output_code
+          .unwrap()
+          .starts_with("console.log(\"Hello World\");".as_bytes())
+      );
+    });
   }
 }
