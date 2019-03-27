@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use core::ops::Deref;
 use crate::isolate_state::*;
+use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::ops;
 use crate::resources;
@@ -22,6 +23,7 @@ use serde_json;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tokio::runtime::Runtime;
 
 pub type CompilerResult = Result<ModuleMetaData, JSError>;
 type CompilerInnerResult = Result<ModuleMetaData, Option<JSError>>;
@@ -35,6 +37,7 @@ struct CompilerShared {
 
 lazy_static! {
   static ref C_SHARED: Mutex<Option<CompilerShared>> = Mutex::new(None);
+  static ref C_RUNTIME: Mutex<Runtime> = Mutex::new(Runtime::new().unwrap());
 }
 
 pub struct CompilerBehavior {
@@ -131,8 +134,11 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
           // results from worker future
           let (err_sender, err_receiver) =
             oneshot::channel::<CompilerInnerResult>();
-          tokio::spawn(lazy(move || {
-            worker.then(|result| -> Result<(), ()> {
+          let mut runtime = C_RUNTIME.lock().unwrap();
+          runtime.spawn(lazy(move || {
+            let resource = worker.resource.clone();
+            worker.then(move |result| -> Result<(), ()> {
+              resource.close();
               match result {
                 Err(err) => err_sender.send(Err(Some(err))).unwrap(),
                 _ => err_sender.send(Err(None)).unwrap(),
@@ -153,6 +159,11 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
     }).clone()
 }
 
+fn show_compiler_error(err: JSError) -> ModuleMetaData {
+  eprintln!("{}", JSErrorColor(&err).to_string());
+  std::process::exit(1);
+}
+
 fn req(specifier: &str, referrer: &str) -> Buf {
   json!({
     "specifier": specifier,
@@ -167,7 +178,7 @@ pub fn compile_sync(
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, JSError> {
+) -> ModuleMetaData {
   let req_msg = req(specifier, referrer);
 
   let shared = lazy_start(parent_state);
@@ -178,19 +189,23 @@ pub fn compile_sync(
   let compiler_rid = shared.rid.clone();
   let module_meta_data_ = module_meta_data.clone();
 
-  tokio::spawn(lazy(move || {
+  tokio::spawn(lazy(move || -> Result<(), ()> {
     debug!("Running rust part of compile_sync");
     let send_future = resources::post_message_to_worker(compiler_rid, req_msg);
+    debug!("Waiting on a message to be sent to compiler worker");
     match send_future.wait() {
       Ok(_) => {} // Do nothing if result is ok else send back None error
       _ => return Ok(local_sender.send(Err(None)).unwrap()),
     };
+    debug!("Message sent to compiler worker");
 
     let recv_future = resources::get_message_from_worker(compiler_rid);
+    debug!("Waiting on a message from the compiler worker");
     let res_msg = match recv_future.wait() {
       Ok(Some(v)) => v,
       _ => return Ok(local_sender.send(Err(None)).unwrap()),
     };
+    debug!("Received result message from the compiler worker");
 
     let res_json = std::str::from_utf8(&res_msg).unwrap();
     Ok(
@@ -229,13 +244,14 @@ pub fn compile_sync(
       // local_receiver finished first
       let mut rest_mut = rest;
       match ((*result.deref()).clone(), i) {
-        (Ok(v), 1) => Ok(v),
-        (Err(Some(err)), _) => Err(err),
+        (Ok(v), 1) => v,
+        (Err(Some(err)), _) => show_compiler_error(err),
         (Err(None), 1) => {
+          debug!("Compiler local exited with None error first!");
           match (*rest_mut.remove(0).wait().unwrap().deref()).clone() {
-            Ok(v) => Ok(v),
-            Err(Some(err)) => Err(err),
-            Err(None) => panic!("Odd compiler worker result!"),
+            Ok(v) => v,
+            Err(Some(err)) => show_compiler_error(err),
+            Err(None) => panic!("Compiler exit for an unknown reason!"),
           }
         }
         (_, i) => panic!("Odd compiler result for future {}!", i),
@@ -270,14 +286,12 @@ mod tests {
         maybe_source_map: None,
       };
 
-      let out_result = compile_sync(
+      out = compile_sync(
         Arc::new(IsolateState::mock()),
         specifier,
         &referrer,
         &mut out,
       );
-      assert!(out_result.is_ok());
-      out = out_result.unwrap();
       assert!(
         out
           .maybe_output_code
