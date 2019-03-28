@@ -129,7 +129,7 @@ impl SharedQueue {
     let end = off + record.len();
     let index = self.num_records();
     if end > self.bytes.len() {
-      eprintln!("WARNING the sharedQueue overflowed");
+      debug!("WARNING the sharedQueue overflowed");
       return false;
     }
     self.set_end(index, end);
