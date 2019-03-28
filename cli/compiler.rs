@@ -25,10 +25,16 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::runtime::Runtime;
 
-pub type CompilerResult = Result<ModuleMetaData, JSError>;
+/// Used for normalization of types on internal future completions
 type CompilerInnerResult = Result<ModuleMetaData, Option<JSError>>;
 type WorkerErrReceiver = oneshot::Receiver<CompilerInnerResult>;
 
+/// Shared resources for used to complete compiler operations.
+/// rid is the resource id for compiler worker resource used for sending it
+/// compile requests
+/// worker_err_receiver is a shared future that will compelete when the
+/// compiler worker future completes, and send back an error if present
+/// or a None if not
 #[derive(Clone)]
 struct CompilerShared {
   pub rid: ResourceId,
@@ -36,7 +42,10 @@ struct CompilerShared {
 }
 
 lazy_static! {
+  // Shared worker resources so we can spawn
   static ref C_SHARED: Mutex<Option<CompilerShared>> = Mutex::new(None);
+  // tokio runtime specifically for spawning logic that is dependent on
+  // completetion of the compiler worker future
   static ref C_RUNTIME: Mutex<Runtime> = Mutex::new(Runtime::new().unwrap());
 }
 
@@ -179,60 +188,63 @@ pub fn compile_sync(
   referrer: &str,
   module_meta_data: &ModuleMetaData,
 ) -> ModuleMetaData {
-  let req_msg = req(specifier, referrer);
-
   let shared = lazy_start(parent_state);
 
   let (local_sender, local_receiver) =
     oneshot::channel::<Result<ModuleMetaData, Option<JSError>>>();
 
-  let compiler_rid = shared.rid.clone();
-  let module_meta_data_ = module_meta_data.clone();
+  // Just some extra scoping to keep things clean
+  {
+    let compiler_rid = shared.rid.clone();
+    let module_meta_data_ = module_meta_data.clone();
+    let req_msg = req(specifier, referrer);
 
-  tokio::spawn(lazy(move || -> Result<(), ()> {
-    debug!("Running rust part of compile_sync");
-    let send_future = resources::post_message_to_worker(compiler_rid, req_msg);
-    debug!("Waiting on a message to be sent to compiler worker");
-    match send_future.wait() {
-      Ok(_) => {} // Do nothing if result is ok else send back None error
-      _ => return Ok(local_sender.send(Err(None)).unwrap()),
-    };
-    debug!("Message sent to compiler worker");
+    tokio::spawn(lazy(move || -> Result<(), ()> {
+      debug!("Running rust part of compile_sync");
+      let send_future =
+        resources::post_message_to_worker(compiler_rid, req_msg);
+      debug!("Waiting on a message to be sent to compiler worker");
+      match send_future.wait() {
+        Ok(_) => {} // Do nothing if result is ok else send back None error
+        _ => return Ok(local_sender.send(Err(None)).unwrap()),
+      };
+      debug!("Message sent to compiler worker");
 
-    let recv_future = resources::get_message_from_worker(compiler_rid);
-    debug!("Waiting on a message from the compiler worker");
-    let res_msg = match recv_future.wait() {
-      Ok(Some(v)) => v,
-      _ => return Ok(local_sender.send(Err(None)).unwrap()),
-    };
-    debug!("Received result message from the compiler worker");
+      let recv_future = resources::get_message_from_worker(compiler_rid);
+      debug!("Waiting on a message from the compiler worker");
+      let res_msg = match recv_future.wait() {
+        Ok(Some(v)) => v,
+        _ => return Ok(local_sender.send(Err(None)).unwrap()),
+      };
+      debug!("Received result message from the compiler worker");
 
-    let res_json = std::str::from_utf8(&res_msg).unwrap();
-    Ok(
-      local_sender
-        .send(Ok(
-          match serde_json::from_str::<serde_json::Value>(res_json) {
-            Ok(serde_json::Value::Object(map)) => ModuleMetaData {
-              module_name: module_meta_data_.module_name.clone(),
-              filename: module_meta_data_.filename.clone(),
-              media_type: module_meta_data_.media_type,
-              source_code: module_meta_data_.source_code.clone(),
-              maybe_output_code: match map["outputCode"].as_str() {
-                Some(str) => Some(str.as_bytes().to_owned()),
-                _ => None,
+      let res_json = std::str::from_utf8(&res_msg).unwrap();
+      Ok(
+        local_sender
+          .send(Ok(
+            match serde_json::from_str::<serde_json::Value>(res_json) {
+              Ok(serde_json::Value::Object(map)) => ModuleMetaData {
+                module_name: module_meta_data_.module_name.clone(),
+                filename: module_meta_data_.filename.clone(),
+                media_type: module_meta_data_.media_type,
+                source_code: module_meta_data_.source_code.clone(),
+                maybe_output_code: match map["outputCode"].as_str() {
+                  Some(str) => Some(str.as_bytes().to_owned()),
+                  _ => None,
+                },
+                maybe_output_code_filename: None,
+                maybe_source_map: match map["sourceMap"].as_str() {
+                  Some(str) => Some(str.as_bytes().to_owned()),
+                  _ => None,
+                },
+                maybe_source_map_filename: None,
               },
-              maybe_output_code_filename: None,
-              maybe_source_map: match map["sourceMap"].as_str() {
-                Some(str) => Some(str.as_bytes().to_owned()),
-                _ => None,
-              },
-              maybe_source_map_filename: None,
+              _ => panic!("error decoding compiler response"),
             },
-            _ => panic!("error decoding compiler response"),
-          },
-        )).unwrap(),
-    )
-  }));
+          )).unwrap(),
+      )
+    }));
+  }
 
   let worker_receiver = shared.worker_err_receiver.clone();
 
@@ -241,22 +253,49 @@ pub fn compile_sync(
 
   match union.wait() {
     Ok((result, i, rest)) => {
-      // local_receiver finished first
+      // We got a sucessful finish before any recivers where canceled
       let mut rest_mut = rest;
       match ((*result.deref()).clone(), i) {
-        (Ok(v), 1) => v,
+        // Either receiver was completed with success.
+        (Ok(v), _) => v,
+        // Either receiver was completed with a valid error
+        // this should be fatal for now since it is not intended
+        // to be possible to recover from a uncaught error in a isolate
         (Err(Some(err)), _) => show_compiler_error(err),
+        // local_receiver finished first with a none error. This is intended
+        // to catch when the local logic can't complete because it is unable
+        // to send and/or receive messages from the compiler worker.
+        // Due to the way that scheduling works it is very likely that the
+        // compiler worker future has already or will in the near future
+        // complete with a valid JSError or a None.
         (Err(None), 1) => {
-          debug!("Compiler local exited with None error first!");
-          match (*rest_mut.remove(0).wait().unwrap().deref()).clone() {
-            Ok(v) => v,
+          debug!("Compiler local exited with None error!");
+          // While technically possible to get stuck here indefinately
+          // in theory it is highly unlikely.
+          debug!(
+            "Waiting on compiler worker result specifier: {} referrer: {}!",
+            specifier, referrer
+          );
+          let worker_result =
+            (*rest_mut.remove(0).wait().unwrap().deref()).clone();
+          debug!(
+            "Finished waiting on worker result specifier: {} referrer: {}!",
+            specifier, referrer
+          );
+          match worker_result {
             Err(Some(err)) => show_compiler_error(err),
             Err(None) => panic!("Compiler exit for an unknown reason!"),
+            Ok(v) => v,
           }
         }
+        // While possible beccause the compiler worker can exit without error
+        // this shouldn't occurr normally and I don't intend to attempt to
+        // handle it right now
         (_, i) => panic!("Odd compiler result for future {}!", i),
       }
     }
+    // This should always a result of a reciver being cancled
+    // in theory but why not give a print out just in case
     Err((err, i, _)) => panic!("compile_sync {} failed: {}", i, err),
   }
 }
@@ -279,7 +318,7 @@ mod tests {
         module_name: "xxx".to_owned(),
         filename: "/tests/002_hello.ts".to_owned(),
         media_type: msg::MediaType::TypeScript,
-        source_code: "console.log(\"Hello World\");".as_bytes().to_owned(),
+        source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
         maybe_output_code_filename: None,
         maybe_output_code: None,
         maybe_source_map_filename: None,
