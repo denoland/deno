@@ -19,11 +19,7 @@ def fmt_test(deno_exe):
         # Set DENO_DIR to //js/ so we don't have to rely on an intenet
         # connection to download https://deno.land/std/prettier/main.ts
         deno_dir = os.path.join(root_path, "js")
-
-        # TODO(ry) --allow-read should be implied by --fmt
-        run([deno_exe, dst, "--fmt", "--allow-read"],
-            merge_env={"DENO_DIR": deno_dir})
-
+        run([deno_exe, dst, "--fmt"], merge_env={"DENO_DIR": deno_dir})
         with open(fixed_filename) as f:
             expected = f.read()
         with open(dst) as f:
@@ -32,6 +28,7 @@ def fmt_test(deno_exe):
             print "Expected didn't match actual."
             print "expected: ", json.dumps(expected)
             print "actual: ", json.dumps(actual)
+            sys.exit(1)
 
     finally:
         shutil.rmtree(d)
