@@ -203,15 +203,24 @@ pub fn compile_sync(
     let module_meta_data_ = module_meta_data.clone();
     let req_msg = req(specifier, referrer);
     let sender_arc = Arc::new(Some(local_sender));
+    let specifier_ = specifier.clone().to_string();
+    let referrer_ = referrer.clone().to_string();
 
     tokio::spawn(lazy(move || {
-      debug!("Running rust part of compile_sync");
+      debug!(
+        "Running rust part of compile_sync specifier: {} referrer: {}",
+        specifier_, referrer_
+      );
       let mut send_sender_arc = sender_arc.clone();
       resources::post_message_to_worker(compiler_rid, req_msg)
         .map_err(move |_| {
           let sender = Arc::get_mut(&mut send_sender_arc).unwrap().take();
           sender.unwrap().send(Err(None)).unwrap()
         }).and_then(move |_| {
+          debug!(
+            "Sent message to worker specifier: {} referrer: {}",
+            specifier_, referrer_
+          );
           let mut get_sender_arc = sender_arc.clone();
           let mut result_sender_arc = sender_arc.clone();
           resources::get_message_from_worker(compiler_rid)
@@ -219,6 +228,10 @@ pub fn compile_sync(
               let sender = Arc::get_mut(&mut get_sender_arc).unwrap().take();
               sender.unwrap().send(Err(None)).unwrap()
             }).and_then(move |res_msg_option| -> Result<(), ()> {
+              debug!(
+                "Recieved message from worker specifier: {} referrer: {}",
+                specifier_, referrer_
+              );
               let res_msg = res_msg_option.unwrap();
               let res_json = std::str::from_utf8(&res_msg).unwrap();
               let sender = Arc::get_mut(&mut result_sender_arc).unwrap().take();
