@@ -83,7 +83,7 @@ export class Process {
   }
 
   /** Buffer the stdout and return it as Uint8Array after EOF.
-   * You must have set stdout to "piped" in when creating the process.
+   * You must set stdout to "piped" when creating the process.
    * This calls close() on stdout after its done.
    */
   async output(): Promise<Uint8Array> {
@@ -94,6 +94,21 @@ export class Process {
       return await readAll(this.stdout);
     } finally {
       this.stdout.close();
+    }
+  }
+
+  /** Buffer the stderr and return it as Uint8Array after EOF.
+   * You must set stderr to "piped" when creating the process.
+   * This calls close() on stderr after its done.
+   */
+  async stderrOutput(): Promise<Uint8Array> {
+    if (!this.stderr) {
+      throw new Error("Process.stderrOutput: stderr is undefined");
+    }
+    try {
+      return await readAll(this.stderr);
+    } finally {
+      this.stderr.close();
     }
   }
 
