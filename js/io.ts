@@ -49,6 +49,10 @@ export interface Reader {
   read(p: Uint8Array): Promise<ReadResult>;
 }
 
+export interface SyncReader {
+  readSync(p: Uint8Array): ReadResult;
+}
+
 // Writer is the interface that wraps the basic write() method.
 // https://golang.org/pkg/io/#Writer
 export interface Writer {
@@ -63,6 +67,9 @@ export interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
+export interface SyncWriter {
+  writeSync(p: Uint8Array): number;
+}
 // https://golang.org/pkg/io/#Closer
 export interface Closer {
   // The behavior of Close after the first call is undefined. Specific
@@ -83,6 +90,10 @@ export interface Seeker {
    * on the underlying object is implementation-dependent.
    */
   seek(offset: number, whence: SeekMode): Promise<void>;
+}
+
+export interface SyncSeeker {
+  seekSync(offset: number, whence: SeekMode): void;
 }
 
 // https://golang.org/pkg/io/#ReadCloser

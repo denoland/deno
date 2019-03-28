@@ -209,7 +209,7 @@ pub fn apply_source_map(
 // The bundle does not get built for 'cargo check', so we don't embed the
 // bundle source map.
 #[cfg(feature = "check-only")]
-fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
+fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
   None
 }
 

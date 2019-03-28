@@ -33,7 +33,7 @@ In deno itself:
 
 In deno_std
 
-- Add fs extras: ensureDir, ensireFile, readJson, emptyDir, move, exists (#269,
+- Add fs extras: ensureDir, ensureFile, readJson, emptyDir, move, exists (#269,
   #266, #264, #263, #260)
 - Datetime module improvement (#259)
 - asserts: Add unimplemented, unreachable, assertNotEquals, assertArrayContains

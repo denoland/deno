@@ -91,20 +91,6 @@ export class Event implements domTypes.Event {
     return getPrivateValue(this, eventAttributes, "isTrusted");
   }
 
-  set isTrusted(value) {
-    eventAttributes.set(this, {
-      type: this.type,
-      bubbles: this.bubbles,
-      cancelable: this.cancelable,
-      composed: this.composed,
-      currentTarget: this.currentTarget,
-      eventPhase: this.eventPhase,
-      isTrusted: value,
-      target: this.target,
-      timeStamp: this.timeStamp
-    });
-  }
-
   get target(): domTypes.EventTarget {
     return getPrivateValue(this, eventAttributes, "target");
   }

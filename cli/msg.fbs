@@ -39,8 +39,6 @@ union Any {
   Read,
   ReadDir,
   ReadDirRes,
-  ReadFile,
-  ReadFileRes,
   ReadRes,
   Readlink,
   ReadlinkRes,
@@ -75,7 +73,6 @@ union Any {
   WorkerGetMessageRes,
   WorkerPostMessage,
   Write,
-  WriteFile,
   WriteRes,
 }
 
@@ -334,30 +331,12 @@ table Remove {
   recursive: bool;
 }
 
-table ReadFile {
-  filename: string;
-}
-
-table ReadFileRes {
-  data: [ubyte];
-}
-
 table ReadDir {
   path: string;
 }
 
 table ReadDirRes {
   entries: [StatRes];
-}
-
-table WriteFile {
-  filename: string;
-  data: [ubyte];
-  update_perm: bool;
-  perm: uint;
-  // perm specified by https://godoc.org/os#FileMode
-  is_create: bool;
-  is_append: bool;
 }
 
 table CopyFile {
