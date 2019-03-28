@@ -23,8 +23,8 @@ exec_time_benchmarks = [
     ("hello", ["tests/002_hello.ts"]),
     ("relative_import", ["tests/003_relative_import.ts"]),
     ("error_001", ["tests/error_001.ts"]),
-    ("cold_hello", ["tests/002_hello.ts", "--recompile"]),
-    ("cold_relative_import", ["tests/003_relative_import.ts", "--recompile"]),
+    ("cold_hello", ["tests/002_hello.ts", "--reload"]),
+    ("cold_relative_import", ["tests/003_relative_import.ts", "--reload"]),
 ]
 
 gh_pages_data_file = "gh-pages/data.json"

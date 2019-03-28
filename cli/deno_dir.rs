@@ -48,22 +48,12 @@ pub struct DenoDir {
   // This splits to http and https deps
   pub deps_http: PathBuf,
   pub deps_https: PathBuf,
-  // If remote resources should be reloaded.
-  reload: bool,
-  // recompile the typescript files.
-  // if true, not load cache files
-  // else, load cache files
-  recompile: bool,
 }
 
 impl DenoDir {
   // Must be called before using any function from this module.
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
-  pub fn new(
-    reload: bool,
-    recompile: bool,
-    custom_root: Option<PathBuf>,
-  ) -> std::io::Result<Self> {
+  pub fn new(custom_root: Option<PathBuf>) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
     let fallback = home_dir.join(".deno");
@@ -86,8 +76,6 @@ impl DenoDir {
       deps,
       deps_http,
       deps_https,
-      reload,
-      recompile,
     };
 
     // TODO Lazily create these directories.
@@ -143,79 +131,11 @@ impl DenoDir {
     }
   }
 
-  fn get_source_code_async(
-    self: &Self,
-    module_name: &str,
-    filename: &str,
-  ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
-    let filename = filename.to_string();
-    let module_name = module_name.to_string();
-    let is_module_remote = is_remote(&module_name);
-    // We try fetch local. Two cases:
-    // 1. This is a remote module, but no reload provided
-    // 2. This is a local module
-    if !is_module_remote || !self.reload {
-      debug!(
-        "fetch local or reload {} is_module_remote {}",
-        module_name, is_module_remote
-      );
-      // Note that local fetch is done synchronously.
-      match fetch_local_source(&module_name, &filename) {
-        Ok(Some(output)) => {
-          debug!("found local source ");
-          return Either::A(futures::future::ok(output));
-        }
-        Ok(None) => {
-          debug!("fetch_local_source returned None");
-        }
-        Err(err) => {
-          return Either::A(futures::future::err(err));
-        }
-      }
-    }
-
-    // If not remote file, stop here!
-    if !is_module_remote {
-      debug!("not remote file stop here");
-      return Either::A(futures::future::err(DenoError::from(
-        std::io::Error::new(
-          std::io::ErrorKind::NotFound,
-          format!("cannot find local file '{}'", &filename),
-        ),
-      )));
-    }
-
-    debug!("is remote but didn't find module");
-
-    let filename2 = filename.clone();
-    // not cached/local, try remote
-    let f = fetch_remote_source_async(&module_name, &filename).and_then(
-      move |maybe_remote_source| match maybe_remote_source {
-        Some(output) => Ok(output),
-        None => Err(DenoError::from(std::io::Error::new(
-          std::io::ErrorKind::NotFound,
-          format!("cannot find remote file '{}'", &filename2),
-        ))),
-      },
-    );
-    Either::B(f)
-  }
-
-  #[cfg(test)]
-  /// Synchronous version of get_source_code_async
-  /// This function is deprecated.
-  fn get_source_code(
-    self: &Self,
-    module_name: &str,
-    filename: &str,
-  ) -> DenoResult<ModuleMetaData> {
-    tokio_util::block_on(self.get_source_code_async(module_name, filename))
-  }
-
   pub fn fetch_module_meta_data_async(
     self: &Self,
     specifier: &str,
     referrer: &str,
+    use_cache: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = errors::DenoError> {
     debug!(
       "fetch_module_meta_data. specifier {} referrer {}",
@@ -232,11 +152,9 @@ impl DenoDir {
     let (module_name, filename) = result.unwrap();
 
     let gen = self.gen.clone();
-    let recompile = self.recompile;
 
     Either::B(
-      self
-        .get_source_code_async(module_name.as_str(), filename.as_str())
+      get_source_code_async(module_name.as_str(), filename.as_str(), use_cache)
         .then(move |result| {
           let mut out = match result {
             Ok(out) => out,
@@ -260,7 +178,9 @@ impl DenoDir {
             out.source_code = filter_shebang(out.source_code);
           }
 
-          if out.media_type != msg::MediaType::TypeScript {
+          // If TypeScript we have to also load corresponding compile js and
+          // source maps (called output_code and output_source_map)
+          if out.media_type != msg::MediaType::TypeScript || !use_cache {
             return Ok(out);
           }
 
@@ -271,41 +191,28 @@ impl DenoDir {
             gen.join(cache_key.to_string() + ".js.map"),
           );
 
-          let mut maybe_output_code = None;
-          let mut maybe_source_map = None;
-
-          if !recompile {
-            let result =
-              load_cache2(&output_code_filename, &output_source_map_filename);
-            match result {
-              Err(err) => {
-                if err.kind() == std::io::ErrorKind::NotFound {
-                  return Ok(out);
-                } else {
-                  return Err(err.into());
-                }
-              }
-              Ok((output_code, source_map)) => {
-                maybe_output_code = Some(output_code);
-                maybe_source_map = Some(source_map);
+          let result =
+            load_cache2(&output_code_filename, &output_source_map_filename);
+          match result {
+            Err(err) => {
+              if err.kind() == std::io::ErrorKind::NotFound {
+                // If there's no compiled JS or source map, that's ok, just
+                // return what we have.
+                Ok(out)
+              } else {
+                Err(err.into())
               }
             }
+            Ok((output_code, source_map)) => {
+              out.maybe_output_code = Some(output_code);
+              out.maybe_source_map = Some(source_map);
+              out.maybe_output_code_filename =
+                Some(output_code_filename.to_str().unwrap().to_string());
+              out.maybe_source_map_filename =
+                Some(output_source_map_filename.to_str().unwrap().to_string());
+              Ok(out)
+            }
           }
-
-          Ok(ModuleMetaData {
-            module_name: out.module_name,
-            filename: out.filename,
-            media_type: out.media_type,
-            source_code: out.source_code,
-            maybe_output_code_filename: output_code_filename
-              .to_str()
-              .map(String::from),
-            maybe_output_code,
-            maybe_source_map_filename: output_source_map_filename
-              .to_str()
-              .map(String::from),
-            maybe_source_map,
-          })
         }),
     )
   }
@@ -316,8 +223,11 @@ impl DenoDir {
     self: &Self,
     specifier: &str,
     referrer: &str,
+    use_cache: bool,
   ) -> Result<ModuleMetaData, errors::DenoError> {
-    tokio_util::block_on(self.fetch_module_meta_data_async(specifier, referrer))
+    tokio_util::block_on(
+      self.fetch_module_meta_data_async(specifier, referrer, use_cache),
+    )
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
@@ -419,7 +329,7 @@ impl DenoDir {
 
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    match self.fetch_module_meta_data(script_name, ".") {
+    match self.fetch_module_meta_data(script_name, ".", true) {
       Err(_e) => None,
       Ok(out) => match out.maybe_source_map {
         None => None,
@@ -427,6 +337,86 @@ impl SourceMapGetter for DenoDir {
       },
     }
   }
+}
+
+/// This fetches source code, locally or remotely.
+/// module_name is the URL specifying the module.
+/// filename is the local path to the module (if remote, it is in the cache
+/// folder, and potentially does not exist yet)
+///
+/// It *does not* fill the compiled JS nor source map portions of
+/// ModuleMetaData. This is the only difference between this function and
+/// fetch_module_meta_data_async(). TODO(ry) change return type to reflect this
+/// fact.
+///
+/// If this is a remote module, and it has not yet been cached, the resulting
+/// download will be written to "filename". This happens no matter the value of
+/// use_cache.
+fn get_source_code_async(
+  module_name: &str,
+  filename: &str,
+  use_cache: bool,
+) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+  let filename = filename.to_string();
+  let module_name = module_name.to_string();
+  let is_module_remote = is_remote(&module_name);
+  // We try fetch local. Two cases:
+  // 1. This is a remote module and we're allowed to use cached downloads
+  // 2. This is a local module
+  if !is_module_remote || use_cache {
+    debug!(
+      "fetch local or reload {} is_module_remote {}",
+      module_name, is_module_remote
+    );
+    // Note that local fetch is done synchronously.
+    match fetch_local_source(&module_name, &filename) {
+      Ok(Some(output)) => {
+        debug!("found local source ");
+        return Either::A(futures::future::ok(output));
+      }
+      Ok(None) => {
+        debug!("fetch_local_source returned None");
+      }
+      Err(err) => {
+        return Either::A(futures::future::err(err));
+      }
+    }
+  }
+
+  // If not remote file, stop here!
+  if !is_module_remote {
+    debug!("not remote file stop here");
+    return Either::A(futures::future::err(DenoError::from(
+      std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("cannot find local file '{}'", &filename),
+      ),
+    )));
+  }
+
+  debug!("is remote but didn't find module");
+
+  // not cached/local, try remote
+  Either::B(fetch_remote_source_async(&module_name, &filename).and_then(
+    move |maybe_remote_source| match maybe_remote_source {
+      Some(output) => Ok(output),
+      None => Err(DenoError::from(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("cannot find remote file '{}'", &filename),
+      ))),
+    },
+  ))
+}
+
+#[cfg(test)]
+/// Synchronous version of get_source_code_async
+/// This function is deprecated.
+fn get_source_code(
+  module_name: &str,
+  filename: &str,
+  use_cache: bool,
+) -> DenoResult<ModuleMetaData> {
+  tokio_util::block_on(get_source_code_async(module_name, filename, use_cache))
 }
 
 fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
@@ -557,10 +547,9 @@ fn fetch_remote_source_async(
   // cached file, containing just the media type.
   let media_type_filename = [&filename, ".mime"].concat();
   let mt = PathBuf::from(&media_type_filename);
-  eprint!("Downloading {}...", &module_name); // no newline
+  eprintln!("Downloading {}", &module_name);
   http_util::fetch_string(&module_name).and_then(
     move |(source, content_type)| {
-      eprintln!(""); // next line
       match p.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
@@ -646,11 +635,10 @@ mod tests {
   use super::*;
   use tempfile::TempDir;
 
-  fn test_setup(reload: bool, recompile: bool) -> (TempDir, DenoDir) {
+  fn test_setup() -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let deno_dir =
-      DenoDir::new(reload, recompile, Some(temp_dir.path().to_path_buf()))
-        .expect("setup fail");
+      DenoDir::new(Some(temp_dir.path().to_path_buf())).expect("setup fail");
     (temp_dir, deno_dir)
   }
 
@@ -690,7 +678,7 @@ mod tests {
 
   #[test]
   fn test_cache_path() {
-    let (temp_dir, deno_dir) = test_setup(false, false);
+    let (temp_dir, deno_dir) = test_setup();
     let filename = "hello.js";
     let source_code = b"1+2";
     let hash = source_code_hash(filename, source_code, version::DENO);
@@ -705,7 +693,7 @@ mod tests {
 
   #[test]
   fn test_code_cache() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let filename = "hello.js";
     let source_code = b"1+2";
@@ -759,7 +747,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_1() {
-    let (temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let module_name = "http://localhost:4545/tests/subdir/mod2.ts";
@@ -771,8 +759,7 @@ mod tests {
       );
       let mime_file_name = format!("{}.mime", &filename);
 
-      let result = deno_dir.get_source_code(module_name, &filename);
-      println!("module_name {} filename {}", module_name, filename);
+      let result = get_source_code(module_name, &filename, true);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -785,7 +772,7 @@ mod tests {
 
       // Modify .mime
       let _ = fs::write(&mime_file_name, "text/javascript");
-      let result2 = deno_dir.get_source_code(module_name, &filename);
+      let result2 = get_source_code(module_name, &filename, true);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
@@ -800,11 +787,8 @@ mod tests {
         "text/javascript"
       );
 
-      // Force self.reload
-      let deno_dir =
-        DenoDir::new(true, false, Some(temp_dir.path().to_path_buf()))
-          .expect("setup fail");
-      let result3 = deno_dir.get_source_code(module_name, &filename);
+      // Don't use_cache
+      let result3 = get_source_code(module_name, &filename, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 =
@@ -818,7 +802,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_2() {
-    let (temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
@@ -830,8 +814,7 @@ mod tests {
       );
       let mime_file_name = format!("{}.mime", &filename);
 
-      let result = deno_dir.get_source_code(module_name, &filename);
-      println!("module_name {} filename {}", module_name, filename);
+      let result = get_source_code(module_name, &filename, true);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
@@ -845,7 +828,7 @@ mod tests {
 
       // Modify .mime
       let _ = fs::write(&mime_file_name, "text/typescript");
-      let result2 = deno_dir.get_source_code(module_name, &filename);
+      let result2 = get_source_code(module_name, &filename, true);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
@@ -858,11 +841,8 @@ mod tests {
         "text/typescript"
       );
 
-      // Force self.reload
-      let deno_dir =
-        DenoDir::new(true, false, Some(temp_dir.path().to_path_buf()))
-          .expect("setup fail");
-      let result3 = deno_dir.get_source_code(module_name, &filename);
+      // Don't use_cache
+      let result3 = get_source_code(module_name, &filename, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
@@ -882,7 +862,7 @@ mod tests {
     use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let (_temp_dir, deno_dir) = test_setup(false, false);
+      let (_temp_dir, deno_dir) = test_setup();
       let module_name =
         "http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts".to_string();
       let filename = deno_fs::normalize_path(
@@ -920,7 +900,7 @@ mod tests {
     use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let (_temp_dir, deno_dir) = test_setup(false, false);
+      let (_temp_dir, deno_dir) = test_setup();
       let module_name =
         "http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts";
       let filename = deno_fs::normalize_path(
@@ -955,7 +935,7 @@ mod tests {
     use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let (_temp_dir, deno_dir) = test_setup(false, false);
+      let (_temp_dir, deno_dir) = test_setup();
       let module_name = "http://localhost:4545/tests/subdir/no_ext";
       let filename = deno_fs::normalize_path(
         deno_dir
@@ -1019,7 +999,7 @@ mod tests {
   #[test]
   fn test_fetch_source_3() {
     // only local, no http_util::fetch_sync_string called
-    let (_temp_dir, _deno_dir) = test_setup(false, false);
+    let (_temp_dir, _deno_dir) = test_setup();
     let cwd = std::env::current_dir().unwrap();
     let cwd_string = cwd.to_str().unwrap();
     let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
@@ -1035,7 +1015,7 @@ mod tests {
 
   #[test]
   fn test_fetch_module_meta_data() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
     let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
@@ -1044,23 +1024,21 @@ mod tests {
       // Test failure case.
       let specifier = "hello.ts";
       let referrer = add_root!("/baddir/badfile.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer);
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier = "./js/main.ts";
       let referrer = cwd_string.as_str();
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer);
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true);
       assert!(r.is_ok());
-      //let fetch_module_meta_data_output = r.unwrap();
-      //println!("fetch_module_meta_data_output {:?}", fetch_module_meta_data_output);
     })
   }
 
   #[test]
   fn test_fetch_module_meta_data_1() {
     /*recompile ts file*/
-    let (_temp_dir, deno_dir) = test_setup(false, true);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
     let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
@@ -1069,20 +1047,20 @@ mod tests {
       // Test failure case.
       let specifier = "hello.ts";
       let referrer = add_root!("/baddir/badfile.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer);
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier = "./js/main.ts";
       let referrer = cwd_string.as_str();
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer);
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer, false);
       assert!(r.is_ok());
     })
   }
 
   #[test]
   fn test_src_file_to_url_1() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
     assert_eq!("hello", deno_dir.src_file_to_url("hello"));
     assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
     let x = deno_dir.deps_http.join("hello/world.txt");
@@ -1094,7 +1072,7 @@ mod tests {
 
   #[test]
   fn test_src_file_to_url_2() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
     assert_eq!("hello", deno_dir.src_file_to_url("hello"));
     assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
     let x = deno_dir.deps_https.join("hello/world.txt");
@@ -1106,7 +1084,7 @@ mod tests {
 
   #[test]
   fn test_src_file_to_url_3() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
     let x = deno_dir.deps_http.join("localhost_PORT4545/world.txt");
     assert_eq!(
       "http://localhost:4545/world.txt",
@@ -1116,7 +1094,7 @@ mod tests {
 
   #[test]
   fn test_src_file_to_url_4() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
     let x = deno_dir.deps_https.join("localhost_PORT4545/world.txt");
     assert_eq!(
       "https://localhost:4545/world.txt",
@@ -1127,7 +1105,7 @@ mod tests {
   // https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87
   #[test]
   fn test_resolve_module_1() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let test_cases = [
       (
@@ -1167,7 +1145,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_2() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let specifier = "http://localhost:4545/testdata/subdir/print_hello.ts";
     let referrer = add_root!("/deno/testdata/006_url_imports.ts");
@@ -1189,7 +1167,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_3() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let specifier_ =
       deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
@@ -1212,7 +1190,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_4() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let specifier = "./util";
     let referrer_ = deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
@@ -1235,7 +1213,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_5() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let specifier = "./util";
     let referrer_ =
@@ -1259,7 +1237,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_6() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let specifier = "http://localhost:4545/tests/subdir/mod2.ts";
     let referrer = add_root!("/deno/tests/006_url_imports.ts");
@@ -1279,7 +1257,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_7() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let specifier = "http_test.ts";
     let referrer = add_root!("/Users/rld/src/deno_net/");
@@ -1295,7 +1273,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_referrer_dot() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let specifier = "tests/001_hello.js";
 
@@ -1318,7 +1296,7 @@ mod tests {
 
   #[test]
   fn test_resolve_module_referrer_dotdot() {
-    let (_temp_dir, deno_dir) = test_setup(false, false);
+    let (_temp_dir, deno_dir) = test_setup();
 
     let specifier = "tests/001_hello.js";
 

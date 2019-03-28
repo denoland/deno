@@ -386,9 +386,15 @@ fn op_fetch_module_meta_data(
     "Sanity check"
   );
 
+  let use_cache = !sc.state().flags.reload;
+
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
-    let out = sc.state().dir.fetch_module_meta_data(specifier, referrer)?;
+    // TODO(ry) Use fetch_module_meta_data_async.
+    let out = sc
+      .state()
+      .dir
+      .fetch_module_meta_data(specifier, referrer, use_cache)?;
     let data_off = builder.create_vector(out.source_code.as_slice());
     let msg_args = msg::FetchModuleMetaDataResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
