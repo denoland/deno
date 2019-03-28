@@ -6,6 +6,30 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.5 / 2019.03.28
+
+In deno:
+
+- Add Process.stderrOutput() (#1828)
+- Check params in Event and CustomEvent (#2011, #1997)
+- Merge --reload and --recompile flags (#2003)
+- Add Deno.openSync, .readSync, .writeSync, .seekSync (#2000)
+- Do not close file on invalid seek mode (#2004)
+- Fix bug when shared queue is overflowed (#1992)
+- core: Resolve callback moved from Behavior to mod_instantiate() (#1999)
+- core: libdeno and DenoCore renamed to Deno.core (#1998)
+- core: Allow terminating an Isolate from another thread (#1982)
+
+In deno_std:
+
+- Add TOML parsing module (#300)
+- testing: turn off exitOnFail by default (#307, #309)
+- Fix assertEquals for RegExp & Date (#305)
+- Fix prettier check in empty files (#302)
+- remove unnecessary path.resolve in move/readJson/writeJson (#292)
+- fix: fs.exists not work for symlink (#291)
+- Add prettier styling options (#281)
+
 ### v0.3.4 / 2019.03.20
 
 In deno itself:

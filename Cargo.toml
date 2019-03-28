@@ -17,7 +17,7 @@ path = "cli/main.rs"
 
 [package]
 name = "deno"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2018"
 
 [dependencies]
