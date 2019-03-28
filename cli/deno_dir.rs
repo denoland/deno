@@ -692,7 +692,7 @@ mod tests {
   fn test_cache_path() {
     let (temp_dir, deno_dir) = test_setup(false, false);
     let filename = "hello.js";
-    let source_code = "1+2".as_bytes();
+    let source_code = b"1+2";
     let hash = source_code_hash(filename, source_code, version::DENO);
     assert_eq!(
       (
@@ -708,9 +708,9 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup(false, false);
 
     let filename = "hello.js";
-    let source_code = "1+2".as_bytes();
-    let output_code = "1+2 // output code".as_bytes();
-    let source_map = "{}".as_bytes();
+    let source_code = b"1+2";
+    let output_code = b"1+2 // output code";
+    let source_map = b"{}";
     let hash = source_code_hash(filename, source_code, version::DENO);
     let (cache_path, source_map_path) =
       deno_dir.cache_path(filename, source_code);
@@ -719,41 +719,41 @@ mod tests {
 
     let out = ModuleMetaData {
       filename: filename.to_owned(),
-      source_code: source_code.to_owned(),
+      source_code: source_code[..].to_owned(),
       module_name: "hello.js".to_owned(),
       media_type: msg::MediaType::TypeScript,
-      maybe_output_code: Some(output_code.to_owned()),
+      maybe_output_code: Some(output_code[..].to_owned()),
       maybe_output_code_filename: None,
-      maybe_source_map: Some(source_map.to_owned()),
+      maybe_source_map: Some(source_map[..].to_owned()),
       maybe_source_map_filename: None,
     };
 
     let r = deno_dir.code_cache(&out);
     r.expect("code_cache error");
     assert!(cache_path.exists());
-    assert_eq!(output_code.to_owned(), fs::read(&cache_path).unwrap());
+    assert_eq!(output_code[..].to_owned(), fs::read(&cache_path).unwrap());
   }
 
   #[test]
   fn test_source_code_hash() {
     assert_eq!(
       "7e44de2ed9e0065da09d835b76b8d70be503d276",
-      source_code_hash("hello.ts", "1+2".as_bytes(), "0.2.11")
+      source_code_hash("hello.ts", b"1+2", "0.2.11")
     );
     // Different source_code should result in different hash.
     assert_eq!(
       "57033366cf9db1ef93deca258cdbcd9ef5f4bde1",
-      source_code_hash("hello.ts", "1".as_bytes(), "0.2.11")
+      source_code_hash("hello.ts", b"1", "0.2.11")
     );
     // Different filename should result in different hash.
     assert_eq!(
       "19657f90b5b0540f87679e2fb362e7bd62b644b0",
-      source_code_hash("hi.ts", "1+2".as_bytes(), "0.2.11")
+      source_code_hash("hi.ts", b"1+2", "0.2.11")
     );
     // Different version should result in different hash.
     assert_eq!(
       "e2b4b7162975a02bf2770f16836eb21d5bcb8be1",
-      source_code_hash("hi.ts", "1+2".as_bytes(), "0.2.0")
+      source_code_hash("hi.ts", b"1+2", "0.2.0")
     );
   }
 
@@ -1456,7 +1456,7 @@ mod tests {
 
   #[test]
   fn test_filter_shebang() {
-    assert_eq!(filter_shebang("#!".as_bytes().to_owned()), "".as_bytes());
+    assert_eq!(filter_shebang(b"#!"[..].to_owned()), b"");
     assert_eq!(
       filter_shebang("#!\n\n".as_bytes().to_owned()),
       "\n\n".as_bytes()

@@ -13,7 +13,7 @@ pub fn deno_isolate_init() -> StartupData {
 
     StartupData::Script(Script {
       filename: "gen/bundle/main.js".to_string(),
-      source: std::str::from_utf8(source_bytes).unwrap().to_string(),
+      source: std::str::from_utf8(&source_bytes[..]).unwrap().to_string(),
     })
   } else {
     debug!("Deno isolate init with snapshots.");
@@ -40,7 +40,7 @@ pub fn compiler_isolate_init() -> StartupData {
 
     StartupData::Script(Script {
       filename: "gen/bundle/compiler.js".to_string(),
-      source: std::str::from_utf8(source_bytes).unwrap().to_string(),
+      source: std::str::from_utf8(&source_bytes[..]).unwrap().to_string(),
     })
   } else {
     debug!("Deno isolate init with snapshots.");
