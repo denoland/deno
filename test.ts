@@ -15,6 +15,7 @@ import "./prettier/test.ts";
 import "./strings/test.ts";
 import "./testing/test.ts";
 import "./textproto/test.ts";
+import "./toml/test.ts";
 import "./ws/test.ts";
 
 import "./testing/main.ts";

@@ -1,0 +1,4 @@
+deno = "is"
+not = "[node]"
+regex = '<\i\c*\s*>'
+NANI = '何?!'
