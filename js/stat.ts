@@ -4,7 +4,7 @@ import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";
 import { FileInfo, FileInfoImpl } from "./file_info";
-import { platform } from "./platform";
+import { platform } from "./build";
 
 const isWindows = platform.os === "win";
 
