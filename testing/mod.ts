@@ -10,7 +10,7 @@ export interface TestDefinition {
 }
 
 let filterRegExp: RegExp | null;
-const tests: TestDefinition[] = [];
+const candidates: TestDefinition[] = [];
 
 let filtered = 0;
 
@@ -35,7 +35,7 @@ export function test(t: TestDefinition | TestFunction): void {
     throw new Error("Test function may not be anonymous");
   }
   if (filter(name)) {
-    tests.push({ fn, name });
+    candidates.push({ fn, name });
   } else {
     filtered++;
   }
@@ -124,8 +124,8 @@ function previousPrinted(name: string, results: TestResults): boolean {
 async function createTestCase(
   stats: TestStats,
   results: TestResults,
-  { fn, name }: TestDefinition,
-  exitOnFail: boolean
+  exitOnFail: boolean,
+  { fn, name }: TestDefinition
 ): Promise<void> {
   const result: TestResult = results.cases.get(results.keys.get(name));
   try {
@@ -197,6 +197,8 @@ async function runTestsSerial(
 export interface RunOptions {
   parallel?: boolean;
   exitOnFail?: boolean;
+  only?: RegExp;
+  skip?: RegExp;
 }
 
 /**
@@ -205,11 +207,16 @@ export interface RunOptions {
  */
 export async function runTests({
   parallel = false,
-  exitOnFail = false
+  exitOnFail = false,
+  only = /[^\s]/,
+  skip = /^\s*$/
 }: RunOptions = {}): Promise<void> {
+  const tests: TestDefinition[] = candidates.filter(
+    ({ name }) => only.test(name) && !skip.test(name)
+  );
   const stats: TestStats = {
     measured: 0,
-    ignored: 0,
+    ignored: candidates.length - tests.length,
     filtered: filtered,
     passed: 0,
     failed: 0
