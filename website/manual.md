@@ -531,7 +531,7 @@ Options:
         --allow-env     Allow environment access
         --allow-run     Allow running subprocesses
     -A, --allow-all     Allow all permissions
-        --recompile     Force recompilation of TypeScript code
+        --no-prompt     Do not use prompts
     -h, --help          Print this message
     -D, --log-debug     Log debug output
     -v, --version       Print the version
