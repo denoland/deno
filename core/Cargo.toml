@@ -23,3 +23,6 @@ libc = "0.2.51"
 log = "0.4.6"
 serde_json = "1.0.39"
 tokio = { version = "0.1.18", optional = true }
+
+[target.x86_64-pc-windows-msvc.dependencies.deno-x86_64-pc-windows-msvc]
+version = "0.3.4"
