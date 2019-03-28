@@ -140,11 +140,10 @@ impl<B: Behavior> Isolate<B> {
     };
 
     // If we want to use execute this has to happen here sadly.
-    match startup_script {
-      Some(s) => core_isolate
+    if let Some(s) = startup_script {
+      core_isolate
         .execute(s.filename.as_str(), s.source.as_str())
-        .unwrap(),
-      None => {}
+        .unwrap()
     };
 
     core_isolate
@@ -510,9 +509,8 @@ impl IsolateHandle {
   /// the isolate.
   pub fn terminate_execution(&self) {
     unsafe {
-      match *self.shared_libdeno_isolate.lock().unwrap() {
-        Some(isolate) => libdeno::deno_terminate_execution(isolate),
-        None => (),
+      if let Some(isolate) = *self.shared_libdeno_isolate.lock().unwrap() {
+        libdeno::deno_terminate_execution(isolate)
       }
     }
   }

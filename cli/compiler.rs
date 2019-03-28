@@ -186,12 +186,8 @@ mod tests {
       maybe_source_map: None,
     };
 
-    out = compile_sync(
-      Arc::new(IsolateState::mock()),
-      specifier,
-      &referrer,
-      &mut out,
-    );
+    out =
+      compile_sync(Arc::new(IsolateState::mock()), specifier, &referrer, &out);
     assert!(
       out
         .maybe_output_code
