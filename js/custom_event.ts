@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import * as event from "./event";
-import { getPrivateValue } from "./util";
+import { getPrivateValue, requiredArguments } from "./util";
 
 // WeakMaps are recommended for private attributes (see MDN link below)
 // https://developer.mozilla.org/en-US/docs/Archive/Add-ons/Add-on_SDK/Guides/Contributor_s_Guide/Private_Properties#Using_WeakMaps
@@ -28,6 +28,7 @@ export class CustomEvent extends event.Event implements domTypes.CustomEvent {
     type: string,
     customEventInitDict: domTypes.CustomEventInit = {}
   ) {
+    requiredArguments("CustomEvent", arguments.length, 1);
     super(type, customEventInitDict);
     const { detail = null } = customEventInitDict;
     customEventAttributes.set(this, { detail });
