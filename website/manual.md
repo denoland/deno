@@ -402,7 +402,7 @@ async function main() {
     const rawOutput = await p.output();
     Deno.stdout.write(rawOutput);
   } else {
-    const rawError = await p.error();
+    const rawError = await p.stderrOutput();
     Deno.stdout.write(rawError);
   }
 
