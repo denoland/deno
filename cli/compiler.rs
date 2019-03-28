@@ -206,7 +206,8 @@ pub fn compile_sync(
     let specifier_ = specifier.clone().to_string();
     let referrer_ = referrer.clone().to_string();
 
-    tokio::spawn(lazy(move || {
+    let mut runtime = C_RUNTIME.lock().unwrap();
+    runtime.spawn(lazy(move || {
       debug!(
         "Running rust part of compile_sync specifier: {} referrer: {}",
         specifier_, referrer_
