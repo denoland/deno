@@ -398,8 +398,13 @@ async function main() {
 
   const { code } = await p.status();
 
-  const rawOutput = await p.output();
-  Deno.stdout.write(rawOutput);
+  if (code === 0) {
+    const rawOutput = await p.output();
+    Deno.stdout.write(rawOutput);
+  } else {
+    const rawError = await p.stderrOutput();
+    Deno.stdout.write(rawError);
+  }
 
   Deno.exit(code);
 }
