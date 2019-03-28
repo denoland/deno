@@ -386,7 +386,7 @@ fn op_fetch_module_meta_data(
     "Sanity check"
   );
 
-  let use_cache = sc.state().flags.reload;
+  let use_cache = !sc.state().flags.reload;
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
