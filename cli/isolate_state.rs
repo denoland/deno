@@ -52,13 +52,7 @@ pub struct IsolateState {
   pub workers: Mutex<WebWorkerTable>,
 }
 
-// TODO(afinch7) abstract out IsolateState to a trait, since
-// some isolates don't require or shouldn't be given some
-// state data
 impl IsolateState {
-  /// main_module should be a fully qualified url
-  /// argv will be used to determine main module
-  /// if not sepcified
   pub fn new(
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
