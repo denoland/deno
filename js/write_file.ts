@@ -1,35 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
-
-function req(
-  filename: string,
-  data: Uint8Array,
-  options: WriteFileOptions
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
-  const builder = flatbuffers.createBuilder();
-  const filename_ = builder.createString(filename);
-  msg.WriteFile.startWriteFile(builder);
-  msg.WriteFile.addFilename(builder, filename_);
-  // Perm is not updated by default
-  if (options.perm !== undefined && options.perm !== null) {
-    msg.WriteFile.addUpdatePerm(builder, true);
-    msg.WriteFile.addPerm(builder, options.perm!);
-  } else {
-    msg.WriteFile.addUpdatePerm(builder, false);
-    msg.WriteFile.addPerm(builder, 0o666);
-  }
-  // Create is turned on by default
-  if (options.create !== undefined) {
-    msg.WriteFile.addIsCreate(builder, !!options.create);
-  } else {
-    msg.WriteFile.addIsCreate(builder, true);
-  }
-  msg.WriteFile.addIsAppend(builder, !!options.append);
-  const inner = msg.WriteFile.endWriteFile(builder);
-  return [builder, msg.Any.WriteFile, inner, data];
-}
+import { stat, statSync } from "./stat";
+import { open, openSync } from "./files";
+import { chmod, chmodSync } from "./chmod";
 
 /** Options for writing to a file.
  * `perm` would change the file's permission if set.
@@ -53,7 +25,23 @@ export function writeFileSync(
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): void {
-  dispatch.sendSync(...req(filename, data, options));
+  if (options.create !== undefined) {
+    const create = !!options.create;
+    if (!create) {
+      // verify that file exists
+      statSync(filename);
+    }
+  }
+
+  const openMode = !!options.append ? "a" : "w";
+  const file = openSync(filename, openMode);
+
+  if (options.perm !== undefined && options.perm !== null) {
+    chmodSync(filename, options.perm);
+  }
+
+  file.writeSync(data);
+  file.close();
 }
 
 /** Write a new file, with given filename and data.
@@ -67,5 +55,21 @@ export async function writeFile(
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): Promise<void> {
-  await dispatch.sendAsync(...req(filename, data, options));
+  if (options.create !== undefined) {
+    const create = !!options.create;
+    if (!create) {
+      // verify that file exists
+      await stat(filename);
+    }
+  }
+
+  const openMode = !!options.append ? "a" : "w";
+  const file = await open(filename, openMode);
+
+  if (options.perm !== undefined && options.perm !== null) {
+    await chmod(filename, options.perm);
+  }
+
+  await file.write(data);
+  file.close();
 }

@@ -6,12 +6,16 @@ export { chdir, cwd } from "./dir";
 export {
   File,
   open,
+  openSync,
   stdin,
   stdout,
   stderr,
   read,
+  readSync,
   write,
+  writeSync,
   seek,
+  seekSync,
   close,
   OpenMode
 } from "./files";
@@ -21,9 +25,12 @@ export {
   ReadResult,
   SeekMode,
   Reader,
+  SyncReader,
   Writer,
+  SyncWriter,
   Closer,
   Seeker,
+  SyncSeeker,
   ReadCloser,
   WriteCloser,
   ReadSeeker,
@@ -31,7 +38,7 @@ export {
   ReadWriteCloser,
   ReadWriteSeeker
 } from "./io";
-export { Buffer, readAll } from "./buffer";
+export { Buffer, readAll, readAllSync } from "./buffer";
 export { mkdirSync, mkdir } from "./mkdir";
 export {
   makeTempDirSync,
