@@ -29,8 +29,9 @@ class Parser {
   _sanitize(): void {
     const out = [];
     for (let i = 0; i < this.tomlLines.length; i++) {
-      const s = this.tomlLines[i].split("#")[0];
-      if (s !== "") {
+      const s = this.tomlLines[i];
+      const trimmed = s.trim();
+      if (trimmed !== "" && trimmed[0] !== "#") {
         out.push(s);
       }
     }
@@ -156,7 +157,7 @@ class Parser {
   }
   _isGroup(line: string): boolean {
     const t = line.trim();
-    return t[0] === "[" && t[t.length - 1] === "]";
+    return t[0] === "[" && /\[(.*)\]/.exec(t) ? true : false;
   }
   _isDeclaration(line: string): boolean {
     return line.split("=").length > 1;
@@ -183,28 +184,50 @@ class Parser {
     kv.value = this._parseData(line.slice(idx + 1));
     return kv;
   }
+  // TODO (zekth) Need refactor using ACC
   _parseData(dataString: string): unknown {
     dataString = dataString.trim();
+
     if (this._isDate(dataString)) {
-      return new Date(dataString);
+      return new Date(dataString.split("#")[0].trim());
     }
+
     if (this._isLocalTime(dataString)) {
-      return eval(`"${dataString}"`);
+      return eval(`"${dataString.split("#")[0].trim()}"`);
     }
-    if (dataString === "inf" || dataString === "+inf") {
+
+    const cut3 = dataString.substring(0, 3).toLowerCase();
+    const cut4 = dataString.substring(0, 4).toLowerCase();
+    if (cut3 === "inf" || cut4 === "+inf") {
       return Infinity;
     }
-    if (dataString === "-inf") {
+    if (cut4 === "-inf") {
       return -Infinity;
     }
-    if (
-      dataString === "nan" ||
-      dataString === "+nan" ||
-      dataString === "-nan"
-    ) {
+
+    if (cut3 === "nan" || cut4 === "+nan" || cut4 === "-nan") {
       return NaN;
     }
-    // inline table
+
+    // If binary / octal / hex
+    const hex = /(0(?:x|o|b)[0-9a-f_]*)[^#]/gi.exec(dataString);
+    if (hex && hex[0]) {
+      return hex[0].trim();
+    }
+
+    const testNumber = this._isParsableNumber(dataString);
+    if (testNumber && !isNaN(testNumber as number)) {
+      return testNumber;
+    }
+
+    const invalidArr = /,\]/g.exec(dataString);
+    if (invalidArr) {
+      dataString = dataString.replace(/,]/g, "]");
+    }
+    const m = /(?:\'|\[|{|\").*(?:\'|\]|\"|})\s*[^#]/g.exec(dataString);
+    if (m) {
+      dataString = m[0].trim();
+    }
     if (dataString[0] === "{" && dataString[dataString.length - 1] === "}") {
       const reg = /([a-zA-Z0-9-_\.]*) (=)/gi;
       let result;
@@ -218,17 +241,6 @@ class Parser {
       // TODO : unflat if necessary
       return JSON.parse(dataString);
     }
-    // If binary / octal / hex
-    if (
-      dataString[0] === "0" &&
-      (dataString[1] === "b" || dataString[1] === "o" || dataString[1] === "x")
-    ) {
-      return dataString;
-    }
-
-    if (this._isParsableNumber(dataString)) {
-      return eval(dataString.replace(/_/g, ""));
-    }
 
     // Handle First and last EOL for multiline strings
     if (dataString.startsWith(`"\\n`)) {
@@ -241,18 +253,19 @@ class Parser {
     } else if (dataString.endsWith(`\\n'`)) {
       dataString = dataString.replace(`\\n'`, `'`);
     }
-
-    // dataString = dataString.replace(/\\/, "\\\\");
-
     return eval(dataString);
   }
   _isLocalTime(str: string): boolean {
     const reg = /(\d{2}):(\d{2}):(\d{2})/;
     return reg.test(str);
   }
-  _isParsableNumber(dataString: string): boolean {
-    let d = dataString.replace(/_/g, "");
-    return !isNaN(parseFloat(d));
+  _isParsableNumber(dataString: string): number | boolean {
+    const m = /((?:\+|-|)[0-9_\.e+\-]*)[^#]/i.exec(dataString.trim());
+    if (!m) {
+      return false;
+    } else {
+      return parseFloat(m[0].replace(/_/g, ""));
+    }
   }
   _isDate(dateStr: string): boolean {
     const reg = /\d{4}-\d{2}-\d{2}/;

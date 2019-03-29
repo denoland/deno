@@ -149,7 +149,8 @@ test({
       deno: "is",
       not: "[node]",
       regex: "<ic*s*>",
-      NANI: "何?!"
+      NANI: "何?!",
+      comment: "Comment inside # the comment"
     };
     const actual = parseFile(path.join(testFilesDir, "simple.toml"));
     assertEquals(actual, expected);
