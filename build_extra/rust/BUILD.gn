@@ -85,7 +85,7 @@ rust_crate("byteorder") {
 
 rust_crate("bytes") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/bytes-0.4.11/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/bytes-0.4.12/src/lib.rs"
   extern = [
     ":byteorder",
     ":iovec",
@@ -98,45 +98,7 @@ rust_crate("bytes") {
 
 rust_crate("cfg_if") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/cfg-if-0.1.6/src/lib.rs"
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
-
-rust_crate("crossbeam") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-0.6.0/src/lib.rs"
-  features = [
-    "crossbeam-epoch",
-    "crossbeam-utils",
-    "default",
-    "std",
-  ]
-  extern = [
-    ":cfg_if",
-    ":crossbeam_channel",
-    ":crossbeam_deque",
-    ":crossbeam_epoch",
-    ":crossbeam_utils",
-    ":lazy_static",
-    ":num_cpus",
-    ":parking_lot",
-  ]
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
-
-rust_crate("crossbeam_channel") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-channel-0.3.8/src/lib.rs"
-  extern = [
-    ":crossbeam_utils",
-    ":smallvec",
-  ]
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/cfg-if-0.1.7/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -145,7 +107,7 @@ rust_crate("crossbeam_channel") {
 
 rust_crate("crossbeam_deque") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-deque-0.6.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-deque-0.7.1/src/lib.rs"
   extern = [
     ":crossbeam_epoch",
     ":crossbeam_utils",
@@ -173,6 +135,16 @@ rust_crate("crossbeam_epoch") {
     ":memoffset",
     ":scopeguard",
   ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_crate("crossbeam_queue") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-queue-0.1.2/src/lib.rs"
+  extern = [ ":crossbeam_utils" ]
   args = [
     "--cap-lints",
     "allow",
@@ -285,7 +257,7 @@ rust_crate("getopts") {
 
 rust_crate("h2") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.16/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.17/src/lib.rs"
   extern = [
     ":byteorder",
     ":bytes",
@@ -336,7 +308,7 @@ rust_crate("httparse") {
 
 rust_crate("hyper") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.24/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.25/src/lib.rs"
   features = [
     "__internal_flaky_tests",
     "default",
@@ -379,17 +351,22 @@ rust_crate("hyper") {
 
 rust_crate("hyper_rustls") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-rustls-0.16.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-rustls-0.16.1/src/lib.rs"
+  features = [
+    "ct-logs",
+    "default",
+    "hyper",
+    "tokio-runtime",
+    "webpki-roots",
+  ]
   extern = [
     ":bytes",
     ":ct_logs",
     ":futures",
-    ":http",
     ":hyper",
     ":rustls",
     ":tokio_io",
     ":tokio_rustls",
-    ":tokio_tcp",
     ":webpki",
     ":webpki_roots",
   ]
@@ -484,7 +461,7 @@ rust_crate("lazycell") {
 
 rust_crate("libc") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.49/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.51/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -499,6 +476,7 @@ rust_crate("libc") {
     "libc_align",
     "libc_const_size_of",
     "libc_core_cvoid",
+    "libc_packedN",
     "libc_priv_mod_use",
     "libc_union",
   ]
@@ -845,7 +823,7 @@ rust_crate("rand_jitter") {
 
 rust_crate("rand_os") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_os-0.1.2/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_os-0.1.3/src/lib.rs"
   extern = [ ":rand_core" ]
   args = [
     "--cap-lints",
@@ -899,7 +877,7 @@ rust_crate("rand_xorshift") {
 
 rust_crate("regex") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.2/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -1145,7 +1123,7 @@ rust_crate("sct") {
 
 rust_crate("serde") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.88/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.89/src/lib.rs"
   features = [
     "default",
     "std",
@@ -1158,6 +1136,7 @@ rust_crate("serde") {
   # Added by custom-build script.
   cfg = [
     "core_duration",
+    "core_reverse",
     "de_boxed_c_str",
     "de_rc_dst",
     "integer128",
@@ -1169,7 +1148,7 @@ rust_crate("serde") {
 
 rust_crate("serde_json") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.38/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.39/src/lib.rs"
   features = [ "default" ]
   extern = [
     ":itoa",
@@ -1304,7 +1283,7 @@ rust_crate("time") {
 
 rust_crate("tokio") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.15/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.18/src/lib.rs"
   features = [
     "bytes",
     "codec",
@@ -1328,6 +1307,7 @@ rust_crate("tokio") {
     "tokio-tcp",
     "tokio-threadpool",
     "tokio-timer",
+    "tokio-trace-core",
     "tokio-udp",
     "tokio-uds",
     "udp",
@@ -1348,6 +1328,7 @@ rust_crate("tokio") {
     ":tokio_tcp",
     ":tokio_threadpool",
     ":tokio_timer",
+    ":tokio_trace_core",
     ":tokio_udp",
   ]
   args = [
@@ -1375,7 +1356,7 @@ rust_crate("tokio_codec") {
 
 rust_crate("tokio_current_thread") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-current-thread-0.1.4/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-current-thread-0.1.6/src/lib.rs"
   extern = [
     ":futures",
     ":tokio_executor",
@@ -1388,7 +1369,7 @@ rust_crate("tokio_current_thread") {
 
 rust_crate("tokio_executor") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.6/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.7/src/lib.rs"
   extern = [
     ":crossbeam_utils",
     ":futures",
@@ -1401,7 +1382,7 @@ rust_crate("tokio_executor") {
 
 rust_crate("tokio_fs") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-fs-0.1.5/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-fs-0.1.6/src/lib.rs"
   extern = [
     ":futures",
     ":tokio_io",
@@ -1415,7 +1396,7 @@ rust_crate("tokio_fs") {
 
 rust_crate("tokio_io") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-io-0.1.11/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-io-0.1.12/src/lib.rs"
   extern = [
     ":bytes",
     ":futures",
@@ -1456,7 +1437,7 @@ rust_crate("tokio_process") {
 
 rust_crate("tokio_reactor") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-reactor-0.1.8/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-reactor-0.1.9/src/lib.rs"
   extern = [
     ":crossbeam_utils",
     ":futures",
@@ -1468,6 +1449,7 @@ rust_crate("tokio_reactor") {
     ":slab",
     ":tokio_executor",
     ":tokio_io",
+    ":tokio_sync",
   ]
   args = [
     "--cap-lints",
@@ -1477,7 +1459,7 @@ rust_crate("tokio_reactor") {
 
 rust_crate("tokio_rustls") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-rustls-0.9.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-rustls-0.9.1/src/lib.rs"
   features = [
     "default",
     "futures",
@@ -1498,8 +1480,11 @@ rust_crate("tokio_rustls") {
 
 rust_crate("tokio_sync") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.2/src/lib.rs"
-  extern = [ ":futures" ]
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.4/src/lib.rs"
+  extern = [
+    ":fnv",
+    ":futures",
+  ]
   args = [
     "--cap-lints",
     "allow",
@@ -1525,11 +1510,10 @@ rust_crate("tokio_tcp") {
 
 rust_crate("tokio_threadpool") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-threadpool-0.1.11/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-threadpool-0.1.13/src/lib.rs"
   extern = [
-    ":crossbeam",
-    ":crossbeam_channel",
     ":crossbeam_deque",
+    ":crossbeam_queue",
     ":crossbeam_utils",
     ":futures",
     ":log",
@@ -1553,6 +1537,16 @@ rust_crate("tokio_timer") {
     ":slab",
     ":tokio_executor",
   ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_crate("tokio_trace_core") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-trace-core-0.1.0/src/lib.rs"
+  extern = [ ":lazy_static" ]
   args = [
     "--cap-lints",
     "allow",
@@ -1764,7 +1758,7 @@ rust_crate("webpki_roots") {
 if (is_posix) {
   rust_crate("arc_swap") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/arc-swap-0.3.7/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/arc-swap-0.3.8/src/lib.rs"
     args = [
       "--cap-lints",
       "allow",
