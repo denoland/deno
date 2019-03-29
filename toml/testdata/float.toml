@@ -1,17 +1,17 @@
 [float]
 # fractional
-flt1 = +1.0
-flt2 = 3.1415
-flt3 = -0.01
+flt1 = +1.0 # Comment
+flt2 = 3.1415 # Comment
+flt3 = -0.01 # Comment
 
 # exponent
-flt4 = 5e+22
-flt5 = 1e6
-flt6 = -2E-2
+flt4 = 5e+22 # Comment
+flt5 = 1e6 # Comment
+flt6 = -2E-2 # Comment
 
 # both
-flt7 = 6.626e-34
-flt8 = 224_617.445_991_228
+flt7 = 6.626e-34 # Comment
+flt8 = 224_617.445_991_228 # Comment
 # infinity
 sf1 = inf  # positive infinity
 sf2 = +inf # positive infinity
