@@ -21,10 +21,10 @@ def qrun(cmd, env=None):
 
 print "clang_format"
 qrun([clang_format_path, "-i", "-style", "Google"] +
-     find_exts(["libdeno"], [".cc", ".h"]))
+     find_exts(["core"], [".cc", ".h"]))
 
 print "gn format"
-for fn in ["BUILD.gn", ".gn"] + find_exts(["build_extra", "libdeno"],
+for fn in ["BUILD.gn", ".gn"] + find_exts(["build_extra", "core"],
                                           [".gn", ".gni"]):
     qrun(["third_party/depot_tools/gn", "format", fn], env=google_env())
 

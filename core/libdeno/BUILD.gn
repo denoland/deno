@@ -1,6 +1,6 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import("//deno.gni")
 import("//third_party/v8/gni/v8.gni")
-import("./deno.gni")
 
 config("deno_config") {
   include_dirs = [ "//third_party/v8" ]  # This allows us to v8/src/base/ libraries.

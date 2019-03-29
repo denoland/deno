@@ -5,7 +5,7 @@ import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
 import("//build_extra/rust/rust.gni")
 import("//third_party/v8/gni/v8.gni")
 import("//third_party/v8/snapshot_toolchain.gni")
-import("libdeno/deno.gni")
+import("deno.gni")
 
 group("default") {
   testonly = true
@@ -14,7 +14,7 @@ group("default") {
     ":hyper_hello",
     ":test_rs",
     "core:default",
-    "libdeno:test_cc",
+    "core/libdeno:test_cc",
   ]
 }
 
@@ -130,7 +130,6 @@ group("deno_deps") {
     ":msg_rs",
     ":snapshot_compiler",
     ":snapshot_deno",
-    "libdeno:libdeno_static_lib",
   ]
 }
 
@@ -142,8 +141,7 @@ group("deno_deps_cross") {
     ":compiler_bundle",
     ":main_bundle",
     ":msg_rs",
-    "libdeno:libdeno_static_lib",
-    "libdeno:test_cc",
+    "core/libdeno:test_cc",
   ]
 }
 
