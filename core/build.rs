@@ -33,6 +33,9 @@ fn main() {
   let is_default_target =
     env::var("TARGET").unwrap() == env::var("HOST").unwrap();
 
+  // cd into workspace root.
+  assert!(env::set_current_dir("..").is_ok());
+
   let cwd = env::current_dir().unwrap();
   // If not using host default target the output folder will change
   // target/release will become target/$TARGET/release

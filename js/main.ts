@@ -16,7 +16,7 @@ import { setLocation } from "./location";
 import * as deno from "./deno";
 
 // TODO(kitsonk) remove with `--types` below
-import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
+import libDts from "gen/cli/lib/lib.deno_runtime.d.ts!string";
 
 export default function denoMain(): void {
   const startResMsg = os.start();

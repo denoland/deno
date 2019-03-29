@@ -2,7 +2,7 @@
 import { assert, createResolvable, notImplemented, isTypedArray } from "./util";
 import * as flatbuffers from "./flatbuffers";
 import { sendAsync } from "./dispatch";
-import * as msg from "gen/msg_generated";
+import * as msg from "gen/cli/msg_generated";
 import * as domTypes from "./dom_types";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob";
