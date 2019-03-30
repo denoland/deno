@@ -1,7 +1,7 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 [package]
-name = "deno_core"
+name = "deno"
 version = "0.3.5"
 edition = "2018"
 

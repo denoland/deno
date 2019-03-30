@@ -3,7 +3,7 @@ import("//build_extra/rust/rust.gni")
 group("default") {
   testonly = true
   deps = [
-    ":deno_core",
+    ":deno",
     ":deno_core_http_bench",
     ":deno_core_http_bench_test",
     ":deno_core_test",
@@ -17,7 +17,7 @@ group("deno_core_deps") {
   ]
 }
 
-# deno_core does not depend on flatbuffers nor tokio.
+# deno does not depend on flatbuffers nor tokio.
 main_extern = [
   "$rust_build:futures",
   "$rust_build:libc",
@@ -25,7 +25,7 @@ main_extern = [
   "$rust_build:log",
 ]
 
-rust_crate("deno_core") {
+rust_crate("deno") {
   source_root = "lib.rs"
   deps = [
     ":deno_core_deps",
@@ -47,7 +47,7 @@ http_bench_extern = [
   "$rust_build:libc",
   "$rust_build:log",
   "$rust_build:tokio",
-  ":deno_core",
+  ":deno",
 ]
 if (is_win) {
   http_bench_extern += [ "$rust_build:winapi" ]

@@ -2,7 +2,7 @@
 use crate::ansi;
 use crate::deno_dir::DenoDir;
 use crate::msg;
-use deno_core::deno_mod;
+use deno::deno_mod;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
