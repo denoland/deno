@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as ts from "typescript";
-import * as msg from "gen/msg_generated";
+import * as msg from "gen/cli/msg_generated";
 import { window } from "./window";
 import { assetSourceCode } from "./assets";
 import { Console } from "./console";

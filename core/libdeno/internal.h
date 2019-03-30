@@ -104,7 +104,7 @@ class DenoIsolate {
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
-  denorecv_cb recv_cb_;
+  deno_recv_cb recv_cb_;
   size_t next_zero_copy_id_;
   void* user_data_;
 
@@ -170,7 +170,7 @@ static intptr_t external_references[] = {
 
 static const deno_buf empty_buf = {nullptr, 0, nullptr, 0, 0};
 
-Deno* NewFromSnapshot(void* user_data, denorecv_cb cb);
+Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);
 
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context);
 

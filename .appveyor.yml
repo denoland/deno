@@ -212,15 +212,15 @@ after_test:
       }
 
   # Verify that javascript and typescript files which are bundled by rollup are
-  # listed explicitly in BUILD.gn. This is not an air-tight check.
+  # listed explicitly in cli\BUILD.gn. This is not an air-tight check.
   # TODO: make rollup or another bundler write a depfile.
   - ps: |-
       $ignore = "test_util.ts", "unit_tests.ts", "*_test.ts"
       Get-ChildItem "js" -File -Force -Name                               |
         where   { $name = $_; -not ($ignore | where { $name -like $_ }) } |
-        where   { -not (Select-String -Pattern $_ -Path BUILD.gn `
+        where   { -not (Select-String -Pattern $_ -Path cli\BUILD.gn `
                                       -SimpleMatch -CaseSensitive) }      |
-        foreach { throw "$_ should be listed in BUILD.gn but isn't." }
+        foreach { throw "$_ should be listed in cli\BUILD.gn but isn't." }
 
   # Verify that generated ninja files do not use absolute path names.
   # If they do, it makes ccache/sccache much less effective.

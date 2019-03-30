@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 
 // GN_OUT_DIR is set either by build.rs (for the Cargo build), or by
 // build_extra/rust/run.py (for the GN+Ninja build).
-include!(concat!(env!("GN_OUT_DIR"), "/gen/msg_generated.rs"));
+include!(concat!(env!("GN_OUT_DIR"), "/gen/cli/msg_generated.rs"));
 
 impl<'a> From<&'a isolate_state::Metrics> for MetricsResArgs {
   fn from(m: &'a isolate_state::Metrics) -> Self {

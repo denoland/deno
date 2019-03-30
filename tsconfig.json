@@ -25,7 +25,7 @@
   "files": [
     "js/lib.web_assembly.d.ts",
     "core/core.d.ts",
-    "libdeno/libdeno.d.ts",
+    "core/libdeno/libdeno.d.ts",
     "js/main.ts",
     "js/compiler.ts"
   ]

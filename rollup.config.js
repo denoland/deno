@@ -18,7 +18,7 @@ const typescriptPath = path.resolve(
   __dirname,
   "third_party/node_modules/typescript/lib/typescript.js"
 );
-const gnArgs = fs.readFileSync("gen/gn_args.txt", "utf-8").trim();
+const gnArgs = fs.readFileSync("gen/cli/gn_args.txt", "utf-8").trim();
 
 // We will allow generated modules to be resolvable by TypeScript based on
 // the current build path
@@ -96,7 +96,7 @@ function resolveGenerated() {
   return {
     name: "resolve-msg-generated",
     resolveId(importee) {
-      if (importee.startsWith("gen/msg_generated")) {
+      if (importee.startsWith("gen/cli/msg_generated")) {
         return path.resolve(`${importee}.ts`);
       }
     }

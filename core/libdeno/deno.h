@@ -23,8 +23,8 @@ typedef struct deno_s Deno;
 // A callback to receive a message from a libdeno.send() javascript call.
 // control_buf is valid for only for the lifetime of this callback.
 // data_buf is valid until deno_respond() is called.
-typedef void (*denorecv_cb)(void* user_data, deno_buf control_buf,
-                            deno_buf zerop_copy_buf);
+typedef void (*deno_recv_cb)(void* user_data, deno_buf control_buf,
+                             deno_buf zerop_copy_buf);
 
 void deno_init();
 const char* deno_v8_version();
@@ -34,7 +34,7 @@ typedef struct {
   int will_snapshot;       // Default 0. If calling deno_get_snapshot 1.
   deno_buf load_snapshot;  // Optionally: A deno_buf from deno_get_snapshot.
   deno_buf shared;         // Shared buffer to be mapped to libdeno.shared
-  denorecv_cb recv_cb;     // Maps to libdeno.send() calls.
+  deno_recv_cb recv_cb;    // Maps to libdeno.send() calls.
 } deno_config;
 
 // Create a new deno isolate.
@@ -57,13 +57,13 @@ void deno_unlock(Deno* d);
 void deno_execute(Deno* d, void* user_data, const char* js_filename,
                   const char* js_source);
 
-// deno_respond sends up to one message back for every denorecv_cb made.
+// deno_respond sends up to one message back for every deno_recv_cb made.
 //
-// If this is called during denorecv_cb, the issuing libdeno.send() in
+// If this is called during deno_recv_cb, the issuing libdeno.send() in
 // javascript will synchronously return the specified buf as an ArrayBuffer (or
 // null if buf is empty).
 //
-// If this is called after denorecv_cb has returned, the deno_respond
+// If this is called after deno_recv_cb has returned, the deno_respond
 // will call into the JS callback specified by libdeno.recv().
 //
 // (Ideally, but not currently: After calling deno_respond(), the caller no
