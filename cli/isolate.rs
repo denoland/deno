@@ -8,10 +8,10 @@ use crate::isolate_state::IsolateStateContainer;
 use crate::js_errors;
 use crate::msg;
 use crate::tokio_util;
-use deno_core;
-use deno_core::deno_mod;
-use deno_core::Behavior;
-use deno_core::JSError;
+use deno;
+use deno::deno_mod;
+use deno::Behavior;
+use deno::JSError;
 use futures::Async;
 use futures::Future;
 use std::sync::atomic::Ordering;
@@ -20,9 +20,9 @@ use std::sync::Arc;
 pub trait DenoBehavior: Behavior + IsolateStateContainer + Send {}
 impl<T> DenoBehavior for T where T: Behavior + IsolateStateContainer + Send {}
 
-type CoreIsolate<B> = deno_core::Isolate<B>;
+type CoreIsolate<B> = deno::Isolate<B>;
 
-/// Wraps deno_core::Isolate to provide source maps, ops for the CLI, and
+/// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
 pub struct Isolate<B: Behavior> {
   inner: CoreIsolate<B>,

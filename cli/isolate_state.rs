@@ -5,7 +5,7 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::modules::Modules;
 use crate::permissions::DenoPermissions;
-use deno_core::Buf;
+use deno::Buf;
 use futures::sync::mpsc as async_mpsc;
 use std;
 use std::env;

@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use deno_core::v8_set_flags;
+use deno::v8_set_flags;
 use getopts;
 use getopts::Options;
 

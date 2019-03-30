@@ -1,13 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::isolate_state::*;
 use crate::ops;
-use deno_core::deno_buf;
-use deno_core::Behavior;
-use deno_core::Op;
-use deno_core::StartupData;
+use deno::deno_buf;
+use deno::Behavior;
+use deno::Op;
+use deno::StartupData;
 use std::sync::Arc;
 
-/// Implements deno_core::Behavior for the main Deno command-line.
+/// Implements deno::Behavior for the main Deno command-line.
 pub struct CliBehavior {
   startup_data: Option<StartupData>,
   pub state: Arc<IsolateState>,

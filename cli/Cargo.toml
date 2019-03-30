@@ -11,12 +11,12 @@ name = "deno"
 path = "main.rs"
 
 [package]
-name = "deno"
+name = "deno_cli"
 version = "0.3.5"
 edition = "2018"
 
 [dependencies]
-deno_core = { path = "../core" }
+deno = { path = "../core" }
 
 ansi_term = "0.11.0"
 atty = "0.2.11"

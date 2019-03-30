@@ -16,7 +16,7 @@ use crate::http_body::HttpBody;
 use crate::isolate_state::WorkerChannels;
 use crate::repl::Repl;
 
-use deno_core::Buf;
+use deno::Buf;
 
 use futures;
 use futures::Future;

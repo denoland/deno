@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-//! This mod adds source maps and ANSI color display to deno_core::JSError.
+//! This mod adds source maps and ANSI color display to deno::JSError.
 use crate::ansi;
-use deno_core::JSError;
-use deno_core::StackFrame;
+use deno::JSError;
+use deno::StackFrame;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
 use source_map_mappings::Mappings;

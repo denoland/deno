@@ -8,7 +8,7 @@ import("//third_party/v8/snapshot_toolchain.gni")
 import("../deno.gni")
 
 main_extern = [
-  "../core:deno_core",
+  "../core:deno",
 
   "$rust_build:ansi_term",
   "$rust_build:atty",
