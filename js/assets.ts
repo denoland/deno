@@ -8,6 +8,9 @@
 // Generated default library
 import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
 
+// Generated worker default library
+import libDtsWorker from "gen/lib/lib.deno_worker_runtime.d.ts!string";
+
 // Static libraries
 import libEs2015Dts from "/third_party/node_modules/typescript/lib/lib.es2015.d.ts!string";
 import libEs2015CollectionDts from "/third_party/node_modules/typescript/lib/lib.es2015.collection.d.ts!string";
@@ -39,12 +42,8 @@ import libEsnextDts from "/third_party/node_modules/typescript/lib/lib.esnext.d.
 import libEsnextIntlDts from "/third_party/node_modules/typescript/lib/lib.esnext.intl.d.ts!string";
 import libEsnextSymbolDts from "/third_party/node_modules/typescript/lib/lib.esnext.symbol.d.ts!string";
 
-// @internal
-export const assetSourceCode: { [key: string]: string } = {
-  // Generated library
-  "lib.deno_runtime.d.ts": libDts,
-
-  // Static libraries
+// Default static libraries for all compile jobs
+const defaultAssets: { [key: string]: string } = {
   "lib.es2015.collection.d.ts": libEs2015CollectionDts,
   "lib.es2015.core.d.ts": libEs2015CoreDts,
   "lib.es2015.d.ts": libEs2015Dts,
@@ -74,4 +73,20 @@ export const assetSourceCode: { [key: string]: string } = {
   "lib.esnext.bigint.d.ts": libEsnextBigintDts,
   "lib.esnext.intl.d.ts": libEsnextIntlDts,
   "lib.esnext.symbol.d.ts": libEsnextSymbolDts
+};
+
+// assests for normal compile jobs
+// @internal
+export const assetSourceCode: { [key: string]: string } = {
+  // Generated library
+  "lib.deno_runtime.d.ts": libDts,
+  ...defaultAssets
+};
+
+// assests for worker compile jobs
+// @internal
+export const assetSourceCodeWorkers: { [key: string]: string } = {
+  // Generated library
+  "lib.deno_runtime.d.ts": libDtsWorker,
+  ...defaultAssets
 };

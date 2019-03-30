@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use core::ops::Deref;
+use crate::flags::DenoFlags;
 use crate::isolate_state::*;
 use crate::js_errors::JSErrorColor;
 use crate::msg;
@@ -54,8 +55,10 @@ pub struct CompilerBehavior {
 }
 
 impl CompilerBehavior {
-  pub fn new(state: Arc<IsolateState>) -> Self {
-    Self { state }
+  pub fn new(flags: DenoFlags, argv_rest: Vec<String>) -> Self {
+    Self {
+      state: Arc::new(IsolateState::new(flags, argv_rest, None, true)),
+    }
   }
 }
 
@@ -91,6 +94,7 @@ impl WorkerBehavior for CompilerBehavior {
       self.state.flags.clone(),
       self.state.argv.clone(),
       Some(worker_channels),
+      true,
     ));
   }
 }
@@ -133,11 +137,11 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
   cell
     .get_or_insert_with(|| {
       let worker_result = workers::spawn(
-        CompilerBehavior::new(Arc::new(IsolateState::new(
+        CompilerBehavior::new(
           parent_state.flags.clone(),
           parent_state.argv.clone(),
-          None,
-        ))),
+        ),
+        "TS",
         WorkerInit::Script("compilerMain()".to_string()),
       );
       match worker_result {
@@ -177,10 +181,11 @@ fn show_compiler_error(err: JSError) -> ModuleMetaData {
   std::process::exit(1);
 }
 
-fn req(specifier: &str, referrer: &str) -> Buf {
+fn req(specifier: &str, referrer: &str, is_worker_main: bool) -> Buf {
   json!({
     "specifier": specifier,
     "referrer": referrer,
+    "isWorker": is_worker_main
   }).to_string()
   .into_boxed_str()
   .into_boxed_bytes()
@@ -192,6 +197,7 @@ pub fn compile_sync(
   referrer: &str,
   module_meta_data: &ModuleMetaData,
 ) -> ModuleMetaData {
+  let is_worker = parent_state.is_worker.clone();
   let shared = lazy_start(parent_state);
 
   let (local_sender, local_receiver) =
@@ -201,7 +207,7 @@ pub fn compile_sync(
   {
     let compiler_rid = shared.rid.clone();
     let module_meta_data_ = module_meta_data.clone();
-    let req_msg = req(specifier, referrer);
+    let req_msg = req(specifier, referrer, is_worker);
     let sender_arc = Arc::new(Some(local_sender));
     let specifier_ = specifier.clone().to_string();
     let referrer_ = referrer.clone().to_string();

@@ -102,14 +102,8 @@ export type TextDecoder = textEncoding.TextDecoder;
 
 window.performance = new performanceUtil.Performance();
 
-window.workerMain = workers.workerMain;
-
 window.Worker = workers.WorkerImpl;
 export type Worker = workers.Worker;
-
-// TODO(afinch7) replace this hack with a real solution at some point.
-// eslint-disable-next-line
-window.onmessage = (e: { data: any }): void => {};
 
 // below are interfaces that are available in TypeScript but
 // have different signatures

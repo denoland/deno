@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::flags::DenoFlags;
 use crate::isolate_state::*;
 use crate::ops;
 use crate::startup_data;
@@ -14,8 +15,10 @@ pub struct WebWorkerBehavior {
 }
 
 impl WebWorkerBehavior {
-  pub fn new(state: Arc<IsolateState>) -> Self {
-    Self { state }
+  pub fn new(flags: DenoFlags, argv_rest: Vec<String>) -> Self {
+    Self {
+      state: Arc::new(IsolateState::new(flags, argv_rest, None, true)),
+    }
   }
 }
 
@@ -33,7 +36,7 @@ impl IsolateStateContainer for &WebWorkerBehavior {
 
 impl Behavior for WebWorkerBehavior {
   fn startup_data(&mut self) -> Option<StartupData> {
-    Some(startup_data::deno_isolate_init())
+    Some(startup_data::worker_isolate_init())
   }
 
   fn dispatch(
@@ -51,6 +54,7 @@ impl WorkerBehavior for WebWorkerBehavior {
       self.state.flags.clone(),
       self.state.argv.clone(),
       Some(worker_channels),
+      true,
     ));
   }
 }

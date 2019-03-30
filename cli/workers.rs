@@ -71,14 +71,15 @@ pub enum WorkerInit {
 
 pub fn spawn<B: WorkerBehavior + 'static>(
   behavior: B,
+  worker_debug_name: &str,
   init: WorkerInit,
 ) -> Result<Worker<B>, RustOrJsError> {
   let state = behavior.state().clone();
   let mut worker = Worker::new(behavior);
 
   worker
-    .execute("denoMain()")
-    .expect("worker denoMain failed");
+    .execute(&format!("denoMain('{}')", worker_debug_name))
+    .expect("worker workerInit failed");
 
   worker
     .execute("workerMain()")
@@ -114,13 +115,16 @@ mod tests {
   use crate::js_errors::JSErrorColor;
   use crate::tokio_util;
   use futures::future::lazy;
-  use std::sync::Arc;
   use std::thread;
 
   #[test]
   fn test_spawn() {
     let worker_result = spawn(
-      CompilerBehavior::new(Arc::new(IsolateState::mock())),
+      CompilerBehavior::new(
+        IsolateState::mock().flags.clone(),
+        IsolateState::mock().argv.clone(),
+      ),
+      "TEST",
       WorkerInit::Script(
         r#"
       onmessage = function(e) {
@@ -181,7 +185,11 @@ mod tests {
   #[test]
   fn removed_from_resource_table_on_close() {
     let worker_result = spawn(
-      CompilerBehavior::new(Arc::new(IsolateState::mock())),
+      CompilerBehavior::new(
+        IsolateState::mock().flags.clone(),
+        IsolateState::mock().argv.clone(),
+      ),
+      "TEST",
       WorkerInit::Script("onmessage = () => close();".into()),
     );
     assert!(worker_result.is_ok());

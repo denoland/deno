@@ -1838,14 +1838,13 @@ fn op_create_worker(
 
   Box::new(futures::future::result(move || -> OpResult {
     let parent_state = sc.state().clone();
-    let worker_state = Arc::new(IsolateState::new(
+    let behavior = web_worker_behavior::WebWorkerBehavior::new(
       parent_state.flags.clone(),
       parent_state.argv.clone(),
-      None,
-    ));
-    let behavior = web_worker_behavior::WebWorkerBehavior::new(worker_state);
+    );
     match workers::spawn(
       behavior,
+      &format!("USER-WORKER-{}", specifier),
       workers::WorkerInit::Module(specifier.to_string()),
     ) {
       Ok(worker) => {

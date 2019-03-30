@@ -27,6 +27,7 @@
     "core/core.d.ts",
     "libdeno/libdeno.d.ts",
     "js/main.ts",
+    "js/workers_init.ts",
     "js/compiler.ts"
   ]
 }

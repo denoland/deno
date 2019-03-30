@@ -29,9 +29,38 @@ pub fn deno_isolate_init() -> StartupData {
   }
 }
 
+pub fn worker_isolate_init() -> StartupData {
+  if cfg!(feature = "no-snapshot-init") {
+    debug!("Worker isolate init without snapshots.");
+    #[cfg(not(feature = "check-only"))]
+    let source_bytes = include_bytes!(concat!(
+      env!("GN_OUT_DIR"),
+      "/gen/bundle/workers_init.js"
+    ));
+    #[cfg(feature = "check-only")]
+    let source_bytes = vec![];
+
+    StartupData::Script(Script {
+      filename: "gen/bundle/workers_init.js".to_string(),
+      source: std::str::from_utf8(&source_bytes[..]).unwrap().to_string(),
+    })
+  } else {
+    debug!("Deno isolate init with snapshots.");
+    #[cfg(not(any(feature = "check-only", feature = "no-snapshot-init")))]
+    let data =
+      include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/snapshot_worker.bin"));
+    #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
+    let data = vec![];
+
+    unsafe {
+      StartupData::Snapshot(deno_buf::from_raw_parts(data.as_ptr(), data.len()))
+    }
+  }
+}
+
 pub fn compiler_isolate_init() -> StartupData {
   if cfg!(feature = "no-snapshot-init") {
-    debug!("Deno isolate init without snapshots.");
+    debug!("Compiler isolate init without snapshots.");
     #[cfg(not(feature = "check-only"))]
     let source_bytes =
       include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/compiler.js"));
