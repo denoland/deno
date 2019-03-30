@@ -80,7 +80,7 @@ const libPreamble = `// Copyright 2018-2019 the Deno authors. All rights reserve
 `;
 
 // The path to the msg_generated file relative to the build path
-const MSG_GENERATED_PATH = "/gen/msg_generated.ts";
+const MSG_GENERATED_PATH = "/gen/cli/msg_generated.ts";
 
 // An array of enums we want to expose pub
 const MSG_GENERATED_ENUMS = ["ErrorKind"];

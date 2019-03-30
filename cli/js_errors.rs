@@ -64,9 +64,9 @@ impl<'a> fmt::Display for JSErrorColor<'a> {
     let e = self.0;
     if e.script_resource_name.is_some() {
       let script_resource_name = e.script_resource_name.as_ref().unwrap();
-      // Avoid showing internal code from gen/bundle/main.js
-      if script_resource_name != "gen/bundle/main.js"
-        && script_resource_name != "gen/bundle/compiler.js"
+      // Avoid showing internal code from gen/cli/bundle/main.js
+      if script_resource_name != "gen/cli/bundle/main.js"
+        && script_resource_name != "gen/cli/bundle/compiler.js"
       {
         if e.line_number.is_some() && e.start_column.is_some() {
           assert!(e.line_number.is_some());
@@ -216,14 +216,16 @@ fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
 #[cfg(not(feature = "check-only"))]
 fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
   match script_name {
-    "gen/bundle/main.js" => Some(
-      include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/bundle/main.js.map"))
-        .to_vec(),
-    ),
-    "gen/bundle/compiler.js" => Some(
+    "gen/cli/bundle/main.js" => Some(
       include_bytes!(concat!(
         env!("GN_OUT_DIR"),
-        "/gen/bundle/compiler.js.map"
+        "/gen/cli/bundle/main.js.map"
+      )).to_vec(),
+    ),
+    "gen/cli/bundle/compiler.js" => Some(
+      include_bytes!(concat!(
+        env!("GN_OUT_DIR"),
+        "/gen/cli/bundle/compiler.js.map"
       )).to_vec(),
     ),
     _ => None,
@@ -381,7 +383,7 @@ mod tests {
       frames: vec![StackFrame {
         line: 11,
         column: 12,
-        script_name: "gen/bundle/main.js".to_string(),
+        script_name: "gen/cli/bundle/main.js".to_string(),
         function_name: "setLogDebug".to_string(),
         is_eval: false,
         is_constructor: false,

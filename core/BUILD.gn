@@ -3,16 +3,19 @@ import("//build_extra/rust/rust.gni")
 group("default") {
   testonly = true
   deps = [
+    ":deno_core",
     ":deno_core_http_bench",
     ":deno_core_http_bench_test",
     ":deno_core_test",
   ]
 }
 
-deno_core_deps = [
-  "../libdeno:libdeno_static_lib",
-  "../libdeno:v8",
-]
+group("deno_core_deps") {
+  deps = [
+    "libdeno:libdeno_static_lib",
+    "libdeno:v8",
+  ]
+}
 
 # deno_core does not depend on flatbuffers nor tokio.
 main_extern = [
@@ -24,13 +27,17 @@ main_extern = [
 
 rust_crate("deno_core") {
   source_root = "lib.rs"
-  deps = deno_core_deps
+  deps = [
+    ":deno_core_deps",
+  ]
   extern = main_extern
 }
 
 rust_test("deno_core_test") {
   source_root = "lib.rs"
-  deps = deno_core_deps
+  deps = [
+    ":deno_core_deps",
+  ]
   extern = main_extern
 }
 
@@ -48,12 +55,16 @@ if (is_win) {
 
 rust_executable("deno_core_http_bench") {
   source_root = "http_bench.rs"
-  deps = deno_core_deps
+  deps = [
+    ":deno_core_deps",
+  ]
   extern = http_bench_extern
 }
 
 rust_test("deno_core_http_bench_test") {
   source_root = "http_bench.rs"
-  deps = deno_core_deps
+  deps = [
+    ":deno_core_deps",
+  ]
   extern = http_bench_extern
 }

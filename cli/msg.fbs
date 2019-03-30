@@ -388,7 +388,7 @@ table OpenRes {
 
 table Read {
   rid: uint32;
-  // (ptr, len) is passed as second parameter to libdeno.send().
+  // (ptr, len) is passed as second parameter to Deno.core.send().
 }
 
 table ReadRes {

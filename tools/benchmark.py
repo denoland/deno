@@ -60,17 +60,17 @@ def get_binary_sizes(build_dir):
         "deno":
         os.path.join(build_dir, "deno" + executable_suffix),
         "main.js":
-        os.path.join(build_dir, "gen/bundle/main.js"),
+        os.path.join(build_dir, "gen/cli/bundle/main.js"),
         "main.js.map":
-        os.path.join(build_dir, "gen/bundle/main.js.map"),
+        os.path.join(build_dir, "gen/cli/bundle/main.js.map"),
         "compiler.js":
-        os.path.join(build_dir, "gen/bundle/compiler.js"),
+        os.path.join(build_dir, "gen/cli/bundle/compiler.js"),
         "compiler.js.map":
-        os.path.join(build_dir, "gen/bundle/compiler.js.map"),
+        os.path.join(build_dir, "gen/cli/bundle/compiler.js.map"),
         "snapshot_deno.bin":
-        os.path.join(build_dir, "gen/snapshot_deno.bin"),
+        os.path.join(build_dir, "gen/cli/snapshot_deno.bin"),
         "snapshot_compiler.bin":
-        os.path.join(build_dir, "gen/snapshot_compiler.bin")
+        os.path.join(build_dir, "gen/cli/snapshot_compiler.bin")
     }
     sizes = {}
     for name, path in path_dict.items():

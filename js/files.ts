@@ -11,7 +11,7 @@ import {
   SyncSeeker
 } from "./io";
 import * as dispatch from "./dispatch";
-import * as msg from "gen/msg_generated";
+import * as msg from "gen/cli/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
 

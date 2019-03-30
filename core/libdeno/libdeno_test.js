@@ -46,8 +46,8 @@ global.RecvReturnBar = () => {
 global.DoubleRecvFails = () => {
   // Deno.core.recv is an internal function and should only be called once from the
   // runtime.
-  Deno.core.recv((channel, msg) => assert(false));
-  Deno.core.recv((channel, msg) => assert(false));
+  Deno.core.recv((_channel, _msg) => assert(false));
+  Deno.core.recv((_channel, _msg) => assert(false));
 };
 
 global.SendRecvSlice = () => {
