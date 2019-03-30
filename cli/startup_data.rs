@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use deno_core::deno_buf;
-use deno_core::{Script, StartupData};
+use deno::deno_buf;
+use deno::{Script, StartupData};
 
 pub fn deno_isolate_init() -> StartupData {
   if cfg!(feature = "no-snapshot-init") {
