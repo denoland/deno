@@ -19,7 +19,8 @@ test(async function benching() {
   bench(async function forAwaitFetchDenolandX10(b) {
     b.start();
     for (let i = 0; i < 10; i++) {
-      await fetch("https://deno.land/");
+      let r = await fetch("https://deno.land/");
+      await r.text();
     }
     b.stop();
   });
@@ -27,7 +28,12 @@ test(async function benching() {
   bench(async function promiseAllFetchDenolandX10(b) {
     const urls = new Array(10).fill("https://deno.land/");
     b.start();
-    await Promise.all(urls.map((denoland: string) => fetch(denoland)));
+    await Promise.all(
+      urls.map(async (denoland: string) => {
+        let r = await fetch(denoland);
+        await r.text();
+      })
+    );
     b.stop();
   });
 
