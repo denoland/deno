@@ -72,8 +72,11 @@ rust_test("deno_core_http_bench_test") {
 if (is_win) {
   static_lib_suffix = ".lib"
   llvm_target = "x86_64-pc-windows-msvc"
-} else {
+} else if (is_mac) {
   static_lib_suffix = ".a"
+  llvm_target = "x86_64-apple-darwin"
+} else {
+  assert(false)
 }
 
 deno_core_target_dir = "$root_out_dir/cargo_pkg/deno_core_target"
