@@ -83,8 +83,23 @@ impl Build {
       assert!(status.success());
     }
 
-    let status = Command::new("third_party/depot_tools/ninja")
-      .env("PYTHONPATH", "third_party/python_packages")
+    let mut ninja = Command::new("third_party/depot_tools/ninja");
+    let ninja = if cfg!(target_os = "windows") {
+      // Windows sucks.
+      let python_path = vec![
+        "third_party/python_packages".to_string(),
+        "third_party/python_packages/win32".to_string(),
+        "third_party/python_packages/win32/lib".to_string(),
+        "third_party/python_packages/Pythonwin".to_string(),
+      ].join(":");
+      ninja
+        .env("PYTHONPATH", python_path)
+        .env("PATH", "third_party/python_packages/pywin32_system32")
+    } else {
+      &mut ninja
+    };
+
+    let status = ninja
       .arg(gn_target)
       .arg("-C")
       .arg(&self.gn_out_dir)

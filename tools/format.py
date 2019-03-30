@@ -46,4 +46,4 @@ qrun([
     "third_party/rustfmt/" + platform() + "/rustfmt",
     "--config-path",
     rustfmt_config,
-] + find_exts(["cli", "core"], [".rs"]))
+] + find_exts(["cli", "core", "tools"], [".rs"]))
