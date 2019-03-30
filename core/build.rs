@@ -1,9 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
 // Run "cargo build -vv" if you want to see gn output.
-
-#[path = "../gn.rs"]
-mod gn;
+mod gn {
+  include!("../gn.rs");
+}
 
 fn main() {
   let build = gn::Build::setup();
