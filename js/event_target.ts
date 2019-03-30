@@ -16,7 +16,7 @@ export class EventTarget implements domTypes.EventTarget {
     _options?: boolean | domTypes.AddEventListenerOptions
   ): void {
     requiredArguments("EventTarget.addEventListener", arguments.length, 2);
-    if (!(type in this.listeners)) {
+    if (!this.listeners.hasOwnProperty(type)) {
       this.listeners[type] = [];
     }
     if (listener !== null) {
@@ -30,7 +30,7 @@ export class EventTarget implements domTypes.EventTarget {
     _options?: domTypes.EventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
-    if (type in this.listeners && callback !== null) {
+    if (this.listeners.hasOwnProperty(type) && callback !== null) {
       this.listeners[type] = this.listeners[type].filter(
         listener => listener !== callback
       );
@@ -39,7 +39,7 @@ export class EventTarget implements domTypes.EventTarget {
 
   public dispatchEvent(event: domTypes.Event): boolean {
     requiredArguments("EventTarget.dispatchEvent", arguments.length, 1);
-    if (!(event.type in this.listeners)) {
+    if (!this.listeners.hasOwnProperty(event.type)) {
       return true;
     }
     const stack = this.listeners[event.type].slice();

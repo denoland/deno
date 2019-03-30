@@ -163,6 +163,19 @@ testPerm({ read: true }, async function seekStart() {
   assertEquals(decoded, "world!");
 });
 
+testPerm({ read: true }, function seekSyncStart() {
+  const filename = "tests/hello.txt";
+  const file = Deno.openSync(filename);
+  // Deliberately move 1 step forward
+  file.readSync(new Uint8Array(1)); // "H"
+  // Skipping "Hello "
+  file.seekSync(6, Deno.SeekMode.SEEK_START);
+  const buf = new Uint8Array(6);
+  file.readSync(buf);
+  const decoded = new TextDecoder().decode(buf);
+  assertEquals(decoded, "world!");
+});
+
 testPerm({ read: true }, async function seekCurrent() {
   const filename = "tests/hello.txt";
   const file = await Deno.open(filename);
@@ -176,12 +189,35 @@ testPerm({ read: true }, async function seekCurrent() {
   assertEquals(decoded, "world!");
 });
 
+testPerm({ read: true }, function seekSyncCurrent() {
+  const filename = "tests/hello.txt";
+  const file = Deno.openSync(filename);
+  // Deliberately move 1 step forward
+  file.readSync(new Uint8Array(1)); // "H"
+  // Skipping "ello "
+  file.seekSync(5, Deno.SeekMode.SEEK_CURRENT);
+  const buf = new Uint8Array(6);
+  file.readSync(buf);
+  const decoded = new TextDecoder().decode(buf);
+  assertEquals(decoded, "world!");
+});
+
 testPerm({ read: true }, async function seekEnd() {
   const filename = "tests/hello.txt";
   const file = await Deno.open(filename);
   await file.seek(-6, Deno.SeekMode.SEEK_END);
   const buf = new Uint8Array(6);
   await file.read(buf);
+  const decoded = new TextDecoder().decode(buf);
+  assertEquals(decoded, "world!");
+});
+
+testPerm({ read: true }, function seekSyncEnd() {
+  const filename = "tests/hello.txt";
+  const file = Deno.openSync(filename);
+  file.seekSync(-6, Deno.SeekMode.SEEK_END);
+  const buf = new Uint8Array(6);
+  file.readSync(buf);
   const decoded = new TextDecoder().decode(buf);
   assertEquals(decoded, "world!");
 });

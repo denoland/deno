@@ -53,8 +53,7 @@ impl IsolateState {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
 
     Self {
-      dir: deno_dir::DenoDir::new(flags.reload, flags.recompile, custom_root)
-        .unwrap(),
+      dir: deno_dir::DenoDir::new(custom_root).unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,

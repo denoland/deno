@@ -5,7 +5,7 @@
 // https://github.com/golang/go/blob/master/LICENSE
 import { assertEquals, test } from "./test_util.ts";
 
-const { Buffer, readAll } = Deno;
+const { Buffer, readAll, readAllSync } = Deno;
 type Buffer = Deno.Buffer;
 
 // N controls how many iterations of certain checks are performed.
@@ -193,6 +193,23 @@ test(async function bufferReadFrom() {
   }
 });
 
+test(async function bufferReadFromSync() {
+  init();
+  const buf = new Buffer();
+  for (let i = 3; i < 30; i += 3) {
+    const s = await fillBytes(
+      buf,
+      "",
+      5,
+      testBytes.subarray(0, Math.floor(testBytes.byteLength / i))
+    );
+    const b = new Buffer();
+    b.readFromSync(buf);
+    const fub = new Uint8Array(testString.length);
+    await empty(b, s, fub);
+  }
+});
+
 test(async function bufferTestGrow() {
   const tmp = new Uint8Array(72);
   for (let startLen of [0, 100, 1000, 10000, 100000]) {
@@ -221,6 +238,16 @@ test(async function testReadAll() {
   init();
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = await readAll(reader);
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEquals(testBytes[i], actualBytes[i]);
+  }
+});
+
+test(function testReadAllSync() {
+  init();
+  const reader = new Buffer(testBytes.buffer as ArrayBuffer);
+  const actualBytes = readAllSync(reader);
   assertEquals(testBytes.byteLength, actualBytes.byteLength);
   for (let i = 0; i < testBytes.length; ++i) {
     assertEquals(testBytes[i], actualBytes[i]);

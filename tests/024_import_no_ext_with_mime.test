@@ -1,2 +1,2 @@
-args: tests/024_import_no_ext_with_mime.ts --reload --recompile
+args: tests/024_import_no_ext_with_mime.ts --reload
 output: tests/024_import_no_ext_with_mime.ts.out

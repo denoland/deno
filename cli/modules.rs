@@ -88,7 +88,8 @@ impl Modules {
   }
 
   pub fn print_file_info(&self, deno_dir: &DenoDir, filename: String) {
-    let maybe_out = deno_dir.fetch_module_meta_data(&filename, ".");
+    // TODO Note the --reload flag is ignored here.
+    let maybe_out = deno_dir.fetch_module_meta_data(&filename, ".", true);
     if maybe_out.is_err() {
       println!("{}", maybe_out.unwrap_err());
       return;

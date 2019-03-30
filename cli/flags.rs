@@ -16,7 +16,6 @@ pub struct DenoFlags {
   pub log_debug: bool,
   pub version: bool,
   pub reload: bool,
-  pub recompile: bool,
   pub allow_read: bool,
   pub allow_write: bool,
   pub allow_net: bool,
@@ -82,9 +81,6 @@ fn set_recognized_flags(
         }
         if matches.opt_present("reload") {
           flags.reload = true;
-        }
-        if matches.opt_present("recompile") {
-          flags.recompile = true;
         }
         if matches.opt_present("allow-read") {
           flags.allow_read = true;
@@ -154,11 +150,14 @@ pub fn set_flags(
   opts.optflag("", "allow-run", "Allow running subprocesses");
   opts.optflag("A", "allow-all", "Allow all permissions");
   opts.optflag("", "no-prompt", "Do not use prompts");
-  opts.optflag("", "recompile", "Force recompilation of TypeScript code");
   opts.optflag("h", "help", "Print this message");
   opts.optflag("D", "log-debug", "Log debug output");
   opts.optflag("v", "version", "Print the version");
-  opts.optflag("r", "reload", "Reload cached remote resources");
+  opts.optflag(
+    "r",
+    "reload",
+    "Reload source code cache (recompile TypeScript)",
+  );
   opts.optflag("", "v8-options", "Print V8 command line options");
   opts.optflag("", "types", "Print runtime TypeScript declarations");
   opts.optflag("", "prefetch", "Prefetch the dependencies");

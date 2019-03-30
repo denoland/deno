@@ -32,7 +32,7 @@ def run_unit_test2(cmd):
 def run_unit_test(deno_exe, permStr, flags=None):
     if flags is None:
         flags = []
-    cmd = [deno_exe, "--reload", "js/unit_tests.ts", permStr] + flags
+    cmd = [deno_exe, "js/unit_tests.ts", permStr] + flags
     run_unit_test2(cmd)
 
 
@@ -43,7 +43,7 @@ def run_unit_test(deno_exe, permStr, flags=None):
 # tests by the special string. permW0N0 means allow-write but not allow-net.
 # See js/test_util.ts for more details.
 def unit_tests(deno_exe):
-    run_unit_test(deno_exe, "permR0W0N0E0U0")
+    run_unit_test(deno_exe, "permR0W0N0E0U0", ["--reload"])
     run_unit_test(deno_exe, "permR1W0N0E0U0", ["--allow-read"])
     run_unit_test(deno_exe, "permR0W1N0E0U0", ["--allow-write"])
     run_unit_test(deno_exe, "permR1W1N0E0U0",

@@ -84,6 +84,10 @@ pub struct ModuleMetaData {
 }
 
 impl ModuleMetaData {
+  pub fn has_output_code_and_source_map(&self) -> bool {
+    self.maybe_output_code.is_some() && self.maybe_source_map.is_some()
+  }
+
   pub fn js_source(&self) -> String {
     if self.media_type == msg::MediaType::Json {
       return format!(
@@ -186,12 +190,8 @@ mod tests {
       maybe_source_map: None,
     };
 
-    out = compile_sync(
-      Arc::new(IsolateState::mock()),
-      specifier,
-      &referrer,
-      &mut out,
-    );
+    out =
+      compile_sync(Arc::new(IsolateState::mock()), specifier, &referrer, &out);
     assert!(
       out
         .maybe_output_code
