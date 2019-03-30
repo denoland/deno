@@ -14,7 +14,7 @@ export class EventTarget implements domTypes.EventTarget {
     listener: domTypes.EventListenerOrEventListenerObject | null,
     _options?: boolean | domTypes.AddEventListenerOptions
   ): void {
-    if (!(this.listeners.hasOwnProperty(type))) {
+    if (!this.listeners.hasOwnProperty(type)) {
       this.listeners[type] = [];
     }
     if (listener !== null) {
@@ -35,7 +35,7 @@ export class EventTarget implements domTypes.EventTarget {
   }
 
   public dispatchEvent(event: domTypes.Event): boolean {
-    if (!(this.listeners.hasOwnProperty(event.type))) {
+    if (!this.listeners.hasOwnProperty(event.type)) {
       return true;
     }
     const stack = this.listeners[event.type].slice();
