@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-//! This is used in cli/build.rs and core/build.rs to interface with the GN build
-//! system (which defines the deno build).
+// This is used in cli/build.rs and core/build.rs to interface with the GN build
+// system (which defines the deno build).
 
 use std::env;
 use std::path::{self, Path, PathBuf};
