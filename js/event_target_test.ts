@@ -64,3 +64,26 @@ test(function removingNullEventListenerShouldSucceed() {
   assertEquals(document.removeEventListener("x", null, true), undefined);
   assertEquals(document.removeEventListener("x", null), undefined);
 });
+
+test(function constructedEventTargetUseObjectPrototype() {
+  const target = new EventTarget();
+  const event = new Event("toString", { bubbles: true, cancelable: false });
+  let callCount = 0;
+
+  function listener(e): void {
+    assertEquals(e, event);
+    ++callCount;
+  }
+
+  target.addEventListener("toString", listener);
+
+  target.dispatchEvent(event);
+  assertEquals(callCount, 1);
+
+  target.dispatchEvent(event);
+  assertEquals(callCount, 2);
+
+  target.removeEventListener("toString", listener);
+  target.dispatchEvent(event);
+  assertEquals(callCount, 2);
+});
