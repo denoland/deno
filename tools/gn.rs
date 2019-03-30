@@ -79,6 +79,7 @@ impl Build {
       let status = Command::new("python")
         .env("DENO_BUILD_PATH", &self.gn_out_dir)
         .env("DENO_BUILD_MODE", &self.gn_mode)
+        .env("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
         .arg("./tools/setup.py")
         .status()
         .expect("setup.py failed");
@@ -107,6 +108,7 @@ impl Build {
       ninja
         .env("PYTHONPATH", python_path.join(";"))
         .env("PATH", path + &orig_path)
+        .env("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
     } else {
       &mut ninja
     };
