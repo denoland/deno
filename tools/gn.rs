@@ -87,8 +87,11 @@ impl Build {
     }
 
     let mut ninja = Command::new("third_party/depot_tools/ninja");
-    let ninja = if cfg!(target_os = "windows") {
-      // Windows sucks.
+    let ninja = if !cfg!(target_os = "windows") {
+      &mut ninja
+    } else {
+      // Windows needs special configuration. This is similar to the function of
+      // python_env() in //tools/util.py.
       let python_path: Vec<String> = vec![
         "third_party/python_packages",
         "third_party/python_packages/win32",
@@ -109,8 +112,6 @@ impl Build {
         .env("PYTHONPATH", python_path.join(";"))
         .env("PATH", path + &orig_path)
         .env("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
-    } else {
-      &mut ninja
     };
 
     let status = ninja
