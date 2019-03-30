@@ -81,13 +81,13 @@ deno_core_target_dir = "$root_out_dir/cargo_pkg/deno_core_target"
 copy("deno_core_target_static_lib") {
   lib_name = "libdeno$static_lib_suffix"
   sources = [
-    "$root_out_dir/obj/libdeno/$lib_name",
+    "$root_out_dir/obj/core/libdeno/$lib_name",
   ]
   outputs = [
     "$deno_core_target_dir/lib/$lib_name",
   ]
   deps = [
-    "../libdeno:libdeno_static_lib",
+    "libdeno:libdeno_static_lib",
   ]
 }
 
@@ -103,6 +103,7 @@ action("deno_core_target") {
   ]
   deps = [
     ":deno_core_target_static_lib",
+    "libdeno:libdeno_static_lib",
   ]
   outputs = [
     "$deno_core_target_dir/Cargo.toml",
