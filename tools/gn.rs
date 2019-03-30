@@ -84,6 +84,7 @@ impl Build {
     }
 
     let status = Command::new("third_party/depot_tools/ninja")
+      .env("PYTHONPATH", "third_party/python_packages")
       .arg(gn_target)
       .arg("-C")
       .arg(&self.gn_out_dir)
