@@ -96,7 +96,8 @@ impl Build {
       ].into_iter()
       .map(|p| self.root.join(p).into_os_string().into_string().unwrap())
       .collect();
-      let path = root
+      let path = self
+        .root
         .join("third_party/python_packages/pywin32_system32")
         .into_os_string()
         .into_string()
