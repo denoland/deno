@@ -8,6 +8,7 @@ use std::process::Command;
 
 pub struct Build {
   gn_mode: String,
+  root: PathBuf,
   pub gn_out_dir: String,
   pub gn_out_path: PathBuf,
   pub check_only: bool,
@@ -29,14 +30,14 @@ impl Build {
     // cd into workspace root.
     assert!(env::set_current_dir("..").is_ok());
 
-    let cwd = env::current_dir().unwrap();
+    let root = env::current_dir().unwrap();
     // If not using host default target the output folder will change
     // target/release will become target/$TARGET/release
     // Gn should also be using this output directory as well
     // most things will work with gn using the default
     // output directory but some tests depend on artifacts
     // being in a specific directory relative to the main build output
-    let gn_out_path = cwd.join(format!("target/{}", gn_mode.clone()));
+    let gn_out_path = root.join(format!("target/{}", gn_mode.clone()));
     let gn_out_dir = normalize_path(&gn_out_path);
 
     // Tell Cargo when to re-run this file. We do this first, so these directives
@@ -69,6 +70,7 @@ impl Build {
       gn_out_path,
       check_only,
       gn_mode,
+      root,
     }
   }
 
@@ -86,15 +88,22 @@ impl Build {
     let mut ninja = Command::new("third_party/depot_tools/ninja");
     let ninja = if cfg!(target_os = "windows") {
       // Windows sucks.
-      let python_path = vec![
-        "third_party/python_packages".to_string(),
-        "third_party/python_packages/win32".to_string(),
-        "third_party/python_packages/win32/lib".to_string(),
-        "third_party/python_packages/Pythonwin".to_string(),
-      ].join(":");
+      let python_path: Vec<String> = vec![
+        "third_party/python_packages",
+        "third_party/python_packages/win32",
+        "third_party/python_packages/win32/lib",
+        "third_party/python_packages/Pythonwin",
+      ].into_iter()
+      .map(|p| self.root.join(p).into_os_string().into_string().unwrap())
+      .collect();
+      let path = root
+        .join("third_party/python_packages/pywin32_system32")
+        .into_os_string()
+        .into_string()
+        .unwrap();
       ninja
-        .env("PYTHONPATH", python_path)
-        .env("PATH", "third_party/python_packages/pywin32_system32")
+        .env("PYTHONPATH", python_path.join(";"))
+        .env("PATH", path)
     } else {
       &mut ninja
     };
