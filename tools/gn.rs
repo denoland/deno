@@ -83,15 +83,12 @@ impl Build {
       assert!(status.success());
     }
 
-    // TODO(ry) call ninja directly here, not python.
-    let status = Command::new("python")
-      .env("DENO_BUILD_PATH", &self.gn_out_dir)
-      .env("DENO_BUILD_MODE", &self.gn_mode)
-      .arg("./tools/build.py")
+    let status = Command::new("third_party/depot_tools/ninja")
       .arg(gn_target)
-      .arg("-v")
+      .arg("-C")
+      .arg(&self.gn_out_dir)
       .status()
-      .expect("build.py failed");
+      .expect("ninja failed");
     assert!(status.success());
   }
 }
