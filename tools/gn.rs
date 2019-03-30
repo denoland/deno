@@ -8,6 +8,7 @@ use std::process::Command;
 
 pub struct Build {
   gn_mode: String,
+  root: PathBuf,
   pub gn_out_dir: String,
   pub gn_out_path: PathBuf,
   pub check_only: bool,
@@ -29,14 +30,14 @@ impl Build {
     // cd into workspace root.
     assert!(env::set_current_dir("..").is_ok());
 
-    let cwd = env::current_dir().unwrap();
+    let root = env::current_dir().unwrap();
     // If not using host default target the output folder will change
     // target/release will become target/$TARGET/release
     // Gn should also be using this output directory as well
     // most things will work with gn using the default
     // output directory but some tests depend on artifacts
     // being in a specific directory relative to the main build output
-    let gn_out_path = cwd.join(format!("target/{}", gn_mode.clone()));
+    let gn_out_path = root.join(format!("target/{}", gn_mode.clone()));
     let gn_out_dir = normalize_path(&gn_out_path);
 
     // Tell Cargo when to re-run this file. We do this first, so these directives
@@ -69,6 +70,7 @@ impl Build {
       gn_out_path,
       check_only,
       gn_mode,
+      root,
     }
   }
 
@@ -77,21 +79,47 @@ impl Build {
       let status = Command::new("python")
         .env("DENO_BUILD_PATH", &self.gn_out_dir)
         .env("DENO_BUILD_MODE", &self.gn_mode)
+        .env("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
         .arg("./tools/setup.py")
         .status()
         .expect("setup.py failed");
       assert!(status.success());
     }
 
-    // TODO(ry) call ninja directly here, not python.
-    let status = Command::new("python")
-      .env("DENO_BUILD_PATH", &self.gn_out_dir)
-      .env("DENO_BUILD_MODE", &self.gn_mode)
-      .arg("./tools/build.py")
+    let mut ninja = Command::new("third_party/depot_tools/ninja");
+    let ninja = if !cfg!(target_os = "windows") {
+      &mut ninja
+    } else {
+      // Windows needs special configuration. This is similar to the function of
+      // python_env() in //tools/util.py.
+      let python_path: Vec<String> = vec![
+        "third_party/python_packages",
+        "third_party/python_packages/win32",
+        "third_party/python_packages/win32/lib",
+        "third_party/python_packages/Pythonwin",
+      ].into_iter()
+      .map(|p| self.root.join(p).into_os_string().into_string().unwrap())
+      .collect();
+      let orig_path = String::from(";")
+        + &env::var_os("PATH").unwrap().into_string().unwrap();
+      let path = self
+        .root
+        .join("third_party/python_packages/pywin32_system32")
+        .into_os_string()
+        .into_string()
+        .unwrap();
+      ninja
+        .env("PYTHONPATH", python_path.join(";"))
+        .env("PATH", path + &orig_path)
+        .env("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
+    };
+
+    let status = ninja
       .arg(gn_target)
-      .arg("-v")
+      .arg("-C")
+      .arg(&self.gn_out_dir)
       .status()
-      .expect("build.py failed");
+      .expect("ninja failed");
     assert!(status.success());
   }
 }

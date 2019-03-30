@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Run "cargo build -vv" if you want to see gn output.
 mod gn {
-  include!("../gn.rs");
+  include!("../tools/gn.rs");
 }
 
 fn main() {
