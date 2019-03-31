@@ -102,8 +102,13 @@ pub fn set_flags(
   // args === ["deno", "--allow-net" "./test.ts"]
   let args = v8_set_flags(args);
 
-  let clap_app = App::new("Deno")
+  let clap_app = App::new("deno")
     .arg(
+      Arg::with_name("version")
+        .short("v")
+        .long("version")
+        .help("Print the version"),
+    ).arg(
       Arg::with_name("allow-read")
         .long("allow-read")
         .help("Allow file system read access"),
