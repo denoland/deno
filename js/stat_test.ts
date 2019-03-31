@@ -24,12 +24,12 @@ async function success(
   assertEquals(testingInfo.name, "testing");
   assertEquals(testingInfo.path, "testing");
 
-  const srcInfo = await func("src");
-  assert(!srcInfo.isFile());
-  assert(srcInfo.isDirectory());
-  assert(!srcInfo.isSymlink());
-  assertEquals(srcInfo.name, "src");
-  assertEquals(srcInfo.path, "src");
+  const jsInfo = await func("js");
+  assert(!jsInfo.isFile());
+  assert(jsInfo.isDirectory());
+  assert(!jsInfo.isSymlink());
+  assertEquals(jsInfo.name, "js");
+  assertEquals(jsInfo.path, "js");
 
   const jsOs = isWindows ? "js\\os.ts" : "js/os.ts";
   const jsOsInfo = await func(jsOs);
