@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use deno::v8_set_flags;
-use getopts;
-use getopts::Options;
+use clap::{App, Arg, ArgMatches};
+use deno_core::v8_set_flags;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -28,16 +27,6 @@ pub struct DenoFlags {
   pub fmt: bool,
 }
 
-pub fn get_usage(opts: &Options) -> String {
-  format!(
-    "Usage: deno script.ts {}
-Environment variables:
-        DENO_DIR        Set deno's base directory
-        NO_COLOR        Set to disable color",
-    opts.usage("")
-  )
-}
-
 /// Checks provided arguments for known options and sets appropriate Deno flags
 /// for them. Unknown options are returned for further use.
 /// Note:
@@ -51,83 +40,57 @@ Environment variables:
 /// not cause an error. I also think this is ok because missing any of the
 /// privileged flags is not destructive. Userland flag parsing would catch these
 /// errors.
-fn set_recognized_flags(
-  opts: &Options,
-  flags: &mut DenoFlags,
-  args: Vec<String>,
-) -> Result<Vec<String>, getopts::Fail> {
-  let mut rest = Vec::<String>::new();
-  // getopts doesn't allow parsing unknown options so we check them
-  // one-by-one and handle unrecognized ones manually
-  // better solution welcome!
-  for arg in args {
-    let fake_args = vec![arg];
-    match opts.parse(&fake_args) {
-      Err(getopts::Fail::UnrecognizedOption(_)) => {
-        rest.extend(fake_args);
-      }
-      Err(e) => {
-        return Err(e);
-      }
-      Ok(matches) => {
-        if matches.opt_present("help") {
-          flags.help = true;
-        }
-        if matches.opt_present("log-debug") {
-          flags.log_debug = true;
-        }
-        if matches.opt_present("version") {
-          flags.version = true;
-        }
-        if matches.opt_present("reload") {
-          flags.reload = true;
-        }
-        if matches.opt_present("allow-read") {
-          flags.allow_read = true;
-        }
-        if matches.opt_present("allow-write") {
-          flags.allow_write = true;
-        }
-        if matches.opt_present("allow-net") {
-          flags.allow_net = true;
-        }
-        if matches.opt_present("allow-env") {
-          flags.allow_env = true;
-        }
-        if matches.opt_present("allow-run") {
-          flags.allow_run = true;
-        }
-        if matches.opt_present("allow-all") {
-          flags.allow_read = true;
-          flags.allow_env = true;
-          flags.allow_net = true;
-          flags.allow_run = true;
-          flags.allow_read = true;
-          flags.allow_write = true;
-        }
-        if matches.opt_present("no-prompt") {
-          flags.no_prompts = true;
-        }
-        if matches.opt_present("types") {
-          flags.types = true;
-        }
-        if matches.opt_present("prefetch") {
-          flags.prefetch = true;
-        }
-        if matches.opt_present("info") {
-          flags.info = true;
-        }
-        if matches.opt_present("fmt") {
-          flags.fmt = true;
-        }
-
-        if !matches.free.is_empty() {
-          rest.extend(matches.free);
-        }
-      }
-    }
+fn set_recognized_flags(matches: ArgMatches, flags: &mut DenoFlags) {
+  if matches.is_present("help") {
+    flags.help = true;
   }
-  Ok(rest)
+  if matches.is_present("log-debug") {
+    flags.log_debug = true;
+  }
+  if matches.is_present("version") {
+    flags.version = true;
+  }
+  if matches.is_present("reload") {
+    flags.reload = true;
+  }
+  if matches.is_present("allow-read") {
+    flags.allow_read = true;
+  }
+  if matches.is_present("allow-write") {
+    flags.allow_write = true;
+  }
+  if matches.is_present("allow-net") {
+    flags.allow_net = true;
+  }
+  if matches.is_present("allow-env") {
+    flags.allow_env = true;
+  }
+  if matches.is_present("allow-run") {
+    flags.allow_run = true;
+  }
+  if matches.is_present("allow-all") {
+    flags.allow_read = true;
+    flags.allow_env = true;
+    flags.allow_net = true;
+    flags.allow_run = true;
+    flags.allow_read = true;
+    flags.allow_write = true;
+  }
+  if matches.is_present("no-prompt") {
+    flags.no_prompts = true;
+  }
+  if matches.is_present("types") {
+    flags.types = true;
+  }
+  if matches.is_present("prefetch") {
+    flags.prefetch = true;
+  }
+  if matches.is_present("info") {
+    flags.info = true;
+  }
+  if matches.is_present("fmt") {
+    flags.fmt = true;
+  }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -139,36 +102,94 @@ pub fn set_flags(
   // args === ["deno", "--allow-net" "./test.ts"]
   let args = v8_set_flags(args);
 
-  let mut opts = Options::new();
-  // TODO(kevinkassimo): v8_set_flags intercepts '-help' with single '-'
-  // Resolve that and then uncomment line below (enabling Go style -long-flag)
-  // opts.long_only(true);
-  opts.optflag("", "allow-read", "Allow file system read access");
-  opts.optflag("", "allow-write", "Allow file system write access");
-  opts.optflag("", "allow-net", "Allow network access");
-  opts.optflag("", "allow-env", "Allow environment access");
-  opts.optflag("", "allow-run", "Allow running subprocesses");
-  opts.optflag("A", "allow-all", "Allow all permissions");
-  opts.optflag("", "no-prompt", "Do not use prompts");
-  opts.optflag("h", "help", "Print this message");
-  opts.optflag("D", "log-debug", "Log debug output");
-  opts.optflag("v", "version", "Print the version");
-  opts.optflag(
-    "r",
-    "reload",
-    "Reload source code cache (recompile TypeScript)",
-  );
-  opts.optflag("", "v8-options", "Print V8 command line options");
-  opts.optflag("", "types", "Print runtime TypeScript declarations");
-  opts.optflag("", "prefetch", "Prefetch the dependencies");
-  opts.optflag("", "info", "Show source file related info");
-  opts.optflag("", "fmt", "Format code");
+  let clap_app = App::new("Deno")
+    .arg(
+      Arg::with_name("allow-read")
+        .long("allow-read")
+        .help("Allow file system read access"),
+    ).arg(
+      Arg::with_name("allow-write")
+        .long("allow-write")
+        .help("Allow file system write access"),
+    ).arg(
+      Arg::with_name("allow-net")
+        .long("allow-net")
+        .help("Allow network access"),
+    ).arg(
+      Arg::with_name("allow-env")
+        .long("allow-env")
+        .help("Allow environment access"),
+    ).arg(
+      Arg::with_name("allow-run")
+        .long("allow-run")
+        .help("Allow running subprocesses"),
+    ).arg(
+      Arg::with_name("allow-all")
+        .short("A")
+        .long("allow-all")
+        .help("Allow all permissions"),
+    ).arg(
+      Arg::with_name("no-prompt")
+        .long("no-prompt")
+        .help("Do not use prompts"),
+    ).arg(
+      Arg::with_name("log-debug")
+        .short("D")
+        .long("log-debug")
+        .help("Log debug output"),
+    ).arg(
+      Arg::with_name("reload")
+        .short("r")
+        .long("reload")
+        .help("Reload source code cache (recompile TypeScript)"),
+    ).arg(
+      Arg::with_name("v8-options")
+        .long("v8-options")
+        .help("Print V8 command line options"),
+    ).arg(
+      Arg::with_name("types")
+        .long("types")
+        .help("Print runtime TypeScript declarations"),
+    ).arg(
+      Arg::with_name("prefetch")
+        .long("prefetch")
+        .help("Prefetch the dependencies"),
+    ).arg(
+      Arg::with_name("info")
+        .long("info")
+        .help("Show source file related info"),
+    ).arg(Arg::with_name("fmt").long("fmt").help("Format code"))
+    .arg(Arg::with_name("entry_point").required(false).index(1))
+    .arg(
+      Arg::with_name("rest")
+        .required(false)
+        .multiple(true)
+        .index(2),
+    );
 
+  let matches = clap_app.get_matches_from(args);
+
+  // TODO(bartomieju): compatibility with old "opts" approach - to be refactored
+  let mut rest: Vec<String> = vec![String::from("deno")];
+
+  if matches.is_present("entry_point") {
+    let main_module = matches.value_of("entry_point").unwrap().to_string();
+    rest.extend(vec![main_module]);
+  }
+
+  if matches.is_present("rest") {
+    let vals: Vec<String> = matches
+      .values_of("rest")
+      .unwrap()
+      .map(String::from)
+      .collect();
+    rest.extend(vals);
+  }
+  // TODO: end
   let mut flags = DenoFlags::default();
-
-  let rest =
-    set_recognized_flags(&opts, &mut flags, args).map_err(|e| e.to_string())?;
-  Ok((flags, rest, get_usage(&opts)))
+  let usage: String = matches.usage().to_string();
+  set_recognized_flags(matches, &mut flags);
+  Ok((flags, rest, usage))
 }
 
 #[test]
