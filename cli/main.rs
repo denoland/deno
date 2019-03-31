@@ -33,7 +33,6 @@ mod startup_data;
 mod tokio_util;
 mod tokio_write;
 pub mod version;
-pub mod web_worker_behavior;
 pub mod workers;
 
 use crate::cli_behavior::CliBehavior;

@@ -1,13 +1,72 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::errors::*;
+use crate::flags::DenoFlags;
 use crate::isolate::{DenoBehavior, Isolate};
+use crate::isolate_state::IsolateState;
+use crate::isolate_state::IsolateStateContainer;
 use crate::isolate_state::WorkerChannels;
+use crate::ops;
 use crate::resources;
+use crate::startup_data;
+use deno_core::deno_buf;
+use deno_core::Behavior;
 use deno_core::Buf;
 use deno_core::JSError;
+use deno_core::Op;
+use deno_core::StartupData;
 use futures::sync::mpsc;
 use futures::Future;
 use futures::Poll;
+use std::sync::Arc;
+
+pub struct UserWorkerBehavior {
+  pub state: Arc<IsolateState>,
+}
+
+impl UserWorkerBehavior {
+  pub fn new(flags: DenoFlags, argv_rest: Vec<String>) -> Self {
+    Self {
+      state: Arc::new(IsolateState::new(flags, argv_rest, None, true)),
+    }
+  }
+}
+
+impl IsolateStateContainer for UserWorkerBehavior {
+  fn state(&self) -> Arc<IsolateState> {
+    self.state.clone()
+  }
+}
+
+impl IsolateStateContainer for &UserWorkerBehavior {
+  fn state(&self) -> Arc<IsolateState> {
+    self.state.clone()
+  }
+}
+
+impl Behavior for UserWorkerBehavior {
+  fn startup_data(&mut self) -> Option<StartupData> {
+    Some(startup_data::worker_isolate_init())
+  }
+
+  fn dispatch(
+    &mut self,
+    control: &[u8],
+    zero_copy: deno_buf,
+  ) -> (bool, Box<Op>) {
+    ops::dispatch_all(self, control, zero_copy, ops::op_selector_worker)
+  }
+}
+
+impl WorkerBehavior for UserWorkerBehavior {
+  fn set_internal_channels(&mut self, worker_channels: WorkerChannels) {
+    self.state = Arc::new(IsolateState::new(
+      self.state.flags.clone(),
+      self.state.argv.clone(),
+      Some(worker_channels),
+      true,
+    ));
+  }
+}
 
 /// Behavior trait specific to workers
 pub trait WorkerBehavior: DenoBehavior {

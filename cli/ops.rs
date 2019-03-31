@@ -18,7 +18,6 @@ use crate::resources::Resource;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
-use crate::web_worker_behavior;
 use crate::workers;
 use deno_core::deno_buf;
 use deno_core::Buf;
@@ -1838,7 +1837,7 @@ fn op_create_worker(
 
   Box::new(futures::future::result(move || -> OpResult {
     let parent_state = sc.state().clone();
-    let behavior = web_worker_behavior::WebWorkerBehavior::new(
+    let behavior = workers::UserWorkerBehavior::new(
       parent_state.flags.clone(),
       parent_state.argv.clone(),
     );

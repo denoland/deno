@@ -6,7 +6,7 @@ use crate::global_timer::GlobalTimer;
 use crate::modules::Modules;
 use crate::permissions::DenoPermissions;
 use crate::resources::ResourceId;
-use crate::web_worker_behavior::WebWorkerBehavior;
+use crate::workers::UserWorkerBehavior;
 use crate::workers::Worker;
 use deno_core::Buf;
 use futures::future::Shared;
@@ -21,8 +21,8 @@ use std::sync::Mutex;
 pub type WorkerSender = async_mpsc::Sender<Buf>;
 pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
 pub type WorkerChannels = (WorkerSender, WorkerReceiver);
-pub type WebWorkerTable =
-  HashMap<ResourceId, Shared<Worker<WebWorkerBehavior>>>;
+pub type UserWorkerTable =
+  HashMap<ResourceId, Shared<Worker<UserWorkerBehavior>>>;
 
 // AtomicU64 is currently unstable
 #[derive(Default)]
@@ -49,7 +49,7 @@ pub struct IsolateState {
   pub modules: Mutex<Modules>,
   pub worker_channels: Option<Mutex<WorkerChannels>>,
   pub global_timer: Mutex<GlobalTimer>,
-  pub workers: Mutex<WebWorkerTable>,
+  pub workers: Mutex<UserWorkerTable>,
   pub is_worker: bool,
 }
 
@@ -71,7 +71,7 @@ impl IsolateState {
       modules: Mutex::new(Modules::new()),
       worker_channels: worker_channels.map(Mutex::new),
       global_timer: Mutex::new(GlobalTimer::new()),
-      workers: Mutex::new(WebWorkerTable::new()),
+      workers: Mutex::new(UserWorkerTable::new()),
       is_worker,
     }
   }
