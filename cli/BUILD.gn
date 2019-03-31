@@ -12,6 +12,7 @@ main_extern = [
 
   "$rust_build:ansi_term",
   "$rust_build:atty",
+  "$rust_build:clap",
   "$rust_build:dirs",
   "$rust_build:flatbuffers",
   "$rust_build:futures",

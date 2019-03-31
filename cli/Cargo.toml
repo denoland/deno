@@ -20,6 +20,7 @@ deno = { path = "../core" }
 
 ansi_term = "0.11.0"
 atty = "0.2.11"
+clap = "2.32.0"
 dirs = "1.0.5"
 flatbuffers = "0.5.0"
 futures = "0.1.25"
