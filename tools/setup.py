@@ -115,7 +115,7 @@ def write_gn_args(args_filename, args):
 def generate_gn_args(mode):
     out = []
     if mode == "release":
-        out += ["is_official_build=true"]
+        out += ["is_official_build=true", "symbol_level=0"]
     elif mode == "debug":
         out += ["is_debug=true"]
     else:
