@@ -178,37 +178,35 @@ mod tests {
 
   #[test]
   fn test_spawn() {
-    let worker_result = spawn(
-      CompilerBehavior::new(
-        IsolateState::mock().flags.clone(),
-        IsolateState::mock().argv.clone(),
-      ),
-      "TEST",
-      WorkerInit::Script(
-        r#"
-      onmessage = function(e) {
-        console.log("msg from main script", e.data);
-        if (e.data == "exit") {
-          close();
-          return;
-        } else {
-          console.assert(e.data === "hi");
+    tokio_util::init(|| {
+      let worker_result = spawn(
+        CompilerBehavior::new(
+          IsolateState::mock().flags.clone(),
+          IsolateState::mock().argv.clone(),
+        ),
+        "TEST",
+        WorkerInit::Script(
+          r#"
+        onmessage = function(e) {
+          console.log("msg from main script", e.data);
+          if (e.data == "exit") {
+            close();
+            return;
+          } else {
+            console.assert(e.data === "hi");
+          }
+          postMessage([1, 2, 3]);
+          console.log("after postMessage");
         }
-        postMessage([1, 2, 3]);
-        console.log("after postMessage");
-      }
-      "#.into(),
-      ),
-    );
-    assert!(worker_result.is_ok());
-    let worker = worker_result.unwrap();
-    let resource = worker.resource.clone();
-    let resource_ = resource.clone();
+        "#.into(),
+        ),
+      );
+      assert!(worker_result.is_ok());
+      let worker = worker_result.unwrap();
+      let resource = worker.resource.clone();
+      let resource_ = resource.clone();
 
-    let builder = thread::Builder::new().name("test-worker".to_string());
-
-    let _tid = builder.spawn(move || {
-      tokio_util::run(lazy(move || {
+      tokio::spawn(lazy(move || {
         worker.then(move |r| -> Result<(), ()> {
           resource_.close();
           debug!("workers.rs after resource close");
@@ -218,48 +216,46 @@ mod tests {
           }
           Ok(())
         })
-      }))
-    });
+      }));
 
-    let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-    let r = resources::post_message_to_worker(resource.rid, msg).wait();
-    assert!(r.is_ok());
+      let r = resources::post_message_to_worker(resource.rid, msg).wait();
+      assert!(r.is_ok());
 
-    let maybe_msg = resources::get_message_from_worker(resource.rid)
-      .wait()
-      .unwrap();
-    assert!(maybe_msg.is_some());
-    // Check if message received is [1, 2, 3] in json
-    assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
+      let maybe_msg = resources::get_message_from_worker(resource.rid)
+        .wait()
+        .unwrap();
+      assert!(maybe_msg.is_some());
+      // Check if message received is [1, 2, 3] in json
+      assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
 
-    let msg = json!("exit")
-      .to_string()
-      .into_boxed_str()
-      .into_boxed_bytes();
-    let r = resources::post_message_to_worker(resource.rid, msg).wait();
-    assert!(r.is_ok());
+      let msg = json!("exit")
+        .to_string()
+        .into_boxed_str()
+        .into_boxed_bytes();
+      let r = resources::post_message_to_worker(resource.rid, msg).wait();
+      assert!(r.is_ok());
+    })
   }
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    let worker_result = spawn(
-      CompilerBehavior::new(
-        IsolateState::mock().flags.clone(),
-        IsolateState::mock().argv.clone(),
-      ),
-      "TEST",
-      WorkerInit::Script("onmessage = () => close();".into()),
-    );
-    assert!(worker_result.is_ok());
-    let worker = worker_result.unwrap();
-    let resource = worker.resource.clone();
-    let resource_ = resource.clone();
+    tokio_util::init(|| {
+      let worker_result = spawn(
+        CompilerBehavior::new(
+          IsolateState::mock().flags.clone(),
+          IsolateState::mock().argv.clone(),
+        ),
+        "TEST",
+        WorkerInit::Script("onmessage = () => close();".into()),
+      );
+      assert!(worker_result.is_ok());
+      let worker = worker_result.unwrap();
+      let resource = worker.resource.clone();
+      let resource_ = resource.clone();
 
-    let builder = thread::Builder::new().name("test-worker".to_string());
-
-    let _tid = builder.spawn(move || {
-      tokio_util::run(lazy(move || {
+      tokio::spawn(lazy(move || {
         worker.then(move |r| -> Result<(), ()> {
           resource_.close();
           debug!("workers.rs after resource close");
@@ -269,23 +265,23 @@ mod tests {
           }
           Ok(())
         })
-      }))
-    });
+      }));
 
-    assert_eq!(
-      resources::get_type(resource.rid),
-      Some("worker".to_string())
-    );
+      assert_eq!(
+        resources::get_type(resource.rid),
+        Some("worker".to_string())
+      );
 
-    let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-    let r = resources::post_message_to_worker(resource.rid, msg).wait();
-    assert!(r.is_ok());
-    println!("rid {:?}", resource.rid);
+      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+      let r = resources::post_message_to_worker(resource.rid, msg).wait();
+      assert!(r.is_ok());
+      println!("rid {:?}", resource.rid);
 
-    // TODO Need a way to get a future for when a resource closes.
-    // For now, just sleep for a bit.
-    // resource.close();
-    thread::sleep(std::time::Duration::from_millis(1000));
-    assert_eq!(resources::get_type(resource.rid), None);
+      // TODO Need a way to get a future for when a resource closes.
+      // For now, just sleep for a bit.
+      // resource.close();
+      thread::sleep(std::time::Duration::from_millis(1000));
+      assert_eq!(resources::get_type(resource.rid), None);
+    })
   }
 }
