@@ -47,8 +47,10 @@ pub fn worker_isolate_init() -> StartupData {
   } else {
     debug!("Deno isolate init with snapshots.");
     #[cfg(not(any(feature = "check-only", feature = "no-snapshot-init")))]
-    let data =
-      include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/cli/snapshot_worker.bin"));
+    let data = include_bytes!(concat!(
+      env!("GN_OUT_DIR"),
+      "/gen/cli/snapshot_worker.bin"
+    ));
     #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
     let data = vec![];
 
