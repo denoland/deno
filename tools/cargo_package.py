@@ -132,13 +132,13 @@ repository = "https://github.com/denoland/deno"
 
 cargo_toml_deps = Template("""
 [target.x86_64-apple-darwin.dependencies]
-deno-x86_64-pc-windows-msvc = "$VERSION"
+deno-x86_64-apple-darwin = "=$VERSION"
   
 [target.x86_64-pc-windows-msvc.dependencies]
-deno-x86_64-pc-windows-msvc = "$VERSION"
+deno-x86_64-pc-windows-msvc = "=$VERSION"
 
 [target.x86_64-unknown-linux-gnu.dependencies]
-deno-x86_64-unknown-linux-gnu = "$VERSION"
+deno-x86_64-unknown-linux-gnu = "=$VERSION"
 """)
 
 
