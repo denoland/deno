@@ -49,14 +49,14 @@ libc = "0.2.51"
 log = "0.4.6"
 serde_json = "1.0.39"
 
-#[target.x86_64-apple-darwin.dependencies]
-#deno-x86_64-pc-windows-msvc = "$VERSION"
+[target.x86_64-apple-darwin.dependencies]
+deno-x86_64-pc-windows-msvc = "$VERSION"
   
 [target.x86_64-pc-windows-msvc.dependencies]
 deno-x86_64-pc-windows-msvc = "$VERSION"
 
-#[target.x86_64-unknown-linux-gnu.dependencies]
-#deno-x86_64-unknown-linux-gnu = "$VERSION"
+[target.x86_64-unknown-linux-gnu.dependencies]
+deno-x86_64-unknown-linux-gnu = "$VERSION"
 """).substitute(VERSION=version)
 
 with open(cargo_toml_temp, "w") as f:

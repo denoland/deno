@@ -69,12 +69,15 @@ rust_test("deno_core_http_bench_test") {
   extern = http_bench_extern
 }
 
-if (is_win) {
-  static_lib_suffix = ".lib"
-  llvm_target = "x86_64-pc-windows-msvc"
-} else if (is_mac) {
+if (is_linux) {
+  llvm_target = "x86_64-unknown-linux-gnu"
   static_lib_suffix = ".a"
+} else if (is_mac) {
   llvm_target = "x86_64-apple-darwin"
+  static_lib_suffix = ".a"
+} else if (is_win) {
+  llvm_target = "x86_64-pc-windows-msvc"
+  static_lib_suffix = ".lib"
 } else {
   assert(false)
 }
