@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { core } from "./core";
 import * as flatbuffers from "./flatbuffers";
-import * as msg from "gen/msg_generated";
+import * as msg from "gen/cli/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
 

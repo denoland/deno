@@ -109,30 +109,6 @@ jobs:
           branch: master
           repo: denoland/deno
         skip-cleanup: true
-    
-    - name: "cargo release linux arm64"
-      os: linux
-      dist: xenial
-      script:
-      - ./tools/lint.py
-      - ./tools/test_format.py
-      - rustup target add aarch64-unknown-linux-gnu
-      - sudo apt update
-      - |-
-        sudo apt -yq --no-install-suggests --no-install-recommends install \
-        g++-5-aarch64-linux-gnu gcc-5-aarch64-linux-gnu g++-5-multilib \
-        libc6-arm64-cross
-      - build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
-      - export DENO_BUILD_ARGS="target_cpu=\"arm64\" v8_target_cpu=\"arm64\""
-      - export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="/usr/bin/aarch64-linux-gnu-gcc-5"
-      - export CC_aarch64_unknown_linux_gnu="/usr/bin/aarch64-linux-gnu-gcc-5"
-      - cargo build -vv --target=aarch64-unknown-linux-gnu --release --locked
-      - cargo build -vv --target=aarch64-unknown-linux-gnu --release --tests --locked
-      - sudo apt -yq install qemu qemu-user binfmt-support qemu-user-binfmt
-      - sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 /lib/ld-linux-aarch64.so.1
-      - export QEMU_LD_PREFIX=/usr/aarch64-linux-gnu
-      #- $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/deno tests/002_hello.ts
-      # - DENO_BUILD_MODE=release ./tools/test.py $CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release TODO(afinch7): Get the tests working
 
     - name: "cargo release linux x86_64"
       os: linux

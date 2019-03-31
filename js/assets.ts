@@ -6,10 +6,10 @@
 // There is a rollup plugin that will inline any module ending with `!string`
 
 // Generated default library
-import libDts from "gen/lib/lib.deno_runtime.d.ts!string";
+import libDts from "gen/cli/lib/lib.deno_runtime.d.ts!string";
 
 // Generated worker default library
-import libDtsWorker from "gen/lib/lib.deno_worker_runtime.d.ts!string";
+import libDtsWorker from "gen/cli/lib/lib.deno_worker_runtime.d.ts!string";
 
 // Static libraries
 import libEs2015Dts from "/third_party/node_modules/typescript/lib/lib.es2015.d.ts!string";

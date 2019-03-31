@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
+import { requiredArguments } from "./util";
 
 /* TODO: This is an incomplete implementation to provide functionality
  * for Event. A proper spec is still required for a proper Web API.
@@ -14,7 +15,8 @@ export class EventTarget implements domTypes.EventTarget {
     listener: domTypes.EventListenerOrEventListenerObject | null,
     _options?: boolean | domTypes.AddEventListenerOptions
   ): void {
-    if (!(type in this.listeners)) {
+    requiredArguments("EventTarget.addEventListener", arguments.length, 2);
+    if (!this.listeners.hasOwnProperty(type)) {
       this.listeners[type] = [];
     }
     if (listener !== null) {
@@ -27,7 +29,8 @@ export class EventTarget implements domTypes.EventTarget {
     callback: domTypes.EventListenerOrEventListenerObject | null,
     _options?: domTypes.EventListenerOptions | boolean
   ): void {
-    if (type in this.listeners && callback !== null) {
+    requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
+    if (this.listeners.hasOwnProperty(type) && callback !== null) {
       this.listeners[type] = this.listeners[type].filter(
         listener => listener !== callback
       );
@@ -35,7 +38,8 @@ export class EventTarget implements domTypes.EventTarget {
   }
 
   public dispatchEvent(event: domTypes.Event): boolean {
-    if (!(event.type in this.listeners)) {
+    requiredArguments("EventTarget.dispatchEvent", arguments.length, 1);
+    if (!this.listeners.hasOwnProperty(event.type)) {
       return true;
     }
     const stack = this.listeners[event.type].slice();

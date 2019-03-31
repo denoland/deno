@@ -8,7 +8,7 @@ use crate::permissions::DenoPermissions;
 use crate::resources::ResourceId;
 use crate::workers::UserWorkerBehavior;
 use crate::workers::Worker;
-use deno_core::Buf;
+use deno::Buf;
 use futures::future::Shared;
 use futures::sync::mpsc as async_mpsc;
 use std;

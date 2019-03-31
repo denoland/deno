@@ -125,7 +125,7 @@ impl<B: Behavior> Isolate<B> {
         None => libdeno::deno_buf::empty(),
       },
       shared: shared.as_deno_buf(),
-      recv_cb: Self::predispatch,
+      recv_cb: Self::pre_dispatch,
     };
     let libdeno_isolate = unsafe { libdeno::deno_new(config) };
 
@@ -166,7 +166,7 @@ impl<B: Behavior> Isolate<B> {
     }
   }
 
-  extern "C" fn predispatch(
+  extern "C" fn pre_dispatch(
     user_data: *mut c_void,
     control_argv0: deno_buf,
     zero_copy_buf: deno_buf,
@@ -612,7 +612,7 @@ mod tests {
   }
 
   #[test]
-  fn testdispatch() {
+  fn test_dispatch() {
     let mut isolate = TestBehavior::setup(TestBehaviorMode::AsyncImmediate);
     js_check(isolate.execute(
       "filename.js",
@@ -917,12 +917,12 @@ mod tests {
   }
 
   #[test]
-  fn overflow_res_multipledispatch_async() {
+  fn overflow_res_multiple_dispatch_async() {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
     let mut isolate = TestBehavior::setup(TestBehaviorMode::OverflowResAsync);
     js_check(isolate.execute(
-      "overflow_res_multipledispatch_async.js",
+      "overflow_res_multiple_dispatch_async.js",
       r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((buf) => {

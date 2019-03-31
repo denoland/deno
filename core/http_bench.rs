@@ -2,7 +2,7 @@
 ///
 /// > DENO_BUILD_MODE=release ./tools/build.py && \
 ///   ./target/release/deno_core_http_bench --multi-thread
-extern crate deno_core;
+extern crate deno;
 extern crate futures;
 extern crate libc;
 extern crate tokio;
@@ -12,7 +12,7 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 
-use deno_core::*;
+use deno::*;
 use futures::future::lazy;
 use std::collections::HashMap;
 use std::env;
@@ -168,7 +168,7 @@ fn main() {
     // TODO currently isolate.execute() must be run inside tokio, hence the
     // lazy(). It would be nice to not have that contraint. Probably requires
     // using v8::MicrotasksPolicy::kExplicit
-    let isolate = deno_core::Isolate::new(HttpBench());
+    let isolate = deno::Isolate::new(HttpBench());
 
     isolate.then(|r| {
       js_check(r);
@@ -177,7 +177,7 @@ fn main() {
   });
 
   let args: Vec<String> = env::args().collect();
-  let args = deno_core::v8_set_flags(args);
+  let args = deno::v8_set_flags(args);
   if args.len() > 1 && args[1] == "--multi-thread" {
     println!("multi-thread");
     tokio::run(main_future);

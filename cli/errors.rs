@@ -2,7 +2,7 @@
 use crate::js_errors::JSErrorColor;
 pub use crate::msg::ErrorKind;
 use crate::resolve_addr::ResolveAddrError;
-use deno_core::JSError;
+use deno::JSError;
 use hyper;
 use std;
 use std::fmt;
