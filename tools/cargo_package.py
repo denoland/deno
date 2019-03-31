@@ -34,8 +34,8 @@ lib_name = os.path.join(root_path, "target/release/obj/core/libdeno",
                         "libdeno" + static_lib_suffix)
 
 
-def get_version(cargo_toml_path):
-    for line in open(cargo_toml_path):
+def get_version(toml_path):
+    for line in open(toml_path):
         match = re.search('version = "(.*)"', line)
         if match:
             return match.group(1)
@@ -154,8 +154,8 @@ def mkdir_p(path):
 
 def generate(out_dir, filename, content):
     path = os.path.join(out_dir, filename)
-    dir = os.path.dirname(path)
-    mkdir_p(dir)
+    d = os.path.dirname(path)
+    mkdir_p(d)
     with open(path, "w") as f:
         f.write(content)
 
