@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use clap::{App, Arg, ArgMatches};
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use crate::ansi;
 use deno_core::v8_set_flags;
 
 // Creates vector of strings, Vec<String>
@@ -98,7 +99,16 @@ pub fn set_flags(
   // args === ["deno", "--allow-net" "./test.ts"]
   let args = v8_set_flags(args);
 
+  let mut app_settings: Vec<AppSettings> = vec![];
+
+  if ansi::use_color() {
+    app_settings.extend(vec![AppSettings::ColorAuto, AppSettings::ColoredHelp]);
+  } else {
+    app_settings.extend(vec![AppSettings::ColorNever]);
+  }
+
   let clap_app = App::new("deno")
+    .global_settings(&app_settings[..])
     .arg(
       Arg::with_name("version")
         .short("v")
