@@ -171,8 +171,8 @@ mod tests {
       .wait()
       .unwrap();
     assert!(maybe_msg.is_some());
-    // Check if message received is [1, 2, 3] as json encoded
-    assert_eq!(*maybe_msg.unwrap(), [91, 49, 44, 50, 44, 51, 93]);
+    // Check if message received is [1, 2, 3] in json
+    assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
 
     let msg = json!("exit")
       .to_string()
