@@ -133,6 +133,34 @@ pub struct deno_config {
   pub recv_cb: deno_recv_cb,
 }
 
+#[cfg(not(windows))]
+#[link(name = "deno")]
+extern "C" {}
+
+#[cfg(any(target_os = "macos", target_os = "freebsd"))]
+#[link(name = "c++")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "libdeno")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "shlwapi")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "winmm")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "ws2_32")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "dbghelp")]
+extern "C" {}
+
 extern "C" {
   pub fn deno_init();
   pub fn deno_v8_version() -> *const c_char;
