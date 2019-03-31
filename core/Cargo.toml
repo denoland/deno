@@ -4,6 +4,9 @@
 name = "deno"
 version = "0.3.5"
 edition = "2018"
+description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
+authors = ["The deno authors <bertbelder@nodejs.org>"]
+license = "MIT"
 
 [lib]
 path = "lib.rs"
