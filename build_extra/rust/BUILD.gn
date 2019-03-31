@@ -67,6 +67,16 @@ rust_crate("base64") {
   ]
 }
 
+rust_crate("bitflags") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/bitflags-1.0.4/src/lib.rs"
+  features = [ "default" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("byteorder") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/byteorder-1.3.1/src/lib.rs"
@@ -103,6 +113,35 @@ rust_crate("cfg_if") {
     "--cap-lints",
     "allow",
   ]
+}
+
+rust_crate("clap") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/clap-2.32.0/src/lib.rs"
+  features = [
+    "ansi_term",
+    "atty",
+    "color",
+    "default",
+    "strsim",
+    "suggestions",
+    "vec_map",
+  ]
+  extern = [
+    ":atty",
+    ":bitflags",
+    ":strsim",
+    ":textwrap",
+    ":unicode_width",
+    ":vec_map",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  if (is_posix) {
+    extern += [ ":ansi_term" ]
+  }
 }
 
 rust_crate("crossbeam_deque") {
@@ -1238,6 +1277,15 @@ rust_crate("string") {
   ]
 }
 
+rust_crate("strsim") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/strsim-0.7.0/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("tempfile") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.7/src/lib.rs"
@@ -1256,6 +1304,16 @@ rust_crate("tempfile") {
   if (is_win) {
     extern += [ ":winapi" ]
   }
+}
+
+rust_crate("textwrap") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/textwrap-0.10.0/src/lib.rs"
+  extern = [ ":unicode_width" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
 }
 
 rust_crate("thread_local") {
@@ -1661,6 +1719,15 @@ rust_crate("utf8_ranges") {
   ]
 }
 
+rust_crate("vec_map") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/vec_map-0.8.1/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("vlq") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/vlq-0.5.1/src/lib.rs"
@@ -1759,16 +1826,6 @@ if (is_posix) {
   rust_crate("arc_swap") {
     edition = "2015"
     source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/arc-swap-0.3.8/src/lib.rs"
-    args = [
-      "--cap-lints",
-      "allow",
-    ]
-  }
-
-  rust_crate("bitflags") {
-    edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/bitflags-1.0.4/src/lib.rs"
-    features = [ "default" ]
     args = [
       "--cap-lints",
       "allow",
