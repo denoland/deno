@@ -540,7 +540,7 @@ Options:
     -h, --help          Print this message
     -D, --log-debug     Log debug output
     -v, --version       Print the version
-    -r, --reload        Reload cached remote resources
+    -r, --reload        Reload source code cache (recompile TypeScript)
         --v8-options    Print V8 command line options
         --types         Print runtime TypeScript declarations
         --prefetch      Prefetch the dependencies
