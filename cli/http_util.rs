@@ -251,5 +251,5 @@ fn test_resolve_uri_from_location_relative_3() {
   let url = "http://deno.land/x".parse::<Uri>().unwrap();
   let new_uri = resolve_uri_from_location(&url, "z");
   assert_eq!(new_uri.host().unwrap(), "deno.land");
-  assert_eq!(new_uri.path(), "/x/z");
+  assert_eq!(new_uri.path(), "/z");
 }

@@ -486,7 +486,7 @@ impl DenoDir {
     module_name: &str,
     filename: &str,
   ) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
-    use http_util::FetchOnceResult;
+    use crate::http_util::FetchOnceResult;
     {
       eprintln!("Downloading {}", module_name);
     }
@@ -768,8 +768,9 @@ fn save_source_metadata(
   // Had trouble to make serde_derive work: I'm unable to build proc-macro2.
   let mut value_map = serde_json::map::Map::new();
   if mime_type.is_some() {
-    let mime_type_string = mime_type.unwrap();
-    let resolved_mime_type = { extmap(&mime_type_string) };
+    let mime_type_string = mime_type.clone().unwrap();
+    let resolved_mime_type =
+      { map_content_type(Path::new(""), Some(mime_type_string.as_str())) };
     let ext = p
       .extension()
       .map(|x| x.to_str().unwrap_or(""))
@@ -1020,7 +1021,7 @@ mod tests {
       // Mismatch ext with content type, create .meta
       assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_metadata(&metadata_file_name).mime_type.unwrap(),
+        get_source_metadata(&filename).mime_type.unwrap(),
         "text/javascript"
       );
 
@@ -1034,10 +1035,7 @@ mod tests {
       // If get_source_code does not call remote, this should be TypeScript
       // as we modified before! (we do not overwrite .meta due to no http fetch)
       assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
-      assert_eq!(
-        get_source_metadata(&filename).mime_type.unwrap(),
-        "text/typescript"
-      );
+      assert!(fs::read_to_string(&metadata_file_name).is_err());
 
       // Don't use_cache
       let result3 = deno_dir.get_source_code(module_name, &filename, false);
