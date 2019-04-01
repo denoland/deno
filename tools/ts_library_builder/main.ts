@@ -46,6 +46,7 @@ buildRuntimeLib({
     "js/deno.ts",
     "js/globals.ts"
   ],
+  declareAsLet: ["onmessage"],
   outFile,
   silent
 });

@@ -46,6 +46,7 @@ type SourceMap = string;
 interface CompilerLookup {
   specifier: ModuleSpecifier;
   referrer: ContainingFile;
+  isWorker: boolean;
 }
 
 /** Abstraction of the APIs required from the `os` module so they can be
@@ -179,6 +180,8 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
   // testing
   private _ts: Ts = ts;
 
+  private readonly _assetsSourceCode: { [key: string]: string };
+
   /** The TypeScript language service often refers to the resolved fileName of
    * a module, this is a shortcut to avoid unnecessary module resolution logic
    * for modules that may have been initially resolved by a `moduleSpecifier`
@@ -239,9 +242,12 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
       // not null assertion
       moduleId = moduleSpecifier.split("/").pop()!;
       const assetName = moduleId.includes(".") ? moduleId : `${moduleId}.d.ts`;
-      assert(assetName in assetSourceCode, `No such asset "${assetName}"`);
+      assert(
+        assetName in this._assetsSourceCode,
+        `No such asset "${assetName}"`
+      );
       mediaType = msg.MediaType.TypeScript;
-      sourceCode = assetSourceCode[assetName];
+      sourceCode = this._assetsSourceCode[assetName];
       fileName = `${ASSETS}/${assetName}`;
     } else {
       // We query Rust with a CodeFetch message. It will load the sourceCode,
@@ -299,7 +305,8 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
     innerMap.set(moduleSpecifier, fileName);
   }
 
-  constructor() {
+  constructor(assetsSourceCode: { [key: string]: string }) {
+    this._assetsSourceCode = assetsSourceCode;
     this._service = this._ts.createLanguageService(this);
   }
 
@@ -498,7 +505,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
   }
 }
 
-const compiler = new Compiler();
+const compiler = new Compiler(assetSourceCode);
 
 // set global objects for compiler web worker
 window.clearTimeout = clearTimer;
@@ -514,17 +521,12 @@ window.TextEncoder = TextEncoder;
 // lazy instantiating the compiler web worker
 window.compilerMain = function compilerMain() {
   // workerMain should have already been called since a compiler is a worker.
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  window.onmessage = ({ data }: { data: Uint8Array }) => {
-    const json = decoder.decode(data);
-    const { specifier, referrer } = JSON.parse(json) as CompilerLookup;
+  window.onmessage = ({ data }: { data: CompilerLookup }) => {
+    const { specifier, referrer } = data;
 
     const result = compiler.compile(specifier, referrer);
 
-    const responseJson = JSON.stringify(result);
-    const response = encoder.encode(responseJson);
-    postMessage(response);
+    postMessage(result);
   };
 };
 

@@ -305,7 +305,8 @@ pub fn add_worker(wc: WorkerChannels) -> Resource {
   Resource { rid }
 }
 
-pub fn worker_post_message(
+/// Post message to worker as a host or privilged overlord
+pub fn post_message_to_worker(
   rid: ResourceId,
   buf: Buf,
 ) -> futures::sink::Send<futures::sync::mpsc::Sender<Buf>> {
@@ -341,7 +342,7 @@ impl Future for WorkerReceiver {
   }
 }
 
-pub fn worker_recv_message(rid: ResourceId) -> WorkerReceiver {
+pub fn get_message_from_worker(rid: ResourceId) -> WorkerReceiver {
   WorkerReceiver { rid }
 }
 

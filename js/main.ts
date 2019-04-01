@@ -18,8 +18,8 @@ import * as deno from "./deno";
 // TODO(kitsonk) remove with `--types` below
 import libDts from "gen/cli/lib/lib.deno_runtime.d.ts!string";
 
-export default function denoMain(): void {
-  const startResMsg = os.start();
+export default function denoMain(name?: string): void {
+  const startResMsg = os.start(name);
 
   setVersions(startResMsg.denoVersion()!, startResMsg.v8Version()!);
 

@@ -94,11 +94,14 @@ export function addVariableDeclaration(
   node: StatementedNode,
   name: string,
   type: string,
+  isConst: boolean,
   hasDeclareKeyword?: boolean,
   jsdocs?: JSDoc[]
 ): VariableStatement {
   return node.addVariableStatement({
-    declarationKind: VariableDeclarationKind.Const,
+    declarationKind: isConst
+      ? VariableDeclarationKind.Const
+      : VariableDeclarationKind.Let,
     declarations: [{ name, type }],
     docs: jsdocs && jsdocs.map(jsdoc => jsdoc.getText()),
     hasDeclareKeyword

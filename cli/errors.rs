@@ -180,7 +180,15 @@ pub fn permission_denied() -> DenoError {
 }
 
 pub fn op_not_implemented() -> DenoError {
-  new(ErrorKind::BadResource, String::from("op not implemented"))
+  new(ErrorKind::OpNotAvaiable, String::from("op not implemented"))
+}
+
+pub fn worker_init_failed() -> DenoError {
+  // TODO(afinch7) pass worker error data through here
+  new(
+    ErrorKind::WorkerInitFailed,
+    String::from("worker init failed"),
+  )
 }
 
 #[derive(Debug)]
