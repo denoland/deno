@@ -439,19 +439,21 @@ export function main({
 
   // the outputProject will contain the final library file we are looking to
   // build
+  const outputProjectCompilerOptions: ts.CompilerOptions = {
+    baseUrl: buildPath,
+    lib: ["esnext"],
+    moduleResolution: ModuleResolutionKind.NodeJs,
+    strict: true,
+    target: ScriptTarget.ESNext
+  };
+
   const outputProject = new Project({
-    compilerOptions: {
-      baseUrl: buildPath,
-      lib: ["esnext"],
-      moduleResolution: ModuleResolutionKind.NodeJs,
-      strict: true,
-      target: ScriptTarget.ESNext
-    },
+    compilerOptions: outputProjectCompilerOptions,
     useVirtualFileSystem: true
   });
 
   // There are files we need to load into memory, so that the project "compiles"
-  loadDtsFiles(outputProject);
+  loadDtsFiles(outputProject, outputProjectCompilerOptions);
 
   // libDts is the final output file we are looking to build and we are not
   // actually creating it, only in memory at this stage.
