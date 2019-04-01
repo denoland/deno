@@ -73,7 +73,11 @@ pub enum FetchOnceResult {
   Redirect(http::uri::Uri),
 }
 
-/// Asynchronously fetchs the given HTTP URL. Returns (content, media_type).
+/// Asynchronously fetchs the given HTTP URL one pass only.
+/// If no redirect is present and no error occurs,
+/// yields Code(code, maybe_content_type).
+/// If redirect occurs, does not follow and
+/// yields Redirect(url).
 pub fn fetch_string_once(
   url: http::uri::Uri,
 ) -> impl Future<Item = FetchOnceResult, Error = DenoError> {
@@ -82,7 +86,7 @@ pub fn fetch_string_once(
   client
     .get(url.clone())
     .map_err(DenoError::from)
-    .and_then(move |response| -> Box<Future<Item = FetchAttempt, Error = DenoError> + Send> {
+    .and_then(move |response| -> Box<dyn Future<Item = FetchAttempt, Error = DenoError> + Send> {
       if response.status().is_redirection() {
         let location_string = response
           .headers()
@@ -93,6 +97,7 @@ pub fn fetch_string_once(
           .to_string();
         debug!("Redirecting to {}...", &location_string);
         let new_url = resolve_uri_from_location(&url, &location_string);
+        // Boxed trait object turns out to be the savior for 2+ types yielding same results.
         return Box::new(
           future::ok(None).join3(
             future::ok(None),

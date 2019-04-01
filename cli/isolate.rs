@@ -84,12 +84,13 @@ impl<B: DenoBehavior> Isolate<B> {
           &out.js_source(),
         )?;
 
+        // The resolved module is an alias to another module (due to redirects).
+        // Save such alias to the module map.
         if out.module_redirect_source_name.is_some() {
           self.mod_alias(
             &out.module_redirect_source_name.clone().unwrap(),
             &out.module_name,
           );
-          // println!("{} <- {}", &out.module_name, &out.module_redirect_source_name.clone().unwrap());
         }
 
         self.mod_load_deps(child_id)?;
@@ -133,12 +134,13 @@ impl<B: DenoBehavior> Isolate<B> {
       .mod_new_and_register(true, &out.module_name.clone(), &out.js_source())
       .map_err(RustOrJsError::from)?;
 
+    // The resolved module is an alias to another module (due to redirects).
+    // Save such alias to the module map.
     if out.module_redirect_source_name.is_some() {
       self.mod_alias(
         &out.module_redirect_source_name.clone().unwrap(),
         &out.module_name,
       );
-      // println!("{} <- {}", &out.module_name, &out.module_redirect_source_name.clone().unwrap());
     }
 
     self.mod_load_deps(id)?;
@@ -173,6 +175,9 @@ impl<B: DenoBehavior> Isolate<B> {
     Ok(id)
   }
 
+  /// Create an alias for another module.
+  /// The alias could later be used to grab the module
+  /// which `target` points to.
   fn mod_alias(&self, name: &str, target: &str) {
     self.state.modules.lock().unwrap().alias(name, target);
   }

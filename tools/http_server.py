@@ -12,6 +12,8 @@ from time import sleep
 
 PORT = 4545
 REDIRECT_PORT = 4546
+ANOTHER_REDIRECT_PORT = 4547
+DOUBLE_REDIRECTS_PORT = 4548
 
 
 class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
@@ -99,9 +101,9 @@ def server():
     return s
 
 
-def redirect_server():
+def base_redirect_server(host_port, target_port):
     os.chdir(root_path)
-    target_host = "http://localhost:%d" % PORT
+    target_host = "http://localhost:%d" % target_port
 
     class RedirectHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         def do_GET(self):
@@ -111,10 +113,25 @@ def redirect_server():
 
     Handler = RedirectHandler
     SocketServer.TCPServer.allow_reuse_address = True
-    s = SocketServer.TCPServer(("", REDIRECT_PORT), Handler)
+    s = SocketServer.TCPServer(("", host_port), Handler)
     print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
-        REDIRECT_PORT, PORT)
+        host_port, target_port)
     return s
+
+
+# redirect server
+def redirect_server():
+    return base_redirect_server(REDIRECT_PORT, PORT)
+
+
+# another redirect server pointing to the same port as the one above
+def another_redirect_server():
+    return base_redirect_server(ANOTHER_REDIRECT_PORT, PORT)
+
+
+# redirect server that points to another redirect server
+def double_redirects_server():
+    return base_redirect_server(DOUBLE_REDIRECTS_PORT, REDIRECT_PORT)
 
 
 def spawn():
@@ -128,6 +145,16 @@ def spawn():
     r_thread = Thread(target=rs.serve_forever)
     r_thread.daemon = True
     r_thread.start()
+    # Another redirect server
+    ars = another_redirect_server()
+    ar_thread = Thread(target=ars.serve_forever)
+    ar_thread.daemon = True
+    ar_thread.start()
+    # Double redirects server
+    drs = double_redirects_server()
+    dr_thread = Thread(target=drs.serve_forever)
+    dr_thread.daemon = True
+    dr_thread.start()
     sleep(1)  # TODO I'm too lazy to figure out how to do this properly.
     return thread
 

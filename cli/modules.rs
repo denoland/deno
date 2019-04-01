@@ -12,32 +12,41 @@ pub struct ModuleInfo {
   children: Vec<deno_mod>,
 }
 
-pub enum ModuleNameCondition {
+/// A symbolic module entity.
+pub enum SymbolicModule {
+  /// This module is an alias to another module.
+  /// This is useful such that multiple names could point to
+  /// the same underlying module (particularly due to redirects).
   Alias(String),
+  /// This module associates with a V8 module by id.
   Mod(deno_mod),
 }
 
 #[derive(Default)]
-pub struct ModuleMap {
-  inner: HashMap<String, ModuleNameCondition>,
+/// Alias-able module name map
+pub struct ModuleNameMap {
+  inner: HashMap<String, SymbolicModule>,
 }
 
-impl ModuleMap {
+impl ModuleNameMap {
   pub fn new() -> Self {
-    ModuleMap {
+    ModuleNameMap {
       inner: HashMap::new(),
     }
   }
 
+  /// Get the id of a module.
+  /// If this module is internally represented as an alias,
+  /// follow the alias chain to get the final module id.
   pub fn get(&self, name: &str) -> Option<deno_mod> {
     let mut mod_name = name;
     loop {
       let cond = self.inner.get(mod_name);
       match cond {
-        Some(ModuleNameCondition::Alias(target)) => {
+        Some(SymbolicModule::Alias(target)) => {
           mod_name = target;
         }
-        Some(ModuleNameCondition::Mod(mod_id)) => {
+        Some(SymbolicModule::Mod(mod_id)) => {
           return Some(*mod_id);
         }
         _ => {
@@ -47,12 +56,14 @@ impl ModuleMap {
     }
   }
 
+  /// Insert a name assocated module id.
   pub fn insert(&mut self, name: String, id: deno_mod) {
-    self.inner.insert(name, ModuleNameCondition::Mod(id));
+    self.inner.insert(name, SymbolicModule::Mod(id));
   }
 
+  /// Create an alias to another module.
   pub fn alias(&mut self, name: String, target: String) {
-    self.inner.insert(name, ModuleNameCondition::Alias(target));
+    self.inner.insert(name, SymbolicModule::Alias(target));
   }
 }
 
@@ -60,14 +71,14 @@ impl ModuleMap {
 #[derive(Default)]
 pub struct Modules {
   pub info: HashMap<deno_mod, ModuleInfo>,
-  pub by_name: ModuleMap,
+  pub by_name: ModuleNameMap,
 }
 
 impl Modules {
   pub fn new() -> Modules {
     Self {
       info: HashMap::new(),
-      by_name: ModuleMap::new(),
+      by_name: ModuleNameMap::new(),
     }
   }
 
