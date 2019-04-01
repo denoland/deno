@@ -31,7 +31,7 @@ pub fn deno_isolate_init() -> StartupData {
 
 pub fn compiler_isolate_init() -> StartupData {
   if cfg!(feature = "no-snapshot-init") {
-    debug!("Deno isolate init without snapshots.");
+    debug!("Compiler isolate init without snapshots.");
     #[cfg(not(feature = "check-only"))]
     let source_bytes = include_bytes!(concat!(
       env!("GN_OUT_DIR"),

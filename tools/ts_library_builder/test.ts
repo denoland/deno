@@ -5,7 +5,7 @@
 
 import * as assert from "assert";
 import { Project, ts } from "ts-morph";
-import { flatten, mergeGlobal } from "./build_library";
+import { flatten, mergeGlobals, prepareFileForMerge } from "./build_library";
 import { inlineFiles, loadDtsFiles } from "./ast_util";
 
 const { ModuleKind, ModuleResolutionKind, ScriptTarget } = ts;
@@ -146,15 +146,22 @@ function buildLibraryMerge(): void {
     outputSourceFile: targetSourceFile
   } = setupFixtures();
 
-  mergeGlobal({
+  const prepareForMergeOpts = {
+    globalVarName: "foobarbaz",
+    interfaceName: "FooBar",
+    targetSourceFile
+  };
+
+  const prepareReturn = prepareFileForMerge(prepareForMergeOpts);
+
+  mergeGlobals({
     basePath,
     declarationProject,
     debug,
-    globalVarName: "foobarbaz",
     filePath: `${buildPath}/globals.ts`,
     inputProject,
-    interfaceName: "FooBar",
-    targetSourceFile
+    ...prepareForMergeOpts,
+    prepareReturn
   });
 
   assert(targetSourceFile.getNamespace("moduleC") != null);

@@ -63,6 +63,12 @@ union Any {
   StatRes,
   Symlink,
   Truncate,
+  CreateWorker,
+  CreateWorkerRes,
+  HostGetWorkerClosed,
+  HostGetMessage,
+  HostGetMessageRes,
+  HostPostMessage,
   WorkerGetMessage,
   WorkerGetMessageRes,
   WorkerPostMessage,
@@ -121,6 +127,8 @@ enum ErrorKind: byte {
   // custom errors
   InvalidUri,
   InvalidSeekMode,
+  OpNotAvaiable,
+  WorkerInitFailed
 }
 
 table Cwd {}
@@ -171,6 +179,35 @@ table FormatErrorRes {
   error: string;
 }
 
+// Create worker as host
+table CreateWorker {
+  specifier: string;
+}
+
+table CreateWorkerRes {
+  rid: uint32;
+}
+
+table HostGetWorkerClosed {
+  rid: uint32;
+}
+
+// Get message from guest worker as host
+table HostGetMessage {
+  rid: uint32;
+}
+
+table HostGetMessageRes {
+  data: [ubyte];
+}
+
+// Post message to guest worker as host
+table HostPostMessage {
+  rid: uint32;
+  // data passed thru the zero-copy data parameter.
+}
+
+// Get message from host as guest worker
 table WorkerGetMessage {
   unused: int8;
 }
@@ -179,6 +216,7 @@ table WorkerGetMessageRes {
   data: [ubyte];
 }
 
+// Post message to host as guest worker
 table WorkerPostMessage {
   // data passed thru the zero-copy data parameter.
 }

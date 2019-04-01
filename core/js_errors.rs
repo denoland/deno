@@ -13,7 +13,7 @@ use serde_json;
 use std::fmt;
 use std::str;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct StackFrame {
   pub line: i64,   // zero indexed
   pub column: i64, // zero indexed
@@ -24,7 +24,7 @@ pub struct StackFrame {
   pub is_wasm: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct JSError {
   pub message: String,
 

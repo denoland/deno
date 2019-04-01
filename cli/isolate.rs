@@ -226,7 +226,7 @@ mod tests {
     let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
-    let state = Arc::new(IsolateState::new(flags, rest_argv, None));
+    let state = Arc::new(IsolateState::new(flags, rest_argv, None, false));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let cli = CliBehavior::new(None, state.clone());
@@ -249,7 +249,7 @@ mod tests {
     let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
 
-    let state = Arc::new(IsolateState::new(flags, rest_argv, None));
+    let state = Arc::new(IsolateState::new(flags, rest_argv, None, false));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let cli = CliBehavior::new(None, state.clone());

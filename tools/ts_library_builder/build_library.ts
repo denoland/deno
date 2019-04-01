@@ -57,6 +57,16 @@ export interface BuildLibraryOptions {
   inputs?: string[];
 
   /**
+   * Path to globals file to be used I.E. `js/globals.ts`
+   */
+  additionalGlobals?: string[];
+
+  /**
+   * List of global variables to define as let instead of the default const.
+   */
+  declareAsLet?: string[];
+
+  /**
    * The path to the output library
    */
   outFile: string;
@@ -170,30 +180,21 @@ export function flatten({
   }
 }
 
-interface MergeGlobalOptions {
-  basePath: string;
-  debug?: boolean;
-  declarationProject: Project;
-  filePath: string;
+interface PrepareFileForMergeOptions {
   globalVarName: string;
-  ignore?: string[];
-  inputProject: Project;
   interfaceName: string;
   targetSourceFile: SourceFile;
 }
 
-/** Take a module and merge it into the global scope */
-export function mergeGlobal({
-  basePath,
-  debug,
-  declarationProject,
-  filePath,
+interface PrepareFileForMergeReturn {
+  interfaceDeclaration: InterfaceDeclaration;
+}
+
+export function prepareFileForMerge({
   globalVarName,
-  ignore,
-  inputProject,
   interfaceName,
   targetSourceFile
-}: MergeGlobalOptions): void {
+}: PrepareFileForMergeOptions): PrepareFileForMergeReturn {
   // Add the global object interface
   const interfaceDeclaration = targetSourceFile.addInterface({
     name: interfaceName,
@@ -201,15 +202,56 @@ export function mergeGlobal({
   });
 
   // Declare the global variable
-  addVariableDeclaration(targetSourceFile, globalVarName, interfaceName, true);
+  addVariableDeclaration(
+    targetSourceFile,
+    globalVarName,
+    interfaceName,
+    true,
+    true
+  );
 
   // `globalThis` accesses the global scope and is defined here:
   // https://github.com/tc39/proposal-global
-  addVariableDeclaration(targetSourceFile, "globalThis", interfaceName, true);
+  addVariableDeclaration(
+    targetSourceFile,
+    "globalThis",
+    interfaceName,
+    true,
+    true
+  );
 
   // Add self reference to the global variable
   addInterfaceProperty(interfaceDeclaration, globalVarName, interfaceName);
 
+  return {
+    interfaceDeclaration
+  };
+}
+
+interface MergeGlobalOptions extends PrepareFileForMergeOptions {
+  basePath: string;
+  debug?: boolean;
+  declarationProject: Project;
+  filePath: string;
+  ignore?: string[];
+  inputProject: Project;
+  prepareReturn: PrepareFileForMergeReturn;
+  declareAsLet?: string[];
+}
+
+/** Take a module and merge it into the global scope */
+export function mergeGlobals({
+  basePath,
+  debug,
+  declarationProject,
+  filePath,
+  globalVarName,
+  ignore,
+  inputProject,
+  targetSourceFile,
+  declareAsLet,
+  prepareReturn: { interfaceDeclaration }
+}: MergeGlobalOptions): void {
   // Retrieve source file from the input project
   const sourceFile = inputProject.getSourceFileOrThrow(filePath);
 
@@ -267,7 +309,8 @@ export function mergeGlobal({
           dependentSourceFiles.add(valueDeclaration.getSourceFile());
         }
       }
-      addVariableDeclaration(targetSourceFile, property, type, true);
+      const isConst = !(declareAsLet && declareAsLet.includes(property));
+      addVariableDeclaration(targetSourceFile, property, type, isConst, true);
       addInterfaceProperty(interfaceDeclaration, property, type);
     }
   }
@@ -297,29 +340,32 @@ export function mergeGlobal({
   const importDeclarations = sourceFile.getImportDeclarations();
   const namespaces = new Set<string>();
   for (const declaration of importDeclarations) {
-    const declarationSourceFile = declaration.getModuleSpecifierSourceFile();
-    if (
-      declarationSourceFile &&
-      dependentSourceFiles.has(declarationSourceFile)
-    ) {
-      // the source file will resolve to the original `.ts` file, but the
-      // information we really want is in the emitted `.d.ts` file, so we will
-      // resolve to that file
-      const dtsFilePath = declarationSourceFile
-        .getFilePath()
-        .replace(/\.ts$/, ".d.ts");
-      const dtsSourceFile = declarationProject.getSourceFileOrThrow(
-        dtsFilePath
-      );
-      targetSourceFile.addStatements(
-        namespaceSourceFile(dtsSourceFile, {
-          debug,
-          namespace: declaration.getNamespaceImportOrThrow().getText(),
-          namespaces,
-          rootPath: basePath,
-          sourceFileMap
-        })
-      );
+    const namespaceImport = declaration.getNamespaceImport();
+    if (namespaceImport) {
+      const declarationSourceFile = declaration.getModuleSpecifierSourceFile();
+      if (
+        declarationSourceFile &&
+        dependentSourceFiles.has(declarationSourceFile)
+      ) {
+        // the source file will resolve to the original `.ts` file, but the
+        // information we really want is in the emitted `.d.ts` file, so we will
+        // resolve to that file
+        const dtsFilePath = declarationSourceFile
+          .getFilePath()
+          .replace(/\.ts$/, ".d.ts");
+        const dtsSourceFile = declarationProject.getSourceFileOrThrow(
+          dtsFilePath
+        );
+        targetSourceFile.addStatements(
+          namespaceSourceFile(dtsSourceFile, {
+            debug,
+            namespace: namespaceImport.getText(),
+            namespaces,
+            rootPath: basePath,
+            sourceFileMap
+          })
+        );
+      }
     }
   }
 
@@ -337,6 +383,8 @@ export function main({
   buildPath,
   inline,
   inputs,
+  additionalGlobals,
+  declareAsLet,
   debug,
   outFile,
   silent
@@ -476,19 +524,45 @@ export function main({
     }${msgGeneratedDtsText}\n`
   };
 
-  mergeGlobal({
+  const prepareForMergeOpts: PrepareFileForMergeOptions = {
+    globalVarName: "window",
+    interfaceName: "Window",
+    targetSourceFile: libDTs
+  };
+
+  const prepareReturn = prepareFileForMerge(prepareForMergeOpts);
+
+  mergeGlobals({
     basePath,
     debug,
     declarationProject,
     filePath: `${basePath}/js/globals.ts`,
-    globalVarName: "window",
     inputProject,
     ignore: ["Deno"],
-    interfaceName: "Window",
-    targetSourceFile: libDTs
+    declareAsLet,
+    ...prepareForMergeOpts,
+    prepareReturn
   });
 
   log(`Merged "globals" into global scope.`);
+
+  if (additionalGlobals) {
+    for (const additionalGlobal of additionalGlobals) {
+      mergeGlobals({
+        basePath,
+        debug,
+        declarationProject,
+        filePath: `${basePath}/${additionalGlobal}`,
+        inputProject,
+        ignore: ["Deno"],
+        declareAsLet,
+        ...prepareForMergeOpts,
+        prepareReturn
+      });
+    }
+
+    log(`Added additional "globals" into global scope.`);
+  }
 
   flatten({
     basePath,

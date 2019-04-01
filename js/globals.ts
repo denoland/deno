@@ -102,7 +102,16 @@ export type TextDecoder = textEncoding.TextDecoder;
 
 window.performance = new performanceUtil.Performance();
 
+// This variable functioning correctly depends on `declareAsLet`
+// in //tools/ts_library_builder/main.ts
+window.onmessage = workers.onmessage;
+
 window.workerMain = workers.workerMain;
+window.workerClose = workers.workerClose;
+window.postMessage = workers.postMessage;
+
+window.Worker = workers.WorkerImpl;
+export type Worker = workers.Worker;
 
 // below are interfaces that are available in TypeScript but
 // have different signatures

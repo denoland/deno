@@ -5,9 +5,14 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::modules::Modules;
 use crate::permissions::DenoPermissions;
+use crate::resources::ResourceId;
+use crate::workers::UserWorkerBehavior;
+use crate::workers::Worker;
 use deno::Buf;
+use futures::future::Shared;
 use futures::sync::mpsc as async_mpsc;
 use std;
+use std::collections::HashMap;
 use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -16,6 +21,8 @@ use std::sync::Mutex;
 pub type WorkerSender = async_mpsc::Sender<Buf>;
 pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
 pub type WorkerChannels = (WorkerSender, WorkerReceiver);
+pub type UserWorkerTable =
+  HashMap<ResourceId, Shared<Worker<UserWorkerBehavior>>>;
 
 // AtomicU64 is currently unstable
 #[derive(Default)]
@@ -42,6 +49,8 @@ pub struct IsolateState {
   pub modules: Mutex<Modules>,
   pub worker_channels: Option<Mutex<WorkerChannels>>,
   pub global_timer: Mutex<GlobalTimer>,
+  pub workers: Mutex<UserWorkerTable>,
+  pub is_worker: bool,
 }
 
 impl IsolateState {
@@ -49,6 +58,7 @@ impl IsolateState {
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
     worker_channels: Option<WorkerChannels>,
+    is_worker: bool,
   ) -> Self {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
 
@@ -61,9 +71,12 @@ impl IsolateState {
       modules: Mutex::new(Modules::new()),
       worker_channels: worker_channels.map(Mutex::new),
       global_timer: Mutex::new(GlobalTimer::new()),
+      workers: Mutex::new(UserWorkerTable::new()),
+      is_worker,
     }
   }
 
+  /// Read main module from argv
   pub fn main_module(&self) -> Option<String> {
     if self.argv.len() <= 1 {
       None
@@ -110,7 +123,7 @@ impl IsolateState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     // For debugging: argv.push_back(String::from("-D"));
     let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
-    IsolateState::new(flags, rest_argv, None)
+    IsolateState::new(flags, rest_argv, None, false)
   }
 
   pub fn metrics_op_dispatched(
