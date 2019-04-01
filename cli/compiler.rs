@@ -251,7 +251,9 @@ pub fn compile_sync(
                   ) {
                     Ok(serde_json::Value::Object(map)) => ModuleMetaData {
                       module_name: module_meta_data_.module_name.clone(),
-                      module_redirect_source_name: module_meta_data_.module_redirect_source_name.clone(),
+                      module_redirect_source_name: module_meta_data_
+                        .module_redirect_source_name
+                        .clone(),
                       filename: module_meta_data_.filename.clone(),
                       media_type: module_meta_data_.media_type,
                       source_code: module_meta_data_.source_code.clone(),

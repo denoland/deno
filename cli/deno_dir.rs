@@ -157,70 +157,70 @@ impl DenoDir {
     let gen = self.gen.clone();
 
     Either::B(
-      self
-        .get_source_code_async(
-          module_name.as_str(),
-          filename.as_str(),
-          use_cache,
-        ).then(move |result| {
-          let mut out = match result {
-            Ok(out) => out,
-            Err(err) => {
-              if err.kind() == ErrorKind::NotFound {
-                // For NotFound, change the message to something better.
-                return Err(errors::new(
-                  ErrorKind::NotFound,
-                  format!(
-                    "Cannot resolve module \"{}\" from \"{}\"",
-                    specifier, referrer
-                  ),
-                ));
-              } else {
-                return Err(err);
-              }
+      get_source_code_async(
+        self,
+        module_name.as_str(),
+        filename.as_str(),
+        use_cache,
+      ).then(move |result| {
+        let mut out = match result {
+          Ok(out) => out,
+          Err(err) => {
+            if err.kind() == ErrorKind::NotFound {
+              // For NotFound, change the message to something better.
+              return Err(errors::new(
+                ErrorKind::NotFound,
+                format!(
+                  "Cannot resolve module \"{}\" from \"{}\"",
+                  specifier, referrer
+                ),
+              ));
+            } else {
+              return Err(err);
             }
-          };
-
-          if out.source_code.starts_with(b"#!") {
-            out.source_code = filter_shebang(out.source_code);
           }
+        };
 
-          // If TypeScript we have to also load corresponding compile js and
-          // source maps (called output_code and output_source_map)
-          if out.media_type != msg::MediaType::TypeScript || !use_cache {
-            return Ok(out);
-          }
+        if out.source_code.starts_with(b"#!") {
+          out.source_code = filter_shebang(out.source_code);
+        }
 
-          let cache_key =
-            source_code_hash(&out.filename, &out.source_code, version::DENO);
-          let (output_code_filename, output_source_map_filename) = (
-            gen.join(cache_key.to_string() + ".js"),
-            gen.join(cache_key.to_string() + ".js.map"),
-          );
+        // If TypeScript we have to also load corresponding compile js and
+        // source maps (called output_code and output_source_map)
+        if out.media_type != msg::MediaType::TypeScript || !use_cache {
+          return Ok(out);
+        }
 
-          let result =
-            load_cache2(&output_code_filename, &output_source_map_filename);
-          match result {
-            Err(err) => {
-              if err.kind() == std::io::ErrorKind::NotFound {
-                // If there's no compiled JS or source map, that's ok, just
-                // return what we have.
-                Ok(out)
-              } else {
-                Err(err.into())
-              }
-            }
-            Ok((output_code, source_map)) => {
-              out.maybe_output_code = Some(output_code);
-              out.maybe_source_map = Some(source_map);
-              out.maybe_output_code_filename =
-                Some(output_code_filename.to_str().unwrap().to_string());
-              out.maybe_source_map_filename =
-                Some(output_source_map_filename.to_str().unwrap().to_string());
+        let cache_key =
+          source_code_hash(&out.filename, &out.source_code, version::DENO);
+        let (output_code_filename, output_source_map_filename) = (
+          gen.join(cache_key.to_string() + ".js"),
+          gen.join(cache_key.to_string() + ".js.map"),
+        );
+
+        let result =
+          load_cache2(&output_code_filename, &output_source_map_filename);
+        match result {
+          Err(err) => {
+            if err.kind() == std::io::ErrorKind::NotFound {
+              // If there's no compiled JS or source map, that's ok, just
+              // return what we have.
               Ok(out)
+            } else {
+              Err(err.into())
             }
           }
-        }),
+          Ok((output_code, source_map)) => {
+            out.maybe_output_code = Some(output_code);
+            out.maybe_source_map = Some(source_map);
+            out.maybe_output_code_filename =
+              Some(output_code_filename.to_str().unwrap().to_string());
+            out.maybe_source_map_filename =
+              Some(output_source_map_filename.to_str().unwrap().to_string());
+            Ok(out)
+          }
+        }
+      }),
     )
   }
 
@@ -332,257 +332,6 @@ impl DenoDir {
     debug!("module_name: {}, filename: {}", module_name, filename);
     Ok((module_name, filename))
   }
-
-  /// This fetches source code, locally or remotely.
-  /// module_name is the URL specifying the module.
-  /// filename is the local path to the module (if remote, it is in the cache
-  /// folder, and potentially does not exist yet)
-  ///
-  /// It *does not* fill the compiled JS nor source map portions of
-  /// ModuleMetaData. This is the only difference between this function and
-  /// fetch_module_meta_data_async(). TODO(ry) change return type to reflect this
-  /// fact.
-  ///
-  /// If this is a remote module, and it has not yet been cached, the resulting
-  /// download will be written to "filename". This happens no matter the value of
-  /// use_cache.
-  fn get_source_code_async(
-    self: &Self,
-    module_name: &str,
-    filename: &str,
-    use_cache: bool,
-  ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
-    let filename = filename.to_string();
-    let module_name = module_name.to_string();
-    let is_module_remote = is_remote(&module_name);
-    // We try fetch local. Two cases:
-    // 1. This is a remote module and we're allowed to use cached downloads.
-    // 2. This is a local module.
-    if !is_module_remote || use_cache {
-      debug!(
-        "fetch local or reload {} is_module_remote {}",
-        module_name, is_module_remote
-      );
-      // Note that local fetch is done synchronously.
-      match self.fetch_local_source(&module_name, &filename, None) {
-        Ok(Some(output)) => {
-          debug!("found local source ");
-          return Either::A(futures::future::ok(output));
-        }
-        Ok(None) => {
-          debug!("fetch_local_source returned None");
-        }
-        Err(err) => {
-          return Either::A(futures::future::err(err));
-        }
-      }
-    }
-
-    // If not remote file, stop here!
-    if !is_module_remote {
-      debug!("not remote file stop here");
-      return Either::A(futures::future::err(DenoError::from(
-        std::io::Error::new(
-          std::io::ErrorKind::NotFound,
-          format!("cannot find local file '{}'", &filename),
-        ),
-      )));
-    }
-
-    debug!("is remote but didn't find module");
-
-    // not cached/local, try remote
-    Either::B(
-      self
-        .fetch_remote_source_async(&module_name, &filename)
-        .and_then(move |maybe_remote_source| match maybe_remote_source {
-          Some(output) => Ok(output),
-          None => Err(DenoError::from(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("cannot find remote file '{}'", &filename),
-          ))),
-        }),
-    )
-  }
-
-  #[cfg(test)]
-  /// Synchronous version of get_source_code_async
-  /// This function is deprecated.
-  fn get_source_code(
-    self: &Self,
-    module_name: &str,
-    filename: &str,
-    use_cache: bool,
-  ) -> DenoResult<ModuleMetaData> {
-    tokio_util::block_on(self.get_source_code_async(
-      module_name,
-      filename,
-      use_cache,
-    ))
-  }
-
-  /// Fetch local or cached source code.
-  /// This is a recursive operation if source file has redirection.
-  /// It will keep reading filename.meta for information about redirection.
-  /// module_redirect_source_name would be None on first call,
-  /// and becomes the name of the very first module that initiates the call
-  /// in subsequent recursions.
-  fn fetch_local_source(
-    self: &Self,
-    module_name: &str,
-    filename: &str,
-    module_redirect_source_name: Option<String>,
-  ) -> DenoResult<Option<ModuleMetaData>> {
-    let p = Path::new(&filename);
-    let source_metadata = get_source_metadata(&filename);
-    // If source metadata says that it would redirect elsewhere,
-    // Abort reading attempts to file and and follow the redirect.
-    if source_metadata.redirect_source.is_some() {
-      let (real_module_name, real_filename) = self
-        .resolve_module(&(source_metadata.redirect_source.unwrap()), ".")?;
-      let mut module_original_source_name = module_redirect_source_name;
-      // If this is the first redirect attempt,
-      // then redirect_source should be None.
-      // In that case, use current module name as module redirect source name.
-      if module_original_source_name.is_none() {
-        module_original_source_name = Some(module_name.to_owned());
-      }
-      return self.fetch_local_source(
-        &real_module_name,
-        &real_filename,
-        module_original_source_name,
-      );
-    }
-    let source_code = match fs::read(p) {
-      Err(e) => {
-        if e.kind() == std::io::ErrorKind::NotFound {
-          return Ok(None);
-        } else {
-          return Err(e.into());
-        }
-      }
-      Ok(c) => c,
-    };
-    Ok(Some(ModuleMetaData {
-      module_name: module_name.to_string(),
-      module_redirect_source_name,
-      filename: filename.to_string(),
-      media_type: map_content_type(
-        &p,
-        source_metadata.mime_type.as_ref().map(String::as_str),
-      ),
-      source_code,
-      maybe_output_code_filename: None,
-      maybe_output_code: None,
-      maybe_source_map_filename: None,
-      maybe_source_map: None,
-    }))
-  }
-
-  /// Asynchronously fetch remote source file specified by the URL `module_name`
-  /// and write it to disk at `filename`.
-  fn fetch_remote_source_async(
-    self: &Self,
-    module_name: &str,
-    filename: &str,
-  ) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
-    use crate::http_util::FetchOnceResult;
-    {
-      eprintln!("Downloading {}", module_name);
-    }
-
-    let filename = filename.to_owned();
-    let module_name = module_name.to_owned();
-
-    // We write a special ".meta" file into the `.deno/deps` directory along side the
-    // cached file, containing just the media type and possible redirect target.
-    // If redirect target is present, the file itself if not stored.
-    loop_fn(
-      (
-        self.clone(),
-        None,
-        None,
-        module_name.clone(),
-        filename.clone(),
-      ),
-      |(
-        self_dir,
-        maybe_initial_module_name,
-        maybe_initial_filename,
-        module_name,
-        filename,
-      )| {
-        let url = module_name.parse::<http::uri::Uri>().unwrap();
-        http_util::fetch_string_once(url)
-        .and_then(move |fetch_once_result| {
-          match fetch_once_result {
-            FetchOnceResult::Redirect(url) => {
-              let resolve_result =
-                self_dir.resolve_module(&(url.to_string()), ".").map_err(DenoError::from);
-              match resolve_result {
-                Ok((new_module_name, new_filename)) => {
-                  let mut maybe_initial_module_name = maybe_initial_module_name;
-                  let mut maybe_initial_filename = maybe_initial_filename;
-                  if maybe_initial_module_name.is_none() {
-                    maybe_initial_module_name = Some(module_name.clone());
-                    maybe_initial_filename = Some(filename.clone());
-                  }
-                  Ok(Loop::Continue((self_dir, maybe_initial_module_name, maybe_initial_filename, new_module_name, new_filename)))
-                },
-                Err(e) => Err(e),
-              }
-            }
-            FetchOnceResult::Code(source, maybe_content_type) => {
-              let p = PathBuf::from(filename.clone());
-              match p.parent() {
-                Some(ref parent) => fs::create_dir_all(parent),
-                None => Ok(()),
-              }?;
-              deno_fs::write_file(&p, &source, 0o666)?;
-              {
-                save_source_metadata(&filename, maybe_content_type.clone(), None);
-              }
-              // Check if this file is downloaded due to some old redirect request
-              if maybe_initial_filename.is_some() {
-                // If yes, record down the metadata for redirect.
-                // Also create its containing folder.
-                let pp = PathBuf::from(filename.clone());
-                match pp.parent() {
-                  Some(ref parent) => fs::create_dir_all(parent),
-                  None => Ok(()),
-                }?;
-                {
-                  save_source_metadata(&maybe_initial_filename.clone().unwrap(), maybe_content_type.clone(), Some(filename.clone()));
-                }
-              }
-              Ok(Loop::Break(Some(ModuleMetaData {
-                module_name: module_name.to_string(),
-                module_redirect_source_name: maybe_initial_module_name,
-                filename: filename.to_string(),
-                media_type: map_content_type(&p, maybe_content_type.as_ref().map(|s| s.as_str())),
-                source_code: source.as_bytes().to_owned(),
-                maybe_output_code_filename: None,
-                maybe_output_code: None,
-                maybe_source_map_filename: None,
-                maybe_source_map: None,
-              })))
-            }
-          }
-        })
-      },
-    )
-  }
-
-  // Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
-  /// Fetch remote source code.
-  #[cfg(test)]
-  fn fetch_remote_source(
-    self: &Self,
-    module_name: &str,
-    filename: &str,
-  ) -> DenoResult<Option<ModuleMetaData>> {
-    tokio_util::block_on(self.fetch_remote_source_async(module_name, filename))
-  }
 }
 
 impl SourceMapGetter for DenoDir {
@@ -595,6 +344,276 @@ impl SourceMapGetter for DenoDir {
       },
     }
   }
+}
+
+/// This fetches source code, locally or remotely.
+/// module_name is the URL specifying the module.
+/// filename is the local path to the module (if remote, it is in the cache
+/// folder, and potentially does not exist yet)
+///
+/// It *does not* fill the compiled JS nor source map portions of
+/// ModuleMetaData. This is the only difference between this function and
+/// fetch_module_meta_data_async(). TODO(ry) change return type to reflect this
+/// fact.
+///
+/// If this is a remote module, and it has not yet been cached, the resulting
+/// download will be written to "filename". This happens no matter the value of
+/// use_cache.
+fn get_source_code_async(
+  deno_dir: &DenoDir,
+  module_name: &str,
+  filename: &str,
+  use_cache: bool,
+) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+  let filename = filename.to_string();
+  let module_name = module_name.to_string();
+  let is_module_remote = is_remote(&module_name);
+  // We try fetch local. Two cases:
+  // 1. This is a remote module and we're allowed to use cached downloads.
+  // 2. This is a local module.
+  if !is_module_remote || use_cache {
+    debug!(
+      "fetch local or reload {} is_module_remote {}",
+      module_name, is_module_remote
+    );
+    // Note that local fetch is done synchronously.
+    match fetch_local_source(deno_dir, &module_name, &filename, None) {
+      Ok(Some(output)) => {
+        debug!("found local source ");
+        return Either::A(futures::future::ok(output));
+      }
+      Ok(None) => {
+        debug!("fetch_local_source returned None");
+      }
+      Err(err) => {
+        return Either::A(futures::future::err(err));
+      }
+    }
+  }
+
+  // If not remote file, stop here!
+  if !is_module_remote {
+    debug!("not remote file stop here");
+    return Either::A(futures::future::err(DenoError::from(
+      std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("cannot find local file '{}'", &filename),
+      ),
+    )));
+  }
+
+  debug!("is remote but didn't find module");
+
+  // not cached/local, try remote
+  Either::B(
+    fetch_remote_source_async(deno_dir, &module_name, &filename).and_then(
+      move |maybe_remote_source| match maybe_remote_source {
+        Some(output) => Ok(output),
+        None => Err(DenoError::from(std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!("cannot find remote file '{}'", &filename),
+        ))),
+      },
+    ),
+  )
+}
+
+#[cfg(test)]
+/// Synchronous version of get_source_code_async
+/// This function is deprecated.
+fn get_source_code(
+  deno_dir: &DenoDir,
+  module_name: &str,
+  filename: &str,
+  use_cache: bool,
+) -> DenoResult<ModuleMetaData> {
+  tokio_util::block_on(get_source_code_async(
+    deno_dir,
+    module_name,
+    filename,
+    use_cache,
+  ))
+}
+
+/// Fetch local or cached source code.
+/// This is a recursive operation if source file has redirection.
+/// It will keep reading filename.meta for information about redirection.
+/// module_redirect_source_name would be None on first call,
+/// and becomes the name of the very first module that initiates the call
+/// in subsequent recursions.
+fn fetch_local_source(
+  deno_dir: &DenoDir,
+  module_name: &str,
+  filename: &str,
+  module_redirect_source_name: Option<String>,
+) -> DenoResult<Option<ModuleMetaData>> {
+  let p = Path::new(&filename);
+  let source_metadata = get_source_metadata(&filename);
+  // If source metadata says that it would redirect elsewhere,
+  // Abort reading attempts to file and and follow the redirect.
+  if source_metadata.redirect_source.is_some() {
+    let (real_module_name, real_filename) = deno_dir
+      .resolve_module(&(source_metadata.redirect_source.unwrap()), ".")?;
+    let mut module_original_source_name = module_redirect_source_name;
+    // If this is the first redirect attempt,
+    // then redirect_source should be None.
+    // In that case, use current module name as module redirect source name.
+    if module_original_source_name.is_none() {
+      module_original_source_name = Some(module_name.to_owned());
+    }
+    return fetch_local_source(
+      deno_dir,
+      &real_module_name,
+      &real_filename,
+      module_original_source_name,
+    );
+  }
+  let source_code = match fs::read(p) {
+    Err(e) => {
+      if e.kind() == std::io::ErrorKind::NotFound {
+        return Ok(None);
+      } else {
+        return Err(e.into());
+      }
+    }
+    Ok(c) => c,
+  };
+  Ok(Some(ModuleMetaData {
+    module_name: module_name.to_string(),
+    module_redirect_source_name,
+    filename: filename.to_string(),
+    media_type: map_content_type(
+      &p,
+      source_metadata.mime_type.as_ref().map(String::as_str),
+    ),
+    source_code,
+    maybe_output_code_filename: None,
+    maybe_output_code: None,
+    maybe_source_map_filename: None,
+    maybe_source_map: None,
+  }))
+}
+
+/// Asynchronously fetch remote source file specified by the URL `module_name`
+/// and write it to disk at `filename`.
+fn fetch_remote_source_async(
+  deno_dir: &DenoDir,
+  module_name: &str,
+  filename: &str,
+) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
+  use crate::http_util::FetchOnceResult;
+  {
+    eprintln!("Downloading {}", module_name);
+  }
+
+  let filename = filename.to_owned();
+  let module_name = module_name.to_owned();
+
+  // We write a special ".meta" file into the `.deno/deps` directory along side the
+  // cached file, containing just the media type and possible redirect target.
+  // If redirect target is present, the file itself if not stored.
+  loop_fn(
+    (
+      deno_dir.clone(),
+      None,
+      None,
+      module_name.clone(),
+      filename.clone(),
+    ),
+    |(
+      dir,
+      maybe_initial_module_name,
+      maybe_initial_filename,
+      module_name,
+      filename,
+    )| {
+      let url = module_name.parse::<http::uri::Uri>().unwrap();
+      http_util::fetch_string_once(url).and_then(move |fetch_once_result| {
+        match fetch_once_result {
+          FetchOnceResult::Redirect(url) => {
+            let resolve_result = dir
+              .resolve_module(&(url.to_string()), ".")
+              .map_err(DenoError::from);
+            match resolve_result {
+              Ok((new_module_name, new_filename)) => {
+                let mut maybe_initial_module_name = maybe_initial_module_name;
+                let mut maybe_initial_filename = maybe_initial_filename;
+                if maybe_initial_module_name.is_none() {
+                  maybe_initial_module_name = Some(module_name.clone());
+                  maybe_initial_filename = Some(filename.clone());
+                }
+                Ok(Loop::Continue((
+                  dir,
+                  maybe_initial_module_name,
+                  maybe_initial_filename,
+                  new_module_name,
+                  new_filename,
+                )))
+              }
+              Err(e) => Err(e),
+            }
+          }
+          FetchOnceResult::Code(source, maybe_content_type) => {
+            let p = PathBuf::from(filename.clone());
+            match p.parent() {
+              Some(ref parent) => fs::create_dir_all(parent),
+              None => Ok(()),
+            }?;
+            deno_fs::write_file(&p, &source, 0o666)?;
+            {
+              save_source_metadata(&filename, maybe_content_type.clone(), None);
+            }
+            // Check if this file is downloaded due to some old redirect request
+            if maybe_initial_filename.is_some() {
+              // If yes, record down the metadata for redirect.
+              // Also create its containing folder.
+              let pp = PathBuf::from(filename.clone());
+              match pp.parent() {
+                Some(ref parent) => fs::create_dir_all(parent),
+                None => Ok(()),
+              }?;
+              {
+                save_source_metadata(
+                  &maybe_initial_filename.clone().unwrap(),
+                  maybe_content_type.clone(),
+                  Some(filename.clone()),
+                );
+              }
+            }
+            Ok(Loop::Break(Some(ModuleMetaData {
+              module_name: module_name.to_string(),
+              module_redirect_source_name: maybe_initial_module_name,
+              filename: filename.to_string(),
+              media_type: map_content_type(
+                &p,
+                maybe_content_type.as_ref().map(|s| s.as_str()),
+              ),
+              source_code: source.as_bytes().to_owned(),
+              maybe_output_code_filename: None,
+              maybe_output_code: None,
+              maybe_source_map_filename: None,
+              maybe_source_map: None,
+            })))
+          }
+        }
+      })
+    },
+  )
+}
+
+// Prototype https://github.com/denoland/deno/blob/golang/deno_dir.go#L37-L73
+/// Fetch remote source code.
+#[cfg(test)]
+fn fetch_remote_source(
+  deno_dir: &DenoDir,
+  module_name: &str,
+  filename: &str,
+) -> DenoResult<Option<ModuleMetaData>> {
+  tokio_util::block_on(fetch_remote_source_async(
+    deno_dir,
+    module_name,
+    filename,
+  ))
 }
 
 fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
@@ -725,13 +744,13 @@ static MIME_TYPE: &'static str = "mime_type";
 static REDIRECT_SOURCE: &'static str = "redirect_source";
 
 fn source_metadata_filename(filename: &str) -> String {
-  [&filename, ".meta"].concat()
+  [&filename, ".meta.json"].concat()
 }
 
 fn get_source_metadata(filename: &str) -> SourceMetaData {
   let metadata_filename = source_metadata_filename(filename);
   let md = Path::new(&metadata_filename);
-  // .meta file might not exists.
+  // .meta.json file might not exists.
   // This is okay for local source.
   let maybe_metadata_string = fs::read_to_string(&md).ok();
   if let Some(metadata_string) = maybe_metadata_string {
@@ -751,7 +770,7 @@ fn get_source_metadata(filename: &str) -> SourceMetaData {
   }
 }
 
-/// Save metadata related to source filename to {filename}.meta file,
+/// Save metadata related to source filename to {filename}.meta.json file,
 /// only when there is actually something necessary to save.
 fn save_source_metadata(
   filename: &str,
@@ -759,7 +778,7 @@ fn save_source_metadata(
   redirect_source: Option<String>,
 ) {
   let metadata_filename = source_metadata_filename(filename);
-  // Remove possibly existing stale .meta file.
+  // Remove possibly existing stale .meta.json file.
   // May not exist. DON'T unwrap.
   let _ = std::fs::remove_file(&metadata_filename);
   let p = PathBuf::from(filename);
@@ -792,7 +811,7 @@ fn save_source_metadata(
     let _ = serde_json::to_string(&value_map).map(|s| {
       // It is possible that we need to create file
       // with parent folders not yet created.
-      // (Due to .meta feature for redirection)
+      // (Due to .meta.json feature for redirection)
       let md = PathBuf::from(&metadata_filename);
       let _ = match md.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
@@ -933,7 +952,7 @@ mod tests {
       );
       let metadata_file_name = source_metadata_filename(&filename);
 
-      let result = deno_dir.get_source_code(module_name, &filename, true);
+      let result = get_source_code(&deno_dir, module_name, &filename, true);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -941,15 +960,15 @@ mod tests {
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      // Should not create .meta file due to matching ext
+      // Should not create .meta.json file due to matching ext
       assert!(fs::read_to_string(&metadata_file_name).is_err());
 
-      // Modify .meta, write using fs write and read using save_source_metadata
+      // Modify .meta.json, write using fs write and read using save_source_metadata
       let _ = fs::write(
         &metadata_file_name,
         "{ \"mime_type\": \"text/javascript\" }",
       );
-      let result2 = deno_dir.get_source_code(module_name, &filename, true);
+      let result2 = get_source_code(&deno_dir, module_name, &filename, true);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
@@ -957,20 +976,20 @@ mod tests {
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
       // If get_source_code does not call remote, this should be JavaScript
-      // as we modified before! (we do not overwrite .meta due to no http fetch)
+      // as we modified before! (we do not overwrite .meta.json due to no http fetch)
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
         get_source_metadata(&filename).mime_type.unwrap(),
         "text/javascript"
       );
 
-      // Modify .meta again, but the other way around
+      // Modify .meta.json again, but the other way around
       save_source_metadata(
         &filename,
         Some("application/json".to_owned()),
         None,
       );
-      let result3 = deno_dir.get_source_code(module_name, &filename, true);
+      let result3 = get_source_code(&deno_dir, module_name, &filename, true);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       assert_eq!(
@@ -978,7 +997,7 @@ mod tests {
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
       // If get_source_code does not call remote, this should be JavaScript
-      // as we modified before! (we do not overwrite .meta due to no http fetch)
+      // as we modified before! (we do not overwrite .meta.json due to no http fetch)
       assert_eq!(&(r3.media_type), &msg::MediaType::Json);
       assert!(
         fs::read_to_string(&metadata_file_name)
@@ -987,13 +1006,13 @@ mod tests {
       );
 
       // Don't use_cache
-      let result4 = deno_dir.get_source_code(module_name, &filename, false);
+      let result4 = get_source_code(&deno_dir, module_name, &filename, false);
       assert!(result4.is_ok());
       let r4 = result4.unwrap();
       let expected4 =
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes();
       assert_eq!(r4.source_code, expected4);
-      // Now the old .meta file should have gone! Resolved back to TypeScript
+      // Now the old .meta.json file should have gone! Resolved back to TypeScript
       assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
       assert!(fs::read_to_string(&metadata_file_name).is_err());
     });
@@ -1013,37 +1032,37 @@ mod tests {
       );
       let metadata_file_name = source_metadata_filename(&filename);
 
-      let result = deno_dir.get_source_code(module_name, &filename, true);
+      let result = get_source_code(&deno_dir, module_name, &filename, true);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
       assert_eq!(r.source_code, expected);
-      // Mismatch ext with content type, create .meta
+      // Mismatch ext with content type, create .meta.json
       assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
         get_source_metadata(&filename).mime_type.unwrap(),
         "text/javascript"
       );
 
-      // Modify .meta
+      // Modify .meta.json
       save_source_metadata(&filename, Some("text/typescript".to_owned()), None);
-      let result2 = deno_dir.get_source_code(module_name, &filename, true);
+      let result2 = get_source_code(&deno_dir, module_name, &filename, true);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
       assert_eq!(r2.source_code, expected2);
       // If get_source_code does not call remote, this should be TypeScript
-      // as we modified before! (we do not overwrite .meta due to no http fetch)
+      // as we modified before! (we do not overwrite .meta.json due to no http fetch)
       assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
       assert!(fs::read_to_string(&metadata_file_name).is_err());
 
       // Don't use_cache
-      let result3 = deno_dir.get_source_code(module_name, &filename, false);
+      let result3 = get_source_code(&deno_dir, module_name, &filename, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
       assert_eq!(r3.source_code, expected3);
-      // Now the old .meta file should be overwritten back to JavaScript!
+      // Now the old .meta.json file should be overwritten back to JavaScript!
       // (due to http fetch)
       assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
@@ -1069,23 +1088,26 @@ mod tests {
       );
       let metadata_file_name = source_metadata_filename(&filename);
 
-      let result = tokio_util::block_on(
-        deno_dir.fetch_remote_source_async(&module_name, &filename),
-      );
+      let result = tokio_util::block_on(fetch_remote_source_async(
+        &deno_dir,
+        &module_name,
+        &filename,
+      ));
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, b"export const loaded = true;\n");
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      // matching ext, no .meta file created
+      // matching ext, no .meta.json file created
       assert!(fs::read_to_string(&metadata_file_name).is_err());
 
-      // Modify .meta, make sure read from local
+      // Modify .meta.json, make sure read from local
       save_source_metadata(&filename, Some("text/javascript".to_owned()), None);
-      let result2 = deno_dir.fetch_local_source(&module_name, &filename, None);
+      let result2 =
+        fetch_local_source(&deno_dir, &module_name, &filename, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
-      // Not MediaType::TypeScript due to .meta modification
+      // Not MediaType::TypeScript due to .meta.json modification
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     });
   }
@@ -1106,21 +1128,21 @@ mod tests {
       );
       let metadata_file_name = source_metadata_filename(&filename);
 
-      let result = deno_dir.fetch_remote_source(module_name, &filename);
+      let result = fetch_remote_source(&deno_dir, module_name, &filename);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      // matching ext, no .meta file created
+      // matching ext, no .meta.json file created
       assert!(fs::read_to_string(&metadata_file_name).is_err());
 
-      // Modify .meta, make sure read from local
+      // Modify .meta.json, make sure read from local
       save_source_metadata(&filename, Some("text/javascript".to_owned()), None);
-      let result2 = deno_dir.fetch_local_source(module_name, &filename, None);
+      let result2 = fetch_local_source(&deno_dir, module_name, &filename, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
-      // Not MediaType::TypeScript due to .meta modification
+      // Not MediaType::TypeScript due to .meta.json modification
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     });
   }
@@ -1138,12 +1160,12 @@ mod tests {
           .join("localhost_PORT4545/tests/subdir/no_ext")
           .as_ref(),
       );
-      let result = deno_dir.fetch_remote_source(module_name, &filename);
+      let result = fetch_remote_source(&deno_dir, module_name, &filename);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      // no ext, should create .meta file
+      // no ext, should create .meta.json file
       assert_eq!(
         get_source_metadata(&filename).mime_type.unwrap(),
         "text/typescript"
@@ -1156,12 +1178,12 @@ mod tests {
           .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
           .as_ref(),
       );
-      let result_2 = deno_dir.fetch_remote_source(module_name_2, &filename_2);
+      let result_2 = fetch_remote_source(&deno_dir, module_name_2, &filename_2);
       assert!(result_2.is_ok());
       let r2 = result_2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-      // mismatch ext, should create .meta file
+      // mismatch ext, should create .meta.json file
       assert_eq!(
         get_source_metadata(&filename_2).mime_type.unwrap(),
         "text/javascript"
@@ -1175,12 +1197,12 @@ mod tests {
           .join("localhost_PORT4545/tests/subdir/unknown_ext.deno")
           .as_ref(),
       );
-      let result_3 = deno_dir.fetch_remote_source(module_name_3, &filename_3);
+      let result_3 = fetch_remote_source(&deno_dir, module_name_3, &filename_3);
       assert!(result_3.is_ok());
       let r3 = result_3.unwrap().unwrap();
       assert_eq!(r3.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
-      // unknown ext, should create .meta file
+      // unknown ext, should create .meta.json file
       assert_eq!(
         get_source_metadata(&filename_3).mime_type.unwrap(),
         "text/typescript"
@@ -1198,7 +1220,7 @@ mod tests {
     let filename =
       format!("{}/tests/subdir/mt_text_typescript.t1.ts", &cwd_string);
 
-    let result = deno_dir.fetch_local_source(module_name, &filename, None);
+    let result = fetch_local_source(&deno_dir, module_name, &filename, None);
     assert!(result.is_ok());
     let r = result.unwrap().unwrap();
     assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
