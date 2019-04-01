@@ -100,9 +100,6 @@ ts_sources = [
   "../js/url_search_params.ts",
   "../js/util.ts",
   "../js/window.ts",
-  "../js/workers_globals.ts",
-  "../js/workers_guest.ts",
-  "../js/workers_init.ts",
   "../js/workers.ts",
   "../js/write_file.ts",
   "../js/performance.ts",
@@ -122,7 +119,6 @@ group("deno_deps") {
     ":msg_rs",
     ":snapshot_compiler",
     ":snapshot_deno",
-    ":snapshot_worker",
   ]
 }
 
@@ -133,7 +129,6 @@ group("deno_deps_cross") {
   deps = [
     ":compiler_bundle",
     ":main_bundle",
-    ":worker_bundle",
     ":msg_rs",
   ]
 }
@@ -212,61 +207,9 @@ run_node("deno_runtime_declaration") {
   }
 }
 
-# Generates the worker TypeScript type library for deno that will be
-# included in the worker runtime bundle
-run_node("deno_worker_runtime_declaration") {
-  out_dir = target_gen_dir
-  sources = ts_sources
-  outputs = [
-    "$out_dir/lib/lib.deno_worker_runtime.d.ts",
-  ]
-  deps = [
-    ":msg_ts",
-  ]
-  inputs = ts_sources + [
-             "//tools/ts_library_builder/tsconfig.json",
-             "//tools/ts_library_builder/main.ts",
-             "//tools/ts_library_builder/build_library.ts",
-             "//tools/ts_library_builder/ast_util.ts",
-           ]
-  args = [
-    rebase_path("//node_modules/ts-node/dist/bin.js", root_build_dir),
-    "--project",
-    rebase_path("//tools/ts_library_builder/tsconfig.json"),
-    "--skip-ignore",
-    rebase_path("//tools/ts_library_builder/main.ts", root_build_dir),
-    "--basePath",
-    rebase_path("//", root_build_dir),
-    "--inline",
-    rebase_path("//js/lib.web_assembly.d.ts", root_build_dir),
-    "--buildPath",
-    rebase_path(root_build_dir, root_build_dir),
-    "--outFile",
-    rebase_path(outputs[0], root_build_dir),
-    "--silent",
-    "--worker",
-  ]
-  if (is_debug) {
-    args += [ "--debug" ]
-  }
-}
-
 bundle("main_bundle") {
   out_dir = "$target_gen_dir/bundle/"
   out_name = "main"
-  deps = [
-    ":deno_runtime_declaration",
-    ":msg_ts",
-    ":write_gn_args",
-  ]
-  data = [
-    "$target_gen_dir/gn_args.txt",
-  ]
-}
-
-bundle("worker_bundle") {
-  out_dir = "$target_gen_dir/bundle/"
-  out_name = "workers_init"
   deps = [
     ":deno_runtime_declaration",
     ":msg_ts",
@@ -282,7 +225,6 @@ bundle("compiler_bundle") {
   out_name = "compiler"
   deps = [
     ":deno_runtime_declaration",
-    ":deno_worker_runtime_declaration",
     ":msg_ts",
     ":write_gn_args",
   ]
@@ -308,14 +250,6 @@ snapshot("snapshot_deno") {
   source_root = "$target_gen_dir/bundle/main.js"
   deps = [
     ":main_bundle",
-  ]
-}
-
-# Generates Startup_gen_dir/snapshot_worker.bin
-snapshot("snapshot_worker") {
-  source_root = "$target_gen_dir/bundle/workers_init.js"
-  deps = [
-    ":worker_bundle",
   ]
 }
 

@@ -2,14 +2,13 @@
 import * as ts from "typescript";
 import * as msg from "gen/cli/msg_generated";
 import { window } from "./window";
-import { assetSourceCode, assetSourceCodeWorkers } from "./assets";
+import { assetSourceCode } from "./assets";
 import { Console } from "./console";
 import { core } from "./core";
 import * as os from "./os";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { clearTimer, setTimeout } from "./timers";
-import { postMessage, workerClose, workerMain } from "./workers_guest";
-import denoMain from "./workers_init";
+import { postMessage, workerClose, workerMain } from "./workers";
 import { assert, log, notImplemented } from "./util";
 
 const EOL = "\n";
@@ -507,7 +506,6 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
 }
 
 const compiler = new Compiler(assetSourceCode);
-const compilerWorkers = new Compiler(assetSourceCodeWorkers);
 
 // set global objects for compiler web worker
 window.clearTimeout = clearTimer;
@@ -524,14 +522,14 @@ window.TextEncoder = TextEncoder;
 window.compilerMain = function compilerMain() {
   // workerMain should have already been called since a compiler is a worker.
   window.onmessage = ({ data }: { data: CompilerLookup }) => {
-    const { specifier, referrer, isWorker } = data;
+    const { specifier, referrer } = data;
 
-    const result = isWorker
-      ? compilerWorkers.compile(specifier, referrer)
-      : compiler.compile(specifier, referrer);
+    const result = compiler.compile(specifier, referrer);
 
     postMessage(result);
   };
 };
 
-export default denoMain;
+export default function denoMain(): void {
+  os.start("TS");
+}

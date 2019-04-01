@@ -8,9 +8,6 @@
 // Generated default library
 import libDts from "gen/cli/lib/lib.deno_runtime.d.ts!string";
 
-// Generated worker default library
-import libDtsWorker from "gen/cli/lib/lib.deno_worker_runtime.d.ts!string";
-
 // Static libraries
 import libEs2015Dts from "/third_party/node_modules/typescript/lib/lib.es2015.d.ts!string";
 import libEs2015CollectionDts from "/third_party/node_modules/typescript/lib/lib.es2015.collection.d.ts!string";
@@ -80,13 +77,5 @@ const defaultAssets: { [key: string]: string } = {
 export const assetSourceCode: { [key: string]: string } = {
   // Generated library
   "lib.deno_runtime.d.ts": libDts,
-  ...defaultAssets
-};
-
-// assests for worker compile jobs
-// @internal
-export const assetSourceCodeWorkers: { [key: string]: string } = {
-  // Generated library
-  "lib.deno_runtime.d.ts": libDtsWorker,
   ...defaultAssets
 };

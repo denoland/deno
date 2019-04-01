@@ -10,7 +10,6 @@ let outFile = path.join(buildPath, "gen", "lib", "lib.d.ts");
 let inline: string[] = [];
 let debug = false;
 let silent = false;
-let worker = false;
 
 process.argv.forEach((arg, i, argv) => {
   switch (arg) {
@@ -34,14 +33,8 @@ process.argv.forEach((arg, i, argv) => {
     case "--silent":
       silent = true;
       break;
-    case "--worker":
-      worker = true;
-      break;
   }
 });
-
-const additionalGlobals = worker ? ["js/workers_globals.ts"] : [];
-const declareAsLet = worker ? ["onmessage"] : [];
 
 buildRuntimeLib({
   basePath,
@@ -51,11 +44,9 @@ buildRuntimeLib({
   inputs: [
     "node_modules/typescript/lib/lib.esnext.d.ts",
     "js/deno.ts",
-    "js/globals.ts",
-    ...additionalGlobals
+    "js/globals.ts"
   ],
-  declareAsLet,
-  additionalGlobals,
+  declareAsLet: ["onmessage"],
   outFile,
   silent
 });
