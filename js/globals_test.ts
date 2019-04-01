@@ -14,6 +14,7 @@ test(function windowWindowExists() {
 });
 
 test(function globalThisEqualsWindow() {
+  // @ts-ignore (TypeScript thinks globalThis and window don't match)
   assert(globalThis === window);
 });
 
