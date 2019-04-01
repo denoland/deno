@@ -45,7 +45,7 @@ impl IsolateStateContainer for &UserWorkerBehavior {
 
 impl Behavior for UserWorkerBehavior {
   fn startup_data(&mut self) -> Option<StartupData> {
-    Some(startup_data::worker_isolate_init())
+    Some(startup_data::deno_isolate_init())
   }
 
   fn dispatch(
