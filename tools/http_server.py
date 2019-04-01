@@ -101,14 +101,15 @@ def server():
     return s
 
 
-def base_redirect_server(host_port, target_port):
+def base_redirect_server(host_port, target_port, extra_path_segment=""):
     os.chdir(root_path)
     target_host = "http://localhost:%d" % target_port
 
     class RedirectHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         def do_GET(self):
             self.send_response(301)
-            self.send_header('Location', target_host + self.path)
+            self.send_header('Location',
+                             target_host + extra_path_segment + self.path)
             self.end_headers()
 
     Handler = RedirectHandler
@@ -125,8 +126,10 @@ def redirect_server():
 
 
 # another redirect server pointing to the same port as the one above
+# BUT with an extra subdir path
 def another_redirect_server():
-    return base_redirect_server(ANOTHER_REDIRECT_PORT, PORT)
+    return base_redirect_server(
+        ANOTHER_REDIRECT_PORT, PORT, extra_path_segment="/tests/subdir")
 
 
 # redirect server that points to another redirect server

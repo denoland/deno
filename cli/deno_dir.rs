@@ -404,7 +404,7 @@ fn get_source_code_async(
 
   debug!("is remote but didn't find module");
 
-  // not cached/local, try remote
+  // not cached/local, try remote.
   Either::B(
     fetch_remote_source_async(deno_dir, &module_name, &filename).and_then(
       move |maybe_remote_source| match maybe_remote_source {
@@ -456,7 +456,7 @@ fn fetch_local_source(
   // (meaning that the source file might not exist; only .meta.json is present)
   // Abort reading attempts to the cached source file and and follow the redirect.
   if let Some(redirect_to) = source_metadata.redirect_to {
-    // e.g.
+    // E.g.
     // module_name https://import-meta.now.sh/redirect.js
     // filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/redirect.js
     // redirect_to https://import-meta.now.sh/sub/final1.js
@@ -966,6 +966,29 @@ mod tests {
   }
 
   #[test]
+  fn test_metadata_get_and_save() {
+    let (temp_dir, _deno_dir) = test_setup();
+    let filename =
+      deno_fs::normalize_path(temp_dir.into_path().join("f.js").as_ref());
+    let metadata_file_name = source_metadata_filename(&filename);
+    assert_eq!(metadata_file_name, [&filename, ".meta.json"].concat());
+    let _ = deno_fs::write_file(&PathBuf::from(&metadata_file_name),
+      "{\"mime_type\":\"text/javascript\",\"redirect_to\":\"http://example.com/a.js\"}", 0o666);
+    let meta = get_source_code_metadata(&filename);
+    assert_eq!(meta.mime_type.clone().unwrap(), "text/javascript");
+    assert_eq!(meta.redirect_to.clone().unwrap(), "http://example.com/a.js");
+
+    save_source_code_metadata(
+      &filename,
+      Some("text/typescript".to_owned()),
+      Some("http://deno.land/a.js".to_owned()),
+    );
+    let meta2 = get_source_code_metadata(&filename);
+    assert_eq!(meta2.mime_type.clone().unwrap(), "text/typescript");
+    assert_eq!(meta2.redirect_to.clone().unwrap(), "http://deno.land/a.js");
+  }
+
+  #[test]
   fn test_get_source_code_1() {
     let (_temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
@@ -1099,6 +1122,127 @@ mod tests {
       assert_eq!(
         get_source_code_metadata(&filename).mime_type.unwrap(),
         "text/javascript"
+      );
+    });
+  }
+
+  #[test]
+  fn test_get_source_code_3() {
+    let (_temp_dir, deno_dir) = test_setup();
+    // Test basic follow and meta recording
+    tokio_util::init(|| {
+      let redirect_module_name =
+        "http://localhost:4546/tests/subdir/redirects/redirect1.js";
+      let redirect_source_filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js")
+          .as_ref(),
+      );
+      let target_module_name =
+        "http://localhost:4545/tests/subdir/redirects/redirect1.js";
+      let redirect_target_filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/redirects/redirect1.js")
+          .as_ref(),
+      );
+      let mod_meta = get_source_code(
+        &deno_dir,
+        redirect_module_name,
+        &redirect_source_filename,
+        true,
+      ).unwrap();
+      // File that requires redirection is not downloaded.
+      assert!(fs::read_to_string(&redirect_source_filename).is_err());
+      // ... but its meta is created.
+      let redirect_source_meta =
+        get_source_code_metadata(&redirect_source_filename);
+      assert_eq!(
+        redirect_source_meta.redirect_to.unwrap(),
+        "http://localhost:4545/tests/subdir/redirects/redirect1.js"
+      );
+      // The target of redirection is downloaded instead.
+      assert_eq!(
+        fs::read_to_string(&redirect_target_filename).unwrap(),
+        "export const redirect = 1;\n"
+      );
+      let redirect_target_meta =
+        get_source_code_metadata(&redirect_target_filename);
+      assert!(redirect_target_meta.redirect_to.is_none());
+
+      // Examine the meta result.
+      assert_eq!(&mod_meta.module_name, target_module_name);
+      assert_eq!(
+        &mod_meta.module_redirect_source_name.clone().unwrap(),
+        redirect_module_name
+      );
+    });
+  }
+
+  #[test]
+  fn test_get_source_code_4() {
+    let (_temp_dir, deno_dir) = test_setup();
+    // Test double redirects and meta recording
+    tokio_util::init(|| {
+      let redirect_module_name =
+        "http://localhost:4548/tests/subdir/redirects/redirect1.js";
+      let redirect_source_filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4548/tests/subdir/redirects/redirect1.js")
+          .as_ref(),
+      );
+      let redirect_source_filename_intermediate = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js")
+          .as_ref(),
+      );
+      let target_module_name =
+        "http://localhost:4545/tests/subdir/redirects/redirect1.js";
+      let redirect_target_filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/redirects/redirect1.js")
+          .as_ref(),
+      );
+      let mod_meta = get_source_code(
+        &deno_dir,
+        redirect_module_name,
+        &redirect_source_filename,
+        true,
+      ).unwrap();
+
+      // File that requires redirection is not downloaded.
+      assert!(fs::read_to_string(&redirect_source_filename).is_err());
+      // ... but its meta is created.
+      let redirect_source_meta =
+        get_source_code_metadata(&redirect_source_filename);
+      assert_eq!(
+        redirect_source_meta.redirect_to.unwrap(),
+        target_module_name
+      );
+
+      // In the intermediate redirection step, file is also not downloaded.
+      assert!(
+        fs::read_to_string(&redirect_source_filename_intermediate).is_err()
+      );
+
+      // The target of redirection is downloaded instead.
+      assert_eq!(
+        fs::read_to_string(&redirect_target_filename).unwrap(),
+        "export const redirect = 1;\n"
+      );
+      let redirect_target_meta =
+        get_source_code_metadata(&redirect_target_filename);
+      assert!(redirect_target_meta.redirect_to.is_none());
+
+      // Examine the meta result.
+      assert_eq!(&mod_meta.module_name, target_module_name);
+      assert_eq!(
+        &mod_meta.module_redirect_source_name.clone().unwrap(),
+        redirect_module_name
       );
     });
   }
