@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { relative } from "path";
+import { basename, dirname, join, relative } from "path";
 import { readFileSync } from "fs";
 import { EOL } from "os";
 import {
@@ -12,6 +12,7 @@ import {
   SourceFile,
   StatementedNode,
   ts,
+  TypeAliasDeclaration,
   TypeGuards,
   VariableStatement,
   VariableDeclarationKind
@@ -20,7 +21,7 @@ import {
 let silent = false;
 
 /** Logs a message to the console. */
-export function log(message: any = "", ...args: any[]) {
+export function log(message: any = "", ...args: any[]): void {
   if (!silent) {
     console.log(message, ...args);
   }
@@ -64,7 +65,7 @@ export function addTypeAlias(
   type: string,
   hasDeclareKeyword = false,
   jsdocs?: JSDoc[]
-) {
+): TypeAliasDeclaration {
   return node.addTypeAlias({
     name,
     type,
@@ -112,8 +113,30 @@ export function appendSourceFile(
   targetSourceFile.addStatements(`\n${sourceFile.print()}`);
 }
 
+/** Used when formatting diagnostics */
+const formatDiagnosticHost: ts.FormatDiagnosticsHost = {
+  getCurrentDirectory() {
+    return process.cwd();
+  },
+  getCanonicalFileName(path: string) {
+    return path;
+  },
+  getNewLine() {
+    return EOL;
+  }
+};
+
+/** Log diagnostics to the console with colour. */
+export function logDiagnostics(diagnostics: ts.Diagnostic[]): void {
+  if (diagnostics.length) {
+    console.log(
+      ts.formatDiagnosticsWithColorAndContext(diagnostics, formatDiagnosticHost)
+    );
+  }
+}
+
 /** Check diagnostics, and if any exist, exit the process */
-export function checkDiagnostics(project: Project, onlyFor?: string[]) {
+export function checkDiagnostics(project: Project, onlyFor?: string[]): void {
   const program = project.getProgram();
   const diagnostics = [
     ...program.getGlobalDiagnostics(),
@@ -154,6 +177,32 @@ export interface FlattenNamespaceOptions {
   sourceFile: SourceFile;
 }
 
+/** Returns a string which indicates the source file as the source */
+export function getSourceComment(
+  sourceFile: SourceFile,
+  rootPath: string
+): string {
+  return `\n// @url ${relative(rootPath, sourceFile.getFilePath())}\n\n`;
+}
+
+/** Return a set of fully qualified symbol names for the files exports */
+function getExportedSymbols(sourceFile: SourceFile): Set<string> {
+  const exportedSymbols = new Set<string>();
+  const exportDeclarations = sourceFile.getExportDeclarations();
+  for (const exportDeclaration of exportDeclarations) {
+    const exportSpecifiers = exportDeclaration.getNamedExports();
+    for (const exportSpecifier of exportSpecifiers) {
+      const aliasedSymbol = exportSpecifier
+        .getSymbolOrThrow()
+        .getAliasedSymbol();
+      if (aliasedSymbol) {
+        exportedSymbols.add(aliasedSymbol.getFullyQualifiedName());
+      }
+    }
+  }
+  return exportedSymbols;
+}
+
 /** Take a namespace and flatten all exports. */
 export function flattenNamespace({
   customSources,
@@ -167,15 +216,16 @@ export function flattenNamespace({
 
   function flattenDeclarations(
     declaration: ImportDeclaration | ExportDeclaration
-  ) {
+  ): void {
     const declarationSourceFile = declaration.getModuleSpecifierSourceFile();
     if (declarationSourceFile) {
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
       processSourceFile(declarationSourceFile);
       declaration.remove();
     }
   }
 
-  function rectifyNodes(currentSourceFile: SourceFile) {
+  function rectifyNodes(currentSourceFile: SourceFile): void {
     currentSourceFile.forEachChild(node => {
       if (TypeGuards.isAmbientableNode(node)) {
         node.setHasDeclareKeyword(false);
@@ -192,7 +242,9 @@ export function flattenNamespace({
     });
   }
 
-  function processSourceFile(currentSourceFile: SourceFile) {
+  function processSourceFile(
+    currentSourceFile: SourceFile
+  ): string | undefined {
     if (sourceFiles.has(currentSourceFile)) {
       return;
     }
@@ -237,45 +289,6 @@ export function flattenNamespace({
   );
 }
 
-/** Used when formatting diagnostics */
-const formatDiagnosticHost: ts.FormatDiagnosticsHost = {
-  getCurrentDirectory() {
-    return process.cwd();
-  },
-  getCanonicalFileName(path: string) {
-    return path;
-  },
-  getNewLine() {
-    return EOL;
-  }
-};
-
-/** Return a set of fully qualified symbol names for the files exports */
-function getExportedSymbols(sourceFile: SourceFile): Set<string> {
-  const exportedSymbols = new Set<string>();
-  const exportDeclarations = sourceFile.getExportDeclarations();
-  for (const exportDeclaration of exportDeclarations) {
-    const exportSpecifiers = exportDeclaration.getNamedExports();
-    for (const exportSpecifier of exportSpecifiers) {
-      const aliasedSymbol = exportSpecifier
-        .getSymbolOrThrow()
-        .getAliasedSymbol();
-      if (aliasedSymbol) {
-        exportedSymbols.add(aliasedSymbol.getFullyQualifiedName());
-      }
-    }
-  }
-  return exportedSymbols;
-}
-
-/** Returns a string which indicates the source file as the source */
-export function getSourceComment(
-  sourceFile: SourceFile,
-  rootPath: string
-): string {
-  return `\n// @url ${relative(rootPath, sourceFile.getFilePath())}\n\n`;
-}
-
 interface InlineFilesOptions {
   basePath: string;
   debug?: boolean;
@@ -289,7 +302,7 @@ export function inlineFiles({
   debug,
   inline,
   targetSourceFile
-}: InlineFilesOptions) {
+}: InlineFilesOptions): void {
   for (const filename of inline) {
     const text = readFileSync(filename, {
       encoding: "utf8"
@@ -302,11 +315,34 @@ export function inlineFiles({
   }
 }
 
+/** Load a set of files into a file system host. */
+export function loadFiles(
+  project: Project,
+  filePaths: string[],
+  rebase?: string
+): void {
+  const fileSystem = project.getFileSystem();
+  for (const filePath of filePaths) {
+    const fileText = readFileSync(filePath, {
+      encoding: "utf8"
+    });
+    fileSystem.writeFileSync(
+      rebase ? join(rebase, basename(filePath)) : filePath,
+      fileText
+    );
+  }
+}
+
 /**
  * Load and write to a virtual file system all the default libs needed to
  * resolve types on project.
  */
-export function loadDtsFiles(project: Project) {
+export function loadDtsFiles(
+  project: Project,
+  compilerOptions: ts.CompilerOptions
+): void {
+  const libSourcePath = dirname(ts.getDefaultLibFilePath(compilerOptions));
+  // TODO (@kitsonk) Add missing libs when ts-morph supports TypeScript 3.4
   loadFiles(
     project,
     [
@@ -331,35 +367,15 @@ export function loadDtsFiles(project: Project) {
       "lib.es2018.d.ts",
       "lib.es2018.intl.d.ts",
       "lib.es2018.promise.d.ts",
-      "lib.es2018.regexp.d.ts",
       "lib.es5.d.ts",
       "lib.esnext.d.ts",
       "lib.esnext.array.d.ts",
       "lib.esnext.asynciterable.d.ts",
       "lib.esnext.intl.d.ts",
       "lib.esnext.symbol.d.ts"
-    ].map(fileName => `node_modules/typescript/lib/${fileName}`)
+    ].map(fileName => join(libSourcePath, fileName)),
+    "node_modules/typescript/lib/"
   );
-}
-
-/** Load a set of files into a file system host. */
-export function loadFiles(project: Project, filePaths: string[]) {
-  const fileSystem = project.getFileSystem();
-  for (const filePath of filePaths) {
-    const fileText = readFileSync(filePath, {
-      encoding: "utf8"
-    });
-    fileSystem.writeFileSync(filePath, fileText);
-  }
-}
-
-/** Log diagnostics to the console with colour. */
-export function logDiagnostics(diagnostics: ts.Diagnostic[]): void {
-  if (diagnostics.length) {
-    console.log(
-      ts.formatDiagnosticsWithColorAndContext(diagnostics, formatDiagnosticHost)
-    );
-  }
 }
 
 export interface NamespaceSourceFileOptions {
