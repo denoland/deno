@@ -84,6 +84,14 @@ impl<B: DenoBehavior> Isolate<B> {
           &out.js_source(),
         )?;
 
+        if out.module_redirect_source_name.is_some() {
+          self.mod_alias(
+            &out.module_redirect_source_name.clone().unwrap(),
+            &out.module_name,
+          );
+          // println!("{} <- {}", &out.module_name, &out.module_redirect_source_name.clone().unwrap());
+        }
+
         self.mod_load_deps(child_id)?;
       }
     }
@@ -117,9 +125,21 @@ impl<B: DenoBehavior> Isolate<B> {
     let out = fetch_module_meta_data_and_maybe_compile(&self.state, url, ".")
       .map_err(RustOrJsError::from)?;
 
+    // Be careful.
+    // url might not match the actual out.module_name
+    // due to the mechanism of redirection.
+
     let id = self
       .mod_new_and_register(true, &out.module_name.clone(), &out.js_source())
       .map_err(RustOrJsError::from)?;
+
+    if out.module_redirect_source_name.is_some() {
+      self.mod_alias(
+        &out.module_redirect_source_name.clone().unwrap(),
+        &out.module_name,
+      );
+      // println!("{} <- {}", &out.module_name, &out.module_redirect_source_name.clone().unwrap());
+    }
 
     self.mod_load_deps(id)?;
 
@@ -151,6 +171,10 @@ impl<B: DenoBehavior> Isolate<B> {
     let id = self.inner.mod_new(main, name, source)?;
     self.state.modules.lock().unwrap().register(id, &name);
     Ok(id)
+  }
+
+  fn mod_alias(&self, name: &str, target: &str) {
+    self.state.modules.lock().unwrap().alias(name, target);
   }
 
   pub fn print_file_info(&self, module: &str) {

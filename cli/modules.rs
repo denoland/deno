@@ -12,23 +12,67 @@ pub struct ModuleInfo {
   children: Vec<deno_mod>,
 }
 
+pub enum ModuleNameCondition {
+  Alias(String),
+  Mod(deno_mod),
+}
+
+#[derive(Default)]
+pub struct ModuleMap {
+  inner: HashMap<String, ModuleNameCondition>,
+}
+
+impl ModuleMap {
+  pub fn new() -> Self {
+    ModuleMap {
+      inner: HashMap::new(),
+    }
+  }
+
+  pub fn get(&self, name: &str) -> Option<deno_mod> {
+    let mut mod_name = name;
+    loop {
+      let cond = self.inner.get(mod_name);
+      match cond {
+        Some(ModuleNameCondition::Alias(target)) => {
+          mod_name = target;
+        }
+        Some(ModuleNameCondition::Mod(mod_id)) => {
+          return Some(*mod_id);
+        }
+        _ => {
+          return None;
+        }
+      }
+    }
+  }
+
+  pub fn insert(&mut self, name: String, id: deno_mod) {
+    self.inner.insert(name, ModuleNameCondition::Mod(id));
+  }
+
+  pub fn alias(&mut self, name: String, target: String) {
+    self.inner.insert(name, ModuleNameCondition::Alias(target));
+  }
+}
+
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
   pub info: HashMap<deno_mod, ModuleInfo>,
-  pub by_name: HashMap<String, deno_mod>,
+  pub by_name: ModuleMap,
 }
 
 impl Modules {
   pub fn new() -> Modules {
     Self {
       info: HashMap::new(),
-      by_name: HashMap::new(),
+      by_name: ModuleMap::new(),
     }
   }
 
   pub fn get_id(&self, name: &str) -> Option<deno_mod> {
-    self.by_name.get(name).cloned()
+    self.by_name.get(name)
   }
 
   pub fn get_children(&self, id: deno_mod) -> Option<&Vec<deno_mod>> {
@@ -56,6 +100,10 @@ impl Modules {
     );
   }
 
+  pub fn alias(&mut self, name: &str, target: &str) {
+    self.by_name.alias(name.to_owned(), target.to_owned());
+  }
+
   pub fn resolve_cb(
     &mut self,
     deno_dir: &DenoDir,
@@ -78,8 +126,7 @@ impl Modules {
     }
     let (name, _local_filename) = r.unwrap();
 
-    if let Some(id) = self.by_name.get(&name) {
-      let child_id = *id;
+    if let Some(child_id) = self.by_name.get(&name) {
       info.children.push(child_id);
       return child_id;
     } else {
