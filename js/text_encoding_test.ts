@@ -91,3 +91,11 @@ test(function textDecoderSharedInt32Array() {
   const actual = decoder.decode(i32);
   assertEquals(actual, "ABCDEFGH");
 });
+
+test(function toStringShouldBeWebCompatibility() {
+  const encoder = new TextEncoder();
+  assertEquals(encoder.toString(), "[object TextEncoder]");
+
+  const decoder = new TextDecoder();
+  assertEquals(decoder.toString(), "[object TextDecoder]");
+});
