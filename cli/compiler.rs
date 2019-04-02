@@ -2,7 +2,7 @@
 use core::ops::Deref;
 use crate::flags::DenoFlags;
 use crate::isolate_state::*;
-use crate::js_errors::JSErrorColor;
+use crate::js_errors;
 use crate::msg;
 use crate::ops;
 use crate::resources;
@@ -21,7 +21,10 @@ use futures::future::*;
 use futures::sync::oneshot;
 use futures::Future;
 use serde_json;
+use std::collections::HashMap;
 use std::str;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::runtime::Runtime;
@@ -29,6 +32,8 @@ use tokio::runtime::Runtime;
 /// Used for normalization of types on internal future completions
 type CompilerInnerResult = Result<ModuleMetaData, Option<JSError>>;
 type WorkerErrReceiver = oneshot::Receiver<CompilerInnerResult>;
+type CmdId = u32;
+type ResponseSenderTable = HashMap<CmdId, oneshot::Sender<Buf>>;
 
 /// Shared resources for used to complete compiler operations.
 /// rid is the resource id for compiler worker resource used for sending it
@@ -43,6 +48,9 @@ struct CompilerShared {
 }
 
 lazy_static! {
+  static ref C_NEXT_CMD_ID: AtomicUsize = AtomicUsize::new(1);
+  // Map of response senders
+  static ref C_RES_SENDER_TABLE: Mutex<ResponseSenderTable> = Mutex::new(ResponseSenderTable::new());
   // Shared worker resources so we can spawn
   static ref C_SHARED: Mutex<Option<CompilerShared>> = Mutex::new(None);
   // tokio runtime specifically for spawning logic that is dependent on
@@ -132,6 +140,11 @@ impl ModuleMetaData {
   }
 }
 
+fn new_cmd_id() -> CmdId {
+  let next_rid = C_NEXT_CMD_ID.fetch_add(1, Ordering::SeqCst);
+  next_rid as CmdId
+}
+
 fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
   let mut cell = C_SHARED.lock().unwrap();
   cell
@@ -163,6 +176,42 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
               Ok(())
             })
           }));
+          // All worker responses are here initially before being sent via
+          // their respective sender. This system can be compared to the
+          // promise system used on the js side. It provides a way to
+          // resolve many futures via the same channel.
+          runtime.spawn(lazy(move || -> Result<(), ()> {
+            loop {
+              match resources::get_message_from_worker(rid).wait() {
+                Ok(Some(msg)) => {
+                  let res_json = std::str::from_utf8(&msg).unwrap();
+                  // Get the intended receiver from the message.
+                  let cmd_id =
+                    match serde_json::from_str::<serde_json::Value>(res_json) {
+                      Ok(serde_json::Value::Object(map)) => {
+                        match map["cmdId"].as_u64() {
+                          Some(cmd_id) => cmd_id,
+                          _ => panic!(
+                            "error decoding compiler response: expected cmdId"
+                          ),
+                        }
+                      }
+                      _ => panic!("error decoding compiler response"),
+                    };
+                  let mut table = C_RES_SENDER_TABLE.lock().unwrap();
+                  debug!("Cmd id for get message handler: {}", cmd_id);
+                  // Get the corresponding response sender from the table and
+                  // send a response.
+                  let response_sender =
+                    table.remove(&(cmd_id as CmdId)).unwrap();
+                  response_sender.send(msg).unwrap();
+                }
+                _ => debug!(
+                  "Received abnormal message from compiler worker ignoring it"
+                ),
+              }
+            }
+          }));
           CompilerShared {
             rid,
             worker_err_receiver: err_receiver.shared(),
@@ -176,16 +225,17 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
     }).clone()
 }
 
-fn show_compiler_error(err: JSError) -> ModuleMetaData {
-  eprintln!("{}", JSErrorColor(&err).to_string());
-  std::process::exit(1);
-}
-
-fn req(specifier: &str, referrer: &str, is_worker_main: bool) -> Buf {
+fn req(
+  specifier: &str,
+  referrer: &str,
+  is_worker_main: bool,
+  cmd_id: u32,
+) -> Buf {
   json!({
     "specifier": specifier,
     "referrer": referrer,
-    "isWorker": is_worker_main
+    "isWorker": is_worker_main,
+    "cmdId": cmd_id,
   }).to_string()
   .into_boxed_str()
   .into_boxed_bytes()
@@ -196,9 +246,9 @@ pub fn compile_sync(
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> ModuleMetaData {
+) -> Result<ModuleMetaData, JSError> {
   let is_worker = parent_state.is_worker.clone();
-  let shared = lazy_start(parent_state);
+  let shared = lazy_start(parent_state.clone());
 
   let (local_sender, local_receiver) =
     oneshot::channel::<Result<ModuleMetaData, Option<JSError>>>();
@@ -207,10 +257,16 @@ pub fn compile_sync(
   {
     let compiler_rid = shared.rid.clone();
     let module_meta_data_ = module_meta_data.clone();
-    let req_msg = req(specifier, referrer, is_worker);
+    let cmd_id = new_cmd_id();
+    let req_msg = req(specifier, referrer, is_worker, cmd_id);
     let sender_arc = Arc::new(Some(local_sender));
     let specifier_ = specifier.clone().to_string();
     let referrer_ = referrer.clone().to_string();
+    let (response_sender, response_receiver) = oneshot::channel::<Buf>();
+    let mut table = C_RES_SENDER_TABLE.lock().unwrap();
+    debug!("Cmd id for response sender insert: {}", cmd_id);
+    // Place our response sender in the table so we can find it later.
+    table.insert(cmd_id, response_sender);
 
     let mut runtime = C_RUNTIME.lock().unwrap();
     runtime.spawn(lazy(move || {
@@ -230,43 +286,65 @@ pub fn compile_sync(
           );
           let mut get_sender_arc = sender_arc.clone();
           let mut result_sender_arc = sender_arc.clone();
-          resources::get_message_from_worker(compiler_rid)
+          response_receiver
             .map_err(move |_| {
               let sender = Arc::get_mut(&mut get_sender_arc).unwrap().take();
               sender.unwrap().send(Err(None)).unwrap()
-            }).and_then(move |res_msg_option| -> Result<(), ()> {
+            }).and_then(move |res_msg: Buf| -> Result<(), ()> {
               debug!(
                 "Recieved message from worker specifier: {} referrer: {}",
                 specifier_, referrer_
               );
-              let res_msg = res_msg_option.unwrap();
               let res_json = std::str::from_utf8(&res_msg).unwrap();
               let sender = Arc::get_mut(&mut result_sender_arc).unwrap().take();
               let sender = sender.unwrap();
-              Ok(
-                sender
-                  .send(Ok(match serde_json::from_str::<serde_json::Value>(
-                    res_json,
-                  ) {
-                    Ok(serde_json::Value::Object(map)) => ModuleMetaData {
-                      module_name: module_meta_data_.module_name.clone(),
-                      filename: module_meta_data_.filename.clone(),
-                      media_type: module_meta_data_.media_type,
-                      source_code: module_meta_data_.source_code.clone(),
-                      maybe_output_code: match map["outputCode"].as_str() {
-                        Some(str) => Some(str.as_bytes().to_owned()),
-                        _ => None,
+              let res =
+                match serde_json::from_str::<serde_json::Value>(res_json) {
+                  Ok(serde_json::Value::Object(map)) => map,
+                  _ => panic!("error decoding compiler response"),
+                };
+              match res["success"].as_bool() {
+                Some(true) => Ok(
+                  sender
+                    .send(Ok(match res["data"].as_object() {
+                      Some(map) => ModuleMetaData {
+                        module_name: module_meta_data_.module_name.clone(),
+                        filename: module_meta_data_.filename.clone(),
+                        media_type: module_meta_data_.media_type,
+                        source_code: module_meta_data_.source_code.clone(),
+                        maybe_output_code: match map["outputCode"].as_str() {
+                          Some(str) => Some(str.as_bytes().to_owned()),
+                          _ => None,
+                        },
+                        maybe_output_code_filename: None,
+                        maybe_source_map: match map["sourceMap"].as_str() {
+                          Some(str) => Some(str.as_bytes().to_owned()),
+                          _ => None,
+                        },
+                        maybe_source_map_filename: None,
                       },
-                      maybe_output_code_filename: None,
-                      maybe_source_map: match map["sourceMap"].as_str() {
-                        Some(str) => Some(str.as_bytes().to_owned()),
-                        _ => None,
-                      },
-                      maybe_source_map_filename: None,
-                    },
-                    _ => panic!("error decoding compiler response"),
-                  })).unwrap(),
-              )
+                      None => panic!("error decoding compiler response"),
+                    })).unwrap(),
+                ),
+                Some(false) => Ok(
+                  sender
+                    .send(match res["data"].as_object() {
+                      Some(map) => {
+                        let js_error = JSError::from_json_value(
+                          serde_json::Value::Object(map.clone()),
+                        ).unwrap();
+                        Err(Some(js_errors::apply_source_map(
+                          &js_error,
+                          &parent_state.dir,
+                        )))
+                      }
+                      None => panic!("error decoding compiler response"),
+                    }).unwrap(),
+                ),
+                _ => panic!(
+                  "error decoding compiler response: expected success field"
+                ),
+              }
             })
         })
     }));
@@ -283,11 +361,11 @@ pub fn compile_sync(
       let mut rest_mut = rest;
       match ((*result.deref()).clone(), i) {
         // Either receiver was completed with success.
-        (Ok(v), _) => v,
+        (Ok(v), _) => Ok(v),
         // Either receiver was completed with a valid error
         // this should be fatal for now since it is not intended
         // to be possible to recover from a uncaught error in a isolate
-        (Err(Some(err)), _) => show_compiler_error(err),
+        (Err(Some(err)), _) => Err(err),
         // local_receiver finished first with a none error. This is intended
         // to catch when the local logic can't complete because it is unable
         // to send and/or receive messages from the compiler worker.
@@ -309,9 +387,9 @@ pub fn compile_sync(
             specifier, referrer
           );
           match worker_result {
-            Err(Some(err)) => show_compiler_error(err),
+            Err(Some(err)) => Err(err),
             Err(None) => panic!("Compiler exit for an unknown reason!"),
-            Ok(v) => v,
+            Ok(v) => Ok(v),
           }
         }
         // While possible beccause the compiler worker can exit without error
@@ -356,7 +434,7 @@ mod tests {
         specifier,
         &referrer,
         &out,
-      );
+      ).unwrap();
       assert!(
         out
           .maybe_output_code

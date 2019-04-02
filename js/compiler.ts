@@ -47,6 +47,7 @@ interface CompilerLookup {
   specifier: ModuleSpecifier;
   referrer: ContainingFile;
   isWorker: boolean;
+  cmdId: number;
 }
 
 /** Abstraction of the APIs required from the `os` module so they can be
@@ -522,11 +523,22 @@ window.TextEncoder = TextEncoder;
 window.compilerMain = function compilerMain() {
   // workerMain should have already been called since a compiler is a worker.
   window.onmessage = ({ data }: { data: CompilerLookup }) => {
-    const { specifier, referrer } = data;
+    const { specifier, referrer, cmdId } = data;
 
-    const result = compiler.compile(specifier, referrer);
-
-    postMessage(result);
+    try {
+      const result = compiler.compile(specifier, referrer);
+      postMessage({
+        success: true,
+        cmdId,
+        data: result
+      });
+    } catch (e) {
+      postMessage({
+        success: false,
+        cmdId,
+        data: JSON.parse(core.errorToJSON(e))
+      });
+    }
   };
 };
 
