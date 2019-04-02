@@ -93,7 +93,7 @@ void deno_unlock(Deno* d_) {
   d->locker_ = nullptr;
 }
 
-deno_snapshot deno_get_snapshot(Deno* d_) {
+deno_snapshot deno_snapshot_new(Deno* d_) {
   auto* d = unwrap(d_);
   CHECK_NOT_NULL(d->snapshot_creator_);
   d->ClearModules();

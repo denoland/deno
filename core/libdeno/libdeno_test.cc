@@ -13,7 +13,7 @@ TEST(LibDenoTest, Snapshotter) {
   Deno* d1 = deno_new(deno_config{1, empty_snapshot, empty, nullptr});
   deno_execute(d1, nullptr, "a.js", "a = 1 + 2");
   EXPECT_EQ(nullptr, deno_last_exception(d1));
-  deno_snapshot test_snapshot = deno_get_snapshot(d1);
+  deno_snapshot test_snapshot = deno_snapshot_new(d1);
   deno_delete(d1);
 
   Deno* d2 = deno_new(deno_config{0, test_snapshot, empty, nullptr});

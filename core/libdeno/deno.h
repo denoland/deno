@@ -36,14 +36,14 @@ const char* deno_v8_version();
 void deno_set_v8_flags(int* argc, char** argv);
 
 typedef struct {
-  int will_snapshot;            // Default 0. If calling deno_get_snapshot 1.
+  int will_snapshot;            // Default 0. If calling deno_snapshot_new 1.
   deno_snapshot load_snapshot;  // A startup snapshot to use.
   deno_buf shared;              // Shared buffer to be mapped to libdeno.shared
   deno_recv_cb recv_cb;         // Maps to libdeno.send() calls.
 } deno_config;
 
 // Create a new deno isolate.
-// Warning: If config.will_snapshot is set, deno_get_snapshot() must be called
+// Warning: If config.will_snapshot is set, deno_snapshot_new() must be called
 // or an error will result.
 Deno* deno_new(deno_config config);
 void deno_delete(Deno* d);
@@ -53,9 +53,9 @@ void deno_delete(Deno* d);
 // When calling this function, the caller must have created the isolate "d" with
 // "will_snapshot" set to 1.
 // The caller must free the returned data with deno_snapshot_delete().
-deno_snapshot deno_get_snapshot(Deno* d);
+deno_snapshot deno_snapshot_new(Deno* d);
 
-// Only for use with data returned from deno_get_snapshot.
+// Only for use with data returned from deno_snapshot_new.
 void deno_snapshot_delete(deno_snapshot);
 
 void deno_lock(Deno* d);

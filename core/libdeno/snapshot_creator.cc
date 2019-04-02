@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto snapshot = deno_get_snapshot(d);
+  auto snapshot = deno_snapshot_new(d);
 
   std::ofstream file_(snapshot_out_bin, std::ios::binary);
   file_.write(reinterpret_cast<char*>(snapshot.data_ptr), snapshot.data_len);
