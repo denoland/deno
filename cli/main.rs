@@ -83,16 +83,11 @@ fn main() {
 
   log::set_logger(&LOGGER).unwrap();
   let args = env::args().collect();
-  let (mut flags, mut rest_argv, usage_string) = flags::set_flags(args)
-    .unwrap_or_else(|err| {
+  let (mut flags, mut rest_argv) =
+    flags::set_flags(args).unwrap_or_else(|err| {
       eprintln!("{}", err);
       std::process::exit(1)
     });
-
-  if flags.help {
-    println!("{}", &usage_string);
-    std::process::exit(0);
-  }
 
   log::set_max_level(if flags.log_debug {
     LevelFilter::Debug

@@ -11,7 +11,6 @@ macro_rules! svec {
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct DenoFlags {
-  pub help: bool,
   pub log_debug: bool,
   pub version: bool,
   pub reload: bool,
@@ -41,9 +40,6 @@ pub struct DenoFlags {
 /// privileged flags is not destructive. Userland flag parsing would catch these
 /// errors.
 fn set_recognized_flags(matches: ArgMatches, flags: &mut DenoFlags) {
-  if matches.is_present("help") {
-    flags.help = true;
-  }
   if matches.is_present("log-debug") {
     flags.log_debug = true;
   }
@@ -96,7 +92,7 @@ fn set_recognized_flags(matches: ArgMatches, flags: &mut DenoFlags) {
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub fn set_flags(
   args: Vec<String>,
-) -> Result<(DenoFlags, Vec<String>, String), String> {
+) -> Result<(DenoFlags, Vec<String>), String> {
   // TODO: all flags passed after "--" are swallowed by v8_set_flags
   // eg. deno --allow-net ./test.ts -- --title foobar
   // args === ["deno", "--allow-net" "./test.ts"]
@@ -192,14 +188,13 @@ pub fn set_flags(
   }
   // TODO: end
   let mut flags = DenoFlags::default();
-  let usage: String = matches.usage().to_string();
   set_recognized_flags(matches, &mut flags);
-  Ok((flags, rest, usage))
+  Ok((flags, rest))
 }
 
 #[test]
 fn test_set_flags_1() {
-  let (flags, rest, _) = set_flags(svec!["deno", "--version"]).unwrap();
+  let (flags, rest) = set_flags(svec!["deno", "--version"]).unwrap();
   assert_eq!(rest, svec!["deno"]);
   assert_eq!(
     flags,
@@ -212,7 +207,7 @@ fn test_set_flags_1() {
 
 #[test]
 fn test_set_flags_2() {
-  let (flags, rest, _) =
+  let (flags, rest) =
     set_flags(svec!["deno", "-r", "-D", "script.ts"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
@@ -227,7 +222,7 @@ fn test_set_flags_2() {
 
 #[test]
 fn test_set_flags_3() {
-  let (flags, rest, _) =
+  let (flags, rest) =
     set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
@@ -242,7 +237,7 @@ fn test_set_flags_3() {
 
 #[test]
 fn test_set_flags_4() {
-  let (flags, rest, _) =
+  let (flags, rest) =
     set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
@@ -258,7 +253,7 @@ fn test_set_flags_4() {
 
 #[test]
 fn test_set_flags_5() {
-  let (flags, rest, _) = set_flags(svec!["deno", "--types"]).unwrap();
+  let (flags, rest) = set_flags(svec!["deno", "--types"]).unwrap();
   assert_eq!(rest, svec!["deno"]);
   assert_eq!(
     flags,
@@ -271,7 +266,7 @@ fn test_set_flags_5() {
 
 #[test]
 fn test_set_flags_6() {
-  let (flags, rest, _) =
+  let (flags, rest) =
     set_flags(svec!["deno", "gist.ts", "--title", "X", "--allow-net"]).unwrap();
   assert_eq!(rest, svec!["deno", "gist.ts", "--title", "X"]);
   assert_eq!(
@@ -285,7 +280,7 @@ fn test_set_flags_6() {
 
 #[test]
 fn test_set_flags_7() {
-  let (flags, rest, _) =
+  let (flags, rest) =
     set_flags(svec!["deno", "gist.ts", "--allow-all"]).unwrap();
   assert_eq!(rest, svec!["deno", "gist.ts"]);
   assert_eq!(
@@ -303,7 +298,7 @@ fn test_set_flags_7() {
 
 #[test]
 fn test_set_flags_8() {
-  let (flags, rest, _) =
+  let (flags, rest) =
     set_flags(svec!["deno", "gist.ts", "--allow-read"]).unwrap();
   assert_eq!(rest, svec!["deno", "gist.ts"]);
   assert_eq!(

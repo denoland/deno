@@ -253,7 +253,7 @@ mod tests {
     let filename = filename.to_str().unwrap().to_string();
 
     let argv = vec![String::from("./deno"), filename.clone()];
-    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
+    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None, false));
     let state_ = state.clone();
@@ -276,7 +276,7 @@ mod tests {
     let filename = filename.to_str().unwrap().to_string();
 
     let argv = vec![String::from("./deno"), filename.clone()];
-    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
+    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
     let state = Arc::new(IsolateState::new(flags, rest_argv, None, false));
     let state_ = state.clone();
