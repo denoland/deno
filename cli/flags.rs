@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use clap::{App, AppSettings, Arg, ArgMatches};
 use crate::ansi;
-use deno_core::v8_set_flags;
+use deno::v8_set_flags;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -109,12 +109,13 @@ pub fn set_flags(
 
   let clap_app = App::new("deno")
     .global_settings(&app_settings[..])
+//    .arg(
+//      Arg::with_name("version")
+//        .short("v")
+//        .long("version")
+//        .help("Print the version"),
+//    )
     .arg(
-      Arg::with_name("version")
-        .short("v")
-        .long("version")
-        .help("Print the version"),
-    ).arg(
       Arg::with_name("allow-read")
         .long("allow-read")
         .help("Allow file system read access"),

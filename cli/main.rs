@@ -8,6 +8,7 @@ extern crate futures;
 #[macro_use]
 extern crate serde_json;
 extern crate clap;
+extern crate deno;
 
 mod ansi;
 pub mod cli_behavior;
