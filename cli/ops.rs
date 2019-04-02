@@ -15,6 +15,7 @@ use crate::resolve_addr::resolve_addr;
 use crate::resources;
 use crate::resources::table_entries;
 use crate::resources::Resource;
+use crate::startup_data;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
@@ -1842,6 +1843,7 @@ fn op_create_worker(
       parent_state.argv.clone(),
     );
     match workers::spawn(
+      Some(startup_data::deno_isolate_init()),
       behavior,
       &format!("USER-WORKER-{}", specifier),
       workers::WorkerInit::Module(specifier.to_string()),

@@ -4,24 +4,16 @@ use crate::ops;
 use deno::deno_buf;
 use deno::Behavior;
 use deno::Op;
-use deno::StartupData;
 use std::sync::Arc;
 
 /// Implements deno::Behavior for the main Deno command-line.
 pub struct CliBehavior {
-  startup_data: Option<StartupData>,
   pub state: Arc<IsolateState>,
 }
 
 impl CliBehavior {
-  pub fn new(
-    startup_data: Option<StartupData>,
-    state: Arc<IsolateState>,
-  ) -> Self {
-    Self {
-      startup_data,
-      state,
-    }
+  pub fn new(state: Arc<IsolateState>) -> Self {
+    Self { state }
   }
 }
 
@@ -38,10 +30,6 @@ impl IsolateStateContainer for CliBehavior {
 }
 
 impl Behavior for CliBehavior {
-  fn startup_data(&mut self) -> Option<StartupData> {
-    self.startup_data.take()
-  }
-
   fn dispatch(
     &mut self,
     control: &[u8],

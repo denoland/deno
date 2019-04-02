@@ -7,7 +7,6 @@ use crate::isolate_state::IsolateStateContainer;
 use crate::isolate_state::WorkerChannels;
 use crate::ops;
 use crate::resources;
-use crate::startup_data;
 use deno::deno_buf;
 use deno::Behavior;
 use deno::Buf;
@@ -44,10 +43,6 @@ impl IsolateStateContainer for &UserWorkerBehavior {
 }
 
 impl Behavior for UserWorkerBehavior {
-  fn startup_data(&mut self) -> Option<StartupData> {
-    Some(startup_data::deno_isolate_init())
-  }
-
   fn dispatch(
     &mut self,
     control: &[u8],
@@ -83,7 +78,7 @@ pub struct Worker<B: WorkerBehavior> {
 }
 
 impl<B: WorkerBehavior> Worker<B> {
-  pub fn new(mut behavior: B) -> Self {
+  pub fn new(startup_data: Option<StartupData>, mut behavior: B) -> Self {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
 
@@ -92,7 +87,7 @@ impl<B: WorkerBehavior> Worker<B> {
 
     behavior.set_internal_channels(internal_channels);
 
-    let isolate = Isolate::new(behavior);
+    let isolate = Isolate::new(startup_data, behavior);
 
     Worker {
       isolate,
@@ -129,12 +124,13 @@ pub enum WorkerInit {
 }
 
 pub fn spawn<B: WorkerBehavior + 'static>(
+  startup_data: Option<StartupData>,
   behavior: B,
   worker_debug_name: &str,
   init: WorkerInit,
 ) -> Result<Worker<B>, RustOrJsError> {
   let state = behavior.state().clone();
-  let mut worker = Worker::new(behavior);
+  let mut worker = Worker::new(startup_data, behavior);
 
   worker
     .execute(&format!("denoMain('{}')", worker_debug_name))
@@ -172,6 +168,7 @@ mod tests {
   use crate::compiler::CompilerBehavior;
   use crate::isolate_state::IsolateState;
   use crate::js_errors::JSErrorColor;
+  use crate::startup_data;
   use crate::tokio_util;
   use futures::future::lazy;
   use std::thread;
@@ -180,6 +177,7 @@ mod tests {
   fn test_spawn() {
     tokio_util::init(|| {
       let worker_result = spawn(
+        Some(startup_data::compiler_isolate_init()),
         CompilerBehavior::new(
           IsolateState::mock().flags.clone(),
           IsolateState::mock().argv.clone(),
@@ -242,6 +240,7 @@ mod tests {
   fn removed_from_resource_table_on_close() {
     tokio_util::init(|| {
       let worker_result = spawn(
+        Some(startup_data::compiler_isolate_init()),
         CompilerBehavior::new(
           IsolateState::mock().flags.clone(),
           IsolateState::mock().argv.clone(),

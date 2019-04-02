@@ -64,12 +64,9 @@ pub enum StartupData {
 }
 
 /// Defines the behavior of an Isolate.
+// TODO(ry) Now that Behavior only has the dispatch method, it should be renamed
+// to Dispatcher.
 pub trait Behavior {
-  /// Allow for a behavior to define the snapshot or script used at
-  /// startup to initalize the isolate. Called exactly once when an
-  /// Isolate is created.
-  fn startup_data(&mut self) -> Option<StartupData>;
-
   /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
   /// corresponds to the second argument of Deno.core.dispatch().
   fn dispatch(
@@ -111,7 +108,9 @@ impl<B: Behavior> Drop for Isolate<B> {
 static DENO_INIT: Once = ONCE_INIT;
 
 impl<B: Behavior> Isolate<B> {
-  pub fn new(mut behavior: B) -> Self {
+  /// startup_data defines the snapshot or script used at startup to initalize
+  /// the isolate.
+  pub fn new(startup_data: Option<StartupData>, behavior: B) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -120,7 +119,7 @@ impl<B: Behavior> Isolate<B> {
 
     let needs_init = true;
     // Seperate into Option values for eatch startup type
-    let (startup_snapshot, startup_script) = match behavior.startup_data() {
+    let (startup_snapshot, startup_script) = match startup_data {
       Some(StartupData::Snapshot(d)) => (Some(d), None),
       Some(StartupData::Script(d)) => (None, Some(d)),
       None => (None, None),
@@ -560,10 +559,13 @@ pub mod tests {
 
   impl TestBehavior {
     pub fn setup(mode: TestBehaviorMode) -> Isolate<Self> {
-      let mut isolate = Isolate::new(TestBehavior {
-        dispatch_count: 0,
-        mode,
-      });
+      let mut isolate = Isolate::new(
+        None,
+        TestBehavior {
+          dispatch_count: 0,
+          mode,
+        },
+      );
       js_check(isolate.execute(
         "setup.js",
         r#"
@@ -580,10 +582,6 @@ pub mod tests {
   }
 
   impl Behavior for TestBehavior {
-    fn startup_data(&mut self) -> Option<StartupData> {
-      None
-    }
-
     fn dispatch(
       &mut self,
       control: &[u8],
