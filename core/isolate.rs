@@ -51,16 +51,16 @@ impl Future for PendingOp {
 }
 
 /// Stores a script used to initalize a Isolate
-pub struct Script {
-  pub source: String,
-  pub filename: String,
+pub struct Script<'a> {
+  pub source: &'a str,
+  pub filename: &'a str,
 }
 
 /// Represents data used to initialize isolate at startup
 /// either a binary snapshot or a javascript source file
 /// in the form of the StartupScript struct.
 pub enum StartupData<'a> {
-  Script(Script),
+  Script(Script<'a>),
   Snapshot(&'a [u8]),
   None,
 }
@@ -149,9 +149,7 @@ impl<B: Behavior> Isolate<B> {
 
     // If we want to use execute this has to happen here sadly.
     if let Some(s) = startup_script {
-      core_isolate
-        .execute(s.filename.as_str(), s.source.as_str())
-        .unwrap()
+      core_isolate.execute(s.filename, s.source).unwrap()
     };
 
     core_isolate

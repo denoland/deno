@@ -11,8 +11,8 @@ pub fn deno_isolate_init() -> StartupData<'static> {
     let source_bytes = vec![];
 
     StartupData::Script(Script {
-      filename: "gen/cli/bundle/main.js".to_string(),
-      source: std::str::from_utf8(&source_bytes[..]).unwrap().to_string(),
+      filename: "gen/cli/bundle/main.js",
+      source: std::str::from_utf8(&source_bytes[..]).unwrap(),
     })
   } else {
     debug!("Deno isolate init with snapshots.");
@@ -38,8 +38,8 @@ pub fn compiler_isolate_init() -> StartupData<'static> {
     let source_bytes = vec![];
 
     StartupData::Script(Script {
-      filename: "gen/cli/bundle/compiler.js".to_string(),
-      source: std::str::from_utf8(&source_bytes[..]).unwrap().to_string(),
+      filename: "gen/cli/bundle/compiler.js",
+      source: std::str::from_utf8(&source_bytes[..]).unwrap(),
     })
   } else {
     debug!("Deno isolate init with snapshots.");
