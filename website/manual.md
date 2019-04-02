@@ -96,10 +96,16 @@ Using Shell:
 $ curl -fsSL https://deno.land/x/install/install.sh | sh
 ```
 
-Or using PowerShell:
+Using PowerShell:
 
 ```shellsession
 > iwr https://deno.land/x/install/install.ps1 | iex
+```
+
+Using [Scoop](https://scoop.sh/) (windows):
+
+```
+scoop install deno
 ```
 
 Deno can also be installed manually, by downloading a tarball or zip file at

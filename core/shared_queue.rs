@@ -168,17 +168,17 @@ mod tests {
     assert_eq!(q.size(), 3);
 
     let r = q.shift().unwrap();
-    assert_eq!(r.as_ref(), vec![1, 2, 3, 4, 5].as_slice());
+    assert_eq!(r, vec![1, 2, 3, 4, 5].as_slice());
     assert_eq!(q.num_records(), 3);
     assert_eq!(q.size(), 2);
 
     let r = q.shift().unwrap();
-    assert_eq!(r.as_ref(), vec![6, 7].as_slice());
+    assert_eq!(r, vec![6, 7].as_slice());
     assert_eq!(q.num_records(), 3);
     assert_eq!(q.size(), 1);
 
     let r = q.shift().unwrap();
-    assert_eq!(r.as_ref(), vec![8, 9, 10, 11].as_slice());
+    assert_eq!(r, vec![8, 9, 10, 11].as_slice());
     assert_eq!(q.num_records(), 0);
     assert_eq!(q.size(), 0);
 

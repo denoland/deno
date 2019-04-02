@@ -12,23 +12,78 @@ pub struct ModuleInfo {
   children: Vec<deno_mod>,
 }
 
+/// A symbolic module entity.
+pub enum SymbolicModule {
+  /// This module is an alias to another module.
+  /// This is useful such that multiple names could point to
+  /// the same underlying module (particularly due to redirects).
+  Alias(String),
+  /// This module associates with a V8 module by id.
+  Mod(deno_mod),
+}
+
+#[derive(Default)]
+/// Alias-able module name map
+pub struct ModuleNameMap {
+  inner: HashMap<String, SymbolicModule>,
+}
+
+impl ModuleNameMap {
+  pub fn new() -> Self {
+    ModuleNameMap {
+      inner: HashMap::new(),
+    }
+  }
+
+  /// Get the id of a module.
+  /// If this module is internally represented as an alias,
+  /// follow the alias chain to get the final module id.
+  pub fn get(&self, name: &str) -> Option<deno_mod> {
+    let mut mod_name = name;
+    loop {
+      let cond = self.inner.get(mod_name);
+      match cond {
+        Some(SymbolicModule::Alias(target)) => {
+          mod_name = target;
+        }
+        Some(SymbolicModule::Mod(mod_id)) => {
+          return Some(*mod_id);
+        }
+        _ => {
+          return None;
+        }
+      }
+    }
+  }
+
+  /// Insert a name assocated module id.
+  pub fn insert(&mut self, name: String, id: deno_mod) {
+    self.inner.insert(name, SymbolicModule::Mod(id));
+  }
+
+  /// Create an alias to another module.
+  pub fn alias(&mut self, name: String, target: String) {
+    self.inner.insert(name, SymbolicModule::Alias(target));
+  }
+}
+
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
   pub info: HashMap<deno_mod, ModuleInfo>,
-  pub by_name: HashMap<String, deno_mod>,
+  pub by_name: ModuleNameMap,
 }
 
 impl Modules {
   pub fn new() -> Modules {
     Self {
       info: HashMap::new(),
-      by_name: HashMap::new(),
+      by_name: ModuleNameMap::new(),
     }
   }
 
   pub fn get_id(&self, name: &str) -> Option<deno_mod> {
-    self.by_name.get(name).cloned()
+    self.by_name.get(name)
   }
 
   pub fn get_children(&self, id: deno_mod) -> Option<&Vec<deno_mod>> {
@@ -56,6 +111,10 @@ impl Modules {
     );
   }
 
+  pub fn alias(&mut self, name: &str, target: &str) {
+    self.by_name.alias(name.to_owned(), target.to_owned());
+  }
+
   pub fn resolve_cb(
     &mut self,
     deno_dir: &DenoDir,
@@ -78,8 +137,7 @@ impl Modules {
     }
     let (name, _local_filename) = r.unwrap();
 
-    if let Some(id) = self.by_name.get(&name) {
-      let child_id = *id;
+    if let Some(child_id) = self.by_name.get(&name) {
       info.children.push(child_id);
       return child_id;
     } else {

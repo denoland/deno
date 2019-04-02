@@ -112,6 +112,7 @@ impl WorkerBehavior for CompilerBehavior {
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
   pub module_name: String,
+  pub module_redirect_source_name: Option<String>, // source of redirect
   pub filename: String,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
@@ -159,7 +160,7 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
       );
       match worker_result {
         Ok(worker) => {
-          let rid = worker.resource.rid.clone();
+          let rid = worker.resource.rid;
           // create oneshot channels and use the sender to pass back
           // results from worker future
           let (err_sender, err_receiver) =
@@ -192,7 +193,7 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
                         match map["cmdId"].as_u64() {
                           Some(cmd_id) => cmd_id,
                           _ => panic!(
-                            "error decoding compiler response: expected cmdId"
+                            "Error decoding compiler response: expected cmdId"
                           ),
                         }
                       }
@@ -247,22 +248,25 @@ pub fn compile_sync(
   referrer: &str,
   module_meta_data: &ModuleMetaData,
 ) -> Result<ModuleMetaData, JSError> {
-  let is_worker = parent_state.is_worker.clone();
+  debug!(
+    "Running rust part of compile_sync. specifier: {}, referrer: {}",
+    &specifier, &referrer
+  );
+  let cmd_id = new_cmd_id();
+
+  let req_msg = req(specifier, referrer, parent_state.is_worker, cmd_id);
+  let module_meta_data_ = module_meta_data.clone();
+
   let shared = lazy_start(parent_state.clone());
+  let compiler_rid = shared.rid;
 
   let (local_sender, local_receiver) =
     oneshot::channel::<Result<ModuleMetaData, Option<JSError>>>();
 
-  // Just some extra scoping to keep things clean
+  let (response_sender, response_receiver) = oneshot::channel::<Buf>();
+
+  // Scoping to auto dispose of locks when done using them
   {
-    let compiler_rid = shared.rid.clone();
-    let module_meta_data_ = module_meta_data.clone();
-    let cmd_id = new_cmd_id();
-    let req_msg = req(specifier, referrer, is_worker, cmd_id);
-    let sender_arc = Arc::new(Some(local_sender));
-    let specifier_ = specifier.clone().to_string();
-    let referrer_ = referrer.clone().to_string();
-    let (response_sender, response_receiver) = oneshot::channel::<Buf>();
     let mut table = C_RES_SENDER_TABLE.lock().unwrap();
     debug!("Cmd id for response sender insert: {}", cmd_id);
     // Place our response sender in the table so we can find it later.
@@ -270,82 +274,46 @@ pub fn compile_sync(
 
     let mut runtime = C_RUNTIME.lock().unwrap();
     runtime.spawn(lazy(move || {
-      debug!(
-        "Running rust part of compile_sync specifier: {} referrer: {}",
-        specifier_, referrer_
-      );
-      let mut send_sender_arc = sender_arc.clone();
       resources::post_message_to_worker(compiler_rid, req_msg)
-        .map_err(move |_| {
-          let sender = Arc::get_mut(&mut send_sender_arc).unwrap().take();
-          sender.unwrap().send(Err(None)).unwrap()
-        }).and_then(move |_| {
-          debug!(
-            "Sent message to worker specifier: {} referrer: {}",
-            specifier_, referrer_
+        .then(move |_| {
+          debug!("Sent message to worker");
+          response_receiver.map_err(|_| None)
+        }).and_then(move |res_msg| {
+          debug!("Received message from worker");
+          let res_json = std::str::from_utf8(res_msg.as_ref()).unwrap();
+          let res = serde_json::from_str::<serde_json::Value>(res_json)
+            .expect("Error decoding compiler response");
+          let res_data = res["data"].as_object().expect(
+            "Error decoding compiler response: expected object field 'data'",
           );
-          let mut get_sender_arc = sender_arc.clone();
-          let mut result_sender_arc = sender_arc.clone();
-          response_receiver
-            .map_err(move |_| {
-              let sender = Arc::get_mut(&mut get_sender_arc).unwrap().take();
-              sender.unwrap().send(Err(None)).unwrap()
-            }).and_then(move |res_msg: Buf| -> Result<(), ()> {
-              debug!(
-                "Recieved message from worker specifier: {} referrer: {}",
-                specifier_, referrer_
+          match res["success"].as_bool() {
+            Some(true) => Ok(ModuleMetaData {
+              maybe_output_code: res_data["outputCode"]
+                .as_str()
+                .map(|s| s.as_bytes().to_owned()),
+              maybe_source_map: res_data["sourceMap"]
+                .as_str()
+                .map(|s| s.as_bytes().to_owned()),
+              ..module_meta_data_
+            }),
+            Some(false) => {
+              let js_error = JSError::from_json_value(
+                serde_json::Value::Object(res_data.clone()),
+              ).expect(
+                "Error decoding compiler response: failed to parse error",
               );
-              let res_json = std::str::from_utf8(&res_msg).unwrap();
-              let sender = Arc::get_mut(&mut result_sender_arc).unwrap().take();
-              let sender = sender.unwrap();
-              let res =
-                match serde_json::from_str::<serde_json::Value>(res_json) {
-                  Ok(serde_json::Value::Object(map)) => map,
-                  _ => panic!("error decoding compiler response"),
-                };
-              match res["success"].as_bool() {
-                Some(true) => Ok(
-                  sender
-                    .send(Ok(match res["data"].as_object() {
-                      Some(map) => ModuleMetaData {
-                        module_name: module_meta_data_.module_name.clone(),
-                        filename: module_meta_data_.filename.clone(),
-                        media_type: module_meta_data_.media_type,
-                        source_code: module_meta_data_.source_code.clone(),
-                        maybe_output_code: match map["outputCode"].as_str() {
-                          Some(str) => Some(str.as_bytes().to_owned()),
-                          _ => None,
-                        },
-                        maybe_output_code_filename: None,
-                        maybe_source_map: match map["sourceMap"].as_str() {
-                          Some(str) => Some(str.as_bytes().to_owned()),
-                          _ => None,
-                        },
-                        maybe_source_map_filename: None,
-                      },
-                      None => panic!("error decoding compiler response"),
-                    })).unwrap(),
-                ),
-                Some(false) => Ok(
-                  sender
-                    .send(match res["data"].as_object() {
-                      Some(map) => {
-                        let js_error = JSError::from_json_value(
-                          serde_json::Value::Object(map.clone()),
-                        ).unwrap();
-                        Err(Some(js_errors::apply_source_map(
-                          &js_error,
-                          &parent_state.dir,
-                        )))
-                      }
-                      None => panic!("error decoding compiler response"),
-                    }).unwrap(),
-                ),
-                _ => panic!(
-                  "error decoding compiler response: expected success field"
-                ),
-              }
-            })
+              Err(Some(js_errors::apply_source_map(
+                &js_error,
+                &parent_state.dir,
+              )))
+            }
+            _ => panic!(
+              "Error decoding compiler response: expected bool field 'success'"
+            ),
+          }
+        }).then(move |result| {
+          local_sender.send(result).expect("Oneshot send() failed");
+          Ok(())
         })
     }));
   }
@@ -420,6 +388,7 @@ mod tests {
 
       let mut out = ModuleMetaData {
         module_name: "xxx".to_owned(),
+        module_redirect_source_name: None,
         filename: "/tests/002_hello.ts".to_owned(),
         media_type: msg::MediaType::TypeScript,
         source_code: include_bytes!("../tests/002_hello.ts").to_vec(),

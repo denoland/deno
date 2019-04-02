@@ -442,7 +442,7 @@ export class TextDecoder {
 
     return codePointsToString(output);
   }
-  get [Symbol.toStringTag]() {
+  get [Symbol.toStringTag](): string {
     return "TextDecoder";
   }
 }
@@ -470,7 +470,7 @@ export class TextEncoder {
 
     return new Uint8Array(output);
   }
-  get [Symbol.toStringTag]() {
+  get [Symbol.toStringTag](): string {
     return "TextEncoder";
   }
 }

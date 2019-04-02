@@ -1848,7 +1848,7 @@ fn op_create_worker(
     ) {
       Ok(worker) => {
         let mut workers_tl = parent_state.workers.lock().unwrap();
-        let rid = worker.resource.rid.clone();
+        let rid = worker.resource.rid;
         workers_tl.insert(rid, worker.shared());
         let builder = &mut FlatBufferBuilder::new();
         let msg_inner = msg::CreateWorkerRes::create(
