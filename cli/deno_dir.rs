@@ -435,76 +435,119 @@ fn get_source_code(
   ))
 }
 
-/// Fetch local or cached source code.
-/// This is a recursive operation if source file has redirection.
-/// It will keep reading filename.headers.json for information about redirection.
-/// module_initial_source_name would be None on first call,
-/// and becomes the name of the very first module that initiates the call
-/// in subsequent recursions.
-/// AKA if redirection occurs, module_initial_source_name is the source path
-/// that user provides, and the final module_name is the resolved path
-/// after following all redirections.
-fn fetch_local_source(
-  deno_dir: &DenoDir,
-  module_name: &str,
-  filename: &str,
-  module_initial_source_name: Option<String>,
-) -> DenoResult<Option<ModuleMetaData>> {
-  let p = Path::new(&filename);
-  let source_code_headers = get_source_code_headers(&filename);
-  // If source code headers says that it would redirect elsewhere,
-  // (meaning that the source file might not exist; only .headers.json is present)
-  // Abort reading attempts to the cached source file and and follow the redirect.
-  if let Some(redirect_to) = source_code_headers.redirect_to {
-    // E.g.
-    // module_name https://import-meta.now.sh/redirect.js
-    // filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/redirect.js
-    // redirect_to https://import-meta.now.sh/sub/final1.js
-    // real_filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/sub/final1.js
-    // real_module_name = https://import-meta.now.sh/sub/final1.js
-    let (real_module_name, real_filename) =
-      deno_dir.resolve_module(&redirect_to, ".")?;
-    let mut module_initial_source_name = module_initial_source_name;
-    // If this is the first redirect attempt,
-    // then module_initial_source_name should be None.
-    // In that case, use current module name as module_initial_source_name.
-    if module_initial_source_name.is_none() {
-      module_initial_source_name = Some(module_name.to_owned());
-    }
-    // Recurse.
-    return fetch_local_source(
-      deno_dir,
-      &real_module_name,
-      &real_filename,
-      module_initial_source_name,
-    );
+fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
+  let host = url.host_str().unwrap();
+  let host_port = match url.port() {
+    // Windows doesn't support ":" in filenames, so we represent port using a
+    // special string.
+    Some(port) => format!("{}_PORT{}", host, port),
+    None => host.to_string(),
+  };
+
+  let mut out = basedir.to_path_buf();
+  out.push(host_port);
+  for path_seg in url.path_segments().unwrap() {
+    out.push(path_seg);
   }
-  // No redirect needed or end of redirects.
-  // We can try read the file
-  let source_code = match fs::read(p) {
-    Err(e) => {
-      if e.kind() == std::io::ErrorKind::NotFound {
-        return Ok(None);
-      } else {
-        return Err(e.into());
+  out
+}
+
+fn load_cache2(
+  js_filename: &PathBuf,
+  map_filename: &PathBuf,
+) -> Result<(Vec<u8>, Vec<u8>), std::io::Error> {
+  debug!(
+    "load_cache code: {} map: {}",
+    js_filename.display(),
+    map_filename.display()
+  );
+  let read_output_code = fs::read(&js_filename)?;
+  let read_source_map = fs::read(&map_filename)?;
+  Ok((read_output_code, read_source_map))
+}
+
+fn source_code_hash(
+  filename: &str,
+  source_code: &[u8],
+  version: &str,
+) -> String {
+  let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
+  ctx.update(version.as_bytes());
+  ctx.update(filename.as_bytes());
+  ctx.update(source_code);
+  let digest = ctx.finish();
+  let mut out = String::new();
+  // TODO There must be a better way to do this...
+  for byte in digest.as_ref() {
+    write!(&mut out, "{:02x}", byte).unwrap();
+  }
+  out
+}
+
+fn is_remote(module_name: &str) -> bool {
+  module_name.starts_with("http://") || module_name.starts_with("https://")
+}
+
+fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
+  if is_remote(p) || p.starts_with("file:") {
+    Url::parse(p)
+  } else {
+    Url::from_file_path(p).map_err(|_err| url::ParseError::IdnaError)
+  }
+}
+
+fn map_file_extension(path: &Path) -> msg::MediaType {
+  match path.extension() {
+    None => msg::MediaType::Unknown,
+    Some(os_str) => match os_str.to_str() {
+      Some("ts") => msg::MediaType::TypeScript,
+      Some("js") => msg::MediaType::JavaScript,
+      Some("json") => msg::MediaType::Json,
+      _ => msg::MediaType::Unknown,
+    },
+  }
+}
+
+// convert a ContentType string into a enumerated MediaType
+fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
+  match content_type {
+    Some(content_type) => {
+      // sometimes there is additional data after the media type in
+      // Content-Type so we have to do a bit of manipulation so we are only
+      // dealing with the actual media type
+      let ct_vector: Vec<&str> = content_type.split(';').collect();
+      let ct: &str = ct_vector.first().unwrap();
+      match ct.to_lowercase().as_ref() {
+        "application/typescript"
+        | "text/typescript"
+        | "video/vnd.dlna.mpeg-tts"
+        | "video/mp2t"
+        | "application/x-typescript" => msg::MediaType::TypeScript,
+        "application/javascript"
+        | "text/javascript"
+        | "application/ecmascript"
+        | "text/ecmascript"
+        | "application/x-javascript" => msg::MediaType::JavaScript,
+        "application/json" | "text/json" => msg::MediaType::Json,
+        "text/plain" => map_file_extension(path),
+        _ => {
+          debug!("unknown content type: {}", content_type);
+          msg::MediaType::Unknown
+        }
       }
     }
-    Ok(c) => c,
-  };
-  Ok(Some(ModuleMetaData {
-    module_name: module_name.to_string(),
-    module_redirect_source_name: module_initial_source_name,
-    filename: filename.to_string(),
-    media_type: map_content_type(
-      &p,
-      source_code_headers.mime_type.as_ref().map(String::as_str),
-    ),
-    source_code,
-    maybe_output_code_filename: None,
-    maybe_output_code: None,
-    maybe_source_map_filename: None,
-    maybe_source_map: None,
-  }))
+    None => map_file_extension(path),
+  }
+}
+
+fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
+  let string = str::from_utf8(&bytes).unwrap();
+  if let Some(i) = string.find('\n') {
+    let (_, rest) = string.split_at(i);
+    rest.as_bytes().to_owned()
+  } else {
+    Vec::new()
+  }
 }
 
 /// Asynchronously fetch remote source file specified by the URL `module_name`
@@ -634,119 +677,76 @@ fn fetch_remote_source(
   ))
 }
 
-fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
-  let host = url.host_str().unwrap();
-  let host_port = match url.port() {
-    // Windows doesn't support ":" in filenames, so we represent port using a
-    // special string.
-    Some(port) => format!("{}_PORT{}", host, port),
-    None => host.to_string(),
-  };
-
-  let mut out = basedir.to_path_buf();
-  out.push(host_port);
-  for path_seg in url.path_segments().unwrap() {
-    out.push(path_seg);
-  }
-  out
-}
-
-fn load_cache2(
-  js_filename: &PathBuf,
-  map_filename: &PathBuf,
-) -> Result<(Vec<u8>, Vec<u8>), std::io::Error> {
-  debug!(
-    "load_cache code: {} map: {}",
-    js_filename.display(),
-    map_filename.display()
-  );
-  let read_output_code = fs::read(&js_filename)?;
-  let read_source_map = fs::read(&map_filename)?;
-  Ok((read_output_code, read_source_map))
-}
-
-fn source_code_hash(
+/// Fetch local or cached source code.
+/// This is a recursive operation if source file has redirection.
+/// It will keep reading filename.headers.json for information about redirection.
+/// module_initial_source_name would be None on first call,
+/// and becomes the name of the very first module that initiates the call
+/// in subsequent recursions.
+/// AKA if redirection occurs, module_initial_source_name is the source path
+/// that user provides, and the final module_name is the resolved path
+/// after following all redirections.
+fn fetch_local_source(
+  deno_dir: &DenoDir,
+  module_name: &str,
   filename: &str,
-  source_code: &[u8],
-  version: &str,
-) -> String {
-  let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
-  ctx.update(version.as_bytes());
-  ctx.update(filename.as_bytes());
-  ctx.update(source_code);
-  let digest = ctx.finish();
-  let mut out = String::new();
-  // TODO There must be a better way to do this...
-  for byte in digest.as_ref() {
-    write!(&mut out, "{:02x}", byte).unwrap();
+  module_initial_source_name: Option<String>,
+) -> DenoResult<Option<ModuleMetaData>> {
+  let p = Path::new(&filename);
+  let source_code_headers = get_source_code_headers(&filename);
+  // If source code headers says that it would redirect elsewhere,
+  // (meaning that the source file might not exist; only .headers.json is present)
+  // Abort reading attempts to the cached source file and and follow the redirect.
+  if let Some(redirect_to) = source_code_headers.redirect_to {
+    // E.g.
+    // module_name https://import-meta.now.sh/redirect.js
+    // filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/redirect.js
+    // redirect_to https://import-meta.now.sh/sub/final1.js
+    // real_filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/sub/final1.js
+    // real_module_name = https://import-meta.now.sh/sub/final1.js
+    let (real_module_name, real_filename) =
+      deno_dir.resolve_module(&redirect_to, ".")?;
+    let mut module_initial_source_name = module_initial_source_name;
+    // If this is the first redirect attempt,
+    // then module_initial_source_name should be None.
+    // In that case, use current module name as module_initial_source_name.
+    if module_initial_source_name.is_none() {
+      module_initial_source_name = Some(module_name.to_owned());
+    }
+    // Recurse.
+    return fetch_local_source(
+      deno_dir,
+      &real_module_name,
+      &real_filename,
+      module_initial_source_name,
+    );
   }
-  out
-}
-
-fn is_remote(module_name: &str) -> bool {
-  module_name.starts_with("http://") || module_name.starts_with("https://")
-}
-
-fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
-  if is_remote(p) || p.starts_with("file:") {
-    Url::parse(p)
-  } else {
-    Url::from_file_path(p).map_err(|_err| url::ParseError::IdnaError)
-  }
-}
-
-fn map_file_extension(path: &Path) -> msg::MediaType {
-  match path.extension() {
-    None => msg::MediaType::Unknown,
-    Some(os_str) => match os_str.to_str() {
-      Some("ts") => msg::MediaType::TypeScript,
-      Some("js") => msg::MediaType::JavaScript,
-      Some("json") => msg::MediaType::Json,
-      _ => msg::MediaType::Unknown,
-    },
-  }
-}
-
-// convert a ContentType string into a enumerated MediaType
-fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
-  match content_type {
-    Some(content_type) => {
-      // sometimes there is additional data after the media type in
-      // Content-Type so we have to do a bit of manipulation so we are only
-      // dealing with the actual media type
-      let ct_vector: Vec<&str> = content_type.split(';').collect();
-      let ct: &str = ct_vector.first().unwrap();
-      match ct.to_lowercase().as_ref() {
-        "application/typescript"
-        | "text/typescript"
-        | "video/vnd.dlna.mpeg-tts"
-        | "video/mp2t"
-        | "application/x-typescript" => msg::MediaType::TypeScript,
-        "application/javascript"
-        | "text/javascript"
-        | "application/ecmascript"
-        | "text/ecmascript"
-        | "application/x-javascript" => msg::MediaType::JavaScript,
-        "application/json" | "text/json" => msg::MediaType::Json,
-        "text/plain" => map_file_extension(path),
-        _ => {
-          debug!("unknown content type: {}", content_type);
-          msg::MediaType::Unknown
-        }
+  // No redirect needed or end of redirects.
+  // We can try read the file
+  let source_code = match fs::read(p) {
+    Err(e) => {
+      if e.kind() == std::io::ErrorKind::NotFound {
+        return Ok(None);
+      } else {
+        return Err(e.into());
       }
     }
-    None => map_file_extension(path),
-  }
-}
-
-fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
-  let string = str::from_utf8(&bytes).unwrap();
-  if let Some(i) = string.find('\n') {
-    let (_, rest) = string.split_at(i);
-    rest.as_bytes().to_owned()
-  } else {
-    Vec::new()
-  }
+    Ok(c) => c,
+  };
+  Ok(Some(ModuleMetaData {
+    module_name: module_name.to_string(),
+    module_redirect_source_name: module_initial_source_name,
+    filename: filename.to_string(),
+    media_type: map_content_type(
+      &p,
+      source_code_headers.mime_type.as_ref().map(String::as_str),
+    ),
+    source_code,
+    maybe_output_code_filename: None,
+    maybe_output_code: None,
+    maybe_source_map_filename: None,
+    maybe_source_map: None,
+  }))
 }
 
 #[derive(Debug)]
