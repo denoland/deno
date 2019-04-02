@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::errors;
 use crate::errors::DenoError;
+#[cfg(test)]
 use futures::future::{loop_fn, Loop};
 use futures::{future, Future, Stream};
 use hyper;
@@ -45,8 +46,13 @@ fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
   } else {
     // assuming path-noscheme | path-empty
     let mut new_uri_parts = base_uri.clone().into_parts();
-    new_uri_parts.path_and_query =
-      Some(format!("{}/{}", base_uri.path(), location).parse().unwrap());
+    let base_uri_path_str = base_uri.path().to_owned();
+    let segs: Vec<&str> = base_uri_path_str.rsplitn(2, "/").collect();
+    new_uri_parts.path_and_query = Some(
+      format!("{}/{}", segs.last().unwrap_or(&""), location)
+        .parse()
+        .unwrap(),
+    );
     Uri::from_parts(new_uri_parts).unwrap()
   }
 }
@@ -61,6 +67,74 @@ pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
   tokio_util::block_on(fetch_string(module_name))
 }
 
+pub enum FetchOnceResult {
+  // (code, maybe_content_type)
+  Code(String, Option<String>),
+  Redirect(http::uri::Uri),
+}
+
+/// Asynchronously fetchs the given HTTP URL one pass only.
+/// If no redirect is present and no error occurs,
+/// yields Code(code, maybe_content_type).
+/// If redirect occurs, does not follow and
+/// yields Redirect(url).
+pub fn fetch_string_once(
+  url: http::uri::Uri,
+) -> impl Future<Item = FetchOnceResult, Error = DenoError> {
+  type FetchAttempt = (Option<String>, Option<String>, Option<FetchOnceResult>);
+  let client = get_client();
+  client
+    .get(url.clone())
+    .map_err(DenoError::from)
+    .and_then(move |response| -> Box<dyn Future<Item = FetchAttempt, Error = DenoError> + Send> {
+      if response.status().is_redirection() {
+        let location_string = response
+          .headers()
+          .get("location")
+          .expect("url redirection should provide 'location' header")
+          .to_str()
+          .unwrap()
+          .to_string();
+        debug!("Redirecting to {}...", &location_string);
+        let new_url = resolve_uri_from_location(&url, &location_string);
+        // Boxed trait object turns out to be the savior for 2+ types yielding same results.
+        return Box::new(
+          future::ok(None).join3(
+            future::ok(None),
+            future::ok(Some(FetchOnceResult::Redirect(new_url))
+          ))
+        );
+      } else if response.status().is_client_error() || response.status().is_server_error() {
+        return Box::new(future::err(
+          errors::new(errors::ErrorKind::Other,
+            format!("Import '{}' failed: {}", &url, response.status()))
+          ));
+      }
+      let content_type = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .map(|content_type| content_type.to_str().unwrap().to_owned());
+      let body = response
+        .into_body()
+        .concat2()
+        .map(|body| String::from_utf8(body.to_vec()).ok())
+        .map_err(DenoError::from);
+      Box::new(body.join3(
+        future::ok(content_type),
+        future::ok(None)
+      ))
+    })
+    .and_then(move |(maybe_code, maybe_content_type, maybe_redirect)| {
+      if let Some(redirect) = maybe_redirect {
+        future::ok(redirect)
+      } else {
+        // maybe_code should always contain code here!
+        future::ok(FetchOnceResult::Code(maybe_code.unwrap(), maybe_content_type))
+      }
+    })
+}
+
+#[cfg(test)]
 /// Asynchronously fetchs the given HTTP URL. Returns (content, media_type).
 pub fn fetch_string(
   module_name: &str,
@@ -182,5 +256,5 @@ fn test_resolve_uri_from_location_relative_3() {
   let url = "http://deno.land/x".parse::<Uri>().unwrap();
   let new_uri = resolve_uri_from_location(&url, "z");
   assert_eq!(new_uri.host().unwrap(), "deno.land");
-  assert_eq!(new_uri.path(), "/x/z");
+  assert_eq!(new_uri.path(), "/z");
 }
