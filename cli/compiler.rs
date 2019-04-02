@@ -20,6 +20,7 @@ use deno::StartupData;
 use futures::future::*;
 use futures::sync::oneshot;
 use futures::Future;
+use futures::Stream;
 use serde_json;
 use std::collections::HashMap;
 use std::str;
@@ -182,37 +183,34 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
           // promise system used on the js side. It provides a way to
           // resolve many futures via the same channel.
           runtime.spawn(lazy(move || -> Result<(), ()> {
-            loop {
-              match resources::get_message_from_worker(rid).wait() {
-                Ok(Some(msg)) => {
-                  let res_json = std::str::from_utf8(&msg).unwrap();
-                  eprintln!("Got message from worker: {}", res_json);
-                  // Get the intended receiver from the message.
-                  let cmd_id =
-                    match serde_json::from_str::<serde_json::Value>(res_json) {
-                      Ok(serde_json::Value::Object(map)) => {
-                        match map["cmdId"].as_u64() {
-                          Some(cmd_id) => cmd_id,
-                          _ => panic!(
-                            "Error decoding compiler response: expected cmdId"
-                          ),
-                        }
+            let worker_stream = resources::get_messages_from_worker(rid);
+            worker_stream
+              .for_each(|msg: Buf| {
+                let res_json = std::str::from_utf8(&msg).unwrap();
+                eprintln!("Got message from worker: {}", res_json);
+                // Get the intended receiver from the message.
+                let cmd_id =
+                  match serde_json::from_str::<serde_json::Value>(res_json) {
+                    Ok(serde_json::Value::Object(map)) => {
+                      match map["cmdId"].as_u64() {
+                        Some(cmd_id) => cmd_id,
+                        _ => panic!(
+                          "Error decoding compiler response: expected cmdId"
+                        ),
                       }
-                      _ => panic!("error decoding compiler response"),
-                    };
-                  let mut table = C_RES_SENDER_TABLE.lock().unwrap();
-                  eprintln!("Cmd id for get message handler: {}", cmd_id);
-                  // Get the corresponding response sender from the table and
-                  // send a response.
-                  let response_sender =
-                    table.remove(&(cmd_id as CmdId)).unwrap();
-                  response_sender.send(msg).unwrap();
-                }
-                _ => eprintln!(
-                  "Received abnormal message from compiler worker ignoring it"
-                ),
-              }
-            }
+                    }
+                    _ => panic!("error decoding compiler response"),
+                  };
+                let mut table = C_RES_SENDER_TABLE.lock().unwrap();
+                eprintln!("Cmd id for get message handler: {}", cmd_id);
+                // Get the corresponding response sender from the table and
+                // send a response.
+                let response_sender = table.remove(&(cmd_id as CmdId)).unwrap();
+                response_sender.send(msg).unwrap();
+                Ok(())
+              }).wait()
+              .unwrap();
+            Ok(())
           }));
           CompilerShared {
             rid,
