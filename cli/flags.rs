@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use clap::{App, AppSettings, Arg, ArgMatches};
+use clap::{App, AppSettings, Arg, ArgMatches, ArgSettings};
 use crate::ansi;
 use deno::v8_set_flags;
 
@@ -99,7 +99,10 @@ pub fn set_flags(
   // args === ["deno", "--allow-net" "./test.ts"]
   let args = v8_set_flags(args);
 
-  let mut app_settings: Vec<AppSettings> = vec![];
+  let mut app_settings: Vec<AppSettings> = vec![
+    AppSettings::DontCollapseArgsInUsage,
+    AppSettings::TrailingVarArg,
+  ];
 
   if ansi::use_color() {
     app_settings.extend(vec![AppSettings::ColorAuto, AppSettings::ColoredHelp]);
@@ -109,13 +112,12 @@ pub fn set_flags(
 
   let clap_app = App::new("deno")
     .global_settings(&app_settings[..])
-//    .arg(
-//      Arg::with_name("version")
-//        .short("v")
-//        .long("version")
-//        .help("Print the version"),
-//    )
     .arg(
+      Arg::with_name("version")
+        .short("v")
+        .long("version")
+        .help("Print the version"),
+    ).arg(
       Arg::with_name("allow-read")
         .long("allow-read")
         .help("Allow file system read access"),
@@ -171,12 +173,15 @@ pub fn set_flags(
         .long("info")
         .help("Show source file related info"),
     ).arg(Arg::with_name("fmt").long("fmt").help("Format code"))
-    .arg(Arg::with_name("entry_point").required(false).index(1))
     .arg(
+      Arg::with_name("entry_point")
+        .help("Path to entry point script")
+        .index(1),
+    ).arg(
       Arg::with_name("rest")
-        .required(false)
-        .multiple(true)
-        .index(2),
+        // don't show in USAGE that we collect rest of passed arguments
+        .set(ArgSettings::Hidden)
+        .multiple(true),
     );
 
   let matches = clap_app.get_matches_from(args);
@@ -278,7 +283,7 @@ fn test_set_flags_5() {
 #[test]
 fn test_set_flags_6() {
   let (flags, rest) =
-    set_flags(svec!["deno", "gist.ts", "--title", "X", "--allow-net"]).unwrap();
+    set_flags(svec!["deno", "gist.ts", "--allow-net", "--title", "X"]).unwrap();
   assert_eq!(rest, svec!["deno", "gist.ts", "--title", "X"]);
   assert_eq!(
     flags,
