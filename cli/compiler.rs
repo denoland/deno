@@ -104,6 +104,7 @@ impl WorkerBehavior for CompilerBehavior {
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
   pub module_name: String,
+  pub module_redirect_source_name: Option<String>, // source of redirect
   pub filename: String,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
@@ -250,6 +251,9 @@ pub fn compile_sync(
                   ) {
                     Ok(serde_json::Value::Object(map)) => ModuleMetaData {
                       module_name: module_meta_data_.module_name.clone(),
+                      module_redirect_source_name: module_meta_data_
+                        .module_redirect_source_name
+                        .clone(),
                       filename: module_meta_data_.filename.clone(),
                       media_type: module_meta_data_.media_type,
                       source_code: module_meta_data_.source_code.clone(),
@@ -342,6 +346,7 @@ mod tests {
 
       let mut out = ModuleMetaData {
         module_name: "xxx".to_owned(),
+        module_redirect_source_name: None,
         filename: "/tests/002_hello.ts".to_owned(),
         media_type: msg::MediaType::TypeScript,
         source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
