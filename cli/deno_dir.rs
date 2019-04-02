@@ -437,7 +437,7 @@ fn get_source_code(
 
 /// Fetch local or cached source code.
 /// This is a recursive operation if source file has redirection.
-/// It will keep reading filename.meta.json for information about redirection.
+/// It will keep reading filename.headers.json for information about redirection.
 /// module_initial_source_name would be None on first call,
 /// and becomes the name of the very first module that initiates the call
 /// in subsequent recursions.
@@ -451,11 +451,11 @@ fn fetch_local_source(
   module_initial_source_name: Option<String>,
 ) -> DenoResult<Option<ModuleMetaData>> {
   let p = Path::new(&filename);
-  let source_metadata = get_source_code_metadata(&filename);
-  // If source metadata says that it would redirect elsewhere,
-  // (meaning that the source file might not exist; only .meta.json is present)
+  let source_code_headers = get_source_code_headers(&filename);
+  // If source code headers says that it would redirect elsewhere,
+  // (meaning that the source file might not exist; only .headers.json is present)
   // Abort reading attempts to the cached source file and and follow the redirect.
-  if let Some(redirect_to) = source_metadata.redirect_to {
+  if let Some(redirect_to) = source_code_headers.redirect_to {
     // E.g.
     // module_name https://import-meta.now.sh/redirect.js
     // filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/redirect.js
@@ -497,7 +497,7 @@ fn fetch_local_source(
     filename: filename.to_string(),
     media_type: map_content_type(
       &p,
-      source_metadata.mime_type.as_ref().map(String::as_str),
+      source_code_headers.mime_type.as_ref().map(String::as_str),
     ),
     source_code,
     maybe_output_code_filename: None,
@@ -522,8 +522,8 @@ fn fetch_remote_source_async(
   let filename = filename.to_owned();
   let module_name = module_name.to_owned();
 
-  // We write a special ".meta.json" file into the `.deno/deps` directory along side the
-  // cached file, containing just the media type and possible redirect target.
+  // We write a special ".headers.json" file into the `.deno/deps` directory along side the
+  // cached file, containing just the media type and possible redirect target (both are http headers).
   // If redirect target is present, the file itself if not cached.
   // In future resolutions, we would instead follow this redirect target ("redirect_to").
   loop_fn(
@@ -577,14 +577,14 @@ fn fetch_remote_source_async(
               Some(ref parent) => fs::create_dir_all(parent),
               None => Ok(()),
             }?;
-            // Write file and create .meta.json for the file.
+            // Write file and create .headers.json for the file.
             deno_fs::write_file(&p, &source, 0o666)?;
             {
-              save_source_code_metadata(&filename, maybe_content_type.clone(), None);
+              save_source_code_headers(&filename, maybe_content_type.clone(), None);
             }
             // Check if this file is downloaded due to some old redirect request.
             if maybe_initial_filename.is_some() {
-              // If yes, record down the metadata for redirect.
+              // If yes, record down the headers for redirect.
               // Also create its containing folder.
               let pp = PathBuf::from(filename.clone());
               match pp.parent() {
@@ -592,7 +592,7 @@ fn fetch_remote_source_async(
                 None => Ok(()),
               }?;
               {
-                save_source_code_metadata(
+                save_source_code_headers(
                   &maybe_initial_filename.clone().unwrap(),
                   maybe_content_type.clone(),
                   Some(module_name.clone()),
@@ -750,10 +750,10 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
 }
 
 #[derive(Debug)]
-/// Metadata associated with a particular "symbolic" source code file.
+/// Header metadata associated with a particular "symbolic" source code file.
 /// (the associated source code file might not be cached, while remaining
 /// a user accessible entity through imports (due to redirects)).
-pub struct SourceCodeMetaData {
+pub struct SourceCodeHeaders {
   /// MIME type of the source code.
   pub mime_type: Option<String>,
   /// Where should we actually look for source code.
@@ -764,51 +764,51 @@ pub struct SourceCodeMetaData {
 static MIME_TYPE: &'static str = "mime_type";
 static REDIRECT_TO: &'static str = "redirect_to";
 
-fn source_metadata_filename(filename: &str) -> String {
-  [&filename, ".meta.json"].concat()
+fn source_code_headers_filename(filename: &str) -> String {
+  [&filename, ".headers.json"].concat()
 }
 
-/// Get metadata associated with a single source code file.
+/// Get header metadata associated with a single source code file.
 /// NOTICE: chances are that the source code itself is not downloaded due to redirects.
-/// In this case, the metadata file provides info about where we should go and get
+/// In this case, the headers file provides info about where we should go and get
 /// the source code that redirect eventually points to (which should be cached).
-fn get_source_code_metadata(filename: &str) -> SourceCodeMetaData {
-  let metadata_filename = source_metadata_filename(filename);
-  let md = Path::new(&metadata_filename);
-  // .meta.json file might not exists.
+fn get_source_code_headers(filename: &str) -> SourceCodeHeaders {
+  let headers_filename = source_code_headers_filename(filename);
+  let hd = Path::new(&headers_filename);
+  // .headers.json file might not exists.
   // This is okay for local source.
-  let maybe_metadata_string = fs::read_to_string(&md).ok();
-  if let Some(metadata_string) = maybe_metadata_string {
+  let maybe_headers_string = fs::read_to_string(&hd).ok();
+  if let Some(headers_string) = maybe_headers_string {
     // TODO(kevinkassimo): consider introduce serde::Deserialize to make things simpler.
-    let maybe_metadata: serde_json::Result<serde_json::Value> =
-      serde_json::from_str(&metadata_string);
-    if let Ok(metadata) = maybe_metadata {
-      return SourceCodeMetaData {
-        mime_type: metadata[MIME_TYPE].as_str().map(String::from),
-        redirect_to: metadata[REDIRECT_TO].as_str().map(String::from),
+    let maybe_headers: serde_json::Result<serde_json::Value> =
+      serde_json::from_str(&headers_string);
+    if let Ok(headers) = maybe_headers {
+      return SourceCodeHeaders {
+        mime_type: headers[MIME_TYPE].as_str().map(String::from),
+        redirect_to: headers[REDIRECT_TO].as_str().map(String::from),
       };
     }
   }
-  SourceCodeMetaData {
+  SourceCodeHeaders {
     mime_type: None,
     redirect_to: None,
   }
 }
 
-/// Save metadata related to source filename to {filename}.meta.json file,
+/// Save headers related to source filename to {filename}.headers.json file,
 /// only when there is actually something necessary to save.
 /// For example, if the extension ".js" already mean JS file and we have
 /// content type of "text/javascript", then we would not save the mime type.
-/// If nothing needs to be saved, the metadata file is not created.
-fn save_source_code_metadata(
+/// If nothing needs to be saved, the headers file is not created.
+fn save_source_code_headers(
   filename: &str,
   mime_type: Option<String>,
   redirect_to: Option<String>,
 ) {
-  let metadata_filename = source_metadata_filename(filename);
-  // Remove possibly existing stale .meta.json file.
+  let headers_filename = source_code_headers_filename(filename);
+  // Remove possibly existing stale .headers.json file.
   // May not exist. DON'T unwrap.
-  let _ = std::fs::remove_file(&metadata_filename);
+  let _ = std::fs::remove_file(&headers_filename);
   let p = PathBuf::from(filename);
   // TODO(kevinkassimo): consider introduce serde::Deserialize to make things simpler.
   // This is super ugly at this moment...
@@ -823,7 +823,7 @@ fn save_source_code_metadata(
       .map(|x| x.to_str().unwrap_or(""))
       .unwrap_or("");
     let ext_based_mime_type = extmap(&ext);
-    // Add mime to metadata only when content type is different from extension.
+    // Add mime to headers only when content type is different from extension.
     if ext_based_mime_type == msg::MediaType::Unknown
       || resolved_mime_type != ext_based_mime_type
     {
@@ -838,13 +838,13 @@ fn save_source_code_metadata(
     let _ = serde_json::to_string(&value_map).map(|s| {
       // It is possible that we need to create file
       // with parent folders not yet created.
-      // (Due to .meta.json feature for redirection)
-      let md = PathBuf::from(&metadata_filename);
-      let _ = match md.parent() {
+      // (Due to .headers.json feature for redirection)
+      let hd = PathBuf::from(&headers_filename);
+      let _ = match hd.parent() {
         Some(ref parent) => fs::create_dir_all(parent),
         None => Ok(()),
       };
-      let _ = deno_fs::write_file(&(md.as_path()), s, 0o666);
+      let _ = deno_fs::write_file(&(hd.as_path()), s, 0o666);
     });
   }
 }
@@ -966,26 +966,32 @@ mod tests {
   }
 
   #[test]
-  fn test_metadata_get_and_save() {
+  fn test_source_code_headers_get_and_save() {
     let (temp_dir, _deno_dir) = test_setup();
     let filename =
       deno_fs::normalize_path(temp_dir.into_path().join("f.js").as_ref());
-    let metadata_file_name = source_metadata_filename(&filename);
-    assert_eq!(metadata_file_name, [&filename, ".meta.json"].concat());
-    let _ = deno_fs::write_file(&PathBuf::from(&metadata_file_name),
+    let headers_file_name = source_code_headers_filename(&filename);
+    assert_eq!(headers_file_name, [&filename, ".headers.json"].concat());
+    let _ = deno_fs::write_file(&PathBuf::from(&headers_file_name),
       "{\"mime_type\":\"text/javascript\",\"redirect_to\":\"http://example.com/a.js\"}", 0o666);
-    let meta = get_source_code_metadata(&filename);
-    assert_eq!(meta.mime_type.clone().unwrap(), "text/javascript");
-    assert_eq!(meta.redirect_to.clone().unwrap(), "http://example.com/a.js");
+    let headers = get_source_code_headers(&filename);
+    assert_eq!(headers.mime_type.clone().unwrap(), "text/javascript");
+    assert_eq!(
+      headers.redirect_to.clone().unwrap(),
+      "http://example.com/a.js"
+    );
 
-    save_source_code_metadata(
+    save_source_code_headers(
       &filename,
       Some("text/typescript".to_owned()),
       Some("http://deno.land/a.js".to_owned()),
     );
-    let meta2 = get_source_code_metadata(&filename);
-    assert_eq!(meta2.mime_type.clone().unwrap(), "text/typescript");
-    assert_eq!(meta2.redirect_to.clone().unwrap(), "http://deno.land/a.js");
+    let headers2 = get_source_code_headers(&filename);
+    assert_eq!(headers2.mime_type.clone().unwrap(), "text/typescript");
+    assert_eq!(
+      headers2.redirect_to.clone().unwrap(),
+      "http://deno.land/a.js"
+    );
   }
 
   #[test]
@@ -1000,7 +1006,7 @@ mod tests {
           .join("localhost_PORT4545/tests/subdir/mod2.ts")
           .as_ref(),
       );
-      let metadata_file_name = source_metadata_filename(&filename);
+      let headers_file_name = source_code_headers_filename(&filename);
 
       let result = get_source_code(&deno_dir, module_name, &filename, true);
       assert!(result.is_ok());
@@ -1010,14 +1016,12 @@ mod tests {
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      // Should not create .meta.json file due to matching ext
-      assert!(fs::read_to_string(&metadata_file_name).is_err());
+      // Should not create .headers.json file due to matching ext
+      assert!(fs::read_to_string(&headers_file_name).is_err());
 
-      // Modify .meta.json, write using fs write and read using save_source_code_metadata
-      let _ = fs::write(
-        &metadata_file_name,
-        "{ \"mime_type\": \"text/javascript\" }",
-      );
+      // Modify .headers.json, write using fs write and read using save_source_code_headers
+      let _ =
+        fs::write(&headers_file_name, "{ \"mime_type\": \"text/javascript\" }");
       let result2 = get_source_code(&deno_dir, module_name, &filename, true);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
@@ -1026,15 +1030,15 @@ mod tests {
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
       // If get_source_code does not call remote, this should be JavaScript
-      // as we modified before! (we do not overwrite .meta.json due to no http fetch)
+      // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_code_metadata(&filename).mime_type.unwrap(),
+        get_source_code_headers(&filename).mime_type.unwrap(),
         "text/javascript"
       );
 
-      // Modify .meta.json again, but the other way around
-      save_source_code_metadata(
+      // Modify .headers.json again, but the other way around
+      save_source_code_headers(
         &filename,
         Some("application/json".to_owned()),
         None,
@@ -1047,10 +1051,10 @@ mod tests {
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
       // If get_source_code does not call remote, this should be JavaScript
-      // as we modified before! (we do not overwrite .meta.json due to no http fetch)
+      // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r3.media_type), &msg::MediaType::Json);
       assert!(
-        fs::read_to_string(&metadata_file_name)
+        fs::read_to_string(&headers_file_name)
           .unwrap()
           .contains("application/json")
       );
@@ -1062,9 +1066,9 @@ mod tests {
       let expected4 =
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes();
       assert_eq!(r4.source_code, expected4);
-      // Now the old .meta.json file should have gone! Resolved back to TypeScript
+      // Now the old .headers.json file should have gone! Resolved back to TypeScript
       assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
-      assert!(fs::read_to_string(&metadata_file_name).is_err());
+      assert!(fs::read_to_string(&headers_file_name).is_err());
     });
   }
 
@@ -1080,22 +1084,22 @@ mod tests {
           .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
           .as_ref(),
       );
-      let metadata_file_name = source_metadata_filename(&filename);
+      let headers_file_name = source_code_headers_filename(&filename);
 
       let result = get_source_code(&deno_dir, module_name, &filename, true);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
       assert_eq!(r.source_code, expected);
-      // Mismatch ext with content type, create .meta.json
+      // Mismatch ext with content type, create .headers.json
       assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_code_metadata(&filename).mime_type.unwrap(),
+        get_source_code_headers(&filename).mime_type.unwrap(),
         "text/javascript"
       );
 
-      // Modify .meta.json
-      save_source_code_metadata(
+      // Modify .headers.json
+      save_source_code_headers(
         &filename,
         Some("text/typescript".to_owned()),
         None,
@@ -1106,9 +1110,9 @@ mod tests {
       let expected2 = "export const loaded = true;\n".as_bytes();
       assert_eq!(r2.source_code, expected2);
       // If get_source_code does not call remote, this should be TypeScript
-      // as we modified before! (we do not overwrite .meta.json due to no http fetch)
+      // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
-      assert!(fs::read_to_string(&metadata_file_name).is_err());
+      assert!(fs::read_to_string(&headers_file_name).is_err());
 
       // Don't use_cache
       let result3 = get_source_code(&deno_dir, module_name, &filename, false);
@@ -1116,11 +1120,11 @@ mod tests {
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
       assert_eq!(r3.source_code, expected3);
-      // Now the old .meta.json file should be overwritten back to JavaScript!
+      // Now the old .headers.json file should be overwritten back to JavaScript!
       // (due to http fetch)
       assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_code_metadata(&filename).mime_type.unwrap(),
+        get_source_code_headers(&filename).mime_type.unwrap(),
         "text/javascript"
       );
     });
@@ -1129,7 +1133,7 @@ mod tests {
   #[test]
   fn test_get_source_code_3() {
     let (_temp_dir, deno_dir) = test_setup();
-    // Test basic follow and meta recording
+    // Test basic follow and headers recording
     tokio_util::init(|| {
       let redirect_module_name =
         "http://localhost:4546/tests/subdir/redirects/redirect1.js";
@@ -1155,11 +1159,11 @@ mod tests {
       ).unwrap();
       // File that requires redirection is not downloaded.
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
-      // ... but its meta is created.
-      let redirect_source_meta =
-        get_source_code_metadata(&redirect_source_filename);
+      // ... but its .headers.json is created.
+      let redirect_source_headers =
+        get_source_code_headers(&redirect_source_filename);
       assert_eq!(
-        redirect_source_meta.redirect_to.unwrap(),
+        redirect_source_headers.redirect_to.unwrap(),
         "http://localhost:4545/tests/subdir/redirects/redirect1.js"
       );
       // The target of redirection is downloaded instead.
@@ -1167,9 +1171,9 @@ mod tests {
         fs::read_to_string(&redirect_target_filename).unwrap(),
         "export const redirect = 1;\n"
       );
-      let redirect_target_meta =
-        get_source_code_metadata(&redirect_target_filename);
-      assert!(redirect_target_meta.redirect_to.is_none());
+      let redirect_target_headers =
+        get_source_code_headers(&redirect_target_filename);
+      assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
       assert_eq!(&mod_meta.module_name, target_module_name);
@@ -1183,7 +1187,7 @@ mod tests {
   #[test]
   fn test_get_source_code_4() {
     let (_temp_dir, deno_dir) = test_setup();
-    // Test double redirects and meta recording
+    // Test double redirects and headers recording
     tokio_util::init(|| {
       let redirect_module_name =
         "http://localhost:4548/tests/subdir/redirects/redirect1.js";
@@ -1216,11 +1220,11 @@ mod tests {
 
       // File that requires redirection is not downloaded.
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
-      // ... but its meta is created.
-      let redirect_source_meta =
-        get_source_code_metadata(&redirect_source_filename);
+      // ... but its .headers.json is created.
+      let redirect_source_headers =
+        get_source_code_headers(&redirect_source_filename);
       assert_eq!(
-        redirect_source_meta.redirect_to.unwrap(),
+        redirect_source_headers.redirect_to.unwrap(),
         target_module_name
       );
 
@@ -1234,9 +1238,9 @@ mod tests {
         fs::read_to_string(&redirect_target_filename).unwrap(),
         "export const redirect = 1;\n"
       );
-      let redirect_target_meta =
-        get_source_code_metadata(&redirect_target_filename);
-      assert!(redirect_target_meta.redirect_to.is_none());
+      let redirect_target_headers =
+        get_source_code_headers(&redirect_target_filename);
+      assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
       assert_eq!(&mod_meta.module_name, target_module_name);
@@ -1261,7 +1265,7 @@ mod tests {
           .join("127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts")
           .as_ref(),
       );
-      let metadata_file_name = source_metadata_filename(&filename);
+      let headers_file_name = source_code_headers_filename(&filename);
 
       let result = tokio_util::block_on(fetch_remote_source_async(
         &deno_dir,
@@ -1272,11 +1276,11 @@ mod tests {
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, b"export const loaded = true;\n");
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      // matching ext, no .meta.json file created
-      assert!(fs::read_to_string(&metadata_file_name).is_err());
+      // matching ext, no .headers.json file created
+      assert!(fs::read_to_string(&headers_file_name).is_err());
 
-      // Modify .meta.json, make sure read from local
-      save_source_code_metadata(
+      // Modify .headers.json, make sure read from local
+      save_source_code_headers(
         &filename,
         Some("text/javascript".to_owned()),
         None,
@@ -1286,7 +1290,7 @@ mod tests {
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
-      // Not MediaType::TypeScript due to .meta.json modification
+      // Not MediaType::TypeScript due to .headers.json modification
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     });
   }
@@ -1305,18 +1309,18 @@ mod tests {
           .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts")
           .as_ref(),
       );
-      let metadata_file_name = source_metadata_filename(&filename);
+      let headers_file_name = source_code_headers_filename(&filename);
 
       let result = fetch_remote_source(&deno_dir, module_name, &filename);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      // matching ext, no .meta.json file created
-      assert!(fs::read_to_string(&metadata_file_name).is_err());
+      // matching ext, no .headers.json file created
+      assert!(fs::read_to_string(&headers_file_name).is_err());
 
-      // Modify .meta.json, make sure read from local
-      save_source_code_metadata(
+      // Modify .headers.json, make sure read from local
+      save_source_code_headers(
         &filename,
         Some("text/javascript".to_owned()),
         None,
@@ -1325,7 +1329,7 @@ mod tests {
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
-      // Not MediaType::TypeScript due to .meta.json modification
+      // Not MediaType::TypeScript due to .headers.json modification
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     });
   }
@@ -1348,9 +1352,9 @@ mod tests {
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-      // no ext, should create .meta.json file
+      // no ext, should create .headers.json file
       assert_eq!(
-        get_source_code_metadata(&filename).mime_type.unwrap(),
+        get_source_code_headers(&filename).mime_type.unwrap(),
         "text/typescript"
       );
 
@@ -1366,9 +1370,9 @@ mod tests {
       let r2 = result_2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-      // mismatch ext, should create .meta.json file
+      // mismatch ext, should create .headers.json file
       assert_eq!(
-        get_source_code_metadata(&filename_2).mime_type.unwrap(),
+        get_source_code_headers(&filename_2).mime_type.unwrap(),
         "text/javascript"
       );
 
@@ -1385,9 +1389,9 @@ mod tests {
       let r3 = result_3.unwrap().unwrap();
       assert_eq!(r3.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
-      // unknown ext, should create .meta.json file
+      // unknown ext, should create .headers.json file
       assert_eq!(
-        get_source_code_metadata(&filename_3).mime_type.unwrap(),
+        get_source_code_headers(&filename_3).mime_type.unwrap(),
         "text/typescript"
       );
     });
