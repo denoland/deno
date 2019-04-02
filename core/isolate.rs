@@ -17,6 +17,7 @@ use futures::Poll;
 use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::ptr::null;
 use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
@@ -329,6 +330,18 @@ impl<B: Behavior> Isolate<B> {
       out.push(specifier.to_string());
     }
     out
+  }
+
+  pub fn snapshot_new(&self) -> Result<deno_snapshot, JSError> {
+    let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
+    if let Some(js_error) = self.last_exception() {
+      assert_eq!(snapshot.data_ptr, null());
+      assert_eq!(snapshot.data_len, 0);
+      return Err(js_error);
+    }
+    assert_ne!(snapshot.data_ptr, null());
+    assert_ne!(snapshot.data_len, 0);
+    Ok(snapshot)
   }
 }
 

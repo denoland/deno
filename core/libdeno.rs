@@ -110,8 +110,8 @@ impl AsMut<[u8]> for deno_buf {
 
 #[repr(C)]
 pub struct deno_snapshot {
-  data_ptr: *const u8,
-  data_len: usize,
+  pub data_ptr: *const u8,
+  pub data_len: usize,
 }
 
 /// `deno_snapshot` can not clone, and there is no interior mutability.
@@ -133,6 +133,13 @@ impl deno_snapshot {
       data_ptr: ptr,
       data_len: len,
     }
+  }
+}
+
+// TODO Does this make sense?
+impl Drop for deno_snapshot {
+  fn drop(&mut self) {
+    unsafe { deno_snapshot_delete(self) }
   }
 }
 
@@ -242,4 +249,9 @@ extern "C" {
     user_data: *const c_void,
     id: deno_mod,
   );
+
+  pub fn deno_snapshot_new(i: *const isolate) -> deno_snapshot;
+
+  #[allow(dead_code)]
+  pub fn deno_snapshot_delete(s: &mut deno_snapshot);
 }
