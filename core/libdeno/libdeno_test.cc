@@ -10,10 +10,10 @@ TEST(LibDenoTest, InitializesCorrectly) {
 }
 
 TEST(LibDenoTest, Snapshotter) {
-  Deno* d1 = deno_new(deno_config{1, empty, empty, nullptr});
+  Deno* d1 = deno_new(deno_config{1, empty_snapshot, empty, nullptr});
   deno_execute(d1, nullptr, "a.js", "a = 1 + 2");
   EXPECT_EQ(nullptr, deno_last_exception(d1));
-  deno_buf test_snapshot = deno_get_snapshot(d1);
+  deno_snapshot test_snapshot = deno_get_snapshot(d1);
   deno_delete(d1);
 
   Deno* d2 = deno_new(deno_config{0, test_snapshot, empty, nullptr});
@@ -21,7 +21,7 @@ TEST(LibDenoTest, Snapshotter) {
   EXPECT_EQ(nullptr, deno_last_exception(d2));
   deno_delete(d2);
 
-  delete[] test_snapshot.data_ptr;
+  deno_snapshot_delete(test_snapshot);
 }
 
 TEST(LibDenoTest, CanCallFunction) {
@@ -249,7 +249,7 @@ TEST(LibDenoTest, CheckPromiseErrors) {
 }
 
 TEST(LibDenoTest, LastException) {
-  Deno* d = deno_new(deno_config{0, empty, empty, nullptr});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, nullptr});
   EXPECT_EQ(deno_last_exception(d), nullptr);
   deno_execute(d, nullptr, "a.js", "\n\nthrow Error('boo');\n\n");
   EXPECT_STREQ(deno_last_exception(d),
@@ -264,7 +264,7 @@ TEST(LibDenoTest, LastException) {
 }
 
 TEST(LibDenoTest, EncodeErrorBug) {
-  Deno* d = deno_new(deno_config{0, empty, empty, nullptr});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, nullptr});
   EXPECT_EQ(deno_last_exception(d), nullptr);
   deno_execute(d, nullptr, "a.js", "eval('a')");
   EXPECT_STREQ(
@@ -293,7 +293,7 @@ TEST(LibDenoTest, Shared) {
 }
 
 TEST(LibDenoTest, Utf8Bug) {
-  Deno* d = deno_new(deno_config{0, empty, empty, nullptr});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, nullptr});
   // The following is a valid UTF-8 javascript which just defines a string
   // literal. We had a bug where libdeno would choke on this.
   deno_execute(d, nullptr, "a.js", "x = \"\xEF\xBF\xBD\"");
@@ -318,7 +318,7 @@ TEST(LibDenoTest, LibDenoEvalContextError) {
 TEST(LibDenoTest, SharedAtomics) {
   int32_t s[] = {0, 1, 2};
   deno_buf shared = {nullptr, 0, reinterpret_cast<uint8_t*>(s), sizeof s, 0};
-  Deno* d = deno_new(deno_config{0, empty, shared, nullptr});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, shared, nullptr});
   deno_execute(d, nullptr, "a.js",
                "Atomics.add(new Int32Array(Deno.core.shared), 0, 1)");
   EXPECT_EQ(nullptr, deno_last_exception(d));

@@ -18,6 +18,11 @@ typedef struct {
   size_t zero_copy_id;  // 0 = normal, 1 = must call deno_zero_copy_release.
 } deno_buf;
 
+typedef struct {
+  uint8_t* data_ptr;
+  size_t data_len;
+} deno_snapshot;
+
 typedef struct deno_s Deno;
 
 // A callback to receive a message from a libdeno.send() javascript call.
@@ -31,22 +36,27 @@ const char* deno_v8_version();
 void deno_set_v8_flags(int* argc, char** argv);
 
 typedef struct {
-  int will_snapshot;       // Default 0. If calling deno_get_snapshot 1.
-  deno_buf load_snapshot;  // Optionally: A deno_buf from deno_get_snapshot.
-  deno_buf shared;         // Shared buffer to be mapped to libdeno.shared
-  deno_recv_cb recv_cb;    // Maps to libdeno.send() calls.
+  int will_snapshot;            // Default 0. If calling deno_get_snapshot 1.
+  deno_snapshot load_snapshot;  // A startup snapshot to use.
+  deno_buf shared;              // Shared buffer to be mapped to libdeno.shared
+  deno_recv_cb recv_cb;         // Maps to libdeno.send() calls.
 } deno_config;
 
 // Create a new deno isolate.
 // Warning: If config.will_snapshot is set, deno_get_snapshot() must be called
 // or an error will result.
 Deno* deno_new(deno_config config);
-
-// Generate a snapshot. The resulting buf can be used with deno_new.
-// The caller must free the returned data by calling delete[] buf.data_ptr.
-deno_buf deno_get_snapshot(Deno* d);
-
 void deno_delete(Deno* d);
+
+// Generate a snapshot. The resulting buf can be used in as the load_snapshot
+// member in deno_confg.
+// When calling this function, the caller must have created the isolate "d" with
+// "will_snapshot" set to 1.
+// The caller must free the returned data with deno_snapshot_delete().
+deno_snapshot deno_get_snapshot(Deno* d);
+
+// Only for use with data returned from deno_get_snapshot.
+void deno_snapshot_delete(deno_snapshot);
 
 void deno_lock(Deno* d);
 void deno_unlock(Deno* d);

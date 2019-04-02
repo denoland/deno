@@ -8,6 +8,7 @@ use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
 use crate::libdeno::deno_mod;
+use crate::libdeno::deno_snapshot;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use futures::Async;
@@ -58,7 +59,7 @@ pub struct Script {
 /// in the form of the StartupScript struct.
 pub enum StartupData {
   Script(Script),
-  Snapshot(deno_buf),
+  Snapshot(deno_snapshot),
 }
 
 /// Defines the behavior of an Isolate.
@@ -127,7 +128,7 @@ impl<B: Behavior> Isolate<B> {
       will_snapshot: 0,
       load_snapshot: match startup_snapshot {
         Some(s) => s,
-        None => libdeno::deno_buf::empty(),
+        None => libdeno::deno_snapshot::empty(),
       },
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,

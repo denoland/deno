@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use deno::deno_buf;
+use deno::deno_snapshot;
 use deno::{Script, StartupData};
 
 pub fn deno_isolate_init() -> StartupData {
@@ -24,7 +24,10 @@ pub fn deno_isolate_init() -> StartupData {
     let data = vec![];
 
     unsafe {
-      StartupData::Snapshot(deno_buf::from_raw_parts(data.as_ptr(), data.len()))
+      StartupData::Snapshot(deno_snapshot::from_raw_parts(
+        data.as_ptr(),
+        data.len(),
+      ))
     }
   }
 }
@@ -55,7 +58,10 @@ pub fn compiler_isolate_init() -> StartupData {
     let data = vec![];
 
     unsafe {
-      StartupData::Snapshot(deno_buf::from_raw_parts(data.as_ptr(), data.len()))
+      StartupData::Snapshot(deno_snapshot::from_raw_parts(
+        data.as_ptr(),
+        data.len(),
+      ))
     }
   }
 }

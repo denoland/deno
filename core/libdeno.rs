@@ -108,6 +108,34 @@ impl AsMut<[u8]> for deno_buf {
   }
 }
 
+#[repr(C)]
+pub struct deno_snapshot {
+  data_ptr: *const u8,
+  data_len: usize,
+}
+
+/// `deno_snapshot` can not clone, and there is no interior mutability.
+/// This type satisfies Send bound.
+unsafe impl Send for deno_snapshot {}
+
+impl deno_snapshot {
+  #[inline]
+  pub fn empty() -> Self {
+    Self {
+      data_ptr: null(),
+      data_len: 0,
+    }
+  }
+
+  #[inline]
+  pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
+    Self {
+      data_ptr: ptr,
+      data_len: len,
+    }
+  }
+}
+
 #[allow(non_camel_case_types)]
 type deno_recv_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
@@ -128,7 +156,7 @@ type deno_resolve_cb = unsafe extern "C" fn(
 #[repr(C)]
 pub struct deno_config {
   pub will_snapshot: c_int,
-  pub load_snapshot: deno_buf,
+  pub load_snapshot: deno_snapshot,
   pub shared: deno_buf,
   pub recv_cb: deno_recv_cb,
 }

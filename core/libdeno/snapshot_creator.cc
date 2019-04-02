@@ -8,8 +8,6 @@
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
 
-namespace deno {}  // namespace deno
-
 int main(int argc, char** argv) {
   const char* snapshot_out_bin = argv[1];
   const char* js_fn = argv[2];
@@ -23,7 +21,7 @@ int main(int argc, char** argv) {
   CHECK(deno::ReadFileToString(js_fn, &js_source));
 
   deno_init();
-  deno_config config = {1, deno::empty_buf, deno::empty_buf, nullptr};
+  deno_config config = {1, deno::empty_snapshot, deno::empty_buf, nullptr};
   Deno* d = deno_new(config);
 
   deno_execute(d, nullptr, js_fn, js_source.c_str());
@@ -40,7 +38,7 @@ int main(int argc, char** argv) {
   file_.write(reinterpret_cast<char*>(snapshot.data_ptr), snapshot.data_len);
   file_.close();
 
-  delete[] snapshot.data_ptr;
+  deno_snapshot_delete(snapshot);
   deno_delete(d);
 
   return file_.bad();

@@ -93,7 +93,7 @@ void deno_unlock(Deno* d_) {
   d->locker_ = nullptr;
 }
 
-deno_buf deno_get_snapshot(Deno* d_) {
+deno_snapshot deno_get_snapshot(Deno* d_) {
   auto* d = unwrap(d_);
   CHECK_NOT_NULL(d->snapshot_creator_);
   d->ClearModules();
@@ -101,8 +101,12 @@ deno_buf deno_get_snapshot(Deno* d_) {
 
   auto blob = d->snapshot_creator_->CreateBlob(
       v8::SnapshotCreator::FunctionCodeHandling::kKeep);
-  return {nullptr, 0, reinterpret_cast<uint8_t*>(const_cast<char*>(blob.data)),
-          blob.raw_size, 0};
+  return {reinterpret_cast<uint8_t*>(const_cast<char*>(blob.data)),
+          blob.raw_size};
+}
+
+void deno_snapshot_delete(deno_snapshot snapshot) {
+  delete[] snapshot.data_ptr;
 }
 
 static std::unique_ptr<v8::Platform> platform;
