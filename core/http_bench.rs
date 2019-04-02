@@ -162,10 +162,10 @@ fn main() {
 
     let js_source = include_str!("http_bench.js");
 
-    let startup_data = Some(StartupData::Script(Script {
+    let startup_data = StartupData::Script(Script {
       source: js_source.to_string(),
       filename: "http_bench.js".to_string(),
-    }));
+    });
 
     let isolate = deno::Isolate::new(startup_data, HttpBench());
 

@@ -143,7 +143,7 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> ResourceId {
   cell
     .get_or_insert_with(|| {
       let worker_result = workers::spawn(
-        Some(startup_data::compiler_isolate_init()),
+        startup_data::compiler_isolate_init(),
         CompilerBehavior::new(
           parent_state.flags.clone(),
           parent_state.argv.clone(),

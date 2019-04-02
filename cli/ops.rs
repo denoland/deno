@@ -1843,7 +1843,7 @@ fn op_create_worker(
       parent_state.argv.clone(),
     );
     match workers::spawn(
-      Some(startup_data::deno_isolate_init()),
+      startup_data::deno_isolate_init(),
       behavior,
       &format!("USER-WORKER-{}", specifier),
       workers::WorkerInit::Module(specifier.to_string()),

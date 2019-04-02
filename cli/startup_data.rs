@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use deno::deno_snapshot;
 use deno::{Script, StartupData};
 
-pub fn deno_isolate_init() -> StartupData {
+pub fn deno_isolate_init() -> StartupData<'static> {
   if cfg!(feature = "no-snapshot-init") {
     debug!("Deno isolate init without snapshots.");
     #[cfg(not(feature = "check-only"))]
@@ -23,16 +22,11 @@ pub fn deno_isolate_init() -> StartupData {
     #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
     let data = vec![];
 
-    unsafe {
-      StartupData::Snapshot(deno_snapshot::from_raw_parts(
-        data.as_ptr(),
-        data.len(),
-      ))
-    }
+    StartupData::Snapshot(data)
   }
 }
 
-pub fn compiler_isolate_init() -> StartupData {
+pub fn compiler_isolate_init() -> StartupData<'static> {
   if cfg!(feature = "no-snapshot-init") {
     debug!("Compiler isolate init without snapshots.");
     #[cfg(not(feature = "check-only"))]
@@ -57,11 +51,6 @@ pub fn compiler_isolate_init() -> StartupData {
     #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
     let data = vec![];
 
-    unsafe {
-      StartupData::Snapshot(deno_snapshot::from_raw_parts(
-        data.as_ptr(),
-        data.len(),
-      ))
-    }
+    StartupData::Snapshot(data)
   }
 }

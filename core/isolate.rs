@@ -8,7 +8,8 @@ use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
 use crate::libdeno::deno_mod;
-use crate::libdeno::deno_snapshot;
+use crate::libdeno::Snapshot1;
+use crate::libdeno::Snapshot2;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use futures::Async;
@@ -58,9 +59,10 @@ pub struct Script {
 /// Represents data used to initialize isolate at startup
 /// either a binary snapshot or a javascript source file
 /// in the form of the StartupScript struct.
-pub enum StartupData {
+pub enum StartupData<'a> {
   Script(Script),
-  Snapshot(deno_snapshot),
+  Snapshot(&'a [u8]),
+  None,
 }
 
 /// Defines the behavior of an Isolate.
@@ -110,7 +112,7 @@ static DENO_INIT: Once = ONCE_INIT;
 impl<B: Behavior> Isolate<B> {
   /// startup_data defines the snapshot or script used at startup to initalize
   /// the isolate.
-  pub fn new(startup_data: Option<StartupData>, behavior: B) -> Self {
+  pub fn new(startup_data: StartupData, behavior: B) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -120,15 +122,15 @@ impl<B: Behavior> Isolate<B> {
     let needs_init = true;
     // Seperate into Option values for eatch startup type
     let (startup_snapshot, startup_script) = match startup_data {
-      Some(StartupData::Snapshot(d)) => (Some(d), None),
-      Some(StartupData::Script(d)) => (None, Some(d)),
-      None => (None, None),
+      StartupData::Snapshot(d) => (Some(d), None),
+      StartupData::Script(d) => (None, Some(d)),
+      StartupData::None => (None, None),
     };
     let config = libdeno::deno_config {
       will_snapshot: 0,
       load_snapshot: match startup_snapshot {
-        Some(s) => s,
-        None => libdeno::deno_snapshot::empty(),
+        Some(s) => Snapshot2::from(s),
+        None => Snapshot2::empty(),
       },
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,
@@ -331,7 +333,7 @@ impl<B: Behavior> Isolate<B> {
     out
   }
 
-  pub fn snapshot_new(&self) -> Result<deno_snapshot, JSError> {
+  pub fn snapshot_new(&self) -> Result<Snapshot1, JSError> {
     let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
     if let Some(js_error) = self.last_exception() {
       assert_eq!(snapshot.data_ptr, null());
@@ -560,7 +562,7 @@ pub mod tests {
   impl TestBehavior {
     pub fn setup(mode: TestBehaviorMode) -> Isolate<Self> {
       let mut isolate = Isolate::new(
-        None,
+        StartupData::None,
         TestBehavior {
           dispatch_count: 0,
           mode,

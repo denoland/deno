@@ -78,7 +78,7 @@ pub struct Worker<B: WorkerBehavior> {
 }
 
 impl<B: WorkerBehavior> Worker<B> {
-  pub fn new(startup_data: Option<StartupData>, mut behavior: B) -> Self {
+  pub fn new(startup_data: StartupData, mut behavior: B) -> Self {
     let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
 
@@ -124,7 +124,7 @@ pub enum WorkerInit {
 }
 
 pub fn spawn<B: WorkerBehavior + 'static>(
-  startup_data: Option<StartupData>,
+  startup_data: StartupData,
   behavior: B,
   worker_debug_name: &str,
   init: WorkerInit,
@@ -177,7 +177,7 @@ mod tests {
   fn test_spawn() {
     tokio_util::init(|| {
       let worker_result = spawn(
-        Some(startup_data::compiler_isolate_init()),
+        startup_data::compiler_isolate_init(),
         CompilerBehavior::new(
           IsolateState::mock().flags.clone(),
           IsolateState::mock().argv.clone(),
@@ -240,7 +240,7 @@ mod tests {
   fn removed_from_resource_table_on_close() {
     tokio_util::init(|| {
       let worker_result = spawn(
-        Some(startup_data::compiler_isolate_init()),
+        startup_data::compiler_isolate_init(),
         CompilerBehavior::new(
           IsolateState::mock().flags.clone(),
           IsolateState::mock().argv.clone(),
