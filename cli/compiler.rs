@@ -198,84 +198,47 @@ pub fn compile_sync(
   referrer: &str,
   module_meta_data: &ModuleMetaData,
 ) -> ModuleMetaData {
-  let is_worker = parent_state.is_worker;
+  debug!(
+    "Running rust part of compile_sync. specifier: {}, referrer: {}",
+    &specifier, &referrer
+  );
+
+  let req_msg = req(specifier, referrer, parent_state.is_worker);
+  let module_meta_data_ = module_meta_data.clone();
+
   let shared = lazy_start(parent_state);
+  let compiler_rid = shared.rid;
 
   let (local_sender, local_receiver) =
     oneshot::channel::<Result<ModuleMetaData, Option<JSError>>>();
 
-  // Just some extra scoping to keep things clean
-  {
-    let compiler_rid = shared.rid;
-    let module_meta_data_ = module_meta_data.clone();
-    let req_msg = req(specifier, referrer, is_worker);
-    let sender_arc = Arc::new(Some(local_sender));
-    let specifier_ = specifier.to_string();
-    let referrer_ = referrer.to_string();
-
-    let mut runtime = C_RUNTIME.lock().unwrap();
-    runtime.spawn(lazy(move || {
-      debug!(
-        "Running rust part of compile_sync specifier: {} referrer: {}",
-        specifier_, referrer_
-      );
-      let mut send_sender_arc = sender_arc.clone();
-      resources::post_message_to_worker(compiler_rid, req_msg)
-        .map_err(move |_| {
-          let sender = Arc::get_mut(&mut send_sender_arc).unwrap().take();
-          sender.unwrap().send(Err(None)).unwrap()
-        }).and_then(move |_| {
-          debug!(
-            "Sent message to worker specifier: {} referrer: {}",
-            specifier_, referrer_
-          );
-          let mut get_sender_arc = sender_arc.clone();
-          let mut result_sender_arc = sender_arc.clone();
-          resources::get_message_from_worker(compiler_rid)
-            .map_err(move |_| {
-              let sender = Arc::get_mut(&mut get_sender_arc).unwrap().take();
-              sender.unwrap().send(Err(None)).unwrap()
-            }).and_then(move |res_msg_option| -> Result<(), ()> {
-              debug!(
-                "Recieved message from worker specifier: {} referrer: {}",
-                specifier_, referrer_
-              );
-              let res_msg = res_msg_option.unwrap();
-              let res_json = std::str::from_utf8(&res_msg).unwrap();
-              let sender = Arc::get_mut(&mut result_sender_arc)
-                .unwrap()
-                .take()
-                .unwrap();
-              sender
-                .send(Ok(match serde_json::from_str::<serde_json::Value>(
-                  res_json,
-                ) {
-                  Ok(serde_json::Value::Object(map)) => ModuleMetaData {
-                    module_name: module_meta_data_.module_name.clone(),
-                    module_redirect_source_name: module_meta_data_
-                      .module_redirect_source_name
-                      .clone(),
-                    filename: module_meta_data_.filename.clone(),
-                    media_type: module_meta_data_.media_type,
-                    source_code: module_meta_data_.source_code.clone(),
-                    maybe_output_code: match map["outputCode"].as_str() {
-                      Some(str) => Some(str.as_bytes().to_owned()),
-                      _ => None,
-                    },
-                    maybe_output_code_filename: None,
-                    maybe_source_map: match map["sourceMap"].as_str() {
-                      Some(str) => Some(str.as_bytes().to_owned()),
-                      _ => None,
-                    },
-                    maybe_source_map_filename: None,
-                  },
-                  _ => panic!("error decoding compiler response"),
-                })).expect("send failed");
-              Ok(())
-            })
-        })
-    }));
-  }
+  let mut runtime = C_RUNTIME.lock().unwrap();
+  runtime.spawn(lazy(move || {
+    resources::post_message_to_worker(compiler_rid, req_msg)
+      .then(move |_| {
+        debug!("Sent message to worker");
+        resources::get_message_from_worker(compiler_rid)
+      }).and_then(move |res_msg| {
+        debug!("Received message from worker");
+        let res_json = std::str::from_utf8(res_msg.as_ref().unwrap()).unwrap();
+        let res_data = serde_json::from_str::<serde_json::Value>(res_json)
+          .expect("Error decoding compiler response");
+        let res_module_meta_data = ModuleMetaData {
+          maybe_output_code: res_data["outputCode"]
+            .as_str()
+            .map(|s| s.as_bytes().to_owned()),
+          maybe_source_map: res_data["sourceMap"]
+            .as_str()
+            .map(|s| s.as_bytes().to_owned()),
+          ..module_meta_data_
+        };
+        Ok(res_module_meta_data)
+      }).map_err(|_| None)
+      .then(move |result| {
+        local_sender.send(result).expect("Oneshot send() failed");
+        Ok(())
+      })
+  }));
 
   let worker_receiver = shared.worker_err_receiver.clone();
 
