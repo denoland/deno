@@ -6,98 +6,42 @@
 // small and simple for users who do not use modules or if they do can load them
 // synchronously. The isolate.rs module should never depend on this module.
 
-use crate::isolate::Behavior;
 use crate::isolate::Isolate;
 use crate::js_errors::JSError;
 use crate::libdeno::deno_mod;
 use futures::Async;
 use futures::Future;
 use futures::Poll;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::collections::HashSet;
-use std::error::Error;
-use std::marker::PhantomData;
 
-pub type BoxError = Box<dyn Error + Send>;
 pub type SourceCodeFuture<E> = dyn Future<Item = String, Error = E> + Send;
 
-pub trait Loader<E: Error, B: Behavior> {
+pub trait Loader {
+  type Behavior: crate::isolate::Behavior;
+  type Error: std::error::Error + 'static;
+
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
   /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
-  fn resolve(&mut self, specifier: &str, referrer: &str) -> String;
+  fn resolve(specifier: &str, referrer: &str) -> String;
 
   /// Given an absolute url, load its source code.
-  fn load(&mut self, url: &str) -> Box<SourceCodeFuture<E>>;
+  fn load(&mut self, url: &str) -> Box<SourceCodeFuture<Self::Error>>;
 
-  fn use_isolate<R, F: FnMut(&mut Isolate<B>) -> R>(&mut self, cb: F) -> R;
+  fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
+    &'a mut self,
+  ) -> (&'b mut Isolate<Self::Behavior>, &'c mut Modules);
 
-  fn use_modules<R, F: FnMut(&mut Modules) -> R>(&mut self, cb: F) -> R;
-}
-
-struct PendingLoad<E: Error> {
-  url: String,
-  source_code_future: Box<SourceCodeFuture<E>>,
-}
-
-/// This future is used to implement parallel async module loading without
-/// complicating the Isolate API. Note that RecursiveLoad will take ownership of
-/// an Isolate during load.
-pub struct RecursiveLoad<E: Error, B: Behavior, L: Loader<E, B>> {
-  loader: Option<L>,
-  pending: Vec<PendingLoad<E>>,
-  is_pending: HashSet<String>,
-  root: String,
-  phantom: PhantomData<(B, L)>,
-}
-
-impl<E: 'static + Error, B: Behavior, L: Loader<E, B>> RecursiveLoad<E, B, L> {
-  /// Starts a new parallel load of the given URL.
-  pub fn new(url: &str, mut loader: L) -> Self {
-    let root = loader.resolve(url, ".");
-    let mut recursive_load = Self {
-      loader: Some(loader),
-      root,
-      pending: Vec::new(),
-      is_pending: HashSet::new(),
-      phantom: PhantomData,
-    };
-    recursive_load.add(url, ".", None);
-    recursive_load
+  fn isolate<'a: 'b, 'b>(&'a mut self) -> &'b mut Isolate<Self::Behavior> {
+    let (isolate, _) = self.isolate_and_modules();
+    isolate
   }
 
-  fn take_loader(&mut self) -> L {
-    self.loader.take().unwrap()
-  }
-
-  fn add(
-    &mut self,
-    specifier: &str,
-    referrer: &str,
-    parent_id: Option<deno_mod>,
-  ) {
-    let url = {
-      let loader = self.loader.as_mut().unwrap();
-      loader.resolve(specifier, referrer)
-    };
-
-    if let Some(parent_id) = parent_id {
-      let loader = self.loader.as_mut().unwrap();
-      loader.use_modules(|modules| modules.add_child(parent_id, &url));
-    }
-
-    if !self.is_pending.contains(&url) {
-      self.is_pending.insert(url.clone());
-      let source_code_future = {
-        let loader = self.loader.as_mut().unwrap();
-        Box::new(loader.load(&url))
-      };
-      self.pending.push(PendingLoad {
-        url,
-        source_code_future,
-      });
-    }
+  fn modules<'a: 'b, 'b>(&'a mut self) -> &'b mut Modules {
+    let (_, modules) = self.isolate_and_modules();
+    modules
   }
 }
 
@@ -108,92 +52,128 @@ pub enum Either<E> {
   Other(E),
 }
 
-// TODO remove 'static below.
-impl<E: 'static + Error, B: Behavior, L: 'static + Loader<E, B>> Future
-  for RecursiveLoad<E, B, L>
-{
-  type Item = (deno_mod, L);
-  type Error = (Either<E>, L);
+/// This future is used to implement parallel async module loading without
+/// complicating the Isolate API.
+pub struct RecursiveLoad<'l, L: Loader> {
+  loader: &'l mut L,
+  pending: HashMap<String, Box<SourceCodeFuture<<L as Loader>::Error>>>,
+  root: String,
+}
+
+impl<'l, L: Loader> RecursiveLoad<'l, L> {
+  /// Starts a new parallel load of the given URL.
+  pub fn new(url: &str, loader: &'l mut L) -> Self {
+    let root = L::resolve(url, ".");
+    let mut recursive_load = Self {
+      loader,
+      root: root.clone(),
+      pending: HashMap::new(),
+    };
+    recursive_load
+      .pending
+      .insert(root.clone(), recursive_load.loader.load(&root));
+    recursive_load
+  }
+}
+
+impl<'l, L: Loader> Future for RecursiveLoad<'l, L> {
+  type Item = deno_mod;
+  type Error = Either<L::Error>;
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    let mut i = 0;
-    while i < self.pending.len() {
-      let pending = &mut self.pending[i];
-      match pending.source_code_future.poll() {
-        Err(err) => {
-          return Err((Either::Other(err), self.take_loader()));
-        }
-        Ok(Async::NotReady) => {
-          i += 1;
-        }
-        Ok(Async::Ready(source_code)) => {
-          // We have completed loaded one of the modules.
-          let completed = self.pending.remove(i);
-          let main = completed.url == self.root;
+    let loader = &mut self.loader;
+    let pending = &mut self.pending;
+    let root = self.root.as_str();
 
-          let result = {
-            let loader = self.loader.as_mut().unwrap();
-            loader.use_isolate(|isolate: &mut Isolate<B>| {
-              isolate.mod_new(main, &completed.url, &source_code)
-            })
-          };
-          if let Err(err) = result {
-            return Err((Either::JSError(err), self.take_loader()));
-          }
-          let mod_id = result.unwrap();
-          let referrer = &completed.url.clone();
+    // Find all finished futures (those that are ready or that have errored).
+    // Turn it into a list of (url, source_code) tuples.
+    let mut finished_loads: Vec<(String, String)> = pending
+      .iter_mut()
+      .filter_map(|(url, fut)| match fut.poll() {
+        Ok(Async::NotReady) => None,
+        Ok(Async::Ready(source_code)) => Some(Ok((url.clone(), source_code))),
+        Err(err) => Some(Err(Either::Other(err))),
+      }).collect::<Result<_, _>>()?;
 
-          {
-            let loader = self.loader.as_mut().unwrap();
-            loader.use_modules(|modules: &mut Modules| {
-              modules.register(mod_id, &completed.url)
-            });
-          }
+    while !finished_loads.is_empty() {
+      // Instantiate and register the loaded modules, and discover new imports.
+      // Build a list of (parent_url, Vec<child_url>) tuples.
+      let parent_and_child_urls: Vec<(&str, Vec<String>)> = finished_loads
+        .iter()
+        .map(|(url, source_code)| {
+          // Instantiate and register the module.
+          let mod_id = loader
+            .isolate()
+            .mod_new(url == root, &url, &source_code)
+            .map_err(Either::JSError)?;
+          loader.modules().register(mod_id, &url);
 
-          // Now we must iterate over all imports of the module and load them.
-          let imports = {
-            let loader = self.loader.as_mut().unwrap();
-            loader.use_isolate(|isolate| isolate.mod_get_imports(mod_id))
-          };
-          for specifier in imports {
-            self.add(&specifier, referrer, Some(mod_id));
-          }
-        }
-      }
+          // Find child modules imported by the newly registered module.
+          // Resolve all child import specifiers to URLs. Register all
+          // imports as a children; however any modules that are already
+          // known to the modules registry won't be stored in `child_urls`.
+          let child_urls: Vec<String> = loader
+            .isolate()
+            .mod_get_imports(mod_id)
+            .into_iter()
+            .map(|specifier| L::resolve(&specifier, &url))
+            .filter(|child_url| !loader.modules().add_child(mod_id, &child_url))
+            .collect();
+          Ok((url.as_str(), child_urls))
+        }).collect::<Result<_, _>>()?;
+
+      // Make updates to the `pending` hash map. If we find any more finished
+      // futures, we'll loop and process `finished_loads` again.
+      finished_loads = parent_and_child_urls
+        .into_iter()
+        .flat_map(|(url, child_urls)| {
+          // Remove the parent module url that is done loading from `pending`.
+          pending.remove(url);
+
+          // Look for newly discovered child module imports.
+          child_urls
+            .into_iter()
+            .filter_map(|child_url| {
+              // If the url isn't present in the pending load table, create a
+              // load future and associate it with the url in the hash map.
+              match pending.entry(child_url.clone()) {
+                Entry::Occupied(_) => None,
+                Entry::Vacant(entry) => {
+                  Some(entry.insert(Box::new(loader.load(&child_url))).poll())
+                }
+              }
+              // Immediately poll any newly created futures and gather the
+              // ones that are immediately ready or errored.
+              .and_then(|poll_result| match poll_result {
+                Ok(Async::NotReady) => None,
+                Ok(Async::Ready(source_code)) => {
+                  Some(Ok((child_url.clone(), source_code)))
+                }
+                Err(err) => Some(Err(Either::Other(err))),
+              })
+            }).collect::<Vec<_>>()
+        }).collect::<Result<_, _>>()?;
     }
 
-    if self.pending.len() > 0 {
+    if !self.pending.is_empty() {
       return Ok(Async::NotReady);
     }
 
-    let mut loader = self.take_loader();
-
-    // TODO Fix this resolve callback weirdness.
-    let loader_ =
-      unsafe { std::mem::transmute::<&mut L, &'static mut L>(&mut loader) };
-
-    let mut resolve = move |specifier: &str,
-                            referrer_id: deno_mod|
-          -> deno_mod {
-      let referrer = loader_
-        .use_modules(|modules| modules.get_name(referrer_id).unwrap().clone());
-      let url = loader_.resolve(specifier, &referrer);
-      loader_.use_modules(|modules| match modules.get_id(&url) {
+    let (isolate, modules) = loader.isolate_and_modules();
+    let root_id = modules.get_id(root).unwrap();
+    let mut resolve = |specifier: &str, referrer_id: deno_mod| -> deno_mod {
+      let referrer = modules.get_name(referrer_id).unwrap();
+      let url = L::resolve(specifier, referrer);
+      match modules.get_id(&url) {
         Some(id) => id,
         None => 0,
-      })
+      }
     };
+    isolate
+      .mod_instantiate(root_id, &mut resolve)
+      .map_err(Either::JSError)?;
 
-    let root_id =
-      loader.use_modules(|modules| modules.get_id(&self.root).unwrap());
-
-    let result = loader
-      .use_isolate(|isolate| isolate.mod_instantiate(root_id, &mut resolve));
-
-    match result {
-      Err(err) => Err((Either::JSError(err), loader)),
-      Ok(()) => Ok(Async::Ready((root_id, loader))),
-    }
+    Ok(Async::Ready(root_id))
   }
 }
 
@@ -240,23 +220,21 @@ impl Modules {
     self.get_id(name).and_then(|id| self.get_children(id))
   }
 
-  pub fn get_name(&self, id: deno_mod) -> Option<&String> {
-    self.info.get(&id).map(|i| &i.name)
+  pub fn get_name(&self, id: deno_mod) -> Option<&str> {
+    self.info.get(&id).map(|i| i.name.as_str())
   }
 
   pub fn is_registered(&self, name: &str) -> bool {
     self.by_name.get(name).is_some()
   }
 
+  // Returns true if the child name is a registered module, false otherwise.
   pub fn add_child(&mut self, parent_id: deno_mod, child_name: &str) -> bool {
-    self
-      .info
-      .get_mut(&parent_id)
-      .map(move |i| {
-        if !i.has_child(&child_name) {
-          i.children.push(child_name.to_string());
-        }
-      }).is_some()
+    let parent = self.info.get_mut(&parent_id).unwrap();
+    if !parent.has_child(&child_name) {
+      parent.children.push(child_name.to_string());
+    }
+    self.is_registered(child_name)
   }
 
   pub fn register(&mut self, id: deno_mod, name: &str) {
@@ -300,12 +278,15 @@ mod tests {
     }
   }
 
-  impl Loader<std::io::Error, TestBehavior> for MockLoader {
-    fn resolve(&mut self, specifier: &str, _referrer: &str) -> String {
+  impl Loader for MockLoader {
+    type Behavior = TestBehavior;
+    type Error = std::io::Error;
+
+    fn resolve(specifier: &str, _referrer: &str) -> String {
       specifier.to_string()
     }
 
-    fn load(&mut self, url: &str) -> Box<SourceCodeFuture<std::io::Error>> {
+    fn load(&mut self, url: &str) -> Box<SourceCodeFuture<Self::Error>> {
       use std::io::{Error, ErrorKind};
       self.loads.push(url.to_string());
       let result = match url {
@@ -321,15 +302,10 @@ mod tests {
       Box::new(futures::future::result(result))
     }
 
-    fn use_isolate<R, F: FnMut(&mut Isolate<TestBehavior>) -> R>(
-      &mut self,
-      mut cb: F,
-    ) -> R {
-      cb(&mut self.isolate)
-    }
-
-    fn use_modules<R, F: FnMut(&mut Modules) -> R>(&mut self, mut cb: F) -> R {
-      cb(&mut self.modules)
+    fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
+      &'a mut self,
+    ) -> (&'b mut Isolate<Self::Behavior>, &'c mut Modules) {
+      (&mut self.isolate, &mut self.modules)
     }
   }
 
@@ -366,12 +342,12 @@ mod tests {
 
   #[test]
   fn test_recursive_load() {
-    let loader = MockLoader::new();
-    let mut recursive_load = RecursiveLoad::new("a.js", loader);
+    let mut loader = MockLoader::new();
+    let mut recursive_load = RecursiveLoad::new("a.js", &mut loader);
 
     let result = recursive_load.poll();
     assert!(result.is_ok());
-    if let Async::Ready((a_id, mut loader)) = result.ok().unwrap() {
+    if let Async::Ready(a_id) = result.ok().unwrap() {
       js_check(loader.isolate.mod_evaluate(a_id));
       assert_eq!(loader.loads, vec!["a.js", "b.js", "c.js", "d.js"]);
 
@@ -390,7 +366,7 @@ mod tests {
       assert_eq!(modules.get_children(c_id), Some(&vec!["d.js".to_string()]));
       assert_eq!(modules.get_children(d_id), Some(&vec![]));
     } else {
-      assert!(false);
+      panic!("Future should be ready")
     }
   }
 
@@ -406,12 +382,12 @@ mod tests {
 
   #[test]
   fn test_circular_load() {
-    let loader = MockLoader::new();
-    let mut recursive_load = RecursiveLoad::new("circular1.js", loader);
+    let mut loader = MockLoader::new();
+    let mut recursive_load = RecursiveLoad::new("circular1.js", &mut loader);
 
     let result = recursive_load.poll();
     assert!(result.is_ok());
-    if let Async::Ready((circular1_id, mut loader)) = result.ok().unwrap() {
+    if let Async::Ready(circular1_id) = result.ok().unwrap() {
       js_check(loader.isolate.mod_evaluate(circular1_id));
       assert_eq!(loader.loads, vec!["circular1.js", "circular2.js"]);
 
@@ -430,7 +406,7 @@ mod tests {
         Some(&vec!["circular1.js".to_string()])
       );
     } else {
-      assert!(false);
+      panic!("Future should be ready")
     }
   }
 }
