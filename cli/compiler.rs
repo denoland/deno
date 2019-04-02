@@ -375,41 +375,35 @@ pub fn compile_sync(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::tokio_util;
 
   #[test]
   fn test_compile_sync() {
-    tokio_util::init(|| {
-      let cwd = std::env::current_dir().unwrap();
-      let cwd_string = cwd.to_str().unwrap().to_owned();
+    let cwd = std::env::current_dir().unwrap();
+    let cwd_string = cwd.to_str().unwrap().to_owned();
 
-      let specifier = "./tests/002_hello.ts";
-      let referrer = cwd_string + "/";
+    let specifier = "./tests/002_hello.ts";
+    let referrer = cwd_string + "/";
 
-      let mut out = ModuleMetaData {
-        module_name: "xxx".to_owned(),
-        module_redirect_source_name: None,
-        filename: "/tests/002_hello.ts".to_owned(),
-        media_type: msg::MediaType::TypeScript,
-        source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
-        maybe_output_code_filename: None,
-        maybe_output_code: None,
-        maybe_source_map_filename: None,
-        maybe_source_map: None,
-      };
+    let mut out = ModuleMetaData {
+      module_name: "xxx".to_owned(),
+      module_redirect_source_name: None,
+      filename: "/tests/002_hello.ts".to_owned(),
+      media_type: msg::MediaType::TypeScript,
+      source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
+      maybe_output_code_filename: None,
+      maybe_output_code: None,
+      maybe_source_map_filename: None,
+      maybe_source_map: None,
+    };
 
-      out = compile_sync(
-        Arc::new(IsolateState::mock()),
-        specifier,
-        &referrer,
-        &out,
-      ).unwrap();
-      assert!(
-        out
-          .maybe_output_code
-          .unwrap()
-          .starts_with("console.log(\"Hello World\");".as_bytes())
-      );
-    });
+    out =
+      compile_sync(Arc::new(IsolateState::mock()), specifier, &referrer, &out)
+        .unwrap();
+    assert!(
+      out
+        .maybe_output_code
+        .unwrap()
+        .starts_with("console.log(\"Hello World\");".as_bytes())
+    );
   }
 }
