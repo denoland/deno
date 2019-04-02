@@ -147,7 +147,7 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
       );
       match worker_result {
         Ok(worker) => {
-          let rid = worker.resource.rid.clone();
+          let rid = worker.resource.rid;
           // create oneshot channels and use the sender to pass back
           // results from worker future
           let (err_sender, err_receiver) =
@@ -198,7 +198,7 @@ pub fn compile_sync(
   referrer: &str,
   module_meta_data: &ModuleMetaData,
 ) -> ModuleMetaData {
-  let is_worker = parent_state.is_worker.clone();
+  let is_worker = parent_state.is_worker;
   let shared = lazy_start(parent_state);
 
   let (local_sender, local_receiver) =
@@ -206,12 +206,12 @@ pub fn compile_sync(
 
   // Just some extra scoping to keep things clean
   {
-    let compiler_rid = shared.rid.clone();
+    let compiler_rid = shared.rid;
     let module_meta_data_ = module_meta_data.clone();
     let req_msg = req(specifier, referrer, is_worker);
     let sender_arc = Arc::new(Some(local_sender));
-    let specifier_ = specifier.clone().to_string();
-    let referrer_ = referrer.clone().to_string();
+    let specifier_ = specifier.to_string();
+    let referrer_ = referrer.to_string();
 
     let mut runtime = C_RUNTIME.lock().unwrap();
     runtime.spawn(lazy(move || {
@@ -242,35 +242,36 @@ pub fn compile_sync(
               );
               let res_msg = res_msg_option.unwrap();
               let res_json = std::str::from_utf8(&res_msg).unwrap();
-              let sender = Arc::get_mut(&mut result_sender_arc).unwrap().take();
-              let sender = sender.unwrap();
-              Ok(
-                sender
-                  .send(Ok(match serde_json::from_str::<serde_json::Value>(
-                    res_json,
-                  ) {
-                    Ok(serde_json::Value::Object(map)) => ModuleMetaData {
-                      module_name: module_meta_data_.module_name.clone(),
-                      module_redirect_source_name: module_meta_data_
-                        .module_redirect_source_name
-                        .clone(),
-                      filename: module_meta_data_.filename.clone(),
-                      media_type: module_meta_data_.media_type,
-                      source_code: module_meta_data_.source_code.clone(),
-                      maybe_output_code: match map["outputCode"].as_str() {
-                        Some(str) => Some(str.as_bytes().to_owned()),
-                        _ => None,
-                      },
-                      maybe_output_code_filename: None,
-                      maybe_source_map: match map["sourceMap"].as_str() {
-                        Some(str) => Some(str.as_bytes().to_owned()),
-                        _ => None,
-                      },
-                      maybe_source_map_filename: None,
+              let sender = Arc::get_mut(&mut result_sender_arc)
+                .unwrap()
+                .take()
+                .unwrap();
+              sender
+                .send(Ok(match serde_json::from_str::<serde_json::Value>(
+                  res_json,
+                ) {
+                  Ok(serde_json::Value::Object(map)) => ModuleMetaData {
+                    module_name: module_meta_data_.module_name.clone(),
+                    module_redirect_source_name: module_meta_data_
+                      .module_redirect_source_name
+                      .clone(),
+                    filename: module_meta_data_.filename.clone(),
+                    media_type: module_meta_data_.media_type,
+                    source_code: module_meta_data_.source_code.clone(),
+                    maybe_output_code: match map["outputCode"].as_str() {
+                      Some(str) => Some(str.as_bytes().to_owned()),
+                      _ => None,
                     },
-                    _ => panic!("error decoding compiler response"),
-                  })).unwrap(),
-              )
+                    maybe_output_code_filename: None,
+                    maybe_source_map: match map["sourceMap"].as_str() {
+                      Some(str) => Some(str.as_bytes().to_owned()),
+                      _ => None,
+                    },
+                    maybe_source_map_filename: None,
+                  },
+                  _ => panic!("error decoding compiler response"),
+                })).expect("send failed");
+              Ok(())
             })
         })
     }));
