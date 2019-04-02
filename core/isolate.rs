@@ -332,12 +332,12 @@ impl<B: Behavior> Isolate<B> {
 }
 
 /// Called during mod_instantiate() to resolve imports.
-type ResolveFn = dyn FnMut(&str, deno_mod) -> deno_mod;
+type ResolveFn<'a> = dyn FnMut(&str, deno_mod) -> deno_mod + 'a;
 
 /// Used internally by Isolate::mod_instantiate to wrap ResolveFn and
 /// encapsulate pointer casts.
 struct ResolveContext<'a> {
-  resolve_fn: &'a mut ResolveFn,
+  resolve_fn: &'a mut ResolveFn<'a>,
 }
 
 impl<'a> ResolveContext<'a> {
