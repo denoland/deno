@@ -264,7 +264,7 @@ test(function consoleTestError() {
   } catch (e) {
     assert(
       stringify(e)
-        .split("\n")[3]
+        .split("\n")[0] // error has been caught
         .includes("MyError: This is an error")
     );
   }
@@ -591,5 +591,23 @@ test(function consoleTable() {
   mockConsole((console, out) => {
     console.table("test");
     assertEquals(out.toString(), "test\n");
+  });
+});
+
+// console.log(Error) test
+test(function consoleLogShouldNotThrowError() {
+  let result = 0;
+  try {
+    console.log(new Error("foo"));
+    result = 1;
+  } catch (e) {
+    result = 2;
+  }
+  assertEquals(result, 1);
+
+  // output errors to the console should not include "Uncaught"
+  mockConsole((console, out) => {
+    console.log(new Error("foo"));
+    assertEquals(out.toString().includes("Uncaught"), false);
   });
 });
