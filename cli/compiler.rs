@@ -182,7 +182,8 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
           // their respective sender. This system can be compared to the
           // promise system used on the js side. It provides a way to
           // resolve many futures via the same channel.
-          runtime.spawn(lazy(move || -> Result<(), ()> {
+          runtime.spawn(lazy(move || {
+            eprintln!("Start worker stream handler!");
             let worker_stream = resources::get_messages_from_worker(rid);
             worker_stream
               .for_each(|msg: Buf| {
@@ -208,9 +209,7 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
                 let response_sender = table.remove(&(cmd_id as CmdId)).unwrap();
                 response_sender.send(msg).unwrap();
                 Ok(())
-              }).wait()
-              .unwrap();
-            Ok(())
+              }).map_err(|_| ())
           }));
           CompilerShared {
             rid,
