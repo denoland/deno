@@ -84,10 +84,10 @@ function resRead(baseRes: null | msg.Base): ReadResult {
  *
  * Return `ReadResult` for the operation.
  *
- *    const file = Deno.openSync("/foo/bar.txt");
- *    const buf = new Uint8Array(100);
- *    const { nread, eof } = Deno.readSync(file.rid, buf);
- *    const text = new TextDecoder.decode(buf);
+ *      const file = Deno.openSync("/foo/bar.txt");
+ *      const buf = new Uint8Array(100);
+ *      const { nread, eof } = Deno.readSync(file.rid, buf);
+ *      const text = new TextDecoder.decode(buf);
  *
  */
 export function readSync(rid: number, p: Uint8Array): ReadResult {
@@ -98,12 +98,12 @@ export function readSync(rid: number, p: Uint8Array): ReadResult {
  *
  * Resolves with the `ReadResult` for the operation.
  *
- *    (async () => {
+ *       (async () => {
  *         const file = await Deno.open("/foo/bar.txt");
  *         const buf = new Uint8Array(100);
  *         const { nread, eof } = await Deno.read(file.rid, buf);
  *         const text = new TextDecoder.decode(buf);
- *    })();
+ *       })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
   return resRead(await dispatch.sendAsync(...reqRead(rid, p)));
@@ -145,12 +145,12 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  * Resolves with the number of bytes written.
  *
- *    (async () => {
+ *      (async () => {
  *        const encoder = new TextEncoder();
  *        const data = encoder.encode("Hello world\n");
  *        const file = await Deno.open("/foo/bar.txt");
  *        await Deno.write(file.rid, data);
- *    })();
+ *      })();
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
@@ -173,8 +173,8 @@ function reqSeek(
 
 /** Seek a file ID synchronously to the given offset under mode given by `whence`.
  *
- *    const file = Deno.openSync("/foo/bar.txt");
- *    Deno.seekSync(file.rid, 0, 0);
+ *       const file = Deno.openSync("/foo/bar.txt");
+ *       Deno.seekSync(file.rid, 0, 0);
  */
 export function seekSync(rid: number, offset: number, whence: SeekMode): void {
   dispatch.sendSync(...reqSeek(rid, offset, whence));
@@ -182,10 +182,10 @@ export function seekSync(rid: number, offset: number, whence: SeekMode): void {
 
 /** Seek a file ID to the given offset under mode given by `whence`.
  *
- *    (async () => {
+ *      (async () => {
  *        const file = await Deno.open("/foo/bar.txt");
  *        await Deno.seek(file.rid, 0, 0);
- *    })();
+ *      })();
  */
 export async function seek(
   rid: number,
