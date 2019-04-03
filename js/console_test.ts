@@ -10,6 +10,16 @@ function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
 }
 
+// test cases from web-platform-tests
+// via https://github.com/web-platform-tests/wpt/blob/master/console/console-is-a-namespace.any.js
+test(function consoleShouldBeANamespace() {
+  const prototype1 = Object.getPrototypeOf(console);
+  const prototype2 = Object.getPrototypeOf(prototype1);
+
+  assertEquals(Object.getOwnPropertyNames(prototype1).length, 0);
+  assertEquals(prototype2, Object.prototype);
+});
+
 test(function consoleTestAssertShouldNotThrowError() {
   console.assert(true);
 
@@ -123,7 +133,7 @@ test(function consoleTestStringifyCircular() {
   assertEquals(stringify(JSON), "{}");
   assertEquals(
     stringify(console),
-    "Console { printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, indentLevel, collapsedAt }"
+    "{ printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, indentLevel, collapsedAt }"
   );
   // test inspect is working the same
   assertEquals(inspect(nestedObj), nestedObjExpected);
