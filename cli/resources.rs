@@ -367,7 +367,7 @@ impl Stream for WorkerReceiverStream {
   }
 }
 
-pub fn get_messages_from_worker(rid: ResourceId) -> WorkerReceiverStream {
+pub fn get_message_stream_from_worker(rid: ResourceId) -> WorkerReceiverStream {
   WorkerReceiverStream { rid }
 }
 
