@@ -36,7 +36,7 @@ function res(baseRes: null | msg.Base): Metrics {
 
 /** Receive metrics from the privileged side of Deno.
  *
- *       > console.table(Deno.metrics())
+ *      > console.table(Deno.metrics())
  *      ┌──────────────────┬────────┐
  *      │     (index)      │ Values │
  *      ├──────────────────┼────────┤
