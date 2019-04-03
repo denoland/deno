@@ -147,6 +147,16 @@ fn new_cmd_id() -> CmdId {
   next_rid as CmdId
 }
 
+fn parse_cmd_id(res_json: &str) -> CmdId {
+  match serde_json::from_str::<serde_json::Value>(res_json) {
+    Ok(serde_json::Value::Object(map)) => match map["cmdId"].as_u64() {
+      Some(cmd_id) => cmd_id as CmdId,
+      _ => panic!("Error decoding compiler response: expected cmdId"),
+    },
+    _ => panic!("Error decoding compiler response"),
+  }
+}
+
 fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
   let mut cell = C_SHARED.lock().unwrap();
   cell
@@ -170,6 +180,8 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
           runtime.spawn(lazy(move || {
             let resource = worker.resource.clone();
             worker.then(move |result| -> Result<(), ()> {
+              // Close resource so the future created by
+              // handle_worker_message_stream exits
               resource.close();
               match result {
                 Err(err) => err_sender.send(Err(Some(err))).unwrap(),
@@ -178,30 +190,19 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
               Ok(())
             })
           }));
-          // All worker responses are here initially before being sent via
-          // their respective sender. This system can be compared to the
-          // promise system used on the js side. It provides a way to
-          // resolve many futures via the same channel.
           runtime.spawn(lazy(move || {
             debug!("Start worker stream handler!");
             let worker_stream = resources::get_message_stream_from_worker(rid);
             worker_stream
               .for_each(|msg: Buf| {
+                // All worker responses are handled here first before being sent via
+                // their respective sender. This system can be compared to the
+                // promise system used on the js side. This provides a way to
+                // resolve many futures via the same channel.
                 let res_json = std::str::from_utf8(&msg).unwrap();
                 debug!("Got message from worker: {}", res_json);
-                // Get the intended receiver from the message.
-                let cmd_id =
-                  match serde_json::from_str::<serde_json::Value>(res_json) {
-                    Ok(serde_json::Value::Object(map)) => {
-                      match map["cmdId"].as_u64() {
-                        Some(cmd_id) => cmd_id,
-                        _ => panic!(
-                          "Error decoding compiler response: expected cmdId"
-                        ),
-                      }
-                    }
-                    _ => panic!("error decoding compiler response"),
-                  };
+                // Get the intended receiver's cmd_id from the message.
+                let cmd_id = parse_cmd_id(res_json);
                 let mut table = C_RES_SENDER_TABLE.lock().unwrap();
                 debug!("Cmd id for get message handler: {}", cmd_id);
                 // Get the corresponding response sender from the table and
@@ -403,5 +404,16 @@ mod tests {
         .unwrap()
         .starts_with("console.log(\"Hello World\");".as_bytes())
     );
+  }
+
+  #[test]
+  fn test_parse_cmd_id() {
+    let cmd_id = new_cmd_id();
+
+    let msg = req("Hello", "World", false, cmd_id);
+
+    let res_json = std::str::from_utf8(&msg).unwrap();
+
+    assert_eq!(parse_cmd_id(res_json), cmd_id);
   }
 }
