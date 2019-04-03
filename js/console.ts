@@ -733,8 +733,8 @@ export class Console {
 }
 
 /**
- * inspect() converts input into string that has the same format
- * as printed by console.log(...);
+ * `inspect()` converts input into string that has the same format
+ * as printed by `console.log(...)`;
  */
 export function inspect(value: unknown, options?: ConsoleOptions): string {
   const opts = options || {};
