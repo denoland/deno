@@ -19,3 +19,9 @@ test(function customEventInitializedWithDetail() {
   assertEquals(event.target, null);
   assertEquals(event.type, type);
 });
+
+test(function toStringShouldBeWebCompatibility() {
+  const type = "touchstart";
+  const event = new CustomEvent(type, {});
+  assertEquals(event.toString(), "[object CustomEvent]");
+});
