@@ -53,4 +53,8 @@ export class EventTarget implements domTypes.EventTarget {
     }
     return !event.defaultPrevented;
   }
+
+  get [Symbol.toStringTag](): string {
+    return "EventTarget";
+  }
 }

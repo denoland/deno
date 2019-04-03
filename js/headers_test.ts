@@ -316,3 +316,8 @@ test(function headerParamsArgumentsCheck() {
     );
   });
 });
+
+test(function toStringShouldBeWebCompatibility() {
+  const headers = new Headers();
+  assertEquals(headers.toString(), "[object Headers]");
+});
