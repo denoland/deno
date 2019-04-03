@@ -183,12 +183,12 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
           // promise system used on the js side. It provides a way to
           // resolve many futures via the same channel.
           runtime.spawn(lazy(move || {
-            eprintln!("Start worker stream handler!");
+             debug!("Start worker stream handler!");
             let worker_stream = resources::get_messages_from_worker(rid);
             worker_stream
               .for_each(|msg: Buf| {
                 let res_json = std::str::from_utf8(&msg).unwrap();
-                eprintln!("Got message from worker: {}", res_json);
+                 debug!("Got message from worker: {}", res_json);
                 // Get the intended receiver from the message.
                 let cmd_id =
                   match serde_json::from_str::<serde_json::Value>(res_json) {
@@ -203,7 +203,7 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> CompilerShared {
                     _ => panic!("error decoding compiler response"),
                   };
                 let mut table = C_RES_SENDER_TABLE.lock().unwrap();
-                eprintln!("Cmd id for get message handler: {}", cmd_id);
+                 debug!("Cmd id for get message handler: {}", cmd_id);
                 // Get the corresponding response sender from the table and
                 // send a response.
                 let response_sender = table.remove(&(cmd_id as CmdId)).unwrap();
@@ -246,7 +246,7 @@ pub fn compile_sync(
   referrer: &str,
   module_meta_data: &ModuleMetaData,
 ) -> Result<ModuleMetaData, JSError> {
-  eprintln!(
+   debug!(
     "Running rust part of compile_sync. specifier: {}, referrer: {}",
     &specifier, &referrer
   );
@@ -266,7 +266,7 @@ pub fn compile_sync(
   // Scoping to auto dispose of locks when done using them
   {
     let mut table = C_RES_SENDER_TABLE.lock().unwrap();
-    eprintln!("Cmd id for response sender insert: {}", cmd_id);
+     debug!("Cmd id for response sender insert: {}", cmd_id);
     // Place our response sender in the table so we can find it later.
     table.insert(cmd_id, response_sender);
 
@@ -274,10 +274,10 @@ pub fn compile_sync(
     runtime.spawn(lazy(move || {
       resources::post_message_to_worker(compiler_rid, req_msg)
         .then(move |_| {
-          eprintln!("Sent message to worker");
+           debug!("Sent message to worker");
           response_receiver.map_err(|_| None)
         }).and_then(move |res_msg| {
-          eprintln!("Received message from worker");
+           debug!("Received message from worker");
           let res_json = std::str::from_utf8(res_msg.as_ref()).unwrap();
           let res = serde_json::from_str::<serde_json::Value>(res_json)
             .expect("Error decoding compiler response");
@@ -339,16 +339,16 @@ pub fn compile_sync(
         // compiler worker future has already or will in the near future
         // complete with a valid JSError or a None.
         (Err(None), 1) => {
-          eprintln!("Compiler local exited with None error!");
+           debug!("Compiler local exited with None error!");
           // While technically possible to get stuck here indefinately
           // in theory it is highly unlikely.
-          eprintln!(
+           debug!(
             "Waiting on compiler worker result specifier: {} referrer: {}!",
             specifier, referrer
           );
           let worker_result =
             (*rest_mut.remove(0).wait().unwrap().deref()).clone();
-          eprintln!(
+           debug!(
             "Finished waiting on worker result specifier: {} referrer: {}!",
             specifier, referrer
           );
