@@ -136,6 +136,10 @@ class FormDataBase {
       }
     }
   }
+
+  get [Symbol.toStringTag]() {
+    return "FormData";
+  }
 }
 
 export class FormData extends DomIterableMixin<

@@ -125,6 +125,10 @@ class HeadersBase {
     this._validateValue(newvalue);
     this[headerMap].set(newname, newvalue);
   }
+
+  get [Symbol.toStringTag]() {
+    return "Headers";
+  }
 }
 
 // @internal

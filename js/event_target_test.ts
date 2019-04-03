@@ -87,3 +87,8 @@ test(function constructedEventTargetUseObjectPrototype() {
   target.dispatchEvent(event);
   assertEquals(callCount, 2);
 });
+
+test(function toStringShouldBeWebCompatibility() {
+  const target = new EventTarget();
+  assertEquals(target.toString(), "[object EventTarget]");
+});
