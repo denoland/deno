@@ -254,7 +254,7 @@ test(function consoleTestError() {
   } catch (e) {
     assert(
       stringify(e)
-        .split("\n")[0]  // error has been caught
+        .split("\n")[0] // error has been caught
         .includes("MyError: This is an error")
     );
   }
