@@ -53,7 +53,7 @@ export class CustomEvent extends event.Event implements domTypes.CustomEvent {
     customEventAttributes.set(this, { detail });
   }
 
-  get [Symbol.toStringTag]() {
+  get [Symbol.toStringTag](): string {
     return "CustomEvent";
   }
 }

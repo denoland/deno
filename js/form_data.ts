@@ -137,7 +137,7 @@ class FormDataBase {
     }
   }
 
-  get [Symbol.toStringTag]() {
+  get [Symbol.toStringTag](): string {
     return "FormData";
   }
 }

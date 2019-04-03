@@ -126,7 +126,7 @@ class HeadersBase {
     this[headerMap].set(newname, newvalue);
   }
 
-  get [Symbol.toStringTag]() {
+  get [Symbol.toStringTag](): string {
     return "Headers";
   }
 }
