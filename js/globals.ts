@@ -46,13 +46,20 @@ window.window = window;
 window.Deno = deno;
 Object.freeze(window.Deno);
 
+// ref https://console.spec.whatwg.org/#console-namespace
+// For historical web-compatibility reasons, the namespace object for
+// console must have as its [[Prototype]] an empty object, created as if
+// by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
+let console = Object.create({}) as consoleTypes.Console;
+Object.assign(console, new consoleTypes.Console(core.print));
+
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;
 window.btoa = textEncoding.btoa;
 window.fetch = fetchTypes.fetch;
 window.clearTimeout = timers.clearTimer;
 window.clearInterval = timers.clearTimer;
-window.console = new consoleTypes.Console(core.print);
+window.console = console;
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
 window.location = (undefined as unknown) as domTypes.Location;
