@@ -346,6 +346,31 @@ pub fn get_message_from_worker(rid: ResourceId) -> WorkerReceiver {
   WorkerReceiver { rid }
 }
 
+pub struct WorkerReceiverStream {
+  rid: ResourceId,
+}
+
+// Invert the dumbness that tokio_process causes by making Child itself a future.
+impl Stream for WorkerReceiverStream {
+  type Item = Buf;
+  type Error = DenoError;
+
+  fn poll(&mut self) -> Poll<Option<Buf>, DenoError> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&self.rid);
+    match maybe_repr {
+      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|()| {
+        errors::new(errors::ErrorKind::Other, "recv msg error".to_string())
+      }),
+      _ => Err(bad_resource()),
+    }
+  }
+}
+
+pub fn get_message_stream_from_worker(rid: ResourceId) -> WorkerReceiverStream {
+  WorkerReceiverStream { rid }
+}
+
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct ChildResources {
   pub child_rid: ResourceId,

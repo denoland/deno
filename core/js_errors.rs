@@ -193,7 +193,10 @@ impl JSError {
       return None;
     }
     let v = v.unwrap();
+    Self::from_json_value(v)
+  }
 
+  pub fn from_json_value(v: serde_json::Value) -> Option<Self> {
     if !v.is_object() {
       return None;
     }
