@@ -18,6 +18,7 @@ use deno::Buf;
 use deno::JSError;
 use deno::Op;
 use deno::StartupData;
+use futures::future::Either;
 use futures::future::*;
 use futures::sync::oneshot;
 use futures::Future;
@@ -333,11 +334,11 @@ pub fn compile_async(
         let mut rest_mut = rest;
         match ((*result.deref()).clone(), i) {
           // Either receiver was completed with success.
-          (Ok(v), _) => Ok(v),
+          (Ok(v), _) => Either::A(futures::future::result(Ok(v))),
           // Either receiver was completed with a valid error
           // this should be fatal for now since it is not intended
           // to be possible to recover from a uncaught error in a isolate
-          (Err(Some(err)), _) => Err(err),
+          (Err(Some(err)), _) => Either::A(futures::future::result(Err(err))),
           // local_receiver finished first with a none error. This is intended
           // to catch when the local logic can't complete because it is unable
           // to send and/or receive messages from the compiler worker.
@@ -352,17 +353,19 @@ pub fn compile_async(
               "Waiting on compiler worker result specifier: {} referrer: {}!",
               specifier_, referrer_
             );
-            let worker_result =
-              (*rest_mut.remove(0).wait().unwrap().deref()).clone();
-            debug!(
-              "Finished waiting on worker result specifier: {} referrer: {}!",
-              specifier_, referrer_
-            );
-            match worker_result {
-              Err(Some(err)) => Err(err),
-              Err(None) => panic!("Compiler exit for an unknown reason!"),
-              Ok(v) => Ok(v),
-            }
+            Either::B(rest_mut.remove(0)
+              .map_err(|e| panic!("Compiler error reciver canceled: {}", e))
+              .and_then(move |worker_result| {
+                 debug!(
+                  "Finished waiting on worker result specifier: {} referrer: {}!",
+                  specifier_, referrer_
+                );
+                match (*worker_result.deref()).clone() {
+                  Err(Some(err)) => Err(err),
+                  Err(None) => panic!("Compiler exit for an unknown reason!"),
+                  Ok(v) => Ok(v),
+                }
+              }))
           }
           // While possible beccause the compiler worker can exit without error
           // this shouldn't occurr normally and I don't intend to attempt to
