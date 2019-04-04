@@ -68,8 +68,8 @@ pub trait Behavior {
   /// Isolate is created.
   fn startup_data(&mut self) -> Option<StartupData>;
 
-  /// Called whenever Deno.core.send() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.send().
+  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
+  /// corresponds to the second argument of Deno.core.dispatch().
   fn dispatch(
     &mut self,
     control: &[u8],
@@ -82,9 +82,9 @@ pub trait Behavior {
 /// Tokio.  The Isolate future complete when there is an error or when all
 /// pending ops have completed.
 ///
-/// Ops are created in JavaScript by calling Deno.core.send(), and in Rust by
-/// implementing Behavior::dispatch. An Op corresponds exactly to a Promise in
-/// JavaScript.
+/// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
+/// by implementing deno::Behavior::dispatch. An Op corresponds exactly to a
+/// Promise in JavaScript.
 pub struct Isolate<B: Behavior> {
   libdeno_isolate: *const libdeno::isolate,
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
