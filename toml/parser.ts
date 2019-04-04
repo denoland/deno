@@ -238,7 +238,6 @@ class Parser {
           .replace(result[2], ":");
         dataString = dataString.replace(ogVal, newVal);
       }
-      // TODO : unflat if necessary
       return JSON.parse(dataString);
     }
 
@@ -271,6 +270,38 @@ class Parser {
     const reg = /\d{4}-\d{2}-\d{2}/;
     return reg.test(dateStr);
   }
+  _parseDeclarationName(declaration: string): string[] {
+    const out = [];
+    let acc = [];
+    let inLitteral = false;
+    for (let i = 0; i < declaration.length; i++) {
+      const c = declaration[i];
+      switch (c) {
+        case ".":
+          if (!inLitteral) {
+            out.push(acc.join(""));
+            acc = [];
+          } else {
+            acc.push(c);
+          }
+          break;
+        case `"`:
+          if (inLitteral) {
+            inLitteral = false;
+          } else {
+            inLitteral = true;
+          }
+          break;
+        default:
+          acc.push(c);
+          break;
+      }
+    }
+    if (acc.length !== 0) {
+      out.push(acc.join(""));
+    }
+    return out;
+  }
   _parseLines(): void {
     for (let i = 0; i < this.tomlLines.length; i++) {
       const line = this.tomlLines[i];
@@ -301,10 +332,12 @@ class Parser {
       }
       if (this._isDeclaration(line)) {
         let kv = this._processDeclaration(line);
+        let key = kv.key;
+        let value = kv.value;
         if (!this.context.currentGroup) {
-          this.context.output[kv.key] = kv.value;
+          this.context.output[key] = value;
         } else {
-          this.context.currentGroup.objValues[kv.key] = kv.value;
+          this.context.currentGroup.objValues[key] = value;
         }
       }
     }
@@ -317,9 +350,33 @@ class Parser {
       this._groupToOutput();
     }
   }
+  _cleanOutput(): void {
+    this._propertyClean(this.context.output);
+  }
+  _propertyClean(obj: object): void {
+    const keys = Object.keys(obj);
+    for (let i = 0; i < keys.length; i++) {
+      let k = keys[i];
+      let v = obj[k];
+      let pathDeclaration = this._parseDeclarationName(k);
+      delete obj[k];
+      if (pathDeclaration.length > 1) {
+        k = pathDeclaration.shift();
+        k = k.replace(/"/g, "");
+        v = this._unflat(pathDeclaration, v as object);
+      } else {
+        k = k.replace(/"/g, "");
+      }
+      obj[k] = v;
+      if (v instanceof Object) {
+        this._propertyClean(v);
+      }
+    }
+  }
   parse(): object {
     this._sanitize();
     this._parseLines();
+    this._cleanOutput();
     return this.context.output;
   }
 }
