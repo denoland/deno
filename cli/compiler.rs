@@ -8,6 +8,7 @@ use crate::ops;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::startup_data;
+use crate::tokio_util;
 use crate::workers;
 use crate::workers::WorkerBehavior;
 use crate::workers::WorkerInit;
@@ -241,19 +242,19 @@ fn req(
   .into_boxed_bytes()
 }
 
-pub fn compile_sync(
+pub fn compile_async(
   parent_state: Arc<IsolateState>,
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, JSError> {
+) -> impl Future<Item = ModuleMetaData, Error = JSError> {
   debug!(
     "Running rust part of compile_sync. specifier: {}, referrer: {}",
     &specifier, &referrer
   );
   let cmd_id = new_cmd_id();
 
-  let req_msg = req(specifier, referrer, parent_state.is_worker, cmd_id);
+  let req_msg = req(&specifier, &referrer, parent_state.is_worker, cmd_id);
   let module_meta_data_ = module_meta_data.clone();
 
   let shared = lazy_start(parent_state.clone());
@@ -322,53 +323,72 @@ pub fn compile_sync(
   let union =
     futures::future::select_all(vec![worker_receiver, local_receiver.shared()]);
 
-  match union.wait() {
-    Ok((result, i, rest)) => {
-      // We got a sucessful finish before any recivers where canceled
-      let mut rest_mut = rest;
-      match ((*result.deref()).clone(), i) {
-        // Either receiver was completed with success.
-        (Ok(v), _) => Ok(v),
-        // Either receiver was completed with a valid error
-        // this should be fatal for now since it is not intended
-        // to be possible to recover from a uncaught error in a isolate
-        (Err(Some(err)), _) => Err(err),
-        // local_receiver finished first with a none error. This is intended
-        // to catch when the local logic can't complete because it is unable
-        // to send and/or receive messages from the compiler worker.
-        // Due to the way that scheduling works it is very likely that the
-        // compiler worker future has already or will in the near future
-        // complete with a valid JSError or a None.
-        (Err(None), 1) => {
-          debug!("Compiler local exited with None error!");
-          // While technically possible to get stuck here indefinately
-          // in theory it is highly unlikely.
-          debug!(
-            "Waiting on compiler worker result specifier: {} referrer: {}!",
-            specifier, referrer
-          );
-          let worker_result =
-            (*rest_mut.remove(0).wait().unwrap().deref()).clone();
-          debug!(
-            "Finished waiting on worker result specifier: {} referrer: {}!",
-            specifier, referrer
-          );
-          match worker_result {
-            Err(Some(err)) => Err(err),
-            Err(None) => panic!("Compiler exit for an unknown reason!"),
-            Ok(v) => Ok(v),
+  let specifier_ = specifier.to_string().clone();
+  let referrer_ = specifier.to_string().clone();
+
+  union.then(move |result| {
+    match result {
+      Ok((result, i, rest)) => {
+        // We got a sucessful finish before any recivers where canceled
+        let mut rest_mut = rest;
+        match ((*result.deref()).clone(), i) {
+          // Either receiver was completed with success.
+          (Ok(v), _) => Ok(v),
+          // Either receiver was completed with a valid error
+          // this should be fatal for now since it is not intended
+          // to be possible to recover from a uncaught error in a isolate
+          (Err(Some(err)), _) => Err(err),
+          // local_receiver finished first with a none error. This is intended
+          // to catch when the local logic can't complete because it is unable
+          // to send and/or receive messages from the compiler worker.
+          // Due to the way that scheduling works it is very likely that the
+          // compiler worker future has already or will in the near future
+          // complete with a valid JSError or a None.
+          (Err(None), 1) => {
+            debug!("Compiler local exited with None error!");
+            // While technically possible to get stuck here indefinately
+            // in theory it is highly unlikely.
+            debug!(
+              "Waiting on compiler worker result specifier: {} referrer: {}!",
+              specifier_, referrer_
+            );
+            let worker_result =
+              (*rest_mut.remove(0).wait().unwrap().deref()).clone();
+            debug!(
+              "Finished waiting on worker result specifier: {} referrer: {}!",
+              specifier_, referrer_
+            );
+            match worker_result {
+              Err(Some(err)) => Err(err),
+              Err(None) => panic!("Compiler exit for an unknown reason!"),
+              Ok(v) => Ok(v),
+            }
           }
+          // While possible beccause the compiler worker can exit without error
+          // this shouldn't occurr normally and I don't intend to attempt to
+          // handle it right now
+          (_, i) => panic!("Odd compiler result for future {}!", i),
         }
-        // While possible beccause the compiler worker can exit without error
-        // this shouldn't occurr normally and I don't intend to attempt to
-        // handle it right now
-        (_, i) => panic!("Odd compiler result for future {}!", i),
       }
+      // This should always a result of a reciver being cancled
+      // in theory but why not give a print out just in case
+      Err((err, i, _)) => panic!("compile_sync {} failed: {}", i, err),
     }
-    // This should always a result of a reciver being cancled
-    // in theory but why not give a print out just in case
-    Err((err, i, _)) => panic!("compile_sync {} failed: {}", i, err),
-  }
+  })
+}
+
+pub fn compile_sync(
+  parent_state: Arc<IsolateState>,
+  specifier: &str,
+  referrer: &str,
+  module_meta_data: &ModuleMetaData,
+) -> Result<ModuleMetaData, JSError> {
+  tokio_util::block_on(compile_async(
+    parent_state,
+    specifier,
+    referrer,
+    module_meta_data,
+  ))
 }
 
 #[cfg(test)]
@@ -377,33 +397,38 @@ mod tests {
 
   #[test]
   fn test_compile_sync() {
-    let cwd = std::env::current_dir().unwrap();
-    let cwd_string = cwd.to_str().unwrap().to_owned();
+    tokio_util::init(|| {
+      let cwd = std::env::current_dir().unwrap();
+      let cwd_string = cwd.to_str().unwrap().to_owned();
 
-    let specifier = "./tests/002_hello.ts";
-    let referrer = cwd_string + "/";
+      let specifier = "./tests/002_hello.ts";
+      let referrer = cwd_string + "/";
 
-    let mut out = ModuleMetaData {
-      module_name: "xxx".to_owned(),
-      module_redirect_source_name: None,
-      filename: "/tests/002_hello.ts".to_owned(),
-      media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
-      maybe_output_code_filename: None,
-      maybe_output_code: None,
-      maybe_source_map_filename: None,
-      maybe_source_map: None,
-    };
+      let mut out = ModuleMetaData {
+        module_name: "xxx".to_owned(),
+        module_redirect_source_name: None,
+        filename: "/tests/002_hello.ts".to_owned(),
+        media_type: msg::MediaType::TypeScript,
+        source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
+        maybe_output_code_filename: None,
+        maybe_output_code: None,
+        maybe_source_map_filename: None,
+        maybe_source_map: None,
+      };
 
-    out =
-      compile_sync(Arc::new(IsolateState::mock()), specifier, &referrer, &out)
-        .unwrap();
-    assert!(
-      out
-        .maybe_output_code
-        .unwrap()
-        .starts_with("console.log(\"Hello World\");".as_bytes())
-    );
+      out = compile_sync(
+        Arc::new(IsolateState::mock()),
+        specifier,
+        &referrer,
+        &out,
+      ).unwrap();
+      assert!(
+        out
+          .maybe_output_code
+          .unwrap()
+          .starts_with("console.log(\"Hello World\");".as_bytes())
+      );
+    })
   }
 
   #[test]
