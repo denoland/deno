@@ -705,15 +705,12 @@ Current executable set to '../deno/target/debug/deno' (x86_64).
 (lldb) r
 ```
 
-### libdeno
+### Deno Core
 
-deno's privileged side will primarily be programmed in Rust. However there will
-be a small C API that wraps V8 to 1) define the low-level message passing
-semantics, 2) provide a low-level test target, 3) provide an ANSI C API binding
-interface for Rust. V8 plus this C API is called "libdeno" and the important
-bits of the API is specified here:
-[deno.h](https://github.com/denoland/deno/blob/master/libdeno/deno.h)
-[libdeno.ts](https://github.com/denoland/deno/blob/master/js/libdeno.ts)
+The core binding layer for Deno. It is released as a
+[standalone crate](https://crates.io/crates/deno). Inside of core is V8 itself,
+with a binding API called "libdeno". See the crate documentation for more
+details.
 
 ### Flatbuffers
 
