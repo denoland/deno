@@ -16,20 +16,15 @@ function req({
   suffix
 }: MakeTempDirOptions): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
-  const fbDir = dir == null ? -1 : builder.createString(dir);
-  const fbPrefix = prefix == null ? -1 : builder.createString(prefix);
-  const fbSuffix = suffix == null ? -1 : builder.createString(suffix);
-  msg.MakeTempDir.startMakeTempDir(builder);
-  if (dir != null) {
-    msg.MakeTempDir.addDir(builder, fbDir);
-  }
-  if (prefix != null) {
-    msg.MakeTempDir.addPrefix(builder, fbPrefix);
-  }
-  if (suffix != null) {
-    msg.MakeTempDir.addSuffix(builder, fbSuffix);
-  }
-  const inner = msg.MakeTempDir.endMakeTempDir(builder);
+  const fbDir = dir == null ? 0 : builder.createString(dir);
+  const fbPrefix = prefix == null ? 0 : builder.createString(prefix);
+  const fbSuffix = suffix == null ? 0 : builder.createString(suffix);
+  const inner = msg.MakeTempDir.createMakeTempDir(
+    builder,
+    fbDir,
+    fbPrefix,
+    fbSuffix
+  );
   return [builder, msg.Any.MakeTempDir, inner];
 }
 

@@ -30,8 +30,6 @@ export function cwd(): string {
 export function chdir(directory: string): void {
   const builder = flatbuffers.createBuilder();
   const directory_ = builder.createString(directory);
-  msg.Chdir.startChdir(builder);
-  msg.Chdir.addDirectory(builder, directory_);
-  const inner = msg.Chdir.endChdir(builder);
+  const inner = msg.Chdir.createChdir(builder, directory_);
   sendSync(builder, msg.Any.Chdir, inner);
 }

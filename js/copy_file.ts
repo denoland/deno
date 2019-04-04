@@ -10,10 +10,7 @@ function req(
   const builder = flatbuffers.createBuilder();
   const from_ = builder.createString(from);
   const to_ = builder.createString(to);
-  msg.CopyFile.startCopyFile(builder);
-  msg.CopyFile.addFrom(builder, from_);
-  msg.CopyFile.addTo(builder, to_);
-  const inner = msg.CopyFile.endCopyFile(builder);
+  const inner = msg.CopyFile.createCopyFile(builder, from_, to_);
   return [builder, msg.Any.CopyFile, inner];
 }
 

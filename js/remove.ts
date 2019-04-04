@@ -13,10 +13,7 @@ function req(
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const path_ = builder.createString(path);
-  msg.Remove.startRemove(builder);
-  msg.Remove.addPath(builder, path_);
-  msg.Remove.addRecursive(builder, !!options.recursive);
-  const inner = msg.Remove.endRemove(builder);
+  const inner = msg.Remove.createRemove(builder, path_, !!options.recursive);
   return [builder, msg.Any.Remove, inner];
 }
 

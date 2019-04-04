@@ -7,9 +7,7 @@ import * as dispatch from "./dispatch";
 function req(name: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const name_ = builder.createString(name);
-  msg.Readlink.startReadlink(builder);
-  msg.Readlink.addName(builder, name_);
-  const inner = msg.Readlink.endReadlink(builder);
+  const inner = msg.Readlink.createReadlink(builder, name_);
   return [builder, msg.Any.Readlink, inner];
 }
 

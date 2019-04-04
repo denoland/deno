@@ -37,10 +37,7 @@ enum ShutdownMode {
 
 function shutdown(rid: number, how: ShutdownMode): void {
   const builder = flatbuffers.createBuilder();
-  msg.Shutdown.startShutdown(builder);
-  msg.Shutdown.addRid(builder, rid);
-  msg.Shutdown.addHow(builder, how);
-  const inner = msg.Shutdown.endShutdown(builder);
+  const inner = msg.Shutdown.createShutdown(builder, rid, how);
   const baseRes = dispatch.sendSync(builder, msg.Any.Shutdown, inner);
   assert(baseRes == null);
 }
@@ -84,9 +81,7 @@ class ListenerImpl implements Listener {
 
   async accept(): Promise<Conn> {
     const builder = flatbuffers.createBuilder();
-    msg.Accept.startAccept(builder);
-    msg.Accept.addRid(builder, this.rid);
-    const inner = msg.Accept.endAccept(builder);
+    const inner = msg.Accept.createAccept(builder, this.rid);
     const baseRes = await dispatch.sendAsync(builder, msg.Any.Accept, inner);
     assert(baseRes != null);
     assert(msg.Any.NewConn === baseRes!.innerType());
@@ -140,10 +135,7 @@ export function listen(network: Network, address: string): Listener {
   const builder = flatbuffers.createBuilder();
   const network_ = builder.createString(network);
   const address_ = builder.createString(address);
-  msg.Listen.startListen(builder);
-  msg.Listen.addNetwork(builder, network_);
-  msg.Listen.addAddress(builder, address_);
-  const inner = msg.Listen.endListen(builder);
+  const inner = msg.Listen.createListen(builder, network_, address_);
   const baseRes = dispatch.sendSync(builder, msg.Any.Listen, inner);
   assert(baseRes != null);
   assert(msg.Any.ListenRes === baseRes!.innerType());
@@ -183,10 +175,7 @@ export async function dial(network: Network, address: string): Promise<Conn> {
   const builder = flatbuffers.createBuilder();
   const network_ = builder.createString(network);
   const address_ = builder.createString(address);
-  msg.Dial.startDial(builder);
-  msg.Dial.addNetwork(builder, network_);
-  msg.Dial.addAddress(builder, address_);
-  const inner = msg.Dial.endDial(builder);
+  const inner = msg.Dial.createDial(builder, network_, address_);
   const baseRes = await dispatch.sendAsync(builder, msg.Any.Dial, inner);
   assert(baseRes != null);
   assert(msg.Any.NewConn === baseRes!.innerType());
