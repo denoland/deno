@@ -181,6 +181,20 @@ test({
   fn() {
     const expected = {
       inlinetable: {
+        nile: {
+          also: {
+            malevolant: {
+              creation: {
+                drum: {
+                  kit: "Tama"
+                }
+              }
+            }
+          },
+          derek: {
+            roddy: "drummer"
+          }
+        },
         name: {
           first: "Tom",
           last: "Preston-Werner"
@@ -189,9 +203,15 @@ test({
           x: 1,
           y: 2
         },
-        animal: {
+        dog: {
           type: {
             name: "pug"
+          }
+        },
+        "tosin.abasi": "guitarist",
+        animal: {
+          as: {
+            leaders: "tosin"
           }
         }
       }

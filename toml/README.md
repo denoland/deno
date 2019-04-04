@@ -22,7 +22,7 @@ TypeScript side is a bit different.
 - :heavy_check_mark: [Local Date](https://github.com/toml-lang/toml#local-date)
 - :exclamation: [Local Time](https://github.com/toml-lang/toml#local-time)
 - :heavy_check_mark: [Table](https://github.com/toml-lang/toml#table)
-- :exclamation: [Inline Table](https://github.com/toml-lang/toml#inline-table)
+- :heavy_check_mark: [Inline Table](https://github.com/toml-lang/toml#inline-table)
 - :exclamation: [Array of Tables](https://github.com/toml-lang/toml#array-of-tables)
 
 :exclamation: _Supported with warnings see [Warning](#Warning)._
@@ -45,12 +45,18 @@ Because local time does not exist in JavaScript, the local time is stored as a s
 
 #### Inline Table
 
-Inline tables are supported but nested inline property name are **not**. See below:
+Inline tables are supported. See below:
 
 ```toml
-animal = { type = { name = "pug" } } # Supported
+animal = { type = { name = "pug" } }
+# Output
 animal = { type.name = "pug" }
-# not supported. Will output { "animal" : {"type.name":"pug"} }
+# Output { animal : { type : { name : "pug" } }
+animal.as.leaders = "tosin"
+# Output { animal: { as: { leaders: "tosin" } } }
+"tosin.abasi" = "guitarist"
+# Output
+"tosin.abasi" : "guitarist"
 ```
 
 #### Array of Tables
