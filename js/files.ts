@@ -87,7 +87,7 @@ function resRead(baseRes: null | msg.Base): ReadResult {
  *      const file = Deno.openSync("/foo/bar.txt");
  *      const buf = new Uint8Array(100);
  *      const { nread, eof } = Deno.readSync(file.rid, buf);
- *      const text = new TextDecoder.decode(buf);
+ *      const text = new TextDecoder().decode(buf);
  *
  */
 export function readSync(rid: number, p: Uint8Array): ReadResult {
@@ -102,7 +102,7 @@ export function readSync(rid: number, p: Uint8Array): ReadResult {
  *         const file = await Deno.open("/foo/bar.txt");
  *         const buf = new Uint8Array(100);
  *         const { nread, eof } = await Deno.read(file.rid, buf);
- *         const text = new TextDecoder.decode(buf);
+ *         const text = new TextDecoder().decode(buf);
  *       })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
