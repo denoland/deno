@@ -705,21 +705,21 @@ Current executable set to '../deno/target/debug/deno' (x86_64).
 (lldb) r
 ```
 
-### libdeno
+### Deno core
 
 deno's privileged side will primarily be programmed in Rust. However there will
 be a small C API that wraps V8 to 1) define the low-level message passing
 semantics, 2) provide a low-level test target, 3) provide an ANSI C API binding
-interface for Rust. V8 plus this C API is called "libdeno" and the important
+interface for Rust. V8 plus this C API is called "Deno.core" and the important
 bits of the API is specified here:
-[deno.h](https://github.com/denoland/deno/blob/master/libdeno/deno.h)
-[libdeno.ts](https://github.com/denoland/deno/blob/master/js/libdeno.ts)
+[deno.h](https://github.com/denoland/deno/blob/master/core/libdeno/deno.h),
+[core.d.ts](https://github.com/denoland/deno/blob/master/core/core.d.ts)
 
 ### Flatbuffers
 
 We use Flatbuffers to define common structs and enums between TypeScript and
 Rust. These common data structures are defined in
-[msg.fbs](https://github.com/denoland/deno/blob/master/src/msg.fbs)
+[msg.fbs](https://github.com/denoland/deno/blob/master/cli/msg.fbs)
 
 ### Updating prebuilt binaries
 
