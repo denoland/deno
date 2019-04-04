@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.6 / 2019.01.04
+
+In deno:
+
+- upgrade rust crates (#2016)
+- EventTarget improvements (#2019, #2018)
+- Upgrade to TypeScript 3.4.1 (#2027)
+- console/toString improvements (#2032, #2042, #2041, #2040)
+- Add web worker JS API (#1993, #2039)
+- Fix redirect module resolution bug (#2031)
+- core: publish to crates.io (#2015,#2022, #2023, #2024)
+- core: add RecursiveLoad for async module loading (#2034)
+
+In deno_std:
+
+- toml: Full support of inline table (deno_std#320)
+- fix benchmarks not returning on deno 0.3.4+ (deno_std#317)
+
 ### v0.3.5 / 2019.03.28
 
 In deno:
