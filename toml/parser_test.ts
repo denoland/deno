@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { parseFile } from "./parser.ts";
+import { parseFile, stringify } from "./parser.ts";
 import * as path from "../fs/path/mod.ts";
 const testFilesDir = path.resolve("toml", "testdata");
 
@@ -279,6 +279,100 @@ test({
     };
     /* eslint-enable @typescript-eslint/camelcase */
     const actual = parseFile(path.join(testFilesDir, "cargo.toml"));
+    assertEquals(actual, expected);
+  }
+});
+
+test({
+  name: "[TOML] Stringify",
+  fn() {
+    const src = {
+      foo: { bar: "deno" },
+      this: { is: { nested: "denonono" } },
+      arrayObjects: [{ stuff: "in" }, {}, { the: "array" }],
+      deno: "is",
+      not: "[node]",
+      regex: "<ic*s*>",
+      NANI: "何?!",
+      comment: "Comment inside # the comment",
+      int1: 99,
+      int2: 42,
+      int3: 0,
+      int4: -17,
+      int5: 1000,
+      int6: 5349221,
+      int7: 12345,
+      flt1: 1.0,
+      flt2: 3.1415,
+      flt3: -0.01,
+      flt4: 5e22,
+      flt5: 1e6,
+      flt6: -2e-2,
+      flt7: 6.626e-34,
+      odt1: new Date("1979-05-01T07:32:00Z"),
+      odt2: new Date("1979-05-27T00:32:00-07:00"),
+      odt3: new Date("1979-05-27T00:32:00.999999-07:00"),
+      odt4: new Date("1979-05-27 07:32:00Z"),
+      ld1: new Date("1979-05-27"),
+      reg: /foo[bar]/,
+      sf1: Infinity,
+      sf2: Infinity,
+      sf3: -Infinity,
+      sf4: NaN,
+      sf5: NaN,
+      sf6: NaN,
+      data: [["gamma", "delta"], [1, 2]],
+      hosts: ["alpha", "omega"]
+    };
+    const expected = `deno    = "is"
+not     = "[node]"
+regex   = "<ic*s*>"
+NANI    = "何?!"
+comment = "Comment inside # the comment"
+int1    = 99
+int2    = 42
+int3    = 0
+int4    = -17
+int5    = 1000
+int6    = 5349221
+int7    = 12345
+flt1    = 1
+flt2    = 3.1415
+flt3    = -0.01
+flt4    = 5e+22
+flt5    = 1000000
+flt6    = -0.02
+flt7    = 6.626e-34
+odt1    = 1979-05-01T07:32:00.000
+odt2    = 1979-05-27T07:32:00.000
+odt3    = 1979-05-27T07:32:00.999
+odt4    = 1979-05-27T07:32:00.000
+ld1     = 1979-05-27T00:00:00.000
+reg     = "/foo[bar]/"
+sf1     = inf
+sf2     = inf
+sf3     = -inf
+sf4     = NaN
+sf5     = NaN
+sf6     = NaN
+data    = [["gamma","delta"],[1,2]]
+hosts   = ["alpha","omega"]
+
+[foo]
+bar     = "deno"
+
+[this.is]
+nested  = "denonono"
+
+[[arrayObjects]]
+stuff   = "in"
+
+[[arrayObjects]]
+
+[[arrayObjects]]
+the     = "array"
+`;
+    const actual = stringify(src);
     assertEquals(actual, expected);
   }
 });

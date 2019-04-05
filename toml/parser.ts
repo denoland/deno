@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { existsSync } from "../fs/exists.ts";
 import { deepAssign } from "../util/deep_assign.ts";
+import { pad } from "../strings/pad.ts";
 
 class KeyValuePair {
   key: string;
@@ -379,6 +380,156 @@ class Parser {
     this._cleanOutput();
     return this.context.output;
   }
+}
+
+class Dumper {
+  maxPad: number = 0;
+  srcObject: object;
+  output: string[] = [];
+  constructor(srcObjc: object) {
+    this.srcObject = srcObjc;
+  }
+  dump(): string[] {
+    this.output = this._parse(this.srcObject);
+    this.output = this._format();
+    return this.output;
+  }
+  _parse(obj: object, path: string = ""): string[] {
+    const out = [];
+    const props = Object.keys(obj);
+    const propObj = props.filter(
+      e =>
+        (obj[e] instanceof Array && !this._isSimplySerializable(obj[e][0])) ||
+        !this._isSimplySerializable(obj[e])
+    );
+    const propPrim = props.filter(
+      e =>
+        !(obj[e] instanceof Array && !this._isSimplySerializable(obj[e][0])) &&
+        this._isSimplySerializable(obj[e])
+    );
+    const k = propPrim.concat(propObj);
+    for (let i = 0; i < k.length; i++) {
+      const prop = k[i];
+      const value = obj[prop];
+      if (value instanceof Date) {
+        out.push(this._dateDeclaration(prop, value));
+      } else if (typeof value === "string" || value instanceof RegExp) {
+        out.push(this._strDeclaration(prop, value.toString()));
+      } else if (typeof value === "number") {
+        out.push(this._numberDeclaration(prop, value));
+      } else if (
+        value instanceof Array &&
+        this._isSimplySerializable(value[0])
+      ) {
+        // only if primitives types in the array
+        out.push(this._arrayDeclaration(prop, value));
+      } else if (
+        value instanceof Array &&
+        !this._isSimplySerializable(value[0])
+      ) {
+        // array of objects
+        for (let i = 0; i < value.length; i++) {
+          out.push("");
+          out.push(this._headerGroup(path + prop));
+          out.push(...this._parse(value[i], `${path}${prop}.`));
+        }
+      } else if (typeof value === "object") {
+        out.push("");
+        out.push(this._header(path + prop));
+        out.push(...this._parse(value, `${path}${prop}.`));
+      }
+    }
+    out.push("");
+    return out;
+  }
+  _isSimplySerializable(value: unknown): boolean {
+    return (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      value instanceof RegExp ||
+      value instanceof Date ||
+      value instanceof Array
+    );
+  }
+  _header(title: string): string {
+    return `[${title}]`;
+  }
+  _headerGroup(title: string): string {
+    return `[[${title}]]`;
+  }
+  _declaration(title: string): string {
+    if (title.length > this.maxPad) {
+      this.maxPad = title.length;
+    }
+    return `${title} = `;
+  }
+  _arrayDeclaration(title: string, value: unknown[]): string {
+    return `${this._declaration(title)}${JSON.stringify(value)}`;
+  }
+  _strDeclaration(title: string, value: string): string {
+    return `${this._declaration(title)}"${value}"`;
+  }
+  _numberDeclaration(title: string, value: number): string {
+    switch (value) {
+      case Infinity:
+        return `${this._declaration(title)}inf`;
+      case -Infinity:
+        return `${this._declaration(title)}-inf`;
+      default:
+        return `${this._declaration(title)}${value}`;
+    }
+  }
+  _dateDeclaration(title: string, value: Date): string {
+    function dtPad(v: string, lPad: number = 2): string {
+      return pad(v, lPad, { char: "0" });
+    }
+    let m = dtPad((value.getUTCMonth() + 1).toString());
+    let d = dtPad(value.getUTCDate().toString());
+    const h = dtPad(value.getUTCHours().toString());
+    const min = dtPad(value.getUTCMinutes().toString());
+    const s = dtPad(value.getUTCSeconds().toString());
+    const ms = dtPad(value.getUTCMilliseconds().toString(), 3);
+    const fmtDate = `${value.getUTCFullYear()}-${m}-${d}T${h}:${min}:${s}.${ms}`;
+    return `${this._declaration(title)}${fmtDate}`;
+  }
+  _format(): string[] {
+    const rDeclaration = /(.*)\s=/;
+    const out = [];
+    for (let i = 0; i < this.output.length; i++) {
+      const l = this.output[i];
+      // we keep empty entry for array of objects
+      if (l[0] === "[" && l[1] !== "[") {
+        // empty object
+        if (this.output[i + 1] === "") {
+          i += 1;
+          continue;
+        }
+        out.push(l);
+      } else {
+        const m = rDeclaration.exec(l);
+        if (m) {
+          out.push(l.replace(m[1], pad(m[1], this.maxPad, { side: "right" })));
+        } else {
+          out.push(l);
+        }
+      }
+    }
+    // Cleaning multiple spaces
+    const cleanedOutput = [];
+    for (let i = 0; i < out.length; i++) {
+      const l = out[i];
+      if (!(l === "" && out[i + 1] === "")) {
+        cleanedOutput.push(l);
+      }
+    }
+    return cleanedOutput;
+  }
+}
+
+export function stringify(srcObj: object): string {
+  let out: string[] = [];
+  out = new Dumper(srcObj).dump();
+  return out.join("\n");
 }
 
 export function parse(tomlString: string): object {

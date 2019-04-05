@@ -3,9 +3,9 @@
 /** FillOption Object */
 export interface FillOption {
   /** Char to fill in */
-  char: string;
+  char?: string;
   /** Side to fill in */
-  side: "left" | "right";
+  side?: "left" | "right";
   /** If strict, output string can't be greater than strLen*/
   strict?: boolean;
   /** char/string used to specify the string has been truncated */
@@ -54,7 +54,7 @@ export function pad(
   let out = input;
   const outL = out.length;
   if (outL < strLen) {
-    if (opts.side === "left") {
+    if (!opts.side || opts.side === "left") {
       out = out.padStart(strLen, opts.char);
     } else {
       out = out.padEnd(strLen, opts.char);
