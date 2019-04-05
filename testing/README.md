@@ -51,8 +51,8 @@ import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 test({
   name: "testing example",
   fn() {
-    assertEquals("world", "world"));
-    assertEquals({ hello: "world" }, { hello: "world" }));
+    assertEquals("world", "world");
+    assertEquals({ hello: "world" }, { hello: "world" });
   }
 });
 
@@ -63,8 +63,8 @@ Short syntax (named function instead of object):
 
 ```ts
 test(function example() {
-    assertEquals("world", "world"));
-    assertEquals({ hello: "world" }, { hello: "world" }));
+  assertEquals("world", "world");
+  assertEquals({ hello: "world" }, { hello: "world" });
 });
 ```
 
