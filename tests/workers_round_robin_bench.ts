@@ -1,5 +1,5 @@
 // Benchmark measures time it takes to send a message to a group of workers one
-// at a time and wait for a response from all of them. Just a general 
+// at a time and wait for a response from all of them. Just a general
 // throughput and consistency benchmark.
 const data = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n";
 const workerCount = 4;
