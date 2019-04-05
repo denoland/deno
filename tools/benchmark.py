@@ -25,6 +25,8 @@ exec_time_benchmarks = [
     ("error_001", ["tests/error_001.ts"]),
     ("cold_hello", ["tests/002_hello.ts", "--reload"]),
     ("cold_relative_import", ["tests/003_relative_import.ts", "--reload"]),
+    ("workers_startup", ["tests/workers_startup_bench.ts"]),
+    ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
 ]
 
 gh_pages_data_file = "gh-pages/data.json"
