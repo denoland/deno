@@ -207,7 +207,7 @@ def main(argv):
     if os.name != 'nt':
         hyper_hello_path = os.path.join(build_dir, "hyper_hello")
         core_http_bench_exe = os.path.join(build_dir, "deno_core_http_bench")
-        # new_data["throughput"] = run_throughput(deno_path)
+        new_data["throughput"] = run_throughput(deno_path)
         stats = http_benchmark(deno_path, hyper_hello_path,
                                core_http_bench_exe)
         new_data["req_per_sec"] = {
