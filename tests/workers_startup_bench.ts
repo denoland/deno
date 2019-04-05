@@ -1,8 +1,8 @@
-const workerCount = 1000;
+const workerCount = 50;
 
 async function bench(): Promise<void> {
   const workers: Worker[] = [];
-  Array(workerCount).forEach(async () => {
+  for (var i = 1; i <= workerCount; ++i) {
     const worker = new Worker("tests/subdir/bench_worker.ts");
     const promise = new Promise(resolve => {
       worker.onmessage = e => {
@@ -12,7 +12,7 @@ async function bench(): Promise<void> {
     worker.postMessage({ cmdId: 0, action: 2 });
     await promise;
     workers.push(worker);
-  });
+  }
   console.log("Done creating workers closing workers!");
   for (const worker of workers) {
     worker.postMessage({ action: 3 });

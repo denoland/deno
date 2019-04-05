@@ -1,6 +1,6 @@
 const data = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n";
-const workerCount = 8;
-const cmdsPerWorker = 10000;
+const workerCount = 4;
+const cmdsPerWorker = 400;
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
@@ -33,7 +33,7 @@ function handleAsyncMsgFromWorker(
 
 async function main(): Promise<void> {
   const workers: Array<[Map<number, Resolvable<string>>, Worker]> = [];
-  Array(workerCount).forEach(async () => {
+  for (var i = 1; i <= workerCount; ++i) {
     const worker = new Worker("tests/subdir/bench_worker.ts");
     const promise = new Promise(resolve => {
       worker.onmessage = e => {
@@ -43,7 +43,7 @@ async function main(): Promise<void> {
     worker.postMessage({ cmdId: 0, action: 2 });
     await promise;
     workers.push([new Map(), worker]);
-  });
+  }
   // assign callback function
   for (const [promiseTable, worker] of workers) {
     worker.onmessage = e => {
