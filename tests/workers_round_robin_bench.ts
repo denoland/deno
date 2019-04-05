@@ -1,6 +1,6 @@
 const data = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n";
 const workerCount = 8;
-const cmdsPerWorker = 1000;
+const cmdsPerWorker = 10000;
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;
