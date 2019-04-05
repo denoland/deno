@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::compiler::compile_sync;
+use crate::compiler::compile_async;
 use crate::compiler::ModuleMetaData;
 use crate::errors::DenoError;
 use crate::errors::RustOrJsError;
@@ -13,6 +13,7 @@ use deno;
 use deno::deno_mod;
 use deno::Behavior;
 use deno::JSError;
+use futures::future::Either;
 use futures::Async;
 use futures::Future;
 use std::sync::atomic::Ordering;
@@ -215,23 +216,26 @@ fn fetch_module_meta_data_and_maybe_compile_async(
   state
     .dir
     .fetch_module_meta_data_async(&specifier, &referrer, use_cache)
-    .and_then(move |mut out| {
+    .and_then(move |out| {
       if out.media_type == msg::MediaType::TypeScript
         && !out.has_output_code_and_source_map()
       {
         debug!(">>>>> compile_sync START");
-        out = match compile_sync(state_.clone(), &specifier, &referrer, &out) {
-          Ok(v) => v,
-          Err(e) => {
-            debug!("compiler error exiting!");
-            eprintln!("{}", JSErrorColor(&e).to_string());
-            std::process::exit(1);
-          }
-        };
-        debug!(">>>>> compile_sync END");
-        state_.dir.code_cache(&out)?;
+        Either::A(
+          compile_async(state_.clone(), &specifier, &referrer, &out)
+            .map_err(|e| {
+              debug!("compiler error exiting!");
+              eprintln!("{}", JSErrorColor(&e).to_string());
+              std::process::exit(1);
+            }).and_then(move |out| {
+              debug!(">>>>> compile_sync END");
+              state_.dir.code_cache(&out)?;
+              Ok(out)
+            }),
+        )
+      } else {
+        Either::B(futures::future::ok(out))
       }
-      Ok(out)
     })
 }
 
