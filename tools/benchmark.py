@@ -25,6 +25,8 @@ exec_time_benchmarks = [
     ("error_001", ["tests/error_001.ts"]),
     ("cold_hello", ["tests/002_hello.ts", "--reload"]),
     ("cold_relative_import", ["tests/003_relative_import.ts", "--reload"]),
+    ("workers", ["tests/workers_startup_bench.ts"]),
+    ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
 ]
 
 gh_pages_data_file = "gh-pages/data.json"
@@ -205,7 +207,7 @@ def main(argv):
     if os.name != 'nt':
         hyper_hello_path = os.path.join(build_dir, "hyper_hello")
         core_http_bench_exe = os.path.join(build_dir, "deno_core_http_bench")
-        new_data["throughput"] = run_throughput(deno_path)
+        # new_data["throughput"] = run_throughput(deno_path)
         stats = http_benchmark(deno_path, hyper_hello_path,
                                core_http_bench_exe)
         new_data["req_per_sec"] = {
