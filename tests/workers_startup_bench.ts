@@ -1,4 +1,4 @@
-const workerCount = 50;
+const workerCount = 200;
 
 async function bench(): Promise<void> {
   const workers: Worker[] = [];
