@@ -1,3 +1,4 @@
+// Benchmark measures time it takes to start and stop a number of workers.
 const workerCount = 50;
 
 async function bench(): Promise<void> {
