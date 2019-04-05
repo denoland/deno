@@ -6,7 +6,7 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
-### v0.3.6 / 2019.01.04
+### v0.3.6 / 2019.04.04
 
 In deno:
 
