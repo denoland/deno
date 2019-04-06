@@ -229,15 +229,13 @@ pub fn set_flags(
   }
 
   if matches.is_present("v8-flags") {
-    let flags: Vec<String> = matches
+    let mut v8_flags: Vec<String> = matches
       .values_of("v8-flags")
       .unwrap()
       .map(String::from)
       .collect();
 
-    let mut v8_flags = vec!["deno".to_string()];
-    v8_flags.extend(flags);
-    println!("v8 flags {:?}", v8_flags);
+    v8_flags.insert(1, "deno".to_string());
     v8_set_flags(v8_flags);
   }
 
