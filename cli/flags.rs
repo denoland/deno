@@ -181,7 +181,9 @@ pub fn set_flags(
       Arg::with_name("rest")
         // don't show in USAGE that we collect rest of passed arguments
         .set(ArgSettings::Hidden)
-        .multiple(true),
+        .allow_hyphen_values(true)
+        .multiple(true)
+        .last(true),
     );
 
   let matches = clap_app.get_matches_from(args);
