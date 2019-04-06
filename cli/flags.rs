@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
-use crate::ansi;
 use deno::v8_set_flags;
 
 // Creates vector of strings, Vec<String>
@@ -99,18 +98,14 @@ pub fn set_flags(
     AppSettings::DisableHelpSubcommand,
   ];
 
-  let mut global_settings: Vec<AppSettings> = vec![];
-
-  if ansi::use_color() {
-    global_settings
-      .extend(vec![AppSettings::ColorAuto, AppSettings::ColoredHelp]);
-  } else {
-    global_settings.extend(vec![AppSettings::ColorNever]);
-  }
+  let env_variables_help = "ENVIRONMENT VARIABLES:
+    DENO_DIR        Set deno's base directory
+    NO_COLOR        Set to disable color";
 
   let clap_app = App::new("deno")
-    .global_settings(&global_settings[..])
+    .global_settings(&vec![AppSettings::ColorNever])
     .settings(&app_settings[..])
+    .after_help(env_variables_help)
     .arg(
       Arg::with_name("version")
         .short("v")
