@@ -1,5 +1,5 @@
 variables:
-  DENO_VERSION: "v0.3.5"
+  DENO_VERSION: "v0.3.6"
   TS_VERSION: "3.2.1"
 
 # TODO DRY up the jobs
