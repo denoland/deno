@@ -29,6 +29,7 @@ fn main() {
   };
 
   let server = Server::bind(&addr)
+    .tcp_nodelay(true)
     .serve(new_service)
     .map_err(|e| eprintln!("server error: {}", e));
 
