@@ -1,2 +1,2 @@
-args: tests/import_meta.ts --reload
+args: --reload tests/import_meta.ts
 output: tests/import_meta.ts.out

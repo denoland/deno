@@ -67,10 +67,12 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 - Be able to serve HTTP efficiently.
   ([Currently it is relatively slow.](https://deno.land/benchmarks.html#req-per-sec))
 
-- Provide useful tooling out of the box: Built-in command-line debugger
-  [not yet](https://github.com/denoland/deno/issues/1120), built-in lint
-  [not yet](https://github.com/denoland/deno/issues/1880), dependency inspector
-  (`deno --info`), built-in code formatter (`deno --fmt`),
+- Provide useful tooling out of the box:
+  - command-line debugger
+    [not yet](https://github.com/denoland/deno/issues/1120)
+  - linter [not yet](https://github.com/denoland/deno/issues/1880)
+  - dependency inspector (`deno info`)
+  - code formatter (`deno fmt`),
 
 ### Non-goals
 
@@ -533,29 +535,38 @@ if (import.meta.main) {
 
 ```shellsession
 $ deno -h
-Usage: deno script.ts
+deno
 
-Options:
-        --allow-read    Allow file system read access
-        --allow-write   Allow file system write access
-        --allow-net     Allow network access
-        --allow-env     Allow environment access
-        --allow-run     Allow running subprocesses
-    -A, --allow-all     Allow all permissions
-        --no-prompt     Do not use prompts
-    -h, --help          Print this message
-    -D, --log-debug     Log debug output
-    -v, --version       Print the version
-    -r, --reload        Reload source code cache (recompile TypeScript)
-        --v8-options    Print V8 command line options
-        --types         Print runtime TypeScript declarations
-        --prefetch      Prefetch the dependencies
-        --info          Show source file related info
-        --fmt           Format code
+USAGE:
+    deno_dev [FLAGS] [OPTIONS] [SUBCOMMAND]
 
-Environment variables:
-        DENO_DIR        Set deno's base directory
-        NO_COLOR        Set to disable color
+FLAGS:
+    -A, --allow-all      Allow all permissions
+        --allow-env      Allow environment access
+        --allow-net      Allow network access
+        --allow-read     Allow file system read access
+        --allow-run      Allow running subprocesses
+        --allow-write    Allow file system write access
+    -h, --help           Prints help information
+    -D, --log-debug      Log debug output
+        --no-prompt      Do not use prompts
+        --prefetch       Prefetch the dependencies
+    -r, --reload         Reload source code cache (recompile TypeScript)
+        --types          Print runtime TypeScript declarations
+        --v8-options     Print V8 command line options
+    -v, --version        Print the version
+
+OPTIONS:
+        --v8-flags=<v8-flags>    Set V8 command line options
+
+SUBCOMMANDS:
+    <script>    Script to run
+    fmt         Format files
+    info        Show source file related info
+
+ENVIRONMENT VARIABLES:
+    DENO_DIR        Set deno's base directory
+    NO_COLOR        Set to disable color
 ```
 
 ### Environmental variables
