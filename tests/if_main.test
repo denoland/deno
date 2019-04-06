@@ -1,2 +1,2 @@
-args: tests/if_main.ts --reload
+args: --reload tests/if_main.ts
 output: tests/if_main.ts.out

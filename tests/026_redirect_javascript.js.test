@@ -1,2 +1,2 @@
-args: tests/026_redirect_javascript.js --reload
+args: --reload tests/026_redirect_javascript.js
 output: tests/026_redirect_javascript.js.out

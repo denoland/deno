@@ -16,7 +16,6 @@ main_extern = [
   "$rust_build:dirs",
   "$rust_build:flatbuffers",
   "$rust_build:futures",
-  "$rust_build:getopts",
   "$rust_build:http",
   "$rust_build:hyper",
   "$rust_build:hyper_rustls",

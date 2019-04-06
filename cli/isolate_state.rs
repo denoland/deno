@@ -122,7 +122,7 @@ impl IsolateState {
   pub fn mock() -> IsolateState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     // For debugging: argv.push_back(String::from("-D"));
-    let (flags, rest_argv, _) = flags::set_flags(argv).unwrap();
+    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
     IsolateState::new(flags, rest_argv, None, false)
   }
 

@@ -1,2 +1,2 @@
-args: tests/020_json_modules.ts --reload
+args: --reload tests/020_json_modules.ts
 output: tests/020_json_modules.ts.out

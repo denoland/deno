@@ -23,8 +23,8 @@ exec_time_benchmarks = [
     ("hello", ["tests/002_hello.ts"]),
     ("relative_import", ["tests/003_relative_import.ts"]),
     ("error_001", ["tests/error_001.ts"]),
-    ("cold_hello", ["tests/002_hello.ts", "--reload"]),
-    ("cold_relative_import", ["tests/003_relative_import.ts", "--reload"]),
+    ("cold_hello", ["--reload", "tests/002_hello.ts"]),
+    ("cold_relative_import", ["--reload", "tests/003_relative_import.ts"]),
     ("workers_startup", ["tests/workers_startup_bench.ts"]),
     ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
 ]
@@ -127,10 +127,10 @@ def get_strace_summary(test_args):
 def run_thread_count_benchmark(deno_path):
     thread_count_map = {}
     thread_count_map["set_timeout"] = get_strace_summary([
-        deno_path, "tests/004_set_timeout.ts", "--reload"
+        deno_path, "--reload", "tests/004_set_timeout.ts"
     ])["clone"]["calls"] + 1
     thread_count_map["fetch_deps"] = get_strace_summary([
-        deno_path, "tests/fetch_deps.ts", "--reload", "--allow-net"
+        deno_path, "--reload", "--allow-net", "tests/fetch_deps.ts"
     ])["clone"]["calls"] + 1
     return thread_count_map
 
@@ -147,10 +147,10 @@ def run_throughput(deno_exe):
 def run_syscall_count_benchmark(deno_path):
     syscall_count_map = {}
     syscall_count_map["hello"] = get_strace_summary(
-        [deno_path, "tests/002_hello.ts", "--reload"])["total"]["calls"]
+        [deno_path, "--reload", "tests/002_hello.ts"])["total"]["calls"]
     syscall_count_map["fetch_deps"] = get_strace_summary(
-        [deno_path, "tests/fetch_deps.ts", "--reload",
-         "--allow-net"])["total"]["calls"]
+        [deno_path, "--reload", "--allow-net",
+         "tests/fetch_deps.ts"])["total"]["calls"]
     return syscall_count_map
 
 

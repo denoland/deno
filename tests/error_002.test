@@ -1,4 +1,4 @@
-args: tests/error_002.ts --reload
+args: --reload tests/error_002.ts
 check_stderr: true
 exit_code: 1
 output: tests/error_002.ts.out

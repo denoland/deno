@@ -1,2 +1,2 @@
-args: tests/024_import_no_ext_with_headers.ts --reload
+args: --reload tests/024_import_no_ext_with_headers.ts
 output: tests/024_import_no_ext_with_headers.ts.out
