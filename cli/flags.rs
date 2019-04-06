@@ -168,11 +168,13 @@ pub fn set_flags(
       Arg::with_name("prefetch")
         .long("prefetch")
         .help("Prefetch the dependencies"),
-    ).arg(
-      Arg::with_name("info")
-        .long("info")
-        .help("Show source file related info"),
     ).subcommand(
+      // TODO(bartlomieju): version is not handled properly
+      SubCommand::with_name("info")
+        .about("Show source file related info")
+        .arg(Arg::with_name("file").takes_value(true).required(true)),
+    ).subcommand(
+      // TODO(bartlomieju): version is not handled properly
       SubCommand::with_name("fmt").about("Format files").arg(
         Arg::with_name("files")
           .takes_value(true)
@@ -192,6 +194,12 @@ pub fn set_flags(
   let mut rest: Vec<String> = vec![String::from("deno")];
 
   match matches.subcommand() {
+    ("info", Some(info_match)) => {
+      // TODO(bartlomieju): it still relies on `is_present("info")` check
+      // in `set_recognized_flags`
+      let file: &str = info_match.value_of("file").unwrap();
+      rest.extend(vec![file.to_string()]);
+    }
     ("fmt", Some(fmt_match)) => {
       // TODO(bartlomieju): it still relies on `is_present("fmt")` check
       // in `set_recognized_flags`
