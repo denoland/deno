@@ -32,7 +32,7 @@ def run_unit_test2(cmd):
 def run_unit_test(deno_exe, permStr, flags=None):
     if flags is None:
         flags = []
-    cmd = [deno_exe, "js/unit_tests.ts", permStr] + flags
+    cmd = [deno_exe, "js/unit_tests.ts"] + flags + [permStr]
     run_unit_test2(cmd)
 
 

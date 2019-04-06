@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use clap::{App, AppSettings, Arg, ArgMatches, ArgSettings};
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use crate::ansi;
 use deno::v8_set_flags;
 
@@ -99,19 +99,23 @@ pub fn set_flags(
   // args === ["deno", "--allow-net" "./test.ts"]
   let args = v8_set_flags(args);
 
-  let mut app_settings: Vec<AppSettings> = vec![
-    AppSettings::DontCollapseArgsInUsage,
-    AppSettings::TrailingVarArg,
+  let app_settings: Vec<AppSettings> = vec![
+    AppSettings::AllowExternalSubcommands,
+    AppSettings::DisableHelpSubcommand,
   ];
 
+  let mut global_settings: Vec<AppSettings> = vec![];
+
   if ansi::use_color() {
-    app_settings.extend(vec![AppSettings::ColorAuto, AppSettings::ColoredHelp]);
+    global_settings
+      .extend(vec![AppSettings::ColorAuto, AppSettings::ColoredHelp]);
   } else {
-    app_settings.extend(vec![AppSettings::ColorNever]);
+    global_settings.extend(vec![AppSettings::ColorNever]);
   }
 
   let clap_app = App::new("deno")
-    .global_settings(&app_settings[..])
+    .global_settings(&global_settings[..])
+    .settings(&app_settings[..])
     .arg(
       Arg::with_name("version")
         .short("v")
@@ -172,18 +176,12 @@ pub fn set_flags(
       Arg::with_name("info")
         .long("info")
         .help("Show source file related info"),
-    ).arg(Arg::with_name("fmt").long("fmt").help("Format code"))
-    .arg(
-      Arg::with_name("entry_point")
-        .help("Path to entry point script")
-        .index(1),
-    ).arg(
-      Arg::with_name("rest")
-        // don't show in USAGE that we collect rest of passed arguments
-        .set(ArgSettings::Hidden)
-        .allow_hyphen_values(true)
-        .multiple(true)
-        .last(true),
+    ).arg(Arg::with_name("fmt").long("fmt").help("Format files"))
+    .subcommand(
+      // this is a fake subcommand - it's used in conjunction with
+      // AppSettings:AllowExternalSubcommand to treat it as an
+      // entry point script
+      SubCommand::with_name("<script>").about("Script to run"),
     );
 
   let matches = clap_app.get_matches_from(args);
@@ -191,20 +189,23 @@ pub fn set_flags(
   // TODO(bartomieju): compatibility with old "opts" approach - to be refactored
   let mut rest: Vec<String> = vec![String::from("deno")];
 
-  if matches.is_present("entry_point") {
-    let main_module = matches.value_of("entry_point").unwrap().to_string();
-    rest.extend(vec![main_module]);
-  }
-
-  if matches.is_present("rest") {
-    let vals: Vec<String> = matches
-      .values_of("rest")
-      .unwrap()
-      .map(String::from)
-      .collect();
-    rest.extend(vals);
+  match matches.subcommand() {
+    (script, Some(script_match)) => {
+      rest.extend(vec![script.to_string()]);
+      // check if there are any extra arguments
+      if script_match.is_present("") {
+        let script_args: Vec<String> = script_match
+          .values_of("")
+          .unwrap()
+          .map(String::from)
+          .collect();
+        rest.extend(script_args);
+      }
+    }
+    _ => {}
   }
   // TODO: end
+
   let mut flags = DenoFlags::default();
   set_recognized_flags(matches, &mut flags);
   Ok((flags, rest))
@@ -241,7 +242,7 @@ fn test_set_flags_2() {
 #[test]
 fn test_set_flags_3() {
   let (flags, rest) =
-    set_flags(svec!["deno", "-r", "script.ts", "--allow-write"]).unwrap();
+    set_flags(svec!["deno", "-r", "--allow-write", "script.ts"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
@@ -256,7 +257,7 @@ fn test_set_flags_3() {
 #[test]
 fn test_set_flags_4() {
   let (flags, rest) =
-    set_flags(svec!["deno", "-Dr", "script.ts", "--allow-write"]).unwrap();
+    set_flags(svec!["deno", "-Dr", "--allow-write", "script.ts"]).unwrap();
   assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
@@ -285,7 +286,7 @@ fn test_set_flags_5() {
 #[test]
 fn test_set_flags_6() {
   let (flags, rest) =
-    set_flags(svec!["deno", "gist.ts", "--allow-net", "--title", "X"]).unwrap();
+    set_flags(svec!["deno", "--allow-net", "gist.ts", "--title", "X"]).unwrap();
   assert_eq!(rest, svec!["deno", "gist.ts", "--title", "X"]);
   assert_eq!(
     flags,
@@ -299,7 +300,7 @@ fn test_set_flags_6() {
 #[test]
 fn test_set_flags_7() {
   let (flags, rest) =
-    set_flags(svec!["deno", "gist.ts", "--allow-all"]).unwrap();
+    set_flags(svec!["deno", "--allow-all", "gist.ts"]).unwrap();
   assert_eq!(rest, svec!["deno", "gist.ts"]);
   assert_eq!(
     flags,
@@ -317,7 +318,7 @@ fn test_set_flags_7() {
 #[test]
 fn test_set_flags_8() {
   let (flags, rest) =
-    set_flags(svec!["deno", "gist.ts", "--allow-read"]).unwrap();
+    set_flags(svec!["deno", "--allow-read", "gist.ts"]).unwrap();
   assert_eq!(rest, svec!["deno", "gist.ts"]);
   assert_eq!(
     flags,
