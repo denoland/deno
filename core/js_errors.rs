@@ -40,6 +40,12 @@ pub struct JSError {
   pub frames: Vec<StackFrame>,
 }
 
+impl std::error::Error for JSError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    None
+  }
+}
+
 impl fmt::Display for StackFrame {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     // Note when we print to string, we change from 0-indexed to 1-indexed.
@@ -187,7 +193,10 @@ impl JSError {
       return None;
     }
     let v = v.unwrap();
+    Self::from_json_value(v)
+  }
 
+  pub fn from_json_value(v: serde_json::Value) -> Option<Self> {
     if !v.is_object() {
       return None;
     }

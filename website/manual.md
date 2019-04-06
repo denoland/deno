@@ -50,7 +50,7 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 - File system and network access can be controlled in order to run sandboxed
   code. Access between V8 (unprivileged) and Rust (privileged) is only done via
   serialized messages defined in this
-  [flatbuffer](https://github.com/denoland/deno/blob/master/src/msg.fbs). This
+  [flatbuffer](https://github.com/denoland/deno/blob/master/cli/msg.fbs). This
   makes it easy to audit. For example, to enable write access use the flag
   `--allow-write` or for network access `--allow-net`.
 
@@ -705,21 +705,18 @@ Current executable set to '../deno/target/debug/deno' (x86_64).
 (lldb) r
 ```
 
-### libdeno
+### Deno Core
 
-deno's privileged side will primarily be programmed in Rust. However there will
-be a small C API that wraps V8 to 1) define the low-level message passing
-semantics, 2) provide a low-level test target, 3) provide an ANSI C API binding
-interface for Rust. V8 plus this C API is called "libdeno" and the important
-bits of the API is specified here:
-[deno.h](https://github.com/denoland/deno/blob/master/libdeno/deno.h)
-[libdeno.ts](https://github.com/denoland/deno/blob/master/js/libdeno.ts)
+The core binding layer for Deno. It is released as a
+[standalone crate](https://crates.io/crates/deno). Inside of core is V8 itself,
+with a binding API called "libdeno". See the crate documentation for more
+details.
 
 ### Flatbuffers
 
 We use Flatbuffers to define common structs and enums between TypeScript and
 Rust. These common data structures are defined in
-[msg.fbs](https://github.com/denoland/deno/blob/master/src/msg.fbs)
+[msg.fbs](https://github.com/denoland/deno/blob/master/cli/msg.fbs)
 
 ### Updating prebuilt binaries
 

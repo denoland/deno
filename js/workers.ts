@@ -150,11 +150,13 @@ export interface Worker {
   onmessage?: (e: { data: any }) => void;
   onmessageerror?: () => void;
   postMessage(data: any): void;
+  closed: Promise<void>;
 }
 
 export class WorkerImpl implements Worker {
   private readonly rid: number;
   private isClosing: boolean = false;
+  private readonly isClosedPromise: Promise<void>;
   public onerror?: () => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
@@ -162,9 +164,14 @@ export class WorkerImpl implements Worker {
   constructor(specifier: string) {
     this.rid = createWorker(specifier);
     this.run();
-    hostGetWorkerClosed(this.rid).then(() => {
+    this.isClosedPromise = hostGetWorkerClosed(this.rid);
+    this.isClosedPromise.then(() => {
       this.isClosing = true;
     });
+  }
+
+  get closed(): Promise<void> {
+    return this.isClosedPromise;
   }
 
   postMessage(data: any): void {

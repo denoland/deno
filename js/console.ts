@@ -4,8 +4,6 @@ import { TypedArray } from "./types";
 import { TextEncoder } from "./text_encoding";
 import { File, stdout } from "./files";
 import { cliTable } from "./console_table";
-import { formatError } from "./format_error";
-import { core } from "./core";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
@@ -323,8 +321,7 @@ function createObjectString(
   ...args: [ConsoleContext, number, number]
 ): string {
   if (value instanceof Error) {
-    const errorJSON = core.errorToJSON(value);
-    return formatError(errorJSON);
+    return String(value.stack);
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);
   } else if (value instanceof Number) {
@@ -736,8 +733,8 @@ export class Console {
 }
 
 /**
- * inspect() converts input into string that has the same format
- * as printed by console.log(...);
+ * `inspect()` converts input into string that has the same format
+ * as printed by `console.log(...)`;
  */
 export function inspect(value: unknown, options?: ConsoleOptions): string {
   const opts = options || {};

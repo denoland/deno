@@ -166,3 +166,8 @@ test(function formDataParamsArgumentsCheck() {
     );
   });
 });
+
+test(function toStringShouldBeWebCompatibility() {
+  const formData = new FormData();
+  assertEquals(formData.toString(), "[object FormData]");
+});

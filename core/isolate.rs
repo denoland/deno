@@ -1,4 +1,9 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+
+// Do not add dependenies to modules.rs. it should remain decoupled from the
+// isolate to keep the Isolate struct from becoming too bloating for users who
+// do not need asynchronous module loading.
+
 use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
@@ -63,8 +68,8 @@ pub trait Behavior {
   /// Isolate is created.
   fn startup_data(&mut self) -> Option<StartupData>;
 
-  /// Called whenever Deno.core.send() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.send().
+  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
+  /// corresponds to the second argument of Deno.core.dispatch().
   fn dispatch(
     &mut self,
     control: &[u8],
@@ -77,9 +82,9 @@ pub trait Behavior {
 /// Tokio.  The Isolate future complete when there is an error or when all
 /// pending ops have completed.
 ///
-/// Ops are created in JavaScript by calling Deno.core.send(), and in Rust by
-/// implementing Behavior::dispatch. An Op corresponds exactly to a Promise in
-/// JavaScript.
+/// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
+/// by implementing deno::Behavior::dispatch. An Op corresponds exactly to a
+/// Promise in JavaScript.
 pub struct Isolate<B: Behavior> {
   libdeno_isolate: *const libdeno::isolate,
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
@@ -287,7 +292,6 @@ impl<B: Behavior> Isolate<B> {
   }
 
   /// Low-level module creation.
-  /// You probably want to use IsolateState::mod_execute instead.
   pub fn mod_new(
     &self,
     main: bool,
@@ -328,12 +332,12 @@ impl<B: Behavior> Isolate<B> {
 }
 
 /// Called during mod_instantiate() to resolve imports.
-type ResolveFn = dyn FnMut(&str, deno_mod) -> deno_mod;
+type ResolveFn<'a> = dyn FnMut(&str, deno_mod) -> deno_mod + 'a;
 
 /// Used internally by Isolate::mod_instantiate to wrap ResolveFn and
 /// encapsulate pointer casts.
 struct ResolveContext<'a> {
-  resolve_fn: &'a mut ResolveFn,
+  resolve_fn: &'a mut ResolveFn<'a>,
 }
 
 impl<'a> ResolveContext<'a> {
@@ -523,7 +527,7 @@ pub fn js_check(r: Result<(), JSError>) {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
   use super::*;
   use std::sync::atomic::{AtomicUsize, Ordering};
 

@@ -146,7 +146,7 @@ pub fn spawn<B: WorkerBehavior + 'static>(
 
   let init_result = match init {
     WorkerInit::Script(script) => match worker.execute(&script) {
-      Ok(v) => Ok(v),
+      Ok(_) => Ok(()),
       Err(e) => Err(RustOrJsError::Js(e)),
     },
     WorkerInit::Module(specifier) => {
@@ -211,8 +211,7 @@ mod tests {
           resource_.close();
           debug!("workers.rs after resource close");
           if let Err(err) = r {
-            eprintln!("{}", JSErrorColor(&err).to_string());
-            assert!(false)
+            panic!("{}", JSErrorColor(&err).to_string());
           }
           Ok(())
         })
@@ -260,8 +259,7 @@ mod tests {
           resource_.close();
           debug!("workers.rs after resource close");
           if let Err(err) = r {
-            eprintln!("{}", JSErrorColor(&err).to_string());
-            assert!(false)
+            panic!("{}", JSErrorColor(&err).to_string());
           }
           Ok(())
         })
