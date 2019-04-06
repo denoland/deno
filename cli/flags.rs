@@ -94,11 +94,6 @@ fn set_recognized_flags(matches: ArgMatches, flags: &mut DenoFlags) {
 pub fn set_flags(
   args: Vec<String>,
 ) -> Result<(DenoFlags, Vec<String>), String> {
-  // TODO: all flags passed after "--" are swallowed by v8_set_flags
-  // eg. deno --allow-net ./test.ts -- --title foobar
-  // args === ["deno", "--allow-net" "./test.ts"]
-  let args = v8_set_flags(args);
-
   let app_settings: Vec<AppSettings> = vec![
     AppSettings::AllowExternalSubcommands,
     AppSettings::DisableHelpSubcommand,
@@ -165,6 +160,12 @@ pub fn set_flags(
         .long("v8-options")
         .help("Print V8 command line options"),
     ).arg(
+      Arg::with_name("v8-flags")
+        .long("v8-flags")
+        .takes_value(true)
+        .require_equals(true)
+        .help("Set V8 command line options"),
+    ).arg(
       Arg::with_name("types")
         .long("types")
         .help("Print runtime TypeScript declarations"),
@@ -176,8 +177,14 @@ pub fn set_flags(
       Arg::with_name("info")
         .long("info")
         .help("Show source file related info"),
-    ).arg(Arg::with_name("fmt").long("fmt").help("Format files"))
-    .subcommand(
+    ).subcommand(
+      SubCommand::with_name("fmt").about("Format files").arg(
+        Arg::with_name("files")
+          .takes_value(true)
+          .multiple(true)
+          .required(true),
+      ),
+    ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
       // entry point script
@@ -190,6 +197,16 @@ pub fn set_flags(
   let mut rest: Vec<String> = vec![String::from("deno")];
 
   match matches.subcommand() {
+    ("fmt", Some(fmt_match)) => {
+      // TODO(bartlomieju): it still relies on `is_present("fmt")` check
+      // in `set_recognized_flags`
+      let files: Vec<String> = fmt_match
+        .values_of("files")
+        .unwrap()
+        .map(String::from)
+        .collect();
+      rest.extend(files);
+    }
     (script, Some(script_match)) => {
       rest.extend(vec![script.to_string()]);
       // check if there are any extra arguments
@@ -205,6 +222,24 @@ pub fn set_flags(
     _ => {}
   }
   // TODO: end
+
+  if matches.is_present("v8-options") {
+    // display v8 help and exit
+    v8_set_flags(vec!["deno".to_string(), "--help".to_string()]);
+  }
+
+  if matches.is_present("v8-flags") {
+    let flags: Vec<String> = matches
+      .values_of("v8-flags")
+      .unwrap()
+      .map(String::from)
+      .collect();
+
+    let mut v8_flags = vec!["deno".to_string()];
+    v8_flags.extend(flags);
+    println!("v8 flags {:?}", v8_flags);
+    v8_set_flags(v8_flags);
+  }
 
   let mut flags = DenoFlags::default();
   set_recognized_flags(matches, &mut flags);
