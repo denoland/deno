@@ -369,9 +369,9 @@ fn test_set_flags_8() {
 
 #[test]
 fn test_set_flags_9() {
-  let (flags, rest, _) =
-    set_flags(svec!["deno", "--allow-high-precision"]).unwrap();
-  assert_eq!(rest, svec!["deno"]);
+  let (flags, rest) =
+    set_flags(svec!["deno", "--allow-high-precision", "script.ts"]).unwrap();
+  assert_eq!(rest, svec!["deno", "script.ts"]);
   assert_eq!(
     flags,
     DenoFlags {
