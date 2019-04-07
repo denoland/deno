@@ -384,7 +384,7 @@ hello
 ```
 
 By default when you use `Deno.run()` subprocess inherits `stdin`, `stdout` and
-`stdout` of parent process. If you want to communicate with started subprocess
+`stderr` of parent process. If you want to communicate with started subprocess
 you can use `"piped"` option.
 
 ```ts
