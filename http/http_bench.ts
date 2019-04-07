@@ -8,7 +8,7 @@ const body = new TextEncoder().encode("Hello World");
 
 async function main(): Promise<void> {
   for await (const request of server) {
-    await request.respond({ status: 200, body });
+    request.respond({ status: 200, body });
   }
 }
 
