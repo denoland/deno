@@ -69,3 +69,35 @@ test(function ensureFileSyncIfItExist() {
 
   Deno.removeSync(testDir, { recursive: true });
 });
+
+test(async function ensureFileIfItExistAsDir() {
+  const testDir = path.join(testdataDir, "ensure_file_5");
+
+  await Deno.mkdir(testDir, true);
+
+  await assertThrowsAsync(
+    async () => {
+      await ensureFile(testDir);
+    },
+    Error,
+    `Ensure path exists, expected 'file', got 'dir'`
+  );
+
+  await Deno.remove(testDir, { recursive: true });
+});
+
+test(function ensureFileSyncIfItExistAsDir() {
+  const testDir = path.join(testdataDir, "ensure_file_6");
+
+  Deno.mkdirSync(testDir, true);
+
+  assertThrows(
+    () => {
+      ensureFileSync(testDir);
+    },
+    Error,
+    `Ensure path exists, expected 'file', got 'dir'`
+  );
+
+  Deno.removeSync(testDir, { recursive: true });
+});

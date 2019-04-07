@@ -21,3 +21,20 @@ export function isSubdir(
     return acc && destArray[i] === current;
   }, true);
 }
+
+export enum PathType {
+  file = "file",
+  dir = "dir",
+  symlink = "symlink"
+}
+
+/* Get a human readable file type string */
+export function getFileInfoType(fileInfo: Deno.FileInfo): PathType | null {
+  return fileInfo.isFile()
+    ? PathType.file
+    : fileInfo.isDirectory()
+    ? PathType.dir
+    : fileInfo.isSymlink()
+    ? PathType.symlink
+    : null;
+}

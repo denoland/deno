@@ -2,8 +2,12 @@
 
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { isSubdir } from "./utils.ts";
+import { isSubdir, getFileInfoType, PathType } from "./utils.ts";
 import * as path from "./path/mod.ts";
+import { ensureFileSync } from "./ensure_file.ts";
+import { ensureDirSync } from "./ensure_dir.ts";
+
+const testdataDir = path.resolve("fs", "testdata");
 
 test(function _isSubdir() {
   const pairs = [
@@ -27,5 +31,34 @@ test(function _isSubdir() {
       expected,
       `'${src}' should ${expected ? "" : "not"} be parent dir of '${dest}'`
     );
+  });
+});
+
+test(function _getFileInfoType() {
+  const pairs = [
+    [path.join(testdataDir, "file_type_1"), PathType.file],
+    [path.join(testdataDir, "file_type_dir_1"), PathType.dir]
+  ];
+
+  pairs.forEach(function(p) {
+    const filePath = p[0] as string;
+    const type = p[1] as PathType;
+    switch (type) {
+      case PathType.file:
+        ensureFileSync(filePath);
+        break;
+      case PathType.dir:
+        ensureDirSync(filePath);
+        break;
+      case PathType.symlink:
+        // TODO(axetroy): test symlink
+        break;
+    }
+
+    const stat = Deno.statSync(filePath);
+
+    Deno.removeSync(filePath, { recursive: true });
+
+    assertEquals(getFileInfoType(stat), type);
   });
 });
