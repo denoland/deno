@@ -26,66 +26,59 @@ pub struct DenoFlags {
   pub fmt: bool,
 }
 
-/// Checks provided arguments for known options and sets appropriate Deno flags
-/// for them. Unknown options are returned for further use.
-/// Note:
-///
-/// 1. This assumes that privileged flags do not accept parameters deno --foo bar.
-/// This assumption is currently valid. But if it were to change in the future,
-/// this parsing technique would need to be modified. I think we want to keep the
-/// privileged flags minimal - so having this restriction is maybe a good thing.
-///
-/// 2. Misspelled flags will be forwarded to user code - e.g. --allow-ne would
-/// not cause an error. I also think this is ok because missing any of the
-/// privileged flags is not destructive. Userland flag parsing would catch these
-/// errors.
-fn set_recognized_flags(matches: ArgMatches, flags: &mut DenoFlags) {
-  if matches.is_present("log-debug") {
-    flags.log_debug = true;
-  }
-  if matches.is_present("version") {
-    flags.version = true;
-  }
-  if matches.is_present("reload") {
-    flags.reload = true;
-  }
-  if matches.is_present("allow-read") {
-    flags.allow_read = true;
-  }
-  if matches.is_present("allow-write") {
-    flags.allow_write = true;
-  }
-  if matches.is_present("allow-net") {
-    flags.allow_net = true;
-  }
-  if matches.is_present("allow-env") {
-    flags.allow_env = true;
-  }
-  if matches.is_present("allow-run") {
-    flags.allow_run = true;
-  }
-  if matches.is_present("allow-all") {
-    flags.allow_read = true;
-    flags.allow_env = true;
-    flags.allow_net = true;
-    flags.allow_run = true;
-    flags.allow_read = true;
-    flags.allow_write = true;
-  }
-  if matches.is_present("no-prompt") {
-    flags.no_prompts = true;
-  }
-  if matches.is_present("types") {
-    flags.types = true;
-  }
-  if matches.is_present("prefetch") {
-    flags.prefetch = true;
-  }
-  if matches.is_present("info") {
-    flags.info = true;
-  }
-  if matches.is_present("fmt") {
-    flags.fmt = true;
+impl<'a> From<ArgMatches<'a>> for DenoFlags {
+  fn from(matches: ArgMatches) -> DenoFlags {
+    let mut flags = DenoFlags::default();
+
+    if matches.is_present("log-debug") {
+      flags.log_debug = true;
+    }
+    if matches.is_present("version") {
+      flags.version = true;
+    }
+    if matches.is_present("reload") {
+      flags.reload = true;
+    }
+    if matches.is_present("allow-read") {
+      flags.allow_read = true;
+    }
+    if matches.is_present("allow-write") {
+      flags.allow_write = true;
+    }
+    if matches.is_present("allow-net") {
+      flags.allow_net = true;
+    }
+    if matches.is_present("allow-env") {
+      flags.allow_env = true;
+    }
+    if matches.is_present("allow-run") {
+      flags.allow_run = true;
+    }
+    if matches.is_present("allow-all") {
+      flags.allow_read = true;
+      flags.allow_env = true;
+      flags.allow_net = true;
+      flags.allow_run = true;
+      flags.allow_read = true;
+      flags.allow_write = true;
+    }
+    if matches.is_present("no-prompt") {
+      flags.no_prompts = true;
+    }
+    if matches.is_present("types") {
+      flags.types = true;
+    }
+    if matches.is_present("prefetch") {
+      flags.prefetch = true;
+    }
+    if matches.is_present("info") {
+      flags.info = true;
+    }
+    if matches.is_present("fmt") {
+      flags.fmt = true;
+    }
+
+    flags
   }
 }
 
@@ -242,8 +235,7 @@ pub fn set_flags(
     v8_set_flags(v8_flags);
   }
 
-  let mut flags = DenoFlags::default();
-  set_recognized_flags(matches, &mut flags);
+  let flags = DenoFlags::from(matches);
   Ok((flags, rest))
 }
 
