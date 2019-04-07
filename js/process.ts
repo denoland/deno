@@ -167,9 +167,9 @@ export function run(opt: RunOptions): Process {
     argsOffset,
     cwdOffset,
     envOffset,
-    opt.stdin ? stdioMap(opt.stdin) : stdioMap('inherit'),
-    opt.stdout ? stdioMap(opt.stdout) : stdioMap('inherit'),
-    opt.stderr ? stdioMap(opt.stderr) : stdioMap('inherit')
+    opt.stdin ? stdioMap(opt.stdin) : stdioMap("inherit"),
+    opt.stdout ? stdioMap(opt.stdout) : stdioMap("inherit"),
+    opt.stderr ? stdioMap(opt.stderr) : stdioMap("inherit")
   );
   const baseRes = dispatch.sendSync(builder, msg.Any.Run, inner);
   assert(baseRes != null);

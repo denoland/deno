@@ -316,7 +316,9 @@ function msgHttpRequest(
     for (const [key, val] of headers.entries()) {
       const keyOffset = builder.createString(key);
       const valOffset = builder.createString(val);
-      kvOffsets.push(msg.KeyValue.createKeyValue(builder, keyOffset, valOffset));
+      kvOffsets.push(
+        msg.KeyValue.createKeyValue(builder, keyOffset, valOffset)
+      );
     }
     fieldsOffset = msg.HttpHeader.createFieldsVector(builder, kvOffsets);
   } else {

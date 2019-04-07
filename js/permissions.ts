@@ -54,7 +54,10 @@ function revokeReq(
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const permission_ = builder.createString(permission);
-  const inner = msg.PermissionRevoke.createPermissionRevoke(builder, permission_);
+  const inner = msg.PermissionRevoke.createPermissionRevoke(
+    builder,
+    permission_
+  );
   return [builder, msg.Any.PermissionRevoke, inner];
 }
 

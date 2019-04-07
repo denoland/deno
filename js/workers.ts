@@ -93,7 +93,10 @@ export function postMessage(data: any): void {
 export async function getMessage(): Promise<any> {
   log("getMessage");
   const builder = flatbuffers.createBuilder();
-  const inner = msg.WorkerGetMessage.createWorkerGetMessage(builder, 0 /* unused */);
+  const inner = msg.WorkerGetMessage.createWorkerGetMessage(
+    builder,
+    0 /* unused */
+  );
   const baseRes = await sendAsync(builder, msg.Any.WorkerGetMessage, inner);
   assert(baseRes != null);
   assert(
