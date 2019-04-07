@@ -18,6 +18,8 @@ def run_unit_test2(cmd):
     errcode = process.returncode
     if errcode != 0:
         sys.exit(errcode)
+    # To avoid the case where we silently filter out all tests.
+    assert expected > 0
     if actual == None and expected == None:
         raise AssertionError("Bad js/unit_test.ts output")
     if expected != actual:
@@ -32,7 +34,7 @@ def run_unit_test2(cmd):
 def run_unit_test(deno_exe, permStr, flags=None):
     if flags is None:
         flags = []
-    cmd = [deno_exe, "js/unit_tests.ts"] + flags + [permStr]
+    cmd = [deno_exe] + flags + ["js/unit_tests.ts", permStr]
     run_unit_test2(cmd)
 
 
@@ -48,7 +50,6 @@ def unit_tests(deno_exe):
     run_unit_test(deno_exe, "permR0W1N0E0U0", ["--allow-write"])
     run_unit_test(deno_exe, "permR1W1N0E0U0",
                   ["--allow-read", "--allow-write"])
-    run_unit_test(deno_exe, "permR1W0N1E0U0", ["--allow-read", "--allow-net"])
     run_unit_test(deno_exe, "permR0W0N0E1U0", ["--allow-env"])
     run_unit_test(deno_exe, "permR0W0N0E0U1", ["--allow-run"])
     run_unit_test(deno_exe, "permR0W1N0E0U1", ["--allow-run", "--allow-write"])
