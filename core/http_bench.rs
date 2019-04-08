@@ -22,6 +22,20 @@ use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tokio::prelude::*;
 
+static LOGGER: Logger = Logger;
+struct Logger;
+impl log::Log for Logger {
+  fn enabled(&self, metadata: &log::Metadata) -> bool {
+    metadata.level() <= log::max_level()
+  }
+  fn log(&self, record: &log::Record) {
+    if self.enabled(record.metadata()) {
+      println!("{} - {}", record.level(), record.args());
+    }
+  }
+  fn flush(&self) {}
+}
+
 const OP_LISTEN: i32 = 1;
 const OP_ACCEPT: i32 = 2;
 const OP_READ: i32 = 3;
@@ -177,7 +191,15 @@ fn main() {
 
   let args: Vec<String> = env::args().collect();
   let args = deno::v8_set_flags(args);
-  if args.len() > 1 && args[1] == "--multi-thread" {
+
+  log::set_logger(&LOGGER).unwrap();
+  log::set_max_level(if args.iter().any(|a| a == "-D") {
+    log::LevelFilter::Debug
+  } else {
+    log::LevelFilter::Warn
+  });
+
+  if args.iter().any(|a| a == "--multi-thread") {
     println!("multi-thread");
     tokio::run(main_future);
   } else {
