@@ -483,14 +483,18 @@ type PrintFunc = (x: string, isErr?: boolean) => void;
 
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
+export const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
   indentLevel: number;
   collapsedAt: number | null;
+  [isConsoleInstance]: boolean = false;
+
   /** @internal */
   constructor(private printFunc: PrintFunc) {
     this.indentLevel = 0;
     this.collapsedAt = null;
+    this[isConsoleInstance] = true;
   }
 
   /** Writes the arguments to stdout */
@@ -730,6 +734,10 @@ export class Console {
     cursorTo(stdout, 0, 0);
     clearScreenDown(stdout);
   };
+
+  static [Symbol.hasInstance](instance: Console): boolean {
+    return instance[isConsoleInstance];
+  }
 }
 
 /**

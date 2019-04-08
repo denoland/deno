@@ -20,6 +20,11 @@ test(function consoleShouldBeANamespace() {
   assertEquals(prototype2, Object.prototype);
 });
 
+test(function consoleHasRightInstance() {
+  assert(console instanceof Console);
+  assertEquals({} instanceof Console, false);
+});
+
 test(function consoleTestAssertShouldNotThrowError() {
   console.assert(true);
 
