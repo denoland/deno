@@ -21,6 +21,7 @@ union Any {
   GlobalTimerStop,
   IsTTY,
   IsTTYRes,
+  Link,
   Listen,
   ListenRes,
   MakeTempDir,
@@ -387,6 +388,11 @@ table ResourcesRes {
 }
 
 table Symlink {
+  oldname: string;
+  newname: string;
+}
+
+table Link {
   oldname: string;
   newname: string;
 }
