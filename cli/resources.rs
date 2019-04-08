@@ -13,8 +13,8 @@ use crate::errors::bad_resource;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::http_body::HttpBody;
-use crate::isolate_state::WorkerChannels;
 use crate::repl::Repl;
+use crate::state::WorkerChannels;
 
 use deno::Buf;
 
