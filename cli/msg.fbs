@@ -281,6 +281,7 @@ table PermissionsRes {
   write: bool;
   net: bool;
   env: bool;
+  high_precision: bool;
 }
 
 // Note this represents The WHOLE header of an http message, not just the key
@@ -527,7 +528,8 @@ table RunStatusRes {
 table Now {}
 
 table NowRes {
-  time: uint64;
+  seconds: uint64;
+  subsec_nanos: uint32;
 }
 
 table IsTTY {}

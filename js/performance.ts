@@ -5,13 +5,9 @@ import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 
 export class Performance {
-  timeOrigin = 0;
-
-  constructor() {
-    this.timeOrigin = new Date().getTime();
-  }
-
-  /** Returns a current time from Deno's start
+  /** Returns a current time from Deno's start.
+   *  In milliseconds. Flag --allow-high-precision give
+   *  a precise measure.
    *
    *       const t = performance.now();
    *       console.log(`${t} ms since start!`);
@@ -23,6 +19,6 @@ export class Performance {
     assert(msg.Any.NowRes === baseRes.innerType());
     const res = new msg.NowRes();
     assert(baseRes.inner(res) != null);
-    return res.time().toFloat64() - this.timeOrigin;
+    return res.seconds().toFloat64() * 1e3 + res.subsecNanos() / 1e6;
   }
 }

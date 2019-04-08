@@ -41,7 +41,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -212,19 +212,35 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
   }
 }
 
+// Returns a milliseconds and nanoseconds subsec
+// since the start time of the deno runtime.
+// If the High precision flag is not set, the
+// nanoseconds are rounded on 2ms.
 fn op_now(
-  _sc: &IsolateStateContainer,
+  sc: &IsolateStateContainer,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
-  let start = SystemTime::now();
-  let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
-  let time = since_the_epoch.as_secs() * 1000
-    + u64::from(since_the_epoch.subsec_millis());
+  let seconds = sc.state().start_time.elapsed().as_secs();
+  let mut subsec_nanos = sc.state().start_time.elapsed().subsec_nanos();
+  let reduced_time_precision = 2000000; // 2ms in nanoseconds
+
+  // If the permission is not enabled
+  // Round the nano result on 2 milliseconds
+  // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
+  if !sc.state().permissions.allows_high_precision() {
+    subsec_nanos -= subsec_nanos % reduced_time_precision
+  }
 
   let builder = &mut FlatBufferBuilder::new();
-  let inner = msg::NowRes::create(builder, &msg::NowResArgs { time });
+  let inner = msg::NowRes::create(
+    builder,
+    &msg::NowResArgs {
+      seconds,
+      subsec_nanos,
+    },
+  );
   ok_future(serialize_response(
     base.cmd_id(),
     builder,
@@ -555,6 +571,7 @@ fn op_permissions(
       write: sc.state().permissions.allows_write(),
       net: sc.state().permissions.allows_net(),
       env: sc.state().permissions.allows_env(),
+      high_precision: sc.state().permissions.allows_high_precision(),
     },
   );
   ok_future(serialize_response(
@@ -582,6 +599,7 @@ fn op_revoke_permission(
     "write" => sc.state().permissions.revoke_write(),
     "net" => sc.state().permissions.revoke_net(),
     "env" => sc.state().permissions.revoke_env(),
+    "highPrecision" => sc.state().permissions.revoke_high_precision(),
     _ => Ok(()),
   };
   if let Err(e) = result {
