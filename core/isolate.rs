@@ -16,6 +16,7 @@ use futures::Async;
 use futures::Future;
 use futures::Poll;
 use libc::c_void;
+use std::collections::VecDeque;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ptr::null;
@@ -92,7 +93,7 @@ pub struct Isolate<B: Behavior> {
   behavior: B,
   needs_init: bool,
   shared: SharedQueue,
-  pending_ops: Vec<PendingOp>,
+  pending_ops: VecDeque<PendingOp>,
   polled_recently: bool,
 }
 
@@ -143,7 +144,7 @@ impl<B: Behavior> Isolate<B> {
       behavior,
       shared,
       needs_init,
-      pending_ops: Vec::new(),
+      pending_ops: VecDeque::new(),
       polled_recently: false,
     };
 
@@ -210,7 +211,7 @@ impl<B: Behavior> Isolate<B> {
       // picked up.
       let _ = isolate.respond(Some(&res_record));
     } else {
-      isolate.pending_ops.push(PendingOp {
+      isolate.pending_ops.push_back(PendingOp {
         op,
         polled_recently: false,
         zero_copy_id,
@@ -453,20 +454,15 @@ impl<B: Behavior> Future for Isolate<B> {
 
       let mut overflow_response: Option<Buf> = None;
 
-      let mut i = 0;
-      while i < self.pending_ops.len() {
+      for _ in 0..self.pending_ops.len() {
         assert!(overflow_response.is_none());
-        let pending = &mut self.pending_ops[i];
-        match pending.poll() {
+        let mut op = self.pending_ops.pop_front().unwrap();
+        match op.poll() {
           Err(()) => panic!("unexpected error"),
-          Ok(Async::NotReady) => {
-            i += 1;
-          }
+          Ok(Async::NotReady) => self.pending_ops.push_back(op),
           Ok(Async::Ready(buf)) => {
-            let completed = self.pending_ops.remove(i);
-
-            if completed.zero_copy_id > 0 {
-              self.zero_copy_release(completed.zero_copy_id);
+            if op.zero_copy_id > 0 {
+              self.zero_copy_release(op.zero_copy_id);
             }
 
             let successful_push = self.shared.push(&buf);
