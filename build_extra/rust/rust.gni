@@ -209,7 +209,7 @@ template("rust_crate") {
       args += [ "-g" ]
     }
     if (is_official_build) {
-      args += [ "-O" ]
+      args += [ "-O3" ]
     }
     if (is_test) {
       args += [ "--test" ]
