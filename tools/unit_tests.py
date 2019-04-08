@@ -45,13 +45,11 @@ def run_unit_test(deno_exe, permStr, flags=None):
 # tests by the special string. permW0N0 means allow-write but not allow-net.
 # See js/test_util.ts for more details.
 def unit_tests(deno_exe):
-    run_unit_test(deno_exe, "permR0W0N0E0U0H0")
+    run_unit_test(deno_exe, "permR0W0N0E0U0H0", ["--reload"])
     run_unit_test(deno_exe, "permR1W0N0E0U0H0", ["--allow-read"])
     run_unit_test(deno_exe, "permR0W1N0E0U0H0", ["--allow-write"])
     run_unit_test(deno_exe, "permR1W1N0E0U0H0",
                   ["--allow-read", "--allow-write"])
-    run_unit_test(deno_exe, "permR1W0N1E0U0H0",
-                  ["--allow-read", "--allow-net"])
     run_unit_test(deno_exe, "permR0W0N0E1U0H0", ["--allow-env"])
     run_unit_test(deno_exe, "permR0W0N0E0U0H1", ["--allow-high-precision"])
     run_unit_test(deno_exe, "permR0W0N0E0U1H0", ["--allow-run"])
