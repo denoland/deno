@@ -2,22 +2,22 @@
 use crate::isolate_state::*;
 use crate::ops;
 use deno::deno_buf;
-use deno::Behavior;
+use deno::Dispatch;
 use deno::Op;
 use std::sync::Arc;
 
-/// Implements deno::Behavior for the main Deno command-line.
-pub struct CliBehavior {
+/// Implements deno::Dispatch for the main Deno command-line.
+pub struct CliDispatch {
   pub state: Arc<IsolateState>,
 }
 
-impl CliBehavior {
+impl CliDispatch {
   pub fn new(state: Arc<IsolateState>) -> Self {
     Self { state }
   }
 }
 
-impl Behavior for CliBehavior {
+impl Dispatch for CliDispatch {
   fn dispatch(
     &mut self,
     control: &[u8],

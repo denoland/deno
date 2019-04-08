@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::cli_behavior::CliBehavior;
+use crate::dispatch::CliDispatch;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -1864,11 +1864,11 @@ fn op_create_worker(
       parent_state.argv.clone(),
     ));
     let rid = child_state.resource.rid;
-    let behavior = CliBehavior::new(child_state);
+    let dispatcher = CliDispatch::new(child_state);
     let name = format!("USER-WORKER-{}", specifier);
 
     let mut worker =
-      Worker::new(name, startup_data::deno_isolate_init(), behavior);
+      Worker::new(name, startup_data::deno_isolate_init(), dispatcher);
     js_check(worker.execute("denoMain()"));
     js_check(worker.execute("workerMain()"));
     let result = worker.execute_mod(specifier, false);

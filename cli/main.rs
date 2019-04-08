@@ -11,9 +11,9 @@ extern crate clap;
 extern crate deno;
 
 mod ansi;
-pub mod cli_behavior;
 pub mod compiler;
 pub mod deno_dir;
+pub mod dispatch;
 pub mod errors;
 pub mod flags;
 mod fs;
@@ -36,7 +36,7 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
-use crate::cli_behavior::CliBehavior;
+use crate::dispatch::CliDispatch;
 use crate::errors::RustOrJsError;
 use crate::isolate_state::IsolateState;
 use crate::worker::Worker;
@@ -106,7 +106,7 @@ fn main() {
 
   let state = Arc::new(IsolateState::new(flags, rest_argv));
   let state_ = state.clone();
-  let cli = CliBehavior::new(state_);
+  let cli = CliDispatch::new(state_);
   let mut main_worker =
     Worker::new("main".to_string(), startup_data::deno_isolate_init(), cli);
 

@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::cli_behavior::CliBehavior;
+use crate::dispatch::CliDispatch;
 use crate::isolate_state::*;
 use crate::js_errors;
 use crate::js_errors::JSErrorColor;
@@ -98,12 +98,12 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> ResourceId {
       ));
       let rid = child_state.resource.rid;
       let resource = child_state.resource.clone();
-      let behavior = CliBehavior::new(child_state);
+      let dispatcher = CliDispatch::new(child_state);
 
       let mut worker = Worker::new(
         "TS".to_string(),
         startup_data::compiler_isolate_init(),
-        behavior,
+        dispatcher,
       );
 
       js_check(worker.execute("denoMain()"));

@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::cli_behavior::CliBehavior;
 use crate::compiler::compile_async;
 use crate::compiler::ModuleMetaData;
+use crate::dispatch::CliDispatch;
 use crate::errors::DenoError;
 use crate::errors::RustOrJsError;
 use crate::isolate_state::IsolateState;
@@ -22,7 +22,7 @@ use std::sync::Arc;
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
 pub struct Worker {
-  inner: deno::Isolate<CliBehavior>,
+  inner: deno::Isolate<CliDispatch>,
   state: Arc<IsolateState>,
 }
 
@@ -30,11 +30,11 @@ impl Worker {
   pub fn new(
     _name: String,
     startup_data: StartupData,
-    behavior: CliBehavior,
+    dispatcher: CliDispatch,
   ) -> Worker {
-    let state = behavior.state.clone();
+    let state = dispatcher.state.clone();
     Self {
-      inner: deno::Isolate::new(startup_data, behavior),
+      inner: deno::Isolate::new(startup_data, dispatcher),
       state,
     }
   }
@@ -251,7 +251,7 @@ fn fetch_module_meta_data_and_maybe_compile(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cli_behavior::CliBehavior;
+  use crate::dispatch::CliDispatch;
   use crate::flags;
   use crate::isolate_state::IsolateState;
   use crate::resources;
@@ -275,7 +275,7 @@ mod tests {
     let state = Arc::new(IsolateState::new(flags, rest_argv));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let cli = CliBehavior::new(state.clone());
+      let cli = CliDispatch::new(state.clone());
       let mut worker = Worker::new("TEST".to_string(), StartupData::None, cli);
       if let Err(err) = worker.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
@@ -298,7 +298,7 @@ mod tests {
     let state = Arc::new(IsolateState::new(flags, rest_argv));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let cli = CliBehavior::new(state.clone());
+      let cli = CliDispatch::new(state.clone());
       let mut worker = Worker::new("TEST".to_string(), StartupData::None, cli);
       if let Err(err) = worker.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
@@ -312,7 +312,7 @@ mod tests {
 
   fn create_test_worker() -> Worker {
     let state = Arc::new(IsolateState::mock());
-    let cli = CliBehavior::new(state.clone());
+    let cli = CliDispatch::new(state.clone());
     let mut worker =
       Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), cli);
     js_check(worker.execute("denoMain()"));
