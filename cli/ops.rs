@@ -176,6 +176,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::GlobalTimer => Some(op_global_timer),
     msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
     msg::Any::IsTTY => Some(op_is_tty),
+    msg::Any::Link => Some(op_link),
     msg::Any::Listen => Some(op_listen),
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
     msg::Any::Metrics => Some(op_metrics),
@@ -1255,6 +1256,28 @@ fn op_rename(
   blocking(base.sync(), move || -> OpResult {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     fs::rename(&oldpath, &newpath)?;
+    Ok(empty_buf())
+  })
+}
+
+fn op_link(
+  sc: &IsolateStateContainer,
+  base: &msg::Base<'_>,
+  data: deno_buf,
+) -> Box<OpWithError> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_link().unwrap();
+  let oldname = PathBuf::from(inner.oldname().unwrap());
+  let newname_ = inner.newname().unwrap();
+  let newname = PathBuf::from(newname_);
+
+  if let Err(e) = sc.state().check_write(&newname_) {
+    return odd_future(e);
+  }
+
+  blocking(base.sync(), move || -> OpResult {
+    debug!("op_link {} {}", oldname.display(), newname.display());
+    std::fs::hard_link(&oldname, &newname)?;
     Ok(empty_buf())
   })
 }
