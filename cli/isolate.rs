@@ -13,6 +13,7 @@ use deno;
 use deno::deno_mod;
 use deno::Behavior;
 use deno::JSError;
+use deno::StartupData;
 use futures::future::Either;
 use futures::Async;
 use futures::Future;
@@ -32,10 +33,10 @@ pub struct Isolate<B: Behavior> {
 }
 
 impl<B: DenoBehavior> Isolate<B> {
-  pub fn new(behavior: B) -> Isolate<B> {
+  pub fn new(startup_data: StartupData, behavior: B) -> Isolate<B> {
     let state = behavior.state().clone();
     Self {
-      inner: CoreIsolate::new(behavior),
+      inner: CoreIsolate::new(startup_data, behavior),
       state,
     }
   }
@@ -270,8 +271,8 @@ mod tests {
     let state = Arc::new(IsolateState::new(flags, rest_argv, None, false));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let cli = CliBehavior::new(None, state.clone());
-      let mut isolate = Isolate::new(cli);
+      let cli = CliBehavior::new(state.clone());
+      let mut isolate = Isolate::new(StartupData::None, cli);
       if let Err(err) = isolate.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
       }
@@ -293,8 +294,8 @@ mod tests {
     let state = Arc::new(IsolateState::new(flags, rest_argv, None, false));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let cli = CliBehavior::new(None, state.clone());
-      let mut isolate = Isolate::new(cli);
+      let cli = CliBehavior::new(state.clone());
+      let mut isolate = Isolate::new(StartupData::None, cli);
       if let Err(err) = isolate.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
       }

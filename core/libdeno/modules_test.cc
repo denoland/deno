@@ -13,7 +13,7 @@ void recv_cb(void* user_data, deno_buf buf, deno_buf zero_copy_buf) {
 
 TEST(ModulesTest, Resolution) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
@@ -66,7 +66,7 @@ TEST(ModulesTest, Resolution) {
 
 TEST(ModulesTest, ResolutionError) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
@@ -99,7 +99,7 @@ TEST(ModulesTest, ResolutionError) {
 
 TEST(ModulesTest, ImportMetaUrl) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a =
@@ -119,7 +119,7 @@ TEST(ModulesTest, ImportMetaUrl) {
 }
 
 TEST(ModulesTest, ImportMetaMain) {
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
 
   const char* throw_not_main_src = "if (!import.meta.main) throw 'err'";
   static deno_mod throw_not_main =

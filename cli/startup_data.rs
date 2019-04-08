@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use deno::deno_buf;
 use deno::{Script, StartupData};
 
-pub fn deno_isolate_init() -> StartupData {
+pub fn deno_isolate_init() -> StartupData<'static> {
   if cfg!(feature = "no-snapshot-init") {
     debug!("Deno isolate init without snapshots.");
     #[cfg(not(feature = "check-only"))]
@@ -12,8 +11,8 @@ pub fn deno_isolate_init() -> StartupData {
     let source_bytes = vec![];
 
     StartupData::Script(Script {
-      filename: "gen/cli/bundle/main.js".to_string(),
-      source: std::str::from_utf8(&source_bytes[..]).unwrap().to_string(),
+      filename: "gen/cli/bundle/main.js",
+      source: std::str::from_utf8(&source_bytes[..]).unwrap(),
     })
   } else {
     debug!("Deno isolate init with snapshots.");
@@ -23,13 +22,11 @@ pub fn deno_isolate_init() -> StartupData {
     #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
     let data = vec![];
 
-    unsafe {
-      StartupData::Snapshot(deno_buf::from_raw_parts(data.as_ptr(), data.len()))
-    }
+    StartupData::Snapshot(data)
   }
 }
 
-pub fn compiler_isolate_init() -> StartupData {
+pub fn compiler_isolate_init() -> StartupData<'static> {
   if cfg!(feature = "no-snapshot-init") {
     debug!("Compiler isolate init without snapshots.");
     #[cfg(not(feature = "check-only"))]
@@ -41,8 +38,8 @@ pub fn compiler_isolate_init() -> StartupData {
     let source_bytes = vec![];
 
     StartupData::Script(Script {
-      filename: "gen/cli/bundle/compiler.js".to_string(),
-      source: std::str::from_utf8(&source_bytes[..]).unwrap().to_string(),
+      filename: "gen/cli/bundle/compiler.js",
+      source: std::str::from_utf8(&source_bytes[..]).unwrap(),
     })
   } else {
     debug!("Deno isolate init with snapshots.");
@@ -54,8 +51,6 @@ pub fn compiler_isolate_init() -> StartupData {
     #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
     let data = vec![];
 
-    unsafe {
-      StartupData::Snapshot(deno_buf::from_raw_parts(data.as_ptr(), data.len()))
-    }
+    StartupData::Snapshot(data)
   }
 }

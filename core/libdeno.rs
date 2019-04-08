@@ -4,6 +4,7 @@ use libc::c_char;
 use libc::c_int;
 use libc::c_void;
 use libc::size_t;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::ptr::null;
 
@@ -108,6 +109,56 @@ impl AsMut<[u8]> for deno_buf {
   }
 }
 
+#[repr(C)]
+pub struct deno_snapshot<'a> {
+  pub data_ptr: *const u8,
+  pub data_len: usize,
+  _marker: PhantomData<&'a [u8]>,
+}
+
+/// `deno_snapshot` can not clone, and there is no interior mutability.
+/// This type satisfies Send bound.
+unsafe impl Send for deno_snapshot<'_> {}
+
+// TODO(ry) Snapshot1 and Snapshot2 are not very good names and need to be
+// reconsidered. The entire snapshotting interface is still under construction.
+
+/// The type returned from deno_snapshot_new. Needs to be dropped.
+pub type Snapshot1<'a> = deno_snapshot<'a>;
+
+// TODO Does this make sense?
+impl Drop for Snapshot1<'_> {
+  fn drop(&mut self) {
+    unsafe { deno_snapshot_delete(self) }
+  }
+}
+
+/// The type created from slice. Used for loading.
+pub type Snapshot2<'a> = deno_snapshot<'a>;
+
+/// Converts Rust &Buf to libdeno `deno_buf`.
+impl<'a> From<&'a [u8]> for Snapshot2<'a> {
+  #[inline]
+  fn from(x: &'a [u8]) -> Self {
+    Self {
+      data_ptr: x.as_ref().as_ptr(),
+      data_len: x.len(),
+      _marker: PhantomData,
+    }
+  }
+}
+
+impl Snapshot2<'_> {
+  #[inline]
+  pub fn empty() -> Self {
+    Self {
+      data_ptr: null(),
+      data_len: 0,
+      _marker: PhantomData,
+    }
+  }
+}
+
 #[allow(non_camel_case_types)]
 type deno_recv_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
@@ -126,9 +177,9 @@ type deno_resolve_cb = unsafe extern "C" fn(
 ) -> deno_mod;
 
 #[repr(C)]
-pub struct deno_config {
+pub struct deno_config<'a> {
   pub will_snapshot: c_int,
-  pub load_snapshot: deno_buf,
+  pub load_snapshot: Snapshot2<'a>,
   pub shared: deno_buf,
   pub recv_cb: deno_recv_cb,
 }
@@ -214,4 +265,9 @@ extern "C" {
     user_data: *const c_void,
     id: deno_mod,
   );
+
+  pub fn deno_snapshot_new(i: *const isolate) -> Snapshot1<'static>;
+
+  #[allow(dead_code)]
+  pub fn deno_snapshot_delete(s: &mut deno_snapshot);
 }
