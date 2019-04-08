@@ -8,6 +8,8 @@ use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
 use crate::libdeno::deno_mod;
+use crate::libdeno::Snapshot1;
+use crate::libdeno::Snapshot2;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use futures::Async;
@@ -16,6 +18,7 @@ use futures::Poll;
 use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::ptr::null;
 use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
@@ -48,26 +51,24 @@ impl Future for PendingOp {
 }
 
 /// Stores a script used to initalize a Isolate
-pub struct Script {
-  pub source: String,
-  pub filename: String,
+pub struct Script<'a> {
+  pub source: &'a str,
+  pub filename: &'a str,
 }
 
 /// Represents data used to initialize isolate at startup
 /// either a binary snapshot or a javascript source file
 /// in the form of the StartupScript struct.
-pub enum StartupData {
-  Script(Script),
-  Snapshot(deno_buf),
+pub enum StartupData<'a> {
+  Script(Script<'a>),
+  Snapshot(&'a [u8]),
+  None,
 }
 
 /// Defines the behavior of an Isolate.
+// TODO(ry) Now that Behavior only has the dispatch method, it should be renamed
+// to Dispatcher.
 pub trait Behavior {
-  /// Allow for a behavior to define the snapshot or script used at
-  /// startup to initalize the isolate. Called exactly once when an
-  /// Isolate is created.
-  fn startup_data(&mut self) -> Option<StartupData>;
-
   /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
   /// corresponds to the second argument of Deno.core.dispatch().
   fn dispatch(
@@ -109,7 +110,9 @@ impl<B: Behavior> Drop for Isolate<B> {
 static DENO_INIT: Once = ONCE_INIT;
 
 impl<B: Behavior> Isolate<B> {
-  pub fn new(mut behavior: B) -> Self {
+  /// startup_data defines the snapshot or script used at startup to initalize
+  /// the isolate.
+  pub fn new(startup_data: StartupData, behavior: B) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -118,16 +121,16 @@ impl<B: Behavior> Isolate<B> {
 
     let needs_init = true;
     // Seperate into Option values for eatch startup type
-    let (startup_snapshot, startup_script) = match behavior.startup_data() {
-      Some(StartupData::Snapshot(d)) => (Some(d), None),
-      Some(StartupData::Script(d)) => (None, Some(d)),
-      None => (None, None),
+    let (startup_snapshot, startup_script) = match startup_data {
+      StartupData::Snapshot(d) => (Some(d), None),
+      StartupData::Script(d) => (None, Some(d)),
+      StartupData::None => (None, None),
     };
     let config = libdeno::deno_config {
       will_snapshot: 0,
       load_snapshot: match startup_snapshot {
-        Some(s) => s,
-        None => libdeno::deno_buf::empty(),
+        Some(s) => Snapshot2::from(s),
+        None => Snapshot2::empty(),
       },
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,
@@ -146,9 +149,7 @@ impl<B: Behavior> Isolate<B> {
 
     // If we want to use execute this has to happen here sadly.
     if let Some(s) = startup_script {
-      core_isolate
-        .execute(s.filename.as_str(), s.source.as_str())
-        .unwrap()
+      core_isolate.execute(s.filename, s.source).unwrap()
     };
 
     core_isolate
@@ -328,6 +329,18 @@ impl<B: Behavior> Isolate<B> {
       out.push(specifier.to_string());
     }
     out
+  }
+
+  pub fn snapshot_new(&self) -> Result<Snapshot1, JSError> {
+    let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
+    if let Some(js_error) = self.last_exception() {
+      assert_eq!(snapshot.data_ptr, null());
+      assert_eq!(snapshot.data_len, 0);
+      return Err(js_error);
+    }
+    assert_ne!(snapshot.data_ptr, null());
+    assert_ne!(snapshot.data_len, 0);
+    Ok(snapshot)
   }
 }
 
@@ -546,10 +559,13 @@ pub mod tests {
 
   impl TestBehavior {
     pub fn setup(mode: TestBehaviorMode) -> Isolate<Self> {
-      let mut isolate = Isolate::new(TestBehavior {
-        dispatch_count: 0,
-        mode,
-      });
+      let mut isolate = Isolate::new(
+        StartupData::None,
+        TestBehavior {
+          dispatch_count: 0,
+          mode,
+        },
+      );
       js_check(isolate.execute(
         "setup.js",
         r#"
@@ -566,10 +582,6 @@ pub mod tests {
   }
 
   impl Behavior for TestBehavior {
-    fn startup_data(&mut self) -> Option<StartupData> {
-      None
-    }
-
     fn dispatch(
       &mut self,
       control: &[u8],

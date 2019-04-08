@@ -3,7 +3,7 @@
 #include <string>
 #include "file_util.h"
 
-deno_buf snapshot = {nullptr, 0, nullptr, 0, 0};
+deno_snapshot snapshot = {nullptr, 0};
 
 int main(int argc, char** argv) {
   // Locate the snapshot.
