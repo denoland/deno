@@ -10,10 +10,7 @@ function req(
   const builder = flatbuffers.createBuilder();
   const oldpath_ = builder.createString(oldpath);
   const newpath_ = builder.createString(newpath);
-  msg.Rename.startRename(builder);
-  msg.Rename.addOldpath(builder, oldpath_);
-  msg.Rename.addNewpath(builder, newpath_);
-  const inner = msg.Rename.endRename(builder);
+  const inner = msg.Rename.createRename(builder, oldpath_, newpath_);
   return [builder, msg.Any.Rename, inner];
 }
 

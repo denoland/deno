@@ -13,8 +13,7 @@ export interface ResourceMap {
  */
 export function resources(): ResourceMap {
   const builder = flatbuffers.createBuilder();
-  msg.Resources.startResources(builder);
-  const inner = msg.Resource.endResource(builder);
+  const inner = msg.Resource.createResource(builder, 0, 0);
   const baseRes = dispatch.sendSync(builder, msg.Any.Resources, inner);
   assert(baseRes !== null);
   assert(msg.Any.ResourcesRes === baseRes!.innerType());

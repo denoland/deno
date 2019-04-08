@@ -308,32 +308,29 @@ function msgHttpRequest(
   method: null | string,
   headers: null | domTypes.Headers
 ): flatbuffers.Offset {
-  const methodOffset = !method ? -1 : builder.createString(method);
-  let fieldsOffset: flatbuffers.Offset = -1;
+  const methodOffset = !method ? 0 : builder.createString(method);
+  let fieldsOffset: flatbuffers.Offset = 0;
   const urlOffset = builder.createString(url);
   if (headers) {
     const kvOffsets: flatbuffers.Offset[] = [];
     for (const [key, val] of headers.entries()) {
       const keyOffset = builder.createString(key);
       const valOffset = builder.createString(val);
-      msg.KeyValue.startKeyValue(builder);
-      msg.KeyValue.addKey(builder, keyOffset);
-      msg.KeyValue.addValue(builder, valOffset);
-      kvOffsets.push(msg.KeyValue.endKeyValue(builder));
+      kvOffsets.push(
+        msg.KeyValue.createKeyValue(builder, keyOffset, valOffset)
+      );
     }
     fieldsOffset = msg.HttpHeader.createFieldsVector(builder, kvOffsets);
   } else {
   }
-  msg.HttpHeader.startHttpHeader(builder);
-  msg.HttpHeader.addIsRequest(builder, true);
-  msg.HttpHeader.addUrl(builder, urlOffset);
-  if (methodOffset >= 0) {
-    msg.HttpHeader.addMethod(builder, methodOffset);
-  }
-  if (fieldsOffset >= 0) {
-    msg.HttpHeader.addFields(builder, fieldsOffset);
-  }
-  return msg.HttpHeader.endHttpHeader(builder);
+  return msg.HttpHeader.createHttpHeader(
+    builder,
+    true,
+    methodOffset,
+    urlOffset,
+    0,
+    fieldsOffset
+  );
 }
 
 function deserializeHeaderFields(m: msg.HttpHeader): Array<[string, string]> {
@@ -405,12 +402,10 @@ export async function fetch(
   // Send Fetch message
   const builder = flatbuffers.createBuilder();
   const headerOff = msgHttpRequest(builder, url, method, headers);
-  msg.Fetch.startFetch(builder);
-  msg.Fetch.addHeader(builder, headerOff);
   const resBase = await sendAsync(
     builder,
     msg.Any.Fetch,
-    msg.Fetch.endFetch(builder),
+    msg.Fetch.createFetch(builder, headerOff),
     body
   );
 

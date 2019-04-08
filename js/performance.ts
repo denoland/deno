@@ -18,8 +18,7 @@ export class Performance {
    */
   now(): number {
     const builder = flatbuffers.createBuilder();
-    msg.Now.startNow(builder);
-    const inner = msg.Now.endNow(builder);
+    const inner = msg.Now.createNow(builder);
     const baseRes = sendSync(builder, msg.Any.Now, inner)!;
     assert(msg.Any.NowRes === baseRes.innerType());
     const res = new msg.NowRes();

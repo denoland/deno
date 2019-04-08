@@ -23,9 +23,7 @@ export function decodeMessage(dataIntArray: Uint8Array): any {
 function createWorker(specifier: string): number {
   const builder = flatbuffers.createBuilder();
   const specifier_ = builder.createString(specifier);
-  msg.CreateWorker.startCreateWorker(builder);
-  msg.CreateWorker.addSpecifier(builder, specifier_);
-  const inner = msg.CreateWorker.endCreateWorker(builder);
+  const inner = msg.CreateWorker.createCreateWorker(builder, specifier_);
   const baseRes = sendSync(builder, msg.Any.CreateWorker, inner);
   assert(baseRes != null);
   assert(
@@ -39,18 +37,14 @@ function createWorker(specifier: string): number {
 
 async function hostGetWorkerClosed(rid: number): Promise<void> {
   const builder = flatbuffers.createBuilder();
-  msg.HostGetWorkerClosed.startHostGetWorkerClosed(builder);
-  msg.HostGetWorkerClosed.addRid(builder, rid);
-  const inner = msg.HostGetWorkerClosed.endHostGetWorkerClosed(builder);
+  const inner = msg.HostGetWorkerClosed.createHostGetWorkerClosed(builder, rid);
   await sendAsync(builder, msg.Any.HostGetWorkerClosed, inner);
 }
 
 function hostPostMessage(rid: number, data: any): void {
   const dataIntArray = encodeMessage(data);
   const builder = flatbuffers.createBuilder();
-  msg.HostPostMessage.startHostPostMessage(builder);
-  msg.HostPostMessage.addRid(builder, rid);
-  const inner = msg.HostPostMessage.endHostPostMessage(builder);
+  const inner = msg.HostPostMessage.createHostPostMessage(builder, rid);
   const baseRes = sendSync(
     builder,
     msg.Any.HostPostMessage,
@@ -62,9 +56,7 @@ function hostPostMessage(rid: number, data: any): void {
 
 async function hostGetMessage(rid: number): Promise<any> {
   const builder = flatbuffers.createBuilder();
-  msg.HostGetMessage.startHostGetMessage(builder);
-  msg.HostGetMessage.addRid(builder, rid);
-  const inner = msg.HostGetMessage.endHostGetMessage(builder);
+  const inner = msg.HostGetMessage.createHostGetMessage(builder, rid);
   const baseRes = await sendAsync(builder, msg.Any.HostGetMessage, inner);
   assert(baseRes != null);
   assert(
@@ -88,8 +80,7 @@ export let onmessage: (e: { data: any }) => void = (): void => {};
 export function postMessage(data: any): void {
   const dataIntArray = encodeMessage(data);
   const builder = flatbuffers.createBuilder();
-  msg.WorkerPostMessage.startWorkerPostMessage(builder);
-  const inner = msg.WorkerPostMessage.endWorkerPostMessage(builder);
+  const inner = msg.WorkerPostMessage.createWorkerPostMessage(builder);
   const baseRes = sendSync(
     builder,
     msg.Any.WorkerPostMessage,
@@ -102,8 +93,10 @@ export function postMessage(data: any): void {
 export async function getMessage(): Promise<any> {
   log("getMessage");
   const builder = flatbuffers.createBuilder();
-  msg.WorkerGetMessage.startWorkerGetMessage(builder);
-  const inner = msg.WorkerGetMessage.endWorkerGetMessage(builder);
+  const inner = msg.WorkerGetMessage.createWorkerGetMessage(
+    builder,
+    0 /* unused */
+  );
   const baseRes = await sendAsync(builder, msg.Any.WorkerGetMessage, inner);
   assert(baseRes != null);
   assert(

@@ -39,8 +39,7 @@ function getTime(): number {
 
 function clearGlobalTimeout(): void {
   const builder = flatbuffers.createBuilder();
-  msg.GlobalTimerStop.startGlobalTimerStop(builder);
-  const inner = msg.GlobalTimerStop.endGlobalTimerStop(builder);
+  const inner = msg.GlobalTimerStop.createGlobalTimerStop(builder);
   globalTimeoutDue = null;
   let res = sendSync(builder, msg.Any.GlobalTimerStop, inner);
   assert(res == null);

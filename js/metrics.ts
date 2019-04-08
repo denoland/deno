@@ -14,8 +14,7 @@ export interface Metrics {
 
 function req(): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
-  msg.Metrics.startMetrics(builder);
-  const inner = msg.Metrics.endMetrics(builder);
+  const inner = msg.Metrics.createMetrics(builder);
   return [builder, msg.Any.Metrics, inner];
 }
 

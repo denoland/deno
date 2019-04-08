@@ -9,10 +9,7 @@ function req(
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const path_ = builder.createString(path);
-  msg.Chmod.startChmod(builder);
-  msg.Chmod.addPath(builder, path_);
-  msg.Chmod.addMode(builder, mode);
-  const inner = msg.Chmod.endChmod(builder);
+  const inner = msg.Chmod.createChmod(builder, path_, mode);
   return [builder, msg.Any.Chmod, inner];
 }
 

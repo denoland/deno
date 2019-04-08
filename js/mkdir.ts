@@ -10,11 +10,7 @@ function req(
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const path_ = builder.createString(path);
-  msg.Mkdir.startMkdir(builder);
-  msg.Mkdir.addPath(builder, path_);
-  msg.Mkdir.addRecursive(builder, recursive);
-  msg.Mkdir.addMode(builder, mode);
-  const inner = msg.Mkdir.endMkdir(builder);
+  const inner = msg.Mkdir.createMkdir(builder, path_, recursive, mode);
   return [builder, msg.Any.Mkdir, inner];
 }
 

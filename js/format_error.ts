@@ -7,9 +7,7 @@ import { assert } from "./util";
 export function formatError(errString: string): string {
   const builder = flatbuffers.createBuilder();
   const errString_ = builder.createString(errString);
-  msg.FormatError.startFormatError(builder);
-  msg.FormatError.addError(builder, errString_);
-  const offset = msg.FormatError.endFormatError(builder);
+  const offset = msg.FormatError.createFormatError(builder, errString_);
   const baseRes = sendSync(builder, msg.Any.FormatError, offset);
   assert(baseRes != null);
   assert(msg.Any.FormatErrorRes === baseRes!.innerType());

@@ -31,12 +31,16 @@ function sendInternal(
   sync = true
 ): [number, null | Uint8Array] {
   const cmdId = nextCmdId++;
-  msg.Base.startBase(builder);
-  msg.Base.addInner(builder, inner);
-  msg.Base.addInnerType(builder, innerType);
-  msg.Base.addSync(builder, sync);
-  msg.Base.addCmdId(builder, cmdId);
-  builder.finish(msg.Base.endBase(builder));
+  const message = msg.Base.createBase(
+    builder,
+    cmdId,
+    sync,
+    0,
+    0,
+    innerType,
+    inner
+  );
+  builder.finish(message);
 
   const control = builder.asUint8Array();
   const response = core.dispatch(control, zeroCopy);
