@@ -17,24 +17,12 @@ impl CliBehavior {
   }
 }
 
-impl IsolateStateContainer for &CliBehavior {
-  fn state(&self) -> Arc<IsolateState> {
-    self.state.clone()
-  }
-}
-
-impl IsolateStateContainer for CliBehavior {
-  fn state(&self) -> Arc<IsolateState> {
-    self.state.clone()
-  }
-}
-
 impl Behavior for CliBehavior {
   fn dispatch(
     &mut self,
     control: &[u8],
     zero_copy: deno_buf,
   ) -> (bool, Box<Op>) {
-    ops::dispatch_all(self, control, zero_copy, ops::op_selector_std)
+    ops::dispatch_all(&self.state, control, zero_copy, ops::op_selector_std)
   }
 }

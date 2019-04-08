@@ -46,7 +46,6 @@ type SourceMap = string;
 interface CompilerLookup {
   specifier: ModuleSpecifier;
   referrer: ContainingFile;
-  isWorker: boolean;
   cmdId: number;
 }
 

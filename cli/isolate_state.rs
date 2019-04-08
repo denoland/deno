@@ -5,25 +5,23 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::modules::Modules;
 use crate::permissions::DenoPermissions;
+use crate::resources;
 use crate::resources::ResourceId;
-use crate::workers::UserWorkerBehavior;
-use crate::workers::Worker;
+use crate::worker::Worker;
 use deno::Buf;
 use futures::future::Shared;
-use futures::sync::mpsc as async_mpsc;
 use std;
 use std::collections::HashMap;
 use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
+use tokio::sync::mpsc as async_mpsc;
 
 pub type WorkerSender = async_mpsc::Sender<Buf>;
 pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
 pub type WorkerChannels = (WorkerSender, WorkerReceiver);
-pub type UserWorkerTable =
-  HashMap<ResourceId, Shared<Worker<UserWorkerBehavior>>>;
+pub type UserWorkerTable = HashMap<ResourceId, Shared<Worker>>;
 
 // AtomicU64 is currently unstable
 #[derive(Default)]
@@ -48,21 +46,22 @@ pub struct IsolateState {
   pub flags: flags::DenoFlags,
   pub metrics: Metrics,
   pub modules: Mutex<Modules>,
-  pub worker_channels: Option<Mutex<WorkerChannels>>,
+  pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
   pub workers: Mutex<UserWorkerTable>,
-  pub is_worker: bool,
   pub start_time: Instant,
+  pub resource: resources::Resource,
 }
 
 impl IsolateState {
-  pub fn new(
-    flags: flags::DenoFlags,
-    argv_rest: Vec<String>,
-    worker_channels: Option<WorkerChannels>,
-    is_worker: bool,
-  ) -> Self {
+  pub fn new(flags: flags::DenoFlags, argv_rest: Vec<String>) -> Self {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
+
+    let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
+    let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
+    let internal_channels = (worker_out_tx, worker_in_rx);
+    let external_channels = (worker_in_tx, worker_out_rx);
+    let resource = resources::add_worker(external_channels);
 
     Self {
       dir: deno_dir::DenoDir::new(custom_root).unwrap(),
@@ -71,11 +70,11 @@ impl IsolateState {
       flags,
       metrics: Metrics::default(),
       modules: Mutex::new(Modules::new()),
-      worker_channels: worker_channels.map(Mutex::new),
+      worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(UserWorkerTable::new()),
-      is_worker,
       start_time: Instant::now(),
+      resource,
     }
   }
 
@@ -126,7 +125,7 @@ impl IsolateState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     // For debugging: argv.push_back(String::from("-D"));
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
-    IsolateState::new(flags, rest_argv, None, false)
+    IsolateState::new(flags, rest_argv)
   }
 
   pub fn metrics_op_dispatched(
@@ -152,9 +151,4 @@ impl IsolateState {
       .bytes_received
       .fetch_add(bytes_received, Ordering::SeqCst);
   }
-}
-
-/// Provides state getter function
-pub trait IsolateStateContainer {
-  fn state(&self) -> Arc<IsolateState>;
 }
