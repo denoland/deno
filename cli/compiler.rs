@@ -1,22 +1,17 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::flags::DenoFlags;
+use crate::cli_behavior::CliBehavior;
 use crate::isolate_state::*;
 use crate::js_errors;
 use crate::js_errors::JSErrorColor;
 use crate::msg;
-use crate::ops;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::startup_data;
 use crate::tokio_util;
-use crate::workers;
-use crate::workers::WorkerBehavior;
-use crate::workers::WorkerInit;
-use deno::deno_buf;
-use deno::Behavior;
+use crate::worker::Worker;
+use deno::js_check;
 use deno::Buf;
 use deno::JSError;
-use deno::Op;
 use futures::future::*;
 use futures::sync::oneshot;
 use futures::Future;
@@ -42,51 +37,6 @@ lazy_static! {
   // tokio runtime specifically for spawning logic that is dependent on
   // completetion of the compiler worker future
   static ref C_RUNTIME: Mutex<Runtime> = Mutex::new(Runtime::new().unwrap());
-}
-
-pub struct CompilerBehavior {
-  pub state: Arc<IsolateState>,
-}
-
-impl CompilerBehavior {
-  pub fn new(flags: DenoFlags, argv_rest: Vec<String>) -> Self {
-    Self {
-      state: Arc::new(IsolateState::new(flags, argv_rest, None, true)),
-    }
-  }
-}
-
-impl IsolateStateContainer for CompilerBehavior {
-  fn state(&self) -> Arc<IsolateState> {
-    self.state.clone()
-  }
-}
-
-impl IsolateStateContainer for &CompilerBehavior {
-  fn state(&self) -> Arc<IsolateState> {
-    self.state.clone()
-  }
-}
-
-impl Behavior for CompilerBehavior {
-  fn dispatch(
-    &mut self,
-    control: &[u8],
-    zero_copy: deno_buf,
-  ) -> (bool, Box<Op>) {
-    ops::dispatch_all(self, control, zero_copy, ops::op_selector_compiler)
-  }
-}
-
-impl WorkerBehavior for CompilerBehavior {
-  fn set_internal_channels(&mut self, worker_channels: WorkerChannels) {
-    self.state = Arc::new(IsolateState::new(
-      self.state.flags.clone(),
-      self.state.argv.clone(),
-      Some(worker_channels),
-      true,
-    ));
-  }
 }
 
 // This corresponds to JS ModuleMetaData.
@@ -142,74 +92,67 @@ fn lazy_start(parent_state: Arc<IsolateState>) -> ResourceId {
   let mut cell = C_RID.lock().unwrap();
   cell
     .get_or_insert_with(|| {
-      let worker_result = workers::spawn(
+      let child_state = Arc::new(IsolateState::new(
+        parent_state.flags.clone(),
+        parent_state.argv.clone(),
+      ));
+      let rid = child_state.resource.rid;
+      let resource = child_state.resource.clone();
+      let behavior = CliBehavior::new(child_state);
+
+      let mut worker = Worker::new(
+        "TS".to_string(),
         startup_data::compiler_isolate_init(),
-        CompilerBehavior::new(
-          parent_state.flags.clone(),
-          parent_state.argv.clone(),
-        ),
-        "TS",
-        WorkerInit::Script("compilerMain()".to_string()),
+        behavior,
       );
-      match worker_result {
-        Ok(worker) => {
-          let rid = worker.resource.rid;
-          let mut runtime = C_RUNTIME.lock().unwrap();
-          runtime.spawn(lazy(move || {
-            let resource = worker.resource.clone();
-            worker.then(move |result| -> Result<(), ()> {
-              // Close resource so the future created by
-              // handle_worker_message_stream exits
-              resource.close();
-              debug!("Compiler worker exited!");
-              if let Err(e) = result {
-                eprintln!("{}", JSErrorColor(&e).to_string());
-              }
-              std::process::exit(1);
-            })
-          }));
-          runtime.spawn(lazy(move || {
-            debug!("Start worker stream handler!");
-            let worker_stream = resources::get_message_stream_from_worker(rid);
-            worker_stream
-              .for_each(|msg: Buf| {
-                // All worker responses are handled here first before being sent via
-                // their respective sender. This system can be compared to the
-                // promise system used on the js side. This provides a way to
-                // resolve many futures via the same channel.
-                let res_json = std::str::from_utf8(&msg).unwrap();
-                debug!("Got message from worker: {}", res_json);
-                // Get the intended receiver's cmd_id from the message.
-                let cmd_id = parse_cmd_id(res_json);
-                let mut table = C_RES_SENDER_TABLE.lock().unwrap();
-                debug!("Cmd id for get message handler: {}", cmd_id);
-                // Get the corresponding response sender from the table and
-                // send a response.
-                let response_sender = table.remove(&(cmd_id as CmdId)).unwrap();
-                response_sender.send(msg).unwrap();
-                Ok(())
-              }).map_err(|_| ())
-          }));
-          rid
-        }
-        Err(err) => {
-          println!("{}", err.to_string());
+
+      js_check(worker.execute("denoMain()"));
+      js_check(worker.execute("workerMain()"));
+      js_check(worker.execute("compilerMain()"));
+
+      let mut runtime = C_RUNTIME.lock().unwrap();
+      runtime.spawn(lazy(move || {
+        worker.then(move |result| -> Result<(), ()> {
+          // Close resource so the future created by
+          // handle_worker_message_stream exits
+          resource.close();
+          debug!("Compiler worker exited!");
+          if let Err(e) = result {
+            eprintln!("{}", JSErrorColor(&e).to_string());
+          }
           std::process::exit(1);
-        }
-      }
+        })
+      }));
+      runtime.spawn(lazy(move || {
+        debug!("Start worker stream handler!");
+        let worker_stream = resources::get_message_stream_from_worker(rid);
+        worker_stream
+          .for_each(|msg: Buf| {
+            // All worker responses are handled here first before being sent via
+            // their respective sender. This system can be compared to the
+            // promise system used on the js side. This provides a way to
+            // resolve many futures via the same channel.
+            let res_json = std::str::from_utf8(&msg).unwrap();
+            debug!("Got message from worker: {}", res_json);
+            // Get the intended receiver's cmd_id from the message.
+            let cmd_id = parse_cmd_id(res_json);
+            let mut table = C_RES_SENDER_TABLE.lock().unwrap();
+            debug!("Cmd id for get message handler: {}", cmd_id);
+            // Get the corresponding response sender from the table and
+            // send a response.
+            let response_sender = table.remove(&(cmd_id as CmdId)).unwrap();
+            response_sender.send(msg).unwrap();
+            Ok(())
+          }).map_err(|_| ())
+      }));
+      rid
     }).clone()
 }
 
-fn req(
-  specifier: &str,
-  referrer: &str,
-  is_worker_main: bool,
-  cmd_id: u32,
-) -> Buf {
+fn req(specifier: &str, referrer: &str, cmd_id: u32) -> Buf {
   json!({
     "specifier": specifier,
     "referrer": referrer,
-    "isWorker": is_worker_main,
     "cmdId": cmd_id,
   }).to_string()
   .into_boxed_str()
@@ -228,7 +171,7 @@ pub fn compile_async(
   );
   let cmd_id = new_cmd_id();
 
-  let req_msg = req(&specifier, &referrer, parent_state.is_worker, cmd_id);
+  let req_msg = req(&specifier, &referrer, cmd_id);
   let module_meta_data_ = module_meta_data.clone();
 
   let compiler_rid = lazy_start(parent_state.clone());
@@ -362,7 +305,7 @@ mod tests {
   fn test_parse_cmd_id() {
     let cmd_id = new_cmd_id();
 
-    let msg = req("Hello", "World", false, cmd_id);
+    let msg = req("Hello", "World", cmd_id);
 
     let res_json = std::str::from_utf8(&msg).unwrap();
 

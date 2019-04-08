@@ -20,7 +20,6 @@ mod fs;
 mod global_timer;
 mod http_body;
 mod http_util;
-pub mod isolate;
 pub mod isolate_state;
 pub mod js_errors;
 pub mod modules;
@@ -35,12 +34,12 @@ mod startup_data;
 mod tokio_util;
 mod tokio_write;
 pub mod version;
-pub mod workers;
+pub mod worker;
 
 use crate::cli_behavior::CliBehavior;
 use crate::errors::RustOrJsError;
-use crate::isolate::Isolate;
 use crate::isolate_state::IsolateState;
+use crate::worker::Worker;
 use futures::lazy;
 use futures::Future;
 use log::{LevelFilter, Metadata, Record};
@@ -105,27 +104,28 @@ fn main() {
   let should_prefetch = flags.prefetch || flags.info;
   let should_display_info = flags.info;
 
-  let state = Arc::new(IsolateState::new(flags, rest_argv, None, false));
+  let state = Arc::new(IsolateState::new(flags, rest_argv));
   let state_ = state.clone();
   let cli = CliBehavior::new(state_);
-  let mut isolate = Isolate::new(startup_data::deno_isolate_init(), cli);
+  let mut main_worker =
+    Worker::new("main".to_string(), startup_data::deno_isolate_init(), cli);
 
   let main_future = lazy(move || {
     // Setup runtime.
-    js_check(isolate.execute("denoMain()"));
+    js_check(main_worker.execute("denoMain()"));
 
     // Execute main module.
     if let Some(main_module) = state.main_module() {
       debug!("main_module {}", main_module);
-      js_check(isolate.execute_mod(&main_module, should_prefetch));
+      js_check(main_worker.execute_mod(&main_module, should_prefetch));
       if should_display_info {
         // Display file info and exit. Do not run file
-        isolate.print_file_info(&main_module);
+        main_worker.print_file_info(&main_module);
         std::process::exit(0);
       }
     }
 
-    isolate.then(|result| {
+    main_worker.then(|result| {
       js_check(result);
       Ok(())
     })
