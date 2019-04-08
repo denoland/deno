@@ -26,6 +26,7 @@ interface DenoPermissions {
   net?: boolean;
   env?: boolean;
   run?: boolean;
+  highPrecision?: boolean;
 }
 
 function permToString(perms: DenoPermissions): string {
@@ -34,11 +35,12 @@ function permToString(perms: DenoPermissions): string {
   const n = perms.net ? 1 : 0;
   const e = perms.env ? 1 : 0;
   const u = perms.run ? 1 : 0;
-  return `permR${r}W${w}N${n}E${e}U${u}`;
+  const h = perms.highPrecision ? 1 : 0;
+  return `permR${r}W${w}N${n}E${e}U${u}H${h}`;
 }
 
 function permFromString(s: string): DenoPermissions {
-  const re = /^permR([01])W([01])N([01])E([01])U([01])$/;
+  const re = /^permR([01])W([01])N([01])E([01])U([01])H([01])$/;
   const found = s.match(re);
   if (!found) {
     throw Error("Not a permission string");
@@ -48,7 +50,8 @@ function permFromString(s: string): DenoPermissions {
     write: Boolean(Number(found[2])),
     net: Boolean(Number(found[3])),
     env: Boolean(Number(found[4])),
-    run: Boolean(Number(found[5]))
+    run: Boolean(Number(found[5])),
+    highPrecision: Boolean(Number(found[6]))
   };
 }
 
@@ -62,7 +65,14 @@ export function testPerm(
 
 export function test(fn: testing.TestFunction): void {
   testPerm(
-    { read: false, write: false, net: false, env: false, run: false },
+    {
+      read: false,
+      write: false,
+      net: false,
+      env: false,
+      run: false,
+      highPrecision: false
+    },
     fn
   );
 }
@@ -73,8 +83,17 @@ test(function permSerialization() {
       for (const env of [true, false]) {
         for (const run of [true, false]) {
           for (const read of [true, false]) {
-            const perms: DenoPermissions = { write, net, env, run, read };
-            assertEquals(perms, permFromString(permToString(perms)));
+            for (const highPrecision of [true, false]) {
+              const perms: DenoPermissions = {
+                write,
+                net,
+                env,
+                run,
+                read,
+                highPrecision
+              };
+              assertEquals(perms, permFromString(permToString(perms)));
+            }
           }
         }
       }

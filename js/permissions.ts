@@ -11,7 +11,7 @@ export interface Permissions {
   net: boolean;
   env: boolean;
   run: boolean;
-
+  highPrecision: boolean;
   // NOTE: Keep in sync with src/permissions.rs
 }
 
@@ -29,7 +29,8 @@ function createPermissions(inner: msg.PermissionsRes): Permissions {
     write: inner.write(),
     net: inner.net(),
     env: inner.env(),
-    run: inner.run()
+    run: inner.run(),
+    highPrecision: inner.highPrecision()
   };
 }
 

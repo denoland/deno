@@ -19,6 +19,7 @@ pub struct DenoFlags {
   pub allow_net: bool,
   pub allow_env: bool,
   pub allow_run: bool,
+  pub allow_high_precision: bool,
   pub no_prompts: bool,
   pub types: bool,
   pub prefetch: bool,
@@ -54,6 +55,9 @@ impl<'a> From<ArgMatches<'a>> for DenoFlags {
     if matches.is_present("allow-run") {
       flags.allow_run = true;
     }
+    if matches.is_present("allow-high-precision") {
+      flags.allow_high_precision = true;
+    }
     if matches.is_present("allow-all") {
       flags.allow_read = true;
       flags.allow_env = true;
@@ -61,6 +65,7 @@ impl<'a> From<ArgMatches<'a>> for DenoFlags {
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
+      flags.allow_high_precision = true;
     }
     if matches.is_present("no-prompt") {
       flags.no_prompts = true;
@@ -124,6 +129,10 @@ pub fn set_flags(
       Arg::with_name("allow-run")
         .long("allow-run")
         .help("Allow running subprocesses"),
+    ).arg(
+      Arg::with_name("allow-high-precision")
+        .long("allow-high-precision")
+        .help("Allow high precision time measurement"),
     ).arg(
       Arg::with_name("allow-all")
         .short("A")
@@ -338,6 +347,7 @@ fn test_set_flags_7() {
       allow_run: true,
       allow_read: true,
       allow_write: true,
+      allow_high_precision: true,
       ..DenoFlags::default()
     }
   )
@@ -352,6 +362,20 @@ fn test_set_flags_8() {
     flags,
     DenoFlags {
       allow_read: true,
+      ..DenoFlags::default()
+    }
+  )
+}
+
+#[test]
+fn test_set_flags_9() {
+  let (flags, rest) =
+    set_flags(svec!["deno", "--allow-high-precision", "script.ts"]).unwrap();
+  assert_eq!(rest, svec!["deno", "script.ts"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      allow_high_precision: true,
       ..DenoFlags::default()
     }
   )

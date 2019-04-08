@@ -131,6 +131,7 @@ pub struct DenoPermissions {
   pub allow_net: PermissionAccessor,
   pub allow_env: PermissionAccessor,
   pub allow_run: PermissionAccessor,
+  pub allow_high_precision: PermissionAccessor,
   pub no_prompts: AtomicBool,
 }
 
@@ -142,6 +143,9 @@ impl DenoPermissions {
       allow_env: PermissionAccessor::from(flags.allow_env),
       allow_net: PermissionAccessor::from(flags.allow_net),
       allow_run: PermissionAccessor::from(flags.allow_run),
+      allow_high_precision: PermissionAccessor::from(
+        flags.allow_high_precision,
+      ),
       no_prompts: AtomicBool::new(flags.no_prompts),
     }
   }
@@ -263,6 +267,10 @@ impl DenoPermissions {
     self.allow_env.is_allow()
   }
 
+  pub fn allows_high_precision(&self) -> bool {
+    return self.allow_high_precision.is_allow();
+  }
+
   pub fn revoke_run(&self) -> DenoResult<()> {
     self.allow_run.revoke();
     Ok(())
@@ -286,6 +294,10 @@ impl DenoPermissions {
   pub fn revoke_env(&self) -> DenoResult<()> {
     self.allow_env.revoke();
     Ok(())
+  }
+  pub fn revoke_high_precision(&self) -> DenoResult<()> {
+    self.allow_high_precision.revoke();
+    return Ok(());
   }
 }
 

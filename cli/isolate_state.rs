@@ -17,6 +17,7 @@ use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Instant;
 
 pub type WorkerSender = async_mpsc::Sender<Buf>;
 pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
@@ -51,6 +52,7 @@ pub struct IsolateState {
   pub global_timer: Mutex<GlobalTimer>,
   pub workers: Mutex<UserWorkerTable>,
   pub is_worker: bool,
+  pub start_time: Instant,
 }
 
 impl IsolateState {
@@ -73,6 +75,7 @@ impl IsolateState {
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(UserWorkerTable::new()),
       is_worker,
+      start_time: Instant::now(),
     }
   }
 
