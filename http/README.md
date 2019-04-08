@@ -24,5 +24,5 @@ A small program for serving local files over HTTP.
 Add the following to your `.bash_profile`
 
 ```
-alias file_server="deno https://deno.land/std/http/file_server.ts --allow-net"
+alias file_server="deno --allow-net https://deno.land/std/http/file_server.ts"
 ```
