@@ -52,6 +52,7 @@ Object.freeze(window.Deno);
 // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
 let console = Object.create({}) as consoleTypes.Console;
 Object.assign(console, new consoleTypes.Console(core.print));
+console[consoleTypes.isConsoleInstance] = true;
 
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;
