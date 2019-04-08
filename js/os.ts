@@ -36,8 +36,7 @@ interface ResponseModuleMetaData {
  */
 export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
   const builder = flatbuffers.createBuilder();
-  msg.IsTTY.startIsTTY(builder);
-  const inner = msg.IsTTY.endIsTTY(builder);
+  const inner = msg.IsTTY.createIsTTY(builder);
   const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
   assert(msg.Any.IsTTYRes === baseRes.innerType());
   const res = new msg.IsTTYRes();
@@ -49,9 +48,7 @@ export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
 /** Exit the Deno process with optional exit code. */
 export function exit(exitCode = 0): never {
   const builder = flatbuffers.createBuilder();
-  msg.Exit.startExit(builder);
-  msg.Exit.addCode(builder, exitCode);
-  const inner = msg.Exit.endExit(builder);
+  const inner = msg.Exit.createExit(builder, exitCode);
   sendSync(builder, msg.Any.Exit, inner);
   return util.unreachable();
 }
@@ -68,10 +65,11 @@ export function fetchModuleMetaData(
   const builder = flatbuffers.createBuilder();
   const specifier_ = builder.createString(specifier);
   const referrer_ = builder.createString(referrer);
-  msg.FetchModuleMetaData.startFetchModuleMetaData(builder);
-  msg.FetchModuleMetaData.addSpecifier(builder, specifier_);
-  msg.FetchModuleMetaData.addReferrer(builder, referrer_);
-  const inner = msg.FetchModuleMetaData.endFetchModuleMetaData(builder);
+  const inner = msg.FetchModuleMetaData.createFetchModuleMetaData(
+    builder,
+    specifier_,
+    referrer_
+  );
   const baseRes = sendSync(builder, msg.Any.FetchModuleMetaData, inner);
   assert(baseRes != null);
   assert(
@@ -94,12 +92,9 @@ export function fetchModuleMetaData(
 
 function setEnv(key: string, value: string): void {
   const builder = flatbuffers.createBuilder();
-  const _key = builder.createString(key);
-  const _value = builder.createString(value);
-  msg.SetEnv.startSetEnv(builder);
-  msg.SetEnv.addKey(builder, _key);
-  msg.SetEnv.addValue(builder, _value);
-  const inner = msg.SetEnv.endSetEnv(builder);
+  const key_ = builder.createString(key);
+  const value_ = builder.createString(value);
+  const inner = msg.SetEnv.createSetEnv(builder, key_, value_);
   sendSync(builder, msg.Any.SetEnv, inner);
 }
 
@@ -137,8 +132,7 @@ export function env(): { [index: string]: string } {
   });
   */
   const builder = flatbuffers.createBuilder();
-  msg.Environ.startEnviron(builder);
-  const inner = msg.Environ.endEnviron(builder);
+  const inner = msg.Environ.createEnviron(builder);
   const baseRes = sendSync(builder, msg.Any.Environ, inner)!;
   assert(msg.Any.EnvironRes === baseRes.innerType());
   const res = new msg.EnvironRes();
@@ -150,8 +144,7 @@ export function env(): { [index: string]: string } {
 /** Send to the privileged side that we have setup and are ready. */
 function sendStart(): msg.StartRes {
   const builder = flatbuffers.createBuilder();
-  msg.Start.startStart(builder);
-  const startOffset = msg.Start.endStart(builder);
+  const startOffset = msg.Start.createStart(builder, 0 /* unused */);
   const baseRes = sendSync(builder, msg.Any.Start, startOffset);
   assert(baseRes != null);
   assert(msg.Any.StartRes === baseRes!.innerType());

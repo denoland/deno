@@ -8,9 +8,7 @@ import { assert } from "./util";
 function req(path: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const path_ = builder.createString(path);
-  msg.ReadDir.startReadDir(builder);
-  msg.ReadDir.addPath(builder, path_);
-  const inner = msg.ReadDir.endReadDir(builder);
+  const inner = msg.ReadDir.createReadDir(builder, path_);
   return [builder, msg.Any.ReadDir, inner];
 }
 

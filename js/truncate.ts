@@ -10,10 +10,7 @@ function req(
   const builder = flatbuffers.createBuilder();
   const name_ = builder.createString(name);
   len = len && len > 0 ? Math.floor(len) : 0;
-  msg.Truncate.startTruncate(builder);
-  msg.Truncate.addName(builder, name_);
-  msg.Truncate.addLen(builder, len);
-  const inner = msg.Truncate.endTruncate(builder);
+  const inner = msg.Truncate.createTruncate(builder, name_, len);
   return [builder, msg.Any.Truncate, inner];
 }
 

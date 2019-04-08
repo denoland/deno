@@ -34,9 +34,7 @@ export interface RunOptions {
 
 async function runStatus(rid: number): Promise<ProcessStatus> {
   const builder = flatbuffers.createBuilder();
-  msg.RunStatus.startRunStatus(builder);
-  msg.RunStatus.addRid(builder, rid);
-  const inner = msg.RunStatus.endRunStatus(builder);
+  const inner = msg.RunStatus.createRunStatus(builder, rid);
 
   const baseRes = await dispatch.sendAsync(builder, msg.Any.RunStatus, inner);
   assert(baseRes != null);
@@ -154,35 +152,25 @@ export function run(opt: RunOptions): Process {
     builder,
     opt.args.map(a => builder.createString(a))
   );
-  const cwdOffset = opt.cwd == null ? -1 : builder.createString(opt.cwd);
+  const cwdOffset = opt.cwd == null ? 0 : builder.createString(opt.cwd);
   const kvOffset: flatbuffers.Offset[] = [];
   if (opt.env) {
     for (const [key, val] of Object.entries(opt.env)) {
       const keyOffset = builder.createString(key);
       const valOffset = builder.createString(String(val));
-      msg.KeyValue.startKeyValue(builder);
-      msg.KeyValue.addKey(builder, keyOffset);
-      msg.KeyValue.addValue(builder, valOffset);
-      kvOffset.push(msg.KeyValue.endKeyValue(builder));
+      kvOffset.push(msg.KeyValue.createKeyValue(builder, keyOffset, valOffset));
     }
   }
   const envOffset = msg.Run.createEnvVector(builder, kvOffset);
-  msg.Run.startRun(builder);
-  msg.Run.addArgs(builder, argsOffset);
-  if (opt.cwd != null) {
-    msg.Run.addCwd(builder, cwdOffset);
-  }
-  msg.Run.addEnv(builder, envOffset);
-  if (opt.stdin) {
-    msg.Run.addStdin(builder, stdioMap(opt.stdin!));
-  }
-  if (opt.stdout) {
-    msg.Run.addStdout(builder, stdioMap(opt.stdout!));
-  }
-  if (opt.stderr) {
-    msg.Run.addStderr(builder, stdioMap(opt.stderr!));
-  }
-  const inner = msg.Run.endRun(builder);
+  const inner = msg.Run.createRun(
+    builder,
+    argsOffset,
+    cwdOffset,
+    envOffset,
+    opt.stdin ? stdioMap(opt.stdin) : stdioMap("inherit"),
+    opt.stdout ? stdioMap(opt.stdout) : stdioMap("inherit"),
+    opt.stderr ? stdioMap(opt.stderr) : stdioMap("inherit")
+  );
   const baseRes = dispatch.sendSync(builder, msg.Any.Run, inner);
   assert(baseRes != null);
   assert(msg.Any.RunRes === baseRes!.innerType());

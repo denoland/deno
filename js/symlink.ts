@@ -16,10 +16,7 @@ function req(
   const builder = flatbuffers.createBuilder();
   const oldname_ = builder.createString(oldname);
   const newname_ = builder.createString(newname);
-  msg.Symlink.startSymlink(builder);
-  msg.Symlink.addOldname(builder, oldname_);
-  msg.Symlink.addNewname(builder, newname_);
-  const inner = msg.Symlink.endSymlink(builder);
+  const inner = msg.Symlink.createSymlink(builder, oldname_, newname_);
   return [builder, msg.Any.Symlink, inner];
 }
 

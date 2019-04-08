@@ -30,10 +30,7 @@ const replCommands = {
 function startRepl(historyFile: string): number {
   const builder = flatbuffers.createBuilder();
   const historyFile_ = builder.createString(historyFile);
-
-  msg.ReplStart.startReplStart(builder);
-  msg.ReplStart.addHistoryFile(builder, historyFile_);
-  const inner = msg.ReplStart.endReplStart(builder);
+  const inner = msg.ReplStart.createReplStart(builder, historyFile_);
 
   const baseRes = dispatch.sendSync(builder, msg.Any.ReplStart, inner);
   assert(baseRes != null);
@@ -48,10 +45,7 @@ function startRepl(historyFile: string): number {
 export async function readline(rid: number, prompt: string): Promise<string> {
   const builder = flatbuffers.createBuilder();
   const prompt_ = builder.createString(prompt);
-  msg.ReplReadline.startReplReadline(builder);
-  msg.ReplReadline.addRid(builder, rid);
-  msg.ReplReadline.addPrompt(builder, prompt_);
-  const inner = msg.ReplReadline.endReplReadline(builder);
+  const inner = msg.ReplReadline.createReplReadline(builder, rid, prompt_);
 
   const baseRes = await dispatch.sendAsync(
     builder,

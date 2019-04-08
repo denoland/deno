@@ -22,10 +22,7 @@ function reqOpen(
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
   const mode_ = builder.createString(mode);
-  msg.Open.startOpen(builder);
-  msg.Open.addFilename(builder, filename_);
-  msg.Open.addMode(builder, mode_);
-  const inner = msg.Open.endOpen(builder);
+  const inner = msg.Open.createOpen(builder, filename_, 0, mode_);
   return [builder, msg.Any.Open, inner];
 }
 
@@ -66,9 +63,7 @@ function reqRead(
   p: Uint8Array
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
   const builder = flatbuffers.createBuilder();
-  msg.Read.startRead(builder);
-  msg.Read.addRid(builder, rid);
-  const inner = msg.Read.endRead(builder);
+  const inner = msg.Read.createRead(builder, rid);
   return [builder, msg.Any.Read, inner, p];
 }
 
@@ -114,9 +109,7 @@ function reqWrite(
   p: Uint8Array
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
   const builder = flatbuffers.createBuilder();
-  msg.Write.startWrite(builder);
-  msg.Write.addRid(builder, rid);
-  const inner = msg.Write.endWrite(builder);
+  const inner = msg.Write.createWrite(builder, rid);
   return [builder, msg.Any.Write, inner, p];
 }
 
@@ -163,11 +156,7 @@ function reqSeek(
   whence: SeekMode
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
-  msg.Seek.startSeek(builder);
-  msg.Seek.addRid(builder, rid);
-  msg.Seek.addOffset(builder, offset);
-  msg.Seek.addWhence(builder, whence);
-  const inner = msg.Seek.endSeek(builder);
+  const inner = msg.Seek.createSeek(builder, rid, offset, whence);
   return [builder, msg.Any.Seek, inner];
 }
 
@@ -198,9 +187,7 @@ export async function seek(
 /** Close the file ID. */
 export function close(rid: number): void {
   const builder = flatbuffers.createBuilder();
-  msg.Close.startClose(builder);
-  msg.Close.addRid(builder, rid);
-  const inner = msg.Close.endClose(builder);
+  const inner = msg.Close.createClose(builder, rid);
   dispatch.sendSync(builder, msg.Any.Close, inner);
 }
 
