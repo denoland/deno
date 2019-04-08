@@ -9,8 +9,8 @@ use crate::msg;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
-use deno::deno_mod;
 use deno::JSError;
+use deno::Loader;
 use deno::StartupData;
 use futures::future::Either;
 use futures::Async;
@@ -21,7 +21,8 @@ use std::sync::atomic::Ordering;
 /// high-level module loading
 pub struct Worker {
   inner: deno::Isolate<ThreadSafeState>,
-  state: ThreadSafeState,
+  pub modules: deno::Modules,
+  pub state: ThreadSafeState,
 }
 
 impl Worker {
@@ -33,6 +34,7 @@ impl Worker {
     let state_ = state.clone();
     Self {
       inner: deno::Isolate::new(startup_data, state_),
+      modules: deno::Modules::new(),
       state,
     }
   }
@@ -52,143 +54,89 @@ impl Worker {
     self.inner.execute(js_filename, js_source)
   }
 
-  // TODO(ry) make this return a future.
-  fn mod_load_deps(&self, id: deno_mod) -> Result<(), RustOrJsError> {
-    // basically iterate over the imports, start loading them.
-
-    let referrer_name = {
-      let g = self.state.modules.lock().unwrap();
-      g.get_name(id).unwrap().clone()
-    };
-
-    for specifier in self.inner.mod_get_imports(id) {
-      let (name, _local_filename) = self
-        .state
-        .dir
-        .resolve_module(&specifier, &referrer_name)
-        .map_err(DenoError::from)
-        .map_err(RustOrJsError::from)?;
-
-      debug!("mod_load_deps {}", name);
-
-      if !self.state.modules.lock().unwrap().is_registered(&name) {
-        let out = fetch_module_meta_data_and_maybe_compile(
-          &self.state,
-          &specifier,
-          &referrer_name,
-        )?;
-        let child_id = self.mod_new_and_register(
-          false,
-          &out.module_name.clone(),
-          &out.js_source(),
-        )?;
-
-        // The resolved module is an alias to another module (due to redirects).
-        // Save such alias to the module map.
-        if out.module_redirect_source_name.is_some() {
-          self.mod_alias(
-            &out.module_redirect_source_name.clone().unwrap(),
-            &out.module_name,
-          );
-        }
-
-        self.mod_load_deps(child_id)?;
-      }
-    }
-
-    Ok(())
-  }
-
-  /// Executes the provided JavaScript module.
-  pub fn execute_mod(
-    &mut self,
+  /// Consumes worker. Executes the provided JavaScript module.
+  pub fn execute_mod_async(
+    self,
     js_filename: &str,
     is_prefetch: bool,
-  ) -> Result<(), RustOrJsError> {
-    // TODO move state::execute_mod impl here.
-    self
-      .execute_mod_inner(js_filename, is_prefetch)
-      .map_err(|err| match err {
-        RustOrJsError::Js(err) => RustOrJsError::Js(self.apply_source_map(err)),
-        x => x,
-      })
+  ) -> impl Future<Item = Self, Error = (RustOrJsError, Self)> {
+    let recursive_load = deno::RecursiveLoad::new(js_filename, self);
+    recursive_load.and_then(
+      move |(id, mut self_)| -> Result<Self, (deno::Either<DenoError>, Self)> {
+        if is_prefetch {
+          Ok(self_)
+        } else {
+          let result = self_.inner.mod_evaluate(id);
+          if let Err(err) = result {
+            Err((deno::Either::JSError(err), self_))
+          } else {
+            Ok(self_)
+          }
+        }
+      },
+    )
+    .map_err(|(err, self_)| {
+      // Convert to RustOrJsError AND apply_source_map.
+      let err = match err {
+        deno::Either::JSError(err) => RustOrJsError::Js(self_.apply_source_map(err)),
+        deno::Either::Other(err) => RustOrJsError::Rust(err),
+      };
+      (err, self_)
+    })
   }
 
-  /// High-level way to execute modules.
-  /// This will issue HTTP requests and file system calls.
-  /// Blocks. TODO(ry) Don't block.
-  fn execute_mod_inner(
-    &mut self,
-    url: &str,
+  /// Consumes worker. Executes the provided JavaScript module.
+  pub fn execute_mod(
+    self,
+    js_filename: &str,
     is_prefetch: bool,
-  ) -> Result<(), RustOrJsError> {
-    let out = fetch_module_meta_data_and_maybe_compile(&self.state, url, ".")
-      .map_err(RustOrJsError::from)?;
-
-    // Be careful.
-    // url might not match the actual out.module_name
-    // due to the mechanism of redirection.
-
-    let id = self
-      .mod_new_and_register(true, &out.module_name.clone(), &out.js_source())
-      .map_err(RustOrJsError::from)?;
-
-    // The resolved module is an alias to another module (due to redirects).
-    // Save such alias to the module map.
-    if out.module_redirect_source_name.is_some() {
-      self.mod_alias(
-        &out.module_redirect_source_name.clone().unwrap(),
-        &out.module_name,
-      );
-    }
-
-    self.mod_load_deps(id)?;
-
-    let state = self.state.clone();
-
-    let mut resolve = move |specifier: &str, referrer: deno_mod| -> deno_mod {
-      state.metrics.resolve_count.fetch_add(1, Ordering::Relaxed);
-      let mut modules = state.modules.lock().unwrap();
-      modules.resolve_cb(&state.dir, specifier, referrer)
-    };
-
-    self
-      .inner
-      .mod_instantiate(id, &mut resolve)
-      .map_err(RustOrJsError::from)?;
-    if !is_prefetch {
-      self.inner.mod_evaluate(id).map_err(RustOrJsError::from)?;
-    }
-    Ok(())
-  }
-
-  /// Wraps Isolate::mod_new but registers with modules.
-  fn mod_new_and_register(
-    &self,
-    main: bool,
-    name: &str,
-    source: &str,
-  ) -> Result<deno_mod, JSError> {
-    let id = self.inner.mod_new(main, name, source)?;
-    self.state.modules.lock().unwrap().register(id, &name);
-    Ok(id)
-  }
-
-  /// Create an alias for another module.
-  /// The alias could later be used to grab the module
-  /// which `target` points to.
-  fn mod_alias(&self, name: &str, target: &str) {
-    self.state.modules.lock().unwrap().alias(name, target);
-  }
-
-  pub fn print_file_info(&self, module: &str) {
-    let m = self.state.modules.lock().unwrap();
-    m.print_file_info(&self.state.dir, module.to_string());
+  ) -> Result<Self, (RustOrJsError, Self)> {
+    tokio_util::block_on(self.execute_mod_async(js_filename, is_prefetch))
   }
 
   /// Applies source map to the error.
   fn apply_source_map(&self, err: JSError) -> JSError {
     js_errors::apply_source_map(&err, &self.state.dir)
+  }
+}
+
+impl Loader for Worker {
+  type Dispatch = ThreadSafeState;
+  type Error = DenoError;
+
+  fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
+    crate::deno_dir::resolve_module2(specifier, referrer)
+      .map_err(|url_err| DenoError::from(url_err))
+  }
+
+  /// Given an absolute url, load its source code.
+  fn load(&mut self, url: &str) -> Box<deno::SourceCodeFuture<Self::Error>> {
+    self
+      .state
+      .metrics
+      .resolve_count
+      .fetch_add(1, Ordering::SeqCst);
+    Box::new(
+      fetch_module_meta_data_and_maybe_compile_async(&self.state, url, ".")
+        .map_err(|err| {
+          eprintln!("{}", err);
+          err
+        }).map(|module_meta_data| module_meta_data.js_source()),
+    )
+  }
+
+  fn use_isolate<R, F: FnMut(&mut deno::Isolate<Self::Dispatch>) -> R>(
+    &mut self,
+    mut cb: F,
+  ) -> R {
+    cb(&mut self.inner)
+  }
+
+  fn use_modules<R, F: FnMut(&mut deno::Modules) -> R>(
+    &mut self,
+    mut cb: F,
+  ) -> R {
+    cb(&mut self.modules)
   }
 }
 
@@ -236,7 +184,7 @@ fn fetch_module_meta_data_and_maybe_compile_async(
     })
 }
 
-fn fetch_module_meta_data_and_maybe_compile(
+pub fn fetch_module_meta_data_and_maybe_compile(
   state: &ThreadSafeState,
   specifier: &str,
   referrer: &str,
@@ -260,7 +208,7 @@ mod tests {
   use std::sync::atomic::Ordering;
 
   #[test]
-  fn execute_mod() {
+  fn execute_mod_esm_imports_a() {
     let filename = std::env::current_dir()
       .unwrap()
       .join("tests/esm_imports_a.js");
@@ -272,16 +220,20 @@ mod tests {
     let state = ThreadSafeState::new(flags, rest_argv, op_selector_std);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state);
-      if let Err(err) = worker.execute_mod(&filename, false) {
-        eprintln!("execute_mod err {:?}", err);
-      }
+      let worker = Worker::new("TEST".to_string(), StartupData::None, state);
+      let result = worker.execute_mod(&filename, false);
+      let worker = match result {
+        Err((err, worker)) => {
+          eprintln!("execute_mod err {:?}", err);
+          worker
+        }
+        Ok(worker) => worker,
+      };
       tokio_util::panic_on_error(worker)
     }));
 
     let metrics = &state_.metrics;
-    assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 1);
+    assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
   }
 
   #[test]
@@ -295,11 +247,15 @@ mod tests {
     let state = ThreadSafeState::new(flags, rest_argv, op_selector_std);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state);
-      if let Err(err) = worker.execute_mod(&filename, false) {
-        eprintln!("execute_mod err {:?}", err);
-      }
+      let worker = Worker::new("TEST".to_string(), StartupData::None, state);
+      let result = worker.execute_mod(&filename, false);
+      let worker = match result {
+        Err((err, worker)) => {
+          eprintln!("execute_mod err {:?}", err);
+          worker
+        }
+        Ok(worker) => worker,
+      };
       tokio_util::panic_on_error(worker)
     }));
 
@@ -372,7 +328,7 @@ mod tests {
     tokio_util::init(|| {
       let mut worker = create_test_worker();
       js_check(
-        worker.execute("onmessage = () => { delete window['onmessage']; }"),
+        worker.execute("onmessage = () => { delete window.onmessage; }"),
       );
 
       let resource = worker.state.resource.clone();
@@ -399,5 +355,24 @@ mod tests {
       worker_future.wait().unwrap();
       assert_eq!(resources::get_type(rid), None);
     })
+  }
+
+  #[test]
+  fn execute_mod_resolve_error() {
+    // "foo" is not a vailid module specifier so this should return an error.
+    let worker = create_test_worker();
+    let result = worker.execute_mod_async("foo", false).wait();
+    assert!(result.is_err());
+  }
+
+  #[test]
+  fn execute_mod_002_hello() {
+    // This assumes cwd is project root (an assumption made throughout the
+    // tests).
+    let worker = create_test_worker();
+    let result = worker
+      .execute_mod_async("./tests/002_hello.ts", false)
+      .wait();
+    assert!(result.is_ok());
   }
 }

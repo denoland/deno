@@ -853,6 +853,49 @@ fn save_source_code_headers(
   }
 }
 
+// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+// TODO(ry) Add tests.
+// TODO(ry) Move this to core?
+pub fn resolve_module2(
+  specifier: &str,
+  base: &str,
+) -> Result<String, url::ParseError> {
+  // 1. Apply the URL parser to specifier. If the result is not failure, return
+  //    the result.
+  // let specifier = parse_local_or_remote(specifier)?.to_string();
+  if let Ok(specifier_url) = Url::parse(specifier) {
+    return Ok(specifier_url.to_string());
+  }
+
+  // 2. If specifier does not start with the character U+002F SOLIDUS (/), the
+  //    two-character sequence U+002E FULL STOP, U+002F SOLIDUS (./), or the
+  //    three-character sequence U+002E FULL STOP, U+002E FULL STOP, U+002F
+  //    SOLIDUS (../), return failure.
+  if !specifier.starts_with("/")
+    && !specifier.starts_with("./")
+    && !specifier.starts_with("../")
+  {
+    return Err(url::ParseError::RelativeUrlWithCannotBeABaseBase);
+  }
+
+  // 3. Return the result of applying the URL parser to specifier with base URL
+  //    as the base URL.
+  let base_url = if base != "." {
+    // This branch is part of the spec.
+    Url::parse(base)?
+  } else {
+    // This branch isn't in the spec.
+    let cwd = std::env::current_dir().unwrap();
+    // Get file url of current directory, make sure it ends in "/".
+    let cwd_file_url =
+      Url::from_file_path(cwd).unwrap().as_str().to_string() + "/";
+    // Purposely reparse here:
+    Url::parse(&cwd_file_url)?
+  };
+  let u = base_url.join(&specifier)?;
+  Ok(u.to_string())
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

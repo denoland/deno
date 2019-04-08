@@ -217,3 +217,13 @@ impl fmt::Display for RustOrJsError {
     }
   }
 }
+
+// TODO(ry) This is ugly. They are essentially the same type.
+impl From<deno::Either<DenoError>> for RustOrJsError {
+  fn from(e: deno::Either<DenoError>) -> Self {
+    match e {
+      deno::Either::JSError(err) => RustOrJsError::Js(err),
+      deno::Either::Other(err) => RustOrJsError::Rust(err),
+    }
+  }
+}
