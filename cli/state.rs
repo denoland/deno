@@ -184,3 +184,9 @@ impl ThreadSafeState {
       .fetch_add(bytes_received, Ordering::SeqCst);
   }
 }
+
+#[test]
+fn thread_safe() {
+  fn f<S: Send + Sync>(_: S) {}
+  f(ThreadSafeState::mock());
+}
