@@ -129,10 +129,13 @@ export async function workerMain(): Promise<void> {
       log("workerMain got null message. quitting.");
       break;
     }
+
     if (window["onmessage"]) {
       const event = { data };
       window.onmessage(event);
-    } else {
+    }
+
+    if (!window["onmessage"]) {
       break;
     }
   }

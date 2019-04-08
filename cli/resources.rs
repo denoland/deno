@@ -35,6 +35,7 @@ use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 use tokio_process;
 
 pub type ResourceId = u32; // Sometimes referred to RID.
@@ -309,7 +310,7 @@ pub fn add_worker(wc: WorkerChannels) -> Resource {
 pub fn post_message_to_worker(
   rid: ResourceId,
   buf: Buf,
-) -> futures::sink::Send<futures::sync::mpsc::Sender<Buf>> {
+) -> futures::sink::Send<mpsc::Sender<Buf>> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
@@ -334,9 +335,10 @@ impl Future for WorkerReceiver {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|()| {
-        errors::new(errors::ErrorKind::Other, "recv msg error".to_string())
-      }),
+      Some(Repr::Worker(ref mut wc)) => wc
+        .1
+        .poll()
+        .map_err(|err| errors::new(errors::ErrorKind::Other, err.to_string())),
       _ => Err(bad_resource()),
     }
   }
@@ -359,9 +361,10 @@ impl Stream for WorkerReceiverStream {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|()| {
-        errors::new(errors::ErrorKind::Other, "recv msg error".to_string())
-      }),
+      Some(Repr::Worker(ref mut wc)) => wc
+        .1
+        .poll()
+        .map_err(|err| errors::new(errors::ErrorKind::Other, err.to_string())),
       _ => Err(bad_resource()),
     }
   }

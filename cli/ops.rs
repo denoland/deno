@@ -1,11 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
+use crate::cli_behavior::CliBehavior;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
 use crate::http_util;
-use crate::isolate_state::{IsolateState, IsolateStateContainer};
+use crate::isolate_state::IsolateState;
 use crate::js_errors::apply_source_map;
 use crate::js_errors::JSErrorColor;
 use crate::msg;
@@ -19,8 +20,9 @@ use crate::startup_data;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
-use crate::workers;
+use crate::worker::Worker;
 use deno::deno_buf;
+use deno::js_check;
 use deno::Buf;
 use deno::JSError;
 use deno::Op;
@@ -60,7 +62,7 @@ pub type OpWithError = dyn Future<Item = Buf, Error = DenoError> + Send;
 // TODO Ideally we wouldn't have to box the OpWithError being returned.
 // The box is just to make it easier to get a prototype refactor working.
 type OpCreator =
-  fn(sc: &IsolateStateContainer, base: &msg::Base<'_>, data: deno_buf)
+  fn(state: &Arc<IsolateState>, base: &msg::Base<'_>, data: deno_buf)
     -> Box<OpWithError>;
 
 type OpSelector = fn(inner_type: msg::Any) -> Option<OpCreator>;
@@ -75,7 +77,7 @@ fn empty_buf() -> Buf {
 /// control corresponds to the first argument of Deno.core.dispatch().
 /// data corresponds to the second argument of Deno.core.dispatch().
 pub fn dispatch_all(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   control: &[u8],
   zero_copy: deno_buf,
   op_selector: OpSelector,
@@ -92,10 +94,9 @@ pub fn dispatch_all(
     None => panic!("Unhandled message {}", msg::enum_name_any(inner_type)),
   };
 
-  let state = sc.state().clone();
+  let op: Box<OpWithError> = op_func(state, &base, zero_copy);
 
-  let op: Box<OpWithError> = op_func(sc, &base, zero_copy);
-
+  let state = state.clone();
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
   let boxed_op = Box::new(
@@ -141,23 +142,6 @@ pub fn dispatch_all(
     base.sync()
   );
   (base.sync(), boxed_op)
-}
-
-/// Superset of op_selector_worker for compiler isolates
-pub fn op_selector_compiler(inner_type: msg::Any) -> Option<OpCreator> {
-  match inner_type {
-    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
-    _ => op_selector_worker(inner_type),
-  }
-}
-
-/// Superset of op_selector_std for worker isolates
-pub fn op_selector_worker(inner_type: msg::Any) -> Option<OpCreator> {
-  match inner_type {
-    msg::Any::WorkerGetMessage => Some(op_worker_get_message),
-    msg::Any::WorkerPostMessage => Some(op_worker_post_message),
-    _ => op_selector_std(inner_type),
-  }
 }
 
 /// Standard ops set for most isolates
@@ -208,6 +192,14 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::HostGetMessage => Some(op_host_get_message),
     msg::Any::HostPostMessage => Some(op_host_post_message),
     msg::Any::Write => Some(op_write),
+
+    // TODO(ry) split these out so that only the appropriate Workers can access
+    // them. Only the compiler worker should be able to access
+    // FetchModuleMetaData.
+    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
+    msg::Any::WorkerGetMessage => Some(op_worker_get_message),
+    msg::Any::WorkerPostMessage => Some(op_worker_post_message),
+
     _ => None,
   }
 }
@@ -217,19 +209,19 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
 fn op_now(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
-  let seconds = sc.state().start_time.elapsed().as_secs();
-  let mut subsec_nanos = sc.state().start_time.elapsed().subsec_nanos();
+  let seconds = state.start_time.elapsed().as_secs();
+  let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2000000; // 2ms in nanoseconds
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if !sc.state().permissions.allows_high_precision() {
+  if !state.permissions.allows_high_precision() {
     subsec_nanos -= subsec_nanos % reduced_time_precision
   }
 
@@ -253,7 +245,7 @@ fn op_now(
 }
 
 fn op_is_tty(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   _data: deno_buf,
 ) -> Box<OpWithError> {
@@ -278,7 +270,7 @@ fn op_is_tty(
 }
 
 fn op_exit(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   _data: deno_buf,
 ) -> Box<OpWithError> {
@@ -287,14 +279,14 @@ fn op_exit(
 }
 
 fn op_start(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
   let mut builder = FlatBufferBuilder::new();
 
-  let state = sc.state();
+  let state = state;
   let argv = state.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
 
@@ -311,7 +303,7 @@ fn op_start(
   let deno_version = version::DENO;
   let deno_version_off = builder.create_string(deno_version);
 
-  let main_module = sc.state().main_module().map(|m| builder.create_string(&m));
+  let main_module = state.main_module().map(|m| builder.create_string(&m));
 
   let inner = msg::StartRes::create(
     &mut builder,
@@ -320,9 +312,9 @@ fn op_start(
       pid: std::process::id(),
       argv: Some(argv_off),
       main_module,
-      debug_flag: sc.state().flags.log_debug,
-      types_flag: sc.state().flags.types,
-      version_flag: sc.state().flags.version,
+      debug_flag: state.flags.log_debug,
+      types_flag: state.flags.types,
+      version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
       no_color: !ansi::use_color(),
@@ -343,7 +335,7 @@ fn op_start(
 }
 
 fn op_format_error(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -352,7 +344,7 @@ fn op_format_error(
   let orig_error = String::from(inner.error().unwrap());
 
   let js_error = JSError::from_v8_exception(&orig_error).unwrap();
-  let js_error_mapped = apply_source_map(&js_error, &sc.state().dir);
+  let js_error_mapped = apply_source_map(&js_error, &state.dir);
   let js_error_string = JSErrorColor(&js_error_mapped).to_string();
 
   let mut builder = FlatBufferBuilder::new();
@@ -402,7 +394,7 @@ pub fn odd_future(err: DenoError) -> Box<OpWithError> {
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn op_fetch_module_meta_data(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -412,19 +404,14 @@ fn op_fetch_module_meta_data(
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
 
-  assert_eq!(
-    sc.state().dir.root.join("gen"),
-    sc.state().dir.gen,
-    "Sanity check"
-  );
+  assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
 
-  let use_cache = !sc.state().flags.reload;
+  let use_cache = !state.flags.reload;
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
     // TODO(ry) Use fetch_module_meta_data_async.
-    let out = sc
-      .state()
+    let out = state
       .dir
       .fetch_module_meta_data(specifier, referrer, use_cache)?;
     let data_off = builder.create_vector(out.source_code.as_slice());
@@ -448,7 +435,7 @@ fn op_fetch_module_meta_data(
 }
 
 fn op_chdir(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -462,20 +449,20 @@ fn op_chdir(
 }
 
 fn op_global_timer_stop(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert!(base.sync());
   assert_eq!(data.len(), 0);
-  let state = sc.state();
+  let state = state;
   let mut t = state.global_timer.lock().unwrap();
   t.cancel();
   ok_future(empty_buf())
 }
 
 fn op_global_timer(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -486,7 +473,7 @@ fn op_global_timer(
   let val = inner.timeout();
   assert!(val >= 0);
 
-  let state = sc.state();
+  let state = state;
   let mut t = state.global_timer.lock().unwrap();
   let deadline = Instant::now() + Duration::from_millis(val as u64);
   let f = t.new_timeout(deadline);
@@ -508,7 +495,7 @@ fn op_global_timer(
 }
 
 fn op_set_env(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -516,7 +503,7 @@ fn op_set_env(
   let inner = base.inner_as_set_env().unwrap();
   let key = inner.key().unwrap();
   let value = inner.value().unwrap();
-  if let Err(e) = sc.state().check_env() {
+  if let Err(e) = state.check_env() {
     return odd_future(e);
   }
   std::env::set_var(key, value);
@@ -524,14 +511,14 @@ fn op_set_env(
 }
 
 fn op_env(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
 
-  if let Err(e) = sc.state().check_env() {
+  if let Err(e) = state.check_env() {
     return odd_future(e);
   }
 
@@ -556,7 +543,7 @@ fn op_env(
 }
 
 fn op_permissions(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -566,12 +553,12 @@ fn op_permissions(
   let inner = msg::PermissionsRes::create(
     builder,
     &msg::PermissionsResArgs {
-      run: sc.state().permissions.allows_run(),
-      read: sc.state().permissions.allows_read(),
-      write: sc.state().permissions.allows_write(),
-      net: sc.state().permissions.allows_net(),
-      env: sc.state().permissions.allows_env(),
-      high_precision: sc.state().permissions.allows_high_precision(),
+      run: state.permissions.allows_run(),
+      read: state.permissions.allows_read(),
+      write: state.permissions.allows_write(),
+      net: state.permissions.allows_net(),
+      env: state.permissions.allows_env(),
+      high_precision: state.permissions.allows_high_precision(),
     },
   );
   ok_future(serialize_response(
@@ -586,7 +573,7 @@ fn op_permissions(
 }
 
 fn op_revoke_permission(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -594,12 +581,12 @@ fn op_revoke_permission(
   let inner = base.inner_as_permission_revoke().unwrap();
   let permission = inner.permission().unwrap();
   let result = match permission {
-    "run" => sc.state().permissions.revoke_run(),
-    "read" => sc.state().permissions.revoke_read(),
-    "write" => sc.state().permissions.revoke_write(),
-    "net" => sc.state().permissions.revoke_net(),
-    "env" => sc.state().permissions.revoke_env(),
-    "highPrecision" => sc.state().permissions.revoke_high_precision(),
+    "run" => state.permissions.revoke_run(),
+    "read" => state.permissions.revoke_read(),
+    "write" => state.permissions.revoke_write(),
+    "net" => state.permissions.revoke_net(),
+    "env" => state.permissions.revoke_env(),
+    "highPrecision" => state.permissions.revoke_high_precision(),
     _ => Ok(()),
   };
   if let Err(e) = result {
@@ -609,7 +596,7 @@ fn op_revoke_permission(
 }
 
 fn op_fetch(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -632,7 +619,7 @@ fn op_fetch(
   }
   let req = maybe_req.unwrap();
 
-  if let Err(e) = sc.state().check_net(url) {
+  if let Err(e) = state.check_net(url) {
     return odd_future(e);
   }
 
@@ -696,7 +683,7 @@ where
 }
 
 fn op_make_temp_dir(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -706,7 +693,7 @@ fn op_make_temp_dir(
   let cmd_id = base.cmd_id();
 
   // FIXME
-  if let Err(e) = sc.state().check_write("make_temp") {
+  if let Err(e) = state.check_write("make_temp") {
     return odd_future(e);
   }
 
@@ -745,7 +732,7 @@ fn op_make_temp_dir(
 }
 
 fn op_mkdir(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -755,7 +742,7 @@ fn op_mkdir(
   let recursive = inner.recursive();
   let mode = inner.mode();
 
-  if let Err(e) = sc.state().check_write(&path) {
+  if let Err(e) = state.check_write(&path) {
     return odd_future(e);
   }
 
@@ -767,7 +754,7 @@ fn op_mkdir(
 }
 
 fn op_chmod(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -776,7 +763,7 @@ fn op_chmod(
   let _mode = inner.mode();
   let path = String::from(inner.path().unwrap());
 
-  if let Err(e) = sc.state().check_write(&path) {
+  if let Err(e) = state.check_write(&path) {
     return odd_future(e);
   }
 
@@ -806,7 +793,7 @@ fn op_chmod(
 }
 
 fn op_open(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -855,20 +842,20 @@ fn op_open(
 
   match mode {
     "r" => {
-      if let Err(e) = sc.state().check_read(&filename_str) {
+      if let Err(e) = state.check_read(&filename_str) {
         return odd_future(e);
       }
     }
     "w" | "a" | "x" => {
-      if let Err(e) = sc.state().check_write(&filename_str) {
+      if let Err(e) = state.check_write(&filename_str) {
         return odd_future(e);
       }
     }
     &_ => {
-      if let Err(e) = sc.state().check_read(&filename_str) {
+      if let Err(e) = state.check_read(&filename_str) {
         return odd_future(e);
       }
-      if let Err(e) = sc.state().check_write(&filename_str) {
+      if let Err(e) = state.check_write(&filename_str) {
         return odd_future(e);
       }
     }
@@ -896,7 +883,7 @@ fn op_open(
 }
 
 fn op_close(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -913,7 +900,7 @@ fn op_close(
 }
 
 fn op_shutdown(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -939,7 +926,7 @@ fn op_shutdown(
 }
 
 fn op_read(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -977,7 +964,7 @@ fn op_read(
 }
 
 fn op_write(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1014,7 +1001,7 @@ fn op_write(
 }
 
 fn op_seek(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1036,7 +1023,7 @@ fn op_seek(
 }
 
 fn op_remove(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1046,7 +1033,7 @@ fn op_remove(
   let path = PathBuf::from(path_);
   let recursive = inner.recursive();
 
-  if let Err(e) = sc.state().check_write(path.to_str().unwrap()) {
+  if let Err(e) = state.check_write(path.to_str().unwrap()) {
     return odd_future(e);
   }
 
@@ -1065,7 +1052,7 @@ fn op_remove(
 }
 
 fn op_copy_file(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1076,10 +1063,10 @@ fn op_copy_file(
   let to_ = inner.to().unwrap();
   let to = PathBuf::from(to_);
 
-  if let Err(e) = sc.state().check_read(&from_) {
+  if let Err(e) = state.check_read(&from_) {
     return odd_future(e);
   }
-  if let Err(e) = sc.state().check_write(&to_) {
+  if let Err(e) = state.check_write(&to_) {
     return odd_future(e);
   }
 
@@ -1121,7 +1108,7 @@ fn get_mode(_perm: &fs::Permissions) -> u32 {
 }
 
 fn op_cwd(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1147,7 +1134,7 @@ fn op_cwd(
 }
 
 fn op_stat(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1158,7 +1145,7 @@ fn op_stat(
   let filename = PathBuf::from(filename_);
   let lstat = inner.lstat();
 
-  if let Err(e) = sc.state().check_read(&filename_) {
+  if let Err(e) = state.check_read(&filename_) {
     return odd_future(e);
   }
 
@@ -1199,7 +1186,7 @@ fn op_stat(
 }
 
 fn op_read_dir(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1208,7 +1195,7 @@ fn op_read_dir(
   let cmd_id = base.cmd_id();
   let path = String::from(inner.path().unwrap());
 
-  if let Err(e) = sc.state().check_read(&path) {
+  if let Err(e) = state.check_read(&path) {
     return odd_future(e);
   }
 
@@ -1260,7 +1247,7 @@ fn op_read_dir(
 }
 
 fn op_rename(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1269,7 +1256,7 @@ fn op_rename(
   let oldpath = PathBuf::from(inner.oldpath().unwrap());
   let newpath_ = inner.newpath().unwrap();
   let newpath = PathBuf::from(newpath_);
-  if let Err(e) = sc.state().check_write(&newpath_) {
+  if let Err(e) = state.check_write(&newpath_) {
     return odd_future(e);
   }
   blocking(base.sync(), move || -> OpResult {
@@ -1280,7 +1267,7 @@ fn op_rename(
 }
 
 fn op_link(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1290,7 +1277,7 @@ fn op_link(
   let newname_ = inner.newname().unwrap();
   let newname = PathBuf::from(newname_);
 
-  if let Err(e) = sc.state().check_write(&newname_) {
+  if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
   }
 
@@ -1302,7 +1289,7 @@ fn op_link(
 }
 
 fn op_symlink(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1312,7 +1299,7 @@ fn op_symlink(
   let newname_ = inner.newname().unwrap();
   let newname = PathBuf::from(newname_);
 
-  if let Err(e) = sc.state().check_write(&newname_) {
+  if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
   }
   // TODO Use type for Windows.
@@ -1331,7 +1318,7 @@ fn op_symlink(
 }
 
 fn op_read_link(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1341,7 +1328,7 @@ fn op_read_link(
   let name_ = inner.name().unwrap();
   let name = PathBuf::from(name_);
 
-  if let Err(e) = sc.state().check_read(&name_) {
+  if let Err(e) = state.check_read(&name_) {
     return odd_future(e);
   }
 
@@ -1369,7 +1356,7 @@ fn op_read_link(
 }
 
 fn op_repl_start(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1379,7 +1366,7 @@ fn op_repl_start(
   let history_file = String::from(inner.history_file().unwrap());
 
   debug!("op_repl_start {}", history_file);
-  let history_path = repl::history_path(&sc.state().dir, &history_file);
+  let history_path = repl::history_path(&state.dir, &history_file);
   let repl = repl::Repl::new(history_path);
   let resource = resources::add_repl(repl);
 
@@ -1400,7 +1387,7 @@ fn op_repl_start(
 }
 
 fn op_repl_readline(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1436,7 +1423,7 @@ fn op_repl_readline(
 }
 
 fn op_truncate(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1446,7 +1433,7 @@ fn op_truncate(
   let filename = String::from(inner.name().unwrap());
   let len = inner.len();
 
-  if let Err(e) = sc.state().check_write(&filename) {
+  if let Err(e) = state.check_write(&filename) {
     return odd_future(e);
   }
 
@@ -1459,12 +1446,12 @@ fn op_truncate(
 }
 
 fn op_listen(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
-  if let Err(e) = sc.state().check_net("listen") {
+  if let Err(e) = state.check_net("listen") {
     return odd_future(e);
   }
 
@@ -1521,12 +1508,12 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
 }
 
 fn op_accept(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
-  if let Err(e) = sc.state().check_net("accept") {
+  if let Err(e) = state.check_net("accept") {
     return odd_future(e);
   }
   let cmd_id = base.cmd_id();
@@ -1547,12 +1534,12 @@ fn op_accept(
 }
 
 fn op_dial(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
-  if let Err(e) = sc.state().check_net("dial") {
+  if let Err(e) = state.check_net("dial") {
     return odd_future(e);
   }
   let cmd_id = base.cmd_id();
@@ -1573,7 +1560,7 @@ fn op_dial(
 }
 
 fn op_metrics(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1583,7 +1570,7 @@ fn op_metrics(
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::MetricsRes::create(
     builder,
-    &msg::MetricsResArgs::from(&sc.state().metrics),
+    &msg::MetricsResArgs::from(&state.metrics),
   );
   ok_future(serialize_response(
     cmd_id,
@@ -1597,7 +1584,7 @@ fn op_metrics(
 }
 
 fn op_resources(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1649,14 +1636,14 @@ fn subprocess_stdio_map(v: msg::ProcessStdio) -> std::process::Stdio {
 }
 
 fn op_run(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert!(base.sync());
   let cmd_id = base.cmd_id();
 
-  if let Err(e) = sc.state().check_run() {
+  if let Err(e) = state.check_run() {
     return odd_future(e);
   }
 
@@ -1722,7 +1709,7 @@ fn op_run(
 }
 
 fn op_run_status(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1731,7 +1718,7 @@ fn op_run_status(
   let inner = base.inner_as_run_status().unwrap();
   let rid = inner.rid();
 
-  if let Err(e) = sc.state().check_run() {
+  if let Err(e) = state.check_run() {
     return odd_future(e);
   }
 
@@ -1786,20 +1773,16 @@ impl Future for GetMessageFuture {
   type Error = ();
 
   fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
-    assert!(self.state.worker_channels.is_some());
-    match self.state.worker_channels {
-      None => panic!("expected worker_channels"),
-      Some(ref wc) => {
-        let mut wc = wc.lock().unwrap();
-        wc.1.poll()
-      }
-    }
+    let mut wc = self.state.worker_channels.lock().unwrap();
+    wc.1
+      .poll()
+      .map_err(|err| panic!("worker_channel recv err {:?}", err))
   }
 }
 
 /// Get message from host as guest worker
 fn op_worker_get_message(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1807,7 +1790,7 @@ fn op_worker_get_message(
   let cmd_id = base.cmd_id();
 
   let op = GetMessageFuture {
-    state: sc.state().clone(),
+    state: state.clone(),
   };
   let op = op.map_err(move |_| -> DenoError { unimplemented!() });
   let op = op.and_then(move |maybe_buf| -> DenoResult<Buf> {
@@ -1834,7 +1817,7 @@ fn op_worker_get_message(
 
 /// Post message to host as guest worker
 fn op_worker_post_message(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1842,13 +1825,9 @@ fn op_worker_post_message(
 
   let d = Vec::from(data.as_ref()).into_boxed_slice();
 
-  assert!(sc.state().worker_channels.is_some());
-  let tx = match sc.state().worker_channels {
-    None => panic!("expected worker_channels"),
-    Some(ref wc) => {
-      let wc = wc.lock().unwrap();
-      wc.0.clone()
-    }
+  let tx = {
+    let wc = state.worker_channels.lock().unwrap();
+    wc.0.clone()
   };
   let op = tx.send(d);
   let op = op.map_err(|e| errors::new(ErrorKind::Other, e.to_string()));
@@ -1868,7 +1847,7 @@ fn op_worker_post_message(
 
 /// Create worker as the host
 fn op_create_worker(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1878,20 +1857,24 @@ fn op_create_worker(
   let specifier = inner.specifier().unwrap();
 
   Box::new(futures::future::result(move || -> OpResult {
-    let parent_state = sc.state().clone();
-    let behavior = workers::UserWorkerBehavior::new(
+    let parent_state = state.clone();
+
+    let child_state = Arc::new(IsolateState::new(
       parent_state.flags.clone(),
       parent_state.argv.clone(),
-    );
-    match workers::spawn(
-      startup_data::deno_isolate_init(),
-      behavior,
-      &format!("USER-WORKER-{}", specifier),
-      workers::WorkerInit::Module(specifier.to_string()),
-    ) {
-      Ok(worker) => {
+    ));
+    let rid = child_state.resource.rid;
+    let behavior = CliBehavior::new(child_state);
+    let name = format!("USER-WORKER-{}", specifier);
+
+    let mut worker =
+      Worker::new(name, startup_data::deno_isolate_init(), behavior);
+    js_check(worker.execute("denoMain()"));
+    js_check(worker.execute("workerMain()"));
+    let result = worker.execute_mod(specifier, false);
+    match result {
+      Ok(_) => {
         let mut workers_tl = parent_state.workers.lock().unwrap();
-        let rid = worker.resource.rid;
         workers_tl.insert(rid, worker.shared());
         let builder = &mut FlatBufferBuilder::new();
         let msg_inner = msg::CreateWorkerRes::create(
@@ -1916,7 +1899,7 @@ fn op_create_worker(
 
 /// Return when the worker closes
 fn op_host_get_worker_closed(
-  sc: &IsolateStateContainer,
+  state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1924,7 +1907,7 @@ fn op_host_get_worker_closed(
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_host_get_worker_closed().unwrap();
   let rid = inner.rid();
-  let state = sc.state().clone();
+  let state = state.clone();
 
   let shared_worker_future = {
     let workers_tl = state.workers.lock().unwrap();
@@ -1947,7 +1930,7 @@ fn op_host_get_worker_closed(
 
 /// Get message from guest worker as host
 fn op_host_get_message(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {
@@ -1981,7 +1964,7 @@ fn op_host_get_message(
 
 /// Post message to guest worker as host
 fn op_host_post_message(
-  _sc: &IsolateStateContainer,
+  _state: &Arc<IsolateState>,
   base: &msg::Base<'_>,
   data: deno_buf,
 ) -> Box<OpWithError> {

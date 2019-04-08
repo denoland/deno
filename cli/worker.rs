@@ -1,17 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::cli_behavior::CliBehavior;
 use crate::compiler::compile_async;
 use crate::compiler::ModuleMetaData;
 use crate::errors::DenoError;
 use crate::errors::RustOrJsError;
 use crate::isolate_state::IsolateState;
-use crate::isolate_state::IsolateStateContainer;
 use crate::js_errors;
 use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::tokio_util;
 use deno;
 use deno::deno_mod;
-use deno::Behavior;
 use deno::JSError;
 use deno::StartupData;
 use futures::future::Either;
@@ -20,23 +19,22 @@ use futures::Future;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-pub trait DenoBehavior: Behavior + IsolateStateContainer + Send {}
-impl<T> DenoBehavior for T where T: Behavior + IsolateStateContainer + Send {}
-
-type CoreIsolate<B> = deno::Isolate<B>;
-
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
-pub struct Isolate<B: Behavior> {
-  inner: CoreIsolate<B>,
+pub struct Worker {
+  inner: deno::Isolate<CliBehavior>,
   state: Arc<IsolateState>,
 }
 
-impl<B: DenoBehavior> Isolate<B> {
-  pub fn new(startup_data: StartupData, behavior: B) -> Isolate<B> {
-    let state = behavior.state().clone();
+impl Worker {
+  pub fn new(
+    _name: String,
+    startup_data: StartupData,
+    behavior: CliBehavior,
+  ) -> Worker {
+    let state = behavior.state.clone();
     Self {
-      inner: CoreIsolate::new(startup_data, behavior),
+      inner: deno::Isolate::new(startup_data, behavior),
       state,
     }
   }
@@ -196,7 +194,7 @@ impl<B: DenoBehavior> Isolate<B> {
   }
 }
 
-impl<B: DenoBehavior> Future for Isolate<B> {
+impl Future for Worker {
   type Item = ();
   type Error = JSError;
 
@@ -255,8 +253,14 @@ mod tests {
   use super::*;
   use crate::cli_behavior::CliBehavior;
   use crate::flags;
+  use crate::isolate_state::IsolateState;
+  use crate::resources;
+  use crate::startup_data;
+  use crate::tokio_util;
+  use deno::js_check;
   use futures::future::lazy;
   use std::sync::atomic::Ordering;
+  use std::thread;
 
   #[test]
   fn execute_mod() {
@@ -268,15 +272,15 @@ mod tests {
     let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
-    let state = Arc::new(IsolateState::new(flags, rest_argv, None, false));
+    let state = Arc::new(IsolateState::new(flags, rest_argv));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let cli = CliBehavior::new(state.clone());
-      let mut isolate = Isolate::new(StartupData::None, cli);
-      if let Err(err) = isolate.execute_mod(&filename, false) {
+      let mut worker = Worker::new("TEST".to_string(), StartupData::None, cli);
+      if let Err(err) = worker.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
       }
-      tokio_util::panic_on_error(isolate)
+      tokio_util::panic_on_error(worker)
     }));
 
     let metrics = &state_.metrics;
@@ -291,18 +295,113 @@ mod tests {
     let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
-    let state = Arc::new(IsolateState::new(flags, rest_argv, None, false));
+    let state = Arc::new(IsolateState::new(flags, rest_argv));
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let cli = CliBehavior::new(state.clone());
-      let mut isolate = Isolate::new(StartupData::None, cli);
-      if let Err(err) = isolate.execute_mod(&filename, false) {
+      let mut worker = Worker::new("TEST".to_string(), StartupData::None, cli);
+      if let Err(err) = worker.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
       }
-      tokio_util::panic_on_error(isolate)
+      tokio_util::panic_on_error(worker)
     }));
 
     let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
+  }
+
+  fn create_test_worker() -> Worker {
+    let state = Arc::new(IsolateState::mock());
+    let cli = CliBehavior::new(state.clone());
+    let mut worker =
+      Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), cli);
+    js_check(worker.execute("denoMain()"));
+    js_check(worker.execute("workerMain()"));
+    worker
+  }
+
+  #[test]
+  fn test_worker_messages() {
+    tokio_util::init(|| {
+      let mut worker = create_test_worker();
+      let source = r#"
+        onmessage = function(e) {
+          console.log("msg from main script", e.data);
+          if (e.data == "exit") {
+            close();
+            return;
+          } else {
+            console.assert(e.data === "hi");
+          }
+          postMessage([1, 2, 3]);
+          console.log("after postMessage");
+        }
+        "#;
+      js_check(worker.execute(source));
+
+      let resource = worker.state.resource.clone();
+      let resource_ = resource.clone();
+
+      tokio::spawn(lazy(move || {
+        worker.then(move |r| -> Result<(), ()> {
+          resource_.close();
+          js_check(r);
+          Ok(())
+        })
+      }));
+
+      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+
+      let r = resources::post_message_to_worker(resource.rid, msg).wait();
+      assert!(r.is_ok());
+
+      let maybe_msg = resources::get_message_from_worker(resource.rid)
+        .wait()
+        .unwrap();
+      assert!(maybe_msg.is_some());
+      // Check if message received is [1, 2, 3] in json
+      assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
+
+      let msg = json!("exit")
+        .to_string()
+        .into_boxed_str()
+        .into_boxed_bytes();
+      let r = resources::post_message_to_worker(resource.rid, msg).wait();
+      assert!(r.is_ok());
+    })
+  }
+
+  #[test]
+  fn removed_from_resource_table_on_close() {
+    tokio_util::init(|| {
+      let mut worker = create_test_worker();
+      js_check(
+        worker.execute("onmessage = () => { delete window['onmessage']; }"),
+      );
+
+      let resource = worker.state.resource.clone();
+      let rid = resource.rid;
+
+      tokio::spawn(lazy(move || {
+        worker.then(move |r| -> Result<(), ()> {
+          resource.close();
+          println!("workers.rs after resource close");
+          js_check(r);
+          Ok(())
+        })
+      }));
+
+      assert_eq!(resources::get_type(rid), Some("worker".to_string()));
+
+      let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
+      let r = resources::post_message_to_worker(rid, msg).wait();
+      assert!(r.is_ok());
+      debug!("rid {:?}", rid);
+
+      // TODO Need a way to get a future for when a resource closes.
+      // For now, just sleep for a bit.
+      thread::sleep(std::time::Duration::from_millis(1000));
+      assert_eq!(resources::get_type(rid), None);
+    })
   }
 }
