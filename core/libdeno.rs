@@ -120,6 +120,9 @@ pub struct deno_snapshot<'a> {
 /// This type satisfies Send bound.
 unsafe impl Send for deno_snapshot<'_> {}
 
+// TODO(ry) Snapshot1 and Snapshot2 are not very good names and need to be
+// reconsidered. The entire snapshotting interface is still under construction.
+
 /// The type returned from deno_snapshot_new. Needs to be dropped.
 pub type Snapshot1<'a> = deno_snapshot<'a>;
 
