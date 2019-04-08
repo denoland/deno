@@ -72,6 +72,7 @@ ts_sources = [
   "../js/headers.ts",
   "../js/io.ts",
   "../js/lib.web_assembly.d.ts",
+  "../js/link.ts",
   "../js/location.ts",
   "../js/main.ts",
   "../js/make_temp_dir.ts",
