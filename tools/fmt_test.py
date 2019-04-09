@@ -19,7 +19,12 @@ def fmt_test(deno_exe):
         # Set DENO_DIR to //js/ so we don't have to rely on an intenet
         # connection to download https://deno.land/std/prettier/main.ts
         deno_dir = os.path.join(root_path, "js")
-        run([deno_exe, "fmt", dst], merge_env={"DENO_DIR": deno_dir})
+        # TODO(kt3k) The below line should be run([deno_exe, "fmt", dst], ...)
+        # It should be updated when the below issue is addressed
+        # https://github.com/denoland/deno_std/issues/330
+        run([os.path.join(root_path, deno_exe), "fmt", "badly_formatted.js"],
+            cwd=d,
+            merge_env={"DENO_DIR": deno_dir})
         with open(fixed_filename) as f:
             expected = f.read()
         with open(dst) as f:
