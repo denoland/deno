@@ -268,7 +268,7 @@ impl DenoPermissions {
   }
 
   pub fn allows_high_precision(&self) -> bool {
-    return self.allow_high_precision.is_allow();
+    self.allow_high_precision.is_allow()
   }
 
   pub fn revoke_run(&self) -> DenoResult<()> {
@@ -297,7 +297,7 @@ impl DenoPermissions {
   }
   pub fn revoke_high_precision(&self) -> DenoResult<()> {
     self.allow_high_precision.revoke();
-    return Ok(());
+    Ok(())
   }
 }
 
