@@ -214,7 +214,7 @@ fn op_now(
   assert_eq!(data.len(), 0);
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
-  let reduced_time_precision = 2000000; // 2ms in nanoseconds
+  let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds

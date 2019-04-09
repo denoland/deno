@@ -579,8 +579,8 @@ fn fetch_remote_source_async(
     ),
     |(
       dir,
-      maybe_initial_module_name,
-      maybe_initial_filename,
+      mut maybe_initial_module_name,
+      mut maybe_initial_filename,
       module_name,
       filename,
     )| {
@@ -595,8 +595,6 @@ fn fetch_remote_source_async(
               .map_err(DenoError::from);
             match resolve_result {
               Ok((new_module_name, new_filename)) => {
-                let mut maybe_initial_module_name = maybe_initial_module_name;
-                let mut maybe_initial_filename = maybe_initial_filename;
                 if maybe_initial_module_name.is_none() {
                   maybe_initial_module_name = Some(module_name.clone());
                   maybe_initial_filename = Some(filename.clone());
@@ -623,7 +621,11 @@ fn fetch_remote_source_async(
             // Write file and create .headers.json for the file.
             deno_fs::write_file(&p, &source, 0o666)?;
             {
-              save_source_code_headers(&filename, maybe_content_type.clone(), None);
+              save_source_code_headers(
+                &filename,
+                maybe_content_type.clone(),
+                None,
+              );
             }
             // Check if this file is downloaded due to some old redirect request.
             if maybe_initial_filename.is_some() {
@@ -834,7 +836,7 @@ fn save_source_code_headers(
     value_map.insert(REDIRECT_TO.to_string(), json!(redirect_to.unwrap()));
   }
   // Only save to file when there is actually data.
-  if value_map.len() > 0 {
+  if !value_map.is_empty() {
     let _ = serde_json::to_string(&value_map).map(|s| {
       // It is possible that we need to create file
       // with parent folders not yet created.
