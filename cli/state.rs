@@ -4,16 +4,22 @@ use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::modules::Modules;
+use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
+use deno::deno_buf;
 use deno::Buf;
+use deno::Dispatch;
+use deno::Op;
 use futures::future::Shared;
 use std;
 use std::collections::HashMap;
 use std::env;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 use tokio::sync::mpsc as async_mpsc;
@@ -34,12 +40,15 @@ pub struct Metrics {
   pub resolve_count: AtomicUsize,
 }
 
-// Isolate cannot be passed between threads but IsolateState can.
-// IsolateState satisfies Send and Sync.
+// Wrap State so that it can implement Dispatch.
+pub struct ThreadSafeState(Arc<State>);
+
+// Isolate cannot be passed between threads but ThreadSafeState can.
+// ThreadSafeState satisfies Send and Sync.
 // So any state that needs to be accessed outside the main V8 thread should be
-// inside IsolateState.
+// inside ThreadSafeState.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct IsolateState {
+pub struct State {
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
@@ -53,7 +62,30 @@ pub struct IsolateState {
   pub resource: resources::Resource,
 }
 
-impl IsolateState {
+impl Clone for ThreadSafeState {
+  fn clone(&self) -> Self {
+    ThreadSafeState(self.0.clone())
+  }
+}
+
+impl Deref for ThreadSafeState {
+  type Target = Arc<State>;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl Dispatch for ThreadSafeState {
+  fn dispatch(
+    &mut self,
+    control: &[u8],
+    zero_copy: deno_buf,
+  ) -> (bool, Box<Op>) {
+    ops::dispatch_all(self, control, zero_copy, ops::op_selector_std)
+  }
+}
+
+impl ThreadSafeState {
   pub fn new(flags: flags::DenoFlags, argv_rest: Vec<String>) -> Self {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
 
@@ -63,7 +95,7 @@ impl IsolateState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    Self {
+    ThreadSafeState(Arc::new(State {
       dir: deno_dir::DenoDir::new(custom_root).unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
@@ -75,7 +107,7 @@ impl IsolateState {
       workers: Mutex::new(UserWorkerTable::new()),
       start_time: Instant::now(),
       resource,
-    }
+    }))
   }
 
   /// Read main module from argv
@@ -121,11 +153,11 @@ impl IsolateState {
   }
 
   #[cfg(test)]
-  pub fn mock() -> IsolateState {
+  pub fn mock() -> ThreadSafeState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     // For debugging: argv.push_back(String::from("-D"));
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
-    IsolateState::new(flags, rest_argv)
+    ThreadSafeState::new(flags, rest_argv)
   }
 
   pub fn metrics_op_dispatched(
@@ -151,4 +183,10 @@ impl IsolateState {
       .bytes_received
       .fetch_add(bytes_received, Ordering::SeqCst);
   }
+}
+
+#[test]
+fn thread_safe() {
+  fn f<S: Send + Sync>(_: S) {}
+  f(ThreadSafeState::mock());
 }
