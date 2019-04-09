@@ -143,7 +143,7 @@ fn lazy_start(parent_state: ThreadSafeState) -> ResourceId {
           }).map_err(|_| ())
       }));
       rid
-    }).clone()
+    }).to_owned()
 }
 
 fn req(specifier: &str, referrer: &str, cmd_id: u32) -> Buf {

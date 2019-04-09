@@ -101,7 +101,7 @@ pub fn set_flags(
     NO_COLOR        Set to disable color";
 
   let clap_app = App::new("deno")
-    .global_settings(&vec![AppSettings::ColorNever])
+    .global_settings(&[AppSettings::ColorNever])
     .settings(&app_settings[..])
     .after_help(env_variables_help)
     .arg(

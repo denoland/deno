@@ -47,7 +47,7 @@ fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
     // assuming path-noscheme | path-empty
     let mut new_uri_parts = base_uri.clone().into_parts();
     let base_uri_path_str = base_uri.path().to_owned();
-    let segs: Vec<&str> = base_uri_path_str.rsplitn(2, "/").collect();
+    let segs: Vec<&str> = base_uri_path_str.rsplitn(2, '/').collect();
     new_uri_parts.path_and_query = Some(
       format!("{}/{}", segs.last().unwrap_or(&""), location)
         .parse()
@@ -86,50 +86,54 @@ pub fn fetch_string_once(
   client
     .get(url.clone())
     .map_err(DenoError::from)
-    .and_then(move |response| -> Box<dyn Future<Item = FetchAttempt, Error = DenoError> + Send> {
-      if response.status().is_redirection() {
-        let location_string = response
-          .headers()
-          .get("location")
-          .expect("url redirection should provide 'location' header")
-          .to_str()
-          .unwrap()
-          .to_string();
-        debug!("Redirecting to {}...", &location_string);
-        let new_url = resolve_uri_from_location(&url, &location_string);
-        // Boxed trait object turns out to be the savior for 2+ types yielding same results.
-        return Box::new(
-          future::ok(None).join3(
+    .and_then(
+      move |response| -> Box<
+        dyn Future<Item = FetchAttempt, Error = DenoError> + Send,
+      > {
+        if response.status().is_redirection() {
+          let location_string = response
+            .headers()
+            .get("location")
+            .expect("url redirection should provide 'location' header")
+            .to_str()
+            .unwrap()
+            .to_string();
+          debug!("Redirecting to {}...", &location_string);
+          let new_url = resolve_uri_from_location(&url, &location_string);
+          // Boxed trait object turns out to be the savior for 2+ types yielding same results.
+          return Box::new(future::ok(None).join3(
             future::ok(None),
-            future::ok(Some(FetchOnceResult::Redirect(new_url))
-          ))
-        );
-      } else if response.status().is_client_error() || response.status().is_server_error() {
-        return Box::new(future::err(
-          errors::new(errors::ErrorKind::Other,
-            format!("Import '{}' failed: {}", &url, response.status()))
+            future::ok(Some(FetchOnceResult::Redirect(new_url))),
           ));
-      }
-      let content_type = response
-        .headers()
-        .get(CONTENT_TYPE)
-        .map(|content_type| content_type.to_str().unwrap().to_owned());
-      let body = response
-        .into_body()
-        .concat2()
-        .map(|body| String::from_utf8(body.to_vec()).ok())
-        .map_err(DenoError::from);
-      Box::new(body.join3(
-        future::ok(content_type),
-        future::ok(None)
-      ))
-    })
+        } else if response.status().is_client_error()
+          || response.status().is_server_error()
+        {
+          return Box::new(future::err(errors::new(
+            errors::ErrorKind::Other,
+            format!("Import '{}' failed: {}", &url, response.status()),
+          )));
+        }
+        let content_type = response
+          .headers()
+          .get(CONTENT_TYPE)
+          .map(|content_type| content_type.to_str().unwrap().to_owned());
+        let body = response
+          .into_body()
+          .concat2()
+          .map(|body| String::from_utf8(body.to_vec()).ok())
+          .map_err(DenoError::from);
+        Box::new(body.join3(future::ok(content_type), future::ok(None)))
+      },
+    )
     .and_then(move |(maybe_code, maybe_content_type, maybe_redirect)| {
       if let Some(redirect) = maybe_redirect {
         future::ok(redirect)
       } else {
         // maybe_code should always contain code here!
-        future::ok(FetchOnceResult::Code(maybe_code.unwrap(), maybe_content_type))
+        future::ok(FetchOnceResult::Code(
+          maybe_code.unwrap(),
+          maybe_content_type,
+        ))
       }
     })
 }
