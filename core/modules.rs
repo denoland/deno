@@ -18,7 +18,7 @@ use std::collections::HashMap;
 pub type SourceCodeFuture<E> = dyn Future<Item = String, Error = E> + Send;
 
 pub trait Loader {
-  type Behavior: crate::isolate::Behavior;
+  type Dispatch: crate::isolate::Dispatch;
   type Error: std::error::Error + 'static;
 
   /// Returns an absolute URL.
@@ -32,9 +32,9 @@ pub trait Loader {
 
   fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
     &'a mut self,
-  ) -> (&'b mut Isolate<Self::Behavior>, &'c mut Modules);
+  ) -> (&'b mut Isolate<Self::Dispatch>, &'c mut Modules);
 
-  fn isolate<'a: 'b, 'b>(&'a mut self) -> &'b mut Isolate<Self::Behavior> {
+  fn isolate<'a: 'b, 'b>(&'a mut self) -> &'b mut Isolate<Self::Dispatch> {
     let (isolate, _) = self.isolate_and_modules();
     isolate
   }
@@ -262,14 +262,14 @@ mod tests {
 
   struct MockLoader {
     pub loads: Vec<String>,
-    pub isolate: Isolate<TestBehavior>,
+    pub isolate: Isolate<TestDispatch>,
     pub modules: Modules,
   }
 
   impl MockLoader {
     fn new() -> Self {
       let modules = Modules::new();
-      let isolate = TestBehavior::setup(TestBehaviorMode::AsyncImmediate);
+      let isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
       Self {
         loads: Vec::new(),
         isolate,
@@ -279,7 +279,7 @@ mod tests {
   }
 
   impl Loader for MockLoader {
-    type Behavior = TestBehavior;
+    type Dispatch = TestDispatch;
     type Error = std::io::Error;
 
     fn resolve(specifier: &str, _referrer: &str) -> String {
@@ -304,7 +304,7 @@ mod tests {
 
     fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
       &'a mut self,
-    ) -> (&'b mut Isolate<Self::Behavior>, &'c mut Modules) {
+    ) -> (&'b mut Isolate<Self::Dispatch>, &'c mut Modules) {
       (&mut self.isolate, &mut self.modules)
     }
   }

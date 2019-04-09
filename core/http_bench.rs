@@ -98,7 +98,7 @@ pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
 struct HttpBench();
 
-impl Behavior for HttpBench {
+impl Dispatch for HttpBench {
   fn dispatch(
     &mut self,
     control: &[u8],

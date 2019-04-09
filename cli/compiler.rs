@@ -1,12 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::cli_behavior::CliBehavior;
-use crate::isolate_state::*;
 use crate::js_errors;
 use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::startup_data;
+use crate::state::*;
 use crate::tokio_util;
 use crate::worker::Worker;
 use deno::js_check;
@@ -21,7 +20,6 @@ use std::collections::HashMap;
 use std::str;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::runtime::Runtime;
 
@@ -88,22 +86,21 @@ fn parse_cmd_id(res_json: &str) -> CmdId {
   }
 }
 
-fn lazy_start(parent_state: Arc<IsolateState>) -> ResourceId {
+fn lazy_start(parent_state: ThreadSafeState) -> ResourceId {
   let mut cell = C_RID.lock().unwrap();
   cell
     .get_or_insert_with(|| {
-      let child_state = Arc::new(IsolateState::new(
+      let child_state = ThreadSafeState::new(
         parent_state.flags.clone(),
         parent_state.argv.clone(),
-      ));
+      );
       let rid = child_state.resource.rid;
       let resource = child_state.resource.clone();
-      let behavior = CliBehavior::new(child_state);
 
       let mut worker = Worker::new(
         "TS".to_string(),
         startup_data::compiler_isolate_init(),
-        behavior,
+        child_state,
       );
 
       js_check(worker.execute("denoMain()"));
@@ -160,7 +157,7 @@ fn req(specifier: &str, referrer: &str, cmd_id: u32) -> Buf {
 }
 
 pub fn compile_async(
-  parent_state: Arc<IsolateState>,
+  parent_state: ThreadSafeState,
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
@@ -248,7 +245,7 @@ pub fn compile_async(
 }
 
 pub fn compile_sync(
-  parent_state: Arc<IsolateState>,
+  parent_state: ThreadSafeState,
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
@@ -286,12 +283,8 @@ mod tests {
         maybe_source_map: None,
       };
 
-      out = compile_sync(
-        Arc::new(IsolateState::mock()),
-        specifier,
-        &referrer,
-        &out,
-      ).unwrap();
+      out = compile_sync(ThreadSafeState::mock(), specifier, &referrer, &out)
+        .unwrap();
       assert!(
         out
           .maybe_output_code

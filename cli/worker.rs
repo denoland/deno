@@ -1,13 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::cli_behavior::CliBehavior;
 use crate::compiler::compile_async;
 use crate::compiler::ModuleMetaData;
 use crate::errors::DenoError;
 use crate::errors::RustOrJsError;
-use crate::isolate_state::IsolateState;
 use crate::js_errors;
 use crate::js_errors::JSErrorColor;
 use crate::msg;
+use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
 use deno::deno_mod;
@@ -17,24 +16,23 @@ use futures::future::Either;
 use futures::Async;
 use futures::Future;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
 pub struct Worker {
-  inner: deno::Isolate<CliBehavior>,
-  state: Arc<IsolateState>,
+  inner: deno::Isolate<ThreadSafeState>,
+  state: ThreadSafeState,
 }
 
 impl Worker {
   pub fn new(
     _name: String,
     startup_data: StartupData,
-    behavior: CliBehavior,
+    state: ThreadSafeState,
   ) -> Worker {
-    let state = behavior.state.clone();
+    let state_ = state.clone();
     Self {
-      inner: deno::Isolate::new(startup_data, behavior),
+      inner: deno::Isolate::new(startup_data, state_),
       state,
     }
   }
@@ -107,7 +105,7 @@ impl Worker {
     js_filename: &str,
     is_prefetch: bool,
   ) -> Result<(), RustOrJsError> {
-    // TODO move isolate_state::execute_mod impl here.
+    // TODO move state::execute_mod impl here.
     self
       .execute_mod_inner(js_filename, is_prefetch)
       .map_err(|err| match err {
@@ -204,7 +202,7 @@ impl Future for Worker {
 }
 
 fn fetch_module_meta_data_and_maybe_compile_async(
-  state: &Arc<IsolateState>,
+  state: &ThreadSafeState,
   specifier: &str,
   referrer: &str,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
@@ -239,7 +237,7 @@ fn fetch_module_meta_data_and_maybe_compile_async(
 }
 
 fn fetch_module_meta_data_and_maybe_compile(
-  state: &Arc<IsolateState>,
+  state: &ThreadSafeState,
   specifier: &str,
   referrer: &str,
 ) -> Result<ModuleMetaData, DenoError> {
@@ -251,11 +249,10 @@ fn fetch_module_meta_data_and_maybe_compile(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cli_behavior::CliBehavior;
   use crate::flags;
-  use crate::isolate_state::IsolateState;
   use crate::resources;
   use crate::startup_data;
+  use crate::state::ThreadSafeState;
   use crate::tokio_util;
   use deno::js_check;
   use futures::future::lazy;
@@ -272,11 +269,11 @@ mod tests {
     let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = ThreadSafeState::new(flags, rest_argv);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let cli = CliBehavior::new(state.clone());
-      let mut worker = Worker::new("TEST".to_string(), StartupData::None, cli);
+      let mut worker =
+        Worker::new("TEST".to_string(), StartupData::None, state);
       if let Err(err) = worker.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
       }
@@ -295,11 +292,11 @@ mod tests {
     let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
-    let state = Arc::new(IsolateState::new(flags, rest_argv));
+    let state = ThreadSafeState::new(flags, rest_argv);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
-      let cli = CliBehavior::new(state.clone());
-      let mut worker = Worker::new("TEST".to_string(), StartupData::None, cli);
+      let mut worker =
+        Worker::new("TEST".to_string(), StartupData::None, state);
       if let Err(err) = worker.execute_mod(&filename, false) {
         eprintln!("execute_mod err {:?}", err);
       }
@@ -311,10 +308,9 @@ mod tests {
   }
 
   fn create_test_worker() -> Worker {
-    let state = Arc::new(IsolateState::mock());
-    let cli = CliBehavior::new(state.clone());
+    let state = ThreadSafeState::mock();
     let mut worker =
-      Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), cli);
+      Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), state);
     js_check(worker.execute("denoMain()"));
     js_check(worker.execute("workerMain()"));
     worker

@@ -11,7 +11,6 @@ extern crate clap;
 extern crate deno;
 
 mod ansi;
-pub mod cli_behavior;
 pub mod compiler;
 pub mod deno_dir;
 pub mod errors;
@@ -20,7 +19,6 @@ mod fs;
 mod global_timer;
 mod http_body;
 mod http_util;
-pub mod isolate_state;
 pub mod js_errors;
 pub mod modules;
 pub mod msg;
@@ -31,20 +29,19 @@ mod repl;
 pub mod resolve_addr;
 pub mod resources;
 mod startup_data;
+pub mod state;
 mod tokio_util;
 mod tokio_write;
 pub mod version;
 pub mod worker;
 
-use crate::cli_behavior::CliBehavior;
 use crate::errors::RustOrJsError;
-use crate::isolate_state::IsolateState;
+use crate::state::ThreadSafeState;
 use crate::worker::Worker;
 use futures::lazy;
 use futures::Future;
 use log::{LevelFilter, Metadata, Record};
 use std::env;
-use std::sync::Arc;
 
 static LOGGER: Logger = Logger;
 
@@ -104,11 +101,12 @@ fn main() {
   let should_prefetch = flags.prefetch || flags.info;
   let should_display_info = flags.info;
 
-  let state = Arc::new(IsolateState::new(flags, rest_argv));
-  let state_ = state.clone();
-  let cli = CliBehavior::new(state_);
-  let mut main_worker =
-    Worker::new("main".to_string(), startup_data::deno_isolate_init(), cli);
+  let state = ThreadSafeState::new(flags, rest_argv);
+  let mut main_worker = Worker::new(
+    "main".to_string(),
+    startup_data::deno_isolate_init(),
+    state.clone(),
+  );
 
   let main_future = lazy(move || {
     // Setup runtime.
