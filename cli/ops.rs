@@ -145,7 +145,11 @@ pub fn dispatch_all(
 pub fn op_selector_compiler(inner_type: msg::Any) -> Option<OpCreator> {
   match inner_type {
     msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
-    _ => op_selector_std(inner_type),
+    msg::Any::WorkerGetMessage => Some(op_worker_get_message),
+    msg::Any::WorkerPostMessage => Some(op_worker_post_message),
+    msg::Any::Exit => Some(op_exit),
+    msg::Any::Start => Some(op_start),
+    _ => None,
   }
 }
 
