@@ -13,8 +13,20 @@ pub fn run<F>(future: F)
 where
   F: Future<Item = (), Error = ()> + Send + 'static,
 {
+  abort_on_panic();
   // tokio::runtime::current_thread::run(future)
   tokio::run(future)
+}
+
+// Tokio swallows panics. In order to actually crash when we panic, we
+// have to set this custom hook.
+// https://github.com/tokio-rs/tokio/issues/495
+// https://github.com/tokio-rs/tokio/issues/209
+pub fn abort_on_panic() {
+  std::panic::set_hook(Box::new(|panic_info| {
+    eprintln!("{}", panic_info.to_string());
+    std::process::abort();
+  }));
 }
 
 pub fn block_on<F, R, E>(future: F) -> Result<R, E>
@@ -40,7 +52,10 @@ where
   let rt = tokio::runtime::Runtime::new().unwrap();
   let mut executor = rt.executor();
   let mut enter = tokio_executor::enter().expect("Multiple executors at once");
-  tokio_executor::with_default(&mut executor, &mut enter, move |_enter| f());
+  tokio_executor::with_default(&mut executor, &mut enter, move |_enter| {
+    abort_on_panic();
+    f()
+  });
 }
 
 #[derive(Debug)]

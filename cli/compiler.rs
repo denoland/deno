@@ -111,6 +111,8 @@ fn lazy_start(parent_state: ThreadSafeState) -> ResourceId {
 
       let mut runtime = C_RUNTIME.lock().unwrap();
       runtime.spawn(lazy(move || {
+        tokio_util::abort_on_panic();
+
         worker.then(move |result| -> Result<(), ()> {
           // Close resource so the future created by
           // handle_worker_message_stream exits
