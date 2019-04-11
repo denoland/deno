@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.7 / 2019.04.11
+
+In deno:
+
+- Use clap for command line flag parsing (#2093, #2068, #2065, #2025)
+- Allow high precision performance.now() (#1977)
+- Fix `console instanceof Console` (#2073)
+- Add link/linkSync fs call for hardlinks (#2074)
+- build: Use -O3 instead of -O (#2070)
+
+In deno_std:
+
+- fs: add fs/mod.ts entry point (deno_std#272)
+- prettier: change flag parsing (deno_std#327)
+- fs: add EOL detect / format (deno_std#289)
+- fs: ensure exists file/dir must be the same type or it will throw error
+  (deno_std#294)
+
 ### v0.3.6 / 2019.04.04
 
 In deno:
