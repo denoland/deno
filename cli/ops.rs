@@ -63,7 +63,7 @@ type OpCreator =
   fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: deno_buf)
     -> Box<OpWithError>;
 
-type OpSelector = fn(inner_type: msg::Any) -> Option<OpCreator>;
+pub type OpSelector = fn(inner_type: msg::Any) -> Option<OpCreator>;
 
 #[inline]
 fn empty_buf() -> Buf {
@@ -142,6 +142,17 @@ pub fn dispatch_all(
   (base.sync(), boxed_op)
 }
 
+pub fn op_selector_compiler(inner_type: msg::Any) -> Option<OpCreator> {
+  match inner_type {
+    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
+    msg::Any::WorkerGetMessage => Some(op_worker_get_message),
+    msg::Any::WorkerPostMessage => Some(op_worker_post_message),
+    msg::Any::Exit => Some(op_exit),
+    msg::Any::Start => Some(op_start),
+    _ => None,
+  }
+}
+
 /// Standard ops set for most isolates
 pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
   match inner_type {
@@ -192,9 +203,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Write => Some(op_write),
 
     // TODO(ry) split these out so that only the appropriate Workers can access
-    // them. Only the compiler worker should be able to access
-    // FetchModuleMetaData.
-    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
+    // them.
     msg::Any::WorkerGetMessage => Some(op_worker_get_message),
     msg::Any::WorkerPostMessage => Some(op_worker_post_message),
 
@@ -1860,6 +1869,7 @@ fn op_create_worker(
     let child_state = ThreadSafeState::new(
       parent_state.flags.clone(),
       parent_state.argv.clone(),
+      op_selector_std,
     );
     let rid = child_state.resource.rid;
     let name = format!("USER-WORKER-{}", specifier);

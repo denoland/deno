@@ -60,6 +60,7 @@ pub struct State {
   pub workers: Mutex<UserWorkerTable>,
   pub start_time: Instant,
   pub resource: resources::Resource,
+  pub dispatch_selector: ops::OpSelector,
 }
 
 impl Clone for ThreadSafeState {
@@ -81,12 +82,16 @@ impl Dispatch for ThreadSafeState {
     control: &[u8],
     zero_copy: deno_buf,
   ) -> (bool, Box<Op>) {
-    ops::dispatch_all(self, control, zero_copy, ops::op_selector_std)
+    ops::dispatch_all(self, control, zero_copy, self.dispatch_selector)
   }
 }
 
 impl ThreadSafeState {
-  pub fn new(flags: flags::DenoFlags, argv_rest: Vec<String>) -> Self {
+  pub fn new(
+    flags: flags::DenoFlags,
+    argv_rest: Vec<String>,
+    dispatch_selector: ops::OpSelector,
+  ) -> Self {
     let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
 
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
@@ -107,6 +112,7 @@ impl ThreadSafeState {
       workers: Mutex::new(UserWorkerTable::new()),
       start_time: Instant::now(),
       resource,
+      dispatch_selector,
     }))
   }
 
@@ -157,7 +163,7 @@ impl ThreadSafeState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
     // For debugging: argv.push_back(String::from("-D"));
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
-    ThreadSafeState::new(flags, rest_argv)
+    ThreadSafeState::new(flags, rest_argv, ops::op_selector_std)
   }
 
   pub fn metrics_op_dispatched(
