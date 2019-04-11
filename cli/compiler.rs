@@ -2,6 +2,7 @@
 use crate::js_errors;
 use crate::js_errors::JSErrorColor;
 use crate::msg;
+use crate::ops::op_selector_compiler;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::startup_data;
@@ -93,6 +94,7 @@ fn lazy_start(parent_state: ThreadSafeState) -> ResourceId {
       let child_state = ThreadSafeState::new(
         parent_state.flags.clone(),
         parent_state.argv.clone(),
+        op_selector_compiler,
       );
       let rid = child_state.resource.rid;
       let resource = child_state.resource.clone();
