@@ -230,7 +230,8 @@ pub fn set_flags(
 
   if matches.is_present("v8-options") {
     // display v8 help and exit
-    v8_set_flags(vec!["deno".to_string(), "--help".to_string()]);
+    // TODO(bartlomieju): this relies on `v8_set_flags` to swap `--v8-options` to help
+    v8_set_flags(vec!["deno".to_string(), "--v8-options".to_string()]);
   }
 
   if matches.is_present("v8-flags") {
