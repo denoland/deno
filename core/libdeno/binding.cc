@@ -208,12 +208,17 @@ void SetGCObserver(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate::Scope isolate_scope(isolate);
   v8::EscapableHandleScope handle_scope(isolate);
 
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  auto context = d->context_.Get(isolate);
   auto obj = args[0].As<v8::Object>();
   auto callback = args[1].As<v8::Function>();
 
   auto observer = new GCObserver();
   observer->Register(isolate, obj);
   observer->SetCallback(isolate, callback);
+  // Make LSAN happy
+  obj->SetPrivate(context, d->gc_observer_private_symbol_.Get(isolate),
+                  v8::External::New(isolate, observer));
 
   handle_scope.Escape(obj);
   args.GetReturnValue().Set(obj);

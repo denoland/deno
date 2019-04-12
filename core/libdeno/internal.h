@@ -113,6 +113,7 @@ class DenoIsolate {
   deno_resolve_cb resolve_cb_;
 
   v8::Persistent<v8::Context> context_;
+  v8::Persistent<v8::Private> gc_observer_private_symbol_;
   std::map<size_t, v8::Persistent<v8::Value>> zero_copy_map_;
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   std::string last_exception_;

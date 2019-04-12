@@ -71,6 +71,11 @@ Deno* deno_new(deno_config config) {
       deno::InitializeContext(isolate, context);
     }
     d->context_.Reset(isolate, context);
+
+    d->gc_observer_private_symbol_.Reset(
+        isolate,
+        v8::Private::New(isolate, v8::String::NewFromUtf8(
+                                      isolate, "deno:gc_observer:symbol")));
   }
 
   return reinterpret_cast<Deno*>(d);

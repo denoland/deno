@@ -132,5 +132,5 @@ jobs:
       - third_party/depot_tools/gn gen target/debug
       - export ASAN_OPTIONS=detect_leaks=1
       - ./tools/build.py test_cc
-      - ./target/debug/test_cc
+      - ./target/debug/test_cc --expose-gc
 
