@@ -25,6 +25,7 @@ pub struct DenoFlags {
   pub prefetch: bool,
   pub info: bool,
   pub fmt: bool,
+  pub eval: bool,
 }
 
 impl<'a> From<ArgMatches<'a>> for DenoFlags {
@@ -81,6 +82,9 @@ impl<'a> From<ArgMatches<'a>> for DenoFlags {
     }
     if matches.is_present("fmt") {
       flags.fmt = true;
+    }
+    if matches.is_present("eval") {
+      flags.eval = true;
     }
 
     flags
@@ -177,6 +181,11 @@ pub fn set_flags(
         .arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
       // TODO(bartlomieju): version is not handled properly
+      SubCommand::with_name("eval")
+        .about("Eval provided string")
+        .arg(Arg::with_name("expr").takes_value(true).required(true)),
+    ).subcommand(
+      // TODO(bartlomieju): version is not handled properly
       SubCommand::with_name("fmt").about("Format files").arg(
         Arg::with_name("files")
           .takes_value(true)
@@ -196,6 +205,12 @@ pub fn set_flags(
   let mut rest: Vec<String> = vec![String::from("deno")];
 
   match matches.subcommand() {
+    ("eval", Some(info_match)) => {
+      //       TODO(bartlomieju): it still relies on `is_present("info")` check
+      //       in `set_recognized_flags`
+      let expr: &str = info_match.value_of("expr").unwrap();
+      rest.extend(vec![expr.to_string()]);
+    }
     ("info", Some(info_match)) => {
       // TODO(bartlomieju): it still relies on `is_present("info")` check
       // in `set_recognized_flags`

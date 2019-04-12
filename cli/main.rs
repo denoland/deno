@@ -112,14 +112,26 @@ fn main() {
     // Setup runtime.
     js_check(main_worker.execute("denoMain()"));
 
-    // Execute main module.
-    if let Some(main_module) = state.main_module() {
-      debug!("main_module {}", main_module);
-      js_check(main_worker.execute_mod(&main_module, should_prefetch));
-      if should_display_info {
-        // Display file info and exit. Do not run file
-        main_worker.print_file_info(&main_module);
-        std::process::exit(0);
+    if state.flags.eval {
+      let js_source = format!(
+        "async function __eval(){{
+          {}
+        }}
+        __eval();
+        ",
+        &state.argv[1]
+      );
+      js_check(main_worker.execute(&js_source));
+    } else {
+      // Execute main module.
+      if let Some(main_module) = state.main_module() {
+        debug!("main_module {}", main_module);
+        js_check(main_worker.execute_mod(&main_module, should_prefetch));
+        if should_display_info {
+          // Display file info and exit. Do not run file
+          main_worker.print_file_info(&main_module);
+          std::process::exit(0);
+        }
       }
     }
 
