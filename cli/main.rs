@@ -101,7 +101,7 @@ fn main() {
   let should_prefetch = flags.prefetch || flags.info;
   let should_display_info = flags.info;
 
-  let state = ThreadSafeState::new(flags, rest_argv);
+  let state = ThreadSafeState::new(flags, rest_argv, ops::op_selector_std);
   let mut main_worker = Worker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),

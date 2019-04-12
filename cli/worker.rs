@@ -250,6 +250,7 @@ fn fetch_module_meta_data_and_maybe_compile(
 mod tests {
   use super::*;
   use crate::flags;
+  use crate::ops::op_selector_std;
   use crate::resources;
   use crate::startup_data;
   use crate::state::ThreadSafeState;
@@ -269,7 +270,7 @@ mod tests {
     let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
-    let state = ThreadSafeState::new(flags, rest_argv);
+    let state = ThreadSafeState::new(flags, rest_argv, op_selector_std);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
@@ -292,7 +293,7 @@ mod tests {
     let argv = vec![String::from("./deno"), filename.clone()];
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
-    let state = ThreadSafeState::new(flags, rest_argv);
+    let state = ThreadSafeState::new(flags, rest_argv, op_selector_std);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
