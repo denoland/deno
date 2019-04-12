@@ -87,24 +87,18 @@ impl<'a> From<ArgMatches<'a>> for DenoFlags {
   }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub fn set_flags(
-  args: Vec<String>,
-) -> Result<(DenoFlags, Vec<String>), String> {
-  let app_settings: Vec<AppSettings> = vec![
-    AppSettings::AllowExternalSubcommands,
-    AppSettings::DisableHelpSubcommand,
-  ];
-
-  let env_variables_help = "ENVIRONMENT VARIABLES:
+static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
     NO_COLOR        Set to disable color";
 
-  let clap_app = App::new("deno")
+fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
+  let cli_app = App::new("deno")
     .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
-    .settings(&app_settings[..])
-    .after_help(env_variables_help)
+    .settings(&[
+      AppSettings::AllowExternalSubcommands,
+      AppSettings::DisableHelpSubcommand,
+    ]).after_help(ENV_VARIABLES_HELP)
     .arg(
       Arg::with_name("version")
         .short("v")
@@ -193,43 +187,45 @@ pub fn set_flags(
       SubCommand::with_name("<script>").about("Script to run"),
     );
 
-  let matches = clap_app.get_matches_from(args);
+  cli_app
+}
 
-  // TODO(bartomieju): compatibility with old "opts" approach - to be refactored
-  let mut rest: Vec<String> = vec![String::from("deno")];
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub fn set_flags(
+  args: Vec<String>,
+) -> Result<(DenoFlags, Vec<String>), String> {
+  let mut rest_argv: Vec<String> = vec!["deno".to_string()];
+  let cli_app = create_cli_app();
+  let matches = cli_app.get_matches_from(args);
 
   match matches.subcommand() {
     ("info", Some(info_match)) => {
-      // TODO(bartlomieju): it still relies on `is_present("info")` check
-      // in `set_recognized_flags`
       let file: &str = info_match.value_of("file").unwrap();
-      rest.extend(vec![file.to_string()]);
+      rest_argv.extend(vec![file.to_string()]);
     }
     ("fmt", Some(fmt_match)) => {
-      // TODO(bartlomieju): it still relies on `is_present("fmt")` check
-      // in `set_recognized_flags`
       let files: Vec<String> = fmt_match
         .values_of("files")
         .unwrap()
         .map(String::from)
         .collect();
-      rest.extend(files);
+      rest_argv.extend(files);
     }
     (script, Some(script_match)) => {
-      rest.extend(vec![script.to_string()]);
-      // check if there are any extra arguments
+      rest_argv.extend(vec![script.to_string()]);
+      // check if there are any extra arguments that should
+      // be passed to script
       if script_match.is_present("") {
         let script_args: Vec<String> = script_match
           .values_of("")
           .unwrap()
           .map(String::from)
           .collect();
-        rest.extend(script_args);
+        rest_argv.extend(script_args);
       }
     }
     _ => {}
   }
-  // TODO: end
 
   if matches.is_present("v8-options") {
     // display v8 help and exit
@@ -249,7 +245,7 @@ pub fn set_flags(
   }
 
   let flags = DenoFlags::from(matches);
-  Ok((flags, rest))
+  Ok((flags, rest_argv))
 }
 
 #[test]
