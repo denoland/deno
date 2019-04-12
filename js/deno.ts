@@ -22,6 +22,7 @@ export {
 export {
   copy,
   toAsyncIterator,
+  lines,
   ReadResult,
   SeekMode,
   Reader,

@@ -3,6 +3,8 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go!
 
+import { TextDecoder } from "./text_encoding";
+
 // The bytes read during an I/O call and a boolean indicating EOF.
 export interface ReadResult {
   nread: number;
@@ -158,4 +160,32 @@ export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
       };
     }
   };
+}
+
+/** Read lines asynchronously from `r`.
+ *
+ *      for await (const line of Deno.lines(reader)) {
+ *          console.log(line);
+ *      }
+ */
+export async function* lines(r: Reader): AsyncIterableIterator<string> {
+  const decoder = new TextDecoder();
+  let scratch = "";
+
+  for await (const chunk of toAsyncIterator(r)) {
+    scratch += decoder.decode(chunk);
+
+    let newLineIndex = scratch.indexOf("\n");
+
+    if (newLineIndex > -1) {
+      const line = scratch.slice(0, newLineIndex);
+      scratch = scratch.slice(newLineIndex + 1);
+      yield line;
+    }
+  }
+
+  const remainingLines = scratch.split("\n");
+  for (const line of remainingLines) {
+    yield line;
+  }
 }

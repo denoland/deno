@@ -29,6 +29,29 @@ testPerm({ read: true }, async function filesToAsyncIterator() {
   assertEquals(totalSize, 12);
 });
 
+testPerm({ write: true, read: true }, async function fileLines() {
+  const encoder = new TextEncoder();
+  const tempDir = await Deno.makeTempDir();
+  const filename = tempDir + "/test.txt";
+
+  const lines = "foo\nbar\nbaz\nfizz\nbuzz";
+  Deno.writeFileSync(filename, encoder.encode(lines));
+
+  const f = await Deno.open(filename, "r");
+
+  const readLines = [];
+  for await (const line of Deno.lines(f)) {
+    readLines.push(line);
+  }
+
+  assertEquals(readLines.length, 5);
+  assertEquals(readLines[0], "foo");
+  assertEquals(readLines[1], "bar");
+  assertEquals(readLines[2], "baz");
+  assertEquals(readLines[3], "fizz");
+  assertEquals(readLines[4], "buzz");
+});
+
 testPerm({ write: false }, async function writePermFailure() {
   const filename = "tests/hello.txt";
   const writeModes: Deno.OpenMode[] = ["w", "a", "x"];
