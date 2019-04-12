@@ -37,4 +37,7 @@ declare interface DenoCore {
   evalContext(code: string): [any, EvalErrorInfo | null];
 
   errorToJSON: (e: Error) => string;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setGCObserver: <T>(o: T, callback: (o: T) => void) => T;
 }

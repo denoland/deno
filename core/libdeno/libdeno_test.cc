@@ -315,6 +315,13 @@ TEST(LibDenoTest, LibDenoEvalContextError) {
   deno_delete(d);
 }
 
+TEST(LibDenoTest, LibDenoGCObserver) {
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
+  deno_execute(d, nullptr, "a.js", "LibDenoGCObserver();");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_delete(d);
+}
+
 TEST(LibDenoTest, SharedAtomics) {
   int32_t s[] = {0, 1, 2};
   deno_buf shared = {nullptr, 0, reinterpret_cast<uint8_t*>(s), sizeof s, 0};

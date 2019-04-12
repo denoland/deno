@@ -162,6 +162,63 @@ void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args) {
   args.GetReturnValue().Set(v8_str(json_string.c_str()));
 }
 
+class GCObserver {
+ private:
+  v8::Persistent<v8::Object> wrapper_;
+  v8::Persistent<v8::Function> callback_;
+  v8::Persistent<v8::Context> context_;
+
+ public:
+  void Register(v8::Isolate* isolate, v8::Local<v8::Object> obj) {
+    wrapper_.Reset(isolate, obj);
+    wrapper_.SetWeak(this, WeakCallback,
+                     // Before the object is actually gc-ed.
+                     v8::WeakCallbackType::kFinalizer);
+  }
+
+  void SetCallback(v8::Isolate* isolate, v8::Local<v8::Function> callback) {
+    context_.Reset(isolate, isolate->GetCurrentContext());
+    callback_.Reset(isolate, callback);
+  }
+
+  static void WeakCallback(const v8::WeakCallbackInfo<GCObserver>& data) {
+    auto* self = data.GetParameter();
+    auto* isolate = v8::Isolate::GetCurrent();
+    v8::Locker locker(isolate);
+    v8::HandleScope handle_scope(isolate);
+    auto context = self->context_.Get(isolate);
+    v8::Local<v8::Value> args[1];
+    args[0] = self->wrapper_.Get(isolate);
+    // Invoke callback.
+    (void)self->callback_.Get(isolate)->Call(context, context->Global(), 1,
+                                             args);
+    // Reset handles.
+    self->wrapper_.Reset();
+    self->callback_.Reset();
+    self->context_.Reset();
+
+    delete self;
+  }
+};
+
+void SetGCObserver(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  CHECK_EQ(args.Length(), 2);
+  auto* isolate = args.GetIsolate();
+  v8::Locker locker(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::EscapableHandleScope handle_scope(isolate);
+
+  auto obj = args[0].As<v8::Object>();
+  auto callback = args[1].As<v8::Function>();
+
+  auto observer = new GCObserver();
+  observer->Register(isolate, obj);
+  observer->SetCallback(isolate, callback);
+
+  handle_scope.Escape(obj);
+  args.GetReturnValue().Set(obj);
+}
+
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
   // Do not use ImportBuf with zero_copy buffers.
   DCHECK_EQ(buf.zero_copy_id, 0);
@@ -513,6 +570,13 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
       error_to_json_tmpl->GetFunction(context).ToLocalChecked();
   CHECK(core_val->Set(context, deno::v8_str("errorToJSON"), error_to_json_val)
             .FromJust());
+
+  auto set_gc_observer_tmpl = v8::FunctionTemplate::New(isolate, SetGCObserver);
+  auto set_gc_observer_val =
+      set_gc_observer_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(
+      core_val->Set(context, deno::v8_str("setGCObserver"), set_gc_observer_val)
+          .FromJust());
 
   CHECK(core_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());

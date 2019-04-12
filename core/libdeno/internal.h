@@ -155,6 +155,7 @@ void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
 void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args);
 void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args);
+void SetGCObserver(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
 void MessageCallback(v8::Local<v8::Message> message, v8::Local<v8::Value> data);
@@ -164,6 +165,7 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Send),
     reinterpret_cast<intptr_t>(EvalContext),
     reinterpret_cast<intptr_t>(ErrorToJSON),
+    reinterpret_cast<intptr_t>(SetGCObserver),
     reinterpret_cast<intptr_t>(Shared),
     reinterpret_cast<intptr_t>(MessageCallback),
     0};

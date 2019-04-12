@@ -195,3 +195,65 @@ global.LibDenoEvalContextError = () => {
   assert(!errInfo5.isCompileError); // is NOT a compilation error! (just eval)
   assert(errInfo5.thrown.message === "Unexpected end of input");
 };
+
+global.LibDenoGCObserver = () => {
+  // Basic usage.
+  let num = 1;
+  const incr = () => {
+    Deno.core.print("Destroy callback invoked\n");
+    num = num + 1;
+  };
+  // IIFE. Simply using scope might not work.
+  (() => {
+    const o = Deno.core.setGCObserver({}, incr);
+    assert(!!o);
+  })();
+  // Guarantee GC.
+  gc();
+  assert(num === 2);
+
+  // Accessing the gc-ed object in callback.
+  let num2 = 0;
+  // IIFE. Simply using scope might not work.
+  (() => {
+    const obj = { a: 10 };
+    const incr2 = o => {
+      Deno.core.print("Destroy callback invoked 2\n");
+      num2 = o.a;
+    };
+    Deno.core.setGCObserver(obj, incr2);
+  })();
+  // Guarantee GC.
+  gc();
+  assert(num2 === 10);
+
+  // Simulating a connection goes out of scope
+  // for auto closing.
+  let isClosed = false;
+  let ID = 12345;
+  const fakeClose = id => {
+    if (id === ID) {
+      isClosed = true;
+    }
+  };
+  class FakeConn {
+    constructor(rid) {
+      this.rid = rid;
+    }
+    close() {
+      Deno.core.print("Closing fake connection\n");
+      fakeClose(this.rid);
+    }
+  }
+  // IIFE. Simply using scope might not work.
+  (() => {
+    const conn = new FakeConn(12345);
+    Deno.core.setGCObserver(conn, c => {
+      Deno.core.print("Destroy callback invoked 3\n");
+      c.close();
+    });
+  })();
+  // Guarantee GC.
+  gc();
+  assert(isClosed);
+};

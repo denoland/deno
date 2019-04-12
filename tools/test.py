@@ -76,7 +76,7 @@ def main(argv):
 
     test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
     check_exists(test_cc)
-    run([test_cc])
+    run([test_cc, "--expose-gc"])
 
     test_rs = os.path.join(build_dir, "test_rs" + executable_suffix)
     check_exists(test_rs)
