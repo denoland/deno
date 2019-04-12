@@ -113,6 +113,8 @@ fn main() {
     js_check(main_worker.execute("denoMain()"));
 
     if state.flags.eval {
+      // Wrap provided script in async function so asynchronous methods
+      // work. This is required until top-level await is not supported.
       let js_source = format!(
         "async function __eval(){{
           {}

@@ -182,8 +182,8 @@ pub fn set_flags(
     ).subcommand(
       // TODO(bartlomieju): version is not handled properly
       SubCommand::with_name("eval")
-        .about("Eval provided string")
-        .arg(Arg::with_name("expr").takes_value(true).required(true)),
+        .about("Eval script")
+        .arg(Arg::with_name("script").takes_value(true).required(true)),
     ).subcommand(
       // TODO(bartlomieju): version is not handled properly
       SubCommand::with_name("fmt").about("Format files").arg(
@@ -206,10 +206,10 @@ pub fn set_flags(
 
   match matches.subcommand() {
     ("eval", Some(info_match)) => {
-      //       TODO(bartlomieju): it still relies on `is_present("info")` check
-      //       in `set_recognized_flags`
-      let expr: &str = info_match.value_of("expr").unwrap();
-      rest.extend(vec![expr.to_string()]);
+      // TODO(bartlomieju): it still relies on `is_present("eval")` check
+      // in `set_recognized_flags`
+      let script: &str = info_match.value_of("script").unwrap();
+      rest.extend(vec![script.to_string()]);
     }
     ("info", Some(info_match)) => {
       // TODO(bartlomieju): it still relies on `is_present("info")` check
