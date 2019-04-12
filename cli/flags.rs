@@ -101,6 +101,7 @@ pub fn set_flags(
     NO_COLOR        Set to disable color";
 
   let clap_app = App::new("deno")
+    .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
     .settings(&app_settings[..])
     .after_help(env_variables_help)
@@ -171,18 +172,20 @@ pub fn set_flags(
         .long("prefetch")
         .help("Prefetch the dependencies"),
     ).subcommand(
-      // TODO(bartlomieju): version is not handled properly
       SubCommand::with_name("info")
+        .setting(AppSettings::DisableVersion)
         .about("Show source file related info")
         .arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
-      // TODO(bartlomieju): version is not handled properly
-      SubCommand::with_name("fmt").about("Format files").arg(
-        Arg::with_name("files")
-          .takes_value(true)
-          .multiple(true)
-          .required(true),
-      ),
+      SubCommand::with_name("fmt")
+        .setting(AppSettings::DisableVersion)
+        .about("Format files")
+        .arg(
+          Arg::with_name("files")
+            .takes_value(true)
+            .multiple(true)
+            .required(true),
+        ),
     ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
