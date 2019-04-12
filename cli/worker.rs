@@ -258,7 +258,6 @@ mod tests {
   use deno::js_check;
   use futures::future::lazy;
   use std::sync::atomic::Ordering;
-  use std::thread;
 
   #[test]
   fn execute_mod() {
@@ -379,14 +378,16 @@ mod tests {
       let resource = worker.state.resource.clone();
       let rid = resource.rid;
 
-      tokio::spawn(lazy(move || {
-        worker.then(move |r| -> Result<(), ()> {
+      let worker_future = worker
+        .then(move |r| -> Result<(), ()> {
           resource.close();
           println!("workers.rs after resource close");
           js_check(r);
           Ok(())
-        })
-      }));
+        }).shared();
+
+      let worker_future_ = worker_future.clone();
+      tokio::spawn(lazy(move || worker_future_.then(|_| Ok(()))));
 
       assert_eq!(resources::get_type(rid), Some("worker".to_string()));
 
@@ -395,9 +396,7 @@ mod tests {
       assert!(r.is_ok());
       debug!("rid {:?}", rid);
 
-      // TODO Need a way to get a future for when a resource closes.
-      // For now, just sleep for a bit.
-      thread::sleep(std::time::Duration::from_millis(1000));
+      worker_future.wait().unwrap();
       assert_eq!(resources::get_type(rid), None);
     })
   }
