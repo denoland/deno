@@ -535,7 +535,7 @@ if (import.meta.main) {
 
 ```shellsession
 $ deno -h
-deno 
+deno
 
 USAGE:
     deno [FLAGS] [OPTIONS] [SUBCOMMAND]
