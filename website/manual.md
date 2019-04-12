@@ -538,23 +538,24 @@ $ deno -h
 deno
 
 USAGE:
-    deno_dev [FLAGS] [OPTIONS] [SUBCOMMAND]
+    deno [FLAGS] [OPTIONS] [SUBCOMMAND]
 
 FLAGS:
-    -A, --allow-all      Allow all permissions
-        --allow-env      Allow environment access
-        --allow-net      Allow network access
-        --allow-read     Allow file system read access
-        --allow-run      Allow running subprocesses
-        --allow-write    Allow file system write access
-    -h, --help           Prints help information
-    -D, --log-debug      Log debug output
-        --no-prompt      Do not use prompts
-        --prefetch       Prefetch the dependencies
-    -r, --reload         Reload source code cache (recompile TypeScript)
-        --types          Print runtime TypeScript declarations
-        --v8-options     Print V8 command line options
-    -v, --version        Print the version
+    -A, --allow-all               Allow all permissions
+        --allow-env               Allow environment access
+        --allow-high-precision    Allow high precision time measurement
+        --allow-net               Allow network access
+        --allow-read              Allow file system read access
+        --allow-run               Allow running subprocesses
+        --allow-write             Allow file system write access
+    -h, --help                    Prints help information
+    -D, --log-debug               Log debug output
+        --no-prompt               Do not use prompts
+        --prefetch                Prefetch the dependencies
+    -r, --reload                  Reload source code cache (recompile TypeScript)
+        --types                   Print runtime TypeScript declarations
+        --v8-options              Print V8 command line options
+    -v, --version                 Print the version
 
 OPTIONS:
         --v8-flags=<v8-flags>    Set V8 command line options
