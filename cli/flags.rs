@@ -176,6 +176,7 @@ fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("eval")
+        .setting(AppSettings::DisableVersion)
         .about("Eval script")
         .arg(Arg::with_name("script").takes_value(true).required(true)),
     ).subcommand(
