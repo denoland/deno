@@ -16,9 +16,7 @@ import "./dir_test.ts";
 import "./event_test.ts";
 import "./event_target_test.ts";
 import "./fetch_test.ts";
-// TODO The global "File" has been temporarily disabled. See the note in
-// js/globals.ts
-// import "./file_test.ts";
+import "./file_test.ts";
 import "./files_test.ts";
 import "./form_data_test.ts";
 import "./globals_test.ts";
