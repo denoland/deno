@@ -13,6 +13,7 @@ import * as consoleTypes from "./console";
 import * as customEvent from "./custom_event";
 import * as deno from "./deno";
 import * as domTypes from "./dom_types";
+import * as domFile from "./dom_file";
 import * as event from "./event";
 import * as eventTarget from "./event_target";
 import * as formData from "./form_data";
@@ -74,11 +75,8 @@ window.location = (undefined as unknown) as domTypes.Location;
 window.Blob = blob.DenoBlob;
 export type Blob = blob.DenoBlob;
 
-// TODO(ry) Do not export a class implementing the DOM, export the DOM
-// interface. See this comment for implementation hint:
-// https://github.com/denoland/deno/pull/1396#discussion_r243711502
-// window.File = file.DenoFile;
-// export type File = file.DenoFile;
+window.File = domFile.DenoFile as domTypes.DomFileConstructor;
+export type File = domTypes.DomFile;
 
 window.CustomEventInit = customEvent.CustomEventInit;
 export type CustomEventInit = customEvent.CustomEventInit;

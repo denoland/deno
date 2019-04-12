@@ -196,12 +196,14 @@ export interface CustomEvent extends Event {
   ): void;
 }
 
-/* TODO(ry) Re-expose this interface. There is currently some interference
- * between deno's File and this one.
- */
 export interface DomFile extends Blob {
   readonly lastModified: number;
   readonly name: string;
+}
+
+export interface DomFileConstructor {
+  new (bits: BlobPart[], filename: string, options?: FilePropertyBag): DomFile;
+  prototype: DomFile;
 }
 
 export interface FilePropertyBag extends BlobPropertyBag {
