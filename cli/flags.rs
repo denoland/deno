@@ -25,6 +25,7 @@ pub struct DenoFlags {
   pub prefetch: bool,
   pub info: bool,
   pub fmt: bool,
+  pub eval: bool,
 }
 
 impl<'a> From<ArgMatches<'a>> for DenoFlags {
@@ -82,28 +83,26 @@ impl<'a> From<ArgMatches<'a>> for DenoFlags {
     if matches.is_present("fmt") {
       flags.fmt = true;
     }
+    if matches.is_present("eval") {
+      flags.eval = true;
+    }
 
     flags
   }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub fn set_flags(
-  args: Vec<String>,
-) -> Result<(DenoFlags, Vec<String>), String> {
-  let app_settings: Vec<AppSettings> = vec![
-    AppSettings::AllowExternalSubcommands,
-    AppSettings::DisableHelpSubcommand,
-  ];
-
-  let env_variables_help = "ENVIRONMENT VARIABLES:
+static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
     NO_COLOR        Set to disable color";
 
-  let clap_app = App::new("deno")
+fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
+  let cli_app = App::new("deno")
+    .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
-    .settings(&app_settings[..])
-    .after_help(env_variables_help)
+    .settings(&[
+      AppSettings::AllowExternalSubcommands,
+      AppSettings::DisableHelpSubcommand,
+    ]).after_help(ENV_VARIABLES_HELP)
     .arg(
       Arg::with_name("version")
         .short("v")
@@ -171,18 +170,25 @@ pub fn set_flags(
         .long("prefetch")
         .help("Prefetch the dependencies"),
     ).subcommand(
-      // TODO(bartlomieju): version is not handled properly
       SubCommand::with_name("info")
+        .setting(AppSettings::DisableVersion)
         .about("Show source file related info")
         .arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
-      // TODO(bartlomieju): version is not handled properly
-      SubCommand::with_name("fmt").about("Format files").arg(
-        Arg::with_name("files")
-          .takes_value(true)
-          .multiple(true)
-          .required(true),
-      ),
+      SubCommand::with_name("eval")
+        .setting(AppSettings::DisableVersion)
+        .about("Eval script")
+        .arg(Arg::with_name("code").takes_value(true).required(true)),
+    ).subcommand(
+      SubCommand::with_name("fmt")
+        .setting(AppSettings::DisableVersion)
+        .about("Format files")
+        .arg(
+          Arg::with_name("files")
+            .takes_value(true)
+            .multiple(true)
+            .required(true),
+        ),
     ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
@@ -190,43 +196,49 @@ pub fn set_flags(
       SubCommand::with_name("<script>").about("Script to run"),
     );
 
-  let matches = clap_app.get_matches_from(args);
+  cli_app
+}
 
-  // TODO(bartomieju): compatibility with old "opts" approach - to be refactored
-  let mut rest: Vec<String> = vec![String::from("deno")];
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub fn set_flags(
+  args: Vec<String>,
+) -> Result<(DenoFlags, Vec<String>), String> {
+  let mut rest_argv: Vec<String> = vec!["deno".to_string()];
+  let cli_app = create_cli_app();
+  let matches = cli_app.get_matches_from(args);
 
   match matches.subcommand() {
+    ("eval", Some(info_match)) => {
+      let code: &str = info_match.value_of("code").unwrap();
+      rest_argv.extend(vec![code.to_string()]);
+    }
     ("info", Some(info_match)) => {
-      // TODO(bartlomieju): it still relies on `is_present("info")` check
-      // in `set_recognized_flags`
       let file: &str = info_match.value_of("file").unwrap();
-      rest.extend(vec![file.to_string()]);
+      rest_argv.extend(vec![file.to_string()]);
     }
     ("fmt", Some(fmt_match)) => {
-      // TODO(bartlomieju): it still relies on `is_present("fmt")` check
-      // in `set_recognized_flags`
       let files: Vec<String> = fmt_match
         .values_of("files")
         .unwrap()
         .map(String::from)
         .collect();
-      rest.extend(files);
+      rest_argv.extend(files);
     }
     (script, Some(script_match)) => {
-      rest.extend(vec![script.to_string()]);
-      // check if there are any extra arguments
+      rest_argv.extend(vec![script.to_string()]);
+      // check if there are any extra arguments that should
+      // be passed to script
       if script_match.is_present("") {
         let script_args: Vec<String> = script_match
           .values_of("")
           .unwrap()
           .map(String::from)
           .collect();
-        rest.extend(script_args);
+        rest_argv.extend(script_args);
       }
     }
     _ => {}
   }
-  // TODO: end
 
   if matches.is_present("v8-options") {
     // display v8 help and exit
@@ -246,7 +258,7 @@ pub fn set_flags(
   }
 
   let flags = DenoFlags::from(matches);
-  Ok((flags, rest))
+  Ok((flags, rest_argv))
 }
 
 #[test]

@@ -1,0 +1,2 @@
+args: eval console.log("hello")
+output: tests/029_eval.out
