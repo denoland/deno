@@ -160,6 +160,7 @@ fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .long("v8-flags")
         .takes_value(true)
         .require_equals(true)
+        .use_delimiter(true)
         .help("Set V8 command line options"),
     ).arg(
       Arg::with_name("types")
@@ -251,7 +252,7 @@ pub fn set_flags(
       .map(String::from)
       .collect();
 
-    v8_flags.insert(1, "deno".to_string());
+    v8_flags.insert(0, "deno".to_string());
     v8_set_flags(v8_flags);
   }
 
