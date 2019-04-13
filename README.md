@@ -18,6 +18,23 @@ It's strongly recommended that you link to tagged releases rather than the
 master branch. The project is still young and we expect disruptive renames in
 the future.
 
+## Documentation
+
+Here are the dedicated documentations of modules:
+
+- [colors](colors/README.md)
+- [datetime](datetime/README.md)
+- [examples](examples/README.md)
+- [flags](flags/README.md)
+- [fs](fs/README.md)
+- [http](http/README.md)
+- [log](log/README.md)
+- [media_types](media_types/README.md)
+- [prettier](prettier/README.md)
+- [strings](strings/README.md)
+- [testing](testing/README.md)
+- [toml](toml/README.md)
+
 ## Contributing
 
 Follow the [style guide](https://deno.land/style_guide.html).
