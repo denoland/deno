@@ -116,13 +116,15 @@ fn main() {
       // Wrap provided script in async function so asynchronous methods
       // work. This is required until top-level await is not supported.
       let js_source = format!(
-        "async function __eval(){{
+        "async function _topLevelWrapper(){{
           {}
         }}
-        __eval();
+        _topLevelWrapper();
         ",
         &state.argv[1]
       );
+      // ATM imports in `deno eval` are not allowed
+      // TODO Support ES modules once Worker supports evaluating anonymous modules.
       js_check(main_worker.execute(&js_source));
     } else {
       // Execute main module.

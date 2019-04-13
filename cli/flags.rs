@@ -178,7 +178,7 @@ fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
       SubCommand::with_name("eval")
         .setting(AppSettings::DisableVersion)
         .about("Eval script")
-        .arg(Arg::with_name("script").takes_value(true).required(true)),
+        .arg(Arg::with_name("code").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("fmt")
         .setting(AppSettings::DisableVersion)
@@ -209,8 +209,8 @@ pub fn set_flags(
 
   match matches.subcommand() {
     ("eval", Some(info_match)) => {
-      let script: &str = info_match.value_of("script").unwrap();
-      rest_argv.extend(vec![script.to_string()]);
+      let code: &str = info_match.value_of("code").unwrap();
+      rest_argv.extend(vec![code.to_string()]);
     }
     ("info", Some(info_match)) => {
       let file: &str = info_match.value_of("file").unwrap();
