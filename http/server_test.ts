@@ -19,6 +19,28 @@ interface ResponseTest {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
+interface Deferred {
+  promise: Promise<{}>;
+  resolve: () => void;
+  reject: () => void;
+}
+
+function deferred(isResolved = false): Deferred {
+  let resolve, reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  if (isResolved) {
+    resolve();
+  }
+  return {
+    promise,
+    resolve,
+    reject
+  };
+}
+
 const responseTests: ResponseTest[] = [
   // Default response
   {
@@ -44,7 +66,24 @@ test(async function responseWrite() {
     const buf = new Buffer();
     const bufw = new BufWriter(buf);
     const request = new ServerRequest();
+    request.pipelineId = 1;
     request.w = bufw;
+    request.conn = {
+      localAddr: "",
+      remoteAddr: "",
+      rid: -1,
+      closeRead: () => {},
+      closeWrite: () => {},
+      read: async () => {
+        return { eof: true, nread: 0 };
+      },
+      write: async () => {
+        return -1;
+      },
+      close: () => {},
+      lastPipelineId: 0,
+      pendingDeferredMap: new Map([[0, deferred(true)], [1, deferred()]])
+    };
 
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
