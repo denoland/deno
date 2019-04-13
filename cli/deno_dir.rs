@@ -284,7 +284,9 @@ impl DenoDir {
       referrer = referrer_path.to_str().unwrap().to_string() + "/";
     }
 
-    let j = if is_remote(&specifier) || Path::new(&specifier).is_absolute() {
+    let j = if is_remote(&specifier)
+      || (Path::new(&specifier).is_absolute() && !is_remote(&referrer))
+    {
       parse_local_or_remote(&specifier)?
     } else if referrer.ends_with('/') {
       let r = Url::from_directory_path(&referrer);
@@ -1667,6 +1669,26 @@ mod tests {
     let expected_module_name =
       file_url!("/Users/rld/src/deno_net/http_test.ts");
     let expected_filename = add_root!("/Users/rld/src/deno_net/http_test.ts");
+
+    let (module_name, filename) =
+      deno_dir.resolve_module(specifier, referrer).unwrap();
+    assert_eq!(module_name, expected_module_name);
+    assert_eq!(filename, expected_filename);
+  }
+
+  #[test]
+  fn test_resolve_module_8() {
+    let (_temp_dir, deno_dir) = test_setup();
+
+    let specifier = "/util";
+    let referrer_ =
+      deno_dir.deps_https.join("unpkg.com/liltest@0.0.5/index.ts");
+    let referrer = referrer_.to_str().unwrap();
+
+    let expected_module_name = "https://unpkg.com/util";
+    let expected_filename = deno_fs::normalize_path(
+      deno_dir.deps_https.join("unpkg.com/util").as_ref(),
+    );
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, referrer).unwrap();
