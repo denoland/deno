@@ -562,6 +562,7 @@ OPTIONS:
 
 SUBCOMMANDS:
     <script>    Script to run
+    eval        Eval script
     fmt         Format files
     info        Show source file related info
 

@@ -112,14 +112,30 @@ fn main() {
     // Setup runtime.
     js_check(main_worker.execute("denoMain()"));
 
-    // Execute main module.
-    if let Some(main_module) = state.main_module() {
-      debug!("main_module {}", main_module);
-      js_check(main_worker.execute_mod(&main_module, should_prefetch));
-      if should_display_info {
-        // Display file info and exit. Do not run file
-        main_worker.print_file_info(&main_module);
-        std::process::exit(0);
+    if state.flags.eval {
+      // Wrap provided script in async function so asynchronous methods
+      // work. This is required until top-level await is not supported.
+      let js_source = format!(
+        "async function _topLevelWrapper(){{
+          {}
+        }}
+        _topLevelWrapper();
+        ",
+        &state.argv[1]
+      );
+      // ATM imports in `deno eval` are not allowed
+      // TODO Support ES modules once Worker supports evaluating anonymous modules.
+      js_check(main_worker.execute(&js_source));
+    } else {
+      // Execute main module.
+      if let Some(main_module) = state.main_module() {
+        debug!("main_module {}", main_module);
+        js_check(main_worker.execute_mod(&main_module, should_prefetch));
+        if should_display_info {
+          // Display file info and exit. Do not run file
+          main_worker.print_file_info(&main_module);
+          std::process::exit(0);
+        }
       }
     }
 
