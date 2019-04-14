@@ -786,6 +786,8 @@ These Deno logos, like the Deno software, are distributed under the MIT license
 
 - [A high resolution SVG one by @kevinkassimo](https://github.com/denolib/high-res-deno-logo)
 
+- [A pixelated animation one by @tanakaworld](https://github.com/denoland/deno/blob/master/website/images/deno_logo_4.gif)
+
 ## Contributing
 
 [Style Guide](style_guide.html)
