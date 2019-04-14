@@ -324,7 +324,7 @@ mod tests {
         onmessage = function(e) {
           console.log("msg from main script", e.data);
           if (e.data == "exit") {
-            close();
+            delete window.onmessage;
             return;
           } else {
             console.assert(e.data === "hi");
