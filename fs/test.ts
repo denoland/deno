@@ -10,6 +10,7 @@ import "./ensure_dir_test.ts";
 import "./ensure_file_test.ts";
 import "./move_test.ts";
 import "./read_json_test.ts";
-import "./read_file_str_test.ts";
 import "./write_json_test.ts";
+import "./read_file_str_test.ts";
+import "./write_file_str_test.ts";
 import "./utils_test.ts";

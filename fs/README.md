@@ -134,7 +134,7 @@ for (const fileInfo of walk()) {
 }
 ```
 
-### writejson
+### writeJson
 
 Writes an object to a JSON file.
 
@@ -147,6 +147,34 @@ Writes an object to a JSON file.
 import { writeJson, writeJsonSync } from "https://deno.land/std/fs/mod.ts";
 
 writeJson("./target.dat", { foo: "bar" }, { spaces: 2 }); // returns a promise
-writeJsonSync("./target.dat", { foo: "bar" }, { replacer: ["foo"] });
-// void
+writeJsonSync("./target.dat", { foo: "bar" }, { replacer: ["foo"] }); // void
+```
+
+### readFileStr
+
+Read file and output it as a string.
+
+**ReadOptions**
+
+- encoding : The encoding to read file. lowercased.
+
+```ts
+import { readFileStr, readFileStrSync } from "https://deno.land/std/fs/mod.ts";
+
+readFileStr("./target.dat", { encoding: "utf8" }); // returns a promise
+readFileStrSync("./target.dat", { encoding: "utf8" }); // void
+```
+
+### writeFileStr
+
+Write the string to file.
+
+```ts
+import {
+  writeFileStr,
+  writeFileStrSync
+} from "https://deno.land/std/fs/mod.ts";
+
+writeFileStr("./target.dat", "file content"); // returns a promise
+writeFileStrSync("./target.dat", "file content"); // void
 ```
