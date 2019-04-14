@@ -31,7 +31,7 @@ ensureDir("./bar"); // returns a promise
 ensureDirSync("./ensureDirSync"); // void
 ```
 
-### ensure_file
+### ensureFile
 
 Ensures that the file exists.
 If the file that is requested to be created is in directories
