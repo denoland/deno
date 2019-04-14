@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { existsSync } from "../fs/exists.ts";
+import { readFileStrSync } from "../fs/read_file_str.ts";
 import { deepAssign } from "../util/deep_assign.ts";
 import { pad } from "../strings/pad.ts";
 
@@ -542,7 +543,6 @@ export function parseFile(filePath: string): object {
   if (!existsSync(filePath)) {
     throw new Error("File not found");
   }
-  const decoder = new TextDecoder();
-  const strFile = decoder.decode(Deno.readFileSync(filePath));
+  const strFile = readFileStrSync(filePath);
   return parse(strFile);
 }
