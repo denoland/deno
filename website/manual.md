@@ -277,15 +277,14 @@ the network:
 
 ```shellsession
 $ deno https://deno.land/std/examples/echo_server.ts
-⚠️  Deno requests network access to "listen". Grant? [yN] y
-listening on 0.0.0.0:8080
+⚠️  Deno requests network access to "listen". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
 ```
 
 For security reasons, deno does not allow programs to access the network without
 explicit permission. To avoid the console prompt, use a command-line flag:
 
 ```shellsession
-$ deno https://deno.land/std/examples/echo_server.ts --allow-net
+$ deno --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 To test it, try sending a HTTP request to it by using curl. The request gets
@@ -411,7 +410,8 @@ async function main() {
     Deno.stdout.write(rawOutput);
   } else {
     const rawError = await p.stderrOutput();
-    Deno.stdout.write(rawError);
+    const errorString = new TextDecoder().decode(rawError);
+    console.log(errorString);
   }
 
   Deno.exit(code);
@@ -423,14 +423,14 @@ main();
 When you run it:
 
 ```shellsession
-$ deno ./subprocess.ts --allow-run <somefile>
+$ deno --allow-run ./subprocess.ts <somefile>
 [file content]
 
 $ deno ./subprocess.ts --allow-run non_existent_file.md
 
 Uncaught NotFound: No such file or directory (os error 2)
-    at DenoError (deno/js/errors.ts:19:5)
-    at maybeError (deno/js/errors.ts:38:12)
+    at DenoError (deno/js/errors.ts:22:5)
+    at maybeError (deno/js/errors.ts:41:12)
     at handleAsyncMsgFromRust (deno/js/dispatch.ts:27:17)
 ```
 
