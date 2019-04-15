@@ -17,6 +17,8 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub type SourceCodeFuture<E> = dyn Future<Item = String, Error = E> + Send;
 
@@ -119,8 +121,7 @@ pub enum Either<E> {
   Other(E),
 }
 
-// TODO remove 'static below.
-impl<L: 'static + Loader> Future for RecursiveLoad<L> {
+impl<L: Loader> Future for RecursiveLoad<L> {
   type Item = (deno_mod, L);
   type Error = (Either<L::Error>, L);
 
@@ -191,27 +192,28 @@ impl<L: 'static + Loader> Future for RecursiveLoad<L> {
       }
     }
 
-    if self.pending.len() > 0 {
+    if !self.pending.is_empty() {
       return Ok(Async::NotReady);
     }
 
-    let mut loader = self.take_loader();
+    // The resolve_cb below needs to reference the loader and it may be called
+    // from multiple threads. Therefore we wrap the loader as an
+    // Arc<Mutex<Loader>> below.
+    let loader = Arc::new(Mutex::new(self.take_loader()));
+    let loader_ = loader.clone();
 
-    // TODO Fix this resolve callback weirdness.
-    let loader_ =
-      unsafe { std::mem::transmute::<&mut L, &'static mut L>(&mut loader) };
-
-    let mut resolve = move |specifier: &str,
-                            referrer_id: deno_mod|
+    let mut resolve_cb = move |specifier: &str,
+                               referrer_id: deno_mod|
           -> deno_mod {
-      let referrer = loader_
-        .use_modules(|modules| modules.get_name(referrer_id).unwrap().clone());
+      let mut l = loader_.lock().unwrap();
+      let referrer =
+        l.use_modules(|modules| modules.get_name(referrer_id).unwrap().clone());
       match L::resolve(specifier, &referrer) {
         Err(err) => {
           eprintln!("potentially uncaught err {}", err.to_string());
           0
         }
-        Ok(url) => loader_.use_modules(|modules| match modules.get_id(&url) {
+        Ok(url) => l.use_modules(|modules| match modules.get_id(&url) {
           Some(id) => id,
           None => 0,
         }),
@@ -220,8 +222,14 @@ impl<L: 'static + Loader> Future for RecursiveLoad<L> {
 
     let root_id = self.root_id.unwrap().clone();
 
+    // Consume / unwrap Arc<Mutex<Loader>>.
+    let mut loader: L = Arc::try_unwrap(loader)
+      .map(|mutex| mutex.into_inner().unwrap())
+      .ok()
+      .unwrap();
+
     let result = loader
-      .use_isolate(|isolate| isolate.mod_instantiate(root_id, &mut resolve));
+      .use_isolate(|isolate| isolate.mod_instantiate(root_id, &mut resolve_cb));
 
     match result {
       Err(err) => Err((Either::JSError(err), loader)),
