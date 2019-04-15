@@ -126,18 +126,10 @@ impl Loader for Worker {
     )
   }
 
-  fn use_isolate<R, F: FnMut(&mut deno::Isolate<Self::Dispatch>) -> R>(
-    &mut self,
-    mut cb: F,
-  ) -> R {
-    cb(&mut self.inner)
-  }
-
-  fn use_modules<R, F: FnMut(&mut deno::Modules) -> R>(
-    &mut self,
-    mut cb: F,
-  ) -> R {
-    cb(&mut self.modules)
+  fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
+    &'a mut self,
+  ) -> (&'b mut deno::Isolate<Self::Dispatch>, &'c mut deno::Modules) {
+    (&mut self.inner, &mut self.modules)
   }
 }
 

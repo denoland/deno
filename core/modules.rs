@@ -17,8 +17,6 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 pub type SourceCodeFuture<E> = dyn Future<Item = String, Error = E> + Send;
 
@@ -35,12 +33,17 @@ pub trait Loader {
   /// Given an absolute url, load its source code.
   fn load(&mut self, url: &str) -> Box<SourceCodeFuture<Self::Error>>;
 
-  fn use_isolate<R, F: FnMut(&mut Isolate<Self::Dispatch>) -> R>(
-    &mut self,
-    cb: F,
-  ) -> R;
+  fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
+    &'a mut self,
+  ) -> (&'b mut Isolate<Self::Dispatch>, &'c mut Modules);
 
-  fn use_modules<R, F: FnMut(&mut Modules) -> R>(&mut self, cb: F) -> R;
+  fn isolate<'a: 'b, 'b>(&'a mut self) -> &'b mut Isolate<Self::Dispatch> {
+    self.isolate_and_modules().0
+  }
+
+  fn modules<'a: 'b, 'b>(&'a mut self) -> &'b mut Modules {
+    self.isolate_and_modules().1
+  }
 }
 
 struct PendingLoad<E: Error> {
@@ -91,7 +94,8 @@ impl<L: Loader> RecursiveLoad<L> {
 
     let is_root = if let Some(parent_id) = parent_id {
       let loader = self.loader.as_mut().unwrap();
-      loader.use_modules(|modules| modules.add_child(parent_id, &url));
+      let modules = loader.modules();
+      modules.add_child(parent_id, &url);
       false
     } else {
       true
@@ -156,9 +160,8 @@ impl<L: Loader> Future for RecursiveLoad<L> {
 
           let result = {
             let loader = self.loader.as_mut().unwrap();
-            loader.use_isolate(|isolate: &mut Isolate<L::Dispatch>| {
-              isolate.mod_new(completed.is_root, &completed.url, &source_code)
-            })
+            let isolate = loader.isolate();
+            isolate.mod_new(completed.is_root, &completed.url, &source_code)
           };
           if let Err(err) = result {
             return Err((Either::JSError(err), self.take_loader()));
@@ -173,15 +176,15 @@ impl<L: Loader> Future for RecursiveLoad<L> {
 
           {
             let loader = self.loader.as_mut().unwrap();
-            loader.use_modules(|modules: &mut Modules| {
-              modules.register(mod_id, &completed.url)
-            });
+            let modules = loader.modules();
+            modules.register(mod_id, &completed.url);
           }
 
           // Now we must iterate over all imports of the module and load them.
           let imports = {
             let loader = self.loader.as_mut().unwrap();
-            loader.use_isolate(|isolate| isolate.mod_get_imports(mod_id))
+            let isolate = loader.isolate();
+            isolate.mod_get_imports(mod_id)
           };
           for specifier in imports {
             self
@@ -196,40 +199,27 @@ impl<L: Loader> Future for RecursiveLoad<L> {
       return Ok(Async::NotReady);
     }
 
-    // The resolve_cb below needs to reference the loader and it may be called
-    // from multiple threads. Therefore we wrap the loader as an
-    // Arc<Mutex<Loader>> below.
-    let loader = Arc::new(Mutex::new(self.take_loader()));
-    let loader_ = loader.clone();
-
-    let mut resolve_cb = move |specifier: &str,
-                               referrer_id: deno_mod|
-          -> deno_mod {
-      let mut l = loader_.lock().unwrap();
-      let referrer =
-        l.use_modules(|modules| modules.get_name(referrer_id).unwrap().clone());
-      match L::resolve(specifier, &referrer) {
-        Err(err) => {
-          eprintln!("potentially uncaught err {}", err.to_string());
-          0
-        }
-        Ok(url) => l.use_modules(|modules| match modules.get_id(&url) {
-          Some(id) => id,
-          None => 0,
-        }),
-      }
-    };
-
     let root_id = self.root_id.unwrap().clone();
+    let mut loader = self.take_loader();
+    let (isolate, modules) = loader.isolate_and_modules();
+    let result = {
+      let mut resolve_cb =
+        |specifier: &str, referrer_id: deno_mod| -> deno_mod {
+          let referrer = modules.get_name(referrer_id).unwrap();
+          match L::resolve(specifier, &referrer) {
+            Err(err) => {
+              eprintln!("potentially uncaught err {}", err.to_string());
+              0
+            }
+            Ok(url) => match modules.get_id(&url) {
+              Some(id) => id,
+              None => 0,
+            },
+          }
+        };
 
-    // Consume / unwrap Arc<Mutex<Loader>>.
-    let mut loader: L = Arc::try_unwrap(loader)
-      .map(|mutex| mutex.into_inner().unwrap())
-      .ok()
-      .unwrap();
-
-    let result = loader
-      .use_isolate(|isolate| isolate.mod_instantiate(root_id, &mut resolve_cb));
+      isolate.mod_instantiate(root_id, &mut resolve_cb)
+    };
 
     match result {
       Err(err) => Err((Either::JSError(err), loader)),
@@ -504,15 +494,10 @@ mod tests {
       Box::new(DelayedSourceCodeFuture { url, counter: 0 })
     }
 
-    fn use_isolate<R, F: FnMut(&mut Isolate<TestDispatch>) -> R>(
-      &mut self,
-      mut cb: F,
-    ) -> R {
-      cb(&mut self.isolate)
-    }
-
-    fn use_modules<R, F: FnMut(&mut Modules) -> R>(&mut self, mut cb: F) -> R {
-      cb(&mut self.modules)
+    fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
+      &'a mut self,
+    ) -> (&'b mut Isolate<Self::Dispatch>, &'c mut Modules) {
+      (&mut self.isolate, &mut self.modules)
     }
   }
 
