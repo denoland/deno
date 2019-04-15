@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
+use crate::deno_dir;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -1878,8 +1879,13 @@ fn op_create_worker(
       Worker::new(name, startup_data::deno_isolate_init(), child_state);
     js_check(worker.execute("denoMain()"));
     js_check(worker.execute("workerMain()"));
+
+    // TODO(ry) don't use unwrap here, map into DenoError
+    let specifier_url = deno_dir::root_specifier_to_url(specifier).unwrap();
+
+    let result = worker.execute_mod(&specifier_url, false);
+
     // TODO(ry) Use execute_mod_async here.
-    let result = worker.execute_mod(specifier, false);
     match result {
       Ok(worker) => {
         let mut workers_tl = parent_state.workers.lock().unwrap();

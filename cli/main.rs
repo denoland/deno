@@ -182,8 +182,11 @@ fn main() {
       // Setup runtime.
       js_check(worker.execute("denoMain()"));
       debug!("main_module {}", main_module);
+
+      let main_url = deno_dir::root_specifier_to_url(&main_module).unwrap();
+
       worker
-        .execute_mod_async(&main_module, should_prefetch)
+        .execute_mod_async(&main_url, should_prefetch)
         .and_then(move |worker| {
           if should_display_info {
             // Display file info and exit. Do not run file

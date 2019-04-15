@@ -896,6 +896,25 @@ pub fn resolve_module2(
   Ok(u.to_string())
 }
 
+/// Takes a string representing a path or URL to a module, but of the type
+/// passed through the command-line interface for the main module. This is
+/// slightly different than specifiers used in import statements: "foo.js" for
+/// example is allowed here, whereas in import statements a leading "./" is
+/// required ("./foo.js"). This function is aware of the current working
+/// directory and returns an absolute URL.
+pub fn root_specifier_to_url(
+  root_specifier: &str,
+) -> Result<Url, url::ParseError> {
+  let maybe_url = Url::parse(root_specifier);
+  if let Ok(url) = maybe_url {
+    Ok(url)
+  } else {
+    let cwd = std::env::current_dir().unwrap();
+    let base = Url::from_directory_path(cwd).unwrap();
+    base.join(root_specifier)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

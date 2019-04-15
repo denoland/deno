@@ -16,6 +16,7 @@ use futures::future::Either;
 use futures::Async;
 use futures::Future;
 use std::sync::atomic::Ordering;
+use url::Url;
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
@@ -57,10 +58,10 @@ impl Worker {
   /// Consumes worker. Executes the provided JavaScript module.
   pub fn execute_mod_async(
     self,
-    js_filename: &str,
+    js_url: &Url,
     is_prefetch: bool,
   ) -> impl Future<Item = Self, Error = (RustOrJsError, Self)> {
-    let recursive_load = deno::RecursiveLoad::new(js_filename, self);
+    let recursive_load = deno::RecursiveLoad::new(js_url.as_str(), self);
     recursive_load.and_then(
       move |(id, mut self_)| -> Result<Self, (deno::Either<DenoError>, Self)> {
         if is_prefetch {
@@ -88,10 +89,10 @@ impl Worker {
   /// Consumes worker. Executes the provided JavaScript module.
   pub fn execute_mod(
     self,
-    js_filename: &str,
+    js_url: &Url,
     is_prefetch: bool,
   ) -> Result<Self, (RustOrJsError, Self)> {
-    tokio_util::block_on(self.execute_mod_async(js_filename, is_prefetch))
+    tokio_util::block_on(self.execute_mod_async(js_url, is_prefetch))
   }
 
   /// Applies source map to the error.
@@ -212,16 +213,16 @@ mod tests {
     let filename = std::env::current_dir()
       .unwrap()
       .join("tests/esm_imports_a.js");
-    let filename = filename.to_str().unwrap().to_string();
+    let js_url = Url::from_file_path(filename).unwrap();
 
-    let argv = vec![String::from("./deno"), filename.clone()];
+    let argv = vec![String::from("./deno"), js_url.to_string()];
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
     let state = ThreadSafeState::new(flags, rest_argv, op_selector_std);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let worker = Worker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker.execute_mod(&filename, false);
+      let result = worker.execute_mod(&js_url, false);
       let worker = match result {
         Err((err, worker)) => {
           eprintln!("execute_mod err {:?}", err);
@@ -239,16 +240,16 @@ mod tests {
   #[test]
   fn execute_mod_circular() {
     let filename = std::env::current_dir().unwrap().join("tests/circular1.js");
-    let filename = filename.to_str().unwrap().to_string();
+    let js_url = Url::from_file_path(filename).unwrap();
 
-    let argv = vec![String::from("./deno"), filename.clone()];
+    let argv = vec![String::from("./deno"), js_url.to_string()];
     let (flags, rest_argv) = flags::set_flags(argv).unwrap();
 
     let state = ThreadSafeState::new(flags, rest_argv, op_selector_std);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let worker = Worker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker.execute_mod(&filename, false);
+      let result = worker.execute_mod(&js_url, false);
       let worker = match result {
         Err((err, worker)) => {
           eprintln!("execute_mod err {:?}", err);
@@ -357,11 +358,14 @@ mod tests {
     })
   }
 
+  use crate::deno_dir::root_specifier_to_url;
+
   #[test]
   fn execute_mod_resolve_error() {
     // "foo" is not a vailid module specifier so this should return an error.
     let worker = create_test_worker();
-    let result = worker.execute_mod_async("foo", false).wait();
+    let js_url = root_specifier_to_url("does-not-exist").unwrap();
+    let result = worker.execute_mod_async(&js_url, false).wait();
     assert!(result.is_err());
   }
 
@@ -370,9 +374,8 @@ mod tests {
     // This assumes cwd is project root (an assumption made throughout the
     // tests).
     let worker = create_test_worker();
-    let result = worker
-      .execute_mod_async("./tests/002_hello.ts", false)
-      .wait();
+    let js_url = root_specifier_to_url("./tests/002_hello.ts").unwrap();
+    let result = worker.execute_mod_async(&js_url, false).wait();
     assert!(result.is_ok());
   }
 }
