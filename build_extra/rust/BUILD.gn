@@ -12,7 +12,12 @@ cargo_home = "//third_party/rust_crates"
 
 rust_crate("aho_corasick") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/aho-corasick-0.6.10/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/aho-corasick-0.7.3/src/lib.rs"
+  features = [
+    "default",
+    "memchr",
+    "std",
+  ]
   extern = [ ":memchr" ]
   args = [
     "--cap-lints",
@@ -117,7 +122,7 @@ rust_crate("cfg_if") {
 
 rust_crate("clap") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/clap-2.32.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/clap-2.33.0/src/lib.rs"
   features = [
     "ansi_term",
     "atty",
@@ -254,7 +259,7 @@ rust_crate("fnv") {
 
 rust_crate("futures") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-0.1.25/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-0.1.26/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -284,19 +289,9 @@ rust_crate("futures_cpupool") {
   ]
 }
 
-rust_crate("getopts") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/getopts-0.2.18/src/lib.rs"
-  extern = [ ":unicode_width" ]
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
-
 rust_crate("h2") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.17/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.18/src/lib.rs"
   extern = [
     ":byteorder",
     ":bytes",
@@ -317,7 +312,7 @@ rust_crate("h2") {
 
 rust_crate("http") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/http-0.1.16/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/http-0.1.17/src/lib.rs"
   extern = [
     ":bytes",
     ":fnv",
@@ -347,7 +342,7 @@ rust_crate("httparse") {
 
 rust_crate("hyper") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.25/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.27/src/lib.rs"
   features = [
     "__internal_flaky_tests",
     "default",
@@ -916,7 +911,7 @@ rust_crate("rand_xorshift") {
 
 rust_crate("regex") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.2/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.5/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -942,7 +937,7 @@ rust_crate("regex") {
 
 rust_crate("regex_syntax") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-syntax-0.6.5/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-syntax-0.6.6/src/lib.rs"
   extern = [ ":ucd_util" ]
   args = [
     "--cap-lints",
@@ -1079,7 +1074,7 @@ static_library("ring-core") {
 # }
 
 rust_crate("rustls") {
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustls-0.15.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustls-0.15.2/src/lib.rs"
   features = [
     "default",
     "log",
@@ -1162,7 +1157,7 @@ rust_crate("sct") {
 
 rust_crate("serde") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.89/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.90/src/lib.rs"
   features = [
     "default",
     "std",
@@ -1279,7 +1274,7 @@ rust_crate("string") {
 
 rust_crate("strsim") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/strsim-0.7.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/strsim-0.8.0/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -1308,7 +1303,7 @@ rust_crate("tempfile") {
 
 rust_crate("textwrap") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/textwrap-0.10.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/textwrap-0.11.0/src/lib.rs"
   extern = [ ":unicode_width" ]
   args = [
     "--cap-lints",
@@ -1825,7 +1820,7 @@ rust_crate("webpki_roots") {
 if (is_posix) {
   rust_crate("arc_swap") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/arc-swap-0.3.8/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/arc-swap-0.3.11/src/lib.rs"
     args = [
       "--cap-lints",
       "allow",
@@ -1996,7 +1991,7 @@ if (is_win) {
 
   rust_crate("winapi") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/winapi-0.3.6/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/winapi-0.3.7/src/lib.rs"
     features = [
       "consoleapi",
       "dbghelp",
@@ -2037,6 +2032,7 @@ if (is_win) {
       "cfg",
       "cfgmgr32",
       "combaseapi",
+      "devpropdef",
       "excpt",
       "guiddef",
       "in6addr",
@@ -2059,6 +2055,7 @@ if (is_win) {
       "unknwnbase",
       "vadefs",
       "vcruntime",
+      "wincontypes",
       "wincred",
       "windef",
       "wingdi",
@@ -2073,6 +2070,7 @@ if (is_win) {
     # Added by custom-build script.
     libs = [
       "advapi32.lib",
+      "cfgmgr32.lib",
       "credui.lib",
       "dbghelp.lib",
       "fwpuclnt.lib",
@@ -2083,7 +2081,6 @@ if (is_win) {
       "ole32.lib",
       "opengl32.lib",
       "secur32.lib",
-      "setupapi.lib",
       "shell32.lib",
       "synchronization.lib",
       "user32.lib",
