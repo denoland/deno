@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::deno_dir;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -20,6 +19,7 @@ use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
+use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::deno_buf;
 use deno::js_check;
@@ -1881,7 +1881,7 @@ fn op_create_worker(
     js_check(worker.execute("workerMain()"));
 
     let specifier_url =
-      deno_dir::root_specifier_to_url(specifier).map_err(DenoError::from)?;
+      root_specifier_to_url(specifier).map_err(DenoError::from)?;
 
     // TODO(ry) Use execute_mod_async here.
     let result = worker.execute_mod(&specifier_url, false);

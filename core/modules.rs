@@ -38,11 +38,13 @@ pub trait Loader {
   ) -> (&'b mut Isolate<Self::Dispatch>, &'c mut Modules);
 
   fn isolate<'a: 'b, 'b>(&'a mut self) -> &'b mut Isolate<Self::Dispatch> {
-    self.isolate_and_modules().0
+    let (isolate, _) = self.isolate_and_modules();
+    isolate
   }
 
   fn modules<'a: 'b, 'b>(&'a mut self) -> &'b mut Modules {
-    self.isolate_and_modules().1
+    let (_, modules) = self.isolate_and_modules();
+    modules
   }
 }
 

@@ -36,6 +36,7 @@ pub mod worker;
 
 use crate::errors::RustOrJsError;
 use crate::state::ThreadSafeState;
+use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use futures::lazy;
 use futures::Future;
@@ -183,7 +184,7 @@ fn main() {
       js_check(worker.execute("denoMain()"));
       debug!("main_module {}", main_module);
 
-      let main_url = deno_dir::root_specifier_to_url(&main_module).unwrap();
+      let main_url = root_specifier_to_url(&main_module).unwrap();
 
       worker
         .execute_mod_async(&main_url, should_prefetch)
