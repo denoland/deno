@@ -875,23 +875,13 @@ pub fn resolve_module2(
     && !specifier.starts_with("./")
     && !specifier.starts_with("../")
   {
+    // TODO(ry) This is (probably) not the correct error to return here.
     return Err(url::ParseError::RelativeUrlWithCannotBeABaseBase);
   }
 
   // 3. Return the result of applying the URL parser to specifier with base URL
   //    as the base URL.
-  let base_url = if base != "." {
-    // This branch is part of the spec.
-    Url::parse(base)?
-  } else {
-    // This branch isn't in the spec.
-    let cwd = std::env::current_dir().unwrap();
-    // Get file url of current directory, make sure it ends in "/".
-    let cwd_file_url =
-      Url::from_file_path(cwd).unwrap().as_str().to_string() + "/";
-    // Purposely reparse here:
-    Url::parse(&cwd_file_url)?
-  };
+  let base_url = Url::parse(base)?;
   let u = base_url.join(&specifier)?;
   Ok(u.to_string())
 }
