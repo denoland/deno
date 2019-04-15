@@ -1880,12 +1880,11 @@ fn op_create_worker(
     js_check(worker.execute("denoMain()"));
     js_check(worker.execute("workerMain()"));
 
-    // TODO(ry) don't use unwrap here, map into DenoError
-    let specifier_url = deno_dir::root_specifier_to_url(specifier).unwrap();
-
-    let result = worker.execute_mod(&specifier_url, false);
+    let specifier_url =
+      deno_dir::root_specifier_to_url(specifier).map_err(DenoError::from)?;
 
     // TODO(ry) Use execute_mod_async here.
+    let result = worker.execute_mod(&specifier_url, false);
     match result {
       Ok(worker) => {
         let mut workers_tl = parent_state.workers.lock().unwrap();
