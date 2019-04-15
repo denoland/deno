@@ -536,7 +536,39 @@ pub fn js_check(r: Result<(), JSError>) {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use futures::executor::spawn;
+  use futures::future::lazy;
+  use futures::future::ok;
+  use futures::Async;
+  use std::ops::FnOnce;
   use std::sync::atomic::{AtomicUsize, Ordering};
+
+  fn run_in_task<F, R>(f: F) -> R
+  where
+    F: FnOnce() -> R,
+  {
+    spawn(lazy(move || ok::<R, ()>(f()))).wait_future().unwrap()
+  }
+
+  fn poll_until_ready<F>(
+    future: &mut F,
+    max_poll_count: usize,
+  ) -> Result<F::Item, F::Error>
+  where
+    F: Future,
+  {
+    for _ in 0..max_poll_count {
+      match future.poll() {
+        Ok(NotReady) => continue,
+        Ok(Ready(val)) => return Ok(val),
+        Err(err) => return Err(err),
+      }
+    }
+    panic!(
+      "Isolate still not ready after polling {} times.",
+      max_poll_count
+    )
+  }
 
   pub enum TestDispatchMode {
     AsyncImmediate,
@@ -687,53 +719,56 @@ pub mod tests {
 
   #[test]
   fn test_poll_async_immediate_ops() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
 
-    js_check(isolate.execute(
-      "setup2.js",
-      r#"
+      js_check(isolate.execute(
+        "setup2.js",
+        r#"
         let nrecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           nrecv++;
         });
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 0);
-    js_check(isolate.execute(
-      "check1.js",
-      r#"
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 0);
+      js_check(isolate.execute(
+        "check1.js",
+        r#"
         assert(nrecv == 0);
         let control = new Uint8Array([42]);
         Deno.core.send(control);
         assert(nrecv == 0);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
-    js_check(isolate.execute(
-      "check2.js",
-      r#"
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      js_check(isolate.execute(
+        "check2.js",
+        r#"
         assert(nrecv == 1);
         Deno.core.send(control);
         assert(nrecv == 1);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 2);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
-    assert_eq!(isolate.dispatcher.dispatch_count, 2);
-    // We are idle, so the next poll should be the last.
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
+      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      // We are idle, so the next poll should be the last.
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+    });
   }
 
   #[test]
   fn test_shared() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
 
-    js_check(isolate.execute(
-      "setup2.js",
-      r#"
+      js_check(isolate.execute(
+        "setup2.js",
+        r#"
         let nrecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 1);
@@ -741,12 +776,12 @@ pub mod tests {
           nrecv++;
         });
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 0);
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 0);
 
-    js_check(isolate.execute(
-      "send1.js",
-      r#"
+      js_check(isolate.execute(
+        "send1.js",
+        r#"
         let control = new Uint8Array([42]);
         Deno.core.sharedQueue.push(control);
         Deno.core.send();
@@ -756,11 +791,11 @@ pub mod tests {
         Deno.core.send();
         assert(nrecv === 0);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 2);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-
-    js_check(isolate.execute("send1.js", "assert(nrecv === 2);"));
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      js_check(isolate.execute("send1.js", "assert(nrecv === 2);"));
+    });
   }
 
   #[test]
@@ -877,10 +912,11 @@ pub mod tests {
 
   #[test]
   fn overflow_req_async() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowReqAsync);
-    js_check(isolate.execute(
-      "overflow_req_async.js",
-      r#"
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowReqAsync);
+      js_check(isolate.execute(
+        "overflow_req_async.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 1);
@@ -894,20 +930,22 @@ pub mod tests {
         assert(response == null);
         assert(asyncRecv == 0);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+    });
   }
 
   #[test]
   fn overflow_res_async() {
-    // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
-    // should optimize this.
-    let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
-    js_check(isolate.execute(
-      "overflow_res_async.js",
-      r#"
+    run_in_task(|| {
+      // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
+      // should optimize this.
+      let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
+      js_check(isolate.execute(
+        "overflow_res_async.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 100 * 1024 * 1024);
@@ -920,20 +958,22 @@ pub mod tests {
         assert(response == null);
         assert(asyncRecv == 0);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(Ok(()), poll_until_ready(&mut isolate, 3));
+      js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+    });
   }
 
   #[test]
   fn overflow_res_multiple_dispatch_async() {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
-    let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
-    js_check(isolate.execute(
-      "overflow_res_multiple_dispatch_async.js",
-      r#"
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
+      js_check(isolate.execute(
+        "overflow_res_multiple_dispatch_async.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 100 * 1024 * 1024);
@@ -949,19 +989,24 @@ pub mod tests {
         // are done even if shared space overflows
         Deno.core.dispatch(control);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 2);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(Ok(()), poll_until_ready(&mut isolate, 3));
+      js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
+    });
   }
 
   #[test]
   fn test_js() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
-    js_check(
-      isolate
-        .execute("shared_queue_test.js", include_str!("shared_queue_test.js")),
-    );
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+      js_check(
+        isolate.execute(
+          "shared_queue_test.js",
+          include_str!("shared_queue_test.js"),
+        ),
+      );
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+    });
   }
 }
