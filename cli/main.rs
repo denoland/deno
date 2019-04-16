@@ -20,7 +20,6 @@ mod global_timer;
 mod http_body;
 mod http_util;
 pub mod js_errors;
-pub mod modules;
 pub mod msg;
 pub mod msg_util;
 pub mod ops;
@@ -37,6 +36,7 @@ pub mod worker;
 
 use crate::errors::RustOrJsError;
 use crate::state::ThreadSafeState;
+use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use futures::lazy;
 use futures::Future;
@@ -74,6 +74,49 @@ where
   }
 }
 
+// TODO(ry) Move this to main.rs
+pub fn print_file_info(worker: &Worker, url: &str) {
+  let maybe_out =
+    worker::fetch_module_meta_data_and_maybe_compile(&worker.state, url, ".");
+  if let Err(err) = maybe_out {
+    println!("{}", err);
+    return;
+  }
+  let out = maybe_out.unwrap();
+
+  println!("{} {}", ansi::bold("local:".to_string()), &(out.filename));
+
+  println!(
+    "{} {}",
+    ansi::bold("type:".to_string()),
+    msg::enum_name_media_type(out.media_type)
+  );
+
+  if out.maybe_output_code_filename.is_some() {
+    println!(
+      "{} {}",
+      ansi::bold("compiled:".to_string()),
+      out.maybe_output_code_filename.as_ref().unwrap(),
+    );
+  }
+
+  if out.maybe_source_map_filename.is_some() {
+    println!(
+      "{} {}",
+      ansi::bold("map:".to_string()),
+      out.maybe_source_map_filename.as_ref().unwrap()
+    );
+  }
+
+  let deps = worker.modules.deps(&out.module_name);
+  println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+  if let Some(ref depsdeps) = deps.deps {
+    for d in depsdeps {
+      println!("{}", d);
+    }
+  }
+}
+
 fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
@@ -102,17 +145,18 @@ fn main() {
   let should_display_info = flags.info;
 
   let state = ThreadSafeState::new(flags, rest_argv, ops::op_selector_std);
-  let mut main_worker = Worker::new(
+  let mut worker = Worker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
     state.clone(),
   );
 
-  let main_future = lazy(move || {
-    // Setup runtime.
-    js_check(main_worker.execute("denoMain()"));
+  // TODO(ry) somehow combine the two branches below. They're very similar but
+  // it's difficult to get the types to workout.
 
-    if state.flags.eval {
+  if state.flags.eval {
+    let main_future = lazy(move || {
+      js_check(worker.execute("denoMain()"));
       // Wrap provided script in async function so asynchronous methods
       // work. This is required until top-level await is not supported.
       let js_source = format!(
@@ -125,25 +169,51 @@ fn main() {
       );
       // ATM imports in `deno eval` are not allowed
       // TODO Support ES modules once Worker supports evaluating anonymous modules.
-      js_check(main_worker.execute(&js_source));
-    } else {
-      // Execute main module.
-      if let Some(main_module) = state.main_module() {
-        debug!("main_module {}", main_module);
-        js_check(main_worker.execute_mod(&main_module, should_prefetch));
-        if should_display_info {
-          // Display file info and exit. Do not run file
-          main_worker.print_file_info(&main_module);
-          std::process::exit(0);
-        }
-      }
-    }
+      js_check(worker.execute(&js_source));
+      worker.then(|result| {
+        js_check(result);
+        Ok(())
+      })
+    });
+    tokio_util::run(main_future);
+  } else if let Some(main_module) = state.main_module() {
+    // Normal situation of executing a module.
 
-    main_worker.then(|result| {
-      js_check(result);
-      Ok(())
-    })
-  });
+    let main_future = lazy(move || {
+      // Setup runtime.
+      js_check(worker.execute("denoMain()"));
+      debug!("main_module {}", main_module);
 
-  tokio_util::run(main_future);
+      let main_url = root_specifier_to_url(&main_module).unwrap();
+
+      worker
+        .execute_mod_async(&main_url, should_prefetch)
+        .and_then(move |worker| {
+          if should_display_info {
+            // Display file info and exit. Do not run file
+            print_file_info(&worker, &main_module);
+            std::process::exit(0);
+          }
+          worker.then(|result| {
+            js_check(result);
+            Ok(())
+          })
+        }).map_err(|(err, _worker)| print_err_and_exit(err))
+    });
+    tokio_util::run(main_future);
+  } else {
+    // REPL situation.
+    let main_future = lazy(move || {
+      // Setup runtime.
+      js_check(worker.execute("denoMain()"));
+      worker
+        .then(|result| {
+          js_check(result);
+          Ok(())
+        }).map_err(|(err, _worker): (RustOrJsError, Worker)| {
+          print_err_and_exit(err)
+        })
+    });
+    tokio_util::run(main_future);
+  }
 }

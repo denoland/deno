@@ -12,8 +12,11 @@ use crate::libdeno::deno_mod;
 use futures::Async;
 use futures::Future;
 use futures::Poll;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::error::Error;
+use std::fmt;
+use std::marker::PhantomData;
 
 pub type SourceCodeFuture<E> = dyn Future<Item = String, Error = E> + Send;
 
@@ -25,7 +28,7 @@ pub trait Loader {
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
   /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
-  fn resolve(specifier: &str, referrer: &str) -> String;
+  fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error>;
 
   /// Given an absolute url, load its source code.
   fn load(&mut self, url: &str) -> Box<SourceCodeFuture<Self::Error>>;
@@ -45,135 +48,185 @@ pub trait Loader {
   }
 }
 
+struct PendingLoad<E: Error> {
+  url: String,
+  is_root: bool,
+  source_code_future: Box<SourceCodeFuture<E>>,
+}
+
+/// This future is used to implement parallel async module loading without
+/// complicating the Isolate API. Note that RecursiveLoad will take ownership of
+/// an Isolate during load.
+pub struct RecursiveLoad<L: Loader> {
+  loader: Option<L>,
+  pending: Vec<PendingLoad<L::Error>>,
+  is_pending: HashSet<String>,
+  phantom: PhantomData<L>,
+  // TODO(ry) The following can all be combined into a single enum State type.
+  root: Option<String>,           // Empty before polled.
+  root_specifier: Option<String>, // Empty after first poll
+  root_id: Option<deno_mod>,
+}
+
+impl<L: Loader> RecursiveLoad<L> {
+  /// Starts a new parallel load of the given URL.
+  pub fn new(url: &str, loader: L) -> Self {
+    Self {
+      loader: Some(loader),
+      root: None,
+      root_specifier: Some(url.to_string()),
+      root_id: None,
+      pending: Vec::new(),
+      is_pending: HashSet::new(),
+      phantom: PhantomData,
+    }
+  }
+
+  fn take_loader(&mut self) -> L {
+    self.loader.take().unwrap()
+  }
+
+  fn add(
+    &mut self,
+    specifier: &str,
+    referrer: &str,
+    parent_id: Option<deno_mod>,
+  ) -> Result<String, L::Error> {
+    let url = L::resolve(specifier, referrer)?;
+
+    let is_root = if let Some(parent_id) = parent_id {
+      let loader = self.loader.as_mut().unwrap();
+      let modules = loader.modules();
+      modules.add_child(parent_id, &url);
+      false
+    } else {
+      true
+    };
+
+    if !self.is_pending.contains(&url) {
+      self.is_pending.insert(url.clone());
+      let source_code_future = {
+        let loader = self.loader.as_mut().unwrap();
+        loader.load(&url)
+      };
+      self.pending.push(PendingLoad {
+        url: url.clone(),
+        source_code_future,
+        is_root,
+      });
+    }
+
+    Ok(url)
+  }
+}
+
 // TODO(ry) This is basically the same thing as RustOrJsError. They should be
 // combined into one type.
-pub enum Either<E> {
+#[derive(Debug, PartialEq)]
+pub enum JSErrorOr<E> {
   JSError(JSError),
   Other(E),
 }
 
-/// This future is used to implement parallel async module loading without
-/// complicating the Isolate API.
-pub struct RecursiveLoad<'l, L: Loader> {
-  loader: &'l mut L,
-  pending: HashMap<String, Box<SourceCodeFuture<<L as Loader>::Error>>>,
-  root: String,
-}
-
-impl<'l, L: Loader> RecursiveLoad<'l, L> {
-  /// Starts a new parallel load of the given URL.
-  pub fn new(url: &str, loader: &'l mut L) -> Self {
-    let root = L::resolve(url, ".");
-    let mut recursive_load = Self {
-      loader,
-      root: root.clone(),
-      pending: HashMap::new(),
-    };
-    recursive_load
-      .pending
-      .insert(root.clone(), recursive_load.loader.load(&root));
-    recursive_load
-  }
-}
-
-impl<'l, L: Loader> Future for RecursiveLoad<'l, L> {
-  type Item = deno_mod;
-  type Error = Either<L::Error>;
+impl<L: Loader> Future for RecursiveLoad<L> {
+  type Item = (deno_mod, L);
+  type Error = (JSErrorOr<L::Error>, L);
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    let loader = &mut self.loader;
-    let pending = &mut self.pending;
-    let root = self.root.as_str();
+    if self.root.is_none() && self.root_specifier.is_some() {
+      let s = self.root_specifier.take().unwrap();
+      match self.add(&s, ".", None) {
+        Err(err) => {
+          return Err((JSErrorOr::Other(err), self.take_loader()));
+        }
+        Ok(root) => {
+          self.root = Some(root);
+        }
+      }
+    }
+    assert!(self.root_specifier.is_none());
+    assert!(self.root.is_some());
 
-    // Find all finished futures (those that are ready or that have errored).
-    // Turn it into a list of (url, source_code) tuples.
-    let mut finished_loads: Vec<(String, String)> = pending
-      .iter_mut()
-      .filter_map(|(url, fut)| match fut.poll() {
-        Ok(Async::NotReady) => None,
-        Ok(Async::Ready(source_code)) => Some(Ok((url.clone(), source_code))),
-        Err(err) => Some(Err(Either::Other(err))),
-      }).collect::<Result<_, _>>()?;
+    let mut i = 0;
+    while i < self.pending.len() {
+      let pending = &mut self.pending[i];
+      match pending.source_code_future.poll() {
+        Err(err) => {
+          return Err((JSErrorOr::Other(err), self.take_loader()));
+        }
+        Ok(Async::NotReady) => {
+          i += 1;
+        }
+        Ok(Async::Ready(source_code)) => {
+          // We have completed loaded one of the modules.
+          let completed = self.pending.remove(i);
 
-    while !finished_loads.is_empty() {
-      // Instantiate and register the loaded modules, and discover new imports.
-      // Build a list of (parent_url, Vec<child_url>) tuples.
-      let parent_and_child_urls: Vec<(&str, Vec<String>)> = finished_loads
-        .iter()
-        .map(|(url, source_code)| {
-          // Instantiate and register the module.
-          let mod_id = loader
-            .isolate()
-            .mod_new(url == root, &url, &source_code)
-            .map_err(Either::JSError)?;
-          loader.modules().register(mod_id, &url);
+          let result = {
+            let loader = self.loader.as_mut().unwrap();
+            let isolate = loader.isolate();
+            isolate.mod_new(completed.is_root, &completed.url, &source_code)
+          };
+          if let Err(err) = result {
+            return Err((JSErrorOr::JSError(err), self.take_loader()));
+          }
+          let mod_id = result.unwrap();
+          if completed.is_root {
+            assert!(self.root_id.is_none());
+            self.root_id = Some(mod_id);
+          }
 
-          // Find child modules imported by the newly registered module.
-          // Resolve all child import specifiers to URLs. Register all
-          // imports as a children; however any modules that are already
-          // known to the modules registry won't be stored in `child_urls`.
-          let child_urls: Vec<String> = loader
-            .isolate()
-            .mod_get_imports(mod_id)
-            .into_iter()
-            .map(|specifier| L::resolve(&specifier, &url))
-            .filter(|child_url| !loader.modules().add_child(mod_id, &child_url))
-            .collect();
-          Ok((url.as_str(), child_urls))
-        }).collect::<Result<_, _>>()?;
+          let referrer = &completed.url.clone();
 
-      // Make updates to the `pending` hash map. If we find any more finished
-      // futures, we'll loop and process `finished_loads` again.
-      finished_loads = parent_and_child_urls
-        .into_iter()
-        .flat_map(|(url, child_urls)| {
-          // Remove the parent module url that is done loading from `pending`.
-          pending.remove(url);
+          {
+            let loader = self.loader.as_mut().unwrap();
+            let modules = loader.modules();
+            modules.register(mod_id, &completed.url);
+          }
 
-          // Look for newly discovered child module imports.
-          child_urls
-            .into_iter()
-            .filter_map(|child_url| {
-              // If the url isn't present in the pending load table, create a
-              // load future and associate it with the url in the hash map.
-              match pending.entry(child_url.clone()) {
-                Entry::Occupied(_) => None,
-                Entry::Vacant(entry) => {
-                  Some(entry.insert(Box::new(loader.load(&child_url))).poll())
-                }
-              }
-              // Immediately poll any newly created futures and gather the
-              // ones that are immediately ready or errored.
-              .and_then(|poll_result| match poll_result {
-                Ok(Async::NotReady) => None,
-                Ok(Async::Ready(source_code)) => {
-                  Some(Ok((child_url.clone(), source_code)))
-                }
-                Err(err) => Some(Err(Either::Other(err))),
-              })
-            }).collect::<Vec<_>>()
-        }).collect::<Result<_, _>>()?;
+          // Now we must iterate over all imports of the module and load them.
+          let imports = {
+            let loader = self.loader.as_mut().unwrap();
+            let isolate = loader.isolate();
+            isolate.mod_get_imports(mod_id)
+          };
+          for specifier in imports {
+            self
+              .add(&specifier, referrer, Some(mod_id))
+              .map_err(|e| (JSErrorOr::Other(e), self.take_loader()))?;
+          }
+        }
+      }
     }
 
     if !self.pending.is_empty() {
       return Ok(Async::NotReady);
     }
 
+    let root_id = self.root_id.unwrap().clone();
+    let mut loader = self.take_loader();
     let (isolate, modules) = loader.isolate_and_modules();
-    let root_id = modules.get_id(root).unwrap();
-    let mut resolve = |specifier: &str, referrer_id: deno_mod| -> deno_mod {
-      let referrer = modules.get_name(referrer_id).unwrap();
-      let url = L::resolve(specifier, referrer);
-      match modules.get_id(&url) {
-        Some(id) => id,
-        None => 0,
-      }
-    };
-    isolate
-      .mod_instantiate(root_id, &mut resolve)
-      .map_err(Either::JSError)?;
+    let result = {
+      let mut resolve_cb =
+        |specifier: &str, referrer_id: deno_mod| -> deno_mod {
+          let referrer = modules.get_name(referrer_id).unwrap();
+          match L::resolve(specifier, &referrer) {
+            Ok(url) => match modules.get_id(&url) {
+              Some(id) => id,
+              None => 0,
+            },
+            // We should have already resolved and loaded this module, so
+            // resolve() will not fail this time.
+            Err(_err) => unreachable!(),
+          }
+        };
 
-    Ok(Async::Ready(root_id))
+      isolate.mod_instantiate(root_id, &mut resolve_cb)
+    };
+
+    match result {
+      Err(err) => Err((JSErrorOr::JSError(err), loader)),
+      Ok(()) => Ok(Async::Ready((root_id, loader))),
+    }
   }
 }
 
@@ -220,21 +273,23 @@ impl Modules {
     self.get_id(name).and_then(|id| self.get_children(id))
   }
 
-  pub fn get_name(&self, id: deno_mod) -> Option<&str> {
-    self.info.get(&id).map(|i| i.name.as_str())
+  pub fn get_name(&self, id: deno_mod) -> Option<&String> {
+    self.info.get(&id).map(|i| &i.name)
   }
 
   pub fn is_registered(&self, name: &str) -> bool {
     self.by_name.get(name).is_some()
   }
 
-  // Returns true if the child name is a registered module, false otherwise.
   pub fn add_child(&mut self, parent_id: deno_mod, child_name: &str) -> bool {
-    let parent = self.info.get_mut(&parent_id).unwrap();
-    if !parent.has_child(&child_name) {
-      parent.children.push(child_name.to_string());
-    }
-    self.is_registered(child_name)
+    self
+      .info
+      .get_mut(&parent_id)
+      .map(move |i| {
+        if !i.has_child(&child_name) {
+          i.children.push(child_name.to_string());
+        }
+      }).is_some()
   }
 
   pub fn register(&mut self, id: deno_mod, name: &str) {
@@ -252,6 +307,86 @@ impl Modules {
       },
     );
   }
+
+  pub fn deps(&self, url: &str) -> Deps {
+    Deps::new(self, url)
+  }
+}
+
+pub struct Deps {
+  pub name: String,
+  pub deps: Option<Vec<Deps>>,
+  prefix: String,
+  is_last: bool,
+}
+
+impl Deps {
+  pub fn new(modules: &Modules, module_name: &str) -> Deps {
+    let mut seen = HashSet::new();
+    Self::helper(&mut seen, "".to_string(), true, modules, module_name)
+  }
+
+  fn helper(
+    seen: &mut HashSet<String>,
+    prefix: String,
+    is_last: bool,
+    modules: &Modules,
+    name: &str, // TODO(ry) rename url
+  ) -> Deps {
+    if seen.contains(name) {
+      Deps {
+        name: name.to_string(),
+        prefix,
+        deps: None,
+        is_last,
+      }
+    } else {
+      seen.insert(name.to_string());
+      let children = modules.get_children2(name).unwrap();
+      let child_count = children.iter().count();
+      let deps = children
+        .iter()
+        .enumerate()
+        .map(|(index, dep_name)| {
+          let new_is_last = index == child_count - 1;
+          let mut new_prefix = prefix.clone();
+          new_prefix.push(if is_last { ' ' } else { '│' });
+          new_prefix.push(' ');
+
+          Self::helper(seen, new_prefix, new_is_last, modules, dep_name)
+        }).collect();
+      Deps {
+        name: name.to_string(),
+        prefix,
+        deps: Some(deps),
+        is_last,
+      }
+    }
+  }
+}
+
+impl fmt::Display for Deps {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let mut has_children = false;
+    if let Some(ref deps) = self.deps {
+      has_children = !deps.is_empty();
+    }
+    write!(
+      f,
+      "{}{}─{} {}",
+      self.prefix,
+      if self.is_last { "└" } else { "├" },
+      if has_children { "┬" } else { "─" },
+      self.name
+    )?;
+
+    if let Some(ref deps) = self.deps {
+      for d in deps {
+        write!(f, "\n{}", d)?;
+      }
+    }
+    Ok(())
+  }
 }
 
 #[cfg(test)]
@@ -259,6 +394,7 @@ mod tests {
   use super::*;
   use crate::isolate::js_check;
   use crate::isolate::tests::*;
+  use std::fmt;
 
   struct MockLoader {
     pub loads: Vec<String>,
@@ -278,28 +414,86 @@ mod tests {
     }
   }
 
+  fn mock_source_code(url: &str) -> Option<&'static str> {
+    match url {
+      "a.js" => Some(A_SRC),
+      "b.js" => Some(B_SRC),
+      "c.js" => Some(C_SRC),
+      "d.js" => Some(D_SRC),
+      "circular1.js" => Some(CIRCULAR1_SRC),
+      "circular2.js" => Some(CIRCULAR2_SRC),
+      "circular3.js" => Some(CIRCULAR3_SRC),
+      "slow.js" => Some(SLOW_SRC),
+      "never_ready.js" => Some("should never be loaded"),
+      "main.js" => Some(MAIN_SRC),
+      "bad_import.js" => Some(BAD_IMPORT_SRC),
+      _ => None,
+    }
+  }
+
+  #[derive(Debug, PartialEq)]
+  enum MockError {
+    ResolveErr,
+    LoadErr,
+  }
+
+  impl fmt::Display for MockError {
+    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
+      unimplemented!()
+    }
+  }
+
+  impl Error for MockError {
+    fn cause(&self) -> Option<&Error> {
+      unimplemented!()
+    }
+  }
+
+  struct DelayedSourceCodeFuture {
+    url: String,
+    counter: u32,
+  }
+
+  impl Future for DelayedSourceCodeFuture {
+    type Item = String;
+    type Error = MockError;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+      self.counter += 1;
+      if self.url == "never_ready.js" {
+        // never_ready.js is never ready.
+        return Ok(Async::NotReady);
+      } else if self.url == "slow.js" {
+        if self.counter < 2 {
+          return Ok(Async::NotReady);
+        }
+      }
+      match mock_source_code(&self.url) {
+        Some(src) => Ok(Async::Ready(src.to_string())),
+        None => Err(MockError::LoadErr),
+      }
+    }
+  }
+
   impl Loader for MockLoader {
     type Dispatch = TestDispatch;
-    type Error = std::io::Error;
+    type Error = MockError;
 
-    fn resolve(specifier: &str, _referrer: &str) -> String {
-      specifier.to_string()
+    fn resolve(
+      specifier: &str,
+      _referrer: &str,
+    ) -> Result<String, Self::Error> {
+      if mock_source_code(specifier).is_some() {
+        Ok(specifier.to_string())
+      } else {
+        Err(MockError::ResolveErr)
+      }
     }
 
     fn load(&mut self, url: &str) -> Box<SourceCodeFuture<Self::Error>> {
-      use std::io::{Error, ErrorKind};
       self.loads.push(url.to_string());
-      let result = match url {
-        "a.js" => Ok(A_SRC),
-        "b.js" => Ok(B_SRC),
-        "c.js" => Ok(C_SRC),
-        "d.js" => Ok(D_SRC),
-        "circular1.js" => Ok(CIRCULAR1_SRC),
-        "circular2.js" => Ok(CIRCULAR2_SRC),
-        _ => Err(Error::new(ErrorKind::Other, "oh no!")),
-      };
-      let result = result.map(|src| src.to_string());
-      Box::new(futures::future::result(result))
+      let url = url.to_string();
+      Box::new(DelayedSourceCodeFuture { url, counter: 0 })
     }
 
     fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
@@ -342,12 +536,12 @@ mod tests {
 
   #[test]
   fn test_recursive_load() {
-    let mut loader = MockLoader::new();
-    let mut recursive_load = RecursiveLoad::new("a.js", &mut loader);
+    let loader = MockLoader::new();
+    let mut recursive_load = RecursiveLoad::new("a.js", loader);
 
     let result = recursive_load.poll();
     assert!(result.is_ok());
-    if let Async::Ready(a_id) = result.ok().unwrap() {
+    if let Async::Ready((a_id, mut loader)) = result.ok().unwrap() {
       js_check(loader.isolate.mod_evaluate(a_id));
       assert_eq!(loader.loads, vec!["a.js", "b.js", "c.js", "d.js"]);
 
@@ -366,7 +560,7 @@ mod tests {
       assert_eq!(modules.get_children(c_id), Some(&vec!["d.js".to_string()]));
       assert_eq!(modules.get_children(d_id), Some(&vec![]));
     } else {
-      panic!("Future should be ready")
+      assert!(false);
     }
   }
 
@@ -376,20 +570,29 @@ mod tests {
   "#;
 
   const CIRCULAR2_SRC: &str = r#"
-    import "circular1.js";
+    import "circular3.js";
     Deno.core.print("circular2");
+  "#;
+
+  const CIRCULAR3_SRC: &str = r#"
+    import "circular1.js";
+    import "circular2.js";
+    Deno.core.print("circular3");
   "#;
 
   #[test]
   fn test_circular_load() {
-    let mut loader = MockLoader::new();
-    let mut recursive_load = RecursiveLoad::new("circular1.js", &mut loader);
+    let loader = MockLoader::new();
+    let mut recursive_load = RecursiveLoad::new("circular1.js", loader);
 
     let result = recursive_load.poll();
     assert!(result.is_ok());
-    if let Async::Ready(circular1_id) = result.ok().unwrap() {
+    if let Async::Ready((circular1_id, mut loader)) = result.ok().unwrap() {
       js_check(loader.isolate.mod_evaluate(circular1_id));
-      assert_eq!(loader.loads, vec!["circular1.js", "circular2.js"]);
+      assert_eq!(
+        loader.loads,
+        vec!["circular1.js", "circular2.js", "circular3.js"]
+      );
 
       let modules = &loader.modules;
 
@@ -403,10 +606,127 @@ mod tests {
 
       assert_eq!(
         modules.get_children(circular2_id),
-        Some(&vec!["circular1.js".to_string()])
+        Some(&vec!["circular3.js".to_string()])
+      );
+
+      assert!(modules.get_id("circular3.js").is_some());
+      let circular3_id = modules.get_id("circular3.js").unwrap();
+      assert_eq!(
+        modules.get_children(circular3_id),
+        Some(&vec![
+          "circular1.js".to_string(),
+          "circular2.js".to_string()
+        ])
       );
     } else {
-      panic!("Future should be ready")
+      assert!(false);
     }
+  }
+
+  // main.js
+  const MAIN_SRC: &str = r#"
+    // never_ready.js never loads.
+    import "never_ready.js";
+    // slow.js resolves after one tick.
+    import "slow.js";
+  "#;
+
+  // slow.js
+  const SLOW_SRC: &str = r#"
+    // Circular import of never_ready.js
+    // Does this trigger two Loader calls? It shouldn't.
+    import "never_ready.js";
+    import "a.js";
+  "#;
+
+  #[test]
+  fn slow_never_ready_modules() {
+    let loader = MockLoader::new();
+    let mut recursive_load = RecursiveLoad::new("main.js", loader);
+
+    let result = recursive_load.poll();
+    assert!(result.is_ok());
+    assert!(result.ok().unwrap().is_not_ready());
+
+    {
+      let loader = recursive_load.loader.as_ref().unwrap();
+      assert_eq!(loader.loads, vec!["main.js", "never_ready.js", "slow.js"]);
+    }
+
+    let result = recursive_load.poll();
+    assert!(result.is_ok());
+    assert!(result.ok().unwrap().is_not_ready());
+
+    {
+      let loader = recursive_load.loader.as_ref().unwrap();
+      assert_eq!(
+        loader.loads,
+        vec![
+          "main.js",
+          "never_ready.js",
+          "slow.js",
+          "a.js",
+          "b.js",
+          "c.js",
+          "d.js"
+        ]
+      );
+    }
+
+    let result = recursive_load.poll();
+    assert!(result.is_ok());
+    assert!(result.ok().unwrap().is_not_ready());
+
+    {
+      let loader = recursive_load.loader.as_ref().unwrap();
+      assert_eq!(
+        loader.loads,
+        vec![
+          "main.js",
+          "never_ready.js",
+          "slow.js",
+          "a.js",
+          "b.js",
+          "c.js",
+          "d.js"
+        ]
+      );
+    }
+
+    let result = recursive_load.poll();
+    assert!(result.is_ok());
+    assert!(result.ok().unwrap().is_not_ready());
+
+    {
+      let loader = recursive_load.loader.as_ref().unwrap();
+      assert_eq!(
+        loader.loads,
+        vec![
+          "main.js",
+          "never_ready.js",
+          "slow.js",
+          "a.js",
+          "b.js",
+          "c.js",
+          "d.js"
+        ]
+      );
+    }
+  }
+
+  // bad_import.js
+  const BAD_IMPORT_SRC: &str = r#"
+    import "foo";
+  "#;
+
+  #[test]
+  fn loader_disappears_after_error() {
+    let loader = MockLoader::new();
+    let mut recursive_load = RecursiveLoad::new("bad_import.js", loader);
+    let result = recursive_load.poll();
+    assert!(result.is_err());
+    let (either_err, _loader) = result.err().unwrap();
+    assert_eq!(either_err, JSErrorOr::Other(MockError::ResolveErr));
+    assert!(recursive_load.loader.is_none());
   }
 }
