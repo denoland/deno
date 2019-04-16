@@ -17,7 +17,7 @@ import http_server
 import throughput_benchmark
 from http_benchmark import http_benchmark
 import prebuilt
-from permission_prompt_test import tty_capture
+import subprocess
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -166,7 +166,7 @@ def find_max_mem_in_bytes(time_v_output):
 
 def run_max_mem_benchmark(deno_path):
     cmd = ["/usr/bin/time", "-v", deno_path, "--reload", "tests/002_hello.ts"]
-    out = tty_capture(cmd, '')[2]
+    out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
     return find_max_mem_in_bytes(out)
 
 
