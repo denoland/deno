@@ -18,7 +18,13 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
-pub type SourceCodeFuture<E> = dyn Future<Item = String, Error = E> + Send;
+pub struct SourceCodeInfo {
+  pub code: String,
+  pub module_name: String,
+}
+
+pub type SourceCodeInfoFuture<E> =
+  dyn Future<Item = SourceCodeInfo, Error = E> + Send;
 
 pub trait Loader {
   type Dispatch: crate::isolate::Dispatch;
@@ -31,7 +37,7 @@ pub trait Loader {
   fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error>;
 
   /// Given an absolute url, load its source code.
-  fn load(&mut self, url: &str) -> Box<SourceCodeFuture<Self::Error>>;
+  fn load(&mut self, url: &str) -> Box<SourceCodeInfoFuture<Self::Error>>;
 
   fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
     &'a mut self,
@@ -51,7 +57,7 @@ pub trait Loader {
 struct PendingLoad<E: Error> {
   url: String,
   is_root: bool,
-  source_code_future: Box<SourceCodeFuture<E>>,
+  source_code_info_future: Box<SourceCodeInfoFuture<E>>,
 }
 
 /// This future is used to implement parallel async module loading without
@@ -105,13 +111,13 @@ impl<L: Loader> RecursiveLoad<L> {
 
     if !self.is_pending.contains(&url) {
       self.is_pending.insert(url.clone());
-      let source_code_future = {
+      let source_code_info_future = {
         let loader = self.loader.as_mut().unwrap();
         loader.load(&url)
       };
       self.pending.push(PendingLoad {
         url: url.clone(),
-        source_code_future,
+        source_code_info_future,
         is_root,
       });
     }
@@ -150,21 +156,25 @@ impl<L: Loader> Future for RecursiveLoad<L> {
     let mut i = 0;
     while i < self.pending.len() {
       let pending = &mut self.pending[i];
-      match pending.source_code_future.poll() {
+      match pending.source_code_info_future.poll() {
         Err(err) => {
           return Err((JSErrorOr::Other(err), self.take_loader()));
         }
         Ok(Async::NotReady) => {
           i += 1;
         }
-        Ok(Async::Ready(source_code)) => {
+        Ok(Async::Ready(source_code_info)) => {
           // We have completed loaded one of the modules.
           let completed = self.pending.remove(i);
 
           let result = {
             let loader = self.loader.as_mut().unwrap();
             let isolate = loader.isolate();
-            isolate.mod_new(completed.is_root, &completed.url, &source_code)
+            isolate.mod_new(
+              completed.is_root,
+              &source_code_info.module_name,
+              &source_code_info.code,
+            )
           };
           if let Err(err) = result {
             return Err((JSErrorOr::JSError(err), self.take_loader()));
@@ -175,12 +185,15 @@ impl<L: Loader> Future for RecursiveLoad<L> {
             self.root_id = Some(mod_id);
           }
 
-          let referrer = &completed.url.clone();
+          let referrer = &source_code_info.module_name.clone();
 
           {
             let loader = self.loader.as_mut().unwrap();
             let modules = loader.modules();
-            modules.register(mod_id, &completed.url);
+            modules.register(mod_id, &source_code_info.module_name);
+            if &source_code_info.module_name != &completed.url {
+              modules.alias(&completed.url, &source_code_info.module_name);
+            }
           }
 
           // Now we must iterate over all imports of the module and load them.
@@ -246,23 +259,78 @@ impl ModuleInfo {
   }
 }
 
+/// A symbolic module entity.
+pub enum SymbolicModule {
+  /// This module is an alias to another module.
+  /// This is useful such that multiple names could point to
+  /// the same underlying module (particularly due to redirects).
+  Alias(String),
+  /// This module associates with a V8 module by id.
+  Mod(deno_mod),
+}
+
+#[derive(Default)]
+/// Alias-able module name map
+pub struct ModuleNameMap {
+  inner: HashMap<String, SymbolicModule>,
+}
+
+impl ModuleNameMap {
+  pub fn new() -> Self {
+    ModuleNameMap {
+      inner: HashMap::new(),
+    }
+  }
+
+  /// Get the id of a module.
+  /// If this module is internally represented as an alias,
+  /// follow the alias chain to get the final module id.
+  pub fn get(&self, name: &str) -> Option<deno_mod> {
+    let mut mod_name = name;
+    loop {
+      let cond = self.inner.get(mod_name);
+      match cond {
+        Some(SymbolicModule::Alias(target)) => {
+          mod_name = target;
+        }
+        Some(SymbolicModule::Mod(mod_id)) => {
+          return Some(*mod_id);
+        }
+        _ => {
+          return None;
+        }
+      }
+    }
+  }
+
+  /// Insert a name assocated module id.
+  pub fn insert(&mut self, name: String, id: deno_mod) {
+    self.inner.insert(name, SymbolicModule::Mod(id));
+  }
+
+  /// Create an alias to another module.
+  pub fn alias(&mut self, name: String, target: String) {
+    self.inner.insert(name, SymbolicModule::Alias(target));
+  }
+}
+
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
   info: HashMap<deno_mod, ModuleInfo>,
-  by_name: HashMap<String, deno_mod>,
+  by_name: ModuleNameMap,
 }
 
 impl Modules {
   pub fn new() -> Modules {
     Self {
       info: HashMap::new(),
-      by_name: HashMap::new(),
+      by_name: ModuleNameMap::new(),
     }
   }
 
   pub fn get_id(&self, name: &str) -> Option<deno_mod> {
-    self.by_name.get(name).cloned()
+    self.by_name.get(name)
   }
 
   pub fn get_children(&self, id: deno_mod) -> Option<&Vec<String>> {
@@ -306,6 +374,10 @@ impl Modules {
         children: Vec::new(),
       },
     );
+  }
+
+  pub fn alias(&mut self, name: &str, target: &str) {
+    self.by_name.alias(name.to_owned(), target.to_owned());
   }
 
   pub fn deps(&self, url: &str) -> Deps {
@@ -455,7 +527,7 @@ mod tests {
   }
 
   impl Future for DelayedSourceCodeFuture {
-    type Item = String;
+    type Item = SourceCodeInfo;
     type Error = MockError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -466,7 +538,10 @@ mod tests {
         return Ok(Async::NotReady);
       }
       match mock_source_code(&self.url) {
-        Some(src) => Ok(Async::Ready(src.to_string())),
+        Some(src) => Ok(Async::Ready(SourceCodeInfo {
+          code: src.to_string(),
+          module_name: self.url.clone(),
+        })),
         None => Err(MockError::LoadErr),
       }
     }
@@ -487,7 +562,7 @@ mod tests {
       }
     }
 
-    fn load(&mut self, url: &str) -> Box<SourceCodeFuture<Self::Error>> {
+    fn load(&mut self, url: &str) -> Box<SourceCodeInfoFuture<Self::Error>> {
       self.loads.push(url.to_string());
       let url = url.to_string();
       Box::new(DelayedSourceCodeFuture { url, counter: 0 })
