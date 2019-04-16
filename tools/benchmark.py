@@ -17,6 +17,7 @@ import http_server
 import throughput_benchmark
 from http_benchmark import http_benchmark
 import prebuilt
+import subprocess
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -154,6 +155,21 @@ def run_syscall_count_benchmark(deno_path):
     return syscall_count_map
 
 
+# Takes the output from "/usr/bin/time -v" as input and extracts the 'maximum
+# resident set size' and returns it in bytes.
+def find_max_mem_in_bytes(time_v_output):
+    for line in time_v_output.split('\n'):
+        if 'maximum resident set size (kbytes)' in line.lower():
+            _, value = line.split(': ')
+            return int(value) * 1024
+
+
+def run_max_mem_benchmark(deno_path):
+    cmd = ["/usr/bin/time", "-v", deno_path, "--reload", "tests/002_hello.ts"]
+    out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+    return find_max_mem_in_bytes(out)
+
+
 def main(argv):
     if len(argv) == 2:
         build_dir = sys.argv[1]
@@ -222,6 +238,7 @@ def main(argv):
         # Thread count test, only on linux
         new_data["thread_count"] = run_thread_count_benchmark(deno_path)
         new_data["syscall_count"] = run_syscall_count_benchmark(deno_path)
+        new_data["max_memory"] = run_max_mem_benchmark(deno_path)
 
     all_data.append(new_data)
     write_json(all_data_file, all_data)
