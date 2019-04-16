@@ -3,7 +3,6 @@ use crate::deno_dir;
 use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
-use crate::modules::Modules;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::resources;
@@ -54,7 +53,6 @@ pub struct State {
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
   pub metrics: Metrics,
-  pub modules: Mutex<Modules>,
   pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
   pub workers: Mutex<UserWorkerTable>,
@@ -106,7 +104,6 @@ impl ThreadSafeState {
       permissions: DenoPermissions::from_flags(&flags),
       flags,
       metrics: Metrics::default(),
-      modules: Mutex::new(Modules::new()),
       worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(UserWorkerTable::new()),
