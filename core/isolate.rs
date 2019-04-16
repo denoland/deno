@@ -20,12 +20,55 @@ use futures::Poll;
 use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ptr::null;
 use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
-pub type Op = dyn Future<Item = Buf, Error = ()> + Send;
 
+pub struct Tagged<F> {
+  future: F,
+  tag: &'static str,
+}
+impl<F> Future for Tagged<F>
+where
+  F: Future,
+{
+  type Item = F::Item;
+  type Error = F::Error;
+  fn poll(&mut self) -> Poll<F::Item, F::Error> {
+    self.future.poll()
+  }
+}
+impl<F> Debug for Tagged<F> {
+  fn fmt(&self, f: &mut Formatter) -> FmtResult {
+    f.write_str(self.tag)
+  }
+}
+
+pub trait Tag
+where
+  Self: Future + Sized,
+{
+  fn tag(self, tag: &'static str) -> Tagged<Self> {
+    Tagged { future: self, tag }
+  }
+}
+impl<T> Tag for T where T: Future + Sized {}
+
+pub trait Op: Future<Item = Buf, Error = ()> + Debug + Send {
+  fn box_op(self) -> Box<dyn Op>;
+}
+impl<T> Op for T
+where
+  T: Future<Item = Buf, Error = ()> + Debug + Send + Sized + 'static,
+{
+  fn box_op(self) -> Box<dyn Op> {
+    Box::new(self)
+  }
+}
+
+#[derive(Debug)]
 struct PendingOp {
   op: Box<Op>,
   zero_copy_id: usize, // non-zero if associated zero-copy buffer.
@@ -521,6 +564,7 @@ pub fn js_check(r: Result<(), JSError>) {
 pub mod tests {
   use super::*;
   use futures::executor::spawn;
+  use futures::future;
   use futures::future::lazy;
   use futures::future::ok;
   use futures::Async;
@@ -603,12 +647,12 @@ pub mod tests {
           assert_eq!(control.len(), 1);
           assert_eq!(control[0], 42);
           let buf = vec![43u8].into_boxed_slice();
-          (false, Box::new(futures::future::ok(buf)))
+          (false, future::ok(buf).tag("AsyncImmediate").box_op())
         }
         TestDispatchMode::OverflowReqSync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
-          (true, Box::new(futures::future::ok(buf)))
+          (true, future::ok(buf).tag("OverflowReqSync").box_op())
         }
         TestDispatchMode::OverflowResSync => {
           assert_eq!(control.len(), 1);
@@ -617,12 +661,12 @@ pub mod tests {
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 99;
           let buf = vec.into_boxed_slice();
-          (true, Box::new(futures::future::ok(buf)))
+          (true, future::ok(buf).tag("OverflowResSync").box_op())
         }
         TestDispatchMode::OverflowReqAsync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
-          (false, Box::new(futures::future::ok(buf)))
+          (false, future::ok(buf).tag("OverflowReqAsync").box_op())
         }
         TestDispatchMode::OverflowResAsync => {
           assert_eq!(control.len(), 1);
@@ -631,7 +675,7 @@ pub mod tests {
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 4;
           let buf = vec.into_boxed_slice();
-          (false, Box::new(futures::future::ok(buf)))
+          (false, future::ok(buf).tag("OverflowResAsync").box_op())
         }
       }
     }

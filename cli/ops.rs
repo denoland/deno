@@ -26,6 +26,7 @@ use deno::js_check;
 use deno::Buf;
 use deno::JSError;
 use deno::Op;
+use deno::Tag;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::Async;
@@ -64,7 +65,8 @@ type OpCreator =
   fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: deno_buf)
     -> Box<OpWithError>;
 
-pub type OpSelector = fn(inner_type: msg::Any) -> Option<OpCreator>;
+pub type OpSelector =
+  fn(inner_type: msg::Any) -> Option<(&'static str, OpCreator)>;
 
 #[inline]
 fn empty_buf() -> Buf {
@@ -88,18 +90,17 @@ pub fn dispatch_all(
   let inner_type = base.inner_type();
   let cmd_id = base.cmd_id();
 
-  let op_func: OpCreator = match op_selector(inner_type) {
-    Some(v) => v,
-    None => panic!("Unhandled message {}", msg::enum_name_any(inner_type)),
-  };
+  let (op_name, op_func) = op_selector(inner_type).unwrap_or_else(|| {
+    panic!("Unhandled message {}", msg::enum_name_any(inner_type))
+  });
 
-  let op: Box<OpWithError> = op_func(state, &base, zero_copy);
+  let op = op_func(&state, &base, zero_copy);
 
   let state = state.clone();
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
-  let boxed_op = Box::new(
-    op.or_else(move |err: DenoError| -> Result<Buf, ()> {
+  let boxed_op = op
+    .or_else(move |err: DenoError| -> Result<Buf, ()> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
       // send back. So transform the DenoError into a deno_buf.
@@ -132,8 +133,9 @@ pub fn dispatch_all(
       };
       state.metrics_op_completed(buf.len());
       Ok(buf)
-    }).map_err(|err| panic!("unexpected error {:?}", err)),
-  );
+    }).map_err(|err| panic!("unexpected error {:?}", err))
+    .tag(op_name)
+    .box_op();
 
   debug!(
     "msg_from_js {} sync {}",
@@ -143,73 +145,94 @@ pub fn dispatch_all(
   (base.sync(), boxed_op)
 }
 
-pub fn op_selector_compiler(inner_type: msg::Any) -> Option<OpCreator> {
-  match inner_type {
-    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
-    msg::Any::WorkerGetMessage => Some(op_worker_get_message),
-    msg::Any::WorkerPostMessage => Some(op_worker_post_message),
-    msg::Any::Exit => Some(op_exit),
-    msg::Any::Start => Some(op_start),
-    _ => None,
-  }
+pub fn op_selector_compiler(
+  inner_type: msg::Any,
+) -> Option<(&'static str, OpCreator)> {
+  Some(match inner_type {
+    msg::Any::FetchModuleMetaData => {
+      ("op_fetch_module_meta_data", op_fetch_module_meta_data)
+    }
+    msg::Any::WorkerGetMessage => {
+      ("op_worker_get_message", op_worker_get_message)
+    }
+    msg::Any::WorkerPostMessage => {
+      ("op_worker_post_message", op_worker_post_message)
+    }
+    msg::Any::Exit => ("op_exit", op_exit),
+    msg::Any::Start => ("op_exit", op_start),
+    _ => return None,
+  })
 }
 
 /// Standard ops set for most isolates
-pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
-  match inner_type {
-    msg::Any::Accept => Some(op_accept),
-    msg::Any::Chdir => Some(op_chdir),
-    msg::Any::Chmod => Some(op_chmod),
-    msg::Any::Close => Some(op_close),
-    msg::Any::CopyFile => Some(op_copy_file),
-    msg::Any::Cwd => Some(op_cwd),
-    msg::Any::Dial => Some(op_dial),
-    msg::Any::Environ => Some(op_env),
-    msg::Any::Exit => Some(op_exit),
-    msg::Any::Fetch => Some(op_fetch),
-    msg::Any::FormatError => Some(op_format_error),
-    msg::Any::GlobalTimer => Some(op_global_timer),
-    msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
-    msg::Any::IsTTY => Some(op_is_tty),
-    msg::Any::Link => Some(op_link),
-    msg::Any::Listen => Some(op_listen),
-    msg::Any::MakeTempDir => Some(op_make_temp_dir),
-    msg::Any::Metrics => Some(op_metrics),
-    msg::Any::Mkdir => Some(op_mkdir),
-    msg::Any::Now => Some(op_now),
-    msg::Any::Open => Some(op_open),
-    msg::Any::PermissionRevoke => Some(op_revoke_permission),
-    msg::Any::Permissions => Some(op_permissions),
-    msg::Any::Read => Some(op_read),
-    msg::Any::ReadDir => Some(op_read_dir),
-    msg::Any::Readlink => Some(op_read_link),
-    msg::Any::Remove => Some(op_remove),
-    msg::Any::Rename => Some(op_rename),
-    msg::Any::ReplReadline => Some(op_repl_readline),
-    msg::Any::ReplStart => Some(op_repl_start),
-    msg::Any::Resources => Some(op_resources),
-    msg::Any::Run => Some(op_run),
-    msg::Any::RunStatus => Some(op_run_status),
-    msg::Any::Seek => Some(op_seek),
-    msg::Any::SetEnv => Some(op_set_env),
-    msg::Any::Shutdown => Some(op_shutdown),
-    msg::Any::Start => Some(op_start),
-    msg::Any::Stat => Some(op_stat),
-    msg::Any::Symlink => Some(op_symlink),
-    msg::Any::Truncate => Some(op_truncate),
-    msg::Any::CreateWorker => Some(op_create_worker),
-    msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
-    msg::Any::HostGetMessage => Some(op_host_get_message),
-    msg::Any::HostPostMessage => Some(op_host_post_message),
-    msg::Any::Write => Some(op_write),
+pub fn op_selector_std(
+  inner_type: msg::Any,
+) -> Option<(&'static str, OpCreator)> {
+  Some(match inner_type {
+    msg::Any::Accept => ("op_accept", op_accept),
+    msg::Any::Chdir => ("op_chdir", op_chdir),
+    msg::Any::Chmod => ("op_chmod", op_chmod),
+    msg::Any::Close => ("op_close", op_close),
+    msg::Any::CopyFile => ("op_copy_file", op_copy_file),
+    msg::Any::Cwd => ("op_cwd", op_cwd),
+    msg::Any::Dial => ("op_dial", op_dial),
+    msg::Any::Environ => ("op_env", op_env),
+    msg::Any::Exit => ("op_exit", op_exit),
+    msg::Any::Fetch => ("op_fetch", op_fetch),
+    msg::Any::FormatError => ("op_format_error", op_format_error),
+    msg::Any::GlobalTimer => ("op_global_timer", op_global_timer),
+    msg::Any::GlobalTimerStop => ("op_global_timer_stop", op_global_timer_stop),
+    msg::Any::IsTTY => ("op_is_tty", op_is_tty),
+    msg::Any::Link => ("op_link", op_link),
+    msg::Any::Listen => ("op_listen", op_listen),
+    msg::Any::MakeTempDir => ("op_make_temp_dir", op_make_temp_dir),
+    msg::Any::Metrics => ("op_metrics", op_metrics),
+    msg::Any::Mkdir => ("op_mkdir", op_mkdir),
+    msg::Any::Now => ("op_now", op_now),
+    msg::Any::Open => ("op_open", op_open),
+    msg::Any::PermissionRevoke => {
+      ("op_revoke_permission", op_revoke_permission)
+    }
+    msg::Any::Permissions => ("op_permissions", op_permissions),
+    msg::Any::Read => ("op_read", op_read),
+    msg::Any::ReadDir => ("op_read_dir", op_read_dir),
+    msg::Any::Readlink => ("op_read_link", op_read_link),
+    msg::Any::Remove => ("op_remove", op_remove),
+    msg::Any::Rename => ("op_rename", op_rename),
+    msg::Any::ReplReadline => ("op_repl_readline", op_repl_readline),
+    msg::Any::ReplStart => ("op_repl_start", op_repl_start),
+    msg::Any::Resources => ("op_resources", op_resources),
+    msg::Any::Run => ("op_run", op_run),
+    msg::Any::RunStatus => ("op_run_status", op_run_status),
+    msg::Any::Seek => ("op_seek", op_seek),
+    msg::Any::SetEnv => ("op_set_env", op_set_env),
+    msg::Any::Shutdown => ("op_shutdown", op_shutdown),
+    msg::Any::Start => ("op_start", op_start),
+    msg::Any::Stat => ("op_stat", op_stat),
+    msg::Any::Symlink => ("op_symlink", op_symlink),
+    msg::Any::Truncate => ("op_truncate", op_truncate),
+    msg::Any::CreateWorker => ("op_create_worker", op_create_worker),
+    msg::Any::HostGetWorkerClosed => {
+      ("op_host_get_worker_closed", op_host_get_worker_closed)
+    }
+    msg::Any::HostGetMessage => ("op_host_get_message", op_host_get_message),
+    msg::Any::HostPostMessage => ("op_host_post_message", op_host_post_message),
+    msg::Any::Write => ("op_write", op_write),
 
     // TODO(ry) split these out so that only the appropriate Workers can access
     // them.
-    msg::Any::WorkerGetMessage => Some(op_worker_get_message),
-    msg::Any::WorkerPostMessage => Some(op_worker_post_message),
+    msg::Any::FetchModuleMetaData => {
+      ("op_fetch_module_meta_data", op_fetch_module_meta_data)
+    }
+    msg::Any::WorkerGetMessage => {
+      ("op_worker_get_message", op_worker_get_message)
+    }
 
-    _ => None,
-  }
+    msg::Any::WorkerPostMessage => {
+      ("op_worker_post_message", op_worker_post_message)
+    }
+    _ => return None,
+  })
 }
 
 // Returns a milliseconds and nanoseconds subsec

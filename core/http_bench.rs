@@ -120,50 +120,50 @@ impl Dispatch for HttpBench {
   ) -> (bool, Box<Op>) {
     let record = Record::from(control);
     let is_sync = record.promise_id == 0;
-    let http_bench_op = match record.op_id {
+    let (op_name, http_bench_op) = match record.op_id {
       OP_LISTEN => {
         assert!(is_sync);
-        op_listen()
+        ("op_listen", op_listen())
       }
       OP_CLOSE => {
         assert!(is_sync);
         let rid = record.arg;
-        op_close(rid)
+        ("op_close", op_close(rid))
       }
       OP_ACCEPT => {
         assert!(!is_sync);
         let listener_rid = record.arg;
-        op_accept(listener_rid)
+        ("op_accept", op_accept(listener_rid))
       }
       OP_READ => {
         assert!(!is_sync);
         let rid = record.arg;
-        op_read(rid, zero_copy_buf)
+        ("op_read", op_read(rid, zero_copy_buf))
       }
       OP_WRITE => {
         assert!(!is_sync);
         let rid = record.arg;
-        op_write(rid, zero_copy_buf)
+        ("op_write", op_write(rid, zero_copy_buf))
       }
       _ => panic!("bad op {}", record.op_id),
     };
     let mut record_a = record.clone();
     let mut record_b = record.clone();
 
-    let op = Box::new(
-      http_bench_op
-        .and_then(move |result| {
-          record_a.result = result;
-          Ok(record_a)
-        }).or_else(|err| -> Result<Record, ()> {
-          eprintln!("unexpected err {}", err);
-          record_b.result = -1;
-          Ok(record_b)
-        }).then(|result| -> Result<Buf, ()> {
-          let record = result.unwrap();
-          Ok(record.into())
-        }),
-    );
+    let op = http_bench_op
+      .and_then(move |result| {
+        record_a.result = result;
+        Ok(record_a)
+      }).or_else(|err| -> Result<Record, ()> {
+        eprintln!("unexpected err {}", err);
+        record_b.result = -1;
+        Ok(record_b)
+      }).then(|result| -> Result<Buf, ()> {
+        let record = result.unwrap();
+        Ok(record.into())
+      }).tag(op_name)
+      .box_op();
+
     (is_sync, op)
   }
 }
