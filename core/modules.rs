@@ -123,21 +123,21 @@ impl<L: Loader> RecursiveLoad<L> {
 // TODO(ry) This is basically the same thing as RustOrJsError. They should be
 // combined into one type.
 #[derive(Debug, PartialEq)]
-pub enum Either<E> {
+pub enum JSErrorOr<E> {
   JSError(JSError),
   Other(E),
 }
 
 impl<L: Loader> Future for RecursiveLoad<L> {
   type Item = (deno_mod, L);
-  type Error = (Either<L::Error>, L);
+  type Error = (JSErrorOr<L::Error>, L);
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     if self.root.is_none() && self.root_specifier.is_some() {
       let s = self.root_specifier.take().unwrap();
       match self.add(&s, ".", None) {
         Err(err) => {
-          return Err((Either::Other(err), self.take_loader()));
+          return Err((JSErrorOr::Other(err), self.take_loader()));
         }
         Ok(root) => {
           self.root = Some(root);
@@ -152,7 +152,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
       let pending = &mut self.pending[i];
       match pending.source_code_future.poll() {
         Err(err) => {
-          return Err((Either::Other(err), self.take_loader()));
+          return Err((JSErrorOr::Other(err), self.take_loader()));
         }
         Ok(Async::NotReady) => {
           i += 1;
@@ -167,7 +167,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
             isolate.mod_new(completed.is_root, &completed.url, &source_code)
           };
           if let Err(err) = result {
-            return Err((Either::JSError(err), self.take_loader()));
+            return Err((JSErrorOr::JSError(err), self.take_loader()));
           }
           let mod_id = result.unwrap();
           if completed.is_root {
@@ -192,7 +192,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
           for specifier in imports {
             self
               .add(&specifier, referrer, Some(mod_id))
-              .map_err(|e| (Either::Other(e), self.take_loader()))?;
+              .map_err(|e| (JSErrorOr::Other(e), self.take_loader()))?;
           }
         }
       }
@@ -224,7 +224,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
     };
 
     match result {
-      Err(err) => Err((Either::JSError(err), loader)),
+      Err(err) => Err((JSErrorOr::JSError(err), loader)),
       Ok(()) => Ok(Async::Ready((root_id, loader))),
     }
   }
@@ -726,7 +726,7 @@ mod tests {
     let result = recursive_load.poll();
     assert!(result.is_err());
     let (either_err, _loader) = result.err().unwrap();
-    assert_eq!(either_err, Either::Other(MockError::ResolveErr));
+    assert_eq!(either_err, JSErrorOr::Other(MockError::ResolveErr));
     assert!(recursive_load.loader.is_none());
   }
 }

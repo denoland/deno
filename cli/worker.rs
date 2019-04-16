@@ -63,13 +63,13 @@ impl Worker {
   ) -> impl Future<Item = Self, Error = (RustOrJsError, Self)> {
     let recursive_load = deno::RecursiveLoad::new(js_url.as_str(), self);
     recursive_load.and_then(
-      move |(id, mut self_)| -> Result<Self, (deno::Either<DenoError>, Self)> {
+      move |(id, mut self_)| -> Result<Self, (deno::JSErrorOr<DenoError>, Self)> {
         if is_prefetch {
           Ok(self_)
         } else {
           let result = self_.inner.mod_evaluate(id);
           if let Err(err) = result {
-            Err((deno::Either::JSError(err), self_))
+            Err((deno::JSErrorOr::JSError(err), self_))
           } else {
             Ok(self_)
           }
@@ -79,8 +79,8 @@ impl Worker {
     .map_err(|(err, self_)| {
       // Convert to RustOrJsError AND apply_source_map.
       let err = match err {
-        deno::Either::JSError(err) => RustOrJsError::Js(self_.apply_source_map(err)),
-        deno::Either::Other(err) => RustOrJsError::Rust(err),
+        deno::JSErrorOr::JSError(err) => RustOrJsError::Js(self_.apply_source_map(err)),
+        deno::JSErrorOr::Other(err) => RustOrJsError::Rust(err),
       };
       (err, self_)
     })
