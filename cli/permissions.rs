@@ -6,6 +6,7 @@ use crate::flags::DenoFlags;
 use ansi_term::Style;
 use crate::errors::permission_denied;
 use crate::errors::DenoResult;
+use std::collections::HashSet;
 use std::fmt;
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -127,8 +128,11 @@ impl Default for PermissionAccessor {
 pub struct DenoPermissions {
   // Keep in sync with src/permissions.ts
   pub allow_read: PermissionAccessor,
+  pub read_whitelist: Arc<HashSet<String>>,
   pub allow_write: PermissionAccessor,
+  pub write_whitelist: Arc<HashSet<String>>,
   pub allow_net: PermissionAccessor,
+  pub net_whitelist: Arc<HashSet<String>>,
   pub allow_env: PermissionAccessor,
   pub allow_run: PermissionAccessor,
   pub allow_high_precision: PermissionAccessor,
@@ -139,9 +143,14 @@ impl DenoPermissions {
   pub fn from_flags(flags: &DenoFlags) -> Self {
     Self {
       allow_read: PermissionAccessor::from(flags.allow_read),
+      read_whitelist: Arc::new(flags.read_whitelist.iter().cloned().collect()),
       allow_write: PermissionAccessor::from(flags.allow_write),
-      allow_env: PermissionAccessor::from(flags.allow_env),
+      write_whitelist: Arc::new(
+        flags.write_whitelist.iter().cloned().collect(),
+      ),
       allow_net: PermissionAccessor::from(flags.allow_net),
+      net_whitelist: Arc::new(flags.net_whitelist.iter().cloned().collect()),
+      allow_env: PermissionAccessor::from(flags.allow_env),
       allow_run: PermissionAccessor::from(flags.allow_run),
       allow_high_precision: PermissionAccessor::from(
         flags.allow_high_precision,
@@ -170,51 +179,93 @@ impl DenoPermissions {
   pub fn check_read(&self, filename: &str) -> DenoResult<()> {
     match self.allow_read.get_state() {
       PermissionAccessorState::Allow => Ok(()),
-      PermissionAccessorState::Ask => match self
-        .try_permissions_prompt(&format!("read access to \"{}\"", filename))
-      {
-        Err(e) => Err(e),
-        Ok(v) => {
-          self.allow_read.update_with_prompt_result(&v);
-          v.check()?;
-          Ok(())
+      state => {
+        match self.read_whitelist.contains(filename) {
+          true => Ok(()),
+          false => {
+            match state {
+              // This shouldn't be possible but I guess rust doesn't realize.
+              PermissionAccessorState::Allow => Ok(()),
+              PermissionAccessorState::Ask => {
+                match self.try_permissions_prompt(&format!(
+                  "read access to \"{}\"",
+                  filename
+                )) {
+                  Err(e) => Err(e),
+                  Ok(v) => {
+                    self.allow_read.update_with_prompt_result(&v);
+                    v.check()?;
+                    Ok(())
+                  }
+                }
+              }
+              PermissionAccessorState::Deny => Err(permission_denied()),
+            }
+          }
         }
-      },
-      PermissionAccessorState::Deny => Err(permission_denied()),
+      }
     }
   }
 
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
     match self.allow_write.get_state() {
       PermissionAccessorState::Allow => Ok(()),
-      PermissionAccessorState::Ask => match self
-        .try_permissions_prompt(&format!("write access to \"{}\"", filename))
-      {
-        Err(e) => Err(e),
-        Ok(v) => {
-          self.allow_write.update_with_prompt_result(&v);
-          v.check()?;
-          Ok(())
+      state => {
+        match self.write_whitelist.contains(filename) {
+          true => Ok(()),
+          false => {
+            match state {
+              // This shouldn't be possible but I guess rust doesn't realize.
+              PermissionAccessorState::Allow => Ok(()),
+              PermissionAccessorState::Ask => {
+                match self.try_permissions_prompt(&format!(
+                  "write access to \"{}\"",
+                  filename
+                )) {
+                  Err(e) => Err(e),
+                  Ok(v) => {
+                    self.allow_write.update_with_prompt_result(&v);
+                    v.check()?;
+                    Ok(())
+                  }
+                }
+              }
+              PermissionAccessorState::Deny => Err(permission_denied()),
+            }
+          }
         }
-      },
-      PermissionAccessorState::Deny => Err(permission_denied()),
+      }
     }
   }
 
   pub fn check_net(&self, domain_name: &str) -> DenoResult<()> {
     match self.allow_net.get_state() {
       PermissionAccessorState::Allow => Ok(()),
-      PermissionAccessorState::Ask => match self.try_permissions_prompt(
-        &format!("network access to \"{}\"", domain_name),
-      ) {
-        Err(e) => Err(e),
-        Ok(v) => {
-          self.allow_net.update_with_prompt_result(&v);
-          v.check()?;
-          Ok(())
+      state => {
+        match self.net_whitelist.contains(domain_name) {
+          true => Ok(()),
+          false => {
+            match state {
+              // This shouldn't be possible but I guess rust doesn't realize.
+              PermissionAccessorState::Allow => Ok(()),
+              PermissionAccessorState::Ask => {
+                match self.try_permissions_prompt(&format!(
+                  "network access to \"{}\"",
+                  domain_name
+                )) {
+                  Err(e) => Err(e),
+                  Ok(v) => {
+                    self.allow_net.update_with_prompt_result(&v);
+                    v.check()?;
+                    Ok(())
+                  }
+                }
+              }
+              PermissionAccessorState::Deny => Err(permission_denied()),
+            }
+          }
         }
-      },
-      PermissionAccessorState::Deny => Err(permission_denied()),
+      }
     }
   }
 

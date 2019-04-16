@@ -15,8 +15,11 @@ pub struct DenoFlags {
   pub version: bool,
   pub reload: bool,
   pub allow_read: bool,
+  pub read_whitelist: Vec<String>,
   pub allow_write: bool,
+  pub write_whitelist: Vec<String>,
   pub allow_net: bool,
+  pub net_whitelist: Vec<String>,
   pub allow_env: bool,
   pub allow_run: bool,
   pub allow_high_precision: bool,
@@ -44,11 +47,20 @@ impl<'a> From<ArgMatches<'a>> for DenoFlags {
     if matches.is_present("allow-read") {
       flags.allow_read = true;
     }
+    if let Some(read_wl) = matches.values_of("read-wl") {
+      flags.read_whitelist = read_wl.map(|s| s.to_string()).collect();
+    }
     if matches.is_present("allow-write") {
       flags.allow_write = true;
     }
+    if let Some(write_wl) = matches.values_of("write-wl") {
+      flags.write_whitelist = write_wl.map(|s| s.to_string()).collect();
+    }
     if matches.is_present("allow-net") {
       flags.allow_net = true;
+    }
+    if let Some(net_wl) = matches.values_of("net-wl") {
+      flags.net_whitelist = net_wl.map(|s| s.to_string()).collect();
     }
     if matches.is_present("allow-env") {
       flags.allow_env = true;
@@ -113,13 +125,28 @@ fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .long("allow-read")
         .help("Allow file system read access"),
     ).arg(
+      Arg::with_name("read-wl")
+        .long("read-wl")
+        .takes_value(true)
+        .help("Allow file system read access to specific file or directory"),
+    ).arg(
       Arg::with_name("allow-write")
         .long("allow-write")
         .help("Allow file system write access"),
     ).arg(
+      Arg::with_name("write-wl")
+        .long("write-wl")
+        .takes_value(true)
+        .help("Allow file system write access to specific file or directory"),
+    ).arg(
       Arg::with_name("allow-net")
         .long("allow-net")
         .help("Allow network access"),
+    ).arg(
+      Arg::with_name("net-wl")
+        .long("net-wl")
+        .takes_value(true)
+        .help("Allow file system net access to specific domain"),
     ).arg(
       Arg::with_name("allow-env")
         .long("allow-env")
