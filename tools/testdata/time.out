@@ -1,0 +1,18 @@
+Hello
+    Command being timed: "./target/debug/deno tests/003_relative_import.ts"
+    User time (seconds): 2.43
+    System time (seconds): 0.05
+    Percent of CPU this job got: 156%
+    Elapsed (wall clock) time (h:mm:ss or m:ss): 0:01.59
+    Average shared text size (kbytes): 0
+    Average unshared data size (kbytes): 0
+    Average stack size (kbytes): 0
+    Average total size (kbytes): 0
+    Maximum resident set size (kbytes): 120380
+    Average resident set size (kbytes): 0
+    Major (requiring I/O) page faults: 0
+    Minor (reclaiming a frame) page faults: 41452
+    Voluntary context switches: 75
+    Involuntary context switches: 42
+    Swaps: 0
+    File system inputs: 0
