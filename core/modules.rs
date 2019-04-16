@@ -122,6 +122,7 @@ impl<L: Loader> RecursiveLoad<L> {
 
 // TODO(ry) This is basically the same thing as RustOrJsError. They should be
 // combined into one type.
+#[derive(Debug, PartialEq)]
 pub enum Either<E> {
   JSError(JSError),
   Other(E),
@@ -209,14 +210,13 @@ impl<L: Loader> Future for RecursiveLoad<L> {
         |specifier: &str, referrer_id: deno_mod| -> deno_mod {
           let referrer = modules.get_name(referrer_id).unwrap();
           match L::resolve(specifier, &referrer) {
-            Err(err) => {
-              eprintln!("potentially uncaught err {}", err.to_string());
-              0
-            }
             Ok(url) => match modules.get_id(&url) {
               Some(id) => id,
               None => 0,
             },
+            // We should have already resolved and loaded this module, so
+            // resolve() will not fail this time.
+            Err(_err) => unreachable!(),
           }
         };
 
@@ -431,7 +431,7 @@ mod tests {
     }
   }
 
-  #[derive(Debug)]
+  #[derive(Debug, PartialEq)]
   enum MockError {
     ResolveErr,
     LoadErr,
@@ -725,6 +725,8 @@ mod tests {
     let mut recursive_load = RecursiveLoad::new("bad_import.js", loader);
     let result = recursive_load.poll();
     assert!(result.is_err());
+    let (either_err, _loader) = result.err().unwrap();
+    assert_eq!(either_err, Either::Other(MockError::ResolveErr));
     assert!(recursive_load.loader.is_none());
   }
 }
