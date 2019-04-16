@@ -54,7 +54,7 @@ if (is_win) {
 }
 
 rust_executable("deno_core_http_bench") {
-  source_root = "http_bench.rs"
+  source_root = "examples/http_bench.rs"
   deps = [
     ":deno_core_deps",
   ]
@@ -62,7 +62,7 @@ rust_executable("deno_core_http_bench") {
 }
 
 rust_test("deno_core_http_bench_test") {
-  source_root = "http_bench.rs"
+  source_root = "examples/http_bench.rs"
   deps = [
     ":deno_core_deps",
   ]
