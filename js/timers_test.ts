@@ -132,11 +132,9 @@ test(async function intervalCancelSuccess() {
   let count = 0;
   const id = setInterval(() => {
     count++;
-  }, 500);
-  // Cancelled, count should not increment
+  }, 1);
   clearInterval(id);
-  // Wait a bit longer than 500ms
-  await waitForMs(600);
+  await waitForMs(500);
   assertEquals(count, 0);
 });
 
@@ -150,9 +148,9 @@ test(async function intervalOrdering() {
     }
   }
   for (let i = 0; i < 10; i++) {
-    timers[i] = setTimeout(onTimeout, 20);
+    timers[i] = setTimeout(onTimeout, 1);
   }
-  await waitForMs(100);
+  await waitForMs(500);
   assertEquals(timeouts, 1);
 });
 
