@@ -911,7 +911,7 @@ rust_crate("rand_xorshift") {
 
 rust_crate("regex") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.5/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.6/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -1512,7 +1512,7 @@ rust_crate("tokio_reactor") {
 
 rust_crate("tokio_rustls") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-rustls-0.9.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-rustls-0.9.2/src/lib.rs"
   features = [
     "default",
     "futures",
