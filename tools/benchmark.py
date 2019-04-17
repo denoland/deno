@@ -84,7 +84,11 @@ def get_binary_sizes(build_dir):
 
 def get_strace_summary_text(test_args):
     f = tempfile.NamedTemporaryFile()
-    run(["strace", "-c", "-f", "-o", f.name] + test_args)
+    cmd = ["strace", "-c", "-f", "-o", f.name] + test_args
+    try:
+        out = subprocess.check_output(cmd)
+    except subprocess.CalledProcessError:
+        pass
     return f.read()
 
 
