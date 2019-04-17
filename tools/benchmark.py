@@ -84,7 +84,11 @@ def get_binary_sizes(build_dir):
 
 def get_strace_summary_text(test_args):
     f = tempfile.NamedTemporaryFile()
-    run(["strace", "-c", "-f", "-o", f.name] + test_args)
+    cmd = ["strace", "-c", "-f", "-o", f.name] + test_args
+    try:
+        subprocess.check_output(cmd)
+    except subprocess.CalledProcessError:
+        pass
     return f.read()
 
 
@@ -125,17 +129,6 @@ def get_strace_summary(test_args):
     return strace_parse(get_strace_summary_text(test_args))
 
 
-def run_thread_count_benchmark(deno_exe):
-    thread_count_map = {}
-    thread_count_map["set_timeout"] = get_strace_summary([
-        deno_exe, "--reload", "tests/004_set_timeout.ts"
-    ])["clone"]["calls"] + 1
-    thread_count_map["fetch_deps"] = get_strace_summary([
-        deno_exe, "--reload", "--allow-net", "tests/fetch_deps.ts"
-    ])["clone"]["calls"] + 1
-    return thread_count_map
-
-
 def run_throughput(deno_exe):
     m = {}
     m["100M_tcp"] = throughput_benchmark.tcp(deno_exe, 100)
@@ -145,14 +138,16 @@ def run_throughput(deno_exe):
     return m
 
 
-def run_syscall_count_benchmark(deno_exe):
-    syscall_count_map = {}
-    syscall_count_map["hello"] = get_strace_summary(
-        [deno_exe, "--reload", "tests/002_hello.ts"])["total"]["calls"]
-    syscall_count_map["fetch_deps"] = get_strace_summary(
-        [deno_exe, "--reload", "--allow-net",
-         "tests/fetch_deps.ts"])["total"]["calls"]
-    return syscall_count_map
+# "thread_count" and "syscall_count" are both calculated here.
+def run_strace_benchmarks(deno_exe, new_data):
+    thread_count = {}
+    syscall_count = {}
+    for (name, args) in exec_time_benchmarks:
+        s = get_strace_summary([deno_exe] + args)
+        thread_count[name] = s["clone"]["calls"] + 1
+        syscall_count[name] = s["total"]["calls"]
+    new_data["thread_count"] = thread_count
+    new_data["syscall_count"] = syscall_count
 
 
 # Takes the output from "/usr/bin/time -v" as input and extracts the 'maximum
@@ -243,8 +238,7 @@ def main(argv):
         run_http(build_dir, new_data)
 
     if "linux" in sys.platform:
-        new_data["thread_count"] = run_thread_count_benchmark(deno_exe)
-        new_data["syscall_count"] = run_syscall_count_benchmark(deno_exe)
+        run_strace_benchmarks(deno_exe, new_data)
         new_data["max_memory"] = run_max_mem_benchmark(deno_exe)
 
     print "===== <BENCHMARK RESULTS>"
