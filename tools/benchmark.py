@@ -224,20 +224,16 @@ def main(argv):
     os.chdir(root_path)
     import_data_from_gh_pages()
 
-    # TODO(ry) Rename "new_data" to "results"
     new_data = {
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sha1": sha1,
-        "binary_size": {},
-        "thread_count": {},
-        "syscall_count": {},
-        "benchmark": {}
     }
 
     # TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
     # When this is changed, the historical data in gh-pages branch needs to be
     # changed too.
     new_data["benchmark"] = run_exec_time(deno_exe, build_dir)
+
     new_data["binary_size"] = get_binary_sizes(build_dir)
 
     # Cannot run throughput benchmark on windows because they don't have nc or
