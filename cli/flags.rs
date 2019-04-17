@@ -96,7 +96,7 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     NO_COLOR        Set to disable color";
 
 fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
-  let cli_app = App::new("deno")
+  App::new("deno")
     .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
     .settings(&[
@@ -194,9 +194,7 @@ fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
       // AppSettings:AllowExternalSubcommand to treat it as an
       // entry point script
       SubCommand::with_name("<script>").about("Script to run"),
-    );
-
-  cli_app
+    )
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]

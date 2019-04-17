@@ -10,6 +10,7 @@
 // It would require calling into Rust from Error.prototype.prepareStackTrace.
 
 use serde_json;
+use serde_json::value::Value;
 use std::fmt;
 use std::str;
 
@@ -214,12 +215,12 @@ impl JSError {
     let script_resource_name = obj
       .get("scriptResourceName")
       .and_then(|v| v.as_str().map(String::from));
-    let line_number = obj.get("lineNumber").and_then(|v| v.as_i64());
-    let start_position = obj.get("startPosition").and_then(|v| v.as_i64());
-    let end_position = obj.get("endPosition").and_then(|v| v.as_i64());
-    let error_level = obj.get("errorLevel").and_then(|v| v.as_i64());
-    let start_column = obj.get("startColumn").and_then(|v| v.as_i64());
-    let end_column = obj.get("endColumn").and_then(|v| v.as_i64());
+    let line_number = obj.get("lineNumber").and_then(Value::as_i64);
+    let start_position = obj.get("startPosition").and_then(Value::as_i64);
+    let end_position = obj.get("endPosition").and_then(Value::as_i64);
+    let error_level = obj.get("errorLevel").and_then(Value::as_i64);
+    let start_column = obj.get("startColumn").and_then(Value::as_i64);
+    let end_column = obj.get("endColumn").and_then(Value::as_i64);
 
     let frames_v = &obj["frames"];
     if !frames_v.is_array() {

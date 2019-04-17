@@ -295,7 +295,7 @@ fn op_start(
   let mut builder = FlatBufferBuilder::new();
 
   let state = state;
-  let argv = state.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+  let argv = state.argv.iter().map(String::as_str).collect::<Vec<_>>();
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
 
   let cwd_path = std::env::current_dir().unwrap();

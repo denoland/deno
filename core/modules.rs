@@ -202,7 +202,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
       return Ok(Async::NotReady);
     }
 
-    let root_id = self.root_id.unwrap().clone();
+    let root_id = self.root_id.unwrap();
     let mut loader = self.take_loader();
     let (isolate, modules) = loader.isolate_and_modules();
     let result = {
@@ -460,13 +460,10 @@ mod tests {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
       self.counter += 1;
-      if self.url == "never_ready.js" {
-        // never_ready.js is never ready.
+      if self.url == "never_ready.js"
+        || (self.url == "slow.js" && self.counter < 2)
+      {
         return Ok(Async::NotReady);
-      } else if self.url == "slow.js" {
-        if self.counter < 2 {
-          return Ok(Async::NotReady);
-        }
       }
       match mock_source_code(&self.url) {
         Some(src) => Ok(Async::Ready(src.to_string())),
@@ -560,7 +557,7 @@ mod tests {
       assert_eq!(modules.get_children(c_id), Some(&vec!["d.js".to_string()]));
       assert_eq!(modules.get_children(d_id), Some(&vec![]));
     } else {
-      assert!(false);
+      panic!("this shouldn't happen");
     }
   }
 
@@ -619,7 +616,7 @@ mod tests {
         ])
       );
     } else {
-      assert!(false);
+      panic!("this shouldn't happen");
     }
   }
 

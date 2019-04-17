@@ -61,6 +61,7 @@ impl Into<Buf> for Record {
 
 impl From<&[u8]> for Record {
   fn from(s: &[u8]) -> Record {
+    #[allow(clippy::cast_ptr_alignment)]
     let ptr = s.as_ptr() as *const i32;
     let ints = unsafe { std::slice::from_raw_parts(ptr, 4) };
     Record {
@@ -75,7 +76,7 @@ impl From<&[u8]> for Record {
 impl From<Buf> for Record {
   fn from(buf: Buf) -> Record {
     assert_eq!(buf.len(), 4 * 4);
-    //let byte_len = buf.len();
+    #[allow(clippy::cast_ptr_alignment)]
     let ptr = Box::into_raw(buf) as *mut [i32; 4];
     let ints: Box<[i32]> = unsafe { Box::from_raw(ptr) };
     assert_eq!(ints.len(), 4);
