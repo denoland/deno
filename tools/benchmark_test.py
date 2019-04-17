@@ -36,16 +36,19 @@ def binary_size_test(build_dir):
     assert binary_size_dict["snapshot_deno.bin"] > 0
 
 
-def thread_count_test(deno_path):
-    thread_count_dict = benchmark.run_thread_count_benchmark(deno_path)
-    assert "set_timeout" in thread_count_dict
-    assert thread_count_dict["set_timeout"] > 1
+def strace_test(deno_path):
+    new_data = {}
+    benchmark.run_strace_benchmarks(deno_path, new_data)
+    assert "thread_count" in new_data
+    assert "syscall_count" in new_data
 
+    s = new_data["thread_count"]
+    assert "hello" in s
+    assert s["hello"] > 1
 
-def syscall_count_test(deno_path):
-    syscall_count_dict = benchmark.run_syscall_count_benchmark(deno_path)
-    assert "hello" in syscall_count_dict
-    assert syscall_count_dict["hello"] > 1
+    s = new_data["syscall_count"]
+    assert "hello" in s
+    assert s["hello"] > 1
 
 
 def benchmark_test(build_dir, deno_path):
@@ -53,8 +56,7 @@ def benchmark_test(build_dir, deno_path):
     binary_size_test(build_dir)
     max_mem_parse_test()
     if "linux" in sys.platform:
-        thread_count_test(deno_path)
-        syscall_count_test(deno_path)
+        strace_test(deno_path)
 
 
 # This test assumes tools/http_server.py is running in the background.
