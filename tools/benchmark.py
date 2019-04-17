@@ -86,7 +86,7 @@ def get_strace_summary_text(test_args):
     f = tempfile.NamedTemporaryFile()
     cmd = ["strace", "-c", "-f", "-o", f.name] + test_args
     try:
-        out = subprocess.check_output(cmd)
+        subprocess.check_output(cmd)
     except subprocess.CalledProcessError:
         pass
     return f.read()

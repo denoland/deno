@@ -42,13 +42,13 @@ def strace_test(deno_path):
     assert "thread_count" in new_data
     assert "syscall_count" in new_data
 
-    thread_count_dict = new_data["thread_count"]
-    assert "hello" in thread_count_dict
-    assert thread_count_dict["hello"] > 1
+    s = new_data["thread_count"]
+    assert "hello" in s
+    assert s["hello"] > 1
 
-    syscall_count_dict = new_data["syscall_count"]
-    assert "hello" in thread_count_dict
-    assert thread_count_dict["hello"] > 1
+    s = new_data["syscall_count"]
+    assert "hello" in s
+    assert s["hello"] > 1
 
 
 def benchmark_test(build_dir, deno_path):
