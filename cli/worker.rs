@@ -119,7 +119,7 @@ pub fn resolve_module_spec(
   //    two-character sequence U+002E FULL STOP, U+002F SOLIDUS (./), or the
   //    three-character sequence U+002E FULL STOP, U+002E FULL STOP, U+002F
   //    SOLIDUS (../), return failure.
-  if !specifier.starts_with("/")
+  if !specifier.starts_with('/')
     && !specifier.starts_with("./")
     && !specifier.starts_with("../")
   {
@@ -158,8 +158,7 @@ impl Loader for Worker {
   type Error = DenoError;
 
   fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
-    resolve_module_spec(specifier, referrer)
-      .map_err(|url_err| DenoError::from(url_err))
+    resolve_module_spec(specifier, referrer).map_err(DenoError::from)
   }
 
   /// Given an absolute url, load its source code.

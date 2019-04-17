@@ -48,7 +48,6 @@ pub fn init<F>(f: F)
 where
   F: FnOnce(),
 {
-  use tokio_executor;
   let rt = tokio::runtime::Runtime::new().unwrap();
   let mut executor = rt.executor();
   let mut enter = tokio_executor::enter().expect("Multiple executors at once");

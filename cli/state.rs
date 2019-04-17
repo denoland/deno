@@ -90,7 +90,7 @@ impl ThreadSafeState {
     argv_rest: Vec<String>,
     dispatch_selector: ops::OpSelector,
   ) -> Self {
-    let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
+    let custom_root = env::var("DENO_DIR").map(String::into).ok();
 
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
