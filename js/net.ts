@@ -132,6 +132,10 @@ export interface Conn extends Reader, Writer, Closer {
  * See `dial()` for a description of the network and address parameters.
  */
 export function listen(network: Network, address: string): Listener {
+  if (!network || !address) {
+    throw new TypeError('Deno.listen should accept 2 arguments.')
+  }
+
   const builder = flatbuffers.createBuilder();
   const network_ = builder.createString(network);
   const address_ = builder.createString(address);
