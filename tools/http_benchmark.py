@@ -58,10 +58,10 @@ def hyper_http_benchmark(hyper_hello_exe):
     return run(hyper_cmd)
 
 
-def http_benchmark(deno_exe, hyper_hello_exe, core_http_bench_exe):
-
-    # TODO Rename to "deno_tcp"
-
+def http_benchmark(build_dir):
+    hyper_hello_exe = os.path.join(build_dir, "hyper_hello")
+    core_http_bench_exe = os.path.join(build_dir, "deno_core_http_bench")
+    deno_exe = os.path.join(build_dir, "deno")
     return {
         "deno": deno_http_benchmark(deno_exe),
         "deno_net_http": deno_net_http_benchmark(deno_exe),
