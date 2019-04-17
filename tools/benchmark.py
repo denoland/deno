@@ -238,13 +238,12 @@ def main(argv):
     # When this is changed, the historical data in gh-pages branch needs to be
     # changed too.
     new_data["benchmark"] = run_exec_time(deno_exe, build_dir)
-
     new_data["binary_size"] = get_binary_sizes(build_dir)
 
     # Cannot run throughput benchmark on windows because they don't have nc or
     # pipe.
     if os.name != 'nt':
-        #new_data["throughput"] = run_throughput(deno_exe)
+        new_data["throughput"] = run_throughput(deno_exe)
         run_http(build_dir, new_data)
 
     if "linux" in sys.platform:
