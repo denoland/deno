@@ -177,6 +177,8 @@ impl Loader for Worker {
           eprintln!("{}", err);
           err
         }).map(|module_meta_data| deno::SourceCodeInfo {
+          // Real module name, might be different from initial URL
+          // due to redirections.
           code: module_meta_data.js_source(),
           module_name: module_meta_data.module_name,
         }),
