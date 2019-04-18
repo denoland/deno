@@ -21,7 +21,7 @@ export class URLSearchParams {
         const position = pair.indexOf("=");
         const name = pair.slice(0, position === -1 ? pair.length : position);
         const value = pair.slice(name.length + 1);
-        this.append(decodeURIComponent(name), decodeURIComponent(value));
+        URLSearchParams.prototype.append.call(this, decodeURIComponent(name), decodeURIComponent(value));
       }
     } else if (Array.isArray(init)) {
       // Overload: sequence<sequence<USVString>>
@@ -32,12 +32,12 @@ export class URLSearchParams {
             "Each query pair must be an iterable [name, value] tuple";
           throw new TypeError(errMsg);
         }
-        this.append(tuple[0], tuple[1]);
+        URLSearchParams.prototype.append.call(this, tuple[0], tuple[1]);
       }
     } else if (Object(init) === init) {
       // Overload: record<USVString, USVString>
       for (const key of Object.keys(init)) {
-        this.append(key, init[key]);
+        URLSearchParams.prototype.append.call(this, key, init[key]);
       }
     }
   }
@@ -148,7 +148,7 @@ export class URLSearchParams {
     // Otherwise, append a new name-value pair whose name is name
     // and value is value, to list.
     if (!found) {
-      this.append(name, value);
+      URLSearchParams.prototype.append.call(this, name, value);
     }
   }
 
