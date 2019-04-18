@@ -176,12 +176,3 @@ test(function urlSearchParamsAppendArgumentsCheck() {
     assertEquals(hasThrown, 2);
   });
 });
-
-test(function urlSearchParamsShouldNotCallAppendOfChildClass() {
-  class Foo extends URLSearchParams {
-    append(name: string, value: string): void {
-      assert(false, 'should be not called');
-    }
-  }
-  new Foo('a=1').set('b', '2');
-});
