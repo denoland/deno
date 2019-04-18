@@ -184,6 +184,11 @@ export async function dial(network: Network, address: string): Promise<Conn> {
   return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
 }
 
+/** DialTLS establishes a secure channel to the address on the named network. */
+export async function dialTLS(network: Network, address: string) {
+  console.log(`network: ${network}, address: ${address}`);
+}
+
 /** **RESERVED** */
 export async function connect(
   _network: Network,

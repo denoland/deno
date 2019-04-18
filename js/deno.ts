@@ -65,7 +65,7 @@ export {
 } from "./permissions";
 export { truncateSync, truncate } from "./truncate";
 export { FileInfo } from "./file_info";
-export { connect, dial, listen, Listener, Conn } from "./net";
+export { connect, dial, dialTLS, listen, Listener, Conn } from "./net";
 export { metrics, Metrics } from "./metrics";
 export { resources } from "./resources";
 export { run, RunOptions, Process, ProcessStatus } from "./process";
