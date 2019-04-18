@@ -52,6 +52,8 @@ tokio-rustls = "0.9.3"
 tokio-threadpool = "0.1.14"
 url = "1.7.2"
 utime = "0.2.1"
+webpki = "0.19.1"
+webpki-roots = "0.16.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.7"

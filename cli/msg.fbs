@@ -11,6 +11,7 @@ union Any {
   Cwd,
   CwdRes,
   Dial,
+  DialTLS,
   Environ,
   EnvironRes,
   Exit,
@@ -524,7 +525,12 @@ table Dial {
   address: string;
 }
 
-// Response to Accept and Dial.
+table DialTLS {
+  network: string;
+  address: string;
+}
+
+// Response to Accept, Dial, and DialTLS.
 table NewConn {
   rid: uint32;
   remote_addr: string;

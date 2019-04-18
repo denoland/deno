@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
+/*
 testPerm({ net: true }, function netListenClose(): void {
   const listener = Deno.listen("tcp", "127.0.0.1:4500");
   listener.close();
@@ -67,6 +68,7 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   listener.close();
   conn.close();
 });
+*/
 
 /* TODO(ry) Re-enable this test.
 testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
@@ -218,3 +220,36 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
   conn.close();
 });
 */
+
+testPerm({ net: true }, async function netDialTLS(): Promise<void> {
+  const conn = await Deno.dialTLS("tcp", ":4443");
+  const sendBuf = new Uint8Array(1024);
+  const body = new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n\n");
+  const writeResult = await conn.write(body);
+  console.log("writeResult", writeResult);
+  // assertEquals(3, readResult.nread);
+  // assert(conn.rid > 0);
+
+  const buf = new Uint8Array(1024);
+  const readResult = await conn.read(buf);
+  console.log(readResult);
+  const res = new TextDecoder().decode(buf.subarray(0, readResult.nread));
+  console.log(res);
+
+  /*
+  // assertEquals(3, readResult.nread);
+  //
+  assert(conn.rid > 0);
+
+  // TODO Currently ReadResult does not properly transmit EOF in the same call.
+  // it requires a second call to get the EOF. Either ReadResult to be an
+  // integer in which 0 signifies EOF or the handler should be modified so that
+  // EOF is properly transmitted.
+  */
+  assertEquals(false, readResult.eof);
+
+  conn.close();
+});
+
+import { runIfMain } from "./deps/https/deno.land/std/testing/mod.ts";
+runIfMain(import.meta);

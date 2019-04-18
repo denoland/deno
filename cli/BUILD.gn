@@ -53,6 +53,8 @@ main_extern_rlib = [
   "tokio_threadpool",
   "url",
   "utime",
+  "webpki",
+  "webpki_roots",
 ]
 if (is_win) {
   main_extern_rlib += [ "winapi" ]

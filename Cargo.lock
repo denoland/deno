@@ -249,6 +249,8 @@ dependencies = [
  "tokio-threadpool 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "utime 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "webpki 0.19.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "webpki-roots 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

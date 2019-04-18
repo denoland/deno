@@ -51,14 +51,20 @@ use std::fs;
 use std::net::Shutdown;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_process::CommandExt;
+use tokio_rustls::{
+  rustls::ClientConfig, rustls::ClientSession, TlsConnector, TlsStream,
+};
 use tokio_threadpool;
 use url::Url;
 use utime;
+use webpki;
+use webpki_roots;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -203,6 +209,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::Cwd => Some(op_cwd),
     msg::Any::Dial => Some(op_dial),
+    msg::Any::DialTLS => Some(op_dial_tls),
     msg::Any::Environ => Some(op_env),
     msg::Any::Exit => Some(op_exit),
     msg::Any::Fetch => Some(op_fetch),
@@ -1620,6 +1627,32 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> Result<Buf, ErrBox> {
   ))
 }
 
+fn new_tls_conn(
+  cmd_id: u32,
+  tls_stream: TlsStream<TcpStream, ClientSession>,
+) -> OpResult {
+  println!("new_tls_conn");
+  let tls_stream_resource = resources::add_tls_stream(tls_stream);
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::NewConn::create(
+    builder,
+    &msg::NewConnArgs {
+      rid: tls_stream_resource.rid,
+      ..Default::default()
+    },
+  );
+  Ok(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::NewConn,
+      ..Default::default()
+    },
+  ))
+}
+
 fn op_accept(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
@@ -1673,6 +1706,50 @@ fn op_dial(
   } else {
     Ok(Op::Async(Box::new(op)))
   }
+}
+
+fn op_dial_tls(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_dial_tls().unwrap();
+  let network = inner.network().unwrap();
+  assert_eq!(network, "tcp"); // TODO Support others.
+  let address = inner.address().unwrap().to_string();
+  if let Err(e) = state.check_net(&address) {
+    return odd_future(e);
+  }
+
+  let op = resolve_addr(&address)
+    .map_err(DenoError::from)
+    .and_then(move |addr| TcpStream::connect(&addr).map_err(DenoError::from))
+    .and_then(move |tcp_stream| {
+      let mut config = ClientConfig::new();
+      config
+        .root_store
+        .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+      let connector = TlsConnector::from(Arc::new(config));
+      /*
+      println!("before parse");
+      let uri: hyper::Uri = address.parse().unwrap();
+      println!("after parse");
+      let host = uri.host().unwrap();
+      println!("unwrap host worked");
+      println!("try_from_ascii str {}", host);
+      */
+      let domain = webpki::DNSNameRef::try_from_ascii_str(&host).unwrap();
+      println!("try_from_ascii str worked");
+
+      println!("connecting");
+
+      connector
+        .connect(domain, tcp_stream)
+        .map_err(DenoError::from)
+    }).and_then(move |tls_stream| new_tls_conn(cmd_id, tls_stream));
+  Box::new(op)
 }
 
 fn op_metrics(
