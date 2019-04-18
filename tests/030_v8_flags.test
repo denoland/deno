@@ -1,0 +1,2 @@
+args: --reload --v8-flags=--enable-gc,--gc-stats=1 tests/030_v8_flags.ts
+output: tests/030_v8_flags.ts.out
