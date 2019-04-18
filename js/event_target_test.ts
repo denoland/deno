@@ -98,8 +98,11 @@ test(function dispatchEventShouldNotThrowError() {
 
   try {
     const target = new EventTarget();
-    const event = new Event("hasOwnProperty", { bubbles: true, cancelable: false });
-    target.addEventListener("hasOwnProperty", () => { });
+    const event = new Event("hasOwnProperty", {
+      bubbles: true,
+      cancelable: false
+    });
+    target.addEventListener("hasOwnProperty", () => {});
     target.dispatchEvent(event);
   } catch {
     hasThrown = true;
