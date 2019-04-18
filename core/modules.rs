@@ -204,12 +204,14 @@ impl<L: Loader> Future for RecursiveLoad<L> {
           let need_alias = &source_code_info.module_name != &completed.url;
 
           if !is_module_registered {
+            let module_name = &source_code_info.module_name;
+
             let result = {
               let loader = self.loader.as_mut().unwrap();
               let isolate = loader.isolate();
               isolate.mod_new(
                 completed.is_root,
-                &source_code_info.module_name,
+                module_name,
                 &source_code_info.code,
               )
             };
@@ -222,14 +224,15 @@ impl<L: Loader> Future for RecursiveLoad<L> {
               self.root_id = Some(mod_id);
             }
 
-            let referrer = &source_code_info.module_name.clone();
-
+            // Register new module.
             {
               let loader = self.loader.as_mut().unwrap();
               let modules = loader.modules();
-              modules.register(mod_id, &source_code_info.module_name);
+              modules.register(mod_id, module_name);
+              // If necessary, register the alias.
               if need_alias {
-                modules.alias(&completed.url, &source_code_info.module_name);
+                let module_alias = &completed.url;
+                modules.alias(module_alias, module_name);
               }
             }
 
@@ -239,6 +242,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
               let isolate = loader.isolate();
               isolate.mod_get_imports(mod_id)
             };
+            let referrer = module_name;
             for specifier in imports {
               self
                 .add(&specifier, referrer, Some(mod_id))
@@ -355,6 +359,7 @@ impl ModuleNameMap {
     self.inner.insert(name, SymbolicModule::Alias(target));
   }
 
+  /// Check if a name is an alias to another module.
   pub fn is_alias(&self, name: &str) -> bool {
     let cond = self.inner.get(name);
     match cond {
