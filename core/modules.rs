@@ -853,51 +853,10 @@ mod tests {
       assert_eq!(loader.loads, vec!["main.js", "never_ready.js", "slow.js"]);
     }
 
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    assert!(result.ok().unwrap().is_not_ready());
-
-    {
-      let loader = recursive_load.loader.as_ref().unwrap();
-      assert_eq!(
-        loader.loads,
-        vec![
-          "main.js",
-          "never_ready.js",
-          "slow.js",
-          "a.js",
-          "b.js",
-          "c.js",
-          "d.js"
-        ]
-      );
-    }
-
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    assert!(result.ok().unwrap().is_not_ready());
-
-    {
-      let loader = recursive_load.loader.as_ref().unwrap();
-      assert_eq!(
-        loader.loads,
-        vec![
-          "main.js",
-          "never_ready.js",
-          "slow.js",
-          "a.js",
-          "b.js",
-          "c.js",
-          "d.js"
-        ]
-      );
-    }
-
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    assert!(result.ok().unwrap().is_not_ready());
-
-    {
+    for _ in 0..10 {
+      let result = recursive_load.poll();
+      assert!(result.is_ok());
+      assert!(result.ok().unwrap().is_not_ready());
       let loader = recursive_load.loader.as_ref().unwrap();
       assert_eq!(
         loader.loads,
