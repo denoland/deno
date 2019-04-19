@@ -714,7 +714,7 @@ mod tests {
       assert_eq!(modules.get_children(c_id), Some(&vec!["d.js".to_string()]));
       assert_eq!(modules.get_children(d_id), Some(&vec![]));
     } else {
-      panic!("this shouldn't happen");
+      unreachable!();
     }
   }
 
@@ -773,7 +773,7 @@ mod tests {
         ])
       );
     } else {
-      panic!("this shouldn't happen");
+      unreachable!();
     }
   }
 
@@ -819,7 +819,7 @@ mod tests {
       assert!(!modules.is_alias("./redirect3.js"));
       assert_eq!(modules.get_id("./dir/redirect3.js").unwrap(), redirect3_id);
     } else {
-      panic!("this shouldn't happen");
+      unreachable!();
     }
   }
 
