@@ -108,12 +108,18 @@ pub fn print_file_info(worker: &Worker, url: &str) {
     );
   }
 
-  let deps = worker.modules.deps(&out.module_name);
-  println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
-  if let Some(ref depsdeps) = deps.deps {
-    for d in depsdeps {
-      println!("{}", d);
+  if let Some(deps) = worker.modules.deps(&out.module_name) {
+    println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+    if let Some(ref depsdeps) = deps.deps {
+      for d in depsdeps {
+        println!("{}", d);
+      }
     }
+  } else {
+    println!(
+      "{} cannot retrieve full dependency graph",
+      ansi::bold("deps:".to_string()),
+    );
   }
 }
 
