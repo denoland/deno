@@ -11,7 +11,6 @@ import { args } from "./deno";
 import { replLoop } from "./repl";
 import { setVersions } from "./version";
 import { setLocation } from "./location";
-import { window } from "./window";
 
 // builtin modules
 import * as deno from "./deno";
@@ -20,10 +19,6 @@ import * as deno from "./deno";
 import libDts from "gen/cli/lib/lib.deno_runtime.d.ts!string";
 
 export default function denoMain(name?: string): void {
-  // Deno.core could ONLY be safely frozen here (not in globals.ts)
-  // since shared_queue.js will modify core properties.
-  Object.freeze(window.Deno.core);
-
   const startResMsg = os.start(name);
 
   setVersions(startResMsg.denoVersion()!, startResMsg.v8Version()!);
