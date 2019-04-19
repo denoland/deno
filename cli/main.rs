@@ -117,9 +117,8 @@ pub fn print_file_info(worker: &Worker, url: &str) {
     }
   } else {
     println!(
-      "{}{}",
-      ansi::bold("deps: ".to_string()),
-      "cannot retrieve full dependency graph"
+      "{} cannot retrieve full dependency graph",
+      ansi::bold("deps:".to_string()),
     );
   }
 }

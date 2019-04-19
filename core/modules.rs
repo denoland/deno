@@ -476,15 +476,10 @@ impl Deps {
         is_last,
       })
     } else {
-      let maybe_children = modules.get_children2(name);
-      if maybe_children.is_none() {
-        return None;
-      }
-      let children = maybe_children.unwrap();
-
+      let children = modules.get_children2(name)?;
       seen.insert(name.to_string());
       let child_count = children.len();
-      let mut maybe_deps: Vec<Option<Deps>> = children
+      let deps: Vec<Deps> = children
         .iter()
         .enumerate()
         .map(|(index, dep_name)| {
@@ -494,19 +489,9 @@ impl Deps {
           new_prefix.push(' ');
 
           Self::helper(seen, new_prefix, new_is_last, modules, dep_name)
-        }).collect();
-
-      // If any of the children are missing, return None.
-      for i in 0..child_count {
-        if maybe_deps[i].is_none() {
-          return None;
-        }
-      }
-      // Otherwise, unwrap.
-      let deps = maybe_deps
-        .iter_mut()
-        .map(|ref mut maybe_dep| maybe_dep.take().unwrap())
-        .collect();
+        })
+        // If any of the children are missing, return None.
+        .collect::<Option<_>>()?;
 
       Some(Deps {
         name: name.to_string(),
