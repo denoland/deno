@@ -9,47 +9,47 @@ function testFirstArgument(arg1, expectedSize): void {
   assertEquals(file.type, "");
 }
 
-test(function fileEmptyFileBits() {
+test(function fileEmptyFileBits(): void {
   testFirstArgument([], 0);
 });
 
-test(function fileStringFileBits() {
+test(function fileStringFileBits(): void {
   testFirstArgument(["bits"], 4);
 });
 
-test(function fileUnicodeStringFileBits() {
+test(function fileUnicodeStringFileBits(): void {
   testFirstArgument(["𝓽𝓮𝔁𝓽"], 16);
 });
 
-test(function fileStringObjectFileBits() {
+test(function fileStringObjectFileBits(): void {
   testFirstArgument([new String("string object")], 13);
 });
 
-test(function fileEmptyBlobFileBits() {
+test(function fileEmptyBlobFileBits(): void {
   testFirstArgument([new Blob()], 0);
 });
 
-test(function fileBlobFileBits() {
+test(function fileBlobFileBits(): void {
   testFirstArgument([new Blob(["bits"])], 4);
 });
 
-test(function fileEmptyFileFileBits() {
+test(function fileEmptyFileFileBits(): void {
   testFirstArgument([new File([], "world.txt")], 0);
 });
 
-test(function fileFileFileBits() {
+test(function fileFileFileBits(): void {
   testFirstArgument([new File(["bits"], "world.txt")], 4);
 });
 
-test(function fileArrayBufferFileBits() {
+test(function fileArrayBufferFileBits(): void {
   testFirstArgument([new ArrayBuffer(8)], 8);
 });
 
-test(function fileTypedArrayFileBits() {
+test(function fileTypedArrayFileBits(): void {
   testFirstArgument([new Uint8Array([0x50, 0x41, 0x53, 0x53])], 4);
 });
 
-test(function fileVariousFileBits() {
+test(function fileVariousFileBits(): void {
   testFirstArgument(
     [
       "bits",
@@ -63,15 +63,15 @@ test(function fileVariousFileBits() {
   );
 });
 
-test(function fileNumberInFileBits() {
+test(function fileNumberInFileBits(): void {
   testFirstArgument([12], 2);
 });
 
-test(function fileArrayInFileBits() {
+test(function fileArrayInFileBits(): void {
   testFirstArgument([[1, 2, 3]], 5);
 });
 
-test(function fileObjectInFileBits() {
+test(function fileObjectInFileBits(): void {
   // "[object Object]"
   testFirstArgument([{}], 15);
 });
@@ -82,22 +82,22 @@ function testSecondArgument(arg2, expectedFileName): void {
   assertEquals(file.name, expectedFileName);
 }
 
-test(function fileUsingFileName() {
+test(function fileUsingFileName(): void {
   testSecondArgument("dummy", "dummy");
 });
 
-test(function fileUsingSpecialCharacterInFileName() {
+test(function fileUsingSpecialCharacterInFileName(): void {
   testSecondArgument("dummy/foo", "dummy:foo");
 });
 
-test(function fileUsingNullFileName() {
+test(function fileUsingNullFileName(): void {
   testSecondArgument(null, "null");
 });
 
-test(function fileUsingNumberFileName() {
+test(function fileUsingNumberFileName(): void {
   testSecondArgument(1, "1");
 });
 
-test(function fileUsingEmptyStringFileName() {
+test(function fileUsingEmptyStringFileName(): void {
   testSecondArgument("", "");
 });

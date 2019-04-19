@@ -2,7 +2,7 @@
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 const { run, DenoError, ErrorKind } = Deno;
 
-test(function runPermissions() {
+test(function runPermissions(): void {
   let caughtError = false;
   try {
     Deno.run({ args: ["python", "-c", "print('hello world')"] });
@@ -14,7 +14,7 @@ test(function runPermissions() {
   assert(caughtError);
 });
 
-testPerm({ run: true }, async function runSuccess() {
+testPerm({ run: true }, async function runSuccess(): Promise<void> {
   const p = run({
     args: ["python", "-c", "print('hello world')"]
   });
@@ -26,7 +26,9 @@ testPerm({ run: true }, async function runSuccess() {
   p.close();
 });
 
-testPerm({ run: true }, async function runCommandFailedWithCode() {
+testPerm({ run: true }, async function runCommandFailedWithCode(): Promise<
+  void
+> {
   let p = run({
     args: ["python", "-c", "import sys;sys.exit(41 + 1)"]
   });
@@ -37,7 +39,9 @@ testPerm({ run: true }, async function runCommandFailedWithCode() {
   p.close();
 });
 
-testPerm({ run: true }, async function runCommandFailedWithSignal() {
+testPerm({ run: true }, async function runCommandFailedWithSignal(): Promise<
+  void
+> {
   if (Deno.build.os === "win") {
     return; // No signals on windows.
   }
@@ -51,7 +55,7 @@ testPerm({ run: true }, async function runCommandFailedWithSignal() {
   p.close();
 });
 
-testPerm({ run: true }, function runNotFound() {
+testPerm({ run: true }, function runNotFound(): void {
   let error;
   try {
     run({ args: ["this file hopefully doesn't exist"] });
@@ -63,13 +67,15 @@ testPerm({ run: true }, function runNotFound() {
   assertEquals(error.kind, ErrorKind.NotFound);
 });
 
-testPerm({ write: true, run: true }, async function runWithCwdIsAsync() {
-  const enc = new TextEncoder();
-  const cwd = Deno.makeTempDirSync({ prefix: "deno_command_test" });
+testPerm(
+  { write: true, run: true },
+  async function runWithCwdIsAsync(): Promise<void> {
+    const enc = new TextEncoder();
+    const cwd = Deno.makeTempDirSync({ prefix: "deno_command_test" });
 
-  const exitCodeFile = "deno_was_here";
-  const pyProgramFile = "poll_exit.py";
-  const pyProgram = `
+    const exitCodeFile = "deno_was_here";
+    const pyProgramFile = "poll_exit.py";
+    const pyProgram = `
 from sys import exit
 from time import sleep
 
@@ -85,25 +91,26 @@ while True:
     pass
 `;
 
-  Deno.writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
-  const p = run({
-    cwd,
-    args: ["python", `${pyProgramFile}.py`]
-  });
+    Deno.writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
+    const p = run({
+      cwd,
+      args: ["python", `${pyProgramFile}.py`]
+    });
 
-  // Write the expected exit code *after* starting python.
-  // This is how we verify that `run()` is actually asynchronous.
-  const code = 84;
-  Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
+    // Write the expected exit code *after* starting python.
+    // This is how we verify that `run()` is actually asynchronous.
+    const code = 84;
+    Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
-  const status = await p.status();
-  assertEquals(status.success, false);
-  assertEquals(status.code, code);
-  assertEquals(status.signal, undefined);
-  p.close();
-});
+    const status = await p.status();
+    assertEquals(status.success, false);
+    assertEquals(status.code, code);
+    assertEquals(status.signal, undefined);
+    p.close();
+  }
+);
 
-testPerm({ run: true }, async function runStdinPiped() {
+testPerm({ run: true }, async function runStdinPiped(): Promise<void> {
   const p = run({
     args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
     stdin: "piped"
@@ -124,7 +131,7 @@ testPerm({ run: true }, async function runStdinPiped() {
   p.close();
 });
 
-testPerm({ run: true }, async function runStdoutPiped() {
+testPerm({ run: true }, async function runStdoutPiped(): Promise<void> {
   const p = run({
     args: ["python", "-c", "import sys; sys.stdout.write('hello')"],
     stdout: "piped"
@@ -150,7 +157,7 @@ testPerm({ run: true }, async function runStdoutPiped() {
   p.close();
 });
 
-testPerm({ run: true }, async function runStderrPiped() {
+testPerm({ run: true }, async function runStderrPiped(): Promise<void> {
   const p = run({
     args: ["python", "-c", "import sys; sys.stderr.write('hello')"],
     stderr: "piped"
@@ -176,7 +183,7 @@ testPerm({ run: true }, async function runStderrPiped() {
   p.close();
 });
 
-testPerm({ run: true }, async function runOutput() {
+testPerm({ run: true }, async function runOutput(): Promise<void> {
   const p = run({
     args: ["python", "-c", "import sys; sys.stdout.write('hello')"],
     stdout: "piped"
@@ -187,7 +194,7 @@ testPerm({ run: true }, async function runOutput() {
   p.close();
 });
 
-testPerm({ run: true }, async function runStderrOutput() {
+testPerm({ run: true }, async function runStderrOutput(): Promise<void> {
   const p = run({
     args: ["python", "-c", "import sys; sys.stderr.write('error')"],
     stderr: "piped"
@@ -198,7 +205,7 @@ testPerm({ run: true }, async function runStderrOutput() {
   p.close();
 });
 
-testPerm({ run: true }, async function runEnv() {
+testPerm({ run: true }, async function runEnv(): Promise<void> {
   const p = run({
     args: [
       "python",

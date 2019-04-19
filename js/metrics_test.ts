@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert } from "./test_util.ts";
 
-test(async function metrics() {
+test(async function metrics(): Promise<void> {
   const m1 = Deno.metrics();
   assert(m1.opsDispatched > 0);
   assert(m1.opsCompleted > 0);
@@ -22,7 +22,7 @@ test(async function metrics() {
   assert(m2.bytesReceived > m1.bytesReceived);
 });
 
-testPerm({ write: true }, function metricsUpdatedIfNoResponseSync() {
+testPerm({ write: true }, function metricsUpdatedIfNoResponseSync(): void {
   const filename = Deno.makeTempDirSync() + "/test.txt";
 
   const data = new Uint8Array([41, 42, 43]);
@@ -32,12 +32,15 @@ testPerm({ write: true }, function metricsUpdatedIfNoResponseSync() {
   assert(metrics.opsDispatched === metrics.opsCompleted);
 });
 
-testPerm({ write: true }, async function metricsUpdatedIfNoResponseAsync() {
-  const filename = Deno.makeTempDirSync() + "/test.txt";
+testPerm(
+  { write: true },
+  async function metricsUpdatedIfNoResponseAsync(): Promise<void> {
+    const filename = Deno.makeTempDirSync() + "/test.txt";
 
-  const data = new Uint8Array([41, 42, 43]);
-  await Deno.writeFile(filename, data, { perm: 0o666 });
+    const data = new Uint8Array([41, 42, 43]);
+    await Deno.writeFile(filename, data, { perm: 0o666 });
 
-  const metrics = Deno.metrics();
-  assert(metrics.opsDispatched === metrics.opsCompleted);
-});
+    const metrics = Deno.metrics();
+    assert(metrics.opsDispatched === metrics.opsCompleted);
+  }
+);

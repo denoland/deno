@@ -73,7 +73,7 @@ export class URL {
     for (const methodName of searchParamsMethods) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const method: (...args: any[]) => any = searchParams[methodName];
-      searchParams[methodName] = (...args: unknown[]) => {
+      searchParams[methodName] = (...args: unknown[]): void => {
         method.apply(searchParams, args);
         this.search = searchParams.toString();
       };

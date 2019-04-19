@@ -15,7 +15,7 @@ async function readData(name: string): Promise<string> {
   return text;
 }
 
-testPerm({ read: true, write: true }, function truncateSyncSuccess() {
+testPerm({ read: true, write: true }, function truncateSyncSuccess(): void {
   const enc = new TextEncoder();
   const d = enc.encode("Hello");
   const filename = Deno.makeTempDirSync() + "/test_truncateSync.txt";
@@ -32,7 +32,9 @@ testPerm({ read: true, write: true }, function truncateSyncSuccess() {
   Deno.removeSync(filename);
 });
 
-testPerm({ read: true, write: true }, async function truncateSuccess() {
+testPerm({ read: true, write: true }, async function truncateSuccess(): Promise<
+  void
+> {
   const enc = new TextEncoder();
   const d = enc.encode("Hello");
   const filename = Deno.makeTempDirSync() + "/test_truncate.txt";
@@ -49,7 +51,7 @@ testPerm({ read: true, write: true }, async function truncateSuccess() {
   await Deno.remove(filename);
 });
 
-testPerm({ write: false }, function truncateSyncPerm() {
+testPerm({ write: false }, function truncateSyncPerm(): void {
   let err;
   try {
     Deno.mkdirSync("/test_truncateSyncPermission.txt");
@@ -60,7 +62,7 @@ testPerm({ write: false }, function truncateSyncPerm() {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ write: false }, async function truncatePerm() {
+testPerm({ write: false }, async function truncatePerm(): Promise<void> {
   let err;
   try {
     await Deno.mkdir("/test_truncatePermission.txt");
