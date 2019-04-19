@@ -159,6 +159,17 @@ testPerm({ net: true }, async function fetchInitBlobBody(): Promise<void> {
   assert(response.headers.get("content-type").startsWith("text/javascript"));
 });
 
+testPerm({ read: true }, async function fetchLocalFile() {
+  const res = await fetch("file:///./js/fetch.ts");
+  const text = await res.text();
+  const decoder = new TextDecoder("utf-8");
+  const data = decoder.decode(Deno.readFileSync("./js/fetch.ts"));
+  assertEquals(text, data);
+  assert(res.headers.get("content-type").startsWith("text/plain"));
+  const resNotFound = await fetch("file:///./js/NotExistingFile.ts");
+  assertEquals(resNotFound.status, 404);
+});
+
 // TODO(ry) The following tests work but are flaky. There's a race condition
 // somewhere. Here is what one of these flaky failures looks like:
 //

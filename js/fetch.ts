@@ -12,6 +12,8 @@ import { read, close } from "./files";
 import { Buffer } from "./buffer";
 import { FormData } from "./form_data";
 import { URLSearchParams } from "./url_search_params";
+import { openSync } from "./files";
+import { DenoError, ErrorKind } from "./errors";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -403,6 +405,28 @@ export async function fetch(
     url = input.url;
     method = input.method;
     headers = input.headers;
+  }
+
+  // Fetching a local file
+  const m = url.match(/file:\/\/\/(.*)/i);
+  if (m && m[0]) {
+    try {
+      const f = openSync(m[1]);
+      const headers: [string, string][] = [];
+      // headers.push(["content-type", contentType(extname(m[1])) || "text/plain"])
+      headers.push(["content-type", "text/plain"]);
+      const response = new Response(200, headers, f.rid);
+      return response;
+    } catch (e) {
+      if (
+        e instanceof DenoError &&
+        (e as DenoError<ErrorKind.NotFound>).kind === ErrorKind.NotFound
+      ) {
+        return new Response(404, [], 0);
+      } else {
+        return new Response(500, [], 0);
+      }
+    }
   }
 
   // Send Fetch message
