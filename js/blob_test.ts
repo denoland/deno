@@ -32,4 +32,22 @@ test(function blobSlice() {
   assertEquals(b4.size, blob.size);
 });
 
+test(function blobShouldNotThrowError() {
+  let hasThrown = false;
+
+  try {
+    const options1: object = {
+      ending: "utf8",
+      hasOwnProperty: "hasOwnProperty"
+    };
+    const options2: object = Object.create(null);
+    new Blob(["Hello World"], options1);
+    new Blob(["Hello World"], options2);
+  } catch {
+    hasThrown = true;
+  }
+
+  assertEquals(hasThrown, false);
+});
+
 // TODO(qti3e) Test the stored data in a Blob after implementing FileReader API.
