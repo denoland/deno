@@ -413,8 +413,7 @@ export async function fetch(
     try {
       const f = openSync(m[1]);
       const headers: [string, string][] = [];
-      // headers.push(["content-type", contentType(extname(m[1])) || "text/plain"])
-      headers.push(["content-type", "text/plain"]);
+      // TODO : Add return type. Using Deno_std media_types module
       const response = new Response(200, headers, f.rid);
       return response;
     } catch (e) {
