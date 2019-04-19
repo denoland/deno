@@ -19,14 +19,17 @@ interface ResponseTest {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
+type Handler = () => void;
+
 interface Deferred {
   promise: Promise<{}>;
-  resolve: () => void;
-  reject: () => void;
+  resolve: Handler;
+  reject: Handler;
 }
 
 function deferred(isResolved = false): Deferred {
-  let resolve, reject;
+  let resolve: Handler = () => void 0;
+  let reject: Handler = () => void 0;
   const promise = new Promise((res, rej) => {
     resolve = res;
     reject = rej;
