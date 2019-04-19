@@ -18,7 +18,21 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
-pub type SourceCodeFuture<E> = dyn Future<Item = String, Error = E> + Send;
+/// Represent result of fetching the source code of a module.
+/// Contains both module name and code.
+/// Module name might be different from initial URL used for loading
+/// due to redirections.
+/// e.g. Both https://example.com/a.ts and https://example.com/b.ts
+/// may point to https://example.com/c.ts. By specifying module_name
+/// all be https://example.com/c.ts in module_name (for aliasing),
+/// we avoid recompiling the same code for 3 different times.
+pub struct SourceCodeInfo {
+  pub module_name: String,
+  pub code: String,
+}
+
+pub type SourceCodeInfoFuture<E> =
+  dyn Future<Item = SourceCodeInfo, Error = E> + Send;
 
 pub trait Loader {
   type Dispatch: crate::isolate::Dispatch;
@@ -31,7 +45,7 @@ pub trait Loader {
   fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error>;
 
   /// Given an absolute url, load its source code.
-  fn load(&mut self, url: &str) -> Box<SourceCodeFuture<Self::Error>>;
+  fn load(&mut self, url: &str) -> Box<SourceCodeInfoFuture<Self::Error>>;
 
   fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
     &'a mut self,
@@ -51,7 +65,7 @@ pub trait Loader {
 struct PendingLoad<E: Error> {
   url: String,
   is_root: bool,
-  source_code_future: Box<SourceCodeFuture<E>>,
+  source_code_info_future: Box<SourceCodeInfoFuture<E>>,
 }
 
 /// This future is used to implement parallel async module loading without
@@ -103,15 +117,26 @@ impl<L: Loader> RecursiveLoad<L> {
       true
     };
 
+    {
+      let loader = self.loader.as_mut().unwrap();
+      let modules = loader.modules();
+      // #B We only add modules that have not yet been resolved for RecursiveLoad.
+      // Only short circuit after add_child().
+      // This impacts possible conditions in #A.
+      if modules.is_registered(&url) {
+        return Ok(url);
+      }
+    }
+
     if !self.is_pending.contains(&url) {
       self.is_pending.insert(url.clone());
-      let source_code_future = {
+      let source_code_info_future = {
         let loader = self.loader.as_mut().unwrap();
         loader.load(&url)
       };
       self.pending.push(PendingLoad {
         url: url.clone(),
-        source_code_future,
+        source_code_info_future,
         is_root,
       });
     }
@@ -150,49 +175,83 @@ impl<L: Loader> Future for RecursiveLoad<L> {
     let mut i = 0;
     while i < self.pending.len() {
       let pending = &mut self.pending[i];
-      match pending.source_code_future.poll() {
+      match pending.source_code_info_future.poll() {
         Err(err) => {
           return Err((JSErrorOr::Other(err), self.take_loader()));
         }
         Ok(Async::NotReady) => {
           i += 1;
         }
-        Ok(Async::Ready(source_code)) => {
+        Ok(Async::Ready(source_code_info)) => {
           // We have completed loaded one of the modules.
           let completed = self.pending.remove(i);
 
-          let result = {
-            let loader = self.loader.as_mut().unwrap();
-            let isolate = loader.isolate();
-            isolate.mod_new(completed.is_root, &completed.url, &source_code)
-          };
-          if let Err(err) = result {
-            return Err((JSErrorOr::JSError(err), self.take_loader()));
-          }
-          let mod_id = result.unwrap();
-          if completed.is_root {
-            assert!(self.root_id.is_none());
-            self.root_id = Some(mod_id);
-          }
-
-          let referrer = &completed.url.clone();
-
-          {
+          // #A There are 3 cases to handle at this moment:
+          // 1. Source code resolved result have the same module name as requested
+          //    and is not yet registered
+          //     -> register
+          // 2. Source code resolved result have a different name as requested:
+          //   2a. The module with resolved module name has been registered
+          //     -> alias
+          //   2b. The module with resolved module name has not yet been registerd
+          //     -> register & alias
+          let is_module_registered = {
             let loader = self.loader.as_mut().unwrap();
             let modules = loader.modules();
-            modules.register(mod_id, &completed.url);
-          }
-
-          // Now we must iterate over all imports of the module and load them.
-          let imports = {
-            let loader = self.loader.as_mut().unwrap();
-            let isolate = loader.isolate();
-            isolate.mod_get_imports(mod_id)
+            modules.is_registered(&source_code_info.module_name)
           };
-          for specifier in imports {
-            self
-              .add(&specifier, referrer, Some(mod_id))
-              .map_err(|e| (JSErrorOr::Other(e), self.take_loader()))?;
+
+          let need_alias = &source_code_info.module_name != &completed.url;
+
+          if !is_module_registered {
+            let module_name = &source_code_info.module_name;
+
+            let result = {
+              let loader = self.loader.as_mut().unwrap();
+              let isolate = loader.isolate();
+              isolate.mod_new(
+                completed.is_root,
+                module_name,
+                &source_code_info.code,
+              )
+            };
+            if let Err(err) = result {
+              return Err((JSErrorOr::JSError(err), self.take_loader()));
+            }
+            let mod_id = result.unwrap();
+            if completed.is_root {
+              assert!(self.root_id.is_none());
+              self.root_id = Some(mod_id);
+            }
+
+            // Register new module.
+            {
+              let loader = self.loader.as_mut().unwrap();
+              let modules = loader.modules();
+              modules.register(mod_id, module_name);
+              // If necessary, register the alias.
+              if need_alias {
+                let module_alias = &completed.url;
+                modules.alias(module_alias, module_name);
+              }
+            }
+
+            // Now we must iterate over all imports of the module and load them.
+            let imports = {
+              let loader = self.loader.as_mut().unwrap();
+              let isolate = loader.isolate();
+              isolate.mod_get_imports(mod_id)
+            };
+            let referrer = module_name;
+            for specifier in imports {
+              self
+                .add(&specifier, referrer, Some(mod_id))
+                .map_err(|e| (JSErrorOr::Other(e), self.take_loader()))?;
+            }
+          } else if need_alias {
+            let loader = self.loader.as_mut().unwrap();
+            let modules = loader.modules();
+            modules.alias(&completed.url, &source_code_info.module_name);
           }
         }
       }
@@ -246,23 +305,87 @@ impl ModuleInfo {
   }
 }
 
+/// A symbolic module entity.
+pub enum SymbolicModule {
+  /// This module is an alias to another module.
+  /// This is useful such that multiple names could point to
+  /// the same underlying module (particularly due to redirects).
+  Alias(String),
+  /// This module associates with a V8 module by id.
+  Mod(deno_mod),
+}
+
+#[derive(Default)]
+/// Alias-able module name map
+pub struct ModuleNameMap {
+  inner: HashMap<String, SymbolicModule>,
+}
+
+impl ModuleNameMap {
+  pub fn new() -> Self {
+    ModuleNameMap {
+      inner: HashMap::new(),
+    }
+  }
+
+  /// Get the id of a module.
+  /// If this module is internally represented as an alias,
+  /// follow the alias chain to get the final module id.
+  pub fn get(&self, name: &str) -> Option<deno_mod> {
+    let mut mod_name = name;
+    loop {
+      let cond = self.inner.get(mod_name);
+      match cond {
+        Some(SymbolicModule::Alias(target)) => {
+          mod_name = target;
+        }
+        Some(SymbolicModule::Mod(mod_id)) => {
+          return Some(*mod_id);
+        }
+        _ => {
+          return None;
+        }
+      }
+    }
+  }
+
+  /// Insert a name assocated module id.
+  pub fn insert(&mut self, name: String, id: deno_mod) {
+    self.inner.insert(name, SymbolicModule::Mod(id));
+  }
+
+  /// Create an alias to another module.
+  pub fn alias(&mut self, name: String, target: String) {
+    self.inner.insert(name, SymbolicModule::Alias(target));
+  }
+
+  /// Check if a name is an alias to another module.
+  pub fn is_alias(&self, name: &str) -> bool {
+    let cond = self.inner.get(name);
+    match cond {
+      Some(SymbolicModule::Alias(_)) => true,
+      _ => false,
+    }
+  }
+}
+
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
   info: HashMap<deno_mod, ModuleInfo>,
-  by_name: HashMap<String, deno_mod>,
+  by_name: ModuleNameMap,
 }
 
 impl Modules {
   pub fn new() -> Modules {
     Self {
       info: HashMap::new(),
-      by_name: HashMap::new(),
+      by_name: ModuleNameMap::new(),
     }
   }
 
   pub fn get_id(&self, name: &str) -> Option<deno_mod> {
-    self.by_name.get(name).cloned()
+    self.by_name.get(name)
   }
 
   pub fn get_children(&self, id: deno_mod) -> Option<&Vec<String>> {
@@ -306,6 +429,14 @@ impl Modules {
         children: Vec::new(),
       },
     );
+  }
+
+  pub fn alias(&mut self, name: &str, target: &str) {
+    self.by_name.alias(name.to_owned(), target.to_owned());
+  }
+
+  pub fn is_alias(&self, name: &str) -> bool {
+    self.by_name.is_alias(name)
   }
 
   pub fn deps(&self, url: &str) -> Deps {
@@ -414,19 +545,24 @@ mod tests {
     }
   }
 
-  fn mock_source_code(url: &str) -> Option<&'static str> {
+  fn mock_source_code(url: &str) -> Option<(&'static str, &'static str)> {
+    // (code, real_module_name)
     match url {
-      "a.js" => Some(A_SRC),
-      "b.js" => Some(B_SRC),
-      "c.js" => Some(C_SRC),
-      "d.js" => Some(D_SRC),
-      "circular1.js" => Some(CIRCULAR1_SRC),
-      "circular2.js" => Some(CIRCULAR2_SRC),
-      "circular3.js" => Some(CIRCULAR3_SRC),
-      "slow.js" => Some(SLOW_SRC),
-      "never_ready.js" => Some("should never be loaded"),
-      "main.js" => Some(MAIN_SRC),
-      "bad_import.js" => Some(BAD_IMPORT_SRC),
+      "a.js" => Some((A_SRC, "a.js")),
+      "b.js" => Some((B_SRC, "b.js")),
+      "c.js" => Some((C_SRC, "c.js")),
+      "d.js" => Some((D_SRC, "d.js")),
+      "circular1.js" => Some((CIRCULAR1_SRC, "circular1.js")),
+      "circular2.js" => Some((CIRCULAR2_SRC, "circular2.js")),
+      "circular3.js" => Some((CIRCULAR3_SRC, "circular3.js")),
+      "redirect1.js" => Some((REDIRECT1_SRC, "redirect1.js")),
+      // pretend redirect
+      "./redirect2.js" => Some((REDIRECT2_SRC, "./dir/redirect2.js")),
+      "./dir/redirect3.js" => Some((REDIRECT3_SRC, "./redirect3.js")),
+      "slow.js" => Some((SLOW_SRC, "slow.js")),
+      "never_ready.js" => Some(("should never be loaded", "never_ready.js")),
+      "main.js" => Some((MAIN_SRC, "main.js")),
+      "bad_import.js" => Some((BAD_IMPORT_SRC, "bad_import.js")),
       _ => None,
     }
   }
@@ -455,7 +591,7 @@ mod tests {
   }
 
   impl Future for DelayedSourceCodeFuture {
-    type Item = String;
+    type Item = SourceCodeInfo;
     type Error = MockError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -466,7 +602,10 @@ mod tests {
         return Ok(Async::NotReady);
       }
       match mock_source_code(&self.url) {
-        Some(src) => Ok(Async::Ready(src.to_string())),
+        Some(src) => Ok(Async::Ready(SourceCodeInfo {
+          code: src.0.to_owned(),
+          module_name: src.1.to_owned(),
+        })),
         None => Err(MockError::LoadErr),
       }
     }
@@ -476,18 +615,36 @@ mod tests {
     type Dispatch = TestDispatch;
     type Error = MockError;
 
-    fn resolve(
-      specifier: &str,
-      _referrer: &str,
-    ) -> Result<String, Self::Error> {
-      if mock_source_code(specifier).is_some() {
-        Ok(specifier.to_string())
+    fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
+      eprintln!(">> RESOLVING, S: {}, R: {}", specifier, referrer);
+      let output_specifier =
+        if specifier.starts_with("./") && referrer.starts_with("./") {
+          // Special fake path resolving logic (for redirect test)
+          // if both started with "./"
+          eprintln!(">> SPECIAL!");
+          let prefix = {
+            let mut iter = referrer.rsplitn(2, '/');
+            let _ = iter.next();
+            iter.next().unwrap()
+          };
+          let suffix = {
+            let mut iter = specifier.splitn(2, '/');
+            let _ = iter.next();
+            iter.next().unwrap()
+          };
+          format!("{}/{}", &prefix, &suffix)
+        } else {
+          specifier.to_owned()
+        };
+
+      if mock_source_code(&output_specifier).is_some() {
+        Ok(output_specifier)
       } else {
         Err(MockError::ResolveErr)
       }
     }
 
-    fn load(&mut self, url: &str) -> Box<SourceCodeFuture<Self::Error>> {
+    fn load(&mut self, url: &str) -> Box<SourceCodeInfoFuture<Self::Error>> {
       self.loads.push(url.to_string());
       let url = url.to_string();
       Box::new(DelayedSourceCodeFuture { url, counter: 0 })
@@ -557,7 +714,7 @@ mod tests {
       assert_eq!(modules.get_children(c_id), Some(&vec!["d.js".to_string()]));
       assert_eq!(modules.get_children(d_id), Some(&vec![]));
     } else {
-      panic!("this shouldn't happen");
+      unreachable!();
     }
   }
 
@@ -616,7 +773,53 @@ mod tests {
         ])
       );
     } else {
-      panic!("this shouldn't happen");
+      unreachable!();
+    }
+  }
+
+  const REDIRECT1_SRC: &str = r#"
+    import "./redirect2.js";
+    Deno.core.print("redirect1");
+  "#;
+
+  const REDIRECT2_SRC: &str = r#"
+    import "./redirect3.js";
+    Deno.core.print("redirect2");
+  "#;
+
+  const REDIRECT3_SRC: &str = r#"
+    Deno.core.print("redirect3");
+  "#;
+
+  #[test]
+  fn test_redirect_load() {
+    let loader = MockLoader::new();
+    let mut recursive_load = RecursiveLoad::new("redirect1.js", loader);
+
+    let result = recursive_load.poll();
+    assert!(result.is_ok());
+    if let Async::Ready((redirect1_id, mut loader)) = result.ok().unwrap() {
+      js_check(loader.isolate.mod_evaluate(redirect1_id));
+      assert_eq!(
+        loader.loads,
+        vec!["redirect1.js", "./redirect2.js", "./dir/redirect3.js"]
+      );
+
+      let modules = &loader.modules;
+
+      assert_eq!(modules.get_id("redirect1.js"), Some(redirect1_id));
+
+      let redirect2_id = modules.get_id("./dir/redirect2.js").unwrap();
+      assert!(modules.is_alias("./redirect2.js"));
+      assert!(!modules.is_alias("./dir/redirect2.js"));
+      assert_eq!(modules.get_id("./redirect2.js").unwrap(), redirect2_id);
+
+      let redirect3_id = modules.get_id("./redirect3.js").unwrap();
+      assert!(modules.is_alias("./dir/redirect3.js"));
+      assert!(!modules.is_alias("./redirect3.js"));
+      assert_eq!(modules.get_id("./dir/redirect3.js").unwrap(), redirect3_id);
+    } else {
+      unreachable!();
     }
   }
 
