@@ -439,11 +439,15 @@ impl Modules {
     self.by_name.is_alias(name)
   }
 
-  pub fn deps(&self, url: &str) -> Deps {
+  pub fn deps(&self, url: &str) -> Option<Deps> {
     Deps::new(self, url)
   }
 }
 
+/// This is a tree structure representing the dependencies of a given module.
+/// Use Modules::deps to construct it. The 'deps' member is None if this module
+/// was already seen elsewher in the tree.
+#[derive(Debug, PartialEq)]
 pub struct Deps {
   pub name: String,
   pub deps: Option<Vec<Deps>>,
@@ -452,7 +456,7 @@ pub struct Deps {
 }
 
 impl Deps {
-  pub fn new(modules: &Modules, module_name: &str) -> Deps {
+  fn new(modules: &Modules, module_name: &str) -> Option<Deps> {
     let mut seen = HashSet::new();
     Self::helper(&mut seen, "".to_string(), true, modules, module_name)
   }
@@ -463,19 +467,19 @@ impl Deps {
     is_last: bool,
     modules: &Modules,
     name: &str, // TODO(ry) rename url
-  ) -> Deps {
+  ) -> Option<Deps> {
     if seen.contains(name) {
-      Deps {
+      Some(Deps {
         name: name.to_string(),
         prefix,
         deps: None,
         is_last,
-      }
+      })
     } else {
+      let children = modules.get_children2(name)?;
       seen.insert(name.to_string());
-      let children = modules.get_children2(name).unwrap();
-      let child_count = children.iter().count();
-      let deps = children
+      let child_count = children.len();
+      let deps: Vec<Deps> = children
         .iter()
         .enumerate()
         .map(|(index, dep_name)| {
@@ -485,13 +489,16 @@ impl Deps {
           new_prefix.push(' ');
 
           Self::helper(seen, new_prefix, new_is_last, modules, dep_name)
-        }).collect();
-      Deps {
+        })
+        // If any of the children are missing, return None.
+        .collect::<Option<_>>()?;
+
+      Some(Deps {
         name: name.to_string(),
         prefix,
         deps: Some(deps),
         is_last,
-      }
+      })
     }
   }
 }
@@ -887,5 +894,30 @@ mod tests {
     let (either_err, _loader) = result.err().unwrap();
     assert_eq!(either_err, JSErrorOr::Other(MockError::ResolveErr));
     assert!(recursive_load.loader.is_none());
+  }
+
+  #[test]
+  fn empty_deps() {
+    let modules = Modules::new();
+    assert!(modules.deps("foo").is_none());
+  }
+
+  #[test]
+  fn deps() {
+    // "foo" -> "bar"
+    let mut modules = Modules::new();
+    modules.register(1, "foo");
+    modules.register(2, "bar");
+    modules.add_child(1, "bar");
+    let maybe_deps = modules.deps("foo");
+    assert!(maybe_deps.is_some());
+    let mut foo_deps = maybe_deps.unwrap();
+    assert_eq!(foo_deps.name, "foo");
+    assert!(foo_deps.deps.is_some());
+    let foo_children = foo_deps.deps.take().unwrap();
+    assert_eq!(foo_children.len(), 1);
+    let bar_deps = &foo_children[0];
+    assert_eq!(bar_deps.name, "bar");
+    assert_eq!(bar_deps.deps, Some(vec![]));
   }
 }
