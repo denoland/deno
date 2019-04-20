@@ -21,7 +21,6 @@ pub struct DenoFlags {
   pub allow_run: bool,
   pub allow_high_precision: bool,
   pub no_prompts: bool,
-  pub types: bool,
   pub prefetch: bool,
 }
 
@@ -67,9 +66,6 @@ impl<'a> From<ArgMatches<'a>> for DenoFlags {
     }
     if matches.is_present("no-prompt") {
       flags.no_prompts = true;
-    }
-    if matches.is_present("types") {
-      flags.types = true;
     }
     if matches.is_present("prefetch") {
       flags.prefetch = true;
@@ -150,13 +146,12 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .require_equals(true)
         .help("Set V8 command line options"),
     ).arg(
-      Arg::with_name("types")
-        .long("types")
-        .help("Print runtime TypeScript declarations"),
-    ).arg(
       Arg::with_name("prefetch")
         .long("prefetch")
         .help("Prefetch the dependencies"),
+    ).subcommand(
+      SubCommand::with_name("types")
+        .about("Print runtime TypeScript declarations"),
     ).subcommand(
       SubCommand::with_name("info")
         .setting(AppSettings::DisableVersion)
@@ -270,18 +265,6 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-  }
-
-  #[test]
-  fn test_set_flags_5() {
-    let flags = flags_from_vec(svec!["deno", "--types"]);
-    assert_eq!(
-      flags,
-      DenoFlags {
-        types: true,
-        ..DenoFlags::default()
-      }
-    )
   }
 
   #[test]

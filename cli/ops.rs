@@ -321,7 +321,6 @@ fn op_start(
       argv: Some(argv_off),
       main_module,
       debug_flag: state.flags.log_debug,
-      types_flag: state.flags.types,
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),

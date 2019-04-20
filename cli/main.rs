@@ -43,6 +43,7 @@ use futures::lazy;
 use futures::Future;
 use log::{LevelFilter, Metadata, Record};
 use std::env;
+use std::path::Path;
 
 static LOGGER: Logger = Logger;
 
@@ -136,6 +137,19 @@ fn get_worker_and_state(
   );
 
   (worker, state)
+}
+
+fn types_command() {
+  let p = Path::new(concat!(
+    env!("GN_OUT_DIR"),
+    "/gen/cli/lib/lib.deno_runtime.d.ts"
+  ));
+  let content_bytes = std::fs::read(p).unwrap();
+  let content = std::str::from_utf8(&content_bytes[..]).unwrap();
+
+  println!("{}", content);
+
+  std::process::exit(0);
 }
 
 fn info_command(flags: DenoFlags, argv: Vec<String>) {
@@ -260,6 +274,9 @@ fn main() {
 
   let mut rest_argv: Vec<String> = vec!["deno".to_string()];
   match matches.subcommand() {
+    ("types", Some(_)) => {
+      types_command();
+    }
     ("eval", Some(info_match)) => {
       let code: &str = info_match.value_of("code").unwrap();
       rest_argv.extend(vec![code.to_string()]);
