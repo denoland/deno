@@ -6,6 +6,7 @@ import * as flatbuffers from "./flatbuffers";
 import { TextDecoder } from "./text_encoding";
 import { assert } from "./util";
 import * as util from "./util";
+import { window } from "./window";
 
 /** The current process id of the runtime. */
 export let pid: number;
@@ -167,6 +168,10 @@ export function start(source?: string): msg.StartRes {
   util.setLogDebug(startResMsg.debugFlag(), source);
 
   setGlobals(startResMsg.pid(), startResMsg.noColor(), startResMsg.execPath()!);
+
+  // Deno.core could ONLY be safely frozen here (not in globals.ts)
+  // since shared_queue.js will modify core properties.
+  Object.freeze(window.Deno.core);
 
   return startResMsg;
 }
