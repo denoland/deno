@@ -267,9 +267,8 @@ mod tests {
     let js_url = Url::from_file_path(filename).unwrap();
 
     let argv = vec![String::from("./deno"), js_url.to_string()];
-    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
-
-    let state = ThreadSafeState::new(flags, rest_argv, op_selector_std);
+    let state =
+      ThreadSafeState::new(flags::DenoFlags::default(), argv, op_selector_std);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let worker = Worker::new("TEST".to_string(), StartupData::None, state);
@@ -294,9 +293,8 @@ mod tests {
     let js_url = Url::from_file_path(filename).unwrap();
 
     let argv = vec![String::from("./deno"), js_url.to_string()];
-    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
-
-    let state = ThreadSafeState::new(flags, rest_argv, op_selector_std);
+    let state =
+      ThreadSafeState::new(flags::DenoFlags::default(), argv, op_selector_std);
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let worker = Worker::new("TEST".to_string(), StartupData::None, state);
