@@ -1,2 +1,0 @@
-args: --reload --v8-flags=--expose-gc,--gc-stats=1 tests/030_v8_flags.js
-output: tests/030_v8_flags.js.out
