@@ -165,7 +165,6 @@ testPerm({ read: true }, async function fetchLocalFile() {
   const decoder = new TextDecoder("utf-8");
   const data = decoder.decode(Deno.readFileSync("./js/fetch.ts"));
   assertEquals(text, data);
-  assert(res.headers.get("content-type").startsWith("text/plain"));
   const resNotFound = await fetch("file:///./js/NotExistingFile.ts");
   assertEquals(resNotFound.status, 404);
 });

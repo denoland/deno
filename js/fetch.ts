@@ -12,7 +12,7 @@ import { read, close } from "./files";
 import { Buffer } from "./buffer";
 import { FormData } from "./form_data";
 import { URLSearchParams } from "./url_search_params";
-import { openSync } from "./files";
+import { open } from "./files";
 import { DenoError, ErrorKind } from "./errors";
 
 function getHeaderValueParams(value: string): Map<string, string> {
@@ -411,7 +411,7 @@ export async function fetch(
   const m = url.match(/file:\/\/\/(.*)/i);
   if (m && m[0]) {
     try {
-      const f = openSync(m[1]);
+      const f = await open(m[1]);
       const headers: [string, string][] = [];
       // TODO : Add return type. Using Deno_std media_types module
       const response = new Response(200, headers, f.rid);
