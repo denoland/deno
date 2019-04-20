@@ -186,7 +186,16 @@ export async function dial(network: Network, address: string): Promise<Conn> {
 
 /** DialTLS establishes a secure channel to the address on the named network. */
 export async function dialTLS(network: Network, address: string) {
-  console.log(`network: ${network}, address: ${address}`);
+  const builder = flatbuffers.createBuilder();
+  const network_ = builder.createString(network);
+  const address_ = builder.createString(address);
+  const inner = msg.DialTLS.createDialTLS(builder, network_, address_);
+  const baseRes = await dispatch.sendAsync(builder, msg.Any.DialTLS, inner);
+  assert(baseRes != null);
+  assert(msg.Any.NewConn === baseRes!.innerType());
+  const res = new msg.NewConn();
+  assert(baseRes!.inner(res) != null);
+  return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
 }
 
 /** **RESERVED** */
