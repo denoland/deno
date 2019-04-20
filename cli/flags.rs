@@ -23,9 +23,6 @@ pub struct DenoFlags {
   pub no_prompts: bool,
   pub types: bool,
   pub prefetch: bool,
-  pub info: bool,
-  pub fmt: bool,
-  pub eval: bool,
 }
 
 impl<'a> From<ArgMatches<'a>> for DenoFlags {
@@ -76,15 +73,6 @@ impl<'a> From<ArgMatches<'a>> for DenoFlags {
     }
     if matches.is_present("prefetch") {
       flags.prefetch = true;
-    }
-    if matches.is_present("info") {
-      flags.info = true;
-    }
-    if matches.is_present("fmt") {
-      flags.fmt = true;
-    }
-    if matches.is_present("eval") {
-      flags.eval = true;
     }
 
     flags
