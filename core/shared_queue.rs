@@ -144,11 +144,11 @@ impl SharedQueue {
   pub fn push(&mut self, record: &[u8]) -> bool {
     let off = self.head();
     let end = off + record.len();
-    if end > self.bytes.len() || self.num_records() >= MAX_RECORDS {
+    let index = self.num_records();
+    if end > self.bytes.len() || index >= MAX_RECORDS {
       debug!("WARNING the sharedQueue overflowed");
       return false;
     }
-    let index = self.num_records();
     self.set_end(index, end);
     assert_eq!(end - off, record.len());
     self.bytes[off..end].copy_from_slice(record);
