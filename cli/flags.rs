@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
-use deno::v8_set_flags;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -21,54 +20,8 @@ pub struct DenoFlags {
   pub allow_run: bool,
   pub allow_high_precision: bool,
   pub no_prompts: bool,
-}
-
-impl<'a> From<ArgMatches<'a>> for DenoFlags {
-  fn from(matches: ArgMatches) -> DenoFlags {
-    let mut flags = DenoFlags::default();
-
-    if matches.is_present("log-debug") {
-      flags.log_debug = true;
-    }
-    if matches.is_present("version") {
-      flags.version = true;
-    }
-    if matches.is_present("reload") {
-      flags.reload = true;
-    }
-    if matches.is_present("allow-read") {
-      flags.allow_read = true;
-    }
-    if matches.is_present("allow-write") {
-      flags.allow_write = true;
-    }
-    if matches.is_present("allow-net") {
-      flags.allow_net = true;
-    }
-    if matches.is_present("allow-env") {
-      flags.allow_env = true;
-    }
-    if matches.is_present("allow-run") {
-      flags.allow_run = true;
-    }
-    if matches.is_present("allow-high-precision") {
-      flags.allow_high_precision = true;
-    }
-    if matches.is_present("allow-all") {
-      flags.allow_read = true;
-      flags.allow_env = true;
-      flags.allow_net = true;
-      flags.allow_run = true;
-      flags.allow_read = true;
-      flags.allow_write = true;
-      flags.allow_high_precision = true;
-    }
-    if matches.is_present("no-prompt") {
-      flags.no_prompts = true;
-    }
-
-    flags
-  }
+  pub v8_help: bool,
+  pub v8_flags: Option<Vec<String>>,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -139,6 +92,7 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("v8-flags")
         .long("v8-flags")
         .takes_value(true)
+        .use_delimiter(true)
         .require_equals(true)
         .help("Set V8 command line options"),
     ).subcommand(
@@ -178,27 +132,65 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     )
 }
 
+/// Parse ArgMatches into internal DenoFlags structure.
+/// This method should not make any side effects.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub fn set_flags(matches: ArgMatches) -> Result<DenoFlags, String> {
-  if matches.is_present("v8-options") {
-    // display v8 help and exit
-    // TODO(bartlomieju): this relies on `v8_set_flags` to swap `--v8-options` to help
-    v8_set_flags(vec!["deno".to_string(), "--v8-options".to_string()]);
-  }
+pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
+  let mut flags = DenoFlags::default();
 
+  if matches.is_present("log-debug") {
+    flags.log_debug = true;
+  }
+  if matches.is_present("version") {
+    flags.version = true;
+  }
+  if matches.is_present("reload") {
+    flags.reload = true;
+  }
+  if matches.is_present("allow-read") {
+    flags.allow_read = true;
+  }
+  if matches.is_present("allow-write") {
+    flags.allow_write = true;
+  }
+  if matches.is_present("allow-net") {
+    flags.allow_net = true;
+  }
+  if matches.is_present("allow-env") {
+    flags.allow_env = true;
+  }
+  if matches.is_present("allow-run") {
+    flags.allow_run = true;
+  }
+  if matches.is_present("allow-high-precision") {
+    flags.allow_high_precision = true;
+  }
+  if matches.is_present("allow-all") {
+    flags.allow_read = true;
+    flags.allow_env = true;
+    flags.allow_net = true;
+    flags.allow_run = true;
+    flags.allow_read = true;
+    flags.allow_write = true;
+    flags.allow_high_precision = true;
+  }
+  if matches.is_present("no-prompt") {
+    flags.no_prompts = true;
+  }
+  if matches.is_present("v8-options") {
+    flags.v8_help = true;
+  }
   if matches.is_present("v8-flags") {
-    let mut v8_flags: Vec<String> = matches
+    let v8_flags: Vec<String> = matches
       .values_of("v8-flags")
       .unwrap()
       .map(String::from)
       .collect();
 
-    v8_flags.insert(1, "deno".to_string());
-    v8_set_flags(v8_flags);
+    flags.v8_flags = Some(v8_flags);
   }
 
-  let flags = DenoFlags::from(matches);
-  Ok(flags)
+  flags
 }
 
 #[cfg(test)]
@@ -208,7 +200,7 @@ mod tests {
   fn flags_from_vec(args: Vec<String>) -> DenoFlags {
     let cli_app = create_cli_app();
     let matches = cli_app.get_matches_from(args);
-    set_flags(matches).unwrap()
+    parse_flags(matches)
   }
 
   #[test]
@@ -260,6 +252,28 @@ mod tests {
         log_debug: true,
         reload: true,
         allow_write: true,
+        ..DenoFlags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_set_flags_5() {
+    let flags = flags_from_vec(svec!["deno", "--v8-options"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        v8_help: true,
+        ..DenoFlags::default()
+      }
+    );
+
+    let flags =
+      flags_from_vec(svec!["deno", "--v8-flags=--expose-gc,--gc-stats=1"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        v8_flags: Some(svec!["--expose-gc", "--gc-stats=1"]),
         ..DenoFlags::default()
       }
     );

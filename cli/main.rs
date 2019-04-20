@@ -38,6 +38,7 @@ use crate::errors::RustOrJsError;
 use crate::state::ThreadSafeState;
 use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
+use deno::v8_set_flags;
 use flags::{create_cli_app, DenoFlags};
 use futures::lazy;
 use futures::Future;
@@ -265,10 +266,20 @@ fn main() {
   let args: Vec<String> = env::args().collect();
   let cli_app = create_cli_app();
   let matches = cli_app.get_matches_from(args);
-  let flags = flags::set_flags(matches.clone()).unwrap_or_else(|err| {
-    eprintln!("{}", err);
-    std::process::exit(1)
-  });
+  let flags = flags::parse_flags(matches.clone());
+
+  if flags.v8_help {
+    // show v8 help and exit
+    // TODO(bartlomieju): this relies on `v8_set_flags` to swap `--v8-options` for "--help"
+    v8_set_flags(vec!["--v8-options".to_string()]);
+  }
+
+  match &flags.v8_flags {
+    Some(v8_flags) => {
+      v8_set_flags(v8_flags.clone());
+    }
+    _ => {}
+  };
 
   log::set_max_level(if flags.log_debug {
     LevelFilter::Debug
