@@ -408,7 +408,8 @@ export async function fetch(
   }
 
   // Fetching a local file
-  const m = url.match(/file:\/\/\/(.*)/i);
+  // See RFC8089 : https://tools.ietf.org/html/rfc8089
+  const m = url.match(/file:\/{1,5}(.*)/i);
   if (m && m[0]) {
     try {
       const f = await open(m[1]);
