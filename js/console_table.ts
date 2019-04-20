@@ -2,6 +2,7 @@
 // Forked from Node's lib/internal/cli_table.js
 
 import { TextEncoder } from "./text_encoding";
+import { hasOwnProperty } from "./util";
 
 const encoder = new TextEncoder();
 
@@ -64,7 +65,7 @@ export function cliTable(head: string[], columns: string[][]): string {
       if (rows[j] === undefined) {
         rows[j] = [];
       }
-      const value = (rows[j][i] = column.hasOwnProperty(j) ? column[j] : "");
+      const value = (rows[j][i] = hasOwnProperty(column, j) ? column[j] : "");
       const width = columnWidths[i] || 0;
       const counted = countBytes(value);
       columnWidths[i] = Math.max(width, counted);

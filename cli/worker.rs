@@ -162,7 +162,10 @@ impl Loader for Worker {
   }
 
   /// Given an absolute url, load its source code.
-  fn load(&mut self, url: &str) -> Box<deno::SourceCodeFuture<Self::Error>> {
+  fn load(
+    &mut self,
+    url: &str,
+  ) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
     self
       .state
       .metrics
@@ -173,7 +176,12 @@ impl Loader for Worker {
         .map_err(|err| {
           eprintln!("{}", err);
           err
-        }).map(|module_meta_data| module_meta_data.js_source()),
+        }).map(|module_meta_data| deno::SourceCodeInfo {
+          // Real module name, might be different from initial URL
+          // due to redirections.
+          code: module_meta_data.js_source(),
+          module_name: module_meta_data.module_name,
+        }),
     )
   }
 

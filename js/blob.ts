@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
-import { containsOnlyASCII } from "./util";
+import { containsOnlyASCII, hasOwnProperty } from "./util";
 import { TextEncoder } from "./text_encoding";
 
 export const bytesSymbol = Symbol("bytes");
@@ -91,7 +91,7 @@ export class DenoBlob implements domTypes.Blob {
 
     options = options || {};
     // Set ending property's default value to "transparent".
-    if (!options.hasOwnProperty("ending")) {
+    if (!hasOwnProperty(options, "ending")) {
       options.ending = "transparent";
     }
 

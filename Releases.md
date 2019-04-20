@@ -6,6 +6,26 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.8 / 2019.04.19
+
+In deno:
+
+- Async module loading (#2084 #2133)
+- core: improve tail latency (#2131)
+- third_party: upgrade rust crates
+- add custom panic handler to avoid silent failures (#2098)
+- fix absolute path resolution from remote (#2109)
+- Add deno eval subcommand (#2102)
+- fix: re-expose DomFile (#2100)
+- avoid prototype builtin hasOwnProperty (#2144)
+
+In deno_std:
+
+- Enforce HTTP/1.1 pipeline response order (deno_std#331)
+- EOL add mixed detection (deno_std#325)
+- Added read file str (deno_std#276)
+- add writeFileStr and update documentation (deno_std#340)
+
 ### v0.3.7 / 2019.04.11
 
 In deno:

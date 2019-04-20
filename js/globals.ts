@@ -5,7 +5,7 @@
 // library.
 
 // Modules which will make up part of the global public API surface should be
-// imported as namespaces, so when the runtime tpye library is generated they
+// imported as namespaces, so when the runtime type library is generated they
 // can be expressed as a namespace in the type library.
 import { window } from "./window";
 import * as blob from "./blob";
@@ -29,6 +29,7 @@ import * as performanceUtil from "./performance";
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
 import { core } from "./core";
+import { immutableDefine } from "./util";
 
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
@@ -44,7 +45,7 @@ window.window = window;
 // This is the Deno namespace, it is handled differently from other window
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.
-window.Deno = deno;
+immutableDefine(window, "Deno", deno);
 Object.freeze(window.Deno);
 
 // ref https://console.spec.whatwg.org/#console-namespace
