@@ -1,9 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
-function debug(...msg) {
-  // console.log("js:shared_queue:", ...msg)
-}
-
 /*
 SharedQueue Binary Layout
 +-------------------------------+-------------------------------+
@@ -21,6 +16,12 @@ SharedQueue Binary Layout
 +---------------------------------------------------------------+
  */
 (window => {
+  function debug(...msg) {
+    if (!window) {
+      // TODO: never reach. we need macro like debug! for rust...
+      console.log("js:shared_queue:", ...msg);
+    }
+  }
   const GLOBAL_NAMESPACE = "Deno";
   const CORE_NAMESPACE = "core";
   const MAX_RECORDS = 100;
