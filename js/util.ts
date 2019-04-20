@@ -131,6 +131,21 @@ export function requiredArguments(
   }
 }
 
+// @internal
+export function immutableDefine(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  o: any,
+  p: string | number | symbol,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value: any
+): void {
+  Object.defineProperty(o, p, {
+    value,
+    configurable: false,
+    writable: false
+  });
+}
+
 // Returns values from a WeakMap to emulate private properties in JavaScript
 export function getPrivateValue<
   K extends object,

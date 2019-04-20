@@ -33,3 +33,47 @@ test(function DenoNamespaceIsFrozen() {
 test(function webAssemblyExists() {
   assert(typeof WebAssembly.compile === "function");
 });
+
+test(function DenoNamespaceImmutable() {
+  const denoCopy = window.Deno;
+  try {
+    // @ts-ignore
+    Deno = 1;
+  } catch {}
+  assert(denoCopy === Deno);
+  try {
+    // @ts-ignore
+    window.Deno = 1;
+  } catch {}
+  assert(denoCopy === Deno);
+  try {
+    delete window.Deno;
+  } catch {}
+  assert(denoCopy === Deno);
+
+  const { readFile } = Deno;
+  try {
+    // @ts-ignore
+    Deno.readFile = 1;
+  } catch {}
+  assert(readFile === Deno.readFile);
+  try {
+    delete window.Deno.readFile;
+  } catch {}
+  assert(readFile === Deno.readFile);
+
+  // @ts-ignore
+  const { print } = Deno.core;
+  try {
+    // @ts-ignore
+    Deno.core.print = 1;
+  } catch {}
+  // @ts-ignore
+  assert(print === Deno.core.print);
+  try {
+    // @ts-ignore
+    delete Deno.core.print;
+  } catch {}
+  // @ts-ignore
+  assert(print === Deno.core.print);
+});
