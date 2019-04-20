@@ -152,7 +152,11 @@ fn types_command() {
   std::process::exit(0);
 }
 
-fn info_command(flags: DenoFlags, argv: Vec<String>) {
+fn prefetch_or_info_command(
+  flags: DenoFlags,
+  argv: Vec<String>,
+  print_info: bool,
+) {
   let (mut worker, state) = get_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
@@ -166,7 +170,9 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
     worker
       .execute_mod_async(&main_url, true)
       .and_then(move |worker| {
-        print_file_info(&worker, &main_module);
+        if print_info {
+          print_file_info(&worker, &main_module);
+        }
         worker.then(|result| {
           js_check(result);
           Ok(())
@@ -221,8 +227,6 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn run_script(flags: DenoFlags, argv: Vec<String>) {
-  let should_prefetch = flags.prefetch;
-
   let (mut worker, state) = get_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
@@ -235,7 +239,7 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
     let main_url = root_specifier_to_url(&main_module).unwrap();
 
     worker
-      .execute_mod_async(&main_url, should_prefetch)
+      .execute_mod_async(&main_url, false)
       .and_then(move |worker| {
         worker.then(|result| {
           js_check(result);
@@ -285,7 +289,12 @@ fn main() {
     ("info", Some(info_match)) => {
       let file: &str = info_match.value_of("file").unwrap();
       rest_argv.extend(vec![file.to_string()]);
-      info_command(flags, rest_argv);
+      prefetch_or_info_command(flags, rest_argv, true);
+    }
+    ("prefetch", Some(info_match)) => {
+      let file: &str = info_match.value_of("file").unwrap();
+      rest_argv.extend(vec![file.to_string()]);
+      prefetch_or_info_command(flags, rest_argv, false);
     }
     ("fmt", Some(fmt_match)) => {
       let files: Vec<String> = fmt_match

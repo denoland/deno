@@ -13,7 +13,7 @@ def prefetch_test(deno_exe):
     deno_dir = mkdtemp()
     try:
         t = os.path.join(tests_path, "006_url_imports.ts")
-        output = run_output([deno_exe, "--prefetch", t],
+        output = run_output([deno_exe, "prefetch", t],
                             merge_env={"DENO_DIR": deno_dir})
         assert output == ""
         # Check that we actually did the prefetch.

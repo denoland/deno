@@ -21,7 +21,6 @@ pub struct DenoFlags {
   pub allow_run: bool,
   pub allow_high_precision: bool,
   pub no_prompts: bool,
-  pub prefetch: bool,
 }
 
 impl<'a> From<ArgMatches<'a>> for DenoFlags {
@@ -66,9 +65,6 @@ impl<'a> From<ArgMatches<'a>> for DenoFlags {
     }
     if matches.is_present("no-prompt") {
       flags.no_prompts = true;
-    }
-    if matches.is_present("prefetch") {
-      flags.prefetch = true;
     }
 
     flags
@@ -145,12 +141,14 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .require_equals(true)
         .help("Set V8 command line options"),
-    ).arg(
-      Arg::with_name("prefetch")
-        .long("prefetch")
-        .help("Prefetch the dependencies"),
+    ).subcommand(
+      SubCommand::with_name("prefetch")
+        .setting(AppSettings::DisableVersion)
+        .about("Prefetch the dependencies")
+        .arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("types")
+        .setting(AppSettings::DisableVersion)
         .about("Print runtime TypeScript declarations"),
     ).subcommand(
       SubCommand::with_name("info")
