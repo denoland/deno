@@ -139,37 +139,27 @@ fn get_worker_and_state(
 }
 
 fn info_command(flags: DenoFlags, argv: Vec<String>) {
-  // TODO(bartlomieju) legacy, to be removed
-  let should_display_info = true;
   let (mut worker, state) = get_worker_and_state(flags, argv);
 
-  if let Some(main_module) = state.main_module() {
-    let main_future = lazy(move || {
-      // Setup runtime.
-      js_check(worker.execute("denoMain()"));
-      debug!("main_module {}", main_module);
+  let main_module = state.main_module().unwrap();
+  let main_future = lazy(move || {
+    // Setup runtime.
+    js_check(worker.execute("denoMain()"));
+    debug!("main_module {}", main_module);
 
-      let main_url = root_specifier_to_url(&main_module).unwrap();
+    let main_url = root_specifier_to_url(&main_module).unwrap();
 
-      worker
-        .execute_mod_async(&main_url, should_display_info)
-        .and_then(move |worker| {
-          if should_display_info {
-            // Display file info and exit. Do not run file
-            print_file_info(&worker, &main_module);
-            std::process::exit(0);
-          }
-
-          worker.then(|result| {
-            js_check(result);
-            Ok(())
-          })
-        }).map_err(|(err, _worker)| print_err_and_exit(err))
-    });
-    tokio_util::run(main_future);
-  } else {
-    panic!("unreachable");
-  }
+    worker
+      .execute_mod_async(&main_url, true)
+      .and_then(move |worker| {
+        print_file_info(&worker, &main_module);
+        worker.then(|result| {
+          js_check(result);
+          Ok(())
+        })
+      }).map_err(|(err, _worker)| print_err_and_exit(err))
+  });
+  tokio_util::run(main_future);
 }
 
 fn eval_command(flags: DenoFlags, argv: Vec<String>) {
@@ -221,29 +211,25 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
 
   let (mut worker, state) = get_worker_and_state(flags, argv);
 
-  if let Some(main_module) = state.main_module() {
-    // Normal situation of executing a module.
+  let main_module = state.main_module().unwrap();
+  // Normal situation of executing a module.
+  let main_future = lazy(move || {
+    // Setup runtime.
+    js_check(worker.execute("denoMain()"));
+    debug!("main_module {}", main_module);
 
-    let main_future = lazy(move || {
-      // Setup runtime.
-      js_check(worker.execute("denoMain()"));
-      debug!("main_module {}", main_module);
+    let main_url = root_specifier_to_url(&main_module).unwrap();
 
-      let main_url = root_specifier_to_url(&main_module).unwrap();
-
-      worker
-        .execute_mod_async(&main_url, should_prefetch)
-        .and_then(move |worker| {
-          worker.then(|result| {
-            js_check(result);
-            Ok(())
-          })
-        }).map_err(|(err, _worker)| print_err_and_exit(err))
-    });
-    tokio_util::run(main_future);
-  } else {
-    panic!("unreachable");
-  }
+    worker
+      .execute_mod_async(&main_url, should_prefetch)
+      .and_then(move |worker| {
+        worker.then(|result| {
+          js_check(result);
+          Ok(())
+        })
+      }).map_err(|(err, _worker)| print_err_and_exit(err))
+  });
+  tokio_util::run(main_future);
 }
 
 fn fmt_command(mut flags: DenoFlags, mut argv: Vec<String>) {
