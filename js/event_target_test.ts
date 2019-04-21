@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assertEquals } from "./test_util.ts";
 
-test(function addEventListenerTest() {
+test(function addEventListenerTest(): void {
   const document = new EventTarget();
 
   assertEquals(document.addEventListener("x", null, false), undefined);
@@ -9,7 +9,7 @@ test(function addEventListenerTest() {
   assertEquals(document.addEventListener("x", null), undefined);
 });
 
-test(function constructedEventTargetCanBeUsedAsExpected() {
+test(function constructedEventTargetCanBeUsedAsExpected(): void {
   const target = new EventTarget();
   const event = new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
@@ -32,7 +32,7 @@ test(function constructedEventTargetCanBeUsedAsExpected() {
   assertEquals(callCount, 2);
 });
 
-test(function anEventTargetCanBeSubclassed() {
+test(function anEventTargetCanBeSubclassed(): void {
   class NicerEventTarget extends EventTarget {
     on(type, callback?, options?): void {
       this.addEventListener(type, callback, options);
@@ -58,14 +58,14 @@ test(function anEventTargetCanBeSubclassed() {
   assertEquals(callCount, 0);
 });
 
-test(function removingNullEventListenerShouldSucceed() {
+test(function removingNullEventListenerShouldSucceed(): void {
   const document = new EventTarget();
   assertEquals(document.removeEventListener("x", null, false), undefined);
   assertEquals(document.removeEventListener("x", null, true), undefined);
   assertEquals(document.removeEventListener("x", null), undefined);
 });
 
-test(function constructedEventTargetUseObjectPrototype() {
+test(function constructedEventTargetUseObjectPrototype(): void {
   const target = new EventTarget();
   const event = new Event("toString", { bubbles: true, cancelable: false });
   let callCount = 0;
@@ -88,12 +88,12 @@ test(function constructedEventTargetUseObjectPrototype() {
   assertEquals(callCount, 2);
 });
 
-test(function toStringShouldBeWebCompatibility() {
+test(function toStringShouldBeWebCompatibility(): void {
   const target = new EventTarget();
   assertEquals(target.toString(), "[object EventTarget]");
 });
 
-test(function dispatchEventShouldNotThrowError() {
+test(function dispatchEventShouldNotThrowError(): void {
   let hasThrown = false;
 
   try {
@@ -102,7 +102,7 @@ test(function dispatchEventShouldNotThrowError() {
       bubbles: true,
       cancelable: false
     });
-    target.addEventListener("hasOwnProperty", () => {});
+    target.addEventListener("hasOwnProperty", (): void => {});
     target.dispatchEvent(event);
   } catch {
     hasThrown = true;

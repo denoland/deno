@@ -1,4 +1,4 @@
-onmessage = function(e) {
+onmessage = function(e): void {
   const { cmdId, action, data } = e.data;
   switch (action) {
     case 0: // Static response

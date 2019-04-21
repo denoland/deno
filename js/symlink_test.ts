@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ read: true, write: true }, function symlinkSyncSuccess() {
+testPerm({ read: true, write: true }, function symlinkSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
   const oldname = testDir + "/oldname";
   const newname = testDir + "/newname";
@@ -24,7 +24,7 @@ testPerm({ read: true, write: true }, function symlinkSyncSuccess() {
   }
 });
 
-test(function symlinkSyncPerm() {
+test(function symlinkSyncPerm(): void {
   let err;
   try {
     Deno.symlinkSync("oldbaddir", "newbaddir");
@@ -36,7 +36,7 @@ test(function symlinkSyncPerm() {
 });
 
 // Just for now, until we implement symlink for Windows.
-testPerm({ write: true }, function symlinkSyncNotImplemented() {
+testPerm({ write: true }, function symlinkSyncNotImplemented(): void {
   let err;
   try {
     Deno.symlinkSync("oldname", "newname", "dir");
@@ -46,7 +46,9 @@ testPerm({ write: true }, function symlinkSyncNotImplemented() {
   assertEquals(err.message, "Not implemented");
 });
 
-testPerm({ read: true, write: true }, async function symlinkSuccess() {
+testPerm({ read: true, write: true }, async function symlinkSuccess(): Promise<
+  void
+> {
   const testDir = Deno.makeTempDirSync();
   const oldname = testDir + "/oldname";
   const newname = testDir + "/newname";

@@ -53,9 +53,9 @@ function renderRow(row: string[], columnWidths: number[]): string {
 
 export function cliTable(head: string[], columns: string[][]): string {
   const rows: string[][] = [];
-  const columnWidths = head.map((h: string) => countBytes(h));
+  const columnWidths = head.map((h: string): number => countBytes(h));
   const longestColumn = columns.reduce(
-    (n: number, a: string[]) => Math.max(n, a.length),
+    (n: number, a: string[]): number => Math.max(n, a.length),
     0
   );
 
@@ -72,8 +72,8 @@ export function cliTable(head: string[], columns: string[][]): string {
     }
   }
 
-  const divider = columnWidths.map((i: number) =>
-    tableChars.middleMiddle.repeat(i + 2)
+  const divider = columnWidths.map(
+    (i: number): string => tableChars.middleMiddle.repeat(i + 2)
   );
 
   let result =

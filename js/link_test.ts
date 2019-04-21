@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ read: true, write: true }, function linkSyncSuccess() {
+testPerm({ read: true, write: true }, function linkSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
   const oldData = "Hardlink";
   const oldName = testDir + "/oldname";
@@ -28,7 +28,7 @@ testPerm({ read: true, write: true }, function linkSyncSuccess() {
   assertEquals(newData3, new TextDecoder().decode(Deno.readFileSync(newName)));
 });
 
-testPerm({ read: true, write: true }, function linkSyncExists() {
+testPerm({ read: true, write: true }, function linkSyncExists(): void {
   const testDir = Deno.makeTempDirSync();
   const oldName = testDir + "/oldname";
   const newName = testDir + "/newname";
@@ -48,7 +48,7 @@ testPerm({ read: true, write: true }, function linkSyncExists() {
   assertEquals(err.name, "AlreadyExists");
 });
 
-testPerm({ read: true, write: true }, function linkSyncNotFound() {
+testPerm({ read: true, write: true }, function linkSyncNotFound(): void {
   const testDir = Deno.makeTempDirSync();
   const oldName = testDir + "/oldname";
   const newName = testDir + "/newname";
@@ -65,7 +65,7 @@ testPerm({ read: true, write: true }, function linkSyncNotFound() {
   assertEquals(err.name, "NotFound");
 });
 
-test(function linkSyncPerm() {
+test(function linkSyncPerm(): void {
   let err;
   try {
     Deno.linkSync("oldbaddir", "newbaddir");
@@ -76,7 +76,9 @@ test(function linkSyncPerm() {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ read: true, write: true }, async function linkSuccess() {
+testPerm({ read: true, write: true }, async function linkSuccess(): Promise<
+  void
+> {
   const testDir = Deno.makeTempDirSync();
   const oldData = "Hardlink";
   const oldName = testDir + "/oldname";

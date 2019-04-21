@@ -5,11 +5,13 @@ async function bench(): Promise<void> {
   const workers: Worker[] = [];
   for (var i = 1; i <= workerCount; ++i) {
     const worker = new Worker("tests/subdir/bench_worker.ts");
-    const promise = new Promise(resolve => {
-      worker.onmessage = e => {
-        if (e.data.cmdId === 0) resolve();
-      };
-    });
+    const promise = new Promise(
+      (resolve): void => {
+        worker.onmessage = (e): void => {
+          if (e.data.cmdId === 0) resolve();
+        };
+      }
+    );
     worker.postMessage({ cmdId: 0, action: 2 });
     await promise;
     workers.push(worker);

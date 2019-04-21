@@ -32,7 +32,7 @@ export class EventTarget implements domTypes.EventTarget {
     requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
     if (hasOwnProperty(this.listeners, type) && callback !== null) {
       this.listeners[type] = this.listeners[type].filter(
-        listener => listener !== callback
+        (listener): boolean => listener !== callback
       );
     }
   }

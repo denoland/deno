@@ -3,7 +3,7 @@ import { testPerm, assertEquals } from "./test_util.ts";
 
 const isNotWindows = Deno.build.os !== "win";
 
-testPerm({ read: true, write: true }, function chmodSyncSuccess() {
+testPerm({ read: true, write: true }, function chmodSyncSuccess(): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const tempDir = Deno.makeTempDirSync();
@@ -22,30 +22,33 @@ testPerm({ read: true, write: true }, function chmodSyncSuccess() {
 
 // Check symlink when not on windows
 if (isNotWindows) {
-  testPerm({ read: true, write: true }, function chmodSyncSymlinkSuccess() {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const tempDir = Deno.makeTempDirSync();
+  testPerm(
+    { read: true, write: true },
+    function chmodSyncSymlinkSuccess(): void {
+      const enc = new TextEncoder();
+      const data = enc.encode("Hello");
+      const tempDir = Deno.makeTempDirSync();
 
-    const filename = tempDir + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
-    const symlinkName = tempDir + "/test_symlink.txt";
-    Deno.symlinkSync(filename, symlinkName);
+      const filename = tempDir + "/test.txt";
+      Deno.writeFileSync(filename, data, { perm: 0o666 });
+      const symlinkName = tempDir + "/test_symlink.txt";
+      Deno.symlinkSync(filename, symlinkName);
 
-    let symlinkInfo = Deno.lstatSync(symlinkName);
-    const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
+      let symlinkInfo = Deno.lstatSync(symlinkName);
+      const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
 
-    Deno.chmodSync(symlinkName, 0o777);
+      Deno.chmodSync(symlinkName, 0o777);
 
-    // Change actual file mode, not symlink
-    const fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
-    symlinkInfo = Deno.lstatSync(symlinkName);
-    assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
-  });
+      // Change actual file mode, not symlink
+      const fileInfo = Deno.statSync(filename);
+      assertEquals(fileInfo.mode & 0o777, 0o777);
+      symlinkInfo = Deno.lstatSync(symlinkName);
+      assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
+    }
+  );
 }
 
-testPerm({ write: true }, function chmodSyncFailure() {
+testPerm({ write: true }, function chmodSyncFailure(): void {
   let err;
   try {
     const filename = "/badfile.txt";
@@ -57,7 +60,7 @@ testPerm({ write: true }, function chmodSyncFailure() {
   assertEquals(err.name, "NotFound");
 });
 
-testPerm({ write: false }, function chmodSyncPerm() {
+testPerm({ write: false }, function chmodSyncPerm(): void {
   let err;
   try {
     Deno.chmodSync("/somefile.txt", 0o777);
@@ -68,7 +71,9 @@ testPerm({ write: false }, function chmodSyncPerm() {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ read: true, write: true }, async function chmodSuccess() {
+testPerm({ read: true, write: true }, async function chmodSuccess(): Promise<
+  void
+> {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const tempDir = Deno.makeTempDirSync();
@@ -87,30 +92,33 @@ testPerm({ read: true, write: true }, async function chmodSuccess() {
 
 // Check symlink when not on windows
 if (isNotWindows) {
-  testPerm({ read: true, write: true }, async function chmodSymlinkSuccess() {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const tempDir = Deno.makeTempDirSync();
+  testPerm(
+    { read: true, write: true },
+    async function chmodSymlinkSuccess(): Promise<void> {
+      const enc = new TextEncoder();
+      const data = enc.encode("Hello");
+      const tempDir = Deno.makeTempDirSync();
 
-    const filename = tempDir + "/test.txt";
-    Deno.writeFileSync(filename, data, { perm: 0o666 });
-    const symlinkName = tempDir + "/test_symlink.txt";
-    Deno.symlinkSync(filename, symlinkName);
+      const filename = tempDir + "/test.txt";
+      Deno.writeFileSync(filename, data, { perm: 0o666 });
+      const symlinkName = tempDir + "/test_symlink.txt";
+      Deno.symlinkSync(filename, symlinkName);
 
-    let symlinkInfo = Deno.lstatSync(symlinkName);
-    const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
+      let symlinkInfo = Deno.lstatSync(symlinkName);
+      const symlinkMode = symlinkInfo.mode & 0o777; // platform dependent
 
-    await Deno.chmod(symlinkName, 0o777);
+      await Deno.chmod(symlinkName, 0o777);
 
-    // Just change actual file mode, not symlink
-    const fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.mode & 0o777, 0o777);
-    symlinkInfo = Deno.lstatSync(symlinkName);
-    assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
-  });
+      // Just change actual file mode, not symlink
+      const fileInfo = Deno.statSync(filename);
+      assertEquals(fileInfo.mode & 0o777, 0o777);
+      symlinkInfo = Deno.lstatSync(symlinkName);
+      assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
+    }
+  );
 }
 
-testPerm({ write: true }, async function chmodFailure() {
+testPerm({ write: true }, async function chmodFailure(): Promise<void> {
   let err;
   try {
     const filename = "/badfile.txt";
@@ -122,7 +130,7 @@ testPerm({ write: true }, async function chmodFailure() {
   assertEquals(err.name, "NotFound");
 });
 
-testPerm({ write: false }, async function chmodPerm() {
+testPerm({ write: false }, async function chmodPerm(): Promise<void> {
   let err;
   try {
     await Deno.chmod("/somefile.txt", 0o777);

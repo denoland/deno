@@ -76,13 +76,13 @@ function repeat(c: string, bytes: number): Uint8Array {
   return ui8;
 }
 
-test(function bufferNewBuffer() {
+test(function bufferNewBuffer(): void {
   init();
   const buf = new Buffer(testBytes.buffer as ArrayBuffer);
   check(buf, testString);
 });
 
-test(async function bufferBasicOperations() {
+test(async function bufferBasicOperations(): Promise<void> {
   init();
   let buf = new Buffer();
   for (let i = 0; i < 5; i++) {
@@ -120,7 +120,7 @@ test(async function bufferBasicOperations() {
   }
 });
 
-test(async function bufferReadEmptyAtEOF() {
+test(async function bufferReadEmptyAtEOF(): Promise<void> {
   // check that EOF of 'buf' is not reached (even though it's empty) if
   // results are written to buffer that has 0 length (ie. it can't store any data)
   let buf = new Buffer();
@@ -130,7 +130,7 @@ test(async function bufferReadEmptyAtEOF() {
   assertEquals(result.eof, false);
 });
 
-test(async function bufferLargeByteWrites() {
+test(async function bufferLargeByteWrites(): Promise<void> {
   init();
   const buf = new Buffer();
   const limit = 9;
@@ -141,7 +141,7 @@ test(async function bufferLargeByteWrites() {
   check(buf, "");
 });
 
-test(async function bufferTooLargeByteWrites() {
+test(async function bufferTooLargeByteWrites(): Promise<void> {
   init();
   const tmp = new Uint8Array(72);
   const growLen = Number.MAX_VALUE;
@@ -160,7 +160,7 @@ test(async function bufferTooLargeByteWrites() {
   assertEquals(err.name, "TooLarge");
 });
 
-test(async function bufferLargeByteReads() {
+test(async function bufferLargeByteReads(): Promise<void> {
   init();
   const buf = new Buffer();
   for (let i = 3; i < 30; i += 3) {
@@ -171,12 +171,12 @@ test(async function bufferLargeByteReads() {
   check(buf, "");
 });
 
-test(function bufferCapWithPreallocatedSlice() {
+test(function bufferCapWithPreallocatedSlice(): void {
   const buf = new Buffer(new ArrayBuffer(10));
   assertEquals(buf.capacity, 10);
 });
 
-test(async function bufferReadFrom() {
+test(async function bufferReadFrom(): Promise<void> {
   init();
   const buf = new Buffer();
   for (let i = 3; i < 30; i += 3) {
@@ -193,7 +193,7 @@ test(async function bufferReadFrom() {
   }
 });
 
-test(async function bufferReadFromSync() {
+test(async function bufferReadFromSync(): Promise<void> {
   init();
   const buf = new Buffer();
   for (let i = 3; i < 30; i += 3) {
@@ -210,7 +210,7 @@ test(async function bufferReadFromSync() {
   }
 });
 
-test(async function bufferTestGrow() {
+test(async function bufferTestGrow(): Promise<void> {
   const tmp = new Uint8Array(72);
   for (let startLen of [0, 100, 1000, 10000, 100000]) {
     const xBytes = repeat("x", startLen);
@@ -234,7 +234,7 @@ test(async function bufferTestGrow() {
   }
 });
 
-test(async function testReadAll() {
+test(async function testReadAll(): Promise<void> {
   init();
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = await readAll(reader);
@@ -244,7 +244,7 @@ test(async function testReadAll() {
   }
 });
 
-test(function testReadAllSync() {
+test(function testReadAllSync(): void {
   init();
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = readAllSync(reader);

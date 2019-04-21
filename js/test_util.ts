@@ -77,7 +77,7 @@ export function test(fn: testing.TestFunction): void {
   );
 }
 
-test(function permSerialization() {
+test(function permSerialization(): void {
   for (const write of [true, false]) {
     for (const net of [true, false]) {
       for (const env of [true, false]) {
@@ -103,7 +103,7 @@ test(function permSerialization() {
 
 // To better catch internal errors, permFromString should throw if it gets an
 // invalid permission string.
-test(function permFromStringThrows() {
+test(function permFromStringThrows(): void {
   let threw = false;
   try {
     permFromString("bad");
