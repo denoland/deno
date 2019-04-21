@@ -55,6 +55,18 @@ options can be:
 - `options['--']` - when true, populate `parsedArgs._` with everything before
   the `--` and `parsedArgs['--']` with everything after the `--`. Here's an
   example:
+  ```ts
+  const { args } = Deno;
+  import { parse } from "https://deno.land/std/flags/mod.ts";
+  // options['--'] is now set to false
+  console.dir(parse(args, { "--": false }));
+  // $ deno example.ts -- a arg1
+  // output: { _: [ "example.ts", "a", "arg1" ] }
+  // options['--'] is now set to true
+  console.dir(parse(args, { "--": true }));
+  // $ deno example.ts -- a arg1
+  // output: { _: [ "example.ts" ], --: [ "a", "arg1" ] }
+  ```
 - `options.unknown` - a function which is invoked with a command line parameter
   not defined in the `options` configuration object. If the function returns
   `false`, the unknown option is not added to `parsedArgs`.
