@@ -147,10 +147,7 @@ fn types_command() {
   ));
   let content_bytes = std::fs::read(p).unwrap();
   let content = std::str::from_utf8(&content_bytes[..]).unwrap();
-
   println!("{}", content);
-
-  std::process::exit(0);
 }
 
 fn prefetch_or_info_command(
