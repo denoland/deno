@@ -53,13 +53,14 @@ function getClassInstanceName(instance: unknown): string {
   if (typeof instance !== "object") {
     return "";
   }
-  if (instance) {
-    const proto = Object.getPrototypeOf(instance);
-    if (proto && proto.constructor) {
-      return proto.constructor.name; // could be "Object" or "Array"
-    }
+  if (!instance) {
+    return "";
   }
-  return "";
+
+  const proto = Object.getPrototypeOf(instance);
+  if (proto && proto.constructor) {
+    return proto.constructor.name; // could be "Object" or "Array"
+  }
 }
 
 function createFunctionString(value: Function, _ctx: ConsoleContext): string {
