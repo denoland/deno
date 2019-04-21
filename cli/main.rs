@@ -126,7 +126,7 @@ pub fn print_file_info(worker: &Worker, url: &str) {
   }
 }
 
-fn get_worker_and_state(
+fn create_worker_and_state(
   flags: DenoFlags,
   argv: Vec<String>,
 ) -> (Worker, ThreadSafeState) {
@@ -158,7 +158,7 @@ fn prefetch_or_info_command(
   argv: Vec<String>,
   print_info: bool,
 ) {
-  let (mut worker, state) = get_worker_and_state(flags, argv);
+  let (mut worker, state) = create_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
   let main_future = lazy(move || {
@@ -184,7 +184,7 @@ fn prefetch_or_info_command(
 }
 
 fn eval_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = get_worker_and_state(flags, argv);
+  let (mut worker, state) = create_worker_and_state(flags, argv);
   // Wrap provided script in async function so asynchronous methods
   // work. This is required until top-level await is not supported.
   let js_source = format!(
@@ -210,7 +210,7 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn run_repl(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, _state) = get_worker_and_state(flags, argv);
+  let (mut worker, _state) = create_worker_and_state(flags, argv);
 
   // REPL situation.
   let main_future = lazy(move || {
@@ -228,7 +228,7 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn run_script(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = get_worker_and_state(flags, argv);
+  let (mut worker, state) = create_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
   // Normal situation of executing a module.
@@ -291,8 +291,8 @@ fn main() {
     ("types", Some(_)) => {
       types_command();
     }
-    ("eval", Some(info_match)) => {
-      let code: &str = info_match.value_of("code").unwrap();
+    ("eval", Some(eval_match)) => {
+      let code: &str = eval_match.value_of("code").unwrap();
       argv.extend(vec![code.to_string()]);
       eval_command(flags, argv);
     }
@@ -301,8 +301,8 @@ fn main() {
       argv.extend(vec![file.to_string()]);
       prefetch_or_info_command(flags, argv, true);
     }
-    ("prefetch", Some(info_match)) => {
-      let file: &str = info_match.value_of("file").unwrap();
+    ("prefetch", Some(prefetch_match)) => {
+      let file: &str = prefetch_match.value_of("file").unwrap();
       argv.extend(vec![file.to_string()]);
       prefetch_or_info_command(flags, argv, false);
     }
