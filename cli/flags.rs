@@ -333,4 +333,25 @@ mod tests {
       }
     )
   }
+
+  #[test]
+  fn test_set_flags_10() {
+    // notice that flags passed after script name will not
+    // be parsed to DenoFlags but instead forwarded to
+    // script args as Deno.args
+    let flags = flags_from_vec(svec![
+      "deno",
+      "--allow-write",
+      "script.ts",
+      "-D",
+      "--allow-net"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: true,
+        ..DenoFlags::default()
+      }
+    )
+  }
 }
