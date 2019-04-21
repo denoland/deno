@@ -19,7 +19,7 @@ function assertSameContent(filename1: string, filename2: string): void {
   assertEquals(data1, data2);
 }
 
-testPerm({ read: true, write: true }, function copyFileSyncSuccess() {
+testPerm({ read: true, write: true }, function copyFileSyncSuccess(): void {
   const tempDir = Deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
   const toFilename = tempDir + "/to.txt";
@@ -31,7 +31,7 @@ testPerm({ read: true, write: true }, function copyFileSyncSuccess() {
   assertSameContent(fromFilename, toFilename);
 });
 
-testPerm({ write: true, read: true }, function copyFileSyncFailure() {
+testPerm({ write: true, read: true }, function copyFileSyncFailure(): void {
   const tempDir = Deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
   const toFilename = tempDir + "/to.txt";
@@ -47,7 +47,7 @@ testPerm({ write: true, read: true }, function copyFileSyncFailure() {
   assertEquals(err.name, "NotFound");
 });
 
-testPerm({ write: true, read: false }, function copyFileSyncPerm1() {
+testPerm({ write: true, read: false }, function copyFileSyncPerm1(): void {
   let caughtError = false;
   try {
     Deno.copyFileSync("/from.txt", "/to.txt");
@@ -59,7 +59,7 @@ testPerm({ write: true, read: false }, function copyFileSyncPerm1() {
   assert(caughtError);
 });
 
-testPerm({ write: false, read: true }, function copyFileSyncPerm2() {
+testPerm({ write: false, read: true }, function copyFileSyncPerm2(): void {
   let caughtError = false;
   try {
     Deno.copyFileSync("/from.txt", "/to.txt");
@@ -71,7 +71,7 @@ testPerm({ write: false, read: true }, function copyFileSyncPerm2() {
   assert(caughtError);
 });
 
-testPerm({ read: true, write: true }, function copyFileSyncOverwrite() {
+testPerm({ read: true, write: true }, function copyFileSyncOverwrite(): void {
   const tempDir = Deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
   const toFilename = tempDir + "/to.txt";
@@ -85,7 +85,9 @@ testPerm({ read: true, write: true }, function copyFileSyncOverwrite() {
   assertSameContent(fromFilename, toFilename);
 });
 
-testPerm({ read: true, write: true }, async function copyFileSuccess() {
+testPerm({ read: true, write: true }, async function copyFileSuccess(): Promise<
+  void
+> {
   const tempDir = Deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
   const toFilename = tempDir + "/to.txt";
@@ -97,7 +99,9 @@ testPerm({ read: true, write: true }, async function copyFileSuccess() {
   assertSameContent(fromFilename, toFilename);
 });
 
-testPerm({ read: true, write: true }, async function copyFileFailure() {
+testPerm({ read: true, write: true }, async function copyFileFailure(): Promise<
+  void
+> {
   const tempDir = Deno.makeTempDirSync();
   const fromFilename = tempDir + "/from.txt";
   const toFilename = tempDir + "/to.txt";
@@ -113,21 +117,26 @@ testPerm({ read: true, write: true }, async function copyFileFailure() {
   assertEquals(err.name, "NotFound");
 });
 
-testPerm({ read: true, write: true }, async function copyFileOverwrite() {
-  const tempDir = Deno.makeTempDirSync();
-  const fromFilename = tempDir + "/from.txt";
-  const toFilename = tempDir + "/to.txt";
-  writeFileString(fromFilename, "Hello world!");
-  // Make Dest exist and have different content
-  writeFileString(toFilename, "Goodbye!");
-  await Deno.copyFile(fromFilename, toFilename);
-  // No change to original file
-  assertEquals(readFileString(fromFilename), "Hello world!");
-  // Original == Dest
-  assertSameContent(fromFilename, toFilename);
-});
+testPerm(
+  { read: true, write: true },
+  async function copyFileOverwrite(): Promise<void> {
+    const tempDir = Deno.makeTempDirSync();
+    const fromFilename = tempDir + "/from.txt";
+    const toFilename = tempDir + "/to.txt";
+    writeFileString(fromFilename, "Hello world!");
+    // Make Dest exist and have different content
+    writeFileString(toFilename, "Goodbye!");
+    await Deno.copyFile(fromFilename, toFilename);
+    // No change to original file
+    assertEquals(readFileString(fromFilename), "Hello world!");
+    // Original == Dest
+    assertSameContent(fromFilename, toFilename);
+  }
+);
 
-testPerm({ read: false, write: true }, async function copyFilePerm1() {
+testPerm({ read: false, write: true }, async function copyFilePerm1(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     await Deno.copyFile("/from.txt", "/to.txt");
@@ -139,7 +148,9 @@ testPerm({ read: false, write: true }, async function copyFilePerm1() {
   assert(caughtError);
 });
 
-testPerm({ read: true, write: false }, async function copyFilePerm2() {
+testPerm({ read: true, write: false }, async function copyFilePerm2(): Promise<
+  void
+> {
   let caughtError = false;
   try {
     await Deno.copyFile("/from.txt", "/to.txt");

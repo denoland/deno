@@ -150,7 +150,7 @@ export function run(opt: RunOptions): Process {
   const builder = flatbuffers.createBuilder();
   const argsOffset = msg.Run.createArgsVector(
     builder,
-    opt.args.map(a => builder.createString(a))
+    opt.args.map((a): number => builder.createString(a))
   );
   const cwdOffset = opt.cwd == null ? 0 : builder.createString(opt.cwd);
   const kvOffset: flatbuffers.Offset[] = [];

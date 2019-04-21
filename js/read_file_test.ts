@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ read: true }, function readFileSyncSuccess() {
+testPerm({ read: true }, function readFileSyncSuccess(): void {
   const data = Deno.readFileSync("package.json");
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -10,7 +10,7 @@ testPerm({ read: true }, function readFileSyncSuccess() {
   assertEquals(pkg.name, "deno");
 });
 
-testPerm({ read: false }, function readFileSyncPerm() {
+testPerm({ read: false }, function readFileSyncPerm(): void {
   let caughtError = false;
   try {
     Deno.readFileSync("package.json");
@@ -22,7 +22,7 @@ testPerm({ read: false }, function readFileSyncPerm() {
   assert(caughtError);
 });
 
-testPerm({ read: true }, function readFileSyncNotFound() {
+testPerm({ read: true }, function readFileSyncNotFound(): void {
   let caughtError = false;
   let data;
   try {
@@ -35,7 +35,7 @@ testPerm({ read: true }, function readFileSyncNotFound() {
   assert(data === undefined);
 });
 
-testPerm({ read: true }, async function readFileSuccess() {
+testPerm({ read: true }, async function readFileSuccess(): Promise<void> {
   const data = await Deno.readFile("package.json");
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -44,7 +44,7 @@ testPerm({ read: true }, async function readFileSuccess() {
   assertEquals(pkg.name, "deno");
 });
 
-testPerm({ read: false }, async function readFilePerm() {
+testPerm({ read: false }, async function readFilePerm(): Promise<void> {
   let caughtError = false;
   try {
     await Deno.readFile("package.json");

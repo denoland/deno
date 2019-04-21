@@ -19,10 +19,10 @@ function getHeaderValueParams(value: string): Map<string, string> {
   value
     .split(";")
     .slice(1)
-    .map(s => s.trim().split("="))
-    .filter(arr => arr.length > 1)
-    .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
-    .forEach(([k, v]) => params.set(k, v));
+    .map((s): string[] => s.trim().split("="))
+    .filter((arr): boolean => arr.length > 1)
+    .map(([k, v]): [string, string] => [k, v.replace(/^"([^"]*)"$/, "$1")])
+    .forEach(([k, v]): Map<string, string> => params.set(k, v));
   return params;
 }
 
@@ -116,7 +116,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
         // (as long as it is not part of `delimiter`)
         bodyParts = bodyPreambleTrimmed
           .split(delimiter)
-          .map(s => s.replace(/^[\s\r\n\t]+/, ""));
+          .map((s): string => s.replace(/^[\s\r\n\t]+/, ""));
         // TODO: LWSP definition is actually trickier,
         // but should be fine in our case since without headers
         // we should just discard the part
@@ -184,17 +184,19 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
         body
           .trim()
           .split("&")
-          .forEach(bytes => {
-            if (bytes) {
-              const split = bytes.split("=");
-              const name = split.shift()!.replace(/\+/g, " ");
-              const value = split.join("=").replace(/\+/g, " ");
-              formData.append(
-                decodeURIComponent(name),
-                decodeURIComponent(value)
-              );
+          .forEach(
+            (bytes): void => {
+              if (bytes) {
+                const split = bytes.split("=");
+                const name = split.shift()!.replace(/\+/g, " ");
+                const value = split.join("=").replace(/\+/g, " ");
+                formData.append(
+                  decodeURIComponent(name),
+                  decodeURIComponent(value)
+                );
+              }
             }
-          });
+          );
       } catch (e) {
         throw new TypeError("Invalid form urlencoded format");
       }

@@ -1,13 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ net: true }, async function fetchJsonSuccess() {
+testPerm({ net: true }, async function fetchJsonSuccess(): Promise<void> {
   const response = await fetch("http://localhost:4545/package.json");
   const json = await response.json();
   assertEquals(json.name, "deno");
 });
 
-test(async function fetchPerm() {
+test(async function fetchPerm(): Promise<void> {
   let err;
   try {
     await fetch("http://localhost:4545/package.json");
@@ -18,14 +18,14 @@ test(async function fetchPerm() {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ net: true }, async function fetchHeaders() {
+testPerm({ net: true }, async function fetchHeaders(): Promise<void> {
   const response = await fetch("http://localhost:4545/package.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
   assert(headers.get("Server").startsWith("SimpleHTTP"));
 });
 
-testPerm({ net: true }, async function fetchBlob() {
+testPerm({ net: true }, async function fetchBlob(): Promise<void> {
   const response = await fetch("http://localhost:4545/package.json");
   const headers = response.headers;
   const blob = await response.blob();
@@ -33,7 +33,7 @@ testPerm({ net: true }, async function fetchBlob() {
   assertEquals(blob.size, Number(headers.get("Content-Length")));
 });
 
-testPerm({ net: true }, async function responseClone() {
+testPerm({ net: true }, async function responseClone(): Promise<void> {
   const response = await fetch("http://localhost:4545/package.json");
   const response1 = response.clone();
   assert(response !== response1);
@@ -46,7 +46,7 @@ testPerm({ net: true }, async function responseClone() {
   }
 });
 
-testPerm({ net: true }, async function fetchEmptyInvalid() {
+testPerm({ net: true }, async function fetchEmptyInvalid(): Promise<void> {
   let err;
   try {
     await fetch("");
@@ -57,7 +57,9 @@ testPerm({ net: true }, async function fetchEmptyInvalid() {
   assertEquals(err.name, "InvalidUri");
 });
 
-testPerm({ net: true }, async function fetchMultipartFormDataSuccess() {
+testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<
+  void
+> {
   const response = await fetch(
     "http://localhost:4545/tests/subdir/multipart_form_data.txt"
   );
@@ -72,18 +74,21 @@ testPerm({ net: true }, async function fetchMultipartFormDataSuccess() {
   // Currently we cannot read from file...
 });
 
-testPerm({ net: true }, async function fetchURLEncodedFormDataSuccess() {
-  const response = await fetch(
-    "http://localhost:4545/tests/subdir/form_urlencoded.txt"
-  );
-  const formData = await response.formData();
-  assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1").toString(), "Hi");
-  assert(formData.has("field_2"));
-  assertEquals(formData.get("field_2").toString(), "<Deno>");
-});
+testPerm(
+  { net: true },
+  async function fetchURLEncodedFormDataSuccess(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/tests/subdir/form_urlencoded.txt"
+    );
+    const formData = await response.formData();
+    assert(formData.has("field_1"));
+    assertEquals(formData.get("field_1").toString(), "Hi");
+    assert(formData.has("field_2"));
+    assertEquals(formData.get("field_2").toString(), "<Deno>");
+  }
+);
 
-testPerm({ net: true }, async function fetchInitStringBody() {
+testPerm({ net: true }, async function fetchInitStringBody(): Promise<void> {
   const data = "Hello World";
   const response = await fetch("http://localhost:4545/echo_server", {
     method: "POST",
@@ -94,7 +99,9 @@ testPerm({ net: true }, async function fetchInitStringBody() {
   assert(response.headers.get("content-type").startsWith("text/plain"));
 });
 
-testPerm({ net: true }, async function fetchInitTypedArrayBody() {
+testPerm({ net: true }, async function fetchInitTypedArrayBody(): Promise<
+  void
+> {
   const data = "Hello World";
   const response = await fetch("http://localhost:4545/echo_server", {
     method: "POST",
@@ -104,7 +111,9 @@ testPerm({ net: true }, async function fetchInitTypedArrayBody() {
   assertEquals(text, data);
 });
 
-testPerm({ net: true }, async function fetchInitURLSearchParamsBody() {
+testPerm({ net: true }, async function fetchInitURLSearchParamsBody(): Promise<
+  void
+> {
   const data = "param1=value1&param2=value2";
   const params = new URLSearchParams(data);
   const response = await fetch("http://localhost:4545/echo_server", {
@@ -120,7 +129,7 @@ testPerm({ net: true }, async function fetchInitURLSearchParamsBody() {
   );
 });
 
-testPerm({ net: true }, async function fetchInitBlobBody() {
+testPerm({ net: true }, async function fetchInitBlobBody(): Promise<void> {
   const data = "const a = 1";
   const blob = new Blob([data], {
     type: "text/javascript"
@@ -153,7 +162,7 @@ testPerm({ net: true }, async function fetchInitBlobBody() {
 //     at Object.assertEquals (file:///C:/deno/js/testing/util.ts:29:11)
 //     at fetchPostBodyString (file
 
-/* 
+/*
 function bufferServer(addr: string): Deno.Buffer {
   const listener = Deno.listen("tcp", addr);
   const buf = new Deno.Buffer();
@@ -177,7 +186,7 @@ function bufferServer(addr: string): Deno.Buffer {
   return buf;
 }
 
-testPerm({ net: true }, async function fetchRequest() {
+testPerm({ net: true }, async function fetchRequest():Promise<void> {
   const addr = "127.0.0.1:4501";
   const buf = bufferServer(addr);
   const response = await fetch(`http://${addr}/blah`, {
@@ -197,7 +206,7 @@ testPerm({ net: true }, async function fetchRequest() {
   assertEquals(actual, expected);
 });
 
-testPerm({ net: true }, async function fetchPostBodyString() {
+testPerm({ net: true }, async function fetchPostBodyString():Promise<void> {
   const addr = "127.0.0.1:4502";
   const buf = bufferServer(addr);
   const body = "hello world";
@@ -221,7 +230,7 @@ testPerm({ net: true }, async function fetchPostBodyString() {
   assertEquals(actual, expected);
 });
 
-testPerm({ net: true }, async function fetchPostBodyTypedArray() {
+testPerm({ net: true }, async function fetchPostBodyTypedArray():Promise<void> {
   const addr = "127.0.0.1:4503";
   const buf = bufferServer(addr);
   const bodyStr = "hello world";

@@ -89,7 +89,7 @@ class FormDataBase {
   has(name: string): boolean {
     requiredArguments("FormData.has", arguments.length, 1);
     name = String(name);
-    return this[dataSymbol].some(entry => entry[0] === name);
+    return this[dataSymbol].some((entry): boolean => entry[0] === name);
   }
 
   /** Sets a new value for an existing key inside a `FormData` object, or

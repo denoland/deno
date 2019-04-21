@@ -1,4 +1,4 @@
-onmessage = function(e) {
+onmessage = function(e): void {
   console.log(e.data);
 
   postMessage(e.data);

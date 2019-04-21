@@ -7,8 +7,6 @@ import "./blob_test.ts";
 import "./buffer_test.ts";
 import "./build_test.ts";
 import "./chmod_test.ts";
-// TODO find a way to test the compiler with split snapshots
-// import "./compiler_test.ts";
 import "./console_test.ts";
 import "./copy_file_test.ts";
 import "./custom_event_test.ts";

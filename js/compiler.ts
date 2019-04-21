@@ -349,7 +349,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
         // so we will ignore complaints about this compiler setting.
         ...service
           .getCompilerOptionsDiagnostics()
-          .filter(diagnostic => diagnostic.code !== 5070),
+          .filter((diagnostic): boolean => diagnostic.code !== 5070),
         ...service.getSyntacticDiagnostics(fileName),
         ...service.getSemanticDiagnostics(fileName)
       ];
@@ -519,9 +519,9 @@ window.TextEncoder = TextEncoder;
 
 // provide the "main" function that will be called by the privileged side when
 // lazy instantiating the compiler web worker
-window.compilerMain = function compilerMain() {
+window.compilerMain = function compilerMain(): void {
   // workerMain should have already been called since a compiler is a worker.
-  window.onmessage = ({ data }: { data: CompilerLookup }) => {
+  window.onmessage = ({ data }: { data: CompilerLookup }): void => {
     const { specifier, referrer, cmdId } = data;
 
     try {

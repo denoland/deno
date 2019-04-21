@@ -16,12 +16,12 @@ const helpMsg = [
 
 const replCommands = {
   exit: {
-    get() {
+    get(): void {
       exit(0);
     }
   },
   help: {
-    get() {
+    get(): string {
       return helpMsg;
     }
   }

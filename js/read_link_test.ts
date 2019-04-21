@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ write: true, read: true }, function readlinkSyncSuccess() {
+testPerm({ write: true, read: true }, function readlinkSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
   const target = testDir + "/target";
   const symlink = testDir + "/symln";
@@ -15,7 +15,7 @@ testPerm({ write: true, read: true }, function readlinkSyncSuccess() {
   }
 });
 
-testPerm({ read: false }, async function readlinkSyncPerm() {
+testPerm({ read: false }, async function readlinkSyncPerm(): Promise<void> {
   let caughtError = false;
   try {
     Deno.readlinkSync("/symlink");
@@ -27,7 +27,7 @@ testPerm({ read: false }, async function readlinkSyncPerm() {
   assert(caughtError);
 });
 
-testPerm({ read: true }, function readlinkSyncNotFound() {
+testPerm({ read: true }, function readlinkSyncNotFound(): void {
   let caughtError = false;
   let data;
   try {
@@ -40,7 +40,9 @@ testPerm({ read: true }, function readlinkSyncNotFound() {
   assertEquals(data, undefined);
 });
 
-testPerm({ write: true, read: true }, async function readlinkSuccess() {
+testPerm({ write: true, read: true }, async function readlinkSuccess(): Promise<
+  void
+> {
   const testDir = Deno.makeTempDirSync();
   const target = testDir + "/target";
   const symlink = testDir + "/symln";
@@ -54,7 +56,7 @@ testPerm({ write: true, read: true }, async function readlinkSuccess() {
   }
 });
 
-testPerm({ read: false }, async function readlinkPerm() {
+testPerm({ read: false }, async function readlinkPerm(): Promise<void> {
   let caughtError = false;
   try {
     await Deno.readlink("/symlink");

@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
 
-test(function urlParsing() {
+test(function urlParsing(): void {
   const url = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
   );
@@ -31,7 +31,7 @@ test(function urlParsing() {
   );
 });
 
-test(function urlModifications() {
+test(function urlModifications(): void {
   const url = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
   );
@@ -86,7 +86,7 @@ test(function urlModifications() {
   );
 });
 
-test(function urlModifyHref() {
+test(function urlModifyHref(): void {
   const url = new URL("http://example.com/");
   url.href = "https://foo:bar@example.com:8080/baz/qat#qux";
   assertEquals(url.protocol, "https:");
@@ -98,7 +98,7 @@ test(function urlModifyHref() {
   assertEquals(url.hash, "#qux");
 });
 
-test(function urlModifyPathname() {
+test(function urlModifyPathname(): void {
   const url = new URL("http://foo.bar/baz%qat/qux%quux");
   assertEquals(url.pathname, "/baz%qat/qux%quux");
   url.pathname = url.pathname;
@@ -109,7 +109,7 @@ test(function urlModifyPathname() {
   assertEquals(url.pathname, "/baz%23qat%20qux");
 });
 
-test(function urlModifyHash() {
+test(function urlModifyHash(): void {
   const url = new URL("http://foo.bar");
   url.hash = "%foo bar/qat%qux#bar";
   assertEquals(url.hash, "#%foo%20bar/qat%qux#bar");
@@ -117,7 +117,7 @@ test(function urlModifyHash() {
   assertEquals(url.hash, "#%foo%20bar/qat%qux#bar");
 });
 
-test(function urlSearchParamsReuse() {
+test(function urlSearchParamsReuse(): void {
   const url = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
   );
@@ -126,7 +126,7 @@ test(function urlSearchParamsReuse() {
   assert(sp === url.searchParams, "Search params should be reused.");
 });
 
-test(function urlBaseURL() {
+test(function urlBaseURL(): void {
   const base = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
   );
@@ -134,7 +134,7 @@ test(function urlBaseURL() {
   assertEquals(url.href, "https://foo:bar@baz.qat:8000/foo/bar?baz=foo#qux");
 });
 
-test(function urlBaseString() {
+test(function urlBaseString(): void {
   const url = new URL(
     "/foo/bar?baz=foo#qux",
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"

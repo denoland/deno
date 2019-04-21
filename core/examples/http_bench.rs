@@ -191,6 +191,7 @@ fn main() {
   });
 
   let args: Vec<String> = env::args().collect();
+  // NOTE: `--help` arg will display V8 help and exit
   let args = deno::v8_set_flags(args);
 
   log::set_logger(&LOGGER).unwrap();
