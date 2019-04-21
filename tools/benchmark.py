@@ -17,6 +17,7 @@ import http_server
 import throughput_benchmark
 from http_benchmark import http_benchmark
 import prebuilt
+import subprocess
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
@@ -83,7 +84,11 @@ def get_binary_sizes(build_dir):
 
 def get_strace_summary_text(test_args):
     f = tempfile.NamedTemporaryFile()
-    run(["strace", "-c", "-f", "-o", f.name] + test_args)
+    cmd = ["strace", "-c", "-f", "-o", f.name] + test_args
+    try:
+        subprocess.check_output(cmd)
+    except subprocess.CalledProcessError:
+        pass
     return f.read()
 
 
@@ -124,17 +129,6 @@ def get_strace_summary(test_args):
     return strace_parse(get_strace_summary_text(test_args))
 
 
-def run_thread_count_benchmark(deno_path):
-    thread_count_map = {}
-    thread_count_map["set_timeout"] = get_strace_summary([
-        deno_path, "--reload", "tests/004_set_timeout.ts"
-    ])["clone"]["calls"] + 1
-    thread_count_map["fetch_deps"] = get_strace_summary([
-        deno_path, "--reload", "--allow-net", "tests/fetch_deps.ts"
-    ])["clone"]["calls"] + 1
-    return thread_count_map
-
-
 def run_throughput(deno_exe):
     m = {}
     m["100M_tcp"] = throughput_benchmark.tcp(deno_exe, 100)
@@ -144,14 +138,68 @@ def run_throughput(deno_exe):
     return m
 
 
-def run_syscall_count_benchmark(deno_path):
-    syscall_count_map = {}
-    syscall_count_map["hello"] = get_strace_summary(
-        [deno_path, "--reload", "tests/002_hello.ts"])["total"]["calls"]
-    syscall_count_map["fetch_deps"] = get_strace_summary(
-        [deno_path, "--reload", "--allow-net",
-         "tests/fetch_deps.ts"])["total"]["calls"]
-    return syscall_count_map
+# "thread_count" and "syscall_count" are both calculated here.
+def run_strace_benchmarks(deno_exe, new_data):
+    thread_count = {}
+    syscall_count = {}
+    for (name, args) in exec_time_benchmarks:
+        s = get_strace_summary([deno_exe] + args)
+        thread_count[name] = s["clone"]["calls"] + 1
+        syscall_count[name] = s["total"]["calls"]
+    new_data["thread_count"] = thread_count
+    new_data["syscall_count"] = syscall_count
+
+
+# Takes the output from "/usr/bin/time -v" as input and extracts the 'maximum
+# resident set size' and returns it in bytes.
+def find_max_mem_in_bytes(time_v_output):
+    for line in time_v_output.split('\n'):
+        if 'maximum resident set size (kbytes)' in line.lower():
+            _, value = line.split(': ')
+            return int(value) * 1024
+
+
+def run_max_mem_benchmark(deno_exe):
+    results = {}
+    for (name, args) in exec_time_benchmarks:
+        cmd = ["/usr/bin/time", "-v", deno_exe] + args
+        try:
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError:
+            pass
+        mem = find_max_mem_in_bytes(out)
+        results[name] = mem
+    return results
+
+
+def run_exec_time(deno_exe, build_dir):
+    benchmark_file = os.path.join(build_dir, "hyperfine_results.json")
+    hyperfine = prebuilt.load_hyperfine()
+    run([
+        hyperfine, "--ignore-failure", "--export-json", benchmark_file,
+        "--warmup", "3"
+    ] + [
+        deno_exe + " " + " ".join(args) for [_, args] in exec_time_benchmarks
+    ])
+    hyperfine_results = read_json(benchmark_file)
+    results = {}
+    for [[name, _], data] in zip(exec_time_benchmarks,
+                                 hyperfine_results["results"]):
+        results[name] = {
+            "mean": data["mean"],
+            "stddev": data["stddev"],
+            "user": data["user"],
+            "system": data["system"],
+            "min": data["min"],
+            "max": data["max"]
+        }
+    return results
+
+
+def run_http(build_dir, new_data):
+    stats = http_benchmark(build_dir)
+    new_data["req_per_sec"] = {k: v["req_per_sec"] for k, v in stats.items()}
+    new_data["max_latency"] = {k: v["max_latency"] for k, v in stats.items()}
 
 
 def main(argv):
@@ -163,67 +211,43 @@ def main(argv):
         print "Usage: tools/benchmark.py [build_dir]"
         sys.exit(1)
 
+    sha1 = run_output(["git", "rev-parse", "HEAD"]).strip()
     http_server.spawn()
 
-    deno_path = os.path.join(build_dir, "deno")
-    benchmark_file = os.path.join(build_dir, "benchmark.json")
+    deno_exe = os.path.join(build_dir, "deno")
 
     os.chdir(root_path)
     import_data_from_gh_pages()
 
-    hyperfine = prebuilt.load_hyperfine()
-
-    run([
-        hyperfine, "--ignore-failure", "--export-json", benchmark_file,
-        "--warmup", "3"
-    ] + [
-        deno_path + " " + " ".join(args) for [_, args] in exec_time_benchmarks
-    ])
-    all_data = read_json(all_data_file)
-    benchmark_data = read_json(benchmark_file)
-    sha1 = run_output(["git", "rev-parse", "HEAD"]).strip()
     new_data = {
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sha1": sha1,
-        "binary_size": {},
-        "thread_count": {},
-        "syscall_count": {},
-        "benchmark": {}
     }
-    for [[name, _], data] in zip(exec_time_benchmarks,
-                                 benchmark_data["results"]):
-        new_data["benchmark"][name] = {
-            "mean": data["mean"],
-            "stddev": data["stddev"],
-            "user": data["user"],
-            "system": data["system"],
-            "min": data["min"],
-            "max": data["max"]
-        }
+
+    # TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
+    # When this is changed, the historical data in gh-pages branch needs to be
+    # changed too.
+    new_data["benchmark"] = run_exec_time(deno_exe, build_dir)
 
     new_data["binary_size"] = get_binary_sizes(build_dir)
+
     # Cannot run throughput benchmark on windows because they don't have nc or
     # pipe.
     if os.name != 'nt':
-        hyper_hello_path = os.path.join(build_dir, "hyper_hello")
-        core_http_bench_exe = os.path.join(build_dir, "deno_core_http_bench")
-        new_data["throughput"] = run_throughput(deno_path)
-        stats = http_benchmark(deno_path, hyper_hello_path,
-                               core_http_bench_exe)
-        new_data["req_per_sec"] = {
-            k: v["req_per_sec"]
-            for k, v in stats.items()
-        }
-        new_data["max_latency"] = {
-            k: v["max_latency"]
-            for k, v in stats.items()
-        }
-    if "linux" in sys.platform:
-        # Thread count test, only on linux
-        new_data["thread_count"] = run_thread_count_benchmark(deno_path)
-        new_data["syscall_count"] = run_syscall_count_benchmark(deno_path)
+        new_data["throughput"] = run_throughput(deno_exe)
+        run_http(build_dir, new_data)
 
+    if "linux" in sys.platform:
+        run_strace_benchmarks(deno_exe, new_data)
+        new_data["max_memory"] = run_max_mem_benchmark(deno_exe)
+
+    print "===== <BENCHMARK RESULTS>"
+    print json.dumps(new_data, indent=2)
+    print "===== </BENCHMARK RESULTS>"
+
+    all_data = read_json(all_data_file)
     all_data.append(new_data)
+
     write_json(all_data_file, all_data)
     write_json(recent_data_file, all_data[-20:])
 

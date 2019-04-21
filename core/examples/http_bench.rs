@@ -22,6 +22,20 @@ use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tokio::prelude::*;
 
+static LOGGER: Logger = Logger;
+struct Logger;
+impl log::Log for Logger {
+  fn enabled(&self, metadata: &log::Metadata) -> bool {
+    metadata.level() <= log::max_level()
+  }
+  fn log(&self, record: &log::Record) {
+    if self.enabled(record.metadata()) {
+      println!("{} - {}", record.level(), record.args());
+    }
+  }
+  fn flush(&self) {}
+}
+
 const OP_LISTEN: i32 = 1;
 const OP_ACCEPT: i32 = 2;
 const OP_READ: i32 = 3;
@@ -47,6 +61,7 @@ impl Into<Buf> for Record {
 
 impl From<&[u8]> for Record {
   fn from(s: &[u8]) -> Record {
+    #[allow(clippy::cast_ptr_alignment)]
     let ptr = s.as_ptr() as *const i32;
     let ints = unsafe { std::slice::from_raw_parts(ptr, 4) };
     Record {
@@ -61,7 +76,7 @@ impl From<&[u8]> for Record {
 impl From<Buf> for Record {
   fn from(buf: Buf) -> Record {
     assert_eq!(buf.len(), 4 * 4);
-    //let byte_len = buf.len();
+    #[allow(clippy::cast_ptr_alignment)]
     let ptr = Box::into_raw(buf) as *mut [i32; 4];
     let ints: Box<[i32]> = unsafe { Box::from_raw(ptr) };
     assert_eq!(ints.len(), 4);
@@ -176,8 +191,17 @@ fn main() {
   });
 
   let args: Vec<String> = env::args().collect();
+  // NOTE: `--help` arg will display V8 help and exit
   let args = deno::v8_set_flags(args);
-  if args.len() > 1 && args[1] == "--multi-thread" {
+
+  log::set_logger(&LOGGER).unwrap();
+  log::set_max_level(if args.iter().any(|a| a == "-D") {
+    log::LevelFilter::Debug
+  } else {
+    log::LevelFilter::Warn
+  });
+
+  if args.iter().any(|a| a == "--multi-thread") {
     println!("multi-thread");
     tokio::run(main_future);
   } else {

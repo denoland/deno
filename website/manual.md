@@ -206,13 +206,13 @@ Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
 
 ## API reference
 
-### deno --types
+### deno types
 
 To get an exact reference of deno's runtime API, run the following in the
 command line:
 
 ```shellsession
-$ deno --types
+$ deno types
 ```
 
 [This is what the output looks like.](https://gist.github.com/ry/46da4724168cdefa763e13207d27ede5)
@@ -551,9 +551,7 @@ FLAGS:
     -h, --help                    Prints help information
     -D, --log-debug               Log debug output
         --no-prompt               Do not use prompts
-        --prefetch                Prefetch the dependencies
     -r, --reload                  Reload source code cache (recompile TypeScript)
-        --types                   Print runtime TypeScript declarations
         --v8-options              Print V8 command line options
     -v, --version                 Print the version
 
@@ -565,6 +563,8 @@ SUBCOMMANDS:
     eval        Eval script
     fmt         Format files
     info        Show source file related info
+    prefetch    Prefetch the dependencies
+    types       Print runtime TypeScript declarations
 
 ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
@@ -606,7 +606,7 @@ Particularly useful ones:
 |                       Scheduler | Tokio                            |
 | Userland: libc++ / glib / boost | deno_std                         |
 |                 /proc/\$\$/stat | [Deno.metrics()](#metrics)       |
-|                       man pages | deno --types                     |
+|                       man pages | deno types                       |
 
 #### Resources
 

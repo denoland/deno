@@ -3,7 +3,6 @@ use crate::deno_dir;
 use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
-use crate::modules::Modules;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::resources;
@@ -54,7 +53,6 @@ pub struct State {
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
   pub metrics: Metrics,
-  pub modules: Mutex<Modules>,
   pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
   pub workers: Mutex<UserWorkerTable>,
@@ -92,7 +90,7 @@ impl ThreadSafeState {
     argv_rest: Vec<String>,
     dispatch_selector: ops::OpSelector,
   ) -> Self {
-    let custom_root = env::var("DENO_DIR").map(|s| s.into()).ok();
+    let custom_root = env::var("DENO_DIR").map(String::into).ok();
 
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
@@ -106,7 +104,6 @@ impl ThreadSafeState {
       permissions: DenoPermissions::from_flags(&flags),
       flags,
       metrics: Metrics::default(),
-      modules: Mutex::new(Modules::new()),
       worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(UserWorkerTable::new()),
@@ -161,9 +158,11 @@ impl ThreadSafeState {
   #[cfg(test)]
   pub fn mock() -> ThreadSafeState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    // For debugging: argv.push_back(String::from("-D"));
-    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
-    ThreadSafeState::new(flags, rest_argv, ops::op_selector_std)
+    ThreadSafeState::new(
+      flags::DenoFlags::default(),
+      argv,
+      ops::op_selector_std,
+    )
   }
 
   pub fn metrics_op_dispatched(

@@ -58,10 +58,9 @@ test(async function timeoutCancelSuccess() {
   let count = 0;
   const id = setTimeout(() => {
     count++;
-  }, 500);
+  }, 1);
   // Cancelled, count should not increment
   clearTimeout(id);
-  // Wait a bit longer than 500ms
   await waitForMs(600);
   assertEquals(count, 0);
 });
@@ -113,30 +112,23 @@ test(async function intervalSuccess() {
   let count = 0;
   const id = setInterval(() => {
     count++;
-    if (count === 2) {
-      // TODO: clearInterval(id) here alone seems not working
-      // causing unit_tests.ts to block forever
-      // Requires further investigation...
-      clearInterval(id);
-      resolve();
-    }
-  }, 200);
+    clearInterval(id);
+    resolve();
+  }, 100);
   await promise;
   // Clear interval
   clearInterval(id);
   // count should increment twice
-  assertEquals(count, 2);
+  assertEquals(count, 1);
 });
 
 test(async function intervalCancelSuccess() {
   let count = 0;
   const id = setInterval(() => {
     count++;
-  }, 500);
-  // Cancelled, count should not increment
+  }, 1);
   clearInterval(id);
-  // Wait a bit longer than 500ms
-  await waitForMs(600);
+  await waitForMs(500);
   assertEquals(count, 0);
 });
 
@@ -150,9 +142,9 @@ test(async function intervalOrdering() {
     }
   }
   for (let i = 0; i < 10; i++) {
-    timers[i] = setTimeout(onTimeout, 20);
+    timers[i] = setTimeout(onTimeout, 1);
   }
-  await waitForMs(100);
+  await waitForMs(500);
   assertEquals(timeouts, 1);
 });
 

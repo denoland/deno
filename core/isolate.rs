@@ -12,11 +12,12 @@ use crate::libdeno::Snapshot1;
 use crate::libdeno::Snapshot2;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
-use futures::Async;
+use futures::stream::{FuturesUnordered, Stream};
+use futures::task;
+use futures::Async::*;
 use futures::Future;
 use futures::Poll;
 use libc::c_void;
-use std::collections::VecDeque;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ptr::null;
@@ -27,27 +28,28 @@ pub type Op = dyn Future<Item = Buf, Error = ()> + Send;
 
 struct PendingOp {
   op: Box<Op>,
-  polled_recently: bool,
   zero_copy_id: usize, // non-zero if associated zero-copy buffer.
 }
 
+struct OpResult {
+  buf: Buf,
+  zero_copy_id: usize,
+}
+
 impl Future for PendingOp {
-  type Item = Buf;
+  type Item = OpResult;
   type Error = ();
 
-  fn poll(&mut self) -> Poll<Buf, ()> {
-    // Do not call poll on ops we've already polled this turn.
-    if self.polled_recently {
-      Ok(Async::NotReady)
-    } else {
-      self.polled_recently = true;
-      let op = &mut self.op;
-      op.poll().map_err(|()| {
-        // Ops should not error. If an op experiences an error it needs to
-        // encode that error into a buf, so it can be returned to JS.
-        panic!("ops should not error")
-      })
-    }
+  fn poll(&mut self) -> Poll<OpResult, ()> {
+    // Ops should not error. If an op experiences an error it needs to
+    // encode that error into a buf, so it can be returned to JS.
+    Ok(match self.op.poll().expect("ops should not error") {
+      NotReady => NotReady,
+      Ready(buf) => Ready(OpResult {
+        buf,
+        zero_copy_id: self.zero_copy_id,
+      }),
+    })
   }
 }
 
@@ -91,8 +93,8 @@ pub struct Isolate<B: Dispatch> {
   dispatcher: B,
   needs_init: bool,
   shared: SharedQueue,
-  pending_ops: VecDeque<PendingOp>,
-  polled_recently: bool,
+  pending_ops: FuturesUnordered<PendingOp>,
+  have_unpolled_ops: bool,
 }
 
 unsafe impl<B: Dispatch> Send for Isolate<B> {}
@@ -142,8 +144,8 @@ impl<B: Dispatch> Isolate<B> {
       dispatcher,
       shared,
       needs_init,
-      pending_ops: VecDeque::new(),
-      polled_recently: false,
+      pending_ops: FuturesUnordered::new(),
+      have_unpolled_ops: false,
     };
 
     // If we want to use execute this has to happen here sadly.
@@ -209,12 +211,8 @@ impl<B: Dispatch> Isolate<B> {
       // picked up.
       let _ = isolate.respond(Some(&res_record));
     } else {
-      isolate.pending_ops.push_back(PendingOp {
-        op,
-        polled_recently: false,
-        zero_copy_id,
-      });
-      isolate.polled_recently = false;
+      isolate.pending_ops.push(PendingOp { op, zero_copy_id });
+      isolate.have_unpolled_ops = true;
     }
   }
 
@@ -438,58 +436,41 @@ impl<B: Dispatch> Future for Isolate<B> {
     // Lock the current thread for V8.
     let _locker = LockerScope::new(self.libdeno_isolate);
 
-    // Clear poll_recently state both on the Isolate itself and
-    // on the pending ops.
-    self.polled_recently = false;
-    for pending in self.pending_ops.iter_mut() {
-      pending.polled_recently = false;
-    }
+    let mut overflow_response: Option<Buf> = None;
 
-    while !self.polled_recently {
-      let mut completed_count = 0;
-      self.polled_recently = true;
-      assert_eq!(self.shared.size(), 0);
+    loop {
+      self.have_unpolled_ops = false;
+      #[allow(clippy::match_wild_err_arm)]
+      match self.pending_ops.poll() {
+        Err(_) => panic!("unexpected op error"),
+        Ok(Ready(None)) => break,
+        Ok(NotReady) => break,
+        Ok(Ready(Some(r))) => {
+          if r.zero_copy_id > 0 {
+            self.zero_copy_release(r.zero_copy_id);
+          }
 
-      let mut overflow_response: Option<Buf> = None;
-
-      for _ in 0..self.pending_ops.len() {
-        assert!(overflow_response.is_none());
-        let mut op = self.pending_ops.pop_front().unwrap();
-        match op.poll() {
-          Err(()) => panic!("unexpected error"),
-          Ok(Async::NotReady) => self.pending_ops.push_back(op),
-          Ok(Async::Ready(buf)) => {
-            if op.zero_copy_id > 0 {
-              self.zero_copy_release(op.zero_copy_id);
-            }
-
-            let successful_push = self.shared.push(&buf);
-            if !successful_push {
-              // If we couldn't push the response to the shared queue, because
-              // there wasn't enough size, we will return the buffer via the
-              // legacy route, using the argument of deno_respond.
-              overflow_response = Some(buf);
-              // reset `polled_recently` so pending ops can be
-              // done even if shared space overflows
-              self.polled_recently = false;
-              break;
-            }
-
-            completed_count += 1;
+          let successful_push = self.shared.push(&r.buf);
+          if !successful_push {
+            // If we couldn't push the response to the shared queue, because
+            // there wasn't enough size, we will return the buffer via the
+            // legacy route, using the argument of deno_respond.
+            overflow_response = Some(r.buf);
+            break;
           }
         }
       }
+    }
 
-      if completed_count > 0 {
-        self.respond(None)?;
-        // The other side should have shifted off all the messages.
-        assert_eq!(self.shared.size(), 0);
-      }
+    if self.shared.size() > 0 {
+      self.respond(None)?;
+      // The other side should have shifted off all the messages.
+      assert_eq!(self.shared.size(), 0);
+    }
 
-      if overflow_response.is_some() {
-        let buf = overflow_response.take().unwrap();
-        self.respond(Some(&buf))?;
-      }
+    if overflow_response.is_some() {
+      let buf = overflow_response.take().unwrap();
+      self.respond(Some(&buf))?;
     }
 
     self.check_promise_errors();
@@ -501,6 +482,9 @@ impl<B: Dispatch> Future for Isolate<B> {
     if self.pending_ops.is_empty() {
       Ok(futures::Async::Ready(()))
     } else {
+      if self.have_unpolled_ops {
+        task::current().notify();
+      }
       Ok(futures::Async::NotReady)
     }
   }
@@ -536,7 +520,39 @@ pub fn js_check(r: Result<(), JSError>) {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use futures::executor::spawn;
+  use futures::future::lazy;
+  use futures::future::ok;
+  use futures::Async;
+  use std::ops::FnOnce;
   use std::sync::atomic::{AtomicUsize, Ordering};
+
+  fn run_in_task<F, R>(f: F) -> R
+  where
+    F: FnOnce() -> R,
+  {
+    spawn(lazy(move || ok::<R, ()>(f()))).wait_future().unwrap()
+  }
+
+  fn poll_until_ready<F>(
+    future: &mut F,
+    max_poll_count: usize,
+  ) -> Result<F::Item, F::Error>
+  where
+    F: Future,
+  {
+    for _ in 0..max_poll_count {
+      match future.poll() {
+        Ok(NotReady) => continue,
+        Ok(Ready(val)) => return Ok(val),
+        Err(err) => return Err(err),
+      }
+    }
+    panic!(
+      "Isolate still not ready after polling {} times.",
+      max_poll_count
+    )
+  }
 
   pub enum TestDispatchMode {
     AsyncImmediate,
@@ -687,53 +703,56 @@ pub mod tests {
 
   #[test]
   fn test_poll_async_immediate_ops() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
 
-    js_check(isolate.execute(
-      "setup2.js",
-      r#"
+      js_check(isolate.execute(
+        "setup2.js",
+        r#"
         let nrecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           nrecv++;
         });
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 0);
-    js_check(isolate.execute(
-      "check1.js",
-      r#"
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 0);
+      js_check(isolate.execute(
+        "check1.js",
+        r#"
         assert(nrecv == 0);
         let control = new Uint8Array([42]);
         Deno.core.send(control);
         assert(nrecv == 0);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
-    js_check(isolate.execute(
-      "check2.js",
-      r#"
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      js_check(isolate.execute(
+        "check2.js",
+        r#"
         assert(nrecv == 1);
         Deno.core.send(control);
         assert(nrecv == 1);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 2);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
-    assert_eq!(isolate.dispatcher.dispatch_count, 2);
-    // We are idle, so the next poll should be the last.
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
+      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      // We are idle, so the next poll should be the last.
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+    });
   }
 
   #[test]
   fn test_shared() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
 
-    js_check(isolate.execute(
-      "setup2.js",
-      r#"
+      js_check(isolate.execute(
+        "setup2.js",
+        r#"
         let nrecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 1);
@@ -741,12 +760,12 @@ pub mod tests {
           nrecv++;
         });
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 0);
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 0);
 
-    js_check(isolate.execute(
-      "send1.js",
-      r#"
+      js_check(isolate.execute(
+        "send1.js",
+        r#"
         let control = new Uint8Array([42]);
         Deno.core.sharedQueue.push(control);
         Deno.core.send();
@@ -756,11 +775,11 @@ pub mod tests {
         Deno.core.send();
         assert(nrecv === 0);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 2);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-
-    js_check(isolate.execute("send1.js", "assert(nrecv === 2);"));
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      js_check(isolate.execute("send1.js", "assert(nrecv === 2);"));
+    });
   }
 
   #[test]
@@ -877,10 +896,11 @@ pub mod tests {
 
   #[test]
   fn overflow_req_async() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowReqAsync);
-    js_check(isolate.execute(
-      "overflow_req_async.js",
-      r#"
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowReqAsync);
+      js_check(isolate.execute(
+        "overflow_req_async.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 1);
@@ -894,20 +914,22 @@ pub mod tests {
         assert(response == null);
         assert(asyncRecv == 0);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+    });
   }
 
   #[test]
   fn overflow_res_async() {
-    // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
-    // should optimize this.
-    let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
-    js_check(isolate.execute(
-      "overflow_res_async.js",
-      r#"
+    run_in_task(|| {
+      // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
+      // should optimize this.
+      let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
+      js_check(isolate.execute(
+        "overflow_res_async.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 100 * 1024 * 1024);
@@ -920,20 +942,22 @@ pub mod tests {
         assert(response == null);
         assert(asyncRecv == 0);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(Ok(()), poll_until_ready(&mut isolate, 3));
+      js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
+    });
   }
 
   #[test]
   fn overflow_res_multiple_dispatch_async() {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
-    let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
-    js_check(isolate.execute(
-      "overflow_res_multiple_dispatch_async.js",
-      r#"
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
+      js_check(isolate.execute(
+        "overflow_res_multiple_dispatch_async.js",
+        r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((buf) => {
           assert(buf.byteLength === 100 * 1024 * 1024);
@@ -949,19 +973,24 @@ pub mod tests {
         // are done even if shared space overflows
         Deno.core.dispatch(control);
         "#,
-    ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 2);
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
-    js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
+      ));
+      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(Ok(()), poll_until_ready(&mut isolate, 3));
+      js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
+    });
   }
 
   #[test]
   fn test_js() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
-    js_check(
-      isolate
-        .execute("shared_queue_test.js", include_str!("shared_queue_test.js")),
-    );
-    assert_eq!(Ok(Async::Ready(())), isolate.poll());
+    run_in_task(|| {
+      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+      js_check(
+        isolate.execute(
+          "shared_queue_test.js",
+          include_str!("shared_queue_test.js"),
+        ),
+      );
+      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+    });
   }
 }

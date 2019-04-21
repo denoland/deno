@@ -92,3 +92,21 @@ test(function toStringShouldBeWebCompatibility() {
   const target = new EventTarget();
   assertEquals(target.toString(), "[object EventTarget]");
 });
+
+test(function dispatchEventShouldNotThrowError() {
+  let hasThrown = false;
+
+  try {
+    const target = new EventTarget();
+    const event = new Event("hasOwnProperty", {
+      bubbles: true,
+      cancelable: false
+    });
+    target.addEventListener("hasOwnProperty", () => {});
+    target.dispatchEvent(event);
+  } catch {
+    hasThrown = true;
+  }
+
+  assertEquals(hasThrown, false);
+});

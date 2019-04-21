@@ -19,6 +19,7 @@ use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
+use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::deno_buf;
 use deno::js_check;
@@ -294,7 +295,7 @@ fn op_start(
   let mut builder = FlatBufferBuilder::new();
 
   let state = state;
-  let argv = state.argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+  let argv = state.argv.iter().map(String::as_str).collect::<Vec<_>>();
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
 
   let cwd_path = std::env::current_dir().unwrap();
@@ -320,7 +321,6 @@ fn op_start(
       argv: Some(argv_off),
       main_module,
       debug_flag: state.flags.log_debug,
-      types_flag: state.flags.types,
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
@@ -1878,9 +1878,14 @@ fn op_create_worker(
       Worker::new(name, startup_data::deno_isolate_init(), child_state);
     js_check(worker.execute("denoMain()"));
     js_check(worker.execute("workerMain()"));
-    let result = worker.execute_mod(specifier, false);
+
+    let specifier_url =
+      root_specifier_to_url(specifier).map_err(DenoError::from)?;
+
+    // TODO(ry) Use execute_mod_async here.
+    let result = worker.execute_mod(&specifier_url, false);
     match result {
-      Ok(_) => {
+      Ok(worker) => {
         let mut workers_tl = parent_state.workers.lock().unwrap();
         workers_tl.insert(rid, worker.shared());
         let builder = &mut FlatBufferBuilder::new();
@@ -1898,8 +1903,10 @@ fn op_create_worker(
           },
         ))
       }
-      Err(errors::RustOrJsError::Js(_)) => Err(errors::worker_init_failed()),
-      Err(errors::RustOrJsError::Rust(err)) => Err(err),
+      Err((errors::RustOrJsError::Js(_), _worker)) => {
+        Err(errors::worker_init_failed())
+      }
+      Err((errors::RustOrJsError::Rust(err), _worker)) => Err(err),
     }
   }()))
 }

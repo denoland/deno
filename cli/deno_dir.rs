@@ -652,7 +652,7 @@ fn fetch_remote_source_async(
               filename: filename.to_string(),
               media_type: map_content_type(
                 &p,
-                maybe_content_type.as_ref().map(|s| s.as_str()),
+                maybe_content_type.as_ref().map(String::as_str),
               ),
               source_code: source.as_bytes().to_owned(),
               maybe_output_code_filename: None,
