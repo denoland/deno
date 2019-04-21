@@ -27,7 +27,11 @@ export class URLSearchParams {
       // Overload: sequence<sequence<USVString>>
       for (const tuple of init) {
         // If pair does not contain exactly two items, then throw a TypeError.
-        requiredArguments("URLSearchParams.constructor tuple array argument", tuple.length, 2);
+        requiredArguments(
+          "URLSearchParams.constructor tuple array argument",
+          tuple.length,
+          2
+        );
         this.append(tuple[0], tuple[1]);
       }
     } else if (Object(init) === init) {
