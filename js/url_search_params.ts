@@ -233,7 +233,7 @@ export class URLSearchParams {
       .join("&");
   }
 
-  private _handleStringInitialization(init: string) {
+  private _handleStringInitialization(init: string): void {
     // Overload: USVString
     // If init is a string and starts with U+003F (?),
     // remove the first code point from init.
@@ -253,7 +253,7 @@ export class URLSearchParams {
     }
   }
 
-  private _handleArrayInitialization(init: string[][]) {
+  private _handleArrayInitialization(init: string[][]): void {
     // Overload: sequence<sequence<USVString>>
     for (const tuple of init) {
       // If pair does not contain exactly two items, then throw a TypeError.
