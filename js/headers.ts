@@ -57,7 +57,7 @@ class HeadersBase {
           // If header does not contain exactly two items,
           // then throw a TypeError.
           // ref: https://fetch.spec.whatwg.org/#concept-headers-fill
-          requiredArguments("Headers.constructor tuple argument", tuple.length, 2);
+          requiredArguments("Headers.constructor tuple array argument", tuple.length, 2);
 
           const [name, value] = this._normalizeParams(tuple[0], tuple[1]);
           this._validateName(name);
