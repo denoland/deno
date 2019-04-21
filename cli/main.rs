@@ -38,10 +38,13 @@ use crate::errors::RustOrJsError;
 use crate::state::ThreadSafeState;
 use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
+use deno::v8_set_flags;
+use flags::DenoFlags;
 use futures::lazy;
 use futures::Future;
 use log::{LevelFilter, Metadata, Record};
 use std::env;
+use std::path::Path;
 
 static LOGGER: Logger = Logger;
 
@@ -123,17 +126,157 @@ pub fn print_file_info(worker: &Worker, url: &str) {
   }
 }
 
+fn create_worker_and_state(
+  flags: DenoFlags,
+  argv: Vec<String>,
+) -> (Worker, ThreadSafeState) {
+  let state = ThreadSafeState::new(flags, argv, ops::op_selector_std);
+  let worker = Worker::new(
+    "main".to_string(),
+    startup_data::deno_isolate_init(),
+    state.clone(),
+  );
+
+  (worker, state)
+}
+
+fn types_command() {
+  let p = Path::new(concat!(
+    env!("GN_OUT_DIR"),
+    "/gen/cli/lib/lib.deno_runtime.d.ts"
+  ));
+  let content_bytes = std::fs::read(p).unwrap();
+  let content = std::str::from_utf8(&content_bytes[..]).unwrap();
+  println!("{}", content);
+}
+
+fn prefetch_or_info_command(
+  flags: DenoFlags,
+  argv: Vec<String>,
+  print_info: bool,
+) {
+  let (mut worker, state) = create_worker_and_state(flags, argv);
+
+  let main_module = state.main_module().unwrap();
+  let main_future = lazy(move || {
+    // Setup runtime.
+    js_check(worker.execute("denoMain()"));
+    debug!("main_module {}", main_module);
+
+    let main_url = root_specifier_to_url(&main_module).unwrap();
+
+    worker
+      .execute_mod_async(&main_url, true)
+      .and_then(move |worker| {
+        if print_info {
+          print_file_info(&worker, &main_module);
+        }
+        worker.then(|result| {
+          js_check(result);
+          Ok(())
+        })
+      }).map_err(|(err, _worker)| print_err_and_exit(err))
+  });
+  tokio_util::run(main_future);
+}
+
+fn eval_command(flags: DenoFlags, argv: Vec<String>) {
+  let (mut worker, state) = create_worker_and_state(flags, argv);
+  // Wrap provided script in async function so asynchronous methods
+  // work. This is required until top-level await is not supported.
+  let js_source = format!(
+    "async function _topLevelWrapper(){{
+        {}
+      }}
+      _topLevelWrapper();
+      ",
+    &state.argv[1]
+  );
+
+  let main_future = lazy(move || {
+    js_check(worker.execute("denoMain()"));
+    // ATM imports in `deno eval` are not allowed
+    // TODO Support ES modules once Worker supports evaluating anonymous modules.
+    js_check(worker.execute(&js_source));
+    worker.then(|result| {
+      js_check(result);
+      Ok(())
+    })
+  });
+  tokio_util::run(main_future);
+}
+
+fn run_repl(flags: DenoFlags, argv: Vec<String>) {
+  let (mut worker, _state) = create_worker_and_state(flags, argv);
+
+  // REPL situation.
+  let main_future = lazy(move || {
+    // Setup runtime.
+    js_check(worker.execute("denoMain()"));
+    worker
+      .then(|result| {
+        js_check(result);
+        Ok(())
+      }).map_err(|(err, _worker): (RustOrJsError, Worker)| {
+        print_err_and_exit(err)
+      })
+  });
+  tokio_util::run(main_future);
+}
+
+fn run_script(flags: DenoFlags, argv: Vec<String>) {
+  let (mut worker, state) = create_worker_and_state(flags, argv);
+
+  let main_module = state.main_module().unwrap();
+  // Normal situation of executing a module.
+  let main_future = lazy(move || {
+    // Setup runtime.
+    js_check(worker.execute("denoMain()"));
+    debug!("main_module {}", main_module);
+
+    let main_url = root_specifier_to_url(&main_module).unwrap();
+
+    worker
+      .execute_mod_async(&main_url, false)
+      .and_then(move |worker| {
+        worker.then(|result| {
+          js_check(result);
+          Ok(())
+        })
+      }).map_err(|(err, _worker)| print_err_and_exit(err))
+  });
+  tokio_util::run(main_future);
+}
+
+fn fmt_command(mut flags: DenoFlags, mut argv: Vec<String>) {
+  argv.insert(1, "https://deno.land/std/prettier/main.ts".to_string());
+  flags.allow_read = true;
+  flags.allow_write = true;
+  run_script(flags, argv);
+}
+
 fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
 
   log::set_logger(&LOGGER).unwrap();
-  let args = env::args().collect();
-  let (mut flags, mut rest_argv) =
-    flags::set_flags(args).unwrap_or_else(|err| {
-      eprintln!("{}", err);
-      std::process::exit(1)
-    });
+  let args: Vec<String> = env::args().collect();
+  let cli_app = flags::create_cli_app();
+  let matches = cli_app.get_matches_from(args);
+  let flags = flags::parse_flags(matches.clone());
+  let mut argv: Vec<String> = vec!["deno".to_string()];
+
+  if flags.v8_help {
+    // show v8 help and exit
+    v8_set_flags(vec!["--help".to_string()]);
+  }
+
+  match &flags.v8_flags {
+    Some(v8_flags) => {
+      v8_set_flags(v8_flags.clone());
+    }
+    _ => {}
+  };
 
   log::set_max_level(if flags.log_debug {
     LevelFilter::Debug
@@ -141,85 +284,50 @@ fn main() {
     LevelFilter::Warn
   });
 
-  if flags.fmt {
-    rest_argv.insert(1, "https://deno.land/std/prettier/main.ts".to_string());
-    flags.allow_read = true;
-    flags.allow_write = true;
-  }
-
-  let should_prefetch = flags.prefetch || flags.info;
-  let should_display_info = flags.info;
-
-  let state = ThreadSafeState::new(flags, rest_argv, ops::op_selector_std);
-  let mut worker = Worker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    state.clone(),
-  );
-
-  // TODO(ry) somehow combine the two branches below. They're very similar but
-  // it's difficult to get the types to workout.
-
-  if state.flags.eval {
-    let main_future = lazy(move || {
-      js_check(worker.execute("denoMain()"));
-      // Wrap provided script in async function so asynchronous methods
-      // work. This is required until top-level await is not supported.
-      let js_source = format!(
-        "async function _topLevelWrapper(){{
-          {}
-        }}
-        _topLevelWrapper();
-        ",
-        &state.argv[1]
-      );
-      // ATM imports in `deno eval` are not allowed
-      // TODO Support ES modules once Worker supports evaluating anonymous modules.
-      js_check(worker.execute(&js_source));
-      worker.then(|result| {
-        js_check(result);
-        Ok(())
-      })
-    });
-    tokio_util::run(main_future);
-  } else if let Some(main_module) = state.main_module() {
-    // Normal situation of executing a module.
-
-    let main_future = lazy(move || {
-      // Setup runtime.
-      js_check(worker.execute("denoMain()"));
-      debug!("main_module {}", main_module);
-
-      let main_url = root_specifier_to_url(&main_module).unwrap();
-
-      worker
-        .execute_mod_async(&main_url, should_prefetch)
-        .and_then(move |worker| {
-          if should_display_info {
-            // Display file info and exit. Do not run file
-            print_file_info(&worker, &main_module);
-            std::process::exit(0);
-          }
-          worker.then(|result| {
-            js_check(result);
-            Ok(())
-          })
-        }).map_err(|(err, _worker)| print_err_and_exit(err))
-    });
-    tokio_util::run(main_future);
-  } else {
-    // REPL situation.
-    let main_future = lazy(move || {
-      // Setup runtime.
-      js_check(worker.execute("denoMain()"));
-      worker
-        .then(|result| {
-          js_check(result);
-          Ok(())
-        }).map_err(|(err, _worker): (RustOrJsError, Worker)| {
-          print_err_and_exit(err)
-        })
-    });
-    tokio_util::run(main_future);
+  match matches.subcommand() {
+    ("types", Some(_)) => {
+      types_command();
+    }
+    ("eval", Some(eval_match)) => {
+      let code: &str = eval_match.value_of("code").unwrap();
+      argv.extend(vec![code.to_string()]);
+      eval_command(flags, argv);
+    }
+    ("info", Some(info_match)) => {
+      let file: &str = info_match.value_of("file").unwrap();
+      argv.extend(vec![file.to_string()]);
+      prefetch_or_info_command(flags, argv, true);
+    }
+    ("prefetch", Some(prefetch_match)) => {
+      let file: &str = prefetch_match.value_of("file").unwrap();
+      argv.extend(vec![file.to_string()]);
+      prefetch_or_info_command(flags, argv, false);
+    }
+    ("fmt", Some(fmt_match)) => {
+      let files: Vec<String> = fmt_match
+        .values_of("files")
+        .unwrap()
+        .map(String::from)
+        .collect();
+      argv.extend(files);
+      fmt_command(flags, argv);
+    }
+    (script, Some(script_match)) => {
+      argv.extend(vec![script.to_string()]);
+      // check if there are any extra arguments that should
+      // be passed to script
+      if script_match.is_present("") {
+        let script_args: Vec<String> = script_match
+          .values_of("")
+          .unwrap()
+          .map(String::from)
+          .collect();
+        argv.extend(script_args);
+      }
+      run_script(flags, argv);
+    }
+    _ => {
+      run_repl(flags, argv);
+    }
   }
 }

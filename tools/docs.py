@@ -11,7 +11,7 @@ os.chdir(root_path)
 # Builds into target/doc
 run(["cargo", "doc", "--all", "--no-deps", "-vv"])
 
-# 'deno --types' is stored in target/debug/gen/cli/lib/lib.deno_runtime.d.ts
+# 'deno types' is stored in target/debug/gen/cli/lib/lib.deno_runtime.d.ts
 # We want to run typedoc on that declaration file only.
 os.chdir(os.path.join(target_path, "debug/gen/cli/lib/"))
 
