@@ -270,8 +270,7 @@ fn main() {
 
   if flags.v8_help {
     // show v8 help and exit
-    // TODO(bartlomieju): this relies on `v8_set_flags` to swap `--v8-options` for "--help"
-    v8_set_flags(vec!["--v8-options".to_string()]);
+    v8_set_flags(vec!["--help".to_string()]);
   }
 
   match &flags.v8_flags {
