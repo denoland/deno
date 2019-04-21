@@ -61,6 +61,8 @@ function getClassInstanceName(instance: unknown): string {
   if (proto && proto.constructor) {
     return proto.constructor.name; // could be "Object" or "Array"
   }
+
+  return "";
 }
 
 function createFunctionString(value: Function, _ctx: ConsoleContext): string {
