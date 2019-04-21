@@ -39,9 +39,10 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
   constructor(ab?: ArrayBuffer) {
     if (ab == null) {
       this.buf = new Uint8Array(0);
-    } else {
-      this.buf = new Uint8Array(ab);
+      return;
     }
+
+    this.buf = new Uint8Array(ab);
   }
 
   /** bytes() returns a slice holding the unread portion of the buffer.
