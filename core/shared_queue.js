@@ -1,4 +1,20 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+/*
+SharedQueue Binary Layout
++-------------------------------+-------------------------------+
+|                        NUM_RECORDS (32)                       |
++---------------------------------------------------------------+
+|                        NUM_SHIFTED_OFF (32)                   |
++---------------------------------------------------------------+
+|                        HEAD (32)                              |
++---------------------------------------------------------------+
+|                        OFFSETS (32)                           |
++---------------------------------------------------------------+
+|                        RECORD_ENDS (*MAX_RECORDS)           ...
++---------------------------------------------------------------+
+|                        RECORDS (*MAX_RECORDS)               ...
++---------------------------------------------------------------+
+ */
 
 (window => {
   const GLOBAL_NAMESPACE = "Deno";
@@ -69,7 +85,7 @@
     let off = head();
     let end = off + buf.byteLength;
     let index = numRecords();
-    if (end > shared32.byteLength) {
+    if (end > shared32.byteLength || index >= MAX_RECORDS) {
       console.log("shared_queue.ts push fail");
       return false;
     }
@@ -141,6 +157,7 @@
     setAsyncHandler,
     dispatch,
     sharedQueue: {
+      MAX_RECORDS,
       head,
       numRecords,
       size,
