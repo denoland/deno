@@ -112,7 +112,7 @@ export class URLSearchParams {
   has(name: string): boolean {
     requiredArguments("URLSearchParams.has", arguments.length, 1);
     name = String(name);
-    return this.params.some(entry => entry[0] === name);
+    return this.params.some((entry): boolean => entry[0] === name);
   }
 
   /** Sets the value associated with a given search parameter to the
@@ -159,8 +159,8 @@ export class URLSearchParams {
    *       searchParams.sort();
    */
   sort(): void {
-    this.params = this.params.sort((a, b) =>
-      a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1
+    this.params = this.params.sort(
+      (a, b): number => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1)
     );
   }
 
@@ -244,7 +244,7 @@ export class URLSearchParams {
   toString(): string {
     return this.params
       .map(
-        tuple =>
+        (tuple): string =>
           `${encodeURIComponent(tuple[0])}=${encodeURIComponent(tuple[1])}`
       )
       .join("&");

@@ -11,7 +11,7 @@ const knownPermissions: Deno.Permission[] = [
 ];
 
 for (let grant of knownPermissions) {
-  testPerm({ [grant]: true }, function envGranted() {
+  testPerm({ [grant]: true }, function envGranted(): void {
     const perms = Deno.permissions();
     assert(perms !== null);
     for (const perm in perms) {

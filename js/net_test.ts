@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ net: true }, function netListenClose() {
+testPerm({ net: true }, function netListenClose(): void {
   const listener = Deno.listen("tcp", "127.0.0.1:4500");
   listener.close();
 });
 
-testPerm({ net: true }, async function netCloseWhileAccept() {
+testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
   const listener = Deno.listen("tcp", ":4501");
   const p = listener.accept();
   listener.close();
@@ -21,7 +21,7 @@ testPerm({ net: true }, async function netCloseWhileAccept() {
   assertEquals(err.message, "Listener has been closed");
 });
 
-testPerm({ net: true }, async function netConcurrentAccept() {
+testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
   const listener = Deno.listen("tcp", ":4502");
   let acceptErrCount = 0;
   const checkErr = (e): void => {
@@ -42,12 +42,14 @@ testPerm({ net: true }, async function netConcurrentAccept() {
   assertEquals(acceptErrCount, 1);
 });
 
-testPerm({ net: true }, async function netDialListen() {
+testPerm({ net: true }, async function netDialListen(): Promise<void> {
   const listener = Deno.listen("tcp", ":4500");
-  listener.accept().then(async conn => {
-    await conn.write(new Uint8Array([1, 2, 3]));
-    conn.close();
-  });
+  listener.accept().then(
+    async (conn): Promise<void> => {
+      await conn.write(new Uint8Array([1, 2, 3]));
+      conn.close();
+    }
+  );
   const conn = await Deno.dial("tcp", "127.0.0.1:4500");
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
