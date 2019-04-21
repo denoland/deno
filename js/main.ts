@@ -15,9 +15,6 @@ import { setLocation } from "./location";
 // builtin modules
 import * as deno from "./deno";
 
-// TODO(kitsonk) remove with `--types` below
-import libDts from "gen/cli/lib/lib.deno_runtime.d.ts!string";
-
 export default function denoMain(name?: string): void {
   const startResMsg = os.start(name);
 
@@ -28,13 +25,6 @@ export default function denoMain(name?: string): void {
     console.log("deno:", deno.version.deno);
     console.log("v8:", deno.version.v8);
     console.log("typescript:", deno.version.typescript);
-    os.exit(0);
-  }
-
-  // handle `--types`
-  // TODO(kitsonk) move to Rust fetching from compiler
-  if (startResMsg.typesFlag()) {
-    console.log(libDts);
     os.exit(0);
   }
 

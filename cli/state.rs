@@ -158,9 +158,11 @@ impl ThreadSafeState {
   #[cfg(test)]
   pub fn mock() -> ThreadSafeState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    // For debugging: argv.push_back(String::from("-D"));
-    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
-    ThreadSafeState::new(flags, rest_argv, ops::op_selector_std)
+    ThreadSafeState::new(
+      flags::DenoFlags::default(),
+      argv,
+      ops::op_selector_std,
+    )
   }
 
   pub fn metrics_op_dispatched(
