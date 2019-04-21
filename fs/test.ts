@@ -8,6 +8,7 @@ import "./eol_test.ts";
 import "./empty_dir_test.ts";
 import "./ensure_dir_test.ts";
 import "./ensure_file_test.ts";
+import "./ensure_symlink_test.ts";
 import "./move_test.ts";
 import "./read_json_test.ts";
 import "./write_json_test.ts";
