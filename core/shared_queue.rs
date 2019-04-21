@@ -1,4 +1,21 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
+/*
+SharedQueue Binary Layout
++-------------------------------+-------------------------------+
+|                        NUM_RECORDS (32)                       |
++---------------------------------------------------------------+
+|                        NUM_SHIFTED_OFF (32)                   |
++---------------------------------------------------------------+
+|                        HEAD (32)                              |
++---------------------------------------------------------------+
+|                        OFFSETS (32)                           |
++---------------------------------------------------------------+
+|                        RECORD_ENDS (*MAX_RECORDS)           ...
++---------------------------------------------------------------+
+|                        RECORDS (*MAX_RECORDS)               ...
++---------------------------------------------------------------+
+ */
+
 use crate::libdeno::deno_buf;
 
 const MAX_RECORDS: usize = 100;
@@ -36,6 +53,7 @@ impl SharedQueue {
   }
 
   fn reset(&mut self) {
+    debug!("rust:shared_queue:reset");
     let s: &mut [u32] = self.as_u32_slice_mut();
     s[INDEX_NUM_RECORDS] = 0;
     s[INDEX_NUM_SHIFTED_OFF] = 0;
@@ -73,6 +91,11 @@ impl SharedQueue {
   fn head(&self) -> usize {
     let s = self.as_u32_slice();
     s[INDEX_HEAD] as usize
+  }
+
+  fn num_shifted_off(&self) -> usize {
+    let s = self.as_u32_slice();
+    return s[INDEX_NUM_SHIFTED_OFF] as usize;
   }
 
   fn set_end(&mut self, index: usize, end: usize) {
@@ -120,7 +143,12 @@ impl SharedQueue {
     } else {
       self.reset();
     }
-
+    debug!(
+      "rust:shared_queue:shift: num_records={}, num_shifted_off={}, head={}",
+      self.num_records(),
+      self.num_shifted_off(),
+      self.head()
+    );
     Some(&self.bytes[off..end])
   }
 
@@ -128,7 +156,7 @@ impl SharedQueue {
     let off = self.head();
     let end = off + record.len();
     let index = self.num_records();
-    if end > self.bytes.len() {
+    if end > self.bytes.len() || index >= MAX_RECORDS {
       debug!("WARNING the sharedQueue overflowed");
       return false;
     }
@@ -138,6 +166,12 @@ impl SharedQueue {
     let u32_slice = self.as_u32_slice_mut();
     u32_slice[INDEX_NUM_RECORDS] += 1;
     u32_slice[INDEX_HEAD] = end as u32;
+    debug!(
+      "rust:shared_queue:push: num_records={}, num_shifted_off={}, head={}",
+      self.num_records(),
+      self.num_shifted_off(),
+      self.head()
+    );
     true
   }
 }
@@ -212,5 +246,17 @@ mod tests {
 
     assert_eq!(q.shift().unwrap().len(), 1);
     assert_eq!(q.size(), 0);
+  }
+
+  #[test]
+  fn full_records() {
+    let mut q = SharedQueue::new(RECOMMENDED_SIZE);
+    for _ in 0..MAX_RECORDS {
+      assert!(q.push(&alloc_buf(1)))
+    }
+    assert_eq!(q.push(&alloc_buf(1)), false);
+    // Even if we shift one off, we still cannot push a new record.
+    assert_eq!(q.shift().unwrap().len(), 1);
+    assert_eq!(q.push(&alloc_buf(1)), false);
   }
 }
