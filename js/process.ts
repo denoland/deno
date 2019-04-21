@@ -124,7 +124,7 @@ export class Process {
     close(this.rid);
   }
 
-  kill(signo: number) {
+  kill(signo: number): void {
     kill(this.pid, signo);
   }
 }

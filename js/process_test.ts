@@ -224,7 +224,7 @@ testPerm({ run: true }, async function runEnv(): Promise<void> {
   p.close();
 });
 
-testPerm({ run: true }, async function runClose() {
+testPerm({ run: true }, async function runClose(): Promise<void> {
   const p = run({
     args: [
       "python",
@@ -246,7 +246,7 @@ testPerm({ run: true }, async function runClose() {
 
 // Ignore signal tests on windows for now...
 if (Deno.platform.os !== "win") {
-  testPerm({ run: true }, async function killSuccess() {
+  testPerm({ run: true }, async function killSuccess(): Promise<void> {
     const p = run({
       args: ["python", "-c", "from time import sleep; sleep(10000)"]
     });
@@ -260,7 +260,7 @@ if (Deno.platform.os !== "win") {
     assertEquals(status.signal, Deno.Signal.SIGINT);
   });
 
-  testPerm({ run: true }, async function killFailed() {
+  testPerm({ run: true }, async function killFailed(): Promise<void> {
     const p = run({
       args: ["python", "-c", "from time import sleep; sleep(10000)"]
     });
