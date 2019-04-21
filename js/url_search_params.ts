@@ -16,7 +16,7 @@ export class URLSearchParams {
     }
 
     if (Object(init) !== init) {
-     return;
+      return;
     }
 
     // Overload: record<USVString, USVString>
