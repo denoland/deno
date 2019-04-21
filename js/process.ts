@@ -51,6 +51,16 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
   }
 }
 
+/** Send a signal to process under given PID. Unix only at this moment.
+ * If pid is negative, the signal will be sent to the process group identified
+ * by -pid.
+ */
+export function kill(pid: number, signo: number): void {
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.Kill.createKill(builder, pid, signo);
+  dispatch.sendSync(builder, msg.Any.Kill, inner);
+}
+
 export class Process {
   readonly rid: number;
   readonly pid: number;
@@ -112,6 +122,10 @@ export class Process {
 
   close(): void {
     close(this.rid);
+  }
+
+  kill(signo: number) {
+    kill(this.pid, signo);
   }
 }
 
@@ -178,4 +192,38 @@ export function run(opt: RunOptions): Process {
   assert(baseRes!.inner(res) != null);
 
   return new Process(res);
+}
+
+export enum Signal {
+  SIGHUP = 1,
+  SIGINT,
+  SIGQUIT,
+  SIGILL,
+  SIGTRAP,
+  SIGABRT,
+  SIGBUS,
+  SIGFPE,
+  SIGKILL,
+  SIGUSR1,
+  SIGSEGV,
+  SIGUSR2,
+  SIGPIPE,
+  SIGALRM,
+  SIGTERM,
+  SIGSTKFLT,
+  SIGCHLD,
+  SIGCONT,
+  SIGSTOP,
+  SIGTSTP,
+  SIGTTIN,
+  SIGTTOU,
+  SIGURG,
+  SIGXCPU,
+  SIGXFSZ,
+  SIGVTALRM,
+  SIGPROF,
+  SIGWINCH,
+  SIGIO,
+  SIGPWR,
+  SIGSYS
 }

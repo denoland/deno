@@ -9,6 +9,8 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno;
+#[cfg(unix)]
+extern crate nix;
 
 mod ansi;
 pub mod compiler;
@@ -27,6 +29,7 @@ pub mod permissions;
 mod repl;
 pub mod resolve_addr;
 pub mod resources;
+mod signal;
 mod startup_data;
 pub mod state;
 mod tokio_util;

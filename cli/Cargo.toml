@@ -50,3 +50,6 @@ url = "1.7.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.7"
+
+[target.'cfg(unix)'.dependencies]
+nix = "0.11.0"

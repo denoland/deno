@@ -4,6 +4,8 @@ pub use crate::msg::ErrorKind;
 use crate::resolve_addr::ResolveAddrError;
 use deno::JSError;
 use hyper;
+#[cfg(unix)]
+use nix::{errno::Errno, Error as UnixError};
 use std;
 use std::fmt;
 use std::io;
@@ -163,6 +165,32 @@ impl From<ResolveAddrError> for DenoError {
       },
       ResolveAddrError::Resolution(io_err) => Self {
         repr: Repr::IoErr(io_err),
+      },
+    }
+  }
+}
+
+#[cfg(unix)]
+impl From<UnixError> for DenoError {
+  fn from(e: UnixError) -> Self {
+    match e {
+      UnixError::Sys(Errno::EPERM) => Self {
+        repr: Repr::Simple(
+          ErrorKind::PermissionDenied,
+          Errno::EPERM.desc().to_owned(),
+        ),
+      },
+      UnixError::Sys(Errno::EINVAL) => Self {
+        repr: Repr::Simple(
+          ErrorKind::InvalidInput,
+          Errno::EINVAL.desc().to_owned(),
+        ),
+      },
+      UnixError::Sys(err) => Self {
+        repr: Repr::Simple(ErrorKind::UnixError, err.desc().to_owned()),
+      },
+      _ => Self {
+        repr: Repr::Simple(ErrorKind::Other, format!("{}", e)),
       },
     }
   }
