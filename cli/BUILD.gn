@@ -42,6 +42,9 @@ main_extern = [
 if (is_win) {
   main_extern += [ "$rust_build:winapi" ]
 }
+if (is_posix) {
+  main_extern += [ "$rust_build:nix" ]
+}
 
 ts_sources = [
   "../js/assets.ts",

@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
-const { run, DenoError, ErrorKind } = Deno;
+const { kill, run, DenoError, ErrorKind } = Deno;
 
 test(function runPermissions(): void {
   let caughtError = false;
@@ -223,3 +223,69 @@ testPerm({ run: true }, async function runEnv(): Promise<void> {
   assertEquals(s, "01234567");
   p.close();
 });
+
+testPerm({ run: true }, async function runClose(): Promise<void> {
+  const p = run({
+    args: [
+      "python",
+      "-c",
+      "from time import sleep; import sys; sleep(10000); sys.stderr.write('error')"
+    ],
+    stderr: "piped"
+  });
+  assert(!p.stdin);
+  assert(!p.stdout);
+
+  p.close();
+
+  const data = new Uint8Array(10);
+  let r = await p.stderr.read(data);
+  assertEquals(r.nread, 0);
+  assertEquals(r.eof, true);
+});
+
+test(function signalNumbers(): void {
+  if (Deno.platform.os === "mac") {
+    assertEquals(Deno.Signal.SIGSTOP, 17);
+  } else if (Deno.platform.os === "linux") {
+    assertEquals(Deno.Signal.SIGSTOP, 19);
+  }
+});
+
+// Ignore signal tests on windows for now...
+if (Deno.platform.os !== "win") {
+  testPerm({ run: true }, async function killSuccess(): Promise<void> {
+    const p = run({
+      args: ["python", "-c", "from time import sleep; sleep(10000)"]
+    });
+
+    assertEquals(Deno.Signal.SIGINT, 2);
+    kill(p.pid, Deno.Signal.SIGINT);
+    const status = await p.status();
+
+    assertEquals(status.success, false);
+    assertEquals(status.code, undefined);
+    assertEquals(status.signal, Deno.Signal.SIGINT);
+  });
+
+  testPerm({ run: true }, async function killFailed(): Promise<void> {
+    const p = run({
+      args: ["python", "-c", "from time import sleep; sleep(10000)"]
+    });
+    assert(!p.stdin);
+    assert(!p.stdout);
+
+    let err;
+    try {
+      kill(p.pid, 12345);
+    } catch (e) {
+      err = e;
+    }
+
+    assert(!!err);
+    assertEquals(err.kind, Deno.ErrorKind.InvalidInput);
+    assertEquals(err.name, "InvalidInput");
+
+    p.close();
+  });
+}

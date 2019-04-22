@@ -21,6 +21,7 @@ union Any {
   GlobalTimerStop,
   IsTTY,
   IsTTYRes,
+  Kill,
   Link,
   Listen,
   ListenRes,
@@ -129,7 +130,8 @@ enum ErrorKind: byte {
   InvalidUri,
   InvalidSeekMode,
   OpNotAvaiable,
-  WorkerInitFailed
+  WorkerInitFailed,
+  UnixError,
 }
 
 table Cwd {}
@@ -451,6 +453,11 @@ table WriteRes {
 
 table Close {
   rid: uint32;
+}
+
+table Kill {
+  pid: int32;
+  signo: int32;
 }
 
 table Shutdown {

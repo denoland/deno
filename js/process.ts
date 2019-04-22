@@ -7,6 +7,7 @@ import { File, close } from "./files";
 import { ReadCloser, WriteCloser } from "./io";
 import { readAll } from "./buffer";
 import { assert, unreachable } from "./util";
+import { platform } from "./build";
 
 /** How to handle subprocess stdio.
  *
@@ -49,6 +50,16 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
     const code = res.exitCode();
     return { code, success: code === 0 };
   }
+}
+
+/** Send a signal to process under given PID. Unix only at this moment.
+ * If pid is negative, the signal will be sent to the process group identified
+ * by -pid.
+ */
+export function kill(pid: number, signo: number): void {
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.Kill.createKill(builder, pid, signo);
+  dispatch.sendSync(builder, msg.Any.Kill, inner);
 }
 
 export class Process {
@@ -112,6 +123,10 @@ export class Process {
 
   close(): void {
     close(this.rid);
+  }
+
+  kill(signo: number): void {
+    kill(this.pid, signo);
   }
 }
 
@@ -179,3 +194,77 @@ export function run(opt: RunOptions): Process {
 
   return new Process(res);
 }
+
+// From `kill -l`
+enum LinuxSignal {
+  SIGHUP = 1,
+  SIGINT = 2,
+  SIGQUIT = 3,
+  SIGILL = 4,
+  SIGTRAP = 5,
+  SIGABRT = 6,
+  SIGBUS = 7,
+  SIGFPE = 8,
+  SIGKILL = 9,
+  SIGUSR1 = 10,
+  SIGSEGV = 11,
+  SIGUSR2 = 12,
+  SIGPIPE = 13,
+  SIGALRM = 14,
+  SIGTERM = 15,
+  SIGSTKFLT = 16,
+  SIGCHLD = 17,
+  SIGCONT = 18,
+  SIGSTOP = 19,
+  SIGTSTP = 20,
+  SIGTTIN = 21,
+  SIGTTOU = 22,
+  SIGURG = 23,
+  SIGXCPU = 24,
+  SIGXFSZ = 25,
+  SIGVTALRM = 26,
+  SIGPROF = 27,
+  SIGWINCH = 28,
+  SIGIO = 29,
+  SIGPWR = 30,
+  SIGSYS = 31
+}
+
+// From `kill -l`
+enum MacOSSignal {
+  SIGHUP = 1,
+  SIGINT = 2,
+  SIGQUIT = 3,
+  SIGILL = 4,
+  SIGTRAP = 5,
+  SIGABRT = 6,
+  SIGEMT = 7,
+  SIGFPE = 8,
+  SIGKILL = 9,
+  SIGBUS = 10,
+  SIGSEGV = 11,
+  SIGSYS = 12,
+  SIGPIPE = 13,
+  SIGALRM = 14,
+  SIGTERM = 15,
+  SIGURG = 16,
+  SIGSTOP = 17,
+  SIGTSTP = 18,
+  SIGCONT = 19,
+  SIGCHLD = 20,
+  SIGTTIN = 21,
+  SIGTTOU = 22,
+  SIGIO = 23,
+  SIGXCPU = 24,
+  SIGXFSZ = 25,
+  SIGVTALRM = 26,
+  SIGPROF = 27,
+  SIGWINCH = 28,
+  SIGINFO = 29,
+  SIGUSR1 = 30,
+  SIGUSR2 = 31
+}
+
+/** Signals numbers. This is platform dependent.
+ */
+export const Signal = platform.os === "mac" ? MacOSSignal : LinuxSignal;
