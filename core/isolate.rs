@@ -68,15 +68,21 @@ pub enum StartupData<'a> {
   None,
 }
 
-/// Defines the how Deno.core.dispatch() acts.
-pub trait Dispatch {
+#[derive(Default)]
+pub struct Config {
+  dispatch: Option<Arc<Fn(&[u8], deno_buf) -> (bool, Box<Op>) + Send + Sync>>,
+}
+
+impl Config {
+  /// Defines the how Deno.core.dispatch() acts.
   /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
   /// corresponds to the second argument of Deno.core.dispatch().
-  fn dispatch(
-    &mut self,
-    control: &[u8],
-    zero_copy_buf: deno_buf,
-  ) -> (bool, Box<Op>);
+  pub fn dispatch<F>(&mut self, f: F)
+  where
+    F: Fn(&[u8], deno_buf) -> (bool, Box<Op>) + Send + Sync + 'static,
+  {
+    self.dispatch = Some(Arc::new(f));
+  }
 }
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
@@ -87,19 +93,19 @@ pub trait Dispatch {
 /// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
 /// by implementing deno::Dispatch::dispatch. An Op corresponds exactly to a
 /// Promise in JavaScript.
-pub struct Isolate<B: Dispatch> {
+pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
-  dispatcher: B,
+  config: Config,
   needs_init: bool,
   shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOp>,
   have_unpolled_ops: bool,
 }
 
-unsafe impl<B: Dispatch> Send for Isolate<B> {}
+unsafe impl Send for Isolate {}
 
-impl<B: Dispatch> Drop for Isolate<B> {
+impl Drop for Isolate {
   fn drop(&mut self) {
     // remove shared_libdeno_isolate reference
     *self.shared_libdeno_isolate.lock().unwrap() = None;
@@ -110,10 +116,12 @@ impl<B: Dispatch> Drop for Isolate<B> {
 
 static DENO_INIT: Once = ONCE_INIT;
 
-impl<B: Dispatch> Isolate<B> {
+impl Isolate {
   /// startup_data defines the snapshot or script used at startup to initalize
   /// the isolate.
-  pub fn new(startup_data: StartupData, dispatcher: B) -> Self {
+  // TODO(ry) move startup_data into Config. Ideally without introducing a
+  // generic lifetime into the Isolate struct...
+  pub fn new(startup_data: StartupData, config: Config) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -127,7 +135,7 @@ impl<B: Dispatch> Isolate<B> {
       StartupData::Script(d) => (None, Some(d)),
       StartupData::None => (None, None),
     };
-    let config = libdeno::deno_config {
+    let libdeno_config = libdeno::deno_config {
       will_snapshot: 0,
       load_snapshot: match startup_snapshot {
         Some(s) => Snapshot2::from(s),
@@ -136,12 +144,12 @@ impl<B: Dispatch> Isolate<B> {
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,
     };
-    let libdeno_isolate = unsafe { libdeno::deno_new(config) };
+    let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
 
     let mut core_isolate = Self {
       libdeno_isolate,
       shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
-      dispatcher,
+      config,
       shared,
       needs_init,
       pending_ops: FuturesUnordered::new(),
@@ -178,19 +186,25 @@ impl<B: Dispatch> Isolate<B> {
     control_argv0: deno_buf,
     zero_copy_buf: deno_buf,
   ) {
-    let isolate = unsafe { Isolate::<B>::from_raw_ptr(user_data) };
+    let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
     let zero_copy_id = zero_copy_buf.zero_copy_id;
 
     let control_shared = isolate.shared.shift();
 
     let (is_sync, op) = if control_argv0.len() > 0 {
       // The user called Deno.core.send(control)
-      isolate
-        .dispatcher
-        .dispatch(control_argv0.as_ref(), zero_copy_buf)
+      if let Some(ref f) = isolate.config.dispatch {
+        f(control_argv0.as_ref(), zero_copy_buf)
+      } else {
+        panic!("isolate.config.dispatch not set")
+      }
     } else if let Some(c) = control_shared {
       // The user called Deno.sharedQueue.push(control)
-      isolate.dispatcher.dispatch(&c, zero_copy_buf)
+      if let Some(ref f) = isolate.config.dispatch {
+        f(&c, zero_copy_buf)
+      } else {
+        panic!("isolate.config.dispatch not set")
+      }
     } else {
       // The sharedQueue is empty. The shouldn't happen usually, but it's also
       // not technically a failure.
@@ -362,7 +376,7 @@ impl<'a> ResolveContext<'a> {
   }
 }
 
-impl<B: Dispatch> Isolate<B> {
+impl Isolate {
   pub fn mod_instantiate(
     &mut self,
     id: deno_mod,
@@ -428,7 +442,7 @@ impl Drop for LockerScope {
   }
 }
 
-impl<B: Dispatch> Future for Isolate<B> {
+impl Future for Isolate {
   type Item = ();
   type Error = JSError;
 
@@ -554,7 +568,7 @@ pub mod tests {
     )
   }
 
-  pub enum TestDispatchMode {
+  pub enum Mode {
     AsyncImmediate,
     OverflowReqSync,
     OverflowResSync,
@@ -562,84 +576,71 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub struct TestDispatch {
-    pub dispatch_count: usize,
-    mode: TestDispatchMode,
-  }
+  pub fn setup(mode: Mode) -> (Isolate, Arc<AtomicUsize>) {
+    let dispatch_count = Arc::new(AtomicUsize::new(0));
+    let dispatch_count_ = dispatch_count.clone();
 
-  impl TestDispatch {
-    pub fn setup(mode: TestDispatchMode) -> Isolate<Self> {
-      let mut isolate = Isolate::new(
-        StartupData::None,
-        TestDispatch {
-          dispatch_count: 0,
-          mode,
-        },
-      );
-      js_check(isolate.execute(
-        "setup.js",
-        r#"
-          function assert(cond) {
-            if (!cond) {
-              throw Error("assert");
-            }
+    let mut config = Config::default();
+    config.dispatch(
+      move |control: &[u8], _zero_copy_buf: deno_buf| -> (bool, Box<Op>) {
+        dispatch_count_.fetch_add(1, Ordering::Relaxed);
+        match mode {
+          Mode::AsyncImmediate => {
+            assert_eq!(control.len(), 1);
+            assert_eq!(control[0], 42);
+            let buf = vec![43u8].into_boxed_slice();
+            (false, Box::new(futures::future::ok(buf)))
           }
-          "#,
-      ));
-      assert_eq!(isolate.dispatcher.dispatch_count, 0);
-      isolate
-    }
-  }
+          Mode::OverflowReqSync => {
+            assert_eq!(control.len(), 100 * 1024 * 1024);
+            let buf = vec![43u8].into_boxed_slice();
+            (true, Box::new(futures::future::ok(buf)))
+          }
+          Mode::OverflowResSync => {
+            assert_eq!(control.len(), 1);
+            assert_eq!(control[0], 42);
+            let mut vec = Vec::<u8>::new();
+            vec.resize(100 * 1024 * 1024, 0);
+            vec[0] = 99;
+            let buf = vec.into_boxed_slice();
+            (true, Box::new(futures::future::ok(buf)))
+          }
+          Mode::OverflowReqAsync => {
+            assert_eq!(control.len(), 100 * 1024 * 1024);
+            let buf = vec![43u8].into_boxed_slice();
+            (false, Box::new(futures::future::ok(buf)))
+          }
+          Mode::OverflowResAsync => {
+            assert_eq!(control.len(), 1);
+            assert_eq!(control[0], 42);
+            let mut vec = Vec::<u8>::new();
+            vec.resize(100 * 1024 * 1024, 0);
+            vec[0] = 4;
+            let buf = vec.into_boxed_slice();
+            (false, Box::new(futures::future::ok(buf)))
+          }
+        }
+      },
+    );
 
-  impl Dispatch for TestDispatch {
-    fn dispatch(
-      &mut self,
-      control: &[u8],
-      _zero_copy_buf: deno_buf,
-    ) -> (bool, Box<Op>) {
-      self.dispatch_count += 1;
-      match self.mode {
-        TestDispatchMode::AsyncImmediate => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
-          let buf = vec![43u8].into_boxed_slice();
-          (false, Box::new(futures::future::ok(buf)))
+    let mut isolate = Isolate::new(StartupData::None, config);
+    js_check(isolate.execute(
+      "setup.js",
+      r#"
+        function assert(cond) {
+          if (!cond) {
+            throw Error("assert");
+          }
         }
-        TestDispatchMode::OverflowReqSync => {
-          assert_eq!(control.len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          (true, Box::new(futures::future::ok(buf)))
-        }
-        TestDispatchMode::OverflowResSync => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 99;
-          let buf = vec.into_boxed_slice();
-          (true, Box::new(futures::future::ok(buf)))
-        }
-        TestDispatchMode::OverflowReqAsync => {
-          assert_eq!(control.len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          (false, Box::new(futures::future::ok(buf)))
-        }
-        TestDispatchMode::OverflowResAsync => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 4;
-          let buf = vec.into_boxed_slice();
-          (false, Box::new(futures::future::ok(buf)))
-        }
-      }
-    }
+        "#,
+    ));
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    (isolate, dispatch_count)
   }
 
   #[test]
   fn test_dispatch() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+    let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
     js_check(isolate.execute(
       "filename.js",
       r#"
@@ -651,12 +652,12 @@ pub mod tests {
         main();
         "#,
     ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 2);
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
   }
 
   #[test]
   fn test_mods() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+    let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
     let mod_a = isolate
       .mod_new(
         true,
@@ -668,7 +669,7 @@ pub mod tests {
         Deno.core.send(control);
       "#,
       ).unwrap();
-    assert_eq!(isolate.dispatcher.dispatch_count, 0);
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
     let imports = isolate.mod_get_imports(mod_a);
     assert_eq!(imports, vec!["b.js".to_string()]);
@@ -689,22 +690,22 @@ pub mod tests {
     };
 
     js_check(isolate.mod_instantiate(mod_b, &mut resolve));
-    assert_eq!(isolate.dispatcher.dispatch_count, 0);
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 0);
 
     js_check(isolate.mod_instantiate(mod_a, &mut resolve));
-    assert_eq!(isolate.dispatcher.dispatch_count, 0);
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
     js_check(isolate.mod_evaluate(mod_a));
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
   }
 
   #[test]
   fn test_poll_async_immediate_ops() {
     run_in_task(|| {
-      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+      let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
 
       js_check(isolate.execute(
         "setup2.js",
@@ -715,7 +716,7 @@ pub mod tests {
         });
         "#,
       ));
-      assert_eq!(isolate.dispatcher.dispatch_count, 0);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
       js_check(isolate.execute(
         "check1.js",
         r#"
@@ -725,9 +726,9 @@ pub mod tests {
         assert(nrecv == 0);
         "#,
       ));
-      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       assert_eq!(Ok(Async::Ready(())), isolate.poll());
-      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       js_check(isolate.execute(
         "check2.js",
         r#"
@@ -736,10 +737,10 @@ pub mod tests {
         assert(nrecv == 1);
         "#,
       ));
-      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       assert_eq!(Ok(Async::Ready(())), isolate.poll());
       js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
-      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
       assert_eq!(Ok(Async::Ready(())), isolate.poll());
     });
@@ -748,7 +749,7 @@ pub mod tests {
   #[test]
   fn test_shared() {
     run_in_task(|| {
-      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+      let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
 
       js_check(isolate.execute(
         "setup2.js",
@@ -761,7 +762,7 @@ pub mod tests {
         });
         "#,
       ));
-      assert_eq!(isolate.dispatcher.dispatch_count, 0);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
       js_check(isolate.execute(
         "send1.js",
@@ -776,7 +777,7 @@ pub mod tests {
         assert(nrecv === 0);
         "#,
       ));
-      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       assert_eq!(Ok(Async::Ready(())), isolate.poll());
       js_check(isolate.execute("send1.js", "assert(nrecv === 2);"));
     });
@@ -787,7 +788,7 @@ pub mod tests {
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
     let tx_clone = tx.clone();
 
-    let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+    let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
     let shared = isolate.shared_isolate_handle();
 
     let t1 = std::thread::spawn(move || {
@@ -844,7 +845,7 @@ pub mod tests {
   fn dangling_shared_isolate() {
     let shared = {
       // isolate is dropped at the end of this block
-      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+      let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
       isolate.shared_isolate_handle()
     };
 
@@ -854,7 +855,7 @@ pub mod tests {
 
   #[test]
   fn overflow_req_sync() {
-    let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowReqSync);
+    let (mut isolate, dispatch_count) = setup(Mode::OverflowReqSync);
     js_check(isolate.execute(
       "overflow_req_sync.js",
       r#"
@@ -869,14 +870,14 @@ pub mod tests {
         assert(asyncRecv == 0);
         "#,
     ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]
   fn overflow_res_sync() {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
-    let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResSync);
+    let (mut isolate, dispatch_count) = setup(Mode::OverflowResSync);
     js_check(isolate.execute(
       "overflow_res_sync.js",
       r#"
@@ -891,13 +892,13 @@ pub mod tests {
         assert(asyncRecv == 0);
         "#,
     ));
-    assert_eq!(isolate.dispatcher.dispatch_count, 1);
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]
   fn overflow_req_async() {
     run_in_task(|| {
-      let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowReqAsync);
+      let (mut isolate, dispatch_count) = setup(Mode::OverflowReqAsync);
       js_check(isolate.execute(
         "overflow_req_async.js",
         r#"
@@ -915,7 +916,7 @@ pub mod tests {
         assert(asyncRecv == 0);
         "#,
       ));
-      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       assert_eq!(Ok(Async::Ready(())), isolate.poll());
       js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
     });
@@ -926,7 +927,7 @@ pub mod tests {
     run_in_task(|| {
       // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
       // should optimize this.
-      let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
+      let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
       js_check(isolate.execute(
         "overflow_res_async.js",
         r#"
@@ -943,7 +944,7 @@ pub mod tests {
         assert(asyncRecv == 0);
         "#,
       ));
-      assert_eq!(isolate.dispatcher.dispatch_count, 1);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       assert_eq!(Ok(()), poll_until_ready(&mut isolate, 3));
       js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
     });
@@ -954,7 +955,7 @@ pub mod tests {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
     run_in_task(|| {
-      let mut isolate = TestDispatch::setup(TestDispatchMode::OverflowResAsync);
+      let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
       js_check(isolate.execute(
         "overflow_res_multiple_dispatch_async.js",
         r#"
@@ -974,7 +975,7 @@ pub mod tests {
         Deno.core.dispatch(control);
         "#,
       ));
-      assert_eq!(isolate.dispatcher.dispatch_count, 2);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       assert_eq!(Ok(()), poll_until_ready(&mut isolate, 3));
       js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
     });
@@ -983,7 +984,7 @@ pub mod tests {
   #[test]
   fn test_js() {
     run_in_task(|| {
-      let mut isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+      let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
       js_check(
         isolate.execute(
           "shared_queue_test.js",
