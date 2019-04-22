@@ -244,6 +244,14 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
   assertEquals(r.eof, true);
 });
 
+test(function signalNumbers(): void {
+  if (Deno.platform.os === "mac") {
+    assertEquals(Deno.Signal.SIGSTOP, 17);
+  } else if (Deno.platform.os === "linux") {
+    assertEquals(Deno.Signal.SIGSTOP, 19);
+  }
+});
+
 // Ignore signal tests on windows for now...
 if (Deno.platform.os !== "win") {
   testPerm({ run: true }, async function killSuccess(): Promise<void> {
