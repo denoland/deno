@@ -40,6 +40,12 @@ test(function testingEqual() {
   assert(!equal(/deno/, /node/));
   assert(equal(new Date(2019, 0, 3), new Date(2019, 0, 3)));
   assert(!equal(new Date(2019, 0, 3), new Date(2019, 1, 3)));
+  assert(equal(new Set([1]), new Set([1])));
+  assert(!equal(new Set([1]), new Set([2])));
+  assert(equal(new Set([1, 2, 3]), new Set([3, 2, 1])));
+  assert(!equal(new Set([1, 2]), new Set([3, 2, 1])));
+  assert(!equal(new Set([1, 2, 3]), new Set([4, 5, 6])));
+  assert(equal(new Set("denosaurus"), new Set("denosaurussss")));
 });
 
 test(function testingNotEquals() {
