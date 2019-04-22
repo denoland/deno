@@ -6,39 +6,22 @@ export class URLSearchParams {
 
   constructor(init: string | string[][] | Record<string, string> = "") {
     if (typeof init === "string") {
-      // Overload: USVString
-      // If init is a string and starts with U+003F (?),
-      // remove the first code point from init.
-      if (init.charCodeAt(0) === 0x003f) {
-        init = init.slice(1);
-      }
+      this._handleStringInitialization(init);
+      return;
+    }
 
-      for (const pair of init.split("&")) {
-        // Empty params are ignored
-        if (pair.length === 0) {
-          continue;
-        }
-        const position = pair.indexOf("=");
-        const name = pair.slice(0, position === -1 ? pair.length : position);
-        const value = pair.slice(name.length + 1);
-        this.append(decodeURIComponent(name), decodeURIComponent(value));
-      }
-    } else if (Array.isArray(init)) {
-      // Overload: sequence<sequence<USVString>>
-      for (const tuple of init) {
-        // If pair does not contain exactly two items, then throw a TypeError.
-        requiredArguments(
-          "URLSearchParams.constructor tuple array argument",
-          tuple.length,
-          2
-        );
-        this.append(tuple[0], tuple[1]);
-      }
-    } else if (Object(init) === init) {
-      // Overload: record<USVString, USVString>
-      for (const key of Object.keys(init)) {
-        this.append(key, init[key]);
-      }
+    if (Array.isArray(init)) {
+      this._handleArrayInitialization(init);
+      return;
+    }
+
+    if (Object(init) !== init) {
+      return;
+    }
+
+    // Overload: record<USVString, USVString>
+    for (const key of Object.keys(init)) {
+      this.append(key, init[key]);
     }
   }
 
@@ -248,5 +231,38 @@ export class URLSearchParams {
           `${encodeURIComponent(tuple[0])}=${encodeURIComponent(tuple[1])}`
       )
       .join("&");
+  }
+
+  private _handleStringInitialization(init: string): void {
+    // Overload: USVString
+    // If init is a string and starts with U+003F (?),
+    // remove the first code point from init.
+    if (init.charCodeAt(0) === 0x003f) {
+      init = init.slice(1);
+    }
+
+    for (const pair of init.split("&")) {
+      // Empty params are ignored
+      if (pair.length === 0) {
+        continue;
+      }
+      const position = pair.indexOf("=");
+      const name = pair.slice(0, position === -1 ? pair.length : position);
+      const value = pair.slice(name.length + 1);
+      this.append(decodeURIComponent(name), decodeURIComponent(value));
+    }
+  }
+
+  private _handleArrayInitialization(init: string[][]): void {
+    // Overload: sequence<sequence<USVString>>
+    for (const tuple of init) {
+      // If pair does not contain exactly two items, then throw a TypeError.
+      requiredArguments(
+        "URLSearchParams.constructor tuple array argument",
+        tuple.length,
+        2
+      );
+      this.append(tuple[0], tuple[1]);
+    }
   }
 }
