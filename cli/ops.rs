@@ -14,6 +14,7 @@ use crate::resolve_addr::resolve_addr;
 use crate::resources;
 use crate::resources::table_entries;
 use crate::resources::Resource;
+use crate::signal::kill;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
@@ -171,6 +172,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::GlobalTimer => Some(op_global_timer),
     msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
     msg::Any::IsTTY => Some(op_is_tty),
+    msg::Any::Kill => Some(op_kill),
     msg::Any::Link => Some(op_link),
     msg::Any::Listen => Some(op_listen),
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
@@ -903,6 +905,21 @@ fn op_close(
       resource.close();
       ok_future(empty_buf())
     }
+  }
+}
+
+fn op_kill(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: deno_buf,
+) -> Box<OpWithError> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_kill().unwrap();
+  let pid = inner.pid();
+  let signo = inner.signo();
+  match kill(pid, signo) {
+    Ok(_) => ok_future(empty_buf()),
+    Err(e) => odd_future(e),
   }
 }
 
