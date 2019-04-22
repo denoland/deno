@@ -2,6 +2,7 @@
 export * from "./empty_dir.ts";
 export * from "./ensure_dir.ts";
 export * from "./ensure_file.ts";
+export * from "./ensure_link.ts";
 export * from "./ensure_symlink.ts";
 export * from "./exists.ts";
 export * from "./glob.ts";
