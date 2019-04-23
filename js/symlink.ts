@@ -3,14 +3,14 @@ import * as msg from "gen/cli/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import * as util from "./util";
+import { platform } from "./build";
 
 function req(
   oldname: string,
   newname: string,
   type?: string
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  // TODO Use type for Windows.
-  if (type) {
+  if (platform.os === "win" && type) {
     return util.notImplemented();
   }
   const builder = flatbuffers.createBuilder();
