@@ -65,12 +65,14 @@ pub struct Script<'a> {
 pub enum StartupData<'a> {
   Script(Script<'a>),
   Snapshot(&'a [u8]),
+  LibdenoSnapshot(Snapshot1<'a>),
   None,
 }
 
 #[derive(Default)]
 pub struct Config {
   dispatch: Option<Arc<Fn(&[u8], deno_buf) -> (bool, Box<Op>) + Send + Sync>>,
+  pub will_snapshot: bool,
 }
 
 impl Config {
@@ -129,21 +131,29 @@ impl Isolate {
     let shared = SharedQueue::new(RECOMMENDED_SIZE);
 
     let needs_init = true;
-    // Seperate into Option values for eatch startup type
-    let (startup_snapshot, startup_script) = match startup_data {
-      StartupData::Snapshot(d) => (Some(d), None),
-      StartupData::Script(d) => (None, Some(d)),
-      StartupData::None => (None, None),
-    };
-    let libdeno_config = libdeno::deno_config {
-      will_snapshot: 0,
-      load_snapshot: match startup_snapshot {
-        Some(s) => Snapshot2::from(s),
-        None => Snapshot2::empty(),
-      },
+
+    let mut startup_script: Option<Script> = None;
+    let mut libdeno_config = libdeno::deno_config {
+      will_snapshot: if config.will_snapshot { 1 } else { 0 },
+      load_snapshot: Snapshot2::empty(),
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,
     };
+
+    // Seperate into Option values for each startup type
+    match startup_data {
+      StartupData::Script(d) => {
+        startup_script = Some(d);
+      }
+      StartupData::Snapshot(d) => {
+        libdeno_config.load_snapshot = d.into();
+      }
+      StartupData::LibdenoSnapshot(d) => {
+        libdeno_config.load_snapshot = d;
+      }
+      StartupData::None => {}
+    };
+
     let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
 
     let mut core_isolate = Self {
@@ -342,7 +352,7 @@ impl Isolate {
     out
   }
 
-  pub fn snapshot_new(&self) -> Result<Snapshot1, JSError> {
+  pub fn snapshot(&self) -> Result<Snapshot1<'static>, JSError> {
     let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
     if let Some(js_error) = self.last_exception() {
       assert_eq!(snapshot.data_ptr, null());
@@ -993,5 +1003,22 @@ pub mod tests {
       );
       assert_eq!(Ok(Async::Ready(())), isolate.poll());
     });
+  }
+
+  #[test]
+  fn will_snapshot() {
+    let snapshot = {
+      let mut config = Config::default();
+      config.will_snapshot = true;
+      let mut isolate = Isolate::new(StartupData::None, config);
+      js_check(isolate.execute("a.js", "a = 1 + 2"));
+      let s = isolate.snapshot().unwrap();
+      drop(isolate);
+      s
+    };
+
+    let startup_data = StartupData::LibdenoSnapshot(snapshot);
+    let mut isolate2 = Isolate::new(startup_data, Config::default());
+    js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 }

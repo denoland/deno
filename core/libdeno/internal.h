@@ -38,7 +38,8 @@ class DenoIsolate {
         recv_cb_(config.recv_cb),
         next_zero_copy_id_(1),  // zero_copy_id must not be zero.
         user_data_(nullptr),
-        resolve_cb_(nullptr) {
+        resolve_cb_(nullptr),
+        has_snapshotted_(false) {
     array_buffer_allocator_ = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (config.load_snapshot.data_ptr) {
       snapshot_.data =
@@ -53,7 +54,14 @@ class DenoIsolate {
       delete locker_;
     }
     if (snapshot_creator_) {
-      delete snapshot_creator_;
+      // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
+      // being deallocated if it hasn't created a snapshot yet.
+      // https://github.com/v8/v8/blob/73212783fbd534fac76cc4b66aac899c13f71fc8/src/api.cc#L603
+      // If that assert is removed, this if guard could be removed.
+      // WARNING: There may be false positive LSAN errors here.
+      if (has_snapshotted_) {
+        delete snapshot_creator_;
+      }
     } else {
       isolate_->Dispose();
     }
@@ -120,6 +128,7 @@ class DenoIsolate {
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Persistent<v8::SharedArrayBuffer> shared_ab_;
+  bool has_snapshotted_;
 };
 
 class UserDataScope {

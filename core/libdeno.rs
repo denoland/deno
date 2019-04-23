@@ -126,13 +126,6 @@ unsafe impl Send for deno_snapshot<'_> {}
 /// The type returned from deno_snapshot_new. Needs to be dropped.
 pub type Snapshot1<'a> = deno_snapshot<'a>;
 
-// TODO Does this make sense?
-impl Drop for Snapshot1<'_> {
-  fn drop(&mut self) {
-    unsafe { deno_snapshot_delete(self) }
-  }
-}
-
 /// The type created from slice. Used for loading.
 pub type Snapshot2<'a> = deno_snapshot<'a>;
 
