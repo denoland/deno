@@ -35,7 +35,6 @@ pub type SourceCodeInfoFuture<E> =
   dyn Future<Item = SourceCodeInfo, Error = E> + Send;
 
 pub trait Loader {
-  type Dispatch: crate::isolate::Dispatch;
   type Error: std::error::Error + 'static;
 
   /// Returns an absolute URL.
@@ -49,9 +48,9 @@ pub trait Loader {
 
   fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
     &'a mut self,
-  ) -> (&'b mut Isolate<Self::Dispatch>, &'c mut Modules);
+  ) -> (&'b mut Isolate, &'c mut Modules);
 
-  fn isolate<'a: 'b, 'b>(&'a mut self) -> &'b mut Isolate<Self::Dispatch> {
+  fn isolate<'a: 'b, 'b>(&'a mut self) -> &'b mut Isolate {
     let (isolate, _) = self.isolate_and_modules();
     isolate
   }
@@ -536,14 +535,14 @@ mod tests {
 
   struct MockLoader {
     pub loads: Vec<String>,
-    pub isolate: Isolate<TestDispatch>,
+    pub isolate: Isolate,
     pub modules: Modules,
   }
 
   impl MockLoader {
     fn new() -> Self {
       let modules = Modules::new();
-      let isolate = TestDispatch::setup(TestDispatchMode::AsyncImmediate);
+      let (isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
       Self {
         loads: Vec::new(),
         isolate,
@@ -619,7 +618,6 @@ mod tests {
   }
 
   impl Loader for MockLoader {
-    type Dispatch = TestDispatch;
     type Error = MockError;
 
     fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
@@ -659,7 +657,7 @@ mod tests {
 
     fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
       &'a mut self,
-    ) -> (&'b mut Isolate<Self::Dispatch>, &'c mut Modules) {
+    ) -> (&'b mut Isolate, &'c mut Modules) {
       (&mut self.isolate, &mut self.modules)
     }
   }
