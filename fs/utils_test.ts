@@ -36,21 +36,21 @@ test(function _isSubdir() {
 
 test(function _getFileInfoType() {
   const pairs = [
-    [path.join(testdataDir, "file_type_1"), PathType.file],
-    [path.join(testdataDir, "file_type_dir_1"), PathType.dir]
+    [path.join(testdataDir, "file_type_1"), "file"],
+    [path.join(testdataDir, "file_type_dir_1"), "dir"]
   ];
 
   pairs.forEach(function(p) {
     const filePath = p[0] as string;
     const type = p[1] as PathType;
     switch (type) {
-      case PathType.file:
+      case "file":
         ensureFileSync(filePath);
         break;
-      case PathType.dir:
+      case "dir":
         ensureDirSync(filePath);
         break;
-      case PathType.symlink:
+      case "symlink":
         // TODO(axetroy): test symlink
         break;
     }
