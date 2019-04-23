@@ -1110,9 +1110,18 @@ rust_crate("rustyline") {
   ]
   if (is_posix) {
     extern += [
-      ":nix",
       ":utf8parse",
+
+      # Override: use nix v0.13.0 instead of v0.11.0.
+      ":nix",
     ]
+    ## Override: use nix v0.13.0 instead of v0.11.0.
+    # extern_version = [
+    #   {
+    #     crate_name = "nix"
+    #     crate_version = "0.11.0"
+    #   },
+    # ]
   }
   if (is_win) {
     extern += [ ":winapi" ]
@@ -1336,7 +1345,7 @@ rust_crate("time") {
 
 rust_crate("tokio") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.18/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.19/src/lib.rs"
   features = [
     "bytes",
     "codec",
@@ -1533,7 +1542,7 @@ rust_crate("tokio_rustls") {
 
 rust_crate("tokio_sync") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.4/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.5/src/lib.rs"
   extern = [
     ":fnv",
     ":futures",
@@ -1563,7 +1572,7 @@ rust_crate("tokio_tcp") {
 
 rust_crate("tokio_threadpool") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-threadpool-0.1.13/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-threadpool-0.1.14/src/lib.rs"
   extern = [
     ":crossbeam_deque",
     ":crossbeam_queue",
@@ -1843,7 +1852,7 @@ if (is_posix) {
 
   rust_crate("nix") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/nix-0.11.0/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/nix-0.13.0/src/lib.rs"
     extern = [
       ":bitflags",
       ":cfg_if",
@@ -1930,6 +1939,24 @@ if (is_posix) {
       "allow",
     ]
   }
+
+  ## Override: use nix v0.13.0 instead.
+  # rust_crate("nix-0.11.0") {
+  #   crate_name = "nix"
+  #   crate_version = "0.11.0"
+  #   edition = "2015"
+  #   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/nix-0.11.0/src/lib.rs"
+  #   extern = [
+  #     ":bitflags",
+  #     ":cfg_if",
+  #     ":libc",
+  #     ":void",
+  #   ]
+  #   args = [
+  #     "--cap-lints",
+  #     "allow",
+  #   ]
+  # }
 }
 
 if (is_win) {

@@ -39,17 +39,17 @@ rustyline = "3.0.0"
 serde_json = "1.0.39"
 source-map-mappings = "0.5.0"
 tempfile = "3.0.7"
-tokio = "0.1.18"
+tokio = "0.1.19"
 tokio-executor = "0.1.7"
 tokio-fs = "0.1.6"
 tokio-io = "0.1.12"
 tokio-process = "0.2.3"
 tokio-rustls = "0.9.2"
-tokio-threadpool = "0.1.13"
+tokio-threadpool = "0.1.14"
 url = "1.7.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.7"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.11.0"
+nix = "0.13.0"
