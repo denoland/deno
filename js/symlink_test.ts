@@ -14,6 +14,7 @@ testPerm({ read: true, write: true }, function symlinkSyncSuccess(): void {
     errOnWindows = e;
   }
   if (errOnWindows) {
+    assertEquals(Deno.platform.os, "win");
     assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
     assertEquals(errOnWindows.message, "Not implemented");
   } else {
@@ -36,6 +37,7 @@ test(function symlinkSyncPerm(): void {
 });
 
 // Just for now, until we implement symlink for Windows.
+// Symlink with type should succeed on other platforms with type ignored
 testPerm({ write: true }, function symlinkSyncNotImplemented(): void {
   let err;
   try {
@@ -43,7 +45,10 @@ testPerm({ write: true }, function symlinkSyncNotImplemented(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.message, "Not implemented");
+  if (err) {
+    assertEquals(Deno.platform.os, "win");
+    assertEquals(err.message, "Not implemented");
+  }
 });
 
 testPerm({ read: true, write: true }, async function symlinkSuccess(): Promise<
