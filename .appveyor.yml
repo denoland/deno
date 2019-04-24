@@ -130,7 +130,7 @@ install:
       $env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
 
   # Install a recent Node.js version.
-  - ps: Install-Product -Product node -Version 10 -Platform x64
+  - ps: Install-Product -Product node -Version 12 -Platform x64
 
   # Make sure the right Python version is in PATH, and others are not.
   - ps: |-

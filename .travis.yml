@@ -33,8 +33,8 @@ install:
 # Because prebuilt/ is cached, we need to manually reset changes that might
 # happen to the sha1 files here.
 - git checkout -- prebuilt
-- nvm install v10
-- nvm use --delete-prefix v10
+- nvm install v12
+- nvm use --delete-prefix v12
 - node -v
 - |-
   # Install Rust.
