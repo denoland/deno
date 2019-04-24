@@ -9,7 +9,7 @@ use crate::errors::DenoResult;
 use std::collections::HashSet;
 use std::fmt;
 use std::io;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -129,9 +129,9 @@ impl Default for PermissionAccessor {
 pub struct DenoPermissions {
   // Keep in sync with src/permissions.ts
   pub allow_read: PermissionAccessor,
-  pub read_whitelist: Vec<String>,
+  pub read_whitelist: Arc<HashSet<String>>,
   pub allow_write: PermissionAccessor,
-  pub write_whitelist: Vec<String>,
+  pub write_whitelist: Arc<HashSet<String>>,
   pub allow_net: PermissionAccessor,
   pub net_whitelist: Arc<HashSet<String>>,
   pub allow_env: PermissionAccessor,
@@ -144,9 +144,11 @@ impl DenoPermissions {
   pub fn from_flags(flags: &DenoFlags) -> Self {
     Self {
       allow_read: PermissionAccessor::from(flags.allow_read),
-      read_whitelist: flags.read_whitelist.iter().cloned().collect(),
+      read_whitelist: Arc::new(flags.read_whitelist.iter().cloned().collect()),
       allow_write: PermissionAccessor::from(flags.allow_write),
-      write_whitelist: flags.write_whitelist.iter().cloned().collect(),
+      write_whitelist: Arc::new(
+        flags.write_whitelist.iter().cloned().collect(),
+      ),
       allow_net: PermissionAccessor::from(flags.allow_net),
       net_whitelist: Arc::new(flags.net_whitelist.iter().cloned().collect()),
       allow_env: PermissionAccessor::from(flags.allow_env),
@@ -179,26 +181,23 @@ impl DenoPermissions {
     match self.allow_read.get_state() {
       PermissionAccessorState::Allow => Ok(()),
       state => {
-        let file_path = Path::new(filename);
-        for path in &self.read_whitelist {
-          if file_path.starts_with(path) {
-            return Ok(());
-          }
-        }
-        match state {
-          // This shouldn't be possible but I guess rust doesn't realize.
-          PermissionAccessorState::Allow => Ok(()),
-          PermissionAccessorState::Ask => match self
-            .try_permissions_prompt(&format!("read access to \"{}\"", filename))
-          {
-            Err(e) => Err(e),
-            Ok(v) => {
-              self.allow_read.update_with_prompt_result(&v);
-              v.check()?;
-              Ok(())
-            }
+        match check_path_white_list(filename, &self.read_whitelist) {
+          true => Ok(()),
+          false => match state {
+            // This shouldn't be possible but I guess rust doesn't realize.
+            PermissionAccessorState::Allow => Ok(()),
+            PermissionAccessorState::Ask => match self.try_permissions_prompt(
+              &format!("read access to \"{}\"", filename),
+            ) {
+              Err(e) => Err(e),
+              Ok(v) => {
+                self.allow_read.update_with_prompt_result(&v);
+                v.check()?;
+                Ok(())
+              }
+            },
+            PermissionAccessorState::Deny => Err(permission_denied()),
           },
-          PermissionAccessorState::Deny => Err(permission_denied()),
         }
       }
     }
@@ -208,26 +207,23 @@ impl DenoPermissions {
     match self.allow_write.get_state() {
       PermissionAccessorState::Allow => Ok(()),
       state => {
-        let file_path = Path::new(filename);
-        for path in &self.write_whitelist {
-          if file_path.starts_with(path) {
-            return Ok(());
-          }
-        }
-        match state {
-          // This shouldn't be possible but I guess rust doesn't realize.
-          PermissionAccessorState::Allow => Ok(()),
-          PermissionAccessorState::Ask => match self.try_permissions_prompt(
-            &format!("write access to \"{}\"", filename),
-          ) {
-            Err(e) => Err(e),
-            Ok(v) => {
-              self.allow_write.update_with_prompt_result(&v);
-              v.check()?;
-              Ok(())
-            }
+        match check_path_white_list(filename, &self.write_whitelist) {
+          true => Ok(()),
+          false => match state {
+            // This shouldn't be possible but I guess rust doesn't realize.
+            PermissionAccessorState::Allow => Ok(()),
+            PermissionAccessorState::Ask => match self.try_permissions_prompt(
+              &format!("write access to \"{}\"", filename),
+            ) {
+              Err(e) => Err(e),
+              Ok(v) => {
+                self.allow_write.update_with_prompt_result(&v);
+                v.check()?;
+                Ok(())
+              }
+            },
+            PermissionAccessorState::Deny => Err(permission_denied()),
           },
-          PermissionAccessorState::Deny => Err(permission_denied()),
         }
       }
     }
@@ -399,4 +395,18 @@ fn permission_prompt(message: &str) -> DenoResult<PromptResult> {
       }
     };
   }
+}
+
+fn check_path_white_list(
+  filename: &str,
+  white_list: &Arc<HashSet<String>>,
+) -> bool {
+  let mut path_buf = PathBuf::from(filename);
+
+  while path_buf.pop() == true {
+    if white_list.contains(path_buf.to_str().unwrap()) {
+      return true;
+    }
+  }
+  return false;
 }
