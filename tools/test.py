@@ -66,58 +66,58 @@ def main(argv):
     check_exists(deno_exe)
 
     # Python/build tools testing
-    setup_test()
-    util_test()
-    run([
-        "node", "./node_modules/.bin/ts-node", "--project",
-        "tools/ts_library_builder/tsconfig.json",
-        "tools/ts_library_builder/test.ts"
-    ])
+    # setup_test()
+    # util_test()
+    # run([
+    #     "node", "./node_modules/.bin/ts-node", "--project",
+    #     "tools/ts_library_builder/tsconfig.json",
+    #     "tools/ts_library_builder/test.ts"
+    # ])
 
-    test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
-    check_exists(test_cc)
-    run([test_cc])
+    # test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
+    # check_exists(test_cc)
+    # run([test_cc])
 
-    test_rs = os.path.join(build_dir, "test_rs" + executable_suffix)
-    check_exists(test_rs)
-    run([test_rs])
+    # test_rs = os.path.join(build_dir, "test_rs" + executable_suffix)
+    # check_exists(test_rs)
+    # run([test_rs])
 
     deno_core_test = os.path.join(build_dir,
                                   "deno_core_test" + executable_suffix)
     check_exists(deno_core_test)
     run([deno_core_test])
 
-    deno_core_http_bench_test = os.path.join(
-        build_dir, "deno_core_http_bench_test" + executable_suffix)
-    check_exists(deno_core_http_bench_test)
-    run([deno_core_http_bench_test])
+    # deno_core_http_bench_test = os.path.join(
+    #     build_dir, "deno_core_http_bench_test" + executable_suffix)
+    # check_exists(deno_core_http_bench_test)
+    # run([deno_core_http_bench_test])
 
-    unit_tests(deno_exe)
+    # unit_tests(deno_exe)
 
-    prefetch_test(deno_exe)
-    fmt_test(deno_exe)
+    # prefetch_test(deno_exe)
+    # fmt_test(deno_exe)
 
-    integration_tests(deno_exe)
+    # integration_tests(deno_exe)
 
-    # TODO We currently skip testing the prompt and IsTTY in Windows completely.
-    # Windows does not support the pty module used for testing the permission
-    # prompt.
-    if os.name != 'nt':
-        from is_tty_test import is_tty_test
-        from permission_prompt_test import permission_prompt_test
-        permission_prompt_test(deno_exe)
-        is_tty_test(deno_exe)
+    # # TODO We currently skip testing the prompt and IsTTY in Windows completely.
+    # # Windows does not support the pty module used for testing the permission
+    # # prompt.
+    # if os.name != 'nt':
+    #     from is_tty_test import is_tty_test
+    #     from permission_prompt_test import permission_prompt_test
+    #     permission_prompt_test(deno_exe)
+    #     is_tty_test(deno_exe)
 
-    repl_tests(deno_exe)
+    # repl_tests(deno_exe)
 
-    rmtree(deno_dir)
+    # rmtree(deno_dir)
 
-    deno_dir_test(deno_exe, deno_dir)
+    # deno_dir_test(deno_exe, deno_dir)
 
-    test_no_color(deno_exe)
+    # test_no_color(deno_exe)
 
-    benchmark_test(build_dir, deno_exe)
-    exec_path_test(deno_exe)
+    # benchmark_test(build_dir, deno_exe)
+    # exec_path_test(deno_exe)
 
 
 if __name__ == '__main__':

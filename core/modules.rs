@@ -487,7 +487,6 @@ impl Deps {
           let mut new_prefix = prefix.clone();
           new_prefix.push(if is_last { ' ' } else { '│' });
           new_prefix.push(' ');
-
           Self::helper(seen, new_prefix, new_is_last, modules, dep_name)
         })
         // If any of the children are missing, return None.
@@ -501,28 +500,52 @@ impl Deps {
       })
     }
   }
+  #[allow(dead_code)]
+  fn to_json(&self) -> String {
+    let mut children = "".to_string();
+
+    if let Some(ref deps) = self.deps {
+      if deps.is_empty() {
+        children.push_str("");
+      } else {
+        for d in deps {
+          children.push_str(&d.to_json());
+          if !d.is_last {
+            children.push_str(", ");
+          }
+        }
+      }
+    } else {
+      children.push_str("");
+    }
+    format!(
+      "\n  {}\"{}\": {{{}}}\n{}",
+      " ".repeat(self.prefix.chars().count()),
+      self.name,
+      children,
+      " ".repeat(self.prefix.chars().count())
+    )
+  }
 }
 
 impl fmt::Display for Deps {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let mut has_children = false;
-    if let Some(ref deps) = self.deps {
-      has_children = !deps.is_empty();
-    }
-    write!(
-      f,
-      "{}{}─{} {}",
-      self.prefix,
-      if self.is_last { "└" } else { "├" },
-      if has_children { "┬" } else { "─" },
-      self.name
-    )?;
-
-    if let Some(ref deps) = self.deps {
-      for d in deps {
-        write!(f, "\n{}", d)?;
-      }
-    }
+    write!(f, "{}", self.to_json())?;
+    // let mut children = String::new();
+    // if let Some(ref deps) = self.deps {
+    //   for d in deps {
+    //     children.push_str(&format!("\n{}", d));
+    //   }
+    // }
+    // write!(
+    //   f,
+    //   "{}{}─{} {}{}",
+    //   self.prefix,
+    //   if self.is_last { "└" } else { "├" },
+    //   if !children.is_empty() { "┬" } else { "─" },
+    //   self.name,
+    //   children
+    // )?;
     Ok(())
   }
 }
@@ -920,4 +943,19 @@ mod tests {
     assert_eq!(bar_deps.name, "bar");
     assert_eq!(bar_deps.deps, Some(vec![]));
   }
+
+  #[test]
+  fn test_deps_json() {
+
+
+    let mut mock_modules = Modules::new();
+    mock_modules.register(15, "foo.js");
+    mock_modules.register(16, "bar.js");
+
+    let foo_deps = Deps::new(&mock_modules, "foo.js");
+
+    foo_deps.unwrap().to_json();
+
+  }
+
 }
