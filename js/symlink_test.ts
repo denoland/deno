@@ -39,9 +39,12 @@ test(function symlinkSyncPerm(): void {
 // Just for now, until we implement symlink for Windows.
 // Symlink with type should succeed on other platforms with type ignored
 testPerm({ write: true }, function symlinkSyncNotImplemented(): void {
+  const testDir = Deno.makeTempDirSync();
+  const oldname = testDir + "/oldname";
+  const newname = testDir + "/newname";
   let err;
   try {
-    Deno.symlinkSync("oldname", "newname", "dir");
+    Deno.symlinkSync(oldname, newname, "dir");
   } catch (e) {
     err = e;
   }
