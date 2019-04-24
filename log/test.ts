@@ -22,7 +22,7 @@ class TestHandler extends log.handlers.BaseHandler {
   }
 }
 
-test(async function defaultHandlers() {
+test(async function defaultHandlers(): Promise<void> {
   const loggers = {
     DEBUG: log.debug,
     INFO: log.info,
@@ -59,7 +59,7 @@ test(async function defaultHandlers() {
   }
 });
 
-test(async function getLogger() {
+test(async function getLogger(): Promise<void> {
   const handler = new TestHandler("DEBUG");
 
   await log.setup({
@@ -80,7 +80,7 @@ test(async function getLogger() {
   assertEquals(logger.handlers, [handler]);
 });
 
-test(async function getLoggerWithName() {
+test(async function getLoggerWithName(): Promise<void> {
   const fooHandler = new TestHandler("DEBUG");
 
   await log.setup({
@@ -101,7 +101,7 @@ test(async function getLoggerWithName() {
   assertEquals(logger.handlers, [fooHandler]);
 });
 
-test(async function getLoggerUnknown() {
+test(async function getLoggerUnknown(): Promise<void> {
   await log.setup({
     handlers: {},
     loggers: {}

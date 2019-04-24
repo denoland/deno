@@ -358,11 +358,13 @@ const getKeysOfEnumerableProperties = (object: {}): Array<string | symbol> => {
   const keys: Array<string | symbol> = Object.keys(object).sort();
 
   if (Object.getOwnPropertySymbols) {
-    Object.getOwnPropertySymbols(object).forEach(symbol => {
-      if (Object.getOwnPropertyDescriptor(object, symbol)!.enumerable) {
-        keys.push(symbol);
+    Object.getOwnPropertySymbols(object).forEach(
+      (symbol): void => {
+        if (Object.getOwnPropertyDescriptor(object, symbol)!.enumerable) {
+          keys.push(symbol);
+        }
       }
-    });
+    );
   }
 
   return keys;
@@ -524,7 +526,7 @@ const getConfig = (options: Options): Config => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function format(val: any, options: Optional<Options> = {}): string {
   const opts = Object.keys(DEFAULT_OPTIONS).reduce(
-    (acc: Options, k: keyof Options) => {
+    (acc: Options, k: keyof Options): unknown => {
       const opt = options[k];
       if (typeof opt === "undefined") {
         return { ...acc, [k]: DEFAULT_OPTIONS[k] };

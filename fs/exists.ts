@@ -3,8 +3,8 @@
 /** Test whether or not the given path exists by checking with the file system */
 export async function exists(filePath: string): Promise<boolean> {
   return Deno.lstat(filePath)
-    .then(() => true)
-    .catch(() => false);
+    .then((): boolean => true)
+    .catch((): boolean => false);
 }
 
 /** Test whether or not the given path exists by checking with the file system */

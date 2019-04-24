@@ -3,7 +3,7 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-test(function nums() {
+test(function nums(): void {
   const argv = parse([
     "-x",
     "1234",
@@ -33,7 +33,7 @@ test(function nums() {
   assertEquals(typeof argv._[0], "number");
 });
 
-test(function alreadyNumber() {
+test(function alreadyNumber(): void {
   const argv = parse(["-x", 1234, 789]);
   assertEquals(argv, { x: 1234, _: [789] });
   assertEquals(typeof argv.x, "number");

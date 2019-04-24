@@ -4,16 +4,16 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 
 /** Example of how to do basic tests */
-test(function t1() {
+test(function t1(): void {
   assertEquals("hello", "hello");
 });
 
-test(function t2() {
+test(function t2(): void {
   assertEquals("world", "world");
 });
 
 /** A more complicated test that runs a subprocess. */
-test(async function catSmoke() {
+test(async function catSmoke(): Promise<void> {
   const p = run({
     args: ["deno", "--allow-read", "examples/cat.ts", "README.md"],
     stdout: "piped"

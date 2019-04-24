@@ -3,7 +3,7 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-test(function booleanDefaultTrue() {
+test(function booleanDefaultTrue(): void {
   const argv = parse([], {
     boolean: "sometrue",
     default: { sometrue: true }
@@ -11,7 +11,7 @@ test(function booleanDefaultTrue() {
   assertEquals(argv.sometrue, true);
 });
 
-test(function booleanDefaultFalse() {
+test(function booleanDefaultFalse(): void {
   const argv = parse([], {
     boolean: "somefalse",
     default: { somefalse: false }
@@ -19,7 +19,7 @@ test(function booleanDefaultFalse() {
   assertEquals(argv.somefalse, false);
 });
 
-test(function booleanDefaultNull() {
+test(function booleanDefaultNull(): void {
   const argv = parse([], {
     boolean: "maybe",
     default: { maybe: null }

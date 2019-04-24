@@ -3,7 +3,7 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-test(function booleanAndAliasIsNotUnknown() {
+test(function booleanAndAliasIsNotUnknown(): void {
   const unknown = [];
   function unknownFn(arg): boolean {
     unknown.push(arg);
@@ -22,7 +22,7 @@ test(function booleanAndAliasIsNotUnknown() {
   assertEquals(unknown, ["--derp", "-d"]);
 });
 
-test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown() {
+test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown(): void {
   const unknown = [];
   function unknownFn(arg): boolean {
     unknown.push(arg);
@@ -39,7 +39,7 @@ test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown() {
   });
 });
 
-test(function stringAndAliasIsNotUnkown() {
+test(function stringAndAliasIsNotUnkown(): void {
   const unknown = [];
   function unknownFn(arg): boolean {
     unknown.push(arg);
@@ -58,7 +58,7 @@ test(function stringAndAliasIsNotUnkown() {
   assertEquals(unknown, ["--derp", "-d"]);
 });
 
-test(function defaultAndAliasIsNotUnknown() {
+test(function defaultAndAliasIsNotUnknown(): void {
   const unknown = [];
   function unknownFn(arg): boolean {
     unknown.push(arg);
@@ -77,7 +77,7 @@ test(function defaultAndAliasIsNotUnknown() {
   assertEquals(unknown, []);
 });
 
-test(function valueFollowingDoubleHyphenIsNotUnknown() {
+test(function valueFollowingDoubleHyphenIsNotUnknown(): void {
   const unknown = [];
   function unknownFn(arg): boolean {
     unknown.push(arg);

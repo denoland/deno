@@ -30,7 +30,7 @@ function killFileServer(): void {
   fileServer.stdout.close();
 }
 
-test(async function serveFile() {
+test(async function serveFile(): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/azure-pipelines.yml");
@@ -47,7 +47,7 @@ test(async function serveFile() {
   }
 });
 
-test(async function serveDirectory() {
+test(async function serveDirectory(): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/");
@@ -60,7 +60,7 @@ test(async function serveDirectory() {
   }
 });
 
-test(async function serveFallback() {
+test(async function serveFallback(): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/badfile.txt");

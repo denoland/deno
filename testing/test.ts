@@ -13,7 +13,7 @@ import "./pretty_test.ts";
 import "./asserts_test.ts";
 import "./bench_test.ts";
 
-test(function testingAssertEqualActualUncoercable() {
+test(function testingAssertEqualActualUncoercable(): void {
   let didThrow = false;
   const a = Object.create(null);
   try {
@@ -24,7 +24,7 @@ test(function testingAssertEqualActualUncoercable() {
   assert(didThrow);
 });
 
-test(function testingAssertEqualExpectedUncoercable() {
+test(function testingAssertEqualExpectedUncoercable(): void {
   let didThrow = false;
   const a = Object.create(null);
   try {
@@ -35,13 +35,13 @@ test(function testingAssertEqualExpectedUncoercable() {
   assert(didThrow);
 });
 
-test(function testingAssertStrictEqual() {
+test(function testingAssertStrictEqual(): void {
   const a = {};
   const b = a;
   assertStrictEq(a, b);
 });
 
-test(function testingAssertNotStrictEqual() {
+test(function testingAssertNotStrictEqual(): void {
   let didThrow = false;
   const a = {};
   const b = {};
@@ -54,23 +54,27 @@ test(function testingAssertNotStrictEqual() {
   assert(didThrow);
 });
 
-test(function testingDoesThrow() {
+test(function testingDoesThrow(): void {
   let count = 0;
-  assertThrows(() => {
-    count++;
-    throw new Error();
-  });
+  assertThrows(
+    (): void => {
+      count++;
+      throw new Error();
+    }
+  );
   assert(count === 1);
 });
 
-test(function testingDoesNotThrow() {
+test(function testingDoesNotThrow(): void {
   let count = 0;
   let didThrow = false;
   try {
-    assertThrows(() => {
-      count++;
-      console.log("Hello world");
-    });
+    assertThrows(
+      (): void => {
+        count++;
+        console.log("Hello world");
+      }
+    );
   } catch (e) {
     assert(e.message === "Expected function to throw.");
     didThrow = true;
@@ -79,20 +83,20 @@ test(function testingDoesNotThrow() {
   assert(didThrow);
 });
 
-test(function testingThrowsErrorType() {
+test(function testingThrowsErrorType(): void {
   let count = 0;
-  assertThrows(() => {
+  assertThrows((): void => {
     count++;
     throw new TypeError();
   }, TypeError);
   assert(count === 1);
 });
 
-test(function testingThrowsNotErrorType() {
+test(function testingThrowsNotErrorType(): void {
   let count = 0;
   let didThrow = false;
   try {
-    assertThrows(() => {
+    assertThrows((): void => {
       count++;
       throw new TypeError();
     }, RangeError);
@@ -104,10 +108,10 @@ test(function testingThrowsNotErrorType() {
   assert(didThrow);
 });
 
-test(function testingThrowsMsgIncludes() {
+test(function testingThrowsMsgIncludes(): void {
   let count = 0;
   assertThrows(
-    () => {
+    (): void => {
       count++;
       throw new TypeError("Hello world!");
     },
@@ -117,12 +121,12 @@ test(function testingThrowsMsgIncludes() {
   assert(count === 1);
 });
 
-test(function testingThrowsMsgNotIncludes() {
+test(function testingThrowsMsgNotIncludes(): void {
   let count = 0;
   let didThrow = false;
   try {
     assertThrows(
-      () => {
+      (): void => {
         count++;
         throw new TypeError("Hello world!");
       },
@@ -140,32 +144,38 @@ test(function testingThrowsMsgNotIncludes() {
   assert(didThrow);
 });
 
-test(async function testingDoesThrowAsync() {
+test(async function testingDoesThrowAsync(): Promise<void> {
   let count = 0;
-  await assertThrowsAsync(async () => {
-    count++;
-    throw new Error();
-  });
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      count++;
+      throw new Error();
+    }
+  );
   assert(count === 1);
 });
 
-test(async function testingDoesReject() {
+test(async function testingDoesReject(): Promise<void> {
   let count = 0;
-  await assertThrowsAsync(() => {
-    count++;
-    return Promise.reject(new Error());
-  });
+  await assertThrowsAsync(
+    (): Promise<never> => {
+      count++;
+      return Promise.reject(new Error());
+    }
+  );
   assert(count === 1);
 });
 
-test(async function testingDoesNotThrowAsync() {
+test(async function testingDoesNotThrowAsync(): Promise<void> {
   let count = 0;
   let didThrow = false;
   try {
-    await assertThrowsAsync(async () => {
-      count++;
-      console.log("Hello world");
-    });
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        count++;
+        console.log("Hello world");
+      }
+    );
   } catch (e) {
     assert(e.message === "Expected function to throw.");
     didThrow = true;
@@ -174,15 +184,17 @@ test(async function testingDoesNotThrowAsync() {
   assert(didThrow);
 });
 
-test(async function testingDoesNotRejectAsync() {
+test(async function testingDoesNotRejectAsync(): Promise<void> {
   let count = 0;
   let didThrow = false;
   try {
-    await assertThrowsAsync(() => {
-      count++;
-      console.log("Hello world");
-      return Promise.resolve();
-    });
+    await assertThrowsAsync(
+      (): Promise<void> => {
+        count++;
+        console.log("Hello world");
+        return Promise.resolve();
+      }
+    );
   } catch (e) {
     assert(e.message === "Expected function to throw.");
     didThrow = true;
@@ -191,20 +203,20 @@ test(async function testingDoesNotRejectAsync() {
   assert(didThrow);
 });
 
-test(async function testingThrowsAsyncErrorType() {
+test(async function testingThrowsAsyncErrorType(): Promise<void> {
   let count = 0;
-  await assertThrowsAsync(async () => {
+  await assertThrowsAsync((): Promise<void> => {
     count++;
     throw new TypeError();
   }, TypeError);
   assert(count === 1);
 });
 
-test(async function testingThrowsAsyncNotErrorType() {
+test(async function testingThrowsAsyncNotErrorType(): Promise<void> {
   let count = 0;
   let didThrow = false;
   try {
-    await assertThrowsAsync(async () => {
+    await assertThrowsAsync(async (): Promise<void> => {
       count++;
       throw new TypeError();
     }, RangeError);
@@ -216,10 +228,10 @@ test(async function testingThrowsAsyncNotErrorType() {
   assert(didThrow);
 });
 
-test(async function testingThrowsAsyncMsgIncludes() {
+test(async function testingThrowsAsyncMsgIncludes(): Promise<void> {
   let count = 0;
   await assertThrowsAsync(
-    async () => {
+    async (): Promise<void> => {
       count++;
       throw new TypeError("Hello world!");
     },
@@ -229,12 +241,12 @@ test(async function testingThrowsAsyncMsgIncludes() {
   assert(count === 1);
 });
 
-test(async function testingThrowsAsyncMsgNotIncludes() {
+test(async function testingThrowsAsyncMsgNotIncludes(): Promise<void> {
   let count = 0;
   let didThrow = false;
   try {
     await assertThrowsAsync(
-      async () => {
+      async (): Promise<void> => {
         count++;
         throw new TypeError("Hello world!");
       },

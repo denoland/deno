@@ -39,9 +39,11 @@ export class Logger {
       levelName: getLevelName(level)
     };
 
-    this.handlers.forEach(handler => {
-      handler.handle(record);
-    });
+    this.handlers.forEach(
+      (handler): void => {
+        handler.handle(record);
+      }
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

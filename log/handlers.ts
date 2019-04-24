@@ -37,16 +37,19 @@ export class BaseHandler {
       return this.formatter(logRecord);
     }
 
-    return this.formatter.replace(/{(\S+)}/g, (match, p1) => {
-      const value = logRecord[p1];
+    return this.formatter.replace(
+      /{(\S+)}/g,
+      (match, p1): string => {
+        const value = logRecord[p1];
 
-      // do not interpolate missing values
-      if (!value) {
-        return match;
+        // do not interpolate missing values
+        if (!value) {
+          return match;
+        }
+
+        return value;
       }
-
-      return value;
-    });
+    );
   }
 
   log(_msg: string): void {}

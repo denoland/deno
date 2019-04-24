@@ -28,12 +28,14 @@ interface Deferred {
 }
 
 function deferred(isResolved = false): Deferred {
-  let resolve: Handler = () => void 0;
-  let reject: Handler = () => void 0;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
+  let resolve: Handler = (): void => void 0;
+  let reject: Handler = (): void => void 0;
+  const promise = new Promise(
+    (res, rej): void => {
+      resolve = res;
+      reject = rej;
+    }
+  );
   if (isResolved) {
     resolve();
   }
@@ -64,7 +66,7 @@ const responseTests: ResponseTest[] = [
   }
 ];
 
-test(async function responseWrite() {
+test(async function responseWrite(): Promise<void> {
   for (const testCase of responseTests) {
     const buf = new Buffer();
     const bufw = new BufWriter(buf);
@@ -75,15 +77,15 @@ test(async function responseWrite() {
       localAddr: "",
       remoteAddr: "",
       rid: -1,
-      closeRead: () => {},
-      closeWrite: () => {},
-      read: async () => {
+      closeRead: (): void => {},
+      closeWrite: (): void => {},
+      read: async (): Promise<Deno.ReadResult> => {
         return { eof: true, nread: 0 };
       },
-      write: async () => {
+      write: async (): Promise<number> => {
         return -1;
       },
-      close: () => {},
+      close: (): void => {},
       lastPipelineId: 0,
       pendingDeferredMap: new Map([[0, deferred(true)], [1, deferred()]])
     };
@@ -93,7 +95,7 @@ test(async function responseWrite() {
   }
 });
 
-test(async function requestBodyWithContentLength() {
+test(async function requestBodyWithContentLength(): Promise<void> {
   {
     const req = new ServerRequest();
     req.headers = new Headers();
@@ -117,7 +119,7 @@ test(async function requestBodyWithContentLength() {
   }
 });
 
-test(async function requestBodyWithTransferEncoding() {
+test(async function requestBodyWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -166,7 +168,7 @@ test(async function requestBodyWithTransferEncoding() {
   }
 });
 
-test(async function requestBodyStreamWithContentLength() {
+test(async function requestBodyStreamWithContentLength(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -201,7 +203,7 @@ test(async function requestBodyStreamWithContentLength() {
   }
 });
 
-test(async function requestBodyStreamWithTransferEncoding() {
+test(async function requestBodyStreamWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();

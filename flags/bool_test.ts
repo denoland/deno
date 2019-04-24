@@ -3,7 +3,7 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-test(function flagBooleanDefaultFalse() {
+test(function flagBooleanDefaultFalse(): void {
   const argv = parse(["moo"], {
     boolean: ["t", "verbose"],
     default: { verbose: false, t: false }
@@ -19,7 +19,7 @@ test(function flagBooleanDefaultFalse() {
   assertEquals(typeof argv.t, "boolean");
 });
 
-test(function booleanGroups() {
+test(function booleanGroups(): void {
   const argv = parse(["-x", "-z", "one", "two", "three"], {
     boolean: ["x", "y", "z"]
   });
@@ -36,7 +36,7 @@ test(function booleanGroups() {
   assertEquals(typeof argv.z, "boolean");
 });
 
-test(function booleanAndAliasWithChainableApi() {
+test(function booleanAndAliasWithChainableApi(): void {
   const aliased = ["-h", "derp"];
   const regular = ["--herp", "derp"];
   const aliasedArgv = parse(aliased, {
@@ -57,7 +57,7 @@ test(function booleanAndAliasWithChainableApi() {
   assertEquals(propertyArgv, expected);
 });
 
-test(function booleanAndAliasWithOptionsHash() {
+test(function booleanAndAliasWithOptionsHash(): void {
   const aliased = ["-h", "derp"];
   const regular = ["--herp", "derp"];
   const opts = {
@@ -75,7 +75,7 @@ test(function booleanAndAliasWithOptionsHash() {
   assertEquals(propertyArgv, expected);
 });
 
-test(function booleanAndAliasArrayWithOptionsHash() {
+test(function booleanAndAliasArrayWithOptionsHash(): void {
   const aliased = ["-h", "derp"];
   const regular = ["--herp", "derp"];
   const alt = ["--harp", "derp"];
@@ -97,7 +97,7 @@ test(function booleanAndAliasArrayWithOptionsHash() {
   assertEquals(altPropertyArgv, expected);
 });
 
-test(function booleanAndAliasUsingExplicitTrue() {
+test(function booleanAndAliasUsingExplicitTrue(): void {
   const aliased = ["-h", "true"];
   const regular = ["--herp", "true"];
   const opts = {
@@ -118,7 +118,7 @@ test(function booleanAndAliasUsingExplicitTrue() {
 
 // regression, see https://github.com/substack/node-optimist/issues/71
 // boolean and --x=true
-test(function booleanAndNonBoolean() {
+test(function booleanAndNonBoolean(): void {
   const parsed = parse(["--boool", "--other=true"], {
     boolean: "boool"
   });
@@ -134,7 +134,7 @@ test(function booleanAndNonBoolean() {
   assertEquals(parsed2.other, "false");
 });
 
-test(function booleanParsingTrue() {
+test(function booleanParsingTrue(): void {
   const parsed = parse(["--boool=true"], {
     default: {
       boool: false
@@ -145,7 +145,7 @@ test(function booleanParsingTrue() {
   assertEquals(parsed.boool, true);
 });
 
-test(function booleanParsingFalse() {
+test(function booleanParsingFalse(): void {
   const parsed = parse(["--boool=false"], {
     default: {
       boool: true

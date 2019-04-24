@@ -5,7 +5,7 @@ import * as path from "./path/mod.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(function testReadFileSync() {
+test(function testReadFileSync(): void {
   const jsonFile = path.join(testdataDir, "write_file_1.json");
   const content = "write_file_str_test";
   writeFileStrSync(jsonFile, content);
@@ -21,7 +21,7 @@ test(function testReadFileSync() {
   assertEquals(content, result);
 });
 
-test(async function testReadFile() {
+test(async function testReadFile(): Promise<void> {
   const jsonFile = path.join(testdataDir, "write_file_2.json");
   const content = "write_file_str_test";
   await writeFileStr(jsonFile, content);

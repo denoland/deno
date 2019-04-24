@@ -399,12 +399,12 @@ class Dumper {
     const out = [];
     const props = Object.keys(obj);
     const propObj = props.filter(
-      e =>
+      (e): boolean =>
         (obj[e] instanceof Array && !this._isSimplySerializable(obj[e][0])) ||
         !this._isSimplySerializable(obj[e])
     );
     const propPrim = props.filter(
-      e =>
+      (e): boolean =>
         !(obj[e] instanceof Array && !this._isSimplySerializable(obj[e][0])) &&
         this._isSimplySerializable(obj[e])
     );

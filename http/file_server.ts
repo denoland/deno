@@ -76,9 +76,11 @@ function modeToString(isDir: boolean, maybeMode: number | null): string {
     .split("")
     .reverse()
     .slice(0, 3)
-    .forEach(v => {
-      output = modeMap[+v] + output;
-    });
+    .forEach(
+      (v): void => {
+        output = modeMap[+v] + output;
+      }
+    );
   output = `(${isDir ? "d" : "-"}${output})`;
   return output;
 }
@@ -220,30 +222,33 @@ function setCORS(res: Response): void {
   );
 }
 
-listenAndServe(addr, async req => {
-  const fileName = req.url.replace(/\/$/, "");
-  const filePath = currentDir + fileName;
+listenAndServe(
+  addr,
+  async (req): Promise<void> => {
+    const fileName = req.url.replace(/\/$/, "");
+    const filePath = currentDir + fileName;
 
-  let response: Response;
+    let response: Response;
 
-  try {
-    const fileInfo = await stat(filePath);
-    if (fileInfo.isDirectory()) {
-      // Bug with deno.stat: name and path not populated
-      // Yuck!
-      response = await serveDir(req, filePath, fileName);
-    } else {
-      response = await serveFile(req, filePath);
+    try {
+      const fileInfo = await stat(filePath);
+      if (fileInfo.isDirectory()) {
+        // Bug with deno.stat: name and path not populated
+        // Yuck!
+        response = await serveDir(req, filePath, fileName);
+      } else {
+        response = await serveFile(req, filePath);
+      }
+    } catch (e) {
+      response = await serveFallback(req, e);
+    } finally {
+      if (CORSEnabled) {
+        setCORS(response);
+      }
+      serverLog(req, response);
+      req.respond(response);
     }
-  } catch (e) {
-    response = await serveFallback(req, e);
-  } finally {
-    if (CORSEnabled) {
-      setCORS(response);
-    }
-    serverLog(req, response);
-    req.respond(response);
   }
-});
+);
 
 console.log(`HTTP server listening on http://${addr}/`);

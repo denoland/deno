@@ -4,3 +4,4 @@ deno.d.ts
 node_modules
 package.json
 package-lock.json
+.vscode

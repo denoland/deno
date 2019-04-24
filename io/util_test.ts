@@ -5,7 +5,7 @@ import { assert, assertEquals } from "../testing/asserts.ts";
 import { copyBytes, tempFile } from "./util.ts";
 import * as path from "../fs/path.ts";
 
-test(function testCopyBytes() {
+test(function testCopyBytes(): void {
   let dst = new Uint8Array(4);
 
   dst.fill(0);
@@ -39,7 +39,7 @@ test(function testCopyBytes() {
   assertEquals(dst, Uint8Array.of(3, 4, 0, 0));
 });
 
-test(async function ioTempfile() {
+test(async function ioTempfile(): Promise<void> {
   const f = await tempFile(".", {
     prefix: "prefix-",
     postfix: "-postfix"

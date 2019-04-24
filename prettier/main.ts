@@ -188,7 +188,7 @@ async function checkSourceFiles(
 
   const results = await Promise.all(checks);
 
-  if (results.every(result => result)) {
+  if (results.every((result): boolean => result)) {
     console.log("Every file is formatted");
     exit(0);
   } else {
@@ -240,10 +240,12 @@ async function main(opts): Promise<void> {
   }
   const options = { flags: "g" };
   const skip = Array.isArray(ignore)
-    ? ignore.map((i: string) => glob(i, options))
+    ? ignore.map((i: string): RegExp => glob(i, options))
     : [glob(ignore, options)];
   const match =
-    args.length > 0 ? args.map((a: string) => glob(a, options)) : undefined;
+    args.length > 0
+      ? args.map((a: string): RegExp => glob(a, options))
+      : undefined;
   const files = walk(".", { match, skip });
   try {
     if (check) {

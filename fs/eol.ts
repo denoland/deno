@@ -17,7 +17,7 @@ export function detect(content: string): EOL | null {
   if (!d || d.length === 0) {
     return null;
   }
-  const crlf = d.filter((x: string) => x === EOL.CRLF);
+  const crlf = d.filter((x: string): boolean => x === EOL.CRLF);
   if (crlf.length > 0) {
     return EOL.CRLF;
   } else {

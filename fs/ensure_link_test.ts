@@ -11,32 +11,36 @@ import * as path from "./path/mod.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(async function ensureLinkIfItNotExist() {
+test(async function ensureLinkIfItNotExist(): Promise<void> {
   const srcDir = path.join(testdataDir, "ensure_link_1");
   const destDir = path.join(testdataDir, "ensure_link_1_2");
   const testFile = path.join(srcDir, "test.txt");
   const linkFile = path.join(destDir, "link.txt");
 
-  await assertThrowsAsync(async () => {
-    await ensureLink(testFile, linkFile);
-  });
+  await assertThrowsAsync(
+    (): Promise<void> => {
+      await ensureLink(testFile, linkFile);
+    }
+  );
 
   await Deno.remove(destDir, { recursive: true });
 });
 
-test(function ensureLinkSyncIfItNotExist() {
+test(function ensureLinkSyncIfItNotExist(): void {
   const testDir = path.join(testdataDir, "ensure_link_2");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
 
-  assertThrows(() => {
-    ensureLinkSync(testFile, linkFile);
-  });
+  assertThrows(
+    (): void => {
+      ensureLinkSync(testFile, linkFile);
+    }
+  );
 
   Deno.removeSync(testDir, { recursive: true });
 });
 
-test(async function ensureLinkIfItExist() {
+test(async function ensureLinkIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_link_3");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -83,7 +87,7 @@ test(async function ensureLinkIfItExist() {
   await Deno.remove(testDir, { recursive: true });
 });
 
-test(function ensureLinkSyncIfItExist() {
+test(function ensureLinkSyncIfItExist(): void {
   const testDir = path.join(testdataDir, "ensure_link_4");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -131,7 +135,7 @@ test(function ensureLinkSyncIfItExist() {
   Deno.removeSync(testDir, { recursive: true });
 });
 
-test(async function ensureLinkDirectoryIfItExist() {
+test(async function ensureLinkDirectoryIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_link_origin_3");
   const linkDir = path.join(testdataDir, "ensure_link_link_3");
   const testFile = path.join(testDir, "test.txt");
@@ -140,7 +144,7 @@ test(async function ensureLinkDirectoryIfItExist() {
   await Deno.writeFile(testFile, new Uint8Array());
 
   await assertThrowsAsync(
-    async () => {
+    async (): Promise<void> => {
       await ensureLink(testDir, linkDir);
     },
     Deno.DenoError,
@@ -150,7 +154,7 @@ test(async function ensureLinkDirectoryIfItExist() {
   Deno.removeSync(testDir, { recursive: true });
 });
 
-test(function ensureLinkSyncDirectoryIfItExist() {
+test(function ensureLinkSyncDirectoryIfItExist(): void {
   const testDir = path.join(testdataDir, "ensure_link_origin_3");
   const linkDir = path.join(testdataDir, "ensure_link_link_3");
   const testFile = path.join(testDir, "test.txt");
@@ -159,7 +163,7 @@ test(function ensureLinkSyncDirectoryIfItExist() {
   Deno.writeFileSync(testFile, new Uint8Array());
 
   assertThrows(
-    () => {
+    (): void => {
       ensureLinkSync(testDir, linkDir);
     },
     Deno.DenoError,

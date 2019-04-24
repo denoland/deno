@@ -18,9 +18,9 @@ function createStr(v: unknown): string {
 function createColor(diffType: DiffType): (s: string) => string {
   switch (diffType) {
     case DiffType.added:
-      return (s: string) => green(bold(s));
+      return (s: string): string => green(bold(s));
     case DiffType.removed:
-      return (s: string) => red(bold(s));
+      return (s: string): string => red(bold(s));
     default:
       return white;
   }
@@ -46,10 +46,12 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   );
   messages.push("");
   messages.push("");
-  diffResult.forEach((result: DiffResult<string>) => {
-    const c = createColor(result.type);
-    messages.push(c(`${createSign(result.type)}${result.value}`));
-  });
+  diffResult.forEach(
+    (result: DiffResult<string>): void => {
+      const c = createColor(result.type);
+      messages.push(c(`${createSign(result.type)}${result.value}`));
+    }
+  );
   messages.push("");
 
   return messages;

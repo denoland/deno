@@ -35,7 +35,7 @@ function matchSegments(t, pattern, ifUnix, ifWin, opts): GlobrexResult {
 
 test({
   name: "globrex: standard",
-  fn() {
+  fn(): void {
     let res = globrex("*.js");
     t.equal(typeof globrex, "function", "constructor is a typeof function");
     t.equal(res instanceof Object, true, "returns object");
@@ -45,7 +45,7 @@ test({
 
 test({
   name: "globrex: Standard * matching",
-  fn() {
+  fn(): void {
     t.equal(match("*", "foo"), true, "match everything");
     t.equal(match("*", "foo", { flags: "g" }), true, "match everything");
     t.equal(match("f*", "foo"), true, "match the end");
@@ -75,7 +75,7 @@ test({
 
 test({
   name: "globrex: advance * matching",
-  fn() {
+  fn(): void {
     t.equal(
       match("*.min.js", "http://example.com/jquery.min.js", {
         globstar: false
@@ -186,7 +186,7 @@ test({
 
 test({
   name: "globrex: ? match one character, no more and no less",
-  fn() {
+  fn(): void {
     t.equal(match("f?o", "foo", { extended: true }), true);
     t.equal(match("f?o", "fooo", { extended: true }), false);
     t.equal(match("f?oo", "foo", { extended: true }), false);
@@ -226,7 +226,7 @@ test({
 
 test({
   name: "globrex: [] match a character range",
-  fn() {
+  fn(): void {
     t.equal(match("fo[oz]", "foo", { extended: true }), true);
     t.equal(match("fo[oz]", "foz", { extended: true }), true);
     t.equal(match("fo[oz]", "fog", { extended: true }), false);
@@ -257,7 +257,7 @@ test({
 
 test({
   name: "globrex: [] extended character ranges",
-  fn() {
+  fn(): void {
     t.equal(
       match("[[:alnum:]]/bar.txt", "a/bar.txt", { extended: true }),
       true
@@ -315,7 +315,7 @@ test({
 
 test({
   name: "globrex: {} match a choice of different substrings",
-  fn() {
+  fn(): void {
     t.equal(match("foo{bar,baaz}", "foobaaz", { extended: true }), true);
     t.equal(match("foo{bar,baaz}", "foobar", { extended: true }), true);
     t.equal(match("foo{bar,baaz}", "foobuzz", { extended: true }), false);
@@ -363,7 +363,7 @@ test({
 
 test({
   name: "globrex: complex extended matches",
-  fn() {
+  fn(): void {
     t.equal(
       match(
         "http://?o[oz].b*z.com/{*.js,*.html}",
@@ -455,7 +455,7 @@ test({
 
 test({
   name: "globrex: standard globstar",
-  fn() {
+  fn(): void {
     const tester = (globstar): void => {
       t.equal(
         match(
@@ -490,7 +490,7 @@ test({
 
 test({
   name: "globrex: remaining chars should match themself",
-  fn() {
+  fn(): void {
     const tester = (globstar): void => {
       const testExtStr = "\\/$^+.()=!|,.*";
       t.equal(match(testExtStr, testExtStr, { extended: true }), true);
@@ -507,7 +507,7 @@ test({
 
 test({
   name: "globrex: globstar advance testing",
-  fn() {
+  fn(): void {
     t.equal(match("/foo/*", "/foo/bar.txt", { globstar: true }), true);
     t.equal(match("/foo/**", "/foo/bar.txt", { globstar: true }), true);
     t.equal(match("/foo/**", "/foo/bar/baz.txt", { globstar: true }), true);
@@ -647,7 +647,7 @@ test({
 
 test({
   name: "globrex: extended extglob ?",
-  fn() {
+  fn(): void {
     t.equal(match("(foo).txt", "(foo).txt", { extended: true }), true);
     t.equal(match("?(foo).txt", "foo.txt", { extended: true }), true);
     t.equal(match("?(foo).txt", ".txt", { extended: true }), true);
@@ -700,7 +700,7 @@ test({
 
 test({
   name: "globrex: extended extglob *",
-  fn() {
+  fn(): void {
     t.equal(match("*(foo).txt", "foo.txt", { extended: true }), true);
     t.equal(match("*foo.txt", "bofoo.txt", { extended: true }), true);
     t.equal(match("*(foo).txt", "foofoo.txt", { extended: true }), true);
@@ -737,7 +737,7 @@ test({
 
 test({
   name: "globrex: extended extglob +",
-  fn() {
+  fn(): void {
     t.equal(match("+(foo).txt", "foo.txt", { extended: true }), true);
     t.equal(match("+foo.txt", "+foo.txt", { extended: true }), true);
     t.equal(match("+(foo).txt", ".txt", { extended: true }), false);
@@ -747,7 +747,7 @@ test({
 
 test({
   name: "globrex: extended extglob @",
-  fn() {
+  fn(): void {
     t.equal(match("@(foo).txt", "foo.txt", { extended: true }), true);
     t.equal(match("@foo.txt", "@foo.txt", { extended: true }), true);
     t.equal(match("@(foo|baz)bar.txt", "foobar.txt", { extended: true }), true);
@@ -768,7 +768,7 @@ test({
 
 test({
   name: "globrex: extended extglob !",
-  fn() {
+  fn(): void {
     t.equal(match("!(boo).txt", "foo.txt", { extended: true }), true);
     t.equal(match("!(foo|baz)bar.txt", "buzbar.txt", { extended: true }), true);
     t.equal(match("!bar.txt", "!bar.txt", { extended: true }), true);
@@ -785,7 +785,7 @@ test({
 
 test({
   name: "globrex: strict",
-  fn() {
+  fn(): void {
     t.equal(match("foo//bar.txt", "foo/bar.txt"), true);
     t.equal(match("foo///bar.txt", "foo/bar.txt"), true);
     t.equal(match("foo///bar.txt", "foo/bar.txt", { strict: true }), false);
@@ -794,7 +794,7 @@ test({
 
 test({
   name: "globrex: filepath path-regex",
-  fn() {
+  fn(): void {
     let opts = { extended: true, filepath: true, globstar: false },
       res,
       pattern;
@@ -847,7 +847,7 @@ test({
 
 test({
   name: "globrex: filepath path segments",
-  fn() {
+  fn(): void {
     let opts = { extended: true },
       win,
       unix;
@@ -895,7 +895,7 @@ test({
 
 test({
   name: "globrex: stress testing",
-  fn() {
+  fn(): void {
     t.equal(
       match("**/*/?yfile.{md,js,txt}", "foo/bar/baz/myfile.md", {
         extended: true

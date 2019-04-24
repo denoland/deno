@@ -29,7 +29,7 @@ async function readBytes(buf: BufReader): Promise<string> {
   return decoder.decode(b.subarray(0, nb));
 }
 
-test(async function bufioReaderSimple() {
+test(async function bufioReaderSimple(): Promise<void> {
   const data = "hello world";
   const b = new BufReader(stringsReader(data));
   const s = await readBytes(b);
@@ -42,9 +42,12 @@ interface ReadMaker {
 }
 
 const readMakers: ReadMaker[] = [
-  { name: "full", fn: r => r },
-  { name: "byte", fn: r => new iotest.OneByteReader(r) },
-  { name: "half", fn: r => new iotest.HalfReader(r) }
+  { name: "full", fn: (r): Reader => r },
+  {
+    name: "byte",
+    fn: (r): iotest.OneByteReader => new iotest.OneByteReader(r)
+  },
+  { name: "half", fn: (r): iotest.HalfReader => new iotest.HalfReader(r) }
   // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
   // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
 ];
@@ -70,12 +73,12 @@ interface NamedBufReader {
 }
 
 const bufreaders: NamedBufReader[] = [
-  { name: "1", fn: (b: BufReader) => reads(b, 1) },
-  { name: "2", fn: (b: BufReader) => reads(b, 2) },
-  { name: "3", fn: (b: BufReader) => reads(b, 3) },
-  { name: "4", fn: (b: BufReader) => reads(b, 4) },
-  { name: "5", fn: (b: BufReader) => reads(b, 5) },
-  { name: "7", fn: (b: BufReader) => reads(b, 7) },
+  { name: "1", fn: (b: BufReader): Promise<string> => reads(b, 1) },
+  { name: "2", fn: (b: BufReader): Promise<string> => reads(b, 2) },
+  { name: "3", fn: (b: BufReader): Promise<string> => reads(b, 3) },
+  { name: "4", fn: (b: BufReader): Promise<string> => reads(b, 4) },
+  { name: "5", fn: (b: BufReader): Promise<string> => reads(b, 5) },
+  { name: "7", fn: (b: BufReader): Promise<string> => reads(b, 7) },
   { name: "bytes", fn: readBytes }
   // { name: "lines", fn: readLines },
 ];
@@ -94,7 +97,7 @@ const bufsizes: number[] = [
   4096
 ];
 
-test(async function bufioBufReader() {
+test(async function bufioBufReader(): Promise<void> {
   const texts = new Array<string>(31);
   let str = "";
   let all = "";
@@ -122,7 +125,7 @@ test(async function bufioBufReader() {
   }
 });
 
-test(async function bufioBufferFull() {
+test(async function bufioBufferFull(): Promise<void> {
   const longString =
     "And now, hello, world! It is the time for all good men to come to the aid of their party";
   const buf = new BufReader(stringsReader(longString), MIN_READ_BUFFER_SIZE);
@@ -201,12 +204,12 @@ async function testReadLine(input: Uint8Array): Promise<void> {
   }
 }
 
-test(async function bufioReadLine() {
+test(async function bufioReadLine(): Promise<void> {
   await testReadLine(testInput);
   await testReadLine(testInputrn);
 });
 
-test(async function bufioPeek() {
+test(async function bufioPeek(): Promise<void> {
   const decoder = new TextDecoder();
   let p = new Uint8Array(10);
   // string is 16 (minReadBufferSize) long.
@@ -283,7 +286,7 @@ test(async function bufioPeek() {
   */
 });
 
-test(async function bufioWriter() {
+test(async function bufioWriter(): Promise<void> {
   const data = new Uint8Array(8192);
 
   for (let i = 0; i < data.byteLength; i++) {
@@ -317,7 +320,7 @@ test(async function bufioWriter() {
   }
 });
 
-test(async function bufReaderReadFull() {
+test(async function bufReaderReadFull(): Promise<void> {
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   const text = "Hello World";

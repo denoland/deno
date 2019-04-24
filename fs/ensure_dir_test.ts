@@ -7,22 +7,26 @@ import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(async function ensureDirIfItNotExist() {
+test(async function ensureDirIfItNotExist(): Promise<void> {
   const baseDir = path.join(testdataDir, "ensure_dir_not_exist");
   const testDir = path.join(baseDir, "test");
 
   await ensureDir(testDir);
 
-  await assertThrowsAsync(async () => {
-    await Deno.stat(testDir).then(() => {
-      throw new Error("test dir should exists.");
-    });
-  });
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.stat(testDir).then(
+        (): void => {
+          throw new Error("test dir should exists.");
+        }
+      );
+    }
+  );
 
   await Deno.remove(baseDir, { recursive: true });
 });
 
-test(function ensureDirSyncIfItNotExist() {
+test(function ensureDirSyncIfItNotExist(): void {
   const baseDir = path.join(testdataDir, "ensure_dir_sync_not_exist");
   const testDir = path.join(baseDir, "test");
 
@@ -33,7 +37,7 @@ test(function ensureDirSyncIfItNotExist() {
   Deno.removeSync(baseDir, { recursive: true });
 });
 
-test(async function ensureDirIfItExist() {
+test(async function ensureDirIfItExist(): Promise<void> {
   const baseDir = path.join(testdataDir, "ensure_dir_exist");
   const testDir = path.join(baseDir, "test");
 
@@ -42,16 +46,20 @@ test(async function ensureDirIfItExist() {
 
   await ensureDir(testDir);
 
-  await assertThrowsAsync(async () => {
-    await Deno.stat(testDir).then(() => {
-      throw new Error("test dir should still exists.");
-    });
-  });
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.stat(testDir).then(
+        (): void => {
+          throw new Error("test dir should still exists.");
+        }
+      );
+    }
+  );
 
   await Deno.remove(baseDir, { recursive: true });
 });
 
-test(function ensureDirSyncIfItExist() {
+test(function ensureDirSyncIfItExist(): void {
   const baseDir = path.join(testdataDir, "ensure_dir_sync_exist");
   const testDir = path.join(baseDir, "test");
 
@@ -60,22 +68,24 @@ test(function ensureDirSyncIfItExist() {
 
   ensureDirSync(testDir);
 
-  assertThrows(() => {
-    Deno.statSync(testDir);
-    throw new Error("test dir should still exists.");
-  });
+  assertThrows(
+    (): void => {
+      Deno.statSync(testDir);
+      throw new Error("test dir should still exists.");
+    }
+  );
 
   Deno.removeSync(baseDir, { recursive: true });
 });
 
-test(async function ensureDirIfItAsFile() {
+test(async function ensureDirIfItAsFile(): Promise<void> {
   const baseDir = path.join(testdataDir, "ensure_dir_exist_file");
   const testFile = path.join(baseDir, "test");
 
   await ensureFile(testFile);
 
   await assertThrowsAsync(
-    async () => {
+    async (): Promise<void> => {
       await ensureDir(testFile);
     },
     Error,
@@ -85,14 +95,14 @@ test(async function ensureDirIfItAsFile() {
   await Deno.remove(baseDir, { recursive: true });
 });
 
-test(function ensureDirSyncIfItAsFile() {
+test(function ensureDirSyncIfItAsFile(): void {
   const baseDir = path.join(testdataDir, "ensure_dir_exist_file_async");
   const testFile = path.join(baseDir, "test");
 
   ensureFileSync(testFile);
 
   assertThrows(
-    () => {
+    (): void => {
       ensureDirSync(testFile);
     },
     Error,
