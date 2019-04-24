@@ -9,7 +9,7 @@ import { ensureDirSync } from "./ensure_dir.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(function _isSubdir() {
+test(function _isSubdir(): void {
   const pairs = [
     ["", "", false, path.posix.sep],
     ["/first/second", "/first", false, path.posix.sep],
@@ -21,7 +21,7 @@ test(function _isSubdir() {
     ["c:\\first", "c:\\first\\second", true, path.win32.sep]
   ];
 
-  pairs.forEach(function(p) {
+  pairs.forEach(function(p): void {
     const src = p[0] as string;
     const dest = p[1] as string;
     const expected = p[2] as boolean;
@@ -34,13 +34,13 @@ test(function _isSubdir() {
   });
 });
 
-test(function _getFileInfoType() {
+test(function _getFileInfoType(): void {
   const pairs = [
     [path.join(testdataDir, "file_type_1"), "file"],
     [path.join(testdataDir, "file_type_dir_1"), "dir"]
   ];
 
-  pairs.forEach(function(p) {
+  pairs.forEach(function(p): void {
     const filePath = p[0] as string;
     const type = p[1] as PathType;
     switch (type) {

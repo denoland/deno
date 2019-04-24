@@ -13,7 +13,7 @@ function reader(s: string): TextProtoReader {
   return new TextProtoReader(new BufReader(stringsReader(s)));
 }
 
-test(async function textprotoReader() {
+test(async function textprotoReader(): Promise<void> {
   let r = reader("line1\nline2\n");
   let [s, err] = await r.readLine();
   assertEquals(s, "line1");
@@ -44,7 +44,7 @@ test(async function textprotoReadMIMEHeader() {
 });
 */
 
-test(async function textprotoReadMIMEHeaderSingle() {
+test(async function textprotoReadMIMEHeaderSingle(): Promise<void> {
   let r = reader("Foo: bar\n\n");
   let [m, err] = await r.readMIMEHeader();
   assertEquals(m.get("Foo"), "bar");
@@ -53,7 +53,7 @@ test(async function textprotoReadMIMEHeaderSingle() {
 
 // Test that we read slightly-bogus MIME headers seen in the wild,
 // with spaces before colons, and spaces in keys.
-test(async function textprotoReadMIMEHeaderNonCompliant() {
+test(async function textprotoReadMIMEHeaderNonCompliant(): Promise<void> {
   // Invalid HTTP response header as sent by an Axis security
   // camera: (this is handled by IE, Firefox, Chrome, curl, etc.)
   let r = reader(
@@ -82,7 +82,7 @@ test(async function textprotoReadMIMEHeaderNonCompliant() {
   */
 });
 
-test(async function textprotoAppend() {
+test(async function textprotoAppend(): Promise<void> {
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   const u1 = enc.encode("Hello ");
@@ -91,7 +91,7 @@ test(async function textprotoAppend() {
   assertEquals(dec.decode(joined), "Hello World");
 });
 
-test(async function textprotoReadEmpty() {
+test(async function textprotoReadEmpty(): Promise<void> {
   let r = reader("");
   let [, err] = await r.readMIMEHeader();
   // Should not crash!

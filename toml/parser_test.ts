@@ -7,7 +7,7 @@ const testFilesDir = path.resolve("toml", "testdata");
 
 test({
   name: "[TOML] Strings",
-  fn() {
+  fn(): void {
     const expected = {
       strings: {
         str0: "deno",
@@ -28,7 +28,7 @@ test({
 
 test({
   name: "[TOML] CRLF",
-  fn() {
+  fn(): void {
     const expected = { boolean: { bool1: true, bool2: false } };
     const actual = parseFile(path.join(testFilesDir, "CRLF.toml"));
     assertEquals(actual, expected);
@@ -37,7 +37,7 @@ test({
 
 test({
   name: "[TOML] Boolean",
-  fn() {
+  fn(): void {
     const expected = { boolean: { bool1: true, bool2: false } };
     const actual = parseFile(path.join(testFilesDir, "boolean.toml"));
     assertEquals(actual, expected);
@@ -46,7 +46,7 @@ test({
 
 test({
   name: "[TOML] Integer",
-  fn() {
+  fn(): void {
     const expected = {
       integer: {
         int1: 99,
@@ -71,7 +71,7 @@ test({
 
 test({
   name: "[TOML] Float",
-  fn() {
+  fn(): void {
     const expected = {
       float: {
         flt1: 1.0,
@@ -97,7 +97,7 @@ test({
 
 test({
   name: "[TOML] Arrays",
-  fn() {
+  fn(): void {
     const expected = {
       arrays: {
         data: [["gamma", "delta"], [1, 2]],
@@ -111,7 +111,7 @@ test({
 
 test({
   name: "[TOML] Table",
-  fn() {
+  fn(): void {
     const expected = {
       deeply: {
         nested: {
@@ -144,7 +144,7 @@ test({
 
 test({
   name: "[TOML] Simple",
-  fn() {
+  fn(): void {
     const expected = {
       deno: "is",
       not: "[node]",
@@ -159,7 +159,7 @@ test({
 
 test({
   name: "[TOML] Datetime",
-  fn() {
+  fn(): void {
     const expected = {
       datetime: {
         odt1: new Date("1979-05-27T07:32:00Z"),
@@ -178,7 +178,7 @@ test({
 
 test({
   name: "[TOML] Inline Table",
-  fn() {
+  fn(): void {
     const expected = {
       inlinetable: {
         nile: {
@@ -223,7 +223,7 @@ test({
 
 test({
   name: "[TOML] Array of Tables",
-  fn() {
+  fn(): void {
     const expected = {
       bin: [
         { name: "deno", path: "cli/main.rs" },
@@ -238,7 +238,7 @@ test({
 
 test({
   name: "[TOML] Cargo",
-  fn() {
+  fn(): void {
     /* eslint-disable @typescript-eslint/camelcase */
     const expected = {
       workspace: { members: ["./", "core"] },
@@ -285,7 +285,7 @@ test({
 
 test({
   name: "[TOML] Stringify",
-  fn() {
+  fn(): void {
     const src = {
       foo: { bar: "deno" },
       this: { is: { nested: "denonono" } },

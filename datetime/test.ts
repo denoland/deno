@@ -3,7 +3,7 @@ import { test } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 import * as datetime from "./mod.ts";
 
-test(function parseDateTime() {
+test(function parseDateTime(): void {
   assertEquals(
     datetime.parseDateTime("01-03-2019 16:30", "mm-dd-yyyy hh:mm"),
     new Date(2019, 0, 3, 16, 30)
@@ -30,7 +30,7 @@ test(function parseDateTime() {
   );
 });
 
-test(function invalidParseDateTimeFormatThrows() {
+test(function invalidParseDateTimeFormatThrows(): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (datetime as any).parseDateTime("2019-01-01 00:00", "x-y-z");
@@ -40,7 +40,7 @@ test(function invalidParseDateTimeFormatThrows() {
   }
 });
 
-test(function parseDate() {
+test(function parseDate(): void {
   assertEquals(
     datetime.parseDate("01-03-2019", "mm-dd-yyyy"),
     new Date(2019, 0, 3)
@@ -55,7 +55,7 @@ test(function parseDate() {
   );
 });
 
-test(function invalidParseDateFormatThrows() {
+test(function invalidParseDateFormatThrows(): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (datetime as any).parseDate("2019-01-01", "x-y-z");
@@ -65,12 +65,12 @@ test(function invalidParseDateFormatThrows() {
   }
 });
 
-test(function DayOfYear() {
+test(function DayOfYear(): void {
   assertEquals(1, datetime.dayOfYear(new Date("2019-01-01T03:24:00")));
   assertEquals(70, datetime.dayOfYear(new Date("2019-03-11T03:24:00")));
   assertEquals(365, datetime.dayOfYear(new Date("2019-12-31T03:24:00")));
 });
 
-test(function currentDayOfYear() {
+test(function currentDayOfYear(): void {
   assertEquals(datetime.currentDayOfYear(), datetime.dayOfYear(new Date()));
 });

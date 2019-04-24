@@ -10,7 +10,7 @@ export interface ArgParsingOptions {
 }
 
 const DEFAULT_OPTIONS = {
-  unknown: i => i,
+  unknown: (i): unknown => i,
   boolean: false,
   alias: {},
   string: [],
@@ -27,7 +27,7 @@ function isNumber(x: unknown): boolean {
 
 function hasKey(obj, keys): boolean {
   let o = obj;
-  keys.slice(0, -1).forEach(function(key) {
+  keys.slice(0, -1).forEach(function(key): void {
     o = o[key] || {};
   });
 
@@ -38,8 +38,8 @@ function hasKey(obj, keys): boolean {
 export function parse(
   args,
   initialOptions?: ArgParsingOptions
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): { [key: string]: any } {
-  // eslint-disable-line @typescript-eslint/no-explicit-any
   const options: ArgParsingOptions = {
     ...DEFAULT_OPTIONS,
     ...(initialOptions || {})
@@ -59,17 +59,17 @@ export function parse(
     []
       .concat(options["boolean"])
       .filter(Boolean)
-      .forEach(function(key) {
+      .forEach(function(key): void {
         flags.bools[key] = true;
       });
   }
 
   const aliases = {};
-  Object.keys(options.alias).forEach(function(key) {
+  Object.keys(options.alias).forEach(function(key): void {
     aliases[key] = [].concat(options.alias[key]);
-    aliases[key].forEach(function(x) {
+    aliases[key].forEach(function(x): void {
       aliases[x] = [key].concat(
-        aliases[key].filter(function(y) {
+        aliases[key].filter(function(y): boolean {
           return x !== y;
         })
       );
@@ -79,7 +79,7 @@ export function parse(
   []
     .concat(options.string)
     .filter(Boolean)
-    .forEach(function(key) {
+    .forEach(function(key): void {
       flags.strings[key] = true;
       if (aliases[key]) {
         flags.strings[aliases[key]] = true;
@@ -101,7 +101,7 @@ export function parse(
 
   function setKey(obj, keys, value): void {
     let o = obj;
-    keys.slice(0, -1).forEach(function(key) {
+    keys.slice(0, -1).forEach(function(key): void {
       if (o[key] === undefined) o[key] = {};
       o = o[key];
     });
@@ -128,18 +128,18 @@ export function parse(
     const value = !flags.strings[key] && isNumber(val) ? Number(val) : val;
     setKey(argv, key.split("."), value);
 
-    (aliases[key] || []).forEach(function(x) {
+    (aliases[key] || []).forEach(function(x): void {
       setKey(argv, x.split("."), value);
     });
   }
 
   function aliasIsBoolean(key): boolean {
-    return aliases[key].some(function(x) {
+    return aliases[key].some(function(x): boolean {
       return flags.bools[x];
     });
   }
 
-  Object.keys(flags.bools).forEach(function(key) {
+  Object.keys(flags.bools).forEach(function(key): void {
     setArg(key, defaults[key] === undefined ? false : defaults[key]);
   });
 
@@ -249,11 +249,11 @@ export function parse(
     }
   }
 
-  Object.keys(defaults).forEach(function(key) {
+  Object.keys(defaults).forEach(function(key): void {
     if (!hasKey(argv, key.split("."))) {
       setKey(argv, key.split("."), defaults[key]);
 
-      (aliases[key] || []).forEach(function(x) {
+      (aliases[key] || []).forEach(function(x): void {
         setKey(argv, x.split("."), defaults[key]);
       });
     }
@@ -261,11 +261,11 @@ export function parse(
 
   if (options["--"]) {
     argv["--"] = [];
-    notFlags.forEach(function(key) {
+    notFlags.forEach(function(key): void {
       argv["--"].push(key);
     });
   } else {
-    notFlags.forEach(function(key) {
+    notFlags.forEach(function(key): void {
       argv._.push(key);
     });
   }

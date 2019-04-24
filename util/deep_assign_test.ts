@@ -3,7 +3,7 @@ import { test } from "../testing/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
 import { deepAssign } from "./deep_assign.ts";
 
-test(function deepAssignTest() {
+test(function deepAssignTest(): void {
   const date = new Date("1979-05-27T07:32:00Z");
   const reg = RegExp(/DENOWOWO/);
   const obj1 = { deno: { bar: { deno: ["is", "not", "node"] } } };

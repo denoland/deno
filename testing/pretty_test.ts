@@ -18,7 +18,7 @@ const removed: (s: string) => string = (s: string): string => red(bold(s));
 
 test({
   name: "pass case",
-  fn() {
+  fn(): void {
     assertEquals({ a: 10 }, { a: 10 });
     assertEquals(true, true);
     assertEquals(10, 10);
@@ -29,9 +29,9 @@ test({
 
 test({
   name: "failed with number",
-  fn() {
+  fn(): void {
     assertThrows(
-      () => assertEquals(1, 2),
+      (): void => assertEquals(1, 2),
       Error,
       [...createHeader(), removed(`-   1`), added(`+   2`), ""].join("\n")
     );
@@ -40,9 +40,9 @@ test({
 
 test({
   name: "failed with number vs string",
-  fn() {
+  fn(): void {
     assertThrows(
-      () => assertEquals(1, "1"),
+      (): void => assertEquals(1, "1"),
       Error,
       [...createHeader(), removed(`-   1`), added(`+   "1"`)].join("\n")
     );
@@ -51,9 +51,9 @@ test({
 
 test({
   name: "failed with array",
-  fn() {
+  fn(): void {
     assertThrows(
-      () => assertEquals([1, "2", 3], ["1", "2", 3]),
+      (): void => assertEquals([1, "2", 3], ["1", "2", 3]),
       Error,
       [
         ...createHeader(),
@@ -71,9 +71,9 @@ test({
 
 test({
   name: "failed with object",
-  fn() {
+  fn(): void {
     assertThrows(
-      () => assertEquals({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
+      (): void => assertEquals({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
       Error,
       [
         ...createHeader(),

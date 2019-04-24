@@ -16,10 +16,12 @@ interface Deferred {
 
 function deferred(isResolved = false): Deferred {
   let resolve, reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
+  const promise = new Promise(
+    (res, rej): void => {
+      resolve = res;
+      reject = rej;
+    }
+  );
   if (isResolved) {
     resolve();
   }
@@ -181,7 +183,7 @@ export class ServerRequest {
         const transferEncodings = this.headers
           .get("transfer-encoding")
           .split(",")
-          .map(e => e.trim().toLowerCase());
+          .map((e): string => e.trim().toLowerCase());
         if (transferEncodings.includes("chunked")) {
           // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
           const tp = new TextProtoReader(this.r);
@@ -341,10 +343,10 @@ export async function* serve(
   let handleConn = (_conn: Conn): void => {};
   let scheduleAccept = (): void => {};
   const acceptRoutine = (): void => {
-    scheduleAccept = () => {
+    scheduleAccept = (): void => {
       listener.accept().then(handleConn);
     };
-    handleConn = (conn: Conn) => {
+    handleConn = (conn: Conn): void => {
       const httpConn = createHttpConn(conn);
       serveConn(env, httpConn); // don't block
       scheduleAccept(); // schedule next accept

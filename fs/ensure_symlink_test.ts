@@ -12,36 +12,46 @@ import * as path from "./path/mod.ts";
 const testdataDir = path.resolve("fs", "testdata");
 const isWindows = Deno.platform.os === "win";
 
-test(async function ensureSymlinkIfItNotExist() {
+test(async function ensureSymlinkIfItNotExist(): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_1");
   const testFile = path.join(testDir, "test.txt");
 
-  assertThrowsAsync(async () => {
-    await ensureSymlink(testFile, path.join(testDir, "test1.txt"));
-  });
+  assertThrowsAsync(
+    async (): Promise<void> => {
+      await ensureSymlink(testFile, path.join(testDir, "test1.txt"));
+    }
+  );
 
-  assertThrowsAsync(async () => {
-    await Deno.stat(testFile).then(() => {
-      throw new Error("test file should exists.");
-    });
-  });
+  assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.stat(testFile).then(
+        (): void => {
+          throw new Error("test file should exists.");
+        }
+      );
+    }
+  );
 });
 
-test(function ensureSymlinkSyncIfItNotExist() {
+test(function ensureSymlinkSyncIfItNotExist(): void {
   const testDir = path.join(testdataDir, "link_file_2");
   const testFile = path.join(testDir, "test.txt");
 
-  assertThrows(() => {
-    ensureSymlinkSync(testFile, path.join(testDir, "test1.txt"));
-  });
+  assertThrows(
+    (): void => {
+      ensureSymlinkSync(testFile, path.join(testDir, "test1.txt"));
+    }
+  );
 
-  assertThrows(() => {
-    Deno.statSync(testFile);
-    throw new Error("test file should exists.");
-  });
+  assertThrows(
+    (): void => {
+      Deno.statSync(testFile);
+      throw new Error("test file should exists.");
+    }
+  );
 });
 
-test(async function ensureSymlinkIfItExist() {
+test(async function ensureSymlinkIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_3");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -51,7 +61,7 @@ test(async function ensureSymlinkIfItExist() {
 
   if (isWindows) {
     await assertThrowsAsync(
-      () => ensureSymlink(testFile, linkFile),
+      (): Promise<void> => ensureSymlink(testFile, linkFile),
       Error,
       "Not implemented"
     );
@@ -70,7 +80,7 @@ test(async function ensureSymlinkIfItExist() {
   await Deno.remove(testDir, { recursive: true });
 });
 
-test(function ensureSymlinkSyncIfItExist() {
+test(function ensureSymlinkSyncIfItExist(): void {
   const testDir = path.join(testdataDir, "link_file_4");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -80,7 +90,7 @@ test(function ensureSymlinkSyncIfItExist() {
 
   if (isWindows) {
     assertThrows(
-      () => ensureSymlinkSync(testFile, linkFile),
+      (): void => ensureSymlinkSync(testFile, linkFile),
       Error,
       "Not implemented"
     );
@@ -100,7 +110,7 @@ test(function ensureSymlinkSyncIfItExist() {
   Deno.removeSync(testDir, { recursive: true });
 });
 
-test(async function ensureSymlinkDirectoryIfItExist() {
+test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_origin_3");
   const linkDir = path.join(testdataDir, "link_file_link_3");
   const testFile = path.join(testDir, "test.txt");
@@ -110,7 +120,7 @@ test(async function ensureSymlinkDirectoryIfItExist() {
 
   if (isWindows) {
     await assertThrowsAsync(
-      () => ensureSymlink(testDir, linkDir),
+      (): Promise<void> => ensureSymlink(testDir, linkDir),
       Error,
       "Not implemented"
     );
@@ -132,7 +142,7 @@ test(async function ensureSymlinkDirectoryIfItExist() {
   await Deno.remove(testDir, { recursive: true });
 });
 
-test(function ensureSymlinkSyncDirectoryIfItExist() {
+test(function ensureSymlinkSyncDirectoryIfItExist(): void {
   const testDir = path.join(testdataDir, "link_file_origin_3");
   const linkDir = path.join(testdataDir, "link_file_link_3");
   const testFile = path.join(testDir, "test.txt");
@@ -142,7 +152,7 @@ test(function ensureSymlinkSyncDirectoryIfItExist() {
 
   if (isWindows) {
     assertThrows(
-      () => ensureSymlinkSync(testDir, linkDir),
+      (): void => ensureSymlinkSync(testDir, linkDir),
       Error,
       "Not implemented"
     );

@@ -26,19 +26,19 @@ class BinaryReader implements Reader {
   }
 }
 
-test(async function testReadShort() {
+test(async function testReadShort(): Promise<void> {
   const r = new BinaryReader(new Uint8Array([0x12, 0x34]));
   const short = await readShort(new BufReader(r));
   assertEquals(short, 0x1234);
 });
 
-test(async function testReadInt() {
+test(async function testReadInt(): Promise<void> {
   const r = new BinaryReader(new Uint8Array([0x12, 0x34, 0x56, 0x78]));
   const int = await readInt(new BufReader(r));
   assertEquals(int, 0x12345678);
 });
 
-test(async function testReadLong() {
+test(async function testReadLong(): Promise<void> {
   const r = new BinaryReader(
     new Uint8Array([0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78])
   );
@@ -46,7 +46,7 @@ test(async function testReadLong() {
   assertEquals(long, 0x1234567812345678);
 });
 
-test(async function testReadLong2() {
+test(async function testReadLong2(): Promise<void> {
   const r = new BinaryReader(
     new Uint8Array([0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78])
   );
@@ -54,7 +54,7 @@ test(async function testReadLong2() {
   assertEquals(long, 0x12345678);
 });
 
-test(async function testSliceLongToBytes() {
+test(async function testSliceLongToBytes(): Promise<void> {
   const arr = sliceLongToBytes(0x1234567890abcdef);
   const actual = readLong(new BufReader(new BinaryReader(new Uint8Array(arr))));
   const expected = readLong(
@@ -67,12 +67,12 @@ test(async function testSliceLongToBytes() {
   assertEquals(actual, expected);
 });
 
-test(async function testSliceLongToBytes2() {
+test(async function testSliceLongToBytes2(): Promise<void> {
   const arr = sliceLongToBytes(0x12345678);
   assertEquals(arr, [0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78]);
 });
 
-test(async function testCopyN1() {
+test(async function testCopyN1(): Promise<void> {
   const w = new Buffer();
   const r = stringsReader("abcdefghij");
   const n = await copyN(w, r, 3);
@@ -80,7 +80,7 @@ test(async function testCopyN1() {
   assertEquals(w.toString(), "abc");
 });
 
-test(async function testCopyN2() {
+test(async function testCopyN2(): Promise<void> {
   const w = new Buffer();
   const r = stringsReader("abcdefghij");
   const n = await copyN(w, r, 11);

@@ -6,7 +6,7 @@ import * as path from "./path/mod.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-test(async function existsFile() {
+test(async function existsFile(): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_file.ts")),
     false
@@ -14,12 +14,12 @@ test(async function existsFile() {
   assertEquals(await existsSync(path.join(testdataDir, "0.ts")), true);
 });
 
-test(function existsFileSync() {
+test(function existsFileSync(): void {
   assertEquals(existsSync(path.join(testdataDir, "not_exist_file.ts")), false);
   assertEquals(existsSync(path.join(testdataDir, "0.ts")), true);
 });
 
-test(async function existsDirectory() {
+test(async function existsDirectory(): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_directory")),
     false
@@ -27,7 +27,7 @@ test(async function existsDirectory() {
   assertEquals(existsSync(testdataDir), true);
 });
 
-test(function existsDirectorySync() {
+test(function existsDirectorySync(): void {
   assertEquals(
     existsSync(path.join(testdataDir, "not_exist_directory")),
     false
@@ -35,12 +35,12 @@ test(function existsDirectorySync() {
   assertEquals(existsSync(testdataDir), true);
 });
 
-test(function existsLinkSync() {
+test(function existsLinkSync(): void {
   // TODO(axetroy): generate link file use Deno api instead of set a link file in repository
   assertEquals(existsSync(path.join(testdataDir, "0-link.ts")), true);
 });
 
-test(async function existsLink() {
+test(async function existsLink(): Promise<void> {
   // TODO(axetroy): generate link file use Deno api instead of set a link file in repository
   assertEquals(await exists(path.join(testdataDir, "0-link.ts")), true);
 });

@@ -8,7 +8,7 @@ const body = new TextEncoder().encode("Hello 1\n");
 const body4 = new TextEncoder().encode("World 4\n");
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(res => setTimeout(res, ms));
+  return new Promise((res): number => setTimeout(res, ms));
 }
 
 async function delayedRespond(request: ServerRequest): Promise<void> {

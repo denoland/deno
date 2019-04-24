@@ -19,7 +19,7 @@ class TestHandler extends BaseHandler {
   }
 }
 
-test(function simpleLogger() {
+test(function simpleLogger(): void {
   const handler = new TestHandler("DEBUG");
   let logger = new Logger("DEBUG");
 
@@ -32,7 +32,7 @@ test(function simpleLogger() {
   assertEquals(logger.handlers, [handler]);
 });
 
-test(function customHandler() {
+test(function customHandler(): void {
   const handler = new TestHandler("DEBUG");
   const logger = new Logger("DEBUG", [handler]);
 
@@ -51,7 +51,7 @@ test(function customHandler() {
   assertEquals(handler.messages, ["DEBUG foo"]);
 });
 
-test(function logFunctions() {
+test(function logFunctions(): void {
   let handler: TestHandler;
 
   const doLog = (level: string): void => {

@@ -2,7 +2,7 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { pad } from "./pad.ts";
 
-test(function padTest() {
+test(function padTest(): void {
   const expected1 = "**deno";
   const expected2 = "deno";
   const expected3 = "deno**";

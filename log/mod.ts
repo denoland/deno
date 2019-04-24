@@ -89,9 +89,11 @@ export async function setup(config: LogConfig): Promise<void> {
   };
 
   // tear down existing handlers
-  state.handlers.forEach(handler => {
-    handler.destroy();
-  });
+  state.handlers.forEach(
+    (handler): void => {
+      handler.destroy();
+    }
+  );
   state.handlers.clear();
 
   // setup handlers
@@ -113,11 +115,13 @@ export async function setup(config: LogConfig): Promise<void> {
     const handlerNames = loggerConfig.handlers || [];
     const handlers: BaseHandler[] = [];
 
-    handlerNames.forEach(handlerName => {
-      if (state.handlers.has(handlerName)) {
-        handlers.push(state.handlers.get(handlerName));
+    handlerNames.forEach(
+      (handlerName): void => {
+        if (state.handlers.has(handlerName)) {
+          handlers.push(state.handlers.get(handlerName));
+        }
       }
-    });
+    );
 
     const levelName = loggerConfig.level || DEFAULT_LEVEL;
     const logger = new Logger(levelName, handlers);

@@ -4,14 +4,14 @@ import { test } from "./mod.ts";
 
 test({
   name: "empty",
-  fn() {
+  fn(): void {
     assertEquals(diff([], []), []);
   }
 });
 
 test({
   name: '"a" vs "b"',
-  fn() {
+  fn(): void {
     assertEquals(diff(["a"], ["b"]), [
       { type: "removed", value: "a" },
       { type: "added", value: "b" }
@@ -21,28 +21,28 @@ test({
 
 test({
   name: '"a" vs "a"',
-  fn() {
+  fn(): void {
     assertEquals(diff(["a"], ["a"]), [{ type: "common", value: "a" }]);
   }
 });
 
 test({
   name: '"a" vs ""',
-  fn() {
+  fn(): void {
     assertEquals(diff(["a"], []), [{ type: "removed", value: "a" }]);
   }
 });
 
 test({
   name: '"" vs "a"',
-  fn() {
+  fn(): void {
     assertEquals(diff([], ["a"]), [{ type: "added", value: "a" }]);
   }
 });
 
 test({
   name: '"a" vs "a, b"',
-  fn() {
+  fn(): void {
     assertEquals(diff(["a"], ["a", "b"]), [
       { type: "common", value: "a" },
       { type: "added", value: "b" }
@@ -52,7 +52,7 @@ test({
 
 test({
   name: '"strength" vs "string"',
-  fn() {
+  fn(): void {
     assertEquals(diff(Array.from("strength"), Array.from("string")), [
       { type: "common", value: "s" },
       { type: "common", value: "t" },
@@ -69,7 +69,7 @@ test({
 
 test({
   name: '"strength" vs ""',
-  fn() {
+  fn(): void {
     assertEquals(diff(Array.from("strength"), Array.from("")), [
       { type: "removed", value: "s" },
       { type: "removed", value: "t" },
@@ -85,7 +85,7 @@ test({
 
 test({
   name: '"" vs "strength"',
-  fn() {
+  fn(): void {
     assertEquals(diff(Array.from(""), Array.from("strength")), [
       { type: "added", value: "s" },
       { type: "added", value: "t" },
@@ -101,7 +101,7 @@ test({
 
 test({
   name: '"abc", "c" vs "abc", "bcd", "c"',
-  fn() {
+  fn(): void {
     assertEquals(diff(["abc", "c"], ["abc", "bcd", "c"]), [
       { type: "common", value: "abc" },
       { type: "added", value: "bcd" },

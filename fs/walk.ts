@@ -14,15 +14,20 @@ function patternTest(patterns: RegExp[], path: string): boolean {
   // Forced to reset last index on regex while iterating for have
   // consistent results.
   // See: https://stackoverflow.com/a/1520853
-  return patterns.some(pattern => {
-    let r = pattern.test(path);
-    pattern.lastIndex = 0;
-    return r;
-  });
+  return patterns.some(
+    (pattern): boolean => {
+      let r = pattern.test(path);
+      pattern.lastIndex = 0;
+      return r;
+    }
+  );
 }
 
 function include(f: FileInfo, options: WalkOptions): boolean {
-  if (options.exts && !options.exts.some(ext => f.path.endsWith(ext))) {
+  if (
+    options.exts &&
+    !options.exts.some((ext): boolean => f.path.endsWith(ext))
+  ) {
     return false;
   }
   if (options.match && !patternTest(options.match, f.path)) {

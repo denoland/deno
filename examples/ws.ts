@@ -10,7 +10,7 @@ async function main(): Promise<void> {
   console.log("websocket server is running on 0.0.0.0:8080");
   for await (const req of serve("0.0.0.0:8080")) {
     if (req.url === "/ws") {
-      (async () => {
+      (async (): Promise<void> => {
         const sock = await acceptWebSocket(req);
         console.log("socket connected!");
         for await (const ev of sock.receive()) {

@@ -3,7 +3,7 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-test(function hyphen() {
+test(function hyphen(): void {
   assertEquals(parse(["-n", "-"]), { n: "-", _: [] });
   assertEquals(parse(["-"]), { _: ["-"] });
   assertEquals(parse(["-f-"]), { f: "-", _: [] });
@@ -11,13 +11,13 @@ test(function hyphen() {
   assertEquals(parse(["-s", "-"], { string: "s" }), { s: "-", _: [] });
 });
 
-test(function doubleDash() {
+test(function doubleDash(): void {
   assertEquals(parse(["-a", "--", "b"]), { a: true, _: ["b"] });
   assertEquals(parse(["--a", "--", "b"]), { a: true, _: ["b"] });
   assertEquals(parse(["--a", "--", "b"]), { a: true, _: ["b"] });
 });
 
-test(function moveArgsAfterDoubleDashIntoOwnArray() {
+test(function moveArgsAfterDoubleDashIntoOwnArray(): void {
   assertEquals(
     parse(["--name", "John", "before", "--", "after"], { "--": true }),
     {

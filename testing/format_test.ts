@@ -53,7 +53,7 @@ const createExpected = () =>
 
 test({
   name: "prints empty arguments",
-  fn() {
+  fn(): void {
     const val = returnArguments();
     assertEquals(format(val), "Arguments []");
   }
@@ -61,7 +61,7 @@ test({
 
 test({
   name: "prints an empty array",
-  fn() {
+  fn(): void {
     const val: unknown[] = [];
     assertEquals(format(val), "Array []");
   }
@@ -69,7 +69,7 @@ test({
 
 test({
   name: "prints an array with items",
-  fn() {
+  fn(): void {
     const val = [1, 2, 3];
     assertEquals(format(val), "Array [\n  1,\n  2,\n  3,\n]");
   }
@@ -77,7 +77,7 @@ test({
 
 test({
   name: "prints a empty typed array",
-  fn() {
+  fn(): void {
     const val = new Uint32Array(0);
     assertEquals(format(val), "Uint32Array []");
   }
@@ -85,7 +85,7 @@ test({
 
 test({
   name: "prints a typed array with items",
-  fn() {
+  fn(): void {
     const val = new Uint32Array(3);
     assertEquals(format(val), "Uint32Array [\n  0,\n  0,\n  0,\n]");
   }
@@ -93,7 +93,7 @@ test({
 
 test({
   name: "prints an array buffer",
-  fn() {
+  fn(): void {
     const val = new ArrayBuffer(3);
     assertEquals(format(val), "ArrayBuffer []");
   }
@@ -101,7 +101,7 @@ test({
 
 test({
   name: "prints a nested array",
-  fn() {
+  fn(): void {
     const val = [[1, 2, 3]];
     assertEquals(
       format(val),
@@ -112,7 +112,7 @@ test({
 
 test({
   name: "prints true",
-  fn() {
+  fn(): void {
     const val = true;
     assertEquals(format(val), "true");
   }
@@ -120,7 +120,7 @@ test({
 
 test({
   name: "prints false",
-  fn() {
+  fn(): void {
     const val = false;
     assertEquals(format(val), "false");
   }
@@ -128,7 +128,7 @@ test({
 
 test({
   name: "prints an error",
-  fn() {
+  fn(): void {
     const val = new Error();
     assertEquals(format(val), "[Error]");
   }
@@ -136,7 +136,7 @@ test({
 
 test({
   name: "prints a typed error with a message",
-  fn() {
+  fn(): void {
     const val = new TypeError("message");
     assertEquals(format(val), "[TypeError: message]");
   }
@@ -144,7 +144,7 @@ test({
 
 test({
   name: "prints a function constructor",
-  fn() {
+  fn(): void {
     // tslint:disable-next-line:function-constructor
     const val = new Function();
     assertEquals(format(val), "[Function anonymous]");
@@ -153,20 +153,20 @@ test({
 
 test({
   name: "prints an anonymous callback function",
-  fn() {
+  fn(): void {
     let val;
     function f(cb: () => void): void {
       val = cb;
     }
     // tslint:disable-next-line:no-empty
-    f(() => {});
+    f((): void => {});
     assertEquals(format(val), "[Function anonymous]");
   }
 });
 
 test({
   name: "prints an anonymous assigned function",
-  fn() {
+  fn(): void {
     // tslint:disable-next-line:no-empty
     const val = (): void => {};
     const formatted = format(val);
@@ -179,7 +179,7 @@ test({
 
 test({
   name: "prints a named function",
-  fn() {
+  fn(): void {
     // tslint:disable-next-line:no-empty
     const val = function named(): void {};
     assertEquals(format(val), "[Function named]");
@@ -188,7 +188,7 @@ test({
 
 test({
   name: "prints a named generator function",
-  fn() {
+  fn(): void {
     const val = function* generate(): IterableIterator<number> {
       yield 1;
       yield 2;
@@ -200,7 +200,7 @@ test({
 
 test({
   name: "can customize function names",
-  fn() {
+  fn(): void {
     // tslint:disable-next-line:no-empty
     const val = function named(): void {};
     assertEquals(
@@ -214,7 +214,7 @@ test({
 
 test({
   name: "prints Infinity",
-  fn() {
+  fn(): void {
     const val = Infinity;
     assertEquals(format(val), "Infinity");
   }
@@ -222,7 +222,7 @@ test({
 
 test({
   name: "prints -Infinity",
-  fn() {
+  fn(): void {
     const val = -Infinity;
     assertEquals(format(val), "-Infinity");
   }
@@ -230,7 +230,7 @@ test({
 
 test({
   name: "prints an empty map",
-  fn() {
+  fn(): void {
     const val = new Map();
     assertEquals(format(val), "Map {}");
   }
@@ -238,7 +238,7 @@ test({
 
 test({
   name: "prints a map with values",
-  fn() {
+  fn(): void {
     const val = new Map();
     val.set("prop1", "value1");
     val.set("prop2", "value2");
@@ -251,7 +251,7 @@ test({
 
 test({
   name: "prints a map with non-string keys",
-  fn() {
+  fn(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const val = new Map<any, any>([
       [false, "boolean"],
@@ -294,7 +294,7 @@ test({
 
 test({
   name: "prints NaN",
-  fn() {
+  fn(): void {
     const val = NaN;
     assertEquals(format(val), "NaN");
   }
@@ -302,7 +302,7 @@ test({
 
 test({
   name: "prints null",
-  fn() {
+  fn(): void {
     const val = null;
     assertEquals(format(val), "null");
   }
@@ -310,7 +310,7 @@ test({
 
 test({
   name: "prints a positive number",
-  fn() {
+  fn(): void {
     const val = 123;
     assertEquals(format(val), "123");
   }
@@ -318,7 +318,7 @@ test({
 
 test({
   name: "prints a negative number",
-  fn() {
+  fn(): void {
     const val = -123;
     assertEquals(format(val), "-123");
   }
@@ -326,7 +326,7 @@ test({
 
 test({
   name: "prints zero",
-  fn() {
+  fn(): void {
     const val = 0;
     assertEquals(format(val), "0");
   }
@@ -334,7 +334,7 @@ test({
 
 test({
   name: "prints negative zero",
-  fn() {
+  fn(): void {
     const val = -0;
     assertEquals(format(val), "-0");
   }
@@ -342,7 +342,7 @@ test({
 
 test({
   name: "prints a date",
-  fn() {
+  fn(): void {
     const val = new Date(10e11);
     assertEquals(format(val), "2001-09-09T01:46:40.000Z");
   }
@@ -350,7 +350,7 @@ test({
 
 test({
   name: "prints an invalid date",
-  fn() {
+  fn(): void {
     const val = new Date(Infinity);
     assertEquals(format(val), "Date { NaN }");
   }
@@ -358,7 +358,7 @@ test({
 
 test({
   name: "prints an empty object",
-  fn() {
+  fn(): void {
     const val = {};
     assertEquals(format(val), "Object {}");
   }
@@ -366,7 +366,7 @@ test({
 
 test({
   name: "prints an object with properties",
-  fn() {
+  fn(): void {
     const val = { prop1: "value1", prop2: "value2" };
     assertEquals(
       format(val),
@@ -377,7 +377,7 @@ test({
 
 test({
   name: "prints an object with properties and symbols",
-  fn() {
+  fn(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const val: any = {};
     val[Symbol("symbol1")] = "value2";
@@ -393,7 +393,7 @@ test({
 test({
   name:
     "prints an object without non-enumerable properties which have string key",
-  fn() {
+  fn(): void {
     const val = {
       enumerable: true
     };
@@ -409,7 +409,7 @@ test({
 test({
   name:
     "prints an object without non-enumerable properties which have symbol key",
-  fn() {
+  fn(): void {
     const val = {
       enumerable: true
     };
@@ -424,7 +424,7 @@ test({
 
 test({
   name: "prints an object with sorted properties",
-  fn() {
+  fn(): void {
     const val = { b: 1, a: 2 };
     assertEquals(format(val), 'Object {\n  "a": 2,\n  "b": 1,\n}');
   }
@@ -432,7 +432,7 @@ test({
 
 test({
   name: "prints regular expressions from constructors",
-  fn() {
+  fn(): void {
     const val = new RegExp("regexp");
     assertEquals(format(val), "/regexp/");
   }
@@ -440,7 +440,7 @@ test({
 
 test({
   name: "prints regular expressions from literals",
-  fn() {
+  fn(): void {
     const val = /regexp/gi;
     assertEquals(format(val), "/regexp/gi");
   }
@@ -448,7 +448,7 @@ test({
 
 test({
   name: "prints regular expressions {escapeRegex: false}",
-  fn() {
+  fn(): void {
     const val = /regexp\d/gi;
     assertEquals(format(val), "/regexp\\d/gi");
   }
@@ -456,7 +456,7 @@ test({
 
 test({
   name: "prints regular expressions {escapeRegex: true}",
-  fn() {
+  fn(): void {
     const val = /regexp\d/gi;
     assertEquals(format(val, { escapeRegex: true }), "/regexp\\\\d/gi");
   }
@@ -464,7 +464,7 @@ test({
 
 test({
   name: "escapes regular expressions nested inside object",
-  fn() {
+  fn(): void {
     const obj = { test: /regexp\d/gi };
     assertEquals(
       format(obj, { escapeRegex: true }),
@@ -475,7 +475,7 @@ test({
 
 test({
   name: "prints an empty set",
-  fn() {
+  fn(): void {
     const val = new Set();
     assertEquals(format(val), "Set {}");
   }
@@ -483,7 +483,7 @@ test({
 
 test({
   name: "prints a set with values",
-  fn() {
+  fn(): void {
     const val = new Set();
     val.add("value1");
     val.add("value2");
@@ -493,7 +493,7 @@ test({
 
 test({
   name: "prints a string",
-  fn() {
+  fn(): void {
     const val = "string";
     assertEquals(format(val), '"string"');
   }
@@ -501,7 +501,7 @@ test({
 
 test({
   name: "prints and escape a string",
-  fn() {
+  fn(): void {
     const val = "\"'\\";
     assertEquals(format(val), '"\\"\'\\\\"');
   }
@@ -509,7 +509,7 @@ test({
 
 test({
   name: "doesn't escape string with {excapeString: false}",
-  fn() {
+  fn(): void {
     const val = "\"'\\n";
     assertEquals(format(val, { escapeString: false }), '""\'\\n"');
   }
@@ -517,7 +517,7 @@ test({
 
 test({
   name: "prints a string with escapes",
-  fn() {
+  fn(): void {
     assertEquals(format('"-"'), '"\\"-\\""');
     assertEquals(format("\\ \\\\"), '"\\\\ \\\\\\\\"');
   }
@@ -525,7 +525,7 @@ test({
 
 test({
   name: "prints a multiline string",
-  fn() {
+  fn(): void {
     const val = ["line 1", "line 2", "line 3"].join("\n");
     assertEquals(format(val), '"' + val + '"');
   }
@@ -533,7 +533,7 @@ test({
 
 test({
   name: "prints a multiline string as value of object property",
-  fn() {
+  fn(): void {
     const polyline = {
       props: {
         id: "J",
@@ -571,7 +571,7 @@ test({
 
 test({
   name: "prints a symbol",
-  fn() {
+  fn(): void {
     const val = Symbol("symbol");
     assertEquals(format(val), "Symbol(symbol)");
   }
@@ -579,7 +579,7 @@ test({
 
 test({
   name: "prints undefined",
-  fn() {
+  fn(): void {
     const val = undefined;
     assertEquals(format(val), "undefined");
   }
@@ -587,7 +587,7 @@ test({
 
 test({
   name: "prints a WeakMap",
-  fn() {
+  fn(): void {
     const val = new WeakMap();
     assertEquals(format(val), "WeakMap {}");
   }
@@ -595,7 +595,7 @@ test({
 
 test({
   name: "prints a WeakSet",
-  fn() {
+  fn(): void {
     const val = new WeakSet();
     assertEquals(format(val), "WeakSet {}");
   }
@@ -603,7 +603,7 @@ test({
 
 test({
   name: "prints deeply nested objects",
-  fn() {
+  fn(): void {
     const val = { prop: { prop: { prop: "value" } } };
     assertEquals(
       format(val),
@@ -614,7 +614,7 @@ test({
 
 test({
   name: "prints circular references",
-  fn() {
+  fn(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const val: any = {};
     val.prop = val;
@@ -624,7 +624,7 @@ test({
 
 test({
   name: "prints parallel references",
-  fn() {
+  fn(): void {
     const inner = {};
     const val = { prop1: inner, prop2: inner };
     assertEquals(
@@ -636,14 +636,14 @@ test({
 
 test({
   name: "default implicit: 2 spaces",
-  fn() {
+  fn(): void {
     assertEquals(format(createVal()), createExpected());
   }
 });
 
 test({
   name: "default explicit: 2 spaces",
-  fn() {
+  fn(): void {
     assertEquals(format(createVal(), { indent: 2 }), createExpected());
   }
 });
@@ -651,7 +651,7 @@ test({
 // Tests assume that no strings in val contain multiple adjacent spaces!
 test({
   name: "non-default: 0 spaces",
-  fn() {
+  fn(): void {
     const indent = 0;
     assertEquals(
       format(createVal(), { indent }),
@@ -662,7 +662,7 @@ test({
 
 test({
   name: "non-default: 4 spaces",
-  fn() {
+  fn(): void {
     const indent = 4;
     assertEquals(
       format(createVal(), { indent }),
@@ -673,7 +673,7 @@ test({
 
 test({
   name: "can customize the max depth",
-  fn() {
+  fn(): void {
     const v = [
       {
         "arguments empty": returnArguments(),
@@ -719,14 +719,14 @@ test({
 
 test({
   name: "prints objects with no constructor",
-  fn() {
+  fn(): void {
     assertEquals(format(Object.create(null)), "Object {}");
   }
 });
 
 test({
   name: "prints identity-obj-proxy with string constructor",
-  fn() {
+  fn(): void {
     const obj = Object.create(null);
     obj.constructor = "constructor";
     const expected = [
@@ -740,10 +740,10 @@ test({
 
 test({
   name: "calls toJSON and prints its return value",
-  fn() {
+  fn(): void {
     assertEquals(
       format({
-        toJSON: () => ({ value: false }),
+        toJSON: (): unknown => ({ value: false }),
         value: true
       }),
       'Object {\n  "value": false,\n}'
@@ -753,10 +753,10 @@ test({
 
 test({
   name: "calls toJSON and prints an internal representation.",
-  fn() {
+  fn(): void {
     assertEquals(
       format({
-        toJSON: () => "[Internal Object]",
+        toJSON: (): string => "[Internal Object]",
         value: true
       }),
       '"[Internal Object]"'
@@ -766,7 +766,7 @@ test({
 
 test({
   name: "calls toJSON only on functions",
-  fn() {
+  fn(): void {
     assertEquals(
       format({
         toJSON: false,
@@ -779,10 +779,10 @@ test({
 
 test({
   name: "does not call toJSON recursively",
-  fn() {
+  fn(): void {
     assertEquals(
       format({
-        toJSON: () => ({ toJSON: () => ({ value: true }) }),
+        toJSON: (): unknown => ({ toJSON: (): unknown => ({ value: true }) }),
         value: false
       }),
       'Object {\n  "toJSON": [Function toJSON],\n}'
@@ -792,10 +792,10 @@ test({
 
 test({
   name: "calls toJSON on Sets",
-  fn() {
+  fn(): void {
     const set = new Set([1]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (set as any).toJSON = () => "map";
+    (set as any).toJSON = (): string => "map";
     assertEquals(format(set), '"map"');
   }
 });

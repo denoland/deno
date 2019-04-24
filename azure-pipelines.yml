@@ -12,7 +12,7 @@ jobs:
       - script: npm install eslint typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-config-prettier
       - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
       - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
-      - script: npx eslint **/*.ts
+      - script: npx eslint **/*.ts --max-warnings=0
       - script: deno --allow-run --allow-write --allow-read format.ts --check
       - script: deno --allow-run --allow-net --allow-write --allow-read test.ts
 
@@ -23,7 +23,7 @@ jobs:
       - script: npm -g install eslint typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-config-prettier
       - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
       - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
-      - script: eslint **/*.ts
+      - script: eslint **/*.ts --max-warnings=0
       - script: deno --allow-run --allow-write --allow-read format.ts --check
       - script: deno --allow-run --allow-net --allow-write --allow-read test.ts
 
@@ -34,6 +34,6 @@ jobs:
       - bash: npm install eslint typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-config-prettier
       - powershell: iwr https://deno.land/x/install/install.ps1 -out install.ps1; .\install.ps1 $(DENO_VERSION)
       - bash: echo "##vso[task.prependpath]C:\Users\VssAdministrator\.deno\\bin"
-      - bash: npx eslint **/*.ts
+      - bash: npx eslint **/*.ts --max-warnings=0
       - bash: deno.exe --allow-run --allow-write --allow-read format.ts --check
       - bash: deno.exe --allow-run --allow-net --allow-write --allow-read test.ts

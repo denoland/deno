@@ -45,7 +45,7 @@ async function clearTestdataChanges(): Promise<void> {
   await xrun({ args: ["git", "checkout", testdata] }).status();
 }
 
-test(async function testPrettierCheckAndFormatFiles() {
+test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
   await clearTestdataChanges();
 
   const files = [
@@ -73,7 +73,7 @@ Formatting ./prettier/testdata/1.js`
   await clearTestdataChanges();
 });
 
-test(async function testPrettierCheckAndFormatDirs() {
+test(async function testPrettierCheckAndFormatDirs(): Promise<void> {
   await clearTestdataChanges();
 
   const dirs = [join(testdata, "foo"), join(testdata, "bar")];
@@ -99,7 +99,7 @@ Formatting ./prettier/testdata/foo/1.js`
   await clearTestdataChanges();
 });
 
-test(async function testPrettierOptions() {
+test(async function testPrettierOptions(): Promise<void> {
   await clearTestdataChanges();
 
   const file0 = join(testdata, "opts", "0.ts");

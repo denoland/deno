@@ -3,7 +3,7 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { isFormFile } from "./formfile.ts";
 
-test(function multipartIsFormFile() {
+test(function multipartIsFormFile(): void {
   assertEquals(
     isFormFile({
       filename: "foo",

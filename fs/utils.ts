@@ -17,7 +17,7 @@ export function isSubdir(
   const srcArray = src.split(sep);
   const destArray = dest.split(sep);
 
-  return srcArray.reduce((acc: boolean, current, i) => {
+  return srcArray.reduce((acc, current, i): boolean => {
     return acc && destArray[i] === current;
   }, true);
 }

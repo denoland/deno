@@ -50,7 +50,7 @@ import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
 test({
   name: "testing example",
-  fn() {
+  fn(): void {
     assertEquals("world", "world");
     assertEquals({ hello: "world" }, { hello: "world" });
   }
@@ -62,7 +62,7 @@ runTests();
 Short syntax (named function instead of object):
 
 ```ts
-test(function example() {
+test(function example(): void {
   assertEquals("world", "world");
   assertEquals({ hello: "world" }, { hello: "world" });
 });
@@ -71,14 +71,14 @@ test(function example() {
 Using `assertStrictEq()`:
 
 ```ts
-test(function isStrictlyEqual() {
+test(function isStrictlyEqual(): void {
   const a = {};
   const b = a;
   assertStrictEq(a, b);
 });
 
 // This test fails
-test(function isNotStrictlyEqual() {
+test(function isNotStrictlyEqual(): void {
   const a = {};
   const b = {};
   assertStrictEq(a, b);
@@ -88,15 +88,17 @@ test(function isNotStrictlyEqual() {
 Using `assertThrows()`:
 
 ```ts
-test(function doesThrow() {
-  assertThrows(() => {
-    throw new TypeError("hello world!");
-  });
-  assertThrows(() => {
+test(function doesThrow(): void {
+  assertThrows(
+    (): void => {
+      throw new TypeError("hello world!");
+    }
+  );
+  assertThrows((): void => {
     throw new TypeError("hello world!");
   }, TypeError);
   assertThrows(
-    () => {
+    (): void => {
       throw new TypeError("hello world!");
     },
     TypeError,
@@ -105,40 +107,48 @@ test(function doesThrow() {
 });
 
 // This test will not pass
-test(function fails() {
-  assertThrows(() => {
-    console.log("Hello world");
-  });
+test(function fails(): void {
+  assertThrows(
+    (): void => {
+      console.log("Hello world");
+    }
+  );
 });
 ```
 
 Using `assertThrowsAsync()`:
 
 ```ts
-test(async function doesThrow() {
-  await assertThrowsAsync(async () => {
-    throw new TypeError("hello world!");
-  });
-  await assertThrowsAsync(async () => {
+test(async function doesThrow(): Promise<void> {
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      throw new TypeError("hello world!");
+    }
+  );
+  await assertThrowsAsync(async (): Promise<void> => {
     throw new TypeError("hello world!");
   }, TypeError);
   await assertThrowsAsync(
-    async () => {
+    async (): Promise<void> => {
       throw new TypeError("hello world!");
     },
     TypeError,
     "hello"
   );
-  await assertThrowsAsync(async () => {
-    return Promise.reject(new Error());
-  });
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      return Promise.reject(new Error());
+    }
+  );
 });
 
 // This test will not pass
-test(async function fails() {
-  await assertThrowsAsync(async () => {
-    console.log("Hello world");
-  });
+test(async function fails(): Promise<void> {
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      console.log("Hello world");
+    }
+  );
 });
 ```
 
@@ -149,7 +159,7 @@ Basic usage:
 ```ts
 import { runBenchmarks, bench } from "https://deno.land/std/testing/bench.ts";
 
-bench(function forIncrementX1e9(b) {
+bench(function forIncrementX1e9(b): void {
   b.start();
   for (let i = 0; i < 1e9; i++);
   b.stop();
@@ -164,7 +174,7 @@ Averaging execution time over multiple runs:
 bench({
   name: "runs100ForIncrementX1e6",
   runs: 100,
-  func(b) {
+  func(b): void {
     b.start();
     for (let i = 0; i < 1e6; i++);
     b.stop();

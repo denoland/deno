@@ -3,7 +3,7 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-test(function _arseArgs() {
+test(function _arseArgs(): void {
   assertEquals(parse(["--no-moo"]), { moo: false, _: [] });
   assertEquals(parse(["-v", "a", "-v", "b", "-v", "c"]), {
     v: ["a", "b", "c"],
@@ -11,7 +11,7 @@ test(function _arseArgs() {
   });
 });
 
-test(function comprehensive() {
+test(function comprehensive(): void {
   assertEquals(
     parse([
       "--name=meowmers",
@@ -48,13 +48,13 @@ test(function comprehensive() {
   );
 });
 
-test(function flagBoolean() {
+test(function flagBoolean(): void {
   const argv = parse(["-t", "moo"], { boolean: "t" });
   assertEquals(argv, { t: true, _: ["moo"] });
   assertEquals(typeof argv.t, "boolean");
 });
 
-test(function flagBooleanValue() {
+test(function flagBooleanValue(): void {
   const argv = parse(["--verbose", "false", "moo", "-t", "true"], {
     boolean: ["t", "verbose"],
     default: { verbose: true }
@@ -70,7 +70,7 @@ test(function flagBooleanValue() {
   assertEquals(typeof argv.t, "boolean");
 });
 
-test(function newlinesInParams() {
+test(function newlinesInParams(): void {
   const args = parse(["-s", "X\nX"]);
   assertEquals(args, { _: [], s: "X\nX" });
 
@@ -82,7 +82,7 @@ test(function newlinesInParams() {
   assertEquals(args2, { _: [], s: "X\nX" });
 });
 
-test(function strings() {
+test(function strings(): void {
   const s = parse(["-s", "0001234"], { string: "s" }).s;
   assertEquals(s, "0001234");
   assertEquals(typeof s, "string");
@@ -92,7 +92,7 @@ test(function strings() {
   assertEquals(typeof x, "string");
 });
 
-test(function stringArgs() {
+test(function stringArgs(): void {
   const s = parse(["  ", "  "], { string: "_" })._;
   assertEquals(s.length, 2);
   assertEquals(typeof s[0], "string");
@@ -101,7 +101,7 @@ test(function stringArgs() {
   assertEquals(s[1], "  ");
 });
 
-test(function emptyStrings() {
+test(function emptyStrings(): void {
   const s = parse(["-s"], { string: "s" }).s;
   assertEquals(s, "");
   assertEquals(typeof s, "string");
@@ -119,7 +119,7 @@ test(function emptyStrings() {
   assertEquals(letters.t, "");
 });
 
-test(function stringAndAlias() {
+test(function stringAndAlias(): void {
   const x = parse(["--str", "000123"], {
     string: "s",
     alias: { s: "str" }
@@ -141,7 +141,7 @@ test(function stringAndAlias() {
   assertEquals(typeof y.s, "string");
 });
 
-test(function slashBreak() {
+test(function slashBreak(): void {
   assertEquals(parse(["-I/foo/bar/baz"]), { I: "/foo/bar/baz", _: [] });
   assertEquals(parse(["-xyz/foo/bar/baz"]), {
     x: true,
@@ -151,7 +151,7 @@ test(function slashBreak() {
   });
 });
 
-test(function alias() {
+test(function alias(): void {
   const argv = parse(["-f", "11", "--zoom", "55"], {
     alias: { z: "zoom" }
   });
@@ -160,7 +160,7 @@ test(function alias() {
   assertEquals(argv.f, 11);
 });
 
-test(function multiAlias() {
+test(function multiAlias(): void {
   const argv = parse(["-f", "11", "--zoom", "55"], {
     alias: { z: ["zm", "zoom"] }
   });
@@ -170,7 +170,7 @@ test(function multiAlias() {
   assertEquals(argv.f, 11);
 });
 
-test(function nestedDottedObjects() {
+test(function nestedDottedObjects(): void {
   const argv = parse([
     "--foo.bar",
     "3",

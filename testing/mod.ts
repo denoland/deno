@@ -212,7 +212,7 @@ export async function runTests({
   skip = /^\s*$/
 }: RunOptions = {}): Promise<void> {
   const tests: TestDefinition[] = candidates.filter(
-    ({ name }) => only.test(name) && !skip.test(name)
+    ({ name }): boolean => only.test(name) && !skip.test(name)
   );
   const stats: TestStats = {
     measured: 0,
@@ -232,7 +232,7 @@ export async function runTests({
   if (stats.failed) {
     // Use setTimeout to avoid the error being ignored due to unhandled
     // promise rejections being swallowed.
-    setTimeout(() => {
+    setTimeout((): void => {
       console.error(`There were ${stats.failed} test failures.`);
       Deno.exit(1);
     }, 0);
