@@ -38,6 +38,7 @@ main_extern = [
   "$rust_build:tokio_rustls",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
+  "$rust_build:webpki",
   "$rust_build:webpki_roots",
 ]
 if (is_win) {
