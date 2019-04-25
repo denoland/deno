@@ -561,9 +561,9 @@ OPTIONS:
 SUBCOMMANDS:
     <script>    Script to run
     eval        Eval script
+    fetch       Fetch the dependencies
     fmt         Format files
     info        Show source file related info
-    prefetch    Prefetch the dependencies
     types       Print runtime TypeScript declarations
 
 ENVIRONMENT VARIABLES:

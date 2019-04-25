@@ -96,9 +96,9 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .require_equals(true)
         .help("Set V8 command line options"),
     ).subcommand(
-      SubCommand::with_name("prefetch")
+      SubCommand::with_name("fetch")
         .setting(AppSettings::DisableVersion)
-        .about("Prefetch the dependencies")
+        .about("Fetch the dependencies")
         .arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("types")
