@@ -6,6 +6,13 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.10 / 2019.04.25
+
+In deno:
+
+- Fix "deno types" (#2209)
+- CLI flags/subcommand rearrangement (#2210, #2212)
+
 ### v0.3.9 / 2019.04.25
 
 In deno:
