@@ -5,6 +5,7 @@ use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
 use crate::disk_cache::DiskCache;
 use crate::http_util;
+use crate::http_util::FetchOnceResult;
 use crate::msg;
 use crate::progress::Progress;
 use crate::tokio_util;
@@ -12,7 +13,6 @@ use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::future::Either;
 use futures::Future;
-use http;
 use serde_json;
 use std;
 use std::collections::HashMap;
@@ -21,7 +21,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
 use std::str;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use url;
@@ -305,8 +304,6 @@ impl SourceFileFetcher {
     no_remote_fetch: bool,
     redirect_limit: i64,
   ) -> Box<SourceFileFuture> {
-    use crate::http_util::FetchOnceResult;
-
     if redirect_limit < 0 {
       return Box::new(futures::future::err(too_many_redirects()));
     }
@@ -342,20 +339,14 @@ impl SourceFileFetcher {
     }
 
     let download_job = self.progress.add("Download", &module_url.to_string());
-
-    let module_uri = url_into_uri(&module_url);
-
     let dir = self.clone();
     let module_url = module_url.clone();
 
     // Single pass fetch, either yields code or yields redirect.
-    let f =
-      http_util::fetch_string_once(module_uri).and_then(move |r| match r {
-        FetchOnceResult::Redirect(uri) => {
+    let f = http_util::fetch_string_once(&module_url).and_then(move |r| {
+      match r {
+        FetchOnceResult::Redirect(new_module_url) => {
           // If redirects, update module_name and filename for next looped call.
-          let new_module_url = Url::parse(&uri.to_string())
-            .expect("http::uri::Uri should be parseable as Url");
-
           dir
             .save_source_code_headers(
               &module_url,
@@ -409,7 +400,8 @@ impl SourceFileFetcher {
 
           Either::B(futures::future::ok(source_file))
         }
-      });
+      }
+    });
 
     Box::new(f)
   }
@@ -537,11 +529,6 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   } else {
     Vec::new()
   }
-}
-
-fn url_into_uri(url: &url::Url) -> http::uri::Uri {
-  http::uri::Uri::from_str(&url.to_string())
-    .expect("url::Url should be parseable as http::uri::Uri")
 }
 
 #[derive(Debug, Default)]

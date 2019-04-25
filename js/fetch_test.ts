@@ -69,8 +69,8 @@ testPerm({ net: true }, async function fetchEmptyInvalid(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.InvalidUri);
-  assertEquals(err.name, "InvalidUri");
+  assertEquals(err.kind, Deno.ErrorKind.RelativeUrlWithoutBase);
+  assertEquals(err.name, "RelativeUrlWithoutBase");
 });
 
 testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<
