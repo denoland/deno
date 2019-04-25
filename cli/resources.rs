@@ -35,9 +35,9 @@ use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
-use tokio_rustls::{ TlsStream, rustls::ClientSession as TlsClientSession};
 use tokio::sync::mpsc;
 use tokio_process;
+use tokio_rustls::{rustls::ClientSession as TlsClientSession, TlsStream};
 
 pub type ResourceId = u32; // Sometimes referred to RID.
 
@@ -284,7 +284,9 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   Resource { rid }
 }
 
-pub fn add_tls_stream(stream: TlsStream<TcpStream, TlsClientSession>) -> Resource {
+pub fn add_tls_stream(
+  stream: TlsStream<TcpStream, TlsClientSession>,
+) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
   let r = tg.insert(rid, Repr::TlsStream(stream));
