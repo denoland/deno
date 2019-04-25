@@ -866,6 +866,16 @@ installation command to your repository:
 $ deno install awesome_cli https://example.com/awesome/cli.ts
 ```
 
+## Proxies
+
+Deno supports proxies.
+
+`HTTP_PROXY` and `HTTPS_PROXY` environmental variables are used to configure
+them.
+
+For Windows if environmental variables are not found Deno will fall back to
+reading proxies from registry.
+
 ## Import maps
 
 Deno supports [import maps](https://github.com/WICG/import-maps).

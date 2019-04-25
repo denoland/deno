@@ -22,7 +22,7 @@ use futures::Future;
 use futures::Poll;
 use futures::Sink;
 use futures::Stream;
-use hyper;
+use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
 use std::collections::BTreeMap;
 use std::io::{Error, Read, Seek, SeekFrom, Write};
@@ -317,7 +317,7 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   Resource { rid }
 }
 
-pub fn add_hyper_body(body: hyper::Body) -> Resource {
+pub fn add_reqwest_body(body: ReqwestDecoder) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
   let body = HttpBody::from(body);
