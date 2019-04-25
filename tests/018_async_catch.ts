@@ -11,4 +11,4 @@ async function call(): Promise<void> {
   }
   console.log("after try-catch");
 }
-call().catch(() => console.log("outer catch"));
+call().catch((): void => console.log("outer catch"));

@@ -10,7 +10,6 @@ use crate::resources::ResourceId;
 use crate::worker::Worker;
 use deno::deno_buf;
 use deno::Buf;
-use deno::Dispatch;
 use deno::Op;
 use futures::future::Shared;
 use std;
@@ -74,9 +73,9 @@ impl Deref for ThreadSafeState {
   }
 }
 
-impl Dispatch for ThreadSafeState {
-  fn dispatch(
-    &mut self,
+impl ThreadSafeState {
+  pub fn dispatch(
+    &self,
     control: &[u8],
     zero_copy: deno_buf,
   ) -> (bool, Box<Op>) {
@@ -158,9 +157,11 @@ impl ThreadSafeState {
   #[cfg(test)]
   pub fn mock() -> ThreadSafeState {
     let argv = vec![String::from("./deno"), String::from("hello.js")];
-    // For debugging: argv.push_back(String::from("-D"));
-    let (flags, rest_argv) = flags::set_flags(argv).unwrap();
-    ThreadSafeState::new(flags, rest_argv, ops::op_selector_std)
+    ThreadSafeState::new(
+      flags::DenoFlags::default(),
+      argv,
+      ops::op_selector_std,
+    )
   }
 
   pub fn metrics_op_dispatched(

@@ -1,7 +1,7 @@
 // Copyright 2018 the Deno authors. All rights reserved. MIT license.
 import { test, assertEquals } from "./test_util.ts";
 
-test(function customEventInitializedWithDetail() {
+test(function customEventInitializedWithDetail(): void {
   const type = "touchstart";
   const detail = { message: "hello" };
   const customEventDict = new CustomEventInit({
@@ -20,7 +20,7 @@ test(function customEventInitializedWithDetail() {
   assertEquals(event.type, type);
 });
 
-test(function toStringShouldBeWebCompatibility() {
+test(function toStringShouldBeWebCompatibility(): void {
   const type = "touchstart";
   const event = new CustomEvent(type, {});
   assertEquals(event.toString(), "[object CustomEvent]");

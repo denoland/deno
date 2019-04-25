@@ -3,7 +3,7 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 // TODO Add tests for modified, accessed, and created fields once there is a way
 // to create temp files.
-testPerm({ read: true }, async function statSyncSuccess() {
+testPerm({ read: true }, async function statSyncSuccess(): Promise<void> {
   const packageInfo = Deno.statSync("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -17,7 +17,7 @@ testPerm({ read: true }, async function statSyncSuccess() {
   assert(!testsInfo.isSymlink());
 });
 
-testPerm({ read: false }, async function statSyncPerm() {
+testPerm({ read: false }, async function statSyncPerm(): Promise<void> {
   let caughtError = false;
   try {
     Deno.statSync("package.json");
@@ -29,7 +29,7 @@ testPerm({ read: false }, async function statSyncPerm() {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function statSyncNotFound() {
+testPerm({ read: true }, async function statSyncNotFound(): Promise<void> {
   let caughtError = false;
   let badInfo;
 
@@ -45,7 +45,7 @@ testPerm({ read: true }, async function statSyncNotFound() {
   assertEquals(badInfo, undefined);
 });
 
-testPerm({ read: true }, async function lstatSyncSuccess() {
+testPerm({ read: true }, async function lstatSyncSuccess(): Promise<void> {
   const packageInfo = Deno.lstatSync("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -59,7 +59,7 @@ testPerm({ read: true }, async function lstatSyncSuccess() {
   assert(!testsInfo.isSymlink());
 });
 
-testPerm({ read: false }, async function lstatSyncPerm() {
+testPerm({ read: false }, async function lstatSyncPerm(): Promise<void> {
   let caughtError = false;
   try {
     Deno.lstatSync("package.json");
@@ -71,7 +71,7 @@ testPerm({ read: false }, async function lstatSyncPerm() {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function lstatSyncNotFound() {
+testPerm({ read: true }, async function lstatSyncNotFound(): Promise<void> {
   let caughtError = false;
   let badInfo;
 
@@ -87,7 +87,7 @@ testPerm({ read: true }, async function lstatSyncNotFound() {
   assertEquals(badInfo, undefined);
 });
 
-testPerm({ read: true }, async function statSuccess() {
+testPerm({ read: true }, async function statSuccess(): Promise<void> {
   const packageInfo = await Deno.stat("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -101,7 +101,7 @@ testPerm({ read: true }, async function statSuccess() {
   assert(!testsInfo.isSymlink());
 });
 
-testPerm({ read: false }, async function statPerm() {
+testPerm({ read: false }, async function statPerm(): Promise<void> {
   let caughtError = false;
   try {
     await Deno.stat("package.json");
@@ -113,7 +113,7 @@ testPerm({ read: false }, async function statPerm() {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function statNotFound() {
+testPerm({ read: true }, async function statNotFound(): Promise<void> {
   let caughtError = false;
   let badInfo;
 
@@ -129,7 +129,7 @@ testPerm({ read: true }, async function statNotFound() {
   assertEquals(badInfo, undefined);
 });
 
-testPerm({ read: true }, async function lstatSuccess() {
+testPerm({ read: true }, async function lstatSuccess(): Promise<void> {
   const packageInfo = await Deno.lstat("package.json");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
@@ -143,7 +143,7 @@ testPerm({ read: true }, async function lstatSuccess() {
   assert(!testsInfo.isSymlink());
 });
 
-testPerm({ read: false }, async function lstatPerm() {
+testPerm({ read: false }, async function lstatPerm(): Promise<void> {
   let caughtError = false;
   try {
     await Deno.lstat("package.json");
@@ -155,7 +155,7 @@ testPerm({ read: false }, async function lstatPerm() {
   assert(caughtError);
 });
 
-testPerm({ read: true }, async function lstatNotFound() {
+testPerm({ read: true }, async function lstatNotFound(): Promise<void> {
   let caughtError = false;
   let badInfo;
 

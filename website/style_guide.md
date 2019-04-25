@@ -269,7 +269,7 @@ the first column of the comment. For example:
 ```
 
 Code examples should not contain additional comments. It is already inside a
-comment. If it needs further comments is not a good example.
+comment. If it needs further comments it is not a good example.
 
 ## Each module should come with tests
 

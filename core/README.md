@@ -9,7 +9,7 @@ trait, and by doing so define any "built-in" functionality that would be
 provided by the VM. Ops are triggered by `Deno.core.dispatch()`.
 
 Documentation for this crate is thin at the moment. Please see
-[http_bench.rs](https://github.com/denoland/deno/blob/master/core/http_bench.rs)
+[http_bench.rs](https://github.com/denoland/deno/blob/master/core/examples/http_bench.rs)
 as a simple example of usage.
 
 TypeScript support and a lot of other functionality is not available at this

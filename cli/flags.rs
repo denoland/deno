@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
-use deno::v8_set_flags;
 
 // Creates vector of strings, Vec<String>
 #[cfg(test)]
@@ -21,81 +20,15 @@ pub struct DenoFlags {
   pub allow_run: bool,
   pub allow_high_precision: bool,
   pub no_prompts: bool,
-  pub types: bool,
-  pub prefetch: bool,
-  pub info: bool,
-  pub fmt: bool,
-  pub eval: bool,
-}
-
-impl<'a> From<ArgMatches<'a>> for DenoFlags {
-  fn from(matches: ArgMatches) -> DenoFlags {
-    let mut flags = DenoFlags::default();
-
-    if matches.is_present("log-debug") {
-      flags.log_debug = true;
-    }
-    if matches.is_present("version") {
-      flags.version = true;
-    }
-    if matches.is_present("reload") {
-      flags.reload = true;
-    }
-    if matches.is_present("allow-read") {
-      flags.allow_read = true;
-    }
-    if matches.is_present("allow-write") {
-      flags.allow_write = true;
-    }
-    if matches.is_present("allow-net") {
-      flags.allow_net = true;
-    }
-    if matches.is_present("allow-env") {
-      flags.allow_env = true;
-    }
-    if matches.is_present("allow-run") {
-      flags.allow_run = true;
-    }
-    if matches.is_present("allow-high-precision") {
-      flags.allow_high_precision = true;
-    }
-    if matches.is_present("allow-all") {
-      flags.allow_read = true;
-      flags.allow_env = true;
-      flags.allow_net = true;
-      flags.allow_run = true;
-      flags.allow_read = true;
-      flags.allow_write = true;
-      flags.allow_high_precision = true;
-    }
-    if matches.is_present("no-prompt") {
-      flags.no_prompts = true;
-    }
-    if matches.is_present("types") {
-      flags.types = true;
-    }
-    if matches.is_present("prefetch") {
-      flags.prefetch = true;
-    }
-    if matches.is_present("info") {
-      flags.info = true;
-    }
-    if matches.is_present("fmt") {
-      flags.fmt = true;
-    }
-    if matches.is_present("eval") {
-      flags.eval = true;
-    }
-
-    flags
-  }
+  pub v8_help: bool,
+  pub v8_flags: Option<Vec<String>>,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
     NO_COLOR        Set to disable color";
 
-fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
+pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
   App::new("deno")
     .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
@@ -159,16 +92,18 @@ fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("v8-flags")
         .long("v8-flags")
         .takes_value(true)
+        .use_delimiter(true)
         .require_equals(true)
         .help("Set V8 command line options"),
-    ).arg(
-      Arg::with_name("types")
-        .long("types")
-        .help("Print runtime TypeScript declarations"),
-    ).arg(
-      Arg::with_name("prefetch")
-        .long("prefetch")
-        .help("Prefetch the dependencies"),
+    ).subcommand(
+      SubCommand::with_name("prefetch")
+        .setting(AppSettings::DisableVersion)
+        .about("Prefetch the dependencies")
+        .arg(Arg::with_name("file").takes_value(true).required(true)),
+    ).subcommand(
+      SubCommand::with_name("types")
+        .setting(AppSettings::DisableVersion)
+        .about("Print runtime TypeScript declarations"),
     ).subcommand(
       SubCommand::with_name("info")
         .setting(AppSettings::DisableVersion)
@@ -197,197 +132,226 @@ fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     )
 }
 
+/// Parse ArgMatches into internal DenoFlags structure.
+/// This method should not make any side effects.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub fn set_flags(
-  args: Vec<String>,
-) -> Result<(DenoFlags, Vec<String>), String> {
-  let mut rest_argv: Vec<String> = vec!["deno".to_string()];
-  let cli_app = create_cli_app();
-  let matches = cli_app.get_matches_from(args);
+pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
+  let mut flags = DenoFlags::default();
 
-  match matches.subcommand() {
-    ("eval", Some(info_match)) => {
-      let code: &str = info_match.value_of("code").unwrap();
-      rest_argv.extend(vec![code.to_string()]);
-    }
-    ("info", Some(info_match)) => {
-      let file: &str = info_match.value_of("file").unwrap();
-      rest_argv.extend(vec![file.to_string()]);
-    }
-    ("fmt", Some(fmt_match)) => {
-      let files: Vec<String> = fmt_match
-        .values_of("files")
-        .unwrap()
-        .map(String::from)
-        .collect();
-      rest_argv.extend(files);
-    }
-    (script, Some(script_match)) => {
-      rest_argv.extend(vec![script.to_string()]);
-      // check if there are any extra arguments that should
-      // be passed to script
-      if script_match.is_present("") {
-        let script_args: Vec<String> = script_match
-          .values_of("")
-          .unwrap()
-          .map(String::from)
-          .collect();
-        rest_argv.extend(script_args);
-      }
-    }
-    _ => {}
+  if matches.is_present("log-debug") {
+    flags.log_debug = true;
   }
-
+  if matches.is_present("version") {
+    flags.version = true;
+  }
+  if matches.is_present("reload") {
+    flags.reload = true;
+  }
+  if matches.is_present("allow-read") {
+    flags.allow_read = true;
+  }
+  if matches.is_present("allow-write") {
+    flags.allow_write = true;
+  }
+  if matches.is_present("allow-net") {
+    flags.allow_net = true;
+  }
+  if matches.is_present("allow-env") {
+    flags.allow_env = true;
+  }
+  if matches.is_present("allow-run") {
+    flags.allow_run = true;
+  }
+  if matches.is_present("allow-high-precision") {
+    flags.allow_high_precision = true;
+  }
+  if matches.is_present("allow-all") {
+    flags.allow_read = true;
+    flags.allow_env = true;
+    flags.allow_net = true;
+    flags.allow_run = true;
+    flags.allow_read = true;
+    flags.allow_write = true;
+    flags.allow_high_precision = true;
+  }
+  if matches.is_present("no-prompt") {
+    flags.no_prompts = true;
+  }
   if matches.is_present("v8-options") {
-    // display v8 help and exit
-    // TODO(bartlomieju): this relies on `v8_set_flags` to swap `--v8-options` to help
-    v8_set_flags(vec!["deno".to_string(), "--v8-options".to_string()]);
+    flags.v8_help = true;
   }
-
   if matches.is_present("v8-flags") {
-    let mut v8_flags: Vec<String> = matches
+    let v8_flags: Vec<String> = matches
       .values_of("v8-flags")
       .unwrap()
       .map(String::from)
       .collect();
 
-    v8_flags.insert(1, "deno".to_string());
-    v8_set_flags(v8_flags);
+    flags.v8_flags = Some(v8_flags);
   }
 
-  let flags = DenoFlags::from(matches);
-  Ok((flags, rest_argv))
+  flags
 }
 
-#[test]
-fn test_set_flags_1() {
-  let (flags, rest) = set_flags(svec!["deno", "--version"]).unwrap();
-  assert_eq!(rest, svec!["deno"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      version: true,
-      ..DenoFlags::default()
-    }
-  );
-}
+#[cfg(test)]
+mod tests {
+  use super::*;
 
-#[test]
-fn test_set_flags_2() {
-  let (flags, rest) =
-    set_flags(svec!["deno", "-r", "-D", "script.ts"]).unwrap();
-  assert_eq!(rest, svec!["deno", "script.ts"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      log_debug: true,
-      reload: true,
-      ..DenoFlags::default()
-    }
-  );
-}
+  fn flags_from_vec(args: Vec<String>) -> DenoFlags {
+    let cli_app = create_cli_app();
+    let matches = cli_app.get_matches_from(args);
+    parse_flags(matches)
+  }
 
-#[test]
-fn test_set_flags_3() {
-  let (flags, rest) =
-    set_flags(svec!["deno", "-r", "--allow-write", "script.ts"]).unwrap();
-  assert_eq!(rest, svec!["deno", "script.ts"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      reload: true,
-      allow_write: true,
-      ..DenoFlags::default()
-    }
-  );
-}
+  #[test]
+  fn test_set_flags_1() {
+    let flags = flags_from_vec(svec!["deno", "--version"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        version: true,
+        ..DenoFlags::default()
+      }
+    );
+  }
 
-#[test]
-fn test_set_flags_4() {
-  let (flags, rest) =
-    set_flags(svec!["deno", "-Dr", "--allow-write", "script.ts"]).unwrap();
-  assert_eq!(rest, svec!["deno", "script.ts"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      log_debug: true,
-      reload: true,
-      allow_write: true,
-      ..DenoFlags::default()
-    }
-  );
-}
+  #[test]
+  fn test_set_flags_2() {
+    let flags = flags_from_vec(svec!["deno", "-r", "-D", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        log_debug: true,
+        reload: true,
+        ..DenoFlags::default()
+      }
+    );
+  }
 
-#[test]
-fn test_set_flags_5() {
-  let (flags, rest) = set_flags(svec!["deno", "--types"]).unwrap();
-  assert_eq!(rest, svec!["deno"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      types: true,
-      ..DenoFlags::default()
-    }
-  )
-}
+  #[test]
+  fn test_set_flags_3() {
+    let flags =
+      flags_from_vec(svec!["deno", "-r", "--allow-write", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        reload: true,
+        allow_write: true,
+        ..DenoFlags::default()
+      }
+    );
+  }
 
-#[test]
-fn test_set_flags_6() {
-  let (flags, rest) =
-    set_flags(svec!["deno", "--allow-net", "gist.ts", "--title", "X"]).unwrap();
-  assert_eq!(rest, svec!["deno", "gist.ts", "--title", "X"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      allow_net: true,
-      ..DenoFlags::default()
-    }
-  )
-}
+  #[test]
+  fn test_set_flags_4() {
+    let flags =
+      flags_from_vec(svec!["deno", "-Dr", "--allow-write", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        log_debug: true,
+        reload: true,
+        allow_write: true,
+        ..DenoFlags::default()
+      }
+    );
+  }
 
-#[test]
-fn test_set_flags_7() {
-  let (flags, rest) =
-    set_flags(svec!["deno", "--allow-all", "gist.ts"]).unwrap();
-  assert_eq!(rest, svec!["deno", "gist.ts"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      allow_net: true,
-      allow_env: true,
-      allow_run: true,
-      allow_read: true,
-      allow_write: true,
-      allow_high_precision: true,
-      ..DenoFlags::default()
-    }
-  )
-}
+  #[test]
+  fn test_set_flags_5() {
+    let flags = flags_from_vec(svec!["deno", "--v8-options"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        v8_help: true,
+        ..DenoFlags::default()
+      }
+    );
 
-#[test]
-fn test_set_flags_8() {
-  let (flags, rest) =
-    set_flags(svec!["deno", "--allow-read", "gist.ts"]).unwrap();
-  assert_eq!(rest, svec!["deno", "gist.ts"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      allow_read: true,
-      ..DenoFlags::default()
-    }
-  )
-}
+    let flags =
+      flags_from_vec(svec!["deno", "--v8-flags=--expose-gc,--gc-stats=1"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        v8_flags: Some(svec!["--expose-gc", "--gc-stats=1"]),
+        ..DenoFlags::default()
+      }
+    );
+  }
 
-#[test]
-fn test_set_flags_9() {
-  let (flags, rest) =
-    set_flags(svec!["deno", "--allow-high-precision", "script.ts"]).unwrap();
-  assert_eq!(rest, svec!["deno", "script.ts"]);
-  assert_eq!(
-    flags,
-    DenoFlags {
-      allow_high_precision: true,
-      ..DenoFlags::default()
-    }
-  )
+  #[test]
+  fn test_set_flags_6() {
+    let flags =
+      flags_from_vec(svec!["deno", "--allow-net", "gist.ts", "--title", "X"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        ..DenoFlags::default()
+      }
+    )
+  }
+
+  #[test]
+  fn test_set_flags_7() {
+    let flags = flags_from_vec(svec!["deno", "--allow-all", "gist.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_high_precision: true,
+        ..DenoFlags::default()
+      }
+    )
+  }
+
+  #[test]
+  fn test_set_flags_8() {
+    let flags = flags_from_vec(svec!["deno", "--allow-read", "gist.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_read: true,
+        ..DenoFlags::default()
+      }
+    )
+  }
+
+  #[test]
+  fn test_set_flags_9() {
+    let flags =
+      flags_from_vec(svec!["deno", "--allow-high-precision", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_high_precision: true,
+        ..DenoFlags::default()
+      }
+    )
+  }
+
+  #[test]
+  fn test_set_flags_10() {
+    // notice that flags passed after script name will not
+    // be parsed to DenoFlags but instead forwarded to
+    // script args as Deno.args
+    let flags = flags_from_vec(svec![
+      "deno",
+      "--allow-write",
+      "script.ts",
+      "-D",
+      "--allow-net"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: true,
+        ..DenoFlags::default()
+      }
+    )
+  }
 }

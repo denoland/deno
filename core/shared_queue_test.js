@@ -6,6 +6,21 @@ function assert(cond) {
   }
 }
 
+// Check overflow (corresponds to full_records test in rust)
+function fullRecords(q) {
+  q.reset();
+  const oneByte = new Uint8Array([42]);
+  for (let i = 0; i < q.MAX_RECORDS; i++) {
+    assert(q.push(oneByte));
+  }
+  assert(!q.push(oneByte));
+  r = q.shift();
+  assert(r.byteLength == 1);
+  assert(r[0] == 42);
+  // Even if we shift one off, we still cannot push a new record.
+  assert(!q.push(oneByte));
+}
+
 function main() {
   const q = Deno.core.sharedQueue;
 
@@ -56,7 +71,10 @@ function main() {
   assert(q.numRecords() == 0);
   assert(q.size() == 0);
 
+  fullRecords(q);
+
   Deno.core.print("shared_queue_test.js ok\n");
+  q.reset();
 }
 
 main();

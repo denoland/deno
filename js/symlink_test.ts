@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ read: true, write: true }, function symlinkSyncSuccess() {
+testPerm({ read: true, write: true }, function symlinkSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
   const oldname = testDir + "/oldname";
   const newname = testDir + "/newname";
@@ -14,6 +14,7 @@ testPerm({ read: true, write: true }, function symlinkSyncSuccess() {
     errOnWindows = e;
   }
   if (errOnWindows) {
+    assertEquals(Deno.platform.os, "win");
     assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
     assertEquals(errOnWindows.message, "Not implemented");
   } else {
@@ -24,7 +25,7 @@ testPerm({ read: true, write: true }, function symlinkSyncSuccess() {
   }
 });
 
-test(function symlinkSyncPerm() {
+test(function symlinkSyncPerm(): void {
   let err;
   try {
     Deno.symlinkSync("oldbaddir", "newbaddir");
@@ -36,17 +37,26 @@ test(function symlinkSyncPerm() {
 });
 
 // Just for now, until we implement symlink for Windows.
-testPerm({ write: true }, function symlinkSyncNotImplemented() {
+// Symlink with type should succeed on other platforms with type ignored
+testPerm({ write: true }, function symlinkSyncNotImplemented(): void {
+  const testDir = Deno.makeTempDirSync();
+  const oldname = testDir + "/oldname";
+  const newname = testDir + "/newname";
   let err;
   try {
-    Deno.symlinkSync("oldname", "newname", "dir");
+    Deno.symlinkSync(oldname, newname, "dir");
   } catch (e) {
     err = e;
   }
-  assertEquals(err.message, "Not implemented");
+  if (err) {
+    assertEquals(Deno.platform.os, "win");
+    assertEquals(err.message, "Not implemented");
+  }
 });
 
-testPerm({ read: true, write: true }, async function symlinkSuccess() {
+testPerm({ read: true, write: true }, async function symlinkSuccess(): Promise<
+  void
+> {
   const testDir = Deno.makeTempDirSync();
   const oldname = testDir + "/oldname";
   const newname = testDir + "/newname";

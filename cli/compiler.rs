@@ -35,7 +35,7 @@ lazy_static! {
   static ref C_RID: Mutex<Option<ResourceId>> = Mutex::new(None);
   // tokio runtime specifically for spawning logic that is dependent on
   // completetion of the compiler worker future
-  static ref C_RUNTIME: Mutex<Runtime> = Mutex::new(Runtime::new().unwrap());
+  static ref C_RUNTIME: Mutex<Runtime> = Mutex::new(tokio_util::create_threadpool_runtime());
 }
 
 // This corresponds to JS ModuleMetaData.
@@ -111,8 +111,6 @@ fn lazy_start(parent_state: ThreadSafeState) -> ResourceId {
 
       let mut runtime = C_RUNTIME.lock().unwrap();
       runtime.spawn(lazy(move || {
-        tokio_util::abort_on_panic();
-
         worker.then(move |result| -> Result<(), ()> {
           // Close resource so the future created by
           // handle_worker_message_stream exits

@@ -60,8 +60,8 @@ function processBlobParts(
   // instead of dynamic allocation.
   const uint8Arrays = toUint8Arrays(blobParts, normalizeLineEndingsToNative);
   const byteLength = uint8Arrays
-    .map(u8 => u8.byteLength)
-    .reduce((a, b) => a + b, 0);
+    .map((u8): number => u8.byteLength)
+    .reduce((a, b): number => a + b, 0);
   const ab = new ArrayBuffer(byteLength);
   const bytes = new Uint8Array(ab);
 

@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ read: true, write: true }, function writeFileSyncSuccess() {
+testPerm({ read: true, write: true }, function writeFileSyncSuccess(): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -12,7 +12,7 @@ testPerm({ read: true, write: true }, function writeFileSyncSuccess() {
   assertEquals("Hello", actual);
 });
 
-testPerm({ write: true }, function writeFileSyncFail() {
+testPerm({ write: true }, function writeFileSyncFail(): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -28,7 +28,7 @@ testPerm({ write: true }, function writeFileSyncFail() {
   assert(caughtError);
 });
 
-testPerm({ write: false }, function writeFileSyncPerm() {
+testPerm({ write: false }, function writeFileSyncPerm(): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -44,7 +44,7 @@ testPerm({ write: false }, function writeFileSyncPerm() {
   assert(caughtError);
 });
 
-testPerm({ read: true, write: true }, function writeFileSyncUpdatePerm() {
+testPerm({ read: true, write: true }, function writeFileSyncUpdatePerm(): void {
   if (Deno.build.os !== "win") {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -56,7 +56,7 @@ testPerm({ read: true, write: true }, function writeFileSyncUpdatePerm() {
   }
 });
 
-testPerm({ read: true, write: true }, function writeFileSyncCreate() {
+testPerm({ read: true, write: true }, function writeFileSyncCreate(): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -80,7 +80,7 @@ testPerm({ read: true, write: true }, function writeFileSyncCreate() {
   assertEquals("Hello", actual);
 });
 
-testPerm({ read: true, write: true }, function writeFileSyncAppend() {
+testPerm({ read: true, write: true }, function writeFileSyncAppend(): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -102,34 +102,42 @@ testPerm({ read: true, write: true }, function writeFileSyncAppend() {
   assertEquals("Hello", actual);
 });
 
-testPerm({ read: true, write: true }, async function writeFileSuccess() {
-  const enc = new TextEncoder();
-  const data = enc.encode("Hello");
-  const filename = Deno.makeTempDirSync() + "/test.txt";
-  await Deno.writeFile(filename, data);
-  const dataRead = Deno.readFileSync(filename);
-  const dec = new TextDecoder("utf-8");
-  const actual = dec.decode(dataRead);
-  assertEquals("Hello", actual);
-});
-
-testPerm({ read: true, write: true }, async function writeFileNotFound() {
-  const enc = new TextEncoder();
-  const data = enc.encode("Hello");
-  const filename = "/baddir/test.txt";
-  // The following should fail because /baddir doesn't exist (hopefully).
-  let caughtError = false;
-  try {
+testPerm(
+  { read: true, write: true },
+  async function writeFileSuccess(): Promise<void> {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
     await Deno.writeFile(filename, data);
-  } catch (e) {
-    caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
-    assertEquals(e.name, "NotFound");
+    const dataRead = Deno.readFileSync(filename);
+    const dec = new TextDecoder("utf-8");
+    const actual = dec.decode(dataRead);
+    assertEquals("Hello", actual);
   }
-  assert(caughtError);
-});
+);
 
-testPerm({ read: true, write: false }, async function writeFilePerm() {
+testPerm(
+  { read: true, write: true },
+  async function writeFileNotFound(): Promise<void> {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = "/baddir/test.txt";
+    // The following should fail because /baddir doesn't exist (hopefully).
+    let caughtError = false;
+    try {
+      await Deno.writeFile(filename, data);
+    } catch (e) {
+      caughtError = true;
+      assertEquals(e.kind, Deno.ErrorKind.NotFound);
+      assertEquals(e.name, "NotFound");
+    }
+    assert(caughtError);
+  }
+);
+
+testPerm({ read: true, write: false }, async function writeFilePerm(): Promise<
+  void
+> {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -145,19 +153,24 @@ testPerm({ read: true, write: false }, async function writeFilePerm() {
   assert(caughtError);
 });
 
-testPerm({ read: true, write: true }, async function writeFileUpdatePerm() {
-  if (Deno.build.os !== "win") {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const filename = Deno.makeTempDirSync() + "/test.txt";
-    await Deno.writeFile(filename, data, { perm: 0o755 });
-    assertEquals(Deno.statSync(filename).mode & 0o777, 0o755);
-    await Deno.writeFile(filename, data, { perm: 0o666 });
-    assertEquals(Deno.statSync(filename).mode & 0o777, 0o666);
+testPerm(
+  { read: true, write: true },
+  async function writeFileUpdatePerm(): Promise<void> {
+    if (Deno.build.os !== "win") {
+      const enc = new TextEncoder();
+      const data = enc.encode("Hello");
+      const filename = Deno.makeTempDirSync() + "/test.txt";
+      await Deno.writeFile(filename, data, { perm: 0o755 });
+      assertEquals(Deno.statSync(filename).mode & 0o777, 0o755);
+      await Deno.writeFile(filename, data, { perm: 0o666 });
+      assertEquals(Deno.statSync(filename).mode & 0o777, 0o666);
+    }
   }
-});
+);
 
-testPerm({ read: true, write: true }, async function writeFileCreate() {
+testPerm({ read: true, write: true }, async function writeFileCreate(): Promise<
+  void
+> {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -181,7 +194,9 @@ testPerm({ read: true, write: true }, async function writeFileCreate() {
   assertEquals("Hello", actual);
 });
 
-testPerm({ read: true, write: true }, async function writeFileAppend() {
+testPerm({ read: true, write: true }, async function writeFileAppend(): Promise<
+  void
+> {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = Deno.makeTempDirSync() + "/test.txt";

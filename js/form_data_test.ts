@@ -1,17 +1,17 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
 
-test(function formDataHasCorrectNameProp() {
+test(function formDataHasCorrectNameProp(): void {
   assertEquals(FormData.name, "FormData");
 });
 
-test(function formDataParamsAppendSuccess() {
+test(function formDataParamsAppendSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   assertEquals(formData.get("a"), "true");
 });
 
-test(function formDataParamsDeleteSuccess() {
+test(function formDataParamsDeleteSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -21,7 +21,7 @@ test(function formDataParamsDeleteSuccess() {
   assertEquals(formData.get("b"), null);
 });
 
-test(function formDataParamsGetAllSuccess() {
+test(function formDataParamsGetAllSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -31,7 +31,7 @@ test(function formDataParamsGetAllSuccess() {
   assertEquals(formData.getAll("c"), []);
 });
 
-test(function formDataParamsGetSuccess() {
+test(function formDataParamsGetSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -45,7 +45,7 @@ test(function formDataParamsGetSuccess() {
   assertEquals(formData.get("e"), "null");
 });
 
-test(function formDataParamsHasSuccess() {
+test(function formDataParamsHasSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -54,7 +54,7 @@ test(function formDataParamsHasSuccess() {
   assert(!formData.has("c"));
 });
 
-test(function formDataParamsSetSuccess() {
+test(function formDataParamsSetSuccess(): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -69,7 +69,7 @@ test(function formDataParamsSetSuccess() {
   assertEquals(formData.get("e"), "null");
 });
 
-test(function formDataSetEmptyBlobSuccess() {
+test(function formDataSetEmptyBlobSuccess(): void {
   const formData = new FormData();
   formData.set("a", new Blob([]), "blank.txt");
   formData.get("a");
@@ -81,93 +81,99 @@ test(function formDataSetEmptyBlobSuccess() {
   */
 });
 
-test(function formDataParamsForEachSuccess() {
+test(function formDataParamsForEachSuccess(): void {
   const init = [["a", "54"], ["b", "true"]];
   const formData = new FormData();
   for (const [name, value] of init) {
     formData.append(name, value);
   }
   let callNum = 0;
-  formData.forEach((value, key, parent) => {
-    assertEquals(formData, parent);
-    assertEquals(value, init[callNum][1]);
-    assertEquals(key, init[callNum][0]);
-    callNum++;
-  });
+  formData.forEach(
+    (value, key, parent): void => {
+      assertEquals(formData, parent);
+      assertEquals(value, init[callNum][1]);
+      assertEquals(key, init[callNum][0]);
+      callNum++;
+    }
+  );
   assertEquals(callNum, init.length);
 });
 
-test(function formDataParamsArgumentsCheck() {
+test(function formDataParamsArgumentsCheck(): void {
   const methodRequireOneParam = ["delete", "getAll", "get", "has", "forEach"];
 
   const methodRequireTwoParams = ["append", "set"];
 
-  methodRequireOneParam.forEach(method => {
-    const formData = new FormData();
-    let hasThrown = 0;
-    let errMsg = "";
-    try {
-      formData[method]();
-      hasThrown = 1;
-    } catch (err) {
-      errMsg = err.message;
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
+  methodRequireOneParam.forEach(
+    (method): void => {
+      const formData = new FormData();
+      let hasThrown = 0;
+      let errMsg = "";
+      try {
+        formData[method]();
+        hasThrown = 1;
+      } catch (err) {
+        errMsg = err.message;
+        if (err instanceof TypeError) {
+          hasThrown = 2;
+        } else {
+          hasThrown = 3;
+        }
       }
+      assertEquals(hasThrown, 2);
+      assertEquals(
+        errMsg,
+        `FormData.${method} requires at least 1 argument, but only 0 present`
+      );
     }
-    assertEquals(hasThrown, 2);
-    assertEquals(
-      errMsg,
-      `FormData.${method} requires at least 1 argument, but only 0 present`
-    );
-  });
+  );
 
-  methodRequireTwoParams.forEach(method => {
-    const formData = new FormData();
-    let hasThrown = 0;
-    let errMsg = "";
+  methodRequireTwoParams.forEach(
+    (method: string): void => {
+      const formData = new FormData();
+      let hasThrown = 0;
+      let errMsg = "";
 
-    try {
-      formData[method]();
-      hasThrown = 1;
-    } catch (err) {
-      errMsg = err.message;
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
+      try {
+        formData[method]();
+        hasThrown = 1;
+      } catch (err) {
+        errMsg = err.message;
+        if (err instanceof TypeError) {
+          hasThrown = 2;
+        } else {
+          hasThrown = 3;
+        }
       }
-    }
-    assertEquals(hasThrown, 2);
-    assertEquals(
-      errMsg,
-      `FormData.${method} requires at least 2 arguments, but only 0 present`
-    );
+      assertEquals(hasThrown, 2);
+      assertEquals(
+        errMsg,
+        `FormData.${method} requires at least 2 arguments, but only 0 present`
+      );
 
-    hasThrown = 0;
-    errMsg = "";
-    try {
-      formData[method]("foo");
-      hasThrown = 1;
-    } catch (err) {
-      errMsg = err.message;
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
+      hasThrown = 0;
+      errMsg = "";
+      try {
+        formData[method]("foo");
+        hasThrown = 1;
+      } catch (err) {
+        errMsg = err.message;
+        if (err instanceof TypeError) {
+          hasThrown = 2;
+        } else {
+          hasThrown = 3;
+        }
       }
+      assertEquals(hasThrown, 2);
+      assertEquals(
+        errMsg,
+        `FormData.${method} requires at least 2 arguments, but only 1 present`
+      );
     }
-    assertEquals(hasThrown, 2);
-    assertEquals(
-      errMsg,
-      `FormData.${method} requires at least 2 arguments, but only 1 present`
-    );
-  });
+  );
 });
 
-test(function toStringShouldBeWebCompatibility() {
+test(function toStringShouldBeWebCompatibility(): void {
   const formData = new FormData();
   assertEquals(formData.toString(), "[object FormData]");
 });

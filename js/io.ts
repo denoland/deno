@@ -146,7 +146,7 @@ export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
   const b = new Uint8Array(1024);
 
   return {
-    [Symbol.asyncIterator]() {
+    [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
       return this;
     },
 

@@ -1,4 +1,4 @@
-(async () => {
+(async (): Promise<void> => {
   const {
     returnsHi,
     returnsFoo2,

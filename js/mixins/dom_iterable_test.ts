@@ -25,7 +25,7 @@ function setup() {
   };
 }
 
-test(function testDomIterable() {
+test(function testDomIterable(): void {
   const { DomIterable, Base } = setup();
 
   const fixture: Array<[string, number]> = [["foo", 1], ["bar", 2]];
@@ -59,7 +59,7 @@ test(function testDomIterable() {
   assertEquals(DomIterable.name, Base.name);
 });
 
-test(function testDomIterableScope() {
+test(function testDomIterableScope(): void {
   const { DomIterable } = setup();
 
   const domIterable = new DomIterable([["foo", 1]]);
