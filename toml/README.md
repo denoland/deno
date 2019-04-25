@@ -94,9 +94,10 @@ will output:
 ### Parse
 
 ```ts
-import { parseFile, parse } from "./parser.ts";
+import { parse } from "./parser.ts";
+import { readFileStrSync } from "../fs/read_file_str.ts";
 
-const tomlObject = parseFile("file.toml");
+const tomlObject = parse(readFileStrSync("file.toml"));
 
 const tomlString = 'foo.bar = "Deno"';
 const tomlObject22 = parse(tomlString);
