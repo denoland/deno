@@ -42,12 +42,16 @@ use std::net::Shutdown;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio_rustls::{TlsConnector, TlsStream, rustls::ClientConfig, rustls::ClientSession};
 use tokio_process::CommandExt;
 use tokio_threadpool;
+use webpki;
+use webpki_roots;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -1516,6 +1520,28 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
   ))
 }
 
+fn new_tls_conn(cmd_id: u32, tls_stream: TlsStream<TcpStream, ClientSession>) -> OpResult {
+  let tls_stream_resource = resources::add_tls_stream(tls_stream);
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::NewConn::create(
+    builder,
+    &msg::NewConnArgs {
+      rid: tls_stream_resource.rid,
+      ..Default::default()
+    },
+  );
+  Ok(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::NewConn,
+      ..Default::default()
+    },
+  ))
+}
+
 fn op_accept(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
@@ -1589,8 +1615,17 @@ fn op_dial_tls(
       .and_then(move |addr| {
         TcpStream::connect(&addr)
           .map_err(DenoError::from)
-          .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream))
-      });
+      })
+      .and_then(move |tcp_stream| {
+        let mut config = ClientConfig::new();
+        config.root_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+        let connector = TlsConnector::from(Arc::new(config));
+        let domain = webpki::DNSNameRef::try_from_ascii_str(&address).unwrap();
+
+        connector.connect(domain, tcp_stream)
+          .map_err(DenoError::from)
+      })
+      .and_then(move |tls_stream| new_tls_conn(cmd_id, tls_stream));
   Box::new(op)
 }
 

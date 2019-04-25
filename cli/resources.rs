@@ -35,6 +35,7 @@ use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
+use tokio_rustls::{ TlsStream, rustls::ClientSession as TlsClientSession};
 use tokio::sync::mpsc;
 use tokio_process;
 
@@ -90,6 +91,7 @@ enum Repr {
   // See: https://github.com/tokio-rs/tokio/issues/846
   TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
   TcpStream(tokio::net::TcpStream),
+  TlsStream(TlsStream<TcpStream, TlsClientSession>),
   HttpBody(HttpBody),
   Repl(Arc<Mutex<Repl>>),
   // Enum size is bounded by the largest variant.
@@ -135,6 +137,7 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::FsFile(_) => "fsFile",
     Repr::TcpListener(_, _) => "tcpListener",
     Repr::TcpStream(_) => "tcpStream",
+    Repr::TlsStream(_) => "tlsStream",
     Repr::HttpBody(_) => "httpBody",
     Repr::Repl(_) => "repl",
     Repr::Child(_) => "child",
@@ -277,6 +280,14 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
   let r = tg.insert(rid, Repr::TcpStream(stream));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
+pub fn add_tls_stream(stream: TlsStream<TcpStream, TlsClientSession>) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(rid, Repr::TlsStream(stream));
   assert!(r.is_none());
   Resource { rid }
 }
