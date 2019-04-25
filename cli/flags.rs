@@ -35,8 +35,7 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     .settings(&[
       AppSettings::AllowExternalSubcommands,
       AppSettings::DisableVersion,
-    ])
-    .after_help(ENV_VARIABLES_HELP)
+    ]).after_help(ENV_VARIABLES_HELP)
     .arg(
       Arg::with_name("allow-read")
         .long("allow-read")
@@ -91,10 +90,8 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .use_delimiter(true)
         .require_equals(true)
         .help("Set V8 command line options"),
-    ).subcommand(
-      SubCommand::with_name("version")
-        .about("Print the version"),
-    ).subcommand(
+    ).subcommand(SubCommand::with_name("version").about("Print the version"))
+    .subcommand(
       SubCommand::with_name("fetch")
         .setting(AppSettings::DisableVersion)
         .about("Fetch the dependencies")
