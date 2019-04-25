@@ -553,7 +553,6 @@ FLAGS:
         --no-prompt               Do not use prompts
     -r, --reload                  Reload source code cache (recompile TypeScript)
         --v8-options              Print V8 command line options
-    -v, --version                 Print the version
 
 OPTIONS:
         --v8-flags=<v8-flags>    Set V8 command line options
@@ -563,8 +562,10 @@ SUBCOMMANDS:
     eval        Eval script
     fetch       Fetch the dependencies
     fmt         Format files
+    help        Prints this message or the help of the given subcommand(s)
     info        Show source file related info
     types       Print runtime TypeScript declarations
+    version     Print the version
 
 ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory

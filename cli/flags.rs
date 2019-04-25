@@ -34,14 +34,9 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     .global_settings(&[AppSettings::ColorNever])
     .settings(&[
       AppSettings::AllowExternalSubcommands,
-      AppSettings::DisableHelpSubcommand,
+      AppSettings::DisableVersion,
     ]).after_help(ENV_VARIABLES_HELP)
     .arg(
-      Arg::with_name("version")
-        .short("v")
-        .long("version")
-        .help("Print the version"),
-    ).arg(
       Arg::with_name("allow-read")
         .long("allow-read")
         .help("Allow file system read access"),
@@ -95,7 +90,8 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .use_delimiter(true)
         .require_equals(true)
         .help("Set V8 command line options"),
-    ).subcommand(
+    ).subcommand(SubCommand::with_name("version").about("Print the version"))
+    .subcommand(
       SubCommand::with_name("fetch")
         .setting(AppSettings::DisableVersion)
         .about("Fetch the dependencies")
@@ -205,7 +201,7 @@ mod tests {
 
   #[test]
   fn test_set_flags_1() {
-    let flags = flags_from_vec(svec!["deno", "--version"]);
+    let flags = flags_from_vec(svec!["deno", "version"]);
     assert_eq!(
       flags,
       DenoFlags {
