@@ -32,7 +32,7 @@ export class URLSearchParams {
    */
   append(name: string, value: string): void {
     requiredArguments("URLSearchParams.append", arguments.length, 2);
-    this.params.push([String(name), value]);
+    this.params.push([String(name), String(value)]);
   }
 
   /** Deletes the given search parameter and its associated value,
@@ -112,6 +112,7 @@ export class URLSearchParams {
     // set the value of the first such name-value pair to value
     // and remove the others.
     name = String(name);
+    value = String(value);
     let found = false;
     let i = 0;
     while (i < this.params.length) {
