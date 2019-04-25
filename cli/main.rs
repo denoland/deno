@@ -47,7 +47,6 @@ use futures::lazy;
 use futures::Future;
 use log::{LevelFilter, Metadata, Record};
 use std::env;
-use std::path::Path;
 
 static LOGGER: Logger = Logger;
 
@@ -144,12 +143,10 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let p = Path::new(concat!(
+  let content = include_str!(concat!(
     env!("GN_OUT_DIR"),
     "/gen/cli/lib/lib.deno_runtime.d.ts"
   ));
-  let content_bytes = std::fs::read(p).unwrap();
-  let content = std::str::from_utf8(&content_bytes[..]).unwrap();
   println!("{}", content);
 }
 
