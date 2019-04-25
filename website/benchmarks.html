@@ -10,6 +10,9 @@
   </head>
   <body>
     <main>
+      <div id="busy">
+        <div class="spinner"></div>`
+      </div>
       <a href="/"><img src="images/deno_logo_3.svg" width=200></a>
       <h1>Deno Continuous Benchmarks</h1>
 
@@ -153,10 +156,25 @@
     <script type="module">
       import { drawCharts } from "./app.js";
       window.chartWidth = 800;
+      const busy = document.getElementById("busy")
 
-      let u = window.location.hash.match("all") ? "./data.json" : "recent.json";
+      function showSpinner () {
+        busy.style.display = 'block';
+      }
 
-      drawCharts(u);
+      function hideSpinner () {
+        busy.style.display = 'none';
+      }
+
+      function updateCharts () {
+        let u = window.location.hash.match("all") ? "./data.json" : "recent.json";
+        showSpinner()
+        
+        drawCharts(u).finally(hideSpinner)
+      }
+      updateCharts()
+
+      window.onhashchange = updateCharts
     </script>
   </body>
 </html>
