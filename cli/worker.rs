@@ -211,12 +211,13 @@ fn fetch_module_meta_data_and_maybe_compile_async(
   referrer: &str,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   let use_cache = !state.flags.reload;
+  let no_fetch = state.flags.no_fetch;
   let state_ = state.clone();
   let specifier = specifier.to_string();
   let referrer = referrer.to_string();
   state
     .dir
-    .fetch_module_meta_data_async(&specifier, &referrer, use_cache)
+    .fetch_module_meta_data_async(&specifier, &referrer, use_cache, no_fetch)
     .and_then(move |out| {
       if out.media_type == msg::MediaType::TypeScript
         && !out.has_output_code_and_source_map()

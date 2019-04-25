@@ -156,6 +156,7 @@ impl DenoDir {
     specifier: &str,
     referrer: &str,
     use_cache: bool,
+    no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = errors::DenoError> {
     debug!(
       "fetch_module_meta_data. specifier {} referrer {}",
@@ -184,6 +185,7 @@ impl DenoDir {
         module_name.as_str(),
         filename.as_str(),
         use_cache,
+        no_fetch,
       ).then(move |result| {
         let mut out = match result {
           Ok(out) => out,
@@ -259,7 +261,7 @@ impl DenoDir {
     use_cache: bool,
   ) -> Result<ModuleMetaData, errors::DenoError> {
     tokio_util::block_on(
-      self.fetch_module_meta_data_async(specifier, referrer, use_cache),
+      self.fetch_module_meta_data_async(specifier, referrer, use_cache, false),
     )
   }
 
@@ -392,6 +394,7 @@ fn get_source_code_async(
   module_name: &str,
   filename: &str,
   use_cache: bool,
+  no_fetch: bool,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   let filename = filename.to_string();
   let module_name = module_name.to_string();
@@ -399,7 +402,8 @@ fn get_source_code_async(
   // We try fetch local. Two cases:
   // 1. This is a remote module and we're allowed to use cached downloads.
   // 2. This is a local module.
-  if !is_module_remote || use_cache {
+  println!("use cache {:?} no fetch {:?}", use_cache, no_fetch);
+  if !is_module_remote || use_cache || no_fetch {
     debug!(
       "fetch local or reload {} is_module_remote {}",
       module_name, is_module_remote
@@ -419,8 +423,8 @@ fn get_source_code_async(
     }
   }
 
-  // If not remote file, stop here!
-  if !is_module_remote {
+  // If not remote file are remote downloads are not allowed, stop here!
+  if !is_module_remote || no_fetch {
     debug!("not remote file stop here");
     return Either::A(futures::future::err(DenoError::from(
       std::io::Error::new(
@@ -460,6 +464,7 @@ fn get_source_code(
     module_name,
     filename,
     use_cache,
+    false,
   ))
 }
 

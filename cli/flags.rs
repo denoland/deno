@@ -23,6 +23,7 @@ pub struct DenoFlags {
   pub allow_run: bool,
   pub allow_high_precision: bool,
   pub no_prompts: bool,
+  pub no_fetch: bool,
   pub v8_help: bool,
   pub v8_flags: Option<Vec<String>>,
 }
@@ -72,6 +73,10 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("no-prompt")
         .long("no-prompt")
         .help("Do not use prompts"),
+    ).arg(
+      Arg::with_name("no-fetch")
+        .long("no-fetch")
+        .help("Do not download remote modules"),
     ).arg(
       Arg::with_name("log-debug")
         .short("D")
@@ -186,6 +191,9 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
   }
   if matches.is_present("no-prompt") {
     flags.no_prompts = true;
+  }
+  if matches.is_present("no-fetch") {
+    flags.no_fetch = true;
   }
   if matches.is_present("v8-options") {
     flags.v8_help = true;
