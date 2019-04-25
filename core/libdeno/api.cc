@@ -101,6 +101,7 @@ deno_snapshot deno_snapshot_new(Deno* d_) {
 
   auto blob = d->snapshot_creator_->CreateBlob(
       v8::SnapshotCreator::FunctionCodeHandling::kKeep);
+  d->has_snapshotted_ = true;
   return {reinterpret_cast<uint8_t*>(const_cast<char*>(blob.data)),
           blob.raw_size};
 }
