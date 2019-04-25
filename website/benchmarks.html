@@ -9,7 +9,7 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
   </head>
   <body>
-    <div id="busy">
+    <div id="spinner-overlay">
       <div class="spinner"></div>`
     </div>
     <main>
@@ -156,18 +156,19 @@
     <script type="module">
       import { drawCharts } from "./app.js";
       window.chartWidth = 800;
-      const busy = document.getElementById("busy")
+      const overlay = document.getElementById("spinner-overlay")
 
       function showSpinner () {
-        busy.style.display = "block";
+        overlay.style.display = "block";
       }
 
       function hideSpinner () {
-        busy.style.display = "none";
+        overlay.style.display = "none";
       }
 
       function updateCharts () {
-        let u = window.location.hash.match("all") ? "./data.json" : "recent.json";
+        const u = window.location.hash.match("all") ? "./data.json" : "recent.json";
+
         showSpinner()
         
         drawCharts(u).finally(hideSpinner)

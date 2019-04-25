@@ -102,7 +102,7 @@ code {
   background: transparent;
 }
 
-#busy {
+#spinner-overlay {
   display: none;
   position: fixed;
   top: 0px;
