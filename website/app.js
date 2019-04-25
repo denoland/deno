@@ -194,7 +194,7 @@ export function drawCharts(dataUrl) {
   if (window["location"]["hostname"] != "deno.github.io") {
     dataUrl = "https://denoland.github.io/deno/" + dataUrl;
   }
-  drawChartsFromBenchmarkData(dataUrl);
+  return drawChartsFromBenchmarkData(dataUrl);
 }
 
 /**
