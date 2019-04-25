@@ -153,7 +153,7 @@ fn types_command() {
   println!("{}", content);
 }
 
-fn prefetch_or_info_command(
+fn fetch_or_info_command(
   flags: DenoFlags,
   argv: Vec<String>,
   print_info: bool,
@@ -299,12 +299,12 @@ fn main() {
     ("info", Some(info_match)) => {
       let file: &str = info_match.value_of("file").unwrap();
       argv.extend(vec![file.to_string()]);
-      prefetch_or_info_command(flags, argv, true);
+      fetch_or_info_command(flags, argv, true);
     }
-    ("prefetch", Some(prefetch_match)) => {
-      let file: &str = prefetch_match.value_of("file").unwrap();
+    ("fetch", Some(fetch_match)) => {
+      let file: &str = fetch_match.value_of("file").unwrap();
       argv.extend(vec![file.to_string()]);
-      prefetch_or_info_command(flags, argv, false);
+      fetch_or_info_command(flags, argv, false);
     }
     ("fmt", Some(fmt_match)) => {
       let files: Vec<String> = fmt_match
