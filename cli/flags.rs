@@ -34,7 +34,6 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     .global_settings(&[AppSettings::ColorNever])
     .settings(&[
       AppSettings::AllowExternalSubcommands,
-      AppSettings::DisableHelpSubcommand,
     ]).after_help(ENV_VARIABLES_HELP)
     .arg(
       Arg::with_name("version")
