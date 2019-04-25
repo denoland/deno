@@ -6,6 +6,29 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.9 / 2019.04.25
+
+In deno:
+
+- Fix #2033, shared queue push bug (#2158)
+- Fix panic handler (#2188)
+- cli: Change "deno --types" to "deno types" and "deno --prefetch" to "deno
+  prefetch" (#2157)
+- Make Deno/Deno.core not deletable/writable (#2153)
+- Add Deno.kill(pid, signo) and process.kill(signo) (Unix only) (#2177)
+- symlink: Ignore type parameter on non-Windows platforms (#2185)
+- upgrade rust crates (#2186)
+- core: make Isolate concrete, remove Dispatch trait (#2183)
+
+In deno_std:
+
+- http: add cookie module (#338)
+- fs: add getFileInfoType() (#341)
+- fs: add ensureLink/ensureLinkSync (#353)
+- fs: add ensureSymlink/ensureSymlinkSync (#268)
+- fs: add readFileStr, writeFileStr (#276, #340)
+- testing: support Sets in asserts.equals (#350)
+
 ### v0.3.8 / 2019.04.19
 
 In deno:
