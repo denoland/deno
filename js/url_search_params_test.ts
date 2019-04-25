@@ -182,3 +182,17 @@ test(function urlSearchParamsAppendArgumentsCheck(): void {
     }
   );
 });
+
+// ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-delete.any.js
+test(function urlSearchParamsDeletingAppendedMultiple(): void {
+  const params = new URLSearchParams();
+  params.append("first", (1 as unknown) as string);
+  assert(params.has("first"));
+  assertEquals(params.get("first"), "1");
+  params.delete("first");
+  assertEquals(params.has("first"), false);
+  params.append("first", (1 as unknown) as string);
+  params.append("first", (10 as unknown) as string);
+  params.delete("first");
+  assertEquals(params.has("first"), false);
+});
