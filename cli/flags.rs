@@ -191,13 +191,24 @@ Prettier dependencies on first run.
             .required(true),
         ),
     ).subcommand(
+      SubCommand::with_name("run")
+        .settings(&[
+          AppSettings::AllowExternalSubcommands,
+          AppSettings::SubcommandRequired,
+        ]).about("Run provided file")
+        .subcommand(
+          // this is a fake subcommand - it's used in conjunction with
+          // AppSettings:AllowExternalSubcommand to treat it as an
+          // entry point script
+          SubCommand::with_name("<script>").about("Script to run"),
+        ),
+    ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
       // entry point script
       SubCommand::with_name("<script>").about("Script to run"),
     )
 }
-
 /// Parse ArgMatches into internal DenoFlags structure.
 /// This method should not make any side effects.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -314,6 +325,25 @@ pub fn flags_from_vec(
       DenoSubcommand::Info
     }
     ("types", Some(_)) => DenoSubcommand::Types,
+    ("run", Some(run_match)) => {
+      match run_match.subcommand() {
+        (script, Some(script_match)) => {
+          argv.extend(vec![script.to_string()]);
+          // check if there are any extra arguments that should
+          // be passed to script
+          if script_match.is_present("") {
+            let script_args: Vec<String> = script_match
+              .values_of("")
+              .unwrap()
+              .map(String::from)
+              .collect();
+            argv.extend(script_args);
+          }
+          DenoSubcommand::Run
+        }
+        _ => unreachable!(),
+      }
+    }
     (script, Some(script_match)) => {
       argv.extend(vec![script.to_string()]);
       // check if there are any extra arguments that should
