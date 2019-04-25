@@ -1621,16 +1621,17 @@ fn op_dial_tls(
   data: deno_buf,
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
-  if let Err(e) = state.check_net("dial_tls") {
-    return odd_future(e);
-  }
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_dial_tls().unwrap();
   let network = inner.network().unwrap();
   assert_eq!(network, "tcp"); // TODO Support others.
-  let address = inner.address().unwrap();
+  let address = String::from(inner.address().unwrap());
 
-  let op = resolve_addr(address)
+  if let Err(e) = state.check_net(&address) {
+    return odd_future(e);
+  }
+
+  let op = resolve_addr(&address)
     .map_err(DenoError::from)
     .and_then(move |addr| TcpStream::connect(&addr).map_err(DenoError::from))
     .and_then(move |tcp_stream| {
