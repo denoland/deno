@@ -1,8 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { URL } from "./url";
 import { requiredArguments } from "./util";
 
 export class URLSearchParams {
   private params: Array<[string, string]> = [];
+  private url: URL | null = null;
 
   constructor(init: string | string[][] | Record<string, string> = "") {
     if (typeof init === "string") {
@@ -22,6 +24,19 @@ export class URLSearchParams {
     // Overload: record<USVString, USVString>
     for (const key of Object.keys(init)) {
       this.append(key, init[key]);
+    }
+  }
+
+  private updateSteps(): void {
+    if (this.url === null) {
+      return;
+    }
+
+    let query = this.toString();
+    if (query === "") {
+      this.url._parts.query = null;
+    } else {
+      this.url._parts.query = query;
     }
   }
 
@@ -51,6 +66,7 @@ export class URLSearchParams {
         i++;
       }
     }
+    this.updateSteps();
   }
 
   /** Returns all the values associated with a given search parameter
