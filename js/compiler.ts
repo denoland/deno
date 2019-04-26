@@ -5,6 +5,9 @@ import { window } from "./window";
 import { assetSourceCode } from "./assets";
 import { Console } from "./console";
 import { core } from "./core";
+import { cwd } from "./dir";
+import { sendSync } from "./dispatch";
+import * as flatbuffers from "./flatbuffers";
 import * as os from "./os";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { clearTimer, setTimeout } from "./timers";
@@ -55,16 +58,80 @@ interface CompilerLookup {
 interface Os {
   fetchModuleMetaData: typeof os.fetchModuleMetaData;
   exit: typeof os.exit;
+  noColor: typeof os.noColor;
 }
 
 /** Abstraction of the APIs required from the `typescript` module so they can
  * be easily mocked.
  */
 interface Ts {
+  convertCompilerOptionsFromJson: typeof ts.convertCompilerOptionsFromJson;
   createLanguageService: typeof ts.createLanguageService;
   formatDiagnosticsWithColorAndContext: typeof ts.formatDiagnosticsWithColorAndContext;
   formatDiagnostics: typeof ts.formatDiagnostics;
+  parseConfigFileTextToJson: typeof ts.parseConfigFileTextToJson;
 }
+
+/** Options that either do nothing in Deno, or would cause undesired behavior
+ * if modified. */
+const ignoredCompilerOptions: ReadonlyArray<string> = [
+  "allowSyntheticDefaultImports",
+  "baseUrl",
+  "build",
+  "composite",
+  "declaration",
+  "declarationDir",
+  "declarationMap",
+  "diagnostics",
+  "downlevelIteration",
+  "emitBOM",
+  "emitDeclarationOnly",
+  "esModuleInterop",
+  "extendedDiagnostics",
+  "forceConsistentCasingInFileNames",
+  "help",
+  "importHelpers",
+  "incremental",
+  "inlineSourceMap",
+  "inlineSources",
+  "init",
+  "isolatedModules",
+  "lib",
+  "listEmittedFiles",
+  "listFiles",
+  "mapRoot",
+  "maxNodeModuleJsDepth",
+  "module",
+  "moduleResolution",
+  "newLine",
+  "noEmit",
+  "noEmitHelpers",
+  "noEmitOnError",
+  "noLib",
+  "noResolve",
+  "out",
+  "outDir",
+  "outFile",
+  "paths",
+  "preserveSymlinks",
+  "preserveWatchOutput",
+  "pretty",
+  "rootDir",
+  "rootDirs",
+  "showConfig",
+  "skipDefaultLibCheck",
+  "skipLibCheck",
+  "sourceMap",
+  "sourceRoot",
+  "stripInternal",
+  "target",
+  "traceResolution",
+  "tsBuildInfoFile",
+  "types",
+  "typeRoots",
+  "version",
+  "watch"
+];
 
 /** A simple object structure for caching resolved modules and their contents.
  *
@@ -199,6 +266,18 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
         ? this._resolveModule(fileName, "")
         : undefined)
     );
+  }
+
+  /** Log TypeScript diagnostics to the console and exit */
+  private _logDiagnostics(diagnostics: ts.Diagnostic[]): never {
+    const errMsg = this._os.noColor
+      ? this._ts.formatDiagnostics(diagnostics, this)
+      : this._ts.formatDiagnosticsWithColorAndContext(diagnostics, this);
+
+    console.log(errMsg);
+    // TODO The compiler isolate shouldn't exit.  Errors should be forwarded to
+    // to the caller and the caller exit.
+    return this._os.exit(1);
   }
 
   /** Given a `moduleSpecifier` and `containingFile` retrieve the cached
@@ -354,13 +433,7 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
         ...service.getSemanticDiagnostics(fileName)
       ];
       if (diagnostics.length > 0) {
-        const errMsg = os.noColor
-          ? this._ts.formatDiagnostics(diagnostics, this)
-          : this._ts.formatDiagnosticsWithColorAndContext(diagnostics, this);
-
-        console.log(errMsg);
-        // All TypeScript errors are terminal for deno
-        this._os.exit(1);
+        this._logDiagnostics(diagnostics);
       }
 
       assert(
@@ -390,6 +463,40 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
 
     moduleMetaData.scriptVersion = "1";
     return { outputCode, sourceMap };
+  }
+
+  /** Take a configuration string, parse it, and use it to merge with the
+   * compiler's configuration options.  The method returns an array of compiler
+   * options which were ignored, or `undefined`.
+   */
+  configure(path: string, configurationText: string): string[] | undefined {
+    this._log("compile.configure", path);
+    const { config, error } = this._ts.parseConfigFileTextToJson(
+      path,
+      configurationText
+    );
+    if (error) {
+      this._logDiagnostics([error]);
+    }
+    const { options, errors } = this._ts.convertCompilerOptionsFromJson(
+      config.compilerOptions,
+      cwd()
+    );
+    if (errors.length) {
+      this._logDiagnostics(errors);
+    }
+    const ignoredOptions: string[] = [];
+    for (const key of Object.keys(options)) {
+      if (
+        ignoredCompilerOptions.includes(key) &&
+        (!(key in this._options) || options[key] !== this._options[key])
+      ) {
+        ignoredOptions.push(key);
+        delete options[key];
+      }
+    }
+    Object.assign(this._options, options);
+    return ignoredOptions.length ? ignoredOptions : undefined;
   }
 
   // TypeScript Language Service and Format Diagnostic Host API
@@ -541,6 +648,54 @@ window.compilerMain = function compilerMain(): void {
   };
 };
 
+const decoder = new TextDecoder();
+
+// Perform the op to retrieve the compiler configuration if there was any
+// provided on startup.
+function getCompilerConfig(
+  compilerType: string
+): { path: string; data: string } {
+  const builder = flatbuffers.createBuilder();
+  const compilerType_ = builder.createString(compilerType);
+  msg.CompilerConfig.startCompilerConfig(builder);
+  msg.CompilerConfig.addCompilerType(builder, compilerType_);
+  const inner = msg.CompilerConfig.endCompilerConfig(builder);
+  const baseRes = sendSync(builder, msg.Any.CompilerConfig, inner);
+  assert(baseRes != null);
+  assert(msg.Any.CompilerConfigRes === baseRes!.innerType());
+  const res = new msg.CompilerConfigRes();
+  assert(baseRes!.inner(res) != null);
+
+  // the privileged side does not normalize path separators in windows, so we
+  // will normalize them here
+  const path = res.path()!.replace(/\\/g, "/");
+  assert(path != null);
+  const dataArray = res.dataArray()!;
+  assert(dataArray != null);
+  const data = decoder.decode(dataArray);
+  return { path, data };
+}
+
 export default function denoMain(): void {
   os.start("TS");
+
+  const { path, data } = getCompilerConfig("typescript");
+  if (data.length) {
+    const ignoredOptions = compiler.configure(path, data);
+    if (ignoredOptions) {
+      if (os.noColor) {
+        console.warn(
+          `Unsupported compiler options in "${path}"\n` +
+            `  The following options were ignored:\n` +
+            `    ${ignoredOptions.join(", ")}`
+        );
+      } else {
+        console.warn(
+          `\x1b[33mUnsupported compiler options in "${path}"\x1b[39m\n` +
+            `  \x1b[36mThe following options were ignored:\x1b[39m\n` +
+            `    \x1b[1m${ignoredOptions.join("\x1b[22m, \x1b[1m")}\x1b[22m`
+        );
+      }
+    }
+  }
 }

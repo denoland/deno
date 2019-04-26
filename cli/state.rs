@@ -15,6 +15,7 @@ use futures::future::Shared;
 use std;
 use std::collections::HashMap;
 use std::env;
+use std::fs;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -51,6 +52,8 @@ pub struct State {
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
+  pub config: Option<Vec<u8>>,
+  pub config_file_name: Option<String>,
   pub metrics: Metrics,
   pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
@@ -97,11 +100,48 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
+    let config_file = match &flags.config {
+      Some(config_file_name) => {
+        debug!("Compiler config file: {}", config_file_name);
+        let cwd = std::env::current_dir().unwrap();
+        Some(cwd.join(config_file_name))
+      }
+      _ => None,
+    };
+
+    let config_file_name = match &config_file {
+      Some(config_file) => Some(
+        config_file
+          .canonicalize()
+          .unwrap()
+          .to_str()
+          .unwrap()
+          .to_owned(),
+      ),
+      _ => None,
+    };
+
+    let config = match &config_file {
+      Some(config_file) => {
+        debug!("Attempt to load config: {}", config_file.to_str().unwrap());
+        match fs::read(&config_file) {
+          Ok(config_data) => Some(config_data.to_owned()),
+          _ => panic!(
+            "Error retrieving compiler config file at \"{}\"",
+            config_file.to_str().unwrap()
+          ),
+        }
+      }
+      _ => None,
+    };
+
     ThreadSafeState(Arc::new(State {
       dir: deno_dir::DenoDir::new(custom_root).unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
+      config,
+      config_file_name,
       metrics: Metrics::default(),
       worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),
