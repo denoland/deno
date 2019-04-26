@@ -114,10 +114,10 @@ async function serve(rid) {
       break;
     }
 
-    const nwritten = await write(rid, responseBuf);
-    if (nwritten < 0) {
-      break;
-    }
+    // TODO(ry) asynchronously write the response. This is cheating a bit,
+    // because writes could be done out of order. This is temporary - we're just
+    // evaluating the performance penalty of having the await here.
+    write(rid, responseBuf);
   }
   close(rid);
 }
