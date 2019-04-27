@@ -90,8 +90,11 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .use_delimiter(true)
         .require_equals(true)
         .help("Set V8 command line options"),
-    ).subcommand(SubCommand::with_name("version").about("Print the version"))
-    .subcommand(
+    ).subcommand(
+      SubCommand::with_name("version")
+        .setting(AppSettings::DisableVersion)
+        .about("Print the version"),
+    ).subcommand(
       SubCommand::with_name("fetch")
         .setting(AppSettings::DisableVersion)
         .about("Fetch the dependencies")
