@@ -149,6 +149,56 @@ rust_crate("clap") {
   }
 }
 
+rust_crate("clicolors_control") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/clicolors-control-1.0.0/src/lib.rs"
+  features = [
+    "default",
+    "terminal_autoconfig",
+  ]
+  extern = [ ":lazy_static" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  if (is_posix) {
+    extern += [ ":libc" ]
+  }
+  if (is_win) {
+    extern += [
+      ":atty",
+      ":winapi",
+    ]
+  }
+}
+
+rust_crate("console") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/console-0.7.5/src/lib.rs"
+  extern = [
+    ":atty",
+    ":clicolors_control",
+    ":lazy_static",
+    ":libc",
+    ":parking_lot",
+    ":regex",
+    ":unicode_width",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  if (is_posix) {
+    extern += [ ":termios" ]
+  }
+  if (is_win) {
+    extern += [
+      ":encode_unicode",
+      ":winapi",
+    ]
+  }
+}
+
 rust_crate("crossbeam_deque") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-deque-0.7.1/src/lib.rs"
@@ -433,6 +483,22 @@ rust_crate("indexmap") {
   ]
 }
 
+rust_crate("indicatif") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/indicatif-0.11.0/src/lib.rs"
+  extern = [
+    ":console",
+    ":lazy_static",
+    ":number_prefix",
+    ":parking_lot",
+    ":regex",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("integer_atomics") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/integer-atomics-1.0.2/src/lib.rs"
@@ -651,6 +717,32 @@ rust_crate("num_cpus") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/num_cpus-1.10.0/src/lib.rs"
   extern = [ ":libc" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_crate("num_traits") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/num-traits-0.2.6/src/lib.rs"
+  features = [
+    "default",
+    "std",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  # Added by custom-build script.
+  cfg = [ "has_i128" ]
+}
+
+rust_crate("number_prefix") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/number_prefix-0.2.8/src/lib.rs"
+  extern = [ ":num_traits" ]
   args = [
     "--cap-lints",
     "allow",
@@ -1878,6 +1970,16 @@ if (is_posix) {
     ]
   }
 
+  rust_crate("termios") {
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/termios-0.3.1/src/lib.rs"
+    extern = [ ":libc" ]
+    args = [
+      "--cap-lints",
+      "allow",
+    ]
+  }
+
   rust_crate("tokio_signal") {
     edition = "2015"
     source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-signal-0.2.7/src/lib.rs"
@@ -1960,6 +2062,19 @@ if (is_posix) {
 }
 
 if (is_win) {
+  rust_crate("encode_unicode") {
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/encode_unicode-0.3.5/src/lib.rs"
+    features = [
+      "default",
+      "std",
+    ]
+    args = [
+      "--cap-lints",
+      "allow",
+    ]
+  }
+
   rust_crate("kernel32") {
     edition = "2015"
     source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/kernel32-sys-0.2.2/src/lib.rs"
