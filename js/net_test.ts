@@ -1,6 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
+function deferred() {
+  let resolve: () => void;
+  let reject: () => void;
+  const promise = new Promise((a, b) => {
+    resolve = a;
+    reject = b;
+  });
+  return { resolve, reject, promise };
+}
+
 testPerm({ net: true }, function netListenClose(): void {
   const listener = Deno.listen("tcp", "127.0.0.1:4500");
   listener.close();
@@ -72,7 +82,6 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   conn.close();
 });
 
-/* TODO Fix broken test.
 testPerm({ net: true }, async function netCloseReadSuccess() {
   const addr = "127.0.0.1:4500";
   const listener = Deno.listen("tcp", addr);
@@ -103,9 +112,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
   listener.close();
   conn.close();
 });
-*/
 
-/* TODO Fix broken test.
 testPerm({ net: true }, async function netDoubleCloseRead() {
   const addr = "127.0.0.1:4500";
   const listener = Deno.listen("tcp", addr);
@@ -131,9 +138,7 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
   listener.close();
   conn.close();
 });
-*/
 
-/* TODO Fix broken test.
 testPerm({ net: true }, async function netCloseWriteSuccess() {
   const addr = "127.0.0.1:4500";
   const listener = Deno.listen("tcp", addr);
@@ -166,9 +171,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
   listener.close();
   conn.close();
 });
-*/
 
-/* TODO Fix broken test.
 testPerm({ net: true }, async function netDoubleCloseWrite() {
   const addr = "127.0.0.1:4500";
   const listener = Deno.listen("tcp", addr);
@@ -193,4 +196,3 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
   listener.close();
   conn.close();
 });
-*/
