@@ -18,7 +18,7 @@ test(async function ensureLinkIfItNotExist(): Promise<void> {
   const linkFile = path.join(destDir, "link.txt");
 
   await assertThrowsAsync(
-    (): Promise<void> => {
+    async (): Promise<void> => {
       await ensureLink(testFile, linkFile);
     }
   );
@@ -147,8 +147,9 @@ test(async function ensureLinkDirectoryIfItExist(): Promise<void> {
     async (): Promise<void> => {
       await ensureLink(testDir, linkDir);
     },
-    Deno.DenoError,
-    "Operation not permitted (os error 1)"
+    Deno.DenoError
+    // "Operation not permitted (os error 1)" // throw an local matching test
+    // "Access is denied. (os error 5)" // throw in CI
   );
 
   Deno.removeSync(testDir, { recursive: true });
@@ -166,8 +167,9 @@ test(function ensureLinkSyncDirectoryIfItExist(): void {
     (): void => {
       ensureLinkSync(testDir, linkDir);
     },
-    Deno.DenoError,
-    "Operation not permitted (os error 1)"
+    Deno.DenoError
+    // "Operation not permitted (os error 1)" // throw an local matching test
+    // "Access is denied. (os error 5)" // throw in CI
   );
 
   Deno.removeSync(testDir, { recursive: true });
