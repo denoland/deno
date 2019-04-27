@@ -222,7 +222,9 @@ $ deno types
 [TypeScript Deno API](https://deno.land/typedoc/index.html).
 
 If you are embedding deno in a Rust program, see
-[Rust Deno API](https://deno.land/rustdoc/deno/index.html).
+[Rust Deno API](https://docs.rs/deno).
+
+The Deno crate is hosted on [crates.io](https://crates.io/crates/deno).
 
 ## Examples
 
