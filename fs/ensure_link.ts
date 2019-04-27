@@ -2,7 +2,7 @@
 import * as path from "./path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
-import { PathType, getFileInfoType } from "./utils.ts";
+import { getFileInfoType } from "./utils.ts";
 
 /**
  * Ensures that the hard link exists.
@@ -15,7 +15,7 @@ export async function ensureLink(src: string, dest: string): Promise<void> {
   if (await exists(dest)) {
     const destStatInfo = await Deno.lstat(dest);
     const destFilePathType = getFileInfoType(destStatInfo);
-    if (destFilePathType !== PathType.file) {
+    if (destFilePathType !== "file") {
       throw new Error(
         `Ensure path exists, expected 'file', got '${destFilePathType}'`
       );
@@ -39,7 +39,7 @@ export function ensureLinkSync(src: string, dest: string): void {
   if (existsSync(dest)) {
     const destStatInfo = Deno.lstatSync(dest);
     const destFilePathType = getFileInfoType(destStatInfo);
-    if (destFilePathType !== PathType.file) {
+    if (destFilePathType !== "file") {
       throw new Error(
         `Ensure path exists, expected 'file', got '${destFilePathType}'`
       );
