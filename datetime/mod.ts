@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { pad } from "../strings/pad.ts";
+
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
 
 /**
@@ -104,4 +106,41 @@ export function dayOfYear(date: Date): number {
  */
 export function currentDayOfYear(): number {
   return dayOfYear(new Date());
+}
+
+/**
+ * Parse a date to return a IMF formated string date
+ * RFC: https://tools.ietf.org/html/rfc7231#section-7.1.1.1
+ * IMF is the time format to use when generating times in HTTP
+ * headers. The time being formatted must be in UTC for Format to
+ * generate the correct format.
+ * @param date Date to parse
+ * @return IMF date formated string
+ */
+export function toIMF(date: Date): string {
+  function dtPad(v: string, lPad: number = 2): string {
+    return pad(v, lPad, { char: "0" });
+  }
+  const d = dtPad(date.getUTCDate().toString());
+  const h = dtPad(date.getUTCHours().toString());
+  const min = dtPad(date.getUTCMinutes().toString());
+  const s = dtPad(date.getUTCSeconds().toString());
+  const y = date.getUTCFullYear();
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thus", "Fri", "Sat"];
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec"
+  ];
+  return `${days[date.getDay()]}, ${d} ${
+    months[date.getUTCMonth()]
+  } ${y} ${h}:${min}:${s} GMT`;
 }
