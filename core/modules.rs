@@ -500,6 +500,22 @@ impl Deps {
       })
     }
   }
+
+  pub fn to_json(&self) -> String {
+    let mut children = "[".to_string();
+
+    if let Some(ref deps) = self.deps {
+      for d in deps {
+        children.push_str(&d.to_json());
+        if !d.is_last {
+          children.push_str(",");
+        }
+      }
+    }
+    children.push_str("]");
+
+    format!("[\"{}\",{}]", self.name, children)
+  }
 }
 
 impl fmt::Display for Deps {
@@ -917,5 +933,23 @@ mod tests {
     let bar_deps = &foo_children[0];
     assert_eq!(bar_deps.name, "bar");
     assert_eq!(bar_deps.deps, Some(vec![]));
+  }
+
+  #[test]
+  fn test_deps_to_json() {
+    let mut modules = Modules::new();
+    modules.register(1, "foo");
+    modules.register(2, "bar");
+    modules.register(3, "baz");
+    modules.register(4, "zuh");
+    modules.add_child(1, "bar");
+    modules.add_child(1, "baz");
+    modules.add_child(3, "zuh");
+    let maybe_deps = modules.deps("foo");
+    assert!(maybe_deps.is_some());
+    assert_eq!(
+      "[\"foo\",[[\"bar\",[]],[\"baz\",[[\"zuh\",[]]]]]]",
+      maybe_deps.unwrap().to_json()
+    );
   }
 }
