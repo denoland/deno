@@ -515,11 +515,7 @@ impl Deps {
     }
     children.push_str("]");
 
-    format!(
-      "[\"{}\",{}]",
-      self.name,
-      children
-    )
+    format!("[\"{}\",{}]", self.name, children)
   }
 }
 
