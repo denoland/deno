@@ -136,7 +136,7 @@ impl ThreadSafeState {
     };
 
     ThreadSafeState(Arc::new(State {
-      dir: deno_dir::DenoDir::new(custom_root).unwrap(),
+      dir: deno_dir::DenoDir::new(custom_root, &config).unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
