@@ -171,12 +171,49 @@ impl Resource {
     }
   }
 
+  /// Track the current task (for TcpListener resource).
+  /// Throws an error if another task is already tracked.
+  pub fn track_task(&mut self) -> Result<(), std::io::Error> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    // Only track if is TcpListener.
+    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
+      // Currently, we only allow tracking a single accept task for a listener.
+      // This might be changed in the future with multiple workers.
+      // Caveat: TcpListener by itself also only tracks an accept task at a time.
+      // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+      if t.is_some() {
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "Another accept task is ongoing",
+        ));
+      }
+      t.replace(futures::task::current());
+    }
+    Ok(())
+  }
+
+  /// Stop tracking a task (for TcpListener resource).
+  /// Happens when the task is done and thus no further tracking is needed.
+  pub fn untrack_task(&mut self) {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    // Only untrack if is TcpListener.
+    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
+      assert!(t.is_some());
+      t.take();
+    }
+  }
+
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
   pub fn close(&self) {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let r = table.remove(&self.rid);
     assert!(r.is_some());
+    // If TcpListener, we must kill all pending accepts!
+    if let Repr::TcpListener(_, Some(t)) = r.unwrap() {
+      // Call notify on the tracked task, so that they would error out.
+      t.notify();
+    }
   }
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), DenoError> {
