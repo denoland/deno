@@ -22,6 +22,14 @@ test(function urlSearchParamsInitRecord(): void {
   assertEquals(searchParams.toString(), "a=54&b=true");
 });
 
+test(function urlSearchParamsInit(): void {
+  const params1 = new URLSearchParams("a=b");
+  assertEquals(params1.toString(), "a=b");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const params2 = new URLSearchParams(params1 as any);
+  assertEquals(params2.toString(), "a=b");
+});
+
 test(function urlSearchParamsAppendSuccess(): void {
   const searchParams = new URLSearchParams();
   searchParams.append("a", "true");

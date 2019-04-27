@@ -19,6 +19,11 @@ export class URLSearchParams {
       return;
     }
 
+    if (init instanceof URLSearchParams) {
+      this.params = init.params;
+      return;
+    }
+
     // Overload: record<USVString, USVString>
     for (const key of Object.keys(init)) {
       this.append(key, init[key]);
