@@ -163,9 +163,6 @@ void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args) {
 }
 
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
-  // Do not use ImportBuf with zero_copy buffers.
-  DCHECK_EQ(buf.zero_copy_id, 0);
-
   if (buf.data_ptr == nullptr) {
     return v8::Local<v8::Uint8Array>();
   }
@@ -248,11 +245,9 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
 
-  deno_buf control = {nullptr, 0u, nullptr, 0u, 0u};
-  deno_buf zero_copy = {nullptr, 0u, nullptr, 0u, 0u};
-
   v8::HandleScope handle_scope(isolate);
 
+  deno_buf control = {nullptr, 0u, nullptr, 0u};
   if (args.Length() > 0) {
     v8::Local<v8::Value> control_v = args[0];
     if (control_v->IsArrayBufferView()) {
@@ -261,25 +256,15 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
     }
   }
 
-  v8::Local<v8::Value> zero_copy_v;
-  if (args.Length() == 2) {
-    if (args[1]->IsArrayBufferView()) {
-      zero_copy_v = args[1];
-      zero_copy = GetContents(
-          isolate, v8::Local<v8::ArrayBufferView>::Cast(zero_copy_v));
-      size_t zero_copy_id = d->next_zero_copy_id_++;
-      DCHECK_GT(zero_copy_id, 0);
-      zero_copy.zero_copy_id = zero_copy_id;
-      // If the zero_copy ArrayBuffer was given, we must maintain a strong
-      // reference to it until deno_zero_copy_release is called.
-      d->AddZeroCopyRef(zero_copy_id, zero_copy_v);
-    }
-  }
+  PinnedBuf zero_copy =
+      args[1]->IsArrayBufferView()
+          ? PinnedBuf(v8::Local<v8::ArrayBufferView>::Cast(args[1]))
+          : PinnedBuf();
 
   DCHECK_NULL(d->current_args_);
   d->current_args_ = &args;
 
-  d->recv_cb_(d->user_data_, control, zero_copy);
+  d->recv_cb_(d->user_data_, control, zero_copy.IntoRaw());
 
   if (d->current_args_ == nullptr) {
     // This indicates that deno_repond() was called already.

@@ -46,7 +46,7 @@ Deno* deno_new(deno_config config) {
   }
   deno::DenoIsolate* d = new deno::DenoIsolate(config);
   v8::Isolate::CreateParams params;
-  params.array_buffer_allocator = d->array_buffer_allocator_;
+  params.array_buffer_allocator = &deno::ArrayBufferAllocator::global();
   params.external_references = deno::external_references;
 
   if (config.load_snapshot.data_ptr) {
@@ -148,12 +148,9 @@ void deno_execute(Deno* d_, void* user_data, const char* js_filename,
   deno::Execute(context, js_filename, js_source);
 }
 
-void deno_zero_copy_release(Deno* d_, size_t zero_copy_id) {
-  auto* d = unwrap(d_);
-  v8::Isolate::Scope isolate_scope(d->isolate_);
-  v8::Locker locker(d->isolate_);
-  v8::HandleScope handle_scope(d->isolate_);
-  d->DeleteZeroCopyRef(zero_copy_id);
+void deno_pinned_buf_delete(deno_pinned_buf* buf) {
+  // The PinnedBuf destructor implicitly releases the ArrayBuffer reference.
+  auto _ = deno::PinnedBuf(*buf);
 }
 
 void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
@@ -161,7 +158,6 @@ void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
   if (d->current_args_ != nullptr) {
     // Synchronous response.
     if (buf.data_ptr != nullptr) {
-      DCHECK_EQ(buf.zero_copy_id, 0);
       auto ab = deno::ImportBuf(d, buf);
       d->current_args_->GetReturnValue().Set(ab);
     }
@@ -189,9 +185,6 @@ void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
   v8::Local<v8::Value> args[1];
   int argc = 0;
 
-  // You cannot use zero_copy_buf with deno_respond(). Use
-  // deno_zero_copy_release() instead.
-  DCHECK_EQ(buf.zero_copy_id, 0);
   if (buf.data_ptr != nullptr) {
     args[0] = deno::ImportBuf(d, buf);
     argc = 1;
