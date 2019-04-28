@@ -54,17 +54,6 @@ deno_buf strbuf(const char* str) {
   return buf;
 }
 
-// Same as strbuf but with null alloc_ptr.
-deno_buf StrBufNullAllocPtr(const char* str) {
-  auto len = strlen(str);
-  deno_buf buf;
-  buf.alloc_ptr = nullptr;
-  buf.alloc_len = 0;
-  buf.data_ptr = reinterpret_cast<uint8_t*>(strdup(str));
-  buf.data_len = len;
-  return buf;
-}
-
 void assert_null(deno_buf b) {
   EXPECT_EQ(b.alloc_ptr, nullptr);
   EXPECT_EQ(b.alloc_len, 0u);
