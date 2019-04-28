@@ -249,13 +249,6 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
-fn fmt_command(mut flags: DenoFlags, mut argv: Vec<String>) {
-  argv.insert(1, "https://deno.land/std/prettier/main.ts".to_string());
-  flags.allow_read = true;
-  flags.allow_write = true;
-  run_script(flags, argv);
-}
-
 fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
@@ -283,12 +276,11 @@ fn main() {
   });
 
   match subcommand {
-    DenoSubcommand::Types => types_command(),
     DenoSubcommand::Eval => eval_command(flags, argv),
-    DenoSubcommand::Info => fetch_or_info_command(flags, argv, true),
     DenoSubcommand::Fetch => fetch_or_info_command(flags, argv, false),
-    DenoSubcommand::Fmt => fmt_command(flags, argv),
-    DenoSubcommand::Run => run_script(flags, argv),
+    DenoSubcommand::Info => fetch_or_info_command(flags, argv, true),
     DenoSubcommand::Repl => run_repl(flags, argv),
+    DenoSubcommand::Run => run_script(flags, argv),
+    DenoSubcommand::Types => types_command(),
   }
 }

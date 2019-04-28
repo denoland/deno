@@ -189,15 +189,14 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
   flags
 }
 
-const PRETTIER_URL: &str =
-  "https://deno.land/std/prettier/main.ts";
+const PRETTIER_URL: &str = "https://deno.land/std/prettier/main.ts";
 
 /// These are currently handled subcommands.
-/// "Help" is missing because it is handled by `clap::App` itself.
+/// There is no "Help" subcommand because it's handled by `clap::App` itself.
+#[derive(Debug, PartialEq)]
 pub enum DenoSubcommand {
   Eval,
   Fetch,
-  Fmt,
   Info,
   Repl,
   Run,
@@ -241,7 +240,7 @@ pub fn flags_from_vec(
         .collect();
       argv.extend(files);
 
-      DenoSubcommand::Fmt
+      DenoSubcommand::Run
     }
     (script, Some(script_match)) => {
       argv.extend(vec![script.to_string()]);
@@ -267,15 +266,9 @@ pub fn flags_from_vec(
 mod tests {
   use super::*;
 
-  fn test_flags_from_vec(args: Vec<String>) -> DenoFlags {
-    let cli_app = create_cli_app();
-    let matches = cli_app.get_matches_from(args);
-    parse_flags(matches)
-  }
-
   #[test]
-  fn test_set_flags_1() {
-    let flags = test_flags_from_vec(svec!["deno", "version"]);
+  fn test_flags_from_vec_1() {
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno", "version"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -283,11 +276,14 @@ mod tests {
         ..DenoFlags::default()
       }
     );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno"]);
   }
 
   #[test]
-  fn test_set_flags_2() {
-    let flags = test_flags_from_vec(svec!["deno", "-r", "-D", "script.ts"]);
+  fn test_flags_from_vec_2() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "-r", "-D", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -296,12 +292,14 @@ mod tests {
         ..DenoFlags::default()
       }
     );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 
   #[test]
-  fn test_set_flags_3() {
-    let flags =
-      test_flags_from_vec(svec!["deno", "-r", "--allow-write", "script.ts"]);
+  fn test_flags_from_vec_3() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "-r", "--allow-write", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -310,12 +308,14 @@ mod tests {
         ..DenoFlags::default()
       }
     );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 
   #[test]
-  fn test_set_flags_4() {
-    let flags =
-      test_flags_from_vec(svec!["deno", "-Dr", "--allow-write", "script.ts"]);
+  fn test_flags_from_vec_4() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "-Dr", "--allow-write", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -325,11 +325,14 @@ mod tests {
         ..DenoFlags::default()
       }
     );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 
   #[test]
-  fn test_set_flags_5() {
-    let flags = test_flags_from_vec(svec!["deno", "--v8-options"]);
+  fn test_flags_from_vec_5() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--v8-options"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -337,9 +340,11 @@ mod tests {
         ..DenoFlags::default()
       }
     );
+    assert_eq!(subcommand, DenoSubcommand::Repl);
+    assert_eq!(argv, svec!["deno"]);
 
-    let flags =
-      test_flags_from_vec(svec!["deno", "--v8-flags=--expose-gc,--gc-stats=1"]);
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--v8-flags=--expose-gc,--gc-stats=1"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -347,29 +352,29 @@ mod tests {
         ..DenoFlags::default()
       }
     );
+    assert_eq!(subcommand, DenoSubcommand::Repl);
+    assert_eq!(argv, svec!["deno"]);
   }
 
   #[test]
-  fn test_set_flags_6() {
-    let flags = test_flags_from_vec(svec![
-      "deno",
-      "--allow-net",
-      "gist.ts",
-      "--title",
-      "X"
-    ]);
+  fn test_flags_from_vec_6() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--allow-net", "gist.ts", "--title", "X"]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_net: true,
         ..DenoFlags::default()
       }
-    )
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "gist.ts", "--title", "X"]);
   }
 
   #[test]
-  fn test_set_flags_7() {
-    let flags = test_flags_from_vec(svec!["deno", "--allow-all", "gist.ts"]);
+  fn test_flags_from_vec_7() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--allow-all", "gist.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -381,40 +386,47 @@ mod tests {
         allow_high_precision: true,
         ..DenoFlags::default()
       }
-    )
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "gist.ts"]);
   }
 
   #[test]
-  fn test_set_flags_8() {
-    let flags = test_flags_from_vec(svec!["deno", "--allow-read", "gist.ts"]);
+  fn test_flags_from_vec_8() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--allow-read", "gist.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_read: true,
         ..DenoFlags::default()
       }
-    )
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "gist.ts"]);
   }
 
   #[test]
-  fn test_set_flags_9() {
-    let flags =
-      test_flags_from_vec(svec!["deno", "--allow-high-precision", "script.ts"]);
+  fn test_flags_from_vec_9() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--allow-high-precision", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_high_precision: true,
         ..DenoFlags::default()
       }
-    )
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 
   #[test]
-  fn test_set_flags_10() {
+  fn test_flags_from_vec_10() {
     // notice that flags passed after script name will not
     // be parsed to DenoFlags but instead forwarded to
     // script args as Deno.args
-    let flags = test_flags_from_vec(svec![
+    let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "--allow-write",
       "script.ts",
@@ -427,6 +439,53 @@ mod tests {
         allow_write: true,
         ..DenoFlags::default()
       }
-    )
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts", "-D", "--allow-net"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_11() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "fmt", "script_1.ts", "script_2.ts",]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: true,
+        allow_read: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(
+      argv,
+      svec!["deno", PRETTIER_URL, "script_1.ts", "script_2.ts"]
+    );
+  }
+
+  #[test]
+  fn test_flags_from_vec_12() {
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno", "types"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Types);
+    assert_eq!(argv, svec!["deno"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_13() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "fetch", "script.ts"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Fetch);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_14() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "info", "script.ts"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Info);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 }
