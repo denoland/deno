@@ -43,22 +43,19 @@ TEST(LibDenoTest, ErrorsCorrectly) {
 
 deno_buf strbuf(const char* str) {
   auto len = strlen(str);
-
   deno_buf buf;
-  buf.alloc_ptr = reinterpret_cast<uint8_t*>(strdup(str));
-  buf.alloc_len = len + 1;
+  buf.alloc_ptr = new uint8_t[len];
+  buf.alloc_len = len;
   buf.data_ptr = buf.alloc_ptr;
   buf.data_len = len;
-  buf.zero_copy_id = 0;
-
+  memcpy(buf.data_ptr, str, len);
   return buf;
 }
 
-void assert_null(deno_buf b) {
-  EXPECT_EQ(b.alloc_ptr, nullptr);
-  EXPECT_EQ(b.alloc_len, 0u);
+void assert_null(deno_pinned_buf b) {
   EXPECT_EQ(b.data_ptr, nullptr);
   EXPECT_EQ(b.data_len, 0u);
+  EXPECT_EQ(b.pin, nullptr);
 }
 
 TEST(LibDenoTest, RecvReturnEmpty) {
@@ -88,8 +85,6 @@ TEST(LibDenoTest, RecvReturnBar) {
     EXPECT_EQ(buf.data_ptr[0], 'a');
     EXPECT_EQ(buf.data_ptr[1], 'b');
     EXPECT_EQ(buf.data_ptr[2], 'c');
-    EXPECT_EQ(zero_copy_buf.zero_copy_id, 0u);
-    EXPECT_EQ(zero_copy_buf.data_ptr, nullptr);
     deno_respond(d, user_data, strbuf("bar"));
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
@@ -124,11 +119,11 @@ TEST(LibDenoTest, SendRecvSlice) {
     // Make copy of the backing buffer -- this is currently necessary
     // because deno_respond() takes ownership over the buffer, but we are
     // not given ownership of `buf` by our caller.
-    uint8_t* alloc_ptr = reinterpret_cast<uint8_t*>(malloc(alloc_len));
+    uint8_t* alloc_ptr = new uint8_t[alloc_len];
     memcpy(alloc_ptr, buf.alloc_ptr, alloc_len);
     // Make a slice that is a bit shorter than the original.
     deno_buf buf2{alloc_ptr, alloc_len, alloc_ptr + data_offset,
-                  buf.data_len - 19, 0};
+                  buf.data_len - 19};
     // Place some values into the buffer for the JS side to verify.
     buf2.data_ptr[0] = 200 + i;
     buf2.data_ptr[buf2.data_len - 1] = 200 - i;
@@ -193,10 +188,11 @@ TEST(LibDenoTest, GlobalErrorHandling) {
 
 TEST(LibDenoTest, ZeroCopyBuf) {
   static int count = 0;
-  static deno_buf zero_copy_buf2;
-  auto recv_cb = [](auto user_data, deno_buf buf, deno_buf zero_copy_buf) {
+  static deno_pinned_buf zero_copy_buf2;
+  auto recv_cb = [](auto user_data, deno_buf buf,
+                    deno_pinned_buf zero_copy_buf) {
     count++;
-    EXPECT_GT(zero_copy_buf.zero_copy_id, 0u);
+    EXPECT_NE(zero_copy_buf.pin, nullptr);
     zero_copy_buf.data_ptr[0] = 4;
     zero_copy_buf.data_ptr[1] = 2;
     zero_copy_buf2 = zero_copy_buf;
@@ -207,8 +203,7 @@ TEST(LibDenoTest, ZeroCopyBuf) {
     // Note zero_copy_buf won't actually be freed here because in
     // libdeno_test.js zeroCopyBuf is a rooted global. We just want to exercise
     // the API here.
-    auto d = reinterpret_cast<Deno*>(user_data);
-    deno_zero_copy_release(d, zero_copy_buf.zero_copy_id);
+    deno_pinned_buf_delete(&zero_copy_buf);
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
   deno_execute(d, d, "a.js", "ZeroCopyBuf()");
@@ -271,7 +266,7 @@ TEST(LibDenoTest, EncodeErrorBug) {
 
 TEST(LibDenoTest, Shared) {
   uint8_t s[] = {0, 1, 2};
-  deno_buf shared = {nullptr, 0, s, 3, 0};
+  deno_buf shared = {nullptr, 0, s, 3};
   Deno* d = deno_new(deno_config{0, snapshot, shared, nullptr});
   deno_execute(d, nullptr, "a.js", "Shared()");
   EXPECT_EQ(nullptr, deno_last_exception(d));
@@ -306,7 +301,7 @@ TEST(LibDenoTest, LibDenoEvalContextError) {
 
 TEST(LibDenoTest, SharedAtomics) {
   int32_t s[] = {0, 1, 2};
-  deno_buf shared = {nullptr, 0, reinterpret_cast<uint8_t*>(s), sizeof s, 0};
+  deno_buf shared = {nullptr, 0, reinterpret_cast<uint8_t*>(s), sizeof s};
   Deno* d = deno_new(deno_config{0, empty_snapshot, shared, nullptr});
   deno_execute(d, nullptr, "a.js",
                "Atomics.add(new Int32Array(Deno.core.shared), 0, 1)");

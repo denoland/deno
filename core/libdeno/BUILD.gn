@@ -46,6 +46,7 @@ v8_source_set("libdeno") {
   sources = [
     "api.cc",
     "binding.cc",
+    "buffer.h",
     "deno.h",
     "exceptions.cc",
     "exceptions.h",

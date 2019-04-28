@@ -6,6 +6,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "buffer.h"
 #include "deno.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
@@ -36,11 +38,9 @@ class DenoIsolate {
         snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
         recv_cb_(config.recv_cb),
-        next_zero_copy_id_(1),  // zero_copy_id must not be zero.
         user_data_(nullptr),
         resolve_cb_(nullptr),
         has_snapshotted_(false) {
-    array_buffer_allocator_ = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (config.load_snapshot.data_ptr) {
       snapshot_.data =
           reinterpret_cast<const char*>(config.load_snapshot.data_ptr);
@@ -65,7 +65,6 @@ class DenoIsolate {
     } else {
       isolate_->Dispose();
     }
-    delete array_buffer_allocator_;
   }
 
   static inline DenoIsolate* FromIsolate(v8::Isolate* isolate) {
@@ -89,31 +88,13 @@ class DenoIsolate {
     }
   }
 
-  void DeleteZeroCopyRef(size_t zero_copy_id) {
-    DCHECK_NE(zero_copy_id, 0);
-    // Delete persistent reference to data ArrayBuffer.
-    auto it = zero_copy_map_.find(zero_copy_id);
-    if (it != zero_copy_map_.end()) {
-      it->second.Reset();
-      zero_copy_map_.erase(it);
-    }
-  }
-
-  void AddZeroCopyRef(size_t zero_copy_id, v8::Local<v8::Value> zero_copy_v) {
-    zero_copy_map_.emplace(std::piecewise_construct,
-                           std::make_tuple(zero_copy_id),
-                           std::make_tuple(isolate_, zero_copy_v));
-  }
-
   v8::Isolate* isolate_;
   v8::Locker* locker_;
-  v8::ArrayBuffer::Allocator* array_buffer_allocator_;
   deno_buf shared_;
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
   deno_recv_cb recv_cb_;
-  size_t next_zero_copy_id_;
   void* user_data_;
 
   std::map<deno_mod, ModuleInfo> mods_;
@@ -121,7 +102,6 @@ class DenoIsolate {
   deno_resolve_cb resolve_cb_;
 
   v8::Persistent<v8::Context> context_;
-  std::map<size_t, v8::Persistent<v8::Value>> zero_copy_map_;
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   std::string last_exception_;
   v8::Persistent<v8::Function> recv_;
@@ -177,7 +157,7 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(MessageCallback),
     0};
 
-static const deno_buf empty_buf = {nullptr, 0, nullptr, 0, 0};
+static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
 static const deno_snapshot empty_snapshot = {nullptr, 0};
 
 Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);
