@@ -1625,22 +1625,25 @@ fn op_dial_tls(
   let inner = base.inner_as_dial_tls().unwrap();
   let network = inner.network().unwrap();
   assert_eq!(network, "tcp"); // TODO Support others.
-  let address = String::from(inner.address().unwrap());
-
+  let address = inner.address().unwrap().to_string();
   if let Err(e) = state.check_net(&address) {
     return odd_future(e);
   }
 
   let op = resolve_addr(&address)
     .map_err(DenoError::from)
-    .and_then(move |addr| TcpStream::connect(&addr).map_err(DenoError::from))
+    .and_then(move |addr| {
+      TcpStream::connect(&addr).map_err(DenoError::from)
+    })
     .and_then(move |tcp_stream| {
       let mut config = ClientConfig::new();
       config
         .root_store
         .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
       let connector = TlsConnector::from(Arc::new(config));
-      let domain = webpki::DNSNameRef::try_from_ascii_str(&address).unwrap();
+      let uri: hyper::Uri = address.parse().unwrap();
+      let host = uri.host().unwrap();
+      let domain = webpki::DNSNameRef::try_from_ascii_str(&host).unwrap();
 
       connector
         .connect(domain, tcp_stream)

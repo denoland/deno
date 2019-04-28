@@ -37,7 +37,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_process;
-use tokio_rustls::{rustls::ClientSession as TlsClientSession, TlsStream};
+use tokio_rustls::{rustls::ClientSession, TlsStream};
 
 pub type ResourceId = u32; // Sometimes referred to RID.
 
@@ -91,7 +91,7 @@ enum Repr {
   // See: https://github.com/tokio-rs/tokio/issues/846
   TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
   TcpStream(tokio::net::TcpStream),
-  TlsStream(TlsStream<TcpStream, TlsClientSession>),
+  TlsStream(TlsStream<TcpStream, ClientSession>),
   HttpBody(HttpBody),
   Repl(Arc<Mutex<Repl>>),
   // Enum size is bounded by the largest variant.
@@ -213,6 +213,7 @@ impl AsyncRead for Resource {
         Repr::FsFile(ref mut f) => f.poll_read(buf),
         Repr::Stdin(ref mut f) => f.poll_read(buf),
         Repr::TcpStream(ref mut f) => f.poll_read(buf),
+        Repr::TlsStream(ref mut f) => f.poll_read(buf),
         Repr::HttpBody(ref mut f) => f.poll_read(buf),
         Repr::ChildStdout(ref mut f) => f.poll_read(buf),
         Repr::ChildStderr(ref mut f) => f.poll_read(buf),
@@ -243,6 +244,7 @@ impl AsyncWrite for Resource {
         Repr::Stdout(ref mut f) => f.poll_write(buf),
         Repr::Stderr(ref mut f) => f.poll_write(buf),
         Repr::TcpStream(ref mut f) => f.poll_write(buf),
+        Repr::TlsStream(ref mut f) => f.poll_write(buf),
         Repr::ChildStdin(ref mut f) => f.poll_write(buf),
         _ => panic!("Cannot write"),
       },
@@ -285,7 +287,7 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
 }
 
 pub fn add_tls_stream(
-  stream: TlsStream<TcpStream, TlsClientSession>,
+  stream: TlsStream<TcpStream, ClientSession>,
 ) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
