@@ -64,7 +64,7 @@ function parse(url: string): URLParts | undefined {
 }
 
 export class URL {
-  _parts: URLParts;
+  private _parts: URLParts;
   private _searchParams!: urlSearchParams.URLSearchParams;
 
   private _updateSearchParams(): void {

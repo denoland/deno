@@ -32,12 +32,13 @@ export class URLSearchParams {
       return;
     }
 
-    let query = this.toString();
+    let query: string | null = this.toString();
     if (query === "") {
-      this.url._parts.query = null;
-    } else {
-      this.url._parts.query = query;
+      query = null;
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.url as any)._parts.query = query;
   }
 
   /** Appends a specified key/value pair as a new search parameter.
