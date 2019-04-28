@@ -189,6 +189,7 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
   flags
 }
 
+/// Used for `deno fmt <files>...` subcommand
 const PRETTIER_URL: &str = "https://deno.land/std/prettier/main.ts";
 
 /// These are currently handled subcommands.
@@ -212,16 +213,10 @@ pub fn flags_from_vec(
   let mut flags = parse_flags(matches.clone());
 
   let subcommand = match matches.subcommand() {
-    ("types", Some(_)) => DenoSubcommand::Types,
     ("eval", Some(eval_match)) => {
       let code: &str = eval_match.value_of("code").unwrap();
       argv.extend(vec![code.to_string()]);
       DenoSubcommand::Eval
-    }
-    ("info", Some(info_match)) => {
-      let file: &str = info_match.value_of("file").unwrap();
-      argv.extend(vec![file.to_string()]);
-      DenoSubcommand::Info
     }
     ("fetch", Some(fetch_match)) => {
       let file: &str = fetch_match.value_of("file").unwrap();
@@ -242,6 +237,12 @@ pub fn flags_from_vec(
 
       DenoSubcommand::Run
     }
+    ("info", Some(info_match)) => {
+      let file: &str = info_match.value_of("file").unwrap();
+      argv.extend(vec![file.to_string()]);
+      DenoSubcommand::Info
+    }
+    ("types", Some(_)) => DenoSubcommand::Types,
     (script, Some(script_match)) => {
       argv.extend(vec![script.to_string()]);
       // check if there are any extra arguments that should
@@ -447,7 +448,7 @@ mod tests {
   #[test]
   fn test_flags_from_vec_11() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "fmt", "script_1.ts", "script_2.ts",]);
+      flags_from_vec(svec!["deno", "fmt", "script_1.ts", "script_2.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
