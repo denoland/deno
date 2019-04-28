@@ -90,6 +90,7 @@ class DenoIsolate {
   }
 
   void DeleteZeroCopyRef(size_t zero_copy_id) {
+    /*
     DCHECK_NE(zero_copy_id, 0);
     // Delete persistent reference to data ArrayBuffer.
     auto it = zero_copy_map_.find(zero_copy_id);
@@ -97,12 +98,15 @@ class DenoIsolate {
       it->second.Reset();
       zero_copy_map_.erase(it);
     }
+    */
   }
 
   void AddZeroCopyRef(size_t zero_copy_id, v8::Local<v8::Value> zero_copy_v) {
+    /*
     zero_copy_map_.emplace(std::piecewise_construct,
                            std::make_tuple(zero_copy_id),
                            std::make_tuple(isolate_, zero_copy_v));
+    */
   }
 
   v8::Isolate* isolate_;

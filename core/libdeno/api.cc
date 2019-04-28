@@ -149,11 +149,13 @@ void deno_execute(Deno* d_, void* user_data, const char* js_filename,
 }
 
 void deno_zero_copy_release(Deno* d_, size_t zero_copy_id) {
+  /*
   auto* d = unwrap(d_);
   v8::Isolate::Scope isolate_scope(d->isolate_);
   v8::Locker locker(d->isolate_);
   v8::HandleScope handle_scope(d->isolate_);
   d->DeleteZeroCopyRef(zero_copy_id);
+  */
 }
 
 void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
