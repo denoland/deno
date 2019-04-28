@@ -264,7 +264,10 @@ if (Deno.platform.os !== "win") {
     const status = await p.status();
 
     assertEquals(status.success, false);
-    assertEquals(status.code, undefined);
+    // TODO(ry) On Linux, status.code is sometimes undefined and sometimes 1.
+    // The following assert is causing this test to be flaky. Investigate and
+    // re-enable when it can be made deterministic.
+    // assertEquals(status.code, 1);
     assertEquals(status.signal, Deno.Signal.SIGINT);
   });
 
