@@ -446,6 +446,7 @@ fn op_fetch_module_meta_data(
   }()))
 }
 
+/// Retrieve any relevant compiler configuration.
 fn op_compiler_config(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,

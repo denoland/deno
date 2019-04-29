@@ -51,6 +51,8 @@ pub struct DenoDir {
   // This splits to http and https deps
   pub deps_http: PathBuf,
   pub deps_https: PathBuf,
+  /// The active configuration file contents (or empty array) which applies to
+  /// source code cached by `DenoDir`.
   pub config: Vec<u8>,
 }
 
@@ -77,6 +79,10 @@ impl DenoDir {
     let deps_http = deps.join("http");
     let deps_https = deps.join("https");
 
+    // Internally within DenoDir, we use the config as part of the hash to
+    // determine if a file has been transpiled with the same configuration, but
+    // we have borrowed the `State` configuration, which we want to either clone
+    // or create an empty `Vec` which we will use in our hash function.
     let config = match state_config {
       Some(config) => config.clone(),
       _ => b"".to_vec(),
@@ -167,6 +173,9 @@ impl DenoDir {
 
     let gen = self.gen.clone();
 
+    // If we don't clone the config, we then end up creating an implied lifetime
+    // which gets returned in the future, so we clone here so as to not leak the
+    // move below when the future is resolving.
     let config = self.config.clone();
 
     Either::B(
@@ -485,6 +494,8 @@ fn load_cache2(
   Ok((read_output_code, read_source_map))
 }
 
+/// Generate an SHA1 hash for source code, to be used to determine if a cached
+/// version of the code is valid or invalid.
 fn source_code_hash(
   filename: &str,
   source_code: &[u8],
@@ -937,6 +948,8 @@ mod tests {
 
   #[test]
   fn test_cache_path_config() {
+    // We are changing the compiler config from the "mock" and so we expect the
+    // resolved files coming back to not match the calculated hash.
     let (temp_dir, deno_dir) = test_setup();
     let filename = "hello.js";
     let source_code = b"1+2";

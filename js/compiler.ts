@@ -3,6 +3,7 @@ import * as ts from "typescript";
 import * as msg from "gen/cli/msg_generated";
 import { window } from "./window";
 import { assetSourceCode } from "./assets";
+import { bold, cyan, yellow } from "./colors";
 import { Console } from "./console";
 import { core } from "./core";
 import { cwd } from "./dir";
@@ -683,19 +684,11 @@ export default function denoMain(): void {
   if (data.length) {
     const ignoredOptions = compiler.configure(path, data);
     if (ignoredOptions) {
-      if (os.noColor) {
-        console.warn(
-          `Unsupported compiler options in "${path}"\n` +
-            `  The following options were ignored:\n` +
-            `    ${ignoredOptions.join(", ")}`
-        );
-      } else {
-        console.warn(
-          `\x1b[33mUnsupported compiler options in "${path}"\x1b[39m\n` +
-            `  \x1b[36mThe following options were ignored:\x1b[39m\n` +
-            `    \x1b[1m${ignoredOptions.join("\x1b[22m, \x1b[1m")}\x1b[22m`
-        );
-      }
+      console.warn(
+        yellow(`Unsupported compiler options in "${path}"\n`) +
+          cyan(`  The following options were ignored:\n`) +
+          `    ${ignoredOptions.map((value): string => bold(value)).join(", ")}`
+      );
     }
   }
 }

@@ -165,9 +165,11 @@ pub fn get_compiler_config(
   parent_state: &ThreadSafeState,
   _compiler_type: &str,
 ) -> Option<(String, Vec<u8>)> {
-  match (&parent_state.config_file_name, &parent_state.config) {
-    (Some(config_file_name), Some(config)) => {
-      Some((config_file_name.to_string(), config.to_vec()))
+  // The compiler type is being passed to make it easier to implement custom
+  // compilers in the future.
+  match (&parent_state.config_path, &parent_state.config) {
+    (Some(config_path), Some(config)) => {
+      Some((config_path.to_string(), config.to_vec()))
     }
     _ => None,
   }

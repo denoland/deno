@@ -52,8 +52,12 @@ pub struct State {
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
+  /// When flags contains a `.config_path` option, the content of the
+  /// configuration file will be resolved and set.
   pub config: Option<Vec<u8>>,
-  pub config_file_name: Option<String>,
+  /// When flags contains a `.config_path` option, the fully qualified path
+  /// name of the passed path will be resolved and set.
+  pub config_path: Option<String>,
   pub metrics: Metrics,
   pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
@@ -100,7 +104,8 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    let config_file = match &flags.config {
+    // take the passed flag and resolve the file name relative to the cwd
+    let config_file = match &flags.config_path {
       Some(config_file_name) => {
         debug!("Compiler config file: {}", config_file_name);
         let cwd = std::env::current_dir().unwrap();
@@ -109,7 +114,9 @@ impl ThreadSafeState {
       _ => None,
     };
 
-    let config_file_name = match &config_file {
+    // Convert the PathBuf to a canonicalized string.  This is needed by the
+    // compiler to properly deal with the configuration.
+    let config_path = match &config_file {
       Some(config_file) => Some(
         config_file
           .canonicalize()
@@ -121,6 +128,7 @@ impl ThreadSafeState {
       _ => None,
     };
 
+    // Load the contents of the configuration file
     let config = match &config_file {
       Some(config_file) => {
         debug!("Attempt to load config: {}", config_file.to_str().unwrap());
@@ -141,7 +149,7 @@ impl ThreadSafeState {
       permissions: DenoPermissions::from_flags(&flags),
       flags,
       config,
-      config_file_name,
+      config_path,
       metrics: Metrics::default(),
       worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),

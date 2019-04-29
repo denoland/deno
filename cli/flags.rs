@@ -13,7 +13,9 @@ pub struct DenoFlags {
   pub log_debug: bool,
   pub version: bool,
   pub reload: bool,
-  pub config: Option<String>,
+  /// When the `--config`/`-c` flag is used to pass the name, this will be set
+  /// the path passed on the command line, otherwise `None`.
+  pub config_path: Option<String>,
   pub allow_read: bool,
   pub allow_write: bool,
   pub allow_net: bool,
@@ -154,7 +156,7 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
   if matches.is_present("reload") {
     flags.reload = true;
   }
-  flags.config = matches.value_of("config").map(ToOwned::to_owned);
+  flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
   if matches.is_present("allow-read") {
     flags.allow_read = true;
   }
@@ -370,7 +372,7 @@ mod tests {
     assert_eq!(
       flags,
       DenoFlags {
-        config: Some("tsconfig.json".to_owned()),
+        config_path: Some("tsconfig.json".to_owned()),
         ..DenoFlags::default()
       }
     )
