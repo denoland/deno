@@ -43,6 +43,7 @@ use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::v8_set_flags;
 use flags::DenoFlags;
+use flags::DenoSubcommand;
 use futures::lazy;
 use futures::Future;
 use log::{LevelFilter, Metadata, Record};
@@ -248,23 +249,13 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
-fn fmt_command(mut flags: DenoFlags, mut argv: Vec<String>) {
-  argv.insert(1, "https://deno.land/std/prettier/main.ts".to_string());
-  flags.allow_read = true;
-  flags.allow_write = true;
-  run_script(flags, argv);
-}
-
 fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
 
   log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
-  let cli_app = flags::create_cli_app();
-  let matches = cli_app.get_matches_from(args);
-  let flags = flags::parse_flags(matches.clone());
-  let mut argv: Vec<String> = vec!["deno".to_string()];
+  let (flags, subcommand, argv) = flags::flags_from_vec(args);
 
   if flags.v8_help {
     // show v8 help and exit
@@ -284,50 +275,12 @@ fn main() {
     LevelFilter::Warn
   });
 
-  match matches.subcommand() {
-    ("types", Some(_)) => {
-      types_command();
-    }
-    ("eval", Some(eval_match)) => {
-      let code: &str = eval_match.value_of("code").unwrap();
-      argv.extend(vec![code.to_string()]);
-      eval_command(flags, argv);
-    }
-    ("info", Some(info_match)) => {
-      let file: &str = info_match.value_of("file").unwrap();
-      argv.extend(vec![file.to_string()]);
-      fetch_or_info_command(flags, argv, true);
-    }
-    ("fetch", Some(fetch_match)) => {
-      let file: &str = fetch_match.value_of("file").unwrap();
-      argv.extend(vec![file.to_string()]);
-      fetch_or_info_command(flags, argv, false);
-    }
-    ("fmt", Some(fmt_match)) => {
-      let files: Vec<String> = fmt_match
-        .values_of("files")
-        .unwrap()
-        .map(String::from)
-        .collect();
-      argv.extend(files);
-      fmt_command(flags, argv);
-    }
-    (script, Some(script_match)) => {
-      argv.extend(vec![script.to_string()]);
-      // check if there are any extra arguments that should
-      // be passed to script
-      if script_match.is_present("") {
-        let script_args: Vec<String> = script_match
-          .values_of("")
-          .unwrap()
-          .map(String::from)
-          .collect();
-        argv.extend(script_args);
-      }
-      run_script(flags, argv);
-    }
-    _ => {
-      run_repl(flags, argv);
-    }
+  match subcommand {
+    DenoSubcommand::Eval => eval_command(flags, argv),
+    DenoSubcommand::Fetch => fetch_or_info_command(flags, argv, false),
+    DenoSubcommand::Info => fetch_or_info_command(flags, argv, true),
+    DenoSubcommand::Repl => run_repl(flags, argv),
+    DenoSubcommand::Run => run_script(flags, argv),
+    DenoSubcommand::Types => types_command(),
   }
 }
