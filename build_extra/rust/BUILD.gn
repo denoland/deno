@@ -1719,11 +1719,15 @@ rust_crate("utime") {
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utime-0.2.1/src/lib.rs"
 
   if (is_win) {
-    extern = [
-      ":winapi",
-      ":kernel32",
+    extern = [ ":kernel32" ]
+    extern_version = [
+      {
+        crate_name = "winapi"
+        crate_version = "0.2.8"
+      },
     ]
   }
+
   if (is_posix) {
     extern = [ ":libc" ]
   }
