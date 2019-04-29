@@ -13,6 +13,9 @@ pub struct DenoFlags {
   pub log_debug: bool,
   pub version: bool,
   pub reload: bool,
+  /// When the `--config`/`-c` flag is used to pass the name, this will be set
+  /// the path passed on the command line, otherwise `None`.
+  pub config_path: Option<String>,
   pub allow_read: bool,
   pub allow_write: bool,
   pub allow_net: bool,
@@ -80,6 +83,13 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
         .long("reload")
         .help("Reload source code cache (recompile TypeScript)"),
     ).arg(
+      Arg::with_name("config")
+        .short("c")
+        .long("config")
+        .value_name("FILE")
+        .help("Load compiler configuration file")
+        .takes_value(true),
+    ).arg(
       Arg::with_name("v8-options")
         .long("v8-options")
         .help("Print V8 command line options"),
@@ -146,6 +156,7 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
   if matches.is_present("reload") {
     flags.reload = true;
   }
+  flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
   if matches.is_present("allow-read") {
     flags.allow_read = true;
   }
@@ -349,6 +360,19 @@ mod tests {
       flags,
       DenoFlags {
         allow_write: true,
+        ..DenoFlags::default()
+      }
+    )
+  }
+
+  #[test]
+  fn test_set_flags_11() {
+    let flags =
+      flags_from_vec(svec!["deno", "-c", "tsconfig.json", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        config_path: Some("tsconfig.json".to_owned()),
         ..DenoFlags::default()
       }
     )

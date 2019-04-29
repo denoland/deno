@@ -158,6 +158,23 @@ fn req(specifier: &str, referrer: &str, cmd_id: u32) -> Buf {
   .into_boxed_bytes()
 }
 
+/// Returns an optional tuple which represents the state of the compiler
+/// configuration where the first is canonical name for the configuration file
+/// and a vector of the bytes of the contents of the configuration file.
+pub fn get_compiler_config(
+  parent_state: &ThreadSafeState,
+  _compiler_type: &str,
+) -> Option<(String, Vec<u8>)> {
+  // The compiler type is being passed to make it easier to implement custom
+  // compilers in the future.
+  match (&parent_state.config_path, &parent_state.config) {
+    (Some(config_path), Some(config)) => {
+      Some((config_path.to_string(), config.to_vec()))
+    }
+    _ => None,
+  }
+}
+
 pub fn compile_async(
   parent_state: ThreadSafeState,
   specifier: &str,
@@ -305,5 +322,13 @@ mod tests {
     let res_json = std::str::from_utf8(&msg).unwrap();
 
     assert_eq!(parse_cmd_id(res_json), cmd_id);
+  }
+
+  #[test]
+  fn test_get_compiler_config_no_flag() {
+    let compiler_type = "typescript";
+    let state = ThreadSafeState::mock();
+    let out = get_compiler_config(&state, compiler_type);
+    assert_eq!(out, None);
   }
 }

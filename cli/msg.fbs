@@ -3,6 +3,8 @@ union Any {
   Chdir,
   Chmod,
   Close,
+  CompilerConfig,
+  CompilerConfigRes,
   CopyFile,
   Cwd,
   CwdRes,
@@ -172,6 +174,15 @@ table StartRes {
   deno_version: string;
   v8_version: string;
   no_color: bool;
+}
+
+table CompilerConfig {
+  compiler_type: string;
+}
+
+table CompilerConfigRes {
+  path: string;
+  data: [ubyte];
 }
 
 table FormatError {

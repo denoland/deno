@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
+use crate::compiler::get_compiler_config;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -146,6 +147,8 @@ pub fn dispatch_all(
 
 pub fn op_selector_compiler(inner_type: msg::Any) -> Option<OpCreator> {
   match inner_type {
+    msg::Any::CompilerConfig => Some(op_compiler_config),
+    msg::Any::Cwd => Some(op_cwd),
     msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
     msg::Any::WorkerGetMessage => Some(op_worker_get_message),
     msg::Any::WorkerPostMessage => Some(op_worker_post_message),
@@ -437,6 +440,41 @@ fn op_fetch_module_meta_data(
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
         inner_type: msg::Any::FetchModuleMetaDataRes,
+        ..Default::default()
+      },
+    ))
+  }()))
+}
+
+/// Retrieve any relevant compiler configuration.
+fn op_compiler_config(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: deno_buf,
+) -> Box<OpWithError> {
+  assert_eq!(data.len(), 0);
+  let inner = base.inner_as_compiler_config().unwrap();
+  let cmd_id = base.cmd_id();
+  let compiler_type = inner.compiler_type().unwrap();
+
+  Box::new(futures::future::result(|| -> OpResult {
+    let builder = &mut FlatBufferBuilder::new();
+    let (path, out) = match get_compiler_config(state, compiler_type) {
+      Some(val) => val,
+      _ => ("".to_owned(), "".as_bytes().to_owned()),
+    };
+    let data_off = builder.create_vector(&out);
+    let msg_args = msg::CompilerConfigResArgs {
+      path: Some(builder.create_string(&path)),
+      data: Some(data_off),
+    };
+    let inner = msg::CompilerConfigRes::create(builder, &msg_args);
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::CompilerConfigRes,
         ..Default::default()
       },
     ))
