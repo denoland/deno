@@ -278,7 +278,7 @@ mod tests {
       }
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
-    assert_eq!(argv, svec!["deno"]);
+    assert_eq!(argv, svec!["deno", "version"]);
   }
 
   #[test]
