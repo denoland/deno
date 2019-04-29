@@ -51,12 +51,18 @@ pub struct DenoDir {
   // This splits to http and https deps
   pub deps_http: PathBuf,
   pub deps_https: PathBuf,
+  /// The active configuration file contents (or empty array) which applies to
+  /// source code cached by `DenoDir`.
+  pub config: Vec<u8>,
 }
 
 impl DenoDir {
   // Must be called before using any function from this module.
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
-  pub fn new(custom_root: Option<PathBuf>) -> std::io::Result<Self> {
+  pub fn new(
+    custom_root: Option<PathBuf>,
+    state_config: &Option<Vec<u8>>,
+  ) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
     let fallback = home_dir.join(".deno");
@@ -73,12 +79,22 @@ impl DenoDir {
     let deps_http = deps.join("http");
     let deps_https = deps.join("https");
 
+    // Internally within DenoDir, we use the config as part of the hash to
+    // determine if a file has been transpiled with the same configuration, but
+    // we have borrowed the `State` configuration, which we want to either clone
+    // or create an empty `Vec` which we will use in our hash function.
+    let config = match state_config {
+      Some(config) => config.clone(),
+      _ => b"".to_vec(),
+    };
+
     let deno_dir = Self {
       root,
       gen,
       deps,
       deps_http,
       deps_https,
+      config,
     };
 
     // TODO Lazily create these directories.
@@ -102,7 +118,8 @@ impl DenoDir {
     filename: &str,
     source_code: &[u8],
   ) -> (PathBuf, PathBuf) {
-    let cache_key = source_code_hash(filename, source_code, version::DENO);
+    let cache_key =
+      source_code_hash(filename, source_code, version::DENO, &self.config);
     (
       self.gen.join(cache_key.to_string() + ".js"),
       self.gen.join(cache_key.to_string() + ".js.map"),
@@ -156,6 +173,11 @@ impl DenoDir {
 
     let gen = self.gen.clone();
 
+    // If we don't clone the config, we then end up creating an implied lifetime
+    // which gets returned in the future, so we clone here so as to not leak the
+    // move below when the future is resolving.
+    let config = self.config.clone();
+
     Either::B(
       get_source_code_async(
         self,
@@ -191,8 +213,12 @@ impl DenoDir {
           return Ok(out);
         }
 
-        let cache_key =
-          source_code_hash(&out.filename, &out.source_code, version::DENO);
+        let cache_key = source_code_hash(
+          &out.filename,
+          &out.source_code,
+          version::DENO,
+          &config,
+        );
         let (output_code_filename, output_source_map_filename) = (
           gen.join(cache_key.to_string() + ".js"),
           gen.join(cache_key.to_string() + ".js.map"),
@@ -468,15 +494,19 @@ fn load_cache2(
   Ok((read_output_code, read_source_map))
 }
 
+/// Generate an SHA1 hash for source code, to be used to determine if a cached
+/// version of the code is valid or invalid.
 fn source_code_hash(
   filename: &str,
   source_code: &[u8],
   version: &str,
+  config: &[u8],
 ) -> String {
   let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
   ctx.update(version.as_bytes());
   ctx.update(filename.as_bytes());
   ctx.update(source_code);
+  ctx.update(config);
   let digest = ctx.finish();
   let mut out = String::new();
   // TODO There must be a better way to do this...
@@ -860,8 +890,9 @@ mod tests {
 
   fn test_setup() -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let deno_dir =
-      DenoDir::new(Some(temp_dir.path().to_path_buf())).expect("setup fail");
+    let config = Some(b"{}".to_vec());
+    let deno_dir = DenoDir::new(Some(temp_dir.path().to_path_buf()), &config)
+      .expect("setup fail");
     (temp_dir, deno_dir)
   }
 
@@ -904,8 +935,27 @@ mod tests {
     let (temp_dir, deno_dir) = test_setup();
     let filename = "hello.js";
     let source_code = b"1+2";
-    let hash = source_code_hash(filename, source_code, version::DENO);
+    let config = b"{}";
+    let hash = source_code_hash(filename, source_code, version::DENO, config);
     assert_eq!(
+      (
+        temp_dir.path().join(format!("gen/{}.js", hash)),
+        temp_dir.path().join(format!("gen/{}.js.map", hash))
+      ),
+      deno_dir.cache_path(filename, source_code)
+    );
+  }
+
+  #[test]
+  fn test_cache_path_config() {
+    // We are changing the compiler config from the "mock" and so we expect the
+    // resolved files coming back to not match the calculated hash.
+    let (temp_dir, deno_dir) = test_setup();
+    let filename = "hello.js";
+    let source_code = b"1+2";
+    let config = b"{\"compilerOptions\":{}}";
+    let hash = source_code_hash(filename, source_code, version::DENO, config);
+    assert_ne!(
       (
         temp_dir.path().join(format!("gen/{}.js", hash)),
         temp_dir.path().join(format!("gen/{}.js.map", hash))
@@ -922,7 +972,8 @@ mod tests {
     let source_code = b"1+2";
     let output_code = b"1+2 // output code";
     let source_map = b"{}";
-    let hash = source_code_hash(filename, source_code, version::DENO);
+    let config = b"{}";
+    let hash = source_code_hash(filename, source_code, version::DENO, config);
     let (cache_path, source_map_path) =
       deno_dir.cache_path(filename, source_code);
     assert!(cache_path.ends_with(format!("gen/{}.js", hash)));
@@ -949,23 +1000,23 @@ mod tests {
   #[test]
   fn test_source_code_hash() {
     assert_eq!(
-      "7e44de2ed9e0065da09d835b76b8d70be503d276",
-      source_code_hash("hello.ts", b"1+2", "0.2.11")
+      "830c8b63ba3194cf2108a3054c176b2bf53aee45",
+      source_code_hash("hello.ts", b"1+2", "0.2.11", b"{}")
     );
     // Different source_code should result in different hash.
     assert_eq!(
-      "57033366cf9db1ef93deca258cdbcd9ef5f4bde1",
-      source_code_hash("hello.ts", b"1", "0.2.11")
+      "fb06127e9b2e169bea9c697fa73386ae7c901e8b",
+      source_code_hash("hello.ts", b"1", "0.2.11", b"{}")
     );
     // Different filename should result in different hash.
     assert_eq!(
-      "19657f90b5b0540f87679e2fb362e7bd62b644b0",
-      source_code_hash("hi.ts", b"1+2", "0.2.11")
+      "3a17b6a493ff744b6a455071935f4bdcd2b72ec7",
+      source_code_hash("hi.ts", b"1+2", "0.2.11", b"{}")
     );
     // Different version should result in different hash.
     assert_eq!(
-      "e2b4b7162975a02bf2770f16836eb21d5bcb8be1",
-      source_code_hash("hi.ts", b"1+2", "0.2.0")
+      "d6b2cfdc39dae9bd3ad5b493ee1544eb22e7475f",
+      source_code_hash("hi.ts", b"1+2", "0.2.0", b"{}")
     );
   }
 
