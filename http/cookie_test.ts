@@ -21,6 +21,14 @@ test({
     req.headers = new Headers();
     req.headers.set("Cookie", "igot=99; problems=but...");
     assertEquals(getCookies(req), { igot: "99", problems: "but..." });
+
+    req.headers = new Headers();
+    req.headers.set("Cookie", "PREF=al=en-GB&f1=123; wide=1; SID=123");
+    assertEquals(getCookies(req), {
+      PREF: "al=en-GB&f1=123",
+      wide: "1",
+      SID: "123"
+    });
   }
 });
 

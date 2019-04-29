@@ -79,7 +79,7 @@ export function getCookies(req: ServerRequest): Cookies {
     for (const kv of c) {
       const cookieVal = kv.split("=");
       const key = cookieVal.shift().trim();
-      out[key] = cookieVal.join("");
+      out[key] = cookieVal.join("=");
     }
     return out;
   }
