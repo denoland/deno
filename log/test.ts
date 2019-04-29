@@ -7,13 +7,6 @@ import { LogLevel } from "./levels.ts";
 import "./handlers_test.ts";
 import "./logger_test.ts";
 
-// constructor(levelName: string, options: HandlerOptions = {}) {
-//   this.level = getLevelByName(levelName);
-//   this.levelName = levelName;
-
-//   this.formatter = options.formatter || DEFAULT_FORMATTER;
-// }
-
 class TestHandler extends log.handlers.BaseHandler {
   public messages: string[] = [];
 
