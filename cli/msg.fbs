@@ -67,6 +67,7 @@ union Any {
   StatRes,
   Symlink,
   Truncate,
+  Utime,
   CreateWorker,
   CreateWorkerRes,
   HostGetWorkerClosed,
@@ -432,6 +433,12 @@ table StatRes {
 table Truncate {
   name: string;
   len: uint;
+}
+
+table Utime {
+  filename: string;
+  atime: uint64;
+  mtime: uint64;
 }
 
 table Open {

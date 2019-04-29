@@ -38,6 +38,7 @@ main_extern = [
   "$rust_build:tokio_rustls",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
+  "$rust_build:utime",
 ]
 if (is_win) {
   main_extern += [ "$rust_build:winapi" ]
@@ -105,6 +106,7 @@ ts_sources = [
   "../js/url.ts",
   "../js/url_search_params.ts",
   "../js/util.ts",
+  "../js/utime.ts",
   "../js/window.ts",
   "../js/workers.ts",
   "../js/write_file.ts",
