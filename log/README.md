@@ -102,10 +102,10 @@ await log.setup({
 
     functionFmt: new log.handlers.ConsoleHandler("DEBUG", {
       formatter: logRecord => {
-        let msg = `{logRecord.level} {logRecord.msg}`;
+        let msg = `${logRecord.level} ${logRecord.msg}`;
 
         logRecord.args.forEach((arg, index) => {
-          msg += `, arg{index}: {arg}`;
+          msg += `, arg${index}: ${arg}`;
         });
 
         return msg;
