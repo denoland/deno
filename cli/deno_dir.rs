@@ -259,9 +259,11 @@ impl DenoDir {
     specifier: &str,
     referrer: &str,
     use_cache: bool,
+    no_fetch: bool,
   ) -> Result<ModuleMetaData, errors::DenoError> {
     tokio_util::block_on(
-      self.fetch_module_meta_data_async(specifier, referrer, use_cache, false),
+      self
+        .fetch_module_meta_data_async(specifier, referrer, use_cache, no_fetch),
     )
   }
 
@@ -366,7 +368,7 @@ impl DenoDir {
 
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    match self.fetch_module_meta_data(script_name, ".", true) {
+    match self.fetch_module_meta_data(script_name, ".", true, true) {
       Err(_e) => None,
       Ok(out) => match out.maybe_source_map {
         None => None,
@@ -399,10 +401,10 @@ fn get_source_code_async(
   let filename = filename.to_string();
   let module_name = module_name.to_string();
   let is_module_remote = is_remote(&module_name);
-  // We try fetch local. Two cases:
-  // 1. This is a remote module and we're allowed to use cached downloads.
-  // 2. This is a local module.
-  println!("use cache {:?} no fetch {:?}", use_cache, no_fetch);
+  // We try fetch local. Three cases:
+  // 1. Remote downloads are not allowed, we're only allowed to use cache.
+  // 2. This is a remote module and we're allowed to use cached downloads.
+  // 3. This is a local module.
   if !is_module_remote || use_cache || no_fetch {
     debug!(
       "fetch local or reload {} is_module_remote {}",
@@ -423,13 +425,24 @@ fn get_source_code_async(
     }
   }
 
-  // If not remote file are remote downloads are not allowed, stop here!
-  if !is_module_remote || no_fetch {
+  // If not remote file stop here!
+  if !is_module_remote {
     debug!("not remote file stop here");
     return Either::A(futures::future::err(DenoError::from(
       std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!("cannot find local file '{}'", &filename),
+      ),
+    )));
+  }
+
+  // If remote downloads are not allowed stop here!
+  if no_fetch {
+    debug!("remote file with no_fetch stop here");
+    return Either::A(futures::future::err(DenoError::from(
+      std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("cannot find remote file '{}' in cache", &filename),
       ),
     )));
   }
@@ -458,13 +471,14 @@ fn get_source_code(
   module_name: &str,
   filename: &str,
   use_cache: bool,
+  no_fetch: bool,
 ) -> DenoResult<ModuleMetaData> {
   tokio_util::block_on(get_source_code_async(
     deno_dir,
     module_name,
     filename,
     use_cache,
-    false,
+    no_fetch,
   ))
 }
 
@@ -1068,7 +1082,8 @@ mod tests {
       );
       let headers_file_name = source_code_headers_filename(&filename);
 
-      let result = get_source_code(&deno_dir, module_name, &filename, true);
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -1082,7 +1097,8 @@ mod tests {
       // Modify .headers.json, write using fs write and read using save_source_code_headers
       let _ =
         fs::write(&headers_file_name, "{ \"mime_type\": \"text/javascript\" }");
-      let result2 = get_source_code(&deno_dir, module_name, &filename, true);
+      let result2 =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
@@ -1103,7 +1119,8 @@ mod tests {
         Some("application/json".to_owned()),
         None,
       );
-      let result3 = get_source_code(&deno_dir, module_name, &filename, true);
+      let result3 =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       assert_eq!(
@@ -1120,7 +1137,8 @@ mod tests {
       );
 
       // Don't use_cache
-      let result4 = get_source_code(&deno_dir, module_name, &filename, false);
+      let result4 =
+        get_source_code(&deno_dir, module_name, &filename, false, false);
       assert!(result4.is_ok());
       let r4 = result4.unwrap();
       let expected4 =
@@ -1146,7 +1164,8 @@ mod tests {
       );
       let headers_file_name = source_code_headers_filename(&filename);
 
-      let result = get_source_code(&deno_dir, module_name, &filename, true);
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
@@ -1164,7 +1183,8 @@ mod tests {
         Some("text/typescript".to_owned()),
         None,
       );
-      let result2 = get_source_code(&deno_dir, module_name, &filename, true);
+      let result2 =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
@@ -1175,7 +1195,8 @@ mod tests {
       assert!(fs::read_to_string(&headers_file_name).is_err());
 
       // Don't use_cache
-      let result3 = get_source_code(&deno_dir, module_name, &filename, false);
+      let result3 =
+        get_source_code(&deno_dir, module_name, &filename, false, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
@@ -1216,6 +1237,7 @@ mod tests {
         redirect_module_name,
         &redirect_source_filename,
         true,
+        false,
       ).unwrap();
       // File that requires redirection is not downloaded.
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
@@ -1276,6 +1298,7 @@ mod tests {
         redirect_module_name,
         &redirect_source_filename,
         true,
+        false,
       ).unwrap();
 
       // File that requires redirection is not downloaded.
@@ -1308,6 +1331,50 @@ mod tests {
         &mod_meta.module_redirect_source_name.clone().unwrap(),
         redirect_module_name
       );
+    });
+  }
+
+  #[test]
+  fn test_get_source_code_5() {
+    let (_temp_dir, deno_dir) = test_setup();
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
+          .as_ref(),
+      );
+
+      // file hasn't been cached before and remote downloads are not allowed
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, true);
+      assert!(result.is_ok());
+    });
+  }
+
+  #[test]
+  fn test_get_source_code_6() {
+    let (_temp_dir, deno_dir) = test_setup();
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
+          .as_ref(),
+      );
+
+      // download and cache file
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
+      assert!(result.is_ok());
+      // module is already cached, should be ok even with `no_fetch`
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, true);
+      assert!(result.is_ok());
     });
   }
 
@@ -1485,13 +1552,13 @@ mod tests {
       // Test failure case.
       let specifier = "hello.ts";
       let referrer = add_root!("/baddir/badfile.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true);
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier = "./js/main.ts";
       let referrer = cwd_string.as_str();
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true);
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true, false);
       assert!(r.is_ok());
     })
   }
@@ -1508,13 +1575,15 @@ mod tests {
       // Test failure case.
       let specifier = "hello.ts";
       let referrer = add_root!("/baddir/badfile.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, false);
+      let r =
+        deno_dir.fetch_module_meta_data(specifier, referrer, false, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier = "./js/main.ts";
       let referrer = cwd_string.as_str();
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, false);
+      let r =
+        deno_dir.fetch_module_meta_data(specifier, referrer, false, false);
       assert!(r.is_ok());
     })
   }
