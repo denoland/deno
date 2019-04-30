@@ -449,7 +449,7 @@ export function namespaceSourceFile(
           }
         } catch (e) {
           throw createDeclarationError(
-            "Unsupported import clause.",
+            `Unsupported import clause: ${e}`,
             declaration
           );
         }
