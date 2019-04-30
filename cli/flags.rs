@@ -506,7 +506,7 @@ mod tests {
 
   #[test]
   fn test_set_flags_11() {
-    let flags =
+    let (flags, _, _) =
       flags_from_vec(svec!["deno", "-c", "tsconfig.json", "script.ts"]);
     assert_eq!(
       flags,
