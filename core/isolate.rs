@@ -26,7 +26,13 @@ use std::ptr::null;
 use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
-pub type Op = dyn Future<Item = Buf, Error = ()> + Send;
+
+pub type OpAsyncFuture = Box<dyn Future<Item = Buf, Error = ()> + Send>;
+
+pub enum Op {
+  Sync(Buf),
+  Async(OpAsyncFuture),
+}
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -46,8 +52,7 @@ pub enum StartupData<'a> {
 
 #[derive(Default)]
 pub struct Config {
-  dispatch:
-    Option<Arc<Fn(&[u8], Option<PinnedBuf>) -> (bool, Box<Op>) + Send + Sync>>,
+  dispatch: Option<Arc<Fn(&[u8], Option<PinnedBuf>) -> Op>>,
   pub will_snapshot: bool,
 }
 
@@ -57,7 +62,7 @@ impl Config {
   /// corresponds to the second argument of Deno.core.dispatch().
   pub fn dispatch<F>(&mut self, f: F)
   where
-    F: Fn(&[u8], Option<PinnedBuf>) -> (bool, Box<Op>) + Send + Sync + 'static,
+    F: Fn(&[u8], Option<PinnedBuf>) -> Op + Send + Sync + 'static,
   {
     self.dispatch = Some(Arc::new(f));
   }
@@ -69,15 +74,15 @@ impl Config {
 /// pending ops have completed.
 ///
 /// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
-/// by implementing deno::Dispatch::dispatch. An Op corresponds exactly to a
-/// Promise in JavaScript.
+/// by implementing deno::Dispatch::dispatch. An async Op corresponds exactly to
+/// a Promise in JavaScript.
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
   config: Config,
   needs_init: bool,
   shared: SharedQueue,
-  pending_ops: FuturesUnordered<Box<Op>>,
+  pending_ops: FuturesUnordered<OpAsyncFuture>,
   have_unpolled_ops: bool,
 }
 
@@ -175,7 +180,7 @@ impl Isolate {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
     let control_shared = isolate.shared.shift();
 
-    let (is_sync, op) = if control_argv0.len() > 0 {
+    let op = if control_argv0.len() > 0 {
       // The user called Deno.core.send(control)
       if let Some(ref f) = isolate.config.dispatch {
         f(control_argv0.as_ref(), PinnedBuf::new(zero_copy_buf))
@@ -201,16 +206,18 @@ impl Isolate {
     // At this point the SharedQueue should be empty.
     assert_eq!(isolate.shared.size(), 0);
 
-    if is_sync {
-      let res_record = op.wait().unwrap();
-      // For sync messages, we always return the response via Deno.core.send's
-      // return value.
-      // TODO(ry) check that if JSError thrown during respond(), that it will be
-      // picked up.
-      let _ = isolate.respond(Some(&res_record));
-    } else {
-      isolate.pending_ops.push(op);
-      isolate.have_unpolled_ops = true;
+    match op {
+      Op::Sync(buf) => {
+        // For sync messages, we always return the response via Deno.core.send's
+        // return value.
+        // TODO(ry) check that if JSError thrown during respond(), that it will be
+        // picked up.
+        let _ = isolate.respond(Some(&buf));
+      }
+      Op::Async(fut) => {
+        isolate.pending_ops.push(fut);
+        isolate.have_unpolled_ops = true;
+      }
     }
   }
 
@@ -555,19 +562,19 @@ pub mod tests {
     let dispatch_count_ = dispatch_count.clone();
 
     let mut config = Config::default();
-    config.dispatch(move |control, _| -> (bool, Box<Op>) {
+    config.dispatch(move |control, _| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
         Mode::AsyncImmediate => {
           assert_eq!(control.len(), 1);
           assert_eq!(control[0], 42);
           let buf = vec![43u8].into_boxed_slice();
-          (false, Box::new(futures::future::ok(buf)))
+          Op::Async(Box::new(futures::future::ok(buf)))
         }
         Mode::OverflowReqSync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
-          (true, Box::new(futures::future::ok(buf)))
+          Op::Sync(buf)
         }
         Mode::OverflowResSync => {
           assert_eq!(control.len(), 1);
@@ -576,12 +583,12 @@ pub mod tests {
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 99;
           let buf = vec.into_boxed_slice();
-          (true, Box::new(futures::future::ok(buf)))
+          Op::Sync(buf)
         }
         Mode::OverflowReqAsync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
-          (false, Box::new(futures::future::ok(buf)))
+          Op::Async(Box::new(futures::future::ok(buf)))
         }
         Mode::OverflowResAsync => {
           assert_eq!(control.len(), 1);
@@ -590,7 +597,7 @@ pub mod tests {
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 4;
           let buf = vec.into_boxed_slice();
-          (false, Box::new(futures::future::ok(buf)))
+          Op::Async(Box::new(futures::future::ok(buf)))
         }
       }
     });

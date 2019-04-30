@@ -83,7 +83,7 @@ pub fn dispatch_all(
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
   op_selector: OpSelector,
-) -> (bool, Box<Op>) {
+) -> Op {
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
   let base = msg::get_root_as_base(&control);
@@ -101,7 +101,7 @@ pub fn dispatch_all(
   let state = state.clone();
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
-  let boxed_op = Box::new(
+  let fut = Box::new(
     op.or_else(move |err: DenoError| -> Result<Buf, ()> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
@@ -143,7 +143,12 @@ pub fn dispatch_all(
     msg::enum_name_any(inner_type),
     base.sync()
   );
-  (base.sync(), boxed_op)
+
+  if base.sync() {
+    Op::Sync(fut.wait().unwrap())
+  } else {
+    Op::Async(fut)
+  }
 }
 
 pub fn op_selector_compiler(inner_type: msg::Any) -> Option<OpCreator> {
