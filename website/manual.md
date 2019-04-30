@@ -555,6 +555,7 @@ FLAGS:
         --v8-options              Print V8 command line options
 
 OPTIONS:
+    -c, --config <FILE>          Load compiler configuration file
         --v8-flags=<v8-flags>    Set V8 command line options
 
 SUBCOMMANDS:
@@ -564,6 +565,7 @@ SUBCOMMANDS:
     fmt         Format files
     help        Prints this message or the help of the given subcommand(s)
     info        Show source file related info
+    run         Run provided file
     types       Print runtime TypeScript declarations
     version     Print the version
 
