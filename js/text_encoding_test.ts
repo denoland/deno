@@ -13,6 +13,43 @@ test(function atobSuccess(): void {
   assertEquals(decoded, "hello world");
 });
 
+test(function atobWithAsciiWhitespace(): void {
+  const encodedList = [
+    " aGVsbG8gd29ybGQ=",
+    "  aGVsbG8gd29ybGQ=",
+    "aGVsbG8gd29ybGQ= ",
+    "aGVsbG8gd29ybGQ=\n",
+    "aGVsbG\t8gd29ybGQ=",
+    `aGVsbG\t8g
+                d29ybGQ=`
+  ];
+
+  for (let encoded of encodedList) {
+    let decoded = atob(encoded);
+    assertEquals(decoded, "hello world");
+  }
+});
+
+test(function atobThrows(): void {
+  let threw = false;
+  try {
+    atob("aGVsbG8gd29ybGQ==");
+  } catch (e) {
+    threw = true;
+  }
+  assert(threw);
+});
+
+test(function atobThrows2(): void {
+  let threw = false;
+  try {
+    atob("aGVsbG8gd29ybGQ===");
+  } catch (e) {
+    threw = true;
+  }
+  assert(threw);
+});
+
 test(function btoaFailed(): void {
   const text = "你好";
   let err;
