@@ -145,7 +145,7 @@ function generate(
       delete yAxis.min;
       for (let col of columns) {
         for (let i = 1; i < col.length; i++) {
-          if (col[i] == null) {
+          if (col[i] == null || col[i] === 0) {
             continue;
           }
           col[i] = Math.log10(col[i] * TimeScaleFactor);
