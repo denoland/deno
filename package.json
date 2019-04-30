@@ -1,6 +1,7 @@
 {
   "name": "deno",
   "devDependencies": {
+    "@stardazed/streams": "3.0.0",
     "@types/base64-js": "1.2.5",
     "@types/flatbuffers": "1.9.1",
     "@types/prettier": "1.16.1",

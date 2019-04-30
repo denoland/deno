@@ -4,6 +4,7 @@
 // But it can also be run manually: ./target/debug/deno js/unit_tests.ts
 
 import "./blob_test.ts";
+import "./body_test.ts";
 import "./buffer_test.ts";
 import "./build_test.ts";
 import "./chmod_test.ts";
@@ -32,6 +33,7 @@ import "./read_dir_test.ts";
 import "./read_file_test.ts";
 import "./read_link_test.ts";
 import "./rename_test.ts";
+import "./request_test.ts";
 import "./resources_test.ts";
 import "./stat_test.ts";
 import "./symlink_test.ts";

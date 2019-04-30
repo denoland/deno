@@ -233,6 +233,10 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   getReader(): domTypes.ReadableStreamReader {
     return notImplemented();
   }
+
+  tee(): [domTypes.ReadableStream, domTypes.ReadableStream] {
+    return notImplemented();
+  }
 }
 
 class Response implements domTypes.Response {

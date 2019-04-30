@@ -26,6 +26,9 @@ import * as urlSearchParams from "./url_search_params";
 import * as workers from "./workers";
 import * as performanceUtil from "./performance";
 
+import * as request from "./request";
+//import * as response from "./response";
+
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
 import { core } from "./core";
@@ -106,6 +109,12 @@ window.TextEncoder = textEncoding.TextEncoder;
 export type TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
 export type TextDecoder = textEncoding.TextDecoder;
+
+window.Request = request.Request;
+export type Request = request.Request;
+
+//window.Response = response.Response;
+//export type Response = response.Response;
 
 window.performance = new performanceUtil.Performance();
 

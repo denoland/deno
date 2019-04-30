@@ -99,6 +99,20 @@ testPerm({ net: true }, async function fetchInitStringBody(): Promise<void> {
   assert(response.headers.get("content-type").startsWith("text/plain"));
 });
 
+testPerm({ net: true }, async function fetchRequestInitStringBody(): Promise<
+  void
+> {
+  const data = "Hello World";
+  const req = new Request("http://localhost:4545/echo_server", {
+    method: "POST",
+    body: data
+  });
+  const response = await fetch(req);
+  const text = await response.text();
+  assertEquals(text, data);
+  assert(response.headers.get("content-type").startsWith("text/plain"));
+});
+
 testPerm({ net: true }, async function fetchInitTypedArrayBody(): Promise<
   void
 > {
