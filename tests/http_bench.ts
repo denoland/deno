@@ -23,12 +23,21 @@ async function handle(conn: Deno.Conn): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
+function acceptRoutine(): void {
+  listener
+    .accept()
+    .then(
+      (conn: Deno.Conn): void => {
+        handle(conn);
+        acceptRoutine();
+      }
+    )
+    .catch((): void => listener.close());
+}
+
+function main(): void {
   console.log("Listening on", addr);
-  while (true) {
-    const conn = await listener.accept();
-    handle(conn);
-  }
+  acceptRoutine();
 }
 
 main();
