@@ -403,10 +403,53 @@ fn check_path_white_list(
 ) -> bool {
   let mut path_buf = PathBuf::from(filename);
 
+  if white_list.contains(path_buf.to_str().unwrap()) {
+    return true;
+  }
+
   while path_buf.pop() == true {
     if white_list.contains(path_buf.to_str().unwrap()) {
       return true;
     }
   }
   return false;
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn check_paths() {
+    let whitelist = vec![
+      "/a/specific/dir/name".to_string(),
+      "/a/specific".to_string(),
+      "/b/c".to_string(),
+    ].to_vec();
+
+    let perms = DenoPermissions::from_flags(&DenoFlags {
+      read_whitelist: whitelist.clone(),
+      write_whitelist: whitelist.clone(),
+      no_prompts: true,
+      ..Default::default()
+    });
+
+    perms.check_read("/a/specific/dir/name").unwrap();
+    perms.check_write("/a/specific/dir/name").unwrap();
+
+    perms.check_read("/a/specific/other/dir").unwrap();
+    perms.check_write("/a/specific/other/dir").unwrap();
+
+    perms.check_read("/b/c").unwrap();
+    perms.check_write("/b/c").unwrap();
+
+    perms.check_read("/b/c/sub/path").unwrap();
+    perms.check_write("/b/c/sub/path").unwrap();
+
+    perms.check_read("/b/e").unwrap_err();
+    perms.check_write("/b/e").unwrap_err();
+
+    perms.check_read("/a/b").unwrap_err();
+    perms.check_write("/a/b").unwrap_err();
+  }
 }
