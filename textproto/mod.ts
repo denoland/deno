@@ -119,7 +119,11 @@ export class TextProtoReader {
       }
       let value = str(kv.subarray(i));
 
-      m.append(key, value);
+      // In case of invalid header we swallow the error
+      // example: "Audio Mode" => invalid due to space in the key
+      try {
+        m.append(key, value);
+      } catch {}
 
       if (err != null) {
         throw err;
