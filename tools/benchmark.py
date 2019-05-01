@@ -25,7 +25,8 @@ exec_time_benchmarks = [
     ("relative_import", ["run", "tests/003_relative_import.ts"]),
     ("error_001", ["run", "tests/error_001.ts"]),
     ("cold_hello", ["--reload", "run", "tests/002_hello.ts"]),
-    ("cold_relative_import", ["--reload", "run", "tests/003_relative_import.ts"]),
+    ("cold_relative_import",
+     ["--reload", "run", "tests/003_relative_import.ts"]),
     ("workers_startup", ["run", "tests/workers_startup_bench.ts"]),
     ("workers_round_robin", ["run", "tests/workers_round_robin_bench.ts"]),
 ]

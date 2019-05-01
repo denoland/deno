@@ -441,8 +441,14 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_6() {
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--allow-net", "run", "gist.ts", "--title", "X"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--allow-net",
+      "run",
+      "gist.ts",
+      "--title",
+      "X"
+    ]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -491,8 +497,12 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_9() {
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--allow-high-precision", "run", "script.ts"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--allow-high-precision",
+      "run",
+      "script.ts"
+    ]);
     assert_eq!(
       flags,
       DenoFlags {
