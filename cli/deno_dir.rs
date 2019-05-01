@@ -1350,7 +1350,7 @@ mod tests {
       // file hasn't been cached before and remote downloads are not allowed
       let result =
         get_source_code(&deno_dir, module_name, &filename, true, true);
-      assert!(result.is_ok());
+      assert!(result.is_err());
     });
   }
 
