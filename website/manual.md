@@ -559,15 +559,14 @@ OPTIONS:
         --v8-flags=<v8-flags>    Set V8 command line options
 
 SUBCOMMANDS:
-    <script>    Script to run
-    eval        Eval script
-    fetch       Fetch the dependencies
-    fmt         Format files
-    help        Prints this message or the help of the given subcommand(s)
-    info        Show source file related info
-    run         Run provided file
-    types       Print runtime TypeScript declarations
-    version     Print the version
+    eval       Eval script
+    fetch      Fetch the dependencies
+    fmt        Format files
+    help       Prints this message or the help of the given subcommand(s)
+    info       Show source file related info
+    run        Run provided file
+    types      Print runtime TypeScript declarations
+    version    Print the version
 
 ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
