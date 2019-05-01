@@ -47,6 +47,7 @@ tokio-process = "0.2.3"
 tokio-rustls = "0.9.2"
 tokio-threadpool = "0.1.14"
 url = "1.7.2"
+utime = "0.2.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.7"

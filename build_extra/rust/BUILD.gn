@@ -1714,6 +1714,30 @@ rust_crate("url") {
   ]
 }
 
+rust_crate("utime") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utime-0.2.1/src/lib.rs"
+
+  if (is_win) {
+    extern = [ ":kernel32" ]
+    extern_version = [
+      {
+        crate_name = "winapi"
+        crate_version = "0.2.8"
+      },
+    ]
+  }
+
+  if (is_posix) {
+    extern = [ ":libc" ]
+  }
+
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("utf8_ranges") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utf8-ranges-1.0.2/src/lib.rs"

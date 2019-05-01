@@ -40,6 +40,7 @@ import "./timers_test.ts";
 import "./truncate_test.ts";
 import "./url_test.ts";
 import "./url_search_params_test.ts";
+import "./utime_test.ts";
 import "./write_file_test.ts";
 import "./performance_test.ts";
 import "./permissions_test.ts";
