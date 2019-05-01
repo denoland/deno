@@ -152,9 +152,13 @@ for (const fileInfo of walkSync()) {
 }
 
 // Async
-for (const fileInfo of walk()) {
-  console.log(fileInfo.path);
+async function printFilesPath() {
+  for await (const fileInfo of walk()) {
+    console.log(fileInfo.path);
+  }
 }
+
+printFilesPath().then(() => console.log("Done!"));
 ```
 
 ### writeJson
