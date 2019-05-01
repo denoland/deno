@@ -103,31 +103,88 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     ).subcommand(
       SubCommand::with_name("version")
         .setting(AppSettings::DisableVersion)
-        .about("Print the version"),
+        .about("Print the version")
+        .long_about(
+          "
+Print current version of Deno.
+
+Includes versions of Deno, V8 JavaScript Engine, and the TypeScript
+compiler.
+",
+        ),
     ).subcommand(
       SubCommand::with_name("fetch")
         .setting(AppSettings::DisableVersion)
         .about("Fetch the dependencies")
-        .arg(Arg::with_name("file").takes_value(true).required(true)),
+        .long_about(
+          "
+Fetch and compile remote dependencies recursively.
+
+Downloads all statically imported scripts and save them in local
+cache, without running the code. No future import network requests
+would be made unless --reload is specified.
+
+  # Downloads all dependencies
+  deno fetch https://deno.land/std/http/file_server.ts
+  # Once cached, static imports no longer send network requests
+  deno https://deno.land/std/http/file_server.ts
+",
+        ).arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("types")
         .setting(AppSettings::DisableVersion)
-        .about("Print runtime TypeScript declarations"),
+        .about("Print runtime TypeScript declarations")
+        .long_about(
+          "
+Print runtime TypeScript declarations.
+
+The declaration file could be saved and used for typing information.
+
+  deno types > lib.deno_runtime.d.ts
+",
+        ),
     ).subcommand(
       SubCommand::with_name("info")
         .setting(AppSettings::DisableVersion)
         .about("Show source file related info")
-        .arg(Arg::with_name("file").takes_value(true).required(true)),
+        .long_about(
+          "
+Show source file related info.
+
+The following information is shown:
+
+local:     local path of the file.
+type:      type of script (e.g. JavaScript/TypeScript/JSON)
+compiled:  (TypeScript only) shown local path of compiled source code.
+map:       (TypeScript only) shown local path of source map.
+deps:      dependency tree of the source file.
+
+  deno info myfile.ts
+",
+        ).arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("eval")
         .setting(AppSettings::DisableVersion)
         .about("Eval script")
-        .arg(Arg::with_name("code").takes_value(true).required(true)),
+        .long_about(
+          "
+Evaluate provided script.
+
+  deno eval 'console.log(\"hello world\")'
+",
+        ).arg(Arg::with_name("code").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("fmt")
         .setting(AppSettings::DisableVersion)
         .about("Format files")
-        .arg(
+        .long_about(
+          "
+Format given list of files using Prettier. Automatically downloads
+Prettier dependencies on first run.
+
+  deno fmt myfile1.ts myfile2.ts
+",
+        ).arg(
           Arg::with_name("files")
             .takes_value(true)
             .multiple(true)
