@@ -25,6 +25,7 @@ pub struct DenoFlags {
   pub no_fetch: bool,
   pub v8_flags: Option<Vec<String>>,
   pub xeval_replvar: Option<String>,
+  pub xeval_delim: Option<String>,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -197,25 +198,33 @@ Prettier dependencies on first run.
     ).subcommand(
       SubCommand::with_name("xeval")
         .setting(AppSettings::DisableVersion)
-        .about("`xargs`-like eval script")
+        .about("Eval a script on text segments from stdin")
         .long_about(
           "
-`xargs`-like eval script.
+Eval a script on lines (or chunks split under delimiter) from stdin.
 
 Read from standard input and eval code on each whitespace-delimited
 string chunks.
 
 -I/--replvar optionally set variable name for input to be used in eval.
-Otherwise `$` will be used as default variable name.
+Otherwise '$' will be used as default variable name.
 
   cat list.txt | deno xeval 'console.log($)'
   cat list.txt | deno xeval -I 'val' 'console.log(val)'
+  cat list.txt | deno xeval -d ' ' 'console.log($)'
+  cat list.txt | deno xeval -d $'\\n' 'console.log($)'
 ",
         ).arg(
           Arg::with_name("replvar")
             .long("replvar")
             .short("I")
-            .help("Set variable name to be used in eval")
+            .help("Set variable name to be used in eval, defaults to $")
+            .takes_value(true),
+        ).arg(
+          Arg::with_name("delim")
+            .long("delim")
+            .short("d")
+            .help("Set delimiter, defaults to newline")
             .takes_value(true),
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
     ).subcommand(
@@ -352,6 +361,11 @@ pub fn flags_from_vec(
       let code: &str = eval_match.value_of("code").unwrap();
       flags.xeval_replvar =
         Some(eval_match.value_of("replvar").unwrap_or("$").to_owned());
+      // Currently clap never escapes string,
+      // So -d "\n" won't expand to newline.
+      // Instead, do -d $'\n'
+      flags.xeval_delim =
+        Some(eval_match.value_of("delim").unwrap_or("\n").to_owned());
       argv.extend(vec![code.to_string()]);
       DenoSubcommand::Xeval
     }
@@ -604,13 +618,21 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_15() {
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "xeval", "-I", "val", "'console.log(val)'"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "xeval",
+      "-I",
+      "val",
+      "-d",
+      " ",
+      "console.log(val)"
+    ]);
     let mut expected_flags = DenoFlags::default();
     expected_flags.xeval_replvar = Some("val".to_owned());
+    expected_flags.xeval_delim = Some(" ".to_owned());
     assert_eq!(flags, expected_flags);
     assert_eq!(subcommand, DenoSubcommand::Xeval);
-    assert_eq!(argv, svec!["deno", "'console.log(val)'"]);
+    assert_eq!(argv, svec!["deno", "console.log(val)"]);
   }
 
   #[test]

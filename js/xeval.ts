@@ -17,36 +17,51 @@ async function writeAll(buffer: Buffer, arr: Uint8Array): Promise<void> {
   }
 }
 
-export async function xevalMain(xevalFunc: XevalFunc): Promise<void> {
+export async function xevalMain(
+  xevalFunc: XevalFunc,
+  delim_: string
+): Promise<void> {
   const inputBuffer = new Buffer();
-  const inputArray = new Uint8Array(1024);
+  const inspectArr = new Uint8Array(1024);
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
+  const delimArr = encoder.encode(delim_); // due to unicode
+
+  let nextMatchIndex = 0;
   while (true) {
-    const rr = await stdin.read(inputArray);
+    const rr = await stdin.read(inspectArr);
     if (rr.nread < 0) {
       exit(1);
     }
-    const sliceRead = inputArray.subarray(0, rr.nread);
-    let stringRead = decoder.decode(sliceRead);
-    stringRead = stringRead.replace(/\s+/g, " "); // don't trim
-
-    while (stringRead.length > 0) {
-      const index = stringRead.indexOf(" ");
-      if (index < 0) {
-        await writeAll(inputBuffer, encoder.encode(stringRead));
-        break; // start next stdin read
+    const sliceRead = inspectArr.subarray(0, rr.nread);
+    // Avoid unicode problems
+    let nextSliceStartIndex = 0;
+    for (let i = 0; i < sliceRead.length; i++) {
+      if (sliceRead[i] == delimArr[nextMatchIndex]) {
+        nextMatchIndex++;
+      } else {
+        nextMatchIndex = 0;
       }
+      if (nextMatchIndex === delimArr.length) {
+        nextMatchIndex = 0; // reset match
+        const sliceToJoin = sliceRead.subarray(nextSliceStartIndex, i + 1);
+        nextSliceStartIndex = i + 1;
+        await writeAll(inputBuffer, sliceToJoin);
 
-      const value = inputBuffer.toString() + stringRead.slice(0, index);
-      stringRead = stringRead.slice(index + 1);
-      inputBuffer.reset();
-      if (value.length > 0) {
-        // we might read a single whitespace
-        xevalFunc(value);
+        let readyBytes = inputBuffer.bytes();
+        inputBuffer.reset();
+        readyBytes = readyBytes.subarray(
+          0,
+          readyBytes.length - delimArr.length
+        );
+        let readyChunk = decoder.decode(readyBytes);
+        if (readyChunk.length > 0) {
+          // ignore blank chunk
+          xevalFunc(readyChunk);
+        }
       }
     }
-
+    await writeAll(inputBuffer, sliceRead.subarray(nextSliceStartIndex));
     if (rr.eof) {
       const lastString = inputBuffer.toString();
       if (lastString.length > 0) {

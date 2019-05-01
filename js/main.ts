@@ -46,7 +46,10 @@ export default function denoMain(name?: string): void {
   Object.freeze(args);
 
   if (window["_xevalWrapper"] !== undefined) {
-    xevalMain(window["_xevalWrapper"] as XevalFunc);
+    xevalMain(
+      window["_xevalWrapper"] as XevalFunc,
+      startResMsg.xevalDelim() || "\n"
+    );
   } else if (!mainModule) {
     replLoop();
   }
