@@ -194,6 +194,16 @@ Prettier dependencies on first run.
             .required(true),
         ),
     ).subcommand(
+      SubCommand::with_name("xeval")
+        .setting(AppSettings::DisableVersion)
+        .about("xargs-like eval script")
+        .arg(
+          Arg::with_name("var")
+            .long("var")
+            .short("V")
+            .takes_value(true),
+        ).arg(Arg::with_name("code").takes_value(true).required(true)),
+    ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
       // entry point script
@@ -264,6 +274,7 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     v8_flags.insert(0, "deno".to_string());
     flags.v8_flags = Some(v8_flags);
   }
+  flags.config_path = matches.value_of("var").map(ToOwned::to_owned);
 
   flags
 }
@@ -281,6 +292,7 @@ pub enum DenoSubcommand {
   Repl,
   Run,
   Types,
+  Xeval,
 }
 
 pub fn flags_from_vec(
@@ -322,6 +334,12 @@ pub fn flags_from_vec(
       DenoSubcommand::Info
     }
     ("types", Some(_)) => DenoSubcommand::Types,
+    ("xeval", Some(eval_match)) => {
+      let code: &str = eval_match.value_of("code").unwrap();
+      let varname: &str = eval_match.value_of("var").unwrap_or("$");
+      argv.extend(vec![code.to_string(), varname.to_owned()]);
+      DenoSubcommand::Xeval
+    }
     (script, Some(script_match)) => {
       argv.extend(vec![script.to_string()]);
       // check if there are any extra arguments that should
