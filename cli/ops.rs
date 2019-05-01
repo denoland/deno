@@ -50,6 +50,7 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_process::CommandExt;
 use tokio_threadpool;
+use utime;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -202,6 +203,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Stat => Some(op_stat),
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
+    msg::Any::Utime => Some(op_utime),
     msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
     msg::Any::HostGetMessage => Some(op_host_get_message),
@@ -1503,6 +1505,29 @@ fn op_truncate(
     debug!("op_truncate {} {}", filename, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
     f.set_len(u64::from(len))?;
+    Ok(empty_buf())
+  })
+}
+
+fn op_utime(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: deno_buf,
+) -> Box<OpWithError> {
+  assert_eq!(data.len(), 0);
+
+  let inner = base.inner_as_utime().unwrap();
+  let filename = String::from(inner.filename().unwrap());
+  let atime = inner.atime();
+  let mtime = inner.mtime();
+
+  if let Err(e) = state.check_write(&filename) {
+    return odd_future(e);
+  }
+
+  blocking(base.sync(), move || {
+    debug!("op_utimes {} {} {}", filename, atime, mtime);
+    utime::set_file_times(filename, atime, mtime)?;
     Ok(empty_buf())
   })
 }

@@ -192,3 +192,18 @@ export function hasOwnProperty<T>(obj: T, v: PropertyKey): boolean {
   }
   return Object.prototype.hasOwnProperty.call(obj, v);
 }
+
+/**
+ * Split a number into two parts: lower 32 bit and higher 32 bit
+ * (as if the number is represented as uint64.)
+ *
+ * @param n Number to split.
+ * @internal
+ */
+export function splitNumberToParts(n: number): number[] {
+  // JS bitwise operators (OR, SHIFT) operate as if number is uint32.
+  const lower = n | 0;
+  // This is also faster than Math.floor(n / 0x100000000) in V8.
+  const higher = (n - lower) / 0x100000000;
+  return [lower, higher];
+}

@@ -46,6 +46,7 @@ export {
   MakeTempDirOptions
 } from "./make_temp_dir";
 export { chmodSync, chmod } from "./chmod";
+export { utimeSync, utime } from "./utime";
 export { removeSync, remove, RemoveOption } from "./remove";
 export { renameSync, rename } from "./rename";
 export { readFileSync, readFile } from "./read_file";
