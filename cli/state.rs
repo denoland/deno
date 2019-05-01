@@ -81,11 +81,7 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  pub fn dispatch(
-    &self,
-    control: &[u8],
-    zero_copy: Option<PinnedBuf>,
-  ) -> (bool, Box<Op>) {
+  pub fn dispatch(&self, control: &[u8], zero_copy: Option<PinnedBuf>) -> Op {
     ops::dispatch_all(self, control, zero_copy, self.dispatch_selector)
   }
 }
