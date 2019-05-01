@@ -162,7 +162,7 @@ rust_executable("deno") {
   ]
 }
 
-rust_test("test_rs") {
+rust_test("cli_test") {
   source_root = "main.rs"
   extern = main_extern
   deps = [
