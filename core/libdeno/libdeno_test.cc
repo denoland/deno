@@ -41,17 +41,6 @@ TEST(LibDenoTest, ErrorsCorrectly) {
   deno_delete(d);
 }
 
-deno_buf strbuf(const char* str) {
-  auto len = strlen(str);
-  deno_buf buf;
-  buf.alloc_ptr = new uint8_t[len];
-  buf.alloc_len = len;
-  buf.data_ptr = buf.alloc_ptr;
-  buf.data_len = len;
-  memcpy(buf.data_ptr, str, len);
-  return buf;
-}
-
 void assert_null(deno_pinned_buf b) {
   EXPECT_EQ(b.data_ptr, nullptr);
   EXPECT_EQ(b.data_len, 0u);
@@ -85,7 +74,8 @@ TEST(LibDenoTest, RecvReturnBar) {
     EXPECT_EQ(buf.data_ptr[0], 'a');
     EXPECT_EQ(buf.data_ptr[1], 'b');
     EXPECT_EQ(buf.data_ptr[2], 'c');
-    deno_respond(d, user_data, strbuf("bar"));
+    uint8_t response[] = {'b', 'a', 'r'};
+    deno_respond(d, user_data, {response, sizeof response});
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
   deno_execute(d, d, "a.js", "RecvReturnBar()");
@@ -98,60 +88,6 @@ TEST(LibDenoTest, DoubleRecvFails) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
   deno_execute(d, nullptr, "a.js", "DoubleRecvFails()");
   EXPECT_NE(nullptr, deno_last_exception(d));
-  deno_delete(d);
-}
-
-TEST(LibDenoTest, SendRecvSlice) {
-  static int count = 0;
-  auto recv_cb = [](auto user_data, auto buf, auto zero_copy_buf) {
-    auto d = reinterpret_cast<Deno*>(user_data);
-    assert_null(zero_copy_buf);
-    static const size_t alloc_len = 1024;
-    size_t i = count++;
-    // Check the size and offset of the slice.
-    size_t data_offset = buf.data_ptr - buf.alloc_ptr;
-    EXPECT_EQ(data_offset, i * 11);
-    EXPECT_EQ(buf.data_len, alloc_len - i * 30);
-    EXPECT_EQ(buf.alloc_len, alloc_len);
-    // Check values written by the JS side.
-    EXPECT_EQ(buf.data_ptr[0], 100 + i);
-    EXPECT_EQ(buf.data_ptr[buf.data_len - 1], 100 - i);
-    // Make copy of the backing buffer -- this is currently necessary
-    // because deno_respond() takes ownership over the buffer, but we are
-    // not given ownership of `buf` by our caller.
-    uint8_t* alloc_ptr = new uint8_t[alloc_len];
-    memcpy(alloc_ptr, buf.alloc_ptr, alloc_len);
-    // Make a slice that is a bit shorter than the original.
-    deno_buf buf2{alloc_ptr, alloc_len, alloc_ptr + data_offset,
-                  buf.data_len - 19};
-    // Place some values into the buffer for the JS side to verify.
-    buf2.data_ptr[0] = 200 + i;
-    buf2.data_ptr[buf2.data_len - 1] = 200 - i;
-    // Send back.
-    deno_respond(d, user_data, buf2);
-  };
-  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
-  deno_execute(d, d, "a.js", "SendRecvSlice()");
-  EXPECT_EQ(nullptr, deno_last_exception(d));
-  EXPECT_EQ(count, 5);
-  deno_delete(d);
-}
-
-TEST(LibDenoTest, JSSendArrayBufferViewTypes) {
-  static int count = 0;
-  auto recv_cb = [](auto _, auto buf, auto zero_copy_buf) {
-    assert_null(zero_copy_buf);
-    count++;
-    size_t data_offset = buf.data_ptr - buf.alloc_ptr;
-    EXPECT_EQ(data_offset, 2468u);
-    EXPECT_EQ(buf.data_len, 1000u);
-    EXPECT_EQ(buf.alloc_len, 4321u);
-    EXPECT_EQ(buf.data_ptr[0], count);
-  };
-  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});
-  deno_execute(d, nullptr, "a.js", "JSSendArrayBufferViewTypes()");
-  EXPECT_EQ(nullptr, deno_last_exception(d));
-  EXPECT_EQ(count, 3);
   deno_delete(d);
 }
 
@@ -266,7 +202,7 @@ TEST(LibDenoTest, EncodeErrorBug) {
 
 TEST(LibDenoTest, Shared) {
   uint8_t s[] = {0, 1, 2};
-  deno_buf shared = {nullptr, 0, s, 3};
+  deno_buf shared = {s, sizeof s};
   Deno* d = deno_new(deno_config{0, snapshot, shared, nullptr});
   deno_execute(d, nullptr, "a.js", "Shared()");
   EXPECT_EQ(nullptr, deno_last_exception(d));
@@ -301,7 +237,7 @@ TEST(LibDenoTest, LibDenoEvalContextError) {
 
 TEST(LibDenoTest, SharedAtomics) {
   int32_t s[] = {0, 1, 2};
-  deno_buf shared = {nullptr, 0, reinterpret_cast<uint8_t*>(s), sizeof s};
+  deno_buf shared = {reinterpret_cast<uint8_t*>(s), sizeof s};
   Deno* d = deno_new(deno_config{0, empty_snapshot, shared, nullptr});
   deno_execute(d, nullptr, "a.js",
                "Atomics.add(new Int32Array(Deno.core.shared), 0, 1)");
