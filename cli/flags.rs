@@ -110,8 +110,6 @@ Print current version of Deno.
 
 Includes versions of Deno, V8 JavaScript Engine, and the TypeScript
 compiler.
-
-  deno version
 ",
         ),
     ).subcommand(
@@ -120,7 +118,7 @@ compiler.
         .about("Fetch the dependencies")
         .long_about(
           "
-Fetch remote dependencies recursively.
+Fetch and compile remote dependencies recursively.
 
 Downloads all statically imported scripts and save them in local
 cache, without running the code. No future import network requests
@@ -129,7 +127,7 @@ would be made unless --reload is specified.
   # Downloads all dependencies
   deno fetch https://deno.land/std/http/file_server.ts
   # Once cached, static imports no longer send network requests
-  deno run https://deno.land/std/http/file_server.ts
+  deno https://deno.land/std/http/file_server.ts
 ",
         ).arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
