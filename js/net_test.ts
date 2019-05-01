@@ -72,7 +72,7 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   conn.close();
 });
 
-testPerm({ net: true }, async function netListenAsyncIterator() {
+testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
   const listener = Deno.listen("tcp", ":4500");
   const runAsyncIterator = async (): Promise<void> => {
     for await (let conn of listener) {
