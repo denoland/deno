@@ -15,6 +15,7 @@ extern crate nix;
 mod ansi;
 pub mod compiler;
 pub mod deno_dir;
+mod dispatch_minimal;
 pub mod errors;
 pub mod flags;
 mod fs;

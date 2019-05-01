@@ -64,6 +64,7 @@ ts_sources = [
   "../js/deno.ts",
   "../js/dir.ts",
   "../js/dispatch.ts",
+  "../js/dispatch_minimal.ts",
   "../js/dom_types.ts",
   "../js/errors.ts",
   "../js/event.ts",

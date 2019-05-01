@@ -4,23 +4,63 @@ import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/cli/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
+import {
+  RecordMinimal,
+  nextPromiseId,
+  recordFromBufMinimal,
+  handleAsyncMsgFromRustMinimal
+} from "./dispatch_minimal";
 
-let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
-export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
-  const bb = new flatbuffers.ByteBuffer(ui8);
-  const base = msg.Base.getRootAsBase(bb);
-  const cmdId = base.cmdId();
-  const promise = promiseTable.get(cmdId);
-  util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
-  promiseTable.delete(cmdId);
-  const err = errors.maybeError(base);
-  if (err != null) {
-    promise!.reject(err);
+interface Record extends RecordMinimal {
+  base?: msg.Base;
+}
+
+function recordFromBuf(buf: Uint8Array): Record {
+  // assert(buf.byteLength % 4 == 0);
+  const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+
+  const recordMin = recordFromBufMinimal(buf32);
+  if (recordMin) {
+    return recordMin;
   } else {
-    promise!.resolve(base);
+    const bb = new flatbuffers.ByteBuffer(buf);
+    const base = msg.Base.getRootAsBase(bb);
+    const cmdId = base.cmdId();
+    return {
+      opId: -1,
+      arg: -1,
+      result: -1,
+      promiseId: cmdId,
+      base
+    };
   }
+}
+
+export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
+  const record = recordFromBuf(ui8);
+
+  if (record.base) {
+    // Legacy
+    const { promiseId, base } = record;
+    const promise = promiseTable.get(promiseId);
+    util.assert(promise != null, `Expecting promise in table. ${promiseId}`);
+    promiseTable.delete(record.promiseId);
+    const err = errors.maybeError(base);
+    if (err != null) {
+      promise!.reject(err);
+    } else {
+      promise!.resolve(base);
+    }
+  } else {
+    // Fast and new
+    handleAsyncMsgFromRustMinimal(ui8, record);
+  }
+}
+
+function ui8FromArrayBufferView(abv: ArrayBufferView): Uint8Array {
+  return new Uint8Array(abv.buffer, abv.byteOffset, abv.byteLength);
 }
 
 function sendInternal(
@@ -30,20 +70,20 @@ function sendInternal(
   zeroCopy: undefined | ArrayBufferView,
   sync = true
 ): [number, null | Uint8Array] {
-  const cmdId = nextCmdId++;
-  const message = msg.Base.createBase(
-    builder,
-    cmdId,
-    sync,
-    0,
-    0,
-    innerType,
-    inner
-  );
-  builder.finish(message);
+  const cmdId = nextPromiseId();
+  msg.Base.startBase(builder);
+  msg.Base.addInner(builder, inner);
+  msg.Base.addInnerType(builder, innerType);
+  msg.Base.addSync(builder, sync);
+  msg.Base.addCmdId(builder, cmdId);
+  builder.finish(msg.Base.endBase(builder));
 
   const control = builder.asUint8Array();
-  const response = core.dispatch(control, zeroCopy);
+
+  const response = core.dispatch(
+    control,
+    zeroCopy ? ui8FromArrayBufferView(zeroCopy!) : undefined
+  );
 
   builder.inUse = false;
   return [cmdId, response];
