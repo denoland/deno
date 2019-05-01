@@ -274,7 +274,6 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     v8_flags.insert(0, "deno".to_string());
     flags.v8_flags = Some(v8_flags);
   }
-  flags.config_path = matches.value_of("var").map(ToOwned::to_owned);
 
   flags
 }
