@@ -157,7 +157,7 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(MessageCallback),
     0};
 
-static const deno_buf empty_buf = {nullptr, 0, nullptr, 0};
+static const deno_buf empty_buf = {nullptr, 0};
 static const deno_snapshot empty_snapshot = {nullptr, 0};
 
 Deno* NewFromSnapshot(void* user_data, deno_recv_cb cb);
