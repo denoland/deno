@@ -78,9 +78,9 @@ def main(argv):
     check_exists(libdeno_test)
     run([libdeno_test])
 
-    test_rs = os.path.join(build_dir, "test_rs" + executable_suffix)
-    check_exists(test_rs)
-    run([test_rs])
+    cli_test = os.path.join(build_dir, "cli_test" + executable_suffix)
+    check_exists(cli_test)
+    run([cli_test])
 
     deno_core_test = os.path.join(build_dir,
                                   "deno_core_test" + executable_suffix)
