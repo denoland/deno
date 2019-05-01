@@ -229,11 +229,19 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_net(&self, domain_name: &str) -> DenoResult<()> {
+  pub fn check_net(&self, url_str: &str) -> DenoResult<()> {
     match self.allow_net.get_state() {
       PermissionAccessorState::Allow => Ok(()),
       state => {
-        match self.net_whitelist.contains(domain_name) {
+        let parsed_url_result = url::Url::parse(url_str);
+        let whitelist_result = match parsed_url_result {
+          Ok(parsed_url) => match parsed_url.host() {
+            Some(host) => self.net_whitelist.contains(&host.to_string()),
+            None => false,
+          },
+          Err(_) => false,
+        };
+        match whitelist_result {
           true => Ok(()),
           false => {
             match state {
@@ -242,7 +250,7 @@ impl DenoPermissions {
               PermissionAccessorState::Ask => {
                 match self.try_permissions_prompt(&format!(
                   "network access to \"{}\"",
-                  domain_name
+                  url_str
                 )) {
                   Err(e) => Err(e),
                   Ok(v) => {
@@ -434,22 +442,72 @@ mod tests {
       ..Default::default()
     });
 
+    // Inside of /a/specific and /a/specific/dir/name
     perms.check_read("/a/specific/dir/name").unwrap();
     perms.check_write("/a/specific/dir/name").unwrap();
 
+    // Inside of /a/specific but outside of /a/specific/dir/name
+    perms.check_read("/a/specific/dir").unwrap();
+    perms.check_write("/a/specific/dir").unwrap();
+
+    // Inside of /a/specific and /a/specific/dir/name
+    perms.check_read("/a/specific/dir/name/inner").unwrap();
+    perms.check_write("/a/specific/dir/name/inner").unwrap();
+
+    // Inside of /a/specific but outside of /a/specific/dir/name
     perms.check_read("/a/specific/other/dir").unwrap();
     perms.check_write("/a/specific/other/dir").unwrap();
 
+    // Exact match with /b/c
     perms.check_read("/b/c").unwrap();
     perms.check_write("/b/c").unwrap();
 
+    // Sub path within /b/c
     perms.check_read("/b/c/sub/path").unwrap();
     perms.check_write("/b/c/sub/path").unwrap();
 
+    // Inside of /b but outside of /b/c
     perms.check_read("/b/e").unwrap_err();
     perms.check_write("/b/e").unwrap_err();
 
+    // Inside of /a but outside of /a/specific
     perms.check_read("/a/b").unwrap_err();
     perms.check_write("/a/b").unwrap_err();
+  }
+
+  #[test]
+  fn check_domains() {
+    let perms = DenoPermissions::from_flags(&DenoFlags {
+      net_whitelist: vec![
+        "localhost".to_string(),
+        "deno.land".to_string(),
+        "127.0.0.1".to_string(),
+      ].to_vec(),
+      no_prompts: true,
+      ..Default::default()
+    });
+
+    // http and https for the same domain should pass
+    perms.check_net("http://localhost/test/url").unwrap();
+    perms.check_net("https://localhost/test/url").unwrap();
+
+    // Correct domain should pass but typo should not
+    perms
+      .check_net("https://deno.land/std/http/file_server.ts")
+      .unwrap();
+    perms
+      .check_net("https://deno.lands/std/http/file_server.ts")
+      .unwrap_err();
+
+    // Correct ipv4 address should succeed but type should not
+    perms.check_net("https://127.0.0.1").unwrap();
+    perms.check_net("https://127.0.0.2").unwrap_err();
+    // TODO(afinch7) This currently succeeds but we may want to
+    // change this behavior in the future.
+    perms.check_net("https://127.0.0.1:3000").unwrap();
+
+    // Completely different hosts should also fail
+    perms.check_net("https://somedomain/").unwrap_err();
+    perms.check_net("https://192.168.0.1/").unwrap_err();
   }
 }
