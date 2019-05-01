@@ -209,12 +209,13 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn xeval_command(flags: DenoFlags, argv: Vec<String>) {
+  let xeval_replvar = flags.xeval_replvar.clone().unwrap();
   let (mut worker, state) = create_worker_and_state(flags, argv);
   let xeval_source = format!(
     "window._xevalWrapper = async function ({}){{
         {}
       }}",
-    &state.argv[2], &state.argv[1]
+    &xeval_replvar, &state.argv[1]
   );
 
   let main_future = lazy(move || {

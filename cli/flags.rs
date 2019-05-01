@@ -24,6 +24,7 @@ pub struct DenoFlags {
   pub no_prompts: bool,
   pub no_fetch: bool,
   pub v8_flags: Option<Vec<String>>,
+  pub xeval_replvar: Option<String>,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -196,11 +197,25 @@ Prettier dependencies on first run.
     ).subcommand(
       SubCommand::with_name("xeval")
         .setting(AppSettings::DisableVersion)
-        .about("xargs-like eval script")
-        .arg(
-          Arg::with_name("var")
-            .long("var")
-            .short("V")
+        .about("`xargs`-like eval script")
+        .long_about(
+          "
+`xargs`-like eval script.
+
+Read from standard input and eval code on each whitespace-delimited
+string chunks.
+
+-I/--replvar optionally set variable name for input to be used in eval.
+Otherwise `$` will be used as default variable name.
+
+  cat list.txt | deno xeval 'console.log($)'
+  cat list.txt | deno xeval -I 'val' 'console.log(val)'
+",
+        ).arg(
+          Arg::with_name("replvar")
+            .long("replvar")
+            .short("I")
+            .help("Set variable name to be used in eval")
             .takes_value(true),
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
     ).subcommand(
@@ -335,8 +350,9 @@ pub fn flags_from_vec(
     ("types", Some(_)) => DenoSubcommand::Types,
     ("xeval", Some(eval_match)) => {
       let code: &str = eval_match.value_of("code").unwrap();
-      let varname: &str = eval_match.value_of("var").unwrap_or("$");
-      argv.extend(vec![code.to_string(), varname.to_owned()]);
+      flags.xeval_replvar =
+        Some(eval_match.value_of("replvar").unwrap_or("$").to_owned());
+      argv.extend(vec![code.to_string()]);
       DenoSubcommand::Xeval
     }
     (script, Some(script_match)) => {
@@ -584,6 +600,17 @@ mod tests {
     assert_eq!(flags, DenoFlags::default());
     assert_eq!(subcommand, DenoSubcommand::Info);
     assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_15() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "xeval", "-I", "val", "'console.log(val)'"]);
+    let mut expected_flags = DenoFlags::default();
+    expected_flags.xeval_replvar = Some("val".to_owned());
+    assert_eq!(flags, expected_flags);
+    assert_eq!(subcommand, DenoSubcommand::Xeval);
+    assert_eq!(argv, svec!["deno", "'console.log(val)'"]);
   }
 
   #[test]
