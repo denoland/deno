@@ -111,10 +111,7 @@ fn test_record_from() {
 
 pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-fn dispatch(
-  control: &[u8],
-  zero_copy_buf: Option<PinnedBuf>,
-) -> (bool, Box<Op>) {
+fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> Op {
   let record = Record::from(control);
   let is_sync = record.promise_id == 0;
   let http_bench_op = match record.op_id {
@@ -147,7 +144,7 @@ fn dispatch(
   let mut record_a = record.clone();
   let mut record_b = record.clone();
 
-  let op = Box::new(
+  let fut = Box::new(
     http_bench_op
       .and_then(move |result| {
         record_a.result = result;
@@ -161,7 +158,12 @@ fn dispatch(
         Ok(record.into())
       }),
   );
-  (is_sync, op)
+
+  if is_sync {
+    Op::Sync(fut.wait().unwrap())
+  } else {
+    Op::Async(fut)
+  }
 }
 
 fn main() {
