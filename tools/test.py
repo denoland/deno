@@ -74,9 +74,9 @@ def main(argv):
         "tools/ts_library_builder/test.ts"
     ])
 
-    test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
-    check_exists(test_cc)
-    run([test_cc])
+    libdeno_test = os.path.join(build_dir, "libdeno_test" + executable_suffix)
+    check_exists(libdeno_test)
+    run([libdeno_test])
 
     test_rs = os.path.join(build_dir, "test_rs" + executable_suffix)
     check_exists(test_rs)

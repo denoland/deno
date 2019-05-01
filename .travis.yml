@@ -131,6 +131,6 @@ jobs:
       # Call gn gen again to make sure new args are recognized.
       - third_party/depot_tools/gn gen target/debug
       - export ASAN_OPTIONS=detect_leaks=1
-      - ./tools/build.py test_cc
-      - ./target/debug/test_cc
+      - ./tools/build.py libdeno_test
+      - ./target/debug/libdeno_test
 
