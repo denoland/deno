@@ -35,7 +35,7 @@ def deno_dir_test(deno_exe, deno_dir):
 
 
 def run_deno(deno_exe, deno_dir=None):
-    cmd = [deno_exe, "tests/002_hello.ts"]
+    cmd = [deno_exe, "run", "tests/002_hello.ts"]
     deno_dir_env = {"DENO_DIR": deno_dir} if deno_dir is not None else None
     run(cmd, quiet=True, env=deno_dir_env)
 

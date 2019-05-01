@@ -1,2 +1,2 @@
-args: --reload tests/012_async.ts
+args: --reload run tests/012_async.ts
 output: tests/012_async.ts.out
