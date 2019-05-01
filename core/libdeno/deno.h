@@ -17,10 +17,8 @@ typedef deno::PinnedBuf::Raw deno_pinned_buf;
 
 // Data that gets transmitted.
 typedef struct {
-  uint8_t* alloc_ptr;  // Start of memory allocation (from `new uint8_t[len]`).
-  size_t alloc_len;    // Length of the memory allocation.
-  uint8_t* data_ptr;   // Start of logical contents (within the allocation).
-  size_t data_len;     // Length of logical contents.
+  uint8_t* data_ptr;
+  size_t data_len;
 } deno_buf;
 
 typedef struct {

@@ -19,16 +19,9 @@ pub struct isolate {
   _unused: [u8; 0],
 }
 
-/// If "alloc_ptr" is not null, this type represents a buffer which is created
-/// in C side, and then passed to Rust side by `deno_recv_cb`. Finally it should
-/// be moved back to C side by `deno_respond`. If it is not passed to
-/// `deno_respond` in the end, it will be leaked.
-///
-/// If "alloc_ptr" is null, this type represents a borrowed slice.
+/// This type represents a borrowed slice.
 #[repr(C)]
 pub struct deno_buf {
-  alloc_ptr: *const u8,
-  alloc_len: usize,
   data_ptr: *const u8,
   data_len: usize,
 }
@@ -41,8 +34,6 @@ impl deno_buf {
   #[inline]
   pub fn empty() -> Self {
     Self {
-      alloc_ptr: null(),
-      alloc_len: 0,
       data_ptr: null(),
       data_len: 0,
     }
@@ -51,8 +42,6 @@ impl deno_buf {
   #[inline]
   pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
     Self {
-      alloc_ptr: null(),
-      alloc_len: 0,
       data_ptr: ptr,
       data_len: len,
     }
@@ -64,8 +53,6 @@ impl<'a> From<&'a [u8]> for deno_buf {
   #[inline]
   fn from(x: &'a [u8]) -> Self {
     Self {
-      alloc_ptr: null(),
-      alloc_len: 0,
       data_ptr: x.as_ref().as_ptr(),
       data_len: x.len(),
     }
