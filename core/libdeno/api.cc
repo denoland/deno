@@ -5,6 +5,10 @@
 #include <iostream>
 #include <string>
 
+// Cpplint bans the use of <mutex> because it duplicates functionality in
+// chromium //base. However Deno doensn't use that, so suppress this lint.
+#include <mutex>  // NOLINT
+
 #include "third_party/v8/include/libplatform/libplatform.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
@@ -53,7 +57,20 @@ Deno* deno_new(deno_config config) {
     params.snapshot_blob = &d->snapshot_;
   }
 
-  v8::Isolate* isolate = v8::Isolate::New(params);
+  v8::Isolate* isolate;
+  {
+#ifdef _WIN32
+    // Work around an apparent V8 bug where initializing multiple isolates
+    // concurrently leads to a crash. At the time of writing the cause of this
+    // crash is not exactly understood, but it seems to be related to the V8
+    // internal function win64_unwindinfo::RegisterNonABICompliantCodeRange(),
+    // which didn't exist in older versions of V8.
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+#endif
+    isolate = v8::Isolate::New(params);
+  }
+
   d->AddIsolate(isolate);
 
   v8::Locker locker(isolate);
