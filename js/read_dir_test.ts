@@ -13,7 +13,7 @@ function assertSameContent(files: FileInfo[]): void {
     }
 
     if (file.name === "002_hello.ts") {
-      assertEquals(file.path, `tests/${file.name}`);
+      assert(file.path.endsWith(`tests/${file.name}`));
       assertEquals(file.mode!, Deno.statSync(`tests/${file.name}`).mode!);
       counter++;
     }

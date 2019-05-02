@@ -47,30 +47,27 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     ).arg(
       Arg::with_name("allow-read")
         .long("allow-read")
-        .help("Allow file system read access"),
-    ).arg(
-      Arg::with_name("read-wl")
-        .long("read-wl")
+        .min_values(0)
         .takes_value(true)
-        .help("Allow file system read access to specific file or directory"),
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow file system read access"),
     ).arg(
       Arg::with_name("allow-write")
         .long("allow-write")
-        .help("Allow file system write access"),
-    ).arg(
-      Arg::with_name("write-wl")
-        .long("write-wl")
+        .min_values(0)
         .takes_value(true)
-        .help("Allow file system write access to specific file or directory"),
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow file system write access"),
     ).arg(
       Arg::with_name("allow-net")
         .long("allow-net")
-        .help("Allow network access"),
-    ).arg(
-      Arg::with_name("net-wl")
-        .long("net-wl")
+        .min_values(0)
         .takes_value(true)
-        .help("Allow file system net access to specific domain"),
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow network access"),
     ).arg(
       Arg::with_name("allow-env")
         .long("allow-env")
@@ -166,22 +163,28 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     flags.reload = true;
   }
   if matches.is_present("allow-read") {
-    flags.allow_read = true;
-  }
-  if let Some(read_wl) = matches.values_of("read-wl") {
-    flags.read_whitelist = read_wl.map(|s| s.to_string()).collect();
+    if matches.value_of("allow-read").is_some() {
+      let read_wl = matches.values_of("allow-read").unwrap();
+      flags.read_whitelist = read_wl.map(|s| s.to_string()).collect();
+    } else {
+      flags.allow_read = true;
+    }
   }
   if matches.is_present("allow-write") {
-    flags.allow_write = true;
-  }
-  if let Some(write_wl) = matches.values_of("write-wl") {
-    flags.write_whitelist = write_wl.map(|s| s.to_string()).collect();
+    if matches.value_of("allow-write").is_some() {
+      let write_wl = matches.values_of("allow-write").unwrap();
+      flags.write_whitelist = write_wl.map(|s| s.to_string()).collect();
+    } else {
+      flags.allow_write = true;
+    }
   }
   if matches.is_present("allow-net") {
-    flags.allow_net = true;
-  }
-  if let Some(net_wl) = matches.values_of("net-wl") {
-    flags.net_whitelist = net_wl.map(|s| s.to_string()).collect();
+    if matches.value_of("allow-net").is_some() {
+      let net_wl = matches.values_of("allow-net").unwrap();
+      flags.net_whitelist = net_wl.map(|s| s.to_string()).collect();
+    } else {
+      flags.allow_net = true;
+    }
   }
   if matches.is_present("allow-env") {
     flags.allow_env = true;

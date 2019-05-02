@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
+use crate::deno_dir;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -745,7 +746,13 @@ fn op_mkdir(
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_mkdir().unwrap();
-  let path = String::from(inner.path().unwrap());
+  let path = match deno_dir::resolve_file_url(
+    inner.path().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.path().to_string(),
+  };
   let recursive = inner.recursive();
   let mode = inner.mode();
 
@@ -768,7 +775,13 @@ fn op_chmod(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let path = String::from(inner.path().unwrap());
+  let path = match deno_dir::resolve_file_url(
+    inner.path().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.path().to_string(),
+  };
 
   if let Err(e) = state.check_write(&path) {
     return odd_future(e);
@@ -807,8 +820,14 @@ fn op_open(
   assert_eq!(data.len(), 0);
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let filename_str = inner.filename().unwrap();
-  let filename = PathBuf::from(&filename_str);
+  let filename = match deno_dir::resolve_file_url(
+    inner.filename().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.to_file_path().unwrap(),
+  };
+  let filename_ = filename.to_str().unwrap();
   let mode = inner.mode().unwrap();
 
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -849,20 +868,20 @@ fn op_open(
 
   match mode {
     "r" => {
-      if let Err(e) = state.check_read(&filename_str) {
+      if let Err(e) = state.check_read(filename_) {
         return odd_future(e);
       }
     }
     "w" | "a" | "x" => {
-      if let Err(e) = state.check_write(&filename_str) {
+      if let Err(e) = state.check_write(filename_) {
         return odd_future(e);
       }
     }
     &_ => {
-      if let Err(e) = state.check_read(&filename_str) {
+      if let Err(e) = state.check_read(filename_) {
         return odd_future(e);
       }
-      if let Err(e) = state.check_write(&filename_str) {
+      if let Err(e) = state.check_write(filename_) {
         return odd_future(e);
       }
     }
@@ -1036,11 +1055,17 @@ fn op_remove(
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_remove().unwrap();
-  let path_ = inner.path().unwrap();
-  let path = PathBuf::from(path_);
+  let path = match deno_dir::resolve_file_url(
+    inner.path().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.to_file_path().unwrap(),
+  };
+  let path_ = path.to_str().unwrap();
   let recursive = inner.recursive();
 
-  if let Err(e) = state.check_write(path.to_str().unwrap()) {
+  if let Err(e) = state.check_write(path_) {
     return odd_future(e);
   }
 
@@ -1065,19 +1090,31 @@ fn op_copy_file(
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_copy_file().unwrap();
-  let from_ = inner.from().unwrap();
-  let from = PathBuf::from(from_);
-  let to_ = inner.to().unwrap();
-  let to = PathBuf::from(to_);
+  let from = match deno_dir::resolve_file_url(
+    inner.from().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.to_file_path().unwrap(),
+  };
+  let from_ = from.to_str().unwrap();
+  let to = match deno_dir::resolve_file_url(
+    inner.to().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v,
+  };
+  let to_ = to.path();
 
-  if let Err(e) = state.check_read(&from_) {
+  if let Err(e) = state.check_read(from_) {
     return odd_future(e);
   }
   if let Err(e) = state.check_write(&to_) {
     return odd_future(e);
   }
 
-  debug!("op_copy_file {} {}", from.display(), to.display());
+  debug!("op_copy_file {} {}", from.display(), to);
   blocking(base.sync(), move || {
     // On *nix, Rust deem non-existent path as invalid input
     // See https://github.com/rust-lang/rust/issues/54800
@@ -1089,7 +1126,7 @@ fn op_copy_file(
       ));
     }
 
-    fs::copy(&from, &to)?;
+    fs::copy(&from, &to.to_file_path().unwrap())?;
     Ok(empty_buf())
   })
 }
@@ -1148,8 +1185,14 @@ fn op_stat(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let filename_ = inner.filename().unwrap();
-  let filename = PathBuf::from(filename_);
+  let filename = match deno_dir::resolve_file_url(
+    inner.filename().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.to_file_path().unwrap(),
+  };
+  let filename_ = filename.to_str().unwrap().to_string();
   let lstat = inner.lstat();
 
   if let Err(e) = state.check_read(&filename_) {
@@ -1165,6 +1208,8 @@ fn op_stat(
       fs::metadata(&filename)?
     };
 
+    let filename_str = builder.create_string(&filename_);
+
     let inner = msg::StatRes::create(
       builder,
       &msg::StatResArgs {
@@ -1176,6 +1221,7 @@ fn op_stat(
         created: to_seconds!(metadata.created()),
         mode: get_mode(&metadata.permissions()),
         has_mode: cfg!(target_family = "unix"),
+        path: Some(filename_str),
         ..Default::default()
       },
     );
@@ -1200,16 +1246,23 @@ fn op_read_dir(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let path = String::from(inner.path().unwrap());
+  let path = match deno_dir::resolve_file_url(
+    inner.path().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.to_file_path().unwrap(),
+  };
+  let path_ = path.to_str().unwrap();
 
-  if let Err(e) = state.check_read(&path) {
+  if let Err(e) = state.check_read(path_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_read_dir {}", path);
+    debug!("op_read_dir {}", path.display());
     let builder = &mut FlatBufferBuilder::new();
-    let entries: Vec<_> = fs::read_dir(Path::new(&path))?
+    let entries: Vec<_> = fs::read_dir(path)?
       .map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
@@ -1260,15 +1313,28 @@ fn op_rename(
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_rename().unwrap();
-  let oldpath = PathBuf::from(inner.oldpath().unwrap());
-  let newpath_ = inner.newpath().unwrap();
-  let newpath = PathBuf::from(newpath_);
+  let oldpath = match deno_dir::resolve_file_url(
+    inner.oldpath().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.to_file_path().unwrap(),
+  };
+  let newpath = match deno_dir::resolve_file_url(
+    inner.newpath().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v,
+  };
+  let newpath_ = newpath.path();
+
   if let Err(e) = state.check_write(&newpath_) {
     return odd_future(e);
   }
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_rename {} {}", oldpath.display(), newpath.display());
-    fs::rename(&oldpath, &newpath)?;
+    debug!("op_rename {} {}", oldpath.display(), newpath);
+    fs::rename(&oldpath, &newpath.to_file_path().unwrap())?;
     Ok(empty_buf())
   })
 }
@@ -1280,17 +1346,29 @@ fn op_link(
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_link().unwrap();
-  let oldname = PathBuf::from(inner.oldname().unwrap());
-  let newname_ = inner.newname().unwrap();
-  let newname = PathBuf::from(newname_);
+  let oldname = match deno_dir::resolve_file_url(
+    inner.oldname().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.to_file_path().unwrap(),
+  };
+  let newname = match deno_dir::resolve_file_url(
+    inner.newname().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v,
+  };
+  let newname_ = newname.path();
 
   if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_link {} {}", oldname.display(), newname.display());
-    std::fs::hard_link(&oldname, &newname)?;
+    debug!("op_link {} {}", oldname.display(), newname);
+    std::fs::hard_link(&oldname, &newname.to_file_path().unwrap())?;
     Ok(empty_buf())
   })
 }
@@ -1302,9 +1380,21 @@ fn op_symlink(
 ) -> Box<OpWithError> {
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_symlink().unwrap();
-  let oldname = PathBuf::from(inner.oldname().unwrap());
-  let newname_ = inner.newname().unwrap();
-  let newname = PathBuf::from(newname_);
+  let oldname = match deno_dir::resolve_file_url(
+    inner.oldname().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.to_file_path().unwrap(),
+  };
+  let newname = match deno_dir::resolve_file_url(
+    inner.newname().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v,
+  };
+  let newname_ = newname.path();
 
   if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
@@ -1317,9 +1407,9 @@ fn op_symlink(
     ));
   }
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_symlink {} {}", oldname.display(), newname.display());
+    debug!("op_symlink {} {}", oldname.display(), newname);
     #[cfg(any(unix))]
-    std::os::unix::fs::symlink(&oldname, &newname)?;
+    std::os::unix::fs::symlink(&oldname, &newname.to_file_path().unwrap())?;
     Ok(empty_buf())
   })
 }
@@ -1332,16 +1422,22 @@ fn op_read_link(
   assert_eq!(data.len(), 0);
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let name_ = inner.name().unwrap();
-  let name = PathBuf::from(name_);
+  let name = match deno_dir::resolve_file_url(
+    inner.name().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v,
+  };
+  let name_ = name.path();
 
-  if let Err(e) = state.check_read(&name_) {
+  if let Err(e) = state.check_read(name_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_read_link {}", name.display());
-    let path = fs::read_link(&name)?;
+    debug!("op_read_link {}", name);
+    let path = fs::read_link(&name.to_file_path().unwrap())?;
     let builder = &mut FlatBufferBuilder::new();
     let path_off = builder.create_string(path.to_str().unwrap());
     let inner = msg::ReadlinkRes::create(
@@ -1437,15 +1533,22 @@ fn op_truncate(
   assert_eq!(data.len(), 0);
 
   let inner = base.inner_as_truncate().unwrap();
-  let filename = String::from(inner.name().unwrap());
+  let filename = match deno_dir::resolve_file_url(
+    inner.name().unwrap().to_string(),
+    ".".to_string(),
+  ) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v.to_file_path().unwrap(),
+  };
+  let filename_ = filename.to_str().unwrap().to_string();
   let len = inner.len();
 
-  if let Err(e) = state.check_write(&filename) {
+  if let Err(e) = state.check_write(&filename_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || {
-    debug!("op_truncate {} {}", filename, len);
+    debug!("op_truncate {} {}", filename_, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
     f.set_len(u64::from(len))?;
     Ok(empty_buf())
