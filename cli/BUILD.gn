@@ -50,6 +50,7 @@ if (is_posix) {
 ts_sources = [
   "../js/assets.ts",
   "../js/blob.ts",
+  "../js/body.ts",
   "../js/buffer.ts",
   "../js/build.ts",
   "../js/chmod.ts",
@@ -96,6 +97,7 @@ ts_sources = [
   "../js/remove.ts",
   "../js/rename.ts",
   "../js/repl.ts",
+  "../js/request.ts",
   "../js/resources.ts",
   "../js/stat.ts",
   "../js/symlink.ts",
