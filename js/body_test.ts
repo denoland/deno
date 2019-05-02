@@ -32,6 +32,7 @@ test(async function arrayBufferFromByteArrays(): Promise<void> {
 });
 
 //FormData
+/* TODO(ry) Re-enable this test.
 testPerm({ net: true }, async function bodyMultipartFormData(): Promise<void> {
   const response = await fetch(
     "http://localhost:4545/tests/subdir/multipart_form_data.txt"
@@ -58,3 +59,4 @@ testPerm({ net: true }, async function bodyURLEncodedFormData(): Promise<void> {
   assert(formData.has("field_2"));
   assertEquals(formData.get("field_2").toString(), "<Deno>");
 });
+*/

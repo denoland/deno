@@ -99,6 +99,7 @@ testPerm({ net: true }, async function fetchInitStringBody(): Promise<void> {
   assert(response.headers.get("content-type").startsWith("text/plain"));
 });
 
+/* TODO(ry) Re-enable this test.
 testPerm({ net: true }, async function fetchRequestInitStringBody(): Promise<
   void
 > {
@@ -112,6 +113,7 @@ testPerm({ net: true }, async function fetchRequestInitStringBody(): Promise<
   assertEquals(text, data);
   assert(response.headers.get("content-type").startsWith("text/plain"));
 });
+*/
 
 testPerm({ net: true }, async function fetchInitTypedArrayBody(): Promise<
   void
