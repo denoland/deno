@@ -8,7 +8,7 @@ interface URLParts {
   hostname: string;
   port: string;
   path: string;
-  query: string;
+  query: string | null;
   hash: string;
 }
 
@@ -73,7 +73,7 @@ export class URL {
     for (const methodName of searchParamsMethods) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const method: (...args: any[]) => any = searchParams[methodName];
-      searchParams[methodName] = (...args: unknown[]) => {
+      searchParams[methodName] = (...args: unknown[]): void => {
         method.apply(searchParams, args);
         this.search = searchParams.toString();
       };
@@ -192,15 +192,26 @@ export class URL {
   }
 
   get search(): string {
+    if (this._parts.query === null || this._parts.query === "") {
+      return "";
+    }
+
     return this._parts.query;
   }
 
   set search(value: string) {
     value = String(value);
-    if (value.charAt(0) !== "?") {
-      value = `?${value}`;
+    let query: string | null;
+
+    if (value === "") {
+      query = null;
+    } else if (value.charAt(0) !== "?") {
+      query = `?${value}`;
+    } else {
+      query = value;
     }
-    this._parts.query = value;
+
+    this._parts.query = query;
     this._updateSearchParams();
   }
 

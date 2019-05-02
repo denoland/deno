@@ -2,6 +2,7 @@
 use atty;
 use crate::ansi;
 use crate::deno_dir;
+use crate::compiler::get_compiler_config;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -15,6 +16,7 @@ use crate::resolve_addr::resolve_addr;
 use crate::resources;
 use crate::resources::table_entries;
 use crate::resources::Resource;
+use crate::signal::kill;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
@@ -22,11 +24,11 @@ use crate::tokio_write;
 use crate::version;
 use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
-use deno::deno_buf;
 use deno::js_check;
 use deno::Buf;
 use deno::JSError;
 use deno::Op;
+use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::Async;
@@ -49,6 +51,7 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_process::CommandExt;
 use tokio_threadpool;
+use utime;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -62,7 +65,7 @@ pub type OpWithError = dyn Future<Item = Buf, Error = DenoError> + Send;
 // TODO Ideally we wouldn't have to box the OpWithError being returned.
 // The box is just to make it easier to get a prototype refactor working.
 type OpCreator =
-  fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: deno_buf)
+  fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: Option<PinnedBuf>)
     -> Box<OpWithError>;
 
 pub type OpSelector = fn(inner_type: msg::Any) -> Option<OpCreator>;
@@ -79,11 +82,11 @@ fn empty_buf() -> Buf {
 pub fn dispatch_all(
   state: &ThreadSafeState,
   control: &[u8],
-  zero_copy: deno_buf,
+  zero_copy: Option<PinnedBuf>,
   op_selector: OpSelector,
-) -> (bool, Box<Op>) {
+) -> Op {
   let bytes_sent_control = control.len();
-  let bytes_sent_zero_copy = zero_copy.len();
+  let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
   let base = msg::get_root_as_base(&control);
   let is_sync = base.sync();
   let inner_type = base.inner_type();
@@ -99,7 +102,7 @@ pub fn dispatch_all(
   let state = state.clone();
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
-  let boxed_op = Box::new(
+  let fut = Box::new(
     op.or_else(move |err: DenoError| -> Result<Buf, ()> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
@@ -141,11 +144,18 @@ pub fn dispatch_all(
     msg::enum_name_any(inner_type),
     base.sync()
   );
-  (base.sync(), boxed_op)
+
+  if base.sync() {
+    Op::Sync(fut.wait().unwrap())
+  } else {
+    Op::Async(fut)
+  }
 }
 
 pub fn op_selector_compiler(inner_type: msg::Any) -> Option<OpCreator> {
   match inner_type {
+    msg::Any::CompilerConfig => Some(op_compiler_config),
+    msg::Any::Cwd => Some(op_cwd),
     msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
     msg::Any::WorkerGetMessage => Some(op_worker_get_message),
     msg::Any::WorkerPostMessage => Some(op_worker_post_message),
@@ -172,6 +182,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::GlobalTimer => Some(op_global_timer),
     msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
     msg::Any::IsTTY => Some(op_is_tty),
+    msg::Any::Kill => Some(op_kill),
     msg::Any::Link => Some(op_link),
     msg::Any::Listen => Some(op_listen),
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
@@ -198,6 +209,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Stat => Some(op_stat),
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
+    msg::Any::Utime => Some(op_utime),
     msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
     msg::Any::HostGetMessage => Some(op_host_get_message),
@@ -220,9 +232,9 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
 fn op_now(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
@@ -256,7 +268,7 @@ fn op_now(
 fn op_is_tty(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  _data: deno_buf,
+  _data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::IsTTYRes::create(
@@ -281,7 +293,7 @@ fn op_is_tty(
 fn op_exit(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  _data: deno_buf,
+  _data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   let inner = base.inner_as_exit().unwrap();
   std::process::exit(inner.code())
@@ -290,9 +302,9 @@ fn op_exit(
 fn op_start(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let mut builder = FlatBufferBuilder::new();
 
   let state = state;
@@ -345,9 +357,9 @@ fn op_start(
 fn op_format_error(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_format_error().unwrap();
   let orig_error = String::from(inner.error().unwrap());
 
@@ -404,9 +416,9 @@ pub fn odd_future(err: DenoError) -> Box<OpWithError> {
 fn op_fetch_module_meta_data(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_fetch_module_meta_data().unwrap();
   let cmd_id = base.cmd_id();
   let specifier = inner.specifier().unwrap();
@@ -442,12 +454,47 @@ fn op_fetch_module_meta_data(
   }()))
 }
 
+/// Retrieve any relevant compiler configuration.
+fn op_compiler_config(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  assert!(data.is_none());
+  let inner = base.inner_as_compiler_config().unwrap();
+  let cmd_id = base.cmd_id();
+  let compiler_type = inner.compiler_type().unwrap();
+
+  Box::new(futures::future::result(|| -> OpResult {
+    let builder = &mut FlatBufferBuilder::new();
+    let (path, out) = match get_compiler_config(state, compiler_type) {
+      Some(val) => val,
+      _ => ("".to_owned(), "".as_bytes().to_owned()),
+    };
+    let data_off = builder.create_vector(&out);
+    let msg_args = msg::CompilerConfigResArgs {
+      path: Some(builder.create_string(&path)),
+      data: Some(data_off),
+    };
+    let inner = msg::CompilerConfigRes::create(builder, &msg_args);
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::CompilerConfigRes,
+        ..Default::default()
+      },
+    ))
+  }()))
+}
+
 fn op_chdir(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_chdir().unwrap();
   let directory = inner.directory().unwrap();
   Box::new(futures::future::result(|| -> OpResult {
@@ -459,10 +506,10 @@ fn op_chdir(
 fn op_global_timer_stop(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   assert!(base.sync());
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let state = state;
   let mut t = state.global_timer.lock().unwrap();
   t.cancel();
@@ -472,10 +519,10 @@ fn op_global_timer_stop(
 fn op_global_timer(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   assert!(!base.sync());
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_global_timer().unwrap();
   let val = inner.timeout();
@@ -505,9 +552,9 @@ fn op_global_timer(
 fn op_set_env(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_set_env().unwrap();
   let key = inner.key().unwrap();
   let value = inner.value().unwrap();
@@ -521,9 +568,9 @@ fn op_set_env(
 fn op_env(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
 
   if let Err(e) = state.check_env() {
@@ -553,9 +600,9 @@ fn op_env(
 fn op_permissions(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::PermissionsRes::create(
@@ -583,9 +630,9 @@ fn op_permissions(
 fn op_revoke_permission(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_permission_revoke().unwrap();
   let permission = inner.permission().unwrap();
   let result = match permission {
@@ -606,7 +653,7 @@ fn op_revoke_permission(
 fn op_fetch(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   let inner = base.inner_as_fetch().unwrap();
   let cmd_id = base.cmd_id();
@@ -615,10 +662,9 @@ fn op_fetch(
   assert!(header.is_request());
   let url = header.url().unwrap();
 
-  let body = if data.is_empty() {
-    hyper::Body::empty()
-  } else {
-    hyper::Body::from(Vec::from(&*data))
+  let body = match data {
+    None => hyper::Body::empty(),
+    Some(buf) => hyper::Body::from(Vec::from(&*buf)),
   };
 
   let maybe_req = msg_util::deserialize_request(header, body);
@@ -693,9 +739,9 @@ where
 fn op_make_temp_dir(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let base = Box::new(*base);
   let inner = base.inner_as_make_temp_dir().unwrap();
   let cmd_id = base.cmd_id();
@@ -742,9 +788,9 @@ fn op_make_temp_dir(
 fn op_mkdir(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
   let path = match deno_dir::resolve_file_url(
     inner.path().unwrap().to_string(),
@@ -770,9 +816,9 @@ fn op_mkdir(
 fn op_chmod(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
   let path = match deno_dir::resolve_file_url(
@@ -815,9 +861,9 @@ fn op_chmod(
 fn op_open(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
   let filename = match deno_dir::resolve_file_url(
@@ -911,9 +957,9 @@ fn op_open(
 fn op_close(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_close().unwrap();
   let rid = inner.rid();
   match resources::lookup(rid) {
@@ -925,12 +971,27 @@ fn op_close(
   }
 }
 
+fn op_kill(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  assert!(data.is_none());
+  let inner = base.inner_as_kill().unwrap();
+  let pid = inner.pid();
+  let signo = inner.signo();
+  match kill(pid, signo) {
+    Ok(_) => ok_future(empty_buf()),
+    Err(e) => odd_future(e),
+  }
+}
+
 fn op_shutdown(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_shutdown().unwrap();
   let rid = inner.rid();
   let how = inner.how();
@@ -954,7 +1015,7 @@ fn op_shutdown(
 fn op_read(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_read().unwrap();
@@ -963,7 +1024,7 @@ fn op_read(
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      let op = tokio::io::read(resource, data)
+      let op = tokio::io::read(resource, data.unwrap())
         .map_err(DenoError::from)
         .and_then(move |(_resource, _buf, nread)| {
           let builder = &mut FlatBufferBuilder::new();
@@ -992,7 +1053,7 @@ fn op_read(
 fn op_write(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_write().unwrap();
@@ -1001,7 +1062,7 @@ fn op_write(
   match resources::lookup(rid) {
     None => odd_future(errors::bad_resource()),
     Some(resource) => {
-      let op = tokio_write::write(resource, data)
+      let op = tokio_write::write(resource, data.unwrap())
         .map_err(DenoError::from)
         .and_then(move |(_resource, _buf, nwritten)| {
           let builder = &mut FlatBufferBuilder::new();
@@ -1029,9 +1090,9 @@ fn op_write(
 fn op_seek(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let _cmd_id = base.cmd_id();
   let inner = base.inner_as_seek().unwrap();
   let rid = inner.rid();
@@ -1051,9 +1112,9 @@ fn op_seek(
 fn op_remove(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_remove().unwrap();
   let path = match deno_dir::resolve_file_url(
     inner.path().unwrap().to_string(),
@@ -1086,9 +1147,9 @@ fn op_remove(
 fn op_copy_file(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
   let from = match deno_dir::resolve_file_url(
     inner.from().unwrap().to_string(),
@@ -1154,9 +1215,9 @@ fn get_mode(_perm: &fs::Permissions) -> u32 {
 fn op_cwd(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
   Box::new(futures::future::result(|| -> OpResult {
     let path = std::env::current_dir()?;
@@ -1180,9 +1241,9 @@ fn op_cwd(
 fn op_stat(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
   let filename = match deno_dir::resolve_file_url(
@@ -1241,9 +1302,9 @@ fn op_stat(
 fn op_read_dir(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
   let path = match deno_dir::resolve_file_url(
@@ -1309,9 +1370,9 @@ fn op_read_dir(
 fn op_rename(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
   let oldpath = match deno_dir::resolve_file_url(
     inner.oldpath().unwrap().to_string(),
@@ -1342,9 +1403,9 @@ fn op_rename(
 fn op_link(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
   let oldname = match deno_dir::resolve_file_url(
     inner.oldname().unwrap().to_string(),
@@ -1376,9 +1437,9 @@ fn op_link(
 fn op_symlink(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_symlink().unwrap();
   let oldname = match deno_dir::resolve_file_url(
     inner.oldname().unwrap().to_string(),
@@ -1417,9 +1478,9 @@ fn op_symlink(
 fn op_read_link(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
   let name = match deno_dir::resolve_file_url(
@@ -1461,9 +1522,9 @@ fn op_read_link(
 fn op_repl_start(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_repl_start().unwrap();
   let cmd_id = base.cmd_id();
   let history_file = String::from(inner.history_file().unwrap());
@@ -1492,9 +1553,9 @@ fn op_repl_start(
 fn op_repl_readline(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_repl_readline().unwrap();
   let cmd_id = base.cmd_id();
   let rid = inner.rid();
@@ -1528,9 +1589,9 @@ fn op_repl_readline(
 fn op_truncate(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
   let filename = match deno_dir::resolve_file_url(
@@ -1555,12 +1616,35 @@ fn op_truncate(
   })
 }
 
+fn op_utime(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  assert!(data.is_none());
+
+  let inner = base.inner_as_utime().unwrap();
+  let filename = String::from(inner.filename().unwrap());
+  let atime = inner.atime();
+  let mtime = inner.mtime();
+
+  if let Err(e) = state.check_write(&filename) {
+    return odd_future(e);
+  }
+
+  blocking(base.sync(), move || {
+    debug!("op_utimes {} {} {}", filename, atime, mtime);
+    utime::set_file_times(filename, atime, mtime)?;
+    Ok(empty_buf())
+  })
+}
+
 fn op_listen(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   if let Err(e) = state.check_net("listen") {
     return odd_future(e);
   }
@@ -1620,9 +1704,9 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
 fn op_accept(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   if let Err(e) = state.check_net("accept") {
     return odd_future(e);
   }
@@ -1646,9 +1730,9 @@ fn op_accept(
 fn op_dial(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   if let Err(e) = state.check_net("dial") {
     return odd_future(e);
   }
@@ -1672,9 +1756,9 @@ fn op_dial(
 fn op_metrics(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
 
   let builder = &mut FlatBufferBuilder::new();
@@ -1696,9 +1780,9 @@ fn op_metrics(
 fn op_resources(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
 
   let builder = &mut FlatBufferBuilder::new();
@@ -1748,7 +1832,7 @@ fn subprocess_stdio_map(v: msg::ProcessStdio) -> std::process::Stdio {
 fn op_run(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   assert!(base.sync());
   let cmd_id = base.cmd_id();
@@ -1757,7 +1841,7 @@ fn op_run(
     return odd_future(e);
   }
 
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let inner = base.inner_as_run().unwrap();
   let args = inner.args().unwrap();
   let env = inner.env().unwrap();
@@ -1821,9 +1905,9 @@ fn op_run(
 fn op_run_status(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_run_status().unwrap();
   let rid = inner.rid();
@@ -1894,9 +1978,9 @@ impl Future for GetMessageFuture {
 fn op_worker_get_message(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
 
   let op = GetMessageFuture {
@@ -1929,11 +2013,11 @@ fn op_worker_get_message(
 fn op_worker_post_message(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   let cmd_id = base.cmd_id();
 
-  let d = Vec::from(data.as_ref()).into_boxed_slice();
+  let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
   let tx = {
     let wc = state.worker_channels.lock().unwrap();
@@ -1959,9 +2043,9 @@ fn op_worker_post_message(
 fn op_create_worker(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_create_worker().unwrap();
   let specifier = inner.specifier().unwrap();
@@ -2018,9 +2102,9 @@ fn op_create_worker(
 fn op_host_get_worker_closed(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_host_get_worker_closed().unwrap();
   let rid = inner.rid();
@@ -2049,9 +2133,9 @@ fn op_host_get_worker_closed(
 fn op_host_get_message(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert_eq!(data.len(), 0);
+  assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_host_get_message().unwrap();
   let rid = inner.rid();
@@ -2083,13 +2167,13 @@ fn op_host_get_message(
 fn op_host_post_message(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
-  data: deno_buf,
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_host_post_message().unwrap();
   let rid = inner.rid();
 
-  let d = Vec::from(data.as_ref()).into_boxed_slice();
+  let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
   let op = resources::post_message_to_worker(rid, d);
   let op = op.map_err(|e| errors::new(ErrorKind::Other, e.to_string()));

@@ -46,6 +46,7 @@ export {
   MakeTempDirOptions
 } from "./make_temp_dir";
 export { chmodSync, chmod } from "./chmod";
+export { utimeSync, utime } from "./utime";
 export { removeSync, remove, RemoveOption } from "./remove";
 export { renameSync, rename } from "./rename";
 export { readFileSync, readFile } from "./read_file";
@@ -68,7 +69,14 @@ export { FileInfo } from "./file_info";
 export { connect, dial, listen, Listener, Conn } from "./net";
 export { metrics, Metrics } from "./metrics";
 export { resources } from "./resources";
-export { run, RunOptions, Process, ProcessStatus } from "./process";
+export {
+  kill,
+  run,
+  RunOptions,
+  Process,
+  ProcessStatus,
+  Signal
+} from "./process";
 export { inspect } from "./console";
 export { build, platform, OperatingSystem, Arch } from "./build";
 export { version } from "./version";

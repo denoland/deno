@@ -8,14 +8,14 @@ use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
-use deno::deno_buf;
 use deno::Buf;
-use deno::Dispatch;
 use deno::Op;
+use deno::PinnedBuf;
 use futures::future::Shared;
 use std;
 use std::collections::HashMap;
 use std::env;
+use std::fs;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -52,6 +52,12 @@ pub struct State {
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
+  /// When flags contains a `.config_path` option, the content of the
+  /// configuration file will be resolved and set.
+  pub config: Option<Vec<u8>>,
+  /// When flags contains a `.config_path` option, the fully qualified path
+  /// name of the passed path will be resolved and set.
+  pub config_path: Option<String>,
   pub metrics: Metrics,
   pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
@@ -74,12 +80,8 @@ impl Deref for ThreadSafeState {
   }
 }
 
-impl Dispatch for ThreadSafeState {
-  fn dispatch(
-    &mut self,
-    control: &[u8],
-    zero_copy: deno_buf,
-  ) -> (bool, Box<Op>) {
+impl ThreadSafeState {
+  pub fn dispatch(&self, control: &[u8], zero_copy: Option<PinnedBuf>) -> Op {
     ops::dispatch_all(self, control, zero_copy, self.dispatch_selector)
   }
 }
@@ -98,11 +100,52 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
+    // take the passed flag and resolve the file name relative to the cwd
+    let config_file = match &flags.config_path {
+      Some(config_file_name) => {
+        debug!("Compiler config file: {}", config_file_name);
+        let cwd = std::env::current_dir().unwrap();
+        Some(cwd.join(config_file_name))
+      }
+      _ => None,
+    };
+
+    // Convert the PathBuf to a canonicalized string.  This is needed by the
+    // compiler to properly deal with the configuration.
+    let config_path = match &config_file {
+      Some(config_file) => Some(
+        config_file
+          .canonicalize()
+          .unwrap()
+          .to_str()
+          .unwrap()
+          .to_owned(),
+      ),
+      _ => None,
+    };
+
+    // Load the contents of the configuration file
+    let config = match &config_file {
+      Some(config_file) => {
+        debug!("Attempt to load config: {}", config_file.to_str().unwrap());
+        match fs::read(&config_file) {
+          Ok(config_data) => Some(config_data.to_owned()),
+          _ => panic!(
+            "Error retrieving compiler config file at \"{}\"",
+            config_file.to_str().unwrap()
+          ),
+        }
+      }
+      _ => None,
+    };
+
     ThreadSafeState(Arc::new(State {
-      dir: deno_dir::DenoDir::new(custom_root).unwrap(),
+      dir: deno_dir::DenoDir::new(custom_root, &config).unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
+      config,
+      config_path,
       metrics: Metrics::default(),
       worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),

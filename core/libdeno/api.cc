@@ -5,6 +5,10 @@
 #include <iostream>
 #include <string>
 
+// Cpplint bans the use of <mutex> because it duplicates functionality in
+// chromium //base. However Deno doensn't use that, so suppress this lint.
+#include <mutex>  // NOLINT
+
 #include "third_party/v8/include/libplatform/libplatform.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
@@ -46,14 +50,27 @@ Deno* deno_new(deno_config config) {
   }
   deno::DenoIsolate* d = new deno::DenoIsolate(config);
   v8::Isolate::CreateParams params;
-  params.array_buffer_allocator = d->array_buffer_allocator_;
+  params.array_buffer_allocator = &deno::ArrayBufferAllocator::global();
   params.external_references = deno::external_references;
 
   if (config.load_snapshot.data_ptr) {
     params.snapshot_blob = &d->snapshot_;
   }
 
-  v8::Isolate* isolate = v8::Isolate::New(params);
+  v8::Isolate* isolate;
+  {
+#ifdef _WIN32
+    // Work around an apparent V8 bug where initializing multiple isolates
+    // concurrently leads to a crash. At the time of writing the cause of this
+    // crash is not exactly understood, but it seems to be related to the V8
+    // internal function win64_unwindinfo::RegisterNonABICompliantCodeRange(),
+    // which didn't exist in older versions of V8.
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+#endif
+    isolate = v8::Isolate::New(params);
+  }
+
   d->AddIsolate(isolate);
 
   v8::Locker locker(isolate);
@@ -101,6 +118,7 @@ deno_snapshot deno_snapshot_new(Deno* d_) {
 
   auto blob = d->snapshot_creator_->CreateBlob(
       v8::SnapshotCreator::FunctionCodeHandling::kKeep);
+  d->has_snapshotted_ = true;
   return {reinterpret_cast<uint8_t*>(const_cast<char*>(blob.data)),
           blob.raw_size};
 }
@@ -147,12 +165,9 @@ void deno_execute(Deno* d_, void* user_data, const char* js_filename,
   deno::Execute(context, js_filename, js_source);
 }
 
-void deno_zero_copy_release(Deno* d_, size_t zero_copy_id) {
-  auto* d = unwrap(d_);
-  v8::Isolate::Scope isolate_scope(d->isolate_);
-  v8::Locker locker(d->isolate_);
-  v8::HandleScope handle_scope(d->isolate_);
-  d->DeleteZeroCopyRef(zero_copy_id);
+void deno_pinned_buf_delete(deno_pinned_buf* buf) {
+  // The PinnedBuf destructor implicitly releases the ArrayBuffer reference.
+  auto _ = deno::PinnedBuf(*buf);
 }
 
 void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
@@ -160,7 +175,6 @@ void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
   if (d->current_args_ != nullptr) {
     // Synchronous response.
     if (buf.data_ptr != nullptr) {
-      DCHECK_EQ(buf.zero_copy_id, 0);
       auto ab = deno::ImportBuf(d, buf);
       d->current_args_->GetReturnValue().Set(ab);
     }
@@ -188,9 +202,6 @@ void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
   v8::Local<v8::Value> args[1];
   int argc = 0;
 
-  // You cannot use zero_copy_buf with deno_respond(). Use
-  // deno_zero_copy_release() instead.
-  DCHECK_EQ(buf.zero_copy_id, 0);
   if (buf.data_ptr != nullptr) {
     args[0] = deno::ImportBuf(d, buf);
     argc = 1;

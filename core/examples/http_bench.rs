@@ -111,61 +111,58 @@ fn test_record_from() {
 
 pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-struct HttpBench();
+fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> Op {
+  let record = Record::from(control);
+  let is_sync = record.promise_id == 0;
+  let http_bench_op = match record.op_id {
+    OP_LISTEN => {
+      assert!(is_sync);
+      op_listen()
+    }
+    OP_CLOSE => {
+      assert!(is_sync);
+      let rid = record.arg;
+      op_close(rid)
+    }
+    OP_ACCEPT => {
+      assert!(!is_sync);
+      let listener_rid = record.arg;
+      op_accept(listener_rid)
+    }
+    OP_READ => {
+      assert!(!is_sync);
+      let rid = record.arg;
+      op_read(rid, zero_copy_buf)
+    }
+    OP_WRITE => {
+      assert!(!is_sync);
+      let rid = record.arg;
+      op_write(rid, zero_copy_buf)
+    }
+    _ => panic!("bad op {}", record.op_id),
+  };
+  let mut record_a = record.clone();
+  let mut record_b = record.clone();
 
-impl Dispatch for HttpBench {
-  fn dispatch(
-    &mut self,
-    control: &[u8],
-    zero_copy_buf: deno_buf,
-  ) -> (bool, Box<Op>) {
-    let record = Record::from(control);
-    let is_sync = record.promise_id == 0;
-    let http_bench_op = match record.op_id {
-      OP_LISTEN => {
-        assert!(is_sync);
-        op_listen()
-      }
-      OP_CLOSE => {
-        assert!(is_sync);
-        let rid = record.arg;
-        op_close(rid)
-      }
-      OP_ACCEPT => {
-        assert!(!is_sync);
-        let listener_rid = record.arg;
-        op_accept(listener_rid)
-      }
-      OP_READ => {
-        assert!(!is_sync);
-        let rid = record.arg;
-        op_read(rid, zero_copy_buf)
-      }
-      OP_WRITE => {
-        assert!(!is_sync);
-        let rid = record.arg;
-        op_write(rid, zero_copy_buf)
-      }
-      _ => panic!("bad op {}", record.op_id),
-    };
-    let mut record_a = record.clone();
-    let mut record_b = record.clone();
+  let fut = Box::new(
+    http_bench_op
+      .and_then(move |result| {
+        record_a.result = result;
+        Ok(record_a)
+      }).or_else(|err| -> Result<Record, ()> {
+        eprintln!("unexpected err {}", err);
+        record_b.result = -1;
+        Ok(record_b)
+      }).then(|result| -> Result<Buf, ()> {
+        let record = result.unwrap();
+        Ok(record.into())
+      }),
+  );
 
-    let op = Box::new(
-      http_bench_op
-        .and_then(move |result| {
-          record_a.result = result;
-          Ok(record_a)
-        }).or_else(|err| -> Result<Record, ()> {
-          eprintln!("unexpected err {}", err);
-          record_b.result = -1;
-          Ok(record_b)
-        }).then(|result| -> Result<Buf, ()> {
-          let record = result.unwrap();
-          Ok(record.into())
-        }),
-    );
-    (is_sync, op)
+  if is_sync {
+    Op::Sync(fut.wait().unwrap())
+  } else {
+    Op::Async(fut)
   }
 }
 
@@ -182,7 +179,9 @@ fn main() {
       filename: "http_bench.js",
     });
 
-    let isolate = deno::Isolate::new(startup_data, HttpBench());
+    let mut config = deno::Config::default();
+    config.dispatch(dispatch);
+    let isolate = deno::Isolate::new(startup_data, config);
 
     isolate.then(|r| {
       js_check(r);
@@ -272,8 +271,9 @@ fn op_close(rid: i32) -> Box<HttpBenchOp> {
   }))
 }
 
-fn op_read(rid: i32, mut zero_copy_buf: deno_buf) -> Box<HttpBenchOp> {
+fn op_read(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
   debug!("read rid={}", rid);
+  let mut zero_copy_buf = zero_copy_buf.unwrap();
   Box::new(
     futures::future::poll_fn(move || {
       let mut table = RESOURCE_TABLE.lock().unwrap();
@@ -291,8 +291,9 @@ fn op_read(rid: i32, mut zero_copy_buf: deno_buf) -> Box<HttpBenchOp> {
   )
 }
 
-fn op_write(rid: i32, zero_copy_buf: deno_buf) -> Box<HttpBenchOp> {
+fn op_write(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
   debug!("write rid={}", rid);
+  let zero_copy_buf = zero_copy_buf.unwrap();
   Box::new(
     futures::future::poll_fn(move || {
       let mut table = RESOURCE_TABLE.lock().unwrap();

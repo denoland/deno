@@ -1,14 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ read: true, write: true }, function mkdirSyncSuccess() {
+testPerm({ read: true, write: true }, function mkdirSyncSuccess(): void {
   const path = Deno.makeTempDirSync() + "/dir";
   Deno.mkdirSync(path);
   const pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory());
 });
 
-testPerm({ read: true, write: true }, function mkdirSyncMode() {
+testPerm({ read: true, write: true }, function mkdirSyncMode(): void {
   const path = Deno.makeTempDirSync() + "/dir";
   Deno.mkdirSync(path, false, 0o755); // no perm for x
   const pathInfo = Deno.statSync(path);
@@ -18,7 +18,7 @@ testPerm({ read: true, write: true }, function mkdirSyncMode() {
   }
 });
 
-testPerm({ write: false }, function mkdirSyncPerm() {
+testPerm({ write: false }, function mkdirSyncPerm(): void {
   let err;
   try {
     Deno.mkdirSync("/baddir");
@@ -29,14 +29,16 @@ testPerm({ write: false }, function mkdirSyncPerm() {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ read: true, write: true }, async function mkdirSuccess() {
+testPerm({ read: true, write: true }, async function mkdirSuccess(): Promise<
+  void
+> {
   const path = Deno.makeTempDirSync() + "/dir";
   await Deno.mkdir(path);
   const pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory());
 });
 
-testPerm({ write: true }, function mkdirErrIfExists() {
+testPerm({ write: true }, function mkdirErrIfExists(): void {
   let err;
   try {
     Deno.mkdirSync(".");
@@ -47,14 +49,16 @@ testPerm({ write: true }, function mkdirErrIfExists() {
   assertEquals(err.name, "AlreadyExists");
 });
 
-testPerm({ read: true, write: true }, function mkdirSyncRecursive() {
+testPerm({ read: true, write: true }, function mkdirSyncRecursive(): void {
   const path = Deno.makeTempDirSync() + "/nested/directory";
   Deno.mkdirSync(path, true);
   const pathInfo = Deno.statSync(path);
   assert(pathInfo.isDirectory());
 });
 
-testPerm({ read: true, write: true }, async function mkdirRecursive() {
+testPerm({ read: true, write: true }, async function mkdirRecursive(): Promise<
+  void
+> {
   const path = Deno.makeTempDirSync() + "/nested/directory";
   await Deno.mkdir(path, true);
   const pathInfo = Deno.statSync(path);

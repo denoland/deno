@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ env: true }, function envSuccess() {
+testPerm({ env: true }, function envSuccess(): void {
   const env = Deno.env();
   assert(env !== null);
   // eslint-disable-next-line @typescript-eslint/camelcase
@@ -10,7 +10,7 @@ testPerm({ env: true }, function envSuccess() {
   assertEquals(env.test_var, newEnv.test_var);
 });
 
-test(function envFailure() {
+test(function envFailure(): void {
   let caughtError = false;
   try {
     Deno.env();
@@ -23,12 +23,12 @@ test(function envFailure() {
   assert(caughtError);
 });
 
-test(function osPid() {
+test(function osPid(): void {
   console.log("pid", Deno.pid);
   assert(Deno.pid > 0);
 });
 
 // See complete tests in tools/is_tty_test.py
-test(function osIsTTYSmoke() {
+test(function osIsTTYSmoke(): void {
   console.log(Deno.isTTY());
 });

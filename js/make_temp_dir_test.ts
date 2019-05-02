@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ write: true }, function makeTempDirSyncSuccess() {
+testPerm({ write: true }, function makeTempDirSyncSuccess(): void {
   const dir1 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   const dir2 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.
@@ -27,7 +27,7 @@ testPerm({ write: true }, function makeTempDirSyncSuccess() {
   assertEquals(err.name, "NotFound");
 });
 
-test(function makeTempDirSyncPerm() {
+test(function makeTempDirSyncPerm(): void {
   // makeTempDirSync should require write permissions (for now).
   let err;
   try {
@@ -39,7 +39,7 @@ test(function makeTempDirSyncPerm() {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ write: true }, async function makeTempDirSuccess() {
+testPerm({ write: true }, async function makeTempDirSuccess(): Promise<void> {
   const dir1 = await Deno.makeTempDir({ prefix: "hello", suffix: "world" });
   const dir2 = await Deno.makeTempDir({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.

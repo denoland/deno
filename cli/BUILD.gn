@@ -38,20 +38,26 @@ main_extern = [
   "$rust_build:tokio_rustls",
   "$rust_build:tokio_threadpool",
   "$rust_build:url",
+  "$rust_build:utime",
 ]
 if (is_win) {
   main_extern += [ "$rust_build:winapi" ]
+}
+if (is_posix) {
+  main_extern += [ "$rust_build:nix" ]
 }
 
 ts_sources = [
   "../js/assets.ts",
   "../js/blob.ts",
+  "../js/body.ts",
   "../js/buffer.ts",
   "../js/build.ts",
   "../js/chmod.ts",
-  "../js/console_table.ts",
+  "../js/colors.ts",
   "../js/compiler.ts",
   "../js/console.ts",
+  "../js/console_table.ts",
   "../js/copy_file.ts",
   "../js/core.ts",
   "../js/custom_event.ts",
@@ -91,6 +97,7 @@ ts_sources = [
   "../js/remove.ts",
   "../js/rename.ts",
   "../js/repl.ts",
+  "../js/request.ts",
   "../js/resources.ts",
   "../js/stat.ts",
   "../js/symlink.ts",
@@ -101,6 +108,7 @@ ts_sources = [
   "../js/url.ts",
   "../js/url_search_params.ts",
   "../js/util.ts",
+  "../js/utime.ts",
   "../js/window.ts",
   "../js/workers.ts",
   "../js/write_file.ts",
@@ -156,7 +164,7 @@ rust_executable("deno") {
   ]
 }
 
-rust_test("test_rs") {
+rust_test("cli_test") {
   source_root = "main.rs"
   extern = main_extern
   deps = [

@@ -4,7 +4,7 @@ import { test, assert, assertEquals } from "./test_util.ts";
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
 // ref: https://github.com/web-platform-tests/wpt/blob/7c50c216081d6ea3c9afe553ee7b64534020a1b2/fetch/api/headers/headers-basic.html
-test(function newHeaderTest() {
+test(function newHeaderTest(): void {
   new Headers();
   new Headers(undefined);
   new Headers({});
@@ -30,7 +30,7 @@ for (const name in headerDict) {
   headerSeq.push([name, headerDict[name]]);
 }
 
-test(function newHeaderWithSequence() {
+test(function newHeaderWithSequence(): void {
   const headers = new Headers(headerSeq);
   for (const name in headerDict) {
     assertEquals(headers.get(name), String(headerDict[name]));
@@ -38,14 +38,14 @@ test(function newHeaderWithSequence() {
   assertEquals(headers.get("length"), null);
 });
 
-test(function newHeaderWithRecord() {
+test(function newHeaderWithRecord(): void {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assertEquals(headers.get(name), String(headerDict[name]));
   }
 });
 
-test(function newHeaderWithHeadersInstance() {
+test(function newHeaderWithHeadersInstance(): void {
   const headers = new Headers(headerDict);
   const headers2 = new Headers(headers);
   for (const name in headerDict) {
@@ -53,7 +53,7 @@ test(function newHeaderWithHeadersInstance() {
   }
 });
 
-test(function headerAppendSuccess() {
+test(function headerAppendSuccess(): void {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.append(name, headerDict[name]);
@@ -61,7 +61,7 @@ test(function headerAppendSuccess() {
   }
 });
 
-test(function headerSetSuccess() {
+test(function headerSetSuccess(): void {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.set(name, headerDict[name]);
@@ -69,7 +69,7 @@ test(function headerSetSuccess() {
   }
 });
 
-test(function headerHasSuccess() {
+test(function headerHasSuccess(): void {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assert(headers.has(name), "headers has name " + name);
@@ -80,7 +80,7 @@ test(function headerHasSuccess() {
   }
 });
 
-test(function headerDeleteSuccess() {
+test(function headerDeleteSuccess(): void {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assert(headers.has(name), "headers have a header: " + name);
@@ -89,7 +89,7 @@ test(function headerDeleteSuccess() {
   }
 });
 
-test(function headerGetSuccess() {
+test(function headerGetSuccess(): void {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assertEquals(headers.get(name), String(headerDict[name]));
@@ -97,7 +97,7 @@ test(function headerGetSuccess() {
   }
 });
 
-test(function headerEntriesSuccess() {
+test(function headerEntriesSuccess(): void {
   const headers = new Headers(headerDict);
   const iterators = headers.entries();
   for (const it of iterators) {
@@ -108,7 +108,7 @@ test(function headerEntriesSuccess() {
   }
 });
 
-test(function headerKeysSuccess() {
+test(function headerKeysSuccess(): void {
   const headers = new Headers(headerDict);
   const iterators = headers.keys();
   for (const it of iterators) {
@@ -116,7 +116,7 @@ test(function headerKeysSuccess() {
   }
 });
 
-test(function headerValuesSuccess() {
+test(function headerValuesSuccess(): void {
   const headers = new Headers(headerDict);
   const iterators = headers.values();
   const entries = headers.entries();
@@ -138,24 +138,28 @@ const headerEntriesDict = {
   "Content-Types": "value6"
 };
 
-test(function headerForEachSuccess() {
+test(function headerForEachSuccess(): void {
   const headers = new Headers(headerEntriesDict);
   const keys = Object.keys(headerEntriesDict);
-  keys.forEach(key => {
-    const value = headerEntriesDict[key];
-    const newkey = key.toLowerCase();
-    headerEntriesDict[newkey] = value;
-  });
+  keys.forEach(
+    (key): void => {
+      const value = headerEntriesDict[key];
+      const newkey = key.toLowerCase();
+      headerEntriesDict[newkey] = value;
+    }
+  );
   let callNum = 0;
-  headers.forEach((value, key, container) => {
-    assertEquals(headers, container);
-    assertEquals(value, headerEntriesDict[key]);
-    callNum++;
-  });
+  headers.forEach(
+    (value, key, container): void => {
+      assertEquals(headers, container);
+      assertEquals(value, headerEntriesDict[key]);
+      callNum++;
+    }
+  );
   assertEquals(callNum, keys.length);
 });
 
-test(function headerSymbolIteratorSuccess() {
+test(function headerSymbolIteratorSuccess(): void {
   assert(Symbol.iterator in Headers.prototype);
   const headers = new Headers(headerEntriesDict);
   for (const header of headers) {
@@ -166,7 +170,7 @@ test(function headerSymbolIteratorSuccess() {
   }
 });
 
-test(function headerTypesAvailable() {
+test(function headerTypesAvailable(): void {
   function newHeaders(): Headers {
     return new Headers();
   }
@@ -176,7 +180,7 @@ test(function headerTypesAvailable() {
 
 // Modified from https://github.com/bitinn/node-fetch/blob/7d3293200a91ad52b5ca7962f9d6fd1c04983edb/test/test.js#L2001-L2014
 // Copyright (c) 2016 David Frank. MIT License.
-test(function headerIllegalReject() {
+test(function headerIllegalReject(): void {
   let errorCount = 0;
   try {
     new Headers({ "He y": "ok" });
@@ -230,7 +234,7 @@ test(function headerIllegalReject() {
 });
 
 // If pair does not contain exactly two items,then throw a TypeError.
-test(function headerParamsShouldThrowTypeError() {
+test(function headerParamsShouldThrowTypeError(): void {
   let hasThrown = 0;
 
   try {
@@ -247,77 +251,81 @@ test(function headerParamsShouldThrowTypeError() {
   assertEquals(hasThrown, 2);
 });
 
-test(function headerParamsArgumentsCheck() {
+test(function headerParamsArgumentsCheck(): void {
   const methodRequireOneParam = ["delete", "get", "has", "forEach"];
 
   const methodRequireTwoParams = ["append", "set"];
 
-  methodRequireOneParam.forEach(method => {
-    const headers = new Headers();
-    let hasThrown = 0;
-    let errMsg = "";
-    try {
-      headers[method]();
-      hasThrown = 1;
-    } catch (err) {
-      errMsg = err.message;
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
+  methodRequireOneParam.forEach(
+    (method): void => {
+      const headers = new Headers();
+      let hasThrown = 0;
+      let errMsg = "";
+      try {
+        headers[method]();
+        hasThrown = 1;
+      } catch (err) {
+        errMsg = err.message;
+        if (err instanceof TypeError) {
+          hasThrown = 2;
+        } else {
+          hasThrown = 3;
+        }
       }
+      assertEquals(hasThrown, 2);
+      assertEquals(
+        errMsg,
+        `Headers.${method} requires at least 1 argument, but only 0 present`
+      );
     }
-    assertEquals(hasThrown, 2);
-    assertEquals(
-      errMsg,
-      `Headers.${method} requires at least 1 argument, but only 0 present`
-    );
-  });
+  );
 
-  methodRequireTwoParams.forEach(method => {
-    const headers = new Headers();
-    let hasThrown = 0;
-    let errMsg = "";
+  methodRequireTwoParams.forEach(
+    (method): void => {
+      const headers = new Headers();
+      let hasThrown = 0;
+      let errMsg = "";
 
-    try {
-      headers[method]();
-      hasThrown = 1;
-    } catch (err) {
-      errMsg = err.message;
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
+      try {
+        headers[method]();
+        hasThrown = 1;
+      } catch (err) {
+        errMsg = err.message;
+        if (err instanceof TypeError) {
+          hasThrown = 2;
+        } else {
+          hasThrown = 3;
+        }
       }
-    }
-    assertEquals(hasThrown, 2);
-    assertEquals(
-      errMsg,
-      `Headers.${method} requires at least 2 arguments, but only 0 present`
-    );
+      assertEquals(hasThrown, 2);
+      assertEquals(
+        errMsg,
+        `Headers.${method} requires at least 2 arguments, but only 0 present`
+      );
 
-    hasThrown = 0;
-    errMsg = "";
-    try {
-      headers[method]("foo");
-      hasThrown = 1;
-    } catch (err) {
-      errMsg = err.message;
-      if (err instanceof TypeError) {
-        hasThrown = 2;
-      } else {
-        hasThrown = 3;
+      hasThrown = 0;
+      errMsg = "";
+      try {
+        headers[method]("foo");
+        hasThrown = 1;
+      } catch (err) {
+        errMsg = err.message;
+        if (err instanceof TypeError) {
+          hasThrown = 2;
+        } else {
+          hasThrown = 3;
+        }
       }
+      assertEquals(hasThrown, 2);
+      assertEquals(
+        errMsg,
+        `Headers.${method} requires at least 2 arguments, but only 1 present`
+      );
     }
-    assertEquals(hasThrown, 2);
-    assertEquals(
-      errMsg,
-      `Headers.${method} requires at least 2 arguments, but only 1 present`
-    );
-  });
+  );
 });
 
-test(function toStringShouldBeWebCompatibility() {
+test(function toStringShouldBeWebCompatibility(): void {
   const headers = new Headers();
   assertEquals(headers.toString(), "[object Headers]");
 });

@@ -3,6 +3,8 @@ union Any {
   Chdir,
   Chmod,
   Close,
+  CompilerConfig,
+  CompilerConfigRes,
   CopyFile,
   Cwd,
   CwdRes,
@@ -21,6 +23,7 @@ union Any {
   GlobalTimerStop,
   IsTTY,
   IsTTYRes,
+  Kill,
   Link,
   Listen,
   ListenRes,
@@ -64,6 +67,7 @@ union Any {
   StatRes,
   Symlink,
   Truncate,
+  Utime,
   CreateWorker,
   CreateWorkerRes,
   HostGetWorkerClosed,
@@ -129,7 +133,8 @@ enum ErrorKind: byte {
   InvalidUri,
   InvalidSeekMode,
   OpNotAvaiable,
-  WorkerInitFailed
+  WorkerInitFailed,
+  UnixError,
 }
 
 table Cwd {}
@@ -170,6 +175,15 @@ table StartRes {
   deno_version: string;
   v8_version: string;
   no_color: bool;
+}
+
+table CompilerConfig {
+  compiler_type: string;
+}
+
+table CompilerConfigRes {
+  path: string;
+  data: [ubyte];
 }
 
 table FormatError {
@@ -421,6 +435,12 @@ table Truncate {
   len: uint;
 }
 
+table Utime {
+  filename: string;
+  atime: uint64;
+  mtime: uint64;
+}
+
 table Open {
   filename: string;
   perm: uint;
@@ -451,6 +471,11 @@ table WriteRes {
 
 table Close {
   rid: uint32;
+}
+
+table Kill {
+  pid: int32;
+  signo: int32;
 }
 
 table Shutdown {

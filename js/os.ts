@@ -108,7 +108,7 @@ function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
   }
 
   return new Proxy(env, {
-    set(obj, prop: string, value: string) {
+    set(obj, prop: string, value: string): boolean {
       setEnv(prop, value);
       return Reflect.set(obj, prop, value);
     }

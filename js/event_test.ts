@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assertEquals } from "./test_util.ts";
 
-test(function eventInitializedWithType() {
+test(function eventInitializedWithType(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -13,7 +13,7 @@ test(function eventInitializedWithType() {
   assertEquals(event.cancelable, false);
 });
 
-test(function eventInitializedWithTypeAndDict() {
+test(function eventInitializedWithTypeAndDict(): void {
   const init = "submit";
   const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
   const event = new Event(init, eventInitDict);
@@ -26,7 +26,7 @@ test(function eventInitializedWithTypeAndDict() {
   assertEquals(event.cancelable, true);
 });
 
-test(function eventComposedPathSuccess() {
+test(function eventComposedPathSuccess(): void {
   const type = "click";
   const event = new Event(type);
   const composedPath = event.composedPath();
@@ -34,7 +34,7 @@ test(function eventComposedPathSuccess() {
   assertEquals(composedPath, []);
 });
 
-test(function eventStopPropagationSuccess() {
+test(function eventStopPropagationSuccess(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -43,7 +43,7 @@ test(function eventStopPropagationSuccess() {
   assertEquals(event.cancelBubble, true);
 });
 
-test(function eventStopImmediatePropagationSuccess() {
+test(function eventStopImmediatePropagationSuccess(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -54,7 +54,7 @@ test(function eventStopImmediatePropagationSuccess() {
   assertEquals(event.cancelBubbleImmediately, true);
 });
 
-test(function eventPreventDefaultSuccess() {
+test(function eventPreventDefaultSuccess(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -69,7 +69,7 @@ test(function eventPreventDefaultSuccess() {
   assertEquals(cancelableEvent.defaultPrevented, true);
 });
 
-test(function eventInitializedWithNonStringType() {
+test(function eventInitializedWithNonStringType(): void {
   const type = undefined;
   const event = new Event(type);
 

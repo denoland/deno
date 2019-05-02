@@ -13,7 +13,7 @@ from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test
 from repl_test import repl_tests
-from prefetch_test import prefetch_test
+from fetch_test import fetch_test
 from fmt_test import fmt_test
 import subprocess
 import http_server
@@ -74,13 +74,13 @@ def main(argv):
         "tools/ts_library_builder/test.ts"
     ])
 
-    test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
-    check_exists(test_cc)
-    run([test_cc])
+    libdeno_test = os.path.join(build_dir, "libdeno_test" + executable_suffix)
+    check_exists(libdeno_test)
+    run([libdeno_test])
 
-    test_rs = os.path.join(build_dir, "test_rs" + executable_suffix)
-    check_exists(test_rs)
-    run([test_rs])
+    cli_test = os.path.join(build_dir, "cli_test" + executable_suffix)
+    check_exists(cli_test)
+    run([cli_test])
 
     deno_core_test = os.path.join(build_dir,
                                   "deno_core_test" + executable_suffix)
@@ -94,7 +94,7 @@ def main(argv):
 
     unit_tests(deno_exe)
 
-    prefetch_test(deno_exe)
+    fetch_test(deno_exe)
     fmt_test(deno_exe)
 
     integration_tests(deno_exe)

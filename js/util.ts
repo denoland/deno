@@ -71,9 +71,11 @@ export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
 // @internal
 export function createResolvable<T>(): Resolvable<T> {
   let methods: ResolvableMethods<T>;
-  const promise = new Promise<T>((resolve, reject) => {
-    methods = { resolve, reject };
-  });
+  const promise = new Promise<T>(
+    (resolve, reject): void => {
+      methods = { resolve, reject };
+    }
+  );
   // TypeScript doesn't know that the Promise callback occurs synchronously
   // therefore use of not null assertion (`!`)
   return Object.assign(promise, methods!) as Resolvable<T>;
@@ -92,9 +94,12 @@ export function unreachable(): never {
 // @internal
 export function hexdump(u8: Uint8Array): string {
   return Array.prototype.map
-    .call(u8, (x: number) => {
-      return ("00" + x.toString(16)).slice(-2);
-    })
+    .call(
+      u8,
+      (x: number): string => {
+        return ("00" + x.toString(16)).slice(-2);
+      }
+    )
     .join(" ");
 }
 
@@ -186,4 +191,19 @@ export function hasOwnProperty<T>(obj: T, v: PropertyKey): boolean {
     return false;
   }
   return Object.prototype.hasOwnProperty.call(obj, v);
+}
+
+/**
+ * Split a number into two parts: lower 32 bit and higher 32 bit
+ * (as if the number is represented as uint64.)
+ *
+ * @param n Number to split.
+ * @internal
+ */
+export function splitNumberToParts(n: number): number[] {
+  // JS bitwise operators (OR, SHIFT) operate as if number is uint32.
+  const lower = n | 0;
+  // This is also faster than Math.floor(n / 0x100000000) in V8.
+  const higher = (n - lower) / 0x100000000;
+  return [lower, higher];
 }

@@ -35,7 +35,7 @@ lazy_static! {
   static ref C_RID: Mutex<Option<ResourceId>> = Mutex::new(None);
   // tokio runtime specifically for spawning logic that is dependent on
   // completetion of the compiler worker future
-  static ref C_RUNTIME: Mutex<Runtime> = Mutex::new(Runtime::new().unwrap());
+  static ref C_RUNTIME: Mutex<Runtime> = Mutex::new(tokio_util::create_threadpool_runtime());
 }
 
 // This corresponds to JS ModuleMetaData.
@@ -111,8 +111,6 @@ fn lazy_start(parent_state: ThreadSafeState) -> ResourceId {
 
       let mut runtime = C_RUNTIME.lock().unwrap();
       runtime.spawn(lazy(move || {
-        tokio_util::abort_on_panic();
-
         worker.then(move |result| -> Result<(), ()> {
           // Close resource so the future created by
           // handle_worker_message_stream exits
@@ -158,6 +156,23 @@ fn req(specifier: &str, referrer: &str, cmd_id: u32) -> Buf {
   }).to_string()
   .into_boxed_str()
   .into_boxed_bytes()
+}
+
+/// Returns an optional tuple which represents the state of the compiler
+/// configuration where the first is canonical name for the configuration file
+/// and a vector of the bytes of the contents of the configuration file.
+pub fn get_compiler_config(
+  parent_state: &ThreadSafeState,
+  _compiler_type: &str,
+) -> Option<(String, Vec<u8>)> {
+  // The compiler type is being passed to make it easier to implement custom
+  // compilers in the future.
+  match (&parent_state.config_path, &parent_state.config) {
+    (Some(config_path), Some(config)) => {
+      Some((config_path.to_string(), config.to_vec()))
+    }
+    _ => None,
+  }
 }
 
 pub fn compile_async(
@@ -307,5 +322,13 @@ mod tests {
     let res_json = std::str::from_utf8(&msg).unwrap();
 
     assert_eq!(parse_cmd_id(res_json), cmd_id);
+  }
+
+  #[test]
+  fn test_get_compiler_config_no_flag() {
+    let compiler_type = "typescript";
+    let state = ThreadSafeState::mock();
+    let out = get_compiler_config(&state, compiler_type);
+    assert_eq!(out, None);
   }
 }

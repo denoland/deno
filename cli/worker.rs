@@ -9,6 +9,7 @@ use crate::msg;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
+use deno::Config;
 use deno::JSError;
 use deno::Loader;
 use deno::StartupData;
@@ -21,7 +22,7 @@ use url::Url;
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
 pub struct Worker {
-  inner: deno::Isolate<ThreadSafeState>,
+  inner: deno::Isolate,
   pub modules: deno::Modules,
   pub state: ThreadSafeState,
 }
@@ -33,8 +34,12 @@ impl Worker {
     state: ThreadSafeState,
   ) -> Worker {
     let state_ = state.clone();
+    let mut config = Config::default();
+    config.dispatch(move |control_buf, zero_copy_buf| {
+      state_.dispatch(control_buf, zero_copy_buf)
+    });
     Self {
-      inner: deno::Isolate::new(startup_data, state_),
+      inner: deno::Isolate::new(startup_data, config),
       modules: deno::Modules::new(),
       state,
     }
@@ -154,7 +159,6 @@ pub fn root_specifier_to_url(
 }
 
 impl Loader for Worker {
-  type Dispatch = ThreadSafeState;
   type Error = DenoError;
 
   fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
@@ -187,7 +191,7 @@ impl Loader for Worker {
 
   fn isolate_and_modules<'a: 'b + 'c, 'b, 'c>(
     &'a mut self,
-  ) -> (&'b mut deno::Isolate<Self::Dispatch>, &'c mut deno::Modules) {
+  ) -> (&'b mut deno::Isolate, &'c mut deno::Modules) {
     (&mut self.inner, &mut self.modules)
   }
 }
