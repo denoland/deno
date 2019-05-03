@@ -33,10 +33,8 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
   App::new("deno")
     .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
-    .settings(&[
-      AppSettings::AllowExternalSubcommands,
-      AppSettings::DisableVersion,
-    ]).after_help(ENV_VARIABLES_HELP)
+    .settings(&[AppSettings::DisableVersion])
+    .after_help(ENV_VARIABLES_HELP)
     .arg(
       Arg::with_name("log-debug")
         .short("D")
@@ -305,6 +303,7 @@ pub enum DenoSubcommand {
   Repl,
   Run,
   Types,
+  Version,
 }
 
 pub fn flags_from_vec(
@@ -371,7 +370,16 @@ pub fn flags_from_vec(
         _ => unreachable!(),
       }
     }
-    _ => DenoSubcommand::Repl,
+    ("version", Some(_)) => DenoSubcommand::Version,
+    _ => {
+      flags.allow_net = true;
+      flags.allow_env = true;
+      flags.allow_run = true;
+      flags.allow_read = true;
+      flags.allow_write = true;
+      flags.allow_high_precision = true;
+      DenoSubcommand::Repl
+    }
   };
 
   (flags, subcommand, argv)
@@ -391,7 +399,7 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Repl);
+    assert_eq!(subcommand, DenoSubcommand::Version);
     assert_eq!(argv, svec!["deno"]);
   }
 
@@ -454,7 +462,7 @@ mod tests {
   #[test]
   fn test_flags_from_vec_5() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--v8-options"]);
+      flags_from_vec(svec!["deno", "--v8-options", "run", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -462,11 +470,15 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Repl);
-    assert_eq!(argv, svec!["deno"]);
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
 
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--v8-flags=--expose-gc,--gc-stats=1"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--v8-flags=--expose-gc,--gc-stats=1",
+      "run",
+      "script.ts"
+    ]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -474,8 +486,8 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Repl);
-    assert_eq!(argv, svec!["deno"]);
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 
   #[test]
@@ -655,5 +667,24 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Eval);
     assert_eq!(argv, svec!["deno", "'console.log(\"hello\")'"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_17() {
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_high_precision: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Repl);
+    assert_eq!(argv, svec!["deno"]);
   }
 }
