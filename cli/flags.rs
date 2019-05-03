@@ -22,6 +22,7 @@ pub struct DenoFlags {
   pub allow_run: bool,
   pub allow_high_precision: bool,
   pub no_prompts: bool,
+  pub no_fetch: bool,
   pub v8_flags: Option<Vec<String>>,
 }
 
